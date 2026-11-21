@@ -1,7 +1,6 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { createRoute, z } from "@hono/zod-openapi";
 import type { Db } from "../../db/client.ts";
-import { getDb } from "../../db/client.ts";
 import { pingDatabase } from "../../operator/db-ping.ts";
 import { getHealthState } from "../health-state.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -72,7 +71,7 @@ const readyRoute = createRoute({
 });
 
 interface HealthDeps {
-  db?: Db;
+  db: Db;
 }
 
 interface HealthSnapshot {
@@ -114,10 +113,7 @@ async function readinessSnapshot(db: Db): Promise<{ body: ReadySnapshot; status:
   };
 }
 
-export function registerHealthRoute(app: OpenAPIHono<AppEnv>, deps: HealthDeps = {}): void {
-  const resolveDb = (c: { get: (k: "db") => Db | undefined }): Db =>
-    deps.db ?? c.get("db") ?? getDb();
-
+export function registerHealthRoute(app: OpenAPIHono<AppEnv>, deps: HealthDeps): void {
   app.openapi(route, async (c) => {
     c.header("Cache-Control", "no-store");
     return c.json(livenessSnapshot(), 200);
@@ -125,7 +121,7 @@ export function registerHealthRoute(app: OpenAPIHono<AppEnv>, deps: HealthDeps =
 
   app.openapi(readyRoute, async (c) => {
     c.header("Cache-Control", "no-store");
-    const { body, status } = await readinessSnapshot(resolveDb(c));
+    const { body, status } = await readinessSnapshot(deps.db);
     return c.json(body, status);
   });
 }

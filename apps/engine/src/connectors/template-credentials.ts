@@ -2,9 +2,10 @@ import { and, eq } from "drizzle-orm";
 import { type Actor, auditActor } from "../audit/actor.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction, type AuditActorType } from "../audit/types.ts";
-import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
+import { decryptSecret, encryptSecret } from "../crypto/index.ts";
 import type { Executor } from "../db/client.ts";
-import { connectorTemplateCredentials } from "../db/schema/index.ts";
+import { vaultItems } from "../db/schema/index.ts";
+import { templateClientItemName } from "../vault/index.ts";
 
 function aadFor(tenant_id: string, template_slug: string): string {
   return `connector-template-credential:${tenant_id}:${template_slug}`;
@@ -37,31 +38,39 @@ export async function upsertTemplateOAuthCredentials(
     );
     const existing = await tx
       .select()
-      .from(connectorTemplateCredentials)
+      .from(vaultItems)
       .where(
         and(
-          eq(connectorTemplateCredentials.tenant_id, input.tenant_id),
-          eq(connectorTemplateCredentials.template_slug, input.template_slug),
+          eq(vaultItems.tenant_id, input.tenant_id),
+          eq(vaultItems.kind, "template_client"),
+          eq(vaultItems.template_slug, input.template_slug),
         ),
       )
       .limit(1);
     const prior = existing[0];
     const [row] = prior
       ? await tx
-          .update(connectorTemplateCredentials)
+          .update(vaultItems)
           .set({
             ciphertext: toBuf(payload.ciphertext),
             iv: toBuf(payload.iv),
             auth_tag: toBuf(payload.auth_tag),
+            credential_generation: prior.credential_generation + 1,
+            rotated_at: new Date(),
             updated_at: new Date(),
           })
-          .where(eq(connectorTemplateCredentials.id, prior.id))
+          .where(eq(vaultItems.id, prior.id))
           .returning()
       : await tx
-          .insert(connectorTemplateCredentials)
+          .insert(vaultItems)
           .values({
             tenant_id: input.tenant_id,
+            kind: "template_client",
+            name: templateClientItemName(input.template_slug),
             template_slug: input.template_slug,
+            environment: "prod",
+            mode: "oauth2_client",
+            created_by: input.actor_id,
             ciphertext: toBuf(payload.ciphertext),
             iv: toBuf(payload.iv),
             auth_tag: toBuf(payload.auth_tag),
@@ -80,8 +89,8 @@ export async function upsertTemplateOAuthCredentials(
               : input.actor_id
                 ? { actor_type: "unknown" as const, actor_id: null }
                 : auditActor(null)),
-        action: prior ? AuditAction.CREDENTIAL_UPDATED : AuditAction.CREDENTIAL_CREATED,
-        resource_type: "connector_template_credential",
+        action: prior ? AuditAction.VAULT_ITEM_UPDATED : AuditAction.VAULT_ITEM_CREATED,
+        resource_type: "vault_item",
         resource_id: row.id,
         result: "success",
         metadata: { template_slug: input.template_slug },
@@ -99,11 +108,12 @@ export async function getTemplateOAuthCredentials(
 ): Promise<ConnectorTemplateOAuthCredentialValue | null> {
   const rows = await db
     .select()
-    .from(connectorTemplateCredentials)
+    .from(vaultItems)
     .where(
       and(
-        eq(connectorTemplateCredentials.tenant_id, tenant_id),
-        eq(connectorTemplateCredentials.template_slug, template_slug),
+        eq(vaultItems.tenant_id, tenant_id),
+        eq(vaultItems.kind, "template_client"),
+        eq(vaultItems.template_slug, template_slug),
       ),
     )
     .limit(1);

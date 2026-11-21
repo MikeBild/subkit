@@ -1,6 +1,6 @@
 import { createRoot } from "react-dom/client";
 import type { ShellBridge, ShellState } from "../shared/shell-ipc.ts";
-import { ShellApp } from "./ShellApp.tsx";
+import { ShellApp } from "./pages/ShellApp.tsx";
 
 declare global {
   interface Window {

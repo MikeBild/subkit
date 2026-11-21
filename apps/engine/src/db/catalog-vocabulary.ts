@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
-import { logger } from "../logging/logger.ts";
+import { envFlag } from "../env.ts";
+import { logger } from "../logging/index.ts";
 import type { Transaction } from "./client.ts";
 
 export class CatalogVocabularyBusyError extends Error {
@@ -28,7 +29,7 @@ export async function lockCatalogVocabulary(
   try {
     await exec.execute(sql`SELECT pg_advisory_xact_lock(${catalogLockKey(tenant_id)})`);
   } catch (error) {
-    if (process.env.SUBKIT_DIAGNOSTICS === "1")
+    if (envFlag("SUBKIT_DIAGNOSTICS"))
       logger.info({
         module: "db",
         action: "diagnostics.catalog_lock.failed",
@@ -43,7 +44,7 @@ export async function lockCatalogVocabulary(
     });
   }
   await exec.execute(sql`SELECT set_config('lock_timeout', ${restore}, true)`);
-  if (process.env.SUBKIT_DIAGNOSTICS === "1")
+  if (envFlag("SUBKIT_DIAGNOSTICS"))
     logger.info({
       module: "db",
       action: "diagnostics.catalog_lock.acquired",

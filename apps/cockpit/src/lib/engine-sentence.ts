@@ -1,7 +1,6 @@
-import type { TranslationKey } from "@/lib/i18n";
+import type { Translate } from "@/lib/i18n";
 import { engineSentenceEn } from "@/lib/i18n/engine-sentence";
 
-type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 type SentenceKey = keyof typeof engineSentenceEn;
 
 const KNOWN = new Set<string>(Object.keys(engineSentenceEn));

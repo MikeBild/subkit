@@ -1,6 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { recordConversationSkillLoaded } from "../../audit/recorders/index.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { parseLoadedSkills } from "../loop/skill-recency.ts";
 import { readConversationSkillState, setConversationLoadedSkills } from "../service/tool-state.ts";
 import { auditActorFromToolContext } from "./audit-actor.ts";

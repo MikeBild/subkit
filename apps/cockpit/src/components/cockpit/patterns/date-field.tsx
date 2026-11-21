@@ -1,15 +1,15 @@
-import { CalendarDays } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { cn } from "@ui/lib/utils";
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupButton,
   InputGroupInput,
-} from "@/components/ui/input-group";
+} from "@ui/molecules/input-group";
+import { CalendarDays } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { formatLocalValue, parseLocalValue } from "@/lib/locale-date";
-import { cn } from "@/lib/utils";
 
 export function DateField({
   id,
@@ -42,7 +42,6 @@ export function DateField({
   useEffect(() => {
     if (parseLocalValue(text, tag, withTime) !== value)
       setText(formatLocalValue(value, tag, withTime));
-    // biome-ignore lint/correctness/useExhaustiveDependencies: text is the field's own draft
   }, [value, tag, withTime]);
   return (
     <InputGroup data-slot="date-field" className={cn("w-48", withTime && "w-60", className)}>

@@ -1,5 +1,6 @@
 import * as oauth from "openid-client";
-import { logger } from "../../logging/logger.ts";
+import { readEnv } from "../../env.ts";
+import { logger } from "../../logging/index.ts";
 
 export async function loadOidcConfiguration(
   issuerUrl: string,
@@ -8,7 +9,7 @@ export async function loadOidcConfiguration(
 ): Promise<oauth.Configuration> {
   const url = new URL(issuerUrl);
   if (url.protocol === "http:") {
-    if (process.env.NODE_ENV === "production") {
+    if (readEnv("NODE_ENV") === "production") {
       logger.warn({
         msg: "OIDC issuer uses insecure HTTP — authorization codes may be intercepted",
         issuer: issuerUrl,

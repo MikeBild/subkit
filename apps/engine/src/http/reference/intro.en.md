@@ -19,7 +19,7 @@ You work in the Cockpit in the browser, as an installed app or in the SubKit Des
 ![Overview with key figures for runs, success rate, connector health and cost, the "Needs you" list with open decisions and the latest failed runs](images/intro-overview.en.webp)
 
 The **Overview** shows at a glance what ran, what failed and what is waiting for your decision.
-How to track cost and budget is in "Keep track of usage and costs".
+How to track cost and the AI budget is in "Keep track of usage and costs".
 
 Use it as SubKit Cloud or run your own engine:
 

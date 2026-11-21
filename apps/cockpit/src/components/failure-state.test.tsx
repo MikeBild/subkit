@@ -1,12 +1,12 @@
 import { describe, expect, mock, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { TooltipProvider } from "@ui/molecules/tooltip";
 import { JSDOM } from "jsdom";
 import { act } from "react";
 import type { Root } from "react-dom/client";
 import { loginHref } from "@/app/session";
 import { i18nValue, render } from "@/components/cockpit/patterns/test-utils";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import { I18nContext } from "@/lib/i18n-context";
 import {
   BootstrapErrorPage,

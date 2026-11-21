@@ -8,7 +8,6 @@
 @source not "../../engine/src/http/llms/docs.json";
 
 @custom-variant dark (&:is(.dark *));
-@custom-variant sk-nav (@media (width >= 68.75rem));
 
 /* shadcn's components read raw variables — `--background`, `--card`, `--sidebar`
    and so on. This block gives them shadcn's NAMES with the family's VALUES, so
@@ -307,15 +306,6 @@
   }
 }
 
-@keyframes sk-shimmer {
-  from {
-    background-position: 100% 0;
-  }
-  to {
-    background-position: -100% 0;
-  }
-}
-
 @keyframes sk-collapsible-open {
   from {
     height: 0;
@@ -355,20 +345,6 @@
 
 .sk-row-leave {
   animation: sk-fade-out var(--sk-dur-base) var(--sk-ease-exit) both;
-}
-
-/* The one skeleton look. The shimmer is slow and faint; under reduced motion
-   the block stands still. */
-.sk-skeleton {
-  background-color: var(--muted);
-  background-image: linear-gradient(
-    90deg,
-    transparent 0%,
-    color-mix(in oklab, var(--background) 45%, transparent) 50%,
-    transparent 100%
-  );
-  background-size: 200% 100%;
-  animation: sk-shimmer 1.6s linear infinite;
 }
 
 .sk-collapsible[data-state="open"] {
@@ -420,13 +396,6 @@
 [data-slot="dialog-content"][data-state="closed"],
 [data-slot="alert-dialog-content"][data-state="closed"] {
   animation: sk-dialog-out var(--sk-dur-fast) var(--sk-ease-exit) both;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .sk-skeleton {
-    animation: none;
-    background-image: none;
-  }
 }
 
 /* Touch: every control is at least 40px high, an icon button 40px wide. */

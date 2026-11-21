@@ -1,8 +1,6 @@
 import type { components } from "@cli-core/engine-api/openapi";
-import { appUserProvider } from "@/lib/app-user";
-import type { TranslationKey } from "@/lib/i18n";
-
-type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
+import { appUserProvider } from "@/features/admin/model/app-user";
+import type { Translate, TranslationKey } from "@/lib/i18n";
 
 export type AppSummary = components["schemas"]["AppSummary"];
 export type AppView = components["schemas"]["AppView"];

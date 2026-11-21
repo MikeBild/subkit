@@ -62,7 +62,7 @@ export async function buildCommitContext(p: AutoPersistInput): Promise<ToolConte
     ...(p.principal ? { principal: p.principal } : {}),
     connector_id: null,
     workflow_id: null,
-    permission_mode: null,
+    ask_before_writing: true,
     engineClient: new EngineClient({
       tenant_id: p.tenant_id,
       actor_id: autoPersistActor(p).actor_id,

@@ -15,13 +15,14 @@ import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sou
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { createEmptyDraftDocument } from "../authoring-state/index.ts";
 
 let http: HttpTestServer;
 let connectorId: string;
 
 beforeAll(async () => {
-  process.env.LLM_PROVIDER = "mock";
+  testEnv.LLM_PROVIDER = "mock";
   resetMockProvider();
   http = await createHttpTestServer("conv-append-stream");
   const [row] = await http.db
@@ -261,7 +262,6 @@ describe("http/conversations citations replay", () => {
   async function seedConversation(http: HttpTestServer, owner_id = http.userId): Promise<string> {
     const draft = {
       ...createEmptyDraftDocument(),
-      session: { permission_mode: "auto" as const },
     };
     const [conversation] = await http.db
       .insert(conversations)

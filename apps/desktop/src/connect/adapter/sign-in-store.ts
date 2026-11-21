@@ -74,6 +74,42 @@ export function createSignInStore(bridge: ConnectBridge, options: StoreOptions =
       case "reportProblem":
         void bridge.reportProblem();
         return;
+      case "checkPermissions":
+        void bridge.checkPermissions();
+        return;
+      case "openPermissionSettings":
+        void bridge.openPermissionSettings(effect.key);
+        return;
+      case "restartApp":
+        void bridge.restartApp();
+        return;
+      case "localPickDataFolder":
+        void bridge.localPickDataFolder();
+        return;
+      case "localBegin":
+        void bridge.localBegin();
+        return;
+      case "localFinish":
+        void bridge.localFinish(effect.input);
+        return;
+      case "localCancel":
+        void bridge.localCancel();
+        return;
+      case "localOpen":
+        void bridge.localOpen();
+        return;
+      case "localBackup":
+        void bridge.localBackup();
+        return;
+      case "localRestore":
+        void bridge.localRestore(effect.name);
+        return;
+      case "localMove":
+        void bridge.localMove(effect.serverOrigin);
+        return;
+      case "localRemoveAll":
+        void bridge.localRemoveAll();
+        return;
       case "chooseWorkspace":
         void bridge.chooseWorkspace(effect.tenantId);
         return;

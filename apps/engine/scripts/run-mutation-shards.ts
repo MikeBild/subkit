@@ -4,6 +4,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { verificationRunsRoot } from "../../../scripts/lib/verification-run-lifecycle.ts";
 import { runWithVerificationLog } from "../../../scripts/run-with-verification-log.ts";
 import { countDeadlineKills } from "./audit/core-tests.ts";
+import { mutationShardEnvironment } from "./audit/coverage-environment.ts";
 import {
   assertDistributedShardReceipt,
   assertDistributedWaveBinding,
@@ -259,6 +260,7 @@ export async function executePreparedMutationShard(options: {
       targets: shard.targets,
     });
   }
+  const shardEnvironment = mutationShardEnvironment(process.env, shard.resource_tags);
   const directory = join(prepared.root, shardId);
   mkdirSync(directory, { recursive: false });
   const startedAt = new Date().toISOString();
@@ -348,7 +350,7 @@ export async function executePreparedMutationShard(options: {
     { flag: "wx" },
   );
   const ticketEnv = {
-    ...process.env,
+    ...shardEnvironment,
     SUBKIT_MUTATION_ORIGINAL_REPO: prepared.repo,
     SUBKIT_MUTATION_PARENT_TICKET_PATH: prepared.ticket.path,
     SUBKIT_MUTATION_PARENT_TICKET_SHA256: prepared.ticket.sha256,

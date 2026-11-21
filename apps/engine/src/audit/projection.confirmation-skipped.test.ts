@@ -4,6 +4,7 @@ import { AuditAction, type AuditEntry } from "./types.ts";
 
 const CONVERSATION = "33333333-3333-4333-8333-333333333333";
 const AUTHORITY = "44444444-4444-4444-8444-444444444444";
+const JOB = "66666666-6666-4666-8666-666666666666";
 
 function entry(overrides: Partial<AuditEntry> = {}): AuditEntry {
   return {
@@ -45,6 +46,28 @@ describe("audit projection of a skipped confirmation", () => {
     });
     expect(projected.reason).toBe("authority_covered");
     expect(JSON.stringify(projected)).not.toContain("private-recipient-canary");
+  });
+
+  test("a step that ran inside a job shows the job it belonged to", () => {
+    const projected = projectAuditEntry(
+      entry({
+        reason: "user_instruction",
+        metadata: { tool: "call_connector", resolver_reason: "user_instruction", job_id: JOB },
+      }),
+    );
+    expect(projected.details).toEqual({
+      tool: "call_connector",
+      resolver_reason: "user_instruction",
+      job_id: JOB,
+    });
+    expect(projected.reason).toBe("user_instruction");
+  });
+
+  test("a job id that is not an id stays hidden", () => {
+    for (const job_id of ["job-1", "run_2026", 42, null]) {
+      const projected = projectAuditEntry(entry({ metadata: { tool: "call_connector", job_id } }));
+      expect(projected.details).toEqual({ tool: "call_connector" });
+    }
   });
 
   test("an unknown reason and unlisted metadata stay hidden", () => {

@@ -80,7 +80,7 @@ export async function findRetainedFileReferences(
       SELECT candidate.id::text AS id FROM candidate
       WHERE EXISTS (
         SELECT 1 FROM ${executions} e
-        WHERE e.tenant_id=candidate.tenant_id AND e.status IN ('queued','running')
+        WHERE e.tenant_id=candidate.tenant_id AND e.status IN ('queued','waiting_for_device','running')
       ) OR EXISTS (
         SELECT 1 FROM doc
         WHERE doc.tenant_id=candidate.tenant_id AND (

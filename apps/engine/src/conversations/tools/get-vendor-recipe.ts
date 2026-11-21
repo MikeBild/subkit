@@ -1,5 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: placeholder tokens (${engine_url}, ${plaintext_key}) are the literal prompt-surface the model reads — they must appear verbatim in description and notes.
-
 import { z } from "@hono/zod-openapi";
 import {
   getVendorRecipe,

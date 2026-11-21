@@ -9,19 +9,22 @@ replaces an asset and publishes nothing when a signing value is missing.
 
 | Platform | Artifacts | Update feed |
 | --- | --- | --- |
-| macOS arm64 and x64 | `subkit-desktop-<version>-mac-<arch>.dmg` and `.zip`, signed with Developer ID, notarized, ticket stapled | `latest-mac.yml` |
+| macOS on Apple silicon (arm64) | `subkit-desktop-<version>-mac-arm64.dmg` and `.zip`, signed with Developer ID, notarized, ticket stapled | `latest-mac.yml` |
 | Windows x64 | `subkit-desktop-<version>-win-x64.exe` (NSIS), Authenticode signed with a timestamp | `latest.yml` |
 | Linux x64 | `subkit-desktop-<version>-linux-<arch>.AppImage` and `.deb` | `latest-linux.yml` |
 | All | block maps, `subkit-desktop-<version>-<os>-THIRD_PARTY_NOTICES.txt`, `SHA256SUMS-desktop`, `SHA256SUMS-desktop.sig` | |
 
-macOS ships one build per architecture instead of a universal one: the download is half the
-size and the app has no native module that would need merging. `SHA256SUMS-desktop` is signed
+The macOS build is the one a release needs. The Windows and Linux jobs still run, but a failed
+Windows or Linux build does not hold back the release: the publish job waits for them, takes
+only the platforms that built, warns about the missing one and checks only their feeds.
+
+macOS ships for Apple silicon (arm64) only; Intel Macs get no build. `SHA256SUMS-desktop` is signed
 with the same release key as `SHA256SUMS`; the existing `SHA256SUMS` of the server release is
 not touched.
 
 ## Version rule
 
-The app carries the version of the repository. `bun run bump <version>` writes the same version
+The app carries the version of the repository. `bun run release bump <version>` writes the same version
 into `package.json` and `apps/desktop/package.json`; the workflow refuses a tag whose two
 versions differ, and a unit test of the app fails when they drift.
 
@@ -73,6 +76,65 @@ needs a program that is not on the runner, add its installation as a step before
 alternative block. This block has never run; expect to adjust it in the first run with real
 credentials.
 
+## Engine for local mode
+
+There is one desktop app with both modes: it connects to a server or runs a local workspace
+„Nur auf diesem Mac“. Every macOS (Apple silicon) build therefore carries the compiled engine and
+PostgreSQL; there is no switch and no second builder config. The Windows and Linux apps carry
+neither for now.
+
+The `engine` job builds the engine on macOS for `darwin-arm64` and
+`windows-x64` (`bun run build desktop-engine`, output in `dist/engine-desktop/<os>/<arch>/`),
+with the same embedded cockpit, migrations and assets as the Linux image. It then:
+
+- signs the macOS binary with the Developer ID from `CSC_LINK`, the hardened runtime, a secure
+  timestamp and `assets/entitlements.mac.plist` (`scripts/codesign-macos.sh <binary> <identity>
+  <entitlements>`);
+- notarizes it with the App Store Connect key (`scripts/notarize-macos.sh <binary>`, which
+  retries a failed upload once). A bare binary cannot carry a stapled ticket; Gatekeeper checks
+  it online. `spctl -a -t exec` answers "does not seem to be an app" for any command-line tool,
+  so the job checks with `spctl -a -t install`, which must answer `source=Notarized Developer ID`;
+- verifies the signatures and starts the arm64 engine with `--version`, `--help` and `--smoke`.
+
+The same command writes the engine's own notices (the packages
+of the compiled engine and its embedded cockpit, the Bun runtime and the models) next to each
+binary as `THIRD_PARTY_NOTICES.engine.txt`.
+
+The `macos` job downloads the macOS binary and packages with `electron-builder.yml`, whose base
+config adds it as `Resources/local/engine`.
+
+On macOS the job also fetches PostgreSQL for `darwin-arm64` (`scripts/fetch-postgres.ts`), signs every
+Mach-O file in it with the Developer ID, the hardened runtime and a timestamp and without
+entitlements (`scripts/codesign-macos-folder.sh`), and the app carries it as
+`Resources/local/postgres`. electron-builder leaves these files as signed (`signIgnore`), so
+PostgreSQL does not inherit the app's JIT entitlement. It needs none: `initdb`, `pgcrypto`,
+the Snowball dictionaries and PL/pgSQL load and run under the hardened runtime without one.
+On macOS, `scripts/notices.ts` appends the engine notices, the
+PostgreSQL License and the notices of OpenSSL, ICU, libxml2, lz4 and zstd to
+`THIRD_PARTY_NOTICES.txt`. After the build the job checks that the app carries the engine,
+`postgres`, `initdb` and those notices, and starts `postgres --version` and `initdb --version`
+from inside the app. electron-builder signs the engine again inside the app with the same
+entitlements. After signing, the job checks the engine inside the app again: signature,
+hardened runtime, JIT entitlement and `--version` from the signed app.
+
+The engine needs exactly one entitlement, `com.apple.security.cs.allow-jit`. Signed with the
+hardened runtime and no entitlements, Bun's JavaScriptCore runs without JIT and without
+`SharedArrayBuffer`, and the engine stops at startup. `allow-unsigned-executable-memory` is not
+needed. The app already uses the same file, so the app and the engine share one entitlement set.
+
+The engine adds about 350 MB to the macOS app and about 376 MB to the Windows app; PostgreSQL
+adds about 63 MB. macOS releases are built for Apple silicon only.
+
+To build and sign the engine and PostgreSQL on a Mac by hand:
+
+```sh
+bun run build desktop-engine
+sh scripts/codesign-macos.sh dist/engine-desktop/mac/arm64/engine "Developer ID Application: <name> (<team>)" apps/desktop/assets/entitlements.mac.plist
+APPLE_API_KEY=<path to AuthKey_<id>.p8> APPLE_API_KEY_ID=<id> APPLE_API_ISSUER=<issuer> sh scripts/notarize-macos.sh dist/engine-desktop/mac/arm64/engine
+bun run --cwd apps/desktop scripts/fetch-postgres.ts --target darwin-arm64
+sh scripts/codesign-macos-folder.sh apps/desktop/resources/postgres/darwin-arm64 "Developer ID Application: <name> (<team>)"
+```
+
 ## First dry run
 
 A dry run builds all three platforms unsigned, keeps the result as workflow artifacts for seven
@@ -96,7 +158,9 @@ check and try again later, because the newest release has no feed file yet. With
 
 ## What the workflow checks before it publishes
 
-- Missing signing value: the first job stops with the list of missing names. Nothing is built.
+- Missing macOS or checksum signing value: the first job stops with the list of missing names.
+  Nothing is built. A missing Windows signing value only raises a warning; the Windows build
+  then fails and the release ships without Windows.
 - The tag must equal both versions, and in an automatic run the commit that was released.
 - macOS: `codesign --verify --deep --strict`, a Developer ID authority, the hardened runtime,
   `spctl -a -t exec` and `xcrun stapler validate` for the app inside every zip and every dmg.
@@ -146,6 +210,59 @@ signtool verify /pa /all /v .\subkit-desktop-<version>-win-x64.exe
 
 Linux: the checksum check above is the whole verification; AppImage and deb carry no signature.
 
+## App identity, permissions and entitlements on macOS
+
+The bundle id `dev.mikebild.subkit.desktop` (development: `dev.mikebild.subkit.desktop.dev`)
+stays fixed: updates, the keychain entries and the macOS privacy settings are bound to it.
+electron-builder names the helper apps `SubKit Helper`, `SubKit Helper (GPU)`,
+`SubKit Helper (Plugin)` and `SubKit Helper (Renderer)` with the ids
+`dev.mikebild.subkit.desktop.helper[.GPU|.Plugin|.Renderer]`; `scripts/after-pack.cjs` also
+replaces the `Electron Helper` name that Electron leaves in their `CFBundleName`.
+
+Entitlements (`assets/entitlements.mac.plist`, for the app and every helper it signs):
+
+| Entitlement | Why |
+| --- | --- |
+| `com.apple.security.cs.allow-jit` | V8 in Electron and JavaScriptCore in the engine compile JavaScript at run time. Under the hardened runtime they stop at startup without it. |
+
+Nothing else. `disable-library-validation` is not needed because every library in the bundle
+is signed with the same team; `allow-unsigned-executable-memory` is not needed because both
+runtimes use `MAP_JIT`. PostgreSQL, agent-browser and agent-desktop need no entitlement: they
+are signed beforehand without one and must be listed in `signIgnore`, otherwise
+electron-builder signs them again with this file.
+
+Info.plist (`mac.extendInfo` in `electron-builder.base.yml`; the German and English texts are
+in `src/shared/app-identity.ts`, and `scripts/build.ts` writes them as
+`de.lproj/InfoPlist.strings` and `en.lproj/InfoPlist.strings`):
+
+| Key | Why |
+| --- | --- |
+| `NSDesktopFolderUsageDescription`, `NSDocumentsFolderUsageDescription`, `NSDownloadsFolderUsageDescription` | Steps on the device read and write in folders the person allowed, also inside these three. |
+| `NSRemovableVolumesUsageDescription`, `NSNetworkVolumesUsageDescription` | An allowed folder may lie on an external or network drive; only the volume root itself is refused. |
+| `NSLocalNetworkUsageDescription` | A SubKit server may run in the local network; any `https://` address is accepted. |
+| `NSHumanReadableCopyright`, `LSMinimumSystemVersion` 13.0, `LSApplicationCategoryType` productivity | Shown in Finder and the About panel; 13.0 is the oldest macOS Electron 45 runs on. |
+
+The generic camera, microphone, audio capture and Bluetooth strings of Electron are removed:
+every session refuses media and device requests. There is no `NSAppleEventsUsageDescription`
+because the app sends no Apple Events. Accessibility and Screen Recording have no Info.plist
+key; macOS lists the app in System Settings, and the permissions step in the connect window
+says why SubKit needs each one.
+
+Icons: `assets/icon-mac.svg` (the Cockpit mark on the macOS icon grid), `assets/tray.svg` and
+`assets/dmg-background.svg` are the sources. `bun run build --icons` renders `icon.icns`
+(16 to 1024 pixels), `icon-mac.png` (dock icon of an unpackaged start), `trayTemplate.png` and
+`@2x`, and the DMG background at 1x and 2x, on a Mac with `rsvg-convert`. Notifications, the
+Dock and the About panel of the packaged app use the bundle icon. Windows and Linux keep
+`assets/icon.png`.
+
+To check a build, here an unsigned one:
+
+```sh
+cd apps/desktop && CSC_IDENTITY_AUTO_DISCOVERY=false bun run package --prebuilt --dir --mac --arm64 -c.mac.identity=- -c.mac.notarize=false --publish never
+plutil -p release/mac-arm64/SubKit.app/Contents/Info.plist
+codesign -d --entitlements :- release/mac-arm64/SubKit.app
+```
+
 ## Roll back an update
 
 The app never installs an older version (`allowDowngrade` is off), and a published tag is never
@@ -194,7 +311,6 @@ Before the first public release, confirm:
    again after any file in it changed. The notices say so. Confirm that this is acceptable to
    you.
 5. What is still not covered, as the `scope` of the manifest lists: the per-platform
-   differences of `LICENSES.chromium.html` (each platform ships its own file; the macOS job
-   reads the arm64 one for both architectures), the installer components that the builder adds
+   differences of `LICENSES.chromium.html` (each platform ships its own file), the installer components that the builder adds
    on Windows, the AppImage runtime on Linux, and legal approval as such. The notices are a
    draft, not a distribution approval.

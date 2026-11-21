@@ -1,7 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { Db } from "../../db/client.ts";
 import type { ToolPolicies } from "../../tools/types.ts";
-import { runConfirmGate } from "../confirmation.ts";
 import {
   canSetConversationToolPolicy,
   decideToolMode,
@@ -10,12 +8,6 @@ import {
   eligibleNoConfirmTools,
   resolveToolMode,
 } from "../tool-policies.ts";
-
-const untouchableDb = new Proxy({} as Record<string, unknown>, {
-  get(_target, property) {
-    throw new Error(`the proceed path must not touch the database (accessed ${String(property)})`);
-  },
-}) as unknown as Db;
 
 describe("tool-policies resolver", () => {
   it("only exposes the two safe preparation saves for no-confirm conversation overrides", () => {
@@ -70,7 +62,7 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
     ).toBe("confirm_before_execution");
   });
 
-  it("safe save overrides cannot bypass force, credentials, or plan mode", () => {
+  it("safe save overrides cannot bypass force or credentials", () => {
     expect(
       decideToolMode({
         tool: "save_workflow_draft",
@@ -87,14 +79,14 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
         overrides: { save_connector_draft: "no_confirm" },
       }).mode,
     ).toBe("confirm_before_execution");
-    for (const permission_mode of ["yolo", "auto", "ask"] as const) {
+    for (const ask_before_writing of [false, true]) {
       expect(
         decideToolMode({
           tool: "save_workflow_draft",
           category: "draft_write",
           input: { force_commit: true },
           overrides: { save_workflow_draft: "no_confirm" },
-          permission_mode,
+          ask_before_writing,
           connector_trust: true,
         }).mode,
       ).toBe("confirm_before_execution");
@@ -104,32 +96,23 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
           category: "draft_write",
           input: { credential: { mode: "api_key" } },
           overrides: { save_connector_draft: "no_confirm" },
-          permission_mode,
+          ask_before_writing,
           connector_trust: true,
         }).mode,
       ).toBe("confirm_before_execution");
     }
-    expect(
-      decideToolMode({
-        tool: "save_workflow_draft",
-        category: "draft_write",
-        input: {},
-        overrides: { save_workflow_draft: "no_confirm" },
-        permission_mode: "plan",
-      }).mode,
-    ).toBe("confirm_before_execution");
   });
   it("development probes cannot disguise writes as automatic preparation", () => {
     for (const tool of ["probe_connector"]) {
       for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {
-        for (const permission_mode of ["auto", "ask", "plan"] as const) {
+        for (const ask_before_writing of [false, true]) {
           expect(
             decideToolMode({
               tool,
               category: tool === "probe_connector" ? "tenant_read" : "draft_write",
               input: { environment: "dev", method },
               overrides: { [tool]: "no_confirm" },
-              permission_mode,
+              ask_before_writing,
             }).mode,
           ).toBe("confirm_before_execution");
         }
@@ -140,7 +123,6 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
           category: "tenant_read",
           input: { environment: "dev", method: "GET" },
           overrides: {},
-          permission_mode: "auto",
         }).mode,
       ).toBe("no_confirm");
       expect(
@@ -149,7 +131,6 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
           category: "tenant_read",
           input: { environment: "prod", method: "GET" },
           overrides: {},
-          permission_mode: "auto",
         }).mode,
       ).toBe("no_confirm");
     }
@@ -162,7 +143,6 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
         category: "draft_write",
         input: { environment: "dev", method: "POST" },
         overrides: {},
-        permission_mode: "auto",
       }).mode,
     ).toBe("confirm_before_execution");
   });
@@ -187,15 +167,15 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
     expect(mode).toBe("no_confirm");
   });
 
-  it("never-gate pins survive permission_mode=ask/plan", () => {
-    for (const permission_mode of ["ask", "plan"] as const) {
+  it("never-gate pins survive ask_before_writing", () => {
+    for (const ask_before_writing of [false, true]) {
       for (const tool of ["load_skill", "save_learning"]) {
         const decision = decideToolMode({
           tool,
           category: "tenant_write",
           input: { slug: "workflow-authoring" },
           overrides: {},
-          permission_mode,
+          ask_before_writing,
         });
         expect(decision.mode).toBe("no_confirm");
         expect(decision.rule).toBe("never_gate");
@@ -204,24 +184,24 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
   });
 
   it("an explicit per-conversation override still gates a never-gate tool", () => {
-    const withPermissionMode = decideToolMode({
+    const withAskBeforeWriting = decideToolMode({
       tool: "load_skill",
       category: "tenant_write",
       input: { slug: "workflow-authoring" },
       overrides: { load_skill: "confirm_before_execution" },
-      permission_mode: "ask",
+      ask_before_writing: true,
     });
-    expect(withPermissionMode.mode).toBe("confirm_before_execution");
-    expect(withPermissionMode.rule).not.toBe("never_gate");
+    expect(withAskBeforeWriting.mode).toBe("confirm_before_execution");
+    expect(withAskBeforeWriting.rule).not.toBe("never_gate");
 
-    const withoutPermissionMode = decideToolMode({
+    const withoutAskBeforeWriting = decideToolMode({
       tool: "load_skill",
       category: "tenant_write",
       input: { slug: "workflow-authoring" },
       overrides: { load_skill: "confirm_before_execution" },
     });
-    expect(withoutPermissionMode.mode).toBe("confirm_before_execution");
-    expect(withoutPermissionMode.rule).toBe("conversation_override");
+    expect(withoutAskBeforeWriting.mode).toBe("confirm_before_execution");
+    expect(withoutAskBeforeWriting.rule).toBe("write_gate");
   });
 
   it("dry_run_workflow remains preparation in every environment", () => {
@@ -246,7 +226,6 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
       category: "draft_write",
       input: { environment: "dev" },
       overrides: {},
-      permission_mode: "auto",
     });
     expect(heldWritesAuto.mode).toBe("no_confirm");
   });
@@ -258,21 +237,9 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
         category: tool === "run_workflow" ? "tenant_write" : "draft_write",
         input: { workflow: "x", environment: "dev", execute_writes: true },
         overrides: {},
-        permission_mode: "auto",
       });
       expect(decision.mode).toBe("no_confirm");
     }
-  });
-
-  it("yolo still honours an explicitly-armed override for a live write run", () => {
-    const decision = decideToolMode({
-      tool: "run_workflow",
-      category: "tenant_write",
-      input: { workflow: "x", environment: "prod", execute_writes: true },
-      overrides: {},
-      permission_mode: "yolo",
-    });
-    expect(decision.mode).toBe("no_confirm");
   });
 
   it("run_workflow in prod delegates ordinary starts to bounded admission", () => {
@@ -325,13 +292,14 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
     ).toBe("no_confirm");
   });
 
-  it("save_workflow_draft requires confirm by default", () => {
+  it("save_workflow_draft asks when the person asks before writing", () => {
     expect(
       resolveToolMode({
         tool: "save_workflow_draft",
         category: "draft_write",
         input: {},
         overrides: {},
+        ask_before_writing: true,
       }),
     ).toBe("confirm_before_execution");
   });
@@ -355,7 +323,7 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
     ).toBe("confirm_before_execution");
   });
 
-  it("authenticate_oauth runs first, then pauses for review (confirm_after_execution)", () => {
+  it("authenticate_oauth asks before it runs", () => {
     expect(
       resolveToolMode({
         tool: "authenticate_oauth",
@@ -363,7 +331,7 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
         input: { connector_id: "00000000-0000-0000-0000-000000000000" },
         overrides: {},
       }),
-    ).toBe("confirm_after_execution");
+    ).toBe("confirm_before_execution");
   });
 
   it("cleanup write tools require confirm by default", () => {
@@ -388,124 +356,34 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
   });
 });
 
-describe("resolveToolMode — yolo mode", () => {
-  it("yolo bypasses the dangerous-tools gate", () => {
-    for (const tool of [
-      "delete_workflow",
-      "delete_connector",
-      "revoke_api_key",
-      "approve_patch_candidate",
-    ]) {
-      expect(
-        resolveToolMode({
-          tool,
-          category: "tenant_write",
-          input: { id: "00000000-0000-0000-0000-000000000000" },
-          overrides: {},
-          permission_mode: "yolo",
-        }),
-      ).toBe("no_confirm");
-    }
-  });
-
-  it("yolo on a dangerous tool resolves no_confirm by permission_mode and the gate records the bypass", async () => {
-    const args = { id: "00000000-0000-0000-0000-000000000000" };
-    expect(
-      decideToolMode({
-        tool: "delete_workflow",
-        category: "tenant_write",
-        input: args,
-        overrides: {},
-        permission_mode: "yolo",
-      }),
-    ).toEqual({ mode: "no_confirm", rule: "permission_mode" });
-
-    const gate = await runConfirmGate({
-      tool: "delete_workflow",
-      category: "tenant_write",
-      surface: "chat",
-      args,
-      overrides: {},
-      permission_mode: "yolo",
-      db: untouchableDb,
-      tenant_id: "00000000-0000-0000-0000-000000000002",
-      principal: null,
-      approval_tool: "delete_workflow",
-      via: "chat",
-      record_surface: "web",
-      conversation_id: "00000000-0000-0000-0000-000000000003",
-      actor_id: null,
-      execution_mode: null,
-      precheck: null,
-      pause_blocked: false,
-      confirmation_kind: "external_write",
-    });
-    expect(gate.kind).toBe("proceed");
-    expect(gate.record).toMatchObject({
-      tool: "delete_workflow",
-      outcome: "proceed",
-      mode: "no_confirm",
-      rule: "permission_mode",
-      bypassed_confirmation: true,
-      surface: "web",
-    });
-  });
-
-  it("yolo bypasses the per-tool default for tenant_write tools", () => {
-    expect(
-      resolveToolMode({
-        tool: "run_workflow",
-        category: "tenant_write",
-        input: { workflow_id: "x", environment: "prod" },
-        overrides: {},
-        permission_mode: "yolo",
-      }),
-    ).toBe("no_confirm");
-  });
-
-  it("yolo still respects the inline-credential safeguard", () => {
-    expect(
-      resolveToolMode({
-        tool: "update_connector_draft",
-        category: "tenant_write",
-        input: {
-          config: { token: "dop_v1_abcdefghijklmnopqrstuvwxyz0123456789ABCDEF" },
-        },
-        overrides: {},
-        permission_mode: "yolo",
-      }),
-    ).toBe("confirm_before_execution");
-  });
-
-  it("auto continues to gate dangerous tools (regression)", () => {
+describe("resolveToolMode — writes", () => {
+  it("dangerous tools always ask", () => {
     expect(
       resolveToolMode({
         tool: "delete_connector",
         category: "tenant_write",
         input: { id: "00000000-0000-0000-0000-000000000000" },
         overrides: {},
-        permission_mode: "auto",
       }),
     ).toBe("confirm_before_execution");
   });
 
-  it("replacing a saved draft is inert in auto mode; a forced save stays gated", () => {
+  it("replacing a saved draft is inert; a forced save stays gated", () => {
     const overwrite = decideToolMode({
       tool: "save_workflow_draft",
       category: "tenant_write",
       input: { target_workflow_id: "5b873c3d-b9ce-465c-81a2-7a5a4e597365" },
-      permission_mode: "auto",
       overrides: {},
     });
     expect(overwrite.mode).toBe("no_confirm");
 
-    for (const permission_mode of ["ask", "plan"] as const)
+    for (const ask_before_writing of [true])
       expect(
         decideToolMode({
           tool: "save_workflow_draft",
           category: "tenant_write",
           input: { target_workflow_id: "5b873c3d-b9ce-465c-81a2-7a5a4e597365" },
-          permission_mode,
+          ask_before_writing,
           overrides: {},
         }).mode,
       ).toBe("confirm_before_execution");
@@ -514,7 +392,6 @@ describe("resolveToolMode — yolo mode", () => {
       tool: "save_workflow_draft",
       category: "tenant_write",
       input: { target_workflow_id: "5b873c3d-b9ce-465c-81a2-7a5a4e597365", force_commit: true },
-      permission_mode: "auto",
       overrides: {},
     });
     expect(forcedReplacement.mode).toBe("confirm_before_execution");
@@ -523,7 +400,6 @@ describe("resolveToolMode — yolo mode", () => {
       tool: "save_workflow_draft",
       category: "tenant_write",
       input: { force_commit: true },
-      permission_mode: "auto",
       overrides: {},
     });
     expect(forced.mode).toBe("confirm_before_execution");
@@ -533,18 +409,8 @@ describe("resolveToolMode — yolo mode", () => {
       tool: "save_workflow_draft",
       category: "tenant_write",
       input: { workflow_slug: "brand-new-thing" },
-      permission_mode: "auto",
       overrides: {},
     });
     expect(ordinary.mode).toBe("no_confirm");
-
-    const yolo = decideToolMode({
-      tool: "save_workflow_draft",
-      category: "tenant_write",
-      input: { target_workflow_id: "5b873c3d-b9ce-465c-81a2-7a5a4e597365" },
-      permission_mode: "yolo",
-      overrides: {},
-    });
-    expect(yolo.mode).toBe("no_confirm");
   });
 });

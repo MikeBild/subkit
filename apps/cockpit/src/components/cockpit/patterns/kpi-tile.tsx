@@ -1,5 +1,5 @@
+import { cn } from "@ui/lib/utils";
 import type { ReactNode } from "react";
-import { cn } from "@/lib/utils";
 
 export const KPI_TILE_BOX =
   "grid min-h-35 min-w-0 content-start gap-0.5 rounded-lg border px-4 py-3 @5xl:min-h-0";

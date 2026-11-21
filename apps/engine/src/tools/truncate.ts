@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { summarizeScopeShape } from "../workflows/scope-shape.ts";
 
 const MAX_JSON_CHARS = 8000;

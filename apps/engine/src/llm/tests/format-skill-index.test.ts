@@ -146,7 +146,6 @@ describe("formatSkillIndex", () => {
           id: "id-r",
           slug: "runtime-aware",
           title: "Runtime Aware",
-          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal $-curly tokens are the input shape applyRuntimeTemplate replaces
           body: "Engine URL is ${engine_url} and tenant is ${tenant_slug}.",
         }),
       ],

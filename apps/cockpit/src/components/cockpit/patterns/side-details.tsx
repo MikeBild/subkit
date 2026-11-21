@@ -1,3 +1,5 @@
+import { Skeleton } from "@ui/atoms/skeleton";
+import { cn } from "@ui/lib/utils";
 import {
   Children,
   cloneElement,
@@ -9,8 +11,6 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useI18n } from "@/lib/i18n-context";
-import { cn } from "@/lib/utils";
-import { Skeleton } from "./skeleton";
 import { STATUS_DOT, type StatusTone } from "./status-strip";
 
 export interface SideDetailsValue {

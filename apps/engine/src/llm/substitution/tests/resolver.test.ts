@@ -2,9 +2,9 @@ import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import { upsertCredential } from "../../../credentials/service.ts";
-import { connectors, credentials, tenants } from "../../../db/schema/index.ts";
+import { connectors, tenants, vaultItems } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
-import { logger } from "../../../logging/logger.ts";
+import { logger } from "../../../logging/index.ts";
 import {
   describeConnectorPlaceholders,
   flattenCredential,
@@ -895,9 +895,9 @@ describe("resolver — soft-delete filtering (regression: /v2/v2 double prefix)"
       tokenValue: "should-not-resolve",
     });
     await ctx.db
-      .update(credentials)
+      .update(vaultItems)
       .set({ deleted_at: new Date() }) // allow-wall-clock: deleted_at marker, value irrelevant
-      .where(eq(credentials.connector_id, connector_id));
+      .where(eq(vaultItems.connector_id, connector_id));
 
     const r = await resolveStringPlaceholders(`\${cred.deadcred.token}`, {
       tenant_id,

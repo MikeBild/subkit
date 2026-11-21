@@ -47,7 +47,6 @@ describe("validateWorkflowDef · GraphQL over plain HTTP", () => {
     expect(
       errorsFor({
         ...convertedProjectItemsStep(),
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: authored workflow placeholder
         body: { query: "${input.document}" },
       }).filter((entry) => entry.path.endsWith("body.query")),
     ).toEqual([]);
@@ -82,7 +81,6 @@ describe("validateWorkflowDef · GraphQL over plain HTTP", () => {
         labelError(
           labelled({
             path: undefined,
-            // biome-ignore lint/suspicious/noTemplateCurlyInString: authored connector placeholder
             url: "${connector.github.base_url}",
             body: { query: mutation },
           }),

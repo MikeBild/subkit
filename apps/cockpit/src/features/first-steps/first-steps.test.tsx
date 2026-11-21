@@ -58,7 +58,8 @@ describe("first steps", () => {
         onHide={() => {}}
       />,
     );
-    expect(html).toContain("#EA4335");
+    expect(html).toContain(`data-slot="service-glyph"`);
+    expect(html).toContain("fc413d");
     expect(html).not.toContain("lucide-plug");
   });
 });

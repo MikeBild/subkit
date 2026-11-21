@@ -1,12 +1,12 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { chatEventsSeen, chatWorkspaces } from "../../db/schema/index.ts";
-import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
-import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   CHAT_DEDUP_CLEANUP_BATCH_SIZE,
   runChatDedupCleanup,
-} from "../chat-dedup-cleanup-runner.ts";
+} from "../../chat/scheduled/chat-dedup-cleanup-runner.ts";
+import { chatEventsSeen, chatWorkspaces } from "../../db/schema/index.ts";
+import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 
 let ctx: TestDb;
 beforeAll(async () => {

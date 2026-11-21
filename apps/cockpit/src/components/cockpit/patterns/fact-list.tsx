@@ -1,9 +1,9 @@
+import { Skeleton } from "@ui/atoms/skeleton";
+import { useLoadingPhase } from "@ui/lib/loading-phase";
+import { cn } from "@ui/lib/utils";
 import type { ReactNode } from "react";
-import { useLoadingPhase } from "@/lib/use-loading-phase";
-import { cn } from "@/lib/utils";
 import { ContextHelp } from "./context-help";
 import { useInSidePanel } from "./side-details";
-import { Skeleton } from "./skeleton";
 
 export interface Fact {
   label: ReactNode;

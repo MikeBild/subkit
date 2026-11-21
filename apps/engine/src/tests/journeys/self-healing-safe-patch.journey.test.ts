@@ -12,7 +12,7 @@ import {
   workflows,
   workflowVersions,
 } from "../../db/schema/index.ts";
-import { deriveShape, getLatestShape, recordSuccessShape } from "../../schema-versions/service.ts";
+import { deriveShape, getLatestShape, recordSuccessShape } from "../../schema-versions/index.ts";
 import { analyzeStepFailure } from "../../self-healing/drift-detector.ts";
 import { runSelfHealingLoop } from "../../self-healing/service.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";

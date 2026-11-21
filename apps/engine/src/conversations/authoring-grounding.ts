@@ -1,5 +1,5 @@
 import { and, eq, inArray, isNull, or } from "drizzle-orm";
-import { domainsOfItem } from "../agent/domains.ts";
+import { domainsOfItem } from "../agent/index.ts";
 import { connectors as connectorsTable } from "../db/schema/index.ts";
 import { loadChunks } from "../llm/runtime/context-assembler/loaders.ts";
 import type { ToolContext } from "./tools/index.ts";

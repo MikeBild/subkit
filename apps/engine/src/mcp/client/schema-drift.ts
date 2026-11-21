@@ -3,7 +3,7 @@ import { recordConnectorMcpManifestDrift } from "../../audit/recorders/index.ts"
 import type { AuditActorType } from "../../audit/types.ts";
 import type { Executor } from "../../db/client.ts";
 import { connectorMcpSessions } from "../../db/schema/index.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
 import { MANIFEST_HASH_VERSION, manifestHashVersion } from "./manifest.ts";
 

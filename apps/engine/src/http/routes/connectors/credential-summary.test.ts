@@ -130,7 +130,7 @@ describe("GET /v1/connectors/{id}/credential after the sign-in changes", () => {
       .where(
         and(
           eq(auditLog.tenant_id, ctx.tenantId),
-          eq(auditLog.action, "credential.created"),
+          eq(auditLog.action, "vault.item.created"),
           eq(auditLog.resource_id, body.id),
         ),
       );

@@ -9,8 +9,8 @@ describe("isAdminFromPermissions", () => {
     expect(isAdminFromPermissions(["api_key:write"])).toBe(true);
     expect(isAdminFromPermissions(["api_key:rotate"])).toBe(true);
     expect(isAdminFromPermissions(["api_key:revoke"])).toBe(true);
-    expect(isAdminFromPermissions(["credential:write"])).toBe(true);
-    expect(isAdminFromPermissions(["credential:delete"])).toBe(true);
+    expect(isAdminFromPermissions(["vault:write"])).toBe(true);
+    expect(isAdminFromPermissions(["vault:delete"])).toBe(true);
     expect(isAdminFromPermissions(["discovery:approve"])).toBe(true);
     expect(isAdminFromPermissions(["connector:promote"])).toBe(true);
     expect(isAdminFromPermissions(["system:restart"])).toBe(true);
@@ -21,8 +21,8 @@ describe("isAdminFromPermissions", () => {
     expect(isAdminFromPermissions(["package:import"])).toBe(false);
   });
 
-  test("credential:read stays a member-scoped permission and does NOT light up the Admin tab", () => {
-    expect(isAdminFromPermissions(["credential:read"])).toBe(false);
+  test("vault:read stays a member-scoped permission and does NOT light up the Admin tab", () => {
+    expect(isAdminFromPermissions(["vault:read"])).toBe(false);
   });
 
   test("returns true when the admin perm is mixed with member-scoped reads", () => {

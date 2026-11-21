@@ -1,3 +1,4 @@
+import { localConfirmationOf } from "@shared/device/confirmation.ts";
 import { and, asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import {
@@ -27,7 +28,7 @@ import {
   taskRuns,
   tasks,
 } from "../db/schema/index.ts";
-import { errorFields, logger } from "../logging/logger.ts";
+import { errorFields, logger } from "../logging/index.ts";
 import { type TaskRunToolCall, taskRunCallMarks } from "./core/progress.ts";
 import { type TaskRunObservation, taskRunIsOpen, taskRunLimitReached } from "./core/run-state.ts";
 import type { TaskRunSource } from "./service/run-rows.ts";
@@ -75,7 +76,8 @@ export function taskRunTurnFailure(
   failure: TurnFailure,
   now: Date,
 ): { code: string; retry_at: Date | null } {
-  if (failure.code !== "llm_provider_limited") return { code: failure.code, retry_at: null };
+  if (failure.code !== "llm_provider_limited" && failure.code !== "llm_provider_quota_exhausted")
+    return { code: failure.code, retry_at: null };
   const stated = failure.retry_at ? Date.parse(failure.retry_at) : Number.NaN;
   return {
     code: failure.code,
@@ -192,6 +194,7 @@ async function openQuestion(
   if (!latest) return null;
   if (latest.status === "pending") return inputOf(latest).commit_intent ? "approval" : "question";
   if (latest.status !== "timeout") return null;
+  if (localConfirmationOf(latest.input) !== null) return null;
   const [later] = await db
     .select({ id: conversationTurns.id })
     .from(conversationTurns)
@@ -576,6 +579,22 @@ export async function advanceTaskRun(
   );
   if (result?.enqueue) await enqueueNext(db, ref, overrides);
   return "observed";
+}
+
+export async function continueTaskRunOfConversation(
+  db: Db,
+  p: { tenant_id: string; conversation_id: string; now: Date },
+  overrides: Partial<TaskServiceDeps> = {},
+): Promise<TaskRunAdvance> {
+  const [run] = await db
+    .select({ id: taskRuns.id })
+    .from(taskRuns)
+    .where(
+      and(eq(taskRuns.tenant_id, p.tenant_id), eq(taskRuns.conversation_id, p.conversation_id)),
+    )
+    .limit(1);
+  if (!run) return "idle";
+  return advanceTaskRun(db, { tenant_id: p.tenant_id, task_run_id: run.id, now: p.now }, overrides);
 }
 
 export async function settleTaskRunResultConfirmation(

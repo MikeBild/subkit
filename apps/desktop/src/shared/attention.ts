@@ -1,27 +1,23 @@
+import type { components } from "@cli-core/engine-api/openapi";
 import { type Locale, t } from "./i18n.ts";
 
-export interface AttentionAction {
-  verb: string;
-  href: string;
-  primary: boolean;
-}
+type ApiAttentionItem = components["schemas"]["AttentionItem"];
+type ApiAttentionAction = components["schemas"]["AttentionAction"];
 
-export type AttentionClass = "stopped" | "failing" | "decide";
-export type AttentionSeverity = "critical" | "urgent" | "notice";
+export type AttentionClass = ApiAttentionItem["class"];
+export type AttentionSeverity = ApiAttentionItem["severity"];
 
-export interface AttentionItem {
-  id: string;
-  class: AttentionClass;
-  severity: AttentionSeverity;
-  kind: string;
+export type AttentionAction = Pick<ApiAttentionAction, "href" | "primary"> & { verb: string };
+
+export type AttentionItem = Pick<ApiAttentionItem, "id" | "class" | "severity" | "kind"> & {
   subjectName: string | null;
   reason: string;
   since?: string | null;
   actions: AttentionAction[];
-}
+};
 
-const CLASSES = new Set<string>(["stopped", "failing", "decide"]);
-const SEVERITIES = new Set<string>(["critical", "urgent", "notice"]);
+const CLASSES = new Set<string>(["stopped", "failing", "decide"] satisfies AttentionClass[]);
+const SEVERITIES = new Set<string>(["critical", "urgent", "notice"] satisfies AttentionSeverity[]);
 
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -78,7 +74,10 @@ export interface NativeNotification {
   href: string | null;
   urgency: "critical" | "normal" | "low";
   silent: boolean;
+  onDevice?: "permissions";
 }
+
+export const PERMISSION_REASON = "device_permission_missing";
 
 const VERB_KEYS = {
   review: "notify.do.review",
@@ -113,14 +112,21 @@ const REASON_KEYS = {
   secret_prepared: "notify.reason.secret_prepared",
   skills_proposed: "notify.reason.skills_proposed",
   intake_collected: "notify.reason.intake_collected",
-  budget_critical: "notify.reason.budget_critical",
+  spend_warning: "notify.reason.spend_warning",
+  spend_limit_reached: "notify.reason.spend_limit_reached",
+  spend_limit_unset: "notify.reason.spend_limit_unset",
   ai_access_missing: "notify.reason.ai_access_missing",
+  model_tools_missing: "notify.reason.model_tools_missing",
   risk_critical: "notify.reason.risk_critical",
   task_run_failed: "notify.reason.task_run_failed",
   task_result_ready: "notify.reason.task_result_ready",
   task_grant_required: "notify.reason.task_grant_required",
   task_grant_expiring: "notify.reason.task_grant_expiring",
   task_owner_unavailable: "notify.reason.task_owner_unavailable",
+  device_offline_waiting: "notify.reason.device_offline_waiting",
+  local_confirmation_needed: "notify.reason.local_confirmation_needed",
+  device_permission_missing: "notify.reason.device_permission_missing",
+  folder_changed: "notify.reason.folder_changed",
 } as const;
 
 export const NOTIFICATION_REASONS: readonly string[] = Object.keys(REASON_KEYS);
@@ -220,6 +226,7 @@ export function toNotification(item: AttentionItem, locale: Locale): NativeNotif
     urgency:
       item.severity === "critical" ? "critical" : item.severity === "urgent" ? "normal" : "low",
     silent: item.severity === "notice",
+    ...(item.reason === PERMISSION_REASON ? { onDevice: "permissions" as const } : {}),
   };
 }
 

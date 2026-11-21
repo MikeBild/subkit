@@ -7,18 +7,19 @@ import {
   encryptSecretBytesWithKey,
   encryptSecretWithKey,
   parseMasterKeyHex,
-} from "../../crypto/aes-gcm.ts";
+} from "../../crypto/index.ts";
 import {
   auditLog,
   connectors,
-  credentials,
   runtimeConfigReplicas,
   runtimeConfigState,
   runtimeSecretVersions,
   tenants,
+  vaultItems,
 } from "../../db/schema/index.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT, type TestDb } from "../../db/tests/setup.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
 import { syntheticVaultStopAcknowledgement } from "../../test-helpers/vault-maintenance.ts";
@@ -38,12 +39,12 @@ let oldEnv: string | undefined;
 let sequence = 0;
 
 beforeAll(async () => {
-  oldEnv = process.env.MASTER_KEY;
-  process.env.MASTER_KEY = targetHex;
+  oldEnv = testEnv.MASTER_KEY;
+  testEnv.MASTER_KEY = targetHex;
   ctx = await createTestDb("rewrap_atomicity");
 }, TEST_DB_HOOK_TIMEOUT);
 beforeEach(async () => {
-  await ctx.db.delete(credentials);
+  await ctx.db.delete(vaultItems);
   await ctx.db.delete(runtimeConfigState);
   await ctx.db.delete(runtimeConfigReplicas);
   await ctx.db.delete(runtimeSecretVersions);
@@ -57,8 +58,8 @@ beforeEach(async () => {
     );
 });
 afterAll(async () => {
-  if (oldEnv === undefined) delete process.env.MASTER_KEY;
-  else process.env.MASTER_KEY = oldEnv;
+  if (oldEnv === undefined) delete testEnv.MASTER_KEY;
+  else testEnv.MASTER_KEY = oldEnv;
   if (ctx) await ctx.cleanup();
 }, TEST_DB_HOOK_TIMEOUT);
 
@@ -310,7 +311,7 @@ test("retained credential ciphertext refuses settings-only rewrite and key promo
     .returning();
   if (!connector) throw new Error("missing stock connector");
   const canary = "unsupported-stock-private-content-canary";
-  await ctx.db.insert(credentials).values({
+  await ctx.db.insert(vaultItems).values({
     tenant_id: owner.id,
     connector_id: connector.id,
     environment: "dev",

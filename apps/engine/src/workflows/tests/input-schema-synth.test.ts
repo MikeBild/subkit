@@ -1,7 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: this file tests the
-// workflow placeholder syntax `${input.X}` — literal curly-brace content is
-// the test fixture, not a missed template interpolation.
-
 import { describe, expect, it } from "bun:test";
 import { resolveWorkflowInputContract, synthesizeInputSchema } from "../input-schema-synth.ts";
 import type { WorkflowDef } from "../types.ts";

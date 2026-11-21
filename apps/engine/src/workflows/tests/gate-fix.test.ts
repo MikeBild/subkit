@@ -10,7 +10,6 @@ import { GMAIL_SEND_TARGET } from "../report-delivery-boundary.ts";
 
 const ENCODE = "const msg = 'Subject: a — b';\nreturn { raw: sk.base64UrlEncode(msg) };";
 
-// biome-ignore lint/suspicious/noTemplateCurlyInString: an authored workflow placeholder
 function dag(expression: string, raw = "${scope.compose.data.raw}", language?: string) {
   return {
     steps: [
@@ -39,7 +38,6 @@ describe("planUtf8EncoderFix", () => {
         },
       ],
     });
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: an authored workflow placeholder
     expect(planUtf8EncoderFix(dag(ENCODE, "${scope.compose.raw}"), "send")?.step_id).toBe(
       "compose",
     );
@@ -53,7 +51,6 @@ describe("planUtf8EncoderFix", () => {
 
   test("anything less exact is left to the author", () => {
     expect(planUtf8EncoderFix(dag(`${ENCODE}\nsk.base64UrlEncode(x);`), "send")).toBeNull();
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: an authored workflow placeholder
     expect(planUtf8EncoderFix(dag(ENCODE, "x${scope.compose.data.raw}"), "send")).toBeNull();
     expect(planUtf8EncoderFix(dag("return { raw: xsk.base64UrlEncode(m) };"), "send")).toBeNull();
     expect(planUtf8EncoderFix(dag(ENCODE, undefined, "jsonata"), "send")).toBeNull();

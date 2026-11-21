@@ -5,8 +5,8 @@ import { ApiError } from "@/api/client";
 import type { IntakeProposal, IntakeProposalTarget } from "@/api/intake";
 import { translate, translatePlural } from "@/lib/i18n";
 import { I18nContext, type I18nValue } from "@/lib/i18n-context";
-import type { ReferencedSkill } from "@/lib/intake-model";
 import { loadSkillBinding, ProposalCard } from "./intake-proposal";
+import type { ReferencedSkill } from "./model/intake-model";
 
 const value = {
   locale: "de",

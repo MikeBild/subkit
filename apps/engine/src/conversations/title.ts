@@ -5,7 +5,7 @@ import { withTenantWork } from "../execution/tenant-work.ts";
 import { assertTenantActive, lockActiveTenant } from "../identity/index.ts";
 import { runSummarizeFlow } from "../llm/flows/summarize.ts";
 import { resolveModelRoute } from "../llm/runtime/invoke.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { stringifyConversationExcerpt } from "./excerpt.ts";
 import {
   TITLE_SOURCE_CHARS,

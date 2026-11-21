@@ -4,14 +4,14 @@ import { AuditAction } from "../audit/types.ts";
 import type { Db, Executor } from "../db/client.ts";
 import { auditLog, callerBudgetUnits, executions, workflowVersions } from "../db/schema/index.ts";
 import { type ErasureFollowUp, eraseProductCaller } from "../identity/product-erasure.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { executableDefinition } from "../workflows/stored-definition.ts";
 import type { CallerDailyLimit, WorkflowDef } from "../workflows/types.ts";
 import { type CallerContext, CallerContextSchema } from "./caller-context.ts";
 import { evaluate as evaluateJsonata } from "./jsonata-engine.ts";
 import type { ExecutionStatus } from "./types.ts";
 
-const ACTIVE_STATUSES: ExecutionStatus[] = ["queued", "running"];
+const ACTIVE_STATUSES: ExecutionStatus[] = ["queued", "waiting_for_device", "running"];
 const UNIT_KEY_MAX = 128;
 
 export interface CallerUsage {

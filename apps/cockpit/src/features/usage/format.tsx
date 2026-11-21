@@ -1,8 +1,8 @@
 import { useMemo } from "react";
+import type { StatsWindow } from "@/features/usage/model/operations-figures";
+import type { Trend, UsageOrigin } from "@/features/usage/model/usage-model";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
-import type { StatsWindow } from "@/lib/operations-figures";
-import type { Trend, UsageOrigin } from "@/lib/usage-model";
 
 export const ORIGIN_LABEL: Record<UsageOrigin, TranslationKey> = {
   chat: "resource.usage.origin.chat",

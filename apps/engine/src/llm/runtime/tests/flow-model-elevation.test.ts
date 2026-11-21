@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { ensureTestConfig } from "../../../queue/tests/test-config.ts";
+import { testEnv } from "../../../test-helpers/determinism/env.ts";
 import { seedTenant } from "../../../test-helpers/seed.ts";
 import { resetMockProvider } from "../../mock-provider.ts";
 import type { LlmFlow, ModelRoute } from "../../types.ts";
@@ -13,7 +14,6 @@ const BASE_ROUTE: ModelRoute = {
   provider: "anthropic",
   fallback_provider: "anthropic",
   context_cap: 200_000,
-  monthly_budget: null,
 };
 
 const ENV_KEYS = ["JUDGE_MODEL", "GENERATE_MODEL", "CONVERSE_MODEL"] as const;
@@ -22,16 +22,16 @@ let savedEnv: Record<string, string | undefined>;
 beforeEach(() => {
   savedEnv = {};
   for (const key of ENV_KEYS) {
-    savedEnv[key] = process.env[key];
-    delete process.env[key];
+    savedEnv[key] = testEnv[key];
+    delete testEnv[key];
   }
 });
 
 afterEach(() => {
   for (const key of ENV_KEYS) {
     const v = savedEnv[key];
-    if (v === undefined) delete process.env[key];
-    else process.env[key] = v;
+    if (v === undefined) delete testEnv[key];
+    else testEnv[key] = v;
   }
 });
 
@@ -77,13 +77,13 @@ describe("applyFlowModelElevation", () => {
   });
 
   test("env override still wins ON TOP of the elevation (invoke composition order)", () => {
-    process.env.GENERATE_MODEL = "operator-pinned-model";
+    testEnv.GENERATE_MODEL = "operator-pinned-model";
     const out = applyFlowEnvOverrides(applyFlowModelElevation(BASE_ROUTE, "generate"), "generate");
     expect(out.primary).toBe("operator-pinned-model");
   });
 });
 
-const skip = process.env.REQUIRES_PG === "0";
+const skip = testEnv.REQUIRES_PG === "0";
 let testDb: TestDb;
 let tenant_id: string;
 

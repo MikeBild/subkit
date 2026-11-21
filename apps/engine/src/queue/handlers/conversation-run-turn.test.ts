@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { and, eq, inArray } from "drizzle-orm";
-import * as svc from "../../conversations/service.ts";
+import * as svc from "../../conversations/service/index.ts";
 import { auditLog, conversations, mcpTasks } from "../../db/schema/index.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
 import { withContext } from "../../logging/context.ts";

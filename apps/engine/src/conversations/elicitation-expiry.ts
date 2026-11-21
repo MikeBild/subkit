@@ -1,15 +1,21 @@
+import { localConfirmationOf } from "@shared/device/confirmation.ts";
 import { and, asc, eq, lt, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
 import { conversationElicitations, toolApprovals } from "../db/schema/index.ts";
-import { errorFields, logger } from "../logging/logger.ts";
+import {
+  type LocalConfirmationPort,
+  NO_LOCAL_CONFIRMATION_PORT,
+} from "../devices/confirmation-port.ts";
+import { errorFields, logger } from "../logging/index.ts";
 import {
   type ApprovalResumeEnqueuer,
   completeApprovalBackedElicitation,
 } from "./approval-completion.ts";
 import { DRAFT_CREDENTIAL_SETUP_KIND } from "./draft-credential-setup.ts";
 import { type ElicitationExpiryReason, expireElicitationAndReactivate } from "./elicitations.ts";
+import type { ContinueAfterLocalStep } from "./local-confirmation.ts";
 import { approvalHandleFromElicitationInput } from "./tools/ask-user/commit-intent.ts";
 
 export interface ElicitationExpiryTally {
@@ -19,6 +25,8 @@ export interface ElicitationExpiryTally {
 
 export interface ElicitationExpiryDeps {
   resume?: ApprovalResumeEnqueuer;
+  local?: LocalConfirmationPort;
+  continue_after_local?: ContinueAfterLocalStep;
 }
 
 const ELICITATION_EXPIRY_BATCH = 200;
@@ -60,6 +68,7 @@ function expiryReasonFor(
   input: Record<string, unknown> | null,
 ): ElicitationExpiryReason {
   if (handle) return "approval_expired";
+  if (localConfirmationOf(input) !== null) return "local_confirmation_expired";
   if (input?.kind === DRAFT_CREDENTIAL_SETUP_KIND) return "credential_setup_expired";
   return "prompt_expired";
 }
@@ -194,7 +203,21 @@ export async function expireDueElicitations(
         },
         db,
       );
-      if (resolution.kind === "resolved") tally.expired_count += 1;
+      if (resolution.kind !== "resolved") continue;
+      tally.expired_count += 1;
+      const local = localConfirmationOf(input);
+      if (local && resolution.record.tool_call_id) {
+        await (deps?.local ?? NO_LOCAL_CONFIRMATION_PORT).settled({
+          tenant_id: row.tenant_id,
+          confirmation_id: resolution.record.tool_call_id,
+          confirmation: local,
+          state: "expired",
+        });
+        await deps?.continue_after_local?.({
+          tenant_id: row.tenant_id,
+          conversation_id: row.conversation_id,
+        });
+      }
     } catch (err) {
       logger.error({
         module: "scheduler",

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { patchCandidates, workflowVersions } from "../../db/schema/index.ts";
-import { getLatestShape } from "../../schema-versions/service.ts";
+import { getLatestShape } from "../../schema-versions/index.ts";
 import { analyzeStepFailure } from "../drift-detector.ts";
 import { processDriftSignal } from "../service.ts";
 import { createSelfHealingCtx, type SelfHealingTestCtx } from "./setup.ts";

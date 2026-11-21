@@ -1,7 +1,7 @@
 import { ConnectorOperationError } from "@shared/index.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
-import { errorFields, logger } from "../../logging/logger.ts";
+import { errorFields, logger } from "../../logging/index.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import { injectTraceContext } from "../egress.ts";
 import { fetchWithEgressGuard } from "../egress-fetch.ts";

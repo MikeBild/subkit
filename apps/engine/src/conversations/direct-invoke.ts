@@ -3,7 +3,7 @@ import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { conversations } from "../db/schema/index.ts";
 import { engineClientActorType } from "../llm/accounting/actor.ts";
-import { log, logger } from "../logging/logger.ts";
+import { log, logger } from "../logging/index.ts";
 import { recordConversationToolCall } from "../observability/instrumentation.ts";
 import { startToolSpan } from "../observability/langfuse-spans.ts";
 import { appendSnapshot, loadDraft } from "./draft.ts";

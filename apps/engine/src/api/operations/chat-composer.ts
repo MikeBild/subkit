@@ -15,7 +15,7 @@ import {
   type TrayOwner,
 } from "../../files/composer-tray.ts";
 import { claimSelection } from "../../files/composer-tray-model.ts";
-import { conversationExists } from "../../files/service.ts";
+import { conversationExists } from "../../files/service/index.ts";
 import { now } from "../../utils/clock.ts";
 import {
   AttachmentSchema,

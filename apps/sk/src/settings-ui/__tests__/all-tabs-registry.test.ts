@@ -21,7 +21,7 @@ describe("SettingsModal — ALL_TABS registry", () => {
     const _settings: OuterTabName = "Settings";
     // @ts-expect-error — Stats heatmap merged into Status
     const _stats: OuterTabName = "Stats";
-    // @ts-expect-error — moved to /permissions SinglePane
+    // @ts-expect-error — the permission-mode picker is gone
     const _permissions: OuterTabName = "Permissions";
     // @ts-expect-error — moved to /profile SinglePane
     const _profile: OuterTabName = "Profile";

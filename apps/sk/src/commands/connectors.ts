@@ -57,7 +57,11 @@ const listCommand = defineCommand({
   args: {
     limit: { type: "string", description: "Max rows", default: "50" },
     category: { type: "string", description: "Only this catalog block" },
-    driver: { type: "string", description: "Only this driver: http, graphql, postgres, s3, mcp" },
+    driver: {
+      type: "string",
+      description:
+        "Only this driver: http, graphql, postgres, s3, mcp, local_files, local_browser, local_computer",
+    },
     flat: { type: "boolean", description: "One flat table instead of grouped blocks" },
     json: { type: "boolean", description: "JSON output" },
   },
@@ -198,7 +202,7 @@ const createCommand = defineCommand({
     credential: {
       type: "string",
       description:
-        "Path to a credential JSON file used to sign the pre-save probe. Never stored — attach the credential with `sk credentials set` after create.",
+        "Path to a credential JSON file used to sign the pre-save probe. Never stored — attach the credential with `sk vault attach` after create.",
     },
     name: { type: "string", description: "Override connector name (--template only)" },
     "skip-checks": {
@@ -454,7 +458,7 @@ const importCommand = defineCommand({
         printJson(created);
         if (!jsonMode) {
           process.stderr.write(
-            `\n${pc.dim("Next:")} sk credentials set --connector-id ${created.id} --mode <mode>\n`,
+            `\n${pc.dim("Next:")} sk vault attach --connector-id ${created.id} --mode <mode>\n`,
           );
         }
       },

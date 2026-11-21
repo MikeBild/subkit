@@ -9,8 +9,8 @@ import {
   releaseAuthHeld,
   summarize,
 } from "@shared/offline-queue.ts";
+import { type FeedbackBody, feedbackResponse } from "@/features/feedback/model/feedback";
 import { discardFailed, type FailedReport, failedReports, resendFailed } from "./failed-model";
-import { type FeedbackBody, feedbackResponse } from "./model";
 import type { QueueStore } from "./queue-store";
 
 export type FeedbackQueueItem = OfflineItem<FeedbackBody>;

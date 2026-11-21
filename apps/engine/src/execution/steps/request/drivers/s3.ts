@@ -6,7 +6,7 @@ import {
 import { withEgressAudit } from "../../../../connectors/egress.ts";
 import { classifyConnectorHealth } from "../../../../connectors/health.ts";
 import { clearReauthIfProved } from "../../../../connectors/reauth.ts";
-import { recordSuccessShape } from "../../../../schema-versions/service.ts";
+import { recordSuccessShape } from "../../../../schema-versions/index.ts";
 import {
   describeStorageKeyViolation,
   storageBaseUrl,

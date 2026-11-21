@@ -1,12 +1,12 @@
-import { ErrorNotice } from "@ui/components/proto/ErrorNotice";
-import { Pill } from "@ui/components/proto/Pill";
-import { IconTile } from "@ui/components/proto/visual";
+import { IconTile } from "@ui/atoms/icon-tile";
+import { Pill } from "@ui/atoms/pill";
+import { cn } from "@ui/lib/utils";
+import { ErrorNotice } from "@ui/molecules/error-notice";
 import { UserRound, Users } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Button } from "@/components/cockpit/patterns";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
-import { cn } from "@/lib/utils";
 import type { PairLinkRow, PairLinkTarget } from "./pair-link-model";
 import { type PairAction, type PairApproval, type PairFailure, pairView } from "./pair-model";
 

@@ -177,7 +177,7 @@ describe("StatusTab — runtime snapshot + MCP polling (M4)", () => {
     }
   });
 
-  test("renders REPL-state rows when sessionId / permissionMode / tokens are passed", async () => {
+  test("renders REPL-state rows when sessionId / tokens are passed", async () => {
     const client = makeClient({});
     const ui = renderInk(
       <SettingsModal
@@ -187,7 +187,6 @@ describe("StatusTab — runtime snapshot + MCP polling (M4)", () => {
         client={client}
         sessionId="abc12345-def6-7890-abcd-ef1234567890"
         sessionTitle="my migration draft"
-        permissionMode="auto"
         sessionTokens={1234}
         weekTokens={56789}
         onExit={() => {}}
@@ -198,7 +197,6 @@ describe("StatusTab — runtime snapshot + MCP polling (M4)", () => {
       const txt = ui.text();
       expect(txt).toContain("abc12345");
       expect(txt).toContain("my migration draft");
-      expect(txt).toContain("auto");
       expect(txt).toContain("1,234");
       expect(txt).toContain("56,789");
     } finally {
@@ -220,7 +218,6 @@ describe("StatusTab — runtime snapshot + MCP polling (M4)", () => {
     try {
       await ui.waitFor((t) => t.includes("Runtime status"));
       const txt = ui.text();
-      expect(txt).toMatch(/permission mode\s+—/);
       expect(txt).toMatch(/tokens · session\s+—/);
       expect(txt).toMatch(/tokens · this week\s+—/);
     } finally {

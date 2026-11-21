@@ -9,15 +9,15 @@ import {
   conversationMessages,
   conversations,
   conversationToolCalls,
-  credentials,
+  vaultItems,
 } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
-import { _resetLoggerForTests, reconfigureLogger } from "../../logging/logger.ts";
+import { _resetLoggerForTests, reconfigureLogger } from "../../logging/index.ts";
 import { logRing } from "../../observability/log-ring.ts";
 import { appendSnapshot } from "../draft.ts";
 import { pendingPrompt } from "../resume.ts";
-import { createConversation } from "../service.ts";
+import { createConversation } from "../service/index.ts";
 import { askUserFormTool } from "../tools/ask-user/form.ts";
 import { ELICITATION_REDACTED_MARKER } from "../tools/ask-user/redact-answer.ts";
 import { requestConnectorReauthTool } from "../tools/request-connector-reauth.ts";
@@ -71,7 +71,7 @@ describe("chat credential form", () => {
       actor_id: ctx.user_id,
       connector_id: connector.id,
       workflow_id: null,
-      permission_mode: null,
+      ask_before_writing: true,
       engineClient: new EngineClient({
         tenant_id: ctx.tenant_id,
         actor_id: ctx.user_id,
@@ -139,8 +139,8 @@ describe("chat credential form", () => {
 
     const [stored] = await db
       .select()
-      .from(credentials)
-      .where(eq(credentials.connector_id, connector.id));
+      .from(vaultItems)
+      .where(eq(vaultItems.connector_id, connector.id));
     if (!stored) throw new Error("credential not stored");
     for (const column of [stored.ciphertext, stored.iv, stored.auth_tag]) {
       expect(Buffer.from(column).toString("latin1")).not.toContain(SECRET);
@@ -204,7 +204,6 @@ describe("chat credential form", () => {
         actor_id: ctx.user_id,
         connector_id: null,
         workflow_id: null,
-        permission_mode: null,
         engineClient: new EngineClient({
           tenant_id: ctx.tenant_id,
           actor_id: ctx.user_id,

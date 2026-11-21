@@ -3,7 +3,6 @@ import { VERSION } from "@cli-core/version.ts";
 import { Box, Text } from "ink";
 import type React from "react";
 import { memo } from "react";
-import type { PermissionMode } from "./status-line/render.ts";
 
 interface WelcomeBannerProps {
   persona: string;
@@ -11,7 +10,6 @@ interface WelcomeBannerProps {
   engineUrl: string;
   profileName?: string;
   sessionId?: string | null;
-  mode?: PermissionMode | undefined;
   transcriptMode?: "chat" | "inspect" | undefined;
   connectionState?: "online" | "reconnecting" | "offline" | "unknown" | undefined;
   connectionReason?: string | null | undefined;
@@ -38,7 +36,6 @@ const WelcomeBannerImpl: React.FC<WelcomeBannerProps> = ({
   engineUrl,
   profileName,
   sessionId,
-  mode = "ask",
   transcriptMode = "chat",
   connectionState = "unknown",
   connectionReason = null,
@@ -53,7 +50,6 @@ const WelcomeBannerImpl: React.FC<WelcomeBannerProps> = ({
   const personaSlot = tenant ? `${persona}@${tenant}` : persona;
   const host = engineHost(engineUrl);
   const sessionLabel = sessionId ? sessionId.slice(0, 8) : "new";
-  const modeColor = theme.mode[mode];
   const nextView = transcriptMode === "chat" ? "inspect" : "chat";
   const connectionLabel =
     connectionState === "offline"
@@ -101,10 +97,9 @@ const WelcomeBannerImpl: React.FC<WelcomeBannerProps> = ({
         )}
       </Box>
       <Box>
-        <Text color={modeColor} bold>
-          {mode}
+        <Text color={theme.role.assistant} bold>
+          {transcriptMode}
         </Text>
-        <Text color={theme.severity.dim}> · {transcriptMode}</Text>
         <Text color={theme.severity.dim}> · {connectionLabel}</Text>
         {targetLabel ? <Text color={theme.severity.dim}> · {targetLabel}</Text> : null}
       </Box>
@@ -147,7 +142,6 @@ export const BANNER_TIPS: readonly string[] = [
   "Use /permissions when you need the fastest grounded view of your current access.",
   "Use /status for tenant state before asking the assistant to summarize what exists.",
   "Use /view inspect when you need the raw call trace behind the chat view.",
-  "Shift-Tab cycles ask / auto / plan; the footer always shows the active mode.",
   "`/approve` or `/reject` resolves the current confirmation request inline.",
   "Use /compact when a long conversation needs a smaller working context.",
   "Ask about MCP, the HTTP API, or chat adapters in plain language; the assistant grounds on real sk surfaces.",

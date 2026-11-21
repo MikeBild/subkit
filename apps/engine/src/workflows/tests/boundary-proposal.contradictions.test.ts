@@ -67,13 +67,11 @@ test("a query inside the path is rewritten, but only when a real request proves 
     workflow_id,
     environment: "prod",
     viewer: viewer(tenant_id),
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
     definition: definition(listing("/startups?page=${item.n}&limit=10")),
   });
   expect(unproposable).toEqual([]);
   expect(proposals[0]?.path_rewrite).toEqual({
     path: "/startups",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
     query: { page: "${item.n}", limit: "10" },
   });
   expect(proposals[0]?.boundary?.variables).toEqual({ "item.n": { class: "integer" } });
@@ -83,7 +81,6 @@ test("a query inside the path is rewritten, but only when a real request proves 
     workflow_id,
     environment: "prod",
     viewer: viewer(tenant_id),
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
     definition: definition(listing("/startups?page=${item.n}&limit=10&sort=revenue")),
   });
   expect(unproven.proposals).toEqual([]);
@@ -169,7 +166,6 @@ test("a request that was refused is not evidence and widens nothing", async () =
         kind: "request",
         connector_id: CONNECTOR,
         method: "GET",
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
         path: "/v1/pages/${input.page_id}",
       },
     ]),
@@ -276,7 +272,6 @@ test("an omitted body still reports its size", async () => {
         connector_id: CONNECTOR,
         method: "POST",
         path: "/v1/content",
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
         body: "${item.markdown}",
       },
     ]),
@@ -285,7 +280,6 @@ test("an omitted body still reports its size", async () => {
   expect(proposals[0]?.boundary?.max_body_bytes).toBeGreaterThan(51_200);
 });
 
-// biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
 const ROUTE_TEMPLATE = "${item.path}";
 
 const fetchRoute = {
@@ -349,7 +343,6 @@ test("a deeper address than the template does not get a rule fitted to its last 
         kind: "request",
         connector_id: CONNECTOR,
         method: "GET",
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
         path: "/${input.slug}/edit",
       },
     ]),

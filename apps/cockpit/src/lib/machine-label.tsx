@@ -1,7 +1,5 @@
-import type { TranslationKey } from "@/lib/i18n";
+import type { Translate, TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
-
-type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 
 export interface CatalogLabel {
   text: string;

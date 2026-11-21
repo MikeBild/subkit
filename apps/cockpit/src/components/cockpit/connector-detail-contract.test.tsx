@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
+import { render } from "@/components/cockpit/patterns/test-utils";
 import {
   ConnectorRuntimeSection,
   ConnectorTechnicalFacts,
-} from "@/components/cockpit/connector-detail";
-import { render } from "@/components/cockpit/patterns/test-utils";
+} from "@/features/connectors/ui/connector-detail";
 
 test("shows effective runtime settings and provider limits to the operator", () => {
   const markup = render(

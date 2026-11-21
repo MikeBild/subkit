@@ -6,8 +6,9 @@ import {
   encryptSecretBytesWithKey,
   parseMasterKeyHex,
   secureEqual,
-} from "../crypto/aes-gcm.ts";
+} from "../crypto/index.ts";
 import type { Db } from "../db/client.ts";
+import { readEnv } from "../env.ts";
 import { secretAad } from "./environment.ts";
 import { type RewrapAcknowledgement, rewrapEvidenceDigest } from "./rewrap-evidence.ts";
 
@@ -92,7 +93,7 @@ export async function rewrapRegistryWithMaintenance(
 ): Promise<{ names: number; versions: number }> {
   const evidence = rewrapEvidenceDigest(acknowledgement);
   const previousKey = parseMasterKeyHex(previousKeyHex);
-  const runningKey = parseMasterKeyHex(process.env.MASTER_KEY ?? "");
+  const runningKey = parseMasterKeyHex(readEnv("MASTER_KEY") ?? "");
   if (secureEqual(previousKey, runningKey)) throw new Error("rewrap_keys_identical");
   const targetDigest = digest(runningKey);
   try {

@@ -3,6 +3,7 @@ import { SignJWT } from "jose";
 import { getConfig, setConfigKey } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { sessions } from "../../db/schema/index.ts";
+import { readEnv } from "../../env.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
 
 function deriveTestSessionSecret(): Uint8Array {
@@ -10,7 +11,7 @@ function deriveTestSessionSecret(): Uint8Array {
     const fromConfig = (getConfig().auth.session.secret ?? "").trim();
     if (fromConfig.length > 0) return new TextEncoder().encode(fromConfig);
   } catch {}
-  const masterKey = process.env.MASTER_KEY ?? "";
+  const masterKey = readEnv("MASTER_KEY") ?? "";
   return new Uint8Array(createHash("sha256").update(`${masterKey}:session`).digest());
 }
 

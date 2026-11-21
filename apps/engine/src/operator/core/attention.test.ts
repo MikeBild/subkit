@@ -69,8 +69,11 @@ test("attention schema publishes its stable sources, reasons, and subject kinds"
     "secret_prepared",
     "skills_proposed",
     "intake_collected",
-    "budget_critical",
+    "spend_warning",
+    "spend_limit_reached",
+    "spend_limit_unset",
     "ai_access_missing",
+    "model_tools_missing",
     "risk_critical",
     "task_run_failed",
     "task_result_ready",
@@ -78,6 +81,10 @@ test("attention schema publishes its stable sources, reasons, and subject kinds"
     "task_grant_expiring",
     "task_owner_unavailable",
     "pair_approval_requested",
+    "device_offline_waiting",
+    "local_confirmation_needed",
+    "device_permission_missing",
+    "folder_changed",
   ]);
   expect(ATTENTION_SUBJECT_KINDS).toEqual([
     "workflow",
@@ -87,6 +94,7 @@ test("attention schema publishes its stable sources, reasons, and subject kinds"
     "secret",
     "settings",
     "task",
+    "device",
   ]);
 });
 

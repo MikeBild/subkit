@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { plan } from "../../../scripts/lib/commands.ts";
 import { staleSnapshotsIn } from "../../../scripts/lib/migration-snapshots.ts";
 import { COMMENT_EXEMPT, COMMENT_SCOPE, findComments } from "./audit/comments.ts";
 import { parseFloorFile } from "./audit/coverage-floor.ts";
@@ -310,7 +311,7 @@ function checkSingleMigrationSnapshot(): Result {
   return {
     id: "single_migration_snapshot",
     status: "FAIL",
-    message: `older drizzle snapshots found; run \`bun run scripts/prune-migration-snapshots.ts\`:\n  ${stale.join("\n  ")}`,
+    message: `older drizzle snapshots found; run \`bun run db generate\`:\n  ${stale.join("\n  ")}`,
   };
 }
 
@@ -385,7 +386,7 @@ function checkCoverageFloor(): Result {
   return {
     id: "coverage_floor",
     status: "PASS",
-    message: `floors declared for ${Object.keys(subsystems).length} subsystems and ${Object.keys(files).length} files${core_default ? `, core default line ${core_default.line_min}/function ${core_default.function_min}` : ""} (numeric enforcement via \`bun run check:coverage-floor\`)`,
+    message: `floors declared for ${Object.keys(subsystems).length} subsystems and ${Object.keys(files).length} files${core_default ? `, core default line ${core_default.line_min}/function ${core_default.function_min}` : ""} (numeric enforcement via \`bun run quality coverage\`)`,
   };
 }
 
@@ -394,18 +395,16 @@ function checkRegressionIsolation(): Result {
     .flatMap((root) => listFiles(join(REPO, root), (p) => /\.regression\.test\.tsx?$/.test(p)))
     .map((f) => relative(REPO, f))
     .sort();
-  let pkg: { scripts?: Record<string, string> };
-  try {
-    pkg = JSON.parse(readFileSync(join(REPO, "package.json"), "utf8"));
-  } catch {
+  const unit = plan("test", ["unit"], { version: "0.0.0", platform: process.platform });
+  if (!unit.ok) {
     return {
       id: "regression_isolation",
       status: "FAIL",
-      message: "could not read package.json",
+      message: "`bun run test unit` has no plan",
     };
   }
-  const innerLoop = pkg.scripts?.["test:unit"] ?? "";
-  const unitLayer = innerLoop.includes("scripts/test-layer.ts")
+  const innerLoop = unit.steps.map((step) => step.argv.join(" ")).join("\n");
+  const unitLayer = innerLoop.includes("scripts/test-layer.ts unit")
     ? new Set(loadTestLayers(REPO).unit)
     : new Set<string>();
   const violations = regressionFiles.filter((f) => innerLoop.includes(f) || unitLayer.has(f));
@@ -413,13 +412,13 @@ function checkRegressionIsolation(): Result {
     return {
       id: "regression_isolation",
       status: "PASS",
-      message: `${regressionFiles.length} *.regression.test.ts(x) file(s); none in the test:unit inner loop`,
+      message: `${regressionFiles.length} *.regression.test.ts(x) file(s); none in the \`test unit\` inner loop`,
     };
   }
   return {
     id: "regression_isolation",
     status: "FAIL",
-    message: `regression files appear in test:unit:\n  ${violations.join("\n  ")}`,
+    message: `regression files appear in \`test unit\`:\n  ${violations.join("\n  ")}`,
   };
 }
 
@@ -587,8 +586,9 @@ function checkNoGlobalFetchStubInTests(): Result {
 
 function checkCompileBuildsKeepNodeEnvDynamic(): Result {
   const IDENTITY_DEFINE = "process.env.NODE_ENV=process.env.NODE_ENV";
-  const SOURCES = ["package.json", "Dockerfile"];
+  const SOURCES = ["package.json", "Dockerfile", "scripts/lib/commands.ts"];
   const violations: string[] = [];
+  let sites = 0;
   for (const rel of SOURCES) {
     const text = readFileSync(join(REPO, rel), "utf8");
     const lines = text.split("\n");
@@ -596,11 +596,19 @@ function checkCompileBuildsKeepNodeEnvDynamic(): Result {
       const line = lines[i] ?? "";
       if (!line.includes("--compile")) continue;
       if (line.trimStart().startsWith("#") || line.trimStart().startsWith("//")) continue;
+      sites++;
       const window = lines.slice(i, i + 8).join("\n");
       if (!window.includes(IDENTITY_DEFINE)) {
         violations.push(`${rel}:${i + 1}`);
       }
     }
+  }
+  if (sites === 0) {
+    return {
+      id: "compile_node_env_dynamic",
+      status: "FAIL",
+      message: `no \`bun build --compile\` found in ${SOURCES.join(", ")}; point the check at the build commands`,
+    };
   }
   if (violations.length === 0) {
     return {

@@ -3,7 +3,8 @@ import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { getConfig } from "../config/loader.ts";
 import type { Executor } from "../db/client.ts";
-import { logger } from "../logging/logger.ts";
+import { readEnv } from "../env.ts";
+import { logger } from "../logging/index.ts";
 import { getRobotsVerification } from "./robots-cache.ts";
 
 export type EgressGuardMode = "strict" | "permissive";
@@ -91,7 +92,7 @@ export function resolveEgressGuardMode(ctx: EgressGuardContext): EgressGuardMode
     const cfgMode = getConfig().egress.mode;
     if (cfgMode === "strict" || cfgMode === "permissive") return cfgMode;
   } catch {}
-  return (process.env.NODE_ENV ?? "").toLowerCase() === "production" ? "strict" : "permissive";
+  return (readEnv("NODE_ENV") ?? "").toLowerCase() === "production" ? "strict" : "permissive";
 }
 
 function stripBrackets(host: string): string {

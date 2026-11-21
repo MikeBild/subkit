@@ -1,14 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import type { SortingState } from "@tanstack/react-table";
+import { DropZone } from "@ui/molecules/drop-zone";
+import { FilterBar } from "@ui/organisms/filter-bar";
 import { renderAction } from "./action-button";
 import { ActionMenu } from "./action-menu";
 import { Button } from "./button";
 import { type CockpitColumn, DataTable, priorityClass } from "./data-table";
 import { FactList } from "./fact-list";
-import { FileDrop } from "./file-drop";
-import { fileRefusal, formatBytes, parseCsv, previewKind } from "./file-kinds";
 import { FilePreview } from "./file-preview";
-import { FilterBar } from "./filter-bar";
 import { PageHeader } from "./page-header";
 import { rowChange, withLeaving } from "./row-motion";
 import { StatusStrip } from "./status-strip";
@@ -331,44 +330,15 @@ describe("loading shapes", () => {
 });
 
 describe("files", () => {
-  test("each name and type previews as one kind", () => {
-    expect(previewKind("a.png", "image/png")).toBe("image");
-    expect(previewKind("logo.svg", "")).toBe("image");
-    expect(previewKind("notes.md", "")).toBe("markdown");
-    expect(previewKind("export.csv", "application/octet-stream")).toBe("csv");
-    expect(previewKind("doc.pdf", "application/pdf")).toBe("pdf");
-    expect(previewKind("data.json", "application/json")).toBe("text");
-    expect(previewKind("archive.zip", "application/zip")).toBe("other");
-  });
-
-  test("the drop zone refuses by type and by size, and names which", () => {
-    const png = { name: "a.png", type: "image/png", size: 10 };
-    expect(fileRefusal(png, { accept: "image/*" })).toBeNull();
-    expect(fileRefusal(png, { accept: ".csv,application/pdf" })).toBe("type");
-    expect(fileRefusal({ name: "x.CSV", type: "", size: 1 }, { accept: ".csv" })).toBeNull();
-    expect(fileRefusal(png, { maxBytes: 5 })).toBe("size");
-  });
-
-  test("CSV keeps quoted commas and quotes, and stops at the row limit", () => {
-    expect(parseCsv('a,b\n"x, y","say ""hi"""\n1,2\n')).toEqual([
-      ["a", "b"],
-      ["x, y", 'say "hi"'],
-      ["1", "2"],
-    ]);
-    expect(parseCsv("a;b\n1;2")).toEqual([
-      ["a", "b"],
-      ["1", "2"],
-    ]);
-    expect(parseCsv("h\n1\n2\n3", 2)).toEqual([["h"], ["1"]]);
-  });
-
-  test("sizes read as a person reads them", () => {
-    expect(formatBytes(512, "en-US")).toBe("512 B");
-    expect(formatBytes(3.4 * 1024 * 1024, "en-US")).toBe("3.4 MB");
-  });
-
   test("the drop zone is a labelled file input; a stored PDF previews as a card", () => {
-    const drop = render(<FileDrop onFiles={() => {}} accept=".csv" testId="drop" />);
+    const drop = render(
+      <DropZone
+        title="Datei hierher ziehen oder auswählen"
+        onFiles={() => {}}
+        accept=".csv"
+        testId="drop"
+      />,
+    );
     expect(drop).toContain('type="file"');
     expect(drop).toContain('data-testid="drop-input"');
     expect(drop).toContain("Datei hierher ziehen oder auswählen");

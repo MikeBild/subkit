@@ -36,7 +36,7 @@ function draftWithDenial(fingerprint: string | null): DraftDocument {
 
 function confirmCtx(
   draft: DraftDocument,
-  mode: "ask" | "auto" = "ask",
+  askBeforeWriting = true,
 ): { ctx: ToolContext; current: () => DraftDocument } {
   let live = draft;
   const ctx = {
@@ -44,7 +44,7 @@ function confirmCtx(
     setDraft: async (next: DraftDocument) => {
       live = next;
     },
-    permission_mode: mode,
+    ask_before_writing: askBeforeWriting,
   } as unknown as ToolContext;
   return { ctx, current: () => live };
 }
@@ -78,14 +78,14 @@ describe("declined-intent · confirm short-circuit", () => {
     expect((result.data as { already_declined?: boolean }).already_declined).toBe(true);
   });
 
-  test("an identical decline beats permission_mode=auto", async () => {
-    const { ctx } = confirmCtx(draftWithDenial(SAVE_FP), "auto");
+  test("an identical decline also holds without the ask-before-writing rule", async () => {
+    const { ctx } = confirmCtx(draftWithDenial(SAVE_FP), false);
     const result = await askUserConfirmTool.execute(ctx, CONFIRM_ARGS);
     expect((result.data as { confirmed: boolean }).confirmed).toBe(false);
     expect((result.data as { already_declined?: boolean }).already_declined).toBe(true);
   });
 
-  test("in auto mode the guard stays sticky — no one-shot clear, no auto-approve override", async () => {
+  test("without the ask-before-writing rule the guard stays sticky — no one-shot clear, no auto-approve override", async () => {
     const targetArgs = {
       question: "Send to the webhook?",
       kind: "external_write" as const,
@@ -95,7 +95,7 @@ describe("declined-intent · confirm short-circuit", () => {
       { kind: targetArgs.kind, commit_intent: undefined, target: targetArgs.target },
       { workflow: WORKFLOW },
     );
-    const { ctx, current } = confirmCtx(draftWithDenial(targetFp), "auto");
+    const { ctx, current } = confirmCtx(draftWithDenial(targetFp), false);
     const first = await askUserConfirmTool.execute(ctx, targetArgs);
     expect((first.data as { already_declined?: boolean }).already_declined).toBe(true);
     expect(current().state?.last_denied_intent?.fingerprint).toBe(targetFp!);
@@ -110,7 +110,7 @@ describe("declined-intent · confirm short-circuit", () => {
       setDraft: async () => {
         throw new Error("db unavailable");
       },
-      permission_mode: "ask",
+      ask_before_writing: true,
     } as unknown as ToolContext;
     const result = await askUserConfirmTool.execute(ctx, CONFIRM_ARGS);
     expect((result.data as { already_declined?: boolean }).already_declined).toBe(true);
@@ -342,6 +342,7 @@ describe("declined-intent · wired through two real turns", () => {
         tenant_id: ctx.tenant_id,
         conversation_id: conversationId,
         actor_id: ctx.user_id,
+        ask_before_writing: true,
         message: "please review this proposal",
       },
       ctx.testDb.db,
@@ -356,6 +357,7 @@ describe("declined-intent · wired through two real turns", () => {
         conversation_id: conversationId,
         elicitation_id: pendingId!,
         actor_id: ctx.user_id,
+        ask_before_writing: true,
         output: { confirmed: false },
       },
       ctx.testDb.db,
@@ -370,6 +372,7 @@ describe("declined-intent · wired through two real turns", () => {
         tenant_id: ctx.tenant_id,
         conversation_id: conversationId,
         actor_id: ctx.user_id,
+        ask_before_writing: true,
         message: "please review this proposal again",
       },
       ctx.testDb.db,
@@ -393,6 +396,7 @@ describe("declined-intent · wired through two real turns", () => {
         tenant_id: ctx.tenant_id,
         conversation_id: conversationId,
         actor_id: ctx.user_id,
+        ask_before_writing: true,
         message: "please review this proposal",
       },
       ctx.testDb.db,
@@ -406,6 +410,7 @@ describe("declined-intent · wired through two real turns", () => {
         conversation_id: conversationId,
         elicitation_id: pendingId!,
         actor_id: ctx.user_id,
+        ask_before_writing: true,
         output: { confirmed: false },
       },
       ctx.testDb.db,
@@ -425,6 +430,7 @@ describe("declined-intent · wired through two real turns", () => {
         tenant_id: ctx.tenant_id,
         conversation_id: conversationId,
         actor_id: ctx.user_id,
+        ask_before_writing: true,
         message: "take the edited version instead",
       },
       ctx.testDb.db,

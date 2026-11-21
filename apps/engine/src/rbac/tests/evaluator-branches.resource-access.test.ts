@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, spyOn, test } from "bun:test";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { can, catalogVisibility, resourceAccess } from "../evaluator.ts";
 import { grantResource } from "../grants.ts";
 import {

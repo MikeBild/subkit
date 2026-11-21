@@ -4,10 +4,12 @@ import type { Db } from "../../db/client.ts";
 import { BadRequestError } from "../../http/errors.ts";
 import {
   aggregateUsage,
+  TRAFFIC_CLASSES,
+  type TrafficClass,
   USAGE_GROUP_DIMS,
   type UsageGroupDim,
-} from "../../stats/aggregate-usage.ts";
-import { TRAFFIC_CLASSES, type TrafficClass, type UsageSurface } from "../../stats/usage-events.ts";
+  type UsageSurface,
+} from "../../stats/index.ts";
 import { now } from "../../utils/clock.ts";
 import { type ResolvedWindow, resolveWindow } from "../stats/bucket-window.ts";
 import { UsageStatsQuery, UsageStatsResponse } from "../stats/schemas.ts";

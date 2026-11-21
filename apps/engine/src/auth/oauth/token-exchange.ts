@@ -5,9 +5,9 @@ import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { Db } from "../../db/client.ts";
 import { apiKeys } from "../../db/schema/index.ts";
-import { env } from "../../env.ts";
+import { readEnv } from "../../env.ts";
 import { assertTenantActive, SelfServiceIdentityError } from "../../identity/index.ts";
-import { log } from "../../logging/logger.ts";
+import { log } from "../../logging/index.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
 import { getPermissionByName } from "../../rbac/catalog.ts";
 import { extractBearerToken, matchApiKeyRow } from "../providers/api-key.ts";
@@ -40,7 +40,9 @@ export class TokenExchangeError extends Error {
   }
 }
 
-export function deriveTokenExchangeSecret(masterKey: string = env.MASTER_KEY ?? ""): Uint8Array {
+export function deriveTokenExchangeSecret(
+  masterKey: string = readEnv("MASTER_KEY") ?? "",
+): Uint8Array {
   return new Uint8Array(createHash("sha256").update(`${masterKey}:token-exchange`).digest());
 }
 

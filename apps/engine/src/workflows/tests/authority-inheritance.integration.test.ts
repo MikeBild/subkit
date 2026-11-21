@@ -320,7 +320,6 @@ describe("a read approval follows changed literal request values", () => {
   });
 
   test("a literal query value beside a reviewed query boundary asks a person again", async () => {
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: an authored runtime placeholder
     const since = "${input.since}";
     const f = await fixture(({ main }) => [search(main, { state: "open", since })]);
     const next = await activate(f, [search(f.ids.main, { state: "all", since })]);

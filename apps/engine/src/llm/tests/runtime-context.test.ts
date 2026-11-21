@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { _resetConfigForTests, loadConfig, setConfigKey } from "../../config/loader.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import {
   engineUrlFromConfig,
   renderRuntimeContextBlock,
@@ -63,25 +64,25 @@ describe("resolveEngineUrl", () => {
   });
 
   it("does not use a retired env value on a malformed url", () => {
-    const prev = process.env.SUBKIT_PUBLIC_BASE_URL;
-    process.env.SUBKIT_PUBLIC_BASE_URL = "https://from-env.example";
+    const prev = testEnv.SUBKIT_PUBLIC_BASE_URL;
+    testEnv.SUBKIT_PUBLIC_BASE_URL = "https://from-env.example";
     try {
       const url = resolveEngineUrl({ url: "not a url" });
       expect(url).toBeUndefined();
     } finally {
-      if (prev === undefined) delete process.env.SUBKIT_PUBLIC_BASE_URL;
-      else process.env.SUBKIT_PUBLIC_BASE_URL = prev;
+      if (prev === undefined) delete testEnv.SUBKIT_PUBLIC_BASE_URL;
+      else testEnv.SUBKIT_PUBLIC_BASE_URL = prev;
     }
   });
 
   it("returns undefined when both the request and canonical config are unusable", () => {
-    const prev = process.env.SUBKIT_PUBLIC_BASE_URL;
-    delete process.env.SUBKIT_PUBLIC_BASE_URL;
+    const prev = testEnv.SUBKIT_PUBLIC_BASE_URL;
+    delete testEnv.SUBKIT_PUBLIC_BASE_URL;
     try {
       const url = resolveEngineUrl({ url: "" });
       expect(url).toBeUndefined();
     } finally {
-      if (prev !== undefined) process.env.SUBKIT_PUBLIC_BASE_URL = prev;
+      if (prev !== undefined) testEnv.SUBKIT_PUBLIC_BASE_URL = prev;
     }
   });
 });

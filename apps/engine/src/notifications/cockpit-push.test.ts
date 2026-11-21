@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, expect, spyOn, test } from "bun:test";
 import { createHttpTestServer, type HttpTestServer } from "../http/tests/setup.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
 import { createCockpitPushFixtures } from "../tests/cockpit-push-fixture.ts";

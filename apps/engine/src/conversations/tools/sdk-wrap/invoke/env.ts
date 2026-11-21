@@ -1,6 +1,6 @@
 import type { Db } from "../../../../db/client.ts";
 import { recordConversationToolCall } from "../../../../observability/instrumentation.ts";
-import type { PermissionMode, ToolPolicies } from "../../../../tools/types.ts";
+import type { ToolPolicies } from "../../../../tools/types.ts";
 import type { PolicyRecord } from "../../../instruction-cover/gate.ts";
 import { updateToolCallOutput } from "../../../persistence/index.ts";
 import type { TurnEvent } from "../../../types.ts";
@@ -15,7 +15,7 @@ export interface InvokeEnv {
   events: TurnEvent[];
   db: Db;
   toolPolicies: ToolPolicies;
-  permissionMode: PermissionMode | null;
+  askBeforeWriting: boolean;
   release: () => void;
   because?: string | null;
 }

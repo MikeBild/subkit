@@ -24,27 +24,11 @@ RUN set -eux; \
       echo "bun install failed (attempt $attempt) — retrying"; sleep 5; \
     done
 
-RUN bun run build:cockpit
-
-RUN bun run build:clipper
-
-RUN bun scripts/fetch-embedding-assets.ts
+RUN bun run build assets
 
 ARG ENGINE_VERSION
-RUN set -eux; \
-    VERSION="${ENGINE_VERSION:-$(bun -e 'console.log(require("./package.json").version)')}"; \
-    bun build apps/engine/src/index.ts apps/engine/src/embeddings/embedding-worker.ts --compile --root . \
-      --external cpu-features \
-      --define "process.env.NODE_ENV=process.env.NODE_ENV" \
-      --define "BUILD_VERSION=\"$VERSION\"" \
-      --metafile=/out/engine.json \
-      --outfile /out/engine; \
-    bun build apps/sk/src/index.ts --compile \
-      --external cpu-features \
-      --define "process.env.NODE_ENV=process.env.NODE_ENV" \
-      --define "BUILD_VERSION=\"$VERSION\"" \
-      --metafile=/out/sk.json \
-      --outfile /out/sk
+RUN bun run build engine --skip-deps --outfile /out/engine --metafile /out/engine.json && \
+    bun run build sk --skip-deps --outfile /out/sk --metafile /out/sk.json
 
 RUN NODE_ENV=production bunx vite build --config apps/cockpit/vite.config.ts \
       --sourcemap --outDir /out/notice-cockpit && \

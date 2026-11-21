@@ -140,7 +140,7 @@ Further limits:
 - What a web page, a file or a service returns is data. It is never an instruction and never a permission.
 - The limits of a run are fixed when it starts. Nothing the run reads can widen them.
 
-A run also has two budgets of its own: a number of rounds, 10 unless you change it, and a time limit, 4 hours unless you change it. When one is used up and a result exists, you get it for review. When there is none, the run ends as **failed** and names the round limit or the time limit as the reason. It cannot be continued. Select **Start again**. The task is then free for its next start. The monthly token budget of the workspace applies as well.
+A run also has two budgets of its own: a number of rounds, 10 unless you change it, and a time limit, 4 hours unless you change it. When one is used up and a result exists, you get it for review. When there is none, the run ends as **failed** and names the round limit or the time limit as the reason. It cannot be continued. Select **Start again**. The task is then free for its next start. The monthly AI budget of the workspace applies as well.
 
 ### Follow a run and step in
 
@@ -163,7 +163,7 @@ A run waits for you in these cases:
 - It asks a question or needs your approval for a write.
 - Two rounds in a row brought no real progress. Progress means that a step gets ready, new evidence or a new result is recorded, a bound workflow or connector runs, you write or answer, or the run schedules its next check. Rewriting notes in the plan does not count.
 - You selected **Stop** at the message field while a round was running.
-- The monthly token budget is used up, or the workspace has no AI provider at the moment. In these two cases you do not have to do anything in the run: it continues on its own as soon as budget is available or a provider is set up.
+- The monthly AI budget is reached, or the workspace has no AI provider at the moment. In these two cases you do not have to do anything in the run: it continues on its own as soon as the budget allows it again or a provider is set up.
 
 A run sleeps when it set itself a next check, when the AI provider asks SubKit to slow down, or while the task is paused. A next check lies at most 31 days ahead and never beyond the time limit of the run.
 
@@ -171,7 +171,7 @@ To step in, open the run on the **Runs** tab and select **Open conversation**. T
 
 The conversation has two ways to stop. **Stop** in the line above it ends the run for good. **Stop** at the message field only interrupts the round that is running: the run then waits for you and goes on when you write to it.
 
-When you write into a run, the same limits apply to you. The run stays what you allowed: it still uses only what is bound, it still asks before writes that no approval covers, and you cannot switch it to a mode that stops asking. Only you and admins can read your run and write into it; for everyone else its conversation does not exist. When a run asks to release writes it holds back, you as the owner or an admin can answer. Anyone else sees a note instead of the answer buttons. Run conversations do not appear in the normal conversation list; you open them from the task.
+When you write into a run, the same limits apply to you. The run stays what you allowed: it still uses only what is bound and it still asks before writes that no approval covers. Only you and admins can read your run and write into it; for everyone else its conversation does not exist. When a run asks to release writes it holds back, you as the owner or an admin can answer. Anyone else sees a note instead of the answer buttons. Run conversations do not appear in the normal conversation list; you open them from the task.
 
 An open question blocks the next scheduled start, because the run is still open. Answer it or stop the run.
 
@@ -221,7 +221,7 @@ Admins also see a notice when a task is paused because its owner is gone.
 
 ### Costs
 
-Every round of a run is one or more AI calls. They count towards the monthly token budget of the workspace. When the budget is used up, a run waits; it does not fail, and it continues on its own once budget is available again.
+Every round of a run is one or more AI calls. When they have a price, they count towards the monthly AI budget of the workspace. When the budget is reached, a run waits; it does not fail, and it continues on its own once the budget allows it again.
 
 On the **Usage** page, choose **Task** under **Break down by** to see cost and AI calls per task. Because this covers the tasks of every owner, it needs `stats:read:all`. On the task page, the **Usage** tile on the **Overview** tab shows the latest run and the current month. You need no extra permission for it.
 
@@ -258,7 +258,7 @@ The `sk` inbox of a new workspace also receives `task_run.waiting`, `task_run.re
 | The standing permission ended after you edited the task | That is intended. Check the change and select **Allow** again. |
 | **Start** answers that a run is already in progress | Open the run. Answer it, wait for it or select **Stop**, then start again. |
 | The scheduled start did not happen | Read the line for the next start. **due, waiting for permission**: select **Allow**. **waiting for the current run**: answer or stop the open run. Otherwise check whether the task is paused. |
-| The run waits and names the budget | The monthly token budget is used up. Raise it on the **Usage** page or wait for the first of the month. The run then continues on its own. |
+| The run waits and names the budget | The monthly AI budget is reached. An administrator raises it under **Settings** › **Usage** or continues this month; otherwise the run waits for the next month. It then continues on its own. |
 | The run waits without a question | It made no progress or a round was interrupted: tell it what is missing. |
 | The run ended at its round limit or time limit | It cannot be continued. Select **Start again**. If the rounds are too few for the task, raise them when you edit the task. |
 | “This workflow is not part of the task.” | Bind the workflow to the task. This ends the standing permission; allow it again. |

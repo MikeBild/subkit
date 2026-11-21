@@ -61,9 +61,11 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
   authoring_definition_invalid:
     "the generated definition did not validate, so it was not stored and the previous draft is unchanged. Retry author_workflow with a narrower goal, or split the workflow into smaller ones. Do not hand-write the definition piecewise into an unrelated draft.",
   llm_provider_limited:
-    "the generation provider rejected the call for a quota or rate limit. Do not repeat author_workflow in this turn. Wait until the reported retry time or configure an authorized provider with capacity; the draft is unchanged.",
-  llm_quota_exhausted:
-    "the tenant's LLM token budget is exhausted. Do not repeat author_workflow in this turn. Wait for the budget reset or have an operator increase the authorized budget; the draft is unchanged.",
+    "the generation provider rate-limited the call. Do not repeat author_workflow in this turn. Wait until the reported retry time or configure an authorized provider with capacity; the draft is unchanged.",
+  llm_provider_quota_exhausted:
+    "the provider account has no quota left. Do not repeat author_workflow in this turn. An operator raises the quota in the provider console or configures another provider; the draft is unchanged.",
+  llm_spend_limit_reached:
+    "the workspace reached its monthly spend limit. Do not repeat author_workflow in this turn. An admin raises the limit or continues this month under Usage; the draft is unchanged.",
   preview_input_unavailable:
     "the preview could not take its input from a saved schedule: the workflow has none enabled in this environment, or more than one, so the engine will not pick for you. Nothing ran. Read them with list_schedules and pass that schedule's saved input explicitly; if there is genuinely none, ask the user for the real values with ask_user_form. Never invent sample values to make a preview pass.",
   draft_conflict:

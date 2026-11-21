@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { testEnv } from "../test-helpers/determinism/env.ts";
 
 test("the engine runtime dials the supplied IP and verifies the original TLS hostname", async () => {
   const folder = await mkdtemp(join(tmpdir(), "subkit-pinned-origin-"));
@@ -72,7 +73,7 @@ try {
     for (const proxyCase of [false, true]) {
       const child = Bun.spawn([process.execPath, script], {
         env: {
-          ...process.env,
+          ...testEnv,
           NODE_EXTRA_CA_CERTS: cert,
           HTTP_PROXY: "",
           http_proxy: "",

@@ -41,7 +41,7 @@ Eine Aufgabe ist ein Ziel mit Grenzen, auf das SubKit alleine hinarbeitet. Für 
 
 Vor jeder Hintergrund-Runde prüft SubKit erneut, dass die Besitzerin noch aktiv ist, der Run noch offen ist, die Aufgabe weder pausiert noch archiviert ist und die Dauererlaubnis des Runs nicht widerrufen wurde. Trifft eines davon nicht zu, läuft die Runde nicht.
 
-Wer in einen Run hineinschreibt, erweitert ihn nicht. Die Besitzerin und Admins können schreiben. Für ihre Runden gelten dieselben Grenzen, und der Run lässt sich nicht in einen Modus schalten, der nicht mehr fragt. Schreibzugriffe, die ein Run zurückhält, gibt die Besitzerin oder ein Admin frei. Ausgeführt werden sie mit den Rechten des Runs, nicht mit denen des Admins, und der Audit-Trail nennt die Person, die entschieden hat. Ein Ergebnis bestätigt oder verwirft eine Person, die im Browser im Cockpit angemeldet ist, nicht mit einem API-Schlüssel, in `sk` oder aus einem KI-Client.
+Wer in einen Run hineinschreibt, erweitert ihn nicht. Die Besitzerin und Admins können schreiben. Für ihre Runden gelten dieselben Grenzen. Schreibzugriffe, die ein Run zurückhält, gibt die Besitzerin oder ein Admin frei. Ausgeführt werden sie mit den Rechten des Runs, nicht mit denen des Admins, und der Audit-Trail nennt die Person, die entschieden hat. Ein Ergebnis bestätigt oder verwirft eine Person, die im Browser im Cockpit angemeldet ist, nicht mit einem API-Schlüssel, in `sk` oder aus einem KI-Client.
 
 Im Audit-Trail steht die Hintergrundarbeit eines Runs als System mit dem Zeitplan oder der Warteschlange als Quelle. Erlaubnisse, Bestätigungen und Abbrüche nennen die Person, die gehandelt hat. Die Einträge enthalten Kennungen, Zustände und Grund-Codes, nie den Text des Ziels oder eine Antwort.
 

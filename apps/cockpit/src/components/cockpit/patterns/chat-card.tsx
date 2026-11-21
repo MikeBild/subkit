@@ -1,6 +1,6 @@
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@ui/molecules/card";
 import type { ReactNode } from "react";
 import { useId } from "react";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { type Fact, FactList } from "./fact-list";
 
 export function ChatCard({

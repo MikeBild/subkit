@@ -11,7 +11,6 @@ export function preferenceCookie(name: string, value: string | null, secure: boo
 
 export function sharePreference(name: string, value: string | null): void {
   try {
-    // biome-ignore lint/suspicious/noDocumentCookie: the Cookie Store API is missing in Firefox, and engine pages must read this in every browser
     document.cookie = preferenceCookie(name, value, window.location.protocol === "https:");
   } catch {}
 }

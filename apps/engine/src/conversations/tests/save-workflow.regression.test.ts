@@ -15,7 +15,7 @@ import {
   withWorkflowSaveError,
   withWorkflowValidation,
 } from "../authoring-state/index.ts";
-import { getConversation } from "../service.ts";
+import { getConversation } from "../service/index.ts";
 import type { DraftDocument } from "../types.ts";
 import {
   appendMessageWithTurn,
@@ -146,7 +146,6 @@ describe("workflow save regressions", () => {
         conversation_id: conversation.id,
         actor_id: ctx.user_id,
         message: "weiter",
-        permission_mode: "auto",
       },
       ctx.testDb.db,
     );
@@ -168,7 +167,6 @@ describe("workflow save regressions", () => {
         name: "GitHub Private Repos by Owner",
         slug: "github-private-repos-octocat-auto-confirm",
       }),
-      session: { permission_mode: "auto" as const },
     };
     const [conversation] = await ctx.testDb.db
       .insert(conversations)
@@ -195,7 +193,6 @@ describe("workflow save regressions", () => {
         conversation_id: conversation.id,
         actor_id: ctx.user_id,
         message: "yes",
-        permission_mode: "auto",
       },
       ctx.testDb.db,
     );
@@ -210,13 +207,12 @@ describe("workflow save regressions", () => {
     expect(detail?.tool_calls.map((call) => call.tool)).not.toContain("ask_user_confirm");
   });
 
-  test("auto mode continues past ask_user_confirm and commits in the same turn", async () => {
+  test("a save continues past ask_user_confirm and commits in the same turn", async () => {
     const draft = {
       ...readyDraft({
         name: "GitHub Private Repos by Owner",
         slug: "github-private-repos-octocat",
       }),
-      session: { permission_mode: "auto" as const },
     };
     const [conversation] = await ctx.testDb.db
       .insert(conversations)
@@ -253,7 +249,6 @@ describe("workflow save regressions", () => {
         conversation_id: conversation.id,
         actor_id: ctx.user_id,
         message: "go ahead with your plan",
-        permission_mode: "auto",
       },
       ctx.testDb.db,
     );
@@ -273,7 +268,6 @@ describe("workflow save regressions", () => {
         tenant_id: ctx.tenant_id,
         actor_id: ctx.user_id,
         workflow_id: existing.id,
-        permission_mode: "auto",
       },
       ctx.testDb.db,
     );
@@ -297,7 +291,6 @@ describe("workflow save regressions", () => {
         conversation_id: created.conversation.id,
         actor_id: ctx.user_id,
         message: "create a workflow that gives me my private repos by owner octocat",
-        permission_mode: "auto",
       },
       ctx.testDb.db,
     );
@@ -323,7 +316,6 @@ describe("workflow save regressions", () => {
         tenant_id: ctx.tenant_id,
         actor_id: ctx.user_id,
         workflow_id: existing.id,
-        permission_mode: "auto",
       },
       ctx.testDb.db,
     );
@@ -339,7 +331,6 @@ describe("workflow save regressions", () => {
         actor_id: ctx.user_id,
         message:
           'Bearbeite ausschließlich den bestehenden Workflow "editorial-review" als neue persistierte Workflow-Version. Führe den Workflow NICHT aus.',
-        permission_mode: "auto",
       },
       ctx.testDb.db,
     );
@@ -365,7 +356,6 @@ describe("workflow save regressions", () => {
         workflow_id: existing.id,
         initial_message:
           "Bearbeite den bestehenden Workflow als neue persistierte Workflow-Version. Erzeuge ausdrücklich keinen neuen Workflow.",
-        permission_mode: "auto",
       },
       ctx.testDb.db,
     );

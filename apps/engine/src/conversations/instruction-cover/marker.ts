@@ -3,7 +3,7 @@ import { z } from "@hono/zod-openapi";
 export const BECAUSE_ARG = "__because";
 
 export const BECAUSE_DESCRIPTION =
-  "Only when the person explicitly asked for exactly this action in their latest message: quote their own words that ask for it, verbatim. The engine checks the quote against what the person wrote and against the target, recipient, amount and date they named; when all of it matches, the action runs once without a confirmation. Omit it in every other case. A quote that is not in the person's words makes the action ask.";
+  "Only when the person explicitly asked for exactly this action in their latest message: quote their own words that ask for it, verbatim. The engine checks the quote against what the person wrote and against the target, recipient, amount and date they named; when all of it matches, the action runs once without a confirmation. Omit it in every other case. A quote that is not in the person's words makes the action ask. In a task run, the task's goal counts as the person's words: quote it verbatim.";
 
 export function takeBecause(args: Record<string, unknown>): {
   args: Record<string, unknown>;

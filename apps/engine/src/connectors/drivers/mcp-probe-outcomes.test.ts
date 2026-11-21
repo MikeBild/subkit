@@ -3,12 +3,13 @@ import { and, eq } from "drizzle-orm";
 import { closeDb } from "../../db/client.ts";
 import { auditLog } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
-import { _resetLoggerForTests, reconfigureLogger } from "../../logging/logger.ts";
+import { _resetLoggerForTests, reconfigureLogger } from "../../logging/index.ts";
 import {
   __resetMcpClientPoolForTests,
   __setMcpPoolFactoriesForTests,
 } from "../../mcp/client/pool.ts";
 import { seedMcpConnector } from "../../mcp/client/test-fixtures.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
 import { setConnectorEnabled } from "../service.ts";
 import { probeMcpConnector } from "./mcp.ts";
@@ -24,7 +25,7 @@ const LATENCY_CEILING_MS = 60_000;
 
 let ctx: TestDb;
 let tenantId: string;
-const originalDatabaseUrl = process.env.DATABASE_URL;
+const originalDatabaseUrl = testEnv.DATABASE_URL;
 
 async function seedSession(slug: string): Promise<{ id: string; url: string; host: string }> {
   const host = `${slug}.mcpprobeoutcome.example.com`;
@@ -63,7 +64,7 @@ beforeAll(async () => {
   __setMcpPoolFactoriesForTests({ makeClient: (row) => makeProbeClient(row.url) });
   ctx = await createTestDb("mcp-driver-probe-outcomes");
   await closeDb();
-  process.env.DATABASE_URL = ctx.url;
+  testEnv.DATABASE_URL = ctx.url;
   tenantId = (await seedTenant(ctx.db, { slug: "t-mcp-outcome", display_name: "MCP Outcome" })).id;
 }, 30_000);
 
@@ -71,8 +72,8 @@ afterAll(async () => {
   __setMcpPoolFactoriesForTests(null);
   __resetMcpClientPoolForTests();
   await closeDb();
-  if (originalDatabaseUrl === undefined) delete process.env.DATABASE_URL;
-  else process.env.DATABASE_URL = originalDatabaseUrl;
+  if (originalDatabaseUrl === undefined) delete testEnv.DATABASE_URL;
+  else testEnv.DATABASE_URL = originalDatabaseUrl;
   await ctx.cleanup();
 }, 30_000);
 

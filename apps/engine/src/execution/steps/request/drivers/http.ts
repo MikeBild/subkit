@@ -1,3 +1,4 @@
+import { redactKnownValues } from "@shared/redaction.ts";
 import { and, eq } from "drizzle-orm";
 import { evaluateHook } from "../../../../auth/hooks.ts";
 import { buildMultipartBody, buildRequestPlan } from "../../../../connectors/drivers/http.ts";
@@ -9,7 +10,7 @@ import { flagConnectorContractFailure } from "../../../../connectors/health-stat
 import { flagConnectorAuthFailure } from "../../../../connectors/reauth.ts";
 import { connectorMaskedQueryKeys } from "../../../../connectors/recorded-url.ts";
 import { connectorEndpointSchemas } from "../../../../db/schema/index.ts";
-import { logger } from "../../../../logging/logger.ts";
+import { logger } from "../../../../logging/index.ts";
 import { inspectContentRevisionRequest } from "../../../../workflows/content-publication-boundary.ts";
 import {
   GMAIL_SEND_TARGET,
@@ -37,7 +38,6 @@ import { buildStepErrorDetail } from "../../error-detail.ts";
 import { requestFailureEvidence } from "../circuit-evidence.ts";
 import { RequestError } from "../errors.ts";
 import type { DoOnePageParams } from "../http-attempt.ts";
-import { redactOwnCredentials } from "../own-credentials.ts";
 import { isDocumentedReadOperation } from "../read-operations.ts";
 import { isIdempotent, resolveRetryPolicy } from "../retry.ts";
 import { checkRequired } from "../shape.ts";
@@ -98,7 +98,7 @@ async function connectorTarget(
     headers: d.parts.headers,
     query: d.parts.query,
     ...(d.own_credentials.length > 0
-      ? { redact_log_url: (url: string) => redactOwnCredentials(url, d.own_credentials) }
+      ? { redact_log_url: (url: string) => redactKnownValues(url, d.own_credentials) }
       : {}),
   });
   if (

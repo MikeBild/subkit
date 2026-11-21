@@ -53,7 +53,6 @@ const read = {
   kind: "request",
   connector_id: CONNECTOR,
   method: "GET",
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
   path: "/v1/pages/${input.page_id}",
 };
 
@@ -143,7 +142,6 @@ test("a step that sends content gets no invented size ceiling", async () => {
         kind: "request",
         connector_id: CONNECTOR,
         method: "PATCH",
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
         path: "/v1/pages/${input.page_id}",
         body: { archived: true },
       },
@@ -210,7 +208,6 @@ test("a path whose placeholder is not a whole segment is reported, not half-prop
         kind: "request",
         connector_id: CONNECTOR,
         method: "GET",
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
         path: "/v1/pages/page-${input.n}",
       },
     ]),
@@ -317,7 +314,6 @@ test("a held request is evidence too — target and size both", async () => {
         kind: "request",
         connector_id: CONNECTOR,
         method: "PATCH",
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
         path: "/v1/pages/${input.page_id}",
         body: { archived: true },
       },
@@ -372,7 +368,6 @@ test("the preparation run the dialog itself asks for counts as evidence", async 
         kind: "request",
         connector_id: CONNECTOR,
         method: "PATCH",
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
         path: "/v1/pages/${input.page_id}",
         body: { archived: true },
       },
@@ -466,7 +461,6 @@ test("a recorded address whose compared value is masked is never read as an obse
     kind: "request",
     connector_id: CONNECTOR,
     method: "GET",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
     path: "/v1/pages?tenant=${input.tenant}",
   };
   await record([

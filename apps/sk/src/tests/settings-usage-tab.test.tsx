@@ -43,7 +43,7 @@ function statsLlmResponse(flows: FlowTokens[]) {
   };
 }
 
-function makeClient(flows: FlowTokens[], budget: number | null = null): EngineClient {
+function makeClient(flows: FlowTokens[], limit: number | null = null): EngineClient {
   return {
     skBootstrap: mock(async () => ({
       whoami: {
@@ -68,7 +68,9 @@ function makeClient(flows: FlowTokens[], budget: number | null = null): EngineCl
     listMcpPrompts: mock(async () => ({ items: [] })),
     listMcpResources: mock(async () => ({ items: [] })),
     statsLlm: mock(async () => statsLlmResponse(flows)),
-    statusSummary: mock(async () => ({ monthly_budget_tokens: budget })),
+    statusSummary: mock(async () => ({
+      ai_budget: { currency: "USD", limit, spent: 0, state: limit === null ? "unlimited" : "ok" },
+    })),
   } as unknown as EngineClient;
 }
 
@@ -107,7 +109,7 @@ describe("UsageTab — token aggregation by flow (M5 + G6 closure)", () => {
       expect(txt).toContain("summarize");
       expect(txt).toContain("tool-chain");
       expect(txt).toMatch(/totals: 2,050 input \+ 675 output = 2,725 tokens/);
-      expect(txt).toContain("monthly budget: unlimited");
+      expect(txt).toContain("monthly AI budget: no limit");
     } finally {
       ui.unmount();
     }

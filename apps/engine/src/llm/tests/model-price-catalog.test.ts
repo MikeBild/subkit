@@ -303,7 +303,7 @@ describe("the catalog never reaches the stored configuration", () => {
     expect(rates.length).toBe(MODEL_PRICE_CATALOG.length);
     expect(getConfig().tokens.prices).toEqual([]);
 
-    await setConfigKey(["tokens", "monthly_budget"], 1_000, { force: true });
+    await setConfigKey(["tokens", "currency"], "USD", { force: true });
     const stored = JSON.parse(readFileSync(cfgPath, "utf8")) as {
       tokens?: { prices?: unknown[] };
     };

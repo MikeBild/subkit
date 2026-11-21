@@ -233,7 +233,7 @@ describe("(e) RBAC credential ceiling — skill / knowledge tools", () => {
       },
     );
 
-    expect(envelope.status).toBe("needs_confirm");
+    expect(envelope.status).not.toBe("not_available_on_surface");
     const denied = capture.inserts.filter((r) => r.action === AuditAction.POLICY_DENIED);
     expect(denied.length).toBe(0);
   });

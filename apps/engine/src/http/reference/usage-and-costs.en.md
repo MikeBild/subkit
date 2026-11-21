@@ -1,14 +1,14 @@
 ---
 slug: usage-and-costs
 title: Keep track of usage and costs
-summary: See what AI calls cost, and set the budget and prices.
+summary: See what AI calls cost, and set the AI budget and prices.
 section: work
 order: 11
 audience: public
 ---
 ## Keep track of usage and costs
 
-This chapter is for anyone who needs to know what AI costs in the workspace, usually team leads or admins. Afterwards you know the cost per workflow, person and model, and you set how many tokens a month allows. An AI call is one request from SubKit to an AI model.
+This chapter is for anyone who needs to know what AI costs in the workspace, usually team leads or admins. Afterwards you know the cost per workflow, person and model, and you know how the monthly AI budget works. An AI call is one request from SubKit to an AI model.
 
 Everything is on the **Usage** page. At the top, one sentence sums up the time window, for example "This week: $84.20 for 1,240 AI calls." When costs rise, the sentence names the largest driver.
 
@@ -16,7 +16,7 @@ Everything is on the **Usage** page. At the top, one sentence sums up the time w
 
 - To view the page: `stats:read`. By default only the Admin role has it.
 - For **Person**, **Conversation** and **Task** under **Break down by**: `stats:read:all`. Without it you do not see these tabs.
-- To change the budget and prices: `settings:write`. The Admin role has both.
+- To change prices: `settings:write`. To change the AI budget: `identity:write`. The Admin role has both.
 
 ### Choose the time window
 
@@ -24,7 +24,7 @@ Choose the **Time window** at the top right: **24 h**, **This week**, **Last wee
 Weeks start on Monday, and your time zone applies.
 All figures compare the window with the same span before.
 
-The **Overview** offers the same choice. Its **Usage** tile follows the chosen time window and shows the cost in it or "No AI calls in this window". Below that it shows how much of the monthly budget is used, for example "42% of the monthly token budget". The tile is enough for a quick look; for the reasons, open **Usage**.
+The **Overview** offers the same choice. Its **Usage** tile follows the chosen time window and shows the cost in it or "No AI calls in this window". Below that it shows how much of the AI budget is spent, for example "42% of the monthly AI budget". The tile is enough for a quick look; for the reasons, open **Usage**.
 
 How to read the trend:
 
@@ -37,17 +37,9 @@ How to read the trend:
 
 - **Cost**: the estimated cost of all AI calls in the window.
 - **AI calls**: how often SubKit asked an AI model. When calls failed, it shows for example **3 failed**. A click opens the Failed AI calls.
-- **Budget · Month**: how much of the monthly budget is used. This tile always covers the current month.
+- **AI budget · Month**: how much of the monthly AI budget is spent. This tile always covers the current month.
 - **Saved by cache**: what reused input saved compared with full price.
 - **From the cache**: the share of input that was reused instead of paid again. Below it, **Cache per flow** shows the share for each source. Higher is cheaper and faster. **No data** means the provider reports no cache for that source.
-
-The forecast sits below the budget. SubKit projects it from the last 7 days:
-
-- **Lasts to month end.**
-- **About 94% by month end.** The budget is getting tight.
-- **Used up on the 26.** The budget does not last to month end.
-- **Used up. Chat, creating and fixes are paused.**
-- **No forecast yet. Too few days this month.** This applies to the first two days of a month.
 
 When a model has no price, the cost shows **at least** in front.
 The amount is then a floor. The real cost is higher.
@@ -64,7 +56,6 @@ Each notice has a matching action:
 | A workflow costs at least 1.5 times as much per run as in the window before. | **View cost** |
 | A model has no price. | **View model** |
 | Several models have no price. | **View models** |
-| The monthly budget will likely run out before month end. | **Adjust budget** |
 | One person accounts for at least half of the cost. | **View breakdown** |
 
 When nothing stands out, it says "Nothing unusual in this window."
@@ -118,29 +109,30 @@ Long conversations get more expensive because every reply reads the history so f
 You open **Failed AI calls** from the **AI calls** tile.
 Failed calls can still cost money. The sheet names the amount.
 Under **Where they happen** you see the workflow or conversation and the reason:
-**Provider error**, **Input too large** or **Budget used up**.
+**Provider error**, **Input too large** or **AI budget reached**.
 
-### Adjust the budget
+### The AI budget
 
-The monthly budget is the maximum number of tokens your workspace may use in a month. It covers all people and workflows together.
+Every workspace has exactly one limit on AI cost: the monthly AI budget in US dollars. Tokens are still counted, but not limited. A new workspace starts at $50 per month. A workspace that existed before the AI budget starts without a limit and gets one item under **Needs you**: "Set a monthly AI budget". The month follows the time zone of your workspace.
 
-1. Click **Adjust budget** under Worth a look, or the forecast in the tile.
-   Without a budget, choose **Set a budget** in the tile.
-2. Enter a value under **Tokens per month**.
-3. Save. The message **Budget saved** confirms the change.
+The budget lives in one place: **Settings** › **Usage**. It shows what this month's model calls cost, for example "$12.40 of $50". You need `stats:read` to see it; administrators change it there, everyone else with `stats:read` sees it read-only.
 
-You need `settings:write` for this, so by default the Admin role.
-Without it you only see the current state and "Ask someone with the Admin role."
+- Only priced calls count. A local model, or a model without a price, never counts towards the AI budget.
+- At 80% you get one item under **Needs you** and one notification per month.
+- At 100% chat, tasks and model steps in workflows pause. A task run waits and continues on its own. A workflow run waits before its model step, frees its worker and continues on its own once the budget allows it again: after **Raise budget**, after **Continue without a limit this month**, or when the next month starts. Steps it already ran don't run again. Workflows without a model step keep running.
+- One chat answer or one task run that costs more than $5 shows one notice. Nothing stops.
 
-What happens as tokens are used:
+What an administrator can do when the budget is reached:
 
-- From 75% a notice appears.
-- At 100% chat, designing workflows and fixes pause until the first of the month.
-- Approved workflows keep running. What is already in operation does not stop.
-- A run of a task waits. It does not fail, and it continues on its own once budget is available again.
-- Requests SubKit rejects because of the budget never count towards usage.
+1. Open the item under **Needs you**, or **Settings** › **Usage**.
+2. Choose **Raise budget** and pick a new limit: $20, $50, $200 or **No limit**.
+3. Or choose **Continue without a limit this month**. The next month starts with the limit again.
 
-Without a budget, AI calls are unlimited.
+You need `identity:write` for both, so the Admin role. This also applies to hosted workspaces: the AI budget is a decision of the workspace. The audit trail records each change as "Monthly AI budget changed" or "AI work continues without a limit this month".
+
+If the workspace prices models in another currency than USD (`tokens.currency`), there is no dollar figure and the AI budget does not apply.
+
+For developers: `GET /v1/workspace/spend-limit` (`stats:read`) reads the month, `PUT /v1/workspace/spend-limit` with `{"limit_usd": 200}` sets the limit (0 means no limit) and `POST /v1/workspace/spend-limit/continue` continues this month. A refused model call answers with the code `llm_spend_limit_reached` (HTTP 429); a provider account without quota answers with `llm_provider_quota_exhausted`. A waiting workflow run keeps the status `queued` and shows `waiting_reason: "budget"`; a model step that cannot wait fails with `llm_spend_limit_reached`.
 
 ### Set a price
 
@@ -169,7 +161,7 @@ Expand **Technical details** at the end of the page. It shows:
 
 - **Input tokens**, **Output tokens**, **Cache read**, **Cache written** and **Total**.
 - **Models without a price** and the number of calls without a price.
-- The **Budget** in tokens, for example "120,000 of 150,000 tokens · 30,000 left".
+- The **AI budget**, for example "$12.40 of $50 · $37.60 left".
 - The **Price source**: built-in list prices per model, or the prices set in `tokens.prices`.
 - Your **Time zone** and the **Internal flows per origin**.
 - The **Query** that fetches the same numbers through the CLI or the API.
@@ -182,10 +174,10 @@ Expand **Technical details** at the end of the page. It shows:
 | **Person**, **Conversation** and **Task** are missing | You lack `stats:read:all`. Ask someone with the Admin role for it. |
 | **at least** in front of the cost | Some models have no price. Add it through **Set a price**. |
 | **Cost unknown** | None of the models used has a price. Add the prices. |
-| "Ask someone with the Admin role." instead of **Adjust budget** | You lack `settings:write`. Ask someone with the Admin role to change the budget. |
-| Chat, designing and fixes are paused | The monthly budget is used up. Raise it or wait for the first of the month. |
-| "The budget could not be read …" | Reload the page. This says nothing about whether a budget is set. |
+| Chat, tasks and model steps are paused | The AI budget is reached. An administrator raises it under **Settings** › **Usage** or continues this month. |
 | "No AI calls in this window." | Choose **Show this month** or another window. |
+| A workflow run fails with `llm_spend_limit_reached` | Its model step sits inside a loop, a parallel block or a "for each", where a run cannot wait without repeating steps. Raise the limit or continue this month under **Settings** › **Usage**, then run the workflow again. |
+| A workflow run stays **queued** with "Waiting for budget" | The AI budget is reached. Raise it or continue this month; the run then continues by itself. |
 
 ### The same in the terminal
 

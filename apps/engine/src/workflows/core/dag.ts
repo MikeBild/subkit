@@ -93,7 +93,8 @@ function collectStepReferences(
     const ds = step.data_selector;
     for (const id of knownIds) {
       if (id === step.id) continue;
-      const re = new RegExp(`(^|[^\\w-])${id}(\\.|$|[^\\w-])`);
+      const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const re = new RegExp(`(^|[^\\w-])${escaped}(\\.|$|[^\\w-])`);
       if (re.test(ds)) {
         add(id, "data_selector");
       }

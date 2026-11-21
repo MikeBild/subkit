@@ -108,17 +108,17 @@ describe("audit completeness over mutation routes", () => {
     await expectAuditRow("connector.updated", start);
   });
 
-  test("AC7: POST /v1/connectors/:id/credentials → credential.created", async () => {
+  test("AC7: POST /v1/connectors/:id/credentials → vault.item.created", async () => {
     const start = new Date(TEST_NOW_MS).toISOString();
     const res = await journeyFetch(ctx, `/v1/connectors/${connectorId}/credentials`, {
       method: "POST",
       body: JSON.stringify({ mode: "bearer", token: "t-e-s-t" }),
     });
     expect(res.status).toBe(201);
-    await expectAuditRow("credential.created", start);
+    await expectAuditRow("vault.item.created", start);
   });
 
-  test("AC8: POST /v1/credentials/:id/rotate → typed rejection for plain credentials", async () => {
+  test("AC8: POST /v1/vault/:id/refresh → typed rejection for plain credentials", async () => {
     const credRes = await journeyFetch(ctx, `/v1/connectors/${connectorId}`, { method: "GET" });
     let targetConnectorId: string;
     if (credRes.status === 200) {
@@ -147,7 +147,7 @@ describe("audit completeness over mutation routes", () => {
     const { id: credentialId } = (await attach.json()) as { id: string };
 
     const start = new Date(TEST_NOW_MS).toISOString();
-    const res = await journeyFetch(ctx, `/v1/credentials/${credentialId}/rotate`, {
+    const res = await journeyFetch(ctx, `/v1/vault/${credentialId}/refresh`, {
       method: "POST",
       body: JSON.stringify({}),
     });
@@ -157,14 +157,14 @@ describe("audit completeness over mutation routes", () => {
 
     const auditRes = await journeyFetch(
       ctx,
-      `/v1/audit-log?action=${encodeURIComponent("credential.rotated")}&ts_from=${encodeURIComponent(start)}&limit=50`,
+      `/v1/audit-log?action=${encodeURIComponent("vault.item.rotated")}&ts_from=${encodeURIComponent(start)}&limit=50`,
     );
     expect(auditRes.status).toBe(200);
     const auditBody = (await auditRes.json()) as { items: Array<{ action: string }> };
-    expect(auditBody.items.some((r) => r.action === "credential.rotated")).toBe(false);
+    expect(auditBody.items.some((r) => r.action === "vault.item.rotated")).toBe(false);
   });
 
-  test("AC7b: credential.created records the mode internally without exposing raw keys", async () => {
+  test("AC7b: vault.item.created records the mode internally without exposing raw keys", async () => {
     const mk = await journeyFetch(ctx, "/v1/connectors", {
       method: "POST",
       body: JSON.stringify({
@@ -189,16 +189,16 @@ describe("audit completeness over mutation routes", () => {
       }),
     });
     expect(attach.status).toBe(201);
-    await expectAuditRow("credential.created", start);
+    await expectAuditRow("vault.item.created", start);
     const auditRes = await journeyFetch(
       ctx,
-      `/v1/audit-log?action=${encodeURIComponent("credential.created")}&ts_from=${encodeURIComponent(start)}&limit=10`,
+      `/v1/audit-log?action=${encodeURIComponent("vault.item.created")}&ts_from=${encodeURIComponent(start)}&limit=10`,
     );
     expect(auditRes.status).toBe(200);
     const rawRows = await ctx.db
       .select()
       .from(auditLog)
-      .where(and(eq(auditLog.tenant_id, ctx.tenantId), eq(auditLog.action, "credential.created")));
+      .where(and(eq(auditLog.tenant_id, ctx.tenantId), eq(auditLog.action, "vault.item.created")));
     const rawRow = rawRows.find((row) => {
       const metadata = z.object({ connector_id: z.string() }).safeParse(row.metadata);
       return metadata.success && metadata.data.connector_id === target;

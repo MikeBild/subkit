@@ -13,12 +13,7 @@ import type { CredentialMode, DecryptedCredential } from "../credentials/types.t
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import type { Executor } from "../db/client.ts";
-import {
-  connectorPromotions,
-  connectors,
-  credentials,
-  endUserCredentials,
-} from "../db/schema/index.ts";
+import { connectorPromotions, connectors, vaultItems } from "../db/schema/index.ts";
 import { withoutMcpTrustList } from "./mcp-tool-trust.ts";
 
 type ConnectorPromotionStrategy = "copy" | "move";
@@ -46,7 +41,6 @@ type ConnectorPromotionErrorCode =
   | "source_not_dev"
   | "target_exists"
   | "oauth_copy_unsupported"
-  | "end_user_credential_copy_unsupported"
   | "credential_slot_conflict"
   | "idempotency_conflict";
 
@@ -195,9 +189,9 @@ export async function promoteConnector(
 
     const credentialRows = await tx
       .select()
-      .from(credentials)
+      .from(vaultItems)
       .where(
-        and(eq(credentials.tenant_id, input.tenant_id), eq(credentials.connector_id, source.id)),
+        and(eq(vaultItems.tenant_id, input.tenant_id), eq(vaultItems.connector_id, source.id)),
       );
     if (credentialRows.some((row) => row.environment !== "dev")) {
       throw new ConnectorPromotionError(
@@ -211,22 +205,6 @@ export async function promoteConnector(
     const auditLogIds: string[] = [];
 
     if (input.strategy === "copy") {
-      const endUserRows = await tx
-        .select({ id: endUserCredentials.id })
-        .from(endUserCredentials)
-        .where(
-          and(
-            eq(endUserCredentials.tenant_id, input.tenant_id),
-            eq(endUserCredentials.connector_id, source.id),
-          ),
-        )
-        .limit(1);
-      if (endUserRows[0]) {
-        throw new ConnectorPromotionError(
-          "end_user_credential_copy_unsupported",
-          "connectors with end-user credentials must be moved to preserve credential bindings",
-        );
-      }
       if (
         source.auth_type === "oauth2" ||
         credentialRows.some((row) => row.mode === "oauth2" || row.mode === "oauth2_client")
@@ -310,18 +288,18 @@ export async function promoteConnector(
         .set({ environment: "prod", updated_at: new Date() })
         .where(and(eq(connectors.tenant_id, input.tenant_id), eq(connectors.id, source.id)));
       await tx
-        .update(credentials)
+        .update(vaultItems)
         .set({
           environment: "prod",
           verified_identity: null,
-          credential_generation: sql`${credentials.credential_generation} + 1`,
+          credential_generation: sql`${vaultItems.credential_generation} + 1`,
           updated_at: new Date(),
         })
         .where(
           and(
-            eq(credentials.tenant_id, input.tenant_id),
-            eq(credentials.connector_id, source.id),
-            eq(credentials.environment, "dev"),
+            eq(vaultItems.tenant_id, input.tenant_id),
+            eq(vaultItems.connector_id, source.id),
+            eq(vaultItems.environment, "dev"),
           ),
         );
       for (const credential of credentialRows) {
@@ -359,8 +337,8 @@ export async function promoteConnector(
         {
           tenant_id: input.tenant_id,
           ...auditActor,
-          action: AuditAction.CREDENTIAL_ENVIRONMENT_PROMOTED,
-          resource_type: "credential",
+          action: AuditAction.VAULT_ITEM_PROMOTED,
+          resource_type: "vault_item",
           resource_id: mapping.target_credential_id,
           result: "success",
           before: { credential_id: mapping.source_credential_id, environment: "dev" },

@@ -6,9 +6,9 @@ import { connectors, conversationElicitations, conversations } from "../../../db
 import { searchDocs } from "../../../docs-ingestion/service.ts";
 import { searchKnowledge } from "../../../knowledge/service.ts";
 import { DOMAIN_TAG_PREFIX } from "../../../knowledge/tags.ts";
-import { logger } from "../../../logging/logger.ts";
+import { logger } from "../../../logging/index.ts";
 import { getMetrics, METRIC_NAMES } from "../../../observability/metrics.ts";
-import { listLatestShapes } from "../../../schema-versions/service.ts";
+import { listLatestShapes } from "../../../schema-versions/index.ts";
 import { findSimilarActive, type PriorWorkflowRef } from "../../../workflows/prior-workflows.ts";
 import { countTokens } from "../../accounting/index.ts";
 import type {

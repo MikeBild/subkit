@@ -5,7 +5,7 @@ import type { Db } from "../../db/client.ts";
 import { portalTokens, users } from "../../db/schema/index.ts";
 import { constantTimeHexEquals } from "../../identity/api-key.ts";
 import { parsePortalToken } from "../../identity/portal-token.ts";
-import { log } from "../../logging/logger.ts";
+import { log } from "../../logging/index.ts";
 import type { AllowList, AuthProvider, ResolvedPrincipal } from "../types.ts";
 
 function extractToken(req: Request): string | null {

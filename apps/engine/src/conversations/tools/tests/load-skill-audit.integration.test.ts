@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { AuditAction } from "../../../audit/types.ts";
 import { auditLog, conversations } from "../../../db/schema/index.ts";
-import { createConversation } from "../../service.ts";
+import { createConversation } from "../../service/index.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../../tests/setup.ts";
 import type { ToolContext } from "../index.ts";
 import { loadSkillTool } from "../load-skill.ts";

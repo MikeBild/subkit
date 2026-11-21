@@ -1,4 +1,4 @@
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { LlmProviderError } from "./errors.ts";
 import type { EnhancedPrompt, LlmFlow } from "./types.ts";
 

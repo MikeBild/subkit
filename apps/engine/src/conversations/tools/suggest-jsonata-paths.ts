@@ -4,6 +4,7 @@ import {
   findVisibleExecutionPayload,
   latestSucceededStepPreview,
 } from "../../execution/visible-reads.ts";
+import { isSafeRegex, SAFE_REGEX_REMEDY, safeRegex } from "../../utils/safe-regex.ts";
 import { findCurrentVersionScopeIndex } from "../../workflows/index.ts";
 import {
   buildScopeAtStep,
@@ -30,6 +31,7 @@ const inputSchema = z
     search_key: z
       .string()
       .min(1)
+      .refine(isSafeRegex, { message: `regex_unsafe: ${SAFE_REGEX_REMEDY}` })
       .optional()
       .describe(
         "Optional regex applied to each path's last segment. Use to find `.id`, `.email`, `.name` etc.",
@@ -237,7 +239,7 @@ export const suggestJsonataPathsTool: ConversationTool = {
     const keyRegex = (() => {
       if (!args.search_key) return null;
       try {
-        return new RegExp(args.search_key, "i");
+        return safeRegex(args.search_key, "i");
       } catch {
         return null;
       }

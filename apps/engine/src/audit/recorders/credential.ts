@@ -18,8 +18,8 @@ export async function recordCredentialAttached(
     {
       tenant_id: p.tenant_id,
       ...resolveActor(p),
-      action: AuditAction.CREDENTIAL_CREATED,
-      resource_type: "credential",
+      action: AuditAction.VAULT_ITEM_CREATED,
+      resource_type: "vault_item",
       resource_id: p.credential_id,
       result: "success",
       reason: p.reason,
@@ -50,8 +50,8 @@ export async function recordCredentialRotated(
     {
       tenant_id: p.tenant_id,
       ...resolveActor(p),
-      action: AuditAction.CREDENTIAL_ROTATED,
-      resource_type: "credential",
+      action: AuditAction.VAULT_ITEM_ROTATED,
+      resource_type: "vault_item",
       resource_id: p.credential_id,
       result: "success",
       reason: p.reason,
@@ -81,8 +81,8 @@ export async function recordCredentialDeleted(
     {
       tenant_id: p.tenant_id,
       ...resolveActor(p),
-      action: AuditAction.CREDENTIAL_DELETED,
-      resource_type: "credential",
+      action: AuditAction.VAULT_ITEM_DELETED,
+      resource_type: "vault_item",
       resource_id: p.credential_id,
       result: "success",
       reason: p.reason,

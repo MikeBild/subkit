@@ -81,7 +81,6 @@ const localized = {
   connector_id: CONNECTOR,
   method: "GET",
   path: "/v1/news",
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
   query: { lang: "${input.lang}", limit: 10 },
 };
 
@@ -111,7 +110,6 @@ test("a placeholder that is a whole query value becomes a query variable with th
 test("a query value that mixes text with a placeholder is named with the compiler's own reason", async () => {
   await fixtures.record([{ step: "read_news", url: "https://api.example.test/v1/news?lang=en" }]);
   const { proposals, unproposable } = await propose([
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
     { ...localized, query: { lang: "x-${input.lang}" } },
   ]);
   expect(proposals).toEqual([]);
@@ -125,7 +123,6 @@ const remove = {
   kind: "request",
   connector_id: CONNECTOR,
   method: "DELETE",
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
   path: "/v1/pages/${item.id}",
 };
 
@@ -262,7 +259,6 @@ test("a held request keeps its address on the step and still counts as a trial",
     kind: "request",
     connector_id: CONNECTOR,
     method: "POST",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
     path: "/v1/notes/${input.topic}",
     body: { text: "x" },
   };
@@ -362,7 +358,6 @@ test("a proposal the real review would still refuse is returned with that refusa
       id: "orphan",
       kind: "request",
       method: "GET",
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
       path: "/v1/pages/${input.slug}",
     },
     { ...store, headers: { "x-trace": "1" } },
@@ -383,7 +378,6 @@ test("a step that never ran is reported as such even when its address carries a 
       kind: "request",
       connector_id: CONNECTOR,
       method: "GET",
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
       path: "/startups?page=${item.n}&limit=10",
     },
     store,

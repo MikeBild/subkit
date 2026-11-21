@@ -16,7 +16,7 @@ import {
   respondElicitation,
 } from "../conversations/public/elicitation.ts";
 import {
-  assertTaskRunTurn,
+  assertTaskRunWriter,
   conversationTurnId,
   registerConversationAbort,
   unregisterConversationAbort,
@@ -24,11 +24,11 @@ import {
 import type { RunLoopResult } from "../conversations/types.ts";
 import type { Db } from "../db/client.ts";
 import { chatIdentities, chatSessions, chatWorkspaces } from "../db/schema/index.ts";
-import { errorFields, log, logger } from "../logging/logger.ts";
+import { errorFields, log, logger } from "../logging/index.ts";
 import { tryAcquire } from "../notifications/rate-limit.ts";
 import { recordChatDelivery } from "../observability/instrumentation.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
-import { recordUsageEvent } from "../stats/usage-events.ts";
+import { recordUsageEvent } from "../stats/index.ts";
 import { now } from "../utils/clock.ts";
 import type { ChatAdapter } from "./adapter.ts";
 import { mapToolNameToKind } from "./api.ts";
@@ -39,6 +39,7 @@ import { resolveChatPrincipal } from "./principal.ts";
 
 export type { DispatchOutcome, HandleChatEventOpts } from "./dispatcher-types.ts";
 
+import { deviceConfirmationPort } from "../conversations/public/elicitation.ts";
 import type { DispatchOutcome, HandleChatEventOpts } from "./dispatcher-types.ts";
 import { classifyChatElicitError, routeChatInteraction } from "./elicit-routing.ts";
 import { withConversationTurnLock } from "./turn-lock.ts";
@@ -367,7 +368,7 @@ async function salvageTypedReplyToPendingElicitation(args: {
     return null;
   }
 
-  await assertTaskRunTurn(deps.db, { tenant_id, conversation_id, actor_id: user_id, principal });
+  await assertTaskRunWriter(deps.db, { tenant_id, conversation_id, actor_id: user_id, principal });
   const turnAbortCtrl = await registerConversationAbort(tenant_id, conversation_id, deps.db);
   try {
     const resolved = await withConversationTurnLock(tenant_id, conversation_id, () =>
@@ -383,6 +384,7 @@ async function salvageTypedReplyToPendingElicitation(args: {
           turn_abort_ctrl: turnAbortCtrl,
           require_same_actor: true,
           surface: "chat",
+          local_confirmations: deviceConfirmationPort(deps.db),
         },
         deps.db,
       ),
@@ -672,7 +674,7 @@ async function handleChatEventImpl(
     try {
       turn = await runTurnForChannel(() =>
         withConversationTurnLock(tenant_id, conversation_id, async () => {
-          await assertTaskRunTurn(db, {
+          await assertTaskRunWriter(db, {
             tenant_id,
             conversation_id,
             actor_id: user_id,

@@ -4,6 +4,7 @@ import { AuditAction } from "../../audit/types.ts";
 import { policy } from "../../auth/policy.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { roles, users } from "../../db/schema/index.ts";
+import { resumeBudgetParkedRuns } from "../../execution/budget-park.ts";
 import {
   ApprovalPolicyError,
   changeApprovalPolicy,
@@ -22,8 +23,12 @@ import {
   type SetupPreferences,
   writeSetupPreferences,
 } from "../../identity/setup-preferences.ts";
+import { writeSpendLimit } from "../../llm/accounting/spend-settings.ts";
+import { invalidateAttention } from "../../operator/attention.ts";
+import { SPEND_ADMIN_PERMISSION } from "../../operator/spend-attention.ts";
 import { principalHolds } from "../../rbac/evaluator.ts";
 import { defineOperation, type OperationScope, type Rejection, reject } from "./index.ts";
+import { spendView } from "./spend-limit.ts";
 
 const TAGS = ["identity"] as const;
 
@@ -123,7 +128,10 @@ const ServiceSlug = z
 
 const SetupBody = z
   .object({
-    default_chat_mode: z.enum(["ask", "auto", "plan"]).optional(),
+    ask_before_writing: z
+      .boolean()
+      .optional()
+      .describe("The person's rule: always ask before a step writes, even when the job covers it."),
     default_environment: z.enum(["dev", "prod"]).optional(),
     approver: ApproverInputSchema.optional(),
     notifications: NotificationScheduleSchema.optional(),
@@ -138,15 +146,25 @@ const SetupBody = z
       ),
     first_job: z.string().trim().min(1).max(120).nullable().optional(),
     services: z.array(ServiceSlug).max(50).optional(),
+    monthly_spend_usd: z
+      .number()
+      .nonnegative()
+      .max(1_000_000)
+      .optional()
+      .describe(
+        "How many US dollars SubKit may spend on AI per month in this workspace; 0 means no limit. Sets the workspace's monthly AI budget and needs identity:write.",
+      ),
   })
   .strict()
   .openapi("UpdateSetupBody");
 
 const SetupSchema = z
   .object({
-    default_chat_mode: z
-      .enum(["ask", "auto", "plan"])
-      .describe("The mode a new conversation starts in when the client sends none."),
+    ask_before_writing: z
+      .boolean()
+      .describe(
+        "The person's rule: every step that writes asks first, even when the job or a saved rule covers it. Off unless chosen.",
+      ),
     default_environment: z
       .enum(["dev", "prod"])
       .describe("The environment new workflows, tasks and approval dialogs start with."),
@@ -164,10 +182,10 @@ const SetupSchema = z
     first_job: z.string().nullable(),
     services: z.array(z.string()),
     unset: z
-      .array(z.enum(["default_chat_mode", "default_environment", "approver", "notifications"]))
+      .array(z.enum(["default_environment", "approver", "notifications"]))
       .describe("Choices the person has not made yet; their values are the recommended ones."),
     recommended: z.object({
-      default_chat_mode: z.enum(["ask", "auto", "plan"]),
+      ask_before_writing: z.boolean(),
       default_environment: z.enum(["dev", "prod"]),
       approver: z.object({ kind: z.literal("self") }),
       notifications: NotificationScheduleSchema,
@@ -183,6 +201,16 @@ const SetupSchema = z
       .describe(
         "Present once, right after this request prepared an invitation for the teammate. No mail was sent.",
       ),
+    spend: z
+      .object({
+        limit_usd: z
+          .number()
+          .nullable()
+          .describe("The workspace's monthly AI limit; null means none."),
+        can_change: z.boolean().describe("Whether this person may change it."),
+      })
+      .describe("The workspace's monthly AI spending limit in US dollars.")
+      .openapi("SetupSpend"),
     updated_at: z.string().nullable(),
   })
   .openapi("Setup");
@@ -197,6 +225,7 @@ interface SetupResult {
   readonly missing_permissions: readonly string[] | null;
   readonly pair?: PairReadiness;
   readonly invitation?: { invite_id: string; plaintext_token: string; expires_at: Date };
+  readonly spend: { limit_usd: number | null; can_change: boolean };
 }
 
 function person(scope: OperationScope): ResolvedPrincipal | Rejection {
@@ -277,7 +306,19 @@ async function pairReadiness(
   return { pair: eligible.length < 2 ? "needs_second_approver" : "needs_admin" };
 }
 
-function body({ setup, teammate_status, missing_permissions, invitation, pair }: SetupResult) {
+async function spendFacts(scope: OperationScope): Promise<SetupResult["spend"]> {
+  const view = await spendView(scope);
+  return { limit_usd: view.reading.limit_usd, can_change: view.can_change };
+}
+
+function body({
+  setup,
+  teammate_status,
+  missing_permissions,
+  invitation,
+  pair,
+  spend,
+}: SetupResult) {
   const approver =
     setup.approver.kind === "self"
       ? { kind: "self" as const }
@@ -297,7 +338,7 @@ function body({ setup, teammate_status, missing_permissions, invitation, pair }:
           missing_permissions: missing_permissions ?? [],
         };
   return {
-    default_chat_mode: setup.default_chat_mode,
+    ask_before_writing: setup.ask_before_writing,
     default_environment: setup.default_environment,
     approver,
     notifications: setup.notifications,
@@ -316,6 +357,7 @@ function body({ setup, teammate_status, missing_permissions, invitation, pair }:
           },
         }
       : {}),
+    spend,
     updated_at: setup.updated_at ? setup.updated_at.toISOString() : null,
   };
 }
@@ -336,6 +378,7 @@ export const getSetupOperation = defineOperation<null, SetupResult>({
       setup,
       ...(await teammateFacts(scope, setup)),
       ...(await pairReadiness(scope, principal, setup, false)),
+      spend: await spendFacts(scope),
     };
   },
   http: {
@@ -433,9 +476,25 @@ export const putSetupOperation = defineOperation<SetupInput, SetupResult>({
       ? await prepareApprover(scope, principal, input.approver)
       : null;
     if (prepared && "rejected" in prepared) return prepared;
+    if (input.monthly_spend_usd !== undefined) {
+      if (!(await principalHolds(scope.db, principal, SPEND_ADMIN_PERMISSION)))
+        return reject.status(
+          403,
+          "spend_admin_required",
+          "Only a workspace admin sets the workspace's monthly AI limit.",
+        );
+      await writeSpendLimit(
+        scope.db,
+        principal,
+        input.monthly_spend_usd,
+        scope.request_source ?? "api",
+      );
+      invalidateAttention(scope.tenant_id);
+      await resumeBudgetParkedRuns(scope.db, scope.tenant_id, scope.boss);
+    }
     const patch: SetupPatch = {
-      ...(input.default_chat_mode !== undefined
-        ? { default_chat_mode: input.default_chat_mode }
+      ...(input.ask_before_writing !== undefined
+        ? { ask_before_writing: input.ask_before_writing }
         : {}),
       ...(input.default_environment !== undefined
         ? { default_environment: input.default_environment }
@@ -460,6 +519,7 @@ export const putSetupOperation = defineOperation<SetupInput, SetupResult>({
       ...(await teammateFacts(scope, setup)),
       ...(await pairReadiness(scope, principal, setup, input.approver?.kind === "pair")),
       ...(prepared?.invitation ? { invitation: prepared.invitation } : {}),
+      spend: await spendFacts(scope),
     };
   },
   http: {
@@ -470,7 +530,7 @@ export const putSetupOperation = defineOperation<SetupInput, SetupResult>({
     response: SetupSchema,
     errors: {
       401: "Unauthorized",
-      403: "person_required — only a person has setup choices",
+      403: "person_required — only a person has setup choices; spend_admin_required — monthly_spend_usd needs identity:write",
       404: "Not found",
       409: "approver_already_known — the address belongs to a person who cannot be invited again",
       422: "pair_same_person — the second person in a pair has to be someone else",

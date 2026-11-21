@@ -12,9 +12,9 @@ describe("markdown helpers", () => {
     expect(applyFormat("a\nb", 0, 3, "list").value).toBe("- a\n- b");
     expect(applyFormat("a\nb", 0, 3, "olist").value).toBe("1. a\n2. b");
   });
-  it("references use @attachment: for files and @skill: for skills", () => {
-    expect(refToken("file", "angebot.pdf")).toBe("@attachment:angebot.pdf");
-    expect(refToken("skill", "Rollbacks")).toBe("@skill:Rollbacks");
+  it("a reference is @prefix:name", () => {
+    expect(refToken("attachment", "angebot.pdf")).toBe("@attachment:angebot.pdf");
+    expect(refToken("note", "Rollbacks")).toBe("@note:Rollbacks");
   });
   it("strips a leading H1 only when it repeats the page title", () => {
     expect(stripTitleHeading("# Tonalität und Stil\n\nText", "Tonalität und Stil")).toBe("Text");
@@ -28,8 +28,8 @@ describe("markdown helpers", () => {
 describe("list helpers", () => {
   it("matches case-insensitively and treats an empty query as a match", () => {
     expect(matches("", "x")).toBe(true);
-    expect(matches("GMAIL", "Gmail Anhänge")).toBe(true);
-    expect(matches("stripe", "Gmail")).toBe(false);
+    expect(matches("INVOICE", "Invoice attachments")).toBe(true);
+    expect(matches("receipt", "Invoice")).toBe(false);
   });
   it("groups in first-seen order", () => {
     expect(groupBy(["a1", "b1", "a2"], (s) => s[0] ?? "")).toEqual([

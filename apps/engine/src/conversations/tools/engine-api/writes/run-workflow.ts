@@ -1,7 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import { refusalCause } from "../../../../execution/use-cases/core/run-workflow.ts";
 import { createRunWorkflow } from "../../../../execution/use-cases/run-workflow.ts";
-import { logger } from "../../../../logging/logger.ts";
+import { logger } from "../../../../logging/index.ts";
 import { recordAuthoringGateBlock } from "../../../../observability/instrumentation.ts";
 import {
   sampleWorkflowOutputForLlm,
@@ -445,7 +445,7 @@ export const runWorkflowTool: ConversationTool = {
       const admitted = outcome.admitted;
       const holdWrites = admitted.hold_writes;
       if (outcome.kind === "replayed") {
-        const replayRunning = ["queued", "running"].includes(admitted.status);
+        const replayRunning = ["queued", "waiting_for_device", "running"].includes(admitted.status);
         return {
           ok: true,
           data: withStatus(

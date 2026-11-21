@@ -8,11 +8,12 @@ import { conversations, executions, llmUsage, workflows } from "../db/schema/ind
 import { taskRuns, tasks } from "../db/schema/tasks.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { TASK_USAGE_NOT_INCLUDED, taskUsage } from "../tasks/usage.ts";
+import { testEnv } from "../test-helpers/determinism/env.ts";
 import { seedConversation, seedTenant } from "../test-helpers/seed.ts";
 import { aggregateLlm, type LlmGroup } from "./aggregate-llm.ts";
 import { readLlmCostByKey, readLlmWindowCost } from "./llm-cost.ts";
 
-const skip = process.env.REQUIRES_PG === "0";
+const skip = testEnv.REQUIRES_PG === "0";
 
 const FROM = new Date("2026-03-01T00:00:00.000Z");
 const TO = new Date("2026-04-01T00:00:00.000Z");

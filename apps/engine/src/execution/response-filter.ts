@@ -1,3 +1,4 @@
+import { safeRegex } from "../utils/safe-regex.ts";
 import type { ResponseFilter } from "../workflows/types.ts";
 
 export class ResponseFilterFailError extends Error {
@@ -13,7 +14,7 @@ export class ResponseFilterFailError extends Error {
 const DEFAULT_MASK = "***redacted***";
 
 function matches(filter: ResponseFilter, key: string | null, value: unknown): boolean {
-  const re = new RegExp(filter.pattern);
+  const re = safeRegex(filter.pattern);
   if (filter.target === "KEYS" || filter.target === "BOTH") {
     if (key && re.test(key)) return true;
   }

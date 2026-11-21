@@ -6,9 +6,7 @@ import { memo } from "react";
 import type { EngineClient, SetupValidationResponse } from "../engine-client.ts";
 import { OnboardingWizard } from "../repl/onboarding-wizard.tsx";
 import type { PaneSpec } from "../repl/slash/handler.ts";
-import type { PermissionMode } from "../repl/status-line/render.ts";
 import { AdminCommand } from "../settings-ui/AdminCommand.tsx";
-import { PermissionsCommand } from "../settings-ui/PermissionsCommand.tsx";
 import { ProfileCommand } from "../settings-ui/ProfileCommand.tsx";
 import { SettingsPane } from "../settings-ui/SettingsPane.tsx";
 
@@ -443,7 +441,6 @@ interface PaneHostProps {
   messages: SkSessionState["messages"];
   turnTokens: number | null;
   statusTenantId: string | undefined;
-  activeMode: PermissionMode;
   launcherOpen: boolean;
   onDismiss: () => void;
   showInfo: (message: string) => void;
@@ -461,7 +458,6 @@ export const PaneHost: React.FC<PaneHostProps> = ({
   messages,
   turnTokens,
   statusTenantId,
-  activeMode,
   launcherOpen,
   onDismiss,
   showInfo,
@@ -546,18 +542,8 @@ export const PaneHost: React.FC<PaneHostProps> = ({
         {...(pane.initialTab !== undefined ? { initialTab: pane.initialTab } : {})}
         sessionId={pane.sessionId ?? conversationId ?? null}
         sessionTitle={pane.sessionTitle ?? null}
-        {...(pane.permissionMode !== undefined
-          ? { permissionMode: pane.permissionMode }
-          : { permissionMode: activeMode })}
         sessionTokens={pane.sessionTokens ?? turnTokens}
         weekTokens={pane.weekTokens ?? null}
-        onDismiss={onDismiss}
-      />
-    ) : null}
-    {pane?.kind === "permissions" && engineClient ? (
-      <PermissionsCommand
-        client={engineClient}
-        tenant={pane.tenant ?? null}
         onDismiss={onDismiss}
       />
     ) : null}

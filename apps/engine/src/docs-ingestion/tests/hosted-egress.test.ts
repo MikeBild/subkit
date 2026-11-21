@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { _withEgressLookupForTests } from "../../connectors/egress-guard.ts";
 import { connectorDocuments, connectors, tenants } from "../../db/schema/index.ts";
 import { tenantWorkSnapshot } from "../../execution/tenant-work.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { ingestDocs } from "../service.ts";
 import type { DocSourceType } from "../types.ts";
 import { createDocsTestCtx, type DocsTestCtx } from "./setup.ts";

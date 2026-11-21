@@ -143,7 +143,8 @@ export function deriveExecutionOutcome<
   rows: readonly OutcomeStepRow[],
   facts: OutcomeFacts<Classification, Refusal, Connector>,
 ): ExecutionOutcome<Classification, Refusal, Connector> {
-  const running = exec.status === "queued" || exec.status === "running";
+  const running =
+    exec.status === "queued" || exec.status === "waiting_for_device" || exec.status === "running";
   let succeeded = 0;
   let failed = 0;
   let held = 0;

@@ -9,7 +9,7 @@ import {
   workflowsSchedules,
   workflowVersions,
 } from "../../../db/schema/index.ts";
-import { logger } from "../../../logging/logger.ts";
+import { logger } from "../../../logging/index.ts";
 import { workflowExecutionEnvironment } from "../../../workflows/execution-environment.ts";
 import { humanChatAnswer } from "../../answer-actor.ts";
 import { maybeAutoPersistFromElicitation } from "../../persistence/auto-persist/index.ts";
@@ -296,16 +296,7 @@ test("a product-bound sensitive workflow never reaches the conversation palette"
 
   const warnSpy = spyOn(logger, "warn");
   try {
-    const wrapped = await wrapTools(
-      makeCtx(),
-      makeTurnSignals(),
-      [],
-      tdb.db,
-      [],
-      {},
-      null,
-      principal,
-    );
+    const wrapped = await wrapTools(makeCtx(), makeTurnSignals(), [], tdb.db, [], {}, principal);
     expect("wf_product-round" in wrapped).toBe(false);
     expect("wf_plain-tool" in wrapped).toBe(true);
     const schemaWarns = warnSpy.mock.calls.filter(

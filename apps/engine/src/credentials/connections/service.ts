@@ -6,16 +6,16 @@ import { resolveActor } from "../../audit/recorders/types.ts";
 import type { Db, Executor } from "../../db/client.ts";
 import {
   connectors,
-  credentials,
   outboundConnectionStarts,
   outboundConnections,
   systemAccounts,
   tenants,
   users,
+  vaultItems,
 } from "../../db/schema/index.ts";
 import { withTenantWork } from "../../execution/index.ts";
 import { lockActiveTenant, SelfServiceIdentityError } from "../../identity/index.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { invalidateTenantState } from "../../operator/index.ts";
 import {
   createSecretVersion,
@@ -566,21 +566,21 @@ async function usersOfConnections(
   if (connectionIds.length === 0) return out;
   const rows = await db
     .selectDistinct({
-      connection_id: credentials.connection_id,
+      connection_id: vaultItems.connection_id,
       connector_id: connectors.id,
       slug: connectors.slug,
       display_name: connectors.display_name,
     })
-    .from(credentials)
+    .from(vaultItems)
     .innerJoin(
       connectors,
-      and(eq(connectors.id, credentials.connector_id), eq(connectors.tenant_id, tenantId)),
+      and(eq(connectors.id, vaultItems.connector_id), eq(connectors.tenant_id, tenantId)),
     )
     .where(
       and(
-        eq(credentials.tenant_id, tenantId),
-        inArray(credentials.connection_id, [...connectionIds]),
-        isNull(credentials.deleted_at),
+        eq(vaultItems.tenant_id, tenantId),
+        inArray(vaultItems.connection_id, [...connectionIds]),
+        isNull(vaultItems.deleted_at),
         isNull(connectors.deleted_at),
       ),
     )
@@ -942,8 +942,8 @@ export async function disconnectConnection(
   }
   const [usage] = await db
     .select({ n: count() })
-    .from(credentials)
-    .where(and(eq(credentials.tenant_id, args.tenant_id), eq(credentials.connection_id, row.id)));
+    .from(vaultItems)
+    .where(and(eq(vaultItems.tenant_id, args.tenant_id), eq(vaultItems.connection_id, row.id)));
   await db
     .delete(outboundConnections)
     .where(

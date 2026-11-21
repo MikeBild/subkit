@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Skeleton } from "@ui/atoms/skeleton";
 import { type ReactNode, useContext, useEffect, useMemo, useState } from "react";
 import {
   ApiError,
@@ -14,7 +15,6 @@ import {
 } from "@/api/tenant-context";
 import { WorkspaceChangedPage } from "@/components/cockpit/patterns/workspace-changed";
 import { BootstrapErrorPage, LoginRedirect, SessionExpiredPage } from "@/components/failure-state";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useI18n } from "@/lib/i18n-context";
 import { installationId } from "./installation-context";
 import { InstallationProvider } from "./installation-provider";

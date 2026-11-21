@@ -3,7 +3,7 @@ import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { toolApprovals } from "../db/schema/index.ts";
 import { rehydrateExecutionPrincipal } from "../execution/authorization-context.ts";
-import { errorFields, logger } from "../logging/logger.ts";
+import { errorFields, logger } from "../logging/index.ts";
 
 export async function rehydrateApprovalRequester(
   db: Db,

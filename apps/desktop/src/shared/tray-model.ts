@@ -1,7 +1,6 @@
 import { badgeLabel } from "./attention.ts";
-import { type Locale, t } from "./i18n.ts";
+import { clockLabel, type Locale, t } from "./i18n.ts";
 import type { Mute } from "./quiet-hours.ts";
-import { clockLabel, st } from "./shell-i18n.ts";
 
 export type Connection = "signed-out" | "connecting" | "online" | "offline" | "expired" | "revoked";
 
@@ -13,6 +12,7 @@ export interface TrayModel {
   update: MenuUpdateItem | null;
   quickCapture: string | null;
   launchAtLogin: { checked: boolean; enabled: boolean };
+  liveView: boolean;
 }
 
 export interface MenuUpdateItem {
@@ -28,6 +28,7 @@ export type TrayAction =
   | "launchAtLogin"
   | "update"
   | "quickCapture"
+  | "liveView"
   | "settings"
   | "reportProblem"
   | "quit";
@@ -55,9 +56,9 @@ export function trayStatus(model: Pick<TrayModel, "locale" | "connection" | "cou
 
 export function muteLabel(locale: Locale, mute: Mute): string {
   const paused = mute.reason === "paused";
-  if (!mute.until) return st(locale, paused ? "tray.paused" : "tray.quiet");
+  if (!mute.until) return t(locale, paused ? "tray.paused" : "tray.quiet");
   const time = clockLabel(locale, mute.until);
-  return st(locale, paused ? "tray.pausedUntil" : "tray.quietUntil", { time });
+  return t(locale, paused ? "tray.pausedUntil" : "tray.quietUntil", { time });
 }
 
 export function trayTooltip(appName: string, model: TrayModel): string {
@@ -79,6 +80,16 @@ export function trayMenu(model: TrayModel): TrayMenuItem[] {
   const items: TrayMenuItem[] = [
     { kind: "item", action: "open", label: t(locale, "tray.open"), enabled: true },
     { kind: "item", action: "needsYou", label: trayStatus(model), enabled: live },
+    ...(model.liveView
+      ? [
+          {
+            kind: "item" as const,
+            action: "liveView" as const,
+            label: t(locale, "tray.liveView"),
+            enabled: true,
+          },
+        ]
+      : []),
     { kind: "separator" },
   ];
   const paused = mute?.reason === "paused";
@@ -107,7 +118,7 @@ export function trayMenu(model: TrayModel): TrayMenuItem[] {
     items.push({
       kind: "item",
       action: "quickCapture",
-      label: st(locale, "tray.quickCapture"),
+      label: t(locale, "tray.quickCapture"),
       enabled: live,
       accelerator: model.quickCapture,
     });

@@ -114,7 +114,6 @@ describe("wrapTools chat-surface palette switch", () => {
       ctx.testDb.db as unknown as Db,
       ["workflow-authoring", "connector-creation-guidance"],
       {},
-      null,
       principal,
     );
     const names = Object.keys(wrapped);
@@ -147,7 +146,6 @@ describe("wrapTools chat-surface palette switch", () => {
       ctx.testDb.db as unknown as Db,
       [],
       {},
-      null,
       principal,
     );
     expect(await enforcedRows()).toHaveLength(1);
@@ -191,7 +189,6 @@ describe("wrapTools chat-surface palette switch", () => {
       dbWithFailingInsert,
       ["workflow-authoring", "connector-creation-guidance"],
       {},
-      null,
       principal,
     );
     const names = Object.keys(wrapped);

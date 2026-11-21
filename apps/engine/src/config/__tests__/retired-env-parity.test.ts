@@ -60,11 +60,8 @@ describe("RETIRED_ENV_KEYS hygiene", () => {
     for (const [file, lines] of files) {
       lines.forEach((line, idx) => {
         for (const key of retired) {
-          const dot = new RegExp(`process\\.env\\.${key}\\b`);
-          const bracket = new RegExp(`process\\.env\\[\\s*"${key}"\\s*\\]`);
-          if (dot.test(line) || bracket.test(line)) {
-            violations.push(`${file}:${idx + 1} reads process.env.${key}`);
-          }
+          const read = new RegExp(`\\b(readEnv|envFlag|envInt|envList)\\(\\s*"${key}"`);
+          if (read.test(line)) violations.push(`${file}:${idx + 1} reads ${key}`);
         }
       });
     }

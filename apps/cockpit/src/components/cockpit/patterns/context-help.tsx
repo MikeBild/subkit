@@ -1,6 +1,6 @@
+import { IconButton } from "@ui/molecules/icon-button";
 import { CircleHelp } from "lucide-react";
 import { type ReactNode, useId, useState } from "react";
-import { IconButton } from "@/components/cockpit/icon-button";
 
 export function ContextHelp({
   label,

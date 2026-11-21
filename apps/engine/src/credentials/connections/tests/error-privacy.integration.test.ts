@@ -4,7 +4,7 @@ import { setConfigKey } from "../../../config/loader.ts";
 import { auditLog, outboundConnections } from "../../../db/schema/index.ts";
 import { TEST_DB_HOOK_TIMEOUT } from "../../../db/tests/setup.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../../http/tests/setup.ts";
-import { logger } from "../../../logging/logger.ts";
+import { logger } from "../../../logging/index.ts";
 import { now } from "../../../utils/clock.ts";
 import { refreshDueConnections } from "../service.ts";
 import { type FakeOAuthServer, startFakeOAuthServer } from "./fake-oauth-server.ts";

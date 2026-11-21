@@ -1,5 +1,6 @@
 [install]
 registry = "https://registry.npmjs.org/"
+minimumReleaseAge = 1209600
 
 [test]
 preload = [

@@ -1,11 +1,10 @@
-import { Panel } from "@ui/components/proto/Pill";
-import {
-  IconTile,
-  MiniBars,
-  ServiceChips,
-  StatusDot,
-  StepGraph,
-} from "@ui/components/proto/visual";
+import { IconTile } from "@ui/atoms/icon-tile";
+import type { Tone } from "@ui/atoms/pill";
+import { Panel } from "@ui/atoms/pill";
+import { StatusDot } from "@ui/atoms/status-dot";
+import { cn } from "@ui/lib/utils";
+import { MiniBars } from "@ui/molecules/charts";
+import { StepGraph } from "@ui/organisms/step-graph";
 import {
   Check,
   Cog,
@@ -18,9 +17,8 @@ import {
   X,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { ServiceChips } from "@/features/connectors";
 import { useI18n } from "@/lib/i18n-context";
-import { cn } from "@/lib/utils";
-import type { Tone } from "./model";
 import { boundaryCounts, graphState, type StepRow } from "./workflow-model";
 
 const KIND_ICON = { read: Database, write: PenLine, compute: Cog } as const;

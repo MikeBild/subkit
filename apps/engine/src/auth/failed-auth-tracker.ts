@@ -1,4 +1,4 @@
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 
 const WINDOW_MS = 5 * 60 * 1000;
 const THRESHOLD = 10;

@@ -70,3 +70,29 @@ test("the attention contract requires the tasks source and refuses unknown task 
       .success,
   ).toBe(false);
 });
+
+test("the attention contract accepts every device reason on a device or workflow subject", () => {
+  for (const reason of [
+    "device_offline_waiting",
+    "local_confirmation_needed",
+    "device_permission_missing",
+    "folder_changed",
+  ] as const) {
+    const onDevice = AttentionV1Schema.parse(
+      attention({
+        reason,
+        subject: { kind: "device", id: "66666666-6666-4666-8666-666666666666", name: "MacBook" },
+      }),
+    );
+    expect(onDevice.items[0]?.reason).toBe(reason);
+    expect(onDevice.items[0]?.subject?.kind).toBe("device");
+  }
+  expect(
+    AttentionV1Schema.parse(
+      attention({
+        reason: "folder_changed",
+        subject: { kind: "workflow", id: "77777777-7777-4777-8777-777777777777", name: null },
+      }),
+    ).items[0]?.subject?.kind,
+  ).toBe("workflow");
+});

@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { render } from "@/components/cockpit/patterns/test-utils";
 import {
   NotificationBellIcon,
   notificationBellLabel,
-} from "@/components/cockpit/installation-dialogs";
-import { render } from "@/components/cockpit/patterns/test-utils";
+} from "@/features/pwa/ui/installation-dialogs";
 import { translate } from "@/lib/i18n";
 import { AttentionDot } from "./live-indicator";
 

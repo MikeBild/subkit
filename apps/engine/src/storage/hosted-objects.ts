@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { getConfig } from "../config/loader.ts";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
@@ -6,15 +5,11 @@ import type { Db, Executor } from "../db/client.ts";
 import { hostedQuotaError } from "../db/hosted-quota-errors.ts";
 import { hostedStorageObjects, tenants } from "../db/schema/index.ts";
 import { lockActiveTenant } from "../identity/tenant-status.ts";
+import { objectStoreNamespace } from "./backend.ts";
 import type { ObjectStore } from "./object-store.ts";
 
 export function hostedObjectNamespace(): string {
-  const config = getConfig().storage.object_store;
-  return createHash("sha256")
-    .update(
-      JSON.stringify([config.endpoint, config.region, config.bucket, config.force_path_style]),
-    )
-    .digest("hex");
+  return objectStoreNamespace(getConfig().storage);
 }
 
 export async function reserveHostedObject(

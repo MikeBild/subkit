@@ -1,7 +1,6 @@
 import type { NativeNotification } from "./attention.ts";
-import type { Locale } from "./i18n.ts";
+import { type Locale, t } from "./i18n.ts";
 import { type TooOldAsk, tooOldCopyIn } from "./server-too-old.ts";
-import { st } from "./shell-i18n.ts";
 import type { Connection } from "./tray-model.ts";
 import type { UpdateState } from "./updates.ts";
 
@@ -26,8 +25,8 @@ export function statusNotification(kind: StatusNotice, locale: Locale): StatusNo
   return {
     notification: {
       id: `status:${kind}`,
-      title: st(locale, `status.${kind}.title`),
-      body: st(locale, `status.${kind}.body`),
+      title: t(locale, `status.${kind}.title`),
+      body: t(locale, `status.${kind}.body`),
       href: null,
       urgency: kind === "online" ? "low" : "normal",
       silent: kind === "online",
@@ -50,8 +49,8 @@ export function updateNotification(version: string, locale: Locale): StatusNotif
   return {
     notification: {
       id: `update:${version}`,
-      title: st(locale, "status.update.title"),
-      body: st(locale, "status.update.body", { version }),
+      title: t(locale, "status.update.title"),
+      body: t(locale, "status.update.body", { version }),
       href: null,
       urgency: "low",
       silent: true,
@@ -85,16 +84,16 @@ export function shellBanner(
     return {
       kind: "offline",
       tone: "warning",
-      title: st(locale, "status.offline.title"),
-      body: st(locale, "status.offline.body"),
+      title: t(locale, "status.offline.title"),
+      body: t(locale, "status.offline.body"),
       ask: null,
     };
   if (connection === "expired" || connection === "revoked")
     return {
       kind: connection,
       tone: "danger",
-      title: st(locale, `status.${connection}.title`),
-      body: st(locale, `status.${connection}.body`),
+      title: t(locale, `status.${connection}.title`),
+      body: t(locale, `status.${connection}.body`),
       ask: null,
     };
   if (tooOld) {

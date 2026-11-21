@@ -1,13 +1,13 @@
-import { envIntOr } from "../utils/env-config.ts";
+import { envInt } from "../env.ts";
 import type { BudgetState } from "./types.ts";
 
-export const TOTAL_BUDGET_BYTES = envIntOr(
+export const TOTAL_BUDGET_BYTES = envInt(
   "DOCS_INGESTION_MAX_BYTES_PER_CONNECTOR",
   10 * 1024 * 1024,
 );
-export const PER_PAGE_BYTES = envIntOr("DOCS_INGESTION_MAX_BYTES_PER_DOC", 3 * 1024 * 1024);
-export const MAX_LINKS = envIntOr("DOCS_INGESTION_MAX_LINKS", 20);
-const MAX_SPECS = envIntOr("DOCS_INGESTION_MAX_SPECS", 100);
+export const PER_PAGE_BYTES = envInt("DOCS_INGESTION_MAX_BYTES_PER_DOC", 3 * 1024 * 1024);
+export const MAX_LINKS = envInt("DOCS_INGESTION_MAX_LINKS", 20);
+const MAX_SPECS = envInt("DOCS_INGESTION_MAX_SPECS", 100);
 export const DEDUP_THRESHOLD = 0.9;
 
 export function createBudgetState(): BudgetState {

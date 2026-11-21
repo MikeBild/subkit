@@ -3,7 +3,7 @@ import { recordConnectorDraftCredentialRejected } from "../../audit/recorders/in
 import { mcpAuthKindForType } from "../../connectors/config-schemas.ts";
 import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
 import { type AuthType, DriverEnum } from "../../connectors/types.ts";
-import { log } from "../../logging/logger.ts";
+import { log } from "../../logging/index.ts";
 import { SECRET_PATTERNS, SENSITIVE_KEY_PATTERN } from "../../logging/scrub-secrets.ts";
 import { withConnectorDraft } from "../authoring-state/index.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";

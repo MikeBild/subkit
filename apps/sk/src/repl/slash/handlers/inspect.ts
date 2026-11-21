@@ -33,11 +33,6 @@ export async function dispatchInspectSlash(
       return panify(ctx, "mcp catalog", lines);
     }
     case "permissions": {
-      if (ctx.openPane) {
-        const tenant = ctx.statusSnapshot?.tenant.slug ?? null;
-        ctx.openPane({ kind: "permissions", tenant });
-        return null;
-      }
       if (ctx.allowedPermissions.length === 0) return "no permissions probe cached";
       return panify(
         ctx,

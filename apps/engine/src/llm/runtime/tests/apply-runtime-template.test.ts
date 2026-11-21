@@ -1,5 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${…}` tokens are the subject under test — these are intentional placeholders, not accidental template-literal typos.
-
 import { describe, expect, it } from "bun:test";
 import { SK_INSTALL_GROUNDING } from "../../../conversations/agent/prompts.ts";
 import { applyRuntimeTemplate } from "../context-assembler.ts";

@@ -5,7 +5,7 @@ import {
   resolveConnectorCredential,
 } from "../../../connectors/drivers/http.ts";
 import { getConnector } from "../../../connectors/service.ts";
-import { auditLog, credentials } from "../../../db/schema/index.ts";
+import { auditLog, vaultItems } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { withSelfHostedDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
 import { seedConnector, seedTenant } from "../../../test-helpers/seed.ts";
@@ -80,9 +80,7 @@ async function refreshAudits(tenant_id: string) {
   return ctx.db
     .select()
     .from(auditLog)
-    .where(
-      and(eq(auditLog.tenant_id, tenant_id), eq(auditLog.action, "credential.oauth2_refreshed")),
-    );
+    .where(and(eq(auditLog.tenant_id, tenant_id), eq(auditLog.action, "vault.item.refreshed")));
 }
 
 describe("token_mint refresh through the HTTP driver", () => {
@@ -186,9 +184,9 @@ describe("token_mint refresh through the HTTP driver", () => {
     const { row, value } = fetched;
     if (value.mode !== "token_mint") throw new Error("wrong mode");
     await ctx.db
-      .update(credentials)
+      .update(vaultItems)
       .set({ credential_generation: row.credential_generation + 5 })
-      .where(and(eq(credentials.tenant_id, tenant_id), eq(credentials.id, row.id)));
+      .where(and(eq(vaultItems.tenant_id, tenant_id), eq(vaultItems.id, row.id)));
 
     await expect(
       withSelfHostedDriverFetchForTests(fetchSpy as unknown as typeof fetch, () =>

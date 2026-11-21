@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { isSafeRegex, SAFE_REGEX_REMEDY } from "../../../utils/safe-regex.ts";
 import type { ConversationTool, ToolResult } from "../index.ts";
 import { pauseForUserInput } from "./common.ts";
 
@@ -7,7 +8,10 @@ const inputSchema = z
     question: z.string().min(1),
     placeholder: z.string().optional(),
     multiline: z.boolean().optional(),
-    validation_regex: z.string().optional(),
+    validation_regex: z
+      .string()
+      .refine(isSafeRegex, { message: `regex_unsafe: ${SAFE_REGEX_REMEDY}` })
+      .optional(),
     default: z.string().optional(),
   })
   .openapi("AskUserTextInput");

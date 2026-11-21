@@ -2,6 +2,8 @@ import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { EditorState } from "@codemirror/state";
 import { EditorView, keymap, placeholder as placeholderText } from "@codemirror/view";
+import { cn } from "@ui/lib/utils";
+import { SegmentedControl } from "@ui/molecules/segmented-control";
 import {
   AtSign,
   Bold,
@@ -17,10 +19,8 @@ import { useEffect, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
-import { cn } from "@/lib/utils";
 import { PREVIEW_COMPONENTS } from "./file-preview";
 import { formatMarkdown, type MarkdownFormat } from "./markdown-format";
-import { SegmentedControl } from "./segmented-control";
 
 export type MarkdownEditorMode = "write" | "split" | "preview";
 

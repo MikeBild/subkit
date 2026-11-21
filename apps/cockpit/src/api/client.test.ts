@@ -1,8 +1,6 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import {
-  appendBody,
   logout,
-  respondBody,
   respondToChatApproval,
   respondToChatChoice,
   respondToChatForm,
@@ -95,17 +93,14 @@ describe("sendConversationTurn", () => {
     ]);
   });
 
-  test("preserves an explicit conservative mode for a new conversation", async () => {
+  test("a new conversation sends only the message", async () => {
     const fetchMock = mock(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       outcomeResponse(_input),
     );
     globalThis.fetch = fetchMock as unknown as typeof fetch;
-    await sendConversationTurn({ message: "inspect it", permissionMode: "ask" });
+    await sendConversationTurn({ message: "inspect it" });
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect(JSON.parse(String(init.body))).toEqual({
-      initial_message: "inspect it",
-      permission_mode: "ask",
-    });
+    expect(JSON.parse(String(init.body))).toEqual({ initial_message: "inspect it" });
   });
 
   test("sends the selected intake ids only when the conversation starts", async () => {
@@ -349,21 +344,5 @@ describe("logout", () => {
 
     await expect(logout()).rejects.toMatchObject({ status: 403 });
     expect(attempts).toBe(1);
-  });
-});
-
-describe("chat mode on a turn", () => {
-  test("a message carries the mode only when you switched it", () => {
-    expect(appendBody("Hallo", "ask")).toEqual({ message: "Hallo", permission_mode: "ask" });
-    expect(appendBody("Hallo")).toEqual({ message: "Hallo" });
-    expect(appendBody("Hallo", null)).toEqual({ message: "Hallo" });
-  });
-
-  test("an answer to a question carries the switched mode too", () => {
-    expect(respondBody({ value: "ja" }, "plan")).toEqual({
-      output: { value: "ja" },
-      permission_mode: "plan",
-    });
-    expect(respondBody({ confirmed: true })).toEqual({ output: { confirmed: true } });
   });
 });

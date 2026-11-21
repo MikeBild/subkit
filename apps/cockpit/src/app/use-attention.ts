@@ -11,7 +11,7 @@ import {
   pairWaitingFor,
   settleHidden,
   waitingOnName,
-} from "@/pages/overview-model";
+} from "@/features/overview";
 import { canReadAttention, withHidden, withoutHidden } from "./attention-model";
 import { useLiveQueryOptions } from "./live-events";
 

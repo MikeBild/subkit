@@ -1,6 +1,6 @@
 import { admittedCoveringAuthority } from "../../../../execution/core/run-coverage.ts";
 import { withContext } from "../../../../logging/context.ts";
-import { errorFields, log, logger } from "../../../../logging/logger.ts";
+import { errorFields, log, logger } from "../../../../logging/index.ts";
 import { startToolSpan } from "../../../../observability/langfuse-spans.ts";
 import {
   boundForPersistence,

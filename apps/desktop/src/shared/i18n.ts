@@ -13,7 +13,6 @@ const MESSAGES = {
     en: "Pause notifications for 1 hour",
   },
   "tray.resume": { de: "Benachrichtigungen fortsetzen", en: "Resume notifications" },
-  "tray.paused": { de: "Benachrichtigungen pausiert", en: "Notifications paused" },
   "tray.launchAtLogin": { de: "Beim Anmelden starten", en: "Launch at login" },
   "tray.checkUpdates": { de: "Nach Updates suchen", en: "Check for updates" },
   "tray.quit": { de: "SubKit beenden", en: "Quit SubKit" },
@@ -206,13 +205,25 @@ const MESSAGES = {
     de: "Im Eingang liegen neue Einträge.",
     en: "New entries are in the Inbox.",
   },
-  "notify.reason.budget_critical": {
-    de: "Das Token-Kontingent ist fast aufgebraucht.",
-    en: "The token allowance is almost used up.",
+  "notify.reason.spend_warning": {
+    de: "80 % des KI-Budgets sind ausgegeben.",
+    en: "80 % of the AI budget is spent.",
+  },
+  "notify.reason.spend_limit_unset": {
+    de: "Leg ein monatliches KI-Budget fest.",
+    en: "Set a monthly AI budget.",
+  },
+  "notify.reason.spend_limit_reached": {
+    de: "Das KI-Budget ist erreicht. Chat und Aufgaben pausieren.",
+    en: "The AI budget is reached. Chat and tasks pause.",
   },
   "notify.reason.ai_access_missing": {
     de: "Der KI-Zugang fehlt.",
     en: "The AI access is missing.",
+  },
+  "notify.reason.model_tools_missing": {
+    de: "Das lokale Modell kann keine Werkzeuge aufrufen.",
+    en: "The local model can’t call tools.",
   },
   "notify.reason.risk_critical": {
     de: "Ein Risiko ist kritisch geworden.",
@@ -237,6 +248,22 @@ const MESSAGES = {
   "notify.reason.task_owner_unavailable": {
     de: "Die Aufgabe hat niemanden mehr, der sie verantwortet.",
     en: "The task no longer has anyone responsible for it.",
+  },
+  "notify.reason.device_offline_waiting": {
+    de: "Ein Run wartet, bis sein Gerät online ist.",
+    en: "A run is waiting for its device to come online.",
+  },
+  "notify.reason.local_confirmation_needed": {
+    de: "Bestätige eine Aktion auf deinem Gerät.",
+    en: "Confirm an action on your device.",
+  },
+  "notify.reason.device_permission_missing": {
+    de: "Diesem Gerät fehlt eine Systemberechtigung.",
+    en: "This device is missing a system permission.",
+  },
+  "notify.reason.folder_changed": {
+    de: "Ein freigegebener Ordner wurde ersetzt. Gib ihn neu frei.",
+    en: "An allowed folder was replaced. Allow it again.",
   },
   "notify.summary.schedulesPaused": {
     de: "{count} Zeitpläne wurden pausiert",
@@ -521,6 +548,30 @@ const MESSAGES = {
   },
   "profiles.remove.cancel": { de: "Abbrechen", en: "Cancel" },
 
+  "permissions.title": { de: "Damit SubKit Apps bedienen kann", en: "So SubKit can use apps" },
+  "permissions.name.accessibility": { de: "Bedienungshilfen", en: "Accessibility" },
+  "permissions.name.screen": { de: "Bildschirmaufnahme", en: "Screen Recording" },
+  "permissions.why.accessibility": {
+    de: "Mit dieser Berechtigung liest und bedient SubKit Knöpfe und Felder in den Apps, die du erlaubt hast.",
+    en: "With this permission, SubKit reads and uses buttons and fields in the apps you have allowed.",
+  },
+  "permissions.why.screen": {
+    de: "Mit dieser Berechtigung macht SubKit Bildschirmfotos des App-Fensters, auf denen Passwortfelder geschwärzt sind.",
+    en: "With this permission, SubKit takes screenshots of the app window with password fields blacked out.",
+  },
+  "permissions.granted": { de: "Erteilt", en: "Granted" },
+  "permissions.missing": { de: "Fehlt", en: "Missing" },
+  "permissions.open": { de: "Systemeinstellungen öffnen", en: "Open System Settings" },
+  "permissions.check": { de: "Erneut prüfen", en: "Check again" },
+  "permissions.checking": { de: "Wird geprüft …", en: "Checking …" },
+  "permissions.restart": { de: "SubKit neu starten", en: "Restart SubKit" },
+  "permissions.restarting": { de: "SubKit startet neu …", en: "SubKit is restarting …" },
+  "permissions.done": { de: "Fertig", en: "Done" },
+  "permissions.later": { de: "Später", en: "Later" },
+  "permissions.unsupported": {
+    de: "Diese Berechtigungen gibt es nur auf dem Mac.",
+    en: "These permissions exist only on the Mac.",
+  },
   "settings.title": { de: "Einstellungen", en: "Settings" },
   "settings.launchAtLogin": {
     de: "Beim Anmelden am Computer starten",
@@ -537,18 +588,445 @@ const MESSAGES = {
   "settings.language.system": { de: "Wie das System", en: "Same as system" },
   "settings.back": { de: "Zurück", en: "Back" },
   "settings.open": { de: "Einstellungen", en: "Settings" },
+
+  "local.title": { de: "Lokale Fähigkeiten", en: "Local capabilities" },
+  "local.manage": { de: "Verwalten", en: "Manage" },
+  "local.toggle": {
+    de: "Chat und Aufgaben dürfen diesen Mac nutzen",
+    en: "Let chat and tasks use this Mac",
+  },
+  "local.explain": {
+    de: "Workflows, Aufgaben und Chat nutzen auf diesem Mac nur, was du hier erlaubst.",
+    en: "Workflows, tasks and chat use only what you allow here on this Mac.",
+  },
+  "local.tabs": { de: "Lokale Erlaubnisse", en: "Local allowances" },
+  "local.tab.folders": { de: "Ordner", en: "Folders" },
+  "local.tab.websites": { de: "Websites", en: "Websites" },
+  "local.tab.apps": { de: "Apps", en: "Apps" },
+  "local.tab.keepOut": { de: "Tabu für SubKit", en: "Off limits for SubKit" },
+  "local.permissions": { de: "macOS-Berechtigungen", en: "macOS permissions" },
+  "local.permissions.hint": {
+    de: "Für Apps braucht SubKit Bedienungshilfen und Bildschirmaufnahme.",
+    en: "To work in apps, SubKit needs Accessibility and Screen Recording.",
+  },
+  "local.permissions.open": { de: "Berechtigungen prüfen", en: "Check permissions" },
+  "local.chooseFolder": { de: "Ordner auswählen …", en: "Choose folder…" },
+  "local.chooseApp": { de: "App auswählen …", en: "Choose app…" },
+  "local.access": { de: "Zugriff", en: "Access" },
+  "local.read": { de: "Lesen", en: "Read" },
+  "local.readWrite": { de: "Lesen und schreiben", en: "Read and write" },
+  "local.status.available": { de: "Erreichbar", en: "Available" },
+  "local.status.changed": { de: "Ordner geändert", en: "Folder changed" },
+  "local.status.missing": { de: "Fehlt", en: "Missing" },
+  "local.private": { de: "Privat – nur von dir eingegeben", en: "Private – entered by you only" },
+  "local.offLimits": { de: "Tabu", en: "Off limits" },
+  "local.blocked": { de: "Immer gesperrt", en: "Always blocked" },
+  "local.empty": {
+    de: "Noch keine Einträge. Füge unten den ersten hinzu.",
+    en: "No entries yet. Add the first one below.",
+  },
+  "local.origin": { de: "Website", en: "Website" },
+  "local.origin.placeholder": { de: "https://host:port", en: "https://host:port" },
+  "local.origin.error": {
+    de: "Gib nur eine Origin ein, z. B. https://host:port oder http://192.168.1.20 – ohne Pfad, Anmeldung, Abfrage oder Fragment.",
+    en: "Enter only an origin, e.g. https://host:port or http://192.168.1.20 – without a path, credentials, query or fragment.",
+  },
+  "local.add": { de: "Hinzufügen", en: "Add" },
+  "local.folder.error": {
+    de: "Diesen Ordner kann SubKit nicht freigeben. Wähle einen Unterordner – keine ganzen Laufwerke, keine System- oder versteckten Ordner und nicht deinen ganzen Benutzerordner.",
+    en: "SubKit can’t allow this folder. Choose a subfolder – not a whole disk, a system or hidden folder, or your entire home folder.",
+  },
+  "local.folder.error.tooMany": {
+    de: "Hier sind schon 200 Einträge. Entferne einen, dann wähle neu.",
+    en: "There are already 200 entries. Remove one, then choose again.",
+  },
+  "local.folder.error.missing": {
+    de: "Diesen Ordner gibt es nicht mehr. Wähle einen anderen.",
+    en: "This folder no longer exists. Choose another one.",
+  },
+  "local.remove.label": { de: "„{name}“ entfernen", en: "Remove “{name}”" },
+  "local.remove.title": { de: "„{name}“ entfernen?", en: "Remove “{name}”?" },
+  "local.remove.action": { de: "Entfernen", en: "Remove" },
+  "local.remove.body": {
+    de: "Workflows, Aufgaben und Chat können diesen Eintrag danach nicht mehr nutzen.",
+    en: "Workflows, tasks and chat can no longer use this entry afterwards.",
+  },
+  "local.remove.folderBody": {
+    de: "Workflows, Aufgaben und Chat können danach nicht mehr auf diesen Ordner zugreifen.",
+    en: "Workflows, tasks and chat can no longer access this folder afterwards.",
+  },
+  "local.remove.keepOutBody": {
+    de: "Dieser Eintrag ist danach nicht mehr tabu. Er wird dadurch nicht automatisch erlaubt.",
+    en: "This entry will no longer be off limits. It will not automatically be allowed.",
+  },
+  "local.error.title": {
+    de: "Lokale Erlaubnisse nicht geladen",
+    en: "Local allowances not loaded",
+  },
+  "local.error.body": {
+    de: "Die Erlaubnisse auf diesem Mac sind gerade nicht verfügbar. Geändert wurde nichts.",
+    en: "Allowances on this Mac are currently unavailable. Nothing was changed.",
+  },
+  "local.blockedApp.subkit": { de: "SubKit", en: "SubKit" },
+  "local.blockedApp.security_prompt": {
+    de: "Sicherheitsabfragen und Anmeldefenster",
+    en: "Security prompts and sign-in windows",
+  },
+  "local.blockedApp.password_manager": { de: "Passwort-Manager", en: "Password managers" },
+  "local.blockedApp.crypto_wallet": { de: "Krypto-Wallets", en: "Crypto wallets" },
+  "local.blockedApp.payment_banking": { de: "Banking und Zahlungen", en: "Banking and payments" },
+  "local.blockedApp.terminal": { de: "Terminal und Shells", en: "Terminal and shells" },
+  "local.blockedApp.automation": {
+    de: "Skripte und Automatisierung",
+    en: "Scripts and automation",
+  },
+  "local.blockedApp.system": {
+    de: "Systemeinstellungen und Installationsprogramme",
+    en: "System Settings and installers",
+  },
+  "local.blockedApp.remote_support": { de: "Fernwartung", en: "Remote support" },
+  "local.blockedApp.file_manager": { de: "Finder", en: "Finder" },
+  "workspace.choice.server": { de: "Mit einem Server verbinden", en: "Connect to a server" },
+  "workspace.choice.local": { de: "Nur auf diesem Mac", en: "Only on this Mac" },
+  "workspace.workspace": { de: "Auf diesem Mac", en: "On this Mac" },
+  "workspace.step.folder": { de: "Datenordner", en: "Data folder" },
+  "workspace.step.you": { de: "Du", en: "You" },
+  "workspace.step.ai": { de: "KI-Zugang", en: "AI access" },
+  "workspace.step.setting": { de: "Einrichten", en: "Setting up" },
+  "workspace.starting": { de: "Lokaler Arbeitsbereich startet", en: "Local workspace is starting" },
+  "workspace.phase.database": { de: "Datenbank", en: "Database" },
+  "workspace.phase.engine": { de: "Engine", en: "Engine" },
+  "workspace.phase.workspace": { de: "Arbeitsbereich", en: "Workspace" },
+  "workspace.chooseFolder": { de: "Anderen Ordner wählen …", en: "Choose another folder…" },
+  "workspace.folderError": {
+    de: "Hier kann die Datenbank nicht laufen. Wähle einen Ordner auf diesem Mac, der nicht synchronisiert wird.",
+    en: "The database can’t run here. Choose a folder on this Mac that isn’t synced.",
+  },
+  "workspace.name": { de: "Dein Name", en: "Your name" },
+  "workspace.providerKey": { de: "Anbieter-Schlüssel", en: "Provider key" },
+  "workspace.model": { de: "Lokaler Modell-Server", en: "Local model server" },
+  "workspace.provider": { de: "Anbieter", en: "Provider" },
+  "workspace.key": { de: "API-Schlüssel", en: "API key" },
+  "workspace.keyHint": {
+    de: "Der Schlüssel wird verschlüsselt in deinem lokalen Arbeitsbereich gespeichert.",
+    en: "The key is stored encrypted in your local workspace.",
+  },
+  "workspace.keyError": {
+    de: "Der Anbieter hat den Schlüssel nicht angenommen. Prüf ihn und versuch es noch einmal.",
+    en: "The provider didn’t accept the key. Check it and try again.",
+  },
+  "workspace.address": { de: "Adresse", en: "Address" },
+  "workspace.originError": {
+    de: "Gib die Adresse des Modell-Servers auf diesem Mac ein, etwa http://localhost:11434, ohne Pfad.",
+    en: "Enter the address of the model server on this Mac, such as http://localhost:11434, without a path.",
+  },
+  "workspace.private": { de: "Nur auf diesem Mac", en: "Only on this Mac" },
+  "workspace.hint": {
+    de: "Läuft, solange die App offen und der Mac wach ist. Vor jedem Update wird gesichert.",
+    en: "Runs while the app is open and the Mac is awake. Backed up before every update.",
+  },
+  "workspace.done": { de: "Fertig", en: "Done" },
+  "workspace.err.port.title": { de: "Port ist belegt", en: "Port is busy" },
+  "workspace.err.port.body": {
+    de: "Die Engine konnte nicht starten. Nichts wurde geändert.",
+    en: "The engine couldn’t start. Nothing was changed.",
+  },
+  "workspace.err.port.action": { de: "Anderen Port verwenden", en: "Use another port" },
+  "workspace.err.disk.title": { de: "Nicht genug Speicherplatz", en: "Not enough disk space" },
+  "workspace.err.disk.body": {
+    de: "Gib Speicher auf diesem Mac frei und versuch es dann noch einmal. Nichts wurde geändert.",
+    en: "Free up space on this Mac, then try again. Nothing was changed.",
+  },
+  "workspace.err.permission.title": {
+    de: "Kein Zugriff auf den Ordner",
+    en: "No access to the folder",
+  },
+  "workspace.err.permission.body": {
+    de: "SubKit darf in diesem Ordner nicht schreiben. Wähle einen anderen Ordner. Nichts wurde geändert.",
+    en: "SubKit can’t write to this folder. Choose another folder. Nothing was changed.",
+  },
+  "workspace.err.folder.title": { de: "Ordner nicht geeignet", en: "Folder not suitable" },
+  "workspace.err.failed.title": {
+    de: "Lokaler Arbeitsbereich startet nicht",
+    en: "Local workspace doesn’t start",
+  },
+  "workspace.err.failed.body": {
+    de: "Datenbank oder Engine sind nicht gestartet. Nichts wurde geändert.",
+    en: "The database or the engine didn’t start. Nothing was changed.",
+  },
+  "workspace.err.keyRejected.title": { de: "Schlüssel nicht angenommen", en: "Key not accepted" },
+  "workspace.err.restore.title": {
+    de: "Sicherung nicht wiederhergestellt",
+    en: "Backup not restored",
+  },
+  "workspace.err.restore.body": {
+    de: "Die Sicherung konnte nicht gelesen werden. Nichts wurde geändert.",
+    en: "The backup couldn’t be read. Nothing was changed.",
+  },
+  "workspace.err.move.title": { de: "Export nicht möglich", en: "Export failed" },
+  "workspace.err.move.body": {
+    de: "Das Bundle konnte nicht geschrieben werden. Nichts wurde geändert.",
+    en: "The bundle couldn’t be written. Nothing was changed.",
+  },
+  "workspace.section": { de: "Lokaler Arbeitsbereich", en: "Local workspace" },
+  "workspace.size": { de: "{n} MB", en: "{n} MB" },
+  "workspace.running": { de: "Läuft", en: "Running" },
+  "workspace.stopped": { de: "Gestoppt", en: "Stopped" },
+  "workspace.backups": { de: "Sicherungen", en: "Backups" },
+  "workspace.createBackup": { de: "Sicherung erstellen", en: "Create backup" },
+  "workspace.automatic": { de: "Automatisch vor Update", en: "Automatic before update" },
+  "workspace.beforeRestore": {
+    de: "Automatisch vor Wiederherstellen",
+    en: "Automatic before restore",
+  },
+  "workspace.manual": { de: "Manuell", en: "Manual" },
+  "workspace.restore": { de: "Wiederherstellen", en: "Restore" },
+  "workspace.restoreTitle": {
+    de: "Sicherung „{name}“ wiederherstellen?",
+    en: "Restore backup “{name}”?",
+  },
+  "workspace.restoreBody": {
+    de: "Der lokale Arbeitsbereich wird durch diese Sicherung ersetzt. Neuere Änderungen gehen verloren. Erlaubte Ordner bleiben erhalten.",
+    en: "The local workspace will be replaced by this backup. Newer changes will be lost. Allowed folders stay.",
+  },
+  "workspace.noBackups": { de: "Noch keine Sicherungen", en: "No backups yet" },
+  "workspace.move": { de: "Auf einen Server umziehen", en: "Move to a server" },
+  "workspace.moveHint": {
+    de: "Dieser Mac bleibt als Gerät mit seinen erlaubten Ordnern verbunden. Freigaben musst du erneuern.",
+    en: "This Mac stays connected as a device with its allowed folders. You renew approvals.",
+  },
+  "workspace.export": { de: "Bundle exportieren", en: "Export bundle" },
+  "workspace.exported": { de: "Gespeichert unter {path}", en: "Saved to {path}" },
+  "workspace.import": {
+    de: "In deinen Server-Arbeitsbereich importieren",
+    en: "Import into your server workspace",
+  },
+  "workspace.signin": { de: "Anmelden", en: "Sign in" },
+  "workspace.serverError": {
+    de: "Gib eine Serveradresse mit https:// ein.",
+    en: "Enter a server address with https://.",
+  },
+  "workspace.cancel": { de: "Abbrechen", en: "Cancel" },
+  "workspace.later": { de: "Später einrichten", en: "Set up later" },
+  "workspace.openAtLogin": { de: "Bei der Anmeldung öffnen", en: "Open at login" },
+  "workspace.modelTools.title": {
+    de: "Modell kann keine Werkzeuge aufrufen",
+    en: "Model can’t call tools",
+  },
+  "workspace.modelTools.body": {
+    de: "Chat und Aufgaben funktionieren mit diesem Modell nicht, Workflows laufen weiter. Wähle in den Einstellungen ein Modell mit Werkzeugaufrufen oder einen Anbieter-Schlüssel.",
+    en: "Chat and tasks don’t work with this model; workflows keep running. In Settings, choose a model that calls tools or a provider key.",
+  },
+  "workspace.aiMissing.title": { de: "KI-Zugang fehlt", en: "AI access missing" },
+  "workspace.aiMissing.body": {
+    de: "Richte ihn in SubKit unter Einstellungen › KI ein. Workflows ohne KI laufen weiter.",
+    en: "Set it up in SubKit under Settings › AI. Workflows without AI keep running.",
+  },
+  "workspace.moved.title": { de: "Arbeitsbereich ist umgezogen", en: "Workspace has moved" },
+  "workspace.moved.body": {
+    de: "Er läuft jetzt auf {server}. Auf diesem Mac läuft nichts mehr, die lokalen Daten bleiben bis zum Entfernen erhalten.",
+    en: "It now runs on {server}. Nothing runs on this Mac anymore; the local data stays until you remove it.",
+  },
+  "workspace.moveConfirm": {
+    de: "SubKit exportiert den Arbeitsbereich für {server} und stoppt ihn auf diesem Mac. Danach meldest du dich beim Server an.",
+    en: "SubKit exports the workspace for {server} and stops it on this Mac. Then you sign in to the server.",
+  },
+  "workspace.moved.action": { de: "Beim Server anmelden", en: "Sign in to the server" },
+  "workspace.moveNow": { de: "Jetzt umziehen", en: "Move now" },
+  "workspace.removeAll": { de: "Alle lokalen Daten entfernen", en: "Remove all local data" },
+  "workspace.removeAll.hint": {
+    de: "Legt die Daten in den Papierkorb und vergisst die Schlüssel.",
+    en: "Moves the data to the Trash and forgets the keys.",
+  },
+  "workspace.removeAll.title": {
+    de: "Alle lokalen Daten in „{folder}“ entfernen?",
+    en: "Remove all local data in “{folder}”?",
+  },
+  "workspace.removeAll.body": {
+    de: "Die Engine stoppt und die Daten kommen in den Papierkorb. Workflows, Runs und Sicherungen auf diesem Mac sind danach weg.",
+    en: "The engine stops and the data moves to the Trash. Workflows, runs and backups on this Mac are gone afterwards.",
+  },
+  "workspace.removeAll.action": { de: "Daten entfernen", en: "Remove data" },
+  "workspace.update.title": { de: "Runs sind noch aktiv", en: "Runs are still active" },
+  "workspace.update.body": {
+    de: "Noch aktive Runs im lokalen Arbeitsbereich: {count}. Ein Neustart bricht sie ab.",
+    en: "Runs still active in the local workspace: {count}. A restart stops them.",
+  },
+  "workspace.update.restart": { de: "Trotzdem neu starten", en: "Restart anyway" },
+
+  "tray.pausedUntil": { de: "Pausiert bis {time} Uhr", en: "Paused until {time}" },
+  "tray.quietUntil": { de: "Ruhezeit bis {time} Uhr", en: "Quiet hours until {time}" },
+  "tray.paused": { de: "Pausiert bis zum Fortsetzen", en: "Paused until resumed" },
+  "tray.quiet": { de: "Ruhezeit", en: "Quiet hours" },
+  "tray.quickCapture": { de: "Schnellnotiz …", en: "Quick note …" },
+  "tray.liveView": { de: "Live-Ansicht öffnen", en: "Open live view" },
+
+  "status.offline.title": { de: "Server offline", en: "Server offline" },
+  "status.offline.body": {
+    de: "SubKit versucht automatisch, die Verbindung wiederherzustellen.",
+    en: "SubKit tries to restore the connection automatically.",
+  },
+  "status.online.title": { de: "Wieder verbunden", en: "Connected again" },
+  "status.online.body": {
+    de: "Die Verbindung zum Server steht wieder.",
+    en: "The connection to the server is back.",
+  },
+  "status.expired.title": { de: "Sitzung abgelaufen", en: "Session expired" },
+  "status.expired.body": {
+    de: "Melde dich erneut an, um weiterzuarbeiten.",
+    en: "Sign in again to keep working.",
+  },
+  "status.revoked.title": { de: "Gerät abgemeldet", en: "Device signed out" },
+  "status.revoked.body": {
+    de: "Dieses Gerät wurde vom Server abgemeldet. Verbinde dich erneut.",
+    en: "This device was signed out by the server. Connect again.",
+  },
+  "status.update.title": { de: "Update verfügbar", en: "Update available" },
+  "status.update.body": {
+    de: "SubKit Desktop {version} wird geladen.",
+    en: "SubKit Desktop {version} is downloading.",
+  },
+
+  "common.close": { de: "Schließen", en: "Close" },
+  "common.cancel": { de: "Abbrechen", en: "Cancel" },
+  "common.offline": { de: "Offline", en: "Offline" },
+  "key.ctrl": { de: "Strg", en: "Ctrl" },
+  "key.space": { de: "Leertaste", en: "Space" },
+
+  "quick.title": { de: "Schnellnotiz", en: "Quick note" },
+  "quick.hint": { de: "{key} – SubKit schnell öffnen", en: "{key} – open SubKit quickly" },
+  "quick.ph": { de: "Was willst du festhalten?", en: "What do you want to capture?" },
+  "quick.send": { de: "In den Eingang", en: "Into the inbox" },
+  "quick.label": { de: "Notiz", en: "Note" },
+  "quick.keys": { de: "{mod} ↩ sendet · Esc schließt", en: "{mod} ↩ sends · Esc closes" },
+  "quick.sent": { de: "Notiz im Eingang", en: "Note in the inbox" },
+  "quick.failed": { de: "Nicht gesendet. Versuch es noch einmal.", en: "Not sent. Try again." },
+
+  "drop.title": { de: "Wohin damit?", en: "Where should this go?" },
+  "drop.lead.one": { de: "Eine Datei ist angekommen.", en: "One file has arrived." },
+  "drop.lead.many": { de: "{count} Dateien sind angekommen.", en: "{count} files have arrived." },
+  "drop.via.window": { de: "In das Fenster gezogen", en: "Dragged into the window" },
+  "drop.via.dock": { de: "Auf das Dock-Symbol gezogen", en: "Dragged onto the dock icon" },
+  "drop.via.tray": { de: "Auf das Tray-Symbol gezogen", en: "Dragged onto the tray icon" },
+  "drop.choice.file": { de: "Als Datei ablegen", en: "Store as file" },
+  "drop.choice.file.hint": {
+    de: "Unter Dateien, mit @attachment:-Verweis",
+    en: "Under Files, with an @attachment: reference",
+  },
+  "drop.choice.source": { de: "Als Quelle einlesen", en: "Ingest as source" },
+  "drop.choice.source.hint": {
+    de: "SubKit teilt sie in Abschnitte",
+    en: "SubKit splits it into sections",
+  },
+  "drop.choice.chat": { de: "Im Chat anhängen", en: "Attach in chat" },
+  "drop.choice.chat.hint": { de: "An deine nächste Nachricht", en: "To your next message" },
+  "drop.choice.inbox": { de: "In den Eingang", en: "Into the inbox" },
+  "drop.choice.inbox.hint": {
+    de: "SubKit prüft sie und schlägt vor, was daraus wird",
+    en: "SubKit reviews it and suggests what it becomes",
+  },
+  "drop.reason.tooLarge": { de: "Größer als {max}", en: "Larger than {max}" },
+  "drop.reason.unsupported": { de: "Dateityp nicht unterstützt", en: "File type not supported" },
+  "drop.reason.tooMany": { de: "Höchstens {max} Dateien", en: "At most {max} files" },
+  "drop.reason.offline": { de: "Offline", en: "Offline" },
+  "drop.failed": { de: "Nicht abgelegt. Versuch es noch einmal.", en: "Not placed. Try again." },
+
+  "browser.label": { de: "Systembrowser", en: "System browser" },
+  "browser.reauthTitle": {
+    de: "SubKit den Zugriff auf {name} erlauben",
+    en: "Allow SubKit to access {name}",
+  },
+  "browser.reauthBody": {
+    de: "SubKit erhält dieselben Rechte wie zuvor. Du kannst sie jederzeit widerrufen.",
+    en: "SubKit gets the same permissions as before. You can revoke them at any time.",
+  },
+  "browser.reauthConfirm": {
+    de: "Zugriff im Browser erlauben",
+    en: "Allow access in browser",
+  },
+  "browser.cancel": { de: "Abbrechen", en: "Cancel" },
+  "browser.succeeded": { de: "Verbunden. SubKit lädt neu …", en: "Connected. SubKit reloads …" },
+  "browser.failed": {
+    de: "Anmeldung fehlgeschlagen. Versuch es noch einmal.",
+    en: "Sign-in failed. Try again.",
+  },
+
+  "live.entry": { de: "Live-Ansicht", en: "Live view" },
+  "live.using": { de: "SubKit bedient „{name}“", en: "SubKit is using “{name}”" },
+  "live.stop": { de: "Stoppen", en: "Stop" },
+  "live.shortcut": { de: "⌘⇧⎋", en: "⌘⇧⎋" },
+  "live.close": { de: "Schließen", en: "Close" },
+  "live.source.chat": { de: "Von dir im Chat gestartet", en: "Started by you in chat" },
+  "live.source.schedule": { de: "Aus deinem Zeitplan", en: "From your schedule" },
+  "live.source.task": { de: "Aus deiner Aufgabe", en: "From your task" },
+  "live.redacted": { de: "Geschwärzt", en: "Redacted" },
+  "live.screenshot": {
+    de: "Letztes geschwärztes Bildschirmfoto",
+    en: "Latest redacted screenshot",
+  },
+  "live.timeline": { de: "Schritte", en: "Steps" },
+  "live.status.idle": { de: "Bereit", en: "Ready" },
+  "live.status.running": { de: "Läuft", en: "Running" },
+  "live.status.asking": { de: "Wartet auf dich", en: "Waiting for you" },
+  "live.status.typing": {
+    de: "Wartet, bis du nicht mehr tippst",
+    en: "Waiting until you stop typing",
+  },
+  "live.status.handover": {
+    de: "Du bist dran – melde dich an, dann „Zurück an SubKit“",
+    en: "Your turn – sign in, then “Hand back to SubKit”",
+  },
+  "live.status.stopped": {
+    de: "Gestoppt. Spätere Schritte laufen nicht.",
+    en: "Stopped. Later steps won’t run.",
+  },
+  "live.status.lost": { de: "Gerät nicht erreichbar", en: "Device unavailable" },
+  "live.status.finished": { de: "Fertig", en: "Finished" },
+  "live.result.queued": { de: "Nicht ausgeführt", en: "Not run" },
+  "live.result.running": { de: "Läuft", en: "Running" },
+  "live.result.done": { de: "Erledigt", en: "Done" },
+  "live.result.waiting": { de: "Wartet auf dich", en: "Waiting for you" },
+  "live.result.refused": { de: "Abgelehnt", en: "Refused" },
+  "live.result.failed": { de: "Fehlgeschlagen", en: "Failed" },
+  "live.result.stopped": { de: "Gestoppt", en: "Stopped" },
+  "live.result.notRun": { de: "Nicht ausgeführt", en: "Not run" },
+  "live.action.open": { de: "Öffnen", en: "Open" },
+  "live.action.fill": { de: "Ausfüllen", en: "Fill in" },
+  "live.action.press": { de: "Drücken", en: "Press" },
+  "live.action.read": { de: "Lesen", en: "Read" },
+  "live.action.wait": { de: "Warten", en: "Wait" },
+  "live.action.download": { de: "Herunterladen", en: "Download" },
+  "live.action.screenshot": { de: "Bildschirmfoto", en: "Screenshot" },
+  "live.action.signin": { de: "Anmelden", en: "Sign in" },
+  "live.action.focus": { de: "Auswählen", en: "Select" },
+  "live.action.files": { de: "Datei", en: "File" },
+  "live.field.target": { de: "Aktion", en: "Action" },
+  "live.handBack": { de: "Zurück an SubKit", en: "Hand back to SubKit" },
+  "live.injection": {
+    de: "Die Seite enthält eine Anweisung. SubKit folgt ihr nicht.",
+    en: "The page contains an instruction. SubKit does not follow it.",
+  },
+  "live.pageChanged": {
+    de: "Die Seite hat sich geändert. Prüfe die Aktion erneut.",
+    en: "The page changed. Review the action again.",
+  },
 } as const;
 
 export type MessageKey = keyof typeof MESSAGES;
+export type Messages = Record<MessageKey, string>;
+
+export function fill(text: string, vars: Record<string, string | number> = {}): string {
+  return text.replace(/\{(\w+)\}/g, (match, name: string) =>
+    name in vars ? String(vars[name]) : match,
+  );
+}
 
 export function t(
   locale: Locale,
   key: MessageKey,
   vars: Record<string, string | number> = {},
 ): string {
-  return MESSAGES[key][locale].replace(/\{(\w+)\}/g, (match, name: string) =>
-    name in vars ? String(vars[name]) : match,
-  );
+  return fill(MESSAGES[key][locale], vars);
 }
 
 export function resolveLocale(setting: LocaleSetting, systemLocale: string): Locale {
@@ -560,8 +1038,16 @@ export function messageKeys(): MessageKey[] {
   return Object.keys(MESSAGES) as MessageKey[];
 }
 
-export function dictionary(locale: Locale): Record<MessageKey, string> {
-  const out = {} as Record<MessageKey, string>;
+export function dictionary(locale: Locale): Messages {
+  const out = {} as Messages;
   for (const key of messageKeys()) out[key] = MESSAGES[key][locale];
   return out;
+}
+
+export function clockLabel(locale: Locale, at: Date): string {
+  return new Intl.DateTimeFormat(locale === "de" ? "de-DE" : "en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: locale !== "de",
+  }).format(at);
 }

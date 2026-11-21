@@ -7,15 +7,18 @@ import type { CostResult } from "../../llm/pricing.ts";
 import { can } from "../../rbac/evaluator.ts";
 import {
   aggregateLlm,
+  effectiveModelRate,
+  fillGroups,
   LLM_GROUP_DIMS,
   LLM_RESULTS,
   type LlmGroupDim,
   llmBucketKey,
   llmGroupKey,
-} from "../../stats/aggregate-llm.ts";
-import { fillGroups, readBucketSeries } from "../../stats/bucket-fill.ts";
-import { effectiveModelRate, readLlmCostByKey, readLlmWindowCost } from "../../stats/llm-cost.ts";
-import { readConversationLabels } from "../../stats/llm-labels.ts";
+  readBucketSeries,
+  readConversationLabels,
+  readLlmCostByKey,
+  readLlmWindowCost,
+} from "../../stats/index.ts";
 import { resolveWindow } from "../stats/bucket-window.ts";
 import { LlmStatsQuery, LlmStatsResponse } from "../stats/schemas.ts";
 import { defineOperation, reject } from "./index.ts";

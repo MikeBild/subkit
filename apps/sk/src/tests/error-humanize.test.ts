@@ -152,8 +152,8 @@ describe("findErrorHint pattern table", () => {
     expect(findErrorHint("rate-limit exceeded")).toMatch(/rate limited/);
   });
 
-  test("matches the monthly-budget pattern", () => {
-    expect(findErrorHint("monthly_budget exhausted")).toMatch(/budget exhausted/);
+  test("matches the AI budget pattern", () => {
+    expect(findErrorHint("llm_spend_limit_reached")).toMatch(/AI budget reached/);
     expect(findErrorHint("quota exceeded")).toMatch(/budget/);
   });
 
@@ -304,5 +304,55 @@ describe("humanizeRequestError surfaces hints", () => {
     );
     const out = humanizeRequestError(err);
     expect(out).not.toContain("verbose: true");
+  });
+});
+
+describe("budget, provider quota and unsafe pattern codes", () => {
+  test("llm_spend_limit_reached reads as the monthly AI budget", () => {
+    const e = { path: "llm_spend_limit_reached", message: "spend limit reached" };
+    expect(classifyEngineError(e)).toBe("spend_limit");
+    const h = humanizeValidationError(e);
+    expect(h.label).toBe("Monthly AI budget reached");
+    expect(h.hint).toContain("Settings › Usage");
+    const tool = summarizeToolFailure("author_workflow", { error_code: "llm_spend_limit_reached" });
+    expect(tool.label).toBe("Monthly AI budget reached");
+    const out = humanizeRequestError(
+      new EngineError(429, {
+        code: "llm_spend_limit_reached",
+        message: "limit",
+        details: { retry_at: "2026-12-01T00:00:00Z" },
+      }),
+    );
+    expect(out).toContain("resets 2026-12-01T00:00:00Z");
+  });
+
+  test("llm_provider_quota_exhausted counts as a provider limit", () => {
+    const e = { path: "llm_provider_quota_exhausted", message: "quota gone" };
+    expect(classifyEngineError(e)).toBe("provider_limit");
+    expect(humanizeValidationError(e).label).toBe("LLM provider usage limit reached");
+    const tool = summarizeToolFailure("author_workflow", {
+      error_code: "llm_provider_quota_exhausted",
+    });
+    expect(tool.label).toBe("LLM provider quota exhausted");
+    expect(findErrorHint("turn failed: llm_provider_quota_exhausted")).toContain("top up");
+    const out = humanizeRequestError(
+      new EngineError(429, { code: "llm_provider_quota_exhausted", message: "quota" }),
+    );
+    expect(out).toContain("provider quota exhausted");
+  });
+
+  test("regex_unsafe names the pattern rule", () => {
+    const e = { path: "steps.0.match.pattern", message: "regex_unsafe: Use a simpler pattern" };
+    expect(classifyEngineError(e)).toBe("unsafe_regex");
+    const h = humanizeValidationError(e);
+    expect(h.label).toBe("Pattern rejected as unsafe");
+    expect(h.detail).toBe("steps.0.match.pattern");
+    expect(h.hint).toContain("no nested quantifiers");
+    expect(summarizeToolFailure("ask_user", { error_code: "regex_unsafe" }).label).toBe(
+      "ask_user: Pattern rejected as unsafe",
+    );
+    expect(findErrorHint("400 regex_unsafe")).toContain("simpler pattern");
+    const out = humanizeRequestError(new EngineError(400, { code: "regex_unsafe", message: "x" }));
+    expect(out).toContain("simpler pattern");
   });
 });

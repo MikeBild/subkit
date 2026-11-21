@@ -2,15 +2,6 @@ import { z } from "@hono/zod-openapi";
 import { can } from "../../../rbac/evaluator.ts";
 import type { ConversationTool, ToolContext } from "../index.ts";
 
-const EmptyInput = z
-  .object({
-    user_id: z
-      .string()
-      .uuid()
-      .optional()
-      .describe("Scope to one user. A user other than yourself requires stats:read:all."),
-  })
-  .openapi("MetricsInput");
 const UsageInput = z
   .object({
     limit: z.number().int().min(1).max(200).optional(),
@@ -34,16 +25,6 @@ const UsageInput = z
 
 function monthStart(now: Date): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-}
-
-export function bindingCeiling(
-  userRemaining: number | null,
-  tenantRemaining: number | null,
-): "user" | "tenant" | null {
-  if (userRemaining == null && tenantRemaining == null) return null;
-  if (userRemaining == null) return "tenant";
-  if (tenantRemaining == null) return "user";
-  return userRemaining <= tenantRemaining ? "user" : "tenant";
 }
 
 async function resolveUsageScope(
@@ -158,68 +139,27 @@ const getLlmUsageTool: ConversationTool = {
   },
 };
 
-const getTokenBudgetTool: ConversationTool = {
-  name: "get_token_budget",
+const getAiBudgetTool: ConversationTool = {
+  name: "get_ai_budget",
   description:
-    "Report current-month token usage against the ceiling that will actually refuse the next call. A caller is bounded by both a per-user cap and the workspace cap; `budget_tokens`/`remaining_tokens`/`state` (ample, tightening at 75 %, critical at 90 %) describe whichever binds first, `binding_scope` names it, and `user`/`tenant` carry both so the answer can be checked. Defaults to your own figures; pass user_id to scope to another user (requires stats:read:all).",
-  inputSchema: EmptyInput,
+    "Report this month's AI spending against the workspace's monthly AI budget, the only spending limit. `state` is unlimited, ok, warning (from 80 %), reached (chat, tasks and model steps pause) or continued (an admin chose to go on without a limit this month). Only priced calls count; amounts are in `currency`, and the budget only applies when that is USD.",
+  inputSchema: z.object({}).strict(),
   category: "tenant_read",
-  async execute(ctx, args: z.infer<typeof EmptyInput>) {
-    const scope = await resolveUsageScope(ctx, args.user_id);
-    if (!scope.ok) return scope.error;
-
-    if (scope.tenant || scope.userId == null) {
-      const month = await ctx.engineClient.metrics.tenantMonthlyBudget();
-      return {
-        ok: true,
-        data: {
-          user_id: null,
-          used_tokens: month.used_tokens,
-          budget_tokens: month.budget_tokens,
-          remaining_tokens: month.remaining_tokens,
-          state: month.state,
-          month_bucket: month.month_bucket,
-        },
-      };
-    }
-
-    const [userUsed, userBudget, tenantUsed] = await Promise.all([
-      ctx.engineClient.metrics.monthlyTokenUsageForUser(scope.userId),
-      ctx.engineClient.metrics.userTokenBudget(scope.userId),
-      ctx.engineClient.metrics.monthlyTokenUsage(),
-    ]);
-    const tenantBudget = ctx.engineClient.metrics.tenantTokenBudget();
-    const user = ctx.engineClient.metrics.monthlyBudgetFigures(userUsed, userBudget);
-    const tenant = ctx.engineClient.metrics.monthlyBudgetFigures(tenantUsed, tenantBudget);
-    const userRemaining = user.remaining_tokens;
-    const tenantRemaining = tenant.remaining_tokens;
-    const binding = bindingCeiling(userRemaining, tenantRemaining);
-
+  async execute(ctx) {
+    const budget = await ctx.engineClient.metrics.aiBudget();
     return {
       ok: true,
       data: {
-        user_id: scope.userId,
-        month_bucket: ctx.engineClient.metrics.currentMonthBucket(),
-        used_tokens: binding === "tenant" ? tenantUsed : userUsed,
-        budget_tokens: binding === "tenant" ? tenantBudget : binding === "user" ? userBudget : null,
-        remaining_tokens: binding === "tenant" ? tenantRemaining : userRemaining,
-        state: binding === "tenant" ? tenant.state : binding === "user" ? user.state : null,
-        binding_scope: binding,
-        user: {
-          used_tokens: userUsed,
-          budget_tokens: userBudget,
-          remaining_tokens: userRemaining,
-          state: user.state,
-        },
-        tenant: {
-          used_tokens: tenantUsed,
-          budget_tokens: tenantBudget,
-          remaining_tokens: tenantRemaining,
-          state: tenant.state,
-        },
+        month: budget.month,
+        timezone: budget.timezone,
+        currency: budget.currency,
+        limit: budget.limit_usd,
+        spent: budget.spent_usd,
+        unpriced_calls: budget.unpriced_calls,
+        state: budget.state,
       },
     };
   },
 };
 
-export const metricsReadTools: ConversationTool[] = [getLlmUsageTool, getTokenBudgetTool];
+export const metricsReadTools: ConversationTool[] = [getLlmUsageTool, getAiBudgetTool];

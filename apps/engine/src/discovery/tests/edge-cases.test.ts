@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, inArray } from "drizzle-orm";
 import { auditLog } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   approveDiscoveryArtifact,
@@ -10,7 +11,7 @@ import {
   rejectDiscoveryArtifact,
 } from "../service.ts";
 
-const skip = process.env.REQUIRES_PG === "0";
+const skip = testEnv.REQUIRES_PG === "0";
 
 let testDb: TestDb;
 let tenantId: string;

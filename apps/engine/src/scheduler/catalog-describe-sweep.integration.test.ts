@@ -12,7 +12,7 @@ import {
 import { FROZEN_NOW } from "../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
 import { seedTenant } from "../test-helpers/seed.ts";
-import { runCatalogDescribeSweep } from "./catalog-describe-runner.ts";
+import { runCatalogDescribeSweep } from "../workflows/scheduled/catalog-describe-runner.ts";
 import {
   acquireSweepPage,
   releaseSweepLease,

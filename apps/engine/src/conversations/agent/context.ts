@@ -61,7 +61,9 @@ function summarizeNextSuggestedTool(hint: AuthoringPromptHint): string {
 }
 
 function summarizeAccess(hint: AuthoringPromptHint): string[] {
-  const lines = hint.permission_mode ? [`- Permission mode: ${hint.permission_mode}.`] : [];
+  const lines = hint.ask_before_writing
+    ? ["- The person's rule: ask before every step that writes."]
+    : [];
   for (const { skill, tools } of hint.locked_tools ?? []) {
     lines.push(`- Hidden until load_skill("${skill}"): ${tools.join(", ")}.`);
   }

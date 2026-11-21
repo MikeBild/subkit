@@ -3,10 +3,10 @@ import { AuditAction } from "../../audit/index.ts";
 import {
   auditLog,
   connectors,
-  credentials,
   executions,
   llmUsage,
   outboundConnections,
+  vaultItems,
 } from "../../db/schema/index.ts";
 import { createWorkflowRow } from "../../execution/tests/setup.ts";
 import { currentMonthBucket } from "../../llm/accounting/index.ts";
@@ -133,7 +133,7 @@ beforeAll(async () => {
     })
     .returning();
   if (!connection) throw new Error("connection fixture");
-  await db.insert(credentials).values({
+  await db.insert(vaultItems).values({
     tenant_id,
     connector_id: degraded.id,
     environment: "prod",
@@ -274,54 +274,38 @@ describe("cost", () => {
   });
 });
 
-describe("monthly token budget", () => {
-  test("GET /v1/status and get_token_budget report the same month, cap, room and state", async () => {
-    const put = await fetch(
-      `${suite.http.baseUrl}/v1/settings/tokens.monthly_budget?tenant=${suite.http.tenantId}`,
-      {
-        method: "PUT",
-        headers: {
-          authorization: `Bearer ${suite.http.apiKey}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ value: 1000 }),
-      },
-    );
-    expect(put.status).toBe(200);
+describe("monthly AI budget", () => {
+  test("GET /v1/status and get_ai_budget report the same limit, spend and state", async () => {
     await suite.http.db.insert(llmUsage).values({
       tenant_id: suite.http.tenantId,
       flow: "chat",
-      model: "gpt-4.1-mini",
-      total_tokens: 896,
-      result: "ok",
+      model: "claude-sonnet-4-5",
+      completion_tokens: 3_000_000,
+      total_tokens: 3_000_000,
+      result: "success",
       month_bucket: currentMonthBucket(),
     });
 
     const status = await rest<{
-      tokens_month: number;
-      monthly_budget_tokens: number | null;
-      remaining_monthly_budget_tokens: number | null;
-      monthly_budget_state: string | null;
+      ai_budget: { currency: string; limit: number | null; spent: number; state: string };
     }>("/v1/status");
     const tool = await mcp<{
-      tenant: {
-        used_tokens: number;
-        budget_tokens: number | null;
-        remaining_tokens: number | null;
-        state: string | null;
-      };
-    }>("get_token_budget");
-    expect(tool.tenant).toEqual({
-      used_tokens: status.tokens_month,
-      budget_tokens: status.monthly_budget_tokens,
-      remaining_tokens: status.remaining_monthly_budget_tokens,
-      state: status.monthly_budget_state,
-    });
-    expect(status.monthly_budget_state).toBe("tightening");
+      currency: string;
+      limit: number | null;
+      spent: number;
+      state: string;
+    }>("get_ai_budget");
+    expect({
+      currency: tool.currency,
+      limit: tool.limit,
+      spent: tool.spent,
+      state: tool.state,
+    }).toEqual(status.ai_budget);
+    expect(status.ai_budget.state).toBe("warning");
 
     invalidateAttention();
-    const attention = await rest<{ items: Array<{ id: string }> }>("/v1/attention");
-    expect(attention.items.some((item) => item.id === "budget")).toBe(false);
+    const attention = await rest<{ items: Array<{ reason: string }> }>("/v1/attention");
+    expect(attention.items.some((item) => item.reason === "spend_warning")).toBe(true);
   });
 });
 

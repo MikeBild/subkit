@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { events } from "../../../db/schema/index.ts";
-import { logger } from "../../../logging/logger.ts";
+import { logger } from "../../../logging/index.ts";
 import {
   classifyEvent,
   EVENT_CATALOG,

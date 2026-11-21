@@ -300,13 +300,15 @@ export function renderValidationErrorsBlock(
       message: typeof e.message === "string" ? e.message : JSON.stringify(e.message),
     }),
   );
-  const headerLabel = kinds.includes("provider_limit")
-    ? "LLM provider limit"
-    : kinds.includes("provider_unavailable")
-      ? "LLM provider unavailable"
-      : status === "error"
-        ? "validation errors"
-        : "draft validation";
+  const headerLabel = kinds.includes("spend_limit")
+    ? "AI budget"
+    : kinds.includes("provider_limit")
+      ? "LLM provider limit"
+      : kinds.includes("provider_unavailable")
+        ? "LLM provider unavailable"
+        : status === "error"
+          ? "validation errors"
+          : "draft validation";
   const tone = status === "error" ? "red" : "yellow";
   return (
     <Box flexDirection="column" marginBottom={1}>

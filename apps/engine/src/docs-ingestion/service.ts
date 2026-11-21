@@ -19,12 +19,15 @@ import type { Executor } from "../db/client.ts";
 import { hostedQuotaError } from "../db/hosted-quota-errors.ts";
 import { connectorDocumentChunks, connectorDocuments, connectors } from "../db/schema/index.ts";
 import { isTransientDbError } from "../db/transient.ts";
-import { embeddingsAvailable } from "../embeddings/local-provider.ts";
-import { fuseVectorFirst, vectorScoreCandidates } from "../embeddings/vector-rerank.ts";
+import {
+  embeddingsAvailable,
+  fuseVectorFirst,
+  vectorScoreCandidates,
+} from "../embeddings/index.ts";
 import { withTenantWork } from "../execution/index.ts";
 import { getTenant, lockActiveTenant, SelfServiceIdentityError } from "../identity/index.ts";
 import { parseGoogleDiscoveryDocument } from "../llm/flows/document-parsers/google-discovery.ts";
-import { log, logger } from "../logging/logger.ts";
+import { log, logger } from "../logging/index.ts";
 import { TtlCache } from "../utils/ttl-cache.ts";
 import {
   canConsumeBytes,

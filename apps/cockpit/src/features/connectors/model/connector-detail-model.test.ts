@@ -1,0 +1,446 @@
+import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { DEFAULT_REDACTED } from "@shared/redaction.ts";
+import { absolute, connectorHref } from "@/app/links";
+import { CATALOGS, type TranslationKey, translate } from "@/lib/i18n";
+import {
+  asInspect,
+  asRuntime,
+  connectorConfiguredRuntime,
+  connectorConfiguredTimeout,
+  connectorFigures,
+  connectorNotice,
+  connectorStatsWindow,
+  credentialBody,
+  offersConnectionChoice,
+  offersKeyReplacement,
+  presentAddress,
+  renewalWay,
+  SIGNED_IN_PARAM,
+  SIGNIN_FAILED_PARAM,
+  signInFailureKey,
+  signInFailureLine,
+  signInLine,
+  signInReturn,
+  toolsWithoutConfirmation,
+  withoutSignInReturn,
+} from "./connector-detail-model";
+
+const de = (key: TranslationKey, values?: Record<string, string | number>) =>
+  Object.entries(values ?? {}).reduce(
+    (text, [name, value]) => text.replace(`{${name}}`, String(value)),
+    CATALOGS.de[key],
+  );
+
+describe("runtime figures", () => {
+  const NOW = new Date("2026-09-30T12:00:00.000Z");
+  const bounds = connectorStatsWindow(NOW);
+  const envelope = {
+    from: "2026-09-23T12:00:00.000Z",
+    to: "2026-09-30T12:00:00.000Z",
+    totals: {
+      calls: { total: 10, by_outcome: { success: 6, denied: 2, error: 2 } },
+      latency_ms: { p50: 120 },
+    },
+  };
+
+  test("read over the last seven days, fixed once", () => {
+    expect(bounds).toEqual({
+      from: "2026-09-23T12:00:00.000Z",
+      to: "2026-09-30T12:00:00.000Z",
+    });
+  });
+
+  test("a call the user stopped is counted, but is neither a success nor a failure", () => {
+    const figures = connectorFigures(envelope, bounds);
+    expect(figures).toMatchObject({ calls: 10, succeeded: 6, failed: 2, medianMs: 120 });
+    expect(figures?.successRate).toBe(75);
+  });
+
+  test("no finished call has no rate; a body that is not stats is no figures", () => {
+    const none = connectorFigures(
+      { totals: { calls: { total: 0, by_outcome: {} }, latency_ms: { p50: 0 } } },
+      bounds,
+    );
+    expect(none).toMatchObject({ calls: 0, successRate: null, medianMs: null });
+    expect(connectorFigures({ items: [] }, bounds)).toBeNull();
+  });
+
+  test("a catch-all body is not a runtime or an inspect answer", () => {
+    expect(asRuntime({ items: [] })).toBeNull();
+    expect(asRuntime({ recorded: true, last_success_at: null })).not.toBeNull();
+    expect(asInspect({ items: [] })).toBeNull();
+    expect(asInspect({ tools: [] })).not.toBeNull();
+  });
+});
+
+describe("replacing a key", () => {
+  test("a header connector keeps sending its key in its header", () => {
+    expect(credentialBody("header", " k-123 ", "X-API-KEY")).toEqual({
+      mode: "header",
+      headers: { "X-API-KEY": "k-123" },
+    });
+    expect(credentialBody("header", "k-123", " ")).toBeNull();
+  });
+
+  test("a bearer connector posts a token; an empty key posts nothing", () => {
+    expect(credentialBody("bearer", "t-1", "")).toEqual({ mode: "bearer", token: "t-1" });
+    expect(credentialBody("bearer", "  ", "")).toBeNull();
+  });
+
+  test("a signed JWT connector posts only its private key", () => {
+    expect(credentialBody("signed_jwt", " private-key ", "")).toEqual({
+      mode: "signed_jwt",
+      private_key: "private-key",
+    });
+  });
+
+  test("the card offers the ways that fit the sign-in", () => {
+    expect(offersKeyReplacement("header")).toBe(true);
+    expect(offersKeyReplacement("bearer")).toBe(true);
+    expect(offersKeyReplacement("signed_jwt")).toBe(true);
+    expect(offersKeyReplacement("oauth2")).toBe(false);
+    expect(offersKeyReplacement("basic")).toBe(false);
+    expect(offersConnectionChoice("oauth2", null)).toBe(true);
+    expect(offersConnectionChoice("bearer", "connection")).toBe(true);
+    expect(offersConnectionChoice("header", "header")).toBe(false);
+  });
+});
+
+describe("the stored trust list", () => {
+  test("reads the operator's list from the connector's config", () => {
+    expect(
+      toolsWithoutConfirmation({ config: { mcp: { tools_without_confirmation: ["b", "a"] } } }),
+    ).toEqual(["a", "b"]);
+    expect(toolsWithoutConfirmation({ config: {} })).toEqual([]);
+  });
+});
+
+describe("a connector address with a kept secret", () => {
+  test("shows the secret as kept, never as the engine's marker", () => {
+    const masked = presentAddress(
+      `https://reader:${DEFAULT_REDACTED}@db.example.org/reports?api_key=${DEFAULT_REDACTED}&format=json`,
+    );
+    expect(masked.keepsSecret).toBe(true);
+    expect(masked.shown).toBe("https://reader:•••@db.example.org/reports?api_key=•••&format=json");
+    expect(masked.shown).not.toContain("redacted");
+  });
+
+  test("an address without one is shown and copied as it is", () => {
+    const plain = presentAddress("https://api.example.org/v2?format=json");
+    expect(plain).toEqual({ shown: "https://api.example.org/v2?format=json", keepsSecret: false });
+  });
+
+  test("the note says stored credentials are never shown again, in both languages", () => {
+    expect(CATALOGS.de["connectorDetail.connection.secretKept"]).toBe(
+      "Gespeicherte Zugangsdaten werden nie wieder angezeigt.",
+    );
+    expect(CATALOGS.en["connectorDetail.connection.secretKept"]).toContain("never shown");
+  });
+});
+
+describe("coming back from a sign-in", () => {
+  test("the flag is read off the address and dropped from it, alone", () => {
+    expect(signInReturn("?signed_in=1")).toEqual({ kind: "signed_in" });
+    expect(signInReturn("?tab=x&signed_in=1")).toEqual({ kind: "signed_in" });
+    expect(signInReturn("")).toBeNull();
+    expect(signInReturn("?signed=1")).toBeNull();
+    expect(withoutSignInReturn("?signed_in=1")).toBe("");
+    expect(withoutSignInReturn("?tab=x&signed_in=1&q=y")).toBe("?tab=x&q=y");
+    expect(withoutSignInReturn("?tab=x")).toBe("?tab=x");
+  });
+
+  test("a failed sign-in comes back with its reason, and leaves the address with it", () => {
+    expect(signInReturn("?signin_failed=provider_declined")).toEqual({
+      kind: "signin_failed",
+      failure: "provider_declined",
+      code: null,
+    });
+    expect(signInReturn("?tab=x&signin_failed=exchange_failed&signed_in=1")).toEqual({
+      kind: "signin_failed",
+      failure: "exchange_failed",
+      code: null,
+    });
+    expect(withoutSignInReturn("?tab=x&signin_failed=exchange_failed&signin_code=x")).toBe(
+      "?tab=x",
+    );
+  });
+
+  test("the provider's code comes along when it is a code, and is named in the strip", () => {
+    const failed = signInReturn("?signin_failed=provider_declined&signin_code=invalid_scope");
+    expect(failed).toEqual({
+      kind: "signin_failed",
+      failure: "provider_declined",
+      code: "invalid_scope",
+    });
+    for (const hostile of ["<script>", "call+me+now", "a".repeat(65), ""])
+      expect(signInReturn(`?signin_failed=provider_declined&signin_code=${hostile}`)).toMatchObject(
+        { code: null },
+      );
+    const line = (locale: "de" | "en", code: string | null) =>
+      signInFailureLine({ failure: "provider_declined", code }, (key, values) =>
+        translate(locale, key, values),
+      );
+    expect(line("de", "invalid_scope")).toBe(
+      "Der Anbieter hat die Anmeldung nicht bestätigt · Anbietercode: invalid_scope",
+    );
+    expect(line("en", "invalid_scope")).toBe(
+      "The provider did not confirm the sign-in · Provider code: invalid_scope",
+    );
+    expect(line("de", null)).toBe("Der Anbieter hat die Anmeldung nicht bestätigt");
+  });
+
+  test("every failure the engine sends has its own reason in both languages", () => {
+    const engine = readFileSync(
+      resolve(import.meta.dir, "../../../../../engine/src/connectors/oauth-origin.ts"),
+      "utf8",
+    );
+    expect(engine).toContain(`export const SIGNIN_FAILED_MARKER = "${SIGNIN_FAILED_PARAM}";`);
+    const start = engine.indexOf("SIGN_IN_FAILURES = [");
+    const list = engine.slice(start, engine.indexOf("] as const", start));
+    const failures = [...list.matchAll(/"([a-z_]+)"/g)].map((match) => match[1] ?? "");
+    expect(failures.length).toBeGreaterThan(5);
+    const keys = failures.map(signInFailureKey);
+    expect(new Set(keys).size).toBe(failures.length);
+    expect(keys).not.toContain("connectorStrip.signInFailure.other");
+    for (const key of keys) expect(CATALOGS.de[key]).not.toBe(CATALOGS.en[key]);
+    expect(signInFailureKey("<script>")).toBe("connectorStrip.signInFailure.other");
+    for (const inherited of ["constructor", "toString", "__proto__", "hasOwnProperty"])
+      expect(signInFailureKey(inherited)).toBe("connectorStrip.signInFailure.other");
+  });
+
+  test("the flag and the address are the ones the engine's callback sends", () => {
+    const engine = readFileSync(
+      resolve(import.meta.dir, "../../../../../engine/src/connectors/oauth-origin.ts"),
+      "utf8",
+    );
+    expect(engine).toContain(`export const SIGNED_IN_MARKER = "${SIGNED_IN_PARAM}";`);
+    const id = "018f4b4a-6d33-7b3a-9c2d-1234567890c1";
+    expect(absolute(connectorHref(id))).toBe(`/cockpit/connectors/${id}`);
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: the source text is checked, not its result
+    expect(engine).toContain("/cockpit/connectors/${p.connector_id.toLowerCase()}");
+  });
+
+  test("a return the connector bears out is confirmed once", () => {
+    expect(connectorNotice({ enabled: true, authState: "connected", returned: true })).toBe(
+      "signed_in",
+    );
+    expect(connectorNotice({ enabled: true, authState: "unproven", returned: true })).toBe(
+      "signed_in",
+    );
+    expect(connectorNotice({ enabled: true, authState: "connected", returned: false })).toBeNull();
+  });
+
+  test("signed in and switched off are said together", () => {
+    expect(connectorNotice({ enabled: false, authState: "connected", returned: true })).toBe(
+      "signed_in_off",
+    );
+    expect(connectorNotice({ enabled: false, authState: "connected", returned: false })).toBe(
+      "off",
+    );
+    expect(connectorNotice({ enabled: false, authState: "expired", returned: false })).toBe("off");
+  });
+
+  test("a flag the connector does not bear out confirms nothing", () => {
+    for (const authState of ["expired", "credentials_missing", "not_required"] as const) {
+      expect(connectorNotice({ enabled: true, authState, returned: true })).toBeNull();
+      expect(connectorNotice({ enabled: false, authState, returned: true })).toBe("off");
+    }
+  });
+});
+
+describe("the sign-in card's one line and one action", () => {
+  test("the way to renew follows how the connector signs in", () => {
+    const way = (authType: string | null, usesConnection = false, canWrite = true) =>
+      renewalWay({
+        authType,
+        signsInAtProvider: authType === "oauth2",
+        usesConnection,
+        canWrite,
+      });
+    expect(way("oauth2")).toBe("provider");
+    expect(
+      renewalWay({
+        authType: "oauth2_client",
+        signsInAtProvider: false,
+        usesConnection: false,
+        canWrite: true,
+      }),
+    ).toBeNull();
+    expect(way("oauth2", true)).toBe("connection");
+    expect(way("bearer", true)).toBe("connection");
+    expect(way("header")).toBe("key");
+    expect(way("bearer")).toBe("key");
+    expect(way("basic")).toBeNull();
+    expect(way("oauth2", false, false)).toBeNull();
+    expect(way("oauth2", true, false)).toBeNull();
+  });
+
+  test("a refused sign-in says what is the case and what the button does", () => {
+    expect(de(signInLine("expired", "provider") as TranslationKey)).toBe(
+      "Der Anbieter lehnt die gespeicherte Anmeldung ab. „Neu anmelden“ führt zum Anbieter und wieder hierher.",
+    );
+    expect(de(signInLine("expired", "key") as TranslationKey)).toContain("„Neu anmelden“ öffnet");
+    expect(signInLine("expired", "connection")).toBe("connectorCredentials.renewViaConnection");
+    expect(signInLine("expired", null)).toBe("connectorCredentials.lostReadOnly");
+  });
+
+  test("no line sends the reader to a connection test for a way the button already is", () => {
+    for (const state of ["expired", "credentials_missing"] as const)
+      for (const way of ["provider", "key", "connection", null] as const) {
+        const key = signInLine(state, way);
+        expect(key).not.toBeNull();
+        for (const catalog of [CATALOGS.de, CATALOGS.en])
+          expect(catalog[key as TranslationKey]).not.toMatch(/Verbindungstest|Test the connection/);
+      }
+  });
+
+  test("a sign-in that works needs no sentence; an unproven one says how to find out", () => {
+    expect(signInLine("connected", "provider")).toBeNull();
+    expect(signInLine("not_required", null)).toBeNull();
+    expect(signInLine("unproven", "provider")).toBe("connectors.auth.unprovenHint");
+  });
+
+  test("every line and label exists in both languages", () => {
+    const keys: TranslationKey[] = [
+      "connectorCredentials.renewAtProvider",
+      "connectorCredentials.lostReadOnly",
+      "connectorCredentials.signIn",
+      "connectorCredentials.signInAtProvider",
+      "connectorCredentials.enterKey",
+      "connectorCredentials.missingScopes",
+      "connectorState.off",
+      "connectorState.signedIn",
+      "connectorState.signedInOff",
+      "connectorState.offBody",
+      "connectorState.enable",
+      "connectorState.enabled",
+      "connectorState.enableFailed",
+    ];
+    for (const key of keys) {
+      expect(CATALOGS.de[key].length).toBeGreaterThan(0);
+      expect(CATALOGS.en[key].length).toBeGreaterThan(0);
+      expect(CATALOGS.de[key]).not.toBe(CATALOGS.en[key]);
+    }
+  });
+});
+
+describe("effective connector timeout evidence", () => {
+  test("shows only the supported MCP configuration, never a guessed default", () => {
+    const config = { mcp: { remote_tool_call_timeout_ms: 12000 } };
+    expect(connectorConfiguredTimeout({ driver: "mcp", config })).toBe(12000);
+    expect(connectorConfiguredTimeout({ driver: "http", config })).toBeNull();
+    expect(connectorConfiguredTimeout({ driver: "mcp", config: {} })).toBeNull();
+    expect(
+      connectorConfiguredTimeout({
+        driver: "mcp",
+        config: { mcp: { remote_tool_call_timeout_ms: 0 } },
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("connector configuration scope", () => {
+  const hints = { requests_per_second: 2.5, burst_size: 8, recommended_backoff_ms: 1500 };
+  test("HTTP settings are stored but not applied, including zero retries", () => {
+    expect(
+      connectorConfiguredRuntime({ driver: "http", config: { timeout_ms: 12000, max_retries: 0 } }),
+    ).toEqual({ timeout: 12000, timeoutApplied: false, retries: 0, rateLimit: null });
+    expect(
+      connectorConfiguredRuntime({
+        driver: "mcp",
+        config: { timeout_ms: 12000, max_retries: 3, mcp: { remote_tool_call_timeout_ms: 45000 } },
+      }),
+    ).toEqual({ timeout: 45000, timeoutApplied: true, retries: null, rateLimit: null });
+  });
+  test("does not infer configuration from telemetry, workflow retries or another driver", () => {
+    expect(
+      connectorConfiguredRuntime({
+        driver: "postgres",
+        config: { timeout_ms: 12000, max_retries: 3 },
+        stats: { median_ms: 500 },
+        workflows: [{ max_retries: 4 }],
+      }),
+    ).toEqual({ timeout: null, timeoutApplied: false, retries: null, rateLimit: null });
+    expect(connectorConfiguredRuntime({ driver: "mcp", config: {} }).timeout).toBeNull();
+  });
+  test("rejects invalid or absent HTTP values instead of inventing limits", () => {
+    for (const value of [
+      undefined,
+      null,
+      "12000",
+      0,
+      -1,
+      Number.POSITIVE_INFINITY,
+      Number.NaN,
+      300001,
+    ]) {
+      expect(
+        connectorConfiguredRuntime({ driver: "http", config: { timeout_ms: value } }).timeout,
+      ).toBeNull();
+    }
+    for (const value of [undefined, null, "3", -1, 1.5, 6, Number.POSITIVE_INFINITY]) {
+      expect(
+        connectorConfiguredRuntime({ driver: "http", config: { max_retries: value } }).retries,
+      ).toBeNull();
+    }
+    expect(
+      connectorConfiguredRuntime({ driver: "http", config: { timeout_ms: 300000, max_retries: 5 } })
+        .timeout,
+    ).toBe(300000);
+  });
+  test("projects only numeric provider hints from the pinned template", () => {
+    const runtime = connectorConfiguredRuntime({
+      driver: "http",
+      template_snapshot: { capabilities: { rate_limits: { ...hints, password: "secret" } } },
+      config: { static_headers: { Authorization: "secret" }, static_query: { token: "secret" } },
+    });
+    expect(runtime.rateLimit).toEqual({
+      requestsPerSecond: 2.5,
+      burstSize: 8,
+      recommendedBackoffMs: 1500,
+      source: "template",
+    });
+    expect(JSON.stringify(runtime)).not.toContain("secret");
+  });
+  test("connector capability override takes precedence, including an explicit absent hint", () => {
+    const record = { driver: "http", template_snapshot: { capabilities: { rate_limits: hints } } };
+    expect(
+      connectorConfiguredRuntime({
+        ...record,
+        config: { capabilities: { rate_limits: { ...hints, requests_per_second: 10 } } },
+      }).rateLimit,
+    ).toEqual({
+      requestsPerSecond: 10,
+      burstSize: 8,
+      recommendedBackoffMs: 1500,
+      source: "provider",
+    });
+    for (const capabilities of [
+      null,
+      {},
+      { rate_limits: null },
+      { rate_limits: { ...hints, burst_size: -1 } },
+    ]) {
+      expect(
+        connectorConfiguredRuntime({ ...record, config: { capabilities } }).rateLimit,
+      ).toBeNull();
+    }
+  });
+  test("malformed, partial and nonnumeric rate hints stay unspecified", () => {
+    for (const rate_limits of [
+      null,
+      "secret",
+      {},
+      { ...hints, requests_per_second: Number.POSITIVE_INFINITY },
+      { ...hints, burst_size: 1.5 },
+      { ...hints, recommended_backoff_ms: 0 },
+      { ...hints, requests_per_second: "2.5" },
+    ]) {
+      expect(
+        connectorConfiguredRuntime({ config: { capabilities: { rate_limits } } }).rateLimit,
+      ).toBeNull();
+    }
+  });
+});

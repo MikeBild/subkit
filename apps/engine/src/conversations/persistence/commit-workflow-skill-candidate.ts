@@ -1,5 +1,5 @@
 import type { Db } from "../../db/client.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { authoringCapabilitySignal } from "../../skill-candidates/authoring-capability.ts";
 import { upsertFromSignal } from "../../skill-candidates/service.ts";
 import type { ScopeIndex, WorkflowDefFromDraft } from "./commit-workflow.ts";

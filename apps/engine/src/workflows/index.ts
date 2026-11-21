@@ -57,6 +57,7 @@ export {
   MakeWorkflowAuthorityUntilRevokedSchema,
   makeWorkflowAuthorityUntilRevoked,
   previewWorkflowAuthority,
+  requireHumanSession,
   revokeWorkflowAuthority,
 } from "./execution-authorities.ts";
 export * from "./gate-diagnosis.ts";

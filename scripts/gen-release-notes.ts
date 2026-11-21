@@ -83,7 +83,6 @@ if (import.meta.main) {
   const releaseIndex = process.argv.indexOf("--release");
   const repoIndex = process.argv.indexOf("--repo");
   const outputIndex = process.argv.indexOf("--output");
-  const target = releaseIndex === -1 ? "HEAD" : process.argv[releaseIndex + 1];
   const repo = resolve(repoIndex === -1 ? defaultRepo : (process.argv[repoIndex + 1] ?? ""));
   const output = resolve(
     outputIndex === -1
@@ -91,13 +90,19 @@ if (import.meta.main) {
       : (process.argv[outputIndex + 1] ?? ""),
   );
   const check = process.argv.includes("--check");
+  const committed = check && releaseIndex === -1;
+  const target = committed
+    ? ((await import(output)) as { RELEASE_HISTORY: ReleaseHistory }).RELEASE_HISTORY.source
+    : releaseIndex === -1
+      ? "HEAD"
+      : process.argv[releaseIndex + 1];
   if (!target || !repo || !output)
     throw new Error("--release, --repo and --output require a value");
   const history = generateReleaseHistory(repo, target);
   const content = renderReleaseHistory(history);
   if (check) {
     if (readFileSync(output, "utf8") !== content) {
-      console.error("release notes are stale — run bun run gen:release-notes");
+      console.error("release notes are stale — run bun run gen release-notes");
       process.exit(1);
     }
     console.log("release notes are current");

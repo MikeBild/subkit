@@ -1,0 +1,251 @@
+import { buttonVariants } from "@ui/atoms/button";
+import { useI18n } from "@ui/lib/ui-context";
+import { cn } from "@ui/lib/utils";
+import { SearchInput } from "@ui/molecules/search-input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@ui/molecules/select";
+import { FilterSheet } from "@ui/organisms/filter-sheet";
+import { SlidersHorizontal } from "lucide-react";
+import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
+
+export interface FilterSelect {
+  value: string;
+  onChange(value: string): void;
+  label: string;
+  options: readonly { value: string; label: string }[];
+  testId?: string | undefined;
+  defaultValue?: string;
+}
+
+export function activeFilterCount(selects: readonly FilterSelect[]): number {
+  return selects.filter(
+    (select) => select.defaultValue !== undefined && select.value !== select.defaultValue,
+  ).length;
+}
+
+export const MAX_FILTER_SELECTS = 4;
+export const FilterBarLayoutContext = createContext<{
+  presentation?: "panel" | "toolbar";
+  mobileOnly?: boolean;
+}>({});
+
+function FilterField({ select }: { select: FilterSelect }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted-foreground">
+      <span>{select.label}</span>
+      <Select value={select.value} onValueChange={select.onChange}>
+        <SelectTrigger
+          className="w-full text-sm"
+          aria-label={select.label}
+          data-testid={select.testId}
+        >
+          <SelectValue placeholder={select.label} />
+        </SelectTrigger>
+        <SelectContent>
+          {select.options.map((option) => (
+            <SelectItem
+              key={option.value}
+              value={option.value}
+              data-testid={`${select.testId ?? "filter"}-option-${option.value}`}
+            >
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+export function FilterBar({
+  search,
+  selects = [],
+  segmented,
+  reset,
+  onApply,
+  presentation,
+  mobileOnly,
+}: {
+  search?: { value: string; onChange(value: string): void; placeholder: string; testId?: string };
+  selects?: readonly FilterSelect[];
+  segmented?: ReactNode;
+  reset?: { label: string; onClick(): void };
+  onApply?: (changes: Record<string, string>) => void;
+  presentation?: "panel" | "toolbar";
+  mobileOnly?: boolean;
+}) {
+  const { t } = useI18n();
+  const layout = useContext(FilterBarLayoutContext);
+  const display = presentation ?? layout.presentation ?? "toolbar";
+  const compact = mobileOnly ?? layout.mobileOnly ?? false;
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const filters = selects;
+  const active = activeFilterCount(selects);
+  const keyOf = (select: FilterSelect) => select.testId ?? select.label;
+  const committed = filters.map((select) => `${keyOf(select)}=${select.value}`).join("\u0000");
+  useEffect(() => {
+    setDraft(Object.fromEntries(filters.map((select) => [keyOf(select), select.value])));
+  }, [committed]);
+  const openFilters = () => {
+    setDraft(Object.fromEntries(filters.map((select) => [keyOf(select), select.value])));
+    setOpen(true);
+  };
+  const applyFilters = () => {
+    const changes: Record<string, string> = {};
+    for (const select of filters) {
+      const next = draft[keyOf(select)];
+      if (next !== undefined && next !== select.value) changes[keyOf(select)] = next;
+    }
+    if (onApply && Object.keys(changes).length > 0) onApply(changes);
+    else if (!onApply)
+      for (const select of filters) {
+        const next = changes[keyOf(select)];
+        if (next !== undefined) select.onChange(next);
+      }
+    setOpen(false);
+  };
+  if (display === "panel")
+    return (
+      <div data-slot="filter-panel" className="flex min-w-0 flex-col gap-5 p-5">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {t.common.filters}
+        </h2>
+        {search ? (
+          <SearchInput
+            value={search.value}
+            onChange={search.onChange}
+            label={search.placeholder}
+            testId={search.testId ? `${search.testId}-panel` : undefined}
+          />
+        ) : null}
+        {segmented ? <div className="min-w-0 overflow-x-auto">{segmented}</div> : null}
+        {filters.map((select) => (
+          <FilterField
+            key={keyOf(select)}
+            select={{
+              ...select,
+              value: draft[keyOf(select)] ?? select.value,
+              onChange: (value) => setDraft((current) => ({ ...current, [keyOf(select)]: value })),
+            }}
+          />
+        ))}
+        {filters.length > 0 || reset ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+            {reset ? (
+              <button
+                type="button"
+                onClick={reset.onClick}
+                className="text-sm text-muted-foreground underline underline-offset-2"
+                data-testid="filter-bar-panel-reset"
+              >
+                {reset.label}
+              </button>
+            ) : (
+              <span />
+            )}
+            {filters.length > 0 ? (
+              <button
+                type="button"
+                onClick={applyFilters}
+                className={cn(buttonVariants(), "pointer-coarse:h-11")}
+                data-testid="filter-bar-panel-apply"
+              >
+                {t.common.applyFilters}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    );
+  return (
+    <div
+      data-slot="filter-bar"
+      className={`flex min-w-72 max-w-full flex-1 flex-wrap items-center gap-2 ${compact ? "min-[1600px]:hidden" : ""}`}
+    >
+      {search ? (
+        <SearchInput
+          value={search.value}
+          onChange={search.onChange}
+          label={search.placeholder}
+          testId={search.testId}
+          className="min-w-52 flex-1 sm:max-w-xs"
+        />
+      ) : null}
+      {filters.length > 0 ? (
+        <>
+          <button
+            type="button"
+            onClick={openFilters}
+            aria-haspopup="dialog"
+            aria-expanded={open}
+            className={cn(buttonVariants({ variant: "outline" }), "pointer-coarse:h-11")}
+            data-testid="filter-bar-open"
+          >
+            <SlidersHorizontal className="size-4" />
+            {t.common.filters}
+            {active > 0 ? (
+              <span
+                className="rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground tabular-nums"
+                data-testid="filter-bar-active"
+              >
+                {active}
+              </span>
+            ) : null}
+          </button>
+          <FilterSheet
+            open={open}
+            onOpenChange={setOpen}
+            title={t.common.filters}
+            testId="filter-bar-sheet"
+            footer={
+              <>
+                {reset ? (
+                  <button
+                    type="button"
+                    data-testid="filter-bar-reset"
+                    onClick={() => {
+                      reset.onClick();
+                      setOpen(false);
+                    }}
+                    className="text-sm text-muted-foreground underline underline-offset-2"
+                  >
+                    {reset.label}
+                  </button>
+                ) : (
+                  <span />
+                )}
+                <button
+                  type="button"
+                  data-testid="filter-bar-apply"
+                  onClick={applyFilters}
+                  className={cn(buttonVariants(), "pointer-coarse:h-11")}
+                >
+                  {t.common.applyFilters}
+                </button>
+              </>
+            }
+          >
+            {filters.map((select) => (
+              <FilterField
+                key={keyOf(select)}
+                select={{
+                  ...select,
+                  value: draft[keyOf(select)] ?? select.value,
+                  onChange: (value) =>
+                    setDraft((current) => ({ ...current, [keyOf(select)]: value })),
+                }}
+              />
+            ))}
+          </FilterSheet>
+        </>
+      ) : null}
+      {segmented ? <span className="flex items-center">{segmented}</span> : null}
+    </div>
+  );
+}

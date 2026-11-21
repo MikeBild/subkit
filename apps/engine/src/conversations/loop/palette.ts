@@ -1,8 +1,10 @@
+import { UNTRUSTED_CONTENT_NOTE } from "@shared/untrusted-content.ts";
 import {
   isBusinessDecisionTool,
   pendingPermittedRemedy,
 } from "../../llm/runtime/permitted-remedy.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
+import { DEVICE_TOOL_NAMES } from "../core/device-tools/catalog.ts";
 import { hasBoundSavedWorkflowTarget } from "../core/loop.ts";
 import { turnExecutionSuppression } from "../execution-suppression.ts";
 import {
@@ -137,7 +139,7 @@ function steerToolChoice(base: TurnBase, state: TurnState, tools: WrappedTools) 
   const { p, ingestedUserMessage, detectedIntent } = base;
   const stateDrivenTool = inferStateDrivenFollowUpTool({
     latestUserText: ingestedUserMessage,
-    permission_mode: p.permission_mode ?? null,
+    ask_before_writing: p.ask_before_writing === true,
     summary: state.draft.summary,
   });
   const preferredTool = resolvePreferredTool(
@@ -211,7 +213,6 @@ export async function resolveTurnPalette(
     p.db,
     loadedSkills,
     base.toolPolicies,
-    p.permission_mode ?? null,
     p.principal ?? null,
   );
   logger.debug({
@@ -223,6 +224,9 @@ export async function resolveTurnPalette(
     loaded_skills: loadedSkills,
     tools_count: Object.keys(tools).length,
   });
+
+  if (Object.keys(tools).some((name) => DEVICE_TOOL_NAMES.has(name)))
+    appendVolatileSystemContext(prompt, UNTRUSTED_CONTENT_NOTE);
 
   state.paletteSkills = loadedSkills;
   state.paletteIntakeItems = intakeReviewInProgress(state.draft);

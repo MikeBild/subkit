@@ -1,10 +1,14 @@
+import { csvPreview, fileKindOf, formatBytes } from "@shared/file-kinds.ts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { DropZone } from "@ui/components/proto/DropZone";
-import { ErrorNotice, ErrorState } from "@ui/components/proto/ErrorNotice";
-import { CodeBlock, MarkdownDocument } from "@ui/components/proto/MarkdownDocument";
-import { PageHeader } from "@ui/components/proto/Pill";
-import { IconTile } from "@ui/components/proto/visual";
+import { IconTile } from "@ui/atoms/icon-tile";
+import { listPageFailure } from "@ui/lib/errors";
+import { FILE_ICON } from "@ui/lib/files";
+import { DropZone } from "@ui/molecules/drop-zone";
+import { DropdownMenuItem } from "@ui/molecules/dropdown-menu";
+import { ErrorNotice, ErrorState } from "@ui/molecules/error-notice";
+import { IconButton } from "@ui/molecules/icon-button";
+import { PageHeader } from "@ui/molecules/page-header";
 import {
   Dialog,
   DialogContent,
@@ -12,10 +16,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@ui/components/ui/dialog";
-import { DropdownMenuItem } from "@ui/components/ui/dropdown-menu";
-import { listPageFailure } from "@ui/lib/errors";
-import { FILE_ICON } from "@ui/lib/files";
+} from "@ui/organisms/dialog";
+import { CodeBlock, MarkdownDocument } from "@ui/organisms/markdown-document";
 import { AlertTriangle, Download, FileText, FileType2, Trash2, Upload, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -29,33 +31,28 @@ import { exportInstallationFile } from "@/app/installation-export";
 import { useInstallation } from "@/app/installation-provider";
 import { conversationHref, recordHref, workflowHref } from "@/app/links";
 import { useSession } from "@/app/session";
-import { CatalogPurpose } from "@/components/cockpit/catalog-metadata";
-import { fileOtherLinkCard } from "@/components/cockpit/file-versions-model";
-import { IconButton } from "@/components/cockpit/icon-button";
 import type { ActionMenuItem } from "@/components/cockpit/patterns/action-menu";
 import { CodeBlock as PatternCode } from "@/components/cockpit/patterns/code-block";
 import { Button } from "@/components/cockpit/patterns/controls";
 import { SectionHeading } from "@/components/cockpit/patterns/section";
 import { usePageFailure } from "@/components/cockpit/patterns/use-error-detail";
-import { reportFailure } from "@/lib/action-failure";
-import { LOCALE_TAGS } from "@/lib/i18n";
-import { useI18n } from "@/lib/i18n-context";
-import { plural } from "@/lib/plural";
-import { humanizeCategory } from "@/lib/workflow-category";
-import { categoryCounts, createdByMatches, dayGroup, sortRows } from "./list-model";
+import { CatalogPurpose, fileOtherLinkCard } from "@/features/catalog";
 import {
   checkUploads,
   dropQueued,
   type FileView,
-  fileKindOf,
-  fileSize,
   fileView,
   groupBy,
   type Incoming,
   matches,
-  parseCsv,
   previewedUpload,
-} from "./model";
+} from "@/features/knowledge/model/knowledge";
+import { humanizeCategory } from "@/features/workflows/model";
+import { reportFailure } from "@/lib/action-failure";
+import { LOCALE_TAGS } from "@/lib/i18n";
+import { useI18n } from "@/lib/i18n-context";
+import { plural } from "@/lib/plural";
+import { categoryCounts, createdByMatches, dayGroup, sortRows } from "./list-model";
 import { KEYS, useFiles, useRefreshKnowledge } from "./queries";
 import {
   ChatMenu,
@@ -261,7 +258,7 @@ function LocalPreview({ file }: { file: File }) {
   if (kind === "pdf" || text === null)
     return (
       <p data-testid="kn-up-preview" className="text-sm text-muted-foreground">
-        {file.name} · {fileSize(file.size, locale)} · {t("kn.files.noPreview")}
+        {file.name} · {formatBytes(file.size, locale)} · {t("kn.files.noPreview")}
       </p>
     );
   return <PatternCode fit code={text || "—"} label={file.name} testId="kn-up-preview" />;
@@ -317,7 +314,7 @@ function UploadQueue({
                   {r.name}
                 </button>
                 <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
-                  {fileSize(r.size, locale)}
+                  {formatBytes(r.size, locale)}
                   <IconButton
                     data-testid="kn-up-remove"
                     label={t("files.remove", { name: r.name })}
@@ -500,7 +497,9 @@ export function FilesPage() {
             <ListSummary
               testId="kn-files-summary"
               kind="file"
-              parts={[plural(t, "kn.files.count", items.length, { size: fileSize(total, locale) })]}
+              parts={[
+                plural(t, "kn.files.count", items.length, { size: formatBytes(total, locale) }),
+              ]}
             />
             {items.length ? (
               <GroupedTable
@@ -520,7 +519,7 @@ export function FilesPage() {
                         icon={<IconTile icon={FILE_ICON[x.kind]} size="sm" />}
                         title={x.name}
                         sub={[
-                          fileSize(x.size, locale),
+                          formatBytes(x.size, locale),
                           x.usedBy ? plural(t, "kn.files.usedIn", x.usedBy) : null,
                         ]
                           .filter(Boolean)
@@ -598,11 +597,12 @@ function PreviewBody({ f, file }: { f: FileView; file: StoredFile }) {
       </div>
     );
   if (f.kind === "csv") {
-    const [head, ...rows] = parseCsv(text.data);
+    const preview = csvPreview(text.data, 21);
+    const [head, ...rows] = preview.rows;
     return (
       <div className="flex flex-col gap-3">
         <p className="text-sm text-muted-foreground">
-          {t("kn.files.firstRows", { n: Math.min(20, rows.length), total: rows.length })}
+          {t("kn.files.firstRows", { n: rows.length, total: Math.max(0, preview.total - 1) })}
         </p>
         <div className="overflow-x-auto rounded-lg ring-1 ring-inset ring-border">
           <table className="w-full text-sm">
@@ -619,7 +619,7 @@ function PreviewBody({ f, file }: { f: FileView; file: StoredFile }) {
               </tr>
             </thead>
             <tbody>
-              {rows.slice(0, 20).map((r, i) => (
+              {rows.map((r, i) => (
                 <tr key={`${i}-${r.join()}`} className="border-b last:border-0">
                   {r.map((c, j) => (
                     <td key={`${j}-${c}`} className="h-10 px-3 font-mono text-xs first:pl-4">
@@ -858,7 +858,7 @@ function FileDetail({ file }: { file: StoredFile }) {
         ]}
         facts={[
           { label: t("kn.col.kind"), value: t(KIND_KEY[f.kind]) },
-          { label: t("kn.files.size"), value: fileSize(f.size, locale) },
+          { label: t("kn.files.size"), value: formatBytes(f.size, locale) },
           {
             label: t("kn.col.category"),
             value: humanizeCategory(f.category, t("catalog.categoryOther")),

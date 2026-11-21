@@ -13,7 +13,6 @@ interface Props {
   overrideKeys: readonly string[];
   sessionId?: string | null;
   sessionTitle?: string | null;
-  permissionMode?: "ask" | "auto" | "plan" | "yolo" | null;
   sessionTokens?: number | null;
   weekTokens?: number | null;
 }
@@ -50,7 +49,6 @@ export const StatusTab: React.FC<Props> = ({
   overrideKeys,
   sessionId,
   sessionTitle,
-  permissionMode,
   sessionTokens,
   weekTokens,
 }) => {
@@ -152,7 +150,6 @@ export const StatusTab: React.FC<Props> = ({
         <StatusRow label="role" value={boot?.role ?? "—"} />
         <StatusRow label="engine" value={boot?.engineBaseUrl ?? "—"} />
         <StatusRow label="model" value={modelValue} />
-        <StatusRow label="permission mode" value={permissionMode ?? "—"} />
         <StatusRow
           label="tokens · session"
           value={typeof sessionTokens === "number" ? sessionTokens.toLocaleString() : "—"}

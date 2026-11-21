@@ -3,7 +3,7 @@ import type { Db } from "../db/client.ts";
 import { taskRuns, tasks } from "../db/schema/index.ts";
 import { tenantWorkBootId, withTenantWork } from "../execution/index.ts";
 import { withIsolatedContext } from "../logging/context.ts";
-import { errorFields, logger } from "../logging/logger.ts";
+import { errorFields, logger } from "../logging/index.ts";
 import { recordTaskSweepClaim } from "../observability/task-metrics.ts";
 import type { TaskServiceDeps } from "../tasks/index.ts";
 import { cronDueWindow, onceDueWindow } from "./occurrence-window.ts";

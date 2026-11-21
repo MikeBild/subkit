@@ -1,5 +1,5 @@
 import type { AuthoringStage, GateRecord, TimeoutPhase } from "../conversations/types.ts";
-import { errorFields, logger } from "../logging/logger.ts";
+import { errorFields, logger } from "../logging/index.ts";
 import {
   boundedConnectorSlug,
   boundedLabel,
@@ -121,9 +121,9 @@ export function recordLlmTokens(args: {
   });
 }
 
-export function recordLlmQuotaExhausted(args: { tenant_id: string }): void {
+export function recordLlmSpendLimitReached(args: { tenant_id: string }): void {
   safe(() => {
-    getMetrics().inc(METRIC_NAMES.LLM_QUOTA_EXHAUSTED_TOTAL, {
+    getMetrics().inc(METRIC_NAMES.LLM_SPEND_LIMIT_REACHED_TOTAL, {
       tenant_id: args.tenant_id,
     });
   });

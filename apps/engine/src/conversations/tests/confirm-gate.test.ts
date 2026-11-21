@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { AuditAction } from "../../audit/types.ts";
-import { _resetLoggerForTests, reconfigureLogger } from "../../logging/logger.ts";
+import { _resetLoggerForTests, reconfigureLogger } from "../../logging/index.ts";
 import { type CapturedLog, logRing } from "../../observability/log-ring.ts";
 import { makeStubDb, makeTestPrincipal, usePolicyFixture } from "../../tools/tests/_helpers.ts";
 import { type ConfirmGateInput, runConfirmGate } from "../confirmation.ts";
@@ -65,9 +65,8 @@ describe("runConfirmGate — one decision, one side-effect sequence", () => {
     expect(result.record).toMatchObject({
       outcome: "duplicate_pending",
       mode: "confirm_before_execution",
-      rule: "category_default",
+      rule: "write_gate",
       surface: "web",
-      bypassed_confirmation: false,
     });
   });
 
@@ -114,7 +113,7 @@ describe("runConfirmGate — one decision, one side-effect sequence", () => {
     const approvalId = result.approval_id;
     if (approvalId === null) throw new Error("expected an approval id for a known principal");
     expect(approvalId).toMatch(/^[0-9a-f-]{36}$/);
-    expect(result.rule).toBe("category_default");
+    expect(result.rule).toBe("write_gate");
     expect(result.record).toMatchObject({ outcome: "confirm", mode: "confirm_before_execution" });
 
     const actions = capture.inserts.map((row) => row.action);

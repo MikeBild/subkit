@@ -298,7 +298,6 @@ async function openRunConversation(
       actor_id: task.owner_id,
       principal,
       title: task.name,
-      permission_mode: "auto",
       surface: "web",
       playbook_mode: "auto",
       task_run: marker,

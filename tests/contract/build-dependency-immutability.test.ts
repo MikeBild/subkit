@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const REPO = join(import.meta.dir, "..", "..");
-const surfaces = ["package.json", "Dockerfile", "scripts/stage-cli-binaries.ts"].map((path) => ({
+const surfaces = ["scripts/lib/commands.ts", "scripts/stage-cli-binaries.ts"].map((path) => ({
   path,
   body: readFileSync(join(REPO, path), "utf8"),
 }));

@@ -1,3 +1,4 @@
+import { DEFAULT_QUIET_HOURS } from "@shared/quiet-hours.ts";
 import { z } from "zod";
 import { hostedRegistrationPolicyError } from "./hosted-registration-policy.ts";
 
@@ -124,6 +125,23 @@ const LogSection = z
   .describe("Logging");
 
 const optionalUrl = z.union([z.literal(""), z.string().url()]);
+
+export const DEPLOYMENT_MODES = ["server", "local_workspace"] as const;
+
+export type DeploymentMode = (typeof DEPLOYMENT_MODES)[number];
+
+const DeploymentSection = z
+  .object({
+    mode: z
+      .enum(DEPLOYMENT_MODES)
+      .default("server")
+      .describe(
+        "Bootstrap-only deployment mode: server, or local_workspace when SubKit Desktop runs the engine on this device (loopback only, local sign-in, laptop profile). Set SUBKIT_DEPLOYMENT_MODE and restart.",
+      )
+      .meta(global({ requiresRestart: true })),
+  })
+  .prefault({})
+  .describe("Deployment");
 
 export const DESKTOP_MIN_VERSION_DEFAULT = "0.1.0";
 
@@ -752,6 +770,25 @@ const PlatformSection = z
 
 const StorageSection = z
   .object({
+    backend: z
+      .enum(["s3", "filesystem"])
+      .default("s3")
+      .describe(
+        "Bootstrap-only object-store backend: s3 uses storage.object_store, filesystem uses storage.filesystem.root on this machine. Set OBJECT_STORAGE_BACKEND and restart.",
+      )
+      .meta(global({ requiresRestart: true })),
+    filesystem: z
+      .object({
+        root: z
+          .string()
+          .default("")
+          .describe(
+            "Bootstrap-only absolute folder of the filesystem object store; its parent must exist, the folder gets mode 0700. Set OBJECT_STORAGE_ROOT and restart.",
+          )
+          .meta(global({ requiresRestart: true })),
+      })
+      .prefault({})
+      .describe("Filesystem object store used when storage.backend is filesystem"),
     hosted: z
       .object({
         tenant_bytes: HostedMoney.default("0")
@@ -1131,16 +1168,9 @@ const TokensSection = z
         "Per-model price overrides on top of the built-in catalog, per 1M tokens. An entry replaces its model's catalog price. A model with neither is reported as unpriced, not as zero.",
       )
       .meta(tenant({ structural: true, runtimeEditable: true })),
-    monthly_budget: z
-      .number()
-      .int()
-      .nonnegative()
-      .default(0)
-      .describe("Hard cap on tokens consumed per calendar month. 0 = unlimited.")
-      .meta(tenant()),
   })
   .prefault({})
-  .describe("Token budget");
+  .describe("Model prices");
 
 const OperationsSection = z
   .object({
@@ -1266,11 +1296,6 @@ const SandboxSection = z
 
 const ReplSection = z
   .object({
-    permissionMode: z
-      .enum(["ask", "auto", "plan", "yolo"])
-      .default("auto")
-      .describe("Default REPL permission mode for the principal: ask, auto, plan, or yolo.")
-      .meta(tenant()),
     portalTokenTtlMin: z
       .number()
       .int()
@@ -1304,10 +1329,10 @@ const NotificationsSection = z
           .default(30)
           .describe("Minimum elapsed turn seconds before a notification fires.")
           .meta(tenant()),
-        quietHoursStart: QuietHoursStringSchema.default("")
+        quietHoursStart: QuietHoursStringSchema.default(DEFAULT_QUIET_HOURS.start)
           .describe("Quiet-hours window start (HH:MM, local TZ). Empty disables the window.")
           .meta(tenant()),
-        quietHoursEnd: QuietHoursStringSchema.default("")
+        quietHoursEnd: QuietHoursStringSchema.default(DEFAULT_QUIET_HOURS.end)
           .describe("Quiet-hours window end (HH:MM, local TZ). Empty disables the window.")
           .meta(tenant()),
       })
@@ -1620,12 +1645,10 @@ const TenantOverlaySchema = z
       .object({
         currency: z.string().optional(),
         prices: z.array(ModelPriceSchema).optional(),
-        monthly_budget: z.number().int().nonnegative().optional(),
       })
       .optional(),
     repl: z
       .object({
-        permissionMode: z.enum(["ask", "auto", "plan", "yolo"]).optional(),
         portalTokenTtlMin: z
           .number()
           .int()
@@ -1739,6 +1762,7 @@ const ProductsSection = z
 export const ConfigSchema = z
   .object({
     log: LogSection,
+    deployment: DeploymentSection,
     server: ServerSection,
     database: DatabaseConfigSchema,
     llm: LlmSection,
@@ -1779,6 +1803,7 @@ export type Config = z.infer<typeof ConfigSchema>;
 
 export const SECTION_ORDER = [
   "log",
+  "deployment",
   "server",
   "database",
   "llm",

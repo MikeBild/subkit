@@ -6,20 +6,20 @@ import type { Db, Executor } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
 import { executionFixtures, executions, type patchCandidates } from "../db/schema/index.ts";
 import { MAX_REPAIR_ATTEMPTS } from "../execution/timeouts.ts";
-import { LlmGenerationAborted, LlmQuotaExhausted } from "../llm/errors.ts";
+import { LlmGenerationAborted, LlmSpendLimitReached } from "../llm/errors.ts";
 import {
   type PatchProposal,
   type PreviousRepairAttempt,
   runRepairFlow,
 } from "../llm/flows/repair.ts";
-import { log, logger } from "../logging/logger.ts";
+import { log, logger } from "../logging/index.ts";
 import {
   recordLoopDriftToPatchCandidate,
   recordPatchCandidate,
   recordSelfHealingRepairRetried,
 } from "../observability/instrumentation.ts";
 import { invalidateTenantState } from "../operator/index.ts";
-import { getLatestShape } from "../schema-versions/service.ts";
+import { getLatestShape } from "../schema-versions/index.ts";
 import { lockWorkflowForVersionWrite } from "../workflows/version-write-lock.ts";
 import { autoApplyPatch, logPatchNotApplied } from "./auto-apply.ts";
 import { classifyPatch } from "./classifier.ts";
@@ -391,7 +391,7 @@ async function processDriftSignalLocked(
         db,
       );
     } catch (err) {
-      if (err instanceof LlmQuotaExhausted && proposal) {
+      if (err instanceof LlmSpendLimitReached && proposal) {
         logger.warn({
           module: "self-healing",
           action: "repair.budget_exhausted",

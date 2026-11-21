@@ -9,7 +9,7 @@ import { getDriverFetch, guardedFetch } from "../../connectors/index.ts";
 import type { CredentialUseSnapshot } from "../../credentials/index.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
 import { observeMcpCredential, withMcpCredentialObserver } from "./credential-observation.ts";
 import {

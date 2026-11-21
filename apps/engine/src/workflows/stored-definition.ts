@@ -20,7 +20,6 @@ type StoredDefinition =
   | { invalid: true; issues: VersionIssue[] };
 
 const ITEM_VAR_RETIRED_MESSAGE =
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: operator-facing message names the literal `${item.…}` placeholder grammar.
   "`item_var` is retired — remove it. Address the loop item as `$item` in JSONata expressions and `${item.<field>}` in URL/header/query/body strings (`$loop_index` is the iteration counter).";
 
 export function retiredItemVarIssues(dag: unknown): VersionIssue[] {

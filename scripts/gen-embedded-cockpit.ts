@@ -42,12 +42,12 @@ if (process.argv.includes("--check")) {
     current = "";
   }
   if (current !== generated.content) {
-    console.error("cockpit embed is stale — run bun run build:cockpit");
+    console.error("cockpit embed is stale — run bun run build cockpit");
     process.exit(1);
   }
   console.log("cockpit embed is current");
 } else if (!generated.hasShell) {
-  console.error(`cockpit bundle has no index.html in ${bundleDir} — run bun run build:cockpit`);
+  console.error(`cockpit bundle has no index.html in ${bundleDir} — run bun run build cockpit`);
   process.exit(1);
 } else {
   writeFileSync(output, generated.content);

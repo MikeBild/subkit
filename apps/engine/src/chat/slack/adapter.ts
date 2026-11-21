@@ -2,7 +2,7 @@ import { WebClient } from "@slack/web-api";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { chatWorkspaces, conversationElicitations } from "../../db/schema/index.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import type { ChatAdapter } from "../adapter.ts";
 import { mapToolNameToKind } from "../api.ts";
 import type {

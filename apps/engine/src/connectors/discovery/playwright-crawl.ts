@@ -1,5 +1,5 @@
-import { log } from "../../logging/logger.ts";
-import { envCsvOr } from "../../utils/env-config.ts";
+import { envList, readEnv } from "../../env.ts";
+import { log } from "../../logging/index.ts";
 import { scrubUrl } from "../egress.ts";
 import { htmlToMarkdown } from "./html-to-markdown.ts";
 import {
@@ -18,15 +18,15 @@ const MAX_CORPUS_BYTES = 200 * 1024;
 const JACCARD_THRESHOLD = 0.7;
 const SHINGLE_SIZE = 5;
 
-const POSITIVE_KEYWORDS_HIGH = envCsvOr("DOCS_CRAWL_POSITIVE_HIGH", [
+const POSITIVE_KEYWORDS_HIGH = envList("DOCS_CRAWL_POSITIVE_HIGH", [
   "api",
   "apis",
   "endpoints",
   "reference",
   "docs",
 ]);
-const POSITIVE_KEYWORDS_LOW = envCsvOr("DOCS_CRAWL_POSITIVE_LOW", ["swagger", "openapi"]);
-const NEGATIVE_KEYWORDS = envCsvOr("DOCS_CRAWL_NEGATIVE", [
+const POSITIVE_KEYWORDS_LOW = envList("DOCS_CRAWL_POSITIVE_LOW", ["swagger", "openapi"]);
+const NEGATIVE_KEYWORDS = envList("DOCS_CRAWL_NEGATIVE", [
   "pricing",
   "login",
   "signin",
@@ -88,7 +88,7 @@ export function setChromiumProviderForTesting(
 async function loadChromium(): Promise<PlaywrightChromiumLauncher> {
   if (chromiumProvider) return chromiumProvider();
   try {
-    const specifier = process.env.SK_PLAYWRIGHT_ENTRY || "playwright";
+    const specifier = readEnv("SK_PLAYWRIGHT_ENTRY") || "playwright";
     const mod = (await (Function("s", "return import(s)") as (s: string) => Promise<unknown>)(
       specifier,
     )) as { chromium: PlaywrightChromiumLauncher };

@@ -1,9 +1,15 @@
+import {
+  containsSecretReference,
+  parseSecretReference,
+  secretReference,
+} from "@shared/vault-handle.ts";
 import { and, desc, eq, gte, inArray, isNull, max, ne, sql } from "drizzle-orm";
 import { SYSTEM_TENANT_ID } from "../audit/types.ts";
 import { getConfig, installRuntimeConfig, modelSettingMismatch } from "../config/loader.ts";
+import { bindProcessBindings, processBindingRefusal } from "../config/process-bindings.ts";
 import { type Config, ConfigSchema } from "../config/schema.ts";
-import { dottedPath, findLeafByPath, listConfigLeaves } from "../config/walk.ts";
-import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
+import { dottedPath, findLeafByPath, listConfigLeaves, setDeep } from "../config/walk.ts";
+import { decryptSecret, encryptSecret } from "../crypto/index.ts";
 import type { Db, Executor, Transaction } from "../db/client.ts";
 import {
   runtimeConfigReplicas,
@@ -11,7 +17,7 @@ import {
   runtimeConfigState,
   runtimeSecretVersions,
 } from "../db/schema/index.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { failRuntimeActivation } from "./activation-failure.ts";
 import { type AppBoundaryActor, recordAppBoundaryActivation } from "./app-boundary-audit.ts";
 import {
@@ -34,17 +40,10 @@ import {
   getDeep,
   restartFieldsDiffering,
   revisionChangesOnlyTenant,
-  setDeep,
 } from "./document.ts";
 import { assertNoHostedTenantOverlays } from "./hosted-overlays.ts";
 import { SECRET_VERSION_COLUMNS } from "./secret-columns.ts";
-import {
-  assertSecretName,
-  containsSecretReference,
-  ownsTenantSettingSecret,
-  parseSecretReference,
-  secretReference,
-} from "./secret-reference.ts";
+import { assertSecretName, ownsTenantSettingSecret } from "./secret-reference.ts";
 import { insertRuntimeSecretVersion } from "./secret-write.ts";
 import { ensureRuntimeState, runtimeStateColumns } from "./state-columns.ts";
 
@@ -52,6 +51,7 @@ export { runtimeStateColumns } from "./state-columns.ts";
 
 import { assertTenantRuntimeSecretAllowed } from "./tenant-secret-policy.ts";
 
+export { parseSecretReference, secretReference } from "@shared/vault-handle.ts";
 export {
   ACTIVATION_TIMEOUT_MS,
   CONFIG_STATE_KEY,
@@ -68,11 +68,7 @@ export {
 } from "./contracts.ts";
 export { revisionChangesOnlyTenant } from "./document.ts";
 export { assertNoPendingEngineChange } from "./pending-engine-change.ts";
-export {
-  parseSecretReference,
-  secretReference,
-  settingSecretName,
-} from "./secret-reference.ts";
+export { settingSecretName } from "./secret-reference.ts";
 
 export const DATABASE_URL_BOOTSTRAP_SENTINEL = "bootstrap://DATABASE_URL";
 
@@ -451,7 +447,7 @@ async function initializeRuntimeConfigOnce(
   });
 
   const resolved = await validateAndResolveDocument(db, state.active.document);
-  resolved.database.url = seed.database.url;
+  bindProcessBindings(resolved, seed);
   const { preflightObjectStoreConfig } = await import("../storage/object-store.ts");
   await preflightObjectStoreConfig(resolved.storage);
   await applyRuntimeConfig(resolved);
@@ -570,11 +566,8 @@ export async function saveRuntimeConfigPatch(
     for (const [path, value] of entries) {
       const leaf = findLeafByPath(path);
       if (!leaf) throw new RuntimeConfigValidationError(`unknown setting path: ${path}`);
-      if (path === "database.url") {
-        throw new RuntimeConfigValidationError(
-          "database.url is a bootstrap-only process binding; rotate DATABASE_URL and restart replicas instead",
-        );
-      }
+      const processBinding = processBindingRefusal(path);
+      if (processBinding) throw new RuntimeConfigValidationError(processBinding);
       const leafScope = leaf.meta.scope ?? "global";
       if (args.scope === "tenant" && leafScope !== "tenant") {
         throw new RuntimeConfigValidationError(
@@ -709,7 +702,7 @@ export async function prepareRuntimeConfig(
   revision: RuntimeRevision,
 ): Promise<Config> {
   const config = await validateAndResolveDocument(db, revision.document);
-  config.database.url = getConfig().database.url;
+  bindProcessBindings(config, getConfig());
   const { preflightObjectStoreConfig } = await import("../storage/object-store.ts");
   await preflightObjectStoreConfig(config.storage);
   return config;

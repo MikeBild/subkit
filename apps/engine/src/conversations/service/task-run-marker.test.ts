@@ -49,10 +49,7 @@ describe("task run marker on a conversation", () => {
     );
     const draft = await storedDraft(created.conversation.id);
     expect(getTaskRunMarker(draft)).toEqual(marker);
-    expect((draft as { session?: unknown }).session).toEqual({
-      permission_mode: "auto",
-      task_run: marker,
-    });
+    expect((draft as { session?: unknown }).session).toEqual({ task_run: marker });
   });
 
   test("an ordinary conversation carries no marker", async () => {
@@ -103,10 +100,7 @@ describe("task run marker on a conversation", () => {
       ctx.db,
     );
     const draft = await storedDraft(created.conversation.id);
-    expect((draft as { session?: unknown }).session).toEqual({
-      permission_mode: "auto",
-      task_run: marker,
-    });
+    expect((draft as { session?: unknown }).session).toEqual({ task_run: marker });
   });
 
   test("a stored marker that was damaged afterwards reads as sealed, not as unmarked", async () => {
@@ -171,9 +165,9 @@ describe("task run marker on a conversation", () => {
       ctx.db,
     );
     if (!forked) throw new Error("fork missing");
-    expect(((await storedDraft(forked.conversation.id)) as { session?: unknown }).session).toEqual({
-      permission_mode: "auto",
-    });
+    expect(((await storedDraft(forked.conversation.id)) as { session?: unknown }).session).toEqual(
+      {},
+    );
   });
 
   test("forking a run conversation removes the marker and keeps the rest of the session", async () => {
@@ -206,7 +200,6 @@ describe("task run marker on a conversation", () => {
     const draft = await storedDraft(forked.conversation.id);
     expect(getTaskRunMarker(draft)).toBeNull();
     expect((draft as { session?: unknown }).session).toEqual({
-      permission_mode: "auto",
       playground: true,
     });
     expect(getTaskRunMarker(await storedDraft(created.conversation.id))).toEqual(marker);

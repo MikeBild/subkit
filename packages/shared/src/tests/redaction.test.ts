@@ -491,6 +491,12 @@ describe("redactedRequestTarget", () => {
     );
   });
 
+  test("keeps a path that does not decode as it is", () => {
+    expect(redactedRequestTarget("https://api.example.test/v1/%E0%A4%A")).toBe(
+      "https://api.example.test/v1/%E0%A4%A",
+    );
+  });
+
   test("names no target for a missing, non-http or malformed address", () => {
     expect(redactedRequestTarget(null)).toBeNull();
     expect(redactedRequestTarget("")).toBeNull();

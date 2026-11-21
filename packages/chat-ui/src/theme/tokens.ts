@@ -15,14 +15,6 @@ export interface ThemeTokens {
     neutral: string;
     dim: string;
   };
-  mode: {
-    plan: string;
-    auto: string;
-    ask: string;
-    yolo: string;
-    interactive: string;
-    headless: string;
-  };
   emphasis: {
     strong: string;
     normal: string;
@@ -98,14 +90,6 @@ const darkTheme: ThemeTokens = {
     success: "green",
     neutral: "gray",
     dim: "gray",
-  },
-  mode: {
-    plan: "cyan",
-    auto: "yellow",
-    ask: "green",
-    yolo: "red",
-    interactive: "cyan",
-    headless: "gray",
   },
   emphasis: {
     strong: "white",
@@ -271,7 +255,6 @@ const noColorTheme: ThemeTokens = (() => {
   return {
     role: { user: "", assistant: "", tool: "", system: "" },
     severity: { error: "", warning: "", info: "", success: "", neutral: "", dim: "" },
-    mode: { plan: "", auto: "", ask: "", yolo: "", interactive: "", headless: "" },
     emphasis: {
       strong: "",
       normal: "",

@@ -1,7 +1,8 @@
+import { ErrorNotice } from "@ui/molecules/error-notice";
+import { StatusStrip } from "@ui/molecules/status-strip";
 import type { SignInModel } from "../../domain/index.ts";
 import { SIGN_IN_ERRORS } from "../../domain/index.ts";
 import { factRows, type Translate } from "../../lib/text.ts";
-import { ErrorNotice, StatusStrip } from "../../ui/index.ts";
 
 export function SignInNotice({ model, t }: { model: SignInModel; t: Translate }) {
   if (model.phase !== "failed") return null;

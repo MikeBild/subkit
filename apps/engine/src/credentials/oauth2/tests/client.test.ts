@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { connectors, credentials, tenants } from "../../../db/schema/index.ts";
+import { connectors, tenants, vaultItems } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { upsertCredential } from "../../service.ts";
 import { __resetOAuth2CacheForTests, runClientCredentialsGrant } from "../client.ts";
@@ -83,8 +83,8 @@ describe("oauth2 client-credentials grant + encrypted storage", () => {
 
     const rows = await ctx.db
       .select()
-      .from(credentials)
-      .where(eq(credentials.connector_id, connectorId));
+      .from(vaultItems)
+      .where(eq(vaultItems.connector_id, connectorId));
     expect(rows.length).toBe(1);
     const row = rows[0]!;
     const hex = Buffer.from(row.ciphertext).toString("hex");

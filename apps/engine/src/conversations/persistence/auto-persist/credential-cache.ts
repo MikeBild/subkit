@@ -1,5 +1,5 @@
 import type { Db } from "../../../db/client.ts";
-import { logger } from "../../../logging/logger.ts";
+import { logger } from "../../../logging/index.ts";
 import { findSecretSpans } from "../../../logging/scrub-secrets.ts";
 import { loadDraft } from "../../draft.ts";
 import type { CommitIntent } from "../../tools/ask-user/commit-intent.ts";

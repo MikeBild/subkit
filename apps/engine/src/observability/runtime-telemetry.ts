@@ -1,5 +1,5 @@
 import { DomainRefusal } from "../logging/domain-refusal.ts";
-import { errorFields, log, logger } from "../logging/logger.ts";
+import { errorFields, log, logger } from "../logging/index.ts";
 import { recordProcessRssHighWater, setDbPoolStats } from "./instrumentation.ts";
 import { getMetrics, METRIC_NAMES } from "./metrics.ts";
 import { sampleTransientRetryRate } from "./transient-retry-rate.ts";

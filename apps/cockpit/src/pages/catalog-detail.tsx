@@ -2,14 +2,12 @@ import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useState } from "react";
 import { apiCall } from "@/api/call";
 import { navigationItem } from "@/app/navigation";
-import { ConnectorPage } from "@/components/cockpit/connector-page";
 import { BackLink, DetailPageLoading } from "@/components/cockpit/patterns";
-import { workflowSchedulesQuery } from "@/components/cockpit/schedule-auto-pause";
-import { WorkflowPage } from "@/components/cockpit/workflow-page";
 import { ForbiddenState, LoadFailed, queryView } from "@/components/failure-state";
+import { recordTitle } from "@/features/catalog";
+import { ConnectorPage, signInReturn, withoutSignInReturn } from "@/features/connectors";
+import { WorkflowPage, workflowSchedulesQuery } from "@/features/workflows";
 import { useI18n } from "@/lib/i18n-context";
-import { recordTitle } from "@/pages/catalog-model";
-import { signInReturn, withoutSignInReturn } from "@/pages/connector-detail-model";
 
 type DetailResource = "workflows" | "connectors";
 

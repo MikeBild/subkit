@@ -79,7 +79,7 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
       actor_id: null,
       connector_id: null,
       workflow_id: null,
-      permission_mode: "ask",
+      ask_before_writing: true,
       engineClient: new EngineClient({
         tenant_id: ctx.tenant_id,
         actor_id: null,
@@ -126,7 +126,7 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
       actor_id: null,
       connector_id: null,
       workflow_id: null,
-      permission_mode: "ask",
+      ask_before_writing: true,
       engineClient: new EngineClient({
         tenant_id: ctx.tenant_id,
         actor_id: null,
@@ -295,7 +295,7 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
       actor_id: null,
       connector_id: null,
       workflow_id: null,
-      permission_mode: "ask",
+      ask_before_writing: true,
       engineClient: new EngineClient({
         tenant_id: ctx.tenant_id,
         actor_id: null,
@@ -311,7 +311,7 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
     expect(result.ok).toBe(true);
   });
 
-  test("permission_mode=auto bypasses the gate — and the audit row says so instead of claiming a manual re-issue", async () => {
+  test("without the ask-before-writing rule the gate is bypassed — and the audit row says so instead of claiming a manual re-issue", async () => {
     const conversation_id = await freshConversation();
     const draft = readyWorkflowDraft("commit-gate-auto-bypass");
     await appendSnapshot(ctx.tenant_id, conversation_id, draft, ctx.testDb.db);
@@ -324,7 +324,6 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
       actor_id: null,
       connector_id: null,
       workflow_id: null,
-      permission_mode: "auto",
       engineClient: new EngineClient({
         tenant_id: ctx.tenant_id,
         actor_id: null,

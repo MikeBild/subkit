@@ -23,14 +23,14 @@
     },
     {
       "file": "apps/engine/src/workflows/core/dag.ts",
-      "source_sha256": "abc0bd5cb656328706017b4e2c4544811c7f7bbaa5e7673753182eaec767a31a",
+      "source_sha256": "0f9ae2b3c83226beea4c0061d1d5051e3a99cd9dab60b738c8f0cddbd99aacf2",
       "location": {
         "start": {
-          "line": 176,
+          "line": 177,
           "column": 27
         },
         "end": {
-          "line": 176,
+          "line": 177,
           "column": 29
         }
       },
@@ -42,16 +42,16 @@
       "independent_review": "Independently reviewed by dag_remaining_contracts and jsonata_pure_leaf; root traced stack push/pop and output consumers. Portable sentinel-ID and sparse-adjacency contracts plus 2000-case baseline differential protect the boundary. Ignored equivalence is not counted as killed."
     },
     {
-      "file": "apps/cockpit/src/pages/core/runs-filter.ts",
-      "source_sha256": "1d4a0ee504036911b6a15496d465a24c708cc222eb3889f176d40d95ff690326",
+      "file": "apps/cockpit/src/features/runs/model/runs-filter.ts",
+      "source_sha256": "c8cadbdc80951d7393836750e177c3830ff32dd413ad7efbcbe27bbefa0ebbe6",
       "location": {
         "end": {
           "column": 7,
-          "line": 46
+          "line": 49
         },
         "start": {
           "column": 5,
-          "line": 46
+          "line": 49
         }
       },
       "mutatorName": "StringLiteral",
@@ -62,16 +62,16 @@
       "independent_review": "Independently reviewed by jsonata_pure_leaf; root traced all five sites and verified that genuine regex anchor mutations are killed by expanded-year and trailing-NUL counterexamples. Missing/default, explicit filters and 200-character query limits are tested. Ignored equivalents are not counted as killed."
     },
     {
-      "file": "apps/cockpit/src/pages/core/runs-filter.ts",
-      "source_sha256": "1d4a0ee504036911b6a15496d465a24c708cc222eb3889f176d40d95ff690326",
+      "file": "apps/cockpit/src/features/runs/model/runs-filter.ts",
+      "source_sha256": "c8cadbdc80951d7393836750e177c3830ff32dd413ad7efbcbe27bbefa0ebbe6",
       "location": {
         "end": {
           "column": 7,
-          "line": 57
+          "line": 60
         },
         "start": {
           "column": 5,
-          "line": 57
+          "line": 60
         }
       },
       "mutatorName": "StringLiteral",
@@ -82,16 +82,16 @@
       "independent_review": "Independently reviewed by jsonata_pure_leaf; root traced all five sites and verified that genuine regex anchor mutations are killed by expanded-year and trailing-NUL counterexamples. Missing/default, explicit filters and 200-character query limits are tested. Ignored equivalents are not counted as killed."
     },
     {
-      "file": "apps/cockpit/src/pages/core/runs-filter.ts",
-      "source_sha256": "1d4a0ee504036911b6a15496d465a24c708cc222eb3889f176d40d95ff690326",
+      "file": "apps/cockpit/src/features/runs/model/runs-filter.ts",
+      "source_sha256": "c8cadbdc80951d7393836750e177c3830ff32dd413ad7efbcbe27bbefa0ebbe6",
       "location": {
         "end": {
           "column": 7,
-          "line": 70
+          "line": 73
         },
         "start": {
           "column": 5,
-          "line": 70
+          "line": 73
         }
       },
       "mutatorName": "StringLiteral",
@@ -102,16 +102,16 @@
       "independent_review": "Independently reviewed by jsonata_pure_leaf; root traced all five sites and verified that genuine regex anchor mutations are killed by expanded-year and trailing-NUL counterexamples. Missing/default, explicit filters and 200-character query limits are tested. Ignored equivalents are not counted as killed."
     },
     {
-      "file": "apps/cockpit/src/pages/core/runs-filter.ts",
-      "source_sha256": "1d4a0ee504036911b6a15496d465a24c708cc222eb3889f176d40d95ff690326",
+      "file": "apps/cockpit/src/features/runs/model/runs-filter.ts",
+      "source_sha256": "c8cadbdc80951d7393836750e177c3830ff32dd413ad7efbcbe27bbefa0ebbe6",
       "location": {
         "end": {
           "column": 7,
-          "line": 74
+          "line": 77
         },
         "start": {
           "column": 5,
-          "line": 74
+          "line": 77
         }
       },
       "mutatorName": "StringLiteral",
@@ -122,7 +122,7 @@
       "independent_review": "Independently reviewed by jsonata_pure_leaf; root traced all five sites and verified that genuine regex anchor mutations are killed by expanded-year and trailing-NUL counterexamples. Missing/default, explicit filters and 200-character query limits are tested. Ignored equivalents are not counted as killed."
     },
     {
-      "file": "apps/cockpit/src/lib/core/audit-filter.ts",
+      "file": "apps/cockpit/src/features/audit/model/audit-filter.ts",
       "source_sha256": "cfbb23cbcb7d6d2011795cc9f18b49e192aba798c944a983e1f5589e8a82ac04",
       "location": {
         "end": {
@@ -142,7 +142,7 @@
       "independent_review": "Independently reviewed by effect_manifest_contracts and root. Public missing-parameter defaults, explicit invalid/valid filters, expanded-year and trailing-NUL timestamp counterexamples cover the surrounding validators. Each directive applies only to its own fallback literal. Exact source/range/replacement/statusReason matching is enforced; ignored equivalents are never counted as killed."
     },
     {
-      "file": "apps/cockpit/src/lib/core/audit-filter.ts",
+      "file": "apps/cockpit/src/features/audit/model/audit-filter.ts",
       "source_sha256": "cfbb23cbcb7d6d2011795cc9f18b49e192aba798c944a983e1f5589e8a82ac04",
       "location": {
         "end": {
@@ -162,7 +162,7 @@
       "independent_review": "Independently reviewed by effect_manifest_contracts and root. Public missing-parameter defaults, explicit invalid/valid filters, expanded-year and trailing-NUL timestamp counterexamples cover the surrounding validators. Each directive applies only to its own fallback literal. Exact source/range/replacement/statusReason matching is enforced; ignored equivalents are never counted as killed."
     },
     {
-      "file": "apps/cockpit/src/lib/core/audit-filter.ts",
+      "file": "apps/cockpit/src/features/audit/model/audit-filter.ts",
       "source_sha256": "cfbb23cbcb7d6d2011795cc9f18b49e192aba798c944a983e1f5589e8a82ac04",
       "location": {
         "end": {
@@ -182,7 +182,7 @@
       "independent_review": "Independently reviewed by effect_manifest_contracts and root. Public missing-parameter defaults, explicit invalid/valid filters, expanded-year and trailing-NUL timestamp counterexamples cover the surrounding validators. Each directive applies only to its own fallback literal. Exact source/range/replacement/statusReason matching is enforced; ignored equivalents are never counted as killed."
     },
     {
-      "file": "apps/cockpit/src/lib/core/audit-filter.ts",
+      "file": "apps/cockpit/src/features/audit/model/audit-filter.ts",
       "source_sha256": "cfbb23cbcb7d6d2011795cc9f18b49e192aba798c944a983e1f5589e8a82ac04",
       "location": {
         "end": {
@@ -202,7 +202,7 @@
       "independent_review": "Independently reviewed by effect_manifest_contracts and root. Public missing-parameter defaults, explicit invalid/valid filters, expanded-year and trailing-NUL timestamp counterexamples cover the surrounding validators. Each directive applies only to its own fallback literal. Exact source/range/replacement/statusReason matching is enforced; ignored equivalents are never counted as killed."
     },
     {
-      "file": "apps/cockpit/src/lib/core/audit-filter.ts",
+      "file": "apps/cockpit/src/features/audit/model/audit-filter.ts",
       "source_sha256": "cfbb23cbcb7d6d2011795cc9f18b49e192aba798c944a983e1f5589e8a82ac04",
       "location": {
         "end": {
@@ -517,15 +517,15 @@
     },
     {
       "file": "apps/engine/src/execution/core/classify.ts",
-      "source_sha256": "e555b1bd0a552f17ebab081b1a546e4e08ecc8a2c07dfad0a043522a463bd187",
+      "source_sha256": "dd5c7ca170f56a8de2b8c415c74921b967542f3d23423af83b88e55435535468",
       "location": {
         "end": {
           "column": 97,
-          "line": 79
+          "line": 62
         },
         "start": {
           "column": 89,
-          "line": 79
+          "line": 62
         }
       },
       "mutatorName": "StringLiteral",
@@ -538,15 +538,15 @@
     },
     {
       "file": "apps/engine/src/execution/core/classify.ts",
-      "source_sha256": "e555b1bd0a552f17ebab081b1a546e4e08ecc8a2c07dfad0a043522a463bd187",
+      "source_sha256": "dd5c7ca170f56a8de2b8c415c74921b967542f3d23423af83b88e55435535468",
       "location": {
         "end": {
           "column": 22,
-          "line": 96
+          "line": 79
         },
         "start": {
           "column": 10,
-          "line": 96
+          "line": 79
         }
       },
       "mutatorName": "ConditionalExpression",
@@ -559,15 +559,15 @@
     },
     {
       "file": "apps/engine/src/execution/core/classify.ts",
-      "source_sha256": "e555b1bd0a552f17ebab081b1a546e4e08ecc8a2c07dfad0a043522a463bd187",
+      "source_sha256": "dd5c7ca170f56a8de2b8c415c74921b967542f3d23423af83b88e55435535468",
       "location": {
         "end": {
           "column": 40,
-          "line": 109
+          "line": 86
         },
         "start": {
           "column": 38,
-          "line": 109
+          "line": 86
         }
       },
       "mutatorName": "StringLiteral",
@@ -580,15 +580,15 @@
     },
     {
       "file": "apps/engine/src/execution/core/classify.ts",
-      "source_sha256": "e555b1bd0a552f17ebab081b1a546e4e08ecc8a2c07dfad0a043522a463bd187",
+      "source_sha256": "dd5c7ca170f56a8de2b8c415c74921b967542f3d23423af83b88e55435535468",
       "location": {
         "end": {
           "column": 47,
-          "line": 110
+          "line": 87
         },
         "start": {
           "column": 45,
-          "line": 110
+          "line": 87
         }
       },
       "mutatorName": "StringLiteral",
@@ -601,15 +601,15 @@
     },
     {
       "file": "apps/engine/src/execution/core/classify.ts",
-      "source_sha256": "e555b1bd0a552f17ebab081b1a546e4e08ecc8a2c07dfad0a043522a463bd187",
+      "source_sha256": "dd5c7ca170f56a8de2b8c415c74921b967542f3d23423af83b88e55435535468",
       "location": {
         "end": {
           "column": 48,
-          "line": 160
+          "line": 131
         },
         "start": {
           "column": 18,
-          "line": 160
+          "line": 131
         }
       },
       "mutatorName": "ConditionalExpression",
@@ -622,15 +622,15 @@
     },
     {
       "file": "apps/engine/src/execution/core/outcome.ts",
-      "source_sha256": "61cb1b0ab46357fe5b0194e4d8ffcbb45fefc0410eb798b886ee0faf164b7418",
+      "source_sha256": "a871052ebca240361aedb6a73a2acd91621bd5dbbf036e2d76b273d3685843c8",
       "location": {
         "end": {
           "column": 77,
-          "line": 191
+          "line": 192
         },
         "start": {
           "column": 75,
-          "line": 191
+          "line": 192
         }
       },
       "mutatorName": "StringLiteral",
@@ -643,15 +643,15 @@
     },
     {
       "file": "packages/cli-core/src/turn-event-model.ts",
-      "source_sha256": "c560c1da65ab59d63a9e75a8b5dab031a48cca7770912310b45f0dc78fb161a4",
+      "source_sha256": "ac089e1921199d84d1314d8819f958bf92baaa2e5f7dd3519b180f6034d31408",
       "location": {
         "end": {
           "column": 41,
-          "line": 225
+          "line": 224
         },
         "start": {
           "column": 16,
-          "line": 225
+          "line": 224
         }
       },
       "mutatorName": "ArithmeticOperator",
@@ -664,15 +664,15 @@
     },
     {
       "file": "packages/cli-core/src/turn-event-model.ts",
-      "source_sha256": "c560c1da65ab59d63a9e75a8b5dab031a48cca7770912310b45f0dc78fb161a4",
+      "source_sha256": "ac089e1921199d84d1314d8819f958bf92baaa2e5f7dd3519b180f6034d31408",
       "location": {
         "end": {
           "column": 45,
-          "line": 493
+          "line": 492
         },
         "start": {
           "column": 20,
-          "line": 493
+          "line": 492
         }
       },
       "mutatorName": "ArithmeticOperator",
@@ -685,15 +685,15 @@
     },
     {
       "file": "packages/cli-core/src/turn-event-model.ts",
-      "source_sha256": "c560c1da65ab59d63a9e75a8b5dab031a48cca7770912310b45f0dc78fb161a4",
+      "source_sha256": "ac089e1921199d84d1314d8819f958bf92baaa2e5f7dd3519b180f6034d31408",
       "location": {
         "end": {
           "column": 41,
-          "line": 512
+          "line": 511
         },
         "start": {
           "column": 16,
-          "line": 512
+          "line": 511
         }
       },
       "mutatorName": "ArithmeticOperator",
@@ -706,15 +706,15 @@
     },
     {
       "file": "packages/cli-core/src/turn-event-model.ts",
-      "source_sha256": "c560c1da65ab59d63a9e75a8b5dab031a48cca7770912310b45f0dc78fb161a4",
+      "source_sha256": "ac089e1921199d84d1314d8819f958bf92baaa2e5f7dd3519b180f6034d31408",
       "location": {
         "end": {
           "column": 42,
-          "line": 536
+          "line": 535
         },
         "start": {
           "column": 16,
-          "line": 536
+          "line": 535
         }
       },
       "mutatorName": "ArithmeticOperator",
@@ -727,15 +727,15 @@
     },
     {
       "file": "packages/cli-core/src/turn-event-model.ts",
-      "source_sha256": "c560c1da65ab59d63a9e75a8b5dab031a48cca7770912310b45f0dc78fb161a4",
+      "source_sha256": "ac089e1921199d84d1314d8819f958bf92baaa2e5f7dd3519b180f6034d31408",
       "location": {
         "end": {
           "column": 26,
-          "line": 301
+          "line": 300
         },
         "start": {
           "column": 11,
-          "line": 301
+          "line": 300
         }
       },
       "mutatorName": "ConditionalExpression",
@@ -748,15 +748,15 @@
     },
     {
       "file": "packages/cli-core/src/turn-event-model.ts",
-      "source_sha256": "c560c1da65ab59d63a9e75a8b5dab031a48cca7770912310b45f0dc78fb161a4",
+      "source_sha256": "ac089e1921199d84d1314d8819f958bf92baaa2e5f7dd3519b180f6034d31408",
       "location": {
         "end": {
           "column": 26,
-          "line": 301
+          "line": 300
         },
         "start": {
           "column": 11,
-          "line": 301
+          "line": 300
         }
       },
       "mutatorName": "EqualityOperator",
@@ -769,15 +769,15 @@
     },
     {
       "file": "packages/cli-core/src/turn-event-model.ts",
-      "source_sha256": "c560c1da65ab59d63a9e75a8b5dab031a48cca7770912310b45f0dc78fb161a4",
+      "source_sha256": "ac089e1921199d84d1314d8819f958bf92baaa2e5f7dd3519b180f6034d31408",
       "location": {
         "end": {
           "column": 21,
-          "line": 348
+          "line": 347
         },
         "start": {
           "column": 13,
-          "line": 348
+          "line": 347
         }
       },
       "mutatorName": "ConditionalExpression",
@@ -790,15 +790,15 @@
     },
     {
       "file": "packages/cli-core/src/turn-event-model.ts",
-      "source_sha256": "c560c1da65ab59d63a9e75a8b5dab031a48cca7770912310b45f0dc78fb161a4",
+      "source_sha256": "ac089e1921199d84d1314d8819f958bf92baaa2e5f7dd3519b180f6034d31408",
       "location": {
         "end": {
           "column": 21,
-          "line": 410
+          "line": 409
         },
         "start": {
           "column": 13,
-          "line": 410
+          "line": 409
         }
       },
       "mutatorName": "ConditionalExpression",
@@ -811,15 +811,15 @@
     },
     {
       "file": "packages/cli-core/src/turn-event-model.ts",
-      "source_sha256": "c560c1da65ab59d63a9e75a8b5dab031a48cca7770912310b45f0dc78fb161a4",
+      "source_sha256": "ac089e1921199d84d1314d8819f958bf92baaa2e5f7dd3519b180f6034d31408",
       "location": {
         "end": {
           "column": 21,
-          "line": 428
+          "line": 427
         },
         "start": {
           "column": 13,
-          "line": 428
+          "line": 427
         }
       },
       "mutatorName": "ConditionalExpression",
@@ -832,15 +832,15 @@
     },
     {
       "file": "packages/cli-core/src/turn-event-model.ts",
-      "source_sha256": "c560c1da65ab59d63a9e75a8b5dab031a48cca7770912310b45f0dc78fb161a4",
+      "source_sha256": "ac089e1921199d84d1314d8819f958bf92baaa2e5f7dd3519b180f6034d31408",
       "location": {
         "end": {
           "column": 19,
-          "line": 408
+          "line": 407
         },
         "start": {
           "column": 11,
-          "line": 408
+          "line": 407
         }
       },
       "mutatorName": "ConditionalExpression",
@@ -853,15 +853,15 @@
     },
     {
       "file": "packages/cli-core/src/turn-event-model.ts",
-      "source_sha256": "c560c1da65ab59d63a9e75a8b5dab031a48cca7770912310b45f0dc78fb161a4",
+      "source_sha256": "ac089e1921199d84d1314d8819f958bf92baaa2e5f7dd3519b180f6034d31408",
       "location": {
         "end": {
           "column": 19,
-          "line": 426
+          "line": 425
         },
         "start": {
           "column": 11,
-          "line": 426
+          "line": 425
         }
       },
       "mutatorName": "ConditionalExpression",
@@ -1231,15 +1231,15 @@
     },
     {
       "file": "packages/cli-core/src/turn-event-model.ts",
-      "source_sha256": "c560c1da65ab59d63a9e75a8b5dab031a48cca7770912310b45f0dc78fb161a4",
+      "source_sha256": "ac089e1921199d84d1314d8819f958bf92baaa2e5f7dd3519b180f6034d31408",
       "location": {
         "end": {
           "column": 17,
-          "line": 246
+          "line": 245
         },
         "start": {
           "column": 9,
-          "line": 246
+          "line": 245
         }
       },
       "mutatorName": "ConditionalExpression",
@@ -1252,15 +1252,15 @@
     },
     {
       "file": "packages/cli-core/src/turn-event-model.ts",
-      "source_sha256": "c560c1da65ab59d63a9e75a8b5dab031a48cca7770912310b45f0dc78fb161a4",
+      "source_sha256": "ac089e1921199d84d1314d8819f958bf92baaa2e5f7dd3519b180f6034d31408",
       "location": {
         "end": {
           "column": 55,
-          "line": 282
+          "line": 281
         },
         "start": {
           "column": 46,
-          "line": 282
+          "line": 281
         }
       },
       "mutatorName": "OptionalChaining",
@@ -1273,15 +1273,15 @@
     },
     {
       "file": "packages/cli-core/src/turn-event-model.ts",
-      "source_sha256": "c560c1da65ab59d63a9e75a8b5dab031a48cca7770912310b45f0dc78fb161a4",
+      "source_sha256": "ac089e1921199d84d1314d8819f958bf92baaa2e5f7dd3519b180f6034d31408",
       "location": {
         "end": {
           "column": 32,
-          "line": 285
+          "line": 284
         },
         "start": {
           "column": 9,
-          "line": 285
+          "line": 284
         }
       },
       "mutatorName": "ConditionalExpression",
@@ -1294,15 +1294,15 @@
     },
     {
       "file": "packages/cli-core/src/turn-event-model.ts",
-      "source_sha256": "c560c1da65ab59d63a9e75a8b5dab031a48cca7770912310b45f0dc78fb161a4",
+      "source_sha256": "ac089e1921199d84d1314d8819f958bf92baaa2e5f7dd3519b180f6034d31408",
       "location": {
         "end": {
           "column": 18,
-          "line": 285
+          "line": 284
         },
         "start": {
           "column": 9,
-          "line": 285
+          "line": 284
         }
       },
       "mutatorName": "OptionalChaining",
@@ -1819,7 +1819,7 @@
     },
     {
       "file": "apps/engine/src/tasks/core/run-state.ts",
-      "source_sha256": "6dedcfd6a41da75bc43d163f810625bda7f682570d6106726d6c9218559b397e",
+      "source_sha256": "3ef7458e5a3a85eda451242c5424b4e3cc8d083532667e0734f782bb61a99636",
       "location": {
         "start": {
           "line": 57,
@@ -1840,7 +1840,7 @@
     },
     {
       "file": "apps/engine/src/tasks/core/run-state.ts",
-      "source_sha256": "6dedcfd6a41da75bc43d163f810625bda7f682570d6106726d6c9218559b397e",
+      "source_sha256": "3ef7458e5a3a85eda451242c5424b4e3cc8d083532667e0734f782bb61a99636",
       "location": {
         "start": {
           "line": 58,
@@ -1987,14 +1987,14 @@
     },
     {
       "file": "apps/engine/src/workflows/core/authority-inheritance.ts",
-      "source_sha256": "8e172178c271285e4aca1cd9f4dffbcb4a0e160a59bc3965fe5e6b0dd4863fa6",
+      "source_sha256": "0fc825e99daf3c29927675e838f124be1bee342ade3499e8df00342b6eec0178",
       "location": {
         "start": {
-          "line": 78,
+          "line": 116,
           "column": 21
         },
         "end": {
-          "line": 78,
+          "line": 116,
           "column": 45
         }
       },
@@ -2008,14 +2008,14 @@
     },
     {
       "file": "apps/engine/src/workflows/core/authority-inheritance.ts",
-      "source_sha256": "8e172178c271285e4aca1cd9f4dffbcb4a0e160a59bc3965fe5e6b0dd4863fa6",
+      "source_sha256": "0fc825e99daf3c29927675e838f124be1bee342ade3499e8df00342b6eec0178",
       "location": {
         "start": {
-          "line": 78,
+          "line": 116,
           "column": 49
         },
         "end": {
-          "line": 78,
+          "line": 116,
           "column": 76
         }
       },

@@ -8,6 +8,7 @@ import { runtimeConfigRevisions, tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { provisionSelfServiceTenant } from "../identity/self-service.ts";
 import { workspaceAiAccess } from "../llm/runtime/workspace-access.ts";
+import { testEnv } from "../test-helpers/determinism/env.ts";
 import { configureHostedPolicyForTests } from "../test-helpers/hosted-policy.ts";
 import { TEST_WORKSPACE_REGISTRATION } from "../test-helpers/workspace-registration.ts";
 import { RuntimeConfigCoordinator } from "./coordinator.ts";
@@ -30,7 +31,7 @@ let ordinaryTenant: string;
 let configDir: string;
 
 beforeAll(async () => {
-  process.env.MASTER_KEY = "66".repeat(32);
+  testEnv.MASTER_KEY = "66".repeat(32);
   tdb = await createTestDb("hosted-runtime-policy");
   await configureHostedPolicyForTests(tdb.db, tdb.url);
   const provisioned = await provisionSelfServiceTenant(
@@ -159,7 +160,7 @@ test("a hosted workspace overlay holds exactly its own provider, model and key",
     { "llm.fallback_provider": "openai" },
     { "llm.summarize_model": "claude-haiku-4-5" },
     { "llm.web_search": true },
-    { "tokens.monthly_budget": 1000 },
+    { "connectors.mcp.per_server_manifest_byte_cap": 1000 },
   ]) {
     await expect(patch({ ...own, ...neighbour })).rejects.toBeInstanceOf(
       RuntimeConfigValidationError,

@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { attentionDetail, attentionSentence } from "@/features/overview/model/overview-model";
+import { item as overviewFixture } from "@/features/overview/model/overview-model-fixtures";
+import { rerunFailureText } from "@/features/runs/model/runs-model";
 import {
   ENGINE_CLASS_CODES,
   ENGINE_FAILURE_CODES,
@@ -11,9 +14,6 @@ import {
 import { errorSentence } from "@/lib/error-facts";
 import { type TranslationKey, translate } from "@/lib/i18n";
 import { engineSentenceDe, engineSentenceEn } from "@/lib/i18n/engine-sentence";
-import { attentionDetail, attentionSentence } from "@/pages/overview-model";
-import { item as overviewFixture } from "@/pages/overview-model-fixtures";
-import { rerunFailureText } from "@/pages/runs-model";
 
 const de = (key: TranslationKey, values?: Record<string, string | number>) =>
   translate("de", key, values);

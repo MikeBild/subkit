@@ -1,5 +1,5 @@
 {
-  "_about": "Judge-calibration golden set. Each case is a (goal, final_output) pair with a HUMAN label. The calibration runner (eval/judge-calibration.ts, `bun run eval:judge`) calls the REAL preview judge on each and reports agreement vs these labels — the judge must agree >= AGREEMENT_THRESHOLD (0.80). Cases are grounded in real benchmark outputs (browserless + EV-charging GraphQL A/Bs) and the deterministic eval fixtures. Labels reflect: does the FINAL output satisfy the goal? passes = yes; partial = right shape, missing/empty required content; failed = wrong/empty/format-mismatch.",
+  "_about": "Judge-calibration golden set. Each case is a (goal, final_output) pair with a HUMAN label. The calibration runner (eval/judge-calibration.ts, `bun run eval judge`) calls the REAL preview judge on each and reports agreement vs these labels — the judge must agree >= AGREEMENT_THRESHOLD (0.80). Cases are grounded in real benchmark outputs (browserless + EV-charging GraphQL A/Bs) and the deterministic eval fixtures. Labels reflect: does the FINAL output satisfy the goal? passes = yes; partial = right shape, missing/empty required content; failed = wrong/empty/format-mismatch.",
   "cases": [
     {
       "name": "gql-digest-correct",

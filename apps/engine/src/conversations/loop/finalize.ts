@@ -1,35 +1,26 @@
 import { monthlyUsage } from "../../llm/accounting/index.ts";
 import { countSkillTokens } from "../../llm/runtime/context-assembler.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import {
   breakdownLogFields,
   cacheReadUsage,
-  remainingMonthlyBudget,
   type TurnOutcome,
   tokenBreakdown,
   topSkillsByTokens,
 } from "../core/loop.ts";
 import { nextSuggestion } from "../streaming.ts";
 import type { TurnEvent } from "../types.ts";
+import { spendAllowsSuggestion, turnSpendNotice } from "./spend-notice.ts";
 import { buildNextSuggestionFrame } from "./suggest-next-emitter.ts";
 import type { RunLoopResult, TurnEnv, TurnState } from "./types.ts";
 
-const SUGGEST_BUDGET_HEADROOM_TOKENS = 200;
-
-async function suggestionFrameFor(
-  env: TurnEnv,
-  outcome: TurnOutcome,
-  usageAfter: number,
-): Promise<TurnEvent> {
-  const { p, events, route } = env;
+async function suggestionFrameFor(env: TurnEnv, outcome: TurnOutcome): Promise<TurnEvent> {
+  const { p, events } = env;
   if (outcome.status === "abandoned") {
     return nextSuggestion({ suggestion: null, reason: "turn-abandoned", kind: null });
   }
-  const monthlyBudget = route.monthly_budget;
-  const budgetGuard =
-    monthlyBudget != null && monthlyBudget > 0
-      ? () => usageAfter + SUGGEST_BUDGET_HEADROOM_TOKENS <= monthlyBudget
-      : undefined;
+  const spendAllows = await spendAllowsSuggestion(p);
+  const budgetGuard = spendAllows ? undefined : () => false;
   return buildNextSuggestionFrame({
     tenant_id: p.tenant_id,
     conversation_id: p.conversation_id,
@@ -47,11 +38,11 @@ export async function finalizeTurn(
   state: TurnState,
   outcome: TurnOutcome,
 ): Promise<RunLoopResult> {
-  const { p, events, route, prompt } = env;
+  const { p, events, prompt } = env;
   const usageAfter = await monthlyUsage(p.tenant_id, p.db).catch(() => env.usageBefore);
   const turnTokens = Math.max(0, usageAfter - env.usageBefore);
-  const remaining = remainingMonthlyBudget(route.monthly_budget, usageAfter);
   const breakdown = tokenBreakdown(prompt?.token_counts);
+  const spendNotice = await turnSpendNotice(p, env.spendBefore);
   events.push({
     type: "completed",
     status: outcome.status,
@@ -62,13 +53,13 @@ export async function finalizeTurn(
         : {}),
       turn_tokens_total: state.turnTokensTotal,
       ...cacheReadUsage(state.turnInputTokens, state.turnCacheReadTokens),
-      remaining_monthly_budget_tokens: remaining,
       context_cap_tokens: env.contextCap,
+      ...(spendNotice ? { spend_notice: spendNotice } : {}),
       ...(breakdown ? { breakdown } : {}),
     },
   });
 
-  events.push(await suggestionFrameFor(env, outcome, usageAfter));
+  events.push(await suggestionFrameFor(env, outcome));
 
   const topSkillBreakdown = prompt
     ? topSkillsByTokens(prompt.included_skills ?? [], prompt.token_counts?.skills, (skill) =>
@@ -82,7 +73,6 @@ export async function finalizeTurn(
     conversation_id: p.conversation_id,
     final_status: outcome.status,
     turn_tokens: turnTokens,
-    remaining_monthly_budget_tokens: remaining,
     references_resolved: env.referenced.resolved.length,
     references_unresolved: env.referenced.unresolved.length,
     ...breakdownLogFields(breakdown),

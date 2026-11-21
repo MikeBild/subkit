@@ -1,6 +1,6 @@
 import { getConnector } from "../../connectors/service.ts";
 import { type Db, getDb } from "../../db/client.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { idHashesCapped } from "../../observability/id-hashes.ts";
 import {
   recordAuthoringContextSkillsUsed,

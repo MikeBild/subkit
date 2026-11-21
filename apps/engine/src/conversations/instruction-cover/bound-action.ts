@@ -216,7 +216,7 @@ function connectorAction(
     return { ...shaped, verb: "update", verbs: ["update"] };
   }
   if (method !== "POST") return { ...none, effect_class: "unknown", target };
-  if (draft) return { ...shaped, verb: "create", verbs: ["create", "save"] };
+  if (draft) return { ...shaped, verb: "create", verbs: ["create", "save", "send"] };
   if (routeTokens.some((token) => DISPATCH_TOKENS.has(token))) {
     return { ...shaped, verb: "send", verbs: ["send"] };
   }

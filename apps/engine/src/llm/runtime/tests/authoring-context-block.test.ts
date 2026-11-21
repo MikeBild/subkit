@@ -426,7 +426,6 @@ describe("renderAuthoringContextBlock — tenant workflow validation", () => {
               method: "GET",
               connector_id: "connector-id",
               path: "/items",
-              // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow placeholders are literal authoring data.
               headers: { Authorization: "Bearer ${scope.login.data.access_token}" },
             },
           ],

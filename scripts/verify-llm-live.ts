@@ -255,7 +255,7 @@ async function main(): Promise<number> {
   } catch (err) {
     console.error(`verify:llm-live: ${err instanceof Error ? err.message : String(err)}\n`);
     console.error(
-      "usage: bun run verify:llm-live -- [--key-file <path>] [--openai-key-file <path>] [--models <[provider:]model,…>] [--timeout-ms <ms>]",
+      "usage: bun run verify llm-live -- [--key-file <path>] [--openai-key-file <path>] [--models <[provider:]model,…>] [--timeout-ms <ms>]",
     );
     return 2;
   }
@@ -296,7 +296,7 @@ async function main(): Promise<number> {
   }
   console.log(`\n${renderTable(results)}\n`);
   const code = exitCodeFor(results, true);
-  console.log(code === 0 ? "verify:llm-live OK" : "verify:llm-live FAIL");
+  console.log(code === 0 ? "verify llm-live OK" : "verify llm-live FAIL");
   return code;
 }
 

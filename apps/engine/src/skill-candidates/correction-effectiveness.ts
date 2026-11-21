@@ -9,7 +9,7 @@ import {
   intakeProposals,
 } from "../db/schema/intake.ts";
 import { skillEffectiveness } from "../db/schema/skills.ts";
-import { log } from "../logging/logger.ts";
+import { log } from "../logging/index.ts";
 import { now } from "../utils/clock.ts";
 import { CORRECTION_AGENT } from "./correction-intake.ts";
 

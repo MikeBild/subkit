@@ -1,5 +1,5 @@
 import { engineClientActorType } from "../../llm/accounting/index.ts";
-import { log, logger } from "../../logging/logger.ts";
+import { log, logger } from "../../logging/index.ts";
 import { recordToolHallucinatedAbsence } from "../../observability/instrumentation.ts";
 import { handoffSummary, inferReplyLocale, turnHandoff } from "../handoff-summary.ts";
 import { updateMessageContent } from "../persistence/index.ts";

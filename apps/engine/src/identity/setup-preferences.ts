@@ -19,7 +19,7 @@ import {
 } from "./approval-policy.ts";
 
 export const RECOMMENDED_SETUP = {
-  default_chat_mode: "auto",
+  ask_before_writing: false,
   default_environment: "dev",
   approver: { kind: "self" },
   notifications: { mode: "immediately" },
@@ -35,7 +35,6 @@ export function isTimeZone(value: string): boolean {
   }
 }
 
-export type SetupChatMode = "ask" | "auto" | "plan";
 export type SetupEnvironment = "dev" | "prod";
 
 export type SetupApprover =
@@ -48,7 +47,7 @@ export type SetupApprover =
     };
 
 export interface SetupPreferences {
-  default_chat_mode: SetupChatMode;
+  ask_before_writing: boolean;
   default_environment: SetupEnvironment;
   approver: SetupApprover;
   notifications: NotificationSchedulePreference;
@@ -56,12 +55,12 @@ export interface SetupPreferences {
   critical_breakthrough: boolean;
   first_job: string | null;
   services: string[];
-  unset: Array<"default_chat_mode" | "default_environment" | "approver" | "notifications">;
+  unset: Array<"default_environment" | "approver" | "notifications">;
   updated_at: Date | null;
 }
 
 export interface SetupPatch {
-  default_chat_mode?: SetupChatMode;
+  ask_before_writing?: boolean;
   default_environment?: SetupEnvironment;
   approver?: SetupApprover;
   notifications?: NotificationSchedulePreference;
@@ -90,12 +89,11 @@ function approverOf(row: UserSetupPreferencesRow | undefined): SetupApprover | n
 export function setupFromRow(row: UserSetupPreferencesRow | undefined): SetupPreferences {
   const approver = approverOf(row);
   const unset: SetupPreferences["unset"] = [];
-  if (!row?.default_chat_mode) unset.push("default_chat_mode");
   if (!row?.default_environment) unset.push("default_environment");
   if (!approver) unset.push("approver");
   if (!row?.notification_schedule) unset.push("notifications");
   return {
-    default_chat_mode: row?.default_chat_mode ?? RECOMMENDED_SETUP.default_chat_mode,
+    ask_before_writing: row?.ask_before_writing ?? RECOMMENDED_SETUP.ask_before_writing,
     default_environment: row?.default_environment ?? RECOMMENDED_SETUP.default_environment,
     approver: approver ?? RECOMMENDED_SETUP.approver,
     notifications: row?.notification_schedule ?? RECOMMENDED_SETUP.notifications,
@@ -132,12 +130,9 @@ export async function readSetupPreferences(
   return setupFromRow(await findRow(db, owner));
 }
 
-export async function storedDefaultChatMode(
-  db: Executor,
-  owner: SetupOwner,
-): Promise<SetupChatMode | null> {
+export async function storedAskBeforeWriting(db: Executor, owner: SetupOwner): Promise<boolean> {
   const [row] = await db
-    .select({ mode: userSetupPreferences.default_chat_mode })
+    .select({ ask: userSetupPreferences.ask_before_writing })
     .from(userSetupPreferences)
     .where(
       and(
@@ -146,7 +141,7 @@ export async function storedDefaultChatMode(
       ),
     )
     .limit(1);
-  return row?.mode ?? null;
+  return row?.ask ?? false;
 }
 
 export async function storedDefaultEnvironment(
@@ -353,7 +348,7 @@ async function activatePairOnJoin(
 
 function audited(setup: SetupPreferences): Record<string, unknown> {
   return {
-    default_chat_mode: setup.default_chat_mode,
+    ask_before_writing: setup.ask_before_writing,
     default_environment: setup.default_environment,
     approver_kind: setup.approver.kind,
     approver_user_id: setup.approver.kind === "self" ? null : setup.approver.user_id,
@@ -387,8 +382,8 @@ export async function writeSetupPreferences(
     const before = await findRow(tx, owner);
     const approver = patch.approver;
     const values = {
-      ...(patch.default_chat_mode !== undefined
-        ? { default_chat_mode: patch.default_chat_mode }
+      ...(patch.ask_before_writing !== undefined
+        ? { ask_before_writing: patch.ask_before_writing }
         : {}),
       ...(patch.default_environment !== undefined
         ? { default_environment: patch.default_environment }

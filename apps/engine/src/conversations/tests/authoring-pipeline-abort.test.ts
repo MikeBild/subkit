@@ -11,7 +11,7 @@ import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { LlmGenerationAborted } from "../../llm/errors.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
-import { recordSuccessShape } from "../../schema-versions/service.ts";
+import { recordSuccessShape } from "../../schema-versions/index.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { withSelfHostedDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { runAuthoringPipeline } from "../authoring-pipeline.ts";

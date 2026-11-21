@@ -43,7 +43,7 @@ test("person names remain email addresses and missing evidence never becomes ano
   }
   expect(
     auditResourceName({
-      resource_type: "credential",
+      resource_type: "vault_item",
       before: { name: "Secret label" },
       after: null,
     }),

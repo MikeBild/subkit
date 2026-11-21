@@ -13,7 +13,6 @@ import { BASE, step } from "./request-boundary-fixtures.ts";
 
 const read = step({
   method: "GET",
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
   path: "/sites/${input.site}/stats",
   query: { tz: "UTC" },
   boundary: {
@@ -111,7 +110,6 @@ test("a connector key that the step also uses is refused, whatever the step uses
     refusal(
       {
         path: "/sites/blog/stats",
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
         query: { site: "${input.site}" },
       },
       own({}, ["site"]),

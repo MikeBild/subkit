@@ -3,8 +3,10 @@ import { and, eq, isNull } from "drizzle-orm";
 import pc from "picocolors";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
+import { currentDeploymentMode } from "../config/deployment-mode.ts";
+import { readEnv } from "../env.ts";
 import { lockActiveTenant } from "../identity/index.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { seedDefaultCliNotificationRule } from "../notifications/default-cli-rule.ts";
 import { claimOperatorTenantIfUnassigned } from "../rbac/operator.ts";
 import {
@@ -546,7 +548,8 @@ async function seedDevFixtures(db: Db, rbacIds: SeededRoleIds): Promise<IssuedKe
 
 export async function seedAtBoot(db: Db): Promise<SeedResult> {
   const rbacIds = await seedEssentials(db);
-  const isProd = process.env.NODE_ENV === "production";
+  const isProd =
+    readEnv("NODE_ENV") === "production" || currentDeploymentMode() === "local_workspace";
   const devKeys = isProd ? [] : await seedDevFixtures(db, rbacIds);
   return {
     status: devKeys.length > 0 ? "seeded" : "already_seeded",

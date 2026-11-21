@@ -1,6 +1,6 @@
 import type { Job, PgBoss } from "pg-boss";
 import type { Db } from "../../db/client.ts";
-import { log } from "../../logging/logger.ts";
+import { log } from "../../logging/index.ts";
 import type { TaskServiceDeps } from "../../tasks/index.ts";
 import { withActiveTenantJobContext } from "../job-context.ts";
 import { TASK_RUN_TURN_DLQ } from "../queues.ts";

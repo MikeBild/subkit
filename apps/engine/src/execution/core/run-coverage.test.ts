@@ -109,7 +109,7 @@ describe("admittedCoveringAuthority", () => {
   });
 
   test("claims nothing for any other rule", () => {
-    expect(admittedCoveringAuthority("permission_mode", covered, admitted)).toBeNull();
+    expect(admittedCoveringAuthority("write_gate", covered, admitted)).toBeNull();
   });
 
   test("claims nothing without coverage", () => {

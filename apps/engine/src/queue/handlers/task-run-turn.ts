@@ -25,7 +25,7 @@ import {
   rehydrateExecutionPrincipal,
 } from "../../execution/authorization-context.ts";
 import { callerFromPrincipal } from "../../execution/caller-context.ts";
-import { errorFields, log, logger } from "../../logging/logger.ts";
+import { errorFields, log, logger } from "../../logging/index.ts";
 import { can } from "../../rbac/evaluator.ts";
 import type { TaskServiceDeps } from "../../tasks/index.ts";
 import type { LoadedTaskRun, TaskRunTurnFacts } from "../../tasks/run-driver.ts";
@@ -61,9 +61,10 @@ interface RegisterTaskRunTurnOptions {
 
 const UNSETTLED_JOB_STATES = ["created", "retry", "active"];
 const MAPPED_TURN_FAILURES = new Set([
-  "llm_quota_exhausted",
+  "llm_spend_limit_reached",
   "ai_access_missing",
   "llm_provider_limited",
+  "llm_provider_quota_exhausted",
 ]);
 const TURN_LISTENER = "task_runs";
 
@@ -281,7 +282,6 @@ async function driveTurn(
           user_message: appended.message,
           answer_actor: MODEL_RELAYED_ANSWER,
           locale: task.locale,
-          permission_mode: "auto",
           surface: "web",
           turn_abort_ctrl: ctrl,
         },
@@ -293,7 +293,7 @@ async function driveTurn(
       } else {
         const described = describeTurnFailure(error);
         failure = driver.taskRunTurnFailure(described, deps.now());
-        if (described.code === "llm_quota_exhausted")
+        if (described.code === "llm_spend_limit_reached")
           await driver.recordBudgetWait(db, {
             ...scope,
             projected_tokens: driver.refusedTurnTokens(error),

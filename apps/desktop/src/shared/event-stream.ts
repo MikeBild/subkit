@@ -1,5 +1,6 @@
+import { backoffDelay } from "@shared/backoff.ts";
+import { createSseParser, type SseFrame } from "@shared/sse.ts";
 import { type AuthFailure, classifyAuthFailure } from "./server-contract.ts";
-import { backoffDelay, createSseParser, type SseEvent } from "./sse.ts";
 
 export type StreamStatus = "connecting" | "online" | "offline" | AuthFailure;
 
@@ -25,7 +26,7 @@ export interface StreamOptions {
   signal: AbortSignal;
   deps: StreamDeps;
   idleTimeoutMs?: number | (() => number);
-  onEvent(event: SseEvent): void;
+  onEvent(event: SseFrame): void;
   onStatus(status: StreamStatus): void;
   onError?(error: unknown): void;
 }
@@ -90,11 +91,14 @@ export async function runEventStream(options: StreamOptions): Promise<AuthFailur
       if (!response.body) throw new Error("event stream has no body");
       report("online");
       attempt = 0;
-      const parser = createSseParser((event) => {
-        if (event.id) lastEventId = event.id;
-        options.onEvent(event);
-      });
-      await readBody(response.body, (text) => parser.push(text), touch);
+      const parse = createSseParser();
+      const deliver = (text: string) => {
+        for (const event of parse(text)) {
+          if (event.id) lastEventId = event.id;
+          options.onEvent(event);
+        }
+      };
+      await readBody(response.body, deliver, touch);
     } catch (error) {
       if (!signal.aborted) options.onError?.(error);
     } finally {

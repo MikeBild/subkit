@@ -1,5 +1,5 @@
 import type { PatchProposal } from "../llm/flows/repair.ts";
-import { log } from "../logging/logger.ts";
+import { log } from "../logging/index.ts";
 import { classifyPatch as classifyPatchDecision } from "./core/classifier.ts";
 import type { DriftSignal, PatchDecision } from "./types.ts";
 

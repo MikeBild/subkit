@@ -6,7 +6,7 @@ import { assertInsertRow } from "../../db/assert-insert.ts";
 import type { Db } from "../../db/client.ts";
 import { conversationMessages, conversations, fileLinks } from "../../db/schema/index.ts";
 import { linkStoredFile } from "../../files/links.ts";
-import { log } from "../../logging/logger.ts";
+import { log } from "../../logging/index.ts";
 import { withoutTaskRunCheck, withoutTaskRunMarker } from "../core/draft.ts";
 import { forkPlaybookDocument } from "../playbook.ts";
 import type { ConversationRecord } from "../types.ts";

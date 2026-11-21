@@ -429,12 +429,7 @@ describe("classifyRequestStepSideEffects · GraphQL endpoint resolved from the c
   const persisted = { extensions: { persistedQuery: { version: 1, sha256Hash: "abc" } } };
 
   test("a read-labelled POST to the connector base_url without a readable document is held", () => {
-    for (const target of [
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: authored connector placeholder
-      { url: "${connector.github.base_url}" },
-      { path: "/" },
-      {},
-    ]) {
+    for (const target of [{ url: "${connector.github.base_url}" }, { path: "/" }, {}]) {
       const request = step({
         connector_id: CONNECTOR_ID,
         method: "POST",

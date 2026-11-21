@@ -58,7 +58,6 @@ async function seedKnowledgeChunk(opts: {
 async function seedConversation(): Promise<string> {
   const draft = {
     ...createEmptyDraftDocument(),
-    session: { permission_mode: "auto" as const },
   };
   const [conversation] = await env.db
     .insert(conversations)

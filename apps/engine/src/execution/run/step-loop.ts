@@ -1,5 +1,6 @@
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import type { BranchStep, StepDef } from "../../workflows/types.ts";
+import { budgetPause } from "../core/budget-pause.ts";
 import {
   abortedStepSummary,
   branchArmStepIds,
@@ -45,7 +46,7 @@ function enterStep(
     aborted: env.signal.aborted,
     skipped: state.skippedStepIds.has(step.id),
     containerChild: plan.containerChildIds.has(step.id),
-    fixture: env.opts.step_output_fixtures?.[step.id],
+    fixture: env.opts.step_output_fixtures?.[step.id] ?? env.opts.budget_resume?.[step.id],
     heldDependency: env.opts.hold_writes
       ? findHeldDependency(plan.dag, step.id, (sid) => state.heldOrSkippedStepIds.has(sid))
       : null,
@@ -170,6 +171,20 @@ export async function runStepLoop(env: RunEnv, plan: RunPlan, state: RunState): 
     const verdict = step.for_each
       ? await runForEachStep(env, plan, state, frame, step.for_each)
       : await dispatchStep(env, plan, state, frame);
+    const pause = budgetPause({
+      error_code: verdict.error?.code,
+      step_kind: step.kind,
+      for_each: Boolean(step.for_each),
+      authorized: env.ownConnectorCredentials,
+      child: env.parent_execution_id !== null,
+      held: env.opts.hold_writes === true,
+      sensitive: env.execution_privacy === "sensitive",
+      persisted: env.resolved.persist_workflow_refs,
+    });
+    if (pause === "park") {
+      state.budgetPark = { step_id: step.id, step_row_id };
+      break;
+    }
     if (settleStepVerdict(env, plan, state, frame, verdict) === "stop") break;
   }
 }

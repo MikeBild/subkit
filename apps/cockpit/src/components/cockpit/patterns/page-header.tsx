@@ -1,13 +1,13 @@
 import { useRouter } from "@tanstack/react-router";
+import { Skeleton } from "@ui/atoms/skeleton";
+import { useArrived, useLoadingPhase } from "@ui/lib/loading-phase";
+import { cn } from "@ui/lib/utils";
 import { ChevronLeft } from "lucide-react";
 import type { ReactNode } from "react";
 import { absolute } from "@/app/links";
-import { useArrived, useLoadingPhase } from "@/lib/use-loading-phase";
-import { cn } from "@/lib/utils";
 import { type ActionSpec, renderAction } from "./action-button";
 import { listReturnHref, readListReturn } from "./list-return";
 import { useReportPageTitle } from "./side-details";
-import { Skeleton } from "./skeleton";
 
 export function PageHeader({
   title,

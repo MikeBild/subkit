@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { render } from "@/pages/settings-fixtures";
 import { LaunchAtLoginRow, PrivacyPanel, UpdatesPanel } from "./desktop-settings";
 import {
   type DesktopSettings,
   desktopSettingsBridgeOf,
   parseDesktopSettings,
 } from "./desktop-settings-model";
+import { render } from "./model/settings-fixtures";
 import { StartLayoutRows } from "./start-layout-rows";
 
 const settings: DesktopSettings = {

@@ -13,7 +13,6 @@ import { ResumeSummaryCard } from "../repl/authoring-cards.tsx";
 import { NeedsAttentionPanel } from "../repl/needs-attention-panel.tsx";
 import { buildStarterActions } from "../repl/starter-action-injection.ts";
 import { StarterActions } from "../repl/starter-actions.tsx";
-import type { PermissionMode } from "../repl/status-line/render.ts";
 import { classifyVersionSkew, VersionMismatchBanner } from "../repl/version-mismatch-banner.tsx";
 import { WelcomeBanner } from "../repl/welcome-banner.tsx";
 import type { ConnectionSnapshot, PersonaInfo, ResumeSummary, TranscriptMode } from "./types.ts";
@@ -68,7 +67,6 @@ SetupBanner.displayName = "SetupBanner";
 interface WelcomeRowProps {
   persona: PersonaInfo;
   conversationId: string | null;
-  activeMode: PermissionMode;
   transcriptMode: TranscriptMode;
   connectionSnapshot: ConnectionSnapshot | null | undefined;
   resumeSummary: ResumeSummary | null | undefined;
@@ -82,7 +80,6 @@ interface WelcomeRowProps {
 export const WelcomeRow: React.FC<WelcomeRowProps> = ({
   persona,
   conversationId,
-  activeMode,
   transcriptMode,
   connectionSnapshot,
   resumeSummary,
@@ -140,7 +137,6 @@ export const WelcomeRow: React.FC<WelcomeRowProps> = ({
         engineUrl={persona.engineUrl}
         profileName={persona.profileName}
         sessionId={conversationId}
-        mode={activeMode}
         transcriptMode={transcriptMode}
         connectionState={connectionSnapshot?.state ?? "unknown"}
         connectionReason={connectionSnapshot?.reason ?? null}

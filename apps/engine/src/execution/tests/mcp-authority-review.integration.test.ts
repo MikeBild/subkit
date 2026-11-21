@@ -1,5 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: the steps below carry authored
-// placeholder tokens verbatim.
 import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { previewWorkflowAuthorityOperation } from "../../api/operations/workflow-authorities.ts";
@@ -26,6 +24,7 @@ import {
 import { seedMcpConnector } from "../../mcp/client/test-fixtures.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { databaseNow } from "../../test-helpers/database-clock.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import {
   grantWorkflowAuthority,
   previewWorkflowAuthority,
@@ -40,7 +39,7 @@ import { createEngineCtx, createWorkflowRow, type EngineTestCtx } from "./setup.
 let ctx: EngineTestCtx;
 let connectorId: string;
 let sequence = 0;
-const originalDatabaseUrl = process.env.DATABASE_URL;
+const originalDatabaseUrl = testEnv.DATABASE_URL;
 
 const SEARCH = {
   name: "search",
@@ -93,7 +92,7 @@ beforeAll(async () => {
   __setMcpPoolFactoriesForTests({ makeClient: (row) => clientFor(row.url) });
   ctx = await createEngineCtx("mcp-authority-review");
   await closeDb();
-  process.env.DATABASE_URL = ctx.testDb.url;
+  testEnv.DATABASE_URL = ctx.testDb.url;
   const server = await seedMcpConnector(ctx.testDb.db, {
     tenant_id: ctx.tenantId,
     slug: "mcpreview",
@@ -124,8 +123,8 @@ afterAll(async () => {
   __setMcpPoolFactoriesForTests(null);
   __resetMcpClientPoolForTests();
   await closeDb();
-  if (originalDatabaseUrl === undefined) delete process.env.DATABASE_URL;
-  else process.env.DATABASE_URL = originalDatabaseUrl;
+  if (originalDatabaseUrl === undefined) delete testEnv.DATABASE_URL;
+  else testEnv.DATABASE_URL = originalDatabaseUrl;
   await ctx.cleanup();
 }, 30_000);
 

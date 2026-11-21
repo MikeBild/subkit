@@ -62,7 +62,7 @@ test("a union with undetected mutants never becomes a receipt", () => {
 });
 
 test("the check names the command when evidence is missing", () => {
-  expect(() => check(null)).toThrow("Run `bun run test:mutation:release` first.");
+  expect(() => check(null)).toThrow("Run `bun run quality release` first.");
 });
 
 test("the check rejects evidence of another commit, a changed union and edited counts", () => {

@@ -52,7 +52,6 @@ describe("a refused report is repaired by a reviewed deterministic fix", () => {
           id: "send_email",
           method: "POST",
           url: GMAIL_SEND_TARGET,
-          // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow substitution
           body: { raw: "${scope.compose.data.raw}" },
           report_delivery: {
             kind: "gmail_report",

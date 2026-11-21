@@ -9,7 +9,7 @@ import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sou
 import { withTenantWork } from "../../execution/tenant-work.ts";
 import { assertTenantActive } from "../../identity/tenant-status.ts";
 import { knowledgeContentHash, recordKnowledgeVersion } from "../../knowledge/version-record.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { applyAuthMaterial, resolveConnectorCredential } from "../drivers/http.ts";
 import { attachConnectorSelfDescriptionLinks, getConnectorForEnvironment } from "../service.ts";
 import type { ConnectorSelfDescriptionLink } from "../types.ts";

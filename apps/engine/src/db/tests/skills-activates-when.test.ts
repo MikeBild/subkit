@@ -2,10 +2,11 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, sql } from "drizzle-orm";
 import type { SeededSkill } from "../../skills/seed.ts";
 import { applySkillSeeds } from "../../skills/seed.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { skills, tenants } from "../schema/index.ts";
 import { createTestDb, type TestDb } from "./setup.ts";
 
-const skip = process.env.REQUIRES_PG === "0";
+const skip = testEnv.REQUIRES_PG === "0";
 
 let ctx: TestDb;
 let tenant_id: string;

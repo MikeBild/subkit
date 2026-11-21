@@ -1,6 +1,6 @@
 import { expect, spyOn, test } from "bun:test";
 import { _withDriverFetchForTests } from "../connectors/drivers/fetch-seam.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { postTokenEndpoint, registerClient } from "./connections/oauth-client.ts";
 import {
   completeAuthorizationCode,

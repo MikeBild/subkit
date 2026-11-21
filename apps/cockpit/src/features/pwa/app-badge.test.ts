@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { attentionBadge } from "@/pages/overview-model";
+import { attentionBadge } from "@/features/overview/model/attention-projection";
 import { BADGE_MAX, badgeCount, showAppBadge } from "./app-badge";
 
 function target() {

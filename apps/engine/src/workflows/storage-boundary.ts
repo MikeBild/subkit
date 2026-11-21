@@ -1,6 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import type { CallerContext } from "../execution/caller-context.ts";
 import type { MaterializedRequest } from "../execution/prepared-request.ts";
+import { hasCode, isC0 } from "../utils/control-chars.ts";
 import { hasRuntimeValue } from "./report-delivery-boundary.ts";
 import type { RequestStep } from "./types.ts";
 
@@ -240,8 +241,8 @@ export function storageKeyViolation(
   if (boundary.operation === "LIST") return body == null ? null : { kind: "body_forbidden" };
   if (
     key.split("/").some((part) => !part || part === "." || part === "..") ||
-    // biome-ignore lint/suspicious/noControlCharactersInRegex: reject control characters in object keys
-    /[\\\u0000-\u001f]/.test(key)
+    key.includes("\\") ||
+    hasCode(key, isC0)
   )
     return { kind: "key_invalid" };
   if (boundary.operation !== "PUT") return body == null ? null : { kind: "body_forbidden" };

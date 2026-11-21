@@ -5,10 +5,13 @@ import { listConnectors } from "../connectors/service.ts";
 import type { Db } from "../db/client.ts";
 import { connectors, executionSteps } from "../db/schema/index.ts";
 import { taskRuns } from "../db/schema/tasks.ts";
-import { aggregateAudit } from "../stats/aggregate-audit.ts";
-import { aggregateExecutions } from "../stats/aggregate-executions.ts";
-import { aggregateLlm, type LlmGroup } from "../stats/aggregate-llm.ts";
-import { statsBucketFor } from "../stats/llm-cost.ts";
+import {
+  aggregateAudit,
+  aggregateExecutions,
+  aggregateLlm,
+  type LlmGroup,
+  statsBucketFor,
+} from "../stats/index.ts";
 
 export const OPERATING_FIGURES_SCHEMA_VERSION = "operating-figures.v1" as const;
 
@@ -101,6 +104,7 @@ export const COCKPIT_RUNS_FILTER_PARAMS = {
   q: "runs_q",
   startedFrom: "runs_from",
   startedTo: "runs_to",
+  device: "runs_device",
 } as const;
 
 type CockpitRunsFilter = Partial<Record<keyof typeof COCKPIT_RUNS_FILTER_PARAMS, string>>;

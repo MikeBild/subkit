@@ -1,4 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: tests validate literal caller placeholder syntax.
 import { describe, expect, test } from "bun:test";
 import { loadAgentSkills } from "../../../conversations/agent/skills/index.ts";
 import { buildGenerationPrompt } from "../../../conversations/authoring-pipeline.ts";

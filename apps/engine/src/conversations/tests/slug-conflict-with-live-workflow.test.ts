@@ -40,7 +40,6 @@ function toolCtx(
     actor_id: actorId,
     connector_id: null,
     workflow_id: null,
-    permission_mode: "auto",
     // biome-ignore lint/suspicious/noExplicitAny: stub for gate test
     engineClient: {} as any,
     getDraft,

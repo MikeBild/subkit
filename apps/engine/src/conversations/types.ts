@@ -1,3 +1,4 @@
+import type { LocalConfirmation } from "@shared/device/confirmation.ts";
 import type { SuggestNextKind, SuggestNextReason } from "@shared/suggest-next-reasons.ts";
 import type { AuthType, DriverName, Environment } from "../connectors/types.ts";
 import type { WorkflowDef } from "../workflows/types.ts";
@@ -9,7 +10,6 @@ import type { ResumeFormField } from "./resume-form.ts";
 import type { ToolCallOutcome } from "./tools/result-payload.ts";
 
 export type ConversationStatus = "active" | "awaiting_input" | "committed" | "abandoned";
-export type ConversationPermissionMode = "auto" | "ask" | "plan" | "yolo";
 
 export type ConversationRole = "user" | "assistant" | "tool" | "system";
 
@@ -53,8 +53,13 @@ export interface TurnUsage {
   turn_tokens?: number;
   prompt_tokens_last_call?: number;
   turn_tokens_total?: number;
-  remaining_monthly_budget_tokens: number | null;
   context_cap_tokens?: number;
+  spend_notice?: {
+    run: "chat_turn" | "task_run";
+    run_cost_usd: number;
+    threshold_usd: number;
+    currency: string;
+  };
   breakdown?: {
     system: number;
     skills: number;
@@ -399,7 +404,6 @@ export interface DraftDocument {
   latest_preview?: WorkflowDraftPreviewSummary | null;
   state?: AuthoringState;
   session?: {
-    permission_mode?: ConversationPermissionMode | null;
     playground?: boolean | null;
     intake_item_ids?: string[] | null;
     intake_read_item_versions?: Record<string, number> | null;
@@ -546,6 +550,7 @@ export interface ConversationResumeSummary {
       external_tool?: ExternalToolSubject;
       effect?: ConnectorCallSubject;
       subjects?: string[];
+      device?: LocalConfirmation;
     };
     summary: string;
     expires_at: string;

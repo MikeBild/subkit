@@ -1,5 +1,5 @@
 import { load as loadYaml } from "js-yaml";
-import { log } from "../../logging/logger.ts";
+import { log } from "../../logging/index.ts";
 import { walkZipEntries } from "../../utils/zip-walk.ts";
 import { getDriverFetch } from "../drivers/fetch-seam.ts";
 import { scrubUrl } from "../egress.ts";

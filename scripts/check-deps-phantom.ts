@@ -120,8 +120,8 @@ if (import.meta.main) {
   }
   console.log(
     names.length === 0
-      ? "check:deps-phantom OK — every imported package is declared"
-      : `check:deps-phantom FAIL — ${names.length} undeclared (phantom) dependenc${names.length === 1 ? "y" : "ies"}`,
+      ? "verify deps OK — every imported package is declared"
+      : `verify deps FAIL — ${names.length} undeclared (phantom) dependenc${names.length === 1 ? "y" : "ies"}`,
   );
   process.exit(names.length === 0 ? 0 : 1);
 }

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { SYSTEM_TENANT_ID } from "../../audit/index.ts";
 import { closeDb, getDb } from "../../db/client.ts";
 import { newTraceId, withContext } from "../../logging/context.ts";
-import { logger, routeLogsToStderr } from "../../logging/logger.ts";
+import { logger, routeLogsToStderr } from "../../logging/index.ts";
 import {
   API_KEY_TOKEN_TYPE,
   exchangeApiKeyForToken,

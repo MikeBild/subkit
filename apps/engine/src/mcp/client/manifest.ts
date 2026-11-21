@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { getConfig } from "../../config/loader.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 
 export interface RemoteToolAnnotations {
   title?: string | undefined;

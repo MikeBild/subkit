@@ -1,7 +1,10 @@
-import { cp, mkdir, rm } from "node:fs/promises";
+import { cp, mkdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { INFO_PLIST_LOCALES, infoPlistStrings } from "../src/shared/app-identity.ts";
+import { CHANNELS } from "../src/shared/channel.ts";
 import { buildSigned, buildUpdates, updateFeedProblem } from "../src/shared/updates.ts";
 import { FONT_FILES, FONT_PACKAGE } from "./fonts.ts";
+import { generateIcons, RENDERED } from "./icons.ts";
 import { uiResolve } from "./ui-resolve.ts";
 
 const root = resolve(import.meta.dir, "..");
@@ -63,6 +66,7 @@ async function buildStyles(input: string, output: string): Promise<void> {
 await rm(dist, { recursive: true, force: true });
 await mkdir(join(dist, "connect"), { recursive: true });
 await bundle("src/main/index.ts", "main.cjs", "node", "cjs");
+await bundle("src/runner/index.ts", "runner.cjs", "node", "cjs");
 await bundle("src/preload/connect.ts", "preload-connect.cjs", "node", "cjs");
 await bundle("src/preload/cockpit.ts", "preload-cockpit.cjs", "node", "cjs");
 await bundle("src/connect/main.tsx", "connect/connect.js", "browser", "iife");
@@ -80,6 +84,14 @@ await cp(join(root, "src/shell/shell.html"), join(dist, "shell/shell.html"));
 for (const file of FONT_FILES) {
   await cp(join(root, FONT_PACKAGE, "files", file), join(dist, "shell/fonts", file));
 }
+await bundle("src/preload/live.ts", "preload-live.cjs", "node", "cjs");
+await mkdir(join(dist, "live/fonts"), { recursive: true });
+await bundle("src/live/main.tsx", "live/live.js", "browser", "iife");
+await cp(join(root, "src/live/live.html"), join(dist, "live/live.html"));
+for (const file of FONT_FILES) {
+  await cp(join(root, FONT_PACKAGE, "files", file), join(dist, "live/fonts", file));
+}
+await buildStyles(join(root, "src/live/live.css"), join(dist, "live/live.css"));
 const css = Bun.spawnSync(
   [
     join(root, "node_modules/.bin/tailwindcss"),
@@ -92,8 +104,20 @@ const css = Bun.spawnSync(
   { cwd: root, stdout: "inherit", stderr: "pipe" },
 );
 if (css.exitCode !== 0) throw new Error(`Tailwind failed: ${css.stderr.toString()}`);
+if (process.argv.includes("--icons")) await generateIcons(root);
+for (const [file] of RENDERED) {
+  if (!(await Bun.file(join(root, "assets", file)).exists()))
+    throw new Error(`assets/${file} is missing; render it with bun run build --icons on a Mac`);
+}
 await mkdir(join(dist, "assets"), { recursive: true });
-for (const file of ["icon.png", "trayTemplate.png", "trayTemplate@2x.png"]) {
+for (const file of ["icon.png", "icon-mac.png", "trayTemplate.png", "trayTemplate@2x.png"]) {
   await cp(join(root, "assets", file), join(dist, "assets", file));
+}
+for (const locale of INFO_PLIST_LOCALES) {
+  await mkdir(join(dist, "mac", `${locale}.lproj`), { recursive: true });
+  await writeFile(
+    join(dist, "mac", `${locale}.lproj`, "InfoPlist.strings"),
+    infoPlistStrings(locale, CHANNELS[channel].name),
+  );
 }
 console.log(`Built SubKit Desktop into ${dist} (${channel}, updates ${updates ? "on" : "off"})`);

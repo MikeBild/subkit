@@ -3,17 +3,14 @@ import { useQuery } from "@tanstack/react-query";
 import { apiCall } from "@/api/call";
 import { ApiError } from "@/api/client";
 import { useLiveQueryOptions } from "@/app/live-events";
+import { isAppUserEmail } from "@/features/admin/model/app-user";
 import { reportFailure } from "@/lib/action-failure";
-import { isAppUserEmail } from "@/lib/app-user";
-import type { TranslationKey } from "@/lib/i18n";
-import type { useI18n } from "@/lib/i18n-context";
+import type { Translate, TranslationKey } from "@/lib/i18n";
 import { useInfiniteList } from "@/lib/use-infinite-list";
 import { personRefusal } from "./model/admin-model";
 import { personEmailText } from "./model/apps-model";
 
 export type Envelope<T> = { items: T[] };
-
-export type Translate = ReturnType<typeof useI18n>["t"];
 
 export type UserItem = components["schemas"]["UserDetail"];
 

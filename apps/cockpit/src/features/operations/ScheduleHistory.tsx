@@ -1,6 +1,7 @@
-import { Pill } from "@ui/components/proto/Pill";
-import { EmptyState, Timeline } from "@ui/components/proto/visual";
+import { Pill } from "@ui/atoms/pill";
 import { useI18n as useUiI18n } from "@ui/lib/ui-context";
+import { EmptyState } from "@ui/molecules/empty-state";
+import { Timeline } from "@ui/organisms/timeline";
 import { CalendarClock, CalendarX2, Clock3, PauseCircle, Play } from "lucide-react";
 import { Button } from "@/components/cockpit/patterns";
 import type { TranslationKey } from "@/lib/i18n";

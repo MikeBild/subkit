@@ -82,7 +82,7 @@ export async function prepareReportAuthority(
           eq(executions.execution_mode, input.execution_environment),
           eq(executions.hold_writes, true),
           executionVisibilityFilter(principal),
-          inArray(executions.status, ["queued", "running"]),
+          inArray(executions.status, ["queued", "waiting_for_device", "running"]),
         ),
       )
       .limit(1);

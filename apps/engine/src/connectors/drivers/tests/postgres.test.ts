@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
-import { logger } from "../../../logging/logger.ts";
+import { logger } from "../../../logging/index.ts";
 import { seedTenant } from "../../../test-helpers/seed.ts";
 import { _withEgressTenantOriginForTests } from "../../egress-guard.ts";
 import type { ConnectorView } from "../../types.ts";

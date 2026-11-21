@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import { S3Client } from "@bradenmacdonald/s3-lite-client";
 import { getConfig, isConfigLoaded } from "../config/loader.ts";
+import { readEnv } from "../env.ts";
+import { filesystemRoot, type StorageConfig } from "./backend.ts";
+import { FileSystemObjectStore } from "./file-system-object-store.ts";
 
 export const MULTIPART_PART_BYTES = 64 * 1024 * 1024;
 
@@ -498,11 +501,20 @@ function readObjectStoreConfig(): ObjectStoreConfig {
 
 let cached: ObjectStore | null = null;
 
+function configuredFilesystemRoot(): string | null {
+  return isConfigLoaded() ? filesystemRoot(getConfig().storage) : null;
+}
+
 export function getObjectStore(): ObjectStore {
   if (cached) return cached;
+  const root = configuredFilesystemRoot();
+  if (root !== null) {
+    cached = new FileSystemObjectStore(root);
+    return cached;
+  }
   if (
-    process.env.NODE_ENV === "test" ||
-    (!isConfigLoaded() && process.env.NODE_ENV !== "production")
+    readEnv("NODE_ENV") === "test" ||
+    (!isConfigLoaded() && readEnv("NODE_ENV") !== "production")
   ) {
     cached = new MemoryObjectStore();
     return cached;
@@ -511,10 +523,13 @@ export function getObjectStore(): ObjectStore {
   return cached;
 }
 
-export async function preflightObjectStoreConfig(
-  storage: ReturnType<typeof getConfig>["storage"],
-): Promise<void> {
-  if (process.env.NODE_ENV === "test" && !storage.object_store.endpoint) return;
+export async function preflightObjectStoreConfig(storage: StorageConfig): Promise<void> {
+  const root = filesystemRoot(storage);
+  if (root !== null) {
+    await new FileSystemObjectStore(root).headBucket();
+    return;
+  }
+  if (readEnv("NODE_ENV") === "test" && !storage.object_store.endpoint) return;
   const config = storage.object_store;
   if (
     !config.endpoint ||

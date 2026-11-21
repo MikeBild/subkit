@@ -2,7 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { matchTemplateByUrl } from "../connectors/template-url-match.ts";
 import type { Db } from "../db/client.ts";
 import { connectors } from "../db/schema/index.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { loadDraft } from "./draft.ts";
 
 export interface ScopeFacts {

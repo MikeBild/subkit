@@ -3,13 +3,13 @@ import { eq } from "drizzle-orm";
 import pg from "pg";
 import { executions, files, workflows } from "../../db/schema/index.ts";
 import { createExecution } from "../../execution/state.ts";
+import { runFilesCleanup } from "../../files/scheduled/files-cleanup-runner.ts";
 import { createHttpTestServer } from "../../http/tests/setup.ts";
 import { getMetrics, METRIC_NAMES } from "../../observability/metrics.ts";
 import { EXECUTION_RUN_QUEUE } from "../../queue/queues.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
-import { runFilesCleanup } from "../files-cleanup-runner.ts";
 import { createSchedule, updateSchedule } from "../repo.ts";
 import { createFilesCleanupBoss, disposeBoss } from "./pgboss-bootstrap.ts";
 

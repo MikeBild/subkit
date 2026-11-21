@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { connectors, skills } from "../../db/schema/index.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
 import { LLM_CALL_TIMEOUT_MS } from "../../llm/runtime/ai-sdk-model.ts";
-import { recordSuccessShape } from "../../schema-versions/service.ts";
+import { recordSuccessShape } from "../../schema-versions/index.ts";
 import {
   GeneratedWorkflowSchema,
   MAX_GENERATION_PASSES,

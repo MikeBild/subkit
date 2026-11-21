@@ -1,14 +1,14 @@
 import { classifyOutcome, type OfflineIdentity } from "@shared/offline-queue.ts";
 import { useQueryClient } from "@tanstack/react-query";
-import { ErrorNotice, FieldError } from "@ui/components/proto/ErrorNotice";
 import { useUi } from "@ui/lib/ui-context";
+import { ErrorNotice, FieldError } from "@ui/molecules/error-notice";
+import { IconButton } from "@ui/molecules/icon-button";
 import { ChevronDown, Paperclip, Send, X } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { submitFeedback } from "@/api/feedback";
 import { useLiveStatus } from "@/app/live-events";
 import { useSession } from "@/app/session";
-import { IconButton } from "@/components/cockpit/icon-button";
 import {
   Button,
   Checkbox,
@@ -19,13 +19,6 @@ import {
   FactList,
   Textarea,
 } from "@/components/cockpit/patterns";
-import { runsInstalled } from "@/features/pwa";
-import { errorRows } from "@/lib/error-rows";
-import { useI18n } from "@/lib/i18n-context";
-import { writeSearchParam } from "@/lib/use-search-param-state";
-import { feedbackBridge, within } from "./desktop-bridge";
-import type { FailedReport } from "./failed-model";
-import { FailedReports } from "./failed-reports";
 import {
   type AttachmentProblem,
   attachmentProblem,
@@ -46,7 +39,14 @@ import {
   hasFeedbackDraft,
   needsUncleanedWarning,
   screenshotHint,
-} from "./model";
+} from "@/features/feedback/model/feedback";
+import { runsInstalled } from "@/features/pwa";
+import { errorRows } from "@/lib/error-rows";
+import { useI18n } from "@/lib/i18n-context";
+import { writeSearchParam } from "@/lib/use-search-param-state";
+import { feedbackBridge, within } from "./desktop-bridge";
+import type { FailedReport } from "./failed-model";
+import { FailedReports } from "./failed-reports";
 import { feedbackQueue } from "./queue";
 import { feedbackStore, openFeedback, useFeedbackState } from "./store";
 

@@ -35,7 +35,7 @@ const dataOf = (output: Output | undefined): Record<string, unknown> =>
 async function chatTurn(tool: string, args: Record<string, unknown>): Promise<TurnEvent[]> {
   const created = await journeyFetch(ctx, "/v1/conversations", {
     method: "POST",
-    body: JSON.stringify({ permission_mode: "auto" }),
+    body: JSON.stringify({}),
   });
   expect(created.status).toBe(201);
   const conversationId = ((await created.json()) as { conversation: { id: string } }).conversation

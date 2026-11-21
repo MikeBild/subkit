@@ -15,7 +15,7 @@ import {
   userIdentities,
   users,
 } from "../db/schema/index.ts";
-import { log } from "../logging/logger.ts";
+import { log } from "../logging/index.ts";
 import { builtinRoleId } from "../rbac/roles.ts";
 import {
   authorizeRequestedScopes,

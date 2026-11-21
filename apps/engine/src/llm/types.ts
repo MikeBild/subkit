@@ -33,7 +33,6 @@ export interface ModelRoute {
   provider: LlmProviderKind;
   fallback_provider: LlmProviderKind;
   context_cap: number;
-  monthly_budget: number | null;
 }
 
 export interface UserTurn {
@@ -90,7 +89,7 @@ export interface AuthoringPromptHint {
     reason: string;
   } | null;
   scope?: "rbac";
-  permission_mode?: string | null;
+  ask_before_writing?: boolean;
   locked_tools?: ReadonlyArray<{ skill: string; tools: readonly string[] }>;
 }
 

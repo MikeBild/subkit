@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import * as discoveryService from "../../connectors/discovery/service.ts";
-import { auditLog, connectors, conversations, credentials } from "../../db/schema/index.ts";
+import { auditLog, connectors, conversations, vaultItems } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { tenantWorkSnapshot } from "../../execution/tenant-work.ts";
@@ -95,7 +95,6 @@ async function seed(slug: string): Promise<{ conversation_id: string; tool_ctx: 
     actor_id: null,
     connector_id: null,
     workflow_id: null,
-    permission_mode: null,
     engineClient: new EngineClient({ tenant_id, actor_id: null, db: ctx.db }),
     getDraft: () => live,
     setDraft: async (next) => {
@@ -168,8 +167,8 @@ describe("saveConnectorAtomic — draft-credential cache fallback", () => {
     expect(conn).toHaveLength(1);
     const cred = await ctx.db
       .select()
-      .from(credentials)
-      .where(and(eq(credentials.tenant_id, tenant_id), eq(credentials.connector_id, conn[0]!.id)));
+      .from(vaultItems)
+      .where(and(eq(vaultItems.tenant_id, tenant_id), eq(vaultItems.connector_id, conn[0]!.id)));
     expect(cred).toHaveLength(1);
     expect(cred[0]!.mode).toBe("bearer");
 
@@ -275,7 +274,6 @@ describe("saveConnectorAtomic — cognito_user_password cache fallback for oauth
       actor_id: null,
       connector_id: null,
       workflow_id: null,
-      permission_mode: null,
       engineClient: new EngineClient({ tenant_id, actor_id: null, db: ctx.db }),
       getDraft: () => live,
       setDraft: async (next) => {
@@ -331,10 +329,8 @@ describe("saveConnectorAtomic — cognito_user_password cache fallback for oauth
       expect(conn).toHaveLength(1);
       const cred = await ctx.db
         .select()
-        .from(credentials)
-        .where(
-          and(eq(credentials.tenant_id, tenant_id), eq(credentials.connector_id, conn[0]!.id)),
-        );
+        .from(vaultItems)
+        .where(and(eq(vaultItems.tenant_id, tenant_id), eq(vaultItems.connector_id, conn[0]!.id)));
       expect(cred).toHaveLength(1);
       expect(cred[0]!.mode).toBe("oauth2");
       await waitFor(() => tenantWorkSnapshot(tenant_id).in_flight === 0, {

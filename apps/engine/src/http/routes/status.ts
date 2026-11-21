@@ -25,13 +25,17 @@ const StatusSchema = z
     skills_count: z.number().int().nonnegative(),
     tokens_today: z.number().int().nonnegative(),
     tokens_month: z.number().int().nonnegative(),
-    monthly_budget_tokens: z.number().int().nonnegative().nullable(),
-    remaining_monthly_budget_tokens: z.number().int().nullable(),
-    monthly_budget_state: z.enum(["ample", "tightening", "critical"]).nullable(),
     tokens_today_user: z.number().int().nonnegative().nullable(),
     tokens_month_user: z.number().int().nonnegative().nullable(),
-    user_monthly_budget_tokens: z.number().int().nonnegative().nullable(),
-    user_remaining_monthly_budget_tokens: z.number().int().nullable(),
+    ai_budget: z
+      .object({
+        currency: z.string(),
+        limit: z.number().nullable().describe("Monthly limit; null means no limit."),
+        spent: z.number(),
+        state: z.enum(["unlimited", "ok", "warning", "reached", "continued"]),
+      })
+      .describe("The workspace's monthly AI budget, the only spending limit.")
+      .openapi("StatusAiBudget"),
     version: z.string(),
     llm_provider: z
       .object({
@@ -73,7 +77,6 @@ export function registerStatusRoute(app: OpenAPIHono<AppEnv>): void {
       principal.kind === "user" ? principal.id : null,
       new Date(),
     );
-    const month = snapshot.month;
     const user = snapshot.user;
 
     return c.json(
@@ -90,14 +93,15 @@ export function registerStatusRoute(app: OpenAPIHono<AppEnv>): void {
         connectors_count: snapshot.connectors_count,
         skills_count: snapshot.skills_count,
         tokens_today: snapshot.tokens_today,
-        tokens_month: month.used_tokens,
-        monthly_budget_tokens: month.budget_tokens,
-        remaining_monthly_budget_tokens: month.remaining_tokens,
-        monthly_budget_state: month.state,
+        tokens_month: snapshot.tokens_month,
         tokens_today_user: user ? user.tokens_today : null,
         tokens_month_user: user ? user.tokens_month : null,
-        user_monthly_budget_tokens: user ? user.budget_tokens : null,
-        user_remaining_monthly_budget_tokens: user ? user.remaining_tokens : null,
+        ai_budget: {
+          currency: snapshot.spend.currency,
+          limit: snapshot.spend.limit_usd,
+          spent: snapshot.spend.spent_usd,
+          state: snapshot.spend.state,
+        },
         version: OPENAPI_INFO.version,
         llm_provider: ((report) => ({
           detected: report.detected,

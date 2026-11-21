@@ -1,0 +1,41 @@
+# Burndown allowlist for the audit-invariants `getdb_callers` check.
+# Rule: getDb() call outside a process entry point (COMPOSITION_ROOTS in audit/rules.ts); receive the executor from the caller instead.
+# Format: <path from repo root>  <budget in calls>. A listed file fails once it exceeds its budget;
+# an unlisted file fails at the first hit. Budgets only shrink: fix the file, then run
+# `bun run apps/engine/scripts/audit-invariants.ts --update-baseline` (lowers budgets, drops fixed files).
+# `--accept-new` also admits new offenders; use it only for a reviewed baseline reset.
+
+apps/engine/src/conversations/topic-routing.ts           1
+apps/engine/src/db/audit.ts                              1
+apps/engine/src/db/rate-limits.ts                        1
+apps/engine/src/embeddings/backfill.ts                   1
+apps/engine/src/execution/list.ts                        1
+apps/engine/src/http/routes/diagnostics/drift.ts         1
+apps/engine/src/http/routes/diagnostics/integrations.ts  1
+apps/engine/src/http/routes/diagnostics/logs.ts          2
+apps/engine/src/http/routes/diagnostics/version.ts       1
+apps/engine/src/http/routes/setup.ts                     4
+apps/engine/src/identity/browser-memberships.ts          2
+apps/engine/src/identity/identity-migration.ts           1
+apps/engine/src/identity/owned-tenant.ts                 1
+apps/engine/src/identity/tenant-erasure.ts               1
+apps/engine/src/identity/tenant-lifecycle.ts             1
+apps/engine/src/identity/tenant-status.ts                1
+apps/engine/src/knowledge/bundle-service.ts              2
+apps/engine/src/knowledge/catalog.ts                     3
+apps/engine/src/knowledge/content.ts                     3
+apps/engine/src/knowledge/intake-session.ts              3
+apps/engine/src/knowledge/intake-targets.ts              1
+apps/engine/src/knowledge/versions.ts                    3
+apps/engine/src/llm/accounting/budget.ts                 3
+apps/engine/src/llm/accounting/spend.ts                  1
+apps/engine/src/llm/flows/document-analysis.ts           2
+apps/engine/src/llm/runtime/context-assembler.ts         1
+apps/engine/src/llm/runtime/invoke.ts                    2
+apps/engine/src/llm/runtime/operator-key-guard.ts        1
+apps/engine/src/self-update.ts                           1
+apps/engine/src/skills/conventions.ts                    1
+apps/engine/src/workflows/catalog-describe.ts            3
+apps/engine/src/workflows/connector-refs.ts              3
+apps/engine/src/workflows/drafts.ts                      2
+apps/engine/src/workflows/versions.ts                    2

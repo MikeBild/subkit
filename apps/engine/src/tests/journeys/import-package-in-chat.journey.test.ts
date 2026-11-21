@@ -62,7 +62,7 @@ describe("a package attached in the chat is previewed, confirmed and imported", 
     async () => {
       const created = await journeyFetch(ctx, "/v1/conversations", {
         method: "POST",
-        body: JSON.stringify({ permission_mode: "ask" }),
+        body: JSON.stringify({}),
       });
       expect(created.status).toBe(201);
       const conversationId = ((await created.json()) as { conversation: { id: string } })

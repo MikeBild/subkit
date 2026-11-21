@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { skills, tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { testEnv } from "../test-helpers/determinism/env.ts";
 import { autoloadForToolCall, loadActivationCatalog } from "./skill-autoload.ts";
 
-const skip = process.env.REQUIRES_PG === "0";
+const skip = testEnv.REQUIRES_PG === "0";
 let ctx: TestDb;
 let tenant_id: string;
 

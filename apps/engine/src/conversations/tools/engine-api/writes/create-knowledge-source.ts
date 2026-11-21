@@ -3,7 +3,7 @@ import { executionDataFileIds } from "../../../../files/model-context.ts";
 import type { FileRow } from "../../../../files/resolver.ts";
 import { requireFileForTenant, resolvedFromRow } from "../../../../files/resolver.ts";
 import { KnowledgeBudgetExceededError } from "../../../../knowledge/budgets.ts";
-import { log } from "../../../../logging/logger.ts";
+import { log } from "../../../../logging/index.ts";
 import type { ConversationTool, ToolResult } from "../../index.ts";
 import { buildKnowledgeSourceUsage } from "../../usage-guidance.ts";
 

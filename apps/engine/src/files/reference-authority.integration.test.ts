@@ -15,13 +15,13 @@ import {
 } from "../db/schema/index.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT, type TestDb } from "../db/tests/setup.ts";
 import { createBoss, disposeBoss } from "../queue/boss.ts";
-import { runFilesCleanup } from "../scheduler/files-cleanup-runner.ts";
 import { MemoryObjectStore, setObjectStoreForTesting } from "../storage/object-store.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
 import { waitFor } from "../test-helpers/determinism/wait.ts";
 import { FileLinkError, linkStoredFile } from "./links.ts";
 import { removeStoredFile } from "./remove-stored-file.ts";
+import { runFilesCleanup } from "./scheduled/files-cleanup-runner.ts";
 
 const uuid = createDeterministicUuidFactory(0x51ef1e);
 const store = new MemoryObjectStore();

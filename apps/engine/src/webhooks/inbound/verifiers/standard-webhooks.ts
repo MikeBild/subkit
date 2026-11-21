@@ -1,4 +1,4 @@
-import { logger } from "../../../logging/logger.ts";
+import { logger } from "../../../logging/index.ts";
 import { verifySignatureHeader } from "../../outbound/signer.ts";
 import type { VerifierResult, VerifyInput } from "./types.ts";
 

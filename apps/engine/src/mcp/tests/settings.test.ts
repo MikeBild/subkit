@@ -52,7 +52,7 @@ describe("mcp settings tools", () => {
     const pending = await client.callTool({
       name: "subkit_update_setting",
       arguments: {
-        path: "tokens.monthly_budget",
+        path: "connectors.mcp.per_server_manifest_byte_cap",
         value: 2468,
         tenant_id: suite.http.tenantId,
       },
@@ -61,7 +61,7 @@ describe("mcp settings tools", () => {
     const updated = await replayHumanGrantedMcpCall(suite, client, pending);
     expect(updated.isError).toBeFalsy();
     expect(textBody(updated)).toMatchObject({
-      path: "tokens.monthly_budget",
+      path: "connectors.mcp.per_server_manifest_byte_cap",
       value: 2468,
       activation: "active",
       applied_immediately: true,
@@ -69,12 +69,12 @@ describe("mcp settings tools", () => {
     });
 
     const rest = await fetch(
-      `${suite.http.baseUrl}/v1/settings/tokens.monthly_budget?tenant=${suite.http.tenantId}`,
+      `${suite.http.baseUrl}/v1/settings/connectors.mcp.per_server_manifest_byte_cap?tenant=${suite.http.tenantId}`,
       { headers: { authorization: `Bearer ${suite.http.apiKey}` } },
     );
     expect(rest.status).toBe(200);
     expect((await rest.json()) as Record<string, unknown>).toMatchObject({
-      path: "tokens.monthly_budget",
+      path: "connectors.mcp.per_server_manifest_byte_cap",
       value: 2468,
     });
 
@@ -85,7 +85,7 @@ describe("mcp settings tools", () => {
         and(
           eq(auditLog.tenant_id, suite.http.tenantId),
           eq(auditLog.action, AuditAction.SETTINGS_CHANGED),
-          eq(auditLog.resource_id, "tokens.monthly_budget"),
+          eq(auditLog.resource_id, "connectors.mcp.per_server_manifest_byte_cap"),
         ),
       )
       .orderBy(desc(auditLog.ts))

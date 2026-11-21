@@ -22,7 +22,7 @@ import {
   createRunWorkflow,
   principalExecutionEnvironment,
 } from "../../execution/use-cases/run-workflow.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { globalEmitter } from "../../pubsub/emitter.ts";
 import type { EventEnvelope } from "../../pubsub/types.ts";
 import { CONVERSATION_TOOL_MCP_UNAVAILABLE_REASON, getUnifiedRegistry } from "../../tools/index.ts";
@@ -289,16 +289,6 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
             ],
           };
         }
-        const permissionModeMeta = (
-          request.params._meta as { sk_permission_mode?: unknown } | undefined
-        )?.sk_permission_mode;
-        const permissionMode =
-          permissionModeMeta === "auto" ||
-          permissionModeMeta === "ask" ||
-          permissionModeMeta === "plan" ||
-          permissionModeMeta === "yolo"
-            ? permissionModeMeta
-            : undefined;
         const playground =
           (request.params._meta as { sk_playground?: unknown } | undefined)?.sk_playground === true;
         const taskParamPresent = request.params.task !== undefined;
@@ -315,7 +305,6 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           principal,
           name,
           args: args as Record<string, unknown>,
-          ...(permissionMode ? { permission_mode: permissionMode } : {}),
           ...(playground ? { playground } : {}),
           ...(taskAugmented ? { taskAugmented } : {}),
           ...(formElicitationCapable || urlElicitationCapable

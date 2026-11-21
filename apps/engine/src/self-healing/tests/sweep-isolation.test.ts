@@ -6,10 +6,10 @@ import {
   workflows,
   workflowVersions,
 } from "../../db/schema/index.ts";
-import { runProactiveDriftScanForTenant } from "../../scheduler/proactive-drift-scan-runner.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { lockWorkflowForVersionWrite } from "../../workflows/version-write-lock.ts";
 import { sweepUndecidableCandidates } from "../open-decisions.ts";
+import { runProactiveDriftScanForTenant } from "../scheduled/proactive-drift-scan-runner.ts";
 import { createSelfHealingCtx, SEED_STEP_ID, type SelfHealingTestCtx } from "./setup.ts";
 
 let ctx: SelfHealingTestCtx;

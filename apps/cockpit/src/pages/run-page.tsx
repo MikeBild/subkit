@@ -8,11 +8,16 @@ import {
   DetailPageLoading,
 } from "@/components/cockpit/patterns";
 import { ForbiddenState } from "@/components/failure-state";
+import {
+  isStoppableRun,
+  RerunAction,
+  RunDetail,
+  runCauseLinks,
+  runName,
+  StopRunAction,
+  useRun,
+} from "@/features/runs";
 import { useI18n } from "@/lib/i18n-context";
-import { runCauseLinks, runName } from "@/pages/runs-model";
-import { useRun } from "./runs";
-import { RerunAction, RunDetail } from "./runs-detail";
-import { isStoppableRun, StopRunAction } from "./runs-stop";
 
 export function RunPage() {
   const { t } = useI18n();

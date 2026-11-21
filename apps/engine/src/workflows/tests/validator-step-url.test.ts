@@ -1,4 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal placeholder fixtures
 import { describe, expect, test } from "bun:test";
 import { validateWorkflowDef } from "../core/validator.ts";
 

@@ -103,9 +103,7 @@ export function applyAuthMaterial(
     }
     case "token_mint": {
       if (!credential.access_token) return;
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: header_template is operator-supplied and ${token} is a literal placeholder, not a JS template
       const tpl = credential.header_template ?? "Bearer ${token}";
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: matches the literal placeholder above
       headers.Authorization = tpl.replaceAll("${token}", credential.access_token);
       return;
     }

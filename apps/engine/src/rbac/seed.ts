@@ -28,11 +28,12 @@ function memberPermissionFilter(name: string): boolean {
   if (name === "api_key:rotate") return false;
   if (name === "api_key:revoke") return false;
   if (name === "connector:promote") return false;
-  if (name.startsWith("credential:") && name !== "credential:read") return false;
+  if (name.startsWith("vault:") && name !== "vault:read") return false;
   if (name === "discovery:approve") return false;
   if (name === "mcp:admin") return false;
   if (name.startsWith("mcp_oauth_client:")) return false;
   if (name === "system:restart") return false;
+  if (name === "device:revoke_any") return false;
   if (name.startsWith("chat_workspace:") && name !== "chat_workspace:read") return false;
   if (name.startsWith("chat_identity:") && name !== "chat_identity:read") return false;
   return true;
@@ -49,6 +50,7 @@ const ENDUSER_PERMISSIONS = new Set<string>([
   "knowledge:read",
   "skill:read",
   "file:read",
+  "local:confirm",
 ]);
 const METRICS_SCRAPER_PERMISSIONS = new Set<string>(["metrics:read"]);
 const PORTAL_TOKEN_USER_PERMISSIONS = new Set<string>([

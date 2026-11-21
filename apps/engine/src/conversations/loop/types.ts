@@ -38,7 +38,7 @@ export interface RunLoopParams {
     actor_email?: string;
     actor_role?: string;
   };
-  permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
+  ask_before_writing?: boolean;
   turn_abort_ctrl: AbortController;
   user_message_persisted?: boolean;
   next_suggestion_suppress?: boolean;
@@ -81,6 +81,7 @@ export interface TurnBase {
   engineUrl: string | undefined;
   abort: AbortController;
   usageBefore: number;
+  spendBefore: number | null;
   ingestedUserMessage: string | null;
   currentUserText: string;
   referenced: ReferencedEntities;

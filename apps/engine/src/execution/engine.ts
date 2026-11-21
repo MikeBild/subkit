@@ -11,6 +11,7 @@ import { withHostedWork } from "../queue/hosted-work.ts";
 import { WorkflowEffectManifestSchema } from "../workflows/effect-manifest.ts";
 import { normalizeWorkflowRunInput } from "../workflows/run-input.ts";
 import { type CallStep, type WorkflowDef, WorkflowDefSchema } from "../workflows/types.ts";
+import { parkRun } from "./budget-park.ts";
 import { assertCallerExecutionSource } from "./caller-context.ts";
 import { resolveExecutionCallerActor } from "./caller-origin.ts";
 import { SYSTEM_CLOCK } from "./clock.ts";
@@ -141,6 +142,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
   const plan = planRun(env);
   const state = initialRunState(env);
   await runStepLoop(env, plan, state);
+  if (state.budgetPark) return parkRun(env, state);
   await resolveFinalOutput(env, state);
   const checks = await checkFinalOutput(env, state);
   return finalizeRun(env, state, checks);

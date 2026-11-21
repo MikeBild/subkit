@@ -1,0 +1,23 @@
+import { z } from "zod";
+import { ConfirmationTargetSchema, DeviceCapabilitySchema } from "./protocol.ts";
+
+export const LOCAL_CONFIRMATION_KIND = "local_confirmation";
+
+export const LocalConfirmationSchema = z
+  .object({
+    device_id: z.string().min(1),
+    capability: DeviceCapabilitySchema,
+    target: ConfirmationTargetSchema,
+    deadline_at: z.iso.datetime({ offset: true }),
+    command_id: z.string().min(1).nullable(),
+    binding_hash: z.string().min(1).nullable(),
+  })
+  .strict();
+export type LocalConfirmation = z.infer<typeof LocalConfirmationSchema>;
+
+const CarrierSchema = z.looseObject({ device: LocalConfirmationSchema });
+
+export function localConfirmationOf(value: unknown): LocalConfirmation | null {
+  const parsed = CarrierSchema.safeParse(value);
+  return parsed.success ? parsed.data.device : null;
+}

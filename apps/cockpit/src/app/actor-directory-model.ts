@@ -1,4 +1,4 @@
-import { appUserProvider } from "@/lib/app-user";
+import { appUserProvider } from "@/features/admin/model";
 import type { TranslationKey } from "@/lib/i18n";
 
 type ActorKind = "user" | "system_account";

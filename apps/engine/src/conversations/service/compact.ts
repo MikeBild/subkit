@@ -6,7 +6,7 @@ import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import { conversationMessages, conversations } from "../../db/schema/index.ts";
 import { runSummarizeFlow } from "../../llm/flows/summarize.ts";
-import { errorFields, log, logger } from "../../logging/logger.ts";
+import { errorFields, log, logger } from "../../logging/index.ts";
 import { scrubString } from "../../logging/scrub-secrets.ts";
 import {
   type ConversationCompactionMode,

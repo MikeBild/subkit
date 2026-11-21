@@ -8,13 +8,13 @@ import {
   selfHealingScans,
 } from "../../db/schema/index.ts";
 import { driftSignalContext } from "../../self-healing/proactive-scanner.ts";
+import { runProactiveDriftScanForTenant } from "../../self-healing/scheduled/proactive-drift-scan-runner.ts";
 import {
   createSelfHealingCtx,
   SEED_STEP_ID,
   type SelfHealingTestCtx,
 } from "../../self-healing/tests/setup.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
-import { runProactiveDriftScanForTenant } from "../proactive-drift-scan-runner.ts";
 
 let ctx: SelfHealingTestCtx;
 

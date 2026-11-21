@@ -9,7 +9,7 @@ import {
   workflows,
   workflowVersions,
 } from "../../db/schema/index.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { now } from "../../utils/clock.ts";
 
 const LOOKBACK_DAYS = 30;

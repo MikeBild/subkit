@@ -1,12 +1,18 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { workflows } from "../../apps/engine/src/db/schema/index.ts";
+import { writeSetupPreferences } from "../../apps/engine/src/identity/setup-preferences.ts";
 import { boot, cli, type E2EEnv, parseJson, shutdown } from "./setup.ts";
 
 let env: E2EEnv;
 
 beforeAll(async () => {
   env = await boot("guided-authoring", { llm: "mock" });
+  await writeSetupPreferences(
+    env.db,
+    { tenant_id: env.tenantId, user_id: env.personas.admin.userId },
+    { ask_before_writing: true },
+  );
 }, 90_000);
 
 afterAll(async () => {
@@ -51,7 +57,7 @@ describe("guided authoring smoke", () => {
           ...bearer(),
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ output: { confirmed: true }, permission_mode: "ask" }),
+        body: JSON.stringify({ output: { confirmed: true } }),
       },
     );
     expect(approveConnectorSave.status).toBe(200);

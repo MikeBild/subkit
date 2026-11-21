@@ -13,7 +13,7 @@ import {
   replaceFileBytes,
   restoreFileVersion,
   updateFileDetails,
-} from "../../files/service.ts";
+} from "../../files/service/index.ts";
 import { listFileVersions } from "../../files/versions.ts";
 import { getContext } from "../../logging/context.ts";
 import { RequestSourceSchema } from "../../observability/service-metadata.ts";

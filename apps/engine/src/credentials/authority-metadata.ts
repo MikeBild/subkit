@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
-import { credentials, outboundConnections, runtimeSecretVersions } from "../db/schema/index.ts";
+import { outboundConnections, runtimeSecretVersions, vaultItems } from "../db/schema/index.ts";
 import { authorityScopeSet } from "./authority-scopes.ts";
 import { secretNames } from "./connections/service.ts";
 
@@ -50,30 +50,30 @@ export async function getCredentialAuthorityMetadataBatch(
   if (requests.length === 0) return result;
   const rows = await db
     .select({
-      connector_id: credentials.connector_id,
-      environment: credentials.environment,
-      id: credentials.id,
-      revision: credentials.authority_revision,
-      mode: credentials.mode,
-      scopes: credentials.granted_scopes,
-      connection_id: credentials.connection_id,
-      usable: sql<boolean>`(${credentials.mode} <> 'oauth2' OR ${credentials.oauth2_expires_at} IS NULL
-      OR ${credentials.oauth2_expires_at} > clock_timestamp() OR ${credentials.oauth2_refresh_ciphertext} IS NOT NULL)`,
+      connector_id: vaultItems.connector_id,
+      environment: vaultItems.environment,
+      id: vaultItems.id,
+      revision: vaultItems.authority_revision,
+      mode: vaultItems.mode,
+      scopes: vaultItems.granted_scopes,
+      connection_id: vaultItems.connection_id,
+      usable: sql<boolean>`(${vaultItems.mode} <> 'oauth2' OR ${vaultItems.oauth2_expires_at} IS NULL
+      OR ${vaultItems.oauth2_expires_at} > clock_timestamp() OR ${vaultItems.oauth2_refresh_ciphertext} IS NOT NULL)`,
     })
-    .from(credentials)
+    .from(vaultItems)
     .where(
       and(
-        eq(credentials.tenant_id, tenantId),
-        inArray(credentials.connector_id, [
+        eq(vaultItems.tenant_id, tenantId),
+        inArray(vaultItems.connector_id, [
           ...new Set(requests.map((request) => request.connector_id)),
         ]),
-        inArray(credentials.environment, [
+        inArray(vaultItems.environment, [
           ...new Set(requests.map((request) => request.environment)),
         ]),
-        isNull(credentials.deleted_at),
+        isNull(vaultItems.deleted_at),
       ),
     )
-    .orderBy(desc(credentials.created_at), desc(credentials.id));
+    .orderBy(desc(vaultItems.created_at), desc(vaultItems.id));
   const grouped = new Map<string, typeof rows>();
   for (const row of rows) {
     if (row.connector_id === null) continue;

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { connectors, tenants } from "../../db/schema/index.ts";
 import { createEmptyDraftDocument } from "../authoring-state/index.ts";
-import { createConversation } from "../service.ts";
+import { createConversation } from "../service/index.ts";
 import type { ConversationTestCtx } from "../tests/setup.ts";
 import { createConversationTestCtx } from "../tests/setup.ts";
 import { matchConnectorTemplateByUrlTool } from "../tools/match-connector-template-by-url.ts";

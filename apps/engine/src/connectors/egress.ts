@@ -137,8 +137,8 @@ export async function withEgressAudit<T>(
     await auditWriter({
       tenant_id: input.tenant_id,
       ...resolveActor(input),
-      action: AuditAction.CREDENTIAL_ACCESSED,
-      resource_type: "credential",
+      action: AuditAction.VAULT_ITEM_USED,
+      resource_type: "vault_item",
       resource_id: credential_id,
       result: "success",
       metadata: {

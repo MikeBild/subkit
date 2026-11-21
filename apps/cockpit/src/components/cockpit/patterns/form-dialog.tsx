@@ -1,6 +1,6 @@
-import { ErrorNotice } from "@ui/components/proto/ErrorNotice";
-import { type ReactNode, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@ui/atoms/button";
+import { cn } from "@ui/lib/utils";
+import { ErrorNotice } from "@ui/molecules/error-notice";
 import {
   Dialog,
   DialogContent,
@@ -8,11 +8,7 @@ import {
   DialogFooter,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
-import { useI18n } from "@/lib/i18n-context";
-import { cn } from "@/lib/utils";
-import { renderAction } from "./action-button";
-import { ActionFailureHost, failureRemedyAction } from "./action-failure";
+} from "@ui/organisms/dialog";
 import {
   DIALOG_BODY,
   DIALOG_DESCRIPTION,
@@ -29,7 +25,11 @@ import {
   dialogErrorText,
   dialogWidthClass,
   FILLED_DESTRUCTIVE,
-} from "./dialog-frame";
+} from "@ui/organisms/dialog-frame";
+import { type ReactNode, useRef, useState } from "react";
+import { useI18n } from "@/lib/i18n-context";
+import { renderAction } from "./action-button";
+import { ActionFailureHost, failureRemedyAction } from "./action-failure";
 import { useErrorNotice } from "./use-error-detail";
 
 export {
@@ -37,7 +37,7 @@ export {
   type DialogSize,
   dialogFailure,
   dialogWidthClass,
-} from "./dialog-frame";
+} from "@ui/organisms/dialog-frame";
 
 export function FormDialog({
   open,

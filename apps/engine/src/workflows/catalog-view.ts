@@ -13,7 +13,7 @@ import {
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction, type AuditActorType } from "../audit/types.ts";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
-import { type Executor, getDb } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import {
   catalogCategories,
   connectors,
@@ -96,9 +96,9 @@ interface CatalogFilter {
 export async function resolveCatalogFilter(
   tenant_id: string,
   opts: CatalogFilterOptions,
-  exec?: Executor,
+  exec: Executor,
 ): Promise<CatalogFilter | null> {
-  const db = exec ?? getDb();
+  const db = exec;
   const wantConnector = opts.connector?.trim();
   if (!wantConnector) return null;
   const connectorMatches = await workflowIdsUsingConnector(tenant_id, wantConnector, db);
@@ -145,10 +145,10 @@ export interface CategoryVocabularyViewer {
 
 export async function loadCategoryVocabulary(
   tenant_id: string,
-  exec?: Executor,
+  exec: Executor,
   viewer?: CategoryVocabularyViewer,
 ): Promise<CategoryUsage[]> {
-  const db = exec ?? getDb();
+  const db = exec;
   const byCategory = new Map<string, CategoryUsage>();
   for (const kind of CATALOG_KINDS) {
     const table = CATALOG_TABLES[kind];
@@ -266,9 +266,9 @@ export async function loadCategoryVocabulary(
 
 export async function categoryRenameAffectsTasks(
   p: { tenant_id: string; from: string },
-  exec?: Executor,
+  exec: Executor,
 ): Promise<boolean> {
-  const rows = await (exec ?? getDb())
+  const rows = await exec
     .select({ id: tasks.id })
     .from(tasks)
     .where(and(eq(tasks.tenant_id, p.tenant_id), eq(tasks.category, p.from)))
@@ -278,9 +278,9 @@ export async function categoryRenameAffectsTasks(
 
 export async function categoryRenameAffectsIntake(
   p: { tenant_id: string; from: string },
-  exec?: Executor,
+  exec: Executor,
 ): Promise<boolean> {
-  const db = exec ?? getDb();
+  const db = exec;
   const [item] = await db
     .select({ id: intakeItems.id })
     .from(intakeItems)
@@ -342,8 +342,8 @@ interface RenameCategoryInput {
   actor_id?: string | null;
 }
 
-export async function renameCategory(input: RenameCategoryInput, exec?: Executor) {
-  const db = exec ?? getDb();
+export async function renameCategory(input: RenameCategoryInput, exec: Executor) {
+  const db = exec;
   if ([UNCATEGORIZED, PLATFORM_CATEGORY].includes(input.from) || input.to === PLATFORM_CATEGORY) {
     throw new CategoryRenameRefused("Reserved categories cannot be edited");
   }
@@ -641,7 +641,7 @@ const CATALOG_SUMMARY_MAX_BLOCKS = 15;
 export async function buildCatalogSummaryLine(
   tenant_id: string,
   readable: ReadonlySet<CatalogKind>,
-  exec?: Executor,
+  exec: Executor,
 ): Promise<string | null> {
   const count = (v: CategoryUsage) =>
     (["workflow", "connector", "knowledge_source"] as const)

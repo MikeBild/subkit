@@ -7,7 +7,7 @@ import {
   finishConversationTurn,
   reserveConversationTurn,
 } from "../../conversations/public/lifecycle.ts";
-import * as svc from "../../conversations/service.ts";
+import * as svc from "../../conversations/service/index.ts";
 import {
   apiKeys,
   mcpTasks,

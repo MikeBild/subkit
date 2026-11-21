@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { LlmGroup } from "../stats/aggregate-llm.ts";
+import type { LlmGroup } from "../stats/index.ts";
 import { promptCacheByFlow } from "./operating-figures.ts";
 
 function group(flow: string, calls: number, prompt: number, cacheRead: number): LlmGroup {

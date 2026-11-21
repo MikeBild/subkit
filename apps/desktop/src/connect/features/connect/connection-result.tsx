@@ -1,6 +1,8 @@
-import { ErrorNotice, type Remedy } from "@ui/components/proto/ErrorNotice";
-import { VersionChips } from "@ui/components/proto/VersionChips";
-import { ConnectionGraphic, IconTile, SubKitMark } from "@ui/components/proto/visual";
+import { AppMark } from "@ui/atoms/app-mark";
+import { IconTile } from "@ui/atoms/icon-tile";
+import { ConnectionGraphic } from "@ui/molecules/connection-graphic";
+import { type ErrorAction, ErrorNotice } from "@ui/molecules/error-notice";
+import { VersionChips } from "@ui/molecules/version-chips";
 import { Laptop, LockKeyhole } from "lucide-react";
 
 export function ConnectionOk({ title, chip }: { title: string; chip: string | null }) {
@@ -11,7 +13,7 @@ export function ConnectionOk({ title, chip }: { title: string; chip: string | nu
         tone="success"
         via={LockKeyhole}
         from={<IconTile icon={Laptop} size="md" variant="outline" />}
-        to={<SubKitMark size="md" />}
+        to={<AppMark size="md" />}
         state={title}
       />
       {chip && (
@@ -30,8 +32,8 @@ export interface ConnectionProblemProps {
   title: string;
   body: string;
   rows: [string, string][];
-  primary: Remedy;
-  secondary: Remedy | null;
+  primary: ErrorAction;
+  secondary: ErrorAction | null;
 }
 
 export function ConnectionProblem(props: ConnectionProblemProps) {

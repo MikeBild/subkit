@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { appendError, type ErrorEntry } from "../shared/redaction.ts";
+import { appendError, type ErrorEntry, redactKnown } from "../shared/diagnostics.ts";
 import { readJson, writeJsonAtomic } from "./store.ts";
 
 function load(path: string): ErrorEntry[] {
@@ -18,6 +18,7 @@ function load(path: string): ErrorEntry[] {
 
 export class ErrorLog {
   private log: ErrorEntry[];
+  private readonly secrets = new Set<string>();
 
   constructor(private readonly path: string) {
     this.log = load(path);
@@ -27,8 +28,17 @@ export class ErrorLog {
     return this.log;
   }
 
+  addSecret(secret: string): void {
+    this.secrets.add(secret);
+    this.log = this.log.map((entry) => ({
+      ...entry,
+      message: redactKnown(entry.message, [secret]),
+    }));
+  }
+
   record(scope: string, error: unknown): void {
-    const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    const raw = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    const message = redactKnown(raw, [...this.secrets]);
     this.log = appendError(this.log, { at: new Date().toISOString(), scope, message }, homedir());
     try {
       writeJsonAtomic(this.path, this.log);

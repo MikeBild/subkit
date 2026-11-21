@@ -57,10 +57,7 @@ export const placeholderScanner: Scanner = {
     const out: Violation[] = [];
     const engineHost = engineHostFromCtx(ctx);
     for (const p of PATTERNS) {
-      p.re.lastIndex = 0;
-      let m: RegExpExecArray | null;
-      // biome-ignore lint/suspicious/noAssignInExpressions: standard regex exec loop.
-      while ((m = p.re.exec(text)) !== null) {
+      for (const m of text.matchAll(p.re)) {
         const violation: Violation = {
           kind: p.kind,
           message: p.message,

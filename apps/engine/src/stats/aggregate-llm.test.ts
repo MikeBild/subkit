@@ -3,10 +3,11 @@ import { executions } from "../db/schema/executions.ts";
 import { llmUsage } from "../db/schema/llm.ts";
 import { workflows } from "../db/schema/workflows.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { testEnv } from "../test-helpers/determinism/env.ts";
 import { seedTenant } from "../test-helpers/seed.ts";
 import { aggregateLlm } from "./aggregate-llm.ts";
 
-const skip = process.env.REQUIRES_PG === "0";
+const skip = testEnv.REQUIRES_PG === "0";
 
 let testDb: TestDb;
 let tenantId: string;

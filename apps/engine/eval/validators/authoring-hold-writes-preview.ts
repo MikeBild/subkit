@@ -80,7 +80,6 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
           steps: input.steps,
         },
       } as unknown as DraftDocument),
-      permission_mode: "auto" as const,
     };
     const { result, fetch_calls } = await withEgressTripwire(() =>
       dryRunWorkflowTool.execute(toolCtx, { input: input.workflow_input }),

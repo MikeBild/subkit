@@ -144,12 +144,11 @@ describe("restore_workflow_version", () => {
     expect((result.data as { error_code?: string }).error_code).toBe("workflow_not_found");
   });
 
-  test("permission_mode auto cannot short-circuit it", async () => {
+  test("the default write gate cannot short-circuit it", async () => {
     const decision = decideToolMode({
       tool: "restore_workflow_version",
       category: "tenant_write",
       input: { slug: "restore-me", version: 1 },
-      permission_mode: "auto",
       overrides: {},
     });
     expect(decision.mode).toBe("confirm_before_execution");

@@ -14,8 +14,11 @@ export const PATHS = {
   connectPreload: join(DIST, "preload-connect.cjs"),
   cockpitPreload: join(DIST, "preload-cockpit.cjs"),
   shellPreload: join(DIST, "preload-shell.cjs"),
+  livePreload: join(DIST, "preload-live.cjs"),
   connectRoot: join(DIST, "connect"),
   shellRoot: join(DIST, "shell"),
+  runner: join(DIST, "runner.cjs"),
+  liveRoot: join(DIST, "live"),
   assets: join(DIST, "assets"),
   icon: join(DIST, "assets", "icon.png"),
 };

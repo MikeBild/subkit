@@ -1,6 +1,7 @@
 import { LOG_LEVEL_WEIGHT, type LogLevelName } from "@cli-core/log-levels.ts";
 import { VERSION } from "@cli-core/version.ts";
 import pc from "picocolors";
+import { readEnv } from "../env.ts";
 import { logRing } from "../observability/log-ring.ts";
 import { getContext } from "./context.ts";
 import { classifyError, type ErrorClass } from "./error-class.ts";
@@ -14,7 +15,7 @@ type RenderMode = "pretty" | "ndjson";
 
 function defaultMode(): RenderMode {
   const tty = Boolean(process.stdout.isTTY);
-  const env = (process.env.NODE_ENV ?? "development").toLowerCase();
+  const env = (readEnv("NODE_ENV") ?? "development").toLowerCase();
   if (env === "production") return "ndjson";
   return tty ? "pretty" : "ndjson";
 }
@@ -29,10 +30,10 @@ const SD_DAEMON_PREFIX: Record<LogLevelName, string> = {
 };
 
 function defaultSdDaemonPrefix(): boolean {
-  const flag = (process.env.SK_LOG_SD_DAEMON ?? "").toLowerCase();
+  const flag = (readEnv("SK_LOG_SD_DAEMON") ?? "").toLowerCase();
   if (flag === "1" || flag === "true") return true;
   if (flag === "0" || flag === "false") return false;
-  return Boolean(process.env.JOURNAL_STREAM);
+  return Boolean(readEnv("JOURNAL_STREAM"));
 }
 
 let MODE: RenderMode = defaultMode();
@@ -64,7 +65,7 @@ export function _resetLoggerForTests(): void {
   SD_DAEMON = defaultSdDaemonPrefix();
   MAX_FIELD_LEN = DEFAULT_MAX_FIELD_LEN;
   SERVICE_NAME = "subkit";
-  DEPLOYMENT_ENVIRONMENT = process.env.NODE_ENV ?? "development";
+  DEPLOYMENT_ENVIRONMENT = readEnv("NODE_ENV") ?? "development";
 }
 
 function formatTimestampPretty(d: Date): string {
@@ -190,7 +191,7 @@ function emitPretty(level: LogLevel, fields: LogFields): void {
 const DEFAULT_MAX_FIELD_LEN = 2048;
 let MAX_FIELD_LEN = DEFAULT_MAX_FIELD_LEN;
 let SERVICE_NAME = "subkit";
-let DEPLOYMENT_ENVIRONMENT = process.env.NODE_ENV ?? "development";
+let DEPLOYMENT_ENVIRONMENT = readEnv("NODE_ENV") ?? "development";
 
 export function reconfigureObservability(opts: {
   field_truncation_chars?: number;

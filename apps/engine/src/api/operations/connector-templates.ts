@@ -19,7 +19,7 @@ import templateSkillsJson from "../../connectors/template-skills.json" with { ty
 import { matchTemplatesByUrl, type TemplateUrlMatch } from "../../connectors/template-url-match.ts";
 import type { ConnectorView } from "../../connectors/types.ts";
 import { ingestTemplateDocsForConnector } from "../../docs-ingestion/service.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { createSkill } from "../../skills/service.ts";
 import { IdParam } from "../common-schemas.ts";
 import {
@@ -230,7 +230,7 @@ export const storeTemplateOAuthCredentialsOperation = defineOperation<
   summary: "Store tenant-scoped OAuth client credentials for a connector template",
   permission: "connector:write",
   effect: "write",
-  audit: AuditAction.CREDENTIAL_CREATED,
+  audit: AuditAction.VAULT_ITEM_CREATED,
   async handler(scope, input) {
     const principal = scope.principal;
     if (!principal) return reject.unauthorized();

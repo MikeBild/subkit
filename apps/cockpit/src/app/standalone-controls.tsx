@@ -1,6 +1,6 @@
+import { SegmentedControl } from "@ui/molecules/segmented-control";
 import { Bug } from "lucide-react";
 import { Button } from "@/components/cockpit/patterns/controls";
-import { SegmentedControl } from "@/components/cockpit/patterns/segmented-control";
 import { FEEDBACK_SEARCH_PARAM, FeedbackButton, FeedbackHost } from "@/features/feedback";
 import type { Locale } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";

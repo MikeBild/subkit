@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import type { Executor } from "./client.ts";
 import { events } from "./schema/events.ts";
 

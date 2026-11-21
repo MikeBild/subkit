@@ -1,4 +1,3 @@
-import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import {
   acknowledgeNativeUrlElicitation,
@@ -17,11 +16,12 @@ import {
   validateElicitationAnswer,
 } from "../../conversations/public/elicitation.ts";
 import {
-  assertTaskRunTurn,
+  assertTaskRunWriter,
   withReservedConversationTurn,
 } from "../../conversations/public/lifecycle.ts";
 import type { Db } from "../../db/client.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
+import { isRequestTimeout } from "../transports/protocol-errors.ts";
 
 export interface NativeElicitationTransport {
   elicitForm?: (params: ElicitFormParams) => Promise<ElicitationResult>;
@@ -37,9 +37,7 @@ const ELICITATION_DELIVERY_GRACE_MS = 1_000;
 export const NATIVE_DELIVERY_TIMED_OUT = "delivery_timed_out";
 
 export function nativeDeliveryFailureCode(err: unknown): string {
-  return err instanceof McpError && err.code === ErrorCode.RequestTimeout
-    ? NATIVE_DELIVERY_TIMED_OUT
-    : "transport_failed";
+  return isRequestTimeout(err) ? NATIVE_DELIVERY_TIMED_OUT : "transport_failed";
 }
 
 export interface NativeDeliveryResult {
@@ -61,7 +59,6 @@ interface NativeResumeParams {
   turn_id?: string;
   reason?: string;
   reuse_task_id?: string;
-  permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
 }
 
 const FORM_TOOL_NAMES = new Set<FormBridgeToolName>([
@@ -98,7 +95,6 @@ export async function deliverPendingNativeElicitationCore(p: {
   pending: ElicitationRecord;
   nativeElicitation: NativeElicitationTransport;
   resume: (params: NativeResumeParams) => Promise<NativeDeliveryResult>;
-  permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
   reuse_task_id?: string;
   reissue_credential_link?: typeof reissueExpiredDraftCredentialSetup;
 }): Promise<NativeDeliveryResult | null> {
@@ -136,12 +132,11 @@ export async function deliverPendingNativeElicitationCore(p: {
     });
   }
 
-  const deliverable = await assertTaskRunTurn(p.db, {
+  const deliverable = await assertTaskRunWriter(p.db, {
     tenant_id: p.principal.tenant_id,
     conversation_id: pending.conversation_id,
     actor_id: p.principal.id,
     principal: p.principal,
-    permission_mode: p.permission_mode,
   }).then(
     () => true,
     () => false,
@@ -205,7 +200,6 @@ export async function deliverPendingNativeElicitationCore(p: {
           turn_id,
           ...(p.reuse_task_id ? { reuse_task_id: p.reuse_task_id } : {}),
           ...(reason ? { reason } : {}),
-          ...(p.permission_mode ? { permission_mode: p.permission_mode } : {}),
         });
         if (resumed.isError) {
           await releaseNativeElicitationDelivery(

@@ -1,11 +1,16 @@
-import { FieldError } from "@ui/components/proto/ErrorNotice";
-import { Input } from "@ui/components/ui/input";
-import { Label } from "@ui/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@ui/components/ui/radio-group";
+import { Input } from "@ui/atoms/input";
+import { Label } from "@ui/atoms/label";
+import { RadioGroup, RadioGroupItem } from "@ui/atoms/radio-group";
+import { FieldError } from "@ui/molecules/error-notice";
 import { DateField } from "@/components/cockpit/patterns/date-field";
+import {
+  type ApprovalLimits,
+  type LimitsProblem,
+  MAX_RUNS_LIMIT,
+  type Validity,
+} from "@/features/operations/model/operations";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
-import { type ApprovalLimits, type LimitsProblem, MAX_RUNS_LIMIT, type Validity } from "./model";
 
 export function ApprovalLimitsFields({
   value,

@@ -6,7 +6,7 @@ import {
   failedSources,
   type HiddenEntries,
   NO_HIDDEN,
-} from "@/pages/overview-model";
+} from "@/features/overview";
 import { useAttention } from "./use-attention";
 
 export const SEEN_MAX = 200;

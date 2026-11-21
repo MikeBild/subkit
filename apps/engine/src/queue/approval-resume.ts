@@ -7,7 +7,7 @@ import { ConversationTurnInProgressError } from "../conversations/types.ts";
 import type { Db } from "../db/client.ts";
 import { executions, toolApprovals } from "../db/schema/index.ts";
 import { rehydrateExecutionPrincipal } from "../execution/authorization-context.ts";
-import { errorFields, logger } from "../logging/logger.ts";
+import { errorFields, logger } from "../logging/index.ts";
 import { insertMcpTask, setMcpTaskFailure, setMcpTaskJobId } from "../mcp/tasks/store.ts";
 import { enqueueConversationRunTurn } from "./handlers/conversation-run-turn.ts";
 

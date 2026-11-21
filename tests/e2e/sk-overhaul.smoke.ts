@@ -3,14 +3,12 @@ import { type SpawnSyncReturns, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path, { resolve } from "node:path";
+import { stripVTControlCharacters } from "node:util";
 
 const REPO_ROOT = resolve(import.meta.dir, "..", "..");
 const BINARY = resolve(REPO_ROOT, "dist", "sk");
 const PACKAGE_VERSION = (await Bun.file(resolve(REPO_ROOT, "package.json")).json())
   .version as string;
-
-// biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape sequences require literal ESC.
-const ANSI_RE = /\x1B\[[0-?]*[ -/]*[@-~]/g;
 
 function run(args: string[], extraEnv: Record<string, string> = {}): SpawnSyncReturns<string> {
   return spawnSync(BINARY, args, {
@@ -87,7 +85,7 @@ describe("sk overhaul smoke (plan §Smoke 1-9)", () => {
   test.skipIf(!skipUnless())("(8) `--no-color --help` produces zero ANSI escape sequences", () => {
     const r = run(["--help"], { NO_COLOR: "1" });
     const out = `${r.stdout ?? ""}${r.stderr ?? ""}`;
-    expect(ANSI_RE.test(out)).toBe(false);
+    expect(stripVTControlCharacters(out)).toBe(out);
   });
 
   test.skipIf(!skipUnless())(

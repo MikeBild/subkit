@@ -55,6 +55,7 @@ export {
   LLMS_PAGE_PATHS,
   renderLlmsIndex,
 } from "./llms-index.ts";
+export * from "./local-model-server.ts";
 export * from "./notification-pause.ts";
 export * from "./offline-queue.ts";
 export type { SecretKind, SecretPattern } from "./redaction.ts";

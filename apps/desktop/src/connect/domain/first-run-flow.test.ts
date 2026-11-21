@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { dictionary } from "../../shared/i18n.ts";
-import type { CheckResult, CheckStatus, ConnectState } from "../../shared/ipc.ts";
+import {
+  type CheckResult,
+  type CheckStatus,
+  type ConnectState,
+  LOCAL_UNAVAILABLE,
+} from "../../shared/ipc.ts";
 import { NO_ONBOARDING } from "../../shared/onboarding.ts";
 import {
   type Command,
@@ -47,6 +52,12 @@ function main(patch: Partial<ConnectState> = {}): ConnectState {
     signedIn: null,
     onboarding: NO_ONBOARDING,
     update: { phase: "disabled" },
+    permissions: {
+      supported: true,
+      permissions: { accessibility: false, screen: false, restartPending: false },
+      lost: [],
+    },
+    local: LOCAL_UNAVAILABLE,
     ...patch,
   };
 }

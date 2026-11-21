@@ -16,8 +16,8 @@ import {
   conversationElicitations,
   conversationMessages,
   conversations,
-  credentials,
   mcpTasks,
+  vaultItems,
   workflows,
 } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
@@ -276,7 +276,6 @@ describe("MCP conversation native elicitation — real Streamable HTTP", () => {
       const secondPoll = await urlClient.callTool({
         name: "conversation_get",
         arguments: { conversation_id: conversation.id },
-        _meta: { sk_permission_mode: "yolo" },
       });
       expect(secondPoll.isError).toBe(false);
       await waitFor(
@@ -304,12 +303,12 @@ describe("MCP conversation native elicitation — real Streamable HTTP", () => {
           if (!row) return null;
           const rows = await suite.http.db
             .select()
-            .from(credentials)
+            .from(vaultItems)
             .where(
               and(
-                eq(credentials.tenant_id, suite.http.tenantId),
-                eq(credentials.connector_id, row.id),
-                eq(credentials.environment, "prod"),
+                eq(vaultItems.tenant_id, suite.http.tenantId),
+                eq(vaultItems.connector_id, row.id),
+                eq(vaultItems.environment, "prod"),
               ),
             );
           return rows.length === 1 ? { connector: row, credentials: rows } : null;
@@ -352,7 +351,6 @@ describe("MCP conversation native elicitation — real Streamable HTTP", () => {
     const append = await approvalClient.callTool({
       name: "conversation_append",
       arguments: { conversation_id: conversation.id, message: "Delete the workflow" },
-      _meta: { sk_permission_mode: "ask" },
     });
     expect(append.isError).toBe(false);
 

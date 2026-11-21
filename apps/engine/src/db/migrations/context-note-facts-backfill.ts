@@ -1,5 +1,5 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { authoringCapabilitySignal } from "../../skill-candidates/authoring-capability.ts";
 import { detectFailurePatterns } from "../../skill-candidates/detectors/index.ts";
 import { upsertFromSignal } from "../../skill-candidates/service.ts";

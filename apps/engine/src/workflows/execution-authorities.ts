@@ -45,6 +45,7 @@ import {
   decideAuthorityExtension,
   reusableOpenEndedSuccessor,
 } from "./core/authority-extension.ts";
+import { assertDeviceApproval } from "./device-binding.ts";
 import { resolveWorkflowEffectManifest } from "./effect-resolution.ts";
 import type { WorkflowReadFacts } from "./read-facts.ts";
 import {
@@ -157,6 +158,7 @@ const HUMAN_SESSION_PROOF: unique symbol = Symbol("human-session-proof");
 export interface HumanSessionProof {
   readonly tenant_id: string;
   readonly user_id: string;
+  readonly installation_id: string | null;
   readonly [HUMAN_SESSION_PROOF]: true;
 }
 
@@ -180,7 +182,7 @@ export async function lockLiveSession(
   session: Awaited<ReturnType<typeof requireHuman>>,
 ): Promise<HumanSessionProof> {
   const [live] = await tx
-    .select({ id: sessions.id })
+    .select({ id: sessions.id, installation_id: sessions.installation_id })
     .from(sessions)
     .where(
       and(
@@ -198,6 +200,7 @@ export async function lockLiveSession(
   const proof: HumanSessionProof = Object.freeze({
     tenant_id: session.tenant_id,
     user_id: session.user_id,
+    installation_id: live.installation_id ?? null,
     [HUMAN_SESSION_PROOF]: true as const,
   });
   provenTransactions.set(proof, tx);
@@ -348,6 +351,7 @@ export async function activateWorkflowDraftLocked(
     principal.id,
     true,
     { manifestDigestMatches: preview.digest === input.expected_manifest_digest },
+    principal.kind,
   );
   await carryApprovalsForward(tx, {
     tenant_id: principal.tenant_id,
@@ -481,6 +485,7 @@ export async function grantWorkflowAuthorityLocked(
       "authority_effect_unbound",
       "the workflow requires concrete-run review for an unbound or unavailable effect",
     );
+  await assertDeviceApproval(tx, proof, preview.manifest);
   if (origin.tool_pins !== "compared" && preview.manifest.effects.some((effect) => effect.mcp))
     fail(
       "mcp_tool_unavailable",
@@ -519,6 +524,7 @@ export async function grantWorkflowAuthorityLocked(
       principal.id,
       Boolean(existing),
       { manifestDigestMatches: preview.digest === input.expected_manifest_digest },
+      principal.kind,
     );
     workflow.current_version_id = input.workflow_version_id;
     workflow.lifecycle = "active";
@@ -842,7 +848,7 @@ export async function makeWorkflowAuthorityUntilRevoked(
   const session = await requireHuman(context, workflow_id);
   const { db, principal } = context;
   const result = await db.transaction(async (tx) => {
-    await lockLiveSession(tx, session);
+    const proof = await lockLiveSession(tx, session);
     await refuseSinglePersonApproval(tx, principal.tenant_id);
     const workflow = await lockWorkflowForVersionWrite(tx, principal.tenant_id, workflow_id);
     if (!workflow) fail("workflow_version_unavailable", "workflow version unavailable");
@@ -909,6 +915,7 @@ export async function makeWorkflowAuthorityUntilRevoked(
       eligible_for_repeated_runs: current.eligible_for_repeated_runs,
     });
     if (preview.kind === "rejected") fail(preview.code, preview.message);
+    await assertDeviceApproval(tx, proof, current.manifest);
     const [successor] = await tx
       .insert(workflowExecutionAuthorities)
       .values({

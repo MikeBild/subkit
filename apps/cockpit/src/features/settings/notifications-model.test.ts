@@ -10,7 +10,7 @@ import {
 } from "./notifications-model";
 
 const base = {
-  default_chat_mode: "auto",
+  ask_before_writing: false,
   default_environment: "dev",
   approver: { kind: "self" },
   notifications: { mode: "immediately" },
@@ -57,8 +57,8 @@ describe("notifications show one concept: quiet hours", () => {
     const edit = notificationChange(answers({ mode: "immediately" }), { quiet: true });
     expect(edit.update?.notifications).toEqual({
       mode: "working_hours",
-      from: "08:00",
-      to: "18:00",
+      from: "07:00",
+      to: "22:00",
       days: [1, 2, 3, 4, 5],
     });
   });

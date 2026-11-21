@@ -61,7 +61,7 @@ test("terminal statuses override codes, codes override message heuristics", () =
     ["connector_disabled", "connector_unavailable"],
     ["orphaned_preparation", "refused_before_start"],
     ["execution_authority_missing", "authority_mismatch"],
-    ["llm_quota_exhausted", "budget_exhausted"],
+    ["llm_spend_limit_reached", "budget_exhausted"],
     ["llm_budget_exceeded", "budget_exhausted"],
     ["missing_graphql", "driver_error"],
     ["unknown_step_kind", "driver_error"],

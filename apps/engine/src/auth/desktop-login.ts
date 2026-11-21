@@ -5,6 +5,7 @@ import { getConfig } from "../config/loader.ts";
 import { DESKTOP_MIN_VERSION_DEFAULT } from "../config/schema.ts";
 import type { Db } from "../db/client.ts";
 import { desktopLoginCodes, users } from "../db/schema/index.ts";
+import { readEnv } from "../env.ts";
 import { browserSessionSecret } from "./browser-session.ts";
 import {
   constantTimeHexEquals,
@@ -97,7 +98,7 @@ export function allowedDesktopLoginCallbacks(): readonly string[] {
     configured = getConfig().server.desktop_dev_callback;
   } catch {}
   return desktopLoginCallbacks({
-    production: process.env.NODE_ENV === "production",
+    production: readEnv("NODE_ENV") === "production",
     dev_callback: configured,
   });
 }

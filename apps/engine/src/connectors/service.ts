@@ -17,7 +17,7 @@ import {
   resolveWindowTotal,
   totalOverWindow,
 } from "../db/list-result.ts";
-import { connectors, credentials } from "../db/schema/index.ts";
+import { connectors, vaultItems } from "../db/schema/index.ts";
 import { BadRequestError, HttpError } from "../http/errors.ts";
 import { evictServer as evictMcpServer } from "../mcp/client/pool.ts";
 import { emitResourceChange } from "../pubsub/resource-changes.ts";
@@ -479,24 +479,24 @@ export async function listConnectorCredentials(
 ): Promise<CredentialSummary[]> {
   const rows = await db
     .select({
-      id: credentials.id,
-      mode: credentials.mode,
-      environment: credentials.environment,
-      oauth2_refresh_ciphertext: credentials.oauth2_refresh_ciphertext,
-      granted_scopes: credentials.granted_scopes,
-      oauth2_expires_at: credentials.oauth2_expires_at,
-      connection_id: credentials.connection_id,
-      created_at: credentials.created_at,
+      id: vaultItems.id,
+      mode: vaultItems.mode,
+      environment: vaultItems.environment,
+      oauth2_refresh_ciphertext: vaultItems.oauth2_refresh_ciphertext,
+      granted_scopes: vaultItems.granted_scopes,
+      oauth2_expires_at: vaultItems.oauth2_expires_at,
+      connection_id: vaultItems.connection_id,
+      created_at: vaultItems.created_at,
     })
-    .from(credentials)
+    .from(vaultItems)
     .where(
       and(
-        eq(credentials.tenant_id, tenant_id),
-        eq(credentials.connector_id, connector_id),
-        isNull(credentials.deleted_at),
+        eq(vaultItems.tenant_id, tenant_id),
+        eq(vaultItems.connector_id, connector_id),
+        isNull(vaultItems.deleted_at),
       ),
     )
-    .orderBy(desc(credentials.created_at));
+    .orderBy(desc(vaultItems.created_at));
   return rows.map((r) => ({
     id: r.id,
     mode: r.mode,

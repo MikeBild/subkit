@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
+import { testEnv } from "../env.ts";
 import { createSeededRandom, seedFromEnv } from "../random.ts";
 
 describe("random", () => {
@@ -71,24 +72,24 @@ describe("random", () => {
 
   describe("seedFromEnv", () => {
     const KEY = "SUBKIT_DETERMINISTIC_SEED";
-    const original = process.env[KEY];
+    const original = testEnv[KEY];
     afterEach(() => {
-      if (original === undefined) delete process.env[KEY];
-      else process.env[KEY] = original;
+      if (original === undefined) delete testEnv[KEY];
+      else testEnv[KEY] = original;
     });
 
     it("falls back when the env var is unset", () => {
-      delete process.env[KEY];
+      delete testEnv[KEY];
       expect(seedFromEnv(123)).toBe(123);
     });
 
     it("reads a numeric env var", () => {
-      process.env[KEY] = "77";
+      testEnv[KEY] = "77";
       expect(seedFromEnv(1)).toBe(77);
     });
 
     it("falls back on non-numeric values", () => {
-      process.env[KEY] = "not-a-number";
+      testEnv[KEY] = "not-a-number";
       expect(seedFromEnv(5)).toBe(5);
     });
   });

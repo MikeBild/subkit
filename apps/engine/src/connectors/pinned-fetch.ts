@@ -1,3 +1,4 @@
+import { readEnv } from "../env.ts";
 import { EgressBlockedError } from "./egress-guard.ts";
 
 const REQUEST_FIELDS = [
@@ -26,8 +27,8 @@ export async function fetchPinnedOrigin(
     "http_proxy",
     "https_proxy",
     "all_proxy",
-  ]) {
-    if (process.env[name]?.trim())
+  ] as const) {
+    if (readEnv(name)?.trim())
       throw new EgressBlockedError("proxy_environment_unsupported", target.hostname);
   }
   const pinned = new URL(target);

@@ -1,11 +1,11 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { redactLearning } from "../agent/sessions.ts";
+import { redactLearning } from "../agent/index.ts";
 import type { Actor } from "../audit/actor.ts";
 import type { Db } from "../db/client.ts";
 import { intakeItemEvidence, intakeItems } from "../db/schema/intake.ts";
 import { ensureNamedSystemAccount } from "../identity/service.ts";
 import { createSessionIntakeItem, normalizeIntakeTitle } from "../knowledge/index.ts";
-import { log } from "../logging/logger.ts";
+import { log } from "../logging/index.ts";
 import { referencesKeyMaterialPath, scrubString } from "../logging/scrub-secrets.ts";
 import { type CorrectionObservation, detectCorrectionPatterns } from "./detectors/index.ts";
 

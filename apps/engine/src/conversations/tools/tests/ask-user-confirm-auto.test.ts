@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { askUserConfirmTool } from "../ask-user/confirm.ts";
 
 interface MinimalCtx {
-  permission_mode: "auto" | "ask" | "plan" | null;
+  ask_before_writing?: boolean;
   tenant_id: string;
   conversation_id: string;
   actor_id: string | null;
@@ -14,7 +14,6 @@ interface MinimalCtx {
 
 function ctx(over: Partial<MinimalCtx> = {}): MinimalCtx {
   return {
-    permission_mode: null,
     tenant_id: "t",
     conversation_id: "c",
     actor_id: null,
@@ -25,11 +24,11 @@ function ctx(over: Partial<MinimalCtx> = {}): MinimalCtx {
   };
 }
 
-describe("ask_user_confirm — permission_mode=auto auto-resolve", () => {
+describe("ask_user_confirm — auto-resolve without the ask-before-writing rule", () => {
   test("save_workflow_draft is never reported confirmed without a write", async () => {
     let result: Awaited<ReturnType<typeof askUserConfirmTool.execute>> | null = null;
     try {
-      result = await askUserConfirmTool.execute(ctx({ permission_mode: "auto" }) as never, {
+      result = await askUserConfirmTool.execute(ctx() as never, {
         question: "Save the workflow?",
         kind: "save_workflow_draft",
       });
@@ -37,8 +36,8 @@ describe("ask_user_confirm — permission_mode=auto auto-resolve", () => {
     expect((result?.data as { auto_resolved?: boolean } | undefined)?.auto_resolved).not.toBe(true);
   });
 
-  test("external_write is skipped in auto mode and says the user was not asked", async () => {
-    const result = await askUserConfirmTool.execute(ctx({ permission_mode: "auto" }) as never, {
+  test("external_write is skipped and says the user was not asked", async () => {
+    const result = await askUserConfirmTool.execute(ctx() as never, {
       question: "Run the request against prod?",
       kind: "external_write",
     });
@@ -54,11 +53,11 @@ describe("ask_user_confirm — permission_mode=auto auto-resolve", () => {
     expect((result.data as { auto_resolved?: unknown }).auto_resolved).toBeUndefined();
   });
 
-  test("a run_workflow commit_intent is asked in auto mode instead of skipped", async () => {
+  test("a run_workflow commit_intent is asked instead of skipped", async () => {
     let result: Awaited<ReturnType<typeof askUserConfirmTool.execute>> | null = null;
     let reachedPausePath = false;
     try {
-      result = await askUserConfirmTool.execute(ctx({ permission_mode: "auto" }) as never, {
+      result = await askUserConfirmTool.execute(ctx() as never, {
         question: "Send this report?",
         kind: "external_write",
         commit_intent: {
@@ -79,10 +78,10 @@ describe("ask_user_confirm — permission_mode=auto auto-resolve", () => {
     expect(askUserConfirmTool.description).toContain("never claim the user confirmed");
   });
 
-  test("destructive=true STILL pauses in auto mode (safety carve-out)", async () => {
+  test("destructive=true STILL pauses (safety carve-out)", async () => {
     let reachedPausePath = false;
     try {
-      await askUserConfirmTool.execute(ctx({ permission_mode: "auto" }) as never, {
+      await askUserConfirmTool.execute(ctx() as never, {
         question: "Really delete?",
         kind: "generic",
         destructive: true,
@@ -103,8 +102,8 @@ describe("ask_user_confirm — permission_mode=auto auto-resolve", () => {
       web_search: false,
     };
     const contexts = [
-      ctx({ permission_mode: "auto", task_run: marker }),
-      ctx({ permission_mode: "auto", getDraft: () => ({ session: { task_run: marker } }) }),
+      ctx({ task_run: marker }),
+      ctx({ getDraft: () => ({ session: { task_run: marker } }) }),
     ];
     for (const context of contexts) {
       let result: Awaited<ReturnType<typeof askUserConfirmTool.execute>> | null = null;
@@ -122,12 +121,12 @@ describe("ask_user_confirm — permission_mode=auto auto-resolve", () => {
     }
   });
 
-  test("ask mode keeps the manual confirm path even for non-destructive actions", async () => {
+  test("asking before writing keeps the manual confirm path even for non-destructive actions", async () => {
     let didPause = false;
     try {
       await askUserConfirmTool.execute(
         {
-          ...ctx({ permission_mode: "ask" }),
+          ...ctx({ ask_before_writing: true }),
         } as never,
         { question: "Save the workflow?", kind: "save_workflow_draft" },
       );

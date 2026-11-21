@@ -1,13 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${...}` placeholder tokens are part of the tested grammar.
-// Schema-level guard for the headers union. The string-coercion branch
-// was previously lenient: `parseHeaderLines("{\"Accept\":\"x\"}")`
-// returned `{'{"Accept"': '"x"}'}` because the line had a `:` and a
-// non-empty name. The malformed key then crashed `new Headers()` at
-// fetch time, the retry loop misclassified it as a transient
-// connection error, and 5 retries later the operator saw "connection
-// error" instead of "your headers field is malformed". Conversation
-// 730c568a.
-
 import { describe, expect, test } from "bun:test";
 import { RequestStepSchema } from "../types.ts";
 

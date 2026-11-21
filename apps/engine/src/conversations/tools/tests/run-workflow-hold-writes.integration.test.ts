@@ -1,20 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${...}` placeholder tokens are part of tested workflow definitions, not template literals.
-//
-// run_workflow hold-writes integration tests.
-//
-// Proves the core guarantee and the opt-in across A + B scenarios:
-//
-//   A. Default (hold_writes): a POST step in a saved workflow run via
-//      run_workflow in dev is HELD (no real dispatch); result envelope
-//      carries writes_held:true + held_step_ids; audit row metadata has
-//      execute_writes:false.
-//
-//   B. execute_writes:true is only a request: without local authority,
-//      the same write remains held and its actual held state is audited.
-//
-//   Negative: wrong-tenant principal → cross-tenant isolation at the
-//   workflow lookup layer means the wrong tenant sees workflow_not_found.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, desc, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
@@ -28,6 +11,7 @@ import {
 } from "../../../db/schema/index.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../../execution/tests/setup.ts";
+import { testEnv } from "../../../test-helpers/determinism/env.ts";
 import { workflowPreparationInput } from "../../../workflows/preparation-input.ts";
 import {
   bindPersistedWorkflow,
@@ -40,7 +24,7 @@ import { dryRunWorkflowTool } from "../dry-run-workflow.ts";
 import { runWorkflowTool } from "../engine-api/writes/run-workflow.ts";
 import type { ToolContext } from "../index.ts";
 
-const skip = process.env.REQUIRES_PG === "0";
+const skip = testEnv.REQUIRES_PG === "0";
 
 let convCtx: ConversationTestCtx;
 let mock: MockServer;

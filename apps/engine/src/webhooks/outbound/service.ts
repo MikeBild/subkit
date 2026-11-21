@@ -3,7 +3,7 @@ import { type Actor, auditActor } from "../../audit/actor.ts";
 import { auditAwait } from "../../audit/audit.ts";
 import { resolveActor } from "../../audit/recorders/types.ts";
 import { AuditAction } from "../../audit/types.ts";
-import { decryptSecret, encryptSecret } from "../../crypto/aes-gcm.ts";
+import { decryptSecret, encryptSecret } from "../../crypto/index.ts";
 import { assertInsertRow } from "../../db/assert-insert.ts";
 import type { Executor } from "../../db/client.ts";
 import { subscriptions } from "../../db/schema/index.ts";

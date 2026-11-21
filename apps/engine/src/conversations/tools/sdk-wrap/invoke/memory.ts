@@ -1,10 +1,11 @@
-import { logger } from "../../../../logging/logger.ts";
+import { envFlag } from "../../../../env.ts";
+import { logger } from "../../../../logging/index.ts";
 import { readMemoryUsage } from "../../../../observability/runtime-telemetry.ts";
 
 let heapSnapshotWritten = false;
 
 async function heapDiagnostics(external_mb: number): Promise<Record<string, unknown>> {
-  if (process.env.SUBKIT_HEAP_DIAG !== "1") return {};
+  if (!envFlag("SUBKIT_HEAP_DIAG")) return {};
   try {
     const { heapStats } = await import("bun:jsc");
     const h = heapStats();

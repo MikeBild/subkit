@@ -9,7 +9,7 @@ import { discoveryArtifacts, discoveryFiles, discoveryRuns } from "../db/schema/
 import { linkStoredFile } from "../files/links.ts";
 import { detectFormat, parseFileToChunks } from "../knowledge/parsers.ts";
 import { getContext } from "../logging/context.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import type {
   CreateDiscoveryRunParams,
   DiscoveryArtifactStatus,

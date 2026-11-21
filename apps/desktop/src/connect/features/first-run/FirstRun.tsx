@@ -1,3 +1,11 @@
+import { AppMark } from "@ui/atoms/app-mark";
+import { Button } from "@ui/atoms/button";
+import { Input } from "@ui/atoms/input";
+import { Label } from "@ui/atoms/label";
+import { BusyButton } from "@ui/molecules/busy-button";
+import { FieldError } from "@ui/molecules/error-notice";
+import { StepFooter } from "@ui/molecules/step-footer";
+import { ToggleGroup, ToggleGroupItem } from "@ui/molecules/toggle-group";
 import {
   Bell,
   Building2,
@@ -12,17 +20,6 @@ import type { MessageKey } from "../../../shared/i18n.ts";
 import type { WorkspaceOption } from "../../../shared/onboarding.ts";
 import { useSignIn } from "../../adapter/index.ts";
 import type { ConsentTopic, Screen } from "../../domain/index.ts";
-import {
-  BusyButton,
-  Button,
-  FieldError,
-  Input,
-  Label,
-  StepFooter,
-  SubKitMark,
-  ToggleGroup,
-  ToggleGroupItem,
-} from "../../ui/index.ts";
 
 type Kind = "welcome" | "invite" | "workspace" | "consent";
 
@@ -58,7 +55,7 @@ export function Welcome() {
   return (
     <div className="text-center">
       <div className="mb-4 flex justify-center">
-        <SubKitMark size="lg" />
+        <AppMark size="lg" />
       </div>
       <h1 className="text-2xl font-semibold">{t("welcome.title")}</h1>
       {invite.open ? (

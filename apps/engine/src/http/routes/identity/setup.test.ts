@@ -3,7 +3,6 @@ import { and, eq } from "drizzle-orm";
 import { AuditAction } from "../../../audit/types.ts";
 import {
   auditLog,
-  conversations,
   tenants,
   transactionalMailReceipts,
   userInvites,
@@ -83,7 +82,7 @@ describe("setup choices of the signed-in person", () => {
     const { status, body } = await getSetup(headers(owner));
     expect(status).toBe(200);
     expect(body).toEqual({
-      default_chat_mode: "auto",
+      ask_before_writing: false,
       default_environment: "dev",
       approver: { kind: "self" },
       notifications: { mode: "immediately" },
@@ -91,22 +90,30 @@ describe("setup choices of the signed-in person", () => {
       critical_breakthrough: false,
       first_job: null,
       services: [],
-      unset: ["default_chat_mode", "default_environment", "approver", "notifications"],
+      unset: ["default_environment", "approver", "notifications"],
       recommended: {
-        default_chat_mode: "auto",
+        ask_before_writing: false,
         default_environment: "dev",
         approver: { kind: "self" },
         notifications: { mode: "immediately" },
         critical_breakthrough: false,
       },
+      spend: { limit_usd: 50, can_change: true },
       updated_at: null,
     });
+  });
+
+  test("a hosted workspace sets its own AI budget in setup", async () => {
+    const owner = await login("setup-hosted-spend");
+    const saved = await putSetup(headers(owner), { monthly_spend_usd: 200 });
+    expect(saved.status).toBe(200);
+    expect(saved.body.spend).toEqual({ limit_usd: 200, can_change: true });
   });
 
   test("choices are stored field by field, read back and audited", async () => {
     const owner = await login("setup-writer");
     const first = await putSetup(headers(owner), {
-      default_chat_mode: "ask",
+      ask_before_writing: true,
       default_environment: "prod",
       notifications: { mode: "working_hours", from: "08:00", to: "17:30" },
       first_job: "weekly-report",
@@ -114,7 +121,7 @@ describe("setup choices of the signed-in person", () => {
     });
     expect(first.status).toBe(200);
     expect(first.body).toMatchObject({
-      default_chat_mode: "ask",
+      ask_before_writing: true,
       default_environment: "prod",
       approver: { kind: "self" },
       notifications: { mode: "working_hours", from: "08:00", to: "17:30" },
@@ -127,14 +134,14 @@ describe("setup choices of the signed-in person", () => {
       notifications: { mode: "daily_digest", at: "07:15" },
     });
     expect(second.body).toMatchObject({
-      default_chat_mode: "ask",
+      ask_before_writing: true,
       default_environment: "prod",
       notifications: { mode: "daily_digest", at: "07:15" },
       first_job: "weekly-report",
       unset: [],
     });
     expect((await getSetup(headers(owner))).body).toMatchObject({
-      default_chat_mode: "ask",
+      ask_before_writing: true,
       notifications: { mode: "daily_digest", at: "07:15" },
       services: ["gmail", "slack"],
     });
@@ -184,7 +191,7 @@ describe("setup choices of the signed-in person", () => {
   test("values outside the closed choices are refused and nothing is stored", async () => {
     const owner = await login("setup-invalid");
     const bodies = [
-      { default_chat_mode: "yolo" },
+      { ask_before_writing: "yes" },
       { default_environment: "staging" },
       { notifications: { mode: "working_hours", from: "8", to: "17:00" } },
       { notifications: { mode: "working_hours", from: "08:00", to: "17:00", days: [] } },
@@ -433,29 +440,5 @@ describe("setup choices of the signed-in person", () => {
     });
     expect(chosen.status).toBe(200);
     expect(chosen.body.approver).toMatchObject({ kind: "pair", pair: "needs_admin" });
-  });
-
-  test("a new conversation starts in the stored mode unless the client names one", async () => {
-    const owner = await login("setup-chat-mode");
-    const create = async (body: unknown) => {
-      const response = await fetch(`${ctx.baseUrl}/v1/conversations`, {
-        method: "POST",
-        headers: headers(owner),
-        body: JSON.stringify(body),
-      });
-      expect(response.status).toBeLessThan(300);
-      const created = (await response.json()) as { conversation?: { id: string }; id?: string };
-      const id = created.conversation?.id ?? created.id;
-      if (!id) throw new Error("conversation id missing");
-      const [row] = await ctx.db.select().from(conversations).where(eq(conversations.id, id));
-      return (row?.draft as { session?: { permission_mode?: string } } | null)?.session
-        ?.permission_mode;
-    };
-    expect(await create({})).toBe("auto");
-    await putSetup(headers(owner), { default_chat_mode: "ask" });
-    expect(await create({})).toBe("ask");
-    expect(await create({ permission_mode: "plan" })).toBe("plan");
-    await putSetup(headers(owner), { default_chat_mode: "plan" });
-    expect(await create({})).toBe("plan");
   });
 });

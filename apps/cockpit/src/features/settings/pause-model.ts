@@ -1,8 +1,6 @@
 import { type NotificationPauseBody, pauseState } from "@shared/notification-pause.ts";
 import type { PauseRequest } from "@/api/notification-pause";
-import type { TranslationKey } from "@/lib/i18n";
-
-type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
+import type { Translate, TranslationKey } from "@/lib/i18n";
 
 export const PAUSE_OPTIONS = ["hour", "tomorrow", "resumed"] as const;
 export type PauseOption = (typeof PAUSE_OPTIONS)[number];

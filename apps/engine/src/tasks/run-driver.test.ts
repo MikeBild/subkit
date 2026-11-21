@@ -8,8 +8,8 @@ const failure = (code: string, retry_at?: string) =>
 describe("task run driver", () => {
   test("only provider throttling carries a retry time, a stated one in the future wins", () => {
     expect(
-      taskRunTurnFailure(failure("llm_quota_exhausted", "2026-11-19T09:00:00.000Z"), NOW),
-    ).toEqual({ code: "llm_quota_exhausted", retry_at: null });
+      taskRunTurnFailure(failure("llm_spend_limit_reached", "2026-11-19T09:00:00.000Z"), NOW),
+    ).toEqual({ code: "llm_spend_limit_reached", retry_at: null });
     expect(taskRunTurnFailure(failure("internal"), NOW)).toEqual({
       code: "internal",
       retry_at: null,

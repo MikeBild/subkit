@@ -1,6 +1,6 @@
 import { createRoot } from "react-dom/client";
 import type { ConnectBridge } from "../shared/ipc.ts";
-import { createSignInStore } from "./adapter/index.ts";
+import { createLocalCapabilities, createSignInStore } from "./adapter/index.ts";
 import { SignInWindow } from "./pages/index.ts";
 
 declare global {
@@ -19,4 +19,9 @@ function followSystemTheme(): void {
 followSystemTheme();
 const root = document.getElementById("root");
 if (!root) throw new Error("The sign-in window has no root element");
-createRoot(root).render(<SignInWindow store={createSignInStore(window.subkitConnect)} />);
+createRoot(root).render(
+  <SignInWindow
+    store={createSignInStore(window.subkitConnect)}
+    local={createLocalCapabilities(window.subkitConnect)}
+  />,
+);

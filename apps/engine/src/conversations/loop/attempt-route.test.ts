@@ -11,7 +11,6 @@ describe("conversation attempt routing", () => {
       provider: "anthropic",
       fallback_provider: "openai",
       context_cap: 200_000,
-      monthly_budget: null,
     };
 
     expect(resolveConversationAttemptRoutes(route, "claude-sonnet-4-6")).toEqual({
@@ -28,7 +27,6 @@ describe("conversation attempt routing", () => {
       provider: "mock",
       fallback_provider: "mock",
       context_cap: 100_000,
-      monthly_budget: null,
     };
 
     expect(resolveConversationAttemptRoutes(route, route.primary).fallback).toEqual({

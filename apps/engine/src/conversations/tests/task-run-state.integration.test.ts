@@ -8,7 +8,7 @@ import { appendSnapshot, loadDraft } from "../draft.ts";
 import { readPlaybook, updatePlaybook } from "../playbook.ts";
 import type { PlaybookPlan } from "../playbook-contract.ts";
 import { clearTaskRunCheck } from "../public/authoring.ts";
-import * as svc from "../service.ts";
+import * as svc from "../service/index.ts";
 import { getTool, type ToolContext } from "../tools/index.ts";
 import { resolveTaskCheckInstant } from "../tools/schedule-task-check.ts";
 import type { DraftDocument } from "../types.ts";

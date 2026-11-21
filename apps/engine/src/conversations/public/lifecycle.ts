@@ -29,14 +29,12 @@ export {
 } from "../service/lifecycle.ts";
 export { getContextSnapshot } from "../service/snapshot.ts";
 export {
-  assertTaskRunTurn,
   assertTaskRunWriter,
   canWriteTaskRun,
   inTaskRunApprovalTrace,
   mayDecideTaskRunApproval,
   type TaskRunApprovalRefusal,
   TaskRunLockedError,
-  TaskRunPermissionModeError,
   TaskRunWriteForbiddenError,
   type TaskRunWriter,
   taskRunApprovalRefusal,

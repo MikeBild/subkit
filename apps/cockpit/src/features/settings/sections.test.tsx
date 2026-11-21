@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { Setup } from "@/api/setup";
 import { answersFromSetup } from "@/features/setup";
-import { render } from "@/pages/settings-fixtures";
 import { ApprovalPolicyPanel } from "./approval-policy";
+import { render } from "./model/settings-fixtures";
 import { NotificationsPanel } from "./notifications";
 import { notificationView } from "./notifications-model";
 import { PauseRow } from "./pause-row";
@@ -10,7 +10,7 @@ import { SetupSectionPanel } from "./setup-section";
 import type { PauseControl } from "./use-notification-pause";
 
 const stored = {
-  default_chat_mode: "auto",
+  ask_before_writing: false,
   default_environment: "dev",
   approver: {
     kind: "teammate",

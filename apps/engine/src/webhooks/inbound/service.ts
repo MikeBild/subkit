@@ -9,16 +9,16 @@ import { type Actor, auditActor } from "../../audit/actor.ts";
 import { audit, auditAwait } from "../../audit/audit.ts";
 import { resolveActor } from "../../audit/recorders/types.ts";
 import { AuditAction, type AuditActorType } from "../../audit/types.ts";
-import { decryptSecret, encryptSecret } from "../../crypto/aes-gcm.ts";
+import { decryptSecret, encryptSecret } from "../../crypto/index.ts";
 import { assertInsertRow } from "../../db/assert-insert.ts";
 import type { Db, Executor } from "../../db/client.ts";
 import { webhooksInbound, workflows } from "../../db/schema/index.ts";
+import { enqueueExecutionRun } from "../../devices/waiting.ts";
 import { assertExecutionAuthorityCurrent } from "../../execution/authority-admission.ts";
 import { assertTenantActive, SelfServiceIdentityError } from "../../identity/self-service.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { enqueueGateDiagnosis } from "../../queue/handlers/workflow-repair.ts";
-import { enqueueHostedWork } from "../../queue/hosted-work.ts";
-import { EXECUTION_RUN_QUEUE, type ExecutionRunJob } from "../../queue/queues.ts";
+import type { ExecutionRunJob } from "../../queue/queues.ts";
 import type { WebhookTrigger } from "../../workflows/types.ts";
 import { admitWebhookExecution, webhookReplayMatches } from "./admission.ts";
 import { type InboundHoldReason, recordInboundAdmission } from "./admission-state.ts";
@@ -901,7 +901,7 @@ export async function handleInbound(
     execution_mode: "prod",
   };
   if (admitted.status === "queued") {
-    await enqueueHostedWork(db, boss, "execution", EXECUTION_RUN_QUEUE, job, { id: execution_id });
+    await enqueueExecutionRun(db, boss, { ...job, execution_id });
     await holdInboundAdmission(db, row, input.now, null);
   }
   const fresh = await markSeenIfNew(db, {

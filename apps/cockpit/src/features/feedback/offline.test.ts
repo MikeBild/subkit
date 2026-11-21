@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { ApiError } from "@/api/transport";
-import type { FeedbackBody } from "./model";
+import type { FeedbackBody } from "@/features/feedback/model/feedback";
 import { createFeedbackQueue, type FeedbackQueueItem } from "./offline";
 import { memoryQueueStore } from "./queue-store";
 

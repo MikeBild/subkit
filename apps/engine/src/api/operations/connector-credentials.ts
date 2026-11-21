@@ -163,10 +163,10 @@ export const attachConnectorCredentialsOperation = defineOperation<
 >({
   id: "connector.credentials.attach",
   summary: "Attach credentials to a connector",
-  permission: "credential:write",
+  permission: "vault:write",
   resource: { type: "connector", param: "id" },
   effect: "write",
-  audit: AuditAction.CREDENTIAL_CREATED,
+  audit: AuditAction.VAULT_ITEM_CREATED,
   async handler(scope, body) {
     const principal = scope.principal;
     if (!principal) return reject.unauthorized();

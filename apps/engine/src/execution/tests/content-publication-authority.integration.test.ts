@@ -54,7 +54,6 @@ async function fixture(loop = false) {
               method: "PUT",
               url: `${origin}/v1/content/\${item.item_id}/revisions`,
               headers: { "Content-Type": "text/markdown; charset=utf-8" },
-              // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow input substitution
               body: "${input.markdown}",
               max_retries: 0,
             },
@@ -65,7 +64,6 @@ async function fixture(loop = false) {
             method: "PUT",
             url: `${origin}/v1/content/\${input.${key}}/revisions`,
             headers: { "Content-Type": "text/markdown; charset=utf-8" },
-            // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow substitution
             body: "${input.markdown}",
             max_retries: 0,
           }))),
@@ -85,7 +83,6 @@ async function fixture(loop = false) {
         depends_on: ["collect"],
         headers: { "Content-Type": "application/json" },
         max_retries: 0,
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow substitution
         body: { revision_ids: "${scope.collect.data}", reason: "Scheduled update" },
       },
     ],

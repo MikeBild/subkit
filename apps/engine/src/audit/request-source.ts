@@ -1,5 +1,5 @@
 import type { Context } from "hono";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { type RequestSource, RequestSourceSchema } from "../observability/service-metadata.ts";
 
 export function readRequestSource(c: Context): RequestSource | undefined {

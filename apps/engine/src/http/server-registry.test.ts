@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { Config } from "../config/schema.ts";
 import { ConfigSchema } from "../config/schema.ts";
+import { createDbFromUrl } from "../db/client.ts";
 import { buildDefaultRegistry } from "./server.ts";
+
+const offlineDb = createDbFromUrl("postgres://localhost/offline").db;
 
 function authWith(providers: Config["auth"]["providers"], mcpOauthEnabled = true): Config["auth"] {
   const auth = ConfigSchema.parse({ database: { url: "postgres://u:p@localhost:5432/db" } }).auth;
@@ -13,15 +16,16 @@ function authWith(providers: Config["auth"]["providers"], mcpOauthEnabled = true
 }
 
 function names(auth: Config["auth"]): string[] {
-  return buildDefaultRegistry(undefined, auth)
+  return buildDefaultRegistry(offlineDb, auth)
     .list()
     .map((provider) => provider.name);
 }
 
 describe("buildDefaultRegistry — provider-neutral membership", () => {
-  test("the default keeps the always-on machine providers", () => {
+  test("the default keeps the always-on device and machine providers", () => {
     const auth = authWith([{ protocol: "api_key", id: "api-key", label: "SubKit API key" }]);
     expect(names(auth)).toEqual([
+      "device_runner",
       "oidc_bearer",
       "mcp_oauth",
       "portal_token",
@@ -45,6 +49,7 @@ describe("buildDefaultRegistry — provider-neutral membership", () => {
       },
     ]);
     expect(names(auth)).toEqual([
+      "device_runner",
       "oidc_bearer",
       "mcp_oauth",
       "portal_token",
@@ -56,12 +61,13 @@ describe("buildDefaultRegistry — provider-neutral membership", () => {
 
   test("the bearer adapter is always registered and reads oidc_bearer records per request", () => {
     const auth = authWith([{ protocol: "api_key", id: "api-key", label: "SubKit API key" }]);
-    expect(names(auth)[0]).toBe("oidc_bearer");
+    expect(names(auth)[1]).toBe("oidc_bearer");
   });
 
   test("disabling MCP OAuth drops only its bearer adapter", () => {
     const auth = authWith([{ protocol: "api_key", id: "api-key", label: "SubKit API key" }], false);
     expect(names(auth)).toEqual([
+      "device_runner",
       "oidc_bearer",
       "portal_token",
       "token_exchange",

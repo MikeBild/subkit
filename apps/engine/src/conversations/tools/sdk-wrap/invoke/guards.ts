@@ -1,4 +1,4 @@
-import { log, logger } from "../../../../logging/logger.ts";
+import { log, logger } from "../../../../logging/index.ts";
 import { recordToolCircuitOpen } from "../../../../observability/instrumentation.ts";
 import {
   argsHashOf,

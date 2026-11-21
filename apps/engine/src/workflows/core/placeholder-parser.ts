@@ -1,5 +1,8 @@
+import { parseVaultHandle } from "@shared/vault-handle.ts";
+
 export type PlaceholderKind =
   | "cred"
+  | "secret"
   | "connector_url"
   | "connector_config"
   | "input"
@@ -24,6 +27,7 @@ export interface ParseError {
     | "empty_placeholder"
     | "unknown_kind"
     | "malformed_cred"
+    | "malformed_secret"
     | "malformed_connector"
     | "malformed_input"
     | "malformed_caller"
@@ -182,6 +186,29 @@ function parseBody(body: string, span: { start: number; end: number }, raw: stri
       return {
         ok: true,
         token: { kind: "cred", slug, field, path: [field], span, raw },
+      };
+    }
+    case "secret": {
+      const handle = parseVaultHandle(parts.slice(1));
+      if (!handle) {
+        return {
+          ok: false,
+          error: {
+            code: "malformed_secret",
+            message: `expected \${secret.<name>}, \${secret.<name>.<field>} or \${secret.me.<name>}`,
+            span,
+          },
+        };
+      }
+      return {
+        ok: true,
+        token: {
+          kind: "secret",
+          ...(handle.field ? { field: handle.field } : {}),
+          path: parts.slice(1),
+          span,
+          raw,
+        },
       };
     }
     case "connector": {
@@ -370,7 +397,7 @@ function parseBody(body: string, span: { start: number; end: number }, raw: stri
         ok: false,
         error: {
           code: "unknown_kind",
-          message: `unknown placeholder kind '${head}'; expected one of: cred, connector, input, caller, scope, item, state`,
+          message: `unknown placeholder kind '${head}'; expected one of: cred, secret, connector, input, caller, scope, item, state`,
           span,
         },
       };

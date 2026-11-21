@@ -1,6 +1,5 @@
 export const feedbackEn = {
   "feedback.entry": "Report a bug",
-  "feedback.menu": "Report a bug…",
   "feedback.title": "Send feedback",
   "feedback.kind": "Kind of feedback",
   "feedback.kind.bug": "Bug",
@@ -68,7 +67,6 @@ export const feedbackEn = {
 
 export const feedbackDe: Record<keyof typeof feedbackEn, string> = {
   "feedback.entry": "Fehler melden",
-  "feedback.menu": "Fehler melden …",
   "feedback.title": "Feedback senden",
   "feedback.kind": "Art des Feedbacks",
   "feedback.kind.bug": "Fehler",

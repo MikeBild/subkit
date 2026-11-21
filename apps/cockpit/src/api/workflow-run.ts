@@ -1,4 +1,5 @@
-import type { RunEnvironment } from "@/lib/run-availability";
+export type RunEnvironment = "dev" | "prod";
+
 import type { FormInput } from "@/lib/schema-form";
 import { type ApiResponse, apiCall } from "./call";
 

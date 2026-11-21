@@ -4,7 +4,6 @@ import {
   auditLog,
   connectors,
   connectorTemplates,
-  credentials,
   files,
   intakeItems,
   intakeProposals,
@@ -12,6 +11,7 @@ import {
   packageInstallItems,
   packageInstalls,
   skills,
+  vaultItems,
   workflows,
   workflowsSchedules,
   workflowVersions,
@@ -54,7 +54,7 @@ let applied: ApplyPackageResult;
 const COUNTED = {
   connector_templates: connectorTemplates,
   connectors,
-  credentials,
+  vaultItems,
   files,
   skills,
   workflows,
@@ -183,8 +183,8 @@ describe("tenant package import", () => {
     );
     const [credentialCount] = await ctx.db
       .select({ n: count() })
-      .from(credentials)
-      .where(eq(credentials.tenant_id, target_id));
+      .from(vaultItems)
+      .where(eq(vaultItems.tenant_id, target_id));
     expect(Number(credentialCount?.n ?? 0)).toBe(0);
 
     const [template] = await ctx.db

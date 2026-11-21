@@ -1,6 +1,6 @@
 import type { Job, PgBoss } from "pg-boss";
 import type { Db, Executor } from "../../db/client.ts";
-import { log } from "../../logging/logger.ts";
+import { log } from "../../logging/index.ts";
 import { describePendingCatalog } from "../../workflows/catalog-describe.ts";
 import { withActiveTenantJobContext } from "../job-context.ts";
 import { queuedSendTransaction } from "../transaction-adapter.ts";

@@ -1,11 +1,12 @@
 import { afterAll, beforeAll } from "bun:test";
 import { eq, sql } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import * as svc from "../../conversations/service.ts";
+import * as svc from "../../conversations/service/index.ts";
 import { sessions, tenants, users } from "../../db/schema/index.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
 import { getMcpTask, insertMcpTask } from "../../mcp/tasks/store.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
@@ -81,7 +82,7 @@ export async function seedConversationAndTask(
 
 export function useRunTurnQueue(): void {
   beforeAll(async () => {
-    process.env.LLM_PROVIDER = "mock";
+    testEnv.LLM_PROVIDER = "mock";
     await ensureTestConfig();
     resetMockProvider();
     queue = await createQueueCtx("conversation_run_turn");

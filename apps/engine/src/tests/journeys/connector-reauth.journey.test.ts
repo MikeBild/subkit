@@ -152,10 +152,10 @@ describe("a connector that lost its sign-in is repaired by the person", () => {
       }>;
     };
     const oldestFirst = [...body.items].reverse();
-    const created = oldestFirst.find((row) => row.action === "credential.created");
-    expect(created?.resource_type).toBe("credential");
+    const created = oldestFirst.find((row) => row.action === "vault.item.created");
+    expect(created?.resource_type).toBe("vault_item");
     const replaced = oldestFirst.find(
-      (row) => row.action === "credential.updated" && row.resource_id === created?.resource_id,
+      (row) => row.action === "vault.item.updated" && row.resource_id === created?.resource_id,
     );
     expect(replaced?.actor_id).toBe(ctx.userId);
     const cleared = oldestFirst.find(

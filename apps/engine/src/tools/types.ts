@@ -8,8 +8,6 @@ export interface ToolPolicies {
   [toolName: string]: ToolPolicyMode;
 }
 
-export type PermissionMode = "auto" | "ask" | "plan" | "yolo";
-
 export type ToolModeRule =
   | "inline_credential"
   | "connector_trust"
@@ -17,7 +15,8 @@ export type ToolModeRule =
   | "user_instruction"
   | "standing_rule"
   | "never_gate"
-  | "permission_mode"
+  | "write_gate"
+  | "ask_before_writing"
   | "conversation_override"
   | "computed_from_input"
   | "tool_default"

@@ -100,7 +100,7 @@ export function authoringConnectorIds(
 
 export function authoringHint<P, L>(
   summary: AuthoringSummary | undefined,
-  input: { runVerb: boolean; permission_mode: P; locked_tools: L },
+  input: { runVerb: boolean; ask_before_writing: P; locked_tools: L },
 ) {
   if (!summary) return undefined;
   return {
@@ -114,7 +114,7 @@ export function authoringHint<P, L>(
     blocked_by: [...summary.blocked_by],
     next_required_action: summary.next_required_action,
     next_suggested_tool: summary.next_suggested_tool,
-    permission_mode: input.permission_mode,
+    ask_before_writing: input.ask_before_writing,
     locked_tools: input.locked_tools,
     checkpoints: [...summary.checkpoints],
     latest_execution: summary.latest_execution
@@ -143,7 +143,7 @@ export interface RuntimeContextInput {
   actor_email?: string | undefined;
   actor_role?: string | undefined;
   surface?: string | undefined;
-  permission_mode?: string | null | undefined;
+  ask_before_writing?: boolean | undefined;
 }
 
 export function promptRuntimeContext(input: RuntimeContextInput) {
@@ -153,7 +153,7 @@ export function promptRuntimeContext(input: RuntimeContextInput) {
     ...(input.actor_email ? { actor_email: input.actor_email } : {}),
     ...(input.actor_role ? { actor_role: input.actor_role } : {}),
     ...(input.surface ? { surface: input.surface } : {}),
-    ...(input.permission_mode ? { permission_mode: input.permission_mode } : {}),
+    ...(input.ask_before_writing ? { ask_before_writing: true } : {}),
   };
   return Object.keys(rc).length > 0 ? { runtime_context: rc } : {};
 }
@@ -323,13 +323,6 @@ export function breakdownLogFields(breakdown: PromptTokenCounts | undefined) {
     breakdown_references: breakdown.references,
     breakdown_total: breakdown.total,
   };
-}
-
-export function remainingMonthlyBudget(
-  monthlyBudget: number | null | undefined,
-  usageAfter: number,
-): number | null {
-  return monthlyBudget != null ? Math.max(0, monthlyBudget - usageAfter) : null;
 }
 
 export interface WeighableSkill {

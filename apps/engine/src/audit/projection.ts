@@ -1,6 +1,10 @@
+import { DEVICE_REFUSALS } from "@shared/device/protocol.ts";
 import { z } from "zod";
+import { LOCAL_SOURCE_REFUSALS } from "../devices/core/run-source.ts";
 import { scrubSecrets } from "../logging/scrub-secrets.ts";
 import { RequestSourceSchema } from "../observability/service-metadata.ts";
+import { DEVICE_LOSS_CODES } from "./device-metadata.ts";
+import { deviceDetails } from "./device-projection.ts";
 import { auditResourceName } from "./resource-name.ts";
 import { sanitizeForAudit } from "./sanitize.ts";
 import type { AuditEntry } from "./types.ts";
@@ -43,6 +47,7 @@ const DETAIL_FIELDS: Record<string, readonly string[]> = {
     "message_id",
     "verb",
     "effect_class",
+    "job_id",
   ],
   "tool_approval_rule.created": ["tool", "verb", "recipient_count", "approvals_count"],
   "tool_approval_rule.dismissed": ["tool", "verb", "recipient_count", "approvals_count"],
@@ -66,9 +71,10 @@ const DETAIL_FIELDS: Record<string, readonly string[]> = {
     "hold_writes",
   ],
 };
+const ID_DETAIL_FIELDS = new Set(["job_id"]);
 const DETAIL_TEXT = /^[A-Za-z0-9 _.:*/+-]{1,64}$/;
 const CORRELATION_ID = /^[0-9a-f]{32}$/;
-const ACCESS_TYPES = [
+export const AUDIT_ACCESS_TYPES = [
   "api_key",
   "browser_session",
   "mcp_oauth",
@@ -76,7 +82,9 @@ const ACCESS_TYPES = [
   "external_bearer",
   "task_run",
   "portal_token",
+  "device_runner",
 ] as const;
+export type AuditAccessType = (typeof AUDIT_ACCESS_TYPES)[number];
 const SAFE_REASONS = new Set([
   "expired_sliding",
   "expired_absolute",
@@ -119,6 +127,9 @@ const SAFE_REASONS = new Set([
   "question_expired",
   "ai_access",
   "turn_stopped",
+  ...DEVICE_REFUSALS,
+  ...DEVICE_LOSS_CODES,
+  ...LOCAL_SOURCE_REFUSALS,
 ]);
 
 function recordedId(value: unknown): string | null {
@@ -309,11 +320,14 @@ function taskDetails(entry: AuditEntry): Record<string, Detail> | null {
 function recordedDetails(entry: AuditEntry): Record<string, string | number | boolean | null> {
   const task = taskDetails(entry);
   if (task) return task;
+  const device = deviceDetails(entry);
+  if (device) return device;
   const fields = DETAIL_FIELDS[entry.action] ?? [];
   return Object.fromEntries(
     fields.flatMap((field) => {
       if (!Object.hasOwn(entry.metadata, field)) return [];
-      const value = detailValue(entry.metadata[field]);
+      const raw = entry.metadata[field];
+      const value = ID_DETAIL_FIELDS.has(field) ? (recordedId(raw) ?? undefined) : detailValue(raw);
       return value === undefined ? [] : [[field, value]];
     }),
   );
@@ -343,7 +357,8 @@ export function projectAuditEntry(entry: AuditEntry): Record<string, unknown> {
   const execution = RequestSourceSchema.safeParse(entry.metadata.execution_source);
   const apiKeyId = recordedId(entry.metadata.audit_used_api_key_id);
   const sessionId = recordedId(entry.metadata.audit_used_session_id);
-  const accessType = ACCESS_TYPES.find((type) => type === entry.metadata.audit_access_type) ?? null;
+  const accessType =
+    AUDIT_ACCESS_TYPES.find((type) => type === entry.metadata.audit_access_type) ?? null;
   const recordedApiKeyId = accessType ? null : recordedId(entry.metadata.api_key_id);
   const recordedSessionId = accessType ? null : recordedId(entry.metadata.session_id);
   const oauthClientId =

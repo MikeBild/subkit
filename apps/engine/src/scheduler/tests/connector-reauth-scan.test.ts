@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+import { runConnectorReauthScanForTenant } from "../../connectors/scheduled/connector-reauth-scan-runner.ts";
 import { upsertCredential } from "../../credentials/service.ts";
 import {
   connectorMcpSessions,
@@ -14,7 +15,6 @@ import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { logRing } from "../../observability/log-ring.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../test-helpers/mock-http.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
-import { runConnectorReauthScanForTenant } from "../connector-reauth-scan-runner.ts";
 
 const NOW = new Date("2026-06-01T00:00:00.000Z");
 

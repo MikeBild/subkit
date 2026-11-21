@@ -101,17 +101,9 @@
   },
   "overrides": [
     {
-      "includes": ["packages/ui/src/components/**"],
+      "includes": ["apps/cockpit/src/lib/preference-cookie.ts"],
       "linter": {
         "rules": {
-          "a11y": {
-            "noRedundantRoles": "off",
-            "noSvgWithoutTitle": "off",
-            "useAriaPropsSupportedByRole": "off",
-            "useFocusableInteractive": "off",
-            "useKeyWithClickEvents": "off",
-            "useSemanticElements": "off"
-          },
           "suspicious": {
             "noDocumentCookie": "off"
           }
@@ -119,10 +111,28 @@
       }
     },
     {
-      "includes": ["apps/cockpit/src/components/ui/**"],
+      "includes": ["apps/engine/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noTemplateCurlyInString": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "packages/ui/src/atoms/**",
+        "packages/ui/src/molecules/**",
+        "packages/ui/src/organisms/**",
+        "packages/ui/src/templates/**"
+      ],
       "linter": {
         "rules": {
           "a11y": {
+            "noRedundantRoles": "off",
+            "noSvgWithoutTitle": "off",
+            "useAriaPropsSupportedByRole": "off",
             "useFocusableInteractive": "off",
             "useKeyWithClickEvents": "off",
             "useSemanticElements": "off"

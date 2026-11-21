@@ -2,10 +2,10 @@ import { expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import {
   auditLog,
-  credentials,
   executionSteps,
   executions,
   toolApprovals,
+  vaultItems,
   workflows,
   workflowVersions,
 } from "../db/schema/index.ts";
@@ -84,12 +84,12 @@ test("approved retries retain every primary and auxiliary credential actually se
     for (const connectorId of [f.primary.id, f.auxiliary.id]) {
       const [credential] = await tdb.db
         .select()
-        .from(credentials)
+        .from(vaultItems)
         .where(
           and(
-            eq(credentials.tenant_id, f.tenant.id),
-            eq(credentials.connector_id, connectorId),
-            eq(credentials.environment, "dev"),
+            eq(vaultItems.tenant_id, f.tenant.id),
+            eq(vaultItems.connector_id, connectorId),
+            eq(vaultItems.environment, "dev"),
           ),
         );
       if (!credential) throw new Error("missing retry credential");
@@ -159,10 +159,8 @@ test("auxiliary credential revision is rechecked after materialization before di
   if (!f.auxiliary) throw new Error("missing auxiliary");
   const [credential] = await tdb.db
     .select()
-    .from(credentials)
-    .where(
-      and(eq(credentials.tenant_id, f.tenant.id), eq(credentials.connector_id, f.auxiliary.id)),
-    );
+    .from(vaultItems)
+    .where(and(eq(vaultItems.tenant_id, f.tenant.id), eq(vaultItems.connector_id, f.auxiliary.id)));
   if (!credential) throw new Error("missing credential");
   await f.runTool("synthetic");
   await f.confirmPrepared();

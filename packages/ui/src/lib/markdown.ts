@@ -99,6 +99,4 @@ export function applyFormat(v: string, a: number, b: number, f: Fmt, linkText = 
   }
 }
 
-export type RefKind = "file" | "skill" | "source";
-export const refToken = (kind: RefKind, name: string) =>
-  `@${kind === "file" ? "attachment" : kind}:${name}`;
+export const refToken = (prefix: string, name: string) => `@${prefix}:${name}`;

@@ -18,7 +18,6 @@ export const INK_INTERCEPTED_LOCAL_SLASHES = Object.freeze([
 export const INK_INTERCEPTED_ENGINE_SLASHES = Object.freeze([
   "approve",
   "reject",
-  "yolo",
   "paste",
   "queue",
   "view",
@@ -164,12 +163,6 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     argsSchema: z.array(z.string().min(1).max(512)),
   },
   {
-    name: "yolo",
-    help: "Arm yolo mode — lifts the destructive-action confirmation gate (typed `yes` confirmation; auto-disarms after 10 turns / 10 min). `/yolo off` disarms now.",
-    category: "session",
-    requires: "conversation:write",
-  },
-  {
     name: "policy",
     help: "List tool execution-mode badges, or pin a per-tool override. `/policy` lists; `/policy <tool> <auto|ask|review>` sets; `/policy <tool> reset` clears.",
     category: "session",
@@ -261,7 +254,7 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
   },
   {
     name: "permissions",
-    help: "Open the permission-mode picker (Default / Auto-review / Plan only / Full Access)",
+    help: "List the permissions granted to this principal",
     category: "util",
     routing: "local",
   },

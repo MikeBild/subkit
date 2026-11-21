@@ -15,18 +15,13 @@ import { hasBuiltinAdminRole } from "../../rbac/evaluator.ts";
 import { getTaskRunMarker } from "../core/draft.ts";
 import { approvalHandleFromElicitationInput } from "../tools/ask-user/commit-intent.ts";
 import type { TaskRunMarker } from "../types.ts";
-import {
-  TaskRunApprovalForbiddenError,
-  TaskRunPermissionModeError,
-  TaskRunWriteForbiddenError,
-} from "./task-run-errors.ts";
+import { TaskRunApprovalForbiddenError, TaskRunWriteForbiddenError } from "./task-run-errors.ts";
 import { taskRunPrincipal } from "./task-run-marker.ts";
 
 export {
   TaskRunApprovalForbiddenError,
   TaskRunApprovalUnavailableError,
   TaskRunLockedError,
-  TaskRunPermissionModeError,
   TaskRunWriteForbiddenError,
 } from "./task-run-errors.ts";
 
@@ -97,15 +92,6 @@ async function isActiveAdmin(exec: Executor, tenant_id: string, actor: string): 
     )
     .limit(1);
   return machine?.role === "admin";
-}
-
-export async function assertTaskRunTurn(
-  exec: Executor,
-  writer: TaskRunWriter & { permission_mode?: unknown },
-): Promise<TaskRunMarker | null> {
-  const marker = await assertTaskRunWriter(exec, writer);
-  assertTaskRunPermissionMode(marker, writer.permission_mode);
-  return marker;
 }
 
 export async function canWriteTaskRun(exec: Executor, writer: TaskRunWriter): Promise<boolean> {
@@ -235,10 +221,6 @@ export async function assertTaskRunApprovalDecider(
     decided_by_owner: (writer.principal?.id ?? writer.actor_id) === scope.owner_id,
     trace_id: await runTraceId(exec, writer.tenant_id, scope.marker.task_run_id),
   };
-}
-
-export function assertTaskRunPermissionMode(marker: TaskRunMarker | null, mode: unknown): void {
-  if (marker && mode === "yolo") throw new TaskRunPermissionModeError();
 }
 
 export function requireTaskRunPrincipal(

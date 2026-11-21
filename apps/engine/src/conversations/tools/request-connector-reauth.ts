@@ -7,7 +7,7 @@ import { buildReauthUrl } from "../../connectors/reauth.ts";
 import { getConnector } from "../../connectors/service.ts";
 import { resolveConnectorOAuthConfig } from "../../connectors/template-binding.ts";
 import { buildOAuthRedirectUri } from "../../credentials/oauth2/redirect-uri.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { withConnectorDraft } from "../authoring-state/index.ts";
 import { hydrateDraftFromSavedConnector } from "../authoring-state/normalize.ts";
 import { pauseForUserInput } from "./ask-user/common.ts";

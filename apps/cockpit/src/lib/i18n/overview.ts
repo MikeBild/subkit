@@ -1,5 +1,5 @@
 export const overviewEn = {
-  "overview.operations.tokenPercent": "{percent}% of the monthly token budget",
+  "overview.operations.tokenPercent": "{percent}% of the monthly AI budget",
   "overview.operations.connectorsSignIn.one": "{count} needs sign-in",
   "overview.operations.connectorsSignIn.other": "{count} need sign-in",
   "overview.operations.allConnected": "All connected",
@@ -35,8 +35,8 @@ export const overviewEn = {
   "overview.operations.month": "Month",
   "overview.operations.none.cost": "No AI calls in this window",
   "overview.operations.unpriced": "Models without a price",
-  "overview.operations.uncapped": "No budget",
-  "overview.operations.budgetUnreadable": "Budget not readable",
+  "overview.operations.uncapped": "No AI budget",
+  "overview.operations.budgetUnreadable": "AI budget not readable",
   "overview.operations.openUsage": "Usage",
   "overview.operations.atLeast": "at least",
   "overview.operations.unpricedCalls": "Calls without a price: {calls}",
@@ -53,6 +53,7 @@ export const overviewEn = {
   "overview.subject.secret": "The credentials {name}",
   "overview.subject.settings": "The setting {name}",
   "overview.subject.task": "The task {name}",
+  "overview.subject.device": "The device {name}",
   "overview.subject.other": "{name}",
   "overview.reason.awaiting_answer": "{subject} is waiting for your answer",
   "overview.reason.execution_authority_required":
@@ -110,8 +111,13 @@ export const overviewEn = {
     "{count} skill proposals from recurring patterns wait for your decision",
   "overview.reason.intake_collected": "A collected entry waits for your review",
   "overview.reason.intake_collectedCount": "{count} collected entries wait for your review",
-  "overview.reason.budget_critical": "This month's token allowance is almost used up",
+  "overview.reason.spend_warning": "80 % of this month's AI budget is spent",
+  "overview.reason.spend_limit_reached":
+    "This month's AI budget is spent; chat, tasks and model steps pause",
+  "overview.reason.spend_limit_unset": "This workspace has no monthly AI budget yet; set one",
   "overview.reason.ai_access_missing": "Without an API key, chat and workflows can’t work",
+  "overview.reason.model_tools_missing":
+    "Your local model can’t call tools, so chat and tasks don’t work. Workflows keep running",
   "overview.reason.risk_critical": "Critical operating signal: {signal}",
   "overview.reason.risk_criticalOther": "Critical operating signal",
   "overview.reason.task_run_failed": "{subject} failed",
@@ -125,6 +131,13 @@ export const overviewEn = {
   "overview.reason.pair_approval_waiting": "{subject}: approval requested, waiting for {name}",
   "overview.reason.pair_approval_waitingAnyone":
     "{subject}: approval requested, waiting for a second person",
+  "overview.reason.device_offline_waiting": "{subject} is waiting for its device to come online",
+  "overview.reason.local_confirmation_needed":
+    "{subject} waits for you to confirm an action on your device",
+  "overview.reason.device_permission_missing":
+    "{subject} is missing a system permission for local steps",
+  "overview.reason.folder_changed":
+    "An allowed folder of {subject} was replaced; allow it again on the device",
   "overview.reason.schedule_auto_paused":
     "{subject} was paused automatically after failing several times in a row",
   "overview.reason.other": "{subject} needs you",
@@ -142,7 +155,6 @@ export const overviewEn = {
   "overview.signal.connector_unhealthy": "connectors broken",
   "overview.signal.llm_fallback": "language model falling back",
   "overview.signal.memory_high_water": "memory almost full",
-  "overview.signal.token_budget": "token allowance",
   "overview.signal.llm_provider_quota": "language model credit used up",
   "overview.signal.llm_provider_unavailable": "language model unreachable",
   "overview.since.now": "since just now",
@@ -259,8 +271,12 @@ export const overviewEn = {
   "overview.short.skills_proposed.other": "{count} proposals",
   "overview.short.intake_collected.one": "1 entry to review",
   "overview.short.intake_collected.other": "{count} entries to review",
-  "overview.short.budget_critical": "The monthly allowance is nearly used",
+  "overview.short.spend_warning": "80 % of the AI budget is spent",
+  "overview.short.spend_limit_reached": "AI budget reached, model work pauses",
+  "overview.short.spend_limit_unset": "Set a monthly AI budget",
   "overview.short.ai_access_missing": "Without an API key, chat and workflows can’t work.",
+  "overview.short.model_tools_missing":
+    "Your local model can’t call tools. Workflows keep running.",
   "overview.short.risk_critical": "A critical operating signal",
   "overview.short.task_run_failed": "The last run failed",
   "overview.short.task_result_ready": "Result ready",
@@ -270,6 +286,10 @@ export const overviewEn = {
   "overview.short.pair_approval_requested": "Second approval missing",
   "overview.short.pair_approval_waiting": "Approval requested",
   "overview.short.pair_approval_waitingAnyone": "Approval requested, waiting for a second person",
+  "overview.short.device_offline_waiting": "Waiting for device",
+  "overview.short.local_confirmation_needed": "Confirm on your device",
+  "overview.short.device_permission_missing": "Permission missing",
+  "overview.short.folder_changed": "Folder changed",
   "overview.short.schedule_auto_paused": "Paused automatically after repeated failures",
   "overview.short.other": "Needs a look",
   "overview.state.answer": "Waits for an answer",
@@ -312,7 +332,7 @@ export const overviewEn = {
 } as const;
 
 export const overviewDe: Record<keyof typeof overviewEn, string> = {
-  "overview.operations.tokenPercent": "{percent} % des Monatskontingents",
+  "overview.operations.tokenPercent": "{percent} % des monatlichen KI-Budgets",
   "overview.operations.connectorsSignIn.one": "{count} braucht Anmeldung",
   "overview.operations.connectorsSignIn.other": "{count} brauchen Anmeldung",
   "overview.operations.allConnected": "Alle verbunden",
@@ -347,8 +367,8 @@ export const overviewDe: Record<keyof typeof overviewEn, string> = {
   "overview.operations.month": "Monat",
   "overview.operations.none.cost": "Keine KI-Aufrufe im Zeitraum",
   "overview.operations.unpriced": "Modelle ohne Preis",
-  "overview.operations.uncapped": "Kein Kontingent",
-  "overview.operations.budgetUnreadable": "Kontingent nicht lesbar",
+  "overview.operations.uncapped": "Kein KI-Budget",
+  "overview.operations.budgetUnreadable": "KI-Budget nicht lesbar",
   "overview.operations.openUsage": "Nutzung",
   "overview.operations.atLeast": "mind.",
   "overview.operations.unpricedCalls": "Aufrufe ohne Preis: {calls}",
@@ -365,6 +385,7 @@ export const overviewDe: Record<keyof typeof overviewEn, string> = {
   "overview.subject.secret": "Die Zugangsdaten {name}",
   "overview.subject.settings": "Die Einstellung {name}",
   "overview.subject.task": "Die Aufgabe {name}",
+  "overview.subject.device": "Das Gerät {name}",
   "overview.subject.other": "{name}",
   "overview.reason.awaiting_answer": "{subject} wartet auf deine Antwort",
   "overview.reason.execution_authority_required":
@@ -424,9 +445,15 @@ export const overviewDe: Record<keyof typeof overviewEn, string> = {
     "{count} Skill-Vorschläge aus wiederkehrenden Mustern warten auf deine Entscheidung",
   "overview.reason.intake_collected": "Ein gesammelter Eintrag wartet auf deine Prüfung",
   "overview.reason.intake_collectedCount": "{count} gesammelte Einträge warten auf deine Prüfung",
-  "overview.reason.budget_critical": "Das Token-Kontingent dieses Monats ist fast aufgebraucht",
+  "overview.reason.spend_warning": "80 % des KI-Budgets dieses Monats sind ausgegeben",
+  "overview.reason.spend_limit_reached":
+    "Das KI-Budget dieses Monats ist ausgegeben; Chat, Aufgaben und Modellschritte pausieren",
+  "overview.reason.spend_limit_unset":
+    "Dieser Arbeitsbereich hat noch kein monatliches KI-Budget; leg eins fest",
   "overview.reason.ai_access_missing":
     "Ohne API-Schlüssel können Chat und Workflows nicht arbeiten",
+  "overview.reason.model_tools_missing":
+    "Dein lokales Modell kann keine Werkzeuge aufrufen, deshalb gehen Chat und Aufgaben nicht. Workflows laufen weiter",
   "overview.reason.risk_critical": "Kritisches Betriebssignal: {signal}",
   "overview.reason.risk_criticalOther": "Kritisches Betriebssignal",
   "overview.reason.task_run_failed": "{subject} ist fehlgeschlagen",
@@ -440,6 +467,13 @@ export const overviewDe: Record<keyof typeof overviewEn, string> = {
   "overview.reason.pair_approval_waiting": "{subject}: Freigabe angefragt, wartet auf {name}",
   "overview.reason.pair_approval_waitingAnyone":
     "{subject}: Freigabe angefragt, wartet auf eine zweite Person",
+  "overview.reason.device_offline_waiting": "{subject} wartet, bis sein Gerät online ist",
+  "overview.reason.local_confirmation_needed":
+    "{subject} wartet, bis du eine Aktion auf deinem Gerät bestätigst",
+  "overview.reason.device_permission_missing":
+    "{subject} fehlt eine Systemberechtigung für lokale Schritte",
+  "overview.reason.folder_changed":
+    "Ein freigegebener Ordner von {subject} wurde ersetzt; gib ihn auf dem Gerät neu frei",
   "overview.reason.schedule_auto_paused":
     "{subject} wurde nach mehreren Fehlern in Folge automatisch pausiert",
   "overview.reason.other": "{subject} braucht dich",
@@ -457,7 +491,6 @@ export const overviewDe: Record<keyof typeof overviewEn, string> = {
   "overview.signal.connector_unhealthy": "Connectors gestört",
   "overview.signal.llm_fallback": "Sprachmodell weicht aus",
   "overview.signal.memory_high_water": "Arbeitsspeicher fast voll",
-  "overview.signal.token_budget": "Token-Kontingent",
   "overview.signal.llm_provider_quota": "Guthaben beim Sprachmodell-Anbieter aufgebraucht",
   "overview.signal.llm_provider_unavailable": "Sprachmodell nicht erreichbar",
   "overview.since.now": "seit gerade eben",
@@ -575,9 +608,13 @@ export const overviewDe: Record<keyof typeof overviewEn, string> = {
   "overview.short.skills_proposed.other": "{count} Vorschläge",
   "overview.short.intake_collected.one": "1 Eintrag zu prüfen",
   "overview.short.intake_collected.other": "{count} Einträge zu prüfen",
-  "overview.short.budget_critical": "Das Monatskontingent ist fast verbraucht",
+  "overview.short.spend_warning": "80 % des KI-Budgets ausgegeben",
+  "overview.short.spend_limit_reached": "KI-Budget erreicht, Modellarbeit pausiert",
+  "overview.short.spend_limit_unset": "Monatliches KI-Budget festlegen",
   "overview.short.ai_access_missing":
     "Ohne API-Schlüssel können Chat und Workflows nicht arbeiten.",
+  "overview.short.model_tools_missing":
+    "Dein lokales Modell kann keine Werkzeuge aufrufen. Workflows laufen weiter.",
   "overview.short.risk_critical": "Ein kritisches Betriebssignal",
   "overview.short.task_run_failed": "Der letzte Run ist fehlgeschlagen",
   "overview.short.task_result_ready": "Ergebnis liegt vor",
@@ -587,6 +624,10 @@ export const overviewDe: Record<keyof typeof overviewEn, string> = {
   "overview.short.pair_approval_requested": "Zweite Freigabe fehlt",
   "overview.short.pair_approval_waiting": "Freigabe angefragt",
   "overview.short.pair_approval_waitingAnyone": "Freigabe angefragt, wartet auf eine zweite Person",
+  "overview.short.device_offline_waiting": "Wartet auf Gerät",
+  "overview.short.local_confirmation_needed": "Auf deinem Gerät bestätigen",
+  "overview.short.device_permission_missing": "Berechtigung fehlt",
+  "overview.short.folder_changed": "Ordner geändert",
   "overview.short.schedule_auto_paused": "Automatisch pausiert nach wiederholten Fehlern",
   "overview.short.other": "Braucht einen Blick",
   "overview.state.answer": "Wartet auf Antwort",

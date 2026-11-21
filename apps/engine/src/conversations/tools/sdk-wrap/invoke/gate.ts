@@ -1,5 +1,6 @@
-import { logger } from "../../../../logging/logger.ts";
+import { logger } from "../../../../logging/index.ts";
 import { stripConfirmMarkers } from "../../../../tools/approval.ts";
+import { now } from "../../../../utils/clock.ts";
 import { recordTransition, runConfirmGate } from "../../../confirmation.ts";
 import {
   duplicatePendingOutput,
@@ -50,7 +51,7 @@ async function hasPriorApproval(env: InvokeEnv): Promise<boolean> {
 }
 
 export async function runGate(env: InvokeEnv, call: InvokeCall): Promise<GateOutcome> {
-  const { inner, ctx, signals, db, toolPolicies, permissionMode } = env;
+  const { inner, ctx, signals, db, toolPolicies, askBeforeWriting } = env;
   const { rawArgs, perCallCtx, toolCallId } = call;
   const policyEnvironment = policyEnvironmentOf(rawArgs);
   const intentKindForCurrentTool = mapToolToCommitIntentKind(inner.name);
@@ -67,18 +68,18 @@ export async function runGate(env: InvokeEnv, call: InvokeCall): Promise<GateOut
   );
   const coverage = await runWorkflowToolCoverage(
     perCallCtx,
-    inner.name === "run_workflow" ? permissionMode : null,
+    inner.name === "run_workflow" && askBeforeWriting,
     preparedGate.args,
     toolPolicies,
   );
-  const cover = await coverForCall(env, principal, preparedGate.args);
+  const cover = await coverForCall(env, principal, preparedGate.args, new Date(now()));
   const gate = await runConfirmGate({
     tool: inner.name,
     category: inner.category,
     surface: "chat",
     args: preparedGate.args,
     overrides: toolPolicies,
-    permission_mode: permissionMode,
+    ...(askBeforeWriting ? { ask_before_writing: true } : {}),
     prior_approval: priorApproval,
     ...(cover.instruction_covered ? { instruction_covered: true } : {}),
     ...(cover.rule_covered ? { rule_covered: true } : {}),
@@ -114,7 +115,6 @@ export async function runGate(env: InvokeEnv, call: InvokeCall): Promise<GateOut
     });
   }
   const pregateRefusal = gate.kind === "refused" ? gate.result : null;
-  const bypassedConfirmation = gate.record.bypassed_confirmation;
 
   if (inner.category === "tenant_write" && !pregateRefusal) {
     await recordTransition(db, {
@@ -125,8 +125,7 @@ export async function runGate(env: InvokeEnv, call: InvokeCall): Promise<GateOut
       tool: inner.name,
       data: {
         resolved_mode: resolvedMode,
-        ...(permissionMode ? { permission_mode: permissionMode } : {}),
-        ...(bypassedConfirmation ? { bypassed_confirmation: true } : {}),
+        ...(askBeforeWriting ? { ask_before_writing: true } : {}),
       },
     });
   }

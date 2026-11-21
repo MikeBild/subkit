@@ -1,3 +1,4 @@
+import { REPAIR_REMEDIES, type RepairRemedy } from "@shared/error-taxonomy.ts";
 import { heldInspected, heldReason } from "./core/gate-diagnosis.ts";
 
 export { gateEndpointKey } from "./core/gate-diagnosis.ts";
@@ -57,7 +58,7 @@ export type GateDiagnosisCode =
   | "execution_authority_changed"
   | "connector_unavailable";
 
-export type GateRemedyKind = "patch" | "prepare" | "declare" | "reconnect" | "author";
+export type GateRemedyKind = RepairRemedy;
 
 export interface GateDiagnosis {
   code: GateDiagnosisCode;
@@ -97,7 +98,7 @@ export const GateDiagnosisSchema = z
         .optional(),
       binding: MissingBindingEvidenceSchema.optional(),
     }),
-    remedy_kind: z.enum(["patch", "prepare", "declare", "reconnect", "author"]),
+    remedy_kind: z.enum(REPAIR_REMEDIES),
     fixer: GateFixerSchema.optional(),
     candidate_id: z.string().uuid().optional(),
   })

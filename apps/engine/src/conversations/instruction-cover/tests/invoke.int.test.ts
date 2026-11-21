@@ -17,7 +17,6 @@ import {
 import { EngineClient } from "../../../engine-client/index.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "../../../llm/tests/setup.ts";
 import { builtinRoleId } from "../../../rbac/roles.ts";
-import type { PermissionMode } from "../../../tools/types.ts";
 import { freshSignals } from "../../tests/turn-signals.ts";
 import type { ConversationTool, ToolContext } from "../../tools/index.ts";
 import { wrapOne } from "../../tools/sdk-wrap/invoke.ts";
@@ -71,7 +70,7 @@ async function conversationWith(text: string): Promise<string> {
 
 async function invoke(
   conversation_id: string,
-  mode: PermissionMode,
+  askBeforeWriting: boolean,
   args: Record<string, unknown>,
 ) {
   const db = ctx.testDb.db as unknown as Db;
@@ -82,7 +81,7 @@ async function invoke(
     actor_id: principal.id,
     principal,
     surface: "web",
-    permission_mode: mode,
+    ...(askBeforeWriting ? { ask_before_writing: true } : {}),
     connector_id: null,
     workflow_id: null,
     engineClient: new EngineClient({
@@ -95,7 +94,7 @@ async function invoke(
     setDraft: async () => {},
   };
   const events: TurnEvent[] = [];
-  const wrapped = wrapOne(connectorWrite, toolCtx, freshSignals(), events, db, {}, mode);
+  const wrapped = wrapOne(connectorWrite, toolCtx, freshSignals(), events, db, {});
   if (!wrapped.execute) throw new Error("wrapped tool has no execute");
   const output = await wrapped.execute(args, { toolCallId: "t", messages: [], context: {} });
   const calls = await ctx.testDb.db
@@ -146,7 +145,7 @@ describe("a connector write through the wrapped tool", () => {
   test("in auto the requested send runs once without a card and is justified on record", async () => {
     executed.length = 0;
     const conversation_id = await conversationWith(REQUEST);
-    const first = await invoke(conversation_id, "auto", {
+    const first = await invoke(conversation_id, false, {
       ...sendArgs("anna@firma.de"),
       __because: QUOTE,
     });
@@ -177,7 +176,7 @@ describe("a connector write through the wrapped tool", () => {
       );
     expect(skipped.map((entry) => entry.reason)).toEqual(["user_instruction"]);
 
-    const second = await invoke(conversation_id, "auto", {
+    const second = await invoke(conversation_id, false, {
       ...sendArgs("anna@firma.de"),
       __because: QUOTE,
     });
@@ -189,7 +188,7 @@ describe("a connector write through the wrapped tool", () => {
   test("another recipient pauses with a card that binds the exact action", async () => {
     executed.length = 0;
     const conversation_id = await conversationWith(REQUEST);
-    const result = await invoke(conversation_id, "auto", {
+    const result = await invoke(conversation_id, false, {
       ...sendArgs("bob@firma.de"),
       __because: QUOTE,
     });
@@ -225,13 +224,13 @@ describe("a connector write through the wrapped tool", () => {
     });
   });
 
-  test("ask mode and a missing quote keep the card", async () => {
+  test("asking before writing and a missing quote keep the card", async () => {
     executed.length = 0;
     const asking = await conversationWith(REQUEST);
-    const inAsk = await invoke(asking, "ask", { ...sendArgs("anna@firma.de"), __because: QUOTE });
+    const inAsk = await invoke(asking, true, { ...sendArgs("anna@firma.de"), __because: QUOTE });
     expect(inAsk.output.data.status).toBe("awaiting_confirmation");
     const silent = await conversationWith(REQUEST);
-    const noQuote = await invoke(silent, "auto", sendArgs("anna@firma.de"));
+    const noQuote = await invoke(silent, false, sendArgs("anna@firma.de"));
     expect(noQuote.output.data.status).toBe("awaiting_confirmation");
     expect(toolCallPolicyView(noQuote.calls[0]?.confirmation_data)?.ask_reason).toBe("no_quote");
     expect(executed).toEqual([]);
@@ -240,7 +239,7 @@ describe("a connector write through the wrapped tool", () => {
   test("a read is not slowed down or recorded as an effect", async () => {
     executed.length = 0;
     const conversation_id = await conversationWith("Zeig mir die letzten Nachrichten");
-    const result = await invoke(conversation_id, "auto", {
+    const result = await invoke(conversation_id, false, {
       connector_id: "mail",
       method: "GET",
       path: "/v1/messages",

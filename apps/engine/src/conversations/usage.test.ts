@@ -5,7 +5,8 @@ import { llmUsage, tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { recordUsage } from "../llm/accounting/index.ts";
 import { type CostResult, priceCalls, type SourcedModelPrice } from "../llm/index.ts";
-import { readPricedTokens } from "../stats/llm-cost.ts";
+import { readPricedTokens } from "../stats/index.ts";
+import { testEnv } from "../test-helpers/determinism/env.ts";
 import { conversationUsageFrom, readConversationUsage } from "./usage.ts";
 
 function cost(overrides: Partial<CostResult>): CostResult {
@@ -63,7 +64,7 @@ describe("conversationUsageFrom", () => {
   });
 });
 
-const skip = process.env.REQUIRES_PG === "0";
+const skip = testEnv.REQUIRES_PG === "0";
 
 const PRICES: SourcedModelPrice[] = [
   {

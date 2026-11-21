@@ -11,7 +11,7 @@ import {
 import { FileVersionParam } from "../../api/operations/files-representation.ts";
 import { toHonoRoute } from "../../api/operations/hono.ts";
 import { storedContentHeaders } from "../../files/content-type.ts";
-import { downloadFileVersion, findLiveFile } from "../../files/service.ts";
+import { downloadFileVersion, findLiveFile } from "../../files/service/index.ts";
 import { gateOtherMethods, requireAnyPermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
 import { fileActor } from "./files.ts";

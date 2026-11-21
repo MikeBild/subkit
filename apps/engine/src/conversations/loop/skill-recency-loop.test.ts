@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { connectors, skills, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { assembleEnhancedPrompt } from "../../llm/runtime/context-assembler.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import {
   listBaselineSlugs,
   loadActivationCatalog,
@@ -9,7 +10,7 @@ import {
 } from "../skill-autoload.ts";
 import { applyRecency, type LoadedSkillEntry, SKILL_FULL_BODY_RECENCY_K } from "./skill-recency.ts";
 
-const skip = process.env.REQUIRES_PG === "0";
+const skip = testEnv.REQUIRES_PG === "0";
 const K = SKILL_FULL_BODY_RECENCY_K;
 
 let db: TestDb;

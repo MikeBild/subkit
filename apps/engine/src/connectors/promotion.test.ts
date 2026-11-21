@@ -6,9 +6,8 @@ import {
   auditLog,
   connectorPromotions,
   connectors,
-  credentials,
-  endUserCredentials,
   tenants,
+  vaultItems,
 } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { createSystemAccount } from "../identity/service.ts";
@@ -170,9 +169,9 @@ describe("connector promotion", () => {
     expect(copiedCredential?.row.ciphertext).not.toEqual(
       (
         await ctx.db
-          .select({ ciphertext: credentials.ciphertext })
-          .from(credentials)
-          .where(eq(credentials.id, sourceCredential.id))
+          .select({ ciphertext: vaultItems.ciphertext })
+          .from(vaultItems)
+          .where(eq(vaultItems.id, sourceCredential.id))
       )[0]?.ciphertext,
     );
 
@@ -191,7 +190,7 @@ describe("connector promotion", () => {
       .where(
         and(
           eq(auditLog.tenant_id, tenant_id),
-          eq(auditLog.action, AuditAction.CREDENTIAL_ENVIRONMENT_PROMOTED),
+          eq(auditLog.action, AuditAction.VAULT_ITEM_PROMOTED),
         ),
       );
     expect(promotionAudits).toHaveLength(1);
@@ -259,8 +258,8 @@ describe("connector promotion", () => {
     );
     const beforeRows = await ctx.db
       .select()
-      .from(credentials)
-      .where(eq(credentials.connector_id, source.id));
+      .from(vaultItems)
+      .where(eq(vaultItems.connector_id, source.id));
 
     const result = await promoteConnector(
       promoteInput(tenant_id, source.id, "move", nextKey("move")),
@@ -276,8 +275,8 @@ describe("connector promotion", () => {
 
     const afterRows = await ctx.db
       .select()
-      .from(credentials)
-      .where(eq(credentials.connector_id, source.id));
+      .from(vaultItems)
+      .where(eq(vaultItems.connector_id, source.id));
     expect(afterRows.every((row) => row.environment === "prod")).toBe(true);
     for (const before of beforeRows) {
       const after = afterRows.find((row) => row.id === before.id);
@@ -292,26 +291,12 @@ describe("connector promotion", () => {
     });
   });
 
-  test("copy rejects OAuth, end-user bindings, and conflicting idempotency reuse", async () => {
+  test("copy rejects OAuth and conflicting idempotency reuse", async () => {
     const tenant_id = await seedTenant("reject");
     const oauth = await seedConnector(tenant_id, "reject-oauth", "oauth2");
     await expect(
       promoteConnector(promoteInput(tenant_id, oauth.id, "copy", nextKey("reject")), ctx.db),
     ).rejects.toMatchObject({ code: "oauth_copy_unsupported" });
-
-    const endUser = await seedConnector(tenant_id, "reject-end-user");
-    await ctx.db.insert(endUserCredentials).values({
-      tenant_id,
-      connector_id: endUser.id,
-      enduser_ref: "user-1",
-      combine_mode: "merge",
-      ciphertext: Buffer.from("ciphertext"),
-      iv: Buffer.from("123456789012"),
-      auth_tag: Buffer.from("1234567890123456"),
-    });
-    await expect(
-      promoteConnector(promoteInput(tenant_id, endUser.id, "copy", nextKey("end-user")), ctx.db),
-    ).rejects.toMatchObject({ code: "end_user_credential_copy_unsupported" });
 
     const source = await seedConnector(tenant_id, "idem-conflict");
     const key = nextKey("idem");
@@ -362,9 +347,9 @@ describe("connector promotion", () => {
     expect(
       (
         await ctx.db
-          .select({ environment: credentials.environment })
-          .from(credentials)
-          .where(eq(credentials.id, prodCredential.id))
+          .select({ environment: vaultItems.environment })
+          .from(vaultItems)
+          .where(eq(vaultItems.id, prodCredential.id))
       )[0]?.environment,
     ).toBe("prod");
     expect(

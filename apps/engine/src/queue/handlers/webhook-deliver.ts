@@ -1,6 +1,6 @@
 import type { PgBoss } from "pg-boss";
 import type { Db } from "../../db/client.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { registerDeliveryWorker } from "../../webhooks/outbound/delivery-worker.ts";
 
 interface RegisterWebhookDeliverOptions {

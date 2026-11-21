@@ -56,7 +56,7 @@ describe("listConfigLeaves", () => {
     expect(tenantPaths.has("llm.provider")).toBe(true);
     expect(tenantPaths.has("llm.api_key")).toBe(true);
     expect(tenantPaths.has("queue.concurrency")).toBe(false);
-    expect(tenantPaths.has("tokens.monthly_budget")).toBe(true);
+    expect(tenantPaths.has("connectors.mcp.per_server_manifest_byte_cap")).toBe(true);
     expect(tenantPaths.has("server.port")).toBe(false);
   });
 });

@@ -16,7 +16,7 @@ import {
   readPackageArchive,
 } from "../../identity/index.ts";
 import { detectFormat, isBinaryFormat, parseFileToChunks } from "../../knowledge/parsers.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { chooseFileStrategy, type ModelCapabilities } from "./capabilities.ts";
 
 export const FILE_PART_PER_TURN_CAP_BYTES = 250 * 1024;

@@ -4,7 +4,7 @@ import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { conversations, roles, users } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { startTaskRun, TASK_RESULT_STEP_ID, type TaskRun } from "../../tasks/index.ts";
-import { createTask } from "../../tasks/service.ts";
+import { createTask } from "../../tasks/service/tasks.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
 import { getTaskRunMarker } from "../core/draft.ts";
 import { updatePlaybook } from "../playbook.ts";

@@ -4,9 +4,9 @@ import { getCredentialAuthorityMetadata } from "../../credentials/authority-meta
 import { secretNames } from "../../credentials/connections/service.ts";
 import {
   connectors,
-  credentials,
   outboundConnections,
   runtimeSecretVersions,
+  vaultItems,
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
@@ -157,7 +157,7 @@ async function batchCredential(
   created_at: Date,
 ) {
   const [row] = await ctx.db
-    .insert(credentials)
+    .insert(vaultItems)
     .values({
       tenant_id: connector.tenant_id,
       connector_id: connector.id,
@@ -240,9 +240,9 @@ test("batch authority metadata selects primary and client separately and freezes
     await getCredentialAuthorityMetadata(tenant_id, connector.id, "dev", ctx.db),
   );
   await ctx.db
-    .update(credentials)
+    .update(vaultItems)
     .set({ authority_revision: 5, oauth2_expires_at: new Date(0) })
-    .where(and(eq(credentials.tenant_id, tenant_id), eq(credentials.id, primary.id)));
+    .where(and(eq(vaultItems.tenant_id, tenant_id), eq(vaultItems.id, primary.id)));
   first.available = false;
   expect((await system.getAuthorityMetadata()).available).toBe(true);
   const refreshed = await loadConnectorSystems(tenant_id, [request], ctx.db);
@@ -278,9 +278,9 @@ test("batch connection availability binds the exact tenant secret version and re
     .returning();
   if (!connection) throw new Error("missing batch connection fixture");
   await ctx.db
-    .update(credentials)
+    .update(vaultItems)
     .set({ connection_id: connection.id })
-    .where(and(eq(credentials.tenant_id, tenant_id), eq(credentials.id, primary.id)));
+    .where(and(eq(vaultItems.tenant_id, tenant_id), eq(vaultItems.id, primary.id)));
   const token = {
     ciphertext: Buffer.from("not encrypted"),
     iv: Buffer.from("not an iv"),

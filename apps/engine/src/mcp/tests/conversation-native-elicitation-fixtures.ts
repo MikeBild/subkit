@@ -11,6 +11,7 @@ import {
   mcpTasks,
 } from "../../db/schema/index.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
@@ -164,7 +165,7 @@ export async function waitForElicitationDeliveryReady(conversationId: string): P
 export function setupNativeElicitationSuite(): void {
   requests = 0;
   beforeAll(async () => {
-    process.env.LLM_PROVIDER = "mock";
+    testEnv.LLM_PROVIDER = "mock";
     suite = await startMcpTestSuite("conversation-native-elicitation", { withQueue: true });
     await setConfigKey("server.public_base_url", suite.http.baseUrl, { force: true });
     client = await suite.connectElicitation(async (request) => {

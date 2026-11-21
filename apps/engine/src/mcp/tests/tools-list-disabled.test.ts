@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, count, eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/index.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import {
   DRAFT_REQUIRED_MCP_UNAVAILABLE_REASON,
   DRAFT_WRITE_MCP_UNAVAILABLE_REASON,
@@ -10,13 +11,13 @@ import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 let suite: McpTestSuite;
 
 beforeAll(async () => {
-  process.env.SK_MCP_MODE = "authoring";
+  testEnv.SK_MCP_MODE = "authoring";
   suite = await startMcpTestSuite("tools-list-disabled");
 });
 
 afterAll(async () => {
   await suite.cleanup();
-  delete process.env.SK_MCP_MODE;
+  delete testEnv.SK_MCP_MODE;
 });
 
 describe("mcp tools/list — draft_write omitted (authoring mode)", () => {

@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import type { Job, PgBoss } from "pg-boss";
 import type { Db } from "../../db/client.ts";
 import { workflows } from "../../db/schema/index.ts";
-import { log, logger } from "../../logging/logger.ts";
+import { log, logger } from "../../logging/index.ts";
 import { readMemoryUsage } from "../../observability/runtime-telemetry.ts";
 import { proposeGateRepairs } from "../../self-healing/gate-repairs.ts";
 import { runSelfHealingLoop } from "../../self-healing/service.ts";

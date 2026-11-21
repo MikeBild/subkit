@@ -70,7 +70,6 @@ async function invoke(
     [] as TurnEvent[],
     ctx.testDb.db as unknown as Db,
     {},
-    null,
   );
   toolCallSeq += 1;
   // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic

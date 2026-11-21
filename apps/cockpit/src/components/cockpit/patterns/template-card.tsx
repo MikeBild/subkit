@@ -1,6 +1,6 @@
+import { cn } from "@ui/lib/utils";
 import type { ReactNode } from "react";
 import { absolute } from "@/app/links";
-import { cn } from "@/lib/utils";
 import { IconTile } from "./icon-tile";
 
 const CARD =

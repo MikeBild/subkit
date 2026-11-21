@@ -18,6 +18,12 @@ export const RESOURCE_CHANGE_TYPES = [
   "task.changed",
   "task.grant_changed",
   "task_run.changed",
+  "device.online",
+  "device.offline",
+  "device.command",
+  "device.session_ended",
+  "local.confirmation_requested",
+  "execution.waiting_for_device",
 ] as const;
 
 export type ResourceChangeType = (typeof RESOURCE_CHANGE_TYPES)[number];
@@ -33,6 +39,11 @@ export interface ResourceChangeIds {
   task_id?: string | null;
   task_run_id?: string | null;
   task_grant_id?: string | null;
+  execution_id?: string | null;
+  device_id?: string | null;
+  command_id?: string | null;
+  confirmation_id?: string | null;
+  conversation_id?: string | null;
 }
 
 export async function emitCredentialChange(

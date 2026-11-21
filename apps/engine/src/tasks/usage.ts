@@ -2,8 +2,7 @@ import { and, count, desc, eq, gte, isNull, lt, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { taskRuns } from "../db/schema/tasks.ts";
 import { type CostResult, currentMonthBucket } from "../llm/index.ts";
-import { llmFromClause } from "../stats/aggregate-llm.ts";
-import { readLlmCost } from "../stats/llm-cost.ts";
+import { llmFromClause, readLlmCost } from "../stats/index.ts";
 
 export const TASK_USAGE_PERIODS = ["last_run", "current_month"] as const;
 export type TaskUsagePeriod = (typeof TASK_USAGE_PERIODS)[number];

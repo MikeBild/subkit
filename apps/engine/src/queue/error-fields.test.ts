@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { errorFields } from "../logging/logger.ts";
+import { errorFields } from "../logging/index.ts";
 import { queueErrorFields } from "./error-fields.ts";
 
 test("plain worker error envelopes retain diagnostics without job payloads", () => {

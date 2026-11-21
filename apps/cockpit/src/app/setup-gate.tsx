@@ -1,6 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useSetup } from "@/api/setup";
-import { Toaster } from "@/components/ui/sonner";
 import {
   About,
   postponeSetup,
@@ -11,6 +10,7 @@ import {
 } from "@/features/setup";
 import { useI18n } from "@/lib/i18n-context";
 import { useSession } from "./session";
+import { AppToaster } from "./toaster";
 
 export function SetupGate({ children }: { children: ReactNode }) {
   const { t } = useI18n();
@@ -44,7 +44,7 @@ export function SetupGate({ children }: { children: ReactNode }) {
             setState("passed");
           }}
         />
-        <Toaster richColors position="bottom-right" />
+        <AppToaster />
       </>
     );
   return (

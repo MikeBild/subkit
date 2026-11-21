@@ -66,13 +66,13 @@ describe("applyTurnEvent · session token accumulator", () => {
     state = applyTurnEvent(state, {
       type: "completed",
       status: "completed",
-      usage: { turn_tokens: 12_500, remaining_monthly_budget_tokens: null },
+      usage: { turn_tokens: 12_500 },
     });
     expect(state.sessionTotalTokens).toBe(12_500);
     state = applyTurnEvent(state, {
       type: "completed",
       status: "completed",
-      usage: { turn_tokens: 7_300, remaining_monthly_budget_tokens: null },
+      usage: { turn_tokens: 7_300 },
     });
     expect(state.sessionTotalTokens).toBe(19_800);
   });

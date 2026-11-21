@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { createElicitation } from "../../conversations/elicitations.ts";
-import { createConversation } from "../../conversations/service.ts";
+import { createConversation } from "../../conversations/service/index.ts";
 import {
   conversationElicitations,
   conversationMessages,
@@ -127,22 +127,6 @@ describe("MCP writes to a task run conversation", () => {
     expect((await traces(conversation_id)).turns).toBe(0);
   });
 
-  test("yolo is rejected before anything is reserved", async () => {
-    const conversation_id = await runConversation();
-    const admin = { ...principal, roles: ["admin"] };
-    const outcome = await handleConversationTool({
-      db: testDb.db,
-      principal: admin,
-      name: "conversation_append",
-      args: { conversation_id, message: "just do it" },
-      permission_mode: "yolo",
-    }).then(
-      (result) => ({ refused: result.isError === true }),
-      () => ({ refused: true }),
-    );
-    expect(outcome.refused).toBe(true);
-    expect(await traces(conversation_id)).toEqual({ messages: 0, turns: 0, tasks: 0 });
-  });
   test("tasks of a run are hidden from, and cannot be cancelled by, another person", async () => {
     const admin = { ...principal, roles: ["admin"] };
     const conversation_id = await runConversation();

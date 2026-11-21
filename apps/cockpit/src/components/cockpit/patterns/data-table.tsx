@@ -8,6 +8,22 @@ import {
   tableFeatures,
   useTable,
 } from "@tanstack/react-table";
+import { Button } from "@ui/atoms/button";
+import { Checkbox } from "@ui/atoms/checkbox";
+import { Skeleton } from "@ui/atoms/skeleton";
+import { useArrived, useLoadingPhase } from "@ui/lib/loading-phase";
+import { cn } from "@ui/lib/utils";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@ui/molecules/dropdown-menu";
+import { SearchInput } from "@ui/molecules/search-input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@ui/molecules/table";
+import { FilterBar, FilterBarLayoutContext } from "@ui/organisms/filter-bar";
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, Columns3, Loader2 } from "lucide-react";
 import {
   Children,
@@ -25,31 +41,10 @@ import {
 } from "react";
 import { absolute, routerPath } from "@/app/links";
 import { slugify } from "@/components/cockpit/create-refusal";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { useI18n } from "@/lib/i18n-context";
 import { activeScroller, PREFETCH_MARGIN, scrollRoot, wantsNextPage } from "@/lib/infinite-scroll";
-import { useArrived, useLoadingPhase } from "@/lib/use-loading-phase";
-import { cn } from "@/lib/utils";
 import { useColumnToggleClaim } from "./column-toggle-claim";
 import { DataState, LOADING_ROWS } from "./data-state";
-import { FilterBar, FilterBarLayoutContext } from "./filter-bar";
 import {
   RETURNED_ROW_MS,
   readListReturn,
@@ -57,8 +52,6 @@ import {
   settleListReturn,
 } from "./list-return";
 import { useRowMotion } from "./row-motion";
-import { SearchInput } from "./search-input";
-import { Skeleton } from "./skeleton";
 import {
   orderGroupedRows,
   readCollapsedGroups,

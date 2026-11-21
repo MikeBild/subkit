@@ -1,4 +1,4 @@
-import type { ScreenshotCapability } from "./model";
+import type { ScreenshotCapability } from "@/features/feedback/model/feedback";
 
 export const FEEDBACK_BRIDGE_VERSION = 2;
 export const CAPTURE_TIMEOUT_MS = 4000;

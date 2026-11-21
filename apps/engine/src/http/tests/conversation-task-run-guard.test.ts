@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { getTaskRunCheck, getTaskRunMarker } from "../../conversations/public/authoring.ts";
-import { createConversation } from "../../conversations/service.ts";
+import { createConversation } from "../../conversations/service/index.ts";
 import {
   conversationMessages,
   conversations,
@@ -11,6 +11,7 @@ import {
 } from "../../db/schema/index.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { browserSessionHeaders, createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
@@ -20,7 +21,7 @@ let srv: HttpTestServer;
 let memberHeaders: Record<string, string>;
 let ownerHeaders: Record<string, string>;
 let owner_id: string;
-const originalProvider = process.env.LLM_PROVIDER;
+const originalProvider = testEnv.LLM_PROVIDER;
 
 const MARKER = {
   task_id: "44444444-5555-4666-8777-888888888888",
@@ -51,7 +52,7 @@ async function seedMember(label: string): Promise<string> {
 }
 
 beforeAll(async () => {
-  process.env.LLM_PROVIDER = "mock";
+  testEnv.LLM_PROVIDER = "mock";
   resetMockProvider();
   srv = await createHttpTestServer("conv-task-run-guard");
   owner_id = await seedMember("owner");
@@ -60,8 +61,8 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(async () => {
-  if (originalProvider === undefined) delete process.env.LLM_PROVIDER;
-  else process.env.LLM_PROVIDER = originalProvider;
+  if (originalProvider === undefined) delete testEnv.LLM_PROVIDER;
+  else testEnv.LLM_PROVIDER = originalProvider;
   await srv.cleanup();
 }, 60_000);
 
@@ -227,17 +228,6 @@ describe("HTTP writes to a run conversation", () => {
     const marker = getTaskRunMarker(await draftOf(conversation_id));
     expect(marker?.environment).toBe("dev");
   }, 180_000);
-
-  test("yolo in the request body is rejected", async () => {
-    const conversation_id = await runConversation();
-    const res = await call(ownerHeaders)("POST", `/v1/conversations/${conversation_id}/messages`, {
-      message: "Just do it.",
-      permission_mode: "yolo",
-    });
-    expect(res.status).toBe(400);
-    expect(((await res.json()) as { code: string }).code).toBe("task_run_permission_mode_rejected");
-    expect(await messagesOf(conversation_id)).toHaveLength(0);
-  }, 60_000);
 
   test("confirmation settings are locked for everyone", async () => {
     const conversation_id = await runConversation();

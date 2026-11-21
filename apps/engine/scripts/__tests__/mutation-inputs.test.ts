@@ -57,8 +57,6 @@ describe("mutation runtime provenance inputs", () => {
         "apps/engine/scripts/check-mutation-floor.ts",
         "apps/engine/scripts/prepare-mutation-run.ts",
         "apps/engine/scripts/prepare-mutation-shards.ts",
-        "apps/engine/scripts/run-coverage-shards.ts",
-        "apps/engine/scripts/verify-quality-shards.ts",
         "apps/engine/scripts/check-coverage-floor.ts",
         "apps/engine/scripts/audit/coverage-union.ts",
         "apps/engine/scripts/audit/coverage-artifacts.ts",

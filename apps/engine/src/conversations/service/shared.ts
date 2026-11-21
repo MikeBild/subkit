@@ -1,52 +1,8 @@
 import { and, eq, inArray } from "drizzle-orm";
-import type { Db, Executor } from "../../db/client.ts";
+import type { Db } from "../../db/client.ts";
 import { type conversations, systemAccounts, users } from "../../db/schema/index.ts";
-import { createEmptyDraftDocument } from "../authoring-state/index.ts";
-import { appendSnapshot } from "../draft.ts";
 import type { RunLoopResult } from "../loop/index.ts";
-import type {
-  ConversationOwner,
-  ConversationPermissionMode,
-  ConversationRecord,
-  ConversationStatus,
-  DraftDocument,
-} from "../types.ts";
-
-export function normalizePermissionMode(value: unknown): ConversationPermissionMode | null {
-  return value === "auto" || value === "ask" || value === "plan" || value === "yolo" ? value : null;
-}
-
-export function getStoredPermissionMode(
-  draft: DraftDocument | null | undefined,
-): ConversationPermissionMode | null {
-  return normalizePermissionMode(draft?.session?.permission_mode);
-}
-
-export async function persistPermissionModeIfChanged(params: {
-  exec: Executor;
-  tenant_id: string;
-  conversation_id: string;
-  draft: DraftDocument | null | undefined;
-  permission_mode: ConversationPermissionMode | null;
-}): Promise<void> {
-  const current = getStoredPermissionMode(params.draft);
-  const nextMode = normalizePermissionMode(params.permission_mode);
-  if (nextMode === "yolo") return;
-  if (current === nextMode) return;
-  const baseDraft = params.draft ?? createEmptyDraftDocument();
-  await appendSnapshot(
-    params.tenant_id,
-    params.conversation_id,
-    {
-      ...baseDraft,
-      session: {
-        ...(baseDraft.session ?? {}),
-        permission_mode: nextMode,
-      },
-    },
-    params.exec,
-  );
-}
+import type { ConversationOwner, ConversationRecord, ConversationStatus } from "../types.ts";
 
 export function rowToRecord(row: typeof conversations.$inferSelect): ConversationRecord {
   return {

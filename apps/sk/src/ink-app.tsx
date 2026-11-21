@@ -42,7 +42,6 @@ import type { InkAppProps, TranscriptMode } from "./ink-app/types.ts";
 import { useNotices, usePendingElicitationNotice } from "./ink-app/use-notices.ts";
 import { useOAuthAutoResume } from "./ink-app/use-oauth-auto-resume.ts";
 import { useStatusLine } from "./ink-app/use-status-line.ts";
-import { useYoloMode } from "./ink-app/use-yolo.ts";
 import { WelcomeRow } from "./ink-app/welcome-row.tsx";
 import { ActivityLine } from "./repl/activity-line.tsx";
 import { AlternateScreen } from "./repl/alt-screen.tsx";
@@ -92,7 +91,6 @@ export const InkApp: React.FC<InkAppProps> = ({
   connectionSnapshot,
   digestSnapshot,
   pendingIntake = null,
-  permissionMode = "ask",
   historyPath,
   onPrompt,
   initialContextStatus,
@@ -144,12 +142,6 @@ export const InkApp: React.FC<InkAppProps> = ({
     shownProfileNotice.current = profileNotice.version;
     showInfo(profileNotice.message);
   }, [profileNotice, showInfo]);
-
-  const { activeMode, setActiveMode, noteTurnStart, consumeArmAnswer, runYoloSlash } = useYoloMode(
-    permissionMode,
-    showInfo,
-    showError,
-  );
 
   const starterTaskActions = useMemo(
     () => buildStarterTaskActions(persona.label, persona.probe, digestSnapshot, pendingIntake),
@@ -215,7 +207,6 @@ export const InkApp: React.FC<InkAppProps> = ({
     session,
     statusSnapshot,
     connectionSnapshot,
-    activeMode,
     resumeSummary,
     transientStatusRef,
   });
@@ -346,8 +337,6 @@ export const InkApp: React.FC<InkAppProps> = ({
       setInput(EMPTY_BUFFER);
       historyDraftRef.current = null;
       if (!trimmed) return;
-      noteTurnStart();
-      if (consumeArmAnswer(trimmed)) return;
       if (!trimmed.startsWith("/")) {
         if (interceptPlainPrompt(trimmed)) return;
       }
@@ -366,7 +355,6 @@ export const InkApp: React.FC<InkAppProps> = ({
           showError,
           showStructuredError,
           respondElicitation: submitElicitationResponse,
-          runYoloSlash,
           runBuiltin: handleBuiltinSlash,
         })
       ) {
@@ -421,7 +409,6 @@ export const InkApp: React.FC<InkAppProps> = ({
             };
         if (!alreadyEchoed) setSession(optimisticSession);
         const { events, conversationId, contextStatus } = await onPrompt(finalPrompt, {
-          permission_mode: activeMode,
           raw_prompt: trimmed,
           ...(redirectEvent ? { event: redirectEvent } : {}),
         });
@@ -456,7 +443,6 @@ export const InkApp: React.FC<InkAppProps> = ({
       }
     },
     [
-      activeMode,
       cwd,
       engineClient,
       exit,
@@ -471,11 +457,8 @@ export const InkApp: React.FC<InkAppProps> = ({
       applyEventStream,
       handleBuiltinSlash,
       consumeArmedRedirect,
-      consumeArmAnswer,
       interceptPlainPrompt,
-      noteTurnStart,
       recordPrompt,
-      runYoloSlash,
       setNotices,
       showError,
       showInfo,
@@ -556,7 +539,6 @@ export const InkApp: React.FC<InkAppProps> = ({
     setPagerOpen,
     setAltScreen,
     setTranscriptMode,
-    setActiveMode,
     secretRedirectArmed: pendingSecretRedirect !== null,
     cancelSecretRedirect,
     latestChipsRef,
@@ -573,7 +555,6 @@ export const InkApp: React.FC<InkAppProps> = ({
       key="welcome"
       persona={persona}
       conversationId={session.conversationId}
-      activeMode={activeMode}
       transcriptMode={transcriptMode}
       connectionSnapshot={connectionSnapshot}
       resumeSummary={resumeSummary}
@@ -643,7 +624,6 @@ export const InkApp: React.FC<InkAppProps> = ({
         messages={session.messages}
         turnTokens={session.usage?.turn_tokens ?? null}
         statusTenantId={statusSnapshot?.tenant.id}
-        activeMode={activeMode}
         launcherOpen={launcherOpen}
         onDismiss={() => setPane(null)}
         showInfo={showInfo}
@@ -714,14 +694,12 @@ export const InkApp: React.FC<InkAppProps> = ({
         tenant={statusSnapshot?.tenant.slug ?? statusSnapshot?.tenant.id ?? persona.tenant}
         engineUrl={persona.engineUrl}
         sessionId={session.conversationId}
-        mode={activeMode}
         transcriptMode={transcriptMode}
         connectionState={connectionSnapshot?.state ?? "unknown"}
         connectionReason={connectionSnapshot?.reason ?? null}
         sessionTokens={session.sessionTotalTokens}
         tokensToday={statusSnapshot?.tokens_today ?? null}
         tokensMonth={statusSnapshot?.tokens_month ?? null}
-        monthlyBudget={statusSnapshot?.monthly_budget_tokens ?? null}
         promptTokensLastCall={readExtendedTurnUsage(session.usage).prompt_tokens_last_call}
         turnTokensTotal={
           readExtendedTurnUsage(session.usage).turn_tokens_total ??

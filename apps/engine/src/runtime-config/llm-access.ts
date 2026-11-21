@@ -1,8 +1,10 @@
+import { parseSecretReference, secretReference } from "@shared/vault-handle.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction, type AuditActorType } from "../audit/types.ts";
 import { getConfig, setConfigKey } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
-import { logger } from "../logging/logger.ts";
+import { readEnv } from "../env.ts";
+import { logger } from "../logging/index.ts";
 import {
   RuntimeConfigConflictError,
   RuntimeConfigNotFoundError,
@@ -11,7 +13,7 @@ import {
 import { getDeep } from "./document.ts";
 import { HOSTED_WORKSPACE_ALLOWLIST } from "./hosted-workspace-allowlist.ts";
 import { waitOutWorkspaceChange } from "./pending-engine-change.ts";
-import { parseSecretReference, secretReference, settingSecretName } from "./secret-reference.ts";
+import { settingSecretName } from "./secret-reference.ts";
 import { removeUnreferencedSecretVersion } from "./secret-removal.ts";
 import {
   activateRuntimeRevision,
@@ -224,7 +226,7 @@ export async function storeWorkspaceLlmAccess(
   const { tenant_id: tenantId, change, actor } = input;
   const before = workspaceLlmValues(tenantId);
   let revised = false;
-  if (process.env.NODE_ENV === "production") {
+  if (readEnv("NODE_ENV") === "production") {
     try {
       await persistLlmAccess(db, { ...input, restricted: true });
       revised = true;

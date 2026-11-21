@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import { skills, workflows, workflowVersions } from "../../db/schema/index.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { can } from "../../rbac/evaluator.ts";
 
 const SubkitCompleteRequestSchema = z

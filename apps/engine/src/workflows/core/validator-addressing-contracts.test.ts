@@ -1,4 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: authored workflow tokens are literal test inputs
 import { expect, test } from "bun:test";
 import { validateWorkflowDef } from "./validator.ts";
 

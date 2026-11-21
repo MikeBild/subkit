@@ -51,7 +51,7 @@ async function fixture(database = ctx) {
 
 async function revision(id: string, database = ctx): Promise<number> {
   const rows = await database.pool.query<{ authority_revision: number }>(
-    "SELECT authority_revision FROM subkit.credentials WHERE id=$1",
+    "SELECT authority_revision FROM subkit.vault_items WHERE id=$1",
     [id],
   );
   const result = rows.rows[0]?.authority_revision;
@@ -126,7 +126,7 @@ test("a comma-separated grant is stored space-separated and is the same authorit
   expect(stored.value.scope).toBe("read write");
   expect(stored.row.granted_scopes).toBe("read write");
 
-  await ctx.pool.query("UPDATE subkit.credentials SET granted_scopes=$1 WHERE id=$2", [
+  await ctx.pool.query("UPDATE subkit.vault_items SET granted_scopes=$1 WHERE id=$2", [
     "read,write",
     f.credential.id,
   ]);
@@ -214,7 +214,7 @@ test("authority metadata neither exposes nor decrypts stored token material", as
   expect(before.binding.primary?.revision).toBe(1);
   expect(JSON.stringify(before)).not.toContain("fixture-token");
   await ctx.pool.query(
-    "UPDATE subkit.credentials SET ciphertext=decode('00','hex') WHERE tenant_id=$1 AND id=$2",
+    "UPDATE subkit.vault_items SET ciphertext=decode('00','hex') WHERE tenant_id=$1 AND id=$2",
     [f.tenant, f.credential.id],
   );
   expect(await getCredentialAuthorityMetadata(f.tenant, f.connector, "dev", ctx.db)).toEqual(
@@ -225,7 +225,7 @@ test("authority metadata neither exposes nor decrypts stored token material", as
 test("deleted credentials are unavailable in both review and runtime without decryption", async () => {
   const f = await fixture();
   await ctx.pool.query(
-    "UPDATE subkit.credentials SET deleted_at=clock_timestamp(), ciphertext=decode('00','hex') WHERE tenant_id=$1 AND id=$2",
+    "UPDATE subkit.vault_items SET deleted_at=clock_timestamp(), ciphertext=decode('00','hex') WHERE tenant_id=$1 AND id=$2",
     [f.tenant, f.credential.id],
   );
   const metadata = await getCredentialAuthorityMetadata(f.tenant, f.connector, "dev", ctx.db);
@@ -237,7 +237,7 @@ test("deleted credentials are unavailable in both review and runtime without dec
 test("a failed audit rolls token, permission metadata and authority revision back together", async () => {
   const f = await fixture();
   await ctx.pool.query(`CREATE FUNCTION subkit.reject_rotation_audit() RETURNS trigger LANGUAGE plpgsql AS $$
-    BEGIN IF NEW.action = 'credential.rotated' THEN RAISE EXCEPTION 'fixture audit unavailable'; END IF; RETURN NEW; END $$;
+    BEGIN IF NEW.action = 'vault.item.rotated' THEN RAISE EXCEPTION 'fixture audit unavailable'; END IF; RETURN NEW; END $$;
     CREATE TRIGGER reject_rotation_audit BEFORE INSERT ON subkit.audit_log FOR EACH ROW EXECUTE FUNCTION subkit.reject_rotation_audit()`);
   try {
     await expect(

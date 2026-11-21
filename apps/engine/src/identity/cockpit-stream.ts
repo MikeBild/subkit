@@ -1,5 +1,11 @@
 import { and, eq, inArray, notInArray, or, type SQL, sql } from "drizzle-orm";
-import { events, tasks } from "../db/schema/index.ts";
+import {
+  conversations,
+  conversationToolCalls,
+  deviceRunners,
+  events,
+  tasks,
+} from "../db/schema/index.ts";
 import {
   type OutboxChannel,
   RESOURCE_CHANGE_TYPES,
@@ -10,11 +16,12 @@ interface StreamFamily {
   permission: string;
   channel: OutboxChannel;
   types?: readonly string[];
-  owner_scoped?: "task";
+  owner_scoped?: "task" | "device" | "confirmation";
 }
 
 export interface CockpitStreamViewer {
   task_owner_id: string | null;
+  viewer_id?: string | null;
 }
 
 const RESOURCE_TYPES_BY_PERMISSION = {
@@ -24,6 +31,9 @@ const RESOURCE_TYPES_BY_PERMISSION = {
   task: RESOURCE_CHANGE_TYPES.filter(
     (type) => type.startsWith("task.") || type.startsWith("task_run."),
   ),
+  device: RESOURCE_CHANGE_TYPES.filter((type) => type.startsWith("device.")),
+  execution: RESOURCE_CHANGE_TYPES.filter((type) => type.startsWith("execution.")),
+  confirmation: RESOURCE_CHANGE_TYPES.filter((type) => type.startsWith("local.")),
 };
 
 const LIST_CHANGE_FAMILIES = [
@@ -71,6 +81,23 @@ export const COCKPIT_STREAM_FAMILIES: readonly StreamFamily[] = [
     types: RESOURCE_TYPES_BY_PERMISSION.task,
     owner_scoped: "task",
   },
+  {
+    permission: "device:read",
+    channel: "resource.lifecycle",
+    types: RESOURCE_TYPES_BY_PERMISSION.device,
+    owner_scoped: "device",
+  },
+  {
+    permission: "execution:read",
+    channel: "resource.lifecycle",
+    types: RESOURCE_TYPES_BY_PERMISSION.execution,
+  },
+  {
+    permission: "local:confirm",
+    channel: "resource.lifecycle",
+    types: RESOURCE_TYPES_BY_PERMISSION.confirmation,
+    owner_scoped: "confirmation",
+  },
   ...LIST_CHANGE_FAMILIES.map(({ permission, type }) => ({
     permission,
     channel: "resource.lifecycle" as const,
@@ -93,6 +120,10 @@ const COCKPIT_STREAM_ID_KEYS = [
   "task_id",
   "task_run_id",
   "task_grant_id",
+  "device_id",
+  "command_id",
+  "confirmation_id",
+  "conversation_id",
 ] as const;
 
 type CockpitStreamIdKey = (typeof COCKPIT_STREAM_ID_KEYS)[number];
@@ -110,11 +141,15 @@ export function projectCockpitPayload(payload: unknown): Record<string, string> 
   return out;
 }
 
-type AttentionSubject = { subject: "connector" | "workflow" | "task"; key: CockpitStreamIdKey };
+type AttentionSubject = {
+  subject: "connector" | "workflow" | "task" | "device";
+  key: CockpitStreamIdKey;
+};
 
 const CONNECTOR_SUBJECT: AttentionSubject = { subject: "connector", key: "connector_id" };
 const WORKFLOW_SUBJECT: AttentionSubject = { subject: "workflow", key: "workflow_id" };
 const TASK_SUBJECT: AttentionSubject = { subject: "task", key: "task_id" };
+const DEVICE_SUBJECT: AttentionSubject = { subject: "device", key: "device_id" };
 
 const WORKFLOW_ATTENTION_EVENTS = new Set(["workflow.automation_changed", "execution.failed"]);
 
@@ -122,10 +157,12 @@ export function cockpitAttentionSubject(type: string): AttentionSubject | null {
   if (type.startsWith("connector.")) return CONNECTOR_SUBJECT;
   if (WORKFLOW_ATTENTION_EVENTS.has(type) || type.startsWith("patch.")) return WORKFLOW_SUBJECT;
   if (type.startsWith("task.") || type.startsWith("task_run.")) return TASK_SUBJECT;
+  if (type === "device.online" || type === "device.offline") return DEVICE_SUBJECT;
   return null;
 }
 
-const ATTENTION_NEUTRAL_EVENT = /^execution\.(?:queued|started|running|abort_requested|step\.)/;
+const ATTENTION_NEUTRAL_EVENT =
+  /^(?:execution\.(?:queued|started|running|abort_requested|step\.)|device\.command$)/;
 
 export function cockpitEventTouchesAttention(type: string): boolean {
   return !ATTENTION_NEUTRAL_EVENT.test(type);
@@ -162,12 +199,59 @@ function ownTaskEvent(owner_id: string): SQL {
   return sql`exists (select 1 from ${tasks} where ${tasks.tenant_id} = ${events.tenant_id} and ${tasks.id}::text = ${events.payload} ->> 'task_id' and ${tasks.owner_id} = ${owner_id}::uuid)`;
 }
 
+const OWNER_SCOPED_TYPES = [
+  ...RESOURCE_TYPES_BY_PERMISSION.task,
+  ...RESOURCE_TYPES_BY_PERMISSION.device,
+];
+
+function ownDeviceEvent(owner_id: string): SQL {
+  return sql`exists (select 1 from ${deviceRunners} where ${deviceRunners.tenant_id} = ${events.tenant_id} and ${deviceRunners.id}::text = ${events.payload} ->> 'device_id' and ${deviceRunners.owner_user_id} = ${owner_id}::uuid)`;
+}
+
+function ownConfirmationEvent(viewer_id: string): SQL {
+  return sql`exists (select 1 from ${conversationToolCalls} join ${conversations} on ${conversations.tenant_id} = ${conversationToolCalls.tenant_id} and ${conversations.id} = ${conversationToolCalls.conversation_id} where ${conversationToolCalls.tenant_id} = ${events.tenant_id} and ${conversationToolCalls.id}::text = ${events.payload} ->> 'confirmation_id' and ${conversations.owner_id} = ${viewer_id}::uuid)`;
+}
+
+const CONFIRMATION_TYPES = RESOURCE_TYPES_BY_PERMISSION.confirmation;
+
+function confirmationCond(viewer: CockpitStreamViewer | undefined): SQL {
+  const viewer_id = viewer?.viewer_id ?? null;
+  return viewer_id === null ? sql`false` : ownConfirmationEvent(viewer_id);
+}
+
 function familyCond(family: StreamFamily, viewer: CockpitStreamViewer | undefined) {
   const channel = eq(events.channel, family.channel);
-  const own = viewer && viewer.task_owner_id !== null ? [ownTaskEvent(viewer.task_owner_id)] : [];
-  if (family.types) return and(channel, inArray(events.type, [...family.types]), ...own);
-  if (family.channel !== "resource.lifecycle" || viewer?.task_owner_id === null) return channel;
-  return and(channel, or(notInArray(events.type, [...RESOURCE_TYPES_BY_PERMISSION.task]), ...own));
+  const owner = viewer?.task_owner_id ?? null;
+  if (family.owner_scoped === "confirmation")
+    return and(channel, inArray(events.type, [...(family.types ?? [])]), confirmationCond(viewer));
+  if (family.types) {
+    const own =
+      owner === null
+        ? []
+        : [family.owner_scoped === "device" ? ownDeviceEvent(owner) : ownTaskEvent(owner)];
+    return and(channel, inArray(events.type, [...family.types]), ...own);
+  }
+  if (family.channel !== "resource.lifecycle") return channel;
+  const confirmation = and(inArray(events.type, [...CONFIRMATION_TYPES]), confirmationCond(viewer));
+  if (viewer?.task_owner_id === null)
+    return and(channel, or(notInArray(events.type, [...CONFIRMATION_TYPES]), confirmation));
+  const own =
+    owner === null
+      ? []
+      : [
+          and(
+            notInArray(events.type, [...CONFIRMATION_TYPES]),
+            or(ownTaskEvent(owner), ownDeviceEvent(owner)),
+          ),
+        ];
+  return and(
+    channel,
+    or(
+      notInArray(events.type, [...OWNER_SCOPED_TYPES, ...CONFIRMATION_TYPES]),
+      ...own,
+      confirmation,
+    ),
+  );
 }
 
 export function cockpitStreamConds(
@@ -176,7 +260,10 @@ export function cockpitStreamConds(
   viewer?: CockpitStreamViewer,
 ): SQL[] | null {
   const admitted = COCKPIT_STREAM_FAMILIES.filter(
-    (family) => permissions.has(family.permission) && (!family.owner_scoped || viewer),
+    (family) =>
+      permissions.has(family.permission) &&
+      (!family.owner_scoped || viewer) &&
+      (family.owner_scoped !== "confirmation" || Boolean(viewer?.viewer_id)),
   ).map((family) =>
     family.owner_scoped
       ? familyCond(family, viewer)

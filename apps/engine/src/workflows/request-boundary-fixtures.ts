@@ -23,10 +23,8 @@ export const GOOD_QUERY = "from=2026-09-20T00%3A00%3A00.000Z&to=2026-09-21T00%3A
 export function requestBoundaryFixtures() {
   const release = step({
     method: "POST",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
     path: "/sites/${input.site}/releases",
     headers: { "content-type": "application/json" },
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
     body: { reason: "retire ${scope.pick.data.count}", ids: "${scope.pick.data.ids}" },
     boundary: {
       variables: { "input.site": { enum: ["company-cockpit", "blog"] } },
@@ -37,9 +35,7 @@ export function requestBoundaryFixtures() {
 
   const stats = step({
     method: "GET",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
     path: "/sites/${input.site}/stats/${item.id}",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
     query: { from: "${scope.window.data.start}", to: "${scope.window.data.end}", tz: "UTC" },
     boundary: {
       variables: {

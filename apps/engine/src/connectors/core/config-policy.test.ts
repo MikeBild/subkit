@@ -99,3 +99,17 @@ test("signed JWT errors distinguish missing configuration, nested claims and OAu
     },
   ]);
 });
+
+test("a device connector takes no credentials", () => {
+  for (const driver of ["local_files", "local_browser", "local_computer"] as const) {
+    expect(validateConnectorAuthType(driver, "none")).toEqual([]);
+    expect(validateConnectorAuthType(driver, undefined)).toEqual([]);
+    for (const auth of ["bearer", "signed_jwt", "oauth2_client"] as const)
+      expect(validateConnectorAuthType(driver, auth)).toEqual([
+        {
+          path: "auth_type",
+          message: "a connector for this device takes no credentials — use auth_type 'none'",
+        },
+      ]);
+  }
+});

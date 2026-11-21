@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { AuditAction } from "../audit/index.ts";
 import { productSubjectDigest } from "../auth/identity-link.ts";
-import { encryptSecret } from "../crypto/aes-gcm.ts";
+import { encryptSecret } from "../crypto/index.ts";
 import { cockpitInstallations } from "../db/schema/cockpit-installations.ts";
 import { cockpitPushSubscriptions } from "../db/schema/cockpit-push.ts";
 import {

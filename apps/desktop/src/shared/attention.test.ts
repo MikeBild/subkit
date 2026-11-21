@@ -131,6 +131,15 @@ describe("toNotification", () => {
     expect(reasonLine("", "en")).toBeNull();
   });
 
+  test("a missing device permission opens the permission setup on this Mac", () => {
+    const [workflow] = items();
+    if (!workflow) throw new Error("fixture incomplete");
+    expect(
+      toNotification({ ...workflow, reason: "device_permission_missing" }, "de").onDevice,
+    ).toBe("permissions");
+    expect("onDevice" in toNotification(workflow, "de")).toBe(false);
+  });
+
   test("the text never comes from the server's own sentence", () => {
     const [workflow] = items();
     if (!workflow) throw new Error("fixture incomplete");

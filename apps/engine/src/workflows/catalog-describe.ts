@@ -30,7 +30,7 @@ import {
   describeCatalogObject,
   describeCategoryPurpose,
 } from "../llm/catalog-describe.ts";
-import { errorFields, logger } from "../logging/logger.ts";
+import { errorFields, logger } from "../logging/index.ts";
 import { loadCategoryVocabulary } from "./catalog-view.ts";
 
 const TABLES = {

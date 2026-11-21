@@ -7,7 +7,7 @@ import {
   findUnknownFunctionCalls,
   formatError as formatJsonataError,
 } from "../execution/jsonata-engine.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { recordAuthoringGateBlock } from "../observability/instrumentation.ts";
 import { extractJsScopeReferences } from "../sandboxes/quickjs/scope-references.ts";
 import { lintJsBody } from "../workflows/js-body-lint.ts";

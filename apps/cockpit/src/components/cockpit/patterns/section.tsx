@@ -1,7 +1,7 @@
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@ui/atoms/collapsible";
 import { ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
 import { useId } from "react";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 export const SECTION_LABEL = "text-xs font-medium text-muted-foreground";
 

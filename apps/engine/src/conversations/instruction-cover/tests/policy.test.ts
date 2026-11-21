@@ -9,7 +9,6 @@ function decide(extra: Partial<Parameters<typeof decideToolMode>[0]>) {
     category: "tenant_read",
     input: write,
     overrides: {},
-    permission_mode: "auto",
     ...extra,
   });
 }
@@ -19,34 +18,31 @@ describe("the person's words and standing rules in the mode decision", () => {
     expect(decide({}).mode).toBe("confirm_before_execution");
   });
 
-  test("covered by the person's words it runs in auto only", () => {
+  test("covered by the person's words it runs unless the person asks before writing", () => {
     expect(decide({ instruction_covered: true })).toEqual({
       mode: "no_confirm",
       rule: "user_instruction",
     });
-    for (const permission_mode of ["ask", "plan", null] as const) {
-      expect(decide({ instruction_covered: true, permission_mode }).mode).toBe(
-        "confirm_before_execution",
-      );
-    }
+    expect(decide({ instruction_covered: true, ask_before_writing: true }).mode).toBe(
+      "confirm_before_execution",
+    );
   });
 
-  test("a standing rule covers ask and auto, never plan", () => {
-    for (const permission_mode of ["ask", "auto"] as const) {
-      expect(decide({ rule_covered: true, permission_mode })).toEqual({
+  test("a standing rule covers the step, also when the person asks before writing", () => {
+    for (const ask_before_writing of [false, true]) {
+      expect(decide({ rule_covered: true, ask_before_writing })).toEqual({
         mode: "no_confirm",
         rule: "standing_rule",
       });
     }
-    expect(decide({ rule_covered: true, permission_mode: "plan" }).mode).toBe(
-      "confirm_before_execution",
-    );
   });
 
-  test("an unattended run is never covered", () => {
-    expect(decide({ instruction_covered: true, rule_covered: true, task_run: true }).mode).toBe(
-      "confirm_before_execution",
-    );
+  test("a task run follows the cover its owner's task gave, and asks without it", () => {
+    expect(decide({ instruction_covered: true, task_run: true })).toEqual({
+      mode: "no_confirm",
+      rule: "user_instruction",
+    });
+    expect(decide({ task_run: true }).mode).toBe("confirm_before_execution");
   });
 
   test("a full response, a data transfer and an explicit always-ask stay asking", () => {
@@ -73,7 +69,6 @@ describe("the person's words and standing rules in the mode decision", () => {
           category: "tenant_write",
           input: {},
           overrides: {},
-          permission_mode: "auto",
           instruction_covered: true,
           rule_covered: true,
         }).mode,
@@ -88,7 +83,6 @@ describe("the person's words and standing rules in the mode decision", () => {
         category: "tenant_write",
         input: { credential: { mode: "api_key" } },
         overrides: {},
-        permission_mode: "auto",
         instruction_covered: true,
       }).mode,
     ).toBe("confirm_before_execution");

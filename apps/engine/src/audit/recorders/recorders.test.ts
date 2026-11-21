@@ -305,7 +305,7 @@ describe("recorder catalog — credential", () => {
       source: "harness_auto_persist",
     });
     const row = await fetchRow(entry.id);
-    expect(row?.action).toBe(AuditAction.CREDENTIAL_CREATED);
+    expect(row?.action).toBe(AuditAction.VAULT_ITEM_CREATED);
     expect(row?.reason).toBe("auto_persist_on_confirmation");
     expect((row!.metadata as Record<string, unknown>).mode).toBe("bearer");
   });
@@ -323,7 +323,7 @@ describe("recorder catalog — credential", () => {
       source: "tool_call",
     });
     const row = await fetchRow(entry.id);
-    expect(row?.action).toBe(AuditAction.CREDENTIAL_ROTATED);
+    expect(row?.action).toBe(AuditAction.VAULT_ITEM_ROTATED);
     expect(row?.reason).toBe("manual_re_issue");
   });
 
@@ -339,7 +339,7 @@ describe("recorder catalog — credential", () => {
       source: "service",
     });
     const row = await fetchRow(entry.id);
-    expect(row?.action).toBe(AuditAction.CREDENTIAL_DELETED);
+    expect(row?.action).toBe(AuditAction.VAULT_ITEM_DELETED);
     expect(row?.reason).toBe("operator_revoked");
   });
 });
@@ -564,9 +564,9 @@ describe("recorder catalog — coverage matrix", () => {
       AuditAction.WORKFLOW_UPDATED,
       AuditAction.WORKFLOW_DELETED,
       AuditAction.WORKFLOW_COMMITTED_OVERRIDE,
-      AuditAction.CREDENTIAL_CREATED,
-      AuditAction.CREDENTIAL_ROTATED,
-      AuditAction.CREDENTIAL_DELETED,
+      AuditAction.VAULT_ITEM_CREATED,
+      AuditAction.VAULT_ITEM_ROTATED,
+      AuditAction.VAULT_ITEM_DELETED,
       AuditAction.KNOWLEDGE_SOURCE_CREATED,
       AuditAction.KNOWLEDGE_SOURCE_REFRESHED,
       AuditAction.TOOL_POLICY_CONFIRMATION_REQUIRED,

@@ -14,9 +14,10 @@ import {
   installClock,
   restoreClock,
 } from "../../test-helpers/determinism/clock.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { approveSkillCandidate } from "../service.ts";
 
-const skip = process.env.REQUIRES_PG === "0";
+const skip = testEnv.REQUIRES_PG === "0";
 
 let testDb: TestDb;
 let tenantId: string;

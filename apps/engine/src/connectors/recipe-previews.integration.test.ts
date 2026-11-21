@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { runExecution } from "../execution/engine.ts";
 import { createEngineCtx, type EngineTestCtx } from "../execution/tests/setup.ts";
+import { testEnv } from "../test-helpers/determinism/env.ts";
 import { withSelfHostedDriverFetchForTests } from "../test-helpers/driver-fetch.ts";
 import type { WorkflowDef } from "../workflows/types.ts";
 import { bindRecipe, listTemplateConnectors, rebindConnectorIds } from "./recipe-binding.ts";
@@ -8,7 +9,7 @@ import { createConnector } from "./service.ts";
 import { getSolutionRecipe } from "./solutions.ts";
 import { type ConnectorRecipe, getBuiltinTemplate, loadBuiltinTemplates } from "./templates.ts";
 
-const skip = process.env.REQUIRES_PG === "0";
+const skip = testEnv.REQUIRES_PG === "0";
 
 interface Call {
   method: string;

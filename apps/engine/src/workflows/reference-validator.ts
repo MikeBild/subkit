@@ -420,7 +420,6 @@ export function validateBareIterationIdentifiers(
         bad_reference: "(missing)",
         context: step.for_each as string,
         did_you_mean: [
-          // biome-ignore lint/suspicious/noTemplateCurlyInString: operator-facing message names the literal `${item.…}` placeholder grammar.
           "$item (use `$item.<field>` in JS expressions or `${item.<field>}` in URL/header/body strings)",
         ],
       });

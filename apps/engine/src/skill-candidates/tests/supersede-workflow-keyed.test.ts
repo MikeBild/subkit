@@ -5,10 +5,11 @@ import { tenants } from "../../db/schema/identity.ts";
 import { skillCandidates } from "../../db/schema/skills.ts";
 import { workflows } from "../../db/schema/workflows.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { upsertFromSignal } from "../service.ts";
 import type { PatternSignal } from "../types.ts";
 
-const skip = process.env.REQUIRES_PG === "0";
+const skip = testEnv.REQUIRES_PG === "0";
 
 let testDb: TestDb;
 let tenantId: string;

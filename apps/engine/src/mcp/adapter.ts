@@ -4,7 +4,7 @@ import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { ToolContext } from "../conversations/tools/index.ts";
 import type { Db } from "../db/client.ts";
 import { EngineClient } from "../engine-client/index.ts";
-import { logger as mcpStubLogger } from "../logging/logger.ts";
+import { logger as mcpStubLogger } from "../logging/index.ts";
 import { dispatchTool } from "../tools/dispatcher.ts";
 import { getUnifiedRegistry } from "../tools/index.ts";
 import { withRawResultScope } from "../tools/truncate.ts";
@@ -221,7 +221,6 @@ export async function callToolViaDispatcher(opts: {
             }),
           mcpMode: opts.mcpMode,
           readOnly: opts.readOnly,
-          permissionMode: "auto",
         },
         opts.invocation,
       ),

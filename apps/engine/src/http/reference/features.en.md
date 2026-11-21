@@ -77,8 +77,9 @@ Each line says what you get and links to the chapter that explains it.
 | Feature | What you get | Where | More |
 | --- | --- | --- | --- |
 | Chat in the Cockpit | Draft workflows, ask questions and start approved workflows in conversation. | All | [Your first workflow](setup.md#your-first-workflow) |
-| Chat modes | **Ask**, **Automatic** or **Plan only** decide what SubKit does without asking. | All | [Chat modes and rules](setup.md#chat-modes-and-rules) |
-| Rules | After the second **Allow once** for the same action, save it as a rule for 90 days. | All | [Chat modes and rules](setup.md#chat-modes-and-rules) |
+| When SubKit asks | Your request decides what runs without a question; **Always ask first** makes every write ask. | All | [When SubKit asks](setup.md#when-subkit-asks) |
+| Always ask first | A rule of your own: every step that writes asks you first, in chat, in tasks and on your Mac. | All | [When SubKit asks](setup.md#when-subkit-asks) |
+| Rules | After the second **Allow once** for the same action, save it as a rule for 90 days. | All | [When SubKit asks](setup.md#when-subkit-asks) |
 | Files in chat | Attach files to a message, also from SubKit Desktop. | All | [Reference: files from the desktop, run results and sign-in signals](setup.md#reference-files-from-the-desktop-run-results-and-sign-in-signals) |
 | Slack and Google Chat | Ask questions and start approved workflows where your team works; in SubKit Cloud only after the chat workspace's ownership is verified. | All | [Use SubKit Cloud](setup.md#use-subkit-cloud) |
 | Your own model | Anthropic, OpenAI, Google Gemini, Azure, Amazon Bedrock or Vertex AI with your own key, plus a fallback provider. | All | [Settings](settings.md) |
@@ -112,22 +113,46 @@ Each line says what you get and links to the chapter that explains it.
 | Supabase data | Use your Supabase project's data in product workflows without exposing keys. | Admin | [Supabase-backed product workflows](setup.md#supabase-backed-product-workflows) |
 | Private network addresses | Connectors reach services such as `localhost` or internal company servers. | Self-hosted | [Use SubKit Cloud](setup.md#use-subkit-cloud) |
 
-### Cockpit, desktop app and installed app
+### Cockpit and installed app
 
 | Feature | What you get | Where | More |
 | --- | --- | --- | --- |
 | Overview and Needs you | See what ran, what failed and what waits for your decision. | All | [What is SubKit?](setup.md#what-is-subkit) |
 | Find your way | Navigation, side panel, error notices with remedies and a Markdown viewer. | All | [Find your way in the Cockpit](setup.md#find-your-way-in-the-cockpit) |
-| Setup in six questions | Your answers set the chat mode, default environment, approver and notifications. | All | [Set SubKit up for yourself](setup.md#set-subkit-up-for-yourself) |
+| Setup in five questions | Your answers set the default environment, approver and notifications. | All | [Set SubKit up for yourself](setup.md#set-subkit-up-for-yourself) |
 | English and German | The Cockpit and this documentation come in both languages. | All | [What is SubKit?](setup.md#what-is-subkit) |
 | Branding | Give the Cockpit your company's name, logo and colors. | Admin | [Cockpit branding](setup.md#cockpit-branding) |
 | Cockpit as an app | Install a workspace's Cockpit as its own app on computer and phone, with push and sharing from other apps. | All | [Cockpit as an app](setup.md#cockpit-as-an-app) |
-| SubKit Desktop | Your server's Cockpit as a program for macOS, Windows and Linux, with a menu bar icon, notifications and launch at login. | All | [SubKit Desktop](setup.md#subkit-desktop) |
-| Sign in through the browser | The desktop app signs in through your browser; every computer is a device you can revoke. | All | [SubKit Desktop](setup.md#subkit-desktop) |
+
+### SubKit Desktop
+
+| Feature | What you get | Where | More |
+| --- | --- | --- | --- |
+| SubKit Desktop | Your server's Cockpit as a Mac app for Apple Silicon (macOS 13 or later), with a menu bar icon, notifications and launch at login. | All | [SubKit Desktop](setup.md#subkit-desktop) |
+| Welcome and invitation link | The first start explains what SubKit does and opens the invitation link from your email, so you join a workspace in a few steps. | All | [SubKit Desktop](setup.md#subkit-desktop) |
+| Sign in through the browser | The app signs in through your browser; every Mac is a device you can revoke. | All | [SubKit Desktop](setup.md#subkit-desktop) |
 | Several servers | SubKit Desktop keeps one profile per server. | All | [SubKit Desktop](setup.md#subkit-desktop) |
-| Drop files | Drop files on SubKit Desktop to attach them in chat or collect them in the inbox. | All | [Reference: files from the desktop, run results and sign-in signals](setup.md#reference-files-from-the-desktop-run-results-and-sign-in-signals) |
+| Menu bar | The count of what needs you, quiet hours, pause, quick note, live view, updates and “Report a problem” in one menu. | All | [SubKit Desktop](setup.md#subkit-desktop) |
+| Quick note | ⌥ Space opens a note from anywhere; it lands in your inbox. | All | [SubKit Desktop](setup.md#subkit-desktop) |
+| Drop sheet | Drop files on the window, the Dock icon or the menu bar icon and choose: store as file, ingest as source, attach in chat or put into the inbox. | All | [Reference: files from the desktop, run results and sign-in signals](setup.md#reference-files-from-the-desktop-run-results-and-sign-in-signals) |
+| Pause | Hold notifications back for an hour or until you resume them, right from the menu bar. | All | [SubKit Desktop](setup.md#subkit-desktop) |
+| Report a bug | Send a bug report or idea to your workspace's inbox, with a screenshot and optional diagnostics. A report written offline waits in a queue and goes out once you are back online. | All | [Report a bug](setup.md#report-a-bug) |
 | Desktop versions and devices | Decide which app version your server accepts and revoke devices. | Admin · Self-hosted | [Operate the desktop sign-in](setup.md#operate-the-desktop-sign-in) |
-| Report a bug | Send a bug report or idea to your workspace's inbox, with a screenshot from SubKit Desktop and an offline queue. | All | [Report a bug](setup.md#report-a-bug) |
+
+### SubKit on your Mac
+
+These features need SubKit Desktop on a Mac with Apple Silicon. Nothing runs on your Mac until you turn it on under **Local capabilities**.
+
+| Feature | What you get | Where | More |
+| --- | --- | --- | --- |
+| Local files | Chat, tasks and workflows read and write files in folders you allowed, with read or read-and-write access per folder. | All | [SubKit Desktop](setup.md#subkit-desktop) |
+| Browser | SubKit works in websites you allowed, in a browser of its own on your Mac. | All | [SubKit Desktop](setup.md#subkit-desktop) |
+| Computer use | SubKit uses buttons and fields in apps you allowed. Password managers, banking, terminals, System Settings and other sensitive apps stay blocked. | All | [SubKit Desktop](setup.md#subkit-desktop) |
+| Local allowances | Folders, websites and apps you allow, plus a list of what stays off limits, kept on the Mac itself. | All | [SubKit Desktop](setup.md#subkit-desktop) |
+| Live view | See what SubKit does on your Mac with the latest redacted screenshot and every step; stop it at any time with ⌘⇧⎋. | All | [SubKit Desktop](setup.md#subkit-desktop) |
+| Confirmations on the Mac | A step that writes and that your request does not cover asks you first, in the chat and in the live view; a sign-in is handed to you and back. | All | [When SubKit asks](setup.md#when-subkit-asks) |
+| Local workflow steps | Workflows with fixed steps for files, browser and apps; the approval names the device, folders, websites and apps. | All | [Reference: workflow steps on your device](setup.md#reference-workflow-steps-on-your-device) |
+| Fully local workspace | Run a workspace only on your Mac, with its own database, backups and your own AI key or local model server; move it to a server later. | Self-hosted | [SubKit Desktop](setup.md#subkit-desktop) |
 
 ### sk CLI, HTTP API and MCP
 
@@ -155,7 +180,7 @@ Each line says what you get and links to the chapter that explains it.
 | Feature | What you get | Where | More |
 | --- | --- | --- | --- |
 | Usage | AI cost per run, workflow, person and model in a time window you choose. | All | [Keep track of usage and costs](setup.md#keep-track-of-usage-and-costs) |
-| Monthly token budget | Pauses AI authoring when it is used up, while approved workflows keep running. | Admin | [Keep track of usage and costs](setup.md#keep-track-of-usage-and-costs) |
+| Monthly AI budget | One limit on AI cost in US dollars, $50 for a new workspace. At 100% chat, tasks and model steps pause; workflows without a model step keep running. | Admin | [Keep track of usage and costs](setup.md#keep-track-of-usage-and-costs) |
 | Prices | Built-in model prices, overridable per model. | Admin | [Keep track of usage and costs](setup.md#keep-track-of-usage-and-costs) |
 | Export | Export the usage figures. | All | [Keep track of usage and costs](setup.md#keep-track-of-usage-and-costs) |
 | Task costs | See what each task's runs cost. | All | [Hand over a goal as a task](setup.md#hand-over-a-goal-as-a-task) |
@@ -173,25 +198,14 @@ Each line says what you get and links to the chapter that explains it.
 | Backup and recovery | Back up the whole installation and restore it with the same image. | Self-hosted | [Run the engine](setup.md#run-the-engine) |
 | Browser crawling | Crawl pages for connector discovery with a derived image. | Self-hosted · Optional | [Run the engine](setup.md#run-the-engine) |
 | Engine operator | One workspace administers the whole engine. | Admin · Self-hosted | [Engine operator](setup.md#engine-operator) |
-| Runtime settings | Every engine setting with description and default, changed in the Cockpit, the API or `sk`. | Admin | [Settings](settings.md) |
+| Runtime settings | Every engine setting with description and default, changed with `sk settings`, the API or the config file. | Admin | [Settings](settings.md) |
 
 ### Security and audit
 
 | Feature | What you get | Where | More |
 | --- | --- | --- | --- |
 | Audit trail | Every run, approval and change is recorded with who did it, and each object shows its own history. | All | [Find your way in the Cockpit](setup.md#find-your-way-in-the-cockpit) |
-| Protected keys | Keys and passwords stay on your server, encrypted. | Self-hosted | [Run the engine](setup.md#run-the-engine) |
+| Vault | API keys, logins and connector credentials in one place, encrypted, for the workspace or only for you. Workflows name them by handle, the AI never sees a value, and every use, reveal and rotation is in the audit trail. | All | [Reference: the vault](setup.md#reference-the-vault) |
 | Sign-in sessions | Installed apps keep a session and sign out cleanly. | All | [Installed Cockpit sessions](setup.md#installed-cockpit-sessions) |
 | Redaction | Secrets are removed from clipped pages and bug reports before they are stored. | All | [Report a bug](setup.md#report-a-bug) |
 | License | Open source under the Apache License 2.0. | All | [License](setup.md#license) |
-
-### Coming with local execution in SubKit Desktop
-
-These features are planned for SubKit Desktop and not released yet. Today SubKit Desktop runs nothing on your computer. There are no dates yet.
-
-| Feature | What it will do | Status |
-| --- | --- | --- |
-| Local files | Work with files on your computer. | Coming |
-| Browser | Use a browser on your computer for a task. | Coming |
-| Computer use | Operate other programs on your computer. | Coming |
-| Fully local workspace | Run a workspace entirely on your computer. | Coming |

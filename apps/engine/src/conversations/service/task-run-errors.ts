@@ -11,17 +11,6 @@ export class TaskRunWriteForbiddenError extends HttpError {
   }
 }
 
-export class TaskRunPermissionModeError extends HttpError {
-  constructor() {
-    super(
-      400,
-      "task_run_permission_mode_rejected",
-      "A task run always asks before it changes something. This mode is not available here.",
-    );
-    this.name = "TaskRunPermissionModeError";
-  }
-}
-
 export class TaskRunLockedError extends HttpError {
   constructor(what: string) {
     super(409, "task_run_locked", `${what} is not available in a task run conversation.`);

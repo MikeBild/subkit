@@ -4,11 +4,14 @@ directories:
   buildResources: assets
 files:
   - dist/main.cjs
+  - dist/runner.cjs
   - dist/preload-connect.cjs
   - dist/preload-cockpit.cjs
   - dist/preload-shell.cjs
+  - dist/preload-live.cjs
   - dist/connect/**
   - dist/shell/**
+  - dist/live/**
   - dist/assets/**
   - package.json
   - "!node_modules"
@@ -21,6 +24,7 @@ asar: true
 npmRebuild: false
 nodeGypRebuild: false
 buildDependenciesFromSource: false
+afterPack: scripts/after-pack.cjs
 electronFuses:
   runAsNode: false
   enableCookieEncryption: true
@@ -32,14 +36,32 @@ electronFuses:
   grantFileProtocolExtraPrivileges: false
 mac:
   category: public.app-category.productivity
-  icon: assets/icon.png
+  icon: assets/icon.icns
+  minimumSystemVersion: "13.0"
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: assets/entitlements.mac.plist
   entitlementsInherit: assets/entitlements.mac.plist
   notarize: false
-  # Files dropped on the Dock icon open "Where should it go?"; SubKit never claims a file type.
+  # Purpose strings are the English defaults; dist/mac/<locale>.lproj/InfoPlist.strings (written
+  # by scripts/build.ts from src/shared/app-identity.ts) localizes them and the name. A null
+  # removes Electron's generic purpose string for a resource the app never asks for.
   extendInfo:
+    CFBundleDevelopmentRegion: en
+    LSHasLocalizedDisplayName: true
+    NSHumanReadableCopyright: © 2026 Mike Bild
+    NSDesktopFolderUsageDescription: SubKit reads and changes files on your desktop only in folders you have allowed.
+    NSDocumentsFolderUsageDescription: SubKit reads and changes your documents only in folders you have allowed.
+    NSDownloadsFolderUsageDescription: SubKit reads and saves downloads only in folders you have allowed.
+    NSRemovableVolumesUsageDescription: SubKit reads and changes files on external drives only in folders you have allowed.
+    NSNetworkVolumesUsageDescription: SubKit reads and changes files on network drives only in folders you have allowed.
+    NSLocalNetworkUsageDescription: SubKit connects to a SubKit server in your local network when you enter its address.
+    NSAudioCaptureUsageDescription: null
+    NSBluetoothAlwaysUsageDescription: null
+    NSBluetoothPeripheralUsageDescription: null
+    NSCameraUsageDescription: null
+    NSMicrophoneUsageDescription: null
+    # Files dropped on the Dock icon open "Where should it go?"; SubKit never claims a file type.
     CFBundleDocumentTypes:
       - CFBundleTypeName: Document
         CFBundleTypeRole: Viewer
@@ -47,20 +69,41 @@ mac:
         LSItemContentTypes:
           - public.data
           - public.content
+  signIgnore:
+    - /Contents/Helpers/agent-desktop/
+    - /Contents/Resources/agent-browser/
+    - /Contents/Resources/local/postgres/
+  extraFiles:
+    - from: resources/agent-desktop/darwin-${arch}
+      to: Helpers/agent-desktop
+      filter:
+        - "**/*"
+        - "!.bundle.json"
   extraResources:
+    - from: resources/agent-browser/darwin-${arch}
+      to: agent-browser
     - from: dist/LICENSES.chromium.html
       to: LICENSES.chromium.html
     - from: dist/LICENSE.electron.txt
       to: LICENSE.electron.txt
+    - from: dist/mac/de.lproj/InfoPlist.strings
+      to: de.lproj/InfoPlist.strings
+    - from: dist/mac/en.lproj/InfoPlist.strings
+      to: en.lproj/InfoPlist.strings
+    - from: ../../dist/engine-desktop/mac/${arch}/engine
+      to: local/engine
+    - from: resources/postgres/darwin-${arch}
+      to: local/postgres
+      filter:
+        - "**/*"
+        - "!.bundle.json"
   target:
     - target: dmg
       arch:
         - arm64
-        - x64
     - target: zip
       arch:
         - arm64
-        - x64
 win:
   icon: assets/icon.png
   verifyUpdateCodeSignature: true
@@ -72,6 +115,20 @@ nsis:
   oneClick: true
   perMachine: false
   deleteAppDataOnUninstall: false
+dmg:
+  icon: assets/icon.icns
+  background: assets/dmg-background.png
+  window:
+    width: 540
+    height: 380
+  contents:
+    - x: 140
+      y: 190
+      type: file
+    - x: 400
+      y: 190
+      type: link
+      path: /Applications
 linux:
   icon: assets/icon.png
   category: Office

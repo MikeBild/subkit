@@ -82,7 +82,7 @@ test("resize preserves inspector state and focus while nested inspectors stay mo
   const { createRoot } = await import("react-dom/client");
   const { ResponsiveWorkspace } = await import("./responsive-workspace");
   const { RecordSheet } = await import("./record-sheet");
-  const { TooltipProvider } = await import("@/components/ui/tooltip");
+  const { TooltipProvider } = await import("@ui/molecules/tooltip");
   const { I18nContext } = await import("@/lib/i18n-context");
   const { i18nValue } = await import("./test-utils");
   const changes: boolean[] = [];

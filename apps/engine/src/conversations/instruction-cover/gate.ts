@@ -4,18 +4,34 @@ import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import { conversationToolCalls } from "../../db/schema/index.ts";
-import { logger } from "../../logging/logger.ts";
-import type { PermissionMode, ToolModeRule } from "../../tools/types.ts";
+import { logger } from "../../logging/index.ts";
+import type { ToolModeRule } from "../../tools/types.ts";
 import { contentHash, type RuleRefusal } from "../approval-rules/scope.ts";
 import { findCoveringRule, markRuleUsed } from "../approval-rules/store.ts";
 import { type BoundAction, COVERABLE_NATIVE_TOOLS, describeBoundAction } from "./bound-action.ts";
 import { checkContent, collectContent, fullContent } from "./content.ts";
-import { type CoverRefusal, decideInstructionCover } from "./decide.ts";
-import { connectorTemplateSlug, loadCoverEvidence } from "./evidence.ts";
+import type { CoverRefusal } from "./decide.ts";
+import {
+  connectorTemplateSlug,
+  loadCoverEvidence,
+  loadJobSignatures,
+  loadTaskRunFacts,
+} from "./evidence.ts";
 import { groundArguments, NO_EVIDENCE } from "./grounding.ts";
+import {
+  chatJob,
+  chatRequest,
+  decideJobStep,
+  type JobAskReason,
+  type JobRefusal,
+  type JobRequest,
+  type JobState,
+  taskJob,
+  taskRequest,
+} from "./job.ts";
 import { ownWords } from "./own-words.ts";
 import { interactivePersonRefusal } from "./session.ts";
-import { spokenFacts } from "./spoken.ts";
+import { type SpokenFacts, spokenFacts } from "./spoken.ts";
 
 export interface BoundActionView {
   readonly verb: string;
@@ -27,7 +43,15 @@ export interface BoundActionView {
   readonly content: string | null;
 }
 
-export type AskReason = CoverRefusal | RuleRefusal | "mode" | "no_browser_session";
+export type AskReason =
+  | CoverRefusal
+  | JobAskReason
+  | JobRefusal
+  | RuleRefusal
+  | "ask_before_writing"
+  | "no_person"
+  | "write_gate"
+  | "no_browser_session";
 
 export interface PolicyRecord {
   readonly ran_without_asking: boolean;
@@ -39,6 +63,7 @@ export interface PolicyRecord {
   readonly ask_detail?: string | null;
   readonly message_id?: string | null;
   readonly signature?: string;
+  readonly job_id?: string;
 }
 
 export interface PersonCover {
@@ -90,16 +115,78 @@ export interface PersonCoverInput {
   readonly conversation_id: string;
   readonly principal: ResolvedPrincipal | null;
   readonly surface: string | null | undefined;
-  readonly permission_mode: PermissionMode | null;
+  readonly ask_before_writing: boolean;
   readonly task_run: boolean;
+  readonly task_run_id?: string | null;
   readonly tool: string;
   readonly args: Record<string, unknown>;
   readonly because: string | null;
-  readonly now?: Date;
+  readonly now: Date;
+}
+
+export interface CoverJob {
+  readonly request: JobRequest;
+  readonly job: JobState;
+  readonly facts: SpokenFacts;
+  readonly message_id: string | null;
+}
+
+export async function chatCoverJob(input: PersonCoverInput): Promise<CoverJob> {
+  const { now } = input;
+  const evidence = await loadCoverEvidence(input.db, input.tenant_id, input.conversation_id);
+  return {
+    request: chatRequest(evidence.segments, evidence.shown, evidence.timezone),
+    job: chatJob({
+      anchor_id: evidence.anchor?.id ?? input.conversation_id,
+      anchor_at: evidence.anchor?.at ?? now,
+      outputs: evidence.outputs,
+      used_signatures: evidence.used_signatures,
+    }),
+    facts: spokenFacts(
+      evidence.segments.map((segment) =>
+        segment.kind === "message" ? ownWords(segment.text) : segment.text,
+      ),
+      now,
+      evidence.timezone,
+    ),
+    message_id: evidence.anchor?.id ?? null,
+  };
+}
+
+export async function taskCoverJob(
+  input: PersonCoverInput,
+  principal: ResolvedPrincipal,
+): Promise<CoverJob | null> {
+  const task_run_id = input.task_run_id ?? null;
+  if (!task_run_id) return null;
+  const source = principal.auth_source;
+  if (source?.kind !== "task_run" || source.task_run_id !== task_run_id) return null;
+  const task = await loadTaskRunFacts(input.db, input.tenant_id, task_run_id);
+  if (!task || task.owner_id !== principal.id) return null;
+  const evidence = await loadCoverEvidence(input.db, input.tenant_id, input.conversation_id);
+  const request = taskRequest(task, evidence.timezone);
+  return {
+    request,
+    job: taskJob(task, {
+      outputs: evidence.outputs,
+      used_signatures: await loadJobSignatures(
+        input.db,
+        input.tenant_id,
+        input.conversation_id,
+        task_run_id,
+      ),
+    }),
+    facts: spokenFacts(
+      request.segments.map((segment) => segment.text),
+      input.now,
+      evidence.timezone,
+    ),
+    message_id: null,
+  };
 }
 
 export async function resolvePersonCover(input: PersonCoverInput): Promise<PersonCover> {
-  const { permission_mode, principal, tool, args } = input;
+  const { ask_before_writing, principal, tool, args } = input;
   if (!isCoverCandidate(tool)) return NO_PERSON_COVER;
   const card = describeForCard(tool, args);
   const asking = (
@@ -118,41 +205,37 @@ export async function resolvePersonCover(input: PersonCoverInput): Promise<Perso
       ask_detail,
     },
   });
-  if (permission_mode !== "auto" && permission_mode !== "ask") return asking("mode");
-  const session = interactivePersonRefusal({
-    principal,
-    surface: input.surface,
-    task_run: input.task_run,
-  });
+  const session = input.task_run
+    ? null
+    : interactivePersonRefusal({ principal, surface: input.surface, task_run: false });
   if (session !== null || principal === null) {
     return asking(
-      session === "task_run" || session === "no_person" ? "mode" : "no_browser_session",
+      session === "task_run" || session === "no_person" || principal === null
+        ? "no_person"
+        : "no_browser_session",
     );
   }
   try {
-    const now = input.now ?? new Date();
+    const covering = input.task_run
+      ? await taskCoverJob(input, principal)
+      : await chatCoverJob(input);
+    if (!covering) return asking("write_gate");
+    const { request, job } = covering;
     const template = await connectorTemplateSlug(input.db, input.tenant_id, args);
     const hints = { template };
-    const evidence = await loadCoverEvidence(input.db, input.tenant_id, input.conversation_id);
-    const latest = evidence.segments.findLast((segment) => segment.kind === "message") ?? null;
     const fields = collectContent(tool, args);
-    const facts = spokenFacts(
-      evidence.segments.map((segment) =>
-        segment.kind === "message" ? ownWords(segment.text) : segment.text,
-      ),
-      now,
-      evidence.timezone,
-    );
-    const match = await findCoveringRule(
-      input.db,
-      { tenant_id: input.tenant_id, user_id: principal.id },
-      describeBoundAction(tool, args, card.recipients, hints),
-      {
-        hash: contentHash(fields),
-        given: fields.length > 0 && checkContent(fields, facts, evidence.shown).ok,
-      },
-      now,
-    );
+    const match = request.by_person
+      ? await findCoveringRule(
+          input.db,
+          { tenant_id: input.tenant_id, user_id: principal.id },
+          describeBoundAction(tool, args, card.recipients, hints),
+          {
+            hash: contentHash(fields),
+            given: fields.length > 0 && checkContent(fields, covering.facts, request.shown).ok,
+          },
+          input.now,
+        )
+      : { rule: null, refusal: null };
     if (match.rule) {
       return {
         instruction_covered: false,
@@ -164,24 +247,19 @@ export async function resolvePersonCover(input: PersonCoverInput): Promise<Perso
           because: null,
           rule_id: match.rule.id,
           ask_reason: null,
-          message_id: latest?.id ?? null,
+          message_id: covering.message_id,
+          job_id: job.id,
         },
       };
     }
-    if (permission_mode !== "auto") return asking(match.refusal ?? "mode");
-    const decision = decideInstructionCover({
-      tool,
-      args,
-      quote: input.because,
-      segments: evidence.segments,
-      outputs: evidence.outputs,
-      shown: evidence.shown,
-      hints,
-      used_signatures: evidence.used_signatures,
-      now,
-      timezone: evidence.timezone,
-    });
-    if (!decision.covered) {
+    if (ask_before_writing) return asking(match.refusal ?? "ask_before_writing");
+    const decision = decideJobStep(
+      request,
+      job,
+      { kind: "tool", job_id: job.id, tool, args, quote: input.because, hints },
+      input.now,
+    );
+    if (decision.decision !== "covered") {
       return decision.reason === "no_quote" && match.refusal
         ? asking(match.refusal)
         : asking(decision.reason, decision.detail ?? null);
@@ -192,12 +270,13 @@ export async function resolvePersonCover(input: PersonCoverInput): Promise<Perso
       record: {
         ran_without_asking: true,
         rule: "user_instruction",
-        bound_action: boundActionView(decision.action, args),
+        bound_action: decision.action ? boundActionView(decision.action, args) : card,
         because: decision.because,
         rule_id: null,
         ask_reason: null,
-        message_id: decision.because.message_id,
-        signature: decision.signature,
+        message_id: decision.because?.message_id ?? covering.message_id,
+        ...(decision.signature ? { signature: decision.signature } : {}),
+        job_id: job.id,
       },
     };
   } catch (error) {
@@ -240,7 +319,7 @@ export async function recordPersonCover(p: {
         bound_action: planned.bound_action,
         because: null,
         rule_id: null,
-        ask_reason: planned.ask_reason ?? "mode",
+        ask_reason: planned.ask_reason ?? "write_gate",
       };
   await p.db
     .update(conversationToolCalls)
@@ -280,6 +359,7 @@ export async function recordPersonCover(p: {
         message_id: record.because?.message_id ?? record.message_id ?? null,
         ...(record.because ? { because: record.because.quote } : {}),
         ...(record.rule_id ? { rule_id: record.rule_id } : {}),
+        ...(record.job_id ? { job_id: record.job_id } : {}),
       },
     },
     p.db,

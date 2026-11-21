@@ -1,10 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, desc, eq } from "drizzle-orm";
 import { markConnectorNeedsReauth } from "../../connectors/reauth.ts";
-import { auditLog, connectors, credentials, users } from "../../db/schema/index.ts";
+import { auditLog, connectors, users, vaultItems } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { createRole, grantPermissionToRole } from "../../rbac/roles.ts";
-import { createConversation } from "../service.ts";
+import { createConversation } from "../service/index.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../tests/setup.ts";
 import { checkToolPermission } from "../tools/permission-gate.ts";
 import { requestConnectorReauthTool } from "../tools/request-connector-reauth.ts";
@@ -52,7 +52,7 @@ async function makeToolCtx(connectorId?: string | null) {
     actor_id: ctx.user_id,
     connector_id: connectorId ?? null,
     workflow_id: null,
-    permission_mode: null,
+    ask_before_writing: true,
     engineClient: new EngineClient({
       tenant_id: ctx.tenant_id,
       actor_id: ctx.user_id,
@@ -114,9 +114,9 @@ describe("request_connector_reauth + credential re-issue", () => {
     expect(saveData.credential_persisted).toBe(true);
     const credRows = await ctx.testDb.db
       .select()
-      .from(credentials)
+      .from(vaultItems)
       .where(
-        and(eq(credentials.tenant_id, ctx.tenant_id), eq(credentials.connector_id, connectorId)),
+        and(eq(vaultItems.tenant_id, ctx.tenant_id), eq(vaultItems.connector_id, connectorId)),
       );
     expect(credRows.length).toBeGreaterThan(0);
 
@@ -151,7 +151,7 @@ describe("request_connector_reauth + credential re-issue", () => {
       actor_id: ctx.user_id,
       connector_id: null,
       workflow_id: null,
-      permission_mode: null,
+      ask_before_writing: true,
       engineClient: new EngineClient({
         tenant_id: "00000000-0000-0000-0000-000000000000",
         actor_id: ctx.user_id,
@@ -203,7 +203,7 @@ describe("request_connector_reauth + credential re-issue", () => {
       actor_id: member.id,
       connector_id: null,
       workflow_id: null,
-      permission_mode: null,
+      ask_before_writing: true,
       engineClient: new EngineClient({
         tenant_id: ctx.tenant_id,
         actor_id: member.id,

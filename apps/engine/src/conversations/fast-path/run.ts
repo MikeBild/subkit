@@ -9,9 +9,9 @@ import {
   type RunGrant,
   type RunRefusal,
 } from "../../execution/use-cases/run-workflow.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { confirmEnvelopeFor } from "../../tools/policy.ts";
-import type { PermissionMode, ToolPolicies } from "../../tools/types.ts";
+import type { ToolPolicies } from "../../tools/types.ts";
 import { resolveWorkflowReviewEnvironment } from "../../workflows/execution-environment.ts";
 import { resolveWorkflowInputContract } from "../../workflows/input-schema-synth.ts";
 import { resolveWorkflowByIdOrSlug } from "../../workflows/lookup.ts";
@@ -28,9 +28,7 @@ import {
   runNextActions,
   runReply,
 } from "../core/fast-path.ts";
-import { loadDraft } from "../draft.ts";
 import type { RenderPayload } from "../fast-path-lists.ts";
-import { getStoredPermissionMode } from "../service/shared.ts";
 import { getToolPolicies } from "../tool-policies.ts";
 import type { ToolCallOutcome } from "../tools/result-payload.ts";
 import { prepareGate } from "../tools/sdk-wrap/gate-subjects.ts";
@@ -89,16 +87,9 @@ async function fastPathEnvironment(
 
 async function conversationPolicy(
   p: FastPathParams,
-): Promise<{ permission_mode: PermissionMode | null; overrides: ToolPolicies }> {
-  const [draft, overrides] = await Promise.all([
-    loadDraft(p.tenant_id, p.conversation_id, p.db),
-    getToolPolicies(p.db, p.tenant_id, p.conversation_id),
-  ]);
-  return {
-    permission_mode:
-      p.permission_mode === undefined ? getStoredPermissionMode(draft) : p.permission_mode,
-    overrides,
-  };
+): Promise<{ ask_before_writing: boolean; overrides: ToolPolicies }> {
+  const overrides = await getToolPolicies(p.db, p.tenant_id, p.conversation_id);
+  return { ask_before_writing: p.ask_before_writing === true, overrides };
 }
 
 async function executeRunWorkflow(
@@ -260,7 +251,7 @@ export async function runPhase(p: FastPathParams, slugOrId: string): Promise<Fas
   const runArgs = { workflow: resolved.slug, environment };
   if (grant.kind === "rejected") return denyRun(p, runArgs, grant);
   const policy = await conversationPolicy(p);
-  const coverage = await loadRunCoverage(p.db, policy.permission_mode, () =>
+  const coverage = await loadRunCoverage(p.db, policy.ask_before_writing, () =>
     workflowConfirmOverride(policy.overrides, resolved.slug)
       ? null
       : {
@@ -276,7 +267,7 @@ export async function runPhase(p: FastPathParams, slugOrId: string): Promise<Fas
     surface: gateSurface,
     args: runArgs,
     overrides: policy.overrides,
-    permission_mode: policy.permission_mode,
+    ...(policy.ask_before_writing ? { ask_before_writing: true } : {}),
     ...(coverage.covered ? { authority_covered: true } : {}),
     db: p.db,
     tenant_id: p.tenant_id,

@@ -1,6 +1,6 @@
 import type { Hono, MiddlewareHandler } from "hono";
 import { canonicalBrowserPath } from "../../auth/browser-session.ts";
-import { errorFields, logger } from "../../logging/logger.ts";
+import { errorFields, logger } from "../../logging/index.ts";
 import { emitResourceChange, type ResourceChangeType } from "../../pubsub/index.ts";
 import type { AppEnv } from "../openapi.ts";
 

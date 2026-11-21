@@ -7,7 +7,7 @@ import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import { type ListResult, resolveWindowTotal, totalOverWindow } from "../db/list-result.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
-import { log } from "../logging/logger.ts";
+import { log } from "../logging/index.ts";
 import { carryApprovalsForward } from "./authority-inheritance.ts";
 import { workflowJsonDigest } from "./canonical-json.ts";
 import { toStoredDefinition } from "./core/definition.ts";

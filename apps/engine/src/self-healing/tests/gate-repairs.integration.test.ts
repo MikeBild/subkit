@@ -60,7 +60,6 @@ async function seed() {
         id: "send_email",
         method: "POST",
         url: GMAIL_SEND_TARGET,
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow substitution
         body: { raw: "${scope.compose.data.raw}" },
         report_delivery: {
           kind: "gmail_report",
@@ -287,7 +286,6 @@ test("a contradicted declaration on a connector-backed send is declared from wha
         connector_id: gmail.id,
         method: "POST",
         path: "/gmail/v1/users/me/messages/send",
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow substitution
         body: { raw: "${scope.compose.data.raw}" },
         report_delivery: {
           kind: "gmail_report",
@@ -442,7 +440,6 @@ test("a declaration is never copied from what another version observed", async (
         id: "send_email",
         method: "POST",
         url: GMAIL_SEND_TARGET,
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow substitution
         body: { raw: "${scope.compose.data.raw}" },
         report_delivery: {
           kind: "gmail_report",

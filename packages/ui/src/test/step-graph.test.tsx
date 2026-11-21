@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { StepGraph, stepGraphTier } from "@ui/components/proto/visual";
+import { StepGraph, stepGraphTier } from "@ui/organisms/step-graph";
 import { renderToStaticMarkup } from "react-dom/server";
 
 const steps = (count: number) =>

@@ -30,6 +30,7 @@ export const tasks = pgTable(
     owner_id: uuid("owner_id").notNull(),
     goal: text("goal").notNull(),
     done_when: text("done_when").notNull(),
+    goal_edited_by: uuid("goal_edited_by"),
     plan: jsonb("plan").$type<Record<string, unknown>>().notNull(),
     bindings: jsonb("bindings")
       .$type<{

@@ -28,8 +28,8 @@ describe("audit writer — metadata scrubbing", () => {
     const entry = await auditAwait(
       {
         tenant_id: tenantId,
-        action: "credential.created",
-        resource_type: "credential",
+        action: "vault.item.created",
+        resource_type: "vault_item",
         resource_id: "cred-1",
         result: "success",
         reason: `operator pasted ${pat} into the form`,

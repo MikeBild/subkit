@@ -1,4 +1,4 @@
-import { log } from "../../logging/logger.ts";
+import { log } from "../../logging/index.ts";
 import { getDriverFetch, withDriverFetch } from "../drivers/fetch-seam.ts";
 import { validateOutboundHeaders } from "../drivers/http.ts";
 import { scrubUrl } from "../egress.ts";

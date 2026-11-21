@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { DocsBundleSchema } from "@shared/llms-index.ts";
 import { _resetConfigForTests, loadConfig } from "../../config/loader.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { DOCS_IMAGES } from "../docs-images-embedded.ts";
 import { type AppEnv, OPENAPI_INFO } from "../openapi.ts";
 import { registerDocsImageRoutes } from "./docs-images.ts";
@@ -154,8 +155,8 @@ describe("GET /docs.json", () => {
   });
 
   test("a production engine lists only the production sign-in target", async () => {
-    const before = process.env.NODE_ENV;
-    process.env.NODE_ENV = "production";
+    const before = testEnv.NODE_ENV;
+    testEnv.NODE_ENV = "production";
     try {
       const descriptor = (await (
         await buildApp().request("/.well-known/service-descriptor.json")
@@ -163,8 +164,8 @@ describe("GET /docs.json", () => {
       expect(descriptor.clients.desktop.login.callback).toBe("subkit://callback");
       expect(descriptor.clients.desktop.login.callbacks).toEqual(["subkit://callback"]);
     } finally {
-      if (before === undefined) delete process.env.NODE_ENV;
-      else process.env.NODE_ENV = before;
+      if (before === undefined) delete testEnv.NODE_ENV;
+      else testEnv.NODE_ENV = before;
     }
   });
 

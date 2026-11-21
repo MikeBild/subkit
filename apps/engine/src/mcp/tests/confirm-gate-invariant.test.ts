@@ -26,7 +26,6 @@ function isConfirmCapable(tool: string, category: ToolCategory): boolean {
         category,
         input,
         overrides: {},
-        permission_mode: null,
       }).mode === "confirm_before_execution",
   );
 }
@@ -55,7 +54,6 @@ describe("confirm-gate invariant — every MCP-reachable confirm-capable tool ad
           category,
           input: args,
           overrides: {},
-          permission_mode: null,
         });
         if (mode.mode === "confirm_before_execution") {
           expect(policyDecide({ tool: name, category, surface: "mcp", args }).kind).toBe(

@@ -1,7 +1,7 @@
+import { IconButton } from "@ui/molecules/icon-button";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@ui/molecules/input-group";
 import { Copy } from "lucide-react";
 import { toast } from "sonner";
-import { IconButton } from "@/components/cockpit/icon-button";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { reportFailure } from "@/lib/action-failure";
 import { useI18n } from "@/lib/i18n-context";
 

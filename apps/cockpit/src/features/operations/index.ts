@@ -1,4 +1,3 @@
-export { ApprovalLimitsFields } from "./approval-limits";
 export {
   type ApprovalLimits,
   approvalBounds,
@@ -23,8 +22,10 @@ export {
   runTone,
   runTrend,
   successTrend,
-  type Tone,
-} from "./model";
+} from "@/features/operations/model/operations";
+export { ApprovalLimitsFields } from "./approval-limits";
+export { DeviceStepTimeline } from "./DeviceStepTimeline";
+export { type DeviceStepRecord, deviceStepRows } from "./device-steps-model";
 export { type KpiCard, NeedRow, NeedsAllClear, OverviewKpis, RunRow } from "./Overview";
 export { PairApprovalCard, PairLinkNotice } from "./PairApproval";
 export {
@@ -52,6 +53,13 @@ export {
 } from "./pair-model";
 export { RunResultDocument, RunStepGraph, RunWhy } from "./RunResult";
 export { ScheduleHistory } from "./ScheduleHistory";
+export {
+  kpiCards,
+  RepairRequiredHint,
+  useOperationsFigures,
+  useRepairRequiredCount,
+} from "./ui/operations-bar";
+export { useDeviceSteps } from "./use-device-steps";
 export { pairKeys, usePairApprovals, usePairVisibility } from "./use-pair";
 export {
   type ApprovalRow,

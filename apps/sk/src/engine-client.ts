@@ -39,6 +39,7 @@ import { settingsMethods } from "./engine-client/settings.ts";
 import { skillsMethods } from "./engine-client/skills.ts";
 import { statsMethods } from "./engine-client/stats.ts";
 import { tasksMethods } from "./engine-client/tasks.ts";
+import { vaultMethods } from "./engine-client/vault.ts";
 import { workflowsMethods } from "./engine-client/workflows.ts";
 
 export type { AppCheck, AppSummary, AppView } from "./engine-client/apps.ts";
@@ -652,6 +653,7 @@ export interface EngineClient
     ApiMethods<typeof skillsMethods>,
     ApiMethods<typeof statsMethods>,
     ApiMethods<typeof tasksMethods>,
+    ApiMethods<typeof vaultMethods>,
     ApiMethods<typeof workflowsMethods> {}
 
 Object.assign(
@@ -678,5 +680,6 @@ Object.assign(
   skillsMethods,
   statsMethods,
   tasksMethods,
+  vaultMethods,
   workflowsMethods,
 );

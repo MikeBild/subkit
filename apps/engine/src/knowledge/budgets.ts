@@ -1,11 +1,11 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { knowledgeSources } from "../db/schema/knowledge_sources.ts";
-import { envIntOr } from "../utils/env-config.ts";
+import { envInt } from "../env.ts";
 
-export const KNOWLEDGE_SOURCE_MAX_BYTES = envIntOr("KNOWLEDGE_SOURCE_MAX_BYTES", 50 * 1024 * 1024);
+export const KNOWLEDGE_SOURCE_MAX_BYTES = envInt("KNOWLEDGE_SOURCE_MAX_BYTES", 50 * 1024 * 1024);
 
-const KNOWLEDGE_TENANT_MAX_BYTES = envIntOr("KNOWLEDGE_TENANT_MAX_BYTES", 500 * 1024 * 1024);
+const KNOWLEDGE_TENANT_MAX_BYTES = envInt("KNOWLEDGE_TENANT_MAX_BYTES", 500 * 1024 * 1024);
 
 export class KnowledgeBudgetExceededError extends Error {
   readonly bytes_used: number;

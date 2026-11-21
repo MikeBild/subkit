@@ -19,7 +19,7 @@ Du arbeitest im Cockpit im Browser, als installierte App oder im Programm SubKit
 ![Übersicht mit Kennzahlen zu Runs, Erfolgsquote, Connector-Zustand und Kosten, der Liste „Braucht dich“ mit offenen Entscheidungen und den letzten fehlgeschlagenen Runs](images/intro-overview.de.webp)
 
 Die **Übersicht** zeigt dir auf einen Blick, was gelaufen ist, was gescheitert ist und was auf deine Entscheidung wartet.
-Wie du Kosten und Kontingent verfolgst, steht in „Nutzung und Kosten im Blick“.
+Wie du Kosten und das KI-Budget verfolgst, steht in „Nutzung und Kosten im Blick“.
 
 Nutze SubKit Cloud oder betreibe deine eigene Engine:
 

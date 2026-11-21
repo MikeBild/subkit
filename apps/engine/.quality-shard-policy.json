@@ -11,7 +11,7 @@
     },
     {
       "id": "cockpit",
-      "resource_tags": []
+      "resource_tags": ["db", "ports", "global-state"]
     },
     {
       "id": "connectors",
@@ -26,7 +26,15 @@
       "resource_tags": ["db", "ports", "global-state"]
     },
     {
+      "id": "devices",
+      "resource_tags": ["db", "ports", "global-state"]
+    },
+    {
       "id": "execution",
+      "resource_tags": ["db", "ports", "global-state"]
+    },
+    {
+      "id": "feedback",
       "resource_tags": ["db", "ports", "global-state"]
     },
     {
@@ -35,6 +43,10 @@
     },
     {
       "id": "knowledge",
+      "resource_tags": ["db", "ports", "global-state"]
+    },
+    {
+      "id": "llm",
       "resource_tags": ["db", "ports", "global-state"]
     },
     {
@@ -63,6 +75,10 @@
     },
     {
       "id": "tasks",
+      "resource_tags": ["db", "ports", "global-state"]
+    },
+    {
+      "id": "vault",
       "resource_tags": ["db", "ports", "global-state"]
     },
     {

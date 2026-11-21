@@ -123,6 +123,22 @@
             "input": {}
           }
         ]
+      },
+      {
+        "id": "local_steps",
+        "events": [
+          {
+            "user_turn": "Erstelle einen Workflow, der die Wochenzusammenfassung in einen lokalen Ordner auf meinem Mac schreibt und danach im Browser den Bericht herunterlädt",
+            "first_turn": true
+          },
+          {
+            "tool": "author_workflow",
+            "input": {
+              "goal": "Write the weekly summary into a folder on this device, then download the report in the browser.",
+              "connector_slugs": ["device-mac-files", "device-mac-browser"]
+            }
+          }
+        ]
       }
     ],
     "rules": [
@@ -252,6 +268,22 @@
         "category": "consistency",
         "phases": ["save", "sensitive_preview"],
         "fragments": ["a failed check blocks the save and cannot be forced"]
+      },
+      {
+        "id": "local_step_bodies",
+        "category": "convention",
+        "phases": ["local_steps"],
+        "fragments": [
+          "Reading actions use `GET`",
+          "Name an element as `element: {role, name, nth?}`",
+          "Never write a ref such as `e12`"
+        ]
+      },
+      {
+        "id": "local_steps_not_in_called_workflows",
+        "category": "contradiction",
+        "phases": ["local_steps"],
+        "fragments": ["A workflow called by another workflow refuses local steps"]
       }
     ],
     "controls": {

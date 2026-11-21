@@ -35,38 +35,38 @@ export function makeTestPrincipal(overrides: Partial<ResolvedPrincipal> = {}): R
     permission_grants: [],
     role_ids: [],
     api_key_id: null,
-    // biome-ignore lint/suspicious/noExplicitAny: ResolvedPrincipal carries fields the dispatcher never reads; fill at boundary
-    ...(overrides as any),
-    // biome-ignore lint/suspicious/noExplicitAny: stub
-  } as any;
+    ...overrides,
+  } as unknown as ResolvedPrincipal;
+}
+
+interface StubChain {
+  set(): StubChain;
+  where(): StubChain;
+  returning(): Promise<unknown[]>;
 }
 
 interface StubDbCapture {
   inserts: Array<{
-    action?: string;
-    resource_type?: string;
-    resource_id?: string;
-    tenant_id?: string;
+    action: string | undefined;
+    resource_type: string | undefined;
+    resource_id: string | undefined;
+    tenant_id: string | undefined;
   }>;
 }
 
 export function makeStubDb(): { db: Db; capture: StubDbCapture } {
   const capture: StubDbCapture = { inserts: [] };
-  // biome-ignore lint/suspicious/noExplicitAny: drizzle chain shape
-  const emptyUpdate: any = {
+  const emptyUpdate: StubChain = {
     set: () => emptyUpdate,
     where: () => emptyUpdate,
     returning: () => Promise.resolve([]),
   };
-  // biome-ignore lint/suspicious/noExplicitAny: drizzle Db shape
-  const db: any = {
-    // biome-ignore lint/suspicious/noExplicitAny: transaction wrapper
-    transaction: async (fn: any) => fn(db),
+  const db: Record<string, unknown> = {
+    transaction: async (fn: (tx: unknown) => unknown) => fn(db),
     select: (...args: Parameters<Db["select"]>) => policyFixture.db.select(...args),
     update: () => emptyUpdate,
     insert: () => ({
-      // biome-ignore lint/suspicious/noExplicitAny: drizzle insert chain
-      values: (row: any) => {
+      values: (row: Partial<Record<keyof StubDbCapture["inserts"][number], string>>) => {
         capture.inserts.push({
           action: row?.action,
           resource_type: row?.resource_type,
@@ -77,7 +77,7 @@ export function makeStubDb(): { db: Db; capture: StubDbCapture } {
       },
     }),
   };
-  return { db: db as Db, capture };
+  return { db: db as unknown as Db, capture };
 }
 
 export function makeStubCtx(opts: { db: Db; principal: ResolvedPrincipal }): ToolContext {
@@ -88,8 +88,7 @@ export function makeStubCtx(opts: { db: Db; principal: ResolvedPrincipal }): Too
     actor_id: opts.principal.id,
     connector_id: null,
     workflow_id: null,
-    // biome-ignore lint/suspicious/noExplicitAny: EngineClient stub
-    engineClient: {} as any,
+    engineClient: {} as ToolContext["engineClient"],
     getDraft: () => ({ workflow: { name: "", steps: [] } }),
     setDraft: async () => {},
   } as ToolContext;

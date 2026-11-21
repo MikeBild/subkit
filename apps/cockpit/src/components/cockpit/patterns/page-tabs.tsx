@@ -1,7 +1,8 @@
 import { useRouter, useRouterState } from "@tanstack/react-router";
+import { Skeleton } from "@ui/atoms/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@ui/molecules/tabs";
 import { type ReactNode, useEffect, useState } from "react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loadable, RowsSkeleton, Skeleton } from "./skeleton";
+import { Loadable, RowsSkeleton } from "./skeleton";
 
 export interface PageTab {
   value: string;

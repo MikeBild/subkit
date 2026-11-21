@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import type { Db } from "../../../db/client.ts";
-import { credentials, outboundConnections } from "../../../db/schema/index.ts";
+import { outboundConnections, vaultItems } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { seedConnector, seedTenant } from "../../../test-helpers/seed.ts";
 import { staticToolProvider } from "../../../tools/providers/static.ts";
@@ -110,7 +110,7 @@ beforeAll(async () => {
     created_at: new Date("2026-01-02T12:00:00.000Z"),
     updated_at: new Date("2026-01-02T12:00:00.000Z"),
   });
-  await db.insert(credentials).values({
+  await db.insert(vaultItems).values({
     tenant_id: tenantId,
     connector_id: user.id,
     environment: "prod",

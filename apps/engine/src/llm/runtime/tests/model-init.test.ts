@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { MockLanguageModelV4 } from "ai/test";
 import { _resetConfigForTests, loadConfig, setConfigKey } from "../../../config/loader.ts";
 import { withContext } from "../../../logging/context.ts";
+import { testEnv } from "../../../test-helpers/determinism/env.ts";
 import {
   buildAnthropicWebSearchTool,
   detectConfiguredProvider,
@@ -41,20 +42,20 @@ const TRACKED = [
 ] as const;
 
 function snapshotEnv() {
-  for (const k of TRACKED) SAVED_ENV[k] = process.env[k];
+  for (const k of TRACKED) SAVED_ENV[k] = testEnv[k];
 }
 function restoreEnv() {
   for (const k of TRACKED) {
     const v = SAVED_ENV[k];
     if (v === undefined) {
-      delete process.env[k];
+      delete testEnv[k];
     } else {
-      process.env[k] = v;
+      testEnv[k] = v;
     }
   }
 }
 function clearEnv() {
-  for (const k of TRACKED) delete process.env[k];
+  for (const k of TRACKED) delete testEnv[k];
 }
 
 const OPENAI_CHAT_TRANSPORT = "openai.chat";
@@ -81,7 +82,7 @@ describe("initializeModel", () => {
   });
 
   it("returns the mock sentinel when LLM_PROVIDER=mock", async () => {
-    process.env.LLM_PROVIDER = "mock";
+    testEnv.LLM_PROVIDER = "mock";
     const r = await initializeModel();
     expect(r.provider).toBe("mock");
     expect(r.model).toBe("mock:never-dispatched");
@@ -102,10 +103,10 @@ describe("initializeModel", () => {
   });
 
   it("prefers gateway mode when both gateway vars are set", async () => {
-    process.env.LLM_PROVIDER = "anthropic";
-    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
-    process.env.AI_GATEWAY_API_KEY = "gw-key";
-    process.env.AI_GATEWAY_MODEL = "anthropic/claude-sonnet-4-5";
+    testEnv.LLM_PROVIDER = "anthropic";
+    testEnv.ANTHROPIC_API_KEY = "sk-ant-test";
+    testEnv.AI_GATEWAY_API_KEY = "gw-key";
+    testEnv.AI_GATEWAY_MODEL = "anthropic/claude-sonnet-4-5";
     const r = await initializeModel();
     expect(r.provider).toBe("gateway");
     expect(r.modelId).toBe("anthropic/claude-sonnet-4-5");
@@ -113,9 +114,9 @@ describe("initializeModel", () => {
   });
 
   it("returns a direct anthropic model when LLM_PROVIDER=anthropic", async () => {
-    process.env.LLM_PROVIDER = "anthropic";
-    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
-    process.env.ANTHROPIC_MODEL = "claude-sonnet-4-5";
+    testEnv.LLM_PROVIDER = "anthropic";
+    testEnv.ANTHROPIC_API_KEY = "sk-ant-test";
+    testEnv.ANTHROPIC_MODEL = "claude-sonnet-4-5";
     const r = await initializeModel();
     expect(r.provider).toBe("anthropic");
     expect(r.modelId).toBe("claude-sonnet-4-5");
@@ -123,9 +124,9 @@ describe("initializeModel", () => {
   });
 
   it("returns a direct openai model when LLM_PROVIDER=openai", async () => {
-    process.env.LLM_PROVIDER = "openai";
-    process.env.OPENAI_API_KEY = "sk-openai-test";
-    process.env.OPENAI_MODEL = "gpt-4.1";
+    testEnv.LLM_PROVIDER = "openai";
+    testEnv.OPENAI_API_KEY = "sk-openai-test";
+    testEnv.OPENAI_MODEL = "gpt-4.1";
     const r = await initializeModel();
     expect(r.provider).toBe("openai");
     expect(r.modelId).toBe("gpt-4.1");
@@ -133,10 +134,10 @@ describe("initializeModel", () => {
   });
 
   it("pins chat completions for an OpenAI-compatible custom base URL", async () => {
-    process.env.LLM_PROVIDER = "openai";
-    process.env.OPENAI_API_KEY = "sk-compat-test";
-    process.env.OPENAI_MODEL = "qwen-3-32b";
-    process.env.OPENAI_BASE_URL = "https://llm.internal.example/v1";
+    testEnv.LLM_PROVIDER = "openai";
+    testEnv.OPENAI_API_KEY = "sk-compat-test";
+    testEnv.OPENAI_MODEL = "qwen-3-32b";
+    testEnv.OPENAI_BASE_URL = "https://llm.internal.example/v1";
     const r = await initializeModel();
     expect(r.provider).toBe("openai");
     expect(r.modelId).toBe("qwen-3-32b");
@@ -144,17 +145,17 @@ describe("initializeModel", () => {
   });
 
   it("keeps the Responses API for real OpenAI (no base URL) — no regression", async () => {
-    process.env.LLM_PROVIDER = "openai";
-    process.env.OPENAI_API_KEY = "sk-openai-test";
-    process.env.OPENAI_MODEL = "gpt-4.1";
+    testEnv.LLM_PROVIDER = "openai";
+    testEnv.OPENAI_API_KEY = "sk-openai-test";
+    testEnv.OPENAI_MODEL = "gpt-4.1";
     const r = await initializeModel();
     expect(modelTransport(r.model)).toBe(OPENAI_RESPONSES_TRANSPORT);
   });
 
   it("honours providerOverride over env-driven gateway selection", async () => {
-    process.env.AI_GATEWAY_API_KEY = "gw-key";
-    process.env.AI_GATEWAY_MODEL = "anthropic/claude-sonnet-4-5";
-    process.env.OPENAI_API_KEY = "sk-openai-test";
+    testEnv.AI_GATEWAY_API_KEY = "gw-key";
+    testEnv.AI_GATEWAY_MODEL = "anthropic/claude-sonnet-4-5";
+    testEnv.OPENAI_API_KEY = "sk-openai-test";
     const r = await initializeModel({
       providerOverride: "openai",
       modelOverride: "gpt-4.1",
@@ -165,14 +166,14 @@ describe("initializeModel", () => {
   });
 
   it("throws when gateway is selected but AI_GATEWAY_MODEL is missing", async () => {
-    process.env.AI_GATEWAY_API_KEY = "gw-key";
+    testEnv.AI_GATEWAY_API_KEY = "gw-key";
     await expect(initializeModel({ providerOverride: "gateway" })).rejects.toBeInstanceOf(
       ProviderMisconfiguredError,
     );
   });
 
   it("throws when LLM_PROVIDER is set but the matching key is missing", async () => {
-    process.env.LLM_PROVIDER = "anthropic";
+    testEnv.LLM_PROVIDER = "anthropic";
     await expect(initializeModel()).rejects.toBeInstanceOf(ProviderMisconfiguredError);
   });
 
@@ -181,10 +182,10 @@ describe("initializeModel", () => {
   });
 
   it("honours providerEnvVar override for mock", async () => {
-    process.env.CUSTOM_PROVIDER = "mock";
-    const r = await initializeModel({ providerEnvVar: "CUSTOM_PROVIDER" });
+    testEnv.SUMMARIZE_LLM_PROVIDER = "mock";
+    const r = await initializeModel({ providerEnvVar: "SUMMARIZE_LLM_PROVIDER" });
     expect(r.provider).toBe("mock");
-    delete process.env.CUSTOM_PROVIDER;
+    delete testEnv.SUMMARIZE_LLM_PROVIDER;
   });
 
   it("uses tenant-effective provider selection and credentials", async () => {
@@ -244,15 +245,15 @@ describe("initializeModel", () => {
   });
 
   it("does not fall back to legacy env vars after config has explicitly cleared a leaf", async () => {
-    process.env.LLM_PROVIDER = "anthropic";
-    process.env.ANTHROPIC_API_KEY = "env-ant-key";
+    testEnv.LLM_PROVIDER = "anthropic";
+    testEnv.ANTHROPIC_API_KEY = "env-ant-key";
     configDir = mkdtempSync(join(tmpdir(), "sk-model-init-cleared-"));
     await loadConfig({
       env: {
         DATABASE_URL: "postgres://x",
         NODE_ENV: "test",
-        ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
-        LLM_PROVIDER: process.env.LLM_PROVIDER,
+        ANTHROPIC_API_KEY: testEnv.ANTHROPIC_API_KEY,
+        LLM_PROVIDER: testEnv.LLM_PROVIDER,
       },
       configPathOverride: join(configDir, "subkit.config.json"),
     });

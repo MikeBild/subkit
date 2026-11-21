@@ -1,5 +1,5 @@
 import { SpanStatusCode, trace } from "@opentelemetry/api";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { isTracingActive } from "./tracing.ts";
 
 const SENSITIVE_KEY_SUBSTRINGS = [

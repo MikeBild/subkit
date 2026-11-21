@@ -10,7 +10,7 @@ import {
   users,
 } from "../../db/schema/index.ts";
 import { createUser, deactivateUser } from "../../identity/provisioning.ts";
-import { LlmProviderError, LlmQuotaExhausted } from "../../llm/errors.ts";
+import { LlmProviderError, LlmSpendLimitReached } from "../../llm/errors.ts";
 import { abortTaskRun, loadTaskOwner, pauseTask, resumeTask } from "../../tasks/index.ts";
 import {
   advanceTaskRun,
@@ -168,7 +168,7 @@ describe("task.run-turn maps what happens in a turn to the run", () => {
     const broke = await freshRun();
     await workQueuedTurn({
       runTurn: async () => {
-        throw new LlmQuotaExhausted();
+        throw new LlmSpendLimitReached();
       },
     });
     expect(await runRow(broke.w, broke.run.id)).toMatchObject({
@@ -389,7 +389,7 @@ describe("task.run-turn maps what happens in a turn to the run", () => {
     const { w, run } = await freshRun();
     await workQueuedTurn({
       runTurn: async () => {
-        throw new LlmQuotaExhausted();
+        throw new LlmSpendLimitReached();
       },
     });
     expect((await runRow(w, run.id)).waiting_reason).toBe("budget");

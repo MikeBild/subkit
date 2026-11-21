@@ -2,11 +2,11 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq, sql } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import { files, packageInstalls } from "../../db/schema/index.ts";
+import { runFilesCleanup } from "../../files/scheduled/files-cleanup-runner.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
 import { PACKAGE_CONTENT_TYPE } from "../../identity/portability/format.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
-import { runFilesCleanup } from "../files-cleanup-runner.ts";
 import { createFilesCleanupBoss, disposeBoss } from "./pgboss-bootstrap.ts";
 
 const uuid = createDeterministicUuidFactory(0xface0a);

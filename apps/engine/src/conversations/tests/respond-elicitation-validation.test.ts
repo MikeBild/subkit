@@ -9,6 +9,7 @@ import {
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { createElicitation, getElicitation } from "../elicitations.ts";
 import { PlaybookDocumentSchema } from "../playbook-contract.ts";
@@ -20,7 +21,7 @@ let tenant_id: string;
 const uuid = createDeterministicUuidFactory(0x9e1_1c17);
 
 beforeAll(async () => {
-  process.env.LLM_PROVIDER = "mock";
+  testEnv.LLM_PROVIDER = "mock";
   resetMockProvider();
   testDb = await createTestDb("respond_elicitation_validation");
 

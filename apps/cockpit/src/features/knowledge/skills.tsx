@@ -1,12 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { ConfirmDialog } from "@ui/components/proto/ConfirmDialog";
-import { ErrorNotice, ErrorState, FieldError } from "@ui/components/proto/ErrorNotice";
-import { MarkdownDocument } from "@ui/components/proto/MarkdownDocument";
-import { MarkdownEditor } from "@ui/components/proto/MarkdownEditor";
-import { PageHeader } from "@ui/components/proto/Pill";
-import { EmptyState, IconTile, StatusStrip } from "@ui/components/proto/visual";
-import { Checkbox } from "@ui/components/ui/checkbox";
+import { Checkbox } from "@ui/atoms/checkbox";
+import { IconTile } from "@ui/atoms/icon-tile";
+import { listPageFailure } from "@ui/lib/errors";
+import { cn } from "@ui/lib/utils";
+import { DropdownMenuItem } from "@ui/molecules/dropdown-menu";
+import { EmptyState } from "@ui/molecules/empty-state";
+import { ErrorNotice, ErrorState, FieldError } from "@ui/molecules/error-notice";
+import { PageHeader } from "@ui/molecules/page-header";
+import { StatusStrip } from "@ui/molecules/status-strip";
+import { ConfirmDialog } from "@ui/organisms/confirm-dialog";
 import {
   Dialog,
   DialogContent,
@@ -14,10 +17,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@ui/components/ui/dialog";
-import { DropdownMenuItem } from "@ui/components/ui/dropdown-menu";
-import { listPageFailure } from "@ui/lib/errors";
-import { cn } from "@ui/lib/utils";
+} from "@ui/organisms/dialog";
+import { dialogWidthClass } from "@ui/organisms/dialog-frame";
+import { MarkdownDocument } from "@ui/organisms/markdown-document";
+import { MarkdownEditor } from "@ui/organisms/markdown-editor";
 import { ArrowLeft, Check, FileText, Pencil, Plus, Power, Sparkles, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -33,33 +36,12 @@ import { actorDirectoryName, actorLabel } from "@/app/actor-directory-model";
 import { recordHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { useDirtyGuard } from "@/app/version-notice";
-import { CatalogPurpose } from "@/components/cockpit/catalog-metadata";
 import { Button, Input, Label } from "@/components/cockpit/patterns/controls";
-import { dialogWidthClass } from "@/components/cockpit/patterns/dialog-frame";
 import { Measured } from "@/components/cockpit/patterns/measure";
 import { tabFromSearch } from "@/components/cockpit/patterns/page-tabs";
 import { usePageFailure } from "@/components/cockpit/patterns/use-error-detail";
-import { SkillProposalSheet } from "@/components/cockpit/skill-proposal-sheet";
-import { reportFailure } from "@/lib/action-failure";
-import { useI18n } from "@/lib/i18n-context";
-import { keptVersionCount } from "@/lib/knowledge-versions-model";
-import { plural } from "@/lib/plural";
-import { hideTechnicalIdentifiers } from "@/lib/presentation";
-import {
-  approvalSummary,
-  type CandidateRow,
-  candidateExcerpt,
-  candidateRows,
-  type DecidedCandidate,
-  type DecisionSummary,
-  rejectionSummary,
-  selectableCandidate,
-  withDecisions,
-} from "@/lib/skill-candidates-model";
-import { isDetectedPattern, mayApproveProposal } from "@/lib/skill-proposal-model";
-import { skillHistoryGap, skillScopeKey, skillVersionRows } from "@/lib/skills-model";
-import { humanizeCategory } from "@/lib/workflow-category";
-import { categoryCounts, createdByMatches, sortRows } from "./list-model";
+import { CatalogPurpose } from "@/features/catalog";
+import { SkillProposalSheet } from "@/features/decisions";
 import {
   groupBy,
   matches,
@@ -70,7 +52,34 @@ import {
   skillDraftChanges,
   skillDraftErrors,
   skillView,
-} from "./model";
+} from "@/features/knowledge/model/knowledge";
+import { keptVersionCount } from "@/features/knowledge/model/knowledge-versions-model";
+import {
+  approvalSummary,
+  type CandidateRow,
+  candidateExcerpt,
+  candidateRows,
+  type DecidedCandidate,
+  type DecisionSummary,
+  rejectionSummary,
+  selectableCandidate,
+  withDecisions,
+} from "@/features/knowledge/model/skill-candidates-model";
+import {
+  isDetectedPattern,
+  mayApproveProposal,
+} from "@/features/knowledge/model/skill-proposal-model";
+import {
+  skillHistoryGap,
+  skillScopeKey,
+  skillVersionRows,
+} from "@/features/knowledge/model/skills-model";
+import { humanizeCategory } from "@/features/workflows/model";
+import { reportFailure } from "@/lib/action-failure";
+import { useI18n } from "@/lib/i18n-context";
+import { plural } from "@/lib/plural";
+import { hideTechnicalIdentifiers } from "@/lib/presentation";
+import { categoryCounts, createdByMatches, sortRows } from "./list-model";
 import { KEYS, useMarkdownRefs, useRefreshKnowledge, useSkills } from "./queries";
 import {
   ChatMenu,
@@ -583,6 +592,7 @@ export function SkillCandidatesPage() {
         }}
       />
       <ConfirmDialog
+        testId="kn-skill-decision-confirm"
         open={confirm !== null}
         onOpenChange={(v) => !v && setConfirm(null)}
         title={t(
@@ -591,8 +601,10 @@ export function SkillCandidatesPage() {
             n: chosen.length,
           },
         )}
-        body={t(confirm === "approve" ? "kn.skills.cand.approveBody" : "kn.skills.cand.rejectBody")}
-        action={t(confirm === "approve" ? "kn.skills.accept" : "kn.skills.drop")}
+        consequence={t(
+          confirm === "approve" ? "kn.skills.cand.approveBody" : "kn.skills.cand.rejectBody",
+        )}
+        confirmLabel={t(confirm === "approve" ? "kn.skills.accept" : "kn.skills.drop")}
         onConfirm={() => {
           if (confirm === "approve") approve.mutate(chosen);
           else reject.mutate(chosen);
@@ -769,13 +781,15 @@ function SkillEditor({
         </form>
       </DialogContent>
       <ConfirmDialog
+        destructive
+        testId="kn-discard-confirm"
         open={leaving}
         onOpenChange={setLeaving}
         title={t("kn.discardTitle")}
-        body={t(changes === 1 ? "pattern.saveBar.unsaved.one" : "pattern.saveBar.unsaved", {
+        consequence={t(changes === 1 ? "pattern.saveBar.unsaved.one" : "pattern.saveBar.unsaved", {
           count: changes,
         })}
-        action={t("common.discard")}
+        confirmLabel={t("common.discard")}
         onConfirm={() => {
           setLeaving(false);
           setF(initial ?? blank);

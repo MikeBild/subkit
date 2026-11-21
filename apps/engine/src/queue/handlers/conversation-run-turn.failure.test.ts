@@ -1,7 +1,7 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { deriveConversationOutcome } from "../../conversations/lifecycle-view.ts";
-import * as svc from "../../conversations/service.ts";
+import * as svc from "../../conversations/service/index.ts";
 import { auditLog, conversations, systemAccounts } from "../../db/schema/index.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import { getMcpTask, insertMcpTask, setMcpTaskFailure } from "../../mcp/tasks/store.ts";

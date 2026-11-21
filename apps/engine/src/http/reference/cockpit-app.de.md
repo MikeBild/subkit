@@ -65,17 +65,18 @@ Wann Benachrichtigungen kommen, legst du in „Benachrichtigungen und Ruhezeiten
 
 ### Web-App oder SubKit Desktop
 
-Neben der installierten Web-App gibt es SubKit Desktop, ein eigenes Programm für macOS, Windows und Linux. Beide zeigen dasselbe Cockpit deines Servers, und keine von beiden führt etwas auf deinem Gerät aus.
+Neben der installierten Web-App gibt es SubKit Desktop, eine Mac-App für Apple Silicon. Beide zeigen dasselbe Cockpit deines Servers. Nur SubKit Desktop kann außerdem mit Dateien, einem Browser und Apps auf deinem Mac arbeiten, und nur, wenn du es erlaubst.
 
 | | Installierte Web-App | SubKit Desktop |
 | --- | --- | --- |
 | Installation | Aus dem Browser, je Arbeitsbereich eine App | Ein Programm, je Server ein Profil |
-| Geräte | Rechner und Handy | Rechner |
+| Geräte | Rechner und Handy | Mac mit Apple Silicon |
 | Benachrichtigungen | Push über den Browser | Benachrichtigungen des Betriebssystems, solange das Programm läuft |
 | Ruhezeiten | Unter **Einstellungen › Einrichtung** | In den Einstellungen des Programms |
 | Symbol in der Menüleiste oder im Infobereich | Nein | Ja, mit der Zahl der offenen Punkte |
 | Beim Anmelden am Computer starten | Nein | Ja |
-| Inhalte aus anderen Apps teilen | Ja | Nein |
+| Inhalte aus anderen Apps teilen | Ja | Dateien auf die App oder ihr Symbol ziehen |
+| Dateien, Browser und Apps auf deinem Gerät | Nein | Ja, was du erlaubst |
 | Updates | Kommen mit dem Server | Eigene Updates des Programms |
 
 Mehr in „SubKit Desktop“.

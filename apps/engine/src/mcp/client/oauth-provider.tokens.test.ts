@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { credentials, mcpOauthStates } from "../../db/schema/index.ts";
+import { mcpOauthStates, vaultItems } from "../../db/schema/index.ts";
 import { makeMcpOAuthProvider } from "./oauth-provider.ts";
 import {
   ctx,
@@ -89,13 +89,13 @@ describe("McpDbOAuthClientProvider.saveClientInformation / clientInformation", (
     });
 
     const rows = await ctx.db
-      .select({ ciphertext: credentials.ciphertext })
-      .from(credentials)
+      .select({ ciphertext: vaultItems.ciphertext })
+      .from(vaultItems)
       .where(
         and(
-          eq(credentials.tenant_id, tenantA),
-          eq(credentials.connector_id, serverId),
-          eq(credentials.mode, "oauth2_client"),
+          eq(vaultItems.tenant_id, tenantA),
+          eq(vaultItems.connector_id, serverId),
+          eq(vaultItems.mode, "oauth2_client"),
         ),
       )
       .limit(1);
@@ -175,13 +175,13 @@ describe("McpDbOAuthClientProvider.saveTokens / tokens", () => {
     });
     const revision = async () => {
       const rows = await ctx.db
-        .select({ revision: credentials.authority_revision })
-        .from(credentials)
+        .select({ revision: vaultItems.authority_revision })
+        .from(vaultItems)
         .where(
           and(
-            eq(credentials.tenant_id, tenantA),
-            eq(credentials.connector_id, serverId),
-            eq(credentials.mode, "oauth2"),
+            eq(vaultItems.tenant_id, tenantA),
+            eq(vaultItems.connector_id, serverId),
+            eq(vaultItems.mode, "oauth2"),
           ),
         );
       return rows[0]?.revision;
@@ -245,20 +245,20 @@ describe("McpDbOAuthClientProvider.saveTokens / tokens", () => {
     });
 
     const rows = await ctx.db
-      .select({ id: credentials.id })
-      .from(credentials)
+      .select({ id: vaultItems.id })
+      .from(vaultItems)
       .where(
         and(
-          eq(credentials.tenant_id, tenantA),
-          eq(credentials.connector_id, serverId),
-          eq(credentials.mode, "oauth2"),
+          eq(vaultItems.tenant_id, tenantA),
+          eq(vaultItems.connector_id, serverId),
+          eq(vaultItems.mode, "oauth2"),
         ),
       )
       .limit(1);
     await ctx.db
-      .update(credentials)
+      .update(vaultItems)
       .set({ oauth2_expires_at: TOKEN_EXPIRED_AT })
-      .where(eq(credentials.id, rows[0]!.id));
+      .where(eq(vaultItems.id, rows[0]!.id));
 
     const t = await provider.tokens();
     expect(t).toBeDefined();
@@ -277,20 +277,20 @@ describe("McpDbOAuthClientProvider.saveTokens / tokens", () => {
     });
 
     const rows = await ctx.db
-      .select({ id: credentials.id })
-      .from(credentials)
+      .select({ id: vaultItems.id })
+      .from(vaultItems)
       .where(
         and(
-          eq(credentials.tenant_id, tenantA),
-          eq(credentials.connector_id, serverId),
-          eq(credentials.mode, "oauth2"),
+          eq(vaultItems.tenant_id, tenantA),
+          eq(vaultItems.connector_id, serverId),
+          eq(vaultItems.mode, "oauth2"),
         ),
       )
       .limit(1);
     await ctx.db
-      .update(credentials)
+      .update(vaultItems)
       .set({ oauth2_expires_at: TOKEN_EXPIRED_AT })
-      .where(eq(credentials.id, rows[0]!.id));
+      .where(eq(vaultItems.id, rows[0]!.id));
 
     const t = await provider.tokens();
     expect(t).toBeUndefined();

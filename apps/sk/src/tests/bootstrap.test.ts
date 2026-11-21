@@ -33,7 +33,6 @@ interface BootstrapResp {
   recent_sessions: Array<{ id: string; title: string | null; updated_at: string }>;
   flags: Record<string, boolean>;
   prefs: {
-    permissionMode: "ask" | "auto" | "plan" | "yolo";
     theme: "auto" | "light" | "dark" | "high-contrast";
     personality: "concise" | "balanced" | "verbose";
     titleFormat: "session-id" | "tenant-session" | "model-tenant-session";
@@ -88,7 +87,6 @@ const successResp: BootstrapResp = {
   recent_sessions: [],
   flags: {},
   prefs: {
-    permissionMode: "ask",
     theme: "auto",
     personality: "balanced",
     titleFormat: "session-id",

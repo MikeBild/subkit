@@ -3,7 +3,6 @@ import type React from "react";
 import type { EngineClient } from "../engine-client.ts";
 import { ConsentPrompt } from "../repl/components/ConsentPrompt.tsx";
 import { SettingsModal } from "../settings-ui/SettingsModal.tsx";
-import { PermissionsTab } from "../settings-ui/tabs/PermissionsTab.tsx";
 import { renderInk } from "./helpers/ink.tsx";
 
 function makeSkillsClient(
@@ -93,60 +92,6 @@ describe("SkillsTab — multi-select toggle (M6)", () => {
       await ui.type(" ");
       await ui.waitFor(() => archive.mock.calls.length > 0, { tries: 50, sleepMs: 5 });
       expect(archive.mock.calls.length).toBe(1);
-    } finally {
-      ui.unmount();
-    }
-  });
-});
-
-describe("PermissionsTab — radio with three options (rendered direct, M6)", () => {
-  test("renders three options with Default selected initially", async () => {
-    const ui = renderInk(<PermissionsTab />);
-    try {
-      await ui.waitFor((t) => t.includes("Permission mode"));
-      const txt = ui.text();
-      expect(txt).toContain("Default");
-      expect(txt).toContain("Auto-review");
-      expect(txt).toContain("Full Access");
-      expect(txt).toContain("(•) Default");
-    } finally {
-      ui.unmount();
-    }
-  });
-
-  test("arrow + enter selects a different option", async () => {
-    const ui = renderInk(<PermissionsTab />);
-    try {
-      await ui.waitFor((t) => t.includes("Permission mode"));
-      await ui.press("down");
-      await ui.press("enter");
-      await ui.waitFor((t) => t.includes("(•) Auto-review"));
-      expect(ui.text()).toContain("(•) Auto-review");
-    } finally {
-      ui.unmount();
-    }
-  });
-
-  test("Enter persists the choice via setSetting (G4 closure)", async () => {
-    const setSetting = mock(async () => ({ value: "auto", requiresRestart: false }));
-    const listSettings = mock(async () => ({
-      items: [],
-      diagnostics: { pending_restart_keys: [], override_keys: [] },
-    }));
-    const client = {
-      listSettings,
-      setSetting,
-    } as unknown as EngineClient;
-    const ui = renderInk(<PermissionsTab client={client} />);
-    try {
-      await ui.waitFor((t) => t.includes("Permission mode"));
-      await ui.press("down");
-      await ui.press("enter");
-      await ui.waitFor(() => setSetting.mock.calls.length > 0, { tries: 50, sleepMs: 5 });
-      expect(setSetting.mock.calls.length).toBe(1);
-      const args0 = setSetting.mock.calls[0] as unknown as [string, string, unknown];
-      expect(args0[0]).toBe("repl.permissionMode");
-      expect(args0[1]).toBe("auto");
     } finally {
       ui.unmount();
     }

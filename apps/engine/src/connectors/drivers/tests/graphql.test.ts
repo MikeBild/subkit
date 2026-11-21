@@ -1,6 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { ConnectorOperationError } from "@shared/index.ts";
-import { logger } from "../../../logging/logger.ts";
+import { logger } from "../../../logging/index.ts";
 import { withDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
 import { graphqlErrorMessages, query } from "../graphql.ts";
 import { HttpRequestInvalidError } from "../http.ts";

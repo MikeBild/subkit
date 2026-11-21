@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type pg from "pg";
 import { z } from "zod";
-import { errorFields, logger } from "../logging/logger.ts";
+import { errorFields, logger } from "../logging/index.ts";
 import { cutOverLearningCandidates } from "../skill-candidates/learning-cutover.ts";
 import { createMigrationDbFromUrl, type Db } from "./client.ts";
 import { runContextNoteFactsBackfill } from "./migrations/context-note-facts-backfill.ts";
@@ -77,21 +77,72 @@ interface AppliedState {
   hashes: Set<string>;
   tags: Set<string>;
   count: number;
+  baselinePresent: boolean;
 }
 
-async function readAppliedHashes(db: Db): Promise<AppliedState> {
-  const rows = (await db.execute(
-    sql`SELECT hash, tag FROM "subkit"."__drizzle_migrations"`,
-  )) as unknown as { rows: Array<{ hash: string; tag: string | null }> };
-  const dbRows = rows.rows ?? [];
-  const hashes = new Set(dbRows.map((r) => r.hash));
-  const tags = new Set(dbRows.map((r) => r.tag).filter((t): t is string => t != null));
-  return { hashes, tags, count: dbRows.length };
+interface JournalRow {
+  id: number | string;
+  hash: string;
+  tag: string | null;
 }
 
 const MIGRATION_LOCK_KEY = 776_644_2026;
 
-export const SQUASHED_CHAIN_HEAD_TAG = "0151_package_installs";
+export const SQUASHED_CHAIN_HEAD_TAG = "0023_drop_chat_mode";
+
+export const RETIRED_BASELINE_TAGS: readonly string[] = ["0000_baseline"];
+
+export function splitLineage<T extends JournalRow>(
+  rows: readonly T[],
+  baselineTag: string | undefined,
+): { history: T[]; current: T[] } {
+  const baselineId = rows.find((r) => r.tag === baselineTag)?.id;
+  if (baselineId !== undefined) {
+    const boundary = Number(baselineId);
+    return {
+      history: rows.filter((r) => Number(r.id) < boundary),
+      current: rows.filter((r) => Number(r.id) >= boundary),
+    };
+  }
+  const headId = rows.find((r) => r.tag === SQUASHED_CHAIN_HEAD_TAG)?.id;
+  if (headId === undefined) return { history: [], current: [...rows] };
+  const boundary = Number(headId);
+  return {
+    history: rows.filter((r) => Number(r.id) <= boundary),
+    current: rows.filter((r) => Number(r.id) > boundary),
+  };
+}
+
+export function stopsBeforeChainHead(
+  rows: readonly JournalRow[],
+  baselineTag: string | undefined,
+): boolean {
+  const tags = new Set(rows.map((r) => r.tag));
+  return (
+    !tags.has(baselineTag ?? null) &&
+    !tags.has(SQUASHED_CHAIN_HEAD_TAG) &&
+    RETIRED_BASELINE_TAGS.some((tag) => tags.has(tag))
+  );
+}
+
+async function readJournalRows(db: Db): Promise<JournalRow[]> {
+  const rows = (await db.execute(
+    sql`SELECT id, hash, tag FROM "subkit"."__drizzle_migrations" ORDER BY id`,
+  )) as unknown as { rows?: JournalRow[] };
+  return rows.rows ?? [];
+}
+
+async function readAppliedState(db: Db, baselineTag: string | undefined): Promise<AppliedState> {
+  const rows = await readJournalRows(db);
+  const baselinePresent = rows.some((r) => r.tag === baselineTag);
+  const scoped = baselinePresent ? splitLineage(rows, baselineTag).current : rows;
+  return {
+    hashes: new Set(scoped.map((r) => r.hash)),
+    tags: new Set(scoped.map((r) => r.tag).filter((t): t is string => t != null)),
+    count: scoped.length,
+    baselinePresent,
+  };
+}
 
 export async function runMigrations(
   db: Db,
@@ -140,7 +191,8 @@ async function applyMigrations(
   });
 
   await ensureMigrationsTable(db);
-  const applied = await readAppliedHashes(db);
+  const baselineTag = migrations.find((m) => m.idx === 0)?.tag;
+  let applied = await readAppliedState(db, baselineTag);
 
   let appliedCount = 0;
   let skippedCount = 0;
@@ -166,15 +218,7 @@ async function applyMigrations(
       }
       continue;
     }
-    if (applied.hashes.has(m.hash)) {
-      skippedCount++;
-      await db.execute(
-        sql`UPDATE "subkit"."__drizzle_migrations" SET tag = ${m.tag} WHERE hash = ${m.hash} AND tag IS NULL`,
-      );
-      applied.tags.add(m.tag);
-      continue;
-    }
-    if (m.idx === 0 && applied.count > 0) {
+    if (m.idx === 0 && applied.count > 0 && !applied.baselinePresent) {
       if (!applied.tags.has(SQUASHED_CHAIN_HEAD_TAG)) {
         logger.error({
           module: "db",
@@ -200,7 +244,14 @@ async function applyMigrations(
       await db.execute(
         sql`INSERT INTO "subkit"."__drizzle_migrations" (hash, created_at, tag) VALUES (${m.hash}, ${m.when}, ${m.tag})`,
       );
-      applied.hashes.add(m.hash);
+      applied = await readAppliedState(db, m.tag);
+      continue;
+    }
+    if (applied.hashes.has(m.hash)) {
+      skippedCount++;
+      await db.execute(
+        sql`UPDATE "subkit"."__drizzle_migrations" SET tag = ${m.tag} WHERE hash = ${m.hash} AND tag IS NULL`,
+      );
       applied.tags.add(m.tag);
       continue;
     }
@@ -327,44 +378,40 @@ export async function detectDrift(db: Db): Promise<DriftReport> {
       tag: string | null;
     }>;
   };
-  const dbRows = rows.rows ?? [];
-
   const embeddedByTag = new Map(EMBEDDED_MIGRATIONS.map((m) => [m.tag, m.hash]));
   const embeddedByHash = new Map(EMBEDDED_MIGRATIONS.map((m) => [m.hash, m.tag]));
   const baselineTag = EMBEDDED_MIGRATIONS.find((m) => m.idx === 0)?.tag;
-  const baselineRowId = dbRows.find((r) => r.tag === baselineTag)?.id;
-  const isSquashedHistory = (r: { id: number; tag: string | null }): boolean =>
-    r.tag !== null &&
-    !embeddedByTag.has(r.tag) &&
-    baselineRowId !== undefined &&
-    r.id < baselineRowId;
+  const { history, current } = splitLineage(rows.rows ?? [], baselineTag);
+  const toRow = (r: {
+    id: number;
+    hash: string;
+    created_at: number | null;
+    tag: string | null;
+  }) => ({
+    row_id: r.id,
+    hash: r.hash,
+    created_at: r.created_at,
+    tag: r.tag,
+  });
 
-  const unknown_in_db = dbRows
-    .filter((r) => {
-      if (r.tag === null || isSquashedHistory(r)) return false;
-      return embeddedByTag.get(r.tag) !== r.hash || embeddedByHash.get(r.hash) !== r.tag;
-    })
-    .map((r) => ({
-      row_id: r.id,
-      hash: r.hash,
-      created_at: r.created_at,
-      tag: r.tag,
-    }));
+  const unknown_in_db = current
+    .filter(
+      (r) =>
+        r.tag !== null &&
+        (embeddedByTag.get(r.tag) !== r.hash || embeddedByHash.get(r.hash) !== r.tag),
+    )
+    .map(toRow);
 
-  const historical_in_db = dbRows
-    .filter((r) => (r.tag === null && !embeddedByHash.has(r.hash)) || isSquashedHistory(r))
-    .map((r) => ({
-      row_id: r.id,
-      hash: r.hash,
-      created_at: r.created_at,
-      tag: r.tag,
-    }));
+  const historical_in_db = [
+    ...history,
+    ...current.filter((r) => r.tag === null && !embeddedByHash.has(r.hash)),
+  ].map(toRow);
 
   const currentTags = new Set(
-    dbRows.flatMap((r) => (r.tag !== null && embeddedByTag.get(r.tag) === r.hash ? [r.tag] : [])),
+    current.flatMap((r) => (r.tag !== null && embeddedByTag.get(r.tag) === r.hash ? [r.tag] : [])),
   );
   const untaggedCurrentHashes = new Set(
-    dbRows.filter((r) => r.tag === null && embeddedByHash.has(r.hash)).map((r) => r.hash),
+    current.filter((r) => r.tag === null && embeddedByHash.has(r.hash)).map((r) => r.hash),
   );
   const missing_in_db = EMBEDDED_MIGRATIONS.filter(
     (m) => !currentTags.has(m.tag) && !untaggedCurrentHashes.has(m.hash),

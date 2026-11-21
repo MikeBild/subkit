@@ -1,5 +1,5 @@
 import type { Db } from "../db/client.ts";
-import { errorFields, logger } from "../logging/logger.ts";
+import { errorFields, logger } from "../logging/index.ts";
 import { stageElicitationAnswer } from "./elicitations.ts";
 import { markApprovalElicitationsComplete } from "./native-url-elicitation.ts";
 

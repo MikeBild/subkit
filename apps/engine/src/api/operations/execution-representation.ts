@@ -26,6 +26,12 @@ const ExecSchema = z
     source_kind: z.enum(["saved", "draft", "step"]),
     source_ref: z.record(z.string(), z.unknown()).nullable(),
     status: z.string(),
+    waiting_reason: z
+      .enum(["budget"])
+      .optional()
+      .describe(
+        "budget: the run waits before a model step until the AI budget allows it again; it then continues by itself without repeating earlier steps.",
+      ),
     request_source: z.string(),
     caller: ExecutionCallerSchema,
     parent_execution_id: z.string().nullable(),
@@ -162,6 +168,7 @@ export function serializeExec(
     source_kind: (row.source_kind as "saved" | "draft" | "step") ?? "saved",
     source_ref: row.source_ref ?? null,
     status: row.status,
+    ...(row.status === "queued" && row.budget_park ? { waiting_reason: "budget" as const } : {}),
     request_source: row.request_source,
     parent_execution_id: row.parent_execution_id ?? null,
     input: row.input ?? null,

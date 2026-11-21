@@ -13,7 +13,7 @@ import {
 } from "../../llm/runtime/model-init.ts";
 import type { RecentMessage } from "../../llm/runtime/suggestion-prompt.ts";
 import type { ModelRoute } from "../../llm/types.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { nextSuggestion } from "../streaming.ts";
 import {
   type SuggestNextModelInvocation,

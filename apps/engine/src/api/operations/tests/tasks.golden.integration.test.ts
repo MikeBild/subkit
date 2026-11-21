@@ -351,7 +351,6 @@ describe("save_task stores a task for the calling person", () => {
         actor_id: owner.id,
         principal: owner.principal,
         title: "Planning chat",
-        permission_mode: "ask",
         surface: "web",
         playbook_mode: "auto",
       },

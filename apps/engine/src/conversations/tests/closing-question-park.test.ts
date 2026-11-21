@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { conversationElicitations } from "../../db/schema/index.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
 import type { ElicitationBridge } from "../elicitation-bridge.ts";
-import { createConversation } from "../service.ts";
+import { createConversation } from "../service/index.ts";
 import {
   appendMessageWithTurn,
   type ConversationTestCtx,
@@ -33,7 +33,7 @@ async function turnEndingOnQuestion(
   turn: Pick<Parameters<typeof appendMessageWithTurn>[0], "surface" | "elicitationBridge">,
 ) {
   const created = await createConversation(
-    { tenant_id: ctx.tenant_id, actor_id: ctx.user_id, permission_mode: "auto" },
+    { tenant_id: ctx.tenant_id, actor_id: ctx.user_id },
     ctx.testDb.db,
   );
   const conversationId = created.conversation.id;
@@ -60,7 +60,7 @@ async function turnEndingOnQuestion(
   return { status: outcome.result.status, parked };
 }
 
-describe("a turn in auto mode that ends on a prose question", () => {
+describe("a turn that ends on a prose question", () => {
   test("stays open for the next message when no surface is named", async () => {
     const { status, parked } = await turnEndingOnQuestion({});
     expect(status).toBe("active");

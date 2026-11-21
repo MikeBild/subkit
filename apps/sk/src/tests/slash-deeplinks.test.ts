@@ -37,13 +37,11 @@ describe("Slash deep-links → SettingsModal", () => {
     expect(panes[0]).toEqual({ kind: "settings", initialTab: "Knowledge" });
   });
 
-  test("/permissions opens the PermissionsCommand SinglePane (not the Settings tab)", async () => {
+  test("/permissions lists the granted permissions instead of opening a picker", async () => {
     const { ctx, panes } = ctxWithPane();
     const result = await dispatchInspectSlash("permissions", ctx);
-    expect(result).toBeNull();
-    expect(panes.length).toBe(1);
-    expect(panes[0]?.kind).toBe("permissions");
-    expect(panes[0]).not.toEqual({ kind: "settings", initialTab: "Permissions" });
+    expect(result).toBe("no permissions probe cached");
+    expect(panes.length).toBe(0);
   });
 
   test("/admin opens the AdminCommand SinglePane (not the Settings tab)", async () => {

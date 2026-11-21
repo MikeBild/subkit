@@ -1,18 +1,19 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { type generateText, NoObjectGeneratedError } from "ai";
+import { testEnv } from "../../../test-helpers/determinism/env.ts";
 import { AiSdkModel } from "../ai-sdk-model.ts";
 import type { SubkitLlmMessage } from "../base-types.ts";
 
 let previousLlmProvider: string | undefined;
 
 beforeAll(() => {
-  previousLlmProvider = process.env.LLM_PROVIDER;
-  process.env.LLM_PROVIDER = "mock";
+  previousLlmProvider = testEnv.LLM_PROVIDER;
+  testEnv.LLM_PROVIDER = "mock";
 });
 
 afterAll(() => {
-  if (previousLlmProvider === undefined) delete process.env.LLM_PROVIDER;
-  else process.env.LLM_PROVIDER = previousLlmProvider;
+  if (previousLlmProvider === undefined) delete testEnv.LLM_PROVIDER;
+  else testEnv.LLM_PROVIDER = previousLlmProvider;
 });
 
 interface GenerateTextStubResult {

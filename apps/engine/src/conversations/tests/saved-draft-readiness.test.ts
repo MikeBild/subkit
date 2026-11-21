@@ -30,9 +30,7 @@ async function seed(opts: { variables: Record<string, unknown>; scheduled: boole
     kind: "request",
     connector_id: ctx.connector_id,
     method: "POST",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
     path: "/spaces/${input.space}/ingest",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
     body: { title: "Findings ${scope.window.data.start}" },
     ...(boundary ? { boundary } : {}),
   });

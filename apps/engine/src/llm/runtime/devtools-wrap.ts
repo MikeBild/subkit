@@ -1,7 +1,8 @@
 import type { LanguageModelV4, LanguageModelV4Middleware } from "@ai-sdk/provider";
 import type { LanguageModel } from "ai";
 import { wrapLanguageModel } from "ai";
-import { logger } from "../../logging/logger.ts";
+import { readEnv } from "../../env.ts";
+import { logger } from "../../logging/index.ts";
 
 const REDACTED = "[REDACTED]";
 const AUTH_HEADER_PATTERN =
@@ -21,7 +22,7 @@ export const scrubAuthHeadersMiddleware: LanguageModelV4Middleware = {
   },
 };
 
-const isDevEnv = (): boolean => process.env.NODE_ENV === "development";
+const isDevEnv = (): boolean => readEnv("NODE_ENV") === "development";
 
 let cachedDevtoolsMiddleware: LanguageModelV4Middleware | null | undefined;
 

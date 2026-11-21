@@ -6,6 +6,7 @@ import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import { conversations } from "../../db/schema/index.ts";
 import { withTenantWork } from "../../execution/tenant-work.ts";
+import { askBeforeWritingFor } from "../../identity/index.ts";
 import { assertTenantActive } from "../../identity/tenant-status.ts";
 import { scrubString } from "../../logging/scrub-secrets.ts";
 import { recordConversationToolCall } from "../../observability/instrumentation.ts";
@@ -19,11 +20,10 @@ import { appendMessage, insertToolCall, updateToolCallOutput } from "../persiste
 import type { ConversationReference } from "../references.ts";
 import { refreshConversationTitle, shouldRefreshTitle } from "../title.ts";
 import { conversationTurnId, markConversationTurnFailed } from "../turns.ts";
-import type { ConversationPermissionMode, TaskRunMarker, TurnEvent } from "../types.ts";
+import type { TaskRunMarker, TurnEvent } from "../types.ts";
 import { getConversation } from "./get.ts";
-import { type ConversationTurnOutcome, getStoredPermissionMode } from "./shared.ts";
+import type { ConversationTurnOutcome } from "./shared.ts";
 import {
-  assertTaskRunPermissionMode,
   assertTaskRunWriter,
   requireTaskRunPrincipal,
   TaskRunLockedError,
@@ -43,7 +43,6 @@ export interface RunConversationTurnParams {
   answer_actor: AnswerActor;
   user_references?: ConversationReference[] | null;
   user_memory?: string | null;
-  permission_mode?: ConversationPermissionMode | null;
   onEvent?: Parameters<typeof runLoop>[0]["onEvent"];
   surface?: "sk_headless" | "sk_interactive" | "mcp" | "web" | "chat";
   runtime_context?: {
@@ -105,9 +104,12 @@ async function driveConversationTurn(
   );
   if (!conv) throw new Error("conversation not found");
   const taskRun = await assertTaskRunWriter(exec, p);
-  assertTaskRunPermissionMode(taskRun, p.permission_mode);
   if (taskRun) return driveTaskRunTurn(p, exec, conv, taskRun);
-  const effectivePermissionMode = p.permission_mode ?? getStoredPermissionMode(conv.draft);
+  const askBeforeWriting = await askBeforeWritingFor(exec, {
+    tenant_id: p.tenant_id,
+    principal: p.principal,
+    unattended: false,
+  });
 
   if (p.event?.type === "request_credential_form") {
     const result = await runRequestCredentialFormEvent(p, exec);
@@ -134,7 +136,7 @@ async function driveConversationTurn(
       principal: p.principal,
       user_message: p.user_message,
       answer_actor: p.answer_actor,
-      permission_mode: effectivePermissionMode,
+      ask_before_writing: askBeforeWriting,
       ...(p.surface ? { surface: p.surface } : {}),
     });
     if (hit) {
@@ -160,7 +162,7 @@ async function driveConversationTurn(
     }
   }
 
-  return finishLoopTurn(p, exec, conv, effectivePermissionMode);
+  return finishLoopTurn(p, exec, conv, askBeforeWriting);
 }
 
 type LoadedConversation = NonNullable<Awaited<ReturnType<typeof getConversation>>>;
@@ -173,10 +175,10 @@ function driveTaskRunTurn(
 ): Promise<ConversationTurnOutcome> {
   if (p.event) throw new TaskRunLockedError("Collecting a credential");
   return finishLoopTurn(
-    { ...p, principal: requireTaskRunPrincipal(p.principal, taskRun), permission_mode: "auto" },
+    { ...p, principal: requireTaskRunPrincipal(p.principal, taskRun) },
     exec,
     conv,
-    "auto",
+    false,
   );
 }
 
@@ -184,7 +186,7 @@ async function finishLoopTurn(
   p: RunConversationTurnParams,
   exec: Db,
   conv: LoadedConversation,
-  effectivePermissionMode: ConversationPermissionMode | null,
+  askBeforeWriting: boolean,
 ): Promise<ConversationTurnOutcome> {
   const result = await runLoop({
     db: exec,
@@ -206,7 +208,7 @@ async function finishLoopTurn(
     ...(p.surface ? { surface: p.surface } : {}),
     ...(p.onEvent ? { onEvent: p.onEvent } : {}),
     ...(p.runtime_context ? { runtime_context: p.runtime_context } : {}),
-    ...(effectivePermissionMode ? { permission_mode: effectivePermissionMode } : {}),
+    ...(askBeforeWriting ? { ask_before_writing: true } : {}),
     ...(p.next_suggestion_suppress !== undefined
       ? { next_suggestion_suppress: p.next_suggestion_suppress }
       : {}),

@@ -50,7 +50,6 @@ describe("the delivery gate refuses an unsafe report and a held hook proposes it
           id: "send_email",
           method: "POST",
           url: GMAIL_SEND_TARGET,
-          // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow substitution
           body: { raw: "${scope.compose.data.raw}" },
           report_delivery: {
             kind: "gmail_report",
@@ -334,7 +333,6 @@ describe("the delivery gate refuses an unsafe report and a held hook proposes it
             id: "send_email",
             method: "POST",
             url: GMAIL_SEND_TARGET,
-            // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow substitution
             body: { raw: "${scope.compose.data.raw}" },
             report_delivery: {
               kind: "gmail_report",

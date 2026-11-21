@@ -7,7 +7,7 @@ import type { Db } from "../../db/client.ts";
 import { hostedQuotaError } from "../../db/hosted-quota-errors.ts";
 import { conversations } from "../../db/schema/index.ts";
 import { retryTransient } from "../../db/transient.ts";
-import { log } from "../../logging/logger.ts";
+import { log } from "../../logging/index.ts";
 import { findSecretSpans, scrubString } from "../../logging/scrub-secrets.ts";
 import { resolveAttachmentSlugsInText } from "../attachments.ts";
 import { captureDraftCredentialFromChatText } from "../persistence/auto-persist/credential-cache.ts";
@@ -15,15 +15,10 @@ import { appendMessage } from "../persistence/index.ts";
 import type { ConversationReference } from "../references.ts";
 import type { ConversationMessageOrigin } from "../task-run-continuation.ts";
 import { assertConversationAvailable } from "../turns.ts";
-import type { ConversationPermissionMode, ConversationRecord } from "../types.ts";
+import type { ConversationRecord } from "../types.ts";
 import { getConversation } from "./get.ts";
-import {
-  getStoredPermissionMode,
-  normalizePermissionMode,
-  PendingElicitationBlockedError,
-  persistPermissionModeIfChanged,
-} from "./shared.ts";
-import { assertTaskRunPermissionMode, assertTaskRunWriter } from "./task-run-access.ts";
+import { PendingElicitationBlockedError } from "./shared.ts";
+import { assertTaskRunWriter } from "./task-run-access.ts";
 
 export interface AppendMessageParams {
   turn_id?: string | undefined;
@@ -34,7 +29,6 @@ export interface AppendMessageParams {
   message: string;
   references?: ConversationReference[] | null;
   memory?: string | null;
-  permission_mode?: ConversationPermissionMode | null;
   origin?: ConversationMessageOrigin;
 }
 
@@ -53,19 +47,7 @@ export async function appendUserMessage(
   await assertConversationAvailable(exec, p.tenant_id, p.conversation_id, p.turn_id);
   const conv = await getConversation(p.tenant_id, p.conversation_id, exec);
   if (!conv) throw new Error("conversation not found");
-  const taskRun = await assertTaskRunWriter(exec, p);
-  assertTaskRunPermissionMode(taskRun, p.permission_mode);
-  const explicitPermissionMode = taskRun ? null : normalizePermissionMode(p.permission_mode);
-  const storedPermissionMode = getStoredPermissionMode(conv.draft);
-  if (explicitPermissionMode && explicitPermissionMode !== storedPermissionMode) {
-    await persistPermissionModeIfChanged({
-      exec,
-      tenant_id: p.tenant_id,
-      conversation_id: p.conversation_id,
-      draft: conv.draft,
-      permission_mode: explicitPermissionMode,
-    });
-  }
+  await assertTaskRunWriter(exec, p);
   {
     const { listElicitationsForConversation } = await import("../elicitations.ts");
     const pending = (await listElicitationsForConversation(p.tenant_id, p.conversation_id, exec))

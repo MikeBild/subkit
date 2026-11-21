@@ -7,7 +7,7 @@ import {
   initializeDatabaseSession,
 } from "../db/connection-options.ts";
 import { events as eventsTable, outboxCursors } from "../db/schema/index.ts";
-import { errorFields, logger } from "../logging/logger.ts";
+import { errorFields, logger } from "../logging/index.ts";
 import { setOutboxCursorLag } from "../observability/instrumentation.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
 import { globalEmitter, type PubSubEmitter } from "./emitter.ts";

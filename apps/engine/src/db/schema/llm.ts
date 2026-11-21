@@ -65,7 +65,6 @@ export const userLlmSettings = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
     user_id: uuid("user_id").notNull(),
-    llm_monthly_token_budget: integer("llm_monthly_token_budget"),
     ...timestamps,
   },
   (t) => [uniqueIndex("user_llm_settings_tenant_user_uq").on(t.tenant_id, t.user_id)],

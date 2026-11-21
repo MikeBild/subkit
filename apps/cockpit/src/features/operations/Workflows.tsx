@@ -1,7 +1,7 @@
-import { Pill } from "@ui/components/proto/Pill";
-import { MiniBars } from "@ui/components/proto/visual";
+import { Pill } from "@ui/atoms/pill";
+import { MiniBars } from "@ui/molecules/charts";
+import { operatingTone } from "@/features/operations/model/operations";
 import { useI18n } from "@/lib/i18n-context";
-import { operatingTone } from "./model";
 
 export function DurationBars({ data }: { data: number[] }) {
   const { t } = useI18n();

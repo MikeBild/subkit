@@ -1,8 +1,19 @@
+import type { FolderAccess } from "@shared/device/boundary.ts";
+import type { DesktopDiagnostics } from "./diagnostics.ts";
 import type { Locale, LocaleSetting, MessageKey } from "./i18n.ts";
 import type { InviteCheck } from "./invite-link.ts";
+import type { AllowancesView } from "./local/files-allowances.ts";
+import type {
+  AiAccessInput,
+  BackupRow,
+  LocalErrorKind,
+  LocalProgress,
+} from "./local/local-workspace-model.ts";
+import type { PermissionKey } from "./local/permission-model.ts";
+import type { PermissionView } from "./local/permission-port.ts";
+import type { DataFolderRefusal } from "./local/supervisor-model.ts";
 import type { Onboarding } from "./onboarding.ts";
 import type { QuietHours } from "./quiet-hours.ts";
-import type { DesktopDiagnostics } from "./redaction.ts";
 import type { AddressProblem } from "./server-address.ts";
 import type { AuthFailure, ExchangeFailure } from "./server-contract.ts";
 import type { ShellStatus } from "./status-model.ts";
@@ -20,12 +31,31 @@ export const CONNECT_CHANNELS = {
   showView: "connect:show-view",
   updateAction: "connect:update-action",
   reportProblem: "connect:report-problem",
+  checkPermissions: "connect:check-permissions",
+  openPermissionSettings: "connect:open-permission-settings",
+  restartApp: "connect:restart-app",
+  localPickDataFolder: "connect:local-pick-data-folder",
+  localBegin: "connect:local-begin",
+  localFinish: "connect:local-finish",
+  localCancel: "connect:local-cancel",
+  localOpen: "connect:local-open",
+  localBackup: "connect:local-backup",
+  localRestore: "connect:local-restore",
+  localMove: "connect:local-move",
+  localRemoveAll: "connect:local-remove-all",
   chooseWorkspace: "connect:choose-workspace",
   answerNotifications: "connect:answer-notifications",
   answerDiagnostics: "connect:answer-diagnostics",
   checkInvite: "connect:check-invite",
   joinInvite: "connect:join-invite",
   state: "connect:state",
+  localPickFolder: "connect:local-pick-folder",
+  localListAllowances: "connect:local-list-allowances",
+  localRemoveAllowance: "connect:local-remove-allowance",
+  localSetAccess: "connect:local-set-access",
+  localSetPersonalEnabled: "connect:local-set-personal-enabled",
+  localAddSite: "connect:local-add-site",
+  localAddApp: "connect:local-add-app",
 } as const;
 
 export const COCKPIT_CHANNELS = {
@@ -42,9 +72,10 @@ export const COCKPIT_CHANNELS = {
   runUpdateAction: "cockpit:run-update-action",
   recheckServer: "cockpit:recheck-server",
   desktopSettingsChanged: "cockpit:desktop-settings-changed",
+  openLocalCapabilities: "cockpit:open-local-capabilities",
 } as const;
 
-export const BRIDGE_PROTOCOL_VERSION = 6;
+export const BRIDGE_PROTOCOL_VERSION = 7;
 
 export interface BridgeCapabilities {
   screenshot: { optIn: boolean; masksSecretFields: boolean; masksVisibleText: boolean };
@@ -88,12 +119,63 @@ export interface SettingsView {
   shareDiagnostics: boolean;
 }
 
-export type ConnectView = "connect" | "settings";
+export const CONNECT_VIEWS = ["connect", "settings", "local", "permissions"] as const;
+export type ConnectView = (typeof CONNECT_VIEWS)[number];
+
+export function isConnectView(value: unknown): value is ConnectView {
+  return (CONNECT_VIEWS as readonly unknown[]).includes(value);
+}
 
 export interface SignedIn {
   profileId: string;
   origin: string;
   serverVersion: string | null;
+}
+
+export type LocalBusy = "backup" | "restore" | "move" | "remove";
+
+export interface LocalMoved {
+  server: string;
+  bundle: string;
+}
+
+export interface LocalView {
+  available: boolean;
+  configured: boolean;
+  attention: boolean;
+  folder: string;
+  folderRefusal: DataFolderRefusal | null;
+  progress: LocalProgress;
+  working: boolean;
+  error: LocalErrorKind | null;
+  backups: BackupRow[];
+  sizeBytes: number | null;
+  busy: LocalBusy | null;
+  moved: LocalMoved | null;
+  aiConfigured: boolean;
+  modelTools: boolean | null;
+}
+
+export const LOCAL_UNAVAILABLE: LocalView = {
+  available: false,
+  configured: false,
+  attention: false,
+  folder: "",
+  folderRefusal: null,
+  progress: { database: false, engine: false, workspace: false },
+  working: false,
+  error: null,
+  backups: [],
+  sizeBytes: null,
+  busy: null,
+  moved: null,
+  aiConfigured: false,
+  modelTools: null,
+};
+
+export interface LocalFinishInput {
+  name: string;
+  ai: AiAccessInput | null;
 }
 
 export interface ConnectState {
@@ -109,6 +191,8 @@ export interface ConnectState {
   signedIn: SignedIn | null;
   onboarding: Onboarding;
   update: UpdateState;
+  permissions: PermissionView;
+  local: LocalView;
 }
 
 export interface SettingsPatch {
@@ -119,7 +203,28 @@ export interface SettingsPatch {
   shareDiagnostics?: boolean;
 }
 
+export interface PickFolderOptions {
+  access?: FolderAccess;
+  keepOut?: boolean;
+}
+
+export type PickFolderResult =
+  | { status: "cancelled" }
+  | { status: "refused"; code: string }
+  | { status: "added"; id: string; view: AllowancesView };
+
+export interface LocalBridge {
+  pickFolder(options?: PickFolderOptions): Promise<PickFolderResult>;
+  listAllowances(): Promise<AllowancesView>;
+  removeAllowance(id: string): Promise<AllowancesView>;
+  setAccess(id: string, access: FolderAccess): Promise<AllowancesView>;
+  setPersonalEnabled(enabled: boolean): Promise<AllowancesView>;
+  addSite(origin: string): Promise<AllowancesView>;
+  addApp(): Promise<PickFolderResult>;
+}
+
 export interface ConnectBridge {
+  local: LocalBridge;
   getState(): Promise<ConnectState>;
   checkServer(address: string): Promise<CheckResult>;
   login(address: string): Promise<CheckResult>;
@@ -130,6 +235,18 @@ export interface ConnectBridge {
   showView(view: ConnectView): Promise<void>;
   updateAction(): Promise<void>;
   reportProblem(): Promise<void>;
+  checkPermissions(): Promise<void>;
+  openPermissionSettings(key: PermissionKey): Promise<void>;
+  restartApp(): Promise<void>;
+  localPickDataFolder(): Promise<void>;
+  localBegin(): Promise<void>;
+  localFinish(input: LocalFinishInput): Promise<void>;
+  localCancel(): Promise<void>;
+  localOpen(): Promise<void>;
+  localBackup(): Promise<void>;
+  localRestore(name: string): Promise<void>;
+  localMove(serverOrigin: string): Promise<void>;
+  localRemoveAll(): Promise<void>;
   chooseWorkspace(tenantId: string): Promise<void>;
   answerNotifications(allow: boolean): Promise<void>;
   answerDiagnostics(share: boolean): Promise<void>;
@@ -208,4 +325,5 @@ export interface CockpitBridge {
   runUpdateAction(): Promise<void>;
   recheckServer(): Promise<void>;
   onDesktopSettings(listener: (settings: DesktopSettingsView) => void): () => void;
+  openLocalCapabilities(): Promise<void>;
 }

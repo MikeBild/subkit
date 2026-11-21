@@ -9,6 +9,7 @@ import {
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
 import { MemoryObjectStore, setObjectStoreForTesting } from "../../../storage/object-store.ts";
+import { testEnv } from "../../../test-helpers/determinism/env.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/index.ts";
 import { adminPrincipal } from "../../../test-helpers/principals.ts";
 import { createEmptyDraftDocument } from "../../authoring-state/index.ts";
@@ -25,7 +26,7 @@ let foreign_tenant_id: string;
 let objectStore: MemoryObjectStore;
 
 beforeAll(async () => {
-  process.env.NODE_ENV = "test";
+  testEnv.NODE_ENV = "test";
   objectStore = new MemoryObjectStore();
   setObjectStoreForTesting(objectStore);
   ctx = await createTestDb("inspect_exec_step");

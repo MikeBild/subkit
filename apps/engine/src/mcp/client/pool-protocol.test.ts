@@ -4,6 +4,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { closeDb } from "../../db/client.ts";
 import { auditLog, connectorMcpSessions } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
 import { CLIENT_CAPABILITIES } from "./negotiation.ts";
 import {
@@ -90,13 +91,13 @@ const fakeClient: McpClientLike = {
 let ctx: TestDb;
 let tenantId: string;
 let serverId: string;
-const _origDatabaseUrl = process.env.DATABASE_URL;
+const _origDatabaseUrl = testEnv.DATABASE_URL;
 
 beforeAll(async () => {
   __setMcpPoolFactoriesForTests({ makeClient: () => fakeClient });
   ctx = await createTestDb("mcp-pool-protocol");
   await closeDb();
-  process.env.DATABASE_URL = ctx.url;
+  testEnv.DATABASE_URL = ctx.url;
   const t = await seedTenant(ctx.db, {
     slug: "t-pool-protocol",
     display_name: "Pool Protocol Tenant",
@@ -116,8 +117,8 @@ afterAll(async () => {
   __setMcpPoolFactoriesForTests(null);
   __resetMcpClientPoolForTests();
   await closeDb();
-  if (_origDatabaseUrl === undefined) delete process.env.DATABASE_URL;
-  else process.env.DATABASE_URL = _origDatabaseUrl;
+  if (_origDatabaseUrl === undefined) delete testEnv.DATABASE_URL;
+  else testEnv.DATABASE_URL = _origDatabaseUrl;
   await ctx.cleanup();
 }, 30_000);
 

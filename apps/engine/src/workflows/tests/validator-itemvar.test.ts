@@ -66,7 +66,6 @@ describe("validateWorkflowDef — item_var rejection", () => {
           id: "call",
           kind: "request",
           method: "GET",
-          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal placeholder is the tested grammar.
           url: "https://api.example.com/x/${item.id}",
         },
       ],

@@ -1,6 +1,6 @@
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import type { Db } from "../../../db/client.ts";
-import { logger } from "../../../logging/logger.ts";
+import { logger } from "../../../logging/index.ts";
 import { consumeApproval, declineApproval, grantApproval } from "../../../tools/approval.ts";
 import type { AnswerActor } from "../../answer-actor.ts";
 import { approvalHandleFromElicitationInput } from "../../tools/ask-user/commit-intent.ts";

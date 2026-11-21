@@ -1,4 +1,4 @@
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { extractStepIdReferences, suggestClosest } from "../../workflows/levenshtein.ts";
 import type { BranchStep } from "../../workflows/types.ts";
 import { buildJsonataBindings, resolveScopeForJsonata } from "../jsonata-bindings.ts";

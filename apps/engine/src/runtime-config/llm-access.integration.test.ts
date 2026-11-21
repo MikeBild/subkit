@@ -8,6 +8,7 @@ import { _resetConfigForTests, getConfig, loadConfig } from "../config/loader.ts
 import { auditLog, runtimeConfigReplicas, runtimeSecretVersions } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { provisionSelfServiceTenant } from "../identity/self-service.ts";
+import { testEnv } from "../test-helpers/determinism/env.ts";
 import { configureHostedPolicyForTests } from "../test-helpers/hosted-policy.ts";
 import { TEST_WORKSPACE_REGISTRATION } from "../test-helpers/workspace-registration.ts";
 import { RuntimeConfigCoordinator } from "./coordinator.ts";
@@ -51,7 +52,7 @@ async function workspace(subject: string): Promise<string> {
 }
 
 beforeAll(async () => {
-  process.env.MASTER_KEY = "66".repeat(32);
+  testEnv.MASTER_KEY = "66".repeat(32);
   tdb = await createTestDb("llm-access");
   await configureHostedPolicyForTests(tdb.db, tdb.url);
   first = await workspace("first-owner");

@@ -1,5 +1,5 @@
+import { Tooltip, TooltipContent, TooltipTrigger } from "@ui/molecules/tooltip";
 import { isValidElement, type ReactNode } from "react";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "./button";
 
 export type ActionVariant = "primary" | "outline" | "ghost" | "destructive";

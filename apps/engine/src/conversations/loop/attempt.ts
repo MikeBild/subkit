@@ -18,7 +18,7 @@ import {
   readReasoningEffortSetting,
   resolveTurnReasoning,
 } from "../../llm/runtime/thinking-policy.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import {
   recordConversationRepair,
   recordConversationStep,

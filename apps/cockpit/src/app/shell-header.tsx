@@ -1,10 +1,10 @@
+import { cn } from "@ui/lib/utils";
+import { IconButton } from "@ui/molecules/icon-button";
+import { useSidebar } from "@ui/organisms/sidebar";
 import { Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { IconButton } from "@/components/cockpit/icon-button";
-import { InstallationNotificationControl } from "@/components/cockpit/installation-dialogs";
-import { useSidebar } from "@/components/ui/sidebar";
 import { FeedbackButton } from "@/features/feedback";
+import { InstallationNotificationControl } from "@/features/pwa";
 import { useI18n } from "@/lib/i18n-context";
-import { cn } from "@/lib/utils";
 import { useAttentionFresh } from "./attention-seen";
 import { useLiveStatus } from "./live-events";
 import { AttentionDot, LiveIndicator } from "./live-indicator";

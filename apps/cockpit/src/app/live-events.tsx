@@ -1,3 +1,4 @@
+import { backoffDelay } from "@shared/backoff.ts";
 import { type QueryKey, useQueryClient } from "@tanstack/react-query";
 import {
   createContext,
@@ -24,11 +25,7 @@ interface LiveContextValue {
 const LiveContext = createContext<LiveContextValue>({ status: "offline", serverVersion: null });
 
 const COALESCE_MS = 300;
-const BACKOFF_MS = [1_000, 2_000, 5_000, 10_000, 30_000] as const;
-
-export function backoffDelay(attempt: number): number {
-  return BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)] ?? 30_000;
-}
+const RETRY_MAX_MS = 30_000;
 
 interface HelloFrame {
   cursor?: unknown;
@@ -148,7 +145,7 @@ export function LiveEventsProvider({ children }: { children: ReactNode }) {
       controller = null;
       if (disposed) return;
       setStatus(statusAfterStreamEnd(shutdown));
-      retryTimer = setTimeout(connect, backoffDelay(attempt));
+      retryTimer = setTimeout(connect, backoffDelay(attempt, 1, { maxMs: RETRY_MAX_MS }));
       attempt += 1;
     };
 

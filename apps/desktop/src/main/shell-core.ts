@@ -1,0 +1,44 @@
+import type { Locale } from "../shared/i18n.ts";
+import type { ConnectView } from "../shared/ipc.ts";
+import type { Profile } from "../shared/profiles.ts";
+import type { ShellSession } from "../shared/shell-session.ts";
+import type { DeviceGlue } from "./device-glue.ts";
+import type { ErrorLog } from "./error-log.ts";
+import type { FeedFlow } from "./feed-flow.ts";
+import type { LocalWorkspaceShell } from "./local-workspace-shell.ts";
+import type { LoginController } from "./login.ts";
+import type { PauseFlow } from "./pause-flow.ts";
+import type { ProfileFlow } from "./profile-flow.ts";
+import type { ProfileSessions } from "./profile-sessions.ts";
+import type { SettingsFlow } from "./settings-flow.ts";
+import type { ShellPresenter } from "./shell-presenter.ts";
+import type { ShellUi } from "./shell-ui.ts";
+import type { ProfileStore } from "./store.ts";
+import type { UpdateFlow } from "./update-flow.ts";
+import type { WindowHost } from "./window-host.ts";
+
+export interface ShellCore {
+  readonly errors: ErrorLog;
+  readonly store: ProfileStore;
+  readonly sessions: ProfileSessions;
+  readonly windows: WindowHost;
+  readonly device: DeviceGlue;
+  readonly pause: PauseFlow;
+  readonly updates: UpdateFlow;
+  readonly settings: SettingsFlow;
+  readonly shellUi: ShellUi;
+  readonly localWorkspace: LocalWorkspaceShell;
+  readonly login: LoginController;
+  readonly feed: FeedFlow;
+  readonly profiles: ProfileFlow;
+  readonly presenter: ShellPresenter;
+  state: ShellSession;
+  locale(): Locale;
+  record(scope: string, error: unknown): void;
+  render(): void;
+  open(href?: string): void;
+  showConnect(view: ConnectView): void;
+  revealConnect(): void;
+  openCockpit(profile: Profile & { cockpitPath: string }, href?: string): void;
+  quit(): void;
+}

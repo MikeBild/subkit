@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { writeAudit } from "../db/audit.ts";
 import type { Db } from "../db/client.ts";
 import { requestHooks } from "../db/schema/request_hooks.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { runJs } from "../sandboxes/quickjs/runtime.ts";
 import type { ResolvedPrincipal } from "./types.ts";
 

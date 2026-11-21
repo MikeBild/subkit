@@ -1,4 +1,4 @@
-import { log } from "../../../../logging/logger.ts";
+import { log } from "../../../../logging/index.ts";
 import { stampMcpTaskProgress } from "../../../../mcp/tasks/store.ts";
 import { appendMessage, insertToolCall } from "../../../persistence/index.ts";
 import { computeLineDiff } from "../../../text-line-diff.ts";

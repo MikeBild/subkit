@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import sharp from "sharp";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import {
   createHttpTestServer,
   createSecondaryTenant,
@@ -57,7 +58,7 @@ async function sk(args: string[]) {
   const child = Bun.spawn([process.execPath, "apps/sk/src/index.ts", "branding", ...args], {
     cwd: ROOT,
     env: {
-      ...process.env,
+      ...testEnv,
       HOME: profileHome,
       USERPROFILE: profileHome,
       SK_HOME: profileHome,

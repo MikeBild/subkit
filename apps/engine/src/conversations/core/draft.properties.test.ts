@@ -219,7 +219,7 @@ const rawDraftArb: fc.Arbitrary<unknown> = fc.oneof(
     }),
     latest_preview: previewArb,
     session: fc.record({
-      permission_mode: fc.constantFrom("auto", "ask", "plan", "other"),
+      unknown_key: fc.constantFrom("auto", "ask", "other"),
       playground: fc.boolean(),
       intake_item_ids: fc.array(fc.constantFrom(INTAKE_ID, OTHER_INTAKE_ID, "bad"), {
         maxLength: 3,

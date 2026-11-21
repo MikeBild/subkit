@@ -1,15 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { autoPreparationProceeds, decideToolMode } from "../../tool-policies.ts";
 import type { ModelCommitIntent } from "../ask-user/commit-intent.ts";
-import { type AutoSaveDeps, autoModeSaveWithoutPause } from "../ask-user/confirm.ts";
-
-type Mode = "auto" | "ask" | "plan" | "yolo" | null;
+import { type AutoSaveDeps, saveDraftWithoutPause } from "../ask-user/confirm.ts";
 
 function ctx(
-  over: { permission_mode?: Mode; surface?: string; workflow?: Record<string, unknown> } = {},
+  over: { ask_before_writing?: boolean; surface?: string; workflow?: Record<string, unknown> } = {},
 ) {
   return {
-    permission_mode: over.permission_mode === undefined ? "auto" : over.permission_mode,
+    ...(over.ask_before_writing ? { ask_before_writing: true } : {}),
     ...(over.surface ? { surface: over.surface } : {}),
     tenant_id: "t",
     conversation_id: "c",
@@ -41,7 +39,7 @@ function deps(over: Partial<AutoSaveDeps> = {}) {
   return { value, calls };
 }
 
-describe("permission_mode=auto does not pause a save it would release anyway", () => {
+describe("a save the gate would release anyway does not pause", () => {
   test("the direct tool and the commit-intent path agree for an ordinary save", () => {
     expect(
       decideToolMode({
@@ -49,7 +47,6 @@ describe("permission_mode=auto does not pause a save it would release anyway", (
         category: "draft_write",
         input: {},
         overrides: {},
-        permission_mode: "auto",
       }).mode,
     ).toBe("no_confirm");
     expect(autoPreparationProceeds({ tool: "save_workflow_draft", input: {}, overrides: {} })).toBe(
@@ -69,7 +66,7 @@ describe("permission_mode=auto does not pause a save it would release anyway", (
 
   test("an ordinary save intent is saved without creating a confirmation", async () => {
     const d = deps();
-    const result = await autoModeSaveWithoutPause(ctx(), saveIntent(), false, d.value);
+    const result = await saveDraftWithoutPause(ctx(), saveIntent(), false, d.value);
     expect(result?.ok).toBe(true);
     expect(d.calls).toEqual({ commit: 1, readiness: 1 });
     expect(result?.data).toMatchObject({
@@ -88,7 +85,7 @@ describe("permission_mode=auto does not pause a save it would release anyway", (
         result: refusal,
       })) as unknown as AutoSaveDeps["checkReadiness"],
     });
-    const result = await autoModeSaveWithoutPause(ctx(), saveIntent(), false, d.value);
+    const result = await saveDraftWithoutPause(ctx(), saveIntent(), false, d.value);
     expect(result).toEqual(refusal as never);
     expect(d.calls.commit).toBe(0);
   });
@@ -97,9 +94,7 @@ describe("permission_mode=auto does not pause a save it would release anyway", (
     ["force_commit", () => [ctx(), saveIntent({ force_commit: true }), false]],
     ["a pinned replacement", () => [ctx(), saveIntent({ target_workflow_id: "x" }), false]],
     ["destructive", () => [ctx(), saveIntent(), true]],
-    ["ask mode", () => [ctx({ permission_mode: "ask" }), saveIntent(), false]],
-    ["plan mode", () => [ctx({ permission_mode: "plan" }), saveIntent(), false]],
-    ["no permission mode", () => [ctx({ permission_mode: null }), saveIntent(), false]],
+    ["asking before writing", () => [ctx({ ask_before_writing: true }), saveIntent(), false]],
     ["the MCP surface", () => [ctx({ surface: "mcp" }), saveIntent(), false]],
     [
       "a draft derived from a skill",
@@ -138,7 +133,7 @@ describe("permission_mode=auto does not pause a save it would release anyway", (
     test(`${label} keeps the human confirmation`, async () => {
       const d = deps();
       const [c, intent, destructive] = args();
-      expect(await autoModeSaveWithoutPause(c, intent, destructive, d.value)).toBeNull();
+      expect(await saveDraftWithoutPause(c, intent, destructive, d.value)).toBeNull();
       expect(d.calls.commit).toBe(0);
     });
   }
@@ -147,7 +142,7 @@ describe("permission_mode=auto does not pause a save it would release anyway", (
     const d = deps({
       loadPolicies: async () => ({ save_workflow_draft: "confirm_before_execution" }),
     });
-    expect(await autoModeSaveWithoutPause(ctx(), saveIntent(), false, d.value)).toBeNull();
+    expect(await saveDraftWithoutPause(ctx(), saveIntent(), false, d.value)).toBeNull();
     expect(d.calls.commit).toBe(0);
   });
 
@@ -157,7 +152,7 @@ describe("permission_mode=auto does not pause a save it would release anyway", (
         throw new Error("db down");
       },
     });
-    expect(await autoModeSaveWithoutPause(ctx(), saveIntent(), false, d.value)).toBeNull();
+    expect(await saveDraftWithoutPause(ctx(), saveIntent(), false, d.value)).toBeNull();
     expect(d.calls.commit).toBe(0);
   });
 });

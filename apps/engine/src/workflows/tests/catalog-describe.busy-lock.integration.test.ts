@@ -5,7 +5,7 @@ import { lockCatalogVocabulary } from "../../db/catalog-vocabulary.ts";
 import { auditLog, connectors, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import * as invokeModule from "../../llm/runtime/invoke.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { MemoryObjectStore, setObjectStoreForTesting } from "../../storage/object-store.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { describeOne, describePendingCatalog } from "../catalog-describe.ts";

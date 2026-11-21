@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { setConfigKey } from "../../config/loader.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
-import { createConversation, getConversation } from "../service.ts";
+import { createConversation, getConversation } from "../service/index.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
 
 let ctx: ConversationTestCtx;

@@ -75,7 +75,7 @@ against existing execution authorities.
 Attach or replace the key to an already configured connector through the CLI:
 
 ```sh
-sk credentials set <connector-id> --mode signed_jwt --private-key-file ./provider-key.p8 --json
+sk vault attach <connector-id> --mode signed_jwt --json < ./provider-key.p8
 ```
 
 The CLI reads the file locally and sends its contents only to the authenticated

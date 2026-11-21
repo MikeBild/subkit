@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { _resetConfigForTests } from "../../../config/loader.ts";
+import { testEnv } from "../../../test-helpers/determinism/env.ts";
 import { initializeModel, ProviderMisconfiguredError } from "../model-init.ts";
 
 const KEYS = [
@@ -14,15 +15,15 @@ const KEYS = [
 const SAVED: Record<string, string | undefined> = {};
 
 function snapshot(): void {
-  for (const k of KEYS) SAVED[k] = process.env[k];
-  for (const k of KEYS) delete process.env[k];
+  for (const k of KEYS) SAVED[k] = testEnv[k];
+  for (const k of KEYS) delete testEnv[k];
   _resetConfigForTests();
 }
 function restore(): void {
   for (const k of KEYS) {
     const v = SAVED[k];
-    if (v === undefined) delete process.env[k];
-    else process.env[k] = v;
+    if (v === undefined) delete testEnv[k];
+    else testEnv[k] = v;
   }
   _resetConfigForTests();
 }
@@ -32,8 +33,8 @@ describe("provider resolution — regression for production 500s", () => {
   afterEach(restore);
 
   it("hands back a plain string model in gateway mode", async () => {
-    process.env.AI_GATEWAY_API_KEY = "gw-key";
-    process.env.AI_GATEWAY_MODEL = "anthropic/claude-sonnet-4-5";
+    testEnv.AI_GATEWAY_API_KEY = "gw-key";
+    testEnv.AI_GATEWAY_MODEL = "anthropic/claude-sonnet-4-5";
     const resolved = await initializeModel({
       defaultModel: "anthropic/claude-sonnet-4-5",
     });
@@ -42,8 +43,8 @@ describe("provider resolution — regression for production 500s", () => {
   });
 
   it("supports direct anthropic mode when gateway vars are absent", async () => {
-    process.env.LLM_PROVIDER = "anthropic";
-    process.env.ANTHROPIC_API_KEY = "sk-ant-fake";
+    testEnv.LLM_PROVIDER = "anthropic";
+    testEnv.ANTHROPIC_API_KEY = "sk-ant-fake";
     const resolved = await initializeModel({
       defaultModel: "claude-sonnet-4-5",
     });
@@ -52,8 +53,8 @@ describe("provider resolution — regression for production 500s", () => {
   });
 
   it("supports direct openai mode when gateway vars are absent", async () => {
-    process.env.LLM_PROVIDER = "openai";
-    process.env.OPENAI_API_KEY = "sk-openai-fake";
+    testEnv.LLM_PROVIDER = "openai";
+    testEnv.OPENAI_API_KEY = "sk-openai-fake";
     const resolved = await initializeModel({
       defaultModel: "gpt-4.1",
     });

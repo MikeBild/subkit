@@ -6,10 +6,10 @@ import { flagConnectorAuthFailure } from "../../connectors/reauth.ts";
 import { getConnector } from "../../connectors/service.ts";
 import { resolveConnectorOAuthConfig } from "../../connectors/template-binding.ts";
 import type { Db } from "../../db/client.ts";
-import { connectors, credentials } from "../../db/schema/index.ts";
+import { connectors, vaultItems } from "../../db/schema/index.ts";
 import { withTenantWork } from "../../execution/index.ts";
 import { lockActiveTenant, SelfServiceIdentityError } from "../../identity/index.ts";
-import { errorFields, log, logger } from "../../logging/logger.ts";
+import { errorFields, log, logger } from "../../logging/index.ts";
 import { withActiveTenantJobContext } from "../../queue/job-context.ts";
 import { rotateOAuth2Tokens } from "../service.ts";
 import type { DecryptedCredential } from "../types.ts";
@@ -29,7 +29,7 @@ export interface RefreshOAuthJob {
 export async function refreshIfStale(
   db: Db,
   tenant_id: string,
-  credRow: typeof credentials.$inferSelect,
+  credRow: typeof vaultItems.$inferSelect,
   decrypted: DecryptedCredential & { mode: "oauth2" },
 ): Promise<DecryptedCredential> {
   return withTenantWork(tenant_id, async () => {
@@ -41,13 +41,13 @@ export async function refreshIfStale(
     const prepared = await db.transaction(async (tx) => {
       await lockActiveTenant(tenant_id, tx);
       const [current] = await tx
-        .select({ generation: credentials.credential_generation })
-        .from(credentials)
+        .select({ generation: vaultItems.credential_generation })
+        .from(vaultItems)
         .where(
           and(
-            eq(credentials.id, credRow.id),
-            eq(credentials.tenant_id, tenant_id),
-            isNull(credentials.deleted_at),
+            eq(vaultItems.id, credRow.id),
+            eq(vaultItems.tenant_id, tenant_id),
+            isNull(vaultItems.deleted_at),
           ),
         )
         .limit(1);
@@ -199,8 +199,8 @@ export async function refreshIfStale(
           {
             tenant_id,
             actor_type: "system",
-            action: AuditAction.CREDENTIAL_OAUTH2_REFRESHED,
-            resource_type: "credential",
+            action: AuditAction.VAULT_ITEM_REFRESHED,
+            resource_type: "vault_item",
             resource_id: credRow.id,
             result: "success",
             metadata: { connector_id: credRow.connector_id },
@@ -243,13 +243,13 @@ export async function refreshIfStale(
       await db.transaction(async (tx) => {
         await lockActiveTenant(tenant_id, tx);
         const [current] = await tx
-          .select({ generation: credentials.credential_generation })
-          .from(credentials)
+          .select({ generation: vaultItems.credential_generation })
+          .from(vaultItems)
           .where(
             and(
-              eq(credentials.id, credRow.id),
-              eq(credentials.tenant_id, tenant_id),
-              isNull(credentials.deleted_at),
+              eq(vaultItems.id, credRow.id),
+              eq(vaultItems.tenant_id, tenant_id),
+              isNull(vaultItems.deleted_at),
             ),
           )
           .for("update")
@@ -259,8 +259,8 @@ export async function refreshIfStale(
           {
             tenant_id,
             actor_type: "system",
-            action: AuditAction.CREDENTIAL_OAUTH2_REFRESHED,
-            resource_type: "credential",
+            action: AuditAction.VAULT_ITEM_REFRESHED,
+            resource_type: "vault_item",
             resource_id: credRow.id,
             result: "error",
             reason: err instanceof Error ? err.message : String(err),
@@ -330,8 +330,8 @@ export async function handleRefreshJob(db: Db, data: RefreshOAuthJob): Promise<v
   return withActiveTenantJobContext(data, db, async () => {
     const rows = await db
       .select()
-      .from(credentials)
-      .where(and(eq(credentials.id, data.credential_id), eq(credentials.tenant_id, data.tenant_id)))
+      .from(vaultItems)
+      .where(and(eq(vaultItems.id, data.credential_id), eq(vaultItems.tenant_id, data.tenant_id)))
       .limit(1);
     const row = rows[0];
     if (!row) return;

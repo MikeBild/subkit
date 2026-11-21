@@ -64,7 +64,6 @@ function compiled(steps: Record<string, unknown>[], privacy?: "sensitive") {
   });
 }
 
-// biome-ignore lint/suspicious/noTemplateCurlyInString: authored workflow placeholder
 const since = "${scope.windows.data.since}";
 
 const briefingSteps = [

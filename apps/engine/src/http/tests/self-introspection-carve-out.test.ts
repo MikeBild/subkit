@@ -21,6 +21,8 @@ const FILE_TO_SLUG: Record<string, string> = {
   "desktop-login-pages.ts": "identity-desktop-login",
   "onboarding.ts": "identity-onboarding",
   "workspace.ts": "identity-workspace",
+  "local-session.ts": "identity-local-launcher",
+  "local-workspace.ts": "identity-local-launcher",
 };
 
 const TOP_LEVEL_FILE_TO_SLUG: Record<string, string> = {
@@ -39,7 +41,7 @@ function importedOperationPermissions(src: string): (string | null)[] {
     for (const name of names.split(",").map((part) => part.trim())) {
       if (!name.endsWith("Operation")) continue;
       const declared = new RegExp(
-        `export const ${name} = defineOperation[\\s\\S]*?\\n\\s+permission: (null|"[^"]+")`,
+        `export const ${name} = defineOperation[\\s\\S]*?\\n\\s+permission: (null|"[^"]+"|[A-Z][A-Z0-9_]*)`,
       ).exec(opSrc);
       if (!declared?.[1])
         throw new Error(`${module}.ts does not declare ${name} with a permission`);
@@ -107,6 +109,7 @@ describe("self-introspection carve-out is a contract, not just a comment", () =>
       "health",
       "identity-cli-session",
       "identity-desktop-login",
+      "identity-local-launcher",
       "identity-login",
       "identity-memberships",
       "identity-onboarding",

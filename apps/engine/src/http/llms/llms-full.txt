@@ -27,7 +27,7 @@ You work in the Cockpit in the browser, as an installed app or in the SubKit Des
 ![Overview with key figures for runs, success rate, connector health and cost, the "Needs you" list with open decisions and the latest failed runs](/docs-images/intro-overview.en.webp?v=8dfed08b2c2d)
 
 The **Overview** shows at a glance what ran, what failed and what is waiting for your decision.
-How to track cost and budget is in "Keep track of usage and costs".
+How to track cost and the AI budget is in "Keep track of usage and costs".
 
 Use it as SubKit Cloud or run your own engine:
 
@@ -465,7 +465,7 @@ If the chat offers an approval, it opens the same dialog.
 | **Operations and external targets** | Which services and addresses the workflow reaches. Each service shows its provider's logo. |
 | **Validity** | How long the approval applies: **7 days**, **30 days** or **Until revoked**. **Until revoked** is preset. You get the same choice when you review a saved change in the chat. |
 
-**Starting from the chat.** In the chat mode **Ask**, SubKit does not ask before a start when a valid approval covers exactly this run: the same version, the same environment and unchanged effects. The audit trail names the approval that covered the start. SubKit still asks in three cases: in the mode **Plan only**, when a run passes on data from an earlier run, and when you told the conversation to confirm every start.
+**Starting from the chat.** Even with **Always ask first** on, SubKit does not ask before a start when a valid approval covers exactly this run: the same version, the same environment and unchanged effects. The audit trail names the approval that covered the start. SubKit still asks in two cases: when a run passes on data from an earlier run, and when you told the conversation to confirm every start.
 
 **When SubKit asks again without a new version.** An approval is tied to the connectors as they were reviewed. If a connector is signed in again or its configuration changes, the workflow needs a new review today, even though its steps are the same.
 
@@ -640,7 +640,7 @@ Credentials, approvals, roles, categories, settings and the history stay behind.
 To copy a whole self-hosted installation, make a backup instead, as described in "Run the engine".
 
 You need `package:export` on the source engine and `package:import` on the target engine. Members and administrators have both.
-After the import, someone with `credential:write`, usually an administrator, adds the credentials. A member can complete an OAuth sign-in.
+After the import, someone with `vault:write`, usually an administrator, adds the credentials. A member can complete an OAuth sign-in.
 
 1. Sign in to both engines, each with its own profile:
 
@@ -828,7 +828,7 @@ Writing always needs a person, in two places:
 
 - **Writes inside a workflow:** A workflow writes for real only after a person approves it in the Cockpit. Without approval the run is a dry run: writes are held back and nothing is sent.
   A new version needs no new approval as long as it touches no more systems, addresses or write permissions than the approved one. If it reaches further, SubKit asks again and names the difference.
-  In chat, the mode **Ask** asks before every write unless there is an approval that covers exactly this run: the same version, the same environment, still valid and with unchanged effects. **Plan only** always asks. So does a run that passes on data from an earlier run, and a conversation you told to confirm every start.
+  In chat with **Always ask first** on, SubKit asks before every write unless there is an approval that covers exactly this run: the same version, the same environment, still valid and with unchanged effects. A run that passes on data from an earlier run always asks, and so does a conversation you told to confirm every start.
 - **Write tools in the client:** A write tool pauses and returns a link.
   Open it, sign in, check what will happen, and select **Allow once** or **Decline**.
   Only then can the client finish the call with `confirm_tool_call`.
@@ -1643,11 +1643,11 @@ That is usually the AI model's API and, if the app deletes accounts, the identit
 
 ```bash
 sk connectors create --file connector-model.json --skip-checks
-sk credentials set <model-connector-id> --mode bearer --token "$MODEL_API_KEY"
-sk credentials set <idp-admin-connector-id> --mode header --header "Authorization=Bearer $IDP_ADMIN_KEY,apikey=$IDP_ADMIN_KEY"
+printf '%s' "$MODEL_API_KEY" | sk vault attach <model-connector-id> --mode bearer
+printf 'Authorization=Bearer %s\napikey=%s\n' "$IDP_ADMIN_KEY" "$IDP_ADMIN_KEY" | sk vault attach <idp-admin-connector-id> --mode header
 ```
 
-- `--skip-checks` is needed because the credentials are still missing when the connector is created. `credentials set` checks them afterwards.
+- `--skip-checks` is needed because the credentials are still missing when the connector is created. `sk vault attach` checks them afterwards.
 - `bearer` sends `Authorization: Bearer <token>`. `header` sends the named headers (comma-separated `Name=Value`).
 - Credentials come from your shell or secret store, never from a file, the app or this repository.
 - If you replace credentials with several headers in the Cockpit, fill all header fields. If you leave all of them empty, the old values stay.
@@ -1739,9 +1739,9 @@ Credentials in connectors can expire, and admin keys get rotated regularly.
 Record the name, connector, owner and expiry date of all credentials in the app's repository, never the value.
 Renew them before they expire.
 
-1. Store the new value with `sk credentials set`.
+1. Store the new value with `sk vault attach`.
 2. Check it with `sk connectors test <connector-id>`.
-3. Remove the old one with `sk credentials delete <credential-id>`.
+3. Remove the old one with `sk vault rm <vault-item-id>`.
 
 The Cockpit and `GET /v1/health` show failing connectors.
 
@@ -2035,17 +2035,18 @@ The app needs your server. It only keeps its program files, no data.
 
 ### Web app or SubKit Desktop
 
-Besides the installed web app there is SubKit Desktop, a program of its own for macOS, Windows and Linux. Both show the same Cockpit of your server, and neither runs anything on your device.
+Besides the installed web app there is SubKit Desktop, a Mac app for Apple Silicon. Both show the same Cockpit of your server. Only SubKit Desktop can also work with files, a browser and apps on your Mac, and only when you allow it.
 
 | | Installed web app | SubKit Desktop |
 | --- | --- | --- |
 | Installation | From the browser, one app per workspace | One program, one profile per server |
-| Devices | Computer and phone | Computer |
+| Devices | Computer and phone | Mac with Apple Silicon |
 | Notifications | Push through the browser | Notifications of the operating system while the program runs |
 | Quiet hours | Under **Settings › Setup** | In the settings of the program |
 | Icon in the menu bar or the notification area | No | Yes, with the number of open items |
 | Launch when you log in to your computer | No | Yes |
-| Share content from other apps | Yes | No |
+| Share content from other apps | Yes | Drop files on the app or its icon |
+| Files, browser and apps on your device | No | Yes, what you allow |
 | Updates | Come with the server | The program’s own updates |
 
 More in “SubKit Desktop”.
@@ -2195,7 +2196,7 @@ sk files restore <file-id> <version>
 ```
 ## Keep track of usage and costs
 
-This chapter is for anyone who needs to know what AI costs in the workspace, usually team leads or admins. Afterwards you know the cost per workflow, person and model, and you set how many tokens a month allows. An AI call is one request from SubKit to an AI model.
+This chapter is for anyone who needs to know what AI costs in the workspace, usually team leads or admins. Afterwards you know the cost per workflow, person and model, and you know how the monthly AI budget works. An AI call is one request from SubKit to an AI model.
 
 Everything is on the **Usage** page. At the top, one sentence sums up the time window, for example "This week: $84.20 for 1,240 AI calls." When costs rise, the sentence names the largest driver.
 
@@ -2203,7 +2204,7 @@ Everything is on the **Usage** page. At the top, one sentence sums up the time w
 
 - To view the page: `stats:read`. By default only the Admin role has it.
 - For **Person**, **Conversation** and **Task** under **Break down by**: `stats:read:all`. Without it you do not see these tabs.
-- To change the budget and prices: `settings:write`. The Admin role has both.
+- To change prices: `settings:write`. To change the AI budget: `identity:write`. The Admin role has both.
 
 ### Choose the time window
 
@@ -2211,7 +2212,7 @@ Choose the **Time window** at the top right: **24 h**, **This week**, **Last wee
 Weeks start on Monday, and your time zone applies.
 All figures compare the window with the same span before.
 
-The **Overview** offers the same choice. Its **Usage** tile follows the chosen time window and shows the cost in it or "No AI calls in this window". Below that it shows how much of the monthly budget is used, for example "42% of the monthly token budget". The tile is enough for a quick look; for the reasons, open **Usage**.
+The **Overview** offers the same choice. Its **Usage** tile follows the chosen time window and shows the cost in it or "No AI calls in this window". Below that it shows how much of the AI budget is spent, for example "42% of the monthly AI budget". The tile is enough for a quick look; for the reasons, open **Usage**.
 
 How to read the trend:
 
@@ -2224,17 +2225,9 @@ How to read the trend:
 
 - **Cost**: the estimated cost of all AI calls in the window.
 - **AI calls**: how often SubKit asked an AI model. When calls failed, it shows for example **3 failed**. A click opens the Failed AI calls.
-- **Budget · Month**: how much of the monthly budget is used. This tile always covers the current month.
+- **AI budget · Month**: how much of the monthly AI budget is spent. This tile always covers the current month.
 - **Saved by cache**: what reused input saved compared with full price.
 - **From the cache**: the share of input that was reused instead of paid again. Below it, **Cache per flow** shows the share for each source. Higher is cheaper and faster. **No data** means the provider reports no cache for that source.
-
-The forecast sits below the budget. SubKit projects it from the last 7 days:
-
-- **Lasts to month end.**
-- **About 94% by month end.** The budget is getting tight.
-- **Used up on the 26.** The budget does not last to month end.
-- **Used up. Chat, creating and fixes are paused.**
-- **No forecast yet. Too few days this month.** This applies to the first two days of a month.
 
 When a model has no price, the cost shows **at least** in front.
 The amount is then a floor. The real cost is higher.
@@ -2251,7 +2244,6 @@ Each notice has a matching action:
 | A workflow costs at least 1.5 times as much per run as in the window before. | **View cost** |
 | A model has no price. | **View model** |
 | Several models have no price. | **View models** |
-| The monthly budget will likely run out before month end. | **Adjust budget** |
 | One person accounts for at least half of the cost. | **View breakdown** |
 
 When nothing stands out, it says "Nothing unusual in this window."
@@ -2305,29 +2297,30 @@ Long conversations get more expensive because every reply reads the history so f
 You open **Failed AI calls** from the **AI calls** tile.
 Failed calls can still cost money. The sheet names the amount.
 Under **Where they happen** you see the workflow or conversation and the reason:
-**Provider error**, **Input too large** or **Budget used up**.
+**Provider error**, **Input too large** or **AI budget reached**.
 
-### Adjust the budget
+### The AI budget
 
-The monthly budget is the maximum number of tokens your workspace may use in a month. It covers all people and workflows together.
+Every workspace has exactly one limit on AI cost: the monthly AI budget in US dollars. Tokens are still counted, but not limited. A new workspace starts at $50 per month. A workspace that existed before the AI budget starts without a limit and gets one item under **Needs you**: "Set a monthly AI budget". The month follows the time zone of your workspace.
 
-1. Click **Adjust budget** under Worth a look, or the forecast in the tile.
-   Without a budget, choose **Set a budget** in the tile.
-2. Enter a value under **Tokens per month**.
-3. Save. The message **Budget saved** confirms the change.
+The budget lives in one place: **Settings** › **Usage**. It shows what this month's model calls cost, for example "$12.40 of $50". You need `stats:read` to see it; administrators change it there, everyone else with `stats:read` sees it read-only.
 
-You need `settings:write` for this, so by default the Admin role.
-Without it you only see the current state and "Ask someone with the Admin role."
+- Only priced calls count. A local model, or a model without a price, never counts towards the AI budget.
+- At 80% you get one item under **Needs you** and one notification per month.
+- At 100% chat, tasks and model steps in workflows pause. A task run waits and continues on its own. A workflow run waits before its model step, frees its worker and continues on its own once the budget allows it again: after **Raise budget**, after **Continue without a limit this month**, or when the next month starts. Steps it already ran don't run again. Workflows without a model step keep running.
+- One chat answer or one task run that costs more than $5 shows one notice. Nothing stops.
 
-What happens as tokens are used:
+What an administrator can do when the budget is reached:
 
-- From 75% a notice appears.
-- At 100% chat, designing workflows and fixes pause until the first of the month.
-- Approved workflows keep running. What is already in operation does not stop.
-- A run of a task waits. It does not fail, and it continues on its own once budget is available again.
-- Requests SubKit rejects because of the budget never count towards usage.
+1. Open the item under **Needs you**, or **Settings** › **Usage**.
+2. Choose **Raise budget** and pick a new limit: $20, $50, $200 or **No limit**.
+3. Or choose **Continue without a limit this month**. The next month starts with the limit again.
 
-Without a budget, AI calls are unlimited.
+You need `identity:write` for both, so the Admin role. This also applies to hosted workspaces: the AI budget is a decision of the workspace. The audit trail records each change as "Monthly AI budget changed" or "AI work continues without a limit this month".
+
+If the workspace prices models in another currency than USD (`tokens.currency`), there is no dollar figure and the AI budget does not apply.
+
+For developers: `GET /v1/workspace/spend-limit` (`stats:read`) reads the month, `PUT /v1/workspace/spend-limit` with `{"limit_usd": 200}` sets the limit (0 means no limit) and `POST /v1/workspace/spend-limit/continue` continues this month. A refused model call answers with the code `llm_spend_limit_reached` (HTTP 429); a provider account without quota answers with `llm_provider_quota_exhausted`. A waiting workflow run keeps the status `queued` and shows `waiting_reason: "budget"`; a model step that cannot wait fails with `llm_spend_limit_reached`.
 
 ### Set a price
 
@@ -2356,7 +2349,7 @@ Expand **Technical details** at the end of the page. It shows:
 
 - **Input tokens**, **Output tokens**, **Cache read**, **Cache written** and **Total**.
 - **Models without a price** and the number of calls without a price.
-- The **Budget** in tokens, for example "120,000 of 150,000 tokens · 30,000 left".
+- The **AI budget**, for example "$12.40 of $50 · $37.60 left".
 - The **Price source**: built-in list prices per model, or the prices set in `tokens.prices`.
 - Your **Time zone** and the **Internal flows per origin**.
 - The **Query** that fetches the same numbers through the CLI or the API.
@@ -2369,10 +2362,10 @@ Expand **Technical details** at the end of the page. It shows:
 | **Person**, **Conversation** and **Task** are missing | You lack `stats:read:all`. Ask someone with the Admin role for it. |
 | **at least** in front of the cost | Some models have no price. Add it through **Set a price**. |
 | **Cost unknown** | None of the models used has a price. Add the prices. |
-| "Ask someone with the Admin role." instead of **Adjust budget** | You lack `settings:write`. Ask someone with the Admin role to change the budget. |
-| Chat, designing and fixes are paused | The monthly budget is used up. Raise it or wait for the first of the month. |
-| "The budget could not be read …" | Reload the page. This says nothing about whether a budget is set. |
+| Chat, tasks and model steps are paused | The AI budget is reached. An administrator raises it under **Settings** › **Usage** or continues this month. |
 | "No AI calls in this window." | Choose **Show this month** or another window. |
+| A workflow run fails with `llm_spend_limit_reached` | Its model step sits inside a loop, a parallel block or a "for each", where a run cannot wait without repeating steps. Raise the limit or continue this month under **Settings** › **Usage**, then run the workflow again. |
+| A workflow run stays **queued** with "Waiting for budget" | The AI budget is reached. Raise it or continue this month; the run then continues by itself. |
 
 ### The same in the terminal
 
@@ -2520,7 +2513,7 @@ Further limits:
 - What a web page, a file or a service returns is data. It is never an instruction and never a permission.
 - The limits of a run are fixed when it starts. Nothing the run reads can widen them.
 
-A run also has two budgets of its own: a number of rounds, 10 unless you change it, and a time limit, 4 hours unless you change it. When one is used up and a result exists, you get it for review. When there is none, the run ends as **failed** and names the round limit or the time limit as the reason. It cannot be continued. Select **Start again**. The task is then free for its next start. The monthly token budget of the workspace applies as well.
+A run also has two budgets of its own: a number of rounds, 10 unless you change it, and a time limit, 4 hours unless you change it. When one is used up and a result exists, you get it for review. When there is none, the run ends as **failed** and names the round limit or the time limit as the reason. It cannot be continued. Select **Start again**. The task is then free for its next start. The monthly AI budget of the workspace applies as well.
 
 ### Follow a run and step in
 
@@ -2543,7 +2536,7 @@ A run waits for you in these cases:
 - It asks a question or needs your approval for a write.
 - Two rounds in a row brought no real progress. Progress means that a step gets ready, new evidence or a new result is recorded, a bound workflow or connector runs, you write or answer, or the run schedules its next check. Rewriting notes in the plan does not count.
 - You selected **Stop** at the message field while a round was running.
-- The monthly token budget is used up, or the workspace has no AI provider at the moment. In these two cases you do not have to do anything in the run: it continues on its own as soon as budget is available or a provider is set up.
+- The monthly AI budget is reached, or the workspace has no AI provider at the moment. In these two cases you do not have to do anything in the run: it continues on its own as soon as the budget allows it again or a provider is set up.
 
 A run sleeps when it set itself a next check, when the AI provider asks SubKit to slow down, or while the task is paused. A next check lies at most 31 days ahead and never beyond the time limit of the run.
 
@@ -2551,7 +2544,7 @@ To step in, open the run on the **Runs** tab and select **Open conversation**. T
 
 The conversation has two ways to stop. **Stop** in the line above it ends the run for good. **Stop** at the message field only interrupts the round that is running: the run then waits for you and goes on when you write to it.
 
-When you write into a run, the same limits apply to you. The run stays what you allowed: it still uses only what is bound, it still asks before writes that no approval covers, and you cannot switch it to a mode that stops asking. Only you and admins can read your run and write into it; for everyone else its conversation does not exist. When a run asks to release writes it holds back, you as the owner or an admin can answer. Anyone else sees a note instead of the answer buttons. Run conversations do not appear in the normal conversation list; you open them from the task.
+When you write into a run, the same limits apply to you. The run stays what you allowed: it still uses only what is bound and it still asks before writes that no approval covers. Only you and admins can read your run and write into it; for everyone else its conversation does not exist. When a run asks to release writes it holds back, you as the owner or an admin can answer. Anyone else sees a note instead of the answer buttons. Run conversations do not appear in the normal conversation list; you open them from the task.
 
 An open question blocks the next scheduled start, because the run is still open. Answer it or stop the run.
 
@@ -2601,7 +2594,7 @@ Admins also see a notice when a task is paused because its owner is gone.
 
 ### Costs
 
-Every round of a run is one or more AI calls. They count towards the monthly token budget of the workspace. When the budget is used up, a run waits; it does not fail, and it continues on its own once budget is available again.
+Every round of a run is one or more AI calls. When they have a price, they count towards the monthly AI budget of the workspace. When the budget is reached, a run waits; it does not fail, and it continues on its own once the budget allows it again.
 
 On the **Usage** page, choose **Task** under **Break down by** to see cost and AI calls per task. Because this covers the tasks of every owner, it needs `stats:read:all`. On the task page, the **Usage** tile on the **Overview** tab shows the latest run and the current month. You need no extra permission for it.
 
@@ -2638,7 +2631,7 @@ The `sk` inbox of a new workspace also receives `task_run.waiting`, `task_run.re
 | The standing permission ended after you edited the task | That is intended. Check the change and select **Allow** again. |
 | **Start** answers that a run is already in progress | Open the run. Answer it, wait for it or select **Stop**, then start again. |
 | The scheduled start did not happen | Read the line for the next start. **due, waiting for permission**: select **Allow**. **waiting for the current run**: answer or stop the open run. Otherwise check whether the task is paused. |
-| The run waits and names the budget | The monthly token budget is used up. Raise it on the **Usage** page or wait for the first of the month. The run then continues on its own. |
+| The run waits and names the budget | The monthly AI budget is reached. An administrator raises it under **Settings** › **Usage** or continues this month; otherwise the run waits for the next month. It then continues on its own. |
 | The run waits without a question | It made no progress or a round was interrupted: tell it what is missing. |
 | The run ended at its round limit or time limit | It cannot be continued. Select **Start again**. If the rounds are too few for the task, raise them when you edit the task. |
 | “This workflow is not part of the task.” | Bind the workflow to the task. This ends the standing permission; allow it again. |
@@ -2674,7 +2667,7 @@ Over the HTTP API the same actions are under `/v1/tasks` and `/v1/task-runs`. Th
 ## Set SubKit up for yourself
 
 This chapter is for anyone who comes to the Cockpit for the first time or wants to change their defaults.
-Afterwards you have answered the step “How SubKit works for you” and know what each of the six answers sets and where you change it later.
+Afterwards you have answered the step “How SubKit works for you” and know what each of the five answers sets and where you change it later.
 
 ### What you need
 
@@ -2686,26 +2679,27 @@ Afterwards you have answered the step “How SubKit works for you” and know wh
 The step appears once, after your first sign-in to a workspace.
 
 1. Read the question and choose an answer. Under **Settings** › **Setup**, the line “Sets: …” says what each answer does. The recommended answer carries the addition **recommended**.
-2. Select **Continue** until all six questions are answered.
+2. Select **Continue** until all five questions are answered.
 3. Check the summary “This is what I will set up for you”. **Change** corrects a single answer.
 4. Select **Apply these**.
 
 **Not now** skips the step. SubKit then applies the recommended settings and does not ask again.
 
-### The six answers and what they set
+### The five answers and what they set
 
 | Question | Choices | Sets |
 | --- | --- | --- |
 | “What should SubKit do for you first?” | **File invoices**, **Daily numbers by email**, **Summarize the week**, **List open tickets**, **Watch the pricing page**, **Unlock access after payment** or **Something else** with your own text | The first suggestion in chat and the first item of “First steps”. |
 | “Which services do you use for it?” | Gmail, Google Drive, Google Sheets, Slack, Jira, GitHub, Notion, HubSpot, Stripe or **Other service** | Which connectors “First steps” offers first. |
 | “Who approves what SubKit may do?” | **Me** (recommended), **Someone else on the team** or **Two of us: one builds, one approves**, each with an email address | Who gets approval notifications, whether an invitation is prepared and, for two of us, whether every workflow approval needs two people. |
-| “How much should SubKit do on its own in chat?” | **Always ask**, **Ask only when unexpected** (recommended) or **Plan only at first** | The chat mode **Ask**, **Automatic** or **Plan only** for new conversations. |
 | “Where should new things run first?” | **Test first** (recommended) or **Straight to production** | The default environment for new workflows and tasks. |
 | “When may SubKit notify you?” | **Right away** (recommended), **Only during my working hours** or **Once a day as a summary** | Notifications and quiet hours. |
+| “How much may SubKit spend on AI per month?” (administrators only) | **$20**, **$50** (recommended), **$200** or **No limit** | The monthly AI budget of the workspace. |
 
-The first two answers only change what the Cockpit suggests to you first. They connect no service and create no workflow. The other four change how SubKit works:
+As an administrator you get this sixth question. The AI budget applies to the whole workspace; “Usage and costs” explains what happens at 80% and 100%. Under **Settings** › **Setup** this row leads to **Settings** › **Usage**, the one place where the budget is changed.
 
-- **Chat mode.** Every new conversation starts in this mode. In the conversation you can choose another one at any time. “Chat modes and rules” explains what the modes mean.
+The first two answers only change what the Cockpit suggests to you first. They connect no service and create no workflow. The other three change how SubKit works:
+
 - **Default environment.** A new task and the review of a new workflow start in this environment. You still choose the environment of a single workflow or task yourself.
 - **Approvals and notifications.** Both are described in “Notifications and quiet hours”.
 
@@ -2726,15 +2720,17 @@ With this answer, every workflow approval in the workspace needs two different p
 2. Select **Change** on the answer you want to change.
 3. Choose the new answer and then **Apply**. You read “Setting applied”.
 
-Each change applies right away to the setting named. Open conversations keep their mode; the new chat mode applies to the next new conversation.
+Each change applies right away to the setting named.
 
-The overview of **Settings** shows your choice in one line, for example “Ask only when unexpected · Test first · Right away”.
+When SubKit asks before a step is not a setup answer. Your request and your rules decide it; “When SubKit asks” explains how, including the rule **Always ask first**.
+
+The overview of **Settings** shows your choice in one line, for example “Test first · Right away”.
 
 ### Good to know
 
 - The answers belong to you, not to the workspace. Every person sets SubKit up for themselves.
 - The audit trail records every change as “Setup choices changed”.
-- The recommended values are: **Automatic**, **Test**, **Me** and **Right away**.
+- The recommended values are: **Test first**, **Me** and **Right away**, and for administrators **$50** as the monthly AI budget.
 - If you, as an administrator, name an address that is not in the workspace yet, SubKit prepares an invitation and sends no email. The invited person joins the workspace as a member; that is why “Role: Member” is shown next to the field. This role may approve.
 - If you name a person whose role may not approve, SubKit stores the choice and warns under **Settings** › **Setup**: “… cannot approve with the current role. Approval notifications stay with you until an administrator changes the role.”
 - If you name an unknown address without the Administrator role, it is stored but nobody is invited. As soon as an administrator invites or adds the address, SubKit links your choice by itself; the notifications go to the person once they have joined.
@@ -2760,50 +2756,52 @@ The overview of **Settings** shows your choice in one line, for example “Ask o
 curl -s -X PUT "$SK_URL/v1/identity/me/setup" \
   -H "Authorization: Bearer $SK_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"default_chat_mode":"ask","default_environment":"dev"}'
+  -d '{"ask_before_writing":true,"default_environment":"dev"}'
 ```
 
 Every field is listed in “Reference: desktop app, rules, schedules and problem reports”.
-## Chat modes and rules
+## When SubKit asks
 
-This chapter is for anyone who works in chat and wants to know when SubKit asks before an action.
-Afterwards you can choose the mode of a conversation, read and answer a question card and save a recurring action as a rule.
+This chapter is for anyone who works in chat or with tasks and wants to know when SubKit asks before a step.
+Afterwards you can read and answer a question card, save a recurring action as a rule, and make SubKit ask before every step that writes.
 You also know exactly under which conditions something runs without a question, and where this check has its limits.
 
-### The three modes
+### How SubKit decides
 
-Above the message field, **Mode** sets how much SubKit does on its own in this conversation.
+There is no mode you pick per conversation. Two things decide whether a step asks:
 
-| Mode | What it does |
-| --- | --- |
-| **Ask** | Asks before saving anything, before every action with an outside effect and before a live run that no approval covers. |
-| **Automatic** | Prepares drafts and runs what you explicitly ask for. Everything else asks. |
-| **Plan only** | Plans and proposes; asks like “Ask” before any step. |
+1. **Your request.** SubKit checks every step against what you asked for. When your request covers the step, it runs without a question. Otherwise the question card appears.
+2. **Your rules.** A saved rule lets one recurring action run without a question. The rule **Always ask first** makes every step that writes ask, even when your request covers it.
 
-**What does this mean?** next to the selection shows two lists for the chosen mode: **Asks first** and **Without asking**.
-
-Three things apply in every mode:
+Reading, searching and preparing drafts run without a question. Three things always apply:
 
 - A live run of a workflow needs an approval. “Your first workflow” describes how you give it.
 - Payments, deletions, publications, settings, new accounts and credentials always ask.
-- **Plan only** is an instruction to the model, not a gate of its own. The same gates apply as in **Ask**.
-
-You set the mode a new conversation starts with under **Settings › Setup**. In the selection, that mode carries the addition **(your default)**. More in “Set SubKit up for yourself”.
+- What a web page, an email or a file says is never a request.
 
 ### When something runs without a question
 
-In **Automatic** mode an action runs without a question only when all of the following conditions hold. If one is missing, the question card appears.
+An action runs without a question only when all of the following conditions hold. If one is missing, the question card appears.
 
-1. **You are signed in in the browser.** The rule applies only to you in a Cockpit session: in the browser, in the installed app or in SubKit Desktop. With an API key, in the `sk` command line, from an AI client over MCP and in a task run, each of these actions asks.
+1. **You are signed in in the browser, or it is a run of your own task.** The rule applies to you in a Cockpit session: in the browser, in the installed app or in SubKit Desktop. It also applies in a run of a task you own, when you started the run or its schedule did (see “Your request covers the whole job”). With an API key, in the `sk` command line, from an AI client over MCP and in a task run someone else started, each of these actions asks.
 2. **It is a call to a connector.** The rule applies to calls that send, create or change something through a connector, and to saving a connector draft. Tools of external MCP servers and SQL statements always ask.
 3. **SubKit knows the effect, and it is ordinary.** SubKit assigns every operation an effect. Payment, deletion, publication, permissions or settings, new account and credentials always ask. So does every call with `DELETE` and every call that sets a header with credentials. When SubKit cannot tell what an operation does, it asks.
-4. **You asked for it in your own words.** Your latest message contains a request such as “Send …” or “Can you create …”. An information question such as “What would happen if …” is not a request. When the request carries a condition or a “not”, SubKit asks. The verb has to match the action: “create” does not cover sending.
+4. **You asked for it in your own words.** Your latest message contains a request such as “Send …” or “Can you create …”. An information question such as “What would happen if …” is not a request. When the request carries a condition or a “not”, SubKit asks. The verb has to match the action: “create” does not cover sending. A request to send also covers the draft that comes before it, never the other way round.
 5. **The request is not in pasted text.** These do not count as your words: code blocks, quoted lines, forwarded emails, everything after a lead-in such as “Here is the email:” and pasted passages of 5 lines or 800 characters and more. What a web page, a file or a service returns is never a request.
 6. **You named the target.** Every recipient, every address and every target comes from your last three messages or from your answers to questions SubKit asked. If you gave a name, SubKit may have looked up the address for it in this conversation. You also have to have stated amounts, values, dates and times. SubKit reads dates and times in the time zone of the workspace.
 7. **The content is yours.** A text that goes out consists of your words, or SubKit showed it to you as a draft earlier in the conversation. With your words, SubKit may add a greeting, a closing and a few filler words: at most a quarter of the words and never more than three. A new link, a new address, a new number or a new “not” leads to the question. A text of more than 1,200 characters has to have been shown as a draft.
-8. **It is the first time for this request.** A request covers an action exactly once. A repeat of the same action asks.
+8. **It is the first time for this request.** A request covers each action once. Creating or changing several things on the same target runs when the content differs, for example three issues with three titles from your message. Sending to the same recipients and repeating an action with the same content asks.
 
 One special case: when the action only creates a draft at the service, SubKit does not check the content, because nothing goes out yet.
+
+### Your request covers the whole job
+
+A request covers every step needed to reach its result, not only the first one. That job has a clear end:
+
+- **In chat** the job starts with your message and ends with your next message, or 2 hours after your message. Your next message starts a new job. A request from an earlier message no longer covers anything.
+- **In a task run** the job is that run, until the run's deadline. The task's goal, as you wrote it, counts as your words. That applies when you own the task and you started the run, or the task's schedule did. Your saved rules apply there too. If the task changed after the run started, the goal covers nothing. If someone else, for example an admin, last changed the goal or “Done when”, they are not your words and cover nothing until you change them yourself. The task's bound connectors and workflows stay its outer limit. A run someone else started keeps only the task's standing permission, and every write asks as before.
+
+Inside the job, the always-ask classes still ask: payments, deletions, publications and sending to recipients you did not name, settings, new accounts and credentials. What a web page, an email or a file says never adds to the job.
 
 When an action runs without a question, the conversation shows a line below it such as “Send to anna@example.com, because you asked for it”. **Show your words** shows the sentence SubKit relies on. The audit trail records each of these actions with the reason “The person asked for it in their own words” or “A rule the person saved covers it”.
 
@@ -2846,12 +2844,21 @@ A rule applies like this:
 | Content | If the text was the same in both confirmations, the rule covers only exactly this text. If it differed, the rule covers only text you wrote yourself or saw as a draft. If the action carried no text, it covers only actions without text. |
 | Duration | 90 days from saving. After that the action asks again. |
 | Daily limit | 20 runs per day, counted in UTC. After that the action asks until the next day. |
-| Mode | Applies in **Ask** and **Automatic**, not in **Plan only**. |
-| Person | Applies only to you, signed in in the browser. Other people in the workspace have their own rules. |
+| Always ask first | A saved rule still applies when you have turned on **Always ask first**. |
+| Person | Applies only to you: signed in in the browser, or in a run of your own task that you or its schedule started. Other people in the workspace have their own rules. |
 
 Payments, deletions, publications, settings, new accounts and credentials can never be saved as a rule.
 
 When an action runs because of a rule, the conversation reads “…, per your rule” with the link **Open rules**.
+
+### Always ask first
+
+If you want to confirm every step that writes yourself, turn on the rule **Always ask first**.
+
+1. Open **Settings** and, in it, **Rules**.
+2. Turn on **Always ask first**.
+
+From then on SubKit asks before every step that saves, sends, creates or changes something, even when your request covers it. Reading still runs without a question. Your saved rules keep applying, and so does an approval for live runs. The setting applies only to you: in every conversation, to tools an AI client calls on your behalf over MCP, and to direct tool calls, also with your own API key. It does not apply to a system account and its keys, because no person stands behind them. Task runs started by their schedule follow their request and their standing permission.
 
 ### View and revoke rules
 
@@ -2885,7 +2892,7 @@ The check is strict on purpose and asks when in doubt. It still is not an unders
 
 | What you see | What to do |
 | --- | --- |
-| “This chat asks before every action with an outside effect.” | The conversation runs in **Ask** or **Plan only** mode. Select **Allow once** or set the mode to **Automatic**. |
+| “You chose to have SubKit ask before every step that writes.” | **Always ask first** is on. Select **Allow once**, or turn the rule off under **Settings › Rules**. |
 | “You did not ask for this action in your own words.” | Write the request as a sentence of its own, for example “Send the summary to anna@example.com”. |
 | “The request stands in pasted or quoted text, not in your own words.” | Write the request above or before the pasted text. |
 | “Your request came with a condition or a ‘not’, so SubKit asks.” | Check the card and select **Allow once**, or phrase it without a condition. |
@@ -2894,12 +2901,13 @@ The check is strict on purpose and asks when in doubt. It still is not an unders
 | “The text is not yours and you have not seen it as a draft yet. Read it before it goes out.” | Read the **Content** on the card. Or ask for a draft first and then ask for it to be sent. |
 | “SubKit does not know what this operation does, so it asks.” | This operation always asks. Check the card and decide. |
 | “You asked for this once, and that already ran. A repeat asks again.” | If it should run once more, select **Allow once**. |
+| “You did not ask for this action in your own words.” after a while | The job of your request is over: you wrote a new message, or 2 hours passed, or the task run reached its deadline. Ask again, or select **Allow once**. |
 | “Only you, signed in in the browser, can let an action run without this question.” | You work with an API key or from another client. Open the conversation in the Cockpit. |
 | “The rule was not saved. Nothing changed; SubKit keeps asking.” | Select **Save as rule** again. If it stays that way, check that you are signed in in the browser. |
 
 ### The same over the HTTP API
 
-Rules belong to a person. A system account has none, and the routes answer it with `403 person_required`.
+Rules belong to a person. A system account has none, and the routes answer it with `403 person_required`. You set **Always ask first** with `PUT /v1/identity/me/setup` and the field `ask_before_writing`.
 
 | Route | Does |
 | --- | --- |
@@ -3146,7 +3154,7 @@ A failed run shows a notice with three parts: what happened, one recommended act
 | **Sign-in rejected** | **Sign in again**: reconnect the connector. |
 | **Approval no longer matches**, **Refused before the start** | **Review approval**: check and renew the approval. |
 | **Timed out**, **Aborted**, **Connector unavailable**, **Provider rate limit reached**, **Not read completely**, **Error in the external system** | **Try again** |
-| **Token budget exhausted** | **Ask an administrator** |
+| **AI budget reached** | **Ask an administrator**: an administrator raises the budget under **Settings** › **Usage** or continues this month without a limit. |
 | **Connector missing**, **Unresolved placeholder**, **Answer in an unexpected shape**, **Message malformed**, **Not classified** | **Fix it in the chat**: the chat opens with the question about cause and fix. |
 
 For confidential workflows (`execution_privacy: sensitive`) SubKit stores no failure details. From this version on, such a run still keeps its cause and one fixed sentence that says what to do. Example: “The connected service rejected the sign-in. Reconnect the connector, then run again. Nothing was changed by this step.” When SubKit recognizes no cause, it stays at “Sensitive execution failed.” The engine writes these sentences in English. The Cockpit says them in your language where it knows the cause, the reason for a hold or the failure code: on the overview for held and failing workflows, for a refused rerun and in error notices. In the technical details of a run, over the HTTP API and in `sk` the engine’s English sentence remains. SubKit Desktop notifies in your language too.
@@ -3279,36 +3287,58 @@ sk schedules resume <schedule-id>
 The response fields, the events and the reasons are listed in “Reference: desktop app, rules, schedules and problem reports”.
 ## SubKit Desktop
 
-This chapter is for anyone who wants to keep an eye on SubKit all day without keeping a browser tab open.
-Afterwards you have connected SubKit Desktop to your server, signed in and set up notifications, quiet hours and the launch at login.
+This chapter is for anyone who wants SubKit on their Mac: to keep an eye on it all day, and to let it work with files, websites and apps on that Mac.
+Afterwards you have installed SubKit Desktop, signed in, allowed what SubKit may use on your Mac, and you know how to follow and stop it in the live view.
+You can also run a workspace only on your Mac and move it to a server later.
 
-### What SubKit Desktop is and is not
+### What SubKit Desktop is
 
-SubKit Desktop is a window onto your server’s Cockpit. It brings three things a browser tab does not have: an icon in the menu bar or the notification area with the number of open items, notifications of the operating system and the launch when you log in to your computer.
+SubKit Desktop is your server’s Cockpit as a Mac app, plus three things a browser tab cannot do:
+
+- **It stays with you.** An icon in the menu bar shows what needs you, notifications arrive while the window is closed, and the app starts when you log in.
+- **It works on your Mac, if you allow it.** Chat, tasks and workflows can read and write files in folders you allowed, work in websites you allowed and use apps you allowed. Nothing of this is on until you turn it on.
+- **It can run a workspace of its own.** With **Only on this Mac**, the database and the engine run on your Mac, without a server.
 
 | SubKit Desktop does | SubKit Desktop does not |
 | --- | --- |
-| Show your server’s Cockpit, with the same permissions as in the browser. | Run workflows or tasks on your computer. Everything runs on the server. |
-| Report what needs you, also when the window is closed. | Work without a connection to the server. It keeps no data locally. |
-| Remember several servers as profiles. | Store an API key or a password. The sign-in is a session as in the browser. |
-| Open outside links in your system’s browser. | Load other websites in its window. |
+| Show your server’s Cockpit, with the same permissions as in the browser. | Touch a folder, website or app you have not allowed. |
+| Report what needs you, also when the window is closed. | Store your password. The sign-in is a session as in the browser. |
+| Ask before a step on your Mac writes, unless your request covers it. | Follow instructions that a web page or a file contains. |
+| Show every step on your Mac in the live view, with a Stop button. | Keep working after you stop it. Later steps don’t run. |
 
 The table in “Cockpit as an app” shows how it differs from the installed web app.
 
 ### What you need
 
-- A SubKit server of version 11.2.0 or later. Older servers do not offer the app’s sign-in.
-- The address of the server, for example `subkit.example.com`. It has to be reachable over `https://`; only `localhost` may use `http://`.
-- An account you can sign in to the Cockpit with in the browser.
-- SubKit Desktop itself. There is no installer to download yet: the app for macOS, Windows and Linux is available with the public release of SubKit. Until then you use the Cockpit in the browser or as an installed web app; that works today (“Installed Cockpit sessions”).
+- A Mac with Apple Silicon and macOS 13 or later. Intel Macs are not supported. Files, browser, apps and the local workspace exist only on the Mac.
+- For a server: a SubKit server of version 12.0.0 or later. Its address has to be reachable over `https://`; only `localhost` may use `http://`.
+- An account you can sign in to the Cockpit with in the browser, or an invitation link from your invitation email.
+- For a workspace only on your Mac: no server, but an API key of Anthropic, OpenAI or Google Gemini, or a model server on your Mac.
+
+### Install
+
+SubKit Desktop comes as a signed DMG file for Apple Silicon, named for example `subkit-desktop-12.0.0-mac-arm64.dmg`. Ask the person who runs your server where your team gets it.
+
+1. Open the DMG file.
+2. Drag **SubKit** into **Applications**.
+3. Start SubKit from **Applications**. On the first start, macOS asks whether you want to open an app from the internet. Select **Open**.
+
+### Welcome and invitation link
+
+On the first start you see “Welcome to SubKit Desktop”. It names four things: see what needs your approval, chat and draft workflows, get tasks done step by step, and “You stay in control”.
+
+- **Get started** leads to “Connect server”.
+- **Use an invitation link** is for an invitation email. Paste the whole link under **Invitation link** and select **Open invitation**. You read, for example, “Anna invited you to the workspace ‘Brennwerk’.” with the address and the validity. **Join in your browser** opens the invitation in your browser. Join there, then sign in in the app.
+
+An invitation that has expired, was withdrawn or was already used says so. Ask the person who invited you for a new one.
 
 ### Connect to a server
 
-1. Start SubKit Desktop. You see “Connect server”.
+1. In “Connect server”, keep **Connect to a server**. **Only on this Mac** starts a local workspace instead (see “A workspace only on this Mac”).
 2. Enter the address of your server under **Server address** and select **Check connection**. **Examples** lists the servers the app already knows and `localhost:3000`.
-3. Read the result. With “Connected” and a green connection everything fits, and **Next** leads to the sign-in.
+3. Read the result. With “Connected” everything fits, and **Next** leads to the sign-in.
 
-The app checks whether a SubKit server answers at the address and whether the versions fit together: the server has to be new enough for the app, and the app new enough for the server.
+The app checks whether a SubKit server answers at the address and whether the versions fit together. When the server is too old, **Ask an administrator** copies a message for the person who runs it.
 
 ### Sign in in the browser
 
@@ -3316,56 +3346,41 @@ The sign-in happens in your browser, not in the app. That way you use the sign-i
 
 1. In the step “Sign in with browser”, select **Open browser**. Your browser opens, and the app shows “Waiting for confirmation in the browser…”.
 2. Sign in to the Cockpit in the browser if you are not signed in there yet.
-3. Read the page “Sign in to SubKit Desktop”. It names your computer, the workspace and the account, for example “SubKit Desktop on MacBook-Anna is asking to sign in to Brennwerk.” and “Signed in as anna@example.com”.
+3. Read the page “Sign in to SubKit Desktop”. It names your Mac, the workspace and the account, for example “SubKit Desktop on MacBook-Anna is asking to sign in to Brennwerk.” and “Signed in as anna@example.com”.
 4. Select **Sign in**. Continue only if you just started this sign-in yourself in the app on this device.
-5. The browser hands back to the app. The app shows “Finishing sign-in…” and then “Signed in” with the server, version and device. **Open SubKit** opens the Cockpit.
+5. The browser hands back to the app. You read “Device registered” with the device name, the server and the status. **Open SubKit** opens the Cockpit.
 
 With **Cancel** on the page in the browser or **Cancel** in the app, nothing happens: no profile and no device is created.
 The page in the browser is valid for 10 minutes. After that, start the sign-in again in the app.
 
-### Devices and signing out
+### The first start after the sign-in
 
-Every computer on which you sign in with SubKit Desktop is a device of its own with its own session. The server lists it under the name of the computer. When you sign in again on the same computer, it stays the same device.
+The app asks up to three questions once:
 
-- **Sign out** in the **User menu** of the Cockpit ends the session of this device. Your session in the browser and other devices stay signed in.
-- **Remove** in the list **Your servers** deletes the local session and the profile. Nothing changes on the server.
-- **Revoking a device** signs it out from outside, for example after a loss. Within a few seconds the app then shows “Signed out of …” with **Sign in again**.
+1. **Workspace.** If you have access to several workspaces, choose one. You can switch later at any time.
+2. **Allow notifications.** **Allow** lets macOS show SubKit’s notifications. A test notification confirms it: “Notifications are on”.
+3. **Diagnostics.** “Should your bug reports include diagnostics?” **Attach diagnostics** adds a cleaned diagnostics report to every bug report you send. Diagnostics stay off unless you choose this.
 
-You see your devices in the Cockpit under **Settings** › **Your profile** › **Where are you signed in?**. The list shows the installed web app and every desktop device with its kind, name, the day it signed in and its last use. The device you are sitting at carries the mark **This device**.
+**Not now** skips a question. You change all three later under **Settings** in the Cockpit.
 
-1. Open the Cockpit in the browser and there **Settings** › **Your profile**.
-2. Select **Revoke** at the device.
-3. Confirm. The dialog names the device and says what happens: it is signed out at once and no longer receives notifications; other devices stay signed in.
+### Menu bar, notifications and quiet hours
 
-In the app itself and in the installed web app you see the same list, but there you can only sign out **This device** with **Sign out**. You revoke another device in the browser.
-
-**Revoke installation** in the workspace menu only concerns the installed web app. The dialog says so: desktop devices stay signed in.
-
-### How long you stay signed in
-
-| Rule | Value |
-| --- | --- |
-| Without use | 30 days. Any use of the app, also in the background at the tray icon, starts the period again. |
-| At most | 90 days since the sign-in, even with daily use. After that you sign in again in the browser. |
-| After a revocation or **Sign out** | Ended at once. |
-
-When the session expires you read “Your session expired. Sign in again; your settings are kept.” Shorter periods apply to the browser and the installed web app: 8 hours without use, 24 hours at most.
-
-### Icon, notifications and quiet hours
-
-When you close the window, SubKit Desktop keeps running. The icon in the menu bar or the notification area shows the number of open items.
+When you close the window, SubKit Desktop keeps running. The icon in the menu bar shows the number of open items.
 
 | Entry in the icon’s menu | What it does |
 | --- | --- |
 | **Open SubKit** | Brings the window to the front. |
 | **Needs you (3)** | Opens the list of open items. When nothing is open, it reads “Nothing needs you right now”. |
-| **Pause notifications for 1 hour** | Holds notifications back for an hour. **Resume notifications** ends the pause. |
-| **Launch at login** | Starts SubKit Desktop with your computer, without opening a window. |
+| **Open live view** | Shows what SubKit does on your Mac right now. Appears while SubKit works on your Mac. |
+| **Pause notifications for 1 hour** | Holds notifications back for an hour. Below it you read until when, for example “Paused until 15:05”. **Resume notifications** ends the pause. |
+| **Launch at login** | Starts SubKit Desktop with your Mac, without opening a window. |
 | **Check for updates** | Looks for a new version of the app. |
+| **Quick note …** | Opens a note for your inbox (⌥ Space). |
+| **Settings…** | Opens the app’s settings. |
 | **Report a problem…** | Opens the dialog from “Report a bug”. |
 | **Quit SubKit** | Quits the app. No notifications arrive after that. |
 
-A notification says what happened and what to do, for example “‘Daily report’ is waiting for your decision” and “Review the change and decide.” Unlike the push in the browser, it names the item. A click opens exactly this item in the window.
+A notification says what happened and what to do, for example “‘Daily report’ is waiting for your decision” and “Review the change and decide.” A click opens exactly this item in the window.
 
 - A new item is reported within about a second, after a minute at the latest.
 - When several items arrive at once, the app shows at most three notifications. You see the rest in the number on the icon.
@@ -3373,11 +3388,175 @@ A notification says what happened and what to do, for example “‘Daily report
 
 You set quiet hours in the app:
 
-1. Open **Settings…** in the app menu or press ⌘, (on Windows and Linux Ctrl+,).
+1. Open **Settings…** in the app menu or press ⌘,.
 2. Switch on **Quiet hours** and enter **From** and **To**. The presets are 22:00 and 07:00.
 3. If you like, switch on **Launch when you log in to your computer** and choose German, English or **Same as system** under **Language**.
 
-During quiet hours and during a pause SubKit keeps counting but shows no notifications. Quiet hours follow the clock of your computer.
+During quiet hours and during a pause SubKit keeps counting but shows no notifications. The menu then reads, for example, “Quiet hours until 07:00”. Quiet hours follow the clock of your Mac.
+
+### Quick note
+
+Press ⌥ Space anywhere, or select **Quick note …** in the menu bar. A small window asks “What do you want to capture?”.
+
+1. Type your note.
+2. Press ⌘ ↩ or select **Into the inbox**. Esc closes the window without sending.
+
+You read “Note in the inbox”. The note waits there for your review, as described in “Collect ideas and turn them into knowledge or skills”.
+
+### Drop files: “Where should this go?”
+
+Drag files onto the window, the Dock icon or the menu bar icon. SubKit asks “Where should this go?” and offers four choices:
+
+| Choice | What happens | Limit |
+| --- | --- | --- |
+| **Store as file** | The file lands under **Files**, with an `@attachment:` reference. | 5 MB per file |
+| **Ingest as source** | SubKit splits it into sections and keeps it as a knowledge source. | 50 MB per file |
+| **Attach in chat** | The files wait for your next chat message. | 10 files |
+| **Into the inbox** | SubKit reviews it and suggests what it becomes. | 1 MB for text files |
+
+You can drop up to 20 files at once. A choice that does not fit says why, for example “Larger than 5 MB” or “File type not supported”. While the app is offline, nothing is placed.
+
+### Let SubKit work on your Mac
+
+SubKit can do three things on your Mac. All three are off until you turn them on, and each uses only what you allow.
+
+| Capability | What SubKit does | What you allow |
+| --- | --- | --- |
+| **Files** | Reads files, saves, creates folders, moves files and puts them in the Trash. | Folders, each with **Read** or **Read and write** |
+| **Browser** | Opens pages, reads them, fills in fields, presses buttons and downloads files, in a browser of its own. | Websites, as an origin such as `https://shop.example.com` |
+| **Apps** | Reads and uses buttons and fields in an app window, types and takes redacted screenshots. | Apps, chosen one by one |
+
+Turn them on:
+
+1. Open **Settings…** in the app and, in it, **Local capabilities**. Select **Manage**.
+2. Switch on **Let chat and tasks use this Mac**.
+3. Under **Local allowances**, add what SubKit may use:
+   - **Folders**: **Choose folder…**, then choose **Read** or **Read and write** under **Access**.
+   - **Websites**: enter an origin, for example `https://shop.example.com:8443` or an address in your local network, without a path, and select **Add**.
+   - **Apps**: **Choose app…**.
+4. Under **Off limits for SubKit**, add what SubKit must never use.
+
+Some things are always blocked and cannot be allowed: SubKit itself, security prompts and sign-in windows, password managers, crypto wallets, banking and payments, terminals and shells, scripts and automation, System Settings and installers, remote support and the Finder. SubKit also refuses a whole disk, a system or hidden folder and your entire home folder. Choose a subfolder instead.
+
+The allowances live on your Mac. The server learns which folders, websites and apps the Mac offers, so an approval can name them. In the Cockpit, **Settings** › **Devices** › “Which devices run local steps?” lists every Mac with what it offers, for example “3 folders”.
+
+Once you turn a capability on, SubKit creates a connector for it, for example “MacBook Pro (Anna): Files”, named in the language of the app. Chat and tasks use it from then on. How a workflow uses it with fixed steps is in “Reference: workflow steps on your device”.
+
+**Remove** on an entry takes the allowance back. Workflows, tasks and chat can no longer use it afterwards.
+
+### macOS permissions
+
+For **Apps**, macOS has to allow SubKit two things. **Check permissions** under **Local capabilities** shows both with **Granted** or **Missing**.
+
+| Permission | Why SubKit needs it |
+| --- | --- |
+| **Accessibility** | SubKit reads and uses buttons and fields in the apps you have allowed. |
+| **Screen Recording** | SubKit takes screenshots of the app window with password fields blacked out. |
+
+1. Select **Open System Settings** next to a missing permission.
+2. Switch SubKit on in **Privacy & Security**.
+3. Back in SubKit, select **Check again**. When macOS asks for it, select **Restart SubKit**.
+
+Files and the browser need no extra permission. When macOS asks whether SubKit may access your Desktop, Documents or Downloads folder, it is because you allowed a folder there.
+
+### When SubKit asks on your Mac
+
+On your Mac, the same rule applies as everywhere: your request decides what runs without a question.
+
+- **Reading and preparing run without a question.** Opening a page, reading a file, taking a screenshot, scrolling and selecting.
+- **A step that writes runs without a question only when your request covers it.** Saving a file, pressing a button that sends, filling in a field, typing. Otherwise SubKit asks: in the chat with **Allow once** or **Decline**, in the live view with **Allow once** or **Deny**.
+- **Some steps always ask.** Putting a file in the Trash, payments, publishing and sending to recipients you did not name.
+- **Always ask first** makes every step that changes something ask you, also on your Mac. You turn it on under **Settings** › **Rules** in the Cockpit.
+- **What a page says is not your request.** When a page contains an instruction, the live view shows “The page contains an instruction. SubKit does not follow it.”
+
+“When SubKit asks” explains the rule in full.
+
+When a page asks you to sign in, SubKit hands over to you. The live view reads “Your turn – sign in, then ‘Hand back to SubKit’”. Sign in yourself, then select **Hand back to SubKit**. SubKit does not act in the window while it is your turn.
+
+A workflow step on your Mac needs its approval as every workflow step does. The approval names the Mac, the folders, websites and apps.
+
+### Live view
+
+While SubKit works on your Mac, a small bar at the top of the screen shows “SubKit is using ‘Safari’” with **Stop**. **Open live view** in the menu bar shows more:
+
+- Where the work comes from: “Started by you in chat”, “From your task” or “From your schedule”.
+- The **Latest redacted screenshot**. Password fields and fields marked as sensitive are blacked out on your Mac, before anything leaves it.
+- **Steps**, each with its result, for example **Done**, **Waiting for you**, **Refused** or **Not run**.
+- A question, when a step waits for you, with **Allow once** and **Deny**.
+
+The status says what is going on:
+
+| Status | Meaning |
+| --- | --- |
+| **Running** | SubKit is working. |
+| **Waiting for you** | A step needs your decision. |
+| **Waiting until you stop typing** | You are typing on your Mac. SubKit waits so it does not type into your text. |
+| **Your turn – sign in, then “Hand back to SubKit”** | A sign-in is handed to you. |
+| **Stopped. Later steps won’t run.** | You stopped it. |
+| **Device unavailable** | The Mac lost its connection to the server. |
+| **Finished** | Everything is done. |
+
+**Stop** or ⌘⇧⎋ stops SubKit at once, from any app. The step that is running ends, and later steps don’t run. The run shows which steps were done.
+
+Screenshots of a run are kept encrypted for 30 days and then deleted. In the Cockpit, the person of the device can see a run’s redacted screenshot on its steps.
+
+### A workspace only on this Mac
+
+With **Only on this Mac**, SubKit runs the database and the engine on your Mac, without a server. Besides your AI provider and the services your workflows call, nothing leaves the Mac. That suits trying SubKit out, or working alone.
+
+1. In “Connect server”, select **Only on this Mac**.
+2. **Data folder**: keep the suggested folder or choose **Choose another folder…**. The folder has to be on this Mac and must not be synced, for example not in iCloud Drive.
+3. **You**: enter **Your name**.
+4. **AI access**: choose a **Provider** (Anthropic, OpenAI or Google Gemini) and enter its **API key**, or choose **Local model server** and enter its address, for example `http://localhost:11434`. The key is stored encrypted in your local workspace. **Set up later** skips this step; workflows without AI run anyway.
+5. **Setting up**: SubKit starts the database, the engine and the workspace. Then the Cockpit opens.
+
+The local workspace runs while the app is open and the Mac is awake.
+
+Under **Settings…** › **Local workspace** you find:
+
+- **Running** or **Stopped**, and the size of the data.
+- **Backups**: SubKit makes one automatically before every update and before every restore. **Create backup** makes one by hand. **Restore** replaces the workspace with a backup. Newer changes are lost; allowed folders stay.
+- **Open at login**: starts the local workspace when you log in.
+- **Move to a server**: exports the workspace as a bundle and imports it into your server workspace (see below).
+- **Remove all local data**: stops the engine, moves the data to the Trash and forgets the keys. Workflows, runs and backups on this Mac are gone afterwards.
+
+A model on a local model server has to be able to call tools. If it cannot, you read “Model can’t call tools”: chat and tasks don’t work with it, workflows keep running. Choose another model or a provider key under **Settings** › **AI assistant** in the Cockpit.
+
+#### Move to a server
+
+1. Under **Local workspace**, select **Move to a server**.
+2. Enter the server address with `https://` and select **Move now**. SubKit exports the workspace for the server and stops it on this Mac.
+3. Sign in to the server. The workspace now runs there.
+
+This Mac stays connected as a device with its allowed folders. You renew the approvals of your workflows on the server. The local data stays on the Mac until you remove it. **Export bundle** saves the bundle without moving, for example to import it yourself.
+
+### Devices and signing out
+
+Every Mac on which you sign in with SubKit Desktop is a device of its own with its own session. The server lists it under the name of the Mac. When you sign in again on the same Mac, it stays the same device.
+
+- **Sign out** in the account menu of the Cockpit ends the session of this device. Your session in the browser and other devices stay signed in.
+- **Remove** in the list **Your servers** deletes the local session and the profile. Nothing changes on the server.
+- **Revoking a device** signs it out from outside, for example after a loss. Within a few seconds the app then shows “Signed out of …” with **Sign in again**.
+
+You see your devices in the Cockpit under **Settings** › **Devices**. The list shows the installed web app and every desktop device with its kind, name, the day it signed in and its last use. The device you are sitting at carries the mark **This device**.
+
+1. Open the Cockpit in the browser and there **Settings** › **Devices**.
+2. Select **Revoke** at the device.
+3. Confirm. The dialog names the device and says what happens: it is signed out at once and no longer receives notifications; other devices stay signed in.
+
+In the app itself you see the same list, but there you can only sign out **This device** with **Sign out**. You revoke another device in the browser.
+
+When a Mac that runs local steps is revoked, local steps stop running on it, and approvals that name it can no longer run.
+
+### How long you stay signed in
+
+| Rule | Value |
+| --- | --- |
+| Without use | 30 days. Any use of the app, also in the background at the menu bar icon, starts the period again. |
+| At most | 90 days since the sign-in, even with daily use. After that you sign in again in the browser. |
+| After a revocation or **Sign out** | Ended at once. |
+
+When the session expires you read “Session expired” and “Sign in again; your settings are kept.” Shorter periods apply to the browser and the installed web app: 8 hours without use, 24 hours at most.
 
 ### Several servers
 
@@ -3389,9 +3568,7 @@ If you work with several SubKit servers, each one gets its own profile with its 
 
 ### Updates
 
-Whether your app updates itself depends on how it was built. If **Settings** reads “Automatic updates are not enabled in this build.”, new versions come with the public release of SubKit; there is no download today.
-
-When updates are enabled, the app checks at start and every six hours after that.
+The app checks for updates at start and every six hours after that. If **Settings** reads “Automatic updates are not enabled in this build.”, your build was made without updates; ask the person who gave it to you for a new version.
 
 | What you read | What happens |
 | --- | --- |
@@ -3399,8 +3576,9 @@ When updates are enabled, the app checks at start and every six hours after that
 | “Version … is available. The download starts shortly.” | The app downloads the update in the background. |
 | “Version … is downloaded. Restart SubKit to install it.” | Select **Restart now**. With **Later**, the update is installed the next time you quit. |
 | “The update could not be verified and was not installed. …” | Your version stays as it is. Try again later. |
+| “Runs still active in the local workspace: …. A restart stops them.” | Wait until the runs are done, or select **Restart anyway**. |
 
-When the server requires a newer app, you read “The server requires at least version … of the app and you have ….” while connecting. Update SubKit Desktop then.
+When the server requires a newer app, you read it while connecting. Update SubKit Desktop then.
 
 ### Limits
 
@@ -3408,27 +3586,36 @@ When the server requires a newer app, you read “The server requires at least v
 - **What was new during quiet hours or a pause is not reported later.** You see it in the number on the icon and in the **Needs you** list.
 - **The quiet hours of the app are its own.** The choice under **Settings › Setup** in the Cockpit applies to push in the browser, not to the app.
 - **The app reports the items of the opened profile.** Other servers report only once you switch to them.
-- **Only macOS has been exercised so far.** Links, the launch at login, the icon in the notification area and the number on the icon are built for Windows and Linux but not yet tested there end to end.
-- **A screenshot for a problem report can contain secrets shown openly.** More in “Report a bug”.
+- **Local steps run only while the app is open and the Mac is awake.** A run that needs the Mac waits for it and says “A run is waiting for its device to come online.”
+- **Browser and app steps run only for the person of the Mac.** From their chat or task, a run they start, or a schedule they set up.
+- **Redaction covers password fields and fields marked as sensitive.** A secret that a page or app shows as plain text stays in the screenshot.
 
 ### If something does not work
 
 | What you see | What to do |
 | --- | --- |
-| “The server can’t be reached. Check the address and your internet connection.” | Check the address and whether you can reach the server in the browser. |
-| “No SubKit server answers at this address. Check the address.” | Enter the address of the server, without `/cockpit` at the end. |
-| “The address must start with https:// …” | Use the `https` address of your server. |
-| “This server runs SubKit …. The app needs at least …. Ask your administrator to update the server.” | The server is too old for the app. Pass the message on to the person who runs it. |
-| “The server requires at least version … of the app and you have ….” | Update SubKit Desktop. |
-| “This server doesn’t offer the sign-in this app needs. …” | Update SubKit Desktop or ask the person who runs the server to check it. |
-| The browser shows “This sign-in attempt expired or was already used. Please sign in again.” | Start the sign-in again in the app. |
-| “The sign-in expired. Start it again.” | At most one minute may pass between **Sign in** in the browser and the return to the app. Start the sign-in again. |
-| “The server rejected the sign-in. Start it again.” | Start again. If it stays that way, check that your account is active in the workspace. |
-| “The browser couldn’t be opened. Try again.” | Check that a default browser is set up on your system. |
+| “Server not reachable” | Check the address and whether you can reach the server in the browser. |
+| “Not a SubKit server” | Enter the address of the server, without `/cockpit` at the end. |
+| The address does not start with `https` | Use the `https` address of your server. |
+| “Version … isn’t supported” | The server is too old for the app. Select **Ask an administrator** and pass the message on. |
+| “App too old” | Update SubKit Desktop. |
+| “Sign-in not supported” | Update the server or SubKit Desktop. |
+| “This isn’t a complete invitation link.” | Copy the whole link from the invitation email. |
+| “This invitation has expired” or “This invitation was already used” | Ask the person who invited you for a new invitation. |
+| “Sign-in expired, start it again” | At most one minute may pass between **Sign in** in the browser and the return to the app. Start the sign-in again. |
+| “The server declined” | Start again. If it stays that way, check that your account is active in the workspace. |
+| “The browser couldn’t be opened” | Check that a default browser is set up on your Mac. |
 | Nothing happens in the app after **Sign in** in the browser | Allow the browser to open SubKit when it asks. If the app is no longer running, start it and begin again. |
-| “Your session expired. Sign in again; your settings are kept.” | Select **Sign in**. Profile, quiet hours and language are kept. |
-| “SubKit can’t be reached right now. The app keeps trying, and you can retry yourself.” | Wait or check your connection. The icon shows “No connection to the server”. |
-| No notifications arrive | Check whether a pause or quiet hours are active and whether your operating system allows notifications for SubKit. |
+| “Server offline” | SubKit tries to restore the connection automatically. The icon shows “No connection to the server”. |
+| “SubKit can’t allow this folder.” | Choose a subfolder, not a whole disk, a system or hidden folder, or your entire home folder. |
+| “An allowed folder was replaced. Allow it again.” | The folder was deleted and created again. Remove it under **Local capabilities**, choose it again and renew the approvals that name it. |
+| “This device is missing a system permission.” | Open **Check permissions** under **Local capabilities** and grant the missing permission. |
+| A step is **Refused** | The folder, website or app is not allowed, or it is off limits. Allow it under **Local capabilities**, or ask SubKit for something else. |
+| “Model can’t call tools” | Choose a model that calls tools or a provider key under **Settings** › **AI assistant**. |
+| “Port is busy” | Select **Use another port**. |
+| “The database can’t run here.” | Choose a folder on this Mac that isn’t synced. |
+| “Local workspace doesn’t start” | Select **Try again**. If it stays that way, report a problem with diagnostics. |
+| No notifications arrive | Check whether a pause or quiet hours are active and whether macOS allows notifications for SubKit. |
 ## Report a bug
 
 This chapter is for anyone who notices something in the Cockpit or in SubKit Desktop.
@@ -3718,7 +3905,7 @@ A task is a goal with limits that SubKit works towards on its own. For a run of 
 
 Before every background round, SubKit checks again that the owner is still active, the run is still open, the task is neither paused nor archived, and the standing permission of the run has not been revoked. If one of these fails, the round does not run.
 
-A person who writes into a run does not widen it. The owner and admins can write; the same limits apply to their rounds, and the run cannot be switched to a mode that stops asking. Writes that a run holds back are released by the owner or an admin. They are carried out with the permissions of the run, not with those of the admin, and the audit trail names the person who decided. A result is confirmed or sent back by a person signed in to the Cockpit in the browser, not with an API key, in `sk` or from an AI client.
+A person who writes into a run does not widen it. The owner and admins can write; the same limits apply to their rounds. Writes that a run holds back are released by the owner or an admin. They are carried out with the permissions of the run, not with those of the admin, and the audit trail names the person who decided. A result is confirmed or sent back by a person signed in to the Cockpit in the browser, not with an API key, in `sk` or from an AI client.
 
 In the audit trail, background work of a run is recorded as the system with the scheduler or the queue as its source. Approvals, confirmations and stops name the person who acted. The entries hold identifiers, states and reason codes, never the goal text or an answer.
 
@@ -3997,7 +4184,7 @@ against existing execution authorities.
 Attach or replace the key to an already configured connector through the CLI:
 
 ```sh
-sk credentials set <connector-id> --mode signed_jwt --private-key-file ./provider-key.p8 --json
+sk vault attach <connector-id> --mode signed_jwt --json < ./provider-key.p8
 ```
 
 The CLI reads the file locally and sends its contents only to the authenticated
@@ -4088,10 +4275,11 @@ Afterwards you know what your server tells the app, which two settings you can s
 
 ### What you need
 
-- An engine of version 11.2.0 or later. The update runs the migrations for the app’s sign-in.
+- An engine of version 12.0.0 or later. The update runs the migrations for the app’s sign-in.
 - An address with `https://`. The app only connects over `https`; it allows `http` for `localhost` alone.
 - A working way to sign in to the Cockpit in the browser. The app uses exactly this sign-in and no API key.
-- The app itself. There are no ready-made installers and no download today: SubKit Desktop is available with the public release of SubKit. Whoever has access to the repository builds the app for macOS (dmg and zip), Windows (installer) and Linux (AppImage and deb) themselves; signing and distributing is then part of it. What you need for that is listed below. The Cockpit as an installed web app works today.
+- The app itself. SubKit Desktop runs on a Mac with Apple Silicon and macOS 13 or later. There is no public download yet: it comes with the public release of SubKit. Whoever has access to the repository builds the app for macOS (dmg and zip) themselves; signing and distributing is then part of it. What you need for that is listed below. The Cockpit as an installed web app works today on every system.
+- For the local capabilities (files, browser and apps on the Mac) an engine of version 12.0.0 or later.
 
 ### What the server tells the app
 
@@ -4118,7 +4306,7 @@ Before every connection the app reads `GET /.well-known/service-descriptor.json`
 
 | Field | Meaning |
 | --- | --- |
-| `version` | The version of the engine. The app requires at least 11.2.0. |
+| `version` | The version of the engine. The app requires at least 12.0.0. |
 | `clients.desktop.min_version` | The oldest app version this server accepts. An older app asks for an update instead of signing in. |
 | `clients.desktop.login.start` | The address the app opens in the browser. |
 | `clients.desktop.login.session` | The address where the app exchanges its code for a session. |
@@ -4216,7 +4404,6 @@ There is no public download until the public release of SubKit; this section is 
 | For | What you provide |
 | --- | --- |
 | Signing for macOS | A Developer ID certificate and the credentials for notarization. |
-| Signing for Windows | A code signing certificate. |
 | Updates | A place where you publish versions over `https`, and the decision to enable updates (`SUBKIT_DESKTOP_UPDATES=1` when building). |
 
 Without enabled updates the app shows “Automatic updates are not enabled in this build.” An unsigned app cannot update itself on macOS. None of these values belongs in the repository. The details are in the README file under `apps/desktop`.
@@ -4238,7 +4425,7 @@ An exchange with an unknown code only appears in the engine log, not in the audi
 
 | What you see | What to do |
 | --- | --- |
-| The app reports the server as too old | Check `version` in the service descriptor. The app needs 11.2.0 or later and the section `clients.desktop`. |
+| The app reports the server as too old | Check `version` in the service descriptor. The app needs 12.0.0 or later and the section `clients.desktop`. |
 | The app reports that the server does not offer the sign-in it needs | The app is a development build and your server does not accept `subkit-dev://callback`, or `login` is missing in the descriptor. |
 | `400 invalid_redirect_uri` at the start | The app’s target is not in `callbacks`. Use a production build or switch on `server.desktop_dev_callback`. |
 | `401 invalid_grant` at the exchange | The code is unknown, used, expired or does not match the `code_verifier`. The person starts the sign-in again. |
@@ -4271,7 +4458,7 @@ be linked there.
 ## Reference: desktop app, rules, schedules and problem reports
 
 This page lists what version 11.2.0 added to the HTTP API, the events, the audit trail and the settings.
-It is for developers and operators who build on these parts. The task-oriented chapters are “SubKit Desktop”, “Chat modes and rules”, “Keep an eye on schedules”, “Notifications and quiet hours”, “Set SubKit up for yourself” and “Report a bug”.
+It is for developers and operators who build on these parts. The task-oriented chapters are “SubKit Desktop”, “When SubKit asks”, “Keep an eye on schedules”, “Notifications and quiet hours”, “Set SubKit up for yourself” and “Report a bug”.
 The complete, machine-readable description of every route is at `/openapi.json` on your engine.
 
 ### Routes
@@ -4338,7 +4525,7 @@ A run now names the cause of a failure as `outcome.cause_class` in `GET /v1/exec
 
 | Field | Values | Sets |
 | --- | --- | --- |
-| `default_chat_mode` | `ask`, `auto`, `plan` | The mode a new conversation starts in. Recommended: `auto`. |
+| `ask_before_writing` | `true`, `false` | The rule **Always ask first**: every step that writes asks, even when the request covers it. Default `false`. |
 | `default_environment` | `dev`, `prod` | The environment for new tasks and for the review of new workflows. Recommended: `dev`. |
 | `approver` | `{"kind":"self"}` or `{"kind":"teammate","email":"…"}` | Who gets approval notifications. Recommended: `self`. |
 | `notifications` | `{"mode":"immediately"}`, `{"mode":"working_hours","from":"HH:MM","to":"HH:MM","days":[1,2,3,4,5]}` or `{"mode":"daily_digest","at":"HH:MM"}` | When push is delivered. Recommended: `immediately`. `days` names the working days as weekdays from `1` (Monday) to `7` (Sunday), each at most once; without the field, Monday to Friday applies. |
@@ -4347,7 +4534,7 @@ A run now names the cause of a failure as `outcome.cause_class` in `GET /v1/exec
 | `first_job` | Text of at most 120 characters, or `null` | The first suggestion in the Cockpit. |
 | `services` | Up to 50 connector slugs | Which connectors the Cockpit offers first. |
 
-The answer adds `unset` (which of chat mode, environment, approver and notifications are not chosen yet), `recommended`, `updated_at` and, for a teammate, `approver.user_id`, `approver.invitation` with `member`, `pending` or `needs_admin`, `approver.can_approve` and `approver.missing_permissions`. `can_approve` is `true` when the person’s role holds `conversation:approve`, `task:grant` and `workflow:write`; the member role holds all three. With `false`, `missing_permissions` names the missing permissions, and approval notifications stay with the person who asks. While the person does not exist in the workspace, `can_approve` is `null`. When an administrator names an unknown address, the answer carries `invitation` with `invite_id`, `plaintext_token` and `expires_at` exactly once; the invitation carries the member role, and no email is sent. When someone without the right to invite named an address (`needs_admin`), the engine links the choice by itself as soon as an administrator invites or adds that address. `PUT` answers `409 approver_already_known` when the address already belongs to a person who cannot be invited again.
+The answer adds `unset` (which of environment, approver and notifications are not chosen yet), `recommended`, `updated_at` and, for a teammate, `approver.user_id`, `approver.invitation` with `member`, `pending` or `needs_admin`, `approver.can_approve` and `approver.missing_permissions`. `can_approve` is `true` when the person’s role holds `conversation:approve`, `task:grant` and `workflow:write`; the member role holds all three. With `false`, `missing_permissions` names the missing permissions, and approval notifications stay with the person who asks. While the person does not exist in the workspace, `can_approve` is `null`. When an administrator names an unknown address, the answer carries `invitation` with `invite_id`, `plaintext_token` and `expires_at` exactly once; the invitation carries the member role, and no email is sent. When someone without the right to invite named an address (`needs_admin`), the engine links the choice by itself as soon as an administrator invites or adds that address. `PUT` answers `409 approver_already_known` when the address already belongs to a person who cannot be invited again.
 
 ### Approval rules
 
@@ -4371,7 +4558,9 @@ A tool call in a conversation carries `policy` when the chat rule looked at it: 
 
 | `ask_reason` | Meaning |
 | --- | --- |
-| `mode` | The conversation asks before every action with an outside effect. |
+| `ask_before_writing` | The person turned on **Always ask first**, so every step that writes asks. |
+| `no_person` | No person stands behind the call, for example a system account or a task run someone else started. |
+| `write_gate` | No current request of the person can cover the action. |
 | `no_browser_session` | The caller is not a person signed in in the browser. |
 | `tool_not_coverable`, `effect_class_never`, `effect_unknown` | The kind of action always asks, or its effect is unknown. |
 | `no_user_message`, `no_quote`, `quote_too_short`, `quote_too_long`, `quote_not_in_user_words`, `not_a_request`, `verb_mismatch` | The person did not ask for this action in their own words. |
@@ -4771,8 +4960,9 @@ Each line says what you get and links to the chapter that explains it.
 | Feature | What you get | Where | More |
 | --- | --- | --- | --- |
 | Chat in the Cockpit | Draft workflows, ask questions and start approved workflows in conversation. | All | [Your first workflow](setup.md#your-first-workflow) |
-| Chat modes | **Ask**, **Automatic** or **Plan only** decide what SubKit does without asking. | All | [Chat modes and rules](setup.md#chat-modes-and-rules) |
-| Rules | After the second **Allow once** for the same action, save it as a rule for 90 days. | All | [Chat modes and rules](setup.md#chat-modes-and-rules) |
+| When SubKit asks | Your request decides what runs without a question; **Always ask first** makes every write ask. | All | [When SubKit asks](setup.md#when-subkit-asks) |
+| Always ask first | A rule of your own: every step that writes asks you first, in chat, in tasks and on your Mac. | All | [When SubKit asks](setup.md#when-subkit-asks) |
+| Rules | After the second **Allow once** for the same action, save it as a rule for 90 days. | All | [When SubKit asks](setup.md#when-subkit-asks) |
 | Files in chat | Attach files to a message, also from SubKit Desktop. | All | [Reference: files from the desktop, run results and sign-in signals](setup.md#reference-files-from-the-desktop-run-results-and-sign-in-signals) |
 | Slack and Google Chat | Ask questions and start approved workflows where your team works; in SubKit Cloud only after the chat workspace's ownership is verified. | All | [Use SubKit Cloud](setup.md#use-subkit-cloud) |
 | Your own model | Anthropic, OpenAI, Google Gemini, Azure, Amazon Bedrock or Vertex AI with your own key, plus a fallback provider. | All | [Settings](settings.md) |
@@ -4806,22 +4996,46 @@ Each line says what you get and links to the chapter that explains it.
 | Supabase data | Use your Supabase project's data in product workflows without exposing keys. | Admin | [Supabase-backed product workflows](setup.md#supabase-backed-product-workflows) |
 | Private network addresses | Connectors reach services such as `localhost` or internal company servers. | Self-hosted | [Use SubKit Cloud](setup.md#use-subkit-cloud) |
 
-### Cockpit, desktop app and installed app
+### Cockpit and installed app
 
 | Feature | What you get | Where | More |
 | --- | --- | --- | --- |
 | Overview and Needs you | See what ran, what failed and what waits for your decision. | All | [What is SubKit?](setup.md#what-is-subkit) |
 | Find your way | Navigation, side panel, error notices with remedies and a Markdown viewer. | All | [Find your way in the Cockpit](setup.md#find-your-way-in-the-cockpit) |
-| Setup in six questions | Your answers set the chat mode, default environment, approver and notifications. | All | [Set SubKit up for yourself](setup.md#set-subkit-up-for-yourself) |
+| Setup in five questions | Your answers set the default environment, approver and notifications. | All | [Set SubKit up for yourself](setup.md#set-subkit-up-for-yourself) |
 | English and German | The Cockpit and this documentation come in both languages. | All | [What is SubKit?](setup.md#what-is-subkit) |
 | Branding | Give the Cockpit your company's name, logo and colors. | Admin | [Cockpit branding](setup.md#cockpit-branding) |
 | Cockpit as an app | Install a workspace's Cockpit as its own app on computer and phone, with push and sharing from other apps. | All | [Cockpit as an app](setup.md#cockpit-as-an-app) |
-| SubKit Desktop | Your server's Cockpit as a program for macOS, Windows and Linux, with a menu bar icon, notifications and launch at login. | All | [SubKit Desktop](setup.md#subkit-desktop) |
-| Sign in through the browser | The desktop app signs in through your browser; every computer is a device you can revoke. | All | [SubKit Desktop](setup.md#subkit-desktop) |
+
+### SubKit Desktop
+
+| Feature | What you get | Where | More |
+| --- | --- | --- | --- |
+| SubKit Desktop | Your server's Cockpit as a Mac app for Apple Silicon (macOS 13 or later), with a menu bar icon, notifications and launch at login. | All | [SubKit Desktop](setup.md#subkit-desktop) |
+| Welcome and invitation link | The first start explains what SubKit does and opens the invitation link from your email, so you join a workspace in a few steps. | All | [SubKit Desktop](setup.md#subkit-desktop) |
+| Sign in through the browser | The app signs in through your browser; every Mac is a device you can revoke. | All | [SubKit Desktop](setup.md#subkit-desktop) |
 | Several servers | SubKit Desktop keeps one profile per server. | All | [SubKit Desktop](setup.md#subkit-desktop) |
-| Drop files | Drop files on SubKit Desktop to attach them in chat or collect them in the inbox. | All | [Reference: files from the desktop, run results and sign-in signals](setup.md#reference-files-from-the-desktop-run-results-and-sign-in-signals) |
+| Menu bar | The count of what needs you, quiet hours, pause, quick note, live view, updates and “Report a problem” in one menu. | All | [SubKit Desktop](setup.md#subkit-desktop) |
+| Quick note | ⌥ Space opens a note from anywhere; it lands in your inbox. | All | [SubKit Desktop](setup.md#subkit-desktop) |
+| Drop sheet | Drop files on the window, the Dock icon or the menu bar icon and choose: store as file, ingest as source, attach in chat or put into the inbox. | All | [Reference: files from the desktop, run results and sign-in signals](setup.md#reference-files-from-the-desktop-run-results-and-sign-in-signals) |
+| Pause | Hold notifications back for an hour or until you resume them, right from the menu bar. | All | [SubKit Desktop](setup.md#subkit-desktop) |
+| Report a bug | Send a bug report or idea to your workspace's inbox, with a screenshot and optional diagnostics. A report written offline waits in a queue and goes out once you are back online. | All | [Report a bug](setup.md#report-a-bug) |
 | Desktop versions and devices | Decide which app version your server accepts and revoke devices. | Admin · Self-hosted | [Operate the desktop sign-in](setup.md#operate-the-desktop-sign-in) |
-| Report a bug | Send a bug report or idea to your workspace's inbox, with a screenshot from SubKit Desktop and an offline queue. | All | [Report a bug](setup.md#report-a-bug) |
+
+### SubKit on your Mac
+
+These features need SubKit Desktop on a Mac with Apple Silicon. Nothing runs on your Mac until you turn it on under **Local capabilities**.
+
+| Feature | What you get | Where | More |
+| --- | --- | --- | --- |
+| Local files | Chat, tasks and workflows read and write files in folders you allowed, with read or read-and-write access per folder. | All | [SubKit Desktop](setup.md#subkit-desktop) |
+| Browser | SubKit works in websites you allowed, in a browser of its own on your Mac. | All | [SubKit Desktop](setup.md#subkit-desktop) |
+| Computer use | SubKit uses buttons and fields in apps you allowed. Password managers, banking, terminals, System Settings and other sensitive apps stay blocked. | All | [SubKit Desktop](setup.md#subkit-desktop) |
+| Local allowances | Folders, websites and apps you allow, plus a list of what stays off limits, kept on the Mac itself. | All | [SubKit Desktop](setup.md#subkit-desktop) |
+| Live view | See what SubKit does on your Mac with the latest redacted screenshot and every step; stop it at any time with ⌘⇧⎋. | All | [SubKit Desktop](setup.md#subkit-desktop) |
+| Confirmations on the Mac | A step that writes and that your request does not cover asks you first, in the chat and in the live view; a sign-in is handed to you and back. | All | [When SubKit asks](setup.md#when-subkit-asks) |
+| Local workflow steps | Workflows with fixed steps for files, browser and apps; the approval names the device, folders, websites and apps. | All | [Reference: workflow steps on your device](setup.md#reference-workflow-steps-on-your-device) |
+| Fully local workspace | Run a workspace only on your Mac, with its own database, backups and your own AI key or local model server; move it to a server later. | Self-hosted | [SubKit Desktop](setup.md#subkit-desktop) |
 
 ### sk CLI, HTTP API and MCP
 
@@ -4849,7 +5063,7 @@ Each line says what you get and links to the chapter that explains it.
 | Feature | What you get | Where | More |
 | --- | --- | --- | --- |
 | Usage | AI cost per run, workflow, person and model in a time window you choose. | All | [Keep track of usage and costs](setup.md#keep-track-of-usage-and-costs) |
-| Monthly token budget | Pauses AI authoring when it is used up, while approved workflows keep running. | Admin | [Keep track of usage and costs](setup.md#keep-track-of-usage-and-costs) |
+| Monthly AI budget | One limit on AI cost in US dollars, $50 for a new workspace. At 100% chat, tasks and model steps pause; workflows without a model step keep running. | Admin | [Keep track of usage and costs](setup.md#keep-track-of-usage-and-costs) |
 | Prices | Built-in model prices, overridable per model. | Admin | [Keep track of usage and costs](setup.md#keep-track-of-usage-and-costs) |
 | Export | Export the usage figures. | All | [Keep track of usage and costs](setup.md#keep-track-of-usage-and-costs) |
 | Task costs | See what each task's runs cost. | All | [Hand over a goal as a task](setup.md#hand-over-a-goal-as-a-task) |
@@ -4867,28 +5081,209 @@ Each line says what you get and links to the chapter that explains it.
 | Backup and recovery | Back up the whole installation and restore it with the same image. | Self-hosted | [Run the engine](setup.md#run-the-engine) |
 | Browser crawling | Crawl pages for connector discovery with a derived image. | Self-hosted · Optional | [Run the engine](setup.md#run-the-engine) |
 | Engine operator | One workspace administers the whole engine. | Admin · Self-hosted | [Engine operator](setup.md#engine-operator) |
-| Runtime settings | Every engine setting with description and default, changed in the Cockpit, the API or `sk`. | Admin | [Settings](settings.md) |
+| Runtime settings | Every engine setting with description and default, changed with `sk settings`, the API or the config file. | Admin | [Settings](settings.md) |
 
 ### Security and audit
 
 | Feature | What you get | Where | More |
 | --- | --- | --- | --- |
 | Audit trail | Every run, approval and change is recorded with who did it, and each object shows its own history. | All | [Find your way in the Cockpit](setup.md#find-your-way-in-the-cockpit) |
-| Protected keys | Keys and passwords stay on your server, encrypted. | Self-hosted | [Run the engine](setup.md#run-the-engine) |
+| Vault | API keys, logins and connector credentials in one place, encrypted, for the workspace or only for you. Workflows name them by handle, the AI never sees a value, and every use, reveal and rotation is in the audit trail. | All | [Reference: the vault](setup.md#reference-the-vault) |
 | Sign-in sessions | Installed apps keep a session and sign out cleanly. | All | [Installed Cockpit sessions](setup.md#installed-cockpit-sessions) |
 | Redaction | Secrets are removed from clipped pages and bug reports before they are stored. | All | [Report a bug](setup.md#report-a-bug) |
 | License | Open source under the Apache License 2.0. | All | [License](setup.md#license) |
+## Reference: workflow steps on your device
 
-### Coming with local execution in SubKit Desktop
+A workflow can read and write files in folders you allowed on your Mac, work in a website you allowed, and act in an app you allowed. Each such step is an ordinary `request` step on a device connector.
+This page lists the step bodies and the rules of the approval. It is for people who write workflows by hand and for developers who build on them.
 
-These features are planned for SubKit Desktop and not released yet. Today SubKit Desktop runs nothing on your computer. There are no dates yet.
+### Device connectors
 
-| Feature | What it will do | Status |
+When SubKit Desktop is connected and you turn a capability on in Settings › Local capabilities, SubKit creates one connector per capability for that device, for example “MacBook Pro (Mike): Files”, “MacBook Pro (Mike): Browser” and “MacBook Pro (Mike): Computer”. The name uses the language of SubKit Desktop on that device, German or English, and English otherwise. A connector keeps its name when the language changes later. They have the driver `local_files`, `local_browser` or `local_computer`, `config: {device_id}` and no credential.
+Bind a step to one of them with `connector_id`. When you disconnect the device, its connectors stay, switched off, so existing workflows show what they used.
+
+### Path and method
+
+| Field | Meaning |
+| --- | --- |
+| `path` | The action, for example `/files.write`, `/browser.open` or `/computer.type`. |
+| `method` | `GET` for an action that only reads, `POST` for an action that changes something. A step whose method does not fit its action is refused before anything is sent. |
+| `body` | The fields of the action, directly in `body`. |
+
+Reading actions: `files.list`, `files.read_text`, `browser.snapshot`, `browser.wait`, `browser.extract`, `browser.screenshot`, `computer.apps`, `computer.snapshot`, `computer.screenshot`.
+
+### Files
+
+`folder_id` is the id of a folder you allowed on the device. `path` is relative to that folder.
+
+| Action | Body | Result |
 | --- | --- | --- |
-| Local files | Work with files on your computer. | Coming |
-| Browser | Use a browser on your computer for a task. | Coming |
-| Computer use | Operate other programs on your computer. | Coming |
-| Fully local workspace | Run a workspace entirely on your computer. | Coming |
+| `files.list` | `{folder_id, path?}` | `entries`, `truncated`, `omitted` (at most 500 entries). |
+| `files.read_text` | `{folder_id, path}` | `text`, `size`, `sha256` (at most 256 KiB). |
+| `files.import` | `{folder_id, path, name?}` | A SubKit file the next steps can use: `file`, `filename`, `content_type`, `size_bytes`, `file_id`, `sha256` (at most 90 MiB). |
+| `files.write` | `{folder_id, path, content, replace?}` | `size`, `sha256`, `replaced`, `previous_in_trash`, versions. `content` is text or `{encoding: "base64", data}`; at most 10 MiB. |
+| `files.mkdir` | `{folder_id, path}` | – |
+| `files.move` | `{folder_id, to_folder_id?, path, to_path}` or `{folder_id, to_folder_id?, items: [{from, to}]}` | One result per item, at most 200. |
+| `files.trash` | `{folder_id, path}` or `{folder_id, paths: [...]}` | One result per item, at most 200. |
+
+A move or trash step succeeds only when every item was done. Replaced and removed files go to the Trash. Hidden files, secret files such as keys, and programs are always refused.
+
+### Browser
+
+| Action | Body |
+| --- | --- |
+| `browser.open` | `{url}` on a website you allowed. |
+| `browser.press` | `{action: "click", element}`, `{action: "key", key}` or `{action: "scroll", direction, pixels?}` |
+| `browser.fill` | `{mode: "fill" or "type", element, text}` or `{mode: "select", element, values}` |
+| `browser.wait` | `{for: "load", state?}`, `{for: "text", text}` or `{for: "ms", ms}` (at most 30 s) |
+| `browser.extract` | `{element?}` returns the text of the element or the page. |
+| `browser.snapshot`, `browser.screenshot` | `{}` |
+| `browser.download` | `{element, folder_id, name}` saves into a folder with write access. |
+
+`browser.pdf` and `browser.handover` are not available in workflows yet.
+
+### Computer
+
+`app_id` is the bundle ID of an app you allowed, for example `com.apple.iWork.Numbers`. SubKit acts in the app's window that has focus, otherwise in its first window.
+
+| Action | Body |
+| --- | --- |
+| `computer.apps` | `{}` lists the windows of allowed apps. |
+| `computer.snapshot`, `computer.screenshot` | `{app_id}` |
+| `computer.press`, `computer.focus` | `{app_id, element}` |
+| `computer.type` | `{app_id, element, text}` |
+| `computer.set_value` | `{app_id, element, value}` |
+| `computer.select` | `{app_id, element, option}` |
+| `computer.scroll` | `{app_id, element, direction, amount}` |
+| `computer.key` | `{app_id, keys}`, for example `"cmd+s"` |
+
+### Elements
+
+Name an element as `element: {role, name, nth?}`, for example `{role: "button", name: "Download"}`. `nth` picks among several elements with the same role and name, starting at 0. Refs like `e12` are not allowed in a workflow: they change with every snapshot. SubKit takes a fresh snapshot right before each such action and finds the element there. If no element or more than one element matches, the step fails with `element_not_found` or `element_ambiguous` and nothing is changed.
+
+### Screenshots
+
+A screenshot is redacted on the device: password fields and fields marked as sensitive are blacked out. The step result keeps only `screenshot_ref`, the SHA-256 of the PNG. The image itself is kept encrypted with the device's answer for 30 days and then deleted.
+
+### Approval and growth
+
+- The approval names the device and, for each local step, the folders with read or write access, the websites and the apps the step uses. An import only reads its folder.
+- Write `folder_id`, `to_folder_id`, `url` and `app_id` as fixed values. A placeholder there leaves the workflow unapprovable. A value that is only filled in while the run goes and that the approval does not name is refused with `outside_boundary`.
+- A workflow with a device is approved on that device.
+- A new version needs a new approval when it adds a folder, needs write access where reading was approved, adds a website or private address, or adds an app. Fewer items carry the approval forward.
+- Browser and computer steps run only for the device's person: from their chat or task, a run they start, or a schedule they set up.
+- A workflow that another workflow calls refuses local steps. Keep local steps in the workflow you approve and run.
+
+### Errors
+
+| Code | Means |
+| --- | --- |
+| `outside_boundary` | The step goes beyond the approval. Review and approve it again on the device. |
+| `outside_allowance`, `origin_not_allowed`, `private_address` | The device does not allow this folder, website or app. |
+| `folder_changed` | The allowed folder was replaced. Allow it again and renew the approval. |
+| `permission_missing` | A macOS permission is missing (Accessibility or Screen Recording). |
+| `kind_not_ready` | This action is not available in workflows yet. |
+| `local_method_mismatch`, `local_step_invalid` | Method or body do not fit the action. |
+| `files_partly_done` | Not every item of a move or trash was done; the result lists each item. |
+| `screenshot_unverified` | The screenshot does not match its hash. It was not kept. |
+
+Every error comes with a remedy in `guidance`.
+## Reference: the vault
+
+The vault is the one place for every secret in your workspace: API keys, logins and the credentials of your connectors.
+A workflow names an item only by its handle. SubKit fills in the value when an approved run executes the step. The AI never sees it.
+
+### What the vault holds
+
+| Kind | For | Fields |
+| --- | --- | --- |
+| Secret | an API key or token that several workflows need | `token` |
+| Login | a username and a password | `username`, `password` |
+| Connector credential | a connector's credential, created when you connect it | depends on the sign-in type |
+| Template client | the OAuth client of a connector template | `client_id`, `client_secret` |
+
+You add and change secrets and logins in the vault. You change connector credentials and template clients on the connector. The vault shows them and lets you reveal or delete them.
+
+Every item has a name of lowercase letters, digits, `-` and `_`, for example `crm-token`. The name is also the handle. It applies per environment: `crm-token` in test and `crm-token` in production are two items.
+
+### Who an item is for
+
+| Scope | Who sees it | When its value is filled in |
+| --- | --- | --- |
+| Workspace | everyone with `vault:read`, metadata only | in every approved run of the workspace |
+| Only me | only you | only in runs you start |
+| This device | only SubKit Desktop on this device | never in workflows; it stays on the device |
+
+SubKit Desktop creates device items itself, for example the key the device uses to identify itself to the server. They are encrypted in the operating system's secure storage and never leave the device.
+
+### Use an item in a workflow
+
+Write the handle into a header of a request step that has a connector:
+
+```json
+{
+  "id": "contacts",
+  "kind": "request",
+  "connector_id": "<crm-connector-id>",
+  "method": "GET",
+  "path": "/contacts",
+  "headers": { "authorization": "Bearer ${secret.crm-token}" },
+  "boundary": { "variables": {}, "max_body_bytes": 0, "max_calls": 1 }
+}
+```
+
+| Form | Meaning |
+| --- | --- |
+| `${secret.crm-token}` | the token of a workspace secret |
+| `${secret.erp.username}`, `${secret.erp.password}` | the fields of a login |
+| `${secret.me.crm-token}` | your own “Only me” item |
+
+These rules always apply:
+
+- **The approval names the items.** It shows “Uses from the vault: crm-token, …” and binds the names, never the values. A new version that uses another item needs a new approval. Fewer items carry the approval forward.
+- **Approved runs only.** In drafts, test runs and held steps the handle stays unresolved (`secret_withheld`) and nothing is sent.
+- **Own connector only.** A step that carries a vault value may only go to its connector's origin. Any other address stops with `credential_boundary_violation` before anything is sent.
+- **Headers only.** In the path, query, URL or body a handle stays unresolved or makes the step unapprovable.
+- **A missing item fails the step** with `placeholder_unresolved`, and nothing is sent.
+
+### What the AI and the records see
+
+The AI, chat, MCP and the sk CLI get the name, kind, scope, environment, version and last use, never the value.
+A run's result, error message, log and audit trail do not contain the value. SubKit replaces it, also URL- or JSON-encoded, with `***redacted***`.
+
+### Rotation
+
+**Replace value** in the vault or `sk vault rotate` stores a new value and raises the version. The next run uses it. The workflow's approval stays valid, because it binds the handle, not the value.
+You rotate the engine's master key (`MASTER_KEY`) with the rewrap maintenance, as before.
+
+### Reveal and activity
+
+**Reveal** shows you the value for a short time, and `sk vault reveal <id> --yes` prints it in the terminal. Every reveal is in the audit trail.
+An item's activity shows when it was created, used, revealed, rotated or deleted. A use names its run and step.
+
+### Permissions
+
+| Permission | Default | Allows |
+| --- | --- | --- |
+| `vault:read` | all roles | seeing workspace items, without values |
+| `vault:write` | admin | adding items and describing them |
+| `vault:rotate` | admin | replacing values |
+| `vault:delete` | admin | deleting items |
+| `vault:reveal` | admin | revealing the values of workspace items |
+
+You always manage your own “Only me” items, even without these permissions.
+
+### In the Cockpit, with sk and over MCP
+
+- **Cockpit:** Settings › Vault.
+- **sk:** `sk vault list`, `show`, `add`, `rotate`, `reveal`, `refresh`, `rm`, `attach` and `connector`. `add` and `rotate` read the value from stdin or a hidden prompt, never from arguments.
+- **MCP:** `list_vault_items` and `get_vault_item` return metadata only.
+- **HTTP:** `/v1/vault`, see the HTTP API.
+
+### Backup and moving
+
+A server backup needs the database and the `MASTER_KEY`. Without it the values cannot be opened.
+A package or a move to another workspace takes names and metadata only, never values. There is no plain-text export.
 
 <!-- Source: coding-agents.md -->
 
@@ -5076,7 +5471,6 @@ The `requires` column names the permission that shows a command in
 | `sk clipper` | — | Install the Chrome clipping extension | `install` |
 | `sk connector-templates` | `connector:read` | Manage connector templates | `create`, `delete`, `list`, `recipe`, `recipe-pack`, `recipes`, `search`, `set-oauth` |
 | `sk connectors` | `connector:read` | Manage connectors | `create`, `delete`, `disable`, `docs-delete`, `docs-ingest`, `docs-list`, `docs-search`, `enable`, `get`, `import`, `inspect`, `list`, `mcp-authorize`, `mcp-inspect`, `patch`, `probe`, `promote`, `test`, `validate` |
-| `sk credentials` | `credential:read` | Manage connector credentials | `delete`, `list`, `rotate`, `set` |
 | `sk diagnostics` | `audit:read` | Engine diagnostics: errors, LLM status, setup validation | `errors`, `llm`, `setup` |
 | `sk discovery` | `discovery:read` | Manage discovery runs and artifacts | `approve`, `artifacts`, `create`, `get`, `list`, `reject` |
 | `sk doctor` | — | Diagnose engine connectivity, authentication, and setup. Exits 0 (ok or warn) or 2 (blocked). | — |
@@ -5122,6 +5516,7 @@ The `requires` column names the permission that shows a command in
 | `sk tenants` | — | List tenants you belong to or switch the active one | — |
 | `sk update` | — | Update sk CLI to the latest version from your engine, falling back to GitHub releases | — |
 | `sk users` | `identity:read` | Manage identity users | `create`, `delete`, `get`, `invite`, `list`, `patch` |
+| `sk vault` | — | The vault (Tresor): secrets, logins and connector credentials. Workflows name an item as ${secret.<name>}; values never reach the model. | `add`, `attach`, `connector`, `list`, `refresh`, `reveal`, `rm`, `rotate`, `show` |
 | `sk workflows` | `workflow:read` | Manage workflows | `create`, `delete`, `dry-run`, `get`, `history`, `invoke-snippet`, `list`, `patch`, `preview`, `restore`, `run`, `update`, `validate` |
 
 ## Commands and arguments
@@ -5493,7 +5888,7 @@ Create a connector from a template slug (--template) or a definition file (--fil
 
 - `--template` (string) — Template slug
 - `--file` (string) — Path to a connector definition JSON file
-- `--credential` (string) — Path to a credential JSON file used to sign the pre-save probe. Never stored — attach the credential with `sk credentials set` after create.
+- `--credential` (string) — Path to a credential JSON file used to sign the pre-save probe. Never stored — attach the credential with `sk vault attach` after create.
 - `--name` (string) — Override connector name (--template only)
 - `--skip-checks` — Skip the checks (NOT recommended).
 - `--json` — JSON-only output (suppresses narration)
@@ -5577,7 +5972,7 @@ List connectors, grouped into catalog blocks
 
 - `--limit` (string, default: 50) — Max rows
 - `--category` (string) — Only this catalog block
-- `--driver` (string) — Only this driver: http, graphql, postgres, s3, mcp
+- `--driver` (string) — Only this driver: http, graphql, postgres, s3, mcp, local_files, local_browser, local_computer
 - `--flat` — One flat table instead of grouped blocks
 - `--json` — JSON output
 
@@ -5637,48 +6032,6 @@ Test a connector connection (alias of `probe`). Exits non-zero when the probe fa
 Check a connector definition file against its driver's config schema. Saves nothing, reaches no upstream.
 
 - `<file>` (positional, required) — Path to a definition JSON file
-- `--json` — JSON-only output
-
-
-### `sk credentials`
-
-Manage connector credentials
-
-#### `sk credentials delete`
-
-Delete a credential
-
-- `<credential-id>` (positional, required) — Credential id
-
-#### `sk credentials list`
-
-List credentials for a connector
-
-- `<connector-id>` (positional, required) — Connector id
-- `--json` — JSON output
-
-#### `sk credentials rotate`
-
-Rotate a credential
-
-- `<credential-id>` (positional, required) — Credential id
-
-#### `sk credentials set`
-
-Attach a credential to a connector (scriptable; no conversation needed). Modes: bearer | header | query | basic | aws_sigv4 | signed_jwt | none.
-
-- `<connector-id>` (positional, required) — Connector id
-- `--mode` (string, required) — bearer | header | query | basic | aws_sigv4 | signed_jwt | none
-- `--private-key-file` (string) — signed_jwt: local PKCS#8 PEM file; contents are sent only to the credential endpoint
-- `--token` (string) — Secret token (bearer mode)
-- `--header` (string) — header mode: "Name=Value" (comma-separate multiple)
-- `--query` (string) — query mode: "key=Value" (comma-separate multiple)
-- `--username` (string) — basic mode username
-- `--password` (string) — basic mode password
-- `--access-key-id` (string) — aws_sigv4 access key id
-- `--secret-access-key` (string) — aws_sigv4 secret access key
-- `--session-token` (string) — aws_sigv4 optional STS session token
-- `--skip-checks` — Skip the post-set connectivity probe
 - `--json` — JSON-only output
 
 
@@ -7228,6 +7581,85 @@ Update a user's role (admin only)
 - `--role` (string, required) — New role: admin|member|enduser
 
 
+### `sk vault`
+
+The vault (Tresor): secrets, logins and connector credentials. Workflows name an item as ${secret.<name>}; values never reach the model.
+
+#### `sk vault add`
+
+Add a secret or a login. The token or password is read from stdin or a hidden prompt, never from arguments.
+
+- `<name>` (positional, required) — Handle name, e.g. crm-token
+- `--kind` (string, default: secret) — secret | login
+- `--username` (string) — login: the username
+- `--scope` (string, default: workspace) — workspace | person
+- `--env` (string, default: prod) — dev | prod
+- `--description` (string) — What the item is for
+- `--json` — JSON output
+
+#### `sk vault attach`
+
+Attach a connector's credential as a vault item. The secret comes from stdin or a hidden prompt, never from arguments: the token, the header or query value, the password, the PEM key, or for aws_sigv4 the secret access key and an optional session token on a second line.
+
+- `<connector-id>` (positional, required) — Connector id
+- `--mode` (string, required) — bearer | header | query | basic | aws_sigv4 | signed_jwt | none
+- `--header` (string) — header mode: the header name; without it stdin holds Name=Value lines
+- `--query` (string) — query mode: the parameter name; without it stdin holds name=value lines
+- `--username` (string) — basic mode username
+- `--access-key-id` (string) — aws_sigv4 access key id
+- `--skip-checks` — Skip the post-set connectivity probe
+- `--json` — JSON-only output
+
+#### `sk vault connector`
+
+List the vault items of one connector
+
+- `<connector-id>` (positional, required) — Connector id
+- `--json` — JSON output
+
+#### `sk vault list`
+
+List vault items: names and metadata, never values
+
+- `--scope` (string) — workspace | person
+- `--kind` (string) — connector | secret | login | template_client
+- `--json` — JSON output
+
+#### `sk vault refresh`
+
+Refresh the OAuth token of a connector's vault item
+
+- `<id>` (positional, required) — Vault item id
+
+#### `sk vault reveal`
+
+Print a vault item's value. Every reveal is recorded in the audit log.
+
+- `<id>` (positional, required) — Vault item id
+- `--field` (string) — Print only this field
+- `--yes` — Confirm that the value may appear in this terminal
+
+#### `sk vault rm`
+
+Delete a vault item and its value
+
+- `<id>` (positional, required) — Vault item id
+
+#### `sk vault rotate`
+
+Replace the value of a secret or login. The new value is read from stdin.
+
+- `<id>` (positional, required) — Vault item id
+- `--username` (string) — login: a new username
+
+#### `sk vault show`
+
+Show one vault item's metadata and activity
+
+- `<id>` (positional, required) — Vault item id
+- `--json` — JSON output
+
+
 ### `sk workflows`
 
 Manage workflows
@@ -7354,12 +7786,14 @@ Validate a draft WorkflowDef JSON file (structural + step schema checks). No exe
 # SubKit runtime settings
 
 Look up every runtime setting with its description and default value.
-You change a value in the Cockpit, through the HTTP or MCP settings APIs, or with
-`sk settings configure` and `sk settings set`. Per-tenant overrides go into the
-file's `tenants` section and only apply to settings tagged `scope=tenant`.
+You change a value with `sk settings configure` and `sk settings set`, through the
+HTTP or MCP settings APIs, or in the canonical config file. Per-tenant overrides go
+into the file's `tenants` section and only apply to settings tagged `scope=tenant`.
 
 A value resolves in this order: tenant overlay, then global value, then schema
-default. Environment variables never set a runtime setting.
+default. Environment variables never set a runtime setting; only the bootstrap-only
+process bindings `database.url`, `storage.backend`, `storage.filesystem.root` and
+`deployment.mode` (from `SUBKIT_DEPLOYMENT_MODE`) come from the environment at startup.
 
 ## log
 Logging
@@ -7368,6 +7802,13 @@ Logging
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
 | `log.format` | enum("dev" \| "pretty" \| "prod" \| "ndjson" \| "json") | `"ndjson"` | global | no | no | Log output format |
 | `log.level` | enum("trace" \| "debug" \| "info" \| "warn" \| "error" \| "fatal") | `"info"` | global | no | no | Log verbosity |
+
+## deployment
+Deployment
+
+| path | type | default | scope | sensitive | requiresRestart | description |
+| ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `deployment.mode` | enum("server" \| "local_workspace") | `"server"` | global | no | yes | Bootstrap-only deployment mode: server, or local_workspace when SubKit Desktop runs the engine on this device (loopback only, local sign-in, laptop profile). Set SUBKIT_DEPLOYMENT_MODE and restart. |
 
 ## server
 HTTP server
@@ -7493,6 +7934,8 @@ Object storage
 
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `storage.backend` | enum("s3" \| "filesystem") | `"s3"` | global | no | yes | Bootstrap-only object-store backend: s3 uses storage.object_store, filesystem uses storage.filesystem.root on this machine. Set OBJECT_STORAGE_BACKEND and restart. |
+| `storage.filesystem.root` | string | `""` | global | no | yes | Bootstrap-only absolute folder of the filesystem object store; its parent must exist, the folder gets mode 0700. Set OBJECT_STORAGE_ROOT and restart. |
 | `storage.hosted.max_file_bytes` | string | `"0"` | global | no | no | Operator-owned maximum declared bytes of each new hosted file; zero blocks file admission. |
 | `storage.hosted.retained_rows_per_resource` | number | `1000` | global | no | no | Operator-owned retained row ceiling, initially 1,000 for the Free offering, for each hosted resource table, including histories and soft-deleted rows; zero blocks resource creation. |
 | `storage.hosted.tenant_bytes` | string | `"0"` | global | no | no | Operator-owned shared logical byte quota for files, object reservations and all retained user content, including copies and revisions. Not a physical bucket or PostgreSQL disk quota. |
@@ -7574,12 +8017,11 @@ Queue worker
 | `queue.hosted.pending_jobs` | number | `0` | global | no | no | Operator ceiling for queued hosted execution and conversation jobs per tenant; zero denies queue admission. |
 
 ## tokens
-Token budget
+Model prices
 
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
 | `tokens.currency` | string | `"USD"` | tenant | no | no | ISO 4217 code for tokens.prices. The built-in catalog is in USD and applies only while this is USD; otherwise only tokens.prices entries price anything. |
-| `tokens.monthly_budget` | number | `0` | tenant | no | no | Hard cap on tokens consumed per calendar month. 0 = unlimited. |
 | `tokens.prices` | json | `[]` | tenant | no | no | Per-model price overrides on top of the built-in catalog, per 1M tokens. An entry replaces its model's catalog price. A model with neither is reported as unpriced, not as zero. |
 
 ## operations
@@ -7612,7 +8054,6 @@ sk REPL session preferences
 
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
-| `repl.permissionMode` | enum("ask" \| "auto" \| "plan" \| "yolo") | `"auto"` | tenant | no | no | Default REPL permission mode for the principal: ask, auto, plan, or yolo. |
 | `repl.portalTokenTtlMin` | number | `15` | tenant | no | no | TTL in minutes for portal tokens minted by the /session slash (1..1440). |
 
 ## ui
@@ -7632,8 +8073,8 @@ sk REPL notification preferences
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
 | `notifications.inbox.retention_days` | number | `30` | global | no | no | Days a notification inbox task survives before the retention sweep deletes it. |
 | `notifications.push.enabled` | boolean | `false` | tenant | no | no | OS push notifications for long-running execution completion. |
-| `notifications.push.quietHoursEnd` | string | `""` | tenant | no | no | Quiet-hours window end (HH:MM, local TZ). Empty disables the window. |
-| `notifications.push.quietHoursStart` | string | `""` | tenant | no | no | Quiet-hours window start (HH:MM, local TZ). Empty disables the window. |
+| `notifications.push.quietHoursEnd` | string | `"07:00"` | tenant | no | no | Quiet-hours window end (HH:MM, local TZ). Empty disables the window. |
+| `notifications.push.quietHoursStart` | string | `"22:00"` | tenant | no | no | Quiet-hours window start (HH:MM, local TZ). Empty disables the window. |
 | `notifications.push.thresholdSec` | number | `30` | tenant | no | no | Minimum elapsed turn seconds before a notification fires. |
 
 ## connectors
@@ -7675,6 +8116,23 @@ Product settings keyed by product_id for product principals (oidc_bearer provide
 OIDC records are public clients using Authorization Code with PKCE. Runtime configuration intentionally has no `client_secret` field and rejects one if supplied; use an issuer that supports public clients with `token_endpoint_auth_method=none`. The environment is not an auth-provider source.
 
 Configured labels are diagnostic metadata only. The common `mcp-auth` surface derives its two user actions from protocol and always presents `Continue with SSO` before `Continue with API key`. Discovery exposes the canonical labels `SSO` and `API key`; no provider-specific route or parallel configuration tree is accepted.
+
+## Filesystem object store
+
+On a single device, the engine can keep files and offloaded results in a folder instead of an S3-compatible object store. Set two environment variables before the engine starts:
+
+| Variable | Setting | Value |
+| -------- | ------- | ----- |
+| `OBJECT_STORAGE_BACKEND` | `storage.backend` | `filesystem` (default `s3`) |
+| `OBJECT_STORAGE_ROOT` | `storage.filesystem.root` | absolute folder, for example `<app data>/local/<workspace>/files` |
+
+Both are bootstrap-only: they come from the environment on every start, a stored revision cannot change them, and the settings APIs refuse to write them. The `storage.object_store` values are not needed in this mode.
+
+- **Startup check:** the parent folder must exist. The engine creates the folder with mode `0700`, tightens an existing one to `0700`, and proves it can write, read, delete and hard-link inside it. If a check fails, the engine does not start and names the reason (`root_parent_missing`, `root_not_directory`, `root_not_writable`, `root_cross_device`, `root_no_hard_links`) with a remedy.
+- **Writes:** each object is written to a staging file, flushed to disk, then linked into place, so a reader sees the whole object or nothing. An existing key is never overwritten. Files get mode `0600`, folders `0700`.
+- **Keys:** every key segment is encoded to lowercase ASCII (`a-z`, `0-9`, `.`, `_`, `-`, other bytes as `%xx`), so keys that differ only in case or Unicode form stay apart on case-insensitive disks, and Windows reserved names are safe. `..`, empty segments and absolute keys are refused, and a link that leads outside the folder is never followed.
+- **Backup:** the folder is the whole object store; copy it together with the database dump.
+- **Not supported:** network drives, cloud-synced folders and disks without hard links, such as exFAT.
 
 <!-- Source: connectors.md -->
 

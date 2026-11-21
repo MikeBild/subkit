@@ -1,11 +1,17 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { buttonVariants } from "@ui/components/ui/button";
-import { toggleVariants } from "@ui/components/ui/toggle";
+import { buttonVariants } from "@ui/atoms/button";
+import { toggleVariants } from "@ui/atoms/toggle";
 
-const UI = join(import.meta.dir, "../components/ui");
-const source = (file: string) => readFileSync(join(UI, file), "utf8");
+const LEVELS = ["atoms", "molecules", "organisms"].map((level) =>
+  join(import.meta.dir, "..", level),
+);
+const source = (file: string) =>
+  readFileSync(
+    LEVELS.map((dir) => join(dir, file)).find((path) => existsSync(path)) ?? file,
+    "utf8",
+  );
 
 const SIZES = ["default", "xs", "sm", "lg", "icon", "icon-xs", "icon-sm", "icon-lg"] as const;
 const CONTROLS = [

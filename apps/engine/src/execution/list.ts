@@ -7,7 +7,7 @@ import {
   formatKeysetCursor,
   parseKeysetCursor,
 } from "../db/keyset-cursor.ts";
-import { executionSteps, executions, workflows } from "../db/schema/index.ts";
+import { deviceWaits, executionSteps, executions, workflows } from "../db/schema/index.ts";
 import { executionVisibilityFilter } from "./execution-owner.ts";
 
 export type ExecutionRow = typeof executions.$inferSelect;
@@ -23,6 +23,7 @@ export interface ListExecutionsOptions {
   started_from?: Date;
   started_to?: Date;
   held_effects?: boolean;
+  device_id?: string;
   principal?: ResolvedPrincipal;
 }
 
@@ -57,6 +58,14 @@ function buildExecutionListFilters(tenant_id: string, opts: ListExecutionsOption
     )`;
     conds.push(opts.held_effects ? hasHeldEffects : sql`not (${hasHeldEffects})`);
   }
+  if (opts.device_id)
+    conds.push(sql`exists (
+      select 1
+      from ${deviceWaits}
+      where ${deviceWaits.tenant_id} = ${tenant_id}
+        and ${deviceWaits.execution_id} = ${executions.id}
+        and ${deviceWaits.device_id} = ${opts.device_id}
+    )`);
   if (opts.principal) conds.push(executionVisibilityFilter(opts.principal));
   const needle = opts.q?.trim();
   if (needle) {

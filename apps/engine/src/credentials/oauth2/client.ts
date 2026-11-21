@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import * as oauth from "openid-client";
 import type { EgressGuardContext } from "../../connectors/index.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { identityFromTokenResponse, VerifiedProviderIdentitySchema } from "../provider-identity.ts";
 import { CredentialRequestError, credentialOperation, fetchCredentialRequest } from "../request.ts";
 import {

@@ -7,7 +7,7 @@ import type {
   SensitiveCheckVerdict,
   SensitiveOutputField,
 } from "../../execution/types.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { recordExecutionDryRun } from "../../observability/instrumentation.ts";
 import type { WorkflowDef } from "../../workflows/types.ts";
 import { withLatestPreview } from "../authoring-state/index.ts";

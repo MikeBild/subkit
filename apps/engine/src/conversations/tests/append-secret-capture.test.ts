@@ -6,7 +6,7 @@ import {
   _resetDraftCredentialCacheForTests,
   getDraftCredential,
 } from "../persistence/draft-credential-cache.ts";
-import { appendUserMessage, createConversation } from "../service.ts";
+import { appendUserMessage, createConversation } from "../service/index.ts";
 import type { DraftDocument } from "../types.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
 

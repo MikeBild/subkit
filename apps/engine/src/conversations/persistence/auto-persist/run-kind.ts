@@ -1,5 +1,5 @@
 import { completedRun, createRunWorkflow } from "../../../execution/use-cases/run-workflow.ts";
-import { logger } from "../../../logging/logger.ts";
+import { logger } from "../../../logging/index.ts";
 import { resolveWorkflowInputContract } from "../../../workflows/input-schema-synth.ts";
 import { resolveWorkflowByIdOrSlug } from "../../../workflows/lookup.ts";
 import type { WorkflowDef } from "../../../workflows/types.ts";

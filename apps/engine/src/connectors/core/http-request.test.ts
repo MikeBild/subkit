@@ -159,7 +159,6 @@ describe("applyAuthMaterial", () => {
     const auth = (header_template: unknown, access_token: unknown = "tok") =>
       applied(cred({ mode: "token_mint", access_token, header_template })).headers.Authorization;
     expect(auth(undefined)).toBe("Bearer tok");
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal placeholder under test
     expect(auth("Token ${token}|${token}")).toBe("Token tok|tok");
     expect(auth(undefined, "")).toBeUndefined();
   });

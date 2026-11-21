@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { getConfig, setConfigKey } from "../../config/loader.ts";
 import { listConfigLeaves } from "../../config/walk.ts";
 import { auditLog } from "../../db/schema/index.ts";
-import { probeCurrentVersion } from "../../preflight/vault-ops.ts";
+import { probeCurrentVersion } from "../../preflight/index.ts";
 import { RuntimeConfigCoordinator } from "../../runtime-config/coordinator.ts";
 import { listPendingSecretVersions } from "../../runtime-config/pending-secrets.ts";
 import {

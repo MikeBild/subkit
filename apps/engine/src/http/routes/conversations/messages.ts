@@ -19,7 +19,6 @@ import {
 } from "../../../conversations/public/authoring.ts";
 import { PendingElicitationBlockedError } from "../../../conversations/public/elicitation.ts";
 import {
-  assertTaskRunTurn,
   assertTaskRunWriter,
   clearConversationTurnFailure,
   conversationTurnId,
@@ -127,12 +126,11 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
-    await assertTaskRunTurn(db, {
+    await assertTaskRunWriter(db, {
       tenant_id: principal.tenant_id,
       conversation_id: id,
       actor_id: principal.id,
       principal,
-      permission_mode: body.permission_mode,
     });
     const turnAbortCtrl = await registerConversationAbort(principal.tenant_id, id, db);
     let ownershipTransferred = false;
@@ -146,7 +144,6 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
         message: body.message,
         ...(body.references && body.references.length > 0 ? { references: body.references } : {}),
         ...(body.memory !== undefined ? { memory: body.memory } : {}),
-        ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
       } as const;
       const runtimeContext = buildRuntimeContextFromRequest(c, principal);
       const driveTurn = (
@@ -166,7 +163,6 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
             user_memory: appended.user_memory,
             turn_abort_ctrl: turnAbortCtrl,
             runtime_context: runtimeContext,
-            ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
             ...(body.step_budget !== undefined ? { step_budget: body.step_budget } : {}),
             ...(body.client_suppress !== undefined
               ? { next_suggestion_suppress: body.client_suppress }

@@ -6,9 +6,9 @@ import {
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import { compatibleToolPalette } from "../../llm/runtime/tool-schema-compatibility.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { redactUpstreamDetail } from "../../mcp/client/registry.ts";
-import type { PermissionMode, ToolPolicies } from "../../tools/types.ts";
+import type { ToolPolicies } from "../../tools/types.ts";
 import { taskRunPrincipal } from "../service/task-run-marker.ts";
 import { taskRunToolPolicies } from "../tool-policies.ts";
 import type { TaskRunMarker, TurnEvent } from "../types.ts";
@@ -18,6 +18,7 @@ import {
   filterByTaskRunPalette,
   withoutTaskRunOnlyTools,
 } from "./authoring-palette.ts";
+import { buildDeviceTools } from "./device-tools/index.ts";
 import { filterBySkillGate } from "./gated.ts";
 import { listTools, type ToolContext } from "./index.ts";
 import { buildExternalMcpTools } from "./sdk-wrap/external-mcp-tools.ts";
@@ -78,7 +79,7 @@ async function wrapTaskRunTools(
   const marker: TaskRunMarker = principal ? taskRun : { ...taskRun, sealed: true };
   ctx.task_run = marker;
   ctx.principal = principal;
-  ctx.permission_mode = "auto";
+  ctx.ask_before_writing = false;
   const policies = taskRunToolPolicies(toolPolicies);
   for (const t of filterByTaskRunPalette(listTools())) {
     if (
@@ -86,15 +87,7 @@ async function wrapTaskRunTools(
       (t.name === "inspect_playbook" || t.name === "update_playbook")
     )
       continue;
-    const wrapped = wrapOne(
-      guardTaskRunTool(t, marker),
-      ctx,
-      signals,
-      events,
-      db,
-      policies,
-      "auto",
-    );
+    const wrapped = wrapOne(guardTaskRunTool(t, marker), ctx, signals, events, db, policies);
     out[t.name] = t.name === "run_workflow" ? withTaskRunEnvironment(wrapped, marker) : wrapped;
   }
   if (principal && !marker.sealed) {
@@ -106,9 +99,20 @@ async function wrapTaskRunTools(
         ctx,
         signals,
         events,
-        permissionMode: "auto",
         toolPolicies: policies,
         taskRun: marker,
+      }),
+    );
+    Object.assign(
+      out,
+      await buildDeviceTools({
+        db,
+        ctx,
+        principal,
+        taskRun: marker,
+        signals,
+        events,
+        toolPolicies: policies,
       }),
     );
     if (marker.connector_ids.length > 0) {
@@ -138,7 +142,6 @@ export async function wrapTools(
   db: Db,
   loadedSkills: ReadonlyArray<string> = [],
   toolPolicies: ToolPolicies = {},
-  permissionMode: PermissionMode | null = null,
   principal: ResolvedPrincipal | null = null,
 ): Promise<WrappedPalette> {
   const taskRun = taskRunMarkerOf(ctx);
@@ -184,7 +187,7 @@ export async function wrapTools(
     )
       continue;
     if (!intakeItemRead && INTAKE_ITEM_DEPENDENT_TOOLS.has(t.name)) continue;
-    out[t.name] = wrapOne(t, ctx, signals, events, db, toolPolicies, permissionMode);
+    out[t.name] = wrapOne(t, ctx, signals, events, db, toolPolicies);
   }
   if (principal) {
     const synthetic = await buildSyntheticWorkflowTools({
@@ -193,7 +196,6 @@ export async function wrapTools(
       ctx,
       signals,
       events,
-      permissionMode,
       toolPolicies,
     });
     for (const [name, tool] of Object.entries(synthetic)) {
@@ -201,6 +203,18 @@ export async function wrapTools(
     }
   }
   if (principal && !isChatSurface) {
+    Object.assign(
+      out,
+      await buildDeviceTools({
+        db,
+        ctx,
+        principal,
+        taskRun: null,
+        signals,
+        events,
+        toolPolicies,
+      }),
+    );
     try {
       const mcpTools = await buildExternalMcpTools({ db, principal, ctx, signals, events });
       for (const [name, t] of Object.entries(mcpTools)) {

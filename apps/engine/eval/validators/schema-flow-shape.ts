@@ -1,6 +1,10 @@
 import { AiSdkModel } from "../../src/llm/runtime/ai-sdk-model.ts";
 import type { FixtureRecord, ValidationResult } from "../runner.ts";
 
+type GenerateText = NonNullable<
+  Exclude<ConstructorParameters<typeof AiSdkModel>[0], string | undefined>["generateTextFn"]
+>;
+
 interface ObservedCall {
   outputName?: string;
   responseFormat?: { type?: string; schema?: Record<string, unknown> };
@@ -42,8 +46,7 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
   };
   const model = new AiSdkModel({
     defaultModel: "claude-sonnet-4-5",
-    // biome-ignore lint/suspicious/noExplicitAny: eval spy
-    generateTextFn: spy as any,
+    generateTextFn: spy as unknown as GenerateText,
   });
 
   await model.generateObject({

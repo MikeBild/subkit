@@ -11,7 +11,7 @@ import {
   workflowsSchedules,
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { EXECUTION_RUN_QUEUE } from "../../queue/queues.ts";
 import { SchedulerReconciler } from "../../scheduler/reconciler.ts";
 import { retryCatalogConflict } from "../../test-helpers/catalog-retry.ts";

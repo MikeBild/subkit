@@ -9,11 +9,12 @@ import {
   workflowVersions,
 } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { testEnv } from "../test-helpers/determinism/env.ts";
 import { createElicitation, resolveElicitation } from "./elicitations.ts";
 import { appendMessage, buildModelMessages } from "./persistence/index.ts";
 import { ELICITATION_REDACTED_MARKER } from "./tools/ask-user/redact-answer.ts";
 
-const skip = process.env.REQUIRES_PG === "0";
+const skip = testEnv.REQUIRES_PG === "0";
 
 const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 const BASE64_URL_SAFE = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";

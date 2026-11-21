@@ -1,3 +1,6 @@
+import { Skeleton } from "@ui/atoms/skeleton";
+import { IconButton } from "@ui/molecules/icon-button";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@ui/organisms/sheet";
 import { ChevronLeft, XIcon } from "lucide-react";
 import {
   createContext,
@@ -9,12 +12,10 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { IconButton } from "@/components/cockpit/icon-button";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useI18n } from "@/lib/i18n-context";
 import { ActionFailureHost } from "./action-failure";
 import { useInspectorDock } from "./responsive-workspace";
-import { Loadable, RowsSkeleton, Skeleton } from "./skeleton";
+import { Loadable, RowsSkeleton } from "./skeleton";
 
 export type SheetSize = "default" | "wide";
 

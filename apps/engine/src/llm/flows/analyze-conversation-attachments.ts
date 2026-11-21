@@ -2,7 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { fileLinks, files } from "../../db/schema/index.ts";
 import { storageKey } from "../../files/resolver.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { getObjectStore } from "../../storage/object-store.ts";
 import {
   type DocumentAnalysisAttachment,

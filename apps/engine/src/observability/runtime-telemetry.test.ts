@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { DomainRefusal } from "../logging/domain-refusal.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { instrument, sampleMemory } from "./runtime-telemetry.ts";
 
 describe("when an instrumented operation is rejected", () => {

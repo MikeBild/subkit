@@ -21,7 +21,6 @@ import {
   outputGuardContext,
   priorFailuresFromPreview,
   promptRuntimeContext,
-  remainingMonthlyBudget,
   repairAttribution,
   streamErrorTimeoutBudget,
   tokenBreakdown,
@@ -201,7 +200,7 @@ describe("authoring connector ids", () => {
 describe("authoring hint", () => {
   test("is undefined without a summary", () => {
     expect(
-      authoringHint(undefined, { runVerb: true, permission_mode: null, locked_tools: [] }),
+      authoringHint(undefined, { runVerb: true, ask_before_writing: false, locked_tools: [] }),
     ).toBe(undefined);
   });
 
@@ -213,7 +212,7 @@ describe("authoring hint", () => {
     const locked = [{ skill: "s", tools: ["t"] }];
     const hint = authoringHint(s as never, {
       runVerb: true,
-      permission_mode: "auto",
+      ask_before_writing: false,
       locked_tools: locked,
     });
     expect(hint as unknown).toStrictEqual({
@@ -224,7 +223,7 @@ describe("authoring hint", () => {
       blocked_by: ["needs_probe"],
       next_required_action: "probe",
       next_suggested_tool: "probe_connector",
-      permission_mode: "auto",
+      ask_before_writing: false,
       locked_tools: locked,
       checkpoints: [{ key: "connector_validated" }],
       latest_execution: { diagnosis_available: true },
@@ -235,7 +234,7 @@ describe("authoring hint", () => {
   });
 
   test("keeps the mode without a run verb or outside workflow mode", () => {
-    const base = { permission_mode: null, locked_tools: [] };
+    const base = { ask_before_writing: false, locked_tools: [] };
     expect(authoringHint(summary() as never, { ...base, runVerb: false })?.mode).toBe("workflow");
     expect(
       authoringHint(summary({ mode: "connector" }) as never, { ...base, runVerb: true })?.mode,
@@ -272,7 +271,6 @@ describe("runtime contexts", () => {
         actor_email: "a@b.c",
         actor_role: "admin",
         surface: "chat",
-        permission_mode: "auto",
       }),
     ).toStrictEqual({
       runtime_context: {
@@ -281,10 +279,9 @@ describe("runtime contexts", () => {
         actor_email: "a@b.c",
         actor_role: "admin",
         surface: "chat",
-        permission_mode: "auto",
       },
     });
-    expect(promptRuntimeContext({ engine_url: "", permission_mode: null })).toStrictEqual({});
+    expect(promptRuntimeContext({ engine_url: "" })).toStrictEqual({});
   });
 
   test("output guard context includes only present values", () => {
@@ -323,13 +320,6 @@ describe("budgets and estimates", () => {
     expect(isLateStage("workflow_drafting")).toBe(false);
     expect(isLateStage("")).toBe(false);
     expect(isLateStage(undefined)).toBe(false);
-  });
-
-  test("remaining monthly budget never goes negative", () => {
-    expect(remainingMonthlyBudget(1000, 400)).toBe(600);
-    expect(remainingMonthlyBudget(1000, 1400)).toBe(0);
-    expect(remainingMonthlyBudget(null, 10)).toBeNull();
-    expect(remainingMonthlyBudget(undefined, 10)).toBeNull();
   });
 
   test("budget exhaustion needs an active turn at the limit without a pending question", () => {

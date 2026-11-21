@@ -1,4 +1,4 @@
-import { ErrorNotice } from "@ui/components/proto/ErrorNotice";
+import { ErrorNotice } from "@ui/molecules/error-notice";
 import { useEffect, useState } from "react";
 import { StatusStrip } from "@/components/cockpit/patterns/status-strip";
 import { useI18n } from "@/lib/i18n-context";

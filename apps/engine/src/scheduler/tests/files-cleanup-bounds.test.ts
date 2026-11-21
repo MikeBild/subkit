@@ -4,15 +4,15 @@ import type { PgBoss } from "pg-boss";
 import { createDbFromUrl } from "../../db/client.ts";
 import { auditLog, fileLinks, files, tenants } from "../../db/schema/index.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT, type TestDb } from "../../db/tests/setup.ts";
-import { MemoryObjectStore, setObjectStoreForTesting } from "../../storage/object-store.ts";
-import { getTestNow } from "../../test-helpers/determinism/clock.ts";
-import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
-import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   FILES_CLEANUP_BATCH_SIZE,
   FILES_UNLINKED_CLEANUP_BATCH_SIZE,
   runFilesCleanup,
-} from "../files-cleanup-runner.ts";
+} from "../../files/scheduled/files-cleanup-runner.ts";
+import { MemoryObjectStore, setObjectStoreForTesting } from "../../storage/object-store.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
+import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 import { createFilesCleanupBoss, disposeBoss } from "./pgboss-bootstrap.ts";
 
 const uuid = createDeterministicUuidFactory(0xf11ec);

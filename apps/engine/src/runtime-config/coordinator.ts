@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import type { Config } from "../config/schema.ts";
 import type { Db, Executor } from "../db/client.ts";
 import { runtimeConfigReplicas, runtimeConfigState } from "../db/schema/index.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { CONFIG_STATE_KEY, defaultReplicaInstanceId, REPLICA_HEARTBEAT_MS } from "./contracts.ts";
 import {
   applyRuntimeConfig,

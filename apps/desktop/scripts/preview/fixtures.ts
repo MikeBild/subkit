@@ -2,7 +2,7 @@ import { openSheet } from "../../src/shared/browser-sheet-model.ts";
 import { openDrop, reduceDrop } from "../../src/shared/drop-model.ts";
 import { dictionary, type Locale } from "../../src/shared/i18n.ts";
 import type { InviteCheck } from "../../src/shared/invite-link.ts";
-import type { CheckResult, ConnectState } from "../../src/shared/ipc.ts";
+import { type CheckResult, type ConnectState, LOCAL_UNAVAILABLE } from "../../src/shared/ipc.ts";
 import {
   completeStep,
   LOADING_ONBOARDING,
@@ -11,7 +11,6 @@ import {
 } from "../../src/shared/onboarding.ts";
 import { INITIAL_CAPTURE } from "../../src/shared/quick-capture-model.ts";
 import { DEFAULT_QUIET_HOURS } from "../../src/shared/quiet-hours.ts";
-import { shellDictionary } from "../../src/shared/shell-i18n.ts";
 import type { ShellState, ShellView } from "../../src/shared/shell-ipc.ts";
 
 export interface Scenario {
@@ -79,7 +78,7 @@ export function scenarioState(scenario: Scenario, locale: Locale, dark: boolean)
     locale,
     platform: "darwin",
     dark,
-    messages: shellDictionary(locale),
+    messages: dictionary(locale),
     online: true,
     capture: INITIAL_CAPTURE,
     drop: null,
@@ -267,6 +266,12 @@ export function connectState(scenario: ConnectScenario, locale: Locale): Connect
     signedIn: null,
     onboarding: NO_ONBOARDING,
     update: { phase: "idle" },
+    permissions: {
+      supported: true,
+      permissions: { accessibility: false, screen: false, restartPending: false },
+      lost: [],
+    },
+    local: LOCAL_UNAVAILABLE,
     ...scenario.patch,
   };
 }

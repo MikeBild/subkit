@@ -12,7 +12,7 @@ import {
   roles as rolesTable,
   users,
 } from "../db/schema/index.ts";
-import { log } from "../logging/logger.ts";
+import { log } from "../logging/index.ts";
 import { getMetrics, METRIC_NAMES } from "../observability/metrics.ts";
 import { now } from "../utils/clock.ts";
 import { isOperatorPermission } from "./catalog.ts";

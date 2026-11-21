@@ -5,7 +5,7 @@ import type { Db } from "../../db/client.ts";
 import { apiKeys, roles as rolesTable, systemAccounts, users } from "../../db/schema/index.ts";
 import { sha256Hex } from "../../identity/api-key.ts";
 import { withContext } from "../../logging/context.ts";
-import { log, logger } from "../../logging/logger.ts";
+import { log, logger } from "../../logging/index.ts";
 import type { AllowList, ResolvedPrincipal } from "../types.ts";
 
 export type ApiKeyRow = typeof apiKeys.$inferSelect;

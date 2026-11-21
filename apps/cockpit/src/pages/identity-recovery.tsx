@@ -3,7 +3,7 @@ import { useState } from "react";
 import { apiCall } from "@/api/call";
 import { readRecovery, restoreTenant } from "@/api/tenant-lifecycle";
 import { loginHref } from "@/app/session";
-import { WorkspaceRecovery } from "@/components/cockpit/patterns/workspace-recovery";
+import { WorkspaceRecovery } from "@/features/settings";
 
 export function IdentityRecoveryPage() {
   const [confirm, setConfirm] = useState(false);

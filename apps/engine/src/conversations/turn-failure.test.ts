@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { APICallError } from "ai";
 import { DrizzleQueryError } from "drizzle-orm";
 import { HostedResourceCountError, HostedStorageQuotaError } from "../db/hosted-quota-errors.ts";
-import { LlmAccessMissing, LlmProviderError, LlmQuotaExhausted } from "../llm/errors.ts";
+import { LlmAccessMissing, LlmProviderError, LlmSpendLimitReached } from "../llm/errors.ts";
 import { toLlmProviderError } from "../llm/provider-errors.ts";
 import {
   describeTurnFailure,
@@ -20,14 +20,14 @@ describe("describeTurnFailure", () => {
   test("a provider quota is typed and carries the time access returns", () => {
     const failure = describeTurnFailure(toLlmProviderError(new Error(QUOTA_SENTENCE)), now);
     expect(failure).toEqual({
-      code: "llm_provider_limited",
+      code: "llm_provider_quota_exhausted",
       message: QUOTA_SENTENCE,
       at: "2026-09-29T15:00:00.000Z",
       kind: "quota_exhausted",
       retry_at: "2026-10-01T00:00:00.000Z",
     });
     expect(turnFailureFramePayload(failure)).toEqual({
-      code: "llm_provider_limited",
+      code: "llm_provider_quota_exhausted",
       message: QUOTA_SENTENCE,
       details: { kind: "quota_exhausted", retry_at: "2026-10-01T00:00:00.000Z" },
     });
@@ -46,7 +46,9 @@ describe("describeTurnFailure", () => {
   });
 
   test("the installation's own budget is not the provider's", () => {
-    expect(describeTurnFailure(new LlmQuotaExhausted(), now).code).toBe("llm_quota_exhausted");
+    expect(describeTurnFailure(new LlmSpendLimitReached(), now).code).toBe(
+      "llm_spend_limit_reached",
+    );
   });
 
   test("workspace content quotas retain their safe typed contract through wrapped SQL errors", () => {

@@ -8,7 +8,7 @@ import {
   runtimeConfigReplicas,
   runtimeConfigState,
 } from "../db/schema/index.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { CONFIG_STATE_KEY, REPLICA_LEASE_MS, type RevisionStatus } from "./contracts.ts";
 import { getRuntimeRevision } from "./service.ts";
 import { runtimeStateColumns } from "./state-columns.ts";

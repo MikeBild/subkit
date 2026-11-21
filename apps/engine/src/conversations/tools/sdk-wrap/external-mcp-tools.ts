@@ -6,7 +6,7 @@ import { buildMcpToolName, mcpEgressInput } from "../../../connectors/drivers/mc
 import { withEgressAudit } from "../../../connectors/egress.ts";
 import { readMcpToolsWithoutConfirmation } from "../../../connectors/mcp-tool-trust.ts";
 import type { Db } from "../../../db/client.ts";
-import { logger } from "../../../logging/logger.ts";
+import { logger } from "../../../logging/index.ts";
 import {
   getTenantMcpTools,
   invokeRemoteTool,
@@ -446,7 +446,7 @@ async function executeExternalMcpTool(
         category: "tenant_write",
         surface: "chat",
         args: effectiveInput,
-        ...(ctx.permission_mode === "plan" ? { permission_mode: "plan" as const } : {}),
+        ...(ctx.ask_before_writing === true ? { ask_before_writing: true } : {}),
         ...(trustedByOperator ? { connector_trust: true } : {}),
         ...(taskRun ? { task_run: true } : {}),
         db,

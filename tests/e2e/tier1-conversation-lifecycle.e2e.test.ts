@@ -71,14 +71,11 @@ interface CreateOutcome {
   pending_elicitation_id?: string;
 }
 
-async function createConversation(
-  initial_message: string,
-  permission_mode: "auto" | "ask" = "auto",
-): Promise<CreateOutcome> {
+async function createConversation(initial_message: string): Promise<CreateOutcome> {
   const r = await fetch(`${env.baseUrl}/v1/conversations`, {
     method: "POST",
     headers: adminAuth(),
-    body: JSON.stringify({ initial_message, permission_mode }),
+    body: JSON.stringify({ initial_message }),
   });
   if (r.status !== 201) {
     throw new Error(`POST /v1/conversations failed: ${r.status} ${await r.text()}`);
@@ -449,7 +446,6 @@ describe.skipIf(!SHOULD_RUN)("Tier 1.6 — elicitation reject (real LLM)", () =>
       "Create a workflow with a GET request to https://jsonplaceholder.typicode.com/users. " +
         "Before authoring or saving anything, use ask_user_confirm to ask whether I want to proceed. " +
         "If I decline, do not create or save the workflow.",
-      "ask",
     );
     const id = out.conversation.id;
 

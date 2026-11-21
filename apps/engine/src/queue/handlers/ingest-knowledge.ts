@@ -6,7 +6,7 @@ import type { Db, Executor } from "../../db/client.ts";
 import { knowledgeSources } from "../../db/schema/index.ts";
 import { ingestKnowledgeSource, knowledgeSourceChanged } from "../../knowledge/service.ts";
 import { refreshKnowledgeSource } from "../../knowledge/url-source.ts";
-import { log } from "../../logging/logger.ts";
+import { log } from "../../logging/index.ts";
 import { withActiveTenantJobContext } from "../job-context.ts";
 import { queuedSendTransaction } from "../transaction-adapter.ts";
 

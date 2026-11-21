@@ -16,7 +16,7 @@ export function isAdminFromPermissions(perms: readonly string[]): boolean {
     for (const prefix of ADMIN_ONLY_PREFIXES) {
       if (p.startsWith(prefix)) return true;
     }
-    if (p.startsWith("credential:") && p !== "credential:read") return true;
+    if (p.startsWith("vault:") && p !== "vault:read") return true;
   }
   return false;
 }

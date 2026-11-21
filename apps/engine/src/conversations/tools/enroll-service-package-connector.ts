@@ -8,8 +8,8 @@ import {
   resolvePackageArtifactUrl,
 } from "../../credentials/connections/discovery.ts";
 import { getCredentialForConnector, upsertCredential } from "../../credentials/service.ts";
-import { secretComparisonProof } from "../../crypto/aes-gcm.ts";
-import { logger } from "../../logging/logger.ts";
+import { secretComparisonProof } from "../../crypto/index.ts";
+import { logger } from "../../logging/index.ts";
 import { auditActorFromToolContext, connectorActorFromToolContext } from "./audit-actor.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
 

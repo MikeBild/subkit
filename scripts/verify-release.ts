@@ -9,7 +9,7 @@ interface Args {
 function usage(message: string): never {
   console.error(`verify:release: ${message}\n`);
   console.error(
-    "usage: bun run verify:release -- --engine-url <url> --version <x.y.z> [--api-key <key>]",
+    "usage: bun run release verify -- --engine-url <url> --version <x.y.z> [--api-key <key>]",
   );
   process.exit(2);
 }

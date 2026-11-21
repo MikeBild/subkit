@@ -117,7 +117,6 @@ describe("workflowDefFromDraft", () => {
       name: "Render upload slides",
       slug: "render-upload-slides",
       steps: [
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal ${...} placeholder is the fixture under test.
         { id: "upload", kind: "request", method: "POST", url: "https://x.test/${input.markdown}" },
       ],
       input_schema_sample: { markdown: "# hi", filename: "deck.md" },

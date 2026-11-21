@@ -109,7 +109,7 @@ Zugangsdaten, Freigaben, Rollen, Kategorien, Einstellungen und der Verlauf bleib
 Um eine ganze selbst betriebene Installation zu kopieren, machst du stattdessen ein Backup wie in „Die Engine betreiben“ beschrieben.
 
 Du brauchst `package:export` auf der Quell-Engine und `package:import` auf der Ziel-Engine. Beide Rechte haben Mitglieder und Administratoren.
-Die Zugangsdaten nach dem Import hinterlegt jemand mit `credential:write`, in der Regel ein Administrator. Eine OAuth-Anmeldung kann auch ein Mitglied abschließen.
+Die Zugangsdaten nach dem Import hinterlegt jemand mit `vault:write`, in der Regel ein Administrator. Eine OAuth-Anmeldung kann auch ein Mitglied abschließen.
 
 1. Melde dich bei beiden Engines an, jeweils mit einem eigenen Profil:
 

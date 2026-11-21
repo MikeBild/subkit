@@ -18,7 +18,7 @@ import {
   resolvePackageArtifactUrl,
 } from "../../credentials/connections/discovery.ts";
 import { collectWorkflowConnectorReferences } from "../../execution/prepared-workflow-references.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
 

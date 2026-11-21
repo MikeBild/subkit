@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
 import { PLATFORM_CATEGORY } from "../api/catalog-metadata.ts";
-import { type Db, getDb } from "../db/client.ts";
+import type { Db } from "../db/client.ts";
 import { tenants } from "../db/schema/index.ts";
 import { retryTransient } from "../db/transient.ts";
 import { withTenantWork } from "../execution/index.ts";
 import { assertTenantActive, SelfServiceIdentityError } from "../identity/index.ts";
-import { errorFields, logger } from "../logging/logger.ts";
+import { errorFields, logger } from "../logging/index.ts";
 import { EMBEDDED_KNOWLEDGE_SEEDS } from "./embedded-seeds.ts";
 import {
   createKnowledgeSource,
@@ -70,7 +70,7 @@ export function loadKnowledgeSeedsFromContent(files: readonly SeedSource[]): Loa
 export async function applyKnowledgeSeeds(
   seeds: SeededKnowledge[],
   tenant_id: string,
-  db: Db = getDb(),
+  db: Db,
 ): Promise<ApplyOutcome> {
   return withTenantWork(tenant_id, async () => {
     await assertTenantActive(tenant_id, db);
@@ -142,7 +142,7 @@ export async function applyKnowledgeSeeds(
 export async function applyKnowledgeSeedsWithRetry(
   seeds: SeededKnowledge[],
   tenant_id: string,
-  db: Db = getDb(),
+  db: Db,
 ): Promise<ApplyOutcome> {
   return retryTransient(() => applyKnowledgeSeeds(seeds, tenant_id, db), {
     label: "knowledge_seed",
@@ -151,7 +151,7 @@ export async function applyKnowledgeSeedsWithRetry(
 
 export async function applyKnowledgeSeedsForAllTenants(
   seeds: SeededKnowledge[],
-  db: Db = getDb(),
+  db: Db,
 ): Promise<ApplyOutcome[]> {
   const allTenants = await db
     .select({ id: tenants.id })
@@ -169,7 +169,7 @@ export async function applyKnowledgeSeedsForAllTenants(
   return outcomes;
 }
 
-export async function seedKnowledgeAtBoot(db: Db = getDb()): Promise<void> {
+export async function seedKnowledgeAtBoot(db: Db): Promise<void> {
   try {
     const loaded = loadEmbeddedKnowledgeSeeds();
     if (loaded.errors.length > 0) {

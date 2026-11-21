@@ -1,7 +1,7 @@
 import type { Executor } from "../../../../db/client.ts";
 import { type RunCoverageSubject, readRunCoverage } from "../../../../execution/run-coverage.ts";
-import { logger } from "../../../../logging/logger.ts";
-import type { PermissionMode, ToolPolicies } from "../../../../tools/types.ts";
+import { logger } from "../../../../logging/index.ts";
+import type { ToolPolicies } from "../../../../tools/types.ts";
 import { workflowExecutionEnvironment } from "../../../../workflows/execution-environment.ts";
 import { resolveWorkflowByIdOrSlug } from "../../../../workflows/lookup.ts";
 import { WORKFLOW_TOOL_PREFIX } from "../../authoring-palette.ts";
@@ -44,10 +44,10 @@ export function workflowConfirmOverride(overrides: ToolPolicies, slug: string): 
 
 export async function loadRunCoverage(
   db: Executor,
-  permissionMode: PermissionMode | null,
+  askBeforeWriting: boolean,
   subject: () => RunCoverageSubject | null | Promise<RunCoverageSubject | null>,
 ): Promise<GateCoverage> {
-  if (permissionMode !== "ask") return GATE_UNCOVERED;
+  if (!askBeforeWriting) return GATE_UNCOVERED;
   try {
     const resolved = await subject();
     if (!resolved) return GATE_UNCOVERED;
@@ -78,11 +78,11 @@ function confirmsSomeWorkflow(overrides: ToolPolicies): boolean {
 
 export function runWorkflowToolCoverage(
   ctx: Pick<ToolContext, "db" | "tenant_id" | "getDraft">,
-  permissionMode: PermissionMode | null,
+  askBeforeWriting: boolean,
   args: Record<string, unknown>,
   overrides: ToolPolicies,
 ): Promise<GateCoverage> {
-  return loadRunCoverage(ctx.db, permissionMode, async () => {
+  return loadRunCoverage(ctx.db, askBeforeWriting, async () => {
     const requested =
       args.environment === "dev" || args.environment === "prod" ? args.environment : null;
     if (args.environment !== undefined && requested === null) return null;

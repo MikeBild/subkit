@@ -11,7 +11,7 @@ import {
   stageElicitationAnswer,
 } from "../../conversations/public/elicitation.ts";
 import {
-  assertTaskRunTurn,
+  assertTaskRunWriter,
   canReadTaskRun,
   getConversation,
   withReservedConversationTurn,
@@ -24,7 +24,7 @@ import {
 } from "../../conversations/public/tool-contract.ts";
 import type { Db } from "../../db/client.ts";
 import * as intake from "../../knowledge/index.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { enqueueConversationRunTurn } from "../../queue/handlers/conversation-run-turn.ts";
 import { getBoss } from "../../queue/index.ts";
 import { can } from "../../rbac/evaluator.ts";
@@ -153,7 +153,6 @@ interface HandleConversationToolParams {
   principal: ResolvedPrincipal;
   name: string;
   args: Record<string, unknown>;
-  permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
   playground?: boolean;
   taskAugmented?: boolean;
   nativeElicitation?: NativeElicitationTransport;
@@ -203,7 +202,6 @@ type BackgroundTurnParams = {
   conversation_id: string;
   kind: "start" | "append" | "respond_elicitation";
   user_message_id: string | null;
-  permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
   elicitation_id?: string;
   reason?: string;
   taskAugmented?: boolean;
@@ -266,7 +264,6 @@ async function backgroundTurnReserved(
         actor_id: p.principal.id,
         principal: p.principal,
         kind: p.kind,
-        ...(p.permission_mode ? { permission_mode: p.permission_mode } : {}),
         ...(p.elicitation_id ? { elicitation_id: p.elicitation_id } : {}),
         ...(p.answer_channel ? { answer_channel: p.answer_channel } : {}),
         ...(p.reason ? { reason: p.reason } : {}),
@@ -324,7 +321,6 @@ export async function deliverPendingNativeElicitation(p: {
   principal: ResolvedPrincipal;
   pending: ElicitationRecord;
   nativeElicitation: NativeElicitationTransport;
-  permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
   reuse_task_id?: string;
 }): Promise<HandleConversationToolResult | null> {
   return deliverPendingNativeElicitationCore({
@@ -341,7 +337,6 @@ export async function deliverPendingNativeElicitation(p: {
         answer_channel: "mcp_native",
         ...(resume.reuse_task_id ? { reuse_task_id: resume.reuse_task_id } : {}),
         ...(resume.reason ? { reason: resume.reason } : {}),
-        ...(resume.permission_mode ? { permission_mode: resume.permission_mode } : {}),
       }),
   });
 }
@@ -403,16 +398,7 @@ async function refuseApprovalElicitation(
 export async function handleConversationTool(
   p: HandleConversationToolParams,
 ): Promise<HandleConversationToolResult> {
-  const {
-    db,
-    principal,
-    name,
-    args,
-    permission_mode,
-    playground,
-    taskAugmented,
-    nativeElicitation,
-  } = p;
+  const { db, principal, name, args, playground, taskAugmented, nativeElicitation } = p;
   try {
     if (name === "conversation_start") {
       const parsed = StartArgs.safeParse(args);
@@ -443,7 +429,6 @@ export async function handleConversationTool(
             ? { intake_item_ids: parsed.data.intake_item_ids }
             : {}),
           initial_message: parsed.data.message,
-          ...(permission_mode ? { permission_mode } : {}),
           ...(playground ? { playground } : {}),
           origin_client: principalOrigin(principal),
           surface: "mcp",
@@ -456,7 +441,6 @@ export async function handleConversationTool(
         conversation_id: created.conversation.id,
         kind: "start",
         user_message_id: created.initial_message_id,
-        ...(permission_mode ? { permission_mode } : {}),
         ...(taskAugmented ? { taskAugmented } : {}),
         ...cockpitConversationHandoff(created.conversation.id),
       });
@@ -465,12 +449,11 @@ export async function handleConversationTool(
     if (name === "conversation_append") {
       const parsed = AppendArgs.safeParse(args);
       if (!parsed.success) return errorText("conversation_id and message are required");
-      await assertTaskRunTurn(db, {
+      await assertTaskRunWriter(db, {
         tenant_id: principal.tenant_id,
         conversation_id: parsed.data.conversation_id,
         actor_id: principal.id,
         principal,
-        permission_mode,
       });
       return await withReservedConversationTurn(
         db,
@@ -485,7 +468,6 @@ export async function handleConversationTool(
               principal,
               message: parsed.data.message,
               turn_id,
-              ...(permission_mode ? { permission_mode } : {}),
             },
             db,
           );
@@ -496,7 +478,6 @@ export async function handleConversationTool(
             conversation_id: parsed.data.conversation_id,
             kind: "append",
             user_message_id: appended.message_id,
-            ...(permission_mode ? { permission_mode } : {}),
             ...(taskAugmented ? { taskAugmented } : {}),
           });
         },
@@ -508,12 +489,11 @@ export async function handleConversationTool(
       if (!parsed.success) {
         return errorText("conversation_id and elicitation_id are required");
       }
-      await assertTaskRunTurn(db, {
+      await assertTaskRunWriter(db, {
         tenant_id: principal.tenant_id,
         conversation_id: parsed.data.conversation_id,
         actor_id: principal.id,
         principal,
-        permission_mode,
       });
       const refusal = await refuseApprovalElicitation(db, principal, parsed.data);
       if (refusal) return refusal;
@@ -544,7 +524,6 @@ export async function handleConversationTool(
             user_message_id: null,
             elicitation_id: parsed.data.elicitation_id,
             ...(parsed.data.reason ? { reason: parsed.data.reason } : {}),
-            ...(permission_mode ? { permission_mode } : {}),
             ...(taskAugmented ? { taskAugmented } : {}),
           });
         },
@@ -556,7 +535,6 @@ export async function handleConversationTool(
       if (!parsed.success) return errorText("conversation_id is required");
       return conversationGet(db, principal, parsed.data.conversation_id, {
         ...(nativeElicitation ? { nativeElicitation } : {}),
-        ...(permission_mode ? { permission_mode } : {}),
       });
     }
 
@@ -602,7 +580,6 @@ async function conversationGet(
   conversation_id: string,
   opts: {
     nativeElicitation?: NonNullable<HandleConversationToolParams["nativeElicitation"]>;
-    permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
   } = {},
 ): Promise<HandleConversationToolResult> {
   if (!(await canReadTaskRun(db, { tenant_id: principal.tenant_id, conversation_id, principal })))
@@ -661,7 +638,6 @@ async function conversationGet(
       pending,
       nativeElicitation: opts.nativeElicitation,
       reuse_task_id: latest.id,
-      ...(opts.permission_mode ? { permission_mode: opts.permission_mode } : {}),
     });
     if (delivered) return delivered;
   }

@@ -1,8 +1,9 @@
 import { afterAll, afterEach, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/index.ts";
-import { LlmProviderError, LlmQuotaExhausted } from "../../llm/errors.ts";
+import { LlmProviderError, LlmSpendLimitReached } from "../../llm/errors.ts";
 import * as invokeModule from "../../llm/runtime/invoke.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { getKnowledgeSource } from "../catalog.ts";
 import {
   analyzeKnowledgeSource,
@@ -11,7 +12,7 @@ import {
 } from "../service.ts";
 import { createKnowledgeTestCtx, type KnowledgeTestCtx } from "./setup.ts";
 
-const skip = process.env.REQUIRES_PG === "0";
+const skip = testEnv.REQUIRES_PG === "0";
 
 let ctx: KnowledgeTestCtx;
 
@@ -427,7 +428,7 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
     }
   });
 
-  test("when invoke throws LlmQuotaExhausted, analyzeKnowledgeSource propagates", async () => {
+  test("when invoke throws LlmSpendLimitReached, analyzeKnowledgeSource propagates", async () => {
     const source = await createKnowledgeSource(
       {
         tenant_id: ctx.tenantId,
@@ -445,7 +446,7 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
     );
 
     const spy = spyOn(invokeModule, "invoke").mockRejectedValue(
-      new LlmQuotaExhausted("tenant monthly token budget exhausted"),
+      new LlmSpendLimitReached("tenant monthly token budget exhausted"),
     );
 
     try {
@@ -454,7 +455,7 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
           { tenant_id: ctx.tenantId, id: source.id, actor_id: null },
           ctx.testDb.db,
         ),
-      ).rejects.toBeInstanceOf(LlmQuotaExhausted);
+      ).rejects.toBeInstanceOf(LlmSpendLimitReached);
 
       const row = await getKnowledgeSource(ctx.tenantId, source.id, ctx.testDb.db);
       expect(row!.description).toBeNull();

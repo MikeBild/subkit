@@ -3,7 +3,7 @@ import { trace } from "@opentelemetry/api";
 import type { SpanExporter } from "@opentelemetry/sdk-trace-base";
 import { registerTelemetry } from "ai";
 import { getConfig } from "../config/loader.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 
 export function langfuseEnrich(options: {
   runtimeContext: Record<string, unknown> | undefined;

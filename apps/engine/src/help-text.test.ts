@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { engineHelp } from "./help-text.ts";
-import { PREFLIGHT_HELP } from "./preflight/cli-entry.ts";
+import { PREFLIGHT_HELP } from "./preflight/index.ts";
 
 test("engine help keeps the bootstrap and security-sensitive CLI entrypoints reachable", () => {
   const help = engineHelp("9.9.9-test");

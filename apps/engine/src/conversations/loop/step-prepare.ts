@@ -2,7 +2,7 @@ import type { LanguageModel, ModelMessage, StepResult, ToolSet } from "ai";
 import { and, eq } from "drizzle-orm";
 import { conversations } from "../../db/schema/index.ts";
 import { prepareStep as routerPrepareStep, withStepNudge } from "../../llm/runtime/step-router.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { readMemoryUsage, timePhaseAsync } from "../../observability/runtime-telemetry.ts";
 import { hasPersistedWorkflow, toMegabytes } from "../core/loop.ts";
 import { elideWithinTurnToolOutputs } from "../tool-output-elision.ts";
@@ -54,7 +54,6 @@ async function refreshPalette(env: TurnEnv, state: TurnState, attempt: Attempt):
     p.db,
     nextSkills,
     env.toolPolicies,
-    p.permission_mode ?? null,
     p.principal ?? null,
   );
   if (removeIntakeReviewTools(refreshed, ctx.getDraft()).length > 0)

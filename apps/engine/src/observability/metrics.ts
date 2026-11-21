@@ -50,7 +50,7 @@ export const METRIC_NAMES = {
   QUEUE_DEPTH: "queue_depth",
   QUEUE_LAG_MS: "queue_lag_ms",
   OUTBOX_CURSOR_LAG: "outbox_cursor_lag",
-  LLM_QUOTA_EXHAUSTED_TOTAL: "llm_quota_exhausted_total",
+  LLM_SPEND_LIMIT_REACHED_TOTAL: "llm_spend_limit_reached_total",
   PATCH_CANDIDATES_TOTAL: "patch_candidates_total",
   PROCESS_UPTIME_SECONDS: "process_uptime_seconds",
   PROCESS_MEMORY_RSS_BYTES: "process_memory_rss_bytes",
@@ -244,8 +244,8 @@ function buildRegistry(): MetricsRegistry {
     labels: ["listener_id", "channel"],
   });
   reg.registerCounter({
-    name: METRIC_NAMES.LLM_QUOTA_EXHAUSTED_TOTAL,
-    help: "Tenant LLM monthly budget exhaustion events.",
+    name: METRIC_NAMES.LLM_SPEND_LIMIT_REACHED_TOTAL,
+    help: "Model calls refused by the workspace monthly spend limit.",
     labels: ["tenant_id"],
   });
   reg.registerCounter({

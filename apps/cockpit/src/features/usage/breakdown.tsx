@@ -30,9 +30,8 @@ import {
   TileSkeleton,
 } from "@/components/cockpit/patterns";
 import { tableColumns } from "@/components/cockpit/table-columns";
-import type { TranslationKey } from "@/lib/i18n";
-import { useI18n } from "@/lib/i18n-context";
-import { usePromptCacheFlows } from "@/lib/operating-figures-query";
+import { taskKeys } from "@/features/tasks/model";
+import { usePromptCacheFlows } from "@/features/usage/api/operating-figures-query";
 import {
   llmStatsEndpoint,
   llmStatsQuery,
@@ -43,14 +42,12 @@ import {
   type WindowBounds,
   windowBucket,
   windowStatsQuery,
-} from "@/lib/operations-figures";
-import { taskKeys } from "@/lib/task-keys";
+} from "@/features/usage/model/operations-figures";
 import {
   BREAKDOWN_AXIS,
   type BreakdownDim,
   type BreakdownRemainder,
   type BreakdownRow,
-  type BudgetForecast,
   type BudgetSummary,
   breakdown,
   breakdownDims,
@@ -72,7 +69,9 @@ import {
   type WorkflowNameLookup,
   type WorkflowRunCost,
   workflowNameLookup,
-} from "@/lib/usage-model";
+} from "@/features/usage/model/usage-model";
+import type { TranslationKey } from "@/lib/i18n";
+import { useI18n } from "@/lib/i18n-context";
 import { useSearchParamState } from "@/lib/use-search-param-state";
 import { OriginChartSvg, OriginChartTable, OriginLegend } from "./chart";
 import { PRICE_SETTING, PriceDialog } from "./dialogs";
@@ -150,14 +149,10 @@ export function UsageBreakdown({
   bounds,
   chooseWindow,
   budget,
-  forecast,
-  onBudget,
 }: {
   bounds: WindowBounds;
   chooseWindow: (next: string) => void;
   budget: BudgetSummary;
-  forecast: BudgetForecast | null;
-  onBudget: () => void;
 }) {
   const { t, dateTime } = useI18n();
   const session = useSession();
@@ -233,6 +228,8 @@ export function UsageBreakdown({
   const before = useMemo(() => llmWindow(flowBefore.data), [flowBefore.data]);
   const currency = usage?.cost?.currency ?? "USD";
   const format = useUsageFormat(currency);
+  const aiFormat = useUsageFormat(budget.currency);
+  const aiMoney = (amount: number) => aiFormat.money(amount);
   const origins = useMemo(() => originRows(flowNow.data), [flowNow.data]);
   const chart = useMemo(
     () => originChart(flowNow.data, bounds, unit),
@@ -277,11 +274,10 @@ export function UsageBreakdown({
         ? usageHints({
             workflows: workflowCosts,
             unpricedModels: unpricedModels(flowNow.data),
-            forecast,
             persons,
           })
         : [],
-    [usage, workflowCosts, flowNow.data, forecast, persons],
+    [usage, workflowCosts, flowNow.data, persons],
   );
 
   const workflowIds = useMemo(() => {
@@ -400,7 +396,7 @@ export function UsageBreakdown({
     usage.calls === 0 &&
     before !== null &&
     before.calls === 0 &&
-    (budget.usedTokens ?? 0) === 0;
+    (budget.spent ?? 0) === 0;
 
   if (fresh)
     return (
@@ -590,14 +586,11 @@ export function UsageBreakdown({
       return t("usage.hint.unpricedModel", { name: modelName(hint.model) });
     if (hint.kind === "unpricedModels")
       return t("usage.hint.unpricedModels", { count: hint.count });
-    if (hint.kind === "budget") return t("usage.hint.budget", { day: hint.day });
     return t("usage.hint.person", { name: personName(hint.userId), percent: hint.percent });
   };
   const hintIcon = (hint: UsageHint): ReactNode =>
     hint.kind === "runCost" ? (
       <TrendingUp />
-    ) : hint.kind === "budget" ? (
-      <Gauge />
     ) : hint.kind === "personShare" ? (
       <Users />
     ) : (
@@ -620,12 +613,6 @@ export function UsageBreakdown({
         setBy("model");
         document.getElementById("usage-breakdown")?.scrollIntoView({ block: "start" });
       });
-    if (hint.kind === "budget")
-      return canWriteSettings ? (
-        action(t("usage.hint.adjustBudget"), onBudget)
-      ) : (
-        <span className="text-xs text-muted-foreground">{t("usage.askAdmin")}</span>
-      );
     return action(t("usage.hint.viewBreakdown"), () => {
       setBy("person");
       document.getElementById("usage-breakdown")?.scrollIntoView({ block: "start" });
@@ -959,11 +946,11 @@ export function UsageBreakdown({
             {
               label: t("usage.kpi.budget"),
               value:
-                budget.budgetTokens !== null && budget.usedTokens !== null
+                budget.limit !== null && budget.spent !== null
                   ? t("usage.tech.budget", {
-                      used: format.count(budget.usedTokens),
-                      budget: format.count(budget.budgetTokens),
-                      remaining: format.count(budget.remainingTokens ?? 0),
+                      used: aiMoney(budget.spent),
+                      budget: aiMoney(budget.limit),
+                      remaining: aiMoney(Math.max(budget.limit - budget.spent, 0)),
                     })
                   : t("resource.usage.noCap"),
             },

@@ -1,4 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: authored workflow substitutions
 import { expect, test } from "bun:test";
 import { validateWorkflowDef } from "./validator.ts";
 

@@ -1,4 +1,5 @@
 import { getConfig, isConfigLoaded } from "../config/loader.ts";
+import { objectStoreBucket } from "../storage/backend.ts";
 
 export function buildObjectKey(
   tenant_id: string,
@@ -12,7 +13,7 @@ export function buildObjectKey(
 }
 
 export function composeStorageUri(key: string): string {
-  const bucket = isConfigLoaded() ? getConfig().storage.object_store.bucket : "test";
+  const bucket = isConfigLoaded() ? objectStoreBucket(getConfig().storage) : "test";
   return `s3://${bucket || "test"}/${key}`;
 }
 

@@ -4,10 +4,11 @@ import { actorType } from "../audit/index.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { executions } from "../db/schema/index.ts";
+import { clearDeviceWait } from "../devices/waiting.ts";
 import { logger } from "../logging/index.ts";
 import { findAllJobs } from "../queue/list-all.ts";
-import { EXECUTION_RUN_QUEUE } from "../queue/queues.ts";
-import { verifySignalToken } from "../workflow-signals/token.ts";
+import { EXECUTION_RUN_DEVICE_QUEUE, EXECUTION_RUN_QUEUE } from "../queue/queues.ts";
+import { verifySignalToken } from "../workflow-signals/index.ts";
 import { cancel as abortCancel } from "./abort.ts";
 import { executionVisibilityFilter } from "./execution-owner.ts";
 import { findOwnedExecution } from "./read-service.ts";
@@ -24,12 +25,14 @@ async function cancelQueuedJobs(boss: PgBoss | undefined, execution_id: string):
   try {
     const { getBoss } = await import("../queue/boss.ts");
     const queue = boss ?? getBoss();
-    const jobs = await findAllJobs<{ execution_id: string }>(queue, EXECUTION_RUN_QUEUE, {
-      data: { execution_id },
-    });
-    if (jobs.length > 0) {
-      const ids = jobs.map((j: { id: string }) => j.id);
-      await queue.cancel(EXECUTION_RUN_QUEUE, ids);
+    for (const name of [EXECUTION_RUN_QUEUE, EXECUTION_RUN_DEVICE_QUEUE]) {
+      const jobs = await findAllJobs<{ execution_id: string }>(queue, name, {
+        data: { execution_id },
+      });
+      if (jobs.length > 0) {
+        const ids = jobs.map((j: { id: string }) => j.id);
+        await queue.cancel(name, ids);
+      }
     }
   } catch (err) {
     logger.debug({
@@ -49,7 +52,7 @@ export async function cancelExecutionRequest(
   const { principal, execution_id } = request;
   const row = await findOwnedExecution(db, principal, execution_id);
   if (!row) return false;
-  if (row.status === "queued" || row.status === "running") {
+  if (row.status === "queued" || row.status === "waiting_for_device" || row.status === "running") {
     await requestExecutionAbort(db, {
       tenant_id: principal.tenant_id,
       execution_id,
@@ -58,8 +61,9 @@ export async function cancelExecutionRequest(
       request_source: request.request_source,
     });
   }
-  if (row.status === "queued") {
+  if (row.status === "queued" || row.status === "waiting_for_device") {
     await cancelQueuedJobs(request.boss, execution_id);
+    await clearDeviceWait(db, principal.tenant_id, execution_id);
     await finalizeExecution(db, principal.tenant_id, execution_id, { type: "cancelled" });
   }
   abortCancel(execution_id, "cancelled");

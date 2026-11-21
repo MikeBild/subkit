@@ -1,4 +1,4 @@
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import type { LabelValues, MetricDefinition, SampleSnapshot, SeriesSnapshot } from "./types.ts";
 
 const DROPPED_LABEL_WARNINGS = new Set<string>();

@@ -14,6 +14,7 @@ import {
 } from "../../../http/tests/setup.ts";
 import { RuntimeConfigCoordinator } from "../../../runtime-config/coordinator.ts";
 import { initializeRuntimeConfig } from "../../../runtime-config/service.ts";
+import { testEnv } from "../../../test-helpers/determinism/env.ts";
 import { createDeterministicHexFactory } from "../../../test-helpers/determinism/ids.ts";
 import { emptyRoleId } from "../../../test-helpers/roles.ts";
 
@@ -161,9 +162,9 @@ async function mintKey(seed: number, scopes: string[], role_id?: string): Promis
 }
 
 beforeAll(async () => {
-  previousMasterKey = process.env.MASTER_KEY;
-  process.env.MASTER_KEY = "66".repeat(32);
-  process.env.NODE_ENV = "test";
+  previousMasterKey = testEnv.MASTER_KEY;
+  testEnv.MASTER_KEY = "66".repeat(32);
+  testEnv.NODE_ENV = "test";
   configDir = mkdtempSync(join(tmpdir(), "sk-runtime-golden-"));
   _resetConfigForTests();
   await loadConfig({
@@ -185,8 +186,8 @@ afterAll(async () => {
   await ctx?.cleanup();
   _resetConfigForTests();
   rmSync(configDir, { recursive: true, force: true });
-  if (previousMasterKey === undefined) delete process.env.MASTER_KEY;
-  else process.env.MASTER_KEY = previousMasterKey;
+  if (previousMasterKey === undefined) delete testEnv.MASTER_KEY;
+  else testEnv.MASTER_KEY = previousMasterKey;
 }, 30_000);
 
 describe("runtime configuration routes keep their HTTP responses byte for byte", () => {
@@ -564,14 +565,14 @@ describe("runtime configuration routes keep their HTTP responses byte for byte",
       ["restart-force", "/v1/settings/server.port", { value: 4102, force: true }, ctx.apiKey],
       ["operator.tenant", own, { value: "operator-model" }, ctx.apiKey],
     ];
-    const previousNodeEnv = process.env.NODE_ENV;
-    process.env.NODE_ENV = "production";
+    const previousNodeEnv = testEnv.NODE_ENV;
+    testEnv.NODE_ENV = "production";
     try {
       for (const [name, path, body, key] of writes)
         record(`http.settings.put.production.${name}`, await http("PUT", path, body, key));
     } finally {
-      if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
-      else process.env.NODE_ENV = previousNodeEnv;
+      if (previousNodeEnv === undefined) delete testEnv.NODE_ENV;
+      else testEnv.NODE_ENV = previousNodeEnv;
     }
     const changes = or(like(auditLog.action, "settings.%"), like(auditLog.action, "secret.%"));
     recordRows(

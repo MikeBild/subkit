@@ -68,10 +68,10 @@ describe("cockpit-ui family contract", () => {
 
   test("keeps interactive selection surfaces neutral", () => {
     for (const file of [
-      "packages/ui/src/components/ui/dropdown-menu.tsx",
-      "packages/ui/src/components/ui/select.tsx",
-      "packages/ui/src/components/ui/toggle.tsx",
-      "packages/ui/src/components/ui/dialog.tsx",
+      "packages/ui/src/molecules/dropdown-menu.tsx",
+      "packages/ui/src/molecules/select.tsx",
+      "packages/ui/src/atoms/toggle.tsx",
+      "packages/ui/src/organisms/dialog.tsx",
       "apps/cockpit/src/components/ai-elements/prompt-input.tsx",
       "apps/cockpit/src/pages/chat.tsx",
       ...globSync("apps/cockpit/src/features/chat/**/*.tsx", { cwd: root }),
@@ -84,10 +84,7 @@ describe("cockpit-ui family contract", () => {
   });
 
   test("keeps the local action grammar and spacing contract explicit", () => {
-    const button = readFileSync(join(root, "packages/ui/src/components/ui/button.tsx"), "utf8");
-    expect(readFileSync(join(root, "apps/cockpit/src/components/ui/button.tsx"), "utf8")).toContain(
-      'from "@ui/components/ui/button"',
-    );
+    const button = readFileSync(join(root, "packages/ui/src/atoms/button.tsx"), "utf8");
     expect(button).toContain(
       'default: "bg-primary text-primary-foreground shadow hover:bg-primary/90"',
     );
@@ -95,11 +92,11 @@ describe("cockpit-ui family contract", () => {
     expect(button).not.toContain('default: "bg-accent');
 
     for (const file of [
-      "apps/cockpit/src/pages/admin.tsx",
+      "apps/cockpit/src/features/admin/ui/admin.tsx",
       "apps/cockpit/src/pages/settings.tsx",
       "apps/cockpit/src/pages/chat.tsx",
       "apps/cockpit/src/pages/catalog.tsx",
-      "apps/cockpit/src/pages/runs.tsx",
+      "apps/cockpit/src/features/runs/ui/run-overlays.tsx",
       "apps/cockpit/src/pages/audit.tsx",
       "apps/cockpit/src/features/usage/breakdown.tsx",
       "apps/cockpit/src/components/cockpit/patterns/page.tsx",

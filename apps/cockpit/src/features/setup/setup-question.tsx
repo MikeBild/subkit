@@ -1,31 +1,34 @@
-import { FieldError } from "@ui/components/proto/ErrorNotice";
-import { ServiceMark } from "@ui/components/proto/visual";
 import { cn } from "@ui/lib/utils";
+import { FieldError } from "@ui/molecules/error-notice";
 import {
   Bell,
   Check,
   FlaskConical,
   type LucideIcon,
-  MessageSquare,
   Plug,
   ShieldCheck,
   Sparkles,
+  Wallet,
 } from "lucide-react";
 import { type ReactNode, useId, useState } from "react";
 import { Button, Input, SwitchField, TimezoneSelect } from "@/components/cockpit/patterns";
+import { ServiceIcon } from "@/features/connectors";
 import { useI18n } from "@/lib/i18n-context";
+import { namedService } from "@/lib/service-icons";
 import { browserTimeZone } from "@/lib/timezones";
 import {
+  budgetLabel,
   JOB_MARK,
   JOB_MAX,
   JOB_SERVICES,
   NOTIFY_MODES,
   OTHER,
   questionError,
+  RECOMMENDED_BUDGET,
   SERVICE_NAMES,
+  SETUP_BUDGETS,
   SETUP_ENVIRONMENTS,
   SETUP_JOBS,
-  SETUP_MODES,
   SETUP_QUESTIONS,
   SETUP_SERVICES,
   type SetupAnswers,
@@ -33,7 +36,7 @@ import {
   setupApprovers,
   toggleDay,
   WEEKDAYS,
-} from "./model";
+} from "./model/setup-model";
 
 export const SETUP_KEYS = SETUP_QUESTIONS;
 export type SetupKey = SetupQuestionId;
@@ -41,9 +44,9 @@ export const SETUP_ICON: Record<SetupKey, LucideIcon> = {
   job: Sparkles,
   services: Plug,
   approver: ShieldCheck,
-  chatMode: MessageSquare,
   env: FlaskConical,
   notify: Bell,
+  budget: Wallet,
 };
 
 function Pill({
@@ -169,7 +172,9 @@ export function SetupQuestion({
                 onClick={() => finish({ ...draft, job: j, services: [...JOB_SERVICES[j]] })}
                 testId={`setup-job-${j}`}
               >
-                <ServiceMark name={JOB_MARK[j] ? SERVICE_NAMES[JOB_MARK[j]] : "SubKit"} />
+                <ServiceIcon
+                  service={namedService(JOB_MARK[j] ? SERVICE_NAMES[JOB_MARK[j]] : "SubKit")}
+                />
                 {t(`setup.job.${j}`)}
               </Pill>
             ))}
@@ -179,7 +184,7 @@ export function SetupQuestion({
               onClick={() => set({ job: OTHER })}
               testId="setup-job-other"
             >
-              <ServiceMark name="SubKit" />
+              <ServiceIcon service={{ kind: "subkit" }} />
               {t("setup.job.other")}
             </Pill>
           </fieldset>
@@ -230,7 +235,9 @@ export function SetupQuestion({
                   testId={`setup-service-${x}`}
                 >
                   {x !== OTHER && (
-                    <ServiceMark name={SERVICE_NAMES[x as keyof typeof SERVICE_NAMES]} />
+                    <ServiceIcon
+                      service={namedService(SERVICE_NAMES[x as keyof typeof SERVICE_NAMES])}
+                    />
                   )}
                   {x === OTHER
                     ? t("setup.service.other")
@@ -294,39 +301,6 @@ export function SetupQuestion({
             )}
         </div>
       );
-    case "chatMode":
-      return (
-        <fieldset
-          className={cn("flex flex-col gap-2", align === "end" ? "items-end" : "items-start")}
-          aria-label={t("setup.question.chatMode")}
-          data-testid="setup-chatMode"
-        >
-          {SETUP_MODES.map((x) => (
-            <Pill
-              key={x}
-              on={draft.chatMode === x}
-              disabled={disabled}
-              onClick={() => finish({ ...draft, chatMode: x })}
-              testId={`setup-chatMode-${x}`}
-            >
-              <span>
-                <span className="block font-medium">
-                  {t(`setup.mode.${x}`)}
-                  {x === "auto" && (
-                    <span className="font-normal text-muted-foreground">
-                      {" · "}
-                      {t("setup.recommended")}
-                    </span>
-                  )}
-                </span>
-                <span className="block text-xs font-normal text-muted-foreground">
-                  {t(`setup.modeHint.${x}`)}
-                </span>
-              </span>
-            </Pill>
-          ))}
-        </fieldset>
-      );
     case "env":
       return (
         <fieldset className={row} aria-label={t("setup.question.env")} data-testid="setup-env">
@@ -340,6 +314,29 @@ export function SetupQuestion({
             >
               {t(`setup.env.${x}`)}
               {x === "dev" && (
+                <span className="text-muted-foreground">· {t("setup.recommended")}</span>
+              )}
+            </Pill>
+          ))}
+        </fieldset>
+      );
+    case "budget":
+      return (
+        <fieldset
+          className={row}
+          aria-label={t("setup.question.budget")}
+          data-testid="setup-budget"
+        >
+          {SETUP_BUDGETS.map((x) => (
+            <Pill
+              key={x}
+              on={draft.budget === x}
+              disabled={disabled}
+              onClick={() => finish({ ...draft, budget: x })}
+              testId={`setup-budget-${x}`}
+            >
+              {budgetLabel(x, t)}
+              {x === RECOMMENDED_BUDGET && (
                 <span className="text-muted-foreground">· {t("setup.recommended")}</span>
               )}
             </Pill>

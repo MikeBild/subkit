@@ -1,3 +1,5 @@
+import { applyJitter } from "@shared/backoff.ts";
+
 export const DEFAULT_RETRY_DELAYS_MS: readonly number[] = [
   60_000,
   5 * 60_000,
@@ -39,15 +41,12 @@ export function getMaxAttempts(): number {
 
 export function nextDelayMs(
   attemptNumber: number,
-  opts?: { jitter?: boolean; clock?: () => number },
+  opts?: { jitter?: boolean; random?: number },
 ): number | null {
   if (attemptNumber < 1) return null;
   if (attemptNumber > activeDelays.length) return null;
   const base = activeDelays[attemptNumber - 1];
   if (base === undefined) return null;
-  const jitter = opts?.jitter !== false;
-  if (!jitter) return base;
-  const span = base * 0.1;
-  const delta = (Math.random() * 2 - 1) * span;
-  return Math.max(0, Math.round(base + delta));
+  if (opts?.jitter === false) return base;
+  return Math.round(applyJitter(base, opts?.random ?? Math.random(), { symmetric: 0.1 }));
 }

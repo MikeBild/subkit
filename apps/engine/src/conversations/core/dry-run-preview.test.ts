@@ -32,7 +32,7 @@ const baseDecision: PreviewDecisionInput = {
   judgeSkipped: false,
   judgeEscalate: false,
   doneGuidance: null,
-  autoMode: true,
+  askBeforeWriting: false,
   saveDeclined: false,
   wouldReplacePersisted: false,
   stoppedForDraft: "s9",
@@ -43,7 +43,7 @@ function decide(overrides: Partial<PreviewDecisionInput>) {
 }
 
 describe("previewDecision", () => {
-  test("auto-commits a green judged preview in auto mode", () => {
+  test("auto-commits a green judged preview", () => {
     expect(decide({})).toEqual({
       cleanPreview: true,
       greenPendingSave: false,
@@ -66,14 +66,14 @@ describe("previewDecision", () => {
     expect(decide({ wouldReplacePersisted: true }).cleanPreview).toBe(true);
   });
 
-  test("asks for an explicit save outside auto mode", () => {
-    expect(decide({ autoMode: false }).nextPrompt).toBe(
+  test("asks for an explicit save when the person asks before writing", () => {
+    expect(decide({ askBeforeWriting: true }).nextPrompt).toBe(
       "Preview is green and judged. Call save_workflow_draft so the normal human approval gate decides whether to persist it.",
     );
-    expect(decide({ autoMode: false, judgeSkipped: true }).nextPrompt).toBe(
+    expect(decide({ askBeforeWriting: true, judgeSkipped: true }).nextPrompt).toBe(
       "Preview is green — call save_workflow_draft to persist it (the preview was not judged, so it is not auto-committed)",
     );
-    expect(decide({ autoMode: false }).greenPendingSave).toBe(true);
+    expect(decide({ askBeforeWriting: true }).greenPendingSave).toBe(true);
   });
 
   test("stops when the user declined saving", () => {
@@ -140,7 +140,7 @@ describe("previewDecision", () => {
           judgeSkipped: fc.boolean(),
           judgeEscalate: fc.boolean(),
           doneGuidance: fc.option(fc.string(), { nil: null }),
-          autoMode: fc.boolean(),
+          askBeforeWriting: fc.boolean(),
           saveDeclined: fc.boolean(),
           wouldReplacePersisted: fc.boolean(),
           stoppedForDraft: fc.string(),
@@ -149,7 +149,7 @@ describe("previewDecision", () => {
           const d = previewDecision(input);
           expect(d.cleanPreview && d.greenPendingSave).toBe(false);
           if (d.cleanPreview) {
-            expect(input.dryRunGreen && !input.judgeBlocked && input.autoMode).toBe(true);
+            expect(input.dryRunGreen && !input.judgeBlocked && !input.askBeforeWriting).toBe(true);
             expect(input.saveDeclined).toBe(false);
           }
           expect(d.judgeExhausted).toBe(input.judgeBlocked && input.doneGuidance !== null);

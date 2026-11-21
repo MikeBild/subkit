@@ -5,6 +5,7 @@ import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { assertInsertRow } from "../../db/assert-insert.ts";
 import type { Executor } from "../../db/client.ts";
 import { taskRuns, tasks } from "../../db/schema/index.ts";
+import { endDeviceSessions } from "../../devices/session-end.ts";
 import { NotFoundError } from "../../http/errors.ts";
 import { emitResourceChange } from "../../pubsub/resource-changes.ts";
 import { now } from "../../utils/clock.ts";
@@ -142,6 +143,8 @@ export async function announceTaskRun(tx: Executor, run: TaskRunRow): Promise<vo
     type: "task_run.changed",
     ids: { task_id: run.task_id, task_run_id: run.id },
   });
+  if (!(TASK_RUN_OPEN_STATES as readonly string[]).includes(run.state))
+    await endDeviceSessions(tx, run.tenant_id, { task_run_id: run.id });
 }
 
 async function emitStateEvent(

@@ -6,6 +6,7 @@ import { AuditAction, auditAwait, SYSTEM_TENANT_ID } from "../audit/index.ts";
 import { browserSessionSecret } from "../auth/browser-session.ts";
 import type { Executor } from "../db/client.ts";
 import { identityRecoverySessions } from "../db/schema/index.ts";
+import { readEnv } from "../env.ts";
 import { now } from "../utils/clock.ts";
 import { constantTimeHexEquals } from "./api-key.ts";
 
@@ -38,7 +39,7 @@ function hashToken(token: string): string {
 }
 
 function secureAttribute(): string {
-  return process.env.NODE_ENV !== "development" ? "; Secure" : "";
+  return readEnv("NODE_ENV") !== "development" ? "; Secure" : "";
 }
 
 export function clearIdentityProofCookie(kind: IdentityProofKind): string {

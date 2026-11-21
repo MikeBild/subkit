@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../audit/index.ts";
+import type { AuditActorType } from "../audit/types.ts";
 import type { Executor } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { decide, describeRejection, evolve } from "./core/workflow.ts";
@@ -17,6 +18,7 @@ export async function activateReviewedDraft(
   actorId: string,
   retry: boolean,
   review: { manifestDigestMatches: boolean },
+  actorType: AuditActorType = "user",
 ) {
   if (
     retry &&
@@ -93,6 +95,7 @@ export async function activateReviewedDraft(
       workflow.slug,
       definition,
       actorId,
+      actorType,
     );
   }
   await auditAwait(

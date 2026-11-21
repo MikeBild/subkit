@@ -51,7 +51,6 @@ describe("validateWorkflowDef · graphql block connector driver", () => {
     "//evil.example/graphql",
     "/a/../graphql",
     "/graphql?x=1",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: refused placeholder shape
     "/${input.host}",
     "/admin/purge",
     "/repos/o/r/dispatches",

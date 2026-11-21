@@ -11,19 +11,6 @@ export const VAULT_STOCK_INVENTORY = [
     columns: bytes("config_ciphertext", "config_iv", "config_auth_tag"),
   },
   { table: "chat_workspaces", columns: bytes("bot_ciphertext", "bot_iv", "bot_auth_tag") },
-  { table: "connector_template_credentials", columns: bytes("ciphertext", "iv", "auth_tag") },
-  {
-    table: "credentials",
-    columns: bytes(
-      "ciphertext",
-      "iv",
-      "auth_tag",
-      "oauth2_refresh_ciphertext",
-      "oauth2_refresh_iv",
-      "oauth2_refresh_auth_tag",
-    ),
-  },
-  { table: "end_user_credentials", columns: bytes("ciphertext", "iv", "auth_tag") },
   {
     table: "execution_steps",
     columns: [
@@ -60,6 +47,17 @@ export const VAULT_STOCK_INVENTORY = [
       "preview_ciphertext",
       "preview_iv",
       "preview_auth_tag",
+    ),
+  },
+  {
+    table: "vault_items",
+    columns: bytes(
+      "ciphertext",
+      "iv",
+      "auth_tag",
+      "oauth2_refresh_ciphertext",
+      "oauth2_refresh_iv",
+      "oauth2_refresh_auth_tag",
     ),
   },
   {

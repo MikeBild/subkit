@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { llmStatsEndpoint, previousBounds, windowBounds } from "@/lib/operations-figures";
+import {
+  llmStatsEndpoint,
+  previousBounds,
+  windowBounds,
+} from "@/features/usage/model/operations-figures";
 import {
   type BreakdownRow,
   breakdown,
   bucketTimeline,
-  budgetForecast,
   failureRows,
   llmWindow,
   mainDriver,
@@ -15,7 +18,7 @@ import {
   usageHints,
   usageSheetFromSearch,
   usageSheetSearch,
-} from "@/lib/usage-model";
+} from "@/features/usage/model/usage-model";
 
 function group(
   key: Record<string, string>,
@@ -168,52 +171,6 @@ describe("the request for usage figures", () => {
   });
 });
 
-describe("the monthly budget forecast", () => {
-  const base = { usedTokens: 50_000_000, budgetTokens: 100_000_000 };
-
-  test("lasts to month end when the last seven days project well under the budget", () => {
-    const now = new Date(2026, 9, 15, 12);
-    expect(budgetForecast({ ...base, lastSevenDaysTokens: 7_000_000, now })).toEqual({
-      kind: "lasts",
-    });
-  });
-
-  test("names the day it runs out from the last seven days", () => {
-    const now = new Date(2026, 9, 10, 0);
-    const result = budgetForecast({ ...base, lastSevenDaysTokens: 35_000_000, now });
-    expect(result).toEqual({ kind: "runsOut", day: 20 });
-  });
-
-  test("is tight between ninety and one hundred percent", () => {
-    const now = new Date(2026, 9, 21, 0);
-    const result = budgetForecast({
-      usedTokens: 80_000_000,
-      budgetTokens: 100_000_000,
-      lastSevenDaysTokens: 7_000_000,
-      now,
-    });
-    expect(result).toEqual({ kind: "tight", percent: 91 });
-  });
-
-  test("is used up, uncapped, or too early in the month", () => {
-    const now = new Date(2026, 9, 15);
-    expect(
-      budgetForecast({ usedTokens: 100, budgetTokens: 100, lastSevenDaysTokens: 0, now }),
-    ).toEqual({ kind: "exhausted" });
-    expect(
-      budgetForecast({ usedTokens: 1, budgetTokens: null, lastSevenDaysTokens: 0, now }),
-    ).toEqual({ kind: "uncapped" });
-    expect(budgetForecast({ ...base, lastSevenDaysTokens: 1, now: new Date(2026, 9, 2) })).toEqual({
-      kind: "insufficient",
-    });
-  });
-
-  test("gives the same answer for the same input", () => {
-    const input = { ...base, lastSevenDaysTokens: 35_000_000, now: new Date(2026, 9, 10) };
-    expect(budgetForecast(input)).toEqual(budgetForecast({ ...input }));
-  });
-});
-
 describe("the breakdown", () => {
   const window = llmWindow(envelope([], { calls: 10, total: 1000, cost: 10 }));
   if (!window) throw new Error("window fixture");
@@ -352,28 +309,25 @@ describe("worth a look", () => {
         { workflowId: "x", cost: 2, runs: 1, previousCost: 0, previousRuns: 0 },
       ],
       unpricedModels: [],
-      forecast: null,
       persons: null,
     });
     expect(hints).toEqual([{ kind: "runCost", workflowId: "w", factor: 3 }]);
   });
 
-  test("names unpriced models, the budget day and a person with most of the cost", () => {
+  test("names unpriced models and a person with most of the cost", () => {
     expect(
       usageHints({
         workflows: [],
         unpricedModels: ["own"],
-        forecast: { kind: "runsOut", day: 29 },
         persons: [person("u1", 0.62), person("u2", 0.38)],
       }),
     ).toEqual([
       { kind: "unpricedModel", model: "own" },
-      { kind: "budget", day: 29 },
       { kind: "personShare", userId: "u1", percent: 62 },
     ]);
-    expect(
-      usageHints({ workflows: [], unpricedModels: ["a", "b"], forecast: null, persons: null }),
-    ).toEqual([{ kind: "unpricedModels", count: 2 }]);
+    expect(usageHints({ workflows: [], unpricedModels: ["a", "b"], persons: null })).toEqual([
+      { kind: "unpricedModels", count: 2 },
+    ]);
   });
 
   test("stays empty when nothing changed clearly", () => {
@@ -381,7 +335,6 @@ describe("worth a look", () => {
       usageHints({
         workflows: [],
         unpricedModels: [],
-        forecast: { kind: "lasts" },
         persons: [person("u1", 1)],
       }),
     ).toEqual([]);

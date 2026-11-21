@@ -6,7 +6,7 @@ import type { Config } from "../../config/schema.ts";
 import type { Db, Executor } from "../../db/client.ts";
 import { admitPersistentRateLimits, rateLimitBucketKey } from "../../db/rate-limits.ts";
 import { mcpOauthClients, tenants } from "../../db/schema/index.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 
 export interface RegisterClientInput {
   client_name?: string | undefined;

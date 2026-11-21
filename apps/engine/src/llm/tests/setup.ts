@@ -10,6 +10,7 @@ import {
   tenants,
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { resetMockProvider } from "../mock-provider.ts";
 
 export interface LlmTestCtx {
@@ -27,7 +28,7 @@ export interface LlmTestCtx {
 }
 
 export async function createLlmTestCtx(label: string): Promise<LlmTestCtx> {
-  process.env.LLM_PROVIDER = "mock";
+  testEnv.LLM_PROVIDER = "mock";
   resetMockProvider();
   const testDb = await createTestDb(`llm_${label}`);
 

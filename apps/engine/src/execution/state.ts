@@ -7,7 +7,7 @@ import type { Db, Executor } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
 import { executionSteps, executions, workflowVersions } from "../db/schema/index.ts";
 import { getContext } from "../logging/context.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { recordExecutionTerminal } from "../observability/instrumentation.ts";
 import { RequestSourceSchema } from "../observability/service-metadata.ts";
 import type { ExecutionAuthorizationContext } from "./authorization-context.ts";

@@ -1,5 +1,6 @@
 import { SYSTEM_TENANT_ID } from "../audit/index.ts";
 import { closeDb, getDb } from "../db/client.ts";
+import { readEnv } from "../env.ts";
 import { newTraceId, withContext } from "../logging/context.ts";
 
 const PREFLIGHT_FLAGS = [
@@ -64,7 +65,7 @@ export async function runPreflightCliOrExit(
   if (parsed.command.mode === "preflight") {
     const { checkMasterKey } = await import("./checks.ts");
     const { refusalLine, PREFLIGHT_EXIT_REFUSED } = await import("./contracts.ts");
-    const result = checkMasterKey(process.env.MASTER_KEY);
+    const result = checkMasterKey(readEnv("MASTER_KEY"));
     if (!result.ok) {
       process.stdout.write(`${refusalLine(result)}\n`);
       process.exit(PREFLIGHT_EXIT_REFUSED);

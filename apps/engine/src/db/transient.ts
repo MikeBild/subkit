@@ -1,4 +1,4 @@
-import { errorFields, logger } from "../logging/logger.ts";
+import { errorFields, logger } from "../logging/index.ts";
 import { recordDbTransientRetry } from "../observability/instrumentation.ts";
 
 const TRANSIENT_CODES = new Set<string>([

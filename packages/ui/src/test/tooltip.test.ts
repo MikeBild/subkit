@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { trackTabFocus } from "@ui/components/ui/tooltip";
+import { trackTabFocus } from "@ui/molecules/tooltip";
 
 function key(name: string): Event {
   return Object.assign(new Event("keydown"), { key: name });

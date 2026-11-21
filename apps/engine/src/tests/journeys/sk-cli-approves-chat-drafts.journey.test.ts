@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, isNull } from "drizzle-orm";
 import { createElicitation } from "../../conversations/elicitations.ts";
-import * as conversationsSvc from "../../conversations/service.ts";
+import * as conversationsSvc from "../../conversations/service/index.ts";
 import {
   createConversationWithTurn,
   respondElicitationForTest,
@@ -138,10 +138,10 @@ describe("a person reviews, approves or rejects a chat draft from the sk CLI", (
     }> {
       const outcome = await createConversationWithTurn(
         {
-          permission_mode: "ask",
           tenant_id: ctx.tenantId,
           actor_id: ctx.userId,
           initial_message: "Create a workflow to list users from jsonplaceholder",
+          ask_before_writing: true,
         },
         ctx.db,
       );
@@ -265,7 +265,7 @@ describe("a person reviews, approves or rejects a chat draft from the sk CLI", (
           tenant_id: ctx.tenantId,
           actor_id: ctx.userId,
           initial_message,
-          permission_mode: "ask",
+          ask_before_writing: true,
         },
         ctx.db,
       );

@@ -1,3 +1,8 @@
+const WORKFLOW_STATE_CODES: ReadonlySet<unknown> = new Set([
+  "workflow_version_invalid",
+  "workflow_archived",
+]);
+
 export function describeRunWorkflowError(error: unknown): {
   error_code: string;
   message: string;
@@ -15,7 +20,7 @@ export function describeRunWorkflowError(error: unknown): {
       recoverable: false,
     };
   }
-  if (code === "workflow_version_invalid") {
+  if (typeof code === "string" && WORKFLOW_STATE_CODES.has(code)) {
     return {
       error_code: code,
       message: error instanceof Error ? error.message : String(error),

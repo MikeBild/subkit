@@ -217,9 +217,7 @@ it("configuration inspection stays small after a large preview and targets steps
       id: "store",
       kind: "request",
       method: "PUT",
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: engine expression fixture
       s3: { key: "reports/${input.day}" },
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: engine expression fixture
       body: "${input.report}",
     },
     { id: "unrelated", kind: "transform", expression: "return input;" },

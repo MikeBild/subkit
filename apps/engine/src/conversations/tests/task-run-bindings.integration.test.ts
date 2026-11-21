@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { executions } from "../../db/schema/index.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { getTool } from "../tools/index.ts";
 import { taskRunToolRefusal } from "../tools/sdk-wrap/task-run-guard.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
@@ -24,10 +25,10 @@ let unbound: Awaited<ReturnType<typeof seedRunnableWorkflow>>;
 let boundConnector: Awaited<ReturnType<typeof seedBoundConnector>>;
 let unboundConnector: Awaited<ReturnType<typeof seedBoundConnector>>;
 
-const originalMasterKey = process.env.MASTER_KEY;
+const originalMasterKey = testEnv.MASTER_KEY;
 
 beforeAll(async () => {
-  process.env.MASTER_KEY = "a".repeat(64);
+  testEnv.MASTER_KEY = "a".repeat(64);
   ctx = await createConversationTestCtx("task_run_bindings");
   owner = principalOf(ctx, ctx.user_id, "admin");
   bound = await seedRunnableWorkflow(ctx, "bound-report");
@@ -37,8 +38,8 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(async () => {
-  if (originalMasterKey === undefined) delete process.env.MASTER_KEY;
-  else process.env.MASTER_KEY = originalMasterKey;
+  if (originalMasterKey === undefined) delete testEnv.MASTER_KEY;
+  else testEnv.MASTER_KEY = originalMasterKey;
   await ctx.cleanup();
 }, 60_000);
 

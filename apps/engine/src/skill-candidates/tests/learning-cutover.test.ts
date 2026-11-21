@@ -1,10 +1,11 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { collectSessionLearning } from "../../agent/sessions.ts";
+import { collectSessionLearning } from "../../agent/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { cutOverLearningCandidates } from "../learning-cutover.ts";
 
-const skip = process.env.REQUIRES_PG === "0";
+const skip = testEnv.REQUIRES_PG === "0";
 
 interface SeedCandidate {
   id: string;

@@ -1,7 +1,7 @@
+import { cn } from "@ui/lib/utils";
 import { Bug } from "lucide-react";
 import { Button } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
-import { cn } from "@/lib/utils";
 import { openFeedback } from "./store";
 
 export function FeedbackButton({ className }: { className?: string }) {

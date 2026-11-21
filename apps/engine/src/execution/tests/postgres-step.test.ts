@@ -1,9 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${...}` placeholder tokens are part of the tested grammar.
-// Postgres workflow-step support — request steps with a `sql` block on
-// a `driver: "postgres"` connector route through pgQueryWithCount, returning the
-// row array as the envelope's `data`, with the safety that `sql.params`
-// is the only injection-safe path for variable values.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { closeAllPools } from "../../connectors/drivers/postgres.ts";
 import { connectors } from "../../db/schema/index.ts";

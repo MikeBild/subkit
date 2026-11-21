@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { connectorOauthStates, credentials } from "../../db/schema/index.ts";
+import { connectorOauthStates, vaultItems } from "../../db/schema/index.ts";
 import { globalEmitter } from "../../pubsub/emitter.ts";
 import type { EventEnvelope } from "../../pubsub/types.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
@@ -51,7 +51,7 @@ function failedEvent(connectorId: string): EventEnvelope {
 }
 
 async function insertCredential(connectorId: string): Promise<void> {
-  await ctx.db.insert(credentials).values({
+  await ctx.db.insert(vaultItems).values({
     tenant_id,
     connector_id: connectorId,
     environment: "dev",

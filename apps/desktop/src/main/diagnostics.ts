@@ -1,8 +1,12 @@
 import { writeFile } from "node:fs/promises";
 import { homedir, release } from "node:os";
 import { app, type BrowserWindow, clipboard, dialog } from "electron";
+import {
+  buildDiagnostics,
+  type DesktopDiagnostics,
+  type ErrorEntry,
+} from "../shared/diagnostics.ts";
 import { type Locale, t } from "../shared/i18n.ts";
-import { buildDiagnostics, type DesktopDiagnostics, type ErrorEntry } from "../shared/redaction.ts";
 
 export interface DiagnosticsContext {
   locale: Locale;

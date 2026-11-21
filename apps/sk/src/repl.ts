@@ -609,10 +609,7 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
       }
       case "cost":
         if (session.usage) {
-          line(
-            `turn_tokens=${session.usage.turn_tokens} ` +
-              `remaining=${session.usage.remaining_monthly_budget_tokens ?? "∞"}`,
-          );
+          line(`turn_tokens=${session.usage.turn_tokens}`);
         } else {
           line("no usage recorded yet this session");
         }

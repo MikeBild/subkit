@@ -5,7 +5,7 @@ import { resolveActor } from "../../../audit/recorders/types.ts";
 import { AuditAction } from "../../../audit/types.ts";
 import { listResolvedConnectorTemplates } from "../../../connectors/template-resolver.ts";
 import { conversations } from "../../../db/schema/index.ts";
-import { logger } from "../../../logging/logger.ts";
+import { logger } from "../../../logging/index.ts";
 import { listWorkflowsUsingConnector } from "../../../workflows/connector-refs.ts";
 import type { CommitIntent } from "../../tools/ask-user/commit-intent.ts";
 import type { ToolContext, ToolResult } from "../../tools/index.ts";

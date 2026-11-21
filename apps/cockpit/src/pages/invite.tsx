@@ -25,10 +25,10 @@ import {
   type RefusedInvite,
   refusalActions,
 } from "@/features/admin";
-import { nameFromEmail } from "@/lib/display-name";
+import { NAME_MAX } from "@/features/setup";
+import { nameFromEmail } from "@/features/setup/model";
 import { formatDate, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
-import { NAME_MAX } from "./welcome-model";
 
 function signInHref(): string {
   return loginHref({ pathname: "/cockpit", search: "" });

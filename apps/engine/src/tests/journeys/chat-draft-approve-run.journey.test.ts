@@ -125,7 +125,7 @@ describe("a chat-drafted workflow is reviewed, approved within limits, run and a
   test("the chat drafts the workflow and saves it as an inert draft", async () => {
     const created = await journeyFetch(ctx, "/v1/conversations", {
       method: "POST",
-      body: JSON.stringify({ permission_mode: "auto" }),
+      body: JSON.stringify({}),
     });
     expect(created.status).toBe(201);
     conversationId = ((await created.json()) as { conversation: { id: string } }).conversation.id;

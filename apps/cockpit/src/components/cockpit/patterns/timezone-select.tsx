@@ -1,14 +1,14 @@
-import { ChevronsUpDown } from "lucide-react";
-import { useMemo, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@ui/atoms/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@ui/molecules/popover";
 import {
   Command,
   CommandEmpty,
   CommandInput,
   CommandItem,
   CommandList,
-} from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+} from "@ui/organisms/command";
+import { ChevronsUpDown } from "lucide-react";
+import { useMemo, useState } from "react";
 import { useI18n } from "@/lib/i18n-context";
 import { matchingTimeZones, timeZoneLabel, timeZones } from "@/lib/timezones";
 

@@ -1,13 +1,12 @@
-export { Alert, AlertDescription } from "@/components/ui/alert";
-export { buttonVariants } from "@/components/ui/button";
-export { Checkbox } from "@/components/ui/checkbox";
-export {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-} from "@/components/ui/dialog";
+export { buttonVariants } from "@ui/atoms/button";
+export { Checkbox } from "@ui/atoms/checkbox";
+export { Input } from "@ui/atoms/input";
+export { Label } from "@ui/atoms/label";
+export { Separator } from "@ui/atoms/separator";
+export { Spinner } from "@ui/atoms/spinner";
+export { Switch } from "@ui/atoms/switch";
+export { Textarea } from "@ui/atoms/textarea";
+export { Alert, AlertDescription } from "@ui/molecules/alert";
 export {
   Field,
   FieldContent,
@@ -17,16 +16,14 @@ export {
   FieldLabel,
   FieldLegend,
   FieldSet,
-} from "@/components/ui/field";
-export { Input } from "@/components/ui/input";
+} from "@ui/molecules/field";
 export {
   InputGroup,
   InputGroupAddon,
   InputGroupButton,
   InputGroupInput,
   InputGroupText,
-} from "@/components/ui/input-group";
-export { Label } from "@/components/ui/label";
+} from "@ui/molecules/input-group";
 export {
   Select,
   SelectContent,
@@ -34,10 +31,13 @@ export {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-export { Separator } from "@/components/ui/separator";
-export { Spinner } from "@/components/ui/spinner";
-export { Switch } from "@/components/ui/switch";
-export { Textarea } from "@/components/ui/textarea";
-export { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+} from "@ui/molecules/select";
+export { ToggleGroup, ToggleGroupItem } from "@ui/molecules/toggle-group";
+export {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@ui/organisms/dialog";
 export { Button } from "./button";

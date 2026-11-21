@@ -3,9 +3,9 @@ import { AuditAction, actorType, auditAwait } from "../../audit/index.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConfig, isConfigLoaded } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
+import { enqueueExecutionRun } from "../../devices/waiting.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
-import { enqueueHostedWork } from "../../queue/hosted-work.ts";
-import { EXECUTION_RUN_QUEUE, type ExecutionRunJob } from "../../queue/queues.ts";
+import type { ExecutionRunJob } from "../../queue/queues.ts";
 import { can } from "../../rbac/evaluator.ts";
 import type { ApprovalAuditResource } from "../../tools/approval.ts";
 import { gateWorkflowRunRbac, type WorkflowRunRequestSource } from "../../workflows/rbac.ts";
@@ -154,7 +154,7 @@ function enqueueRun(
   execution_id: string,
   job: ExecutionRunJob,
 ): Promise<unknown> {
-  return enqueueHostedWork(db, boss, "execution", EXECUTION_RUN_QUEUE, job, { id: execution_id });
+  return enqueueExecutionRun(db, boss, { ...job, execution_id });
 }
 
 function finalizeEnqueueFailure(

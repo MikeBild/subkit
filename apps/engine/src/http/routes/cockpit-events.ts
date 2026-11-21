@@ -80,6 +80,7 @@ export function registerCockpitEventRoutes(app: OpenAPIHono<AppEnv>): void {
     const permissions = await cockpitStreamPermissions(db, principal);
     const conds = cockpitStreamConds(tenantId, permissions, {
       task_owner_id: hasBuiltinAdminRole(principal) ? null : principal.id,
+      viewer_id: principal.kind === "user" ? principal.id : null,
     });
     const hint = streamDeliveryReader(async (at) =>
       principal.kind === "user"

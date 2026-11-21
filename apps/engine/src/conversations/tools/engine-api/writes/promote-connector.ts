@@ -53,10 +53,7 @@ export const promoteConnectorTool: ConversationTool = {
           message: error.message,
           details: { connector_id: args.connector_id, strategy: args.strategy },
           next_best_actions:
-            error.code === "oauth_copy_unsupported" ||
-            error.code === "end_user_credential_copy_unsupported"
-              ? ["promote_connector"]
-              : ["find_connector"],
+            error.code === "oauth_copy_unsupported" ? ["promote_connector"] : ["find_connector"],
         };
       }
       throw error;

@@ -1,7 +1,7 @@
 import { createColumnHelper, type RowData } from "@tanstack/react-table";
+import { Badge } from "@ui/atoms/badge";
 import type { ReactNode } from "react";
 import type { CockpitColumn, CockpitTableFeatures } from "@/components/cockpit/patterns/data-table";
-import { Badge } from "@/components/ui/badge";
 import { pluralKey } from "@/lib/i18n";
 import type { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
@@ -12,13 +12,6 @@ export function stringValue(value: unknown): string {
   if (value === null || value === undefined || value === "") return MISSING;
   if (Array.isArray(value)) return value.length === 0 ? MISSING : String(value.length);
   return String(value);
-}
-
-export function bytes(value: unknown): string {
-  if (typeof value !== "number" || !Number.isFinite(value)) return MISSING;
-  if (value < 1024) return `${value} B`;
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
-  return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
 export interface Relation {
@@ -111,18 +104,6 @@ export function tableColumns<TRow extends RowData>({
           const value = getValue();
           return typeof value === "string" && value ? dateTime(value) : MISSING;
         },
-      });
-    },
-
-    bytes(
-      id: string,
-      get: (row: TRow) => unknown,
-      label: string,
-      options?: ColumnOptions,
-    ): CockpitColumn<TRow> {
-      return helper.accessor(get, {
-        ...base(id, label, options),
-        cell: ({ getValue }) => <span className="tabular-nums">{bytes(getValue())}</span>,
       });
     },
 

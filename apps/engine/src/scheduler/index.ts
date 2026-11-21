@@ -1,7 +1,14 @@
+export { runTenantErasureSweep } from "../identity/scheduled/tenant-erasure-runner.ts";
 export { inspectInboundHookAutomation, inspectScheduleAutomation } from "./automation-status.ts";
 export { stripCalendarGates } from "./calendar-gates.ts";
 export { parseCronExpression } from "./cron.ts";
 export { nextScheduleFire } from "./next-fire.ts";
+export {
+  ALWAYS_RUNNING,
+  type BackgroundWork,
+  createPowerState,
+  type PowerState,
+} from "./power-state.ts";
 export { type ReconcilerOptions, SchedulerReconciler } from "./reconciler.ts";
 export * from "./repo.ts";
 export {
@@ -23,7 +30,6 @@ export {
 } from "./sweep-cursor.ts";
 export { claimSweepCadenceCandidate, readSweepCadenceCandidate } from "./sweep-cursor-claims.ts";
 export type { SweepCadenceProducer } from "./sweep-cursor-source.ts";
-export { runTenantErasureSweep } from "./tenant-erasure-runner.ts";
 export {
   bindingFor,
   type EffectiveTrigger,

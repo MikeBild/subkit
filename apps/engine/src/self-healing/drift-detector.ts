@@ -1,4 +1,4 @@
-import { deriveShape, diffShapes } from "../schema-versions/service.ts";
+import { deriveShape, diffShapes } from "../schema-versions/index.ts";
 import type { DriftSignal, SchemaShape } from "./types.ts";
 
 export interface FailingStepSnapshot {

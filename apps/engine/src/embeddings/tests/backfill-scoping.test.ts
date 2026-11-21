@@ -6,11 +6,12 @@ import { connectors } from "../../db/schema/index.ts";
 import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sources.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createKnowledgeSource, kickSourceEmbeddingBackfill } from "../../knowledge/service.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
 import { backfillEmbeddings } from "../backfill.ts";
 
-const skip = process.env.REQUIRES_PG === "0";
-const skipEmbeddingE2E = skip || process.env.RUN_EMBEDDING_E2E !== "1";
+const skip = testEnv.REQUIRES_PG === "0";
+const skipEmbeddingE2E = skip || testEnv.RUN_EMBEDDING_E2E !== "1";
 
 interface SeededTargets {
   tenantId: string;

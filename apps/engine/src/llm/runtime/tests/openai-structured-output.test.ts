@@ -3,6 +3,7 @@ import { tool } from "ai";
 import { z } from "zod";
 import { GeneratedWorkflowSchema } from "../../../conversations/authoring-pipeline.ts";
 import { zodToJsonSchema7 } from "../../../mcp/json-schema.ts";
+import { testEnv } from "../../../test-helpers/determinism/env.ts";
 import { startLocalTargetServer } from "../../../test-helpers/local-http.ts";
 import { AiSdkModel } from "../ai-sdk-model.ts";
 import { initializeModel } from "../model-init.ts";
@@ -20,13 +21,13 @@ beforeAll(async () => {
       headers: { "content-type": "application/json" },
     });
   });
-  previousBaseUrl = process.env.OPENAI_BASE_URL;
-  process.env.OPENAI_BASE_URL = server.url;
+  previousBaseUrl = testEnv.OPENAI_BASE_URL;
+  testEnv.OPENAI_BASE_URL = server.url;
 });
 
 afterAll(async () => {
-  if (previousBaseUrl === undefined) delete process.env.OPENAI_BASE_URL;
-  else process.env.OPENAI_BASE_URL = previousBaseUrl;
+  if (previousBaseUrl === undefined) delete testEnv.OPENAI_BASE_URL;
+  else testEnv.OPENAI_BASE_URL = previousBaseUrl;
   await server.stop();
 });
 

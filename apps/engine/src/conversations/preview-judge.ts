@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Executor } from "../db/client.ts";
 import { checkJsonSchemaContract } from "../execution/json-schema-contract.ts";
 import { invoke } from "../llm/runtime/invoke.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { truncateForLlm, truncateStepPreviewForLlm } from "../tools/truncate.ts";
 import {
   detectNamedOutputFormat,

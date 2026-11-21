@@ -2,7 +2,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { getCredentialForConnector, upsertCredential } from "../../credentials/service.ts";
 import { auditLog } from "../../db/schema/audit.ts";
-import { connectors, credentials, workflowExecutionAuthorities } from "../../db/schema/index.ts";
+import { connectors, vaultItems, workflowExecutionAuthorities } from "../../db/schema/index.ts";
 import { databaseNow } from "../../test-helpers/database-clock.ts";
 import { workflowJsonDigest } from "../../workflows/canonical-json.ts";
 import { previewWorkflowAuthority } from "../../workflows/execution-authorities.ts";
@@ -180,7 +180,6 @@ async function refusalAudit(execution_id: string) {
 
 const QUERY_STEP = {
   method: "GET",
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: runtime target boundary fixture
   path: "/sites/${input.site}/stats",
   query: { tz: "UTC" },
   boundary: {
@@ -261,12 +260,12 @@ test("a connector key that collides with the step, or cannot be read, keeps the 
 
   const missing = await fixture({ step: QUERY_STEP, credential_query: { api_key: SECRET } });
   await ctx.testDb.db
-    .update(credentials)
+    .update(vaultItems)
     .set({ deleted_at: await databaseNow(ctx.testDb.db) })
     .where(
       and(
-        eq(credentials.tenant_id, ctx.tenantId),
-        eq(credentials.connector_id, missing.connector.id),
+        eq(vaultItems.tenant_id, ctx.tenantId),
+        eq(vaultItems.connector_id, missing.connector.id),
       ),
     );
   const unreadable = await previewWorkflowAuthority(missing.reference, ctx.testDb.db);
@@ -363,9 +362,7 @@ async function readJson(req: import("node:http").IncomingMessage): Promise<unkno
 
 const BODY_PAGED_STEP = {
   method: "POST",
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: runtime target boundary fixture
   path: "/sites/${input.site}/search",
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: runtime body boundary fixture
   body: { filter: "${input.filter}" },
   pagination: {
     strategy: "cursor",
@@ -493,13 +490,11 @@ test("dispatch refuses every paged body the approved boundary does not describe"
 
 const READ_PATH_STEP = {
   method: "GET",
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: runtime target boundary fixture
   path: "/sites/${input.site}/stats",
 };
 const READ_QUERY_STEP = {
   method: "GET",
   path: "/stats",
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: runtime target boundary fixture
   query: { site: "${input.site}" },
 };
 

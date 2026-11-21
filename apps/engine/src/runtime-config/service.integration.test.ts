@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { SYSTEM_TENANT_ID } from "../audit/types.ts";
 import { _resetConfigForTests, getConfig, loadConfig } from "../config/loader.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { testEnv } from "../test-helpers/determinism/env.ts";
 import { RuntimeConfigCoordinator } from "./coordinator.ts";
 import {
   activateRuntimeRevision,
@@ -30,7 +31,7 @@ let tdb: TestDb;
 let configDir: string;
 
 beforeAll(async () => {
-  process.env.MASTER_KEY = "11".repeat(32);
+  testEnv.MASTER_KEY = "11".repeat(32);
   tdb = await createTestDb("runtime-config");
   configDir = mkdtempSync(join(tmpdir(), "sk-runtime-config-"));
   _resetConfigForTests();
@@ -163,7 +164,7 @@ describe("runtime configuration revisions", () => {
 
     const tenantDefault = await saveRuntimeConfigPatch(tdb.db, {
       expected_revision: 4,
-      changes: { "tokens.monthly_budget": 123 },
+      changes: { "connectors.mcp.per_server_manifest_byte_cap": 12_300 },
       scope: "global",
       created_by: null,
     });

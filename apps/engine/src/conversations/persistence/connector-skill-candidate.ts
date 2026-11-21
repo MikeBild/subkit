@@ -3,7 +3,7 @@ import type { McpProbeManifest } from "../../connectors/drivers/mcp.ts";
 import { getConnector } from "../../connectors/service.ts";
 import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
 import type { Db } from "../../db/client.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { scrubString } from "../../logging/scrub-secrets.ts";
 import type { RemoteToolDescriptor } from "../../mcp/client/manifest.ts";
 import { upsertFromSignal } from "../../skill-candidates/service.ts";

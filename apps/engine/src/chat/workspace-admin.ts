@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../audit/index.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
-import { encryptSecret } from "../crypto/aes-gcm.ts";
+import { encryptSecret } from "../crypto/index.ts";
 import type { Db } from "../db/client.ts";
 import { chatIdentities, chatWorkspaces } from "../db/schema/index.ts";
 import { chatWorkspaceAad } from "./api.ts";

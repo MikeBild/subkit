@@ -1,23 +1,140 @@
 import { z } from "zod";
 
+const text = z.string().optional();
+
 const EnvSchema = z.object({
-  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  NODE_ENV: text,
+  MASTER_KEY: text,
+  DATABASE_URL: text,
+  ENGINE_LISTEN_HOST: text,
+  PORT: text,
+  PATH: text,
+  ENGINE_VERSION: text,
+  SUBKIT_BOOTSTRAP_KEY: text,
+  SUBKIT_CONFIG: text,
+  CONFIGURATION_DIRECTORY: text,
+  STATE_DIRECTORY: text,
+  JOURNAL_STREAM: text,
+  SUBKIT_DEPLOYMENT_MODE: text,
+  SUBKIT_LOCAL_PORT: text,
+  SUBKIT_REPLICA_ID: text,
+  SUBKIT_BINARIES_DIR: text,
+  OBJECT_STORAGE_ENDPOINT: text,
+  OBJECT_STORAGE_REGION: text,
+  OBJECT_STORAGE_BUCKET: text,
+  OBJECT_STORAGE_ACCESS_KEY_ID: text,
+  OBJECT_STORAGE_SECRET_ACCESS_KEY: text,
+  OBJECT_STORAGE_SESSION_TOKEN: text,
+  OBJECT_STORAGE_PATH_STYLE: text,
+  OBJECT_STORAGE_FORCE_PATH_STYLE: text,
+  OBJECT_STORAGE_BACKEND: text,
+  OBJECT_STORAGE_ROOT: text,
+  HTTP_PROXY: text,
+  HTTPS_PROXY: text,
+  ALL_PROXY: text,
+  http_proxy: text,
+  https_proxy: text,
+  all_proxy: text,
+  SK_MCP_MODE: text,
+  SK_PLAYWRIGHT_ENTRY: text,
+  SK_LOG_SD_DAEMON: text,
+  SK_LOG_RING_SIZE: text,
+  SUBKIT_HEAP_DIAG: text,
+  SUBKIT_DIAGNOSTICS: text,
+  SUBKIT_DIAGNOSTICS_EMBEDDING_INLINE: text,
+  SUBKIT_DIAGNOSTICS_INTERVAL_MS: text,
+  SUBKIT_DIAGNOSTICS_MAX_SAMPLES: text,
+  SUBKIT_DIAGNOSTICS_MAX_QUERY_EVENTS: text,
+  SUBKIT_DIAGNOSTICS_GC: text,
+  SUBKIT_DIAGNOSTICS_LOCK_SNAPSHOT: text,
+  PAGINATION_CHECKPOINT_INTERVAL: text,
+  WAIT_FOR_EVENT_HMAC_SECRET: text,
+  WAIT_FOR_EVENT_HMAC_SECRET_PREVIOUS: text,
+  DOCS_CRAWL_POSITIVE_HIGH: text,
+  DOCS_CRAWL_POSITIVE_LOW: text,
+  DOCS_CRAWL_NEGATIVE: text,
+  DOCS_INGESTION_MAX_BYTES_PER_CONNECTOR: text,
+  DOCS_INGESTION_MAX_BYTES_PER_DOC: text,
+  DOCS_INGESTION_MAX_LINKS: text,
+  DOCS_INGESTION_MAX_SPECS: text,
+  KNOWLEDGE_SOURCE_MAX_BYTES: text,
+  KNOWLEDGE_TENANT_MAX_BYTES: text,
+  LLM_PROVIDER: text,
+  LLM_FALLBACK_PROVIDER: text,
+  SUMMARIZE_LLM_PROVIDER: text,
+  SUMMARIZE_MODEL: text,
+  ANTHROPIC_API_KEY: text,
+  ANTHROPIC_MODEL: text,
+  ANTHROPIC_BASE_URL: text,
+  OPENAI_API_KEY: text,
+  OPENAI_MODEL: text,
+  OPENAI_BASE_URL: text,
+  GEMINI_API_KEY: text,
+  GEMINI_MODEL: text,
+  GEMINI_BASE_URL: text,
+  AZURE_API_KEY: text,
+  AZURE_MODEL: text,
+  AZURE_BASE_URL: text,
+  AZURE_RESOURCE_NAME: text,
+  AZURE_API_VERSION: text,
+  AZURE_USE_DEPLOYMENT_BASED_URLS: text,
+  BEDROCK_MODEL: text,
+  AWS_REGION: text,
+  AWS_ACCESS_KEY_ID: text,
+  AWS_SECRET_ACCESS_KEY: text,
+  AWS_SESSION_TOKEN: text,
+  AWS_BASE_URL: text,
+  VERTEX_API_KEY: text,
+  VERTEX_MODEL: text,
+  VERTEX_PROJECT: text,
+  VERTEX_LOCATION: text,
+  VERTEX_CLIENT_EMAIL: text,
+  VERTEX_PRIVATE_KEY: text,
+  GOOGLE_APPLICATION_CREDENTIALS: text,
+  GOOGLE_VERTEX_PROJECT: text,
+  GOOGLE_VERTEX_LOCATION: text,
+  AI_GATEWAY_API_KEY: text,
+  AI_GATEWAY_MODEL: text,
+  GENERATE_LLM_PROVIDER: text,
+  GENERATE_MODEL: text,
+  EXTRACT_LLM_PROVIDER: text,
+  EXTRACT_MODEL: text,
+  CATALOG_DESCRIBE_LLM_PROVIDER: text,
+  CATALOG_DESCRIBE_MODEL: text,
+  REPAIR_LLM_PROVIDER: text,
+  REPAIR_MODEL: text,
+  TOOL_REPAIR_LLM_PROVIDER: text,
+  TOOL_REPAIR_MODEL: text,
+  CONVERSE_LLM_PROVIDER: text,
+  CONVERSE_MODEL: text,
+  DISCOVER_LLM_PROVIDER: text,
+  DISCOVER_MODEL: text,
+  SUGGEST_NEXT_LLM_PROVIDER: text,
+  SUGGEST_NEXT_MODEL: text,
+  CRITIC_AUTHORING_LLM_PROVIDER: text,
+  CRITIC_AUTHORING_MODEL: text,
+  JUDGE_LLM_PROVIDER: text,
+  JUDGE_MODEL: text,
+  WORKFLOW_STEP_LLM_PROVIDER: text,
+  WORKFLOW_STEP_MODEL: text,
+});
+
+export type EnvKey = keyof z.infer<typeof EnvSchema>;
+export type EnvRecord = Readonly<Partial<Record<EnvKey, string>>>;
+
+const ENV_KEYS = Object.keys(EnvSchema.shape) as EnvKey[];
+
+const BootEnvSchema = z.object({
+  NODE_ENV: z.enum(["development", "test", "production"]).optional(),
   MASTER_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/, "MASTER_KEY must be 64 hex chars (32 bytes)"),
-  DATABASE_URL: z.string().min(1).optional(),
-  ENGINE_LISTEN_HOST: z.string().min(1).optional(),
   PORT: z.coerce.number().int().min(1).max(65_535).optional(),
   SUBKIT_BOOTSTRAP_KEY: z.string().min(64).max(128).optional(),
   OBJECT_STORAGE_ENDPOINT: z.string().url().optional(),
-  OBJECT_STORAGE_REGION: z.string().min(1).optional(),
-  OBJECT_STORAGE_BUCKET: z.string().min(1).optional(),
-  OBJECT_STORAGE_ACCESS_KEY_ID: z.string().min(1).optional(),
-  OBJECT_STORAGE_SECRET_ACCESS_KEY: z.string().min(1).optional(),
-  OBJECT_STORAGE_SESSION_TOKEN: z.string().min(1).optional(),
   OBJECT_STORAGE_PATH_STYLE: z.enum(["true", "false", "1", "0"]).optional(),
   OBJECT_STORAGE_FORCE_PATH_STYLE: z.enum(["true", "false", "1", "0"]).optional(),
+  OBJECT_STORAGE_BACKEND: z.enum(["s3", "filesystem"]).optional(),
+  SUBKIT_DEPLOYMENT_MODE: z.enum(["server", "local_workspace"]).optional(),
 });
-
-export type Env = z.infer<typeof EnvSchema>;
 
 const RETIRED_ENV_KEYS = new Set([
   "LOG_LEVEL",
@@ -91,44 +208,63 @@ const RETIRED_ENV_KEYS = new Set([
   "SKIP_DOCKER",
 ]);
 
-function parseEnv(): Env {
-  const parsed = EnvSchema.safeParse(process.env);
-  if (!parsed.success) {
-    const issues = parsed.error.issues
-      .map((i) => `  - ${i.path.join(".") || "(root)"}: ${i.message}`)
-      .join("\n");
-    throw new Error(`Invalid environment:\n${issues}`);
-  }
+function issueLines(error: z.ZodError): string {
+  return error.issues.map((i) => `  - ${i.path.join(".") || "(root)"}: ${i.message}`).join("\n");
+}
 
+function rawEnv(key: EnvKey): string | undefined {
+  const value = process.env[key];
+  return value === undefined || value.length === 0 ? undefined : value;
+}
+
+export function isEnvKey(name: string): name is EnvKey {
+  return Object.hasOwn(EnvSchema.shape, name);
+}
+
+export function readEnv(key: EnvKey): string | undefined {
+  return rawEnv(key);
+}
+
+export function envSnapshot(): EnvRecord {
+  const out: Partial<Record<EnvKey, string>> = {};
+  for (const key of ENV_KEYS) {
+    const value = rawEnv(key);
+    if (value !== undefined) out[key] = value;
+  }
+  return out;
+}
+
+export function envFlag(key: EnvKey): boolean {
+  return rawEnv(key) === "1";
+}
+
+export function envInt(key: EnvKey, fallback: number): number {
+  const raw = rawEnv(key);
+  if (raw === undefined) return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.floor(n);
+}
+
+export function envList(key: EnvKey, fallback: readonly string[]): readonly string[] {
+  const raw = rawEnv(key);
+  if (raw === undefined) return fallback;
+  const parts = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  return parts.length === 0 ? fallback : parts;
+}
+
+export function validateEnv(): void {
+  const parsed = BootEnvSchema.safeParse(envSnapshot());
+  if (!parsed.success) throw new Error(`Invalid environment:\n${issueLines(parsed.error)}`);
   const retired = Object.keys(process.env).filter((k) => RETIRED_ENV_KEYS.has(k));
-  if (retired.length > 0 && process.env.NODE_ENV !== "test") {
+  if (retired.length > 0 && rawEnv("NODE_ENV") !== "test") {
     process.stderr.write(
       `[env] retired env vars detected: ${retired.join(", ")}. ` +
         `Move these into the PostgreSQL-backed settings API (Cockpit, HTTP, MCP, or \`sk settings configure\`) — ` +
         `they are ignored after the initial runtime revision.\n`,
     );
   }
-
-  return parsed.data;
 }
-
-let _resolved: Env | null = null;
-function resolveEnv(): Env {
-  if (_resolved === null) _resolved = parseEnv();
-  return _resolved;
-}
-
-export const env: Env = new Proxy({} as Env, {
-  get(_target, prop) {
-    return resolveEnv()[prop as keyof Env];
-  },
-  has(_target, prop) {
-    return prop in resolveEnv();
-  },
-  ownKeys() {
-    return Reflect.ownKeys(resolveEnv());
-  },
-  getOwnPropertyDescriptor(_target, prop) {
-    return Object.getOwnPropertyDescriptor(resolveEnv(), prop);
-  },
-});

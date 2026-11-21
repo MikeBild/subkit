@@ -3,7 +3,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { conversationMessages, conversations } from "../../db/schema/index.ts";
 import { FILE_SENTINEL_RE } from "../../files/sentinel.ts";
 import { attachInlineForTest } from "../../files/test-helpers.ts";
-import { appendUserMessage, createConversation } from "../service.ts";
+import { appendUserMessage, createConversation } from "../service/index.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
 
 let ctx: ConversationTestCtx;

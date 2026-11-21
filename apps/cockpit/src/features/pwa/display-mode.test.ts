@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { clientKindOf } from "@/features/feedback/model";
+import { clientKindOf } from "@/features/feedback/model/feedback";
 import { appDeviceState, runsInstalled } from "./display-mode";
 
 const display = (mode: string | null, standalone?: boolean) => ({

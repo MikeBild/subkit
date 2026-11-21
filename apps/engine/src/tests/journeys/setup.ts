@@ -10,7 +10,7 @@ import { apiKeys, systemAccounts, tenants, users } from "../../db/schema/index.t
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { buildDefaultRegistry, createApp } from "../../http/server.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { createBoss, disposeBoss, startBoss, stopBoss } from "../../queue/boss.ts";
 import { registerAllHandlers } from "../../queue/handlers/index.ts";
 import { claimOperatorTenantIfUnassigned } from "../../rbac/operator.ts";

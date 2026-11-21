@@ -1,13 +1,13 @@
-import { MoreHorizontal } from "lucide-react";
-import { IconButton } from "@/components/cockpit/icon-button";
-import { Button } from "@/components/ui/button";
+import { Button } from "@ui/atoms/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+} from "@ui/molecules/dropdown-menu";
+import { IconButton } from "@ui/molecules/icon-button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@ui/molecules/tooltip";
+import { MoreHorizontal } from "lucide-react";
 import { useI18n } from "@/lib/i18n-context";
 
 export interface ActionMenuItem {

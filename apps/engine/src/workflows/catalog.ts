@@ -3,7 +3,7 @@ import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { workflowDispatchRefusal } from "../execution/caller-context.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import type { RequestSource } from "../observability/service-metadata.ts";
 import { catalogVisibility } from "../rbac/evaluator.ts";
 import { synthesizeInputSchema } from "./input-schema-synth.ts";

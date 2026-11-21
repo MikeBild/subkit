@@ -21,7 +21,7 @@ import type { Db } from "../../db/client.ts";
 import { chatWorkspaces } from "../../db/schema/index.ts";
 import { beginTenantWork } from "../../execution/tenant-work.ts";
 import { assertTenantActive } from "../../identity/self-service.ts";
-import { log, logger } from "../../logging/logger.ts";
+import { log, logger } from "../../logging/index.ts";
 import { tryAcquire } from "../../notifications/rate-limit.ts";
 import { CHAT_EVENT_QUEUE, type ChatEventJob } from "../queues.ts";
 

@@ -5,6 +5,9 @@ export const CATEGORY_ICON: Readonly<Record<string, string>> = Object.freeze({
   s3: "□",
   mcp: "◇",
   webhook: "▶",
+  local_files: "▤",
+  local_browser: "◎",
+  local_computer: "▣",
   default: "•",
 });
 

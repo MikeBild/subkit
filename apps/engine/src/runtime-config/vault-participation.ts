@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { eq, ne, sql } from "drizzle-orm";
-import { activeMasterKeyDigest } from "../crypto/aes-gcm.ts";
+import { activeMasterKeyDigest } from "../crypto/index.ts";
 import type { Db, Executor } from "../db/client.ts";
 import {
   hostedWorkAdmissions,

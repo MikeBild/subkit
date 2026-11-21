@@ -25,7 +25,7 @@ import {
   referencesTrimRef,
   resolveReferences,
 } from "../references.ts";
-import { appendUserMessage, createConversation, runConversationTurn } from "../service.ts";
+import { appendUserMessage, createConversation, runConversationTurn } from "../service/index.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
 
 let ctx: ConversationTestCtx;

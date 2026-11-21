@@ -1,0 +1,7 @@
+javascript.audit.detect-replaceall-sanitization.detect-replaceall-sanitization # escapeXml replaces & first, so the chain cannot double-escape or skip a character
+javascript.express.security.injection.raw-html-format.raw-html-format # the MCP unknown-tool message is a JSON string for a client, never rendered as HTML
+javascript.lang.security.audit.spawn-shell-true.spawn-shell-true # the sk status line runs the shell command the person configured, on their own machine
+javascript.lang.security.insecure-object-assign.insecure-object-assign # sk copies its own parsed command-line flags into a request body
+javascript.ajv.security.audit.ajv-allerrors-true.ajv-allerrors-true # authors see every schema violation at once; sandbox data is size-bounded before validation
+javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp # dynamic patterns are escaped, built from constants, or authored in connector and workflow config
+javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop.prototype-pollution-loop # remaining hits only read along a path; writes go through setDeep, which refuses __proto__, prototype and constructor

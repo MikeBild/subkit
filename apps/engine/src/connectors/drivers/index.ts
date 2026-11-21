@@ -5,6 +5,7 @@ import { clearConnectorReauth } from "../reauth.ts";
 import type { ConnectorView } from "../types.ts";
 import { probeGraphQLConnector } from "./graphql.ts";
 import { probeHttpConnector } from "./http.ts";
+import { probeLocalConnector } from "./local.ts";
 import { probeMcpConnector } from "./mcp.ts";
 import { probePgConnector } from "./postgres.ts";
 import { probeS3Connector } from "./s3.ts";
@@ -85,6 +86,10 @@ async function probeWithDriver(p: {
       return probeGraphQLConnector(p);
     case "mcp":
       return probeMcpConnector(p);
+    case "local_files":
+    case "local_browser":
+    case "local_computer":
+      return probeLocalConnector(p);
     default: {
       return {
         ok: false,

@@ -24,6 +24,7 @@ import type {
   OnboardingSaveResult,
   OnboardingTemplate,
 } from "../onboarding-wizard.tsx";
+import { aiBudgetLabel } from "../status-line/render.ts";
 import { classifySlash, unsupportedSlashGuidance } from "./dispatcher.ts";
 import { dispatchAdminListSlash } from "./handlers/admin-lists.ts";
 import { dispatchAuthRedirectSlash } from "./handlers/auth-redirects.ts";
@@ -193,7 +194,6 @@ export type PaneSpec =
       initialTab?: string;
       sessionId?: string | null;
       sessionTitle?: string | null;
-      permissionMode?: "ask" | "auto" | "plan" | "yolo";
       sessionTokens?: number | null;
       weekTokens?: number | null;
       tenant?: string | null;
@@ -205,10 +205,6 @@ export type PaneSpec =
       token_id: string;
       expires_at: string;
       workflow_id: string;
-    }
-  | {
-      kind: "permissions";
-      tenant?: string | null;
     }
   | { kind: "profile"; tenant?: string | null }
   | { kind: "admin"; tenant?: string | null };
@@ -316,8 +312,6 @@ export async function handleSlash(
     case "status": {
       const snap = ctx.statusSnapshot ?? null;
       const tenant = snap?.tenant.slug ?? snap?.tenant.id ?? ctx.profile.active_tenant_id ?? null;
-      const budget = snap?.monthly_budget_tokens;
-      const remaining = snap?.remaining_monthly_budget_tokens;
       const rows: Array<readonly [string, string | number | null | undefined]> = [
         ["user", snap?.user.email ?? snap?.user.id ?? "(unknown)"],
         ["auth", snap ? "signed_in" : "signed_out"],
@@ -333,8 +327,8 @@ export async function handleSlash(
         ["tokens · this turn", ctx.session.usage?.turn_tokens],
         ["tokens · today", snap?.tokens_today],
         ["tokens · month", snap?.tokens_month],
-        ["budget · monthly", budget == null ? "∞" : `${budget.toLocaleString()} tok`],
-        ["budget · remaining", remaining == null ? "∞" : `${remaining.toLocaleString()} tok`],
+        ["ai budget · month", snap ? aiBudgetLabel(snap.ai_budget) : null],
+        ["ai budget · state", snap?.ai_budget.state],
       ];
       if (ctx.bootstrapSnapshot) {
         const ageMs = Date.now() - ctx.bootstrapSnapshot.fetchedAt;
@@ -384,12 +378,7 @@ export async function handleSlash(
       const usage = ctx.session.usage;
       const lines: string[] = [];
       if (usage) {
-        const remaining =
-          usage.remaining_monthly_budget_tokens == null
-            ? "∞"
-            : usage.remaining_monthly_budget_tokens.toLocaleString();
         lines.push(`tokens · this turn   ${usage.turn_tokens.toLocaleString()}`);
-        lines.push(`remaining · monthly  ${remaining}`);
         const b = usage.breakdown;
         if (b) {
           const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toLocaleString());
@@ -410,23 +399,11 @@ export async function handleSlash(
         lines.push("");
         lines.push(`tokens · today       ${snap.tokens_today.toLocaleString()}`);
         lines.push(`tokens · month       ${snap.tokens_month.toLocaleString()}`);
-        if (snap.monthly_budget_tokens !== null) {
-          lines.push(`budget · monthly     ${snap.monthly_budget_tokens.toLocaleString()} tok`);
-        }
+        lines.push(`ai budget · month    ${aiBudgetLabel(snap.ai_budget)}`);
         if (snap.tokens_month_user !== null) {
           lines.push("");
           lines.push(`you · today          ${(snap.tokens_today_user ?? 0).toLocaleString()}`);
           lines.push(`you · month          ${snap.tokens_month_user.toLocaleString()}`);
-          if (snap.user_monthly_budget_tokens !== null) {
-            lines.push(
-              `you · budget         ${snap.user_monthly_budget_tokens.toLocaleString()} tok`,
-            );
-            const userRemaining =
-              snap.user_remaining_monthly_budget_tokens == null
-                ? "∞"
-                : snap.user_remaining_monthly_budget_tokens.toLocaleString();
-            lines.push(`you · remaining      ${userRemaining}`);
-          }
         }
       }
       return panify(ctx, "cost", lines);

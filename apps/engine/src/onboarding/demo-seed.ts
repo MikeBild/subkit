@@ -5,7 +5,7 @@ import { AuditAction } from "../audit/types.ts";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import type { Executor } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { carriedSpecColumns, type VersionActor, versionAuthorColumns } from "../workflows/index.ts";
 import { WorkflowDefSchema } from "../workflows/types.ts";
 

@@ -1,7 +1,7 @@
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@ui/atoms/badge";
+import { cn } from "@ui/lib/utils";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
-import { cn } from "@/lib/utils";
 
 export type BadgeTone = "ok" | "warn" | "error" | "neutral";
 
@@ -39,6 +39,7 @@ const TONES: Partial<Record<string, BadgeTone>> = {
   pending: "warn",
   running: "warn",
   queued: "warn",
+  waiting_budget: "warn",
   processing: "warn",
   uploading: "warn",
   scanning: "warn",

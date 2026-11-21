@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { scrubAuditEntry } from "../audit/scrub.ts";
 import type { AuditEntry } from "../audit/types.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { getMetrics, METRIC_NAMES } from "../observability/metrics.ts";
 import { type Executor, getDb } from "./client.ts";
 import { auditLog } from "./schema/audit.ts";

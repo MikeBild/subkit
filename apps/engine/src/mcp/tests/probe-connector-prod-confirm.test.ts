@@ -3,6 +3,7 @@ import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { and, count, eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/index.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../execution/tests/setup.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { grantApproval } from "../../tools/approval.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
@@ -11,7 +12,7 @@ let mock: MockServer;
 let hits = 0;
 
 beforeAll(async () => {
-  process.env.SK_MCP_MODE = "authoring";
+  testEnv.SK_MCP_MODE = "authoring";
   suite = await startMcpTestSuite("probe-connector-prod-confirm");
   mock = await createMockServer((_req, res) => {
     hits++;
@@ -22,7 +23,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await mock?.close();
   await suite?.cleanup();
-  delete process.env.SK_MCP_MODE;
+  delete testEnv.SK_MCP_MODE;
 });
 
 function body(result: Awaited<ReturnType<Client["callTool"]>>) {

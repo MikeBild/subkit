@@ -2,7 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { getConnector } from "../../../connectors/service.ts";
 import { getCredentialForConnector } from "../../../credentials/service.ts";
 import { conversationToolCalls } from "../../../db/schema/index.ts";
-import { logger } from "../../../logging/logger.ts";
+import { logger } from "../../../logging/index.ts";
 import {
   connectorEnvironment,
   credentialFlowResult,

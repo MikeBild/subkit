@@ -1,8 +1,6 @@
 import type { ApprovalPolicy, WorkflowApprovals } from "@/api/approval-policy";
 import { needsTwoApprovers } from "@/features/operations";
-import type { TranslationKey } from "@/lib/i18n";
-
-type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
+import type { Translate } from "@/lib/i18n";
 
 export const POLICY_PERMISSION = "rbac:write";
 

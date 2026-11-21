@@ -8,7 +8,7 @@ import {
 } from "../../../auth/index.ts";
 import { getConfig } from "../../../config/loader.ts";
 import type { Db } from "../../../db/client.ts";
-import { env } from "../../../env.ts";
+import { readEnv } from "../../../env.ts";
 import { can } from "../../../rbac/index.ts";
 import { PayloadTooLargeError } from "../../errors.ts";
 
@@ -36,7 +36,7 @@ export function deriveSessionSecret(): Uint8Array {
   if (fromConfig.length > 0) {
     return new TextEncoder().encode(fromConfig);
   }
-  const masterKey = env.MASTER_KEY ?? "";
+  const masterKey = readEnv("MASTER_KEY") ?? "";
   return new Uint8Array(createHash("sha256").update(`${masterKey}:session`).digest());
 }
 

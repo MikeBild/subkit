@@ -3,7 +3,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { and, eq, inArray } from "drizzle-orm";
 import { expireBrowserSession, revokeBrowserSession } from "../auth/browser-session.ts";
-import { encryptSecret } from "../crypto/aes-gcm.ts";
+import { encryptSecret } from "../crypto/index.ts";
 import { auditLog } from "../db/schema/audit.ts";
 import { cockpitPushKeys, cockpitPushSubscriptions } from "../db/schema/cockpit-push.ts";
 import { users } from "../db/schema/identity.ts";

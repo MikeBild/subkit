@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { dictionary, messageKeys, resolveLocale, t } from "./i18n.ts";
+import { clockLabel, dictionary, fill, messageKeys, resolveLocale, t } from "./i18n.ts";
 
 const placeholders = (text: string) => (text.match(/\{\w+\}/g) ?? []).sort();
 
@@ -49,5 +49,18 @@ describe("i18n", () => {
     expect(resolveLocale("system", "de-DE")).toBe("de");
     expect(resolveLocale("system", "fr-FR")).toBe("en");
     expect(resolveLocale("en", "de-DE")).toBe("en");
+  });
+
+  test("fills shell and live placeholders from the one dictionary", () => {
+    expect(t("de", "drop.lead.many", { count: 3 })).toBe("3 Dateien sind angekommen.");
+    expect(t("en", "quick.keys", { mod: "⌘" })).toBe("⌘ ↩ sends · Esc closes");
+    expect(t("en", "live.using", { name: "Mail" })).toBe("SubKit is using “Mail”");
+    expect(fill("{a} {b}", { a: 1 })).toBe("1 {b}");
+  });
+
+  test("formats the clock per language", () => {
+    const at = new Date(2026, 10, 21, 15, 5);
+    expect(clockLabel("de", at)).toBe("15:05");
+    expect(clockLabel("en", at)).toBe("03:05 PM");
   });
 });

@@ -4,7 +4,7 @@ import { workflowSignals } from "../../db/schema/workflow_signals.ts";
 import { createExecution } from "../../execution/state.ts";
 import { createWorkflowRow } from "../../execution/tests/setup.ts";
 import { runWithTestEnv } from "../../test-helpers/determinism/env.ts";
-import { mintSignalToken } from "../../workflow-signals/token.ts";
+import { mintSignalToken } from "../../workflow-signals/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let ctx: HttpTestServer;

@@ -70,7 +70,6 @@ export const RADAR_SEARCH_STEP = {
   body: {
     query:
       "query RadarRepositories($query:String!,$first:Int!){search(query:$query,type:REPOSITORY,first:$first){repositoryCount nodes{... on Repository{nameWithOwner url description isFork isArchived isDisabled diskUsage stargazerCount forkCount pushedAt owner{__typename} primaryLanguage{name} licenseInfo{spdxId} repositoryTopics(first:30){nodes{topic{name}}} issues(states:OPEN){totalCount} defaultBranchRef{name target{... on Commit{oid}}}}}}}",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored workflow placeholder
     variables: { first: 50, query: "${item.q}" },
   },
 };

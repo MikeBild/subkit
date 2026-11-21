@@ -65,6 +65,21 @@ export const authorityBoundariesEn = {
     "The server describes this tool differently than the step records, so ask the assistant to update the step and review again.",
   "authority.refusal.mcp_tool_unavailable":
     "SubKit could not find this tool on the server just now, so check the connector and review again.",
+  "authority.refusal.device_not_allowed":
+    "The device hasn’t allowed this yet, so allow it in SubKit on the device under “Local capabilities” and review again.",
+  "authority.device.mayRun": "May run on “{device}”",
+  "authority.device.unnamed": "Desktop device",
+  "authority.device.waiting": "The run waits until the device is back.",
+  "authority.device.required":
+    "Without the device, this workflow can’t run, so tick the box to approve it.",
+  "authority.device.elsewhere":
+    "You can only approve this workflow on “{device}”, so open SubKit there.",
+  "authority.device.refusal.device_approval_elsewhere":
+    "This approval only works on the device itself, so open SubKit on “{device}” and approve the workflow there.",
+  "authority.device.refusal.device_unavailable":
+    "“{device}” is no longer signed in to this workspace, so sign in to SubKit on the device again and then approve the workflow.",
+  "authority.device.refusal.device_binding_multiple":
+    "This workflow names more than one device, so split it into one workflow per device and approve each one.",
   "authority.mcp.recordedReadOnly":
     "The step records this tool as read-only, and SubKit has not compared that with the server for you.",
   "authority.mcp.recordedDestructive":
@@ -142,6 +157,21 @@ export const authorityBoundariesDe: Record<keyof typeof authorityBoundariesEn, s
     "Der Server beschreibt dieses Tool anders, als der Schritt es festhält, also bitte den Assistenten, den Schritt zu aktualisieren, und prüfe erneut.",
   "authority.refusal.mcp_tool_unavailable":
     "SubKit konnte dieses Tool gerade nicht auf dem Server finden, also prüfe den Connector und starte die Prüfung erneut.",
+  "authority.refusal.device_not_allowed":
+    "Das Gerät hat das noch nicht erlaubt, also erlaube es in SubKit auf dem Gerät unter „Lokale Fähigkeiten“ und prüfe dann erneut.",
+  "authority.device.mayRun": "Darf auf „{device}“ laufen",
+  "authority.device.unnamed": "Desktop-Gerät",
+  "authority.device.waiting": "Der Run wartet, bis das Gerät wieder da ist.",
+  "authority.device.required":
+    "Ohne das Gerät kann dieser Workflow nicht laufen, also setz den Haken, um ihn freizugeben.",
+  "authority.device.elsewhere":
+    "Diesen Workflow gibst du nur auf „{device}“ frei, also öffne SubKit dort.",
+  "authority.device.refusal.device_approval_elsewhere":
+    "Diese Freigabe geht nur auf dem Gerät selbst, also öffne SubKit auf „{device}“ und gib den Workflow dort frei.",
+  "authority.device.refusal.device_unavailable":
+    "„{device}“ ist nicht mehr mit diesem Arbeitsbereich verbunden, also melde SubKit auf dem Gerät wieder an und gib den Workflow dann frei.",
+  "authority.device.refusal.device_binding_multiple":
+    "Dieser Workflow nennt mehr als ein Gerät, also teile ihn in einen Workflow pro Gerät auf und gib jeden einzeln frei.",
   "authority.mcp.recordedReadOnly":
     "Der Schritt hält dieses Tool als nur lesend fest, und SubKit hat das für dich nicht mit dem Server verglichen.",
   "authority.mcp.recordedDestructive":

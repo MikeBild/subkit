@@ -1,5 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: the steps below carry authored
-// placeholder tokens verbatim.
 import { expect, test } from "bun:test";
 import { workflowJsonDigest } from "./canonical-json.ts";
 import {

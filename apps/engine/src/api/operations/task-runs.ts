@@ -1,7 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import { errorFields, logger } from "../../logging/logger.ts";
+import { errorFields, logger } from "../../logging/index.ts";
 import {
   abortTaskRun,
   completeTaskRun,

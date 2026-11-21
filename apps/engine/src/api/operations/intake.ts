@@ -1,5 +1,5 @@
 import { z } from "@hono/zod-openapi";
-import { listKnownDomains } from "../../agent/domains.ts";
+import { listKnownDomains } from "../../agent/index.ts";
 import { type Actor, actorOf } from "../../audit/actor.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";

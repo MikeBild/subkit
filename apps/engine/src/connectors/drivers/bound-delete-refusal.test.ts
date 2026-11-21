@@ -15,7 +15,6 @@ const deleteStep = RequestStepSchema.parse({
   connector_id: "00000000-0000-4000-8000-000000000001",
   method: "DELETE",
   s3: {
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored runtime-expression fixture
     key: "${item.key}",
     scope: { key_prefix: "v1/archive/", max_bytes: 10, max_deletes: 100 },
   },

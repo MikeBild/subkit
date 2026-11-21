@@ -1,6 +1,6 @@
 import type { Job, PgBoss } from "pg-boss";
 import type { Db } from "../../db/client.ts";
-import { log } from "../../logging/logger.ts";
+import { log } from "../../logging/index.ts";
 import { readMemoryUsage } from "../../observability/runtime-telemetry.ts";
 import { runPatternAnalysis } from "../../skill-candidates/service.ts";
 import { withActiveTenantJobContext } from "../job-context.ts";

@@ -1,13 +1,13 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { createServer } from "node:http";
 import { eq } from "drizzle-orm";
-import { connectors, credentials } from "../../../db/schema/index.ts";
+import { connectors, vaultItems } from "../../../db/schema/index.ts";
 import { createEmptyDraftDocument } from "../../authoring-state/index.ts";
 import {
   _resetDraftCredentialCacheForTests,
   setDraftCredential,
 } from "../../persistence/draft-credential-cache.ts";
-import { createConversation } from "../../service.ts";
+import { createConversation } from "../../service/index.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../../tests/setup.ts";
 import type { DraftDocument } from "../../types.ts";
 import { inspectConnectorDraftTool } from "../inspect-connector-draft.ts";
@@ -78,7 +78,7 @@ afterEach(async () => {
   _resetDraftCredentialCacheForTests();
   seenAuthHeaders.length = 0;
   tokenEndpointMode = "ok";
-  await ctx.testDb.db.delete(credentials).where(eq(credentials.tenant_id, ctx.tenant_id));
+  await ctx.testDb.db.delete(vaultItems).where(eq(vaultItems.tenant_id, ctx.tenant_id));
   await ctx.testDb.db.delete(connectors).where(eq(connectors.tenant_id, ctx.tenant_id));
 });
 

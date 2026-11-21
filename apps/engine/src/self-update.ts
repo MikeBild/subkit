@@ -13,6 +13,8 @@ import {
   recordEngineUpdateInitiated,
   recordEngineUpdateRolledBack,
 } from "./audit/recorders/index.ts";
+import type { DeploymentMode } from "./config/deployment-mode.ts";
+import { getConfig, isConfigLoaded, loadConfig } from "./config/loader.ts";
 import type { Db } from "./db/client.ts";
 import { getDb } from "./db/client.ts";
 import { logger } from "./logging/index.ts";
@@ -124,10 +126,19 @@ async function instrumentBinarySwap(
   }
 }
 
+export async function assertSelfUpdateAllowed(mode?: DeploymentMode): Promise<void> {
+  const resolved = mode ?? (isConfigLoaded() ? getConfig() : await loadConfig()).deployment.mode;
+  if (resolved === "local_workspace")
+    throw new Error(
+      "SubKit Desktop updates this engine with the app; self-update is off in local mode",
+    );
+}
+
 export async function runSelfUpdate(
   fetchImpl?: typeof fetch,
   configOverride?: UpdaterConfig,
 ): Promise<void> {
+  await assertSelfUpdateAllowed();
   const config = configOverride ?? defaultUpdaterConfig("engine", VERSION);
   process.stdout.write("engine: checking for updates...\n");
 
@@ -165,6 +176,7 @@ export async function runRollback(
   target: string | "previous" = "previous",
   configOverride?: UpdaterConfig,
 ): Promise<void> {
+  await assertSelfUpdateAllowed();
   const config = configOverride ?? defaultUpdaterConfig("engine", VERSION);
   const retained = listRetainedVersions(config);
   if (retained.length === 0) {

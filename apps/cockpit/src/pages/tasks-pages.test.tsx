@@ -2,19 +2,26 @@ import { describe, expect, test } from "bun:test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactElement } from "react";
 import { renderInRouter } from "@/components/cockpit/patterns/test-utils";
-import { translate } from "@/lib/i18n";
-import { TaskDetail, TaskPage } from "./tasks-detail";
-import { CONVERSATION_ID, latestRun, run, TASK_ID, task, usagePeriod } from "./tasks-fixtures";
-import { TaskFormFields, TaskScheduleFields } from "./tasks-form";
-import { TasksPage } from "./tasks-list";
+import {
+  CONVERSATION_ID,
+  latestRun,
+  run,
+  TASK_ID,
+  task,
+  usagePeriod,
+} from "@/features/tasks/model/tasks-fixtures";
 import {
   emptyDraft,
   scheduleDraft,
   type TaskRun,
   type TaskUsage,
   type TaskView,
-} from "./tasks-model";
-import { TaskRunsTab } from "./tasks-runs";
+} from "@/features/tasks/model/tasks-model";
+import { TaskDetail, TaskPage } from "@/features/tasks/ui/tasks-detail";
+import { TaskFormFields, TaskScheduleFields } from "@/features/tasks/ui/tasks-form";
+import { TasksPage } from "@/features/tasks/ui/tasks-list";
+import { TaskRunsTab } from "@/features/tasks/ui/tasks-runs";
+import { translate } from "@/lib/i18n";
 
 const ALL = [
   "task:read",
@@ -361,6 +368,7 @@ describe("task detail", () => {
           ...month,
           cost: { amount: 3.5, currency: "USD", unpriced_models: ["local-model"] },
         },
+        last_run_notice: null,
       },
     });
     expect(priced).toContain("Verbrauch");
@@ -371,14 +379,25 @@ describe("task detail", () => {
       usage: {
         last_run: usagePeriod({ attribution: "conversation_removed", calls: 0, cost: null }),
         current_month: { ...month, cost: null },
+        last_run_notice: null,
       },
     });
+    const costly = await detail({}, null, {
+      usage: {
+        last_run: usagePeriod({ cost: { amount: 6.2, currency: "USD", unpriced_models: [] } }),
+        current_month: month,
+        last_run_notice: { run_cost_usd: 6.2, threshold_usd: 5 },
+      },
+    });
+    expect(has(costly, "task-usage-run-notice")).toBe(true);
+    expect(costly).toContain("mehr als 5,00");
     expect(gaps).toContain("Letzter Run: nicht mehr zuordenbar");
     expect(gaps).toContain("Dieser Monat: 12.500 Token");
     const idle = await detail({}, null, {
       usage: {
         last_run: usagePeriod({ task_run_id: null, calls: 0, tokens: 0, cost: null }),
         current_month: { ...month, calls: 0, tokens: 0, cost: null },
+        last_run_notice: null,
       },
       locale: "en",
     });

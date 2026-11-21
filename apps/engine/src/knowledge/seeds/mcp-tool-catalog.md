@@ -283,7 +283,7 @@ Who am I, who can do what.
 Health, cost, and audit.
 
 - `get_engine_status` **[product]** — engine/version/health snapshot.
-- `get_token_budget` **[product]** — LLM token budget accounting.
+- `get_ai_budget` **[product]** — this month's AI spending against the workspace's monthly AI budget.
 - `get_llm_usage` **[product]** — LLM usage rollup with the priced spend of a
   window (catalog or override price per model, unpriced models named).
 - `get_operating_figures` **[product]** — the Übersicht's operations figures

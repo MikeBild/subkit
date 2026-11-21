@@ -1,27 +1,23 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { SETTING_AREAS, settingNavigation } from "@/features/settings/model/settings-areas";
+import { de, render, visibleMarkup } from "@/features/settings/model/settings-fixtures";
+import { type SettingItem, settingAppliesToShown } from "@/features/settings/model/settings-model";
+import { SettingsRestartOffer } from "@/features/settings/ui/settings-restart";
 import {
   SettingEnumSelect,
+  SettingItemRow,
   SettingNumberInput,
-  SettingRow,
   SettingSecretControl,
   SettingsAttentionLine,
   SettingsSection,
   SettingsSectionNav,
   SettingsSummary,
   settingRowNotes,
-} from "@/pages/settings";
-import {
-  SETTING_GROUPS,
-  type SettingItem,
-  settingAppliesToShown,
-  settingNavigation,
-} from "@/pages/settings-model";
-import { SettingsRestartOffer } from "@/pages/settings-restart";
-import { de, render, visibleMarkup } from "./settings-fixtures.tsx";
+} from "@/features/settings/ui/settings-rows";
 
-const ALL_SECTIONS = SETTING_GROUPS.flatMap((group) => group.sections);
+const ALL_SECTIONS = SETTING_AREAS.flatMap((group) => group.sections);
 
 describe("the section list", () => {
   const html = render(
@@ -37,7 +33,7 @@ describe("the section list", () => {
   test("is a list of links under group headings, never a tab strip", () => {
     expect(html).not.toContain('role="tablist"');
     expect(html).not.toContain('role="tab"');
-    for (const group of SETTING_GROUPS)
+    for (const group of settingNavigation(ALL_SECTIONS))
       expect(html).toContain(de(group.label).replaceAll("&", "&amp;"));
     for (const section of ALL_SECTIONS)
       expect(html).toContain(`data-testid="settings-section-link-${section}"`);
@@ -95,6 +91,19 @@ describe("the status line", () => {
     expect(html).not.toContain(de("settings.attention.notActivated"));
   });
 
+  test("a server setting waiting for a restart is named by its path, without a dead link", () => {
+    const html = render(
+      <SettingsAttentionLine
+        attention={{ restart: ["server.port"], notActivated: false }}
+        onOpenLeaf={() => {}}
+      />,
+    );
+    expect(html).toContain(de("settings.attention.restart"));
+    expect(html).toContain('data-testid="settings-pending-restart-server"');
+    expect(html).toContain("server.port");
+    expect(html).not.toContain("leaf=server.port");
+  });
+
   test("offers the restart by what the reader may do and whether a supervisor exists", () => {
     const line = (offer: "restart" | "manual" | "ask_admin") =>
       render(
@@ -141,7 +150,7 @@ describe("the status line", () => {
 
 describe("a setting's row", () => {
   const item: SettingItem = {
-    path: "tokens.monthly_budget",
+    path: "connectors.mcp.tools_list_max_pages",
     value: 150000000,
     meta: {
       source: "global",
@@ -153,13 +162,13 @@ describe("a setting's row", () => {
     },
   };
   const html = render(
-    <SettingRow item={item} index={3} highlighted={false}>
+    <SettingItemRow item={item} index={3} highlighted={false}>
       <input data-testid="setting-input-3" />
-    </SettingRow>,
+    </SettingItemRow>,
   );
 
   test("reads as a name, not a key", () => {
-    expect(html).toContain("Monatliches Token-Kontingent");
+    expect(html).toContain("Externes MCP · Seiten der Werkzeugliste");
   });
 
   test("keeps its restart, source and scope notes behind its (?), not as a line of its own", () => {
@@ -179,16 +188,18 @@ describe("a setting's row", () => {
     expect(html).not.toContain("setting-technical-");
     expect(html).not.toContain("Hard cap on tokens");
     expect(html).not.toContain("Wortlaut der Engine");
-    expect(html).toContain('data-setting-path="tokens.monthly_budget"');
-    expect(html.replace(/data-setting-path="[^"]*"/, "")).not.toContain("tokens.monthly_budget");
+    expect(html).toContain('data-setting-path="connectors.mcp.tools_list_max_pages"');
+    expect(html.replace(/data-setting-path="[^"]*"/, "")).not.toContain(
+      "connectors.mcp.tools_list_max_pages",
+    );
   });
 
   test("offers the key to copy only to those who may change settings", () => {
     expect(html).not.toContain('data-testid="setting-copy-key-3"');
     const writer = render(
-      <SettingRow item={item} index={3} highlighted={false} canCopyKey>
+      <SettingItemRow item={item} index={3} highlighted={false} canCopyKey>
         <input data-testid="setting-input-3" />
-      </SettingRow>,
+      </SettingItemRow>,
     );
     expect(writer).toContain('data-testid="setting-copy-key-3"');
     expect(writer).toContain(`aria-label="${de("settings.copyKey")}"`);
@@ -198,9 +209,9 @@ describe("a setting's row", () => {
     expect(html).toContain('data-applies-to="true"');
     const globalItem = { ...item, meta: { ...item.meta, scope: "global" } };
     const global = render(
-      <SettingRow item={globalItem} index={3} highlighted={false}>
+      <SettingItemRow item={globalItem} index={3} highlighted={false}>
         <input data-testid="setting-input-3" />
-      </SettingRow>,
+      </SettingItemRow>,
     );
     expect(global).not.toContain("data-applies-to");
     expect(settingRowNotes(globalItem, de).map((note) => note.id)).toEqual(["restart"]);
@@ -213,9 +224,9 @@ describe("a setting's row", () => {
       de("settings.sourceIs", { source: "Arbeitsbereich" }),
     );
     const tenant = render(
-      <SettingRow item={tenantItem} index={3} highlighted>
+      <SettingItemRow item={tenantItem} index={3} highlighted>
         <input data-testid="setting-input-3" />
-      </SettingRow>,
+      </SettingItemRow>,
     );
     expect(tenant).toContain('data-highlighted="true"');
   });
@@ -228,9 +239,9 @@ describe("a setting's row", () => {
       meta: { ...item.meta, kind: "array", default: [] },
     };
     const changed = render(
-      <SettingRow item={providers} index={4} highlighted={false}>
+      <SettingItemRow item={providers} index={4} highlighted={false}>
         <input data-testid="setting-input-4" />
-      </SettingRow>,
+      </SettingItemRow>,
     );
     expect(changed).toContain('data-testid="setting-changed-4"');
     expect(changed).not.toContain('data-testid="setting-default-4"');
@@ -309,12 +320,15 @@ describe("a setting's control", () => {
 });
 
 describe("Geändert · Standard · Zurücksetzen on the row", () => {
-  const budget = leafItem("tokens.monthly_budget", 500, { kind: "number", default: 0 });
+  const budget = leafItem("connectors.mcp.tools_list_max_pages", 500, {
+    kind: "number",
+    default: 0,
+  });
   const row = (item: SettingItem, draft?: string) =>
     render(
-      <SettingRow item={item} index={2} highlighted={false} draft={draft} onReset={() => {}}>
+      <SettingItemRow item={item} index={2} highlighted={false} draft={draft} onReset={() => {}}>
         <input data-testid="setting-input-2" />
-      </SettingRow>,
+      </SettingItemRow>,
     );
 
   test("stands when the value is not the default, with the default and the reset", () => {
@@ -382,9 +396,9 @@ describe("a secret", () => {
     );
     expect(heading.split('data-testid="settings-secret-hint-llm"').length - 1).toBe(1);
     const rowHtml = render(
-      <SettingRow item={secret("***")} index={4} highlighted={false}>
+      <SettingItemRow item={secret("***")} index={4} highlighted={false}>
         <span />
-      </SettingRow>,
+      </SettingItemRow>,
     );
     expect(rowHtml).not.toContain(de("settings.secretExternalOnly"));
     expect(

@@ -54,34 +54,24 @@ describe("package portability tools", () => {
     expect(mcpNames("admin", true).has("apply_package_import")).toBe(false);
   });
 
-  test("apply asks before execution unless the chat runs in yolo; export prepares without asking", () => {
-    for (const permission_mode of [null, "auto", "ask"] as const) {
+  test("apply asks before execution; export prepares without asking", () => {
+    for (const ask_before_writing of [false, true]) {
       expect(
         resolveToolMode({
           tool: "apply_package_import",
           category: "tenant_write",
           input: { file_id: "fid_x", expected_plan_digest: "d" },
           overrides: {},
-          permission_mode,
+          ask_before_writing,
         }),
       ).toBe("confirm_before_execution");
     }
-    expect(
-      resolveToolMode({
-        tool: "apply_package_import",
-        category: "tenant_write",
-        input: { file_id: "fid_x", expected_plan_digest: "d" },
-        overrides: {},
-        permission_mode: "yolo",
-      }),
-    ).toBe("no_confirm");
     expect(
       resolveToolMode({
         tool: "export_tenant_package",
         category: "tenant_write",
         input: {},
         overrides: {},
-        permission_mode: "auto",
       }),
     ).toBe("no_confirm");
     expect(

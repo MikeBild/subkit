@@ -16,6 +16,15 @@ const scheduleHistory =
 const personalPermissionState =
   "Per-person confirmation settings and standing approval rules without content (closed states, counters, a scope and choices each bounded by a check constraint): must stay writable so a person at the tenant limit can still switch back to asking and revoke a rule.";
 
+const deviceState =
+  "Device registry state without content (a device label, a public key, instants, a stop generation and the allowance list the person keeps on that device, each bounded by a check constraint): must stay writable so a tenant at its limit can still revoke a device, stop its local steps and remove an allowance.";
+
+const deviceCommandState =
+  "Device command channel state (a command id, a closed state, instants, a stop generation, and encrypted arguments and results bounded by check constraints): must stay writable so a tenant at its limit can still stop, cancel or close a local step; the step output it carries is metered in execution_steps.";
+
+const deviceUploadStaging =
+  "Staged chunks of a file a device imports, bounded per chunk and per upload by check constraints, admitted against the file-byte quota when the upload opens and removed when it is committed, aborted or expires after an hour; the committed file is metered in files.";
+
 export const HOSTED_METER_EXEMPTIONS: Readonly<Record<string, string>> = {
   caller_budget_units: ledger,
   external_call_metering: ledger,
@@ -35,9 +44,16 @@ export const HOSTED_METER_EXEMPTIONS: Readonly<Record<string, string>> = {
   mcp_oauth_unknown_grants: authFlow,
   oidc_login_states: authFlow,
   sessions: authFlow,
+  device_runners: deviceState,
+  device_allowances: deviceState,
+  device_commands: deviceCommandState,
+  device_uploads: deviceUploadStaging,
+  device_upload_chunks: deviceUploadStaging,
+  device_waits: deviceState,
   chat_events_seen: dedup,
   files_dedup_seen: dedup,
   webhook_replay_seen: dedup,
+  device_runner_nonces: dedup,
   product_identity_tombstones: erasure,
   tenant_erasure_states: erasure,
   schedule_occurrences: scheduleHistory,

@@ -114,8 +114,8 @@
 - **Stays inside the approved boundary.** An approval names the environment, how long it is valid and what the workflow reads and writes. A new version that reaches further needs a new approval.
 - **Asks before it writes.** A write tool called from an AI client pauses until a person allows it once or declines.
 - **Gives each person only their rights.** Roles, permissions and scoped API keys apply to the Cockpit, the CLI, the API and MCP alike.
-- **Keeps credentials encrypted.** Connector secrets are stored with AES-256-GCM under the master key of the installation.
-- **Shows what it costs.** Usage lists AI cost per run, workflow, person and model. A monthly token budget pauses AI authoring when it is used up, while approved workflows keep running.
+- **Keeps secrets in one vault.** API keys, logins and connector credentials live in the vault, encrypted with AES-256-GCM under the master key of the installation. Workflows name them by handle, the AI never sees a value, and every use is in the audit trail.
+- **Shows what it costs.** Usage lists AI cost per run, workflow, person and model. One monthly AI budget in US dollars caps the cost: at 100% chat, tasks and model steps pause, while workflows without a model step keep running.
 
 <p align="center">
   <a href="https://subkit.mikebild.dev/en/documentation/execution-identity-and-permission/">Identity and permission</a> · <a href="https://subkit.mikebild.dev/en/documentation/usage-and-costs/">Usage and costs</a> · <a href="https://subkit.mikebild.dev/en/documentation/engine-operator/">Operating the engine</a>
@@ -137,6 +137,7 @@ flowchart LR
     sk["sk<br/>terminal"]
     mcp["MCP clients<br/>Claude Code · Codex"]
     chat["Slack<br/>Google Chat"]
+    desktop["SubKit Desktop<br/>your Mac"]
   end
   subgraph start["What starts a run"]
     schedule["Schedule"]
@@ -147,6 +148,7 @@ flowchart LR
   sk --> engine
   mcp --> engine
   chat --> engine
+  desktop --> engine
   schedule --> engine
   webhook --> engine
   engine --> db[("PostgreSQL<br/>data · queue")]
@@ -190,8 +192,8 @@ stateDiagram-v2
 
 - **Fixed steps, not a free-running agent.** A workflow is built from eight step kinds: request, transform, call, wait, wait for event, branch, parallel and loop.
 - **Tasks: a goal with limits.** Where the way to a result differs from case to case, a task takes a goal, a plan and the workflows and connectors it may use. It asks a person before anything that writes, it cannot author workflows, and it starts on its own only with a standing permission that ends when the task changes. What proves itself in a task becomes a workflow.
-- **A desktop app that runs nothing locally.** SubKit Desktop is a window onto your server's Cockpit with a menu bar icon, native notifications and launch at login. It signs in through the browser, every computer is a device of its own that can be revoked, and no API key or workflow ever lives on the machine. The Cockpit can also be installed as a web app.
-- **Chat asks unless you asked.** In Automatic mode an action runs without a question only when you asked for it in your own words, named the target and wrote or saw the content; payments, deletions, publications, settings, new accounts and credentials always ask.
+- **A desktop app that works on your Mac only where you allow it.** SubKit Desktop for Macs with Apple Silicon brings the Cockpit with a menu bar icon, notifications, a quick note and a drop sheet. Once you turn it on, chat, tasks and workflows work with files in folders you allowed, in websites you allowed and in apps you allowed. A live view shows every step with a redacted screenshot, and one shortcut stops it. With “Only on this Mac” a whole workspace runs on the Mac and can move to a server later. The Cockpit can also be installed as a web app.
+- **Chat asks unless you asked.** An action runs without a question only when you asked for it in your own words, named the target and wrote or saw the content; payments, deletions, publications, settings, new accounts and credentials always ask. The rule “Always ask first” makes every write ask.
 - **Schedules explain themselves.** A schedule that fails five times in a row for the same reason pauses and says so once; a schedule history shows what became of every scheduled time.
 - **Code runs in a sandbox.** Code in transform steps runs in a QuickJS sandbox, not in the engine process itself.
 - **One contract for every door.** The HTTP API is described in OpenAPI 3.1 at `/openapi.json`, and the engine describes itself to AI clients at `/llms.txt`.
@@ -230,7 +232,7 @@ stateDiagram-v2
 <summary><strong>What does it cost?</strong></summary>
 <br />
 
-SubKit is open source under the Apache License 2.0. You bring your own model provider, which bills you directly. [Usage](https://subkit.mikebild.dev/en/documentation/usage-and-costs/) shows what the AI calls cost and stops AI authoring at your monthly token budget.
+SubKit is open source under the Apache License 2.0. You bring your own model provider, which bills you directly. [Usage](https://subkit.mikebild.dev/en/documentation/usage-and-costs/) shows what the AI calls cost, and your monthly AI budget in US dollars pauses chat, tasks and model steps when it is reached.
 
 </details>
 
@@ -307,7 +309,9 @@ bun install --frozen-lockfile
 bun run verify        # the full local release gate
 ```
 
-The engine lives in `apps/engine`, the CLI in `apps/sk`, the Cockpit in `apps/cockpit` and the Web Clipper in `apps/clipper`.
+The engine lives in `apps/engine`, the CLI in `apps/sk`, the Cockpit in `apps/cockpit`, SubKit Desktop in `apps/desktop` and the Web Clipper in `apps/clipper`.
+
+Every root command groups one concern: `gen`, `build`, `test`, `verify`, `quality`, `demo`, `release`, `eval`, `db` and `compose`. `bun run <command> help` lists its subcommands, for example `bun run verify help`. [RELEASING.md](RELEASING.md) describes a release, [SECURITY.md](SECURITY.md) how to report a vulnerability.
 
 </details>
 
@@ -349,8 +353,16 @@ The engine lives in `apps/engine`, the CLI in `apps/sk`, the Cockpit in `apps/co
 | Packages to move resources between engines | 10.18.13 |
 | Tasks | 11.0.0 |
 | SubKit Desktop, setup questions, quiet hours and chat rules | 11.2.0 |
-| Two-person approval (optional, teams with 2+ approvers) | 11.3.0 |
-| File drops from the desktop, notification pause and offline bug reports | 11.3.0 |
+| Two-person approval (optional, teams with 2+ approvers) | 12.0.0 |
+| File drops from the desktop, notification pause and offline bug reports | 12.0.0 |
+| Vault for API keys, logins and connector credentials, used by handle | 12.0.0 |
+| SubKit Desktop for Apple Silicon: welcome, invitation link, quick note and drop sheet | 12.0.0 |
+| Local files, browser and computer use on your Mac, with allowances you set | 12.0.0 |
+| Live view with redacted screenshots and a stop shortcut | 12.0.0 |
+| Workflow steps on your device, approved per folder, website and app | 12.0.0 |
+| Fully local workspace on your Mac, with backups and a move to a server | 12.0.0 |
+| “Always ask first” instead of chat modes | 12.0.0 |
+| Monthly AI budget in US dollars instead of the token budget | 12.0.0 |
 | [All features](https://subkit.mikebild.dev/en/documentation/features/) | – |
 
 <br />

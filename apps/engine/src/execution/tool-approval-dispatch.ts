@@ -6,10 +6,10 @@ import type { RequestDispatchPolicy } from "../connectors/drivers/http.ts";
 import { loadConnectorSystem } from "../connectors/system.ts";
 import type { Db } from "../db/client.ts";
 import {
-  credentials,
   executionSteps,
   executions,
   toolApprovals,
+  vaultItems,
   workflows,
 } from "../db/schema/index.ts";
 import { decryptPreview } from "../tools/approval-portal.ts";
@@ -48,7 +48,7 @@ export async function assertToolApprovalDispatch(
         !run?.tool_approval_id ||
         !run.workflow_id ||
         run.abort_requested_at ||
-        !["queued", "running"].includes(run.status)
+        !["queued", "waiting_for_device", "running"].includes(run.status)
       )
         denied("tool_approval_unavailable");
       const [decision] = await tx
@@ -189,15 +189,15 @@ export async function assertToolApprovalDispatch(
           denied("prepared_reference_connector_changed");
         if (reference.credential_id) {
           const [credential] = await tx
-            .select({ revision: credentials.authority_revision })
-            .from(credentials)
+            .select({ revision: vaultItems.authority_revision })
+            .from(vaultItems)
             .where(
               and(
-                eq(credentials.tenant_id, tenant),
-                eq(credentials.id, reference.credential_id),
-                eq(credentials.connector_id, reference.connector_id),
-                eq(credentials.environment, run.execution_mode),
-                isNull(credentials.deleted_at),
+                eq(vaultItems.tenant_id, tenant),
+                eq(vaultItems.id, reference.credential_id),
+                eq(vaultItems.connector_id, reference.connector_id),
+                eq(vaultItems.environment, run.execution_mode),
+                isNull(vaultItems.deleted_at),
               ),
             )
             .limit(1);

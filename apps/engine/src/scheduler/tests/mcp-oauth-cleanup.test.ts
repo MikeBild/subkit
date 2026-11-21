@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+import { runMcpOAuthCleanup } from "../../auth/scheduled/mcp-oauth-cleanup-runner.ts";
 import { auditLog } from "../../db/schema/audit.ts";
 import {
   mcpOauthAccessTokens,
@@ -10,7 +11,6 @@ import {
 import { mcpOauthStates } from "../../db/schema/mcp_oauth_states.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
 import { seedMcpConnector } from "../../mcp/client/test-fixtures.ts";
-import { runMcpOAuthCleanup } from "../mcp-oauth-cleanup-runner.ts";
 
 let srv: HttpTestServer;
 

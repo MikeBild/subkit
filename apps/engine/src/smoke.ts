@@ -1,8 +1,9 @@
+import { readEnv } from "./env.ts";
 import { logger } from "./logging/logger.ts";
 
 export async function runSmoke(): Promise<void> {
-  const node_env = process.env.NODE_ENV ?? "development";
-  const port = Number(process.env.PORT ?? "3000");
+  const node_env = readEnv("NODE_ENV") ?? "development";
+  const port = Number(readEnv("PORT") ?? "3000");
   logger.info({
     module: "engine",
     action: "smoke.started",

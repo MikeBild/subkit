@@ -1,13 +1,17 @@
-import { and, desc, eq, gte, inArray, isNotNull, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, lt, notInArray, sql } from "drizzle-orm";
 import type { Executor } from "../../db/client.ts";
 import {
   connectors,
   conversationElicitations,
   conversationMessages,
   conversationToolCalls,
+  taskRuns,
+  tasks,
   tenants,
 } from "../../db/schema/index.ts";
+import { DEVICE_TOOL_NAMES } from "../core/device-tools/catalog.ts";
 import { INSTRUCTION_WINDOW, type UserSegment } from "./decide.ts";
+import type { TaskRunFacts } from "./job.ts";
 
 const ANSWER_TOOLS = ["ask_user_text", "ask_user_choice", "ask_user_form"];
 const MESSAGE_SCAN = 40;
@@ -44,6 +48,7 @@ export interface CoverEvidence {
   readonly shown: string[];
   readonly used_signatures: Set<string>;
   readonly timezone: string;
+  readonly anchor: { readonly id: string; readonly at: Date } | null;
 }
 
 function humanText(content: unknown): string | null {
@@ -112,7 +117,14 @@ export async function loadCoverEvidence(
     .limit(1);
   const timezone = tenant?.timezone ?? "UTC";
   if (!latest || !oldest) {
-    return { segments: [], outputs: [], shown: [], used_signatures: new Set(), timezone };
+    return {
+      segments: [],
+      outputs: [],
+      shown: [],
+      used_signatures: new Set(),
+      timezone,
+      anchor: null,
+    };
   }
   const answers = await db
     .select({
@@ -172,6 +184,7 @@ export async function loadCoverEvidence(
         eq(conversationToolCalls.tenant_id, tenant_id),
         eq(conversationToolCalls.conversation_id, conversation_id),
         isNotNull(conversationToolCalls.output),
+        notInArray(conversationToolCalls.tool, [...DEVICE_TOOL_NAMES]),
         sql`octet_length(${conversationToolCalls.output}::text) <= ${MAX_OUTPUT_BYTES}`,
       ),
     )
@@ -203,5 +216,65 @@ export async function loadCoverEvidence(
     shown,
     used_signatures: used,
     timezone,
+    anchor: {
+      id: latest.id,
+      at: new Date(Math.max(latest.created_at.getTime(), ...timeline.map((entry) => entry.at))),
+    },
   };
+}
+
+export async function loadTaskRunFacts(
+  db: Executor,
+  tenant_id: string,
+  task_run_id: string,
+): Promise<TaskRunFacts | null> {
+  if (!UUID.test(task_run_id)) return null;
+  const [row] = await db
+    .select({
+      task_id: tasks.id,
+      owner_id: tasks.owner_id,
+      goal: tasks.goal,
+      done_when: tasks.done_when,
+      goal_edited_by: tasks.goal_edited_by,
+      started_by: taskRuns.started_by,
+      created_at: taskRuns.created_at,
+      deadline_at: taskRuns.deadline_at,
+      revision: tasks.revision,
+      run_revision: taskRuns.task_revision,
+    })
+    .from(taskRuns)
+    .innerJoin(tasks, and(eq(tasks.tenant_id, taskRuns.tenant_id), eq(tasks.id, taskRuns.task_id)))
+    .where(and(eq(taskRuns.tenant_id, tenant_id), eq(taskRuns.id, task_run_id)))
+    .limit(1);
+  if (!row || row.revision !== row.run_revision) return null;
+  const { revision: _revision, run_revision: _run_revision, ...facts } = row;
+  return { ...facts, task_run_id };
+}
+
+export async function loadJobSignatures(
+  db: Executor,
+  tenant_id: string,
+  conversation_id: string,
+  job_id: string,
+): Promise<Set<string>> {
+  const rows = await db
+    .select({
+      signature: sql<
+        string | null
+      >`${conversationToolCalls.confirmation_data} -> 'policy' ->> 'signature'`,
+    })
+    .from(conversationToolCalls)
+    .where(
+      and(
+        eq(conversationToolCalls.tenant_id, tenant_id),
+        eq(conversationToolCalls.conversation_id, conversation_id),
+        sql`${conversationToolCalls.confirmation_data} -> 'policy' ->> 'job_id' = ${job_id}`,
+      ),
+    )
+    .limit(200);
+  const used = new Set<string>();
+  for (const row of rows) {
+    if (typeof row.signature === "string" && row.signature.length > 0) used.add(row.signature);
+  }
+  return used;
 }

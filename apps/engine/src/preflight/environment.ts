@@ -1,15 +1,25 @@
+import { randomUUID } from "node:crypto";
 import { and, eq, isNull, sql } from "drizzle-orm";
+import { currentDeploymentMode } from "../config/deployment-mode.ts";
 import type { Config } from "../config/schema.ts";
-import { decryptSecret } from "../crypto/aes-gcm.ts";
+import { decryptSecret } from "../crypto/index.ts";
 import type { Db } from "../db/client.ts";
-import { listEmbeddedMigrations, SQUASHED_CHAIN_HEAD_TAG } from "../db/migrate.ts";
+import {
+  listEmbeddedMigrations,
+  SQUASHED_CHAIN_HEAD_TAG,
+  splitLineage,
+  stopsBeforeChainHead,
+} from "../db/migrate.ts";
 import {
   runtimeConfigRevisions,
   runtimeConfigState,
   runtimeSecretVersions,
 } from "../db/schema/index.ts";
+import { envSnapshot, readEnv } from "../env.ts";
 import { CONFIG_STATE_KEY } from "../runtime-config/contracts.ts";
 import { runtimeStateColumns } from "../runtime-config/service.ts";
+import { filesystemRoot } from "../storage/backend.ts";
+import { FileSystemObjectStore } from "../storage/file-system-object-store.ts";
 import { type ObjectStoreConfig, S3ObjectStore } from "../storage/object-store.ts";
 import type { ObjectStoreBinding, PreflightEnvironment } from "./checks.ts";
 
@@ -24,7 +34,7 @@ function truthy(value: string | undefined): boolean {
 }
 
 function objectStoreSeedFromEnv(
-  environment: Record<string, string | undefined> = process.env,
+  environment: Record<string, string | undefined> = envSnapshot(),
 ): ObjectStoreBinding | null {
   const endpoint = environment.OBJECT_STORAGE_ENDPOINT?.trim();
   const region = environment.OBJECT_STORAGE_REGION?.trim();
@@ -99,30 +109,38 @@ export function isUndefinedTable(error: unknown): boolean {
   return false;
 }
 
-export async function schemaAheadTags(db: Db): Promise<string[]> {
-  let rows: Array<{ id: number; hash: string; tag: string | null }>;
+async function migrationRows(
+  db: Db,
+): Promise<Array<{ id: number; hash: string; tag: string | null }>> {
   try {
     const result = (await db.execute(
       sql`SELECT id, hash, tag FROM "subkit"."__drizzle_migrations" ORDER BY id`,
     )) as unknown as { rows?: Array<{ id: number; hash: string; tag: string | null }> };
-    rows = result.rows ?? [];
+    return result.rows ?? [];
   } catch (error) {
     if (isUndefinedTable(error)) return [];
     throw error;
   }
+}
+
+function embeddedBaselineTag(): string | undefined {
+  return listEmbeddedMigrations().find((m) => m.idx === 0)?.tag;
+}
+
+export async function schemaAheadTags(db: Db): Promise<string[]> {
   const embedded = listEmbeddedMigrations();
   const byTag = new Map(embedded.map((m) => [m.tag, m.hash]));
   const byHash = new Map(embedded.map((m) => [m.hash, m.tag]));
-  const chainHeadId = rows.find((r) => r.tag === SQUASHED_CHAIN_HEAD_TAG)?.id;
-  const isSquashedHistory = (r: { id: number; tag: string | null }): boolean =>
-    chainHeadId !== undefined &&
-    Number(r.id) <= Number(chainHeadId) &&
-    r.tag !== null &&
-    !byTag.has(r.tag);
-  return rows
-    .filter((r) => r.tag !== null && !isSquashedHistory(r))
+  return splitLineage(await migrationRows(db), embeddedBaselineTag())
+    .current.filter((r) => r.tag !== null)
     .filter((r) => byTag.get(r.tag!) !== r.hash || byHash.get(r.hash) !== r.tag)
     .map((r) => r.tag!);
+}
+
+export async function schemaBehindChainHead(db: Db): Promise<string | null> {
+  return stopsBeforeChainHead(await migrationRows(db), embeddedBaselineTag())
+    ? SQUASHED_CHAIN_HEAD_TAG
+    : null;
 }
 
 export async function activeSettingsDocument(db: Db): Promise<Record<string, unknown> | null> {
@@ -189,20 +207,38 @@ export async function probeObjectStore(binding: ObjectStoreBinding): Promise<voi
   }
 }
 
+export async function probeLocalObjectStore(root: string): Promise<void> {
+  const store = new FileSystemObjectStore(root);
+  await store.headBucket();
+  const key = `.preflight/probe.${randomUUID()}`;
+  const body = Buffer.from("subkit-preflight-probe", "utf8");
+  try {
+    await store.put(key, body);
+    const back = await store.get(key);
+    if (!back.equals(body)) throw new Error("probe object read back with unexpected content");
+  } finally {
+    await store.delete(key).catch(() => {});
+  }
+}
+
 export function createPreflightEnvironment(db: Db, cfg: Config): PreflightEnvironment {
   return {
-    masterKey: () => process.env.MASTER_KEY,
+    masterKey: () => readEnv("MASTER_KEY"),
     databaseUrl: () => cfg.database.url,
     pingDatabase: async () => {
       await db.execute(sql`SELECT 1`);
     },
     schemaAheadTags: () => schemaAheadTags(db),
+    schemaBehindChainHead: () => schemaBehindChainHead(db),
     activeSettingsDocument: () => activeSettingsDocument(db),
     objectStoreBinding: async (document) =>
       (await objectStoreBindingFromDocument(document, (name, version) =>
         readSecretValue(db, name, version),
       )) ?? objectStoreSeedFromEnv(),
     probeObjectStore,
+    localObjectStoreRoot: () => filesystemRoot(cfg.storage),
+    deploymentMode: () => currentDeploymentMode(),
+    probeLocalObjectStore,
     readSecretVersion: (name, version) => readSecretVersion(db, name, version),
   };
 }

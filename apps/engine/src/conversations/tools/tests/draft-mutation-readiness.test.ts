@@ -98,10 +98,10 @@ describe("draft mutation readiness", () => {
     expect(payload.readiness).toBeUndefined();
   });
 
-  test("auto mode needs no save approval and does not query", async () => {
+  test("without the ask-before-writing rule a save needs no approval and does not query", async () => {
     const db = new Proxy({} as Db, {
       get() {
-        throw new Error("approval lookup must not run in auto mode");
+        throw new Error("approval lookup must not run without the ask-before-writing rule");
       },
     });
     expect(
@@ -109,7 +109,6 @@ describe("draft mutation readiness", () => {
         db,
         tenant_id: "t1",
         conversation_id: "c1",
-        permission_mode: "auto",
       }),
     ).toBe("not_required");
   });

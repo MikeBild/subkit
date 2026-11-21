@@ -9,7 +9,7 @@ import {
   setConversationHidden,
   taskRunApprovalRefusal,
 } from "../../conversations/public/lifecycle.ts";
-import { createConversation } from "../../conversations/service.ts";
+import { createConversation } from "../../conversations/service/index.ts";
 import {
   auditLog,
   conversationElicitations,
@@ -20,6 +20,7 @@ import {
 } from "../../db/schema/index.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { seedConnector } from "../../test-helpers/seed.ts";
 import { mintApprovalGrantUrl } from "../../tools/approval-portal.ts";
@@ -32,8 +33,8 @@ let owner_id: string;
 let other_id: string;
 let ownerHeaders: Record<string, string>;
 let otherHeaders: Record<string, string>;
-const originalProvider = process.env.LLM_PROVIDER;
-const originalMasterKey = process.env.MASTER_KEY;
+const originalProvider = testEnv.LLM_PROVIDER;
+const originalMasterKey = testEnv.MASTER_KEY;
 const FORBIDDEN = { code: "task_run_write_forbidden" };
 const FAILURE = { code: "internal", message: "kept as it was", at: "2026-01-01T00:00:00.000Z" };
 
@@ -52,8 +53,8 @@ async function seedUser(label: string, role: "admin" | "member", status = "activ
 }
 
 beforeAll(async () => {
-  process.env.LLM_PROVIDER = "mock";
-  process.env.MASTER_KEY = originalMasterKey ?? "a".repeat(64);
+  testEnv.LLM_PROVIDER = "mock";
+  testEnv.MASTER_KEY = originalMasterKey ?? "a".repeat(64);
   resetMockProvider();
   srv = await createHttpTestServer("conv-task-run-refusal");
   await setConfigKey("server.public_base_url", srv.baseUrl, { force: true });
@@ -64,9 +65,9 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(async () => {
-  if (originalProvider === undefined) delete process.env.LLM_PROVIDER;
-  else process.env.LLM_PROVIDER = originalProvider;
-  if (originalMasterKey === undefined) delete process.env.MASTER_KEY;
+  if (originalProvider === undefined) delete testEnv.LLM_PROVIDER;
+  else testEnv.LLM_PROVIDER = originalProvider;
+  if (originalMasterKey === undefined) delete testEnv.MASTER_KEY;
   await srv.cleanup();
 }, 60_000);
 
@@ -130,17 +131,6 @@ describe("a refused write leaves the run conversation untouched", () => {
         accept,
       );
       expect([403, 404]).toContain(res.status);
-      await res.text();
-      expect(await state(conversation_id)).toEqual(before);
-    }
-    for (const accept of [undefined, "text/event-stream"]) {
-      const res = await post(
-        ownerHeaders,
-        `/v1/conversations/${conversation_id}/messages`,
-        { message: "Just do it.", permission_mode: "yolo" },
-        accept,
-      );
-      expect(res.status).toBe(400);
       await res.text();
       expect(await state(conversation_id)).toEqual(before);
     }

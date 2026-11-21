@@ -11,7 +11,6 @@ const request = (overrides: Record<string, unknown> = {}) => {
         connector_id: "00000000-0000-4000-8000-000000000001",
         kind: "request",
         method: "GET",
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow runtime expression
         path: "/v2/projects/${item.id}/resources",
         ...overrides,
       },
@@ -62,7 +61,6 @@ test("review bounds a variable resource identifier to one read-only collection",
   expect(() => assertReadPath(boundary, undefined)).toThrow();
 });
 test("variable writes, hosts, partial segments and unrelated dynamic fields stay unsupported", () => {
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow runtime expressions
   const runtime = "${item.id}";
   for (const overrides of [
     { method: "POST" },

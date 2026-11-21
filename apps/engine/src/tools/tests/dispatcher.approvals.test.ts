@@ -423,56 +423,6 @@ describe("tools/dispatcher — run_workflow canonicalization", () => {
     expect(received[0]).toEqual(received[1]);
   });
 
-  test("input as a JSON STRING vs an OBJECT produce the SAME args_hash on the paused approval", async () => {
-    const principal = dbPrincipal();
-    const registry = buildRegistry([runWorkflowStub(() => {})]);
-    const inputObject = { city: "Berlin" };
-
-    const objectEnvelope = await dispatchTool(
-      { registry, db: testDb.db, principal, conversationCtx: {} as never, permissionMode: "ask" },
-      {
-        surface: "chat",
-        name: "run_workflow",
-        args: {
-          workflow: "invoice-export",
-          environment: "prod",
-          input: inputObject,
-          execute_writes: true,
-        },
-      },
-    );
-    const stringEnvelope = await dispatchTool(
-      { registry, db: testDb.db, principal, conversationCtx: {} as never, permissionMode: "ask" },
-      {
-        surface: "chat",
-        name: "run_workflow",
-        args: {
-          workflow: "invoice-export",
-          environment: "prod",
-          input: JSON.stringify(inputObject),
-          execute_writes: true,
-        },
-      },
-    );
-    expect(objectEnvelope.status).toBe("needs_confirm");
-    expect(stringEnvelope.status).toBe("needs_confirm");
-    const [objectConfirmId, stringConfirmId] = [objectEnvelope, stringEnvelope].map((e) =>
-      e.status === "needs_confirm" ? e.confirm.tool_call_id : null,
-    );
-    expect(objectConfirmId).toBeTruthy();
-    expect(stringConfirmId).toBeTruthy();
-
-    const argsHashOf = async (confirmId: string): Promise<string | undefined> => {
-      const rows = await approvalAuditRows(confirmId);
-      const requested = rows.find((r) => r.action === AuditAction.APPROVAL_REQUESTED);
-      return (requested!.metadata as { args_hash?: string } | undefined)?.args_hash;
-    };
-    const objectHash = await argsHashOf(objectConfirmId as string);
-    const stringHash = await argsHashOf(stringConfirmId as string);
-    expect(objectHash).toBeDefined();
-    expect(objectHash).toBe(stringHash);
-  });
-
   test("run_workflow preserves an omitted environment for schedule-aware execution admission", async () => {
     const received: Array<Record<string, unknown>> = [];
     const registry = buildRegistry([runWorkflowStub((args) => received.push(args))]);

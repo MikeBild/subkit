@@ -2,7 +2,6 @@ import { and, desc, eq, gte, inArray, isNull, max } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { executionSteps, executions, workflows } from "../db/schema/index.ts";
-import { monthlyUsage, resolveMonthlyBudget } from "../llm/accounting/index.ts";
 import { readOpenPatchDecisions } from "../self-healing/open-decisions.ts";
 import { type AttentionV1, attentionAllClear, buildAttention } from "./attention.ts";
 import {
@@ -181,10 +180,7 @@ export async function buildOperatorHealthDigest(
 
   const patchItems = projectPendingPatches(pendingRows, patchNameById, generatedAt.getTime());
 
-  const risk = computeRiskSignals({
-    monthTokens: await monthlyUsage(tenant_id, db),
-    monthBudget: resolveMonthlyBudget(tenant_id),
-  });
+  const risk = computeRiskSignals();
 
   const headline = attentionHeadline(attention);
   const rendered = renderDigest(headline, windowHours, attention, failureGroups, risk);

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { createConversation } from "../../conversations/service.ts";
+import { createConversation } from "../../conversations/service/index.ts";
 import {
   type ConversationTestCtx,
   createConversationTestCtx,

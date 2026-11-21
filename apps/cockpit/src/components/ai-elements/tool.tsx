@@ -1,15 +1,15 @@
 "use client";
 
+import { Badge } from "@ui/atoms/badge";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@ui/atoms/collapsible";
+import { cn } from "@ui/lib/utils";
 import type { DynamicToolUIPart, ToolUIPart } from "ai";
 import { CheckCircleIcon, ChevronDownIcon, CircleIcon, ClockIcon, XCircleIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 import { isValidElement } from "react";
-import { Badge } from "@/components/ui/badge";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { humaniseToolName } from "@/lib/tool-presentation";
-import { cn } from "@/lib/utils";
 
 export type ToolProps = ComponentProps<typeof Collapsible>;
 

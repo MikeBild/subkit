@@ -13,8 +13,10 @@ import {
   DESKTOP_LOGIN_START_PATH,
   DESKTOP_SESSION_PATH,
 } from "../../auth/index.ts";
+import { currentDeploymentMode } from "../../config/deployment-mode.ts";
 import { getConfig } from "../../config/loader.ts";
 import { DESKTOP_MIN_VERSION_DEFAULT } from "../../config/schema.ts";
+import { LOCAL_UNAVAILABLE_CAPABILITIES } from "../../identity/index.ts";
 import docsJson from "../llms/docs.json" with { type: "text" };
 import llmsFullTxt from "../llms/llms-full.txt" with { type: "text" };
 import { type AppEnv, OPENAPI_INFO } from "../openapi.ts";
@@ -167,6 +169,16 @@ const docsJsonRoute = createRoute({
   },
 });
 
+function localDeploymentFields(): Record<string, { mode: string; unavailable_locally: string[] }> {
+  if (currentDeploymentMode() !== "local_workspace") return {};
+  return {
+    deployment: {
+      mode: "local_workspace",
+      unavailable_locally: [...LOCAL_UNAVAILABLE_CAPABILITIES],
+    },
+  };
+}
+
 export function registerLlmsTxtRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(indexRoute, (c) => c.text(renderIndex(c), 200, RESPONSE_HEADERS));
   app.openapi(wellKnownRoute, (c) => c.text(renderIndex(c), 200, RESPONSE_HEADERS));
@@ -218,6 +230,7 @@ export function registerLlmsTxtRoutes(app: OpenAPIHono<AppEnv>): void {
           feedback_path: DESKTOP_FEEDBACK_PATH,
         },
       },
+      ...localDeploymentFields(),
       capabilities: [
         "health",
         "ready",

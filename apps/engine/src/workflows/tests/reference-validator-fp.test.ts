@@ -1,11 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${…}` tokens are the subject under test — these are intentional placeholders.
-// Regression tests for bare-path validator false positives.
-//
-// Pre-fix the BARE_PATH_RE flagged any dotted identifier as a candidate
-// step reference: `links.self`, `example.com`, `application.json`.
-// The false positives made the LLM rewrite valid transforms in
-// session f00b8d1c. These cases must stay green.
-
 import { describe, expect, test } from "bun:test";
 import { validateStepReferences, validateUnsupportedPlaceholders } from "../reference-validator.ts";
 import type { WorkflowDef } from "../types.ts";

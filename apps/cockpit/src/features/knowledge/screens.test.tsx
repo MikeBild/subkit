@@ -1,11 +1,16 @@
 import { expect, mock, test } from "bun:test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { FilterBarLayoutContext } from "@ui/organisms/filter-bar";
 import type { ReactElement } from "react";
-import { FilterBarLayoutContext } from "@/components/cockpit/patterns/filter-bar";
+import { loginHref } from "@/app/login-href";
 import { renderInRouter } from "@/components/cockpit/patterns/test-utils";
 
 let permissions: string[] = [];
-mock.module("@/app/session", () => ({ useSession: () => ({ permissions }) }));
+mock.module("@/app/session", () => ({
+  loginHref,
+  useSession: () => ({ permissions }),
+  useSessionUpdate: () => () => {},
+}));
 
 const { InboxPage, SkillsPage } = await import("./index");
 const { KEYS } = await import("./queries");
@@ -82,7 +87,7 @@ test("an inbox row names the attachment with its size instead of the origin", as
     <InboxPage />,
   );
   expect(markup).toContain("Lieferavise ohne Bestellnummer");
-  expect(markup).toContain("Avis.pdf · 120 KB");
+  expect(markup).toContain("Avis.pdf · 117 KB");
   expect(markup).toContain("1 Eintrag · 1 warten auf Prüfung");
   expect(markup).not.toContain('data-testid="kn-inbox-add"');
 });

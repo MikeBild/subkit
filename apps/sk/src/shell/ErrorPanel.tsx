@@ -191,7 +191,7 @@ function ValidationPanel({ payload }: { payload: ValidationPayload }): React.Rea
       {payload.errors.slice(0, 8).map((e, idx) => {
         const kind = classifyEngineError(e);
         const headerColor =
-          kind === "provider_limit" || kind === "provider_unavailable"
+          kind === "spend_limit" || kind === "provider_limit" || kind === "provider_unavailable"
             ? tokens.severity.warning
             : tokens.severity.error;
         return (

@@ -3,7 +3,7 @@ import type { Executor } from "../db/client.ts";
 import { connectorDocumentChunks } from "../db/schema/connector_docs.ts";
 import { knowledgeChunks } from "../db/schema/knowledge_sources.ts";
 import { invoke } from "../llm/runtime/invoke.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import type { Citation } from "./citations.ts";
 import { isProductDocId } from "./tools/product-docs.ts";
 
@@ -31,9 +31,7 @@ export function extractQuotedSpans(text: string): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
   const re = /(?:"([^"\n]+)"|“([^”\n]+)”)/g;
-  let m: RegExpExecArray | null;
-  // biome-ignore lint/suspicious/noAssignInExpressions: standard regex exec loop
-  while ((m = re.exec(text)) !== null) {
+  for (const m of text.matchAll(re)) {
     const raw = (m[1] ?? m[2] ?? "").replace(/\s+/g, " ").trim();
     if (raw.length < 8) continue;
     const key = raw.toLowerCase();

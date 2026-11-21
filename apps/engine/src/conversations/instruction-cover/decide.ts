@@ -1,3 +1,4 @@
+import { contentHash } from "../approval-rules/scope.ts";
 import {
   type ActionHints,
   type BoundAction,
@@ -68,8 +69,11 @@ export interface CoverInput {
   readonly timezone: string;
 }
 
-export function actionSignature(action: BoundAction): string {
-  return [action.tool, action.account ?? "", action.target ?? "", ...action.recipients].join("|");
+export function actionSignature(action: BoundAction, content: readonly string[] = []): string {
+  const base = [action.tool, action.account ?? "", action.target ?? "", ...action.recipients];
+  if (action.verb === "send") return base.join("|");
+  const hash = contentHash(content);
+  return [...base, ...(hash ? [`#${hash.slice(0, 16)}`] : [])].join("|");
 }
 
 function refuse(
@@ -164,7 +168,7 @@ export function decideInstructionCover(input: CoverInput): CoverDecision {
     const content = checkContent(collectContent(input.tool, input.args), facts, input.shown ?? []);
     if (!content.ok) return refuse(action, "content_not_given", content.detail);
   }
-  const signature = actionSignature(action);
+  const signature = actionSignature(action, collectContent(input.tool, input.args));
   if (input.used_signatures?.has(signature)) return refuse(action, "already_used");
   return {
     covered: true,

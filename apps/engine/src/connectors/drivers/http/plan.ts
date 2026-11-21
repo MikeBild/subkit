@@ -2,7 +2,7 @@ import { getConfig } from "../../../config/loader.ts";
 import type { CredentialUseSnapshot } from "../../../credentials/index.ts";
 import type { DecryptedCredential } from "../../../credentials/types.ts";
 import type { Db } from "../../../db/client.ts";
-import { log } from "../../../logging/logger.ts";
+import { log } from "../../../logging/index.ts";
 import {
   type AppliedAuthMethod,
   applyAuthMaterial,

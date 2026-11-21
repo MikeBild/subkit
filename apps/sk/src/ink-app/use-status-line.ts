@@ -3,8 +3,8 @@ import type React from "react";
 import { useEffect, useState } from "react";
 import type { StatusSummary } from "../engine-client.ts";
 import {
+  aiBudgetLabel,
   buildStatusLine,
-  type PermissionMode,
   resolveRefreshMs,
   type StatusLineConfig,
   type StatusLineInput,
@@ -33,7 +33,6 @@ interface StatusLineDeps {
   session: SkSessionState;
   statusSnapshot: StatusSummary | null | undefined;
   connectionSnapshot: ConnectionSnapshot | null | undefined;
-  activeMode: PermissionMode;
   resumeSummary: ResumeSummary | null | undefined;
   transientStatusRef: React.MutableRefObject<string | null>;
 }
@@ -47,7 +46,6 @@ export function useStatusLine(deps: StatusLineDeps): string {
     session,
     statusSnapshot,
     connectionSnapshot,
-    activeMode,
     resumeSummary,
     transientStatusRef,
   } = deps;
@@ -71,14 +69,10 @@ export function useStatusLine(deps: StatusLineDeps): string {
         model: model ?? null,
         session_id: session.conversationId,
         turn_tokens: session.usage?.turn_tokens ?? null,
-        remaining_monthly_budget_tokens:
-          session.usage?.remaining_monthly_budget_tokens ??
-          statusSnapshot?.remaining_monthly_budget_tokens ??
-          null,
+        ai_budget: statusSnapshot ? aiBudgetLabel(statusSnapshot.ai_budget) : null,
         tokens_today: statusSnapshot?.tokens_today ?? null,
         connectors_count: statusSnapshot?.connectors_count ?? null,
         status_message: transientStatusRef.current,
-        permission_mode: activeMode,
         cwd: cwdValue,
         git_branch: null,
         timestamp: new Date().toISOString(),
@@ -115,7 +109,6 @@ export function useStatusLine(deps: StatusLineDeps): string {
     cwd,
     statusSnapshot,
     connectionSnapshot,
-    activeMode,
     resumeSummary,
   ]);
 

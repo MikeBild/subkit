@@ -7,6 +7,7 @@ import { SYSTEM_TENANT_ID } from "../audit/types.ts";
 import { _resetConfigForTests, getConfig, loadConfig } from "../config/loader.ts";
 import { runtimeConfigReplicas, runtimeConfigState } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { testEnv } from "../test-helpers/determinism/env.ts";
 import {
   activateRuntimeRevision,
   getRuntimeConfigState,
@@ -26,7 +27,7 @@ let tdb: TestDb;
 let configDir: string;
 
 beforeAll(async () => {
-  process.env.MASTER_KEY = "44".repeat(32);
+  testEnv.MASTER_KEY = "44".repeat(32);
   tdb = await createTestDb("runtime-config-lease-wait");
   configDir = mkdtempSync(join(tmpdir(), "sk-lease-wait-"));
   _resetConfigForTests();

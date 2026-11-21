@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { openPeopleSection, readablePeopleSections } from "@/features/admin";
+import { openApiAccessSection, readableSections } from "@/features/admin/model/api-access-model";
+import { auditFilterFromUrl } from "@/features/audit/model/audit-entries";
 import { attentionFromSearch } from "@/features/connectors";
-import { auditFilterFromUrl } from "@/lib/audit-model";
-import { usageWindowFromUrl } from "@/lib/operations-figures";
+import { filterFromUrl, runsSheetOpen } from "@/features/runs/model/runs-model";
+import { settingsLeafFromUrl } from "@/features/settings/model/settings-model";
+import { usageWindowFromUrl } from "@/features/usage/model/operations-figures";
 import { STATS_WINDOWS } from "@/lib/stats-window";
-import { openApiAccessSection, readableSections } from "@/pages/api-access-model";
-import { filterFromUrl, runsSheetOpen } from "@/pages/runs-model";
-import { settingsLeafFromUrl } from "@/pages/settings-model";
 import {
   API_ACCESS_SECTIONS,
   absolute,
@@ -134,6 +134,7 @@ describe("runs", () => {
     });
     expect(filterFromUrl(query(href))).toEqual({
       workflowId: ID,
+      deviceId: null,
       status: "failed",
       source: "scheduler",
       q: "Monatsreport",
@@ -176,6 +177,7 @@ describe("runs", () => {
     ]);
     expect(filterFromUrl(`?q=foo&status=failed&source=api&workflow_id=${ID}`)).toEqual({
       workflowId: null,
+      deviceId: null,
       status: "all",
       source: "all",
       q: "",
@@ -188,6 +190,7 @@ describe("runs", () => {
     expect(runsHref({ status: "all", source: "all" })).toBe("/?runs=all");
     expect(filterFromUrl(query(runsHref()))).toEqual({
       workflowId: null,
+      deviceId: null,
       status: "all",
       source: "all",
       q: "",

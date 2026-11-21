@@ -131,7 +131,6 @@ describe("read-only versions that must ask a person again", () => {
       "changed_boundary",
       (dag) => {
         const graphql = stepOf(dag, "items").graphql as Record<string, unknown>;
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: an authored runtime placeholder
         graphql.variables = { after: null, owner: { login: "${input.owner}" }, number: 4 };
         return undefined;
       },
@@ -174,7 +173,6 @@ describe("read-only versions that must ask a person again", () => {
       "a query value that is no longer literal",
       "changed_boundary",
       (dag) => {
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: an authored runtime placeholder
         stepOf(dag, "labels").query = { sort: "${input.sort}", direction: "desc" };
         return undefined;
       },
@@ -285,7 +283,6 @@ describe("read-only versions that must ask a person again", () => {
       "an allowlisted header that is no longer literal",
       "changed_boundary",
       (dag) => {
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: an authored runtime placeholder
         stepOf(dag, "repo").headers = { accept: "${input.media_type}" };
         return undefined;
       },

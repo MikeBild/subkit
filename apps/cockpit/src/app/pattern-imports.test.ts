@@ -4,11 +4,9 @@ import { join, relative } from "node:path";
 
 const SRC = join(import.meta.dir, "..");
 
-type Rule = "ui-import" | "ui-direct" | "heading" | "pre" | "dl" | "sheet-content" | "max-w";
+type Rule = "heading" | "pre" | "dl" | "sheet-content" | "max-w";
 
 const RULES: Record<Rule, RegExp> = {
-  "ui-import": /from\s+["']@\/components\/ui\//,
-  "ui-direct": /from\s+["']@ui\/components\/ui\//,
   heading: /<h[123][\s>]/,
   pre: /<pre[\s>]/,
   dl: /<dl[\s>]/,
@@ -48,35 +46,16 @@ function violations(): Record<string, Rule[]> {
 
 const ALLOWED: Record<string, readonly Rule[]> = {
   "features/feedback/feedback-dialog.tsx": ["max-w"],
-  "components/cockpit/automation-grant.tsx": ["ui-import"],
-  "components/cockpit/decision-card.tsx": ["ui-import", "heading", "max-w"],
-  "components/cockpit/diff-card.tsx": ["ui-import", "pre"],
-  "components/cockpit/grant-notices.tsx": ["ui-import"],
-  "components/cockpit/grant-environment.tsx": ["ui-import"],
-  "components/cockpit/grant-workflow-authority.tsx": ["ui-import"],
-  "components/cockpit/icon-button.tsx": ["ui-import"],
-  "components/cockpit/inbound-hook-review-card.tsx": ["ui-import", "heading"],
-  "components/cockpit/run-workflow-dialog.tsx": ["ui-import"],
-  "components/cockpit/schedule-review-card.tsx": ["ui-import", "heading"],
-  "components/cockpit/table-columns.tsx": ["ui-import", "max-w"],
+  "features/decisions/ui/decision-card.tsx": ["heading", "max-w"],
+  "features/workflows/ui/diff-card.tsx": ["pre"],
+  "features/decisions/ui/inbound-hook-review-card.tsx": ["heading"],
+  "features/workflows/ui/schedule-review-card.tsx": ["heading"],
+  "components/cockpit/table-columns.tsx": ["max-w"],
 };
 
-const DIRECT_UI_DEBT: readonly string[] = [
-  "components/cockpit/grant-environment.tsx",
-  "features/knowledge/files.tsx",
-  "features/knowledge/inbox.tsx",
-  "features/knowledge/shell.tsx",
-  "features/knowledge/skills.tsx",
-  "features/knowledge/sources.tsx",
-  "features/operations/approval-limits.tsx",
-  "features/usage/usage-page.tsx",
-];
-
-const CEILING = 12;
-const DIRECT_UI_CEILING = 8;
+const CEILING = 6;
 
 function listed(file: string, rule: Rule): boolean {
-  if (rule === "ui-direct") return DIRECT_UI_DEBT.includes(file);
   return ALLOWED[file]?.includes(rule) ?? false;
 }
 
@@ -95,22 +74,18 @@ describe("pages compose the pattern set", () => {
       ...Object.entries(ALLOWED).flatMap(([file, rules]) =>
         rules.filter((rule) => !found[file]?.includes(rule)).map((rule) => `${file}: ${rule}`),
       ),
-      ...DIRECT_UI_DEBT.filter((file) => !found[file]?.includes("ui-direct")).map(
-        (file) => `${file}: ui-direct`,
-      ),
     ];
-    expect(stale, "remove these entries from ALLOWED or DIRECT_UI_DEBT").toEqual([]);
+    expect(stale, "remove these entries from ALLOWED").toEqual([]);
   });
 
   test("the lists only shrink", () => {
     expect(Object.keys(ALLOWED).length).toBeLessThanOrEqual(CEILING);
-    expect(DIRECT_UI_DEBT.length).toBeLessThanOrEqual(DIRECT_UI_CEILING);
   });
 
   test("the rules reach the files they are meant for", () => {
     const files = scopedFiles().map((file) => relative(SRC, file));
     expect(files).toContain("pages/catalog.tsx");
-    expect(files).toContain("components/cockpit/workflow-page.tsx");
+    expect(files).toContain("features/workflows/ui/workflow-page.tsx");
     expect(files.some((file) => file.includes("/patterns/"))).toBe(false);
   });
 });

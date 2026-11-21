@@ -32,7 +32,6 @@ async function fixture(dynamic = false) {
         method: "PUT",
         url: `${origin}/v1/content/${item}/revisions`,
         headers: { "Content-Type": "text/markdown; charset=utf-8" },
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: actual workflow interpolation
         body: dynamic ? "${input.markdown}" : "# Updated project",
         data_selector: dynamic ? undefined : "$.alternate",
         max_retries: 0,

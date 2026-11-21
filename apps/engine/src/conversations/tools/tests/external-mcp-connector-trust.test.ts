@@ -12,6 +12,7 @@ import {
   type McpClientLike,
 } from "../../../mcp/client/pool.ts";
 import { seedMcpConnector } from "../../../mcp/client/test-fixtures.ts";
+import { testEnv } from "../../../test-helpers/determinism/env.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
 import { seedTenant } from "../../../test-helpers/seed.ts";
 import { freshSignals } from "../../tests/turn-signals.ts";
@@ -57,13 +58,13 @@ let tenant_id: string;
 let actor_id: string;
 let conversation_id: string;
 let connector_id: string;
-const _origDatabaseUrl = process.env.DATABASE_URL;
+const _origDatabaseUrl = testEnv.DATABASE_URL;
 
 beforeAll(async () => {
   __setMcpPoolFactoriesForTests({ makeClient: () => fakeClient });
   ctx = await createTestDb("external-mcp-connector-trust");
   await closeDb();
-  process.env.DATABASE_URL = ctx.url;
+  testEnv.DATABASE_URL = ctx.url;
   tenant_id = (
     await seedTenant(ctx.db, { slug: "t-mcp-trust", display_name: "MCP Connector Trust" })
   ).id;
@@ -94,14 +95,14 @@ afterAll(async () => {
   __setMcpPoolFactoriesForTests(null);
   __resetMcpClientPoolForTests();
   await closeDb();
-  if (_origDatabaseUrl === undefined) delete process.env.DATABASE_URL;
-  else process.env.DATABASE_URL = _origDatabaseUrl;
+  if (_origDatabaseUrl === undefined) delete testEnv.DATABASE_URL;
+  else testEnv.DATABASE_URL = _origDatabaseUrl;
   await ctx.cleanup();
 }, 30_000);
 
 type Exec = (input: Record<string, unknown>) => Promise<{ ok: boolean; data: unknown }>;
 
-async function palette(permission_mode?: "plan") {
+async function palette() {
   __resetMcpClientPoolForTests();
   const events: TurnEvent[] = [];
   const db = ctx.db as unknown as Db;
@@ -116,7 +117,6 @@ async function palette(permission_mode?: "plan") {
     engineClient,
     getDraft: () => ({ workflow: { name: "", steps: [] } }),
     setDraft: async () => {},
-    ...(permission_mode ? { permission_mode } : {}),
   };
   const principal: ResolvedPrincipal = {
     provider: "test",
@@ -166,15 +166,6 @@ describe("external MCP tool — operator trust", () => {
     const data = result.data as Record<string, unknown>;
     expect(data.pending).toBe(true);
     expect(data.status).toBe("awaiting_confirmation");
-    expect(remoteCallToolCalls).toBe(before);
-  });
-
-  test("permission_mode plan still pauses the listed tool", async () => {
-    const before = remoteCallToolCalls;
-    const run = await palette("plan");
-    const result = await run("mcp_examplemcp__search_items")({ q: "x" });
-    const data = result.data as Record<string, unknown>;
-    expect(data.pending).toBe(true);
     expect(remoteCallToolCalls).toBe(before);
   });
 

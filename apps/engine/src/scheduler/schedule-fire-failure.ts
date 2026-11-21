@@ -1,4 +1,4 @@
-import { errorFields, logger } from "../logging/logger.ts";
+import { errorFields, logger } from "../logging/index.ts";
 
 export function isScheduleAdmissionHeldError(error: unknown): error is Error & { code: string } {
   return (

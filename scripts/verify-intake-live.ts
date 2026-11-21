@@ -691,7 +691,7 @@ export async function runIntakeLiveSmoke(
 }
 
 function usage(error: unknown): string {
-  return `${errorText(error)}\nusage: SK_INTAKE_TEST_KEY=… bun run verify:intake-live -- --engine-url <selected-test-tenant-origin> [--allow-writes --test-tenant-id <uuid> --run-id <unique-id> --json <report-path> [--after-confirm --proposal-id <uuid>]]`;
+  return `${errorText(error)}\nusage: SK_INTAKE_TEST_KEY=… bun run verify intake-live -- --engine-url <selected-test-tenant-origin> [--allow-writes --test-tenant-id <uuid> --run-id <unique-id> --json <report-path> [--after-confirm --proposal-id <uuid>]]`;
 }
 
 if (import.meta.main) {

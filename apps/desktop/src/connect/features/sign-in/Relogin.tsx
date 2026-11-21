@@ -1,6 +1,6 @@
+import { Button } from "@ui/atoms/button";
 import { Loader2, LockKeyhole } from "lucide-react";
 import { useSignIn } from "../../adapter/index.ts";
-import { Button } from "../../ui/index.ts";
 import { SignInNotice } from "./SignInNotice.tsx";
 import { useSignInStep } from "./use-sign-in-step.ts";
 

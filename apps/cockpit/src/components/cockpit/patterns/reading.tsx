@@ -1,10 +1,10 @@
+import { Button } from "@ui/atoms/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@ui/atoms/collapsible";
+import { Skeleton } from "@ui/atoms/skeleton";
+import { cn } from "@ui/lib/utils";
 import { ChevronDown } from "lucide-react";
 import type { ReactNode, Ref } from "react";
-import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { cn } from "@/lib/utils";
 import { pageColumn, pageGutter } from "./page";
-import { Skeleton } from "./skeleton";
 
 export const READING_MEASURE = "w-full min-w-0 max-w-[780px]";
 

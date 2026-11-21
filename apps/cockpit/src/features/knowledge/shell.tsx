@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { ConfirmDialog } from "@ui/components/proto/ConfirmDialog";
-import { MarkdownDocument } from "@ui/components/proto/MarkdownDocument";
-import { PageHeader, Panel, type Tone } from "@ui/components/proto/Pill";
-import { EmptyState, IconTile, StatusDot, StatusStrip } from "@ui/components/proto/visual";
+import { IconTile } from "@ui/atoms/icon-tile";
+import { Panel, type Tone } from "@ui/atoms/pill";
+import { StatusDot } from "@ui/atoms/status-dot";
+import { useUi } from "@ui/lib/ui-context";
+import { cn } from "@ui/lib/utils";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -12,10 +13,15 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@ui/components/ui/dropdown-menu";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@ui/components/ui/tabs";
-import { useUi } from "@ui/lib/ui-context";
-import { cn } from "@ui/lib/utils";
+} from "@ui/molecules/dropdown-menu";
+import { EmptyState } from "@ui/molecules/empty-state";
+import { IconButton } from "@ui/molecules/icon-button";
+import { PageHeader } from "@ui/molecules/page-header";
+import { StatusStrip } from "@ui/molecules/status-strip";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@ui/molecules/tabs";
+import { ConfirmDialog } from "@ui/organisms/confirm-dialog";
+import { activeFilterCount, FilterBar, type FilterSelect } from "@ui/organisms/filter-bar";
+import { MarkdownDocument } from "@ui/organisms/markdown-document";
 import {
   ArrowDown,
   ArrowLeft,
@@ -45,37 +51,29 @@ import { apiCall } from "@/api/call";
 import type { PackageKind } from "@/api/packages";
 import { type ChatReferenceSeed, chatNewHref, routerTarget } from "@/app/links";
 import { useSession } from "@/app/session";
-import { CatalogCategories } from "@/components/cockpit/catalog-categories";
-import {
-  CatalogMetadataDialog,
-  useCatalogMetadataActions,
-} from "@/components/cockpit/catalog-metadata";
-import type {
-  CatalogKind,
-  CatalogMetadataRecord,
-} from "@/components/cockpit/catalog-metadata-model";
-import { catalogAICount } from "@/components/cockpit/catalog-origin-model";
-import { IconButton } from "@/components/cockpit/icon-button";
-import { usePackageActions } from "@/components/cockpit/package-dialogs";
 import type { ActionMenuItem } from "@/components/cockpit/patterns/action-menu";
 import { Button } from "@/components/cockpit/patterns/controls";
 import { DataState } from "@/components/cockpit/patterns/data-state";
 import { priorityClass } from "@/components/cockpit/patterns/data-table";
 import { FactList } from "@/components/cockpit/patterns/fact-list";
-import {
-  activeFilterCount,
-  FilterBar,
-  type FilterSelect,
-} from "@/components/cockpit/patterns/filter-bar";
 import { measureClass } from "@/components/cockpit/patterns/measure";
 import { PageTitle } from "@/components/cockpit/patterns/page-title";
 import { RecordSheet } from "@/components/cockpit/patterns/record-sheet";
 import { SectionSubheading } from "@/components/cockpit/patterns/section";
 import { SideDetails, SideSection } from "@/components/cockpit/patterns/side-details";
+import type { CatalogKind, CatalogMetadataRecord } from "@/features/catalog";
+import {
+  CatalogCategories,
+  CatalogMetadataDialog,
+  catalogAICount,
+  useCatalogMetadataActions,
+} from "@/features/catalog";
+import { lineDiff, relTime } from "@/features/knowledge/model/knowledge";
+import { usePackageActions } from "@/features/settings";
+import { humanizeCategory } from "@/features/workflows/model";
 import { LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { useSearchParamState } from "@/lib/use-search-param-state";
-import { humanizeCategory } from "@/lib/workflow-category";
 import {
   type ColumnFit,
   type ColumnOption,
@@ -88,7 +86,6 @@ import {
   type SortOrder,
   toggleColumn,
 } from "./list-model";
-import { lineDiff, relTime } from "./model";
 import type { UseRow } from "./uses-model";
 
 export { PageHeader, Panel };
@@ -615,7 +612,7 @@ export function StatusCell({ tone, label }: { tone: Tone; label: string }) {
   );
 }
 
-export interface Fact {
+export interface DetailFact {
   label: string;
   value: ReactNode;
   mono?: boolean;
@@ -642,7 +639,7 @@ export function DetailShell({
   strip: { tone: Tone; text: ReactNode; action?: ReactNode };
   menu: ReactNode;
   tabs: { id: string; label: string; content: ReactNode }[];
-  facts: Fact[];
+  facts: DetailFact[];
   tab?: string;
   onTab?: (v: string) => void;
   actions?: ReactNode;
@@ -698,7 +695,7 @@ export function DetailShell({
   );
 }
 
-export function TechFacts({ facts }: { facts: Fact[] }) {
+export function TechFacts({ facts }: { facts: DetailFact[] }) {
   const { t } = useI18n();
   return (
     <SideSection title={t("kn.technical")} testId="kn-facts">
@@ -729,12 +726,17 @@ export function ConfirmDelete({
   const { t } = useI18n();
   return (
     <ConfirmDialog
+      destructive
+      testId="kn-delete-confirm"
       open={open}
       onOpenChange={onOpenChange}
       title={t("kn.deleteTitle", { name })}
-      body={warning ?? t("kn.deleteBody")}
-      action={t("kn.delete")}
-      onConfirm={onConfirm}
+      consequence={warning ?? t("kn.deleteBody")}
+      confirmLabel={t("kn.delete")}
+      onConfirm={() => {
+        onOpenChange(false);
+        onConfirm();
+      }}
     />
   );
 }
@@ -968,11 +970,12 @@ export function VersionsTab({
         )}
       </RecordSheet>
       <ConfirmDialog
+        testId="kn-restore-confirm"
         open={!!confirm}
         onOpenChange={(v) => !v && setConfirm(null)}
         title={confirm ? t("kn.restoreTitle", { n: confirm.v }) : ""}
-        body={t("kn.restoreBody")}
-        action={t("kn.restore")}
+        consequence={t("kn.restoreBody")}
+        confirmLabel={t("kn.restore")}
         onConfirm={() => {
           if (confirm) onRestore(confirm.key);
           setConfirm(null);

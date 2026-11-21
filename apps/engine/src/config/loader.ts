@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { z } from "zod";
+import { envSnapshot, readEnv } from "../env.ts";
 import { isModelSettingLeaf, modelProviderMismatch } from "../llm/model-catalog-view.ts";
 import {
   ConfigLoaderError,
@@ -10,9 +11,10 @@ import {
   ValidationError,
 } from "./errors.ts";
 import { parseConfigDocument, safeParseConfigDocument } from "./non-removable-scopes.ts";
+import { applyLocalWorkspaceProfile } from "./process-bindings.ts";
 import { inspectRetiredMcpSections, retiredSectionMessage } from "./retired-sections.ts";
-import type { Config } from "./schema.ts";
-import { dottedPath, findLeafByPath, listConfigLeaves } from "./walk.ts";
+import { type Config, DEPLOYMENT_MODES, type DeploymentMode } from "./schema.ts";
+import { dottedPath, findLeafByPath, listConfigLeaves, setDeep } from "./walk.ts";
 
 export type SourceTag = "override" | "tenant" | "global" | "default";
 
@@ -45,18 +47,6 @@ export {
   ValidationError,
 } from "./errors.ts";
 
-function setDeep(target: Record<string, unknown>, leafPath: string[], value: unknown): void {
-  let cursor = target;
-  for (let i = 0; i < leafPath.length - 1; i += 1) {
-    const segment = leafPath[i] as string;
-    if (typeof cursor[segment] !== "object" || cursor[segment] === null) {
-      cursor[segment] = {};
-    }
-    cursor = cursor[segment] as Record<string, unknown>;
-  }
-  cursor[leafPath[leafPath.length - 1] as string] = value;
-}
-
 function getDeep(source: Record<string, unknown>, leafPath: string[]): unknown {
   let cursor: unknown = source;
   for (const segment of leafPath) {
@@ -64,6 +54,18 @@ function getDeep(source: Record<string, unknown>, leafPath: string[]): unknown {
     cursor = (cursor as Record<string, unknown>)[segment];
   }
   return cursor;
+}
+
+export const DEPLOYMENT_MODE_ENV = "SUBKIT_DEPLOYMENT_MODE";
+
+function deploymentModeSeed(env: Record<string, string | undefined>): DeploymentMode {
+  const raw = env[DEPLOYMENT_MODE_ENV]?.trim().toLowerCase();
+  if (!raw) return "server";
+  if (!(DEPLOYMENT_MODES as readonly string[]).includes(raw))
+    throw new ConfigLoaderError(
+      `${DEPLOYMENT_MODE_ENV} must be server or local_workspace; got "${env[DEPLOYMENT_MODE_ENV]}"`,
+    );
+  return raw as DeploymentMode;
 }
 
 function collectBootstrapEnvSeeds(
@@ -89,6 +91,19 @@ function collectBootstrapEnvSeeds(
   ];
   for (const [envKey, leaf] of objectStoreBindings) {
     if (env[envKey]) setDeep(seeds, ["storage", "object_store", leaf], env[envKey]);
+  }
+  if (env.OBJECT_STORAGE_BACKEND) {
+    const backend = env.OBJECT_STORAGE_BACKEND.trim().toLowerCase();
+    if (backend !== "s3" && backend !== "filesystem") {
+      throw new ConfigLoaderError(
+        `OBJECT_STORAGE_BACKEND must be s3 or filesystem; got "${env.OBJECT_STORAGE_BACKEND}"`,
+      );
+    }
+    setDeep(seeds, ["storage", "backend"], backend);
+  }
+  setDeep(seeds, ["deployment", "mode"], deploymentModeSeed(env));
+  if (env.OBJECT_STORAGE_ROOT) {
+    setDeep(seeds, ["storage", "filesystem", "root"], env.OBJECT_STORAGE_ROOT);
   }
   const pathStyle = env.OBJECT_STORAGE_PATH_STYLE ?? env.OBJECT_STORAGE_FORCE_PATH_STYLE;
   if (
@@ -271,7 +286,7 @@ function mirrorGenericLlmKey(
 export async function loadConfig(
   opts: { env?: Record<string, string | undefined>; configPathOverride?: string } = {},
 ): Promise<Config> {
-  const env = opts.env ?? (process.env as Record<string, string | undefined>);
+  const env = opts.env ?? envSnapshot();
   const statelessRuntime = env.NODE_ENV === "production" && opts.configPathOverride === undefined;
   const configPath = statelessRuntime
     ? "<postgresql-runtime-config>"
@@ -287,6 +302,10 @@ export async function loadConfig(
     deepMergeReplaceArrays({} as Record<string, unknown>, seeds),
     fileObj,
   ) as Record<string, unknown>;
+  mergedObj.deployment = {
+    ...((mergedObj.deployment as object | undefined) ?? {}),
+    mode: deploymentModeSeed(env),
+  };
 
   const databaseUrlInConfig = (mergedObj.database as Record<string, unknown> | undefined)?.url;
   const databaseUrlInEnv = env.DATABASE_URL;
@@ -339,6 +358,7 @@ export async function loadConfig(
   }
 
   mirrorGenericLlmKey(parsed);
+  applyLocalWorkspaceProfile(parsed);
 
   let needsPersist = false;
   let generatedSessionSecret = false;
@@ -481,7 +501,9 @@ export function installRuntimeConfig(document: unknown): Config {
     throw new ConfigLoaderError("installRuntimeConfig() called before loadConfig()");
   }
   const parsed = parseConfigDocument(document);
+  parsed.deployment.mode = _state.config.deployment.mode;
   mirrorGenericLlmKey(parsed);
+  applyLocalWorkspaceProfile(parsed);
   _state.config = parsed;
   _state.globalSourceMap = buildSourceMap(parsed as unknown as Record<string, unknown>);
   _state.pendingRestartKeys.clear();
@@ -559,7 +581,7 @@ export async function setConfigKey(
   const validatedValue = parseResult.data;
 
   const requiresRestart = !!leaf.meta.requiresRestart;
-  if (requiresRestart && process.env.NODE_ENV === "production" && !opts.force) {
+  if (requiresRestart && readEnv("NODE_ENV") === "production" && !opts.force) {
     throw new RestartRequiredError(
       `${leafPath.join(".")} requires a restart in production. Re-run with the --force flag ` +
         `(sk settings set … --force) to apply it now; the write takes effect in this process ` +

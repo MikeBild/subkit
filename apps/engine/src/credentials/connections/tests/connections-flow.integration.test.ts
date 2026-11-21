@@ -4,10 +4,10 @@ import { loadConnectorSystem } from "../../../connectors/system.ts";
 import {
   auditLog,
   connectors,
-  credentials,
   events,
   outboundConnections,
   runtimeSecretVersions,
+  vaultItems,
 } from "../../../db/schema/index.ts";
 import { listSecretVersions } from "../../../runtime-config/service.ts";
 import { createWorkflow } from "../../../workflows/service.ts";
@@ -170,7 +170,6 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
   test("used_by counts the live workflows of each connector, by id and by placeholder", async () => {
     for (const [slug, step] of [
       ["probe-by-id", { connector_id: connectorId, path: "/whoami" }],
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: the workflow's own placeholder syntax
       ["probe-by-placeholder", { url: "${connector.probe-api.base_url}/whoami" }],
     ] as const) {
       const created = await createWorkflow(
@@ -545,9 +544,9 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
       registry.find((s) => s.name === names.access)?.versions.every((v) => v.revoked_at !== null),
     ).toBe(true);
     const [cred] = await server.db
-      .select({ connection_id: credentials.connection_id })
-      .from(credentials)
-      .where(eq(credentials.connector_id, connectorId));
+      .select({ connection_id: vaultItems.connection_id })
+      .from(vaultItems)
+      .where(eq(vaultItems.connector_id, connectorId));
     expect(cred?.connection_id).toBeNull();
     const summary = await api(`/v1/connectors/${connectorId}/credential`);
     expect(await summary.json()).toMatchObject({ mode: "oauth2", connection: null });

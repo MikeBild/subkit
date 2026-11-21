@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { dictionary, type MessageKey, messageKeys } from "../../shared/i18n.ts";
-import type { CheckResult, CheckStatus, ConnectState, ProfileSummary } from "../../shared/ipc.ts";
+import {
+  type CheckResult,
+  type CheckStatus,
+  type ConnectState,
+  LOCAL_UNAVAILABLE,
+  type ProfileSummary,
+} from "../../shared/ipc.ts";
 import {
   chooseWorkspace,
   completeStep,
@@ -20,6 +26,7 @@ import {
   INITIAL_FLOW,
   type Outcome,
   type Problem,
+  permissionSetupFor,
   type Screen,
   screenFor,
   signInFor,
@@ -87,6 +94,12 @@ function connectState(patch: Partial<ConnectState> = {}): ConnectState {
     signedIn: null,
     onboarding: NO_ONBOARDING,
     update: { phase: "disabled" },
+    permissions: {
+      supported: true,
+      permissions: { accessibility: false, screen: false, restartPending: false },
+      lost: [],
+    },
+    local: LOCAL_UNAVAILABLE,
     ...patch,
   };
 }
@@ -388,6 +401,51 @@ describe("connect flow: notices from the main process", () => {
 
   test("the settings view wins over every step", () => {
     expect(screenFor(connectState({ view: "settings" }), INITIAL_FLOW).kind).toBe("settings");
+  });
+
+  test("the permission setup shows both cards outside the steps", () => {
+    const screen = screenFor(connectState({ view: "permissions" }), INITIAL_FLOW);
+    expect(screen).toEqual({
+      kind: "permissions",
+      setup: {
+        supported: true,
+        cards: [
+          { key: "accessibility", granted: false, restart: false },
+          { key: "screen", granted: false, restart: false },
+        ],
+        done: false,
+        lost: false,
+      },
+    });
+    expect(frameFor(screen)).toEqual({
+      dots: { visible: false, current: 0, total: 6 },
+      settingsOpen: false,
+    });
+  });
+
+  test("a granted Screen Recording waits for the restart and a lost permission is flagged", () => {
+    expect(
+      permissionSetupFor({
+        supported: true,
+        permissions: { accessibility: true, screen: true, restartPending: true },
+        lost: ["accessibility"],
+      }),
+    ).toEqual({
+      supported: true,
+      cards: [
+        { key: "accessibility", granted: true, restart: false },
+        { key: "screen", granted: false, restart: true },
+      ],
+      done: false,
+      lost: true,
+    });
+    expect(
+      permissionSetupFor({
+        supported: false,
+        permissions: { accessibility: true, screen: true, restartPending: false },
+        lost: [],
+      }),
+    ).toMatchObject({ supported: false, done: true, lost: false });
   });
 });
 

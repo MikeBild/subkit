@@ -1,10 +1,8 @@
 import type { components } from "@cli-core/engine-api/openapi";
-import type { TranslationKey } from "@/lib/i18n";
+import type { Translate, TranslationKey } from "@/lib/i18n";
 import { type CatalogLabel, catalogLabel } from "@/lib/machine-label";
 
 type RefusalReason = NonNullable<components["schemas"]["ExecutionOutcome"]["refusal_reason"]>;
-
-type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 
 export const REFUSAL_REASON_KEYS = {
   not_json_raw: "refusal.reason.not_json_raw",

@@ -6,6 +6,8 @@ export const en: UiDict = {
     next: "Next",
     cancel: "Cancel",
     close: "Close",
+    filters: "Filters",
+    applyFilters: "Apply filters",
     retry: "Try again",
     remove: "Remove",
     add: "Add",
@@ -14,97 +16,7 @@ export const en: UiDict = {
     step: (a, b) => `Step ${a} of ${b}`,
   },
   err: {
-    causes: {
-      auth_failed: "Sign-in rejected",
-      timeout: "Timed out",
-      schema_mismatch: "Unexpected response shape",
-      connector_missing: "Connector missing",
-      connector_unavailable: "Connector unavailable",
-      budget_exhausted: "Token budget used up",
-      approval_mismatch: "Approval no longer matches",
-      upstream_error: "Error in external system",
-      rate_limited: "Provider rate limit reached",
-      version_unsupported: "Version not supported",
-      unclassified: "Not classified",
-    },
-    cases: {
-      unreachable: {
-        title: "Server not reachable",
-        body: "SubKit got no response at this address. Nothing was changed.",
-      },
-      tooOld: {
-        title: "Version 9.2.0 is not supported",
-        body: "This app needs 10.20 or newer. Nothing was changed.",
-      },
-      signinCancelled: {
-        title: "Sign-in canceled",
-        body: "The sign-in was not completed in the browser. You are not signed in yet; nothing was changed.",
-      },
-      session: {
-        title: "Sign-in expired",
-        body: "Your session has expired. Existing approvals stay in place until you sign in again.",
-      },
-      keyRejected: {
-        title: "Sign-in rejected",
-        body: "The provider did not accept this API key. The workspace has not been created yet.",
-      },
-      tooBig: {
-        title: "File is larger than 5 MB",
-        body: "This file was not uploaded. The other files are not affected.",
-      },
-      duplicate: {
-        title: "File already exists",
-        body: "Another file has exactly this content. It was not added again.",
-      },
-      feedbackFailed: {
-        title: "Feedback not sent",
-        body: "Your draft is saved and was not discarded. You can try again right away.",
-      },
-      offline: {
-        title: "Server offline",
-        body: "SubKit can’t run anything right now. New messages wait in the queue; nothing was changed.",
-      },
-      runFailed: {
-        title: "Run failed",
-        body: "Gmail rejected the sign-in. Completed steps stay; no further steps ran and nothing was filed.",
-      },
-      taskFailed: {
-        title: "Task failed",
-        body: "The run got stuck on a step. Nothing was changed without your approval.",
-      },
-      reauth: {
-        title: "Sign-in expired",
-        body: "Workflows using this connector are paused. Nothing was changed.",
-      },
-      skillConflict: {
-        title: "Approval no longer matches",
-        body: "Someone changed the skill in the meantime. Your version was not saved.",
-      },
-      pageFailed: {
-        title: "This page couldn’t be shown",
-        body: "The data for this view didn’t arrive. Nothing was changed.",
-      },
-      autoPaused: {
-        title: "Paused automatically",
-        body: "5 runs in a row failed for the same cause. Nothing was changed.",
-      },
-      runApproval: {
-        title: "Run failed",
-        body: "The approval no longer covers this run. The run didn’t send anything.",
-      },
-    },
-    remedies: {
-      retry: "Try again",
-      relogin: "Sign in again",
-      checkApproval: "Review approval",
-      fixInChat: "Fix in chat",
-      askAdmin: "Ask admin",
-      overview: "Go to overview",
-      reload: "Reload",
-      examples: "Use example",
-      chooseOther: "Choose another file",
-      openExisting: "Open existing file",
-    },
+    overview: "Go to overview",
     tech: "Technical detail",
     cause: "Cause",
     code: "Code",
@@ -118,9 +30,13 @@ export const en: UiDict = {
     askedAdmin: "Your admin has been notified.",
     unknown: {
       title: "That didn’t work",
-      body: "SubKit couldn’t finish this step. Nothing was changed.",
+      body: "This step couldn’t be finished. Nothing was changed.",
     },
     reportText: (title, details) => `Error: ${title}\n\n${details}`,
+  },
+  confirm: {
+    title: (object, verb) => `${verb} ${object}?`,
+    action: "Confirm",
   },
   approval: {
     wants: "Wants to do this",
@@ -152,12 +68,10 @@ export const en: UiDict = {
       link: "Link",
       code: "Code",
       ref: "@ Insert reference",
-      refSearch: "Search files, skills or sources …",
-      refGroups: { file: "Files", skill: "Skills", source: "Sources" },
       refNone: "Nothing found",
       view: "View:",
       modes: { write: "Write", split: "Split", preview: "Preview" },
-      footer: "Markdown · @ inserts a reference to files, skills or sources",
+      footer: "Markdown",
       chars: (n: number) => `${n} characters`,
       empty: "Nothing to see yet.",
       linkText: "Link text",

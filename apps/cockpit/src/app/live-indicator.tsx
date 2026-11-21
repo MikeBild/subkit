@@ -1,7 +1,7 @@
-import { Pill, type Tone } from "@ui/components/proto/Pill";
+import { Pill, type Tone } from "@ui/atoms/pill";
+import { cn } from "@ui/lib/utils";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
-import { cn } from "@/lib/utils";
 import type { LiveStatus } from "./live-events";
 
 export const LIVE_TONE: Record<LiveStatus, Tone> = {

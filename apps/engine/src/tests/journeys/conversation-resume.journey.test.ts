@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { connectors, conversations, workflows } from "../../db/schema/index.ts";
+import { writeSetupPreferences } from "../../identity/setup-preferences.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
@@ -10,6 +11,11 @@ let pendingElicitationId = "";
 
 beforeAll(async () => {
   ctx = await createJourneyCtx("conv-resume");
+  await writeSetupPreferences(
+    ctx.db,
+    { tenant_id: ctx.tenantId, user_id: ctx.userId },
+    { ask_before_writing: true },
+  );
   const [row] = await ctx.db
     .insert(connectors)
     .values({
@@ -63,7 +69,6 @@ describe("conversation resume", () => {
       body: JSON.stringify({
         connector_id: connectorId,
         initial_message: "list users from the api",
-        permission_mode: "ask",
       }),
     });
     expect(createRes.status).toBe(201);
@@ -113,7 +118,6 @@ describe("conversation resume", () => {
       body: JSON.stringify({
         connector_id: connectorId,
         initial_message: "list users from the api (resume flow)",
-        permission_mode: "ask",
       }),
     });
     expect(createRes.status).toBe(201);

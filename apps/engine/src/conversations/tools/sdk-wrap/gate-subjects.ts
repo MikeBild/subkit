@@ -2,7 +2,7 @@ import { parseFileId } from "../../../api/files-schemas.ts";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import type { Executor } from "../../../db/client.ts";
 import { resolvedFromRow } from "../../../files/resolver.ts";
-import { findReadyFileByHash, listExecutionDataFileSizes } from "../../../files/service.ts";
+import { findReadyFileByHash, listExecutionDataFileSizes } from "../../../files/service/index.ts";
 import { loadStoredPackageArchive, previewPackageImport } from "../../../identity/index.ts";
 import { getIntakeItemsForReview } from "../../../knowledge/index.ts";
 import { getSkillCandidatesForReview } from "../../../skill-candidates/index.ts";

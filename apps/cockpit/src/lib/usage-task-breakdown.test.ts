@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { CATALOGS, LOCALES } from "@/lib/i18n";
-import { llmStatsQuery, windowBounds } from "@/lib/operations-figures";
+import { llmStatsQuery, windowBounds } from "@/features/usage/model/operations-figures";
 import {
   BREAKDOWN_AXIS,
   BREAKDOWN_DIMS,
@@ -9,7 +8,8 @@ import {
   CONSUMPTION_AXES,
   isBreakdownDim,
   llmWindow,
-} from "@/lib/usage-model";
+} from "@/features/usage/model/usage-model";
+import { CATALOGS, LOCALES } from "@/lib/i18n";
 
 const envelope = (groups: unknown[]) => ({
   totals: { calls: { total: 10, by_result: {} }, tokens: { prompt: 0, total: 1000 } },

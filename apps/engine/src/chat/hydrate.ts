@@ -1,10 +1,10 @@
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { getConfig } from "../config/loader.ts";
-import { decryptSecret } from "../crypto/aes-gcm.ts";
+import { decryptSecret } from "../crypto/index.ts";
 import type { Db } from "../db/client.ts";
 import { chatWorkspaces } from "../db/schema/index.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { chatWorkspaceAad } from "./api.ts";
 import { GoogleChatAdapter } from "./google/adapter.ts";
 import type { ChatAdapterRegistry } from "./registry.ts";

@@ -60,7 +60,7 @@
     "CUI-SEV-2": {
       "enforced_by": [
         "apps/cockpit/src/components/cockpit/table-columns.test.ts",
-        "apps/cockpit/src/lib/usage-model.test.ts"
+        "apps/cockpit/src/features/usage/model/usage-model.test.ts"
       ]
     },
     "CUI-LOAD-1": {

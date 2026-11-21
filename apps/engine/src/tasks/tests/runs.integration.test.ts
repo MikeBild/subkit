@@ -92,7 +92,6 @@ describe("tasks/service starting runs", () => {
       playbook_revision: 1,
     });
     expect((conversation.draft as { session?: Record<string, unknown> }).session).toMatchObject({
-      permission_mode: "auto",
       task_run: {
         task_id: task.id,
         task_run_id: run.id,

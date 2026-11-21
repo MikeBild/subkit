@@ -31,6 +31,7 @@ import {
   type TaskCreateInput,
   type TaskServiceDeps,
 } from "../../tasks/index.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
 import { TASK_RUN_TURN_QUEUE } from "../queues.ts";
 import { createQueueCtx, type QueueTestCtx } from "../tests/setup.ts";
@@ -52,7 +53,7 @@ export const GOAL = "Send the weekly report";
 
 export function useTaskRunQueue(label: string): void {
   beforeAll(async () => {
-    process.env.LLM_PROVIDER = "mock";
+    testEnv.LLM_PROVIDER = "mock";
     await ensureTestConfig();
     resetMockProvider();
     queue = await createQueueCtx(label);

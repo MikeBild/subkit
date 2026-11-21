@@ -1,9 +1,14 @@
 import { expect, mock, test } from "bun:test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { FilterBarLayoutContext } from "@/components/cockpit/patterns/filter-bar";
+import { FilterBarLayoutContext } from "@ui/organisms/filter-bar";
+import { loginHref } from "@/app/login-href";
 import { renderInRouter } from "@/components/cockpit/patterns/test-utils";
 
-mock.module("@/app/session", () => ({ useSession: () => ({ permissions: ["connector:read"] }) }));
+mock.module("@/app/session", () => ({
+  loginHref,
+  useSession: () => ({ permissions: ["connector:read"] }),
+  useSessionUpdate: () => () => {},
+}));
 const { ConnectorsPage } = await import("./index");
 
 const connector = (id: string, name: string, over: Record<string, unknown>) => ({

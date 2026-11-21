@@ -40,7 +40,6 @@ beforeAll(async () => {
     kind: "request",
     method: "POST",
     url: "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow expression
     body: { raw: "${input.body.raw}" },
     max_retries: 0,
   };

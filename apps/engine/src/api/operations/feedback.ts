@@ -4,22 +4,19 @@ import { actorOf } from "../../audit/actor.ts";
 import { AuditAction } from "../../audit/types.ts";
 import {
   base64Ceiling,
+  createFeedbackRateLimiter,
+  existingReport,
+  FEEDBACK_KINDS,
   FEEDBACK_MAX_ATTACHMENT_BYTES,
   FEEDBACK_MAX_ATTACHMENTS,
-  FEEDBACK_MAX_SCREENSHOT_BYTES,
-} from "../../feedback/attachments.ts";
-import { createFeedbackRateLimiter, type FeedbackRateLimiter } from "../../feedback/rate-limit.ts";
-import {
-  FEEDBACK_KINDS,
   FEEDBACK_MAX_RECENT_ERRORS,
+  FEEDBACK_MAX_SCREENSHOT_BYTES,
   FEEDBACK_MESSAGE_MAX,
-} from "../../feedback/report.ts";
-import {
-  existingReport,
+  type FeedbackRateLimiter,
   FeedbackRefusedError,
   type SubmittedFeedback,
   submitFeedback,
-} from "../../feedback/service.ts";
+} from "../../feedback/index.ts";
 import { requireSignedInPerson } from "../../http/middleware/auth.ts";
 import { now } from "../../utils/clock.ts";
 import { defineOperation, type Rejection, reject } from "./index.ts";

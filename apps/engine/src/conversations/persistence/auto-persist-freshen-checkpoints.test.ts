@@ -4,7 +4,7 @@ import {
   connectors,
   conversationElicitations,
   conversations,
-  credentials,
+  vaultItems,
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { TEST_HUMAN_ANSWER } from "../../test-helpers/answer-actor.ts";
@@ -168,8 +168,8 @@ describe("auto-persist · save_connector_draft freshens stale checkpoints", () =
     expect(conn).toBeDefined();
     const creds = await ctx.db
       .select()
-      .from(credentials)
-      .where(eq(credentials.connector_id, conn!.id));
+      .from(vaultItems)
+      .where(eq(vaultItems.connector_id, conn!.id));
     expect(creds).toHaveLength(0);
   });
 });

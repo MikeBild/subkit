@@ -2,6 +2,8 @@ import { isDeepStrictEqual } from "node:util";
 import type { BoundaryGrowth } from "../authority-growth.ts";
 import type { WorkflowEffectManifest } from "../effect-manifest.ts";
 import { type ReadInheritanceEvidence, readEffectInherits } from "../read-inheritance.ts";
+import { deviceGrowth } from "./device-growth.ts";
+import { newVaultUses } from "./vault-uses.ts";
 
 type Effect = WorkflowEffectManifest["effects"][number];
 
@@ -57,7 +59,43 @@ export function projectBoundaryGrowth(
     };
     growth.set(JSON.stringify(entry), entry);
   };
+  const grantedDevices = new Set(granted.effects.map((effect) => effect.device?.device_id));
+  const grantedBindings = granted.effects.map((effect) => effect.device);
+  const grantedSecrets = granted.effects.map((effect) => effect.secrets);
   for (const effect of next.effects) {
+    for (const item of newVaultUses(effect.secrets, grantedSecrets)) {
+      const entry = {
+        kind: "new_secret" as const,
+        connector_id: effect.connector_id,
+        target: effect.target,
+        effect: effect.effect,
+        item,
+      };
+      growth.set(JSON.stringify(entry), entry);
+    }
+    if (effect.device && !grantedDevices.has(effect.device.device_id)) {
+      const entry = {
+        kind: "new_device" as const,
+        connector_id: effect.connector_id,
+        target: effect.target,
+        effect: effect.effect,
+        device_id: effect.device.device_id,
+      };
+      growth.set(JSON.stringify(entry), entry);
+      continue;
+    }
+    if (effect.device)
+      for (const { kind, item } of deviceGrowth(effect.device, grantedBindings)) {
+        const entry = {
+          kind,
+          connector_id: effect.connector_id,
+          target: effect.target,
+          effect: effect.effect,
+          device_id: effect.device.device_id,
+          item,
+        };
+        growth.set(JSON.stringify(entry), entry);
+      }
     const sameConnector = granted.effects.filter(
       (candidate) =>
         candidate.connector_id === effect.connector_id &&

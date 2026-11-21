@@ -63,6 +63,13 @@ const SourceSchema = z.discriminatedUnion("kind", [
       grant_id: z.uuid().nullable(),
     })
     .strict(),
+  z
+    .object({
+      kind: z.literal("device_runner"),
+      device_id: z.uuid(),
+      installation_id: z.uuid(),
+    })
+    .strict(),
 ]);
 
 const AllowListSchema = z.union([z.array(z.string()), z.literal("all")]);
@@ -85,6 +92,7 @@ export function authorizationContextFromPrincipal(
   workflowId?: string | null,
 ): ExecutionAuthorizationContext | null {
   if (!principal?.auth_source) return null;
+  if (principal.auth_source.kind === "device_runner") refuse();
   const proof = matchingWorkflowPermission(
     workflowPermission,
     {
@@ -328,6 +336,7 @@ export async function rehydrateExecutionPrincipal(
   const caller = parsedCaller.data;
   const authorization = parsedAuthorization.data;
   const source = authorization.source;
+  if (source.kind === "device_runner") refuse();
   const identity = await currentIdentity(db, caller);
   let principal: ResolvedPrincipal;
   if (source.kind === "api_key" || source.kind === "token_exchange") {

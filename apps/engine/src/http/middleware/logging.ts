@@ -1,5 +1,5 @@
 import type { MiddlewareHandler } from "hono";
-import { errorFields, log } from "../../logging/logger.ts";
+import { errorFields, log } from "../../logging/index.ts";
 import type { AppEnv } from "../openapi.ts";
 
 const SILENT_PATHS = new Set(["/health", "/health"]);

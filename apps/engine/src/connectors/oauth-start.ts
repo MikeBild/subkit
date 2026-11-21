@@ -237,8 +237,8 @@ export async function beginConnectorOAuthDance(
       {
         tenant_id,
         ...audit_actor,
-        action: AuditAction.CREDENTIAL_OAUTH2_REFRESHED,
-        resource_type: "credential",
+        action: AuditAction.VAULT_ITEM_REFRESHED,
+        resource_type: "vault_item",
         resource_id: connector_id,
         result: "success",
         metadata: { grant_type: "client_credentials_json", connector_id },

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import {
   boolean,
@@ -21,7 +22,7 @@ import {
   timestamps,
 } from "./_common.ts";
 import { outboundConnections } from "./connections.ts";
-import { tenants } from "./identity.ts";
+import { tenants, users } from "./identity.ts";
 
 export const environmentEnum = pgEnum("environment", ["dev", "prod"]);
 export const credentialModeEnum = pgEnum("credential_mode", [
@@ -37,7 +38,6 @@ export const credentialModeEnum = pgEnum("credential_mode", [
   "oauth2_private_key",
   "signed_jwt",
 ]);
-export const endUserCombineModeEnum = pgEnum("end_user_combine_mode", ["merge", "replace"]);
 export const connectorTemplateSourceEnum = pgEnum("connector_template_source", [
   "builtin",
   "tenant",
@@ -216,14 +216,22 @@ export const connectorPromotions = pgTable(
   ],
 );
 
-export const credentials = pgTable(
-  "credentials",
+export const VAULT_ITEM_KINDS = ["connector", "secret", "login", "template_client"] as const;
+export type VaultItemKind = (typeof VAULT_ITEM_KINDS)[number];
+
+export const vaultItems = pgTable(
+  "vault_items",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
-    connector_id: uuid("connector_id")
+    kind: text("kind").$type<VaultItemKind>().notNull().default("connector"),
+    name: text("name")
       .notNull()
-      .references(() => connectors.id, { onDelete: "cascade" }),
+      .$defaultFn(() => `item-${randomUUID().slice(0, 8)}`),
+    description: text("description"),
+    owner_user_id: uuid("owner_user_id").references(() => users.id, { onDelete: "cascade" }),
+    template_slug: text("template_slug"),
+    connector_id: uuid("connector_id").references(() => connectors.id, { onDelete: "cascade" }),
     environment: environmentEnum("environment").notNull(),
     mode: credentialModeEnum("mode").notNull(),
     authority_revision: integer("authority_revision").notNull().default(1),
@@ -240,33 +248,41 @@ export const credentials = pgTable(
     connection_id: uuid("connection_id").references(() => outboundConnections.id, {
       onDelete: "set null",
     }),
+    created_by: uuid("created_by"),
+    rotated_at: timestamp("rotated_at", { withTimezone: true }),
+    last_used_at: timestamp("last_used_at", { withTimezone: true }),
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
   (t) => [
-    uniqueIndex("credentials_connector_env_mode_key").on(t.connector_id, t.environment, t.mode),
-    check("credentials_authority_revision_positive", sql`${t.authority_revision} > 0`),
-    check("credentials_credential_generation_positive", sql`${t.credential_generation} > 0`),
-  ],
-);
-
-export const endUserCredentials = pgTable(
-  "end_user_credentials",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
-    connector_id: uuid("connector_id")
-      .notNull()
-      .references(() => connectors.id, { onDelete: "cascade" }),
-    enduser_ref: text("enduser_ref").notNull(),
-    combine_mode: endUserCombineModeEnum("combine_mode").notNull(),
-    ciphertext: bytea("ciphertext").notNull(),
-    iv: bytea("iv").notNull(),
-    auth_tag: bytea("auth_tag").notNull(),
-    ...timestamps,
-  },
-  (t) => [
-    uniqueIndex("end_user_credentials_unique_key").on(t.tenant_id, t.connector_id, t.enduser_ref),
+    uniqueIndex("vault_items_connector_env_mode_key").on(t.connector_id, t.environment, t.mode),
+    uniqueIndex("vault_items_name_key")
+      .on(
+        t.tenant_id,
+        sql`coalesce(${t.owner_user_id}, '00000000-0000-0000-0000-000000000000'::uuid)`,
+        t.name,
+        t.environment,
+      )
+      .where(sql`${t.deleted_at} IS NULL`),
+    uniqueIndex("vault_items_template_slug_key")
+      .on(t.tenant_id, t.template_slug)
+      .where(sql`${t.kind} = 'template_client'`),
+    index("vault_items_owner_idx").on(t.tenant_id, t.owner_user_id),
+    check("vault_items_authority_revision_positive", sql`${t.authority_revision} > 0`),
+    check("vault_items_credential_generation_positive", sql`${t.credential_generation} > 0`),
+    check(
+      "vault_items_kind_check",
+      sql`${t.kind} IN ('connector', 'secret', 'login', 'template_client')`,
+    ),
+    check(
+      "vault_items_connector_kind_check",
+      sql`(${t.kind} = 'connector') = (${t.connector_id} IS NOT NULL)`,
+    ),
+    check(
+      "vault_items_template_kind_check",
+      sql`(${t.kind} = 'template_client') = (${t.template_slug} IS NOT NULL)`,
+    ),
+    check("vault_items_name_check", sql`${t.name} ~ '^[a-z0-9][a-z0-9_-]{0,62}$'`),
   ],
 );
 

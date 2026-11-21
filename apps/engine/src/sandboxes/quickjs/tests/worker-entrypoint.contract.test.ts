@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { fork } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { testEnv } from "../../../test-helpers/determinism/env.ts";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../../../..");
 const entry = join(root, "src/index.ts");
@@ -45,7 +46,7 @@ test("production engine entry starts the QuickJS IPC worker", async () => {
     cwd: root,
     execPath: process.execPath,
     execArgv: ["--no-install"],
-    env: { ...process.env, NODE_ENV: "test", OTEL_SDK_DISABLED: "true" },
+    env: { ...testEnv, NODE_ENV: "test", OTEL_SDK_DISABLED: "true" },
     stdio: ["ignore", "ignore", "ignore", "ipc"],
   });
   try {

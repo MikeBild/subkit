@@ -209,3 +209,24 @@ export function findLeafByPath(path: string | string[]): ConfigLeaf | undefined 
   const target = Array.isArray(path) ? path.join(".") : path;
   return listConfigLeaves().find((leaf) => dottedPath(leaf) === target);
 }
+
+const UNSAFE_SEGMENTS = new Set(["__proto__", "prototype", "constructor"]);
+
+export function setDeep(
+  target: Record<string, unknown>,
+  path: readonly string[],
+  value: unknown,
+): void {
+  const unsafe = path.find((segment) => UNSAFE_SEGMENTS.has(segment));
+  if (unsafe !== undefined) throw new Error(`config path segment "${unsafe}" is not allowed`);
+  let cursor = target;
+  for (let index = 0; index < path.length - 1; index += 1) {
+    const segment = path[index]!;
+    const child = cursor[segment];
+    if (child === null || typeof child !== "object" || Array.isArray(child)) {
+      cursor[segment] = {};
+    }
+    cursor = cursor[segment] as Record<string, unknown>;
+  }
+  cursor[path.at(-1)!] = value;
+}

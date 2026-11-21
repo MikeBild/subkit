@@ -5,6 +5,7 @@ import {
   __setMcpPoolFactoriesForTests,
   type McpClientLike,
 } from "../mcp/client/pool.ts";
+import { testEnv } from "../test-helpers/determinism/env.ts";
 import {
   fixture,
   remote,
@@ -15,7 +16,7 @@ import {
 useConversationRunAdmissionSetup();
 
 const reads: string[] = [];
-const originalDatabaseUrl = process.env.DATABASE_URL;
+const originalDatabaseUrl = testEnv.DATABASE_URL;
 
 const fakeClient: McpClientLike = {
   async connect() {},
@@ -38,15 +39,15 @@ const fakeClient: McpClientLike = {
 async function withResourceServer<T>(run: () => Promise<T>): Promise<T> {
   __setMcpPoolFactoriesForTests({ makeClient: () => fakeClient });
   await closeDb();
-  process.env.DATABASE_URL = tdb.url;
+  testEnv.DATABASE_URL = tdb.url;
   try {
     return await run();
   } finally {
     __setMcpPoolFactoriesForTests(null);
     __resetMcpClientPoolForTests();
     await closeDb();
-    if (originalDatabaseUrl === undefined) delete process.env.DATABASE_URL;
-    else process.env.DATABASE_URL = originalDatabaseUrl;
+    if (originalDatabaseUrl === undefined) delete testEnv.DATABASE_URL;
+    else testEnv.DATABASE_URL = originalDatabaseUrl;
   }
 }
 

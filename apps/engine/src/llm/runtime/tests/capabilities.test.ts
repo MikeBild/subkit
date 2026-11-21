@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { _resetConfigForTests } from "../../../config/loader.ts";
+import { testEnv } from "../../../test-helpers/determinism/env.ts";
 import {
   chooseFileStrategy,
   getStaticCapabilities,
@@ -51,18 +52,18 @@ describe("getStaticCapabilities", () => {
 describe("getStaticCapabilities — OpenAI-compatible custom base_url gate", () => {
   let savedBaseUrl: string | undefined;
   beforeEach(() => {
-    savedBaseUrl = process.env.OPENAI_BASE_URL;
-    delete process.env.OPENAI_BASE_URL;
+    savedBaseUrl = testEnv.OPENAI_BASE_URL;
+    delete testEnv.OPENAI_BASE_URL;
     _resetConfigForTests();
   });
   afterEach(() => {
-    if (savedBaseUrl === undefined) delete process.env.OPENAI_BASE_URL;
-    else process.env.OPENAI_BASE_URL = savedBaseUrl;
+    if (savedBaseUrl === undefined) delete testEnv.OPENAI_BASE_URL;
+    else testEnv.OPENAI_BASE_URL = savedBaseUrl;
     _resetConfigForTests();
   });
 
   it("disables audio/video for openai when a custom base_url is set", () => {
-    process.env.OPENAI_BASE_URL = "https://llm.internal.example/v1";
+    testEnv.OPENAI_BASE_URL = "https://llm.internal.example/v1";
     const caps = getStaticCapabilities("openai");
     expect(caps.supportsAudio).toBe(false);
     expect(caps.supportsVideo).toBe(false);
@@ -78,12 +79,12 @@ describe("getStaticCapabilities — OpenAI-compatible custom base_url gate", () 
   });
 
   it("does not affect other providers when a custom openai base_url is set", () => {
-    process.env.OPENAI_BASE_URL = "https://llm.internal.example/v1";
+    testEnv.OPENAI_BASE_URL = "https://llm.internal.example/v1";
     expect(getStaticCapabilities("anthropic").supportsImage).toBe(true);
   });
 
   it("propagates the gate through resolveModelCapabilities", async () => {
-    process.env.OPENAI_BASE_URL = "https://llm.internal.example/v1";
+    testEnv.OPENAI_BASE_URL = "https://llm.internal.example/v1";
     const caps = await resolveModelCapabilities("openai", "qwen-3-32b");
     expect(caps.supportsAudio).toBe(false);
   });

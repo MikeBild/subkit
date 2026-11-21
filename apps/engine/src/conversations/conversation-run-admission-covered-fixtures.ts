@@ -10,7 +10,7 @@ import {
 import { EngineClient } from "../engine-client/index.ts";
 import { readRunCoverage } from "../execution/run-coverage.ts";
 import { databaseNow } from "../test-helpers/database-clock.ts";
-import type { PermissionMode, ToolPolicies } from "../tools/types.ts";
+import type { ToolPolicies } from "../tools/types.ts";
 import { createEmptyDraftDocument } from "./authoring-state/index.ts";
 import { actorId, type fixture, remote, tdb } from "./conversation-run-admission-fixtures.ts";
 import { tryFastPath } from "./fast-path.ts";
@@ -25,7 +25,6 @@ import type { DraftDocument } from "./types.ts";
 
 export type Fixture = Awaited<ReturnType<typeof fixture>>;
 export type Path = "generic" | "synthetic" | "fast";
-export type StoredMode = "auto" | "ask" | "plan";
 
 export interface Observed {
   asked: boolean;
@@ -58,20 +57,13 @@ export function authorityOf(f: Fixture) {
   return f.authority;
 }
 
-async function conversationFor(
-  f: Fixture,
-  mode: StoredMode | null = null,
-  toolPolicies: ToolPolicies = {},
-): Promise<string> {
+async function conversationFor(f: Fixture, toolPolicies: ToolPolicies = {}): Promise<string> {
   const [conversation] = await tdb.db
     .insert(conversations)
     .values({
       tenant_id: f.tenant.id,
       status: "active",
       tool_policies: toolPolicies,
-      ...(mode
-        ? { draft: { ...createEmptyDraftDocument(), session: { permission_mode: mode } } }
-        : {}),
     })
     .returning();
   if (!conversation) throw new Error("missing conversation");
@@ -81,7 +73,7 @@ async function conversationFor(
 function toolContext(
   f: Fixture,
   conversation_id: string,
-  mode: PermissionMode,
+  askBeforeWriting: boolean,
   draft: DraftDocument,
 ): ToolContext {
   return {
@@ -92,7 +84,7 @@ function toolContext(
     connector_id: null,
     workflow_id: f.workflow.id,
     principal: principalOf(f),
-    permission_mode: mode,
+    ...(askBeforeWriting ? { ask_before_writing: true } : {}),
     engineClient: new EngineClient({ tenant_id: f.tenant.id, actor_id: actorId, db: tdb.db }),
     getDraft: () => draft,
     setDraft: async () => {},
@@ -121,7 +113,7 @@ export function draftTargeting(f: Fixture): DraftDocument {
 
 export async function startGeneric(
   f: Fixture,
-  mode: PermissionMode,
+  askBeforeWriting: boolean,
   toolPolicies: ToolPolicies = {},
   args: Record<string, unknown> = {},
   draft: DraftDocument = createEmptyDraftDocument(),
@@ -129,12 +121,11 @@ export async function startGeneric(
   const conversation_id = await conversationFor(f);
   const execute = wrapOne(
     runWorkflowTool,
-    toolContext(f, conversation_id, mode, draft),
+    toolContext(f, conversation_id, askBeforeWriting, draft),
     freshSignals(),
     [],
     tdb.db,
     toolPolicies,
-    mode,
   ).execute;
   if (!execute) throw new Error("missing generic workflow tool");
   const result = (await execute(
@@ -146,7 +137,7 @@ export async function startGeneric(
 
 export async function startSynthetic(
   f: Fixture,
-  mode: PermissionMode,
+  askBeforeWriting: boolean,
   toolPolicies: ToolPolicies = {},
   args: Record<string, unknown> = {},
 ): Promise<Started> {
@@ -154,10 +145,9 @@ export async function startSynthetic(
   const tools = await buildSyntheticWorkflowTools({
     db: tdb.db,
     principal: principalOf(f),
-    ctx: toolContext(f, conversation_id, mode, createEmptyDraftDocument()),
+    ctx: toolContext(f, conversation_id, askBeforeWriting, createEmptyDraftDocument()),
     signals: freshSignals(),
     events: [],
-    permissionMode: mode,
     toolPolicies,
   });
   const execute = tools[`wf_${f.workflow.slug}`]?.execute;
@@ -172,10 +162,10 @@ export async function startSynthetic(
 
 export async function startFast(
   f: Fixture,
-  mode: StoredMode | null,
+  askBeforeWriting: boolean,
   toolPolicies: ToolPolicies = {},
 ): Promise<Started> {
-  const conversation_id = await conversationFor(f, mode, toolPolicies);
+  const conversation_id = await conversationFor(f, toolPolicies);
   const hit = await tryFastPath({
     db: tdb.db,
     tenant_id: f.tenant.id,
@@ -185,6 +175,7 @@ export async function startFast(
     surface: "chat",
     answer_actor: { kind: "relay", reason: "model_tool_call" },
     user_message: `run ${f.workflow.slug}`,
+    ...(askBeforeWriting ? { ask_before_writing: true } : {}),
   });
   if (!hit) throw new Error("the fast path did not take the run");
   return { asked: hit.status === "awaiting_input", conversation_id, data: hit.assistant_text };
@@ -204,11 +195,10 @@ export async function observe(f: Fixture, begin: () => Promise<Started>): Promis
   return { asked, writes: live ? "live" : "held" };
 }
 
-export function start(path: Path, f: Fixture, mode: PermissionMode): () => Promise<Started> {
-  if (path === "generic") return () => startGeneric(f, mode);
-  if (path === "synthetic") return () => startSynthetic(f, mode);
-  if (mode === "yolo") throw new Error("the stored conversation mode is never yolo");
-  return () => startFast(f, mode);
+export function start(path: Path, f: Fixture, askBeforeWriting: boolean): () => Promise<Started> {
+  if (path === "generic") return () => startGeneric(f, askBeforeWriting);
+  if (path === "synthetic") return () => startSynthetic(f, askBeforeWriting);
+  return () => startFast(f, askBeforeWriting);
 }
 
 export async function toolCalls(f: Fixture) {

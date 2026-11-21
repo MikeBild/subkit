@@ -1,1 +1,0 @@
-ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "start_steps_hidden_at" timestamp with time zone;

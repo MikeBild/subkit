@@ -45,7 +45,7 @@ function tagExists(tag: string): boolean {
 }
 
 const next = process.argv[2];
-if (!next) die("usage: bun run bump <version>   (e.g. 5.10.0)");
+if (!next) die("usage: bun run release bump <version>   (e.g. 5.10.0)");
 
 const pkgText = readFileSync(PKG, "utf8");
 const pkg = JSON.parse(pkgText) as { version: string };
@@ -97,7 +97,7 @@ console.log(`bump: package.json ${current} → ${next}`);
 }
 
 console.log("bump: regenerating the OpenAPI client …");
-execFileSync("bun", ["run", "gen:openapi-client"], { cwd: REPO, stdio: "inherit" });
+execFileSync("bun", ["run", "gen", "openapi"], { cwd: REPO, stdio: "inherit" });
 
 try {
   execFileSync("git", ["diff", "--exit-code", "packages/cli-core/src/engine-api"], {
@@ -109,4 +109,4 @@ try {
   console.log("bump: OpenAPI artifact updated");
 }
 
-console.log(`\nbump: at ${next}. Commit the change, then: bun run release:tag`);
+console.log(`\nbump: at ${next}. Commit the change, then: bun run release tag`);

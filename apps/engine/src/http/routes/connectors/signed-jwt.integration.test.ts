@@ -6,7 +6,7 @@ import { getCredentialForConnector } from "../../../credentials/service.ts";
 import {
   connectorCredentialSetupGrants,
   connectors,
-  credentials,
+  vaultItems,
 } from "../../../db/schema/index.ts";
 import { now } from "../../../utils/clock.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts";
@@ -61,9 +61,9 @@ async function attach(key: string) {
 async function storedRows() {
   return await server.db
     .select()
-    .from(credentials)
+    .from(vaultItems)
     .where(
-      and(eq(credentials.tenant_id, server.tenantId), eq(credentials.connector_id, connectorId)),
+      and(eq(vaultItems.tenant_id, server.tenantId), eq(vaultItems.connector_id, connectorId)),
     );
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { FEEDBACK_DRAFT_KEY } from "@/features/feedback/model/feedback";
 import { feedbackBridgeOf, within } from "./desktop-bridge";
-import { FEEDBACK_DRAFT_KEY } from "./model";
 import { createFeedbackStore } from "./store";
 
 function environment(

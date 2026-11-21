@@ -50,7 +50,7 @@ async function main(): Promise<void> {
     console.error(
       `judge-calibration: needs a ready anthropic provider (real judge, not mock), got ` +
         `detected=${setup.detected} ok=${setup.ok} missing=${JSON.stringify(setup.missing)}. ` +
-        `Pass the key through the environment of this one command (ANTHROPIC_API_KEY="$(cat key.txt)" bun run eval:judge) ` +
+        `Pass the key through the environment of this one command (ANTHROPIC_API_KEY="$(cat key.txt)" bun run eval judge) ` +
         `or point SUBKIT_CONFIG at a config with llm.provider=anthropic and llm.providers.anthropic.api_key.`,
     );
     process.exit(2);

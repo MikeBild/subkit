@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { setConfigKey } from "../../config/loader.ts";
-import { llmUsage } from "../../db/schema/index.ts";
-import { monthlyUsage } from "../accounting/index.ts";
-import { LlmQuotaExhausted } from "../errors.ts";
+import { llmUsage, tenants } from "../../db/schema/index.ts";
+import { now } from "../../utils/clock.ts";
+import { currentMonthBucket, monthlyUsage } from "../accounting/index.ts";
+import { LlmSpendLimitReached } from "../errors.ts";
 import { runGenerateFlow } from "../flows/generate.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "./setup.ts";
 
@@ -11,7 +11,21 @@ let ctx: LlmTestCtx;
 
 beforeAll(async () => {
   ctx = await createLlmTestCtx("budget");
-  await setConfigKey("tokens.monthly_budget", 200, { tenantId: ctx.tenant_id, force: true });
+  await ctx.testDb.db
+    .update(tenants)
+    .set({ spend_limit_usd: 0.01 })
+    .where(eq(tenants.id, ctx.tenant_id));
+  const at = new Date(now());
+  await ctx.testDb.db.insert(llmUsage).values({
+    tenant_id: ctx.tenant_id,
+    flow: "converse",
+    model: "claude-sonnet-4-5",
+    completion_tokens: 100_000,
+    total_tokens: 100_000,
+    result: "success",
+    month_bucket: currentMonthBucket(at),
+    created_at: at,
+  });
 });
 
 afterAll(async () => {
@@ -19,7 +33,7 @@ afterAll(async () => {
 });
 
 describe("llm/budget", () => {
-  test("trips LlmQuotaExhausted and records a usage row", async () => {
+  test("trips LlmSpendLimitReached and records a usage row", async () => {
     await expect(
       runGenerateFlow(
         {
@@ -29,7 +43,7 @@ describe("llm/budget", () => {
         },
         ctx.testDb.db,
       ),
-    ).rejects.toBeInstanceOf(LlmQuotaExhausted);
+    ).rejects.toBeInstanceOf(LlmSpendLimitReached);
 
     const rows = await ctx.testDb.db
       .select()
@@ -37,7 +51,7 @@ describe("llm/budget", () => {
       .where(and(eq(llmUsage.tenant_id, ctx.tenant_id), eq(llmUsage.result, "quota_exhausted")));
     expect(rows.length).toBeGreaterThanOrEqual(1);
     expect(rows[0]?.result).toBe("quota_exhausted");
-    expect(rows[0]?.error).toBe("llm_quota_exhausted");
+    expect(rows[0]?.error).toBe("llm_spend_limit_reached");
   });
 
   test("a refused call spends nothing: the month's usage does not move, retry after retry", async () => {
@@ -48,7 +62,7 @@ describe("llm/budget", () => {
           { tenant_id: ctx.tenant_id, description: "list users", connector_id: ctx.connector_id },
           ctx.testDb.db,
         ),
-      ).rejects.toBeInstanceOf(LlmQuotaExhausted);
+      ).rejects.toBeInstanceOf(LlmSpendLimitReached);
     }
     expect(await monthlyUsage(ctx.tenant_id, ctx.testDb.db)).toBe(before);
     const rows = await ctx.testDb.db

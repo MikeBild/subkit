@@ -8,12 +8,13 @@ import {
   tenants,
 } from "../../db/schema/index.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
 
 beforeAll(async () => {
-  process.env.LLM_PROVIDER = "mock";
+  testEnv.LLM_PROVIDER = "mock";
   resetMockProvider();
   srv = await createHttpTestServer("conversation-llm-errors");
   await srv.db
@@ -27,7 +28,7 @@ afterAll(async () => {
 });
 
 describe("POST /v1/conversations provider-limit handling", () => {
-  test("returns 429 llm_provider_limited instead of a generic 500", async () => {
+  test("returns 429 llm_provider_quota_exhausted instead of a generic 500", async () => {
     resetMockProvider();
     getMockProvider().setFailure("conv-quota-primary", "quota_exhausted");
 
@@ -48,7 +49,7 @@ describe("POST /v1/conversations provider-limit handling", () => {
       trace_id: string;
       details?: { retry_at?: string };
     };
-    expect(body.code).toBe("llm_provider_limited");
+    expect(body.code).toBe("llm_provider_quota_exhausted");
     expect(body.trace_id).toMatch(/^cli-|^req-|^[a-z0-9-]+$/i);
     expect(body.details?.retry_at).toBe("2026-05-01T00:00:00.000Z");
 
@@ -91,7 +92,7 @@ describe("POST /v1/conversations provider-limit handling", () => {
       .conversation?.id;
     expect(conversationId).toBeString();
     expect(JSON.parse(error?.data ?? "{}")).toMatchObject({
-      code: "llm_provider_limited",
+      code: "llm_provider_quota_exhausted",
       details: { kind: "quota_exhausted", retry_at: "2026-05-01T00:00:00.000Z" },
     });
 
@@ -100,7 +101,7 @@ describe("POST /v1/conversations provider-limit handling", () => {
       .from(conversations)
       .where(eq(conversations.id, conversationId ?? ""));
     expect(row?.last_turn_error).toMatchObject({
-      code: "llm_provider_limited",
+      code: "llm_provider_quota_exhausted",
       kind: "quota_exhausted",
       retry_at: "2026-05-01T00:00:00.000Z",
     });
@@ -169,14 +170,14 @@ describe("POST /v1/conversations provider-limit handling", () => {
     expect(res.status).toBe(200);
     const errorData = (await res.text()).match(/event: error\ndata: (.+)/)?.[1];
     expect(JSON.parse(errorData ?? "{}")).toMatchObject({
-      code: "llm_provider_limited",
+      code: "llm_provider_quota_exhausted",
       details: { kind: "quota_exhausted" },
     });
     const [row] = await srv.db
       .select({ last_turn_error: conversations.last_turn_error })
       .from(conversations)
       .where(eq(conversations.id, conversation.id));
-    expect(row?.last_turn_error).toMatchObject({ code: "llm_provider_limited" });
+    expect(row?.last_turn_error).toMatchObject({ code: "llm_provider_quota_exhausted" });
   });
 
   test("an answer the mock provider wrote is labelled as the mock's, not as the route's model", async () => {

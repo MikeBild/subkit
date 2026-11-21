@@ -300,7 +300,7 @@ export async function fixture(
     kind: "generic" | "synthetic",
     executeWrites?: boolean,
     policy: {
-      permissionMode?: "auto" | "ask" | "plan" | "yolo";
+      askBeforeWriting?: boolean;
       toolPolicies?: ToolPolicies;
     } = {},
   ) {
@@ -317,7 +317,7 @@ export async function fixture(
       connector_id: null,
       workflow_id: workflowId,
       principal,
-      permission_mode: policy.permissionMode ?? null,
+      ...(policy.askBeforeWriting ? { ask_before_writing: true } : {}),
       engineClient: new EngineClient({ tenant_id: tenantId, actor_id: actorId, db: tdb.db }),
       getDraft: () => createEmptyDraftDocument(),
       setDraft: async () => {},
@@ -351,7 +351,7 @@ export async function fixture(
       ctx,
       signals,
       events: [],
-      ...policy,
+      ...(policy.toolPolicies ? { toolPolicies: policy.toolPolicies } : {}),
     });
     const execute = tools[`wf_${slug}`]?.execute;
     if (!execute) throw new Error("missing synthetic workflow tool");

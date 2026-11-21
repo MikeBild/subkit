@@ -30,7 +30,7 @@ A failed run shows a notice with three parts: what happened, one recommended act
 | **Sign-in rejected** | **Sign in again**: reconnect the connector. |
 | **Approval no longer matches**, **Refused before the start** | **Review approval**: check and renew the approval. |
 | **Timed out**, **Aborted**, **Connector unavailable**, **Provider rate limit reached**, **Not read completely**, **Error in the external system** | **Try again** |
-| **Token budget exhausted** | **Ask an administrator** |
+| **AI budget reached** | **Ask an administrator**: an administrator raises the budget under **Settings** › **Usage** or continues this month without a limit. |
 | **Connector missing**, **Unresolved placeholder**, **Answer in an unexpected shape**, **Message malformed**, **Not classified** | **Fix it in the chat**: the chat opens with the question about cause and fix. |
 
 For confidential workflows (`execution_privacy: sensitive`) SubKit stores no failure details. From this version on, such a run still keeps its cause and one fixed sentence that says what to do. Example: “The connected service rejected the sign-in. Reconnect the connector, then run again. Nothing was changed by this step.” When SubKit recognizes no cause, it stays at “Sensitive execution failed.” The engine writes these sentences in English. The Cockpit says them in your language where it knows the cause, the reason for a hold or the failure code: on the overview for held and failing workflows, for a refused rerun and in error notices. In the technical details of a run, over the HTTP API and in `sk` the engine’s English sentence remains. SubKit Desktop notifies in your language too.

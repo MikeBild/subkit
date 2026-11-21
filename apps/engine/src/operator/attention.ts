@@ -21,6 +21,7 @@ import {
   needsApproval,
   projectAttentionItems,
 } from "./core/attention.ts";
+import { withDeviceAttention, withDeviceFacts } from "./device-attention.ts";
 import { withPairApprovals, withPendingPairRequests } from "./pair-approval-attention.ts";
 import { withPausedSchedules } from "./schedule-pause-attention.ts";
 import {
@@ -88,6 +89,7 @@ function tenantFacts(db: Db, tenantId: string, now: Date): Promise<TenantFacts> 
     .then((facts) => withPausedSchedules(db, tenantId, facts))
     .then((facts) => withExecutionEnvironments(db, tenantId, facts))
     .then((facts) => withPendingPairRequests(db, tenantId, facts, now))
+    .then((facts) => withDeviceFacts(db, tenantId, facts, now))
     .then(
       (facts) => {
         if (Object.values(facts.sources).includes("failed")) cache.delete(tenantId);
@@ -151,6 +153,7 @@ export async function buildAttention(
           .then((built) => withPausedSchedules(db, tenantId, built))
           .then((built) => withExecutionEnvironments(db, tenantId, built))
           .then((built) => withPendingPairRequests(db, tenantId, built, now))
+          .then((built) => withDeviceFacts(db, tenantId, built, now))
       : tenantFacts(db, tenantId, now),
   ]);
   const permitted = (source: AttentionSource) => access.get(source)?.any === true;
@@ -204,13 +207,10 @@ export async function buildAttention(
       : null;
   const projected = projectAttentionItems(items, mayReadHookNames);
   const waited = await withWaitingOn(db, tenantId, approver, projected).catch(() => projected);
-  const projectedItems = await withPairApprovals(
-    db,
-    principal,
-    waited,
-    facts.pair_requests,
-    now,
-  ).catch(() => waited);
+  const paired = await withPairApprovals(db, principal, waited, facts.pair_requests, now).catch(
+    () => waited,
+  );
+  const projectedItems = withDeviceAttention(principal, paired, facts);
 
   return {
     schema_version: ATTENTION_SCHEMA_VERSION,

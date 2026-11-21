@@ -10,12 +10,13 @@ import {
 } from "../../../db/schema/index.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../../execution/tests/setup.ts";
 import { buildMcpStubCtx } from "../../../mcp/adapter.ts";
+import { testEnv } from "../../../test-helpers/determinism/env.ts";
 import { emptyRoleId } from "../../../test-helpers/roles.ts";
 import { createEmptyDraftDocument } from "../../authoring-state/index.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../../tests/setup.ts";
 import { runWorkflowTool } from "../engine-api/writes/run-workflow.ts";
 
-const skip = process.env.REQUIRES_PG === "0";
+const skip = testEnv.REQUIRES_PG === "0";
 
 let convCtx: ConversationTestCtx;
 let mock: MockServer;

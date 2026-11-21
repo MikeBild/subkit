@@ -1,15 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${...}` tokens are part of the tested grammar.
-// A transform that tests whether a step exists is not a transform with a typo.
-//
-// Asked to bound a daily rollup's requests, the authoring model was handed
-// four "dangling read" errors for a transform shared with a second workflow —
-// `input.scope.growth_comparison_plan ? … : input.scope.comparison_plan.data`
-// and friends, where the probed ids are missing BY DESIGN in this workflow.
-// Nothing about declaring `s3.scope` or `boundary` required touching that
-// code, but the errors were on the screen, so the model deleted the fallbacks
-// and the workflow quietly stopped being portable. The human reviewing it
-// refused the change and could not say why the model had made it.
-
 import { expect, test } from "bun:test";
 import { validateStepReferences } from "../reference-validator.ts";
 

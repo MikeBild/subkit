@@ -47,7 +47,6 @@ describe("config-labels — pure helpers", () => {
 
   test("formatLabel humanizes the last segment", () => {
     expect(formatLabel("storage.object_store.access_key_id")).toBe("Access key id");
-    expect(formatLabel("repl.permissionMode")).toBe("PermissionMode");
     expect(formatLabel("solo_thing")).toBe("Solo thing");
   });
 

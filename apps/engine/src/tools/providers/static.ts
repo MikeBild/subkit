@@ -63,6 +63,12 @@ import {
   UPDATE_TENANT_BRANDING_TOOL_NAME,
   updateTenantBrandingMcpTool,
 } from "../../mcp/tools/tenant-branding.ts";
+import {
+  getVaultItemMcpTool,
+  invokeGetVaultItem,
+  invokeListVaultItems,
+  listVaultItemsMcpTool,
+} from "../../mcp/tools/vault.ts";
 import type { ToolListFilter, ToolProvider, ToolRegistry } from "../registry.ts";
 import type { ToolCategory, ToolDescriptor, ToolEnvelope } from "../types.ts";
 
@@ -167,6 +173,20 @@ const STATIC_ENTRIES: ReadonlyArray<StaticEntry> = [
     category: listConnectionsCategory,
     rbac: listConnectionsRbac,
     invoke: (ctx) => invokeListConnections(ctx),
+  },
+  {
+    tool: listVaultItemsMcpTool,
+    visibleInMcpModes: null,
+    visibleOnChat: false,
+    category: "tenant_read",
+    invoke: (ctx, args) => invokeListVaultItems(ctx, args),
+  },
+  {
+    tool: getVaultItemMcpTool,
+    visibleInMcpModes: null,
+    visibleOnChat: false,
+    category: "tenant_read",
+    invoke: (ctx, args) => invokeGetVaultItem(ctx, args),
   },
   {
     tool: attentionMcpTool,

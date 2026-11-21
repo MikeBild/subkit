@@ -3,8 +3,14 @@ import { recordExecutionCrashRecovered } from "../audit/recorders/index.ts";
 import { getConfig } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
-import { executionSteps, executions, workflowVersions } from "../db/schema/index.ts";
-import { errorFields, logger } from "../logging/logger.ts";
+import {
+  deviceCommands,
+  executionSteps,
+  executions,
+  workflowVersions,
+} from "../db/schema/index.ts";
+import { closeCommandsOfExecution } from "../devices/channel.ts";
+import { errorFields, logger } from "../logging/index.ts";
 import {
   crashRecoveryOutcome,
   TERMINAL_EXECUTION_STATUSES,
@@ -13,6 +19,9 @@ import {
 import { terminalizeExecutionRow } from "./state.ts";
 
 const DEFAULT_WORKFLOW_TIMEOUT_MS = 6 * 60 * 60 * 1000;
+const DEVICE_STEP_INTERRUPTED = "device_step_interrupted";
+const DEVICE_STEP_INTERRUPTED_MESSAGE =
+  "The engine stopped while a step ran on a device. It is not run again; check on the device what was done.";
 const CRASH_GRACE_MULTIPLIER = 1.5;
 const MAX_RECOVER_PER_PASS = 1000;
 
@@ -25,6 +34,21 @@ interface RecoverCrashedExecutionsOptions {
 interface RecoverCrashedExecutionsResult {
   recovered: number;
   reconciled_steps: number;
+}
+
+async function hasDeviceCommands(
+  db: Db,
+  tenant_id: string,
+  execution_id: string,
+): Promise<boolean> {
+  const [row] = await db
+    .select({ id: deviceCommands.id })
+    .from(deviceCommands)
+    .where(
+      and(eq(deviceCommands.tenant_id, tenant_id), eq(deviceCommands.execution_id, execution_id)),
+    )
+    .limit(1);
+  return Boolean(row);
 }
 
 export function resolveCrashRecoveryThresholdMs(envValue: string | undefined): number | undefined {
@@ -92,8 +116,11 @@ export async function recoverCrashedExecutions(
       },
     );
     if (!outcome) continue;
-    const terminalStatus = outcome.status;
-    const recoveryReason = outcome.reason;
+    const interrupted =
+      outcome.status === "timed_out" && (await hasDeviceCommands(db, row.tenant_id, row.id));
+    const terminalStatus: TerminalExecutionStatus = interrupted ? "failed" : outcome.status;
+    const recoveryReason: string = interrupted ? DEVICE_STEP_INTERRUPTED : outcome.reason;
+    const recoveryMessage = interrupted ? DEVICE_STEP_INTERRUPTED_MESSAGE : outcome.message;
     const thresholdMs = outcome.threshold_ms;
     const ageMs = outcome.age_ms;
 
@@ -107,12 +134,13 @@ export async function recoverCrashedExecutions(
           failure: {
             step_id: null,
             error_code: recoveryReason,
-            error_message: outcome.message,
+            error_message: recoveryMessage,
           },
           expected_statuses: ["running"],
           output_contract: "none",
         });
         if (!updated) return false;
+        if (interrupted) await closeCommandsOfExecution(tx, row.tenant_id, row.id, "lost");
 
         const terminalizedSteps = await tx
           .update(executionSteps)
@@ -130,8 +158,8 @@ export async function recoverCrashedExecutions(
               )::int
             END`,
             error: {
-              code: terminalStatus,
-              message: outcome.message,
+              code: interrupted ? DEVICE_STEP_INTERRUPTED : terminalStatus,
+              message: recoveryMessage,
             },
           })
           .where(

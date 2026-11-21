@@ -14,20 +14,20 @@ import {
   FEEDBACK_MAX_ATTACHMENT_BYTES,
   FEEDBACK_MAX_SCREENSHOT_BYTES,
   FEEDBACK_SCREENSHOT_NAME,
-} from "./attachments.ts";
+} from "./core/attachments.ts";
 import {
   type FeedbackDiagnostics,
   redactFeedbackDiagnostics,
   redactFeedbackFileName,
   redactFeedbackText,
-} from "./redaction.ts";
+} from "./core/redaction.ts";
 import {
   FEEDBACK_CATEGORY,
   type FeedbackKind,
   feedbackBody,
   feedbackTitle,
   type StoredFeedbackFile,
-} from "./report.ts";
+} from "./core/report.ts";
 
 export type FeedbackRefusal =
   | "attachment_invalid"

@@ -1,4 +1,4 @@
-import { log, logger } from "../../../../logging/logger.ts";
+import { log, logger } from "../../../../logging/index.ts";
 import { pauseInputPayload } from "../../../core/tool-invoke.ts";
 import { createElicitation } from "../../../elicitations.ts";
 import type { ToolResultPause } from "../../index.ts";

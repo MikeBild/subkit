@@ -4,7 +4,7 @@ import {
   attentionBadge,
   overviewSections,
   overviewView,
-} from "../../../../cockpit/src/pages/core/attention-projection.ts";
+} from "../../../../cockpit/src/features/overview/model/attention-projection.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx } from "./setup.ts";
 
 let ctx: JourneyCtx;
@@ -111,16 +111,11 @@ describe("a person's first Cockpit sign-in ends on the overview with what needs 
     const first = await cockpit("/v1/identity/me/setup");
     expect(first.status).toBe(200);
     const before = (await first.json()) as { unset: string[]; updated_at: string | null };
-    expect([...before.unset].sort()).toEqual([
-      "approver",
-      "default_chat_mode",
-      "default_environment",
-      "notifications",
-    ]);
+    expect([...before.unset].sort()).toEqual(["approver", "default_environment", "notifications"]);
     expect(before.updated_at).toBeNull();
 
     const answers = {
-      default_chat_mode: "ask",
+      ask_before_writing: true,
       default_environment: "prod",
       approver: { kind: "self" },
       notifications: { mode: "working_hours", from: "08:00", to: "17:00", days: [1, 2, 3, 4, 5] },

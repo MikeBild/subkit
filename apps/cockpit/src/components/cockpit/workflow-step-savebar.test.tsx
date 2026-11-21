@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { render } from "@/components/cockpit/patterns/test-utils";
-import { StepSaveBarView } from "./workflow-step-editor";
+import { StepSaveBarView } from "@/features/workflows/ui/workflow-step-editor";
 
 const noop = () => {};
 

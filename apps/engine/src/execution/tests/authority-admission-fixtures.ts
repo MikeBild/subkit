@@ -3,9 +3,9 @@ import { secretNames } from "../../credentials/connections/service.ts";
 import { upsertCredential } from "../../credentials/service.ts";
 import {
   connectors,
-  credentials,
   outboundConnections,
   tenants,
+  vaultItems,
   workflowExecutionAuthorities,
   workflows,
   workflowVersions,
@@ -90,11 +90,9 @@ export function authorityAdmissionFixtures(state: { readonly ctx: TestDb }) {
       if (!row) throw new Error("missing connection fixture");
       connection = row;
       await state.ctx.db
-        .update(credentials)
+        .update(vaultItems)
         .set({ connection_id: row.id })
-        .where(
-          and(eq(credentials.tenant_id, tenant.id), eq(credentials.connector_id, connector.id)),
-        );
+        .where(and(eq(vaultItems.tenant_id, tenant.id), eq(vaultItems.connector_id, connector.id)));
     }
     const [version] = await state.ctx.db
       .insert(workflowVersions)

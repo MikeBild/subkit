@@ -50,6 +50,7 @@ const EXCLUDED_ROUTES = new Set<string>([
   "GET /v1/diagnostics/logs/stream",
   "GET /v1/events/stream",
   "GET /v1/cockpit/events/stream",
+  "GET /v1/device-runner/stream",
   "GET /v1/audit-log/export.ndjson",
   "POST /v1/extract",
 ]);

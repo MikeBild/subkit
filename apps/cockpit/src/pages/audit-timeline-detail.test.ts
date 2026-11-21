@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { translate } from "@/lib/i18n";
+import type { TimelineEntry } from "@/features/audit/model/audit-timeline-model";
 import {
   auditChangeValue,
   changedFieldsDescription,
   unverifiedApiKeyClient,
-} from "./audit-timeline";
-import type { TimelineEntry } from "./audit-timeline-model";
+} from "@/features/audit/ui/audit-timeline";
+import { translate } from "@/lib/i18n";
 
 describe("Audit details", () => {
   test("states the API client cannot be verified from an ordinary key or a reported user agent", () => {

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import {
   createKnowledgeSource,
   deleteKnowledgeSource,
@@ -7,7 +8,7 @@ import {
 } from "../service.ts";
 import { createKnowledgeTestCtx, type KnowledgeTestCtx } from "./setup.ts";
 
-const skip = process.env.REQUIRES_PG === "0";
+const skip = testEnv.REQUIRES_PG === "0";
 
 let ctx: KnowledgeTestCtx;
 

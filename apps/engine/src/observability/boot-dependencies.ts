@@ -1,9 +1,10 @@
 import { accessSync, constants, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { sql } from "drizzle-orm";
-import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
+import { decryptSecret, encryptSecret } from "../crypto/index.ts";
 import type { Db } from "../db/client.ts";
-import { logger } from "../logging/logger.ts";
+import { readEnv } from "../env.ts";
+import { logger } from "../logging/index.ts";
 
 interface ProbeResult {
   name: string;
@@ -122,13 +123,13 @@ function probeRuntime(): ProbeResult {
 const FALLBACK_STATE_DIRS = ["/etc/subkit", "/var/lib/subkit"];
 
 function isProduction(): boolean {
-  return (process.env.NODE_ENV ?? "").toLowerCase() === "production";
+  return (readEnv("NODE_ENV") ?? "").toLowerCase() === "production";
 }
 
 function resolveStateDirs(): string[] {
   const fromSystemd = [
-    ...(process.env.CONFIGURATION_DIRECTORY?.split(":") ?? []),
-    ...(process.env.STATE_DIRECTORY?.split(":") ?? []),
+    ...(readEnv("CONFIGURATION_DIRECTORY")?.split(":") ?? []),
+    ...(readEnv("STATE_DIRECTORY")?.split(":") ?? []),
   ]
     .map((s) => s.trim())
     .filter((s) => s.length > 0);

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { classifyGraphqlSchemaError } from "../../connectors/drivers/graphql-retry-classify.ts";
 import type { RequestMeta } from "../../execution/types.ts";
-import { graphqlEndpointKey } from "../../schema-versions/service.ts";
+import { graphqlEndpointKey } from "../../schema-versions/index.ts";
 import { classifyPatch } from "../classifier.ts";
 import { analyzeStepFailure } from "../drift-detector.ts";
 import { endpointKeyFromRequestMeta } from "../step-snapshot.ts";

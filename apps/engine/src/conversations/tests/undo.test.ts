@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { appendSnapshot, loadDraft, undoLastSnapshot } from "../draft.ts";
-import { createConversation } from "../service.ts";
+import { createConversation } from "../service/index.ts";
 import type { DraftDocument } from "../types.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
 

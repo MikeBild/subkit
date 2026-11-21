@@ -1,3 +1,4 @@
+import { readEnv } from "../env.ts";
 import { signatureHeader, verifySignatureHeader } from "../webhooks/outbound/signer.ts";
 
 interface SignalTokenClaims {
@@ -8,7 +9,7 @@ interface SignalTokenClaims {
 }
 
 function getSecret(): string {
-  const s = process.env.WAIT_FOR_EVENT_HMAC_SECRET;
+  const s = readEnv("WAIT_FOR_EVENT_HMAC_SECRET");
   if (!s || s.length < 16) {
     throw new Error(
       "WAIT_FOR_EVENT_HMAC_SECRET is unset or too short (>= 16 chars). Set it through the runtime settings API.",
@@ -18,7 +19,7 @@ function getSecret(): string {
 }
 
 function getRotatingSecret(): string | null {
-  const s = process.env.WAIT_FOR_EVENT_HMAC_SECRET_PREVIOUS;
+  const s = readEnv("WAIT_FOR_EVENT_HMAC_SECRET_PREVIOUS");
   return s && s.length >= 16 ? s : null;
 }
 

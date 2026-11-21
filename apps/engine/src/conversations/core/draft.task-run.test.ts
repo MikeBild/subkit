@@ -72,15 +72,15 @@ describe("task run marker normalization", () => {
   test("the marker is kept next to the other session keys", () => {
     expect(
       normalizeDraftDocument(now, {
-        session: { permission_mode: "auto", intake_item_ids: [INTAKE_ID], task_run: marker },
+        session: { intake_item_ids: [INTAKE_ID], task_run: marker },
       }).session,
-    ).toEqual({ permission_mode: "auto", intake_item_ids: [INTAKE_ID], task_run: marker });
+    ).toEqual({ intake_item_ids: [INTAKE_ID], task_run: marker });
   });
 
   test("unknown marker keys are dropped and missing optional parts fall back to the closed defaults", () => {
-    expect(
-      normalizeTaskRunMarker({ ...marker, owner_id: TASK_ID, permission_mode: "yolo" }),
-    ).toEqual(marker);
+    expect(normalizeTaskRunMarker({ ...marker, owner_id: TASK_ID, unknown_key: "x" })).toEqual(
+      marker,
+    );
     expect(
       normalizeTaskRunMarker({ task_id: TASK_ID, task_run_id: RUN_ID, environment: "dev" }),
     ).toEqual({
@@ -135,12 +135,11 @@ describe("task run marker normalization", () => {
 
   test("a sealed marker stays sealed through repeated normalization and keeps the session", () => {
     const once = normalizeDraftDocument(now, {
-      session: { permission_mode: "auto", task_run: { ...marker, environment: "staging" } },
+      session: { task_run: { ...marker, environment: "staging" } },
     });
-    expect(once.session).toEqual({ permission_mode: "auto", task_run: sealed });
+    expect(once.session).toEqual({ task_run: sealed });
     const stored: unknown = JSON.parse(JSON.stringify(once));
     expect(normalizeDraftDocument(now, stored).session).toEqual({
-      permission_mode: "auto",
       task_run: sealed,
     });
     expect(getTaskRunMarker(stored)).toEqual(sealed);
@@ -209,12 +208,12 @@ describe("withoutTaskRunMarker", () => {
   test("removes only the marker and leaves the source draft untouched", () => {
     const source = Object.freeze({
       mode: "onboarding",
-      session: Object.freeze({ permission_mode: "auto", playground: true, task_run: marker }),
+      session: Object.freeze({ playground: true, task_run: marker }),
     });
     const stripped: unknown = withoutTaskRunMarker(source);
     expect(stripped).toEqual({
       mode: "onboarding",
-      session: { permission_mode: "auto", playground: true },
+      session: { playground: true },
     });
     expect(source.session.task_run).toEqual(marker);
     expect(getTaskRunMarker(stripped)).toBeNull();
@@ -236,7 +235,7 @@ describe("withoutTaskRunMarker", () => {
       {},
       { session: null },
       { session: "task_run" },
-      { session: { permission_mode: "ask" } },
+      { session: { ask_before_writing: true } },
       { task_run: marker },
     ])
       expect(withoutTaskRunMarker(draft)).toBe(draft);
@@ -315,12 +314,12 @@ describe("requested check time", () => {
   test("withoutTaskRunCheck removes only the check and leaves the source draft untouched", () => {
     const source = Object.freeze({
       mode: "onboarding",
-      session: Object.freeze({ permission_mode: "auto", task_run: marker, task_check: check }),
+      session: Object.freeze({ task_run: marker, task_check: check }),
     });
     const stripped: unknown = withoutTaskRunCheck(source);
     expect(stripped).toEqual({
       mode: "onboarding",
-      session: { permission_mode: "auto", task_run: marker },
+      session: { task_run: marker },
     });
     expect(source.session.task_check).toEqual(check);
     expect(getTaskRunCheck(stripped)).toBeNull();

@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { REPAIR_REMEDIES } from "@shared/error-taxonomy.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { can } from "../../rbac/evaluator.ts";
 import {
@@ -109,7 +110,7 @@ const PreparedSchema = z.object({
         code: z.string(),
         reason: z.string().optional(),
         step_id: z.string(),
-        remedy_kind: z.enum(["patch", "prepare", "declare", "reconnect", "author"]),
+        remedy_kind: z.enum(REPAIR_REMEDIES),
         fixer: z.string().optional(),
         candidate_id: z.string().optional(),
       }),

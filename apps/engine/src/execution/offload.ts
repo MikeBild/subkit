@@ -4,7 +4,9 @@ import { z } from "zod";
 import { getConfig } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
 import { executionFixtures } from "../db/schema/index.ts";
-import { logger } from "../logging/logger.ts";
+import { readEnv } from "../env.ts";
+import { logger } from "../logging/index.ts";
+import { objectStoreBucket } from "../storage/backend.ts";
 import {
   assertHostedObjectReadable,
   hostedObjectNamespace,
@@ -156,11 +158,11 @@ export async function resolveOffloaded(
     const key = withoutScheme.slice(slash + 1);
     let configuredBucket = "";
     try {
-      configuredBucket = getConfig().storage.object_store.bucket;
+      configuredBucket = objectStoreBucket(getConfig().storage);
     } catch {
-      if (process.env.NODE_ENV !== "production") configuredBucket = "test";
+      if (readEnv("NODE_ENV") !== "production") configuredBucket = "test";
     }
-    if (!configuredBucket && process.env.NODE_ENV !== "production") {
+    if (!configuredBucket && readEnv("NODE_ENV") !== "production") {
       configuredBucket = "test";
     }
     if (!configuredBucket) {
@@ -226,10 +228,10 @@ export function _s3OffloadConfigForTests(): ObjectStoreOffloadConfig | null {
 
 function objectStoreOffloadConfig(): ObjectStoreOffloadConfig | null {
   try {
-    const bucket = getConfig().storage.object_store.bucket;
+    const bucket = objectStoreBucket(getConfig().storage);
     return bucket ? { bucket, keyPrefix: "offload" } : null;
   } catch {
-    return process.env.NODE_ENV !== "production" ? { bucket: "test", keyPrefix: "offload" } : null;
+    return readEnv("NODE_ENV") !== "production" ? { bucket: "test", keyPrefix: "offload" } : null;
   }
 }
 

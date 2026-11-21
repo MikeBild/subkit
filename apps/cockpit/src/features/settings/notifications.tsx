@@ -1,15 +1,12 @@
-import { ErrorNotice, FieldError } from "@ui/components/proto/ErrorNotice";
-import { Panel, Pill } from "@ui/components/proto/Pill";
+import { Panel, Pill } from "@ui/atoms/pill";
 import { useUi } from "@ui/lib/ui-context";
 import { cn } from "@ui/lib/utils";
+import { ErrorNotice, FieldError } from "@ui/molecules/error-notice";
+import { SettingsRow } from "@ui/molecules/settings-row";
 import { Bell, CalendarDays, Globe, Moon, Siren, Terminal } from "lucide-react";
 import { type ReactNode, useId, useState } from "react";
 import { useSetup } from "@/api/setup";
 import { useSession } from "@/app/session";
-import {
-  type NotificationDialogState,
-  useDeviceNotifications,
-} from "@/components/cockpit/installation-dialogs";
 import {
   Button,
   CollapsibleSection,
@@ -18,6 +15,7 @@ import {
   Switch,
   TimezoneSelect,
 } from "@/components/cockpit/patterns";
+import { type NotificationDialogState, useDeviceNotifications } from "@/features/pwa";
 import { answersFromSetup, toggleDay, useScheduleSave, WEEKDAYS } from "@/features/setup";
 import { errorRows } from "@/lib/error-rows";
 import type { TranslationKey } from "@/lib/i18n";
@@ -36,7 +34,6 @@ import {
   terminalQuietError,
 } from "./notifications-model";
 import { PauseRow } from "./pause-row";
-import { Row } from "./row";
 import { usePauseControl } from "./use-notification-pause";
 import { useTerminalQuiet } from "./use-terminal-quiet";
 
@@ -90,7 +87,7 @@ function TerminalQuietRow({ tenant, canWrite }: { tenant: string; canWrite: bool
   };
   const busy = !canWrite || terminal.saving;
   return (
-    <Row
+    <SettingsRow
       icon={Terminal}
       label={t("settings.question.notifications.quiet")}
       hint={t("settings.question.notifications.quietHelp")}
@@ -232,7 +229,7 @@ export function NotificationsPanel({
     <div className="flex flex-col gap-3" data-testid="settings-notification-schedule">
       <Panel className="divide-y py-1">
         {device && (
-          <Row
+          <SettingsRow
             id={`${id}-device`}
             icon={Bell}
             label={t("settings.notifications.on")}
@@ -250,7 +247,7 @@ export function NotificationsPanel({
               onCheckedChange={onDevice}
               data-testid="device-notifications-switch"
             />
-          </Row>
+          </SettingsRow>
         )}
         {device?.note === "denied" && (
           <div className="flex flex-wrap items-center gap-3 py-3 text-sm">
@@ -258,7 +255,7 @@ export function NotificationsPanel({
           </div>
         )}
         {pause}
-        <Row
+        <SettingsRow
           id={`${id}-quiet`}
           icon={Moon}
           label={t("settings.notifications.quiet")}
@@ -272,7 +269,7 @@ export function NotificationsPanel({
             onCheckedChange={(c) => setN({ quiet: c })}
             data-testid="settings-notification-quiet-switch"
           />
-        </Row>
+        </SettingsRow>
         {n.quiet && (
           <div className="flex flex-wrap items-end gap-4 py-3">
             <Clock
@@ -300,7 +297,7 @@ export function NotificationsPanel({
             )}
           </div>
         )}
-        <Row
+        <SettingsRow
           id={`${id}-digest`}
           icon={Bell}
           label={t("setup.label.daily")}
@@ -328,7 +325,7 @@ export function NotificationsPanel({
               data-testid="settings-notification-daily-switch"
             />
           </div>
-        </Row>
+        </SettingsRow>
         <p
           className="py-3 text-sm text-muted-foreground"
           data-testid="settings-notification-approvals"
@@ -347,7 +344,7 @@ export function NotificationsPanel({
           <Panel className="divide-y py-1 empty:hidden">
             {pauseOptions}
             {n.quiet && (
-              <Row
+              <SettingsRow
                 icon={CalendarDays}
                 label={t("settings.notifications.days")}
                 hint={t("settings.notifications.daysHint")}
@@ -385,7 +382,7 @@ export function NotificationsPanel({
             )}
             {terminal}
             {n.scheduled && (
-              <Row
+              <SettingsRow
                 id={`${id}-critical`}
                 icon={Siren}
                 label={t("setup.critical")}
@@ -399,10 +396,10 @@ export function NotificationsPanel({
                   onCheckedChange={(critical) => setN({ critical })}
                   data-testid="settings-notification-critical-switch"
                 />
-              </Row>
+              </SettingsRow>
             )}
             {n.scheduled && (
-              <Row icon={Globe} label={t("setup.zone")} testId="settings-notification-zone">
+              <SettingsRow icon={Globe} label={t("setup.zone")} testId="settings-notification-zone">
                 <div className="w-64">
                   <TimezoneSelect
                     value={zone}
@@ -412,7 +409,7 @@ export function NotificationsPanel({
                     testId="settings-notification-timezone"
                   />
                 </div>
-              </Row>
+              </SettingsRow>
             )}
           </Panel>
           {more}

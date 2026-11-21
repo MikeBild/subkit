@@ -1,11 +1,11 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { IconButton } from "@ui/molecules/icon-button";
 import { Eye, EyeOff } from "lucide-react";
 import { type FormEvent, type ReactNode, useEffect, useId, useState } from "react";
 import { apiCall } from "@/api/call";
 import { ApiError, bootstrap, logout } from "@/api/client";
 import { absolute } from "@/app/links";
 import { loginHref } from "@/app/session";
-import { IconButton } from "@/components/cockpit/icon-button";
 import {
   Button,
   ChoiceCards,
@@ -19,15 +19,13 @@ import {
   StandalonePage,
   TimezoneSelect,
 } from "@/components/cockpit/patterns";
-import { useI18n } from "@/lib/i18n-context";
-import { browserTimeZone } from "@/lib/timezones";
 import {
   OWN_KEY_PROVIDER_COPY,
   OWN_KEY_PROVIDERS,
   type OwnKeyProvider,
   PROVIDER_KEY_PAGES,
   PROVIDER_MARK,
-} from "@/pages/ai-providers";
+} from "@/features/settings";
 import {
   KEY_MAX,
   keyAfterSubmit,
@@ -41,7 +39,9 @@ import {
   welcomeFailurePlace,
   welcomeRequest,
   workspaceSuggestion,
-} from "./welcome-model";
+} from "@/features/setup";
+import { useI18n } from "@/lib/i18n-context";
+import { browserTimeZone } from "@/lib/timezones";
 
 type Pending = Awaited<ReturnType<typeof readPending>>;
 

@@ -23,6 +23,6 @@ describe("gen-settings-doc", () => {
     expect(out).toContain("`database.url`");
     expect(out).toContain("`llm.providers.anthropic.api_key`");
     expect(out).toContain("`auth.session.secret`");
-    expect(out).toContain("`tokens.monthly_budget`");
+    expect(out).toContain("`connectors.mcp.per_server_manifest_byte_cap`");
   });
 });

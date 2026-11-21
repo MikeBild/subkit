@@ -1,4 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal runtime placeholder is the workflow contract.
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { transactionalMailReceipts, workflowVersions } from "../../../db/schema/index.ts";

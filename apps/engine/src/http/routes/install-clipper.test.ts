@@ -5,9 +5,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { _resetConfigForTests, loadConfig } from "../../config/loader.ts";
+import { createDbFromUrl } from "../../db/client.ts";
 import type { AppEnv } from "../openapi.ts";
 import { createApp } from "../server.ts";
 import { _internal, registerInstallClipperRoute } from "./install-clipper.ts";
+
+const offlineDb = createDbFromUrl("postgres://localhost/offline").db;
 
 let configDirectory: string;
 beforeAll(async () => {
@@ -30,7 +33,9 @@ function buildApp(): OpenAPIHono<AppEnv> {
 
 describe("GET /install/clipper.zip", () => {
   test("the full application reaches the archive before the generic asset route", async () => {
-    const response = await createApp().request("http://127.0.0.1/install/clipper.zip");
+    const response = await createApp({ db: offlineDb }).request(
+      "http://127.0.0.1/install/clipper.zip",
+    );
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("application/zip");
     expect(

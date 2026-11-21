@@ -103,6 +103,9 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   "storage.hosted.tenant_bytes": "Hosted shared logical byte quota per tenant",
   "storage.hosted.retained_rows_per_resource": "Hosted retained rows per resource",
   "storage.hosted.max_file_bytes": "Hosted maximum file bytes",
+  "storage.backend": "Object-store backend",
+  "deployment.mode": "Deployment mode",
+  "storage.filesystem.root": "Filesystem object-store folder",
   "storage.object_store.endpoint": "Object-store endpoint",
   "storage.object_store.region": "Object-store region",
   "storage.object_store.bucket": "Object-store bucket",
@@ -147,7 +150,6 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   "queue.abort_poll_interval_ms": "Execution cancel poll interval (ms)",
   "queue.crash_recovery_sweep_interval_ms": "Orphaned execution recovery interval (ms)",
   "queue.crash_recovery_threshold_ms": "Orphaned execution threshold (ms)",
-  "tokens.monthly_budget": "Monthly token budget",
   "tokens.currency": "Currency for model prices",
   "tokens.prices": "Per-model price overrides (on top of built-in prices)",
 
@@ -166,7 +168,6 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   "sandbox.max_transform_wall_ms": "Transform wall-clock ceiling (ms)",
   "sandbox.prewarm": "Start a sandbox worker after boot",
 
-  "repl.permissionMode": "Permission mode",
   "repl.portalTokenTtlMin": "Portal token TTL (minutes)",
 
   "ui.theme": "Theme",
@@ -208,6 +209,7 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
 
 export const SECTION_LABEL: Readonly<Record<string, string>> = {
   log: "Logging",
+  deployment: "Deployment",
   server: "HTTP server",
   database: "Database",
   llm: "AI / LLM",

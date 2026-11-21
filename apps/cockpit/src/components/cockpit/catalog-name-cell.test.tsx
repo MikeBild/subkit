@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
+import { CatalogNameCell } from "@/features/catalog/ui/catalog-metadata";
 import { translate, translatePlural } from "@/lib/i18n";
 import { I18nContext, type I18nValue } from "@/lib/i18n-context";
-import { CatalogNameCell } from "./catalog-metadata";
 
 function render(locale: "de" | "en", description: unknown) {
   const value: I18nValue = {

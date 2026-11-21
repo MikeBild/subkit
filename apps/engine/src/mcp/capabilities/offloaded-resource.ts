@@ -1,4 +1,3 @@
-import { type ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { and, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
@@ -7,8 +6,7 @@ import { executionVisibleToPrincipal } from "../../execution/execution-owner.ts"
 import { resolveOffloaded } from "../../execution/offload.ts";
 import { isSensitivePayload } from "../../execution/sensitive-payload.ts";
 import { can } from "../../rbac/evaluator.ts";
-
-const RESOURCE_NOT_FOUND = -32002 as ErrorCode;
+import { resourceNotFound } from "../transports/protocol-errors.ts";
 
 export async function readOffloadedExecutionResource(
   db: Db,
@@ -42,7 +40,7 @@ export async function readOffloadedExecutionResource(
         .limit(1);
   const executionId = execution?.execution_id ?? step?.execution_id;
   const resultSha256 = execution?.result_sha256 ?? step?.result_sha256;
-  if (!executionId) throw new McpError(RESOURCE_NOT_FOUND, "object resource not found");
+  if (!executionId) throw resourceNotFound("object resource not found");
   const [owner] = await db
     .select({
       caller: executions.caller_context,
@@ -58,7 +56,7 @@ export async function readOffloadedExecutionResource(
     isSensitivePayload(owner.input) ||
     isSensitivePayload(owner.result)
   ) {
-    throw new McpError(RESOURCE_NOT_FOUND, "object resource not found");
+    throw resourceNotFound("object resource not found");
   }
 
   const decision = await can(db, {

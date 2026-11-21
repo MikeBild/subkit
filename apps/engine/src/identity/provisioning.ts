@@ -16,7 +16,7 @@ import {
   userInvites,
   users,
 } from "../db/schema/index.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { builtinRoleId } from "../rbac/roles.ts";
 import { authorizeRequestedScopes, type ScopeIssuer } from "../rbac/scope-issuance.ts";
 import { now } from "../utils/clock.ts";

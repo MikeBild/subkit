@@ -1,0 +1,176 @@
+import type { components } from "@cli-core/engine-api/openapi";
+import { fileRefusal, formatBytes } from "@shared/file-kinds.ts";
+import { apiCall } from "@/api/call";
+import type { Conversation, ConversationTarget } from "@/api/client";
+import { tenantContentHref } from "@/api/tenant-context";
+import { absolute, settingsHref } from "@/app/links";
+import { reportFailure } from "@/lib/action-failure";
+import type { TranslationKey } from "@/lib/i18n";
+
+export const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+const PACKAGE_MAX_BYTES = 256 * 1024 * 1024;
+
+export type PendingAttachment =
+  | { key: string; kind: "upload"; file: File }
+  | {
+      key: string;
+      kind: "file";
+      id: string;
+      name: string;
+      size?: number;
+      contentType?: string | null;
+    };
+
+export type ConversationAttachment = Pick<
+  components["schemas"]["ConversationAttachment"],
+  "id" | "slug" | "filename" | "content_type" | "size_bytes"
+>;
+
+export function attachmentName(attachment: PendingAttachment): string {
+  return attachment.kind === "upload" ? attachment.file.name : attachment.name;
+}
+
+export function attachmentSize(attachment: PendingAttachment): number | undefined {
+  return attachment.kind === "upload" ? attachment.file.size : attachment.size;
+}
+
+let counter = 0;
+export function pendingKey(): string {
+  counter += 1;
+  return `attachment-${counter}`;
+}
+
+export function addAttachments(
+  current: readonly PendingAttachment[],
+  next: readonly PendingAttachment[],
+): PendingAttachment[] {
+  const out = [...current];
+  for (const attachment of next) {
+    if (
+      attachment.kind === "file" &&
+      out.some((existing) => existing.kind === "file" && existing.id === attachment.id)
+    )
+      continue;
+    out.push(attachment);
+  }
+  return out;
+}
+
+const ZIP_TYPES = new Set(["application/zip", "application/x-zip-compressed"]);
+
+function isZipFile(file: Pick<File, "name" | "type">): boolean {
+  return file.name.toLowerCase().endsWith(".zip") || ZIP_TYPES.has(file.type.toLowerCase());
+}
+
+function packagesSettingsHref(): string {
+  return `${absolute(settingsHref(null, { area: "operations" }))}#packages`;
+}
+
+export type AttachmentNotice = (
+  message: string,
+  options?: { action: { label: string; onClick(): void } },
+) => void;
+
+export function takeAttachmentFiles(
+  files: readonly File[],
+  t: (key: TranslationKey, values?: Record<string, string | number>) => string,
+  options: { notify?: AttachmentNotice; openPackages?(): void } = {},
+): PendingAttachment[] {
+  const notify: AttachmentNotice =
+    options.notify ?? ((message, extra) => reportFailure(message, undefined, extra));
+  const openPackages =
+    options.openPackages ?? (() => window.location.assign(packagesSettingsHref()));
+  const taken: PendingAttachment[] = [];
+  for (const file of files) {
+    if (fileRefusal(file, { maxBytes: MAX_ATTACHMENT_BYTES }) !== "size")
+      taken.push({ key: pendingKey(), kind: "upload", file });
+    else if (isZipFile(file))
+      notify(
+        t("chat.attachment.packageTooLarge", {
+          name: file.name,
+          max: formatBytes(MAX_ATTACHMENT_BYTES, "de-DE"),
+          packageMax: formatBytes(PACKAGE_MAX_BYTES, "de-DE"),
+        }),
+        { action: { label: t("chat.attachment.openPackages"), onClick: openPackages } },
+      );
+    else
+      notify(
+        t("platform.file.tooLarge", {
+          name: file.name,
+          max: formatBytes(MAX_ATTACHMENT_BYTES, "de-DE"),
+        }),
+      );
+  }
+  return taken;
+}
+
+export function messageWithAttachments(text: string, slugs: readonly string[]): string {
+  if (slugs.length === 0) return text;
+  const tokens = slugs.map((slug) => `@attachment:${slug}`).join(" ");
+  return text ? `${text}\n\n${tokens}` : tokens;
+}
+
+const SENTINEL = /\[file:(fid_[0-9a-f-]{36})\]/g;
+
+export function splitFileSentinels(text: string): { text: string; fileIds: string[] } {
+  const fileIds: string[] = [];
+  const stripped = text.replace(SENTINEL, (_, id: string) => {
+    if (!fileIds.includes(id)) fileIds.push(id);
+    return "";
+  });
+  return { text: fileIds.length > 0 ? stripped.trim() : text, fileIds };
+}
+
+function base64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error ?? new Error("read failed"));
+    reader.onload = () => {
+      const result = String(reader.result ?? "");
+      resolve(result.slice(result.indexOf(",") + 1));
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+export async function linkAttachment(
+  conversationId: string,
+  attachment: PendingAttachment,
+): Promise<string> {
+  const body =
+    attachment.kind === "file"
+      ? { $file: attachment.id }
+      : {
+          filename: attachment.file.name,
+          ...(attachment.file.type ? { content_type: attachment.file.type } : {}),
+          content_base64: await base64(attachment.file),
+        };
+  const linked = await apiCall("post", "/v1/conversations/{id}/attachments", {
+    path: { id: conversationId },
+    body,
+  });
+  return linked.slug;
+}
+
+export async function createEmptyConversation(input: {
+  target?: ConversationTarget;
+  intakeItemIds?: readonly string[];
+}): Promise<Conversation> {
+  const created = await apiCall("post", "/v1/conversations", {
+    body: {
+      ...(input.target ?? {}),
+      ...(input.intakeItemIds?.length ? { intake_item_ids: [...input.intakeItemIds] } : {}),
+    },
+  });
+  return created.conversation;
+}
+
+export function listConversationAttachments(
+  conversationId: string,
+): Promise<{ attachments: ConversationAttachment[] }> {
+  return apiCall("get", "/v1/conversations/{id}/attachments", { path: { id: conversationId } });
+}
+
+export function fileContentHref(fileId: string): string {
+  return tenantContentHref(`/v1/files/${encodeURIComponent(fileId)}/content`);
+}

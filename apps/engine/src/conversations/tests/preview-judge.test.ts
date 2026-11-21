@@ -65,13 +65,15 @@ describe("preview judge · dry_run_workflow wiring", () => {
     expect(toolCtx.current().state?.judge_breaker?.blocks_since_commit).toBe(1);
   });
 
-  test("passing fixture in ask mode requires an explicit save", async () => {
+  test("passing fixture requires an explicit save when the person asks before writing", async () => {
     getMockProvider().generateOverrides.judge = () => ({
       verdict: "passes",
       reason: "Output contains project names and droplet specs.",
       missing: [],
     });
-    const toolCtx = makeCtx(wrongContentDraft("judge-passes", GOAL));
+    const toolCtx = makeCtx(wrongContentDraft("judge-passes", GOAL), {
+      ask_before_writing: true,
+    });
 
     const result = await dryRunWorkflowTool.execute(toolCtx, { input: null });
 
@@ -83,15 +85,13 @@ describe("preview judge · dry_run_workflow wiring", () => {
     expect(data.judge?.verdict).toBe("passes");
   });
 
-  test("passing fixture in auto mode commits and an unchanged re-run is idempotent", async () => {
+  test("passing fixture commits and an unchanged re-run is idempotent", async () => {
     getMockProvider().generateOverrides.judge = () => ({
       verdict: "passes",
       reason: "Output contains project names and droplet specs.",
       missing: [],
     });
-    const toolCtx = makeCtx(wrongContentDraft("judge-passes-idempotent", GOAL), {
-      permission_mode: "auto",
-    });
+    const toolCtx = makeCtx(wrongContentDraft("judge-passes-idempotent", GOAL), {});
 
     const first = await dryRunWorkflowTool.execute(toolCtx, { input: null });
     expect(first.ok).toBe(true);
@@ -119,7 +119,7 @@ describe("preview judge · dry_run_workflow wiring", () => {
 
   test("goal absent: judge skipped with no_goal, green preview is NOT auto-committed", async () => {
     getMockProvider().generateOverrides.judge = () => FAILED_VERDICT;
-    const toolCtx = makeCtx(wrongContentDraft("judge-no-goal", null));
+    const toolCtx = makeCtx(wrongContentDraft("judge-no-goal", null), { ask_before_writing: true });
 
     const result = await dryRunWorkflowTool.execute(toolCtx, { input: null });
 
@@ -138,10 +138,11 @@ describe("preview judge · dry_run_workflow wiring", () => {
     expect(getMockProvider().calls.filter((c) => c.flow === "judge").length).toBe(0);
   });
 
-  test("backgrounded MCP surface does not bypass the explicit save gate", async () => {
+  test("a backgrounded MCP surface keeps the explicit save gate when the person asks before writing", async () => {
     getMockProvider().generateOverrides.judge = () => FAILED_VERDICT;
     const toolCtx = makeCtx(wrongContentDraft("judge-unattended-mcp", null), {
       surface: "mcp",
+      ask_before_writing: true,
     });
 
     const result = await dryRunWorkflowTool.execute(toolCtx, { input: null });
@@ -161,9 +162,7 @@ describe("preview judge · dry_run_workflow wiring", () => {
 
   test("a request not to save keeps a green auto-mode preview unsaved", async () => {
     getMockProvider().generateOverrides.judge = () => FAILED_VERDICT;
-    const toolCtx = makeCtx(wrongContentDraft("judge-do-not-save", null), {
-      permission_mode: "auto",
-    });
+    const toolCtx = makeCtx(wrongContentDraft("judge-do-not-save", null), {});
     toolCtx.recentUserMessage = "Prüfe ihn mit einer Vorschau, speichere ihn aber nicht.";
 
     const result = await dryRunWorkflowTool.execute(toolCtx, { input: null });
@@ -179,11 +178,9 @@ describe("preview judge · dry_run_workflow wiring", () => {
     expect(result.committed_workflow_id).toBeUndefined();
   });
 
-  test('UNATTENDED (permission_mode "auto"): green + no-goal preview AUTO-COMMITS', async () => {
+  test("UNATTENDED: green + no-goal preview AUTO-COMMITS", async () => {
     getMockProvider().generateOverrides.judge = () => FAILED_VERDICT;
-    const toolCtx = makeCtx(wrongContentDraft("judge-unattended-auto", null), {
-      permission_mode: "auto",
-    });
+    const toolCtx = makeCtx(wrongContentDraft("judge-unattended-auto", null), {});
 
     const result = await dryRunWorkflowTool.execute(toolCtx, { input: null });
 
@@ -202,7 +199,6 @@ describe("preview judge · dry_run_workflow wiring", () => {
     getMockProvider().generateOverrides.judge = () => FAILED_VERDICT;
     const toolCtx = makeCtx(wrongContentDraft("judge-unattended-blocks", GOAL), {
       surface: "mcp",
-      permission_mode: "auto",
     });
 
     const result = await dryRunWorkflowTool.execute(toolCtx, { input: null });
@@ -220,6 +216,7 @@ describe("preview judge · dry_run_workflow wiring", () => {
   test("ATTENDED (sk_interactive): green + no-goal preview is UNCHANGED — defers to explicit save", async () => {
     getMockProvider().generateOverrides.judge = () => FAILED_VERDICT;
     const toolCtx = makeCtx(wrongContentDraft("judge-attended-nogoal", null), {
+      ask_before_writing: true,
       surface: "sk_interactive",
     });
 
@@ -241,7 +238,9 @@ describe("preview judge · dry_run_workflow wiring", () => {
     getMockProvider().generateOverrides.judge = () => {
       throw new Error("provider exploded");
     };
-    const toolCtx = makeCtx(wrongContentDraft("judge-infra-error", GOAL));
+    const toolCtx = makeCtx(wrongContentDraft("judge-infra-error", GOAL), {
+      ask_before_writing: true,
+    });
 
     const result = await dryRunWorkflowTool.execute(toolCtx, { input: null });
 
@@ -322,9 +321,7 @@ describe("preview judge · dry_run_workflow wiring", () => {
 
   test("a commit resets the blocks-since-commit counter", async () => {
     getMockProvider().generateOverrides.judge = () => FAILED_VERDICT;
-    const toolCtx = makeCtx(wrongContentDraft("judge-commit-reset", GOAL), {
-      permission_mode: "auto",
-    });
+    const toolCtx = makeCtx(wrongContentDraft("judge-commit-reset", GOAL), {});
 
     const block1 = await dryRunWorkflowTool.execute(toolCtx, { input: null });
     expect(block1.ok).toBe(false);

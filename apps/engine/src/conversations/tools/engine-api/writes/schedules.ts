@@ -167,6 +167,7 @@ export const updateScheduleTool: ConversationTool = {
       if (args.execution_mode !== undefined) patch.execution_mode = args.execution_mode;
       if (args.paused !== undefined) patch.paused = args.paused;
       if (args.input !== undefined) patch.input = args.input;
+      patch.created_by = ctx.principal?.kind === "user" ? ctx.principal.id : null;
       const row = await updateSchedule(ctx.db, ctx.tenant_id, args.id, patch);
       if (!row) return { ok: false, data: { error: "schedule_not_found", id: args.id } };
       await ctx.engineClient.audit_write({

@@ -3,10 +3,10 @@ import { and, eq } from "drizzle-orm";
 import {
   auditLog,
   connectors,
-  credentials,
   outboundConnections,
   runtimeSecretVersions,
   tenants,
+  vaultItems,
 } from "../../../db/schema/index.ts";
 import { TEST_DB_HOOK_TIMEOUT } from "../../../db/tests/setup.ts";
 import { tenantWorkSnapshot } from "../../../execution/index.ts";
@@ -364,8 +364,8 @@ for (const refused of [false, true]) {
     expect(tenantWorkSnapshot(owner).in_flight).toBe(0);
     const [current] = await server.db
       .select()
-      .from(credentials)
-      .where(and(eq(credentials.id, fixture.row.id), eq(credentials.tenant_id, owner)));
+      .from(vaultItems)
+      .where(and(eq(vaultItems.id, fixture.row.id), eq(vaultItems.tenant_id, owner)));
     expect(current?.credential_generation).toBe(fixture.row.credential_generation);
     expect(current?.ciphertext).toEqual(fixture.row.ciphertext);
     const [connector] = await server.db
@@ -393,17 +393,17 @@ test("standalone OAuth generation CAS refuses a stale provider result without re
       void pending.catch(() => {});
       await entered.promise;
       await server.db
-        .update(credentials)
+        .update(vaultItems)
         .set({ credential_generation: fixture.row.credential_generation + 1 })
-        .where(and(eq(credentials.id, fixture.row.id), eq(credentials.tenant_id, owner)));
+        .where(and(eq(vaultItems.id, fixture.row.id), eq(vaultItems.tenant_id, owner)));
       reply.resolve(tokenResponse());
       await expect(pending).rejects.toThrow("credential changed during refresh");
     },
   );
   const [current] = await server.db
     .select()
-    .from(credentials)
-    .where(and(eq(credentials.id, fixture.row.id), eq(credentials.tenant_id, owner)));
+    .from(vaultItems)
+    .where(and(eq(vaultItems.id, fixture.row.id), eq(vaultItems.tenant_id, owner)));
   expect(current?.ciphertext).toEqual(fixture.row.ciphertext);
   expect(current?.credential_generation).toBe(fixture.row.credential_generation + 1);
   expect(tenantWorkSnapshot(owner).in_flight).toBe(0);

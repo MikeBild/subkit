@@ -351,13 +351,6 @@ export function normalizeDraftDocument(now: DraftClock, raw: unknown): Refreshed
     ...(() => {
       if (!isRecord(raw.session)) return {};
       const session: DraftDocument["session"] = {};
-      if (
-        raw.session.permission_mode === "auto" ||
-        raw.session.permission_mode === "ask" ||
-        raw.session.permission_mode === "plan"
-      ) {
-        session.permission_mode = raw.session.permission_mode;
-      }
       if (raw.session.playground === true) session.playground = true;
       if (Array.isArray(raw.session.intake_item_ids)) {
         const intake_item_ids = [...new Set(raw.session.intake_item_ids)].filter(

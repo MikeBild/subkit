@@ -17,7 +17,6 @@ describe("bounded auto authoring policy", () => {
             category: "tenant_write",
             input: {},
             overrides: { [tool]: override },
-            permission_mode: "auto",
           }).mode,
         ).toBe("confirm_before_execution");
       }
@@ -36,7 +35,6 @@ describe("bounded auto authoring policy", () => {
           category: "tenant_write",
           input: {},
           overrides: {},
-          permission_mode: "auto",
         }).mode,
       ).toBe("no_confirm");
     });
@@ -49,20 +47,19 @@ describe("bounded auto authoring policy", () => {
           category,
           input: {},
           overrides: {},
-          permission_mode: "auto",
         }).mode,
       ).toBe("no_confirm");
     }
   });
   test("diagnostic preparation preserves explicit approval preferences", () => {
-    for (const permission_mode of ["ask", "plan"] as const) {
+    for (const ask_before_writing of [true]) {
       expect(
         decideToolMode({
           tool: "export_diagnostic_context",
           category: "tenant_write",
           input: {},
           overrides: {},
-          permission_mode,
+          ask_before_writing,
         }).mode,
       ).toBe("confirm_before_execution");
     }
@@ -72,7 +69,6 @@ describe("bounded auto authoring policy", () => {
         category: "tenant_write",
         input: {},
         overrides: { export_diagnostic_context: "confirm_before_execution" },
-        permission_mode: "auto",
       }).mode,
     ).toBe("confirm_before_execution");
   });
@@ -84,7 +80,6 @@ describe("bounded auto authoring policy", () => {
           category: "tenant_write",
           input: { environment: "dev", execute_writes },
           overrides: {},
-          permission_mode: "auto",
         }).mode,
       ).toBe("no_confirm");
     }
@@ -102,7 +97,6 @@ describe("bounded auto authoring policy", () => {
           category: "tenant_write",
           input,
           overrides: { [tool]: "no_confirm" },
-          permission_mode: "auto",
         }).mode,
       ).toBe("confirm_before_execution");
     }
@@ -114,21 +108,20 @@ describe("bounded auto authoring policy", () => {
         category: "tenant_write",
         input: {},
         overrides: { save_workflow_draft: "confirm_before_execution" },
-        permission_mode: "auto",
       }).mode,
     ).toBe("confirm_before_execution");
   });
 
   test("standing-authority discovery preserves stricter workflow preferences in both environments", () => {
     for (const environment of ["dev", "prod"] as const) {
-      for (const permission_mode of ["auto", "ask", "plan"] as const) {
+      for (const ask_before_writing of [false, true]) {
         expect(
           decideToolMode({
             tool: "run_workflow",
             category: "tenant_write",
             input: { environment },
             overrides: { run_workflow: "confirm_before_execution" },
-            permission_mode,
+            ask_before_writing,
           }).mode,
         ).toBe("confirm_before_execution");
       }
@@ -147,7 +140,6 @@ describe("bounded auto authoring policy", () => {
           category: "tenant_read",
           input: { body: { operation: "query", query } },
           overrides: { call_connector: "no_confirm" },
-          permission_mode: "auto",
         }).mode,
       ).toBe("confirm_before_execution");
     }
@@ -161,7 +153,6 @@ describe("bounded auto authoring policy", () => {
           category: "tenant_read",
           input: { method: "GET", response_mode: "full" },
           overrides: {},
-          permission_mode: "yolo",
           connector_trust: true,
         }).mode,
       ).toBe("confirm_before_execution");
@@ -172,7 +163,6 @@ describe("bounded auto authoring policy", () => {
             category: "tenant_read",
             input: { method: "GET", environment: "prod", response_mode },
             overrides: {},
-            permission_mode: "auto",
           }).mode,
         ).toBe("no_confirm");
       }
@@ -182,7 +172,6 @@ describe("bounded auto authoring policy", () => {
           category: "tenant_read",
           input: { method: "GET", environment: "prod", response_mode: "full" },
           overrides: { [tool]: "no_confirm" },
-          permission_mode: "auto",
         }).mode,
       ).toBe("confirm_before_execution");
     }

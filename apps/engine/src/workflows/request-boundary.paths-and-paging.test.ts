@@ -26,7 +26,6 @@ const ENCODED_SITE = "https%3A%2F%2Fexample.com%2F";
 
 const searchQuery = step({
   method: "POST",
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
   path: "/sites/${scope.target.data.site}/query/${scope.target.data.report}",
   body: { rows: 10 },
   boundary: {
@@ -71,7 +70,6 @@ test("an escaped or colon-bearing segment is compared exactly as it is sent", ()
 test("a value that would be read as a URL scheme is caught at review, not at dispatch", () => {
   const leading = step({
     method: "GET",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
     path: "${item.account}/insights",
     boundary: {
       variables: { "item.account": { enum: ["do:team:0e489f44-ea42-4bd8-8102-3e3e00827db7"] } },
@@ -82,7 +80,6 @@ test("a value that would be read as a URL scheme is caught at review, not at dis
   expect(compileRequestBoundary(leading, "https://api.example.test").refusal).toBe(
     "enum_value_unroutable",
   );
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
   const behind = step({ ...leading, path: "/billing/${item.account}/insights" });
   expect(compileRequestBoundary(behind, "https://api.example.test").refusal).toBeUndefined();
 });
@@ -127,25 +124,18 @@ test("a JS selector may hold a template literal; a real runtime value elsewhere 
   const iterated = step({
     ...release,
     for_each:
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: a JS template literal, not a placeholder
       "(scope) => scope.plan.data.items.map((i) => ({ title: `Report ${scope.window.data.start}` }))",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: a JS template literal, not a placeholder
     data_selector: "(out) => ({ id: `${out.id}` })",
     boundary: { ...release.boundary, max_calls: 20 },
   });
   expect(compileRequestBoundary(iterated, BASE).refusal).toBeUndefined();
   expect(
-    compileRequestBoundary(
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
-      step({ ...release, idempotency_key: "${input.site}" }),
-      BASE,
-    ).refusal,
+    compileRequestBoundary(step({ ...release, idempotency_key: "${input.site}" }), BASE).refusal,
   ).toBe("runtime_value_outside_path_and_body");
 });
 
 const paged = step({
   method: "GET",
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
   path: "/blocks/${input.page_id}/children",
   query: { page_size: 100 },
   pagination: {
@@ -222,7 +212,6 @@ test("a paging key that is also the step's own query key is refused", () => {
   ).toBe("pagination_param_conflict");
 });
 
-// biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
 const ROUTE_PATH = "${item.path}";
 
 const routeStep = (over: Record<string, unknown> = {}) =>
@@ -264,7 +253,6 @@ test("a whole-path rule is refused anywhere but the last path position", () => {
     compileRequestBoundary(
       step({
         method: "GET",
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
         path: "/sites/${input.site}/releases",
         boundary: {
           variables: { "input.site": { class: "path" } },
@@ -280,7 +268,6 @@ test("a whole-path rule is refused anywhere but the last path position", () => {
       step({
         method: "GET",
         path: "/sites",
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
         query: { q: "${input.term}" },
         boundary: {
           variables: { "input.term": { class: "path" } },
@@ -325,7 +312,6 @@ const linked = (over: Record<string, unknown> = {}) =>
   step({
     method: "GET",
     path: "/repos/MikeBild/subkit/issues",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
     query: { state: "all", since: "${scope.windows.data.previous_start}" },
     pagination: {
       strategy: "link",
@@ -407,7 +393,6 @@ test("timestamp_range admits a lower-bounded ISO timestamp only", () => {
     step({
       method: "GET",
       path: "/repos/a/b/actions/runs",
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
       query: { created: "${scope.windows.data.actions_created}" },
       pagination: {
         strategy: "link",

@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 const ENGINE_ENTRY = join(import.meta.dir, "..", "..", "index.ts");
@@ -24,7 +25,7 @@ async function runCli(
 ): Promise<{ code: number | null; stdout: string; stderr: string }> {
   const proc = Bun.spawn(["bun", "run", ENGINE_ENTRY, "--token-exchange", ...args], {
     env: {
-      ...process.env,
+      ...testEnv,
       DATABASE_URL: ctx.testDb.url,
       SUBKIT_CONFIG: join(keyDir, "subkit.config.json"),
     },

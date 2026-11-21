@@ -3,17 +3,13 @@ import { and, eq } from "drizzle-orm";
 import { parseLinkHeader } from "../connectors/health.ts";
 import type { Db } from "../db/client.ts";
 import { executionSteps } from "../db/schema/index.ts";
+import { envInt } from "../env.ts";
 import { applySelector } from "./selectors.ts";
 
 export const MAX_PAGES = 1000;
 export const PAGE_PROGRESS_INTERVAL = 50;
 
-export const PAGINATION_CHECKPOINT_INTERVAL: number = (() => {
-  const raw = process.env.PAGINATION_CHECKPOINT_INTERVAL;
-  if (!raw) return 50;
-  const n = Number.parseInt(raw, 10);
-  return Number.isFinite(n) && n > 0 ? n : 50;
-})();
+export const PAGINATION_CHECKPOINT_INTERVAL: number = envInt("PAGINATION_CHECKPOINT_INTERVAL", 50);
 
 interface PageContext {
   baseUrl: URL;

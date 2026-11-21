@@ -3,7 +3,7 @@ import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { type Db, getDb } from "../../db/client.ts";
 import { connectorEndpointSchemas } from "../../db/schema/index.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import type { ProviderKind } from "../runtime/model-init.ts";
 import { parseGraphQL } from "./document-parsers/graphql.ts";
 import { parseHar } from "./document-parsers/har.ts";

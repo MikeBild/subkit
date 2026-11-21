@@ -1,5 +1,6 @@
 export const EXECUTION_STATUSES = [
   "queued",
+  "waiting_for_device",
   "running",
   "succeeded",
   "failed",
@@ -15,6 +16,7 @@ export type StepStatus = (typeof STEP_STATUSES)[number];
 
 export const NON_TERMINAL_EXECUTION_STATUSES = [
   "queued",
+  "waiting_for_device",
   "running",
 ] as const satisfies readonly ExecutionStatus[];
 
@@ -35,8 +37,14 @@ export function isTerminalExecutionStatus(
   return (TERMINAL_EXECUTION_STATUSES as readonly ExecutionStatus[]).includes(status);
 }
 
+export const BEFORE_START_EXECUTION_STATUSES = [
+  "queued",
+  "waiting_for_device",
+] as const satisfies readonly NonTerminalExecutionStatus[];
+
 export function canTransition(from: ExecutionStatus, to: ExecutionStatus): boolean {
   if (from === "queued") return to !== "queued";
+  if (from === "waiting_for_device") return to === "queued" || to === "failed" || to === "aborted";
   return from === "running" && isTerminalExecutionStatus(to);
 }
 
@@ -106,6 +114,7 @@ export type ExecutionOutcome =
   | { type: "timed_out" }
   | { type: "enqueue_failed" }
   | { type: "admission_failed"; refused: boolean }
+  | { type: "device_unavailable" }
   | { type: "cancelled" };
 
 type ExecutionOutcomeType = ExecutionOutcome["type"];
@@ -117,12 +126,14 @@ const OUTCOME_STATUS: Record<ExecutionOutcomeType, TerminalExecutionStatus> = {
   timed_out: "timed_out",
   enqueue_failed: "failed",
   admission_failed: "failed",
+  device_unavailable: "failed",
   cancelled: "aborted",
 };
 
 const BEFORE_START_OUTCOMES: ReadonlySet<ExecutionOutcomeType> = new Set([
   "enqueue_failed",
   "admission_failed",
+  "device_unavailable",
   "cancelled",
 ]);
 
@@ -140,7 +151,9 @@ export function outcomeTransition(outcome: ExecutionOutcome): OutcomeTransition 
     status,
     sources: transitionSources(
       status,
-      BEFORE_START_OUTCOMES.has(outcome.type) ? ["queued"] : NON_TERMINAL_EXECUTION_STATUSES,
+      BEFORE_START_OUTCOMES.has(outcome.type)
+        ? BEFORE_START_EXECUTION_STATUSES
+        : NON_TERMINAL_EXECUTION_STATUSES,
     ),
     refused,
     event_type: refused ? "execution.refused" : `execution.${status}`,

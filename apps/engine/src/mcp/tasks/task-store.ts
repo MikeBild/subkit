@@ -16,8 +16,8 @@ import {
   conversations,
   conversationTurns,
 } from "../../db/schema/index.ts";
-import { logger } from "../../logging/logger.ts";
-import { recordUsageEvent } from "../../stats/usage-events.ts";
+import { logger } from "../../logging/index.ts";
+import { recordUsageEvent } from "../../stats/index.ts";
 import { projectTurnEnvelopeForClient } from "../capabilities/turn-projection.ts";
 import {
   getMcpTask,

@@ -1,4 +1,5 @@
-import { extname, isAbsolute, relative, resolve, sep } from "node:path";
+import { extname, resolve, sep } from "node:path";
+import { segmentsUnder } from "@shared/local-policy/paths.ts";
 import { parseAppUrl } from "./app-url.ts";
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -19,9 +20,10 @@ export function contentTypeFor(path: string): string | null {
   return CONTENT_TYPES[extname(path).toLowerCase()] ?? null;
 }
 
-export function isInside(root: string, candidate: string): boolean {
-  const offset = relative(resolve(root), resolve(candidate));
-  return offset !== "" && offset !== ".." && !offset.startsWith(`..${sep}`) && !isAbsolute(offset);
+const HOST = { os: sep === "\\" ? "win32" : "darwin" } as const;
+
+export function belowRoot(root: string, candidate: string): boolean {
+  return (segmentsUnder(root, candidate, HOST)?.length ?? 0) > 0;
 }
 
 function segmentsOf(pathname: string): string[] | null {
@@ -43,6 +45,6 @@ export function resolveAppFile(method: string, rawUrl: string, root: string): Ap
   if (!segments) return { ok: false, status: 404 };
   const path = resolve(root, ...segments);
   const contentType = contentTypeFor(path);
-  if (!contentType || !isInside(root, path)) return { ok: false, status: 404 };
+  if (!contentType || !belowRoot(root, path)) return { ok: false, status: 404 };
   return { ok: true, path, contentType };
 }

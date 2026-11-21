@@ -4,7 +4,7 @@ import { conversations, tenants } from "../../db/schema/index.ts";
 import { isTaskRunConversation } from "../../db/task-run-conversations.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { listRecentOwnedConversations } from "../../identity/principal-profile.ts";
-import { countConversations, createConversation, listConversations } from "../service.ts";
+import { countConversations, createConversation, listConversations } from "../service/index.ts";
 import type { TaskRunMarker } from "../types.ts";
 
 let ctx: TestDb;
@@ -142,7 +142,7 @@ describe("task run predicate", () => {
   test("drafts without the key do not count", async () => {
     expect(await classified(null)).toBe(false);
     expect(await classified({})).toBe(false);
-    expect(await classified({ session: { permission_mode: "auto" } })).toBe(false);
+    expect(await classified({ session: { playground: true } })).toBe(false);
     expect(await classified({ session: "task_run" })).toBe(false);
     expect(await classified({ session: ["task_run"] })).toBe(false);
     expect(await classified({ task_run: marker })).toBe(false);

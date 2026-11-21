@@ -308,5 +308,41 @@
         "sha256": "ed9ae27d39f5579fb949a718315673e499f11c69e62e3266fecc8f1a0275282e"
       }
     ]
+  },
+  {
+    "name": "@napi-rs/canvas-darwin-arm64",
+    "version": "0.1.80",
+    "files": [
+      {
+        "path": "@napi-rs__canvas__LICENSE.txt",
+        "sha256": "8802fecf9da4367bc23bcf20b21cc143785fc6c92b152f3fa7fbe6ce08d344d6",
+        "source": "node_modules/.bun/@napi-rs+canvas@0.1.80/node_modules/@napi-rs/canvas/LICENSE"
+      }
+    ],
+    "qualification": "Version-bound notice source; the platform package ships no license file and carries the MIT license of @napi-rs/canvas 0.1.80. Legal distribution approval remains separate."
+  },
+  {
+    "name": "@napi-rs/canvas-darwin-x64",
+    "version": "0.1.80",
+    "files": [
+      {
+        "path": "@napi-rs__canvas__LICENSE.txt",
+        "sha256": "8802fecf9da4367bc23bcf20b21cc143785fc6c92b152f3fa7fbe6ce08d344d6",
+        "source": "node_modules/.bun/@napi-rs+canvas@0.1.80/node_modules/@napi-rs/canvas/LICENSE"
+      }
+    ],
+    "qualification": "Version-bound notice source; the platform package ships no license file and carries the MIT license of @napi-rs/canvas 0.1.80. Legal distribution approval remains separate."
+  },
+  {
+    "name": "@napi-rs/canvas-win32-x64-msvc",
+    "version": "0.1.80",
+    "files": [
+      {
+        "path": "@napi-rs__canvas__LICENSE.txt",
+        "sha256": "8802fecf9da4367bc23bcf20b21cc143785fc6c92b152f3fa7fbe6ce08d344d6",
+        "source": "node_modules/.bun/@napi-rs+canvas@0.1.80/node_modules/@napi-rs/canvas/LICENSE"
+      }
+    ],
+    "qualification": "Version-bound notice source; the platform package ships no license file and carries the MIT license of @napi-rs/canvas 0.1.80. Legal distribution approval remains separate."
   }
 ]

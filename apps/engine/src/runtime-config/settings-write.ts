@@ -11,9 +11,11 @@ import {
   setConfigKey,
   ValidationError,
 } from "../config/loader.ts";
+import { processBindingRefusal } from "../config/process-bindings.ts";
 import { type ConfigLeaf, findLeafByPath } from "../config/walk.ts";
 import type { Db } from "../db/client.ts";
 import { tenants } from "../db/schema/index.ts";
+import { readEnv } from "../env.ts";
 import { logger } from "../logging/index.ts";
 import {
   RuntimeConfigConflictError,
@@ -247,7 +249,7 @@ async function writeInProcess(target: WriteTarget): Promise<WriteResult> {
 }
 
 async function writeLeaf(target: WriteTarget): Promise<{ result: WriteResult; revised: boolean }> {
-  if (process.env.NODE_ENV !== "production") {
+  if (readEnv("NODE_ENV") !== "production") {
     return { result: await writeInProcess(target), revised: false };
   }
   try {
@@ -294,6 +296,12 @@ export async function writeSetting(request: SettingWriteRequest): Promise<Settin
       "database.url is bootstrap-only; rotate DATABASE_URL and restart replicas instead",
       { path: leaf.path, expected: "DATABASE_URL process binding" },
     );
+  const processBinding = processBindingRefusal(path);
+  if (processBinding)
+    return failure(422, "validation_failed", processBinding, {
+      path: leaf.path,
+      expected: "process binding set from the environment at startup",
+    });
   const access = await resolveSettingWriteTarget(db, principal, leaf, path, request.tenant);
   if (!access.ok) return failure(403, access.code, access.message);
   const tenant = access.target.kind === "tenant" ? access.target.tenantId : undefined;

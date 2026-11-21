@@ -101,9 +101,9 @@ jobs:
           set -euo pipefail
           required="CSC_LINK CSC_KEY_PASSWORD APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER RELEASE_SIGNING_KEY"
           if [ "$WINDOWS_SIGNING" = "cloud" ]; then
-            required="$required WIN_CLOUD_SIGN_ENV WIN_CLOUD_SIGN_TOOL WIN_CLOUD_SIGN_ARGS WIN_PUBLISHER_NAME"
+            windows="WIN_CLOUD_SIGN_ENV WIN_CLOUD_SIGN_TOOL WIN_CLOUD_SIGN_ARGS WIN_PUBLISHER_NAME"
           else
-            required="$required WIN_CSC_LINK WIN_CSC_KEY_PASSWORD"
+            windows="WIN_CSC_LINK WIN_CSC_KEY_PASSWORD"
           fi
           missing=""
           for name in $required; do
@@ -112,6 +112,13 @@ jobs:
           if [ -n "$missing" ]; then
             echo "::error::SubKit Desktop is not released: these signing values are not set in the repository settings:$missing. See apps/desktop/RELEASING.md. Nothing was built or published." >&2
             exit 1
+          fi
+          missing_windows=""
+          for name in $windows; do
+            [ -n "${!name:-}" ] || missing_windows="$missing_windows $name"
+          done
+          if [ -n "$missing_windows" ]; then
+            echo "::warning::the Windows signing values are not set:$missing_windows. The Windows build fails and this release ships without Windows. See apps/desktop/RELEASING.md."
           fi
 
       - name: Require the published release without desktop artifacts
@@ -125,8 +132,88 @@ jobs:
           existing=$(jq -r '[.assets[].name | select(test("^(subkit-desktop-|latest(-mac|-linux)?\\.yml$|SHA256SUMS-desktop)"))] | join(" ")' <<<"$release")
           [ -z "$existing" ] || { echo "::error::the release of $REQUESTED_TAG already carries desktop artifacts: $existing" >&2; exit 1; }
 
-  macos:
+  engine:
     needs: preflight
+    runs-on: macos-15
+    timeout-minutes: 150
+    env:
+      VERSION: ${{ needs.preflight.outputs.version }}
+      ENGINE_VERSION: ${{ needs.preflight.outputs.version }}
+      DRY_RUN: ${{ needs.preflight.outputs.dry_run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.preflight.outputs.ref }}
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
+        with:
+          bun-version: 1.4.5
+
+      - name: Build the engine for macOS and Windows
+        run: |
+          set -euo pipefail
+          bun install --frozen-lockfile
+          bun run build desktop-engine
+          ls -l dist/engine-desktop/*/*/
+
+      - name: Sign and notarize the macOS engines
+        if: ${{ needs.preflight.outputs.dry_run != 'true' }}
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          set -euo pipefail
+          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_API_KEY_P8 APPLE_API_KEY_ID APPLE_API_ISSUER; do
+            [ -n "${!name:-}" ] || { echo "::error::missing macOS signing value $name" >&2; exit 1; }
+          done
+          keychain="$RUNNER_TEMP/engine-signing.keychain-db"
+          certificate="$RUNNER_TEMP/engine-signing.p12"
+          key="$RUNNER_TEMP/notarization-key.p8"
+          trap 'security delete-keychain "$keychain" >/dev/null 2>&1 || true; rm -f "$certificate" "$key"' EXIT
+          (umask 077 && printf '%s' "$CSC_LINK" | base64 --decode > "$certificate")
+          (umask 077 && printf '%s\n' "$APPLE_API_KEY_P8" > "$key")
+          password=$(openssl rand -hex 24)
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$certificate" -k "$keychain" -P "$CSC_KEY_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain" >/dev/null
+          read -r -a keychains <<<"$(security list-keychains -d user | tr -d '"' | tr '\n' ' ')"
+          security list-keychains -d user -s "$keychain" "${keychains[@]}"
+          identity=$(security find-identity -v -p codesigning "$keychain" | awk '/"Developer ID Application: / { print $2; exit }')
+          [ -n "$identity" ] || { echo "::error::CSC_LINK holds no Developer ID Application identity" >&2; exit 1; }
+          export APPLE_API_KEY="$key"
+          sh scripts/codesign-macos.sh dist/engine-desktop/mac/arm64/engine "$identity" apps/desktop/assets/entitlements.mac.plist
+          sh scripts/notarize-macos.sh dist/engine-desktop/mac/arm64/engine
+
+      - name: Verify the signatures and start the engine under the hardened runtime
+        run: |
+          set -euo pipefail
+          engine=dist/engine-desktop/mac/arm64/engine
+          if [ "$DRY_RUN" != "true" ]; then
+            codesign --verify --strict --verbose=2 "$engine"
+            details=$(codesign --display --verbose=4 "$engine" 2>&1)
+            grep -q "^Authority=Developer ID Application: " <<<"$details" || { echo "::error::$engine is not signed with a Developer ID Application certificate" >&2; exit 1; }
+            grep -Eq "^CodeDirectory .*flags=.*runtime" <<<"$details" || { echo "::error::$engine is not signed with the hardened runtime" >&2; exit 1; }
+            spctl -a -t install -vv "$engine" 2>&1 | grep -q "^source=Notarized Developer ID" || { echo "::error::Gatekeeper does not see $engine as notarized" >&2; exit 1; }
+          fi
+          [ "$("$engine" --version)" = "$VERSION" ] || { echo "::error::$engine does not report version $VERSION" >&2; exit 1; }
+          "$engine" --help > /dev/null
+          "$engine" --smoke
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: engine-desktop-mac
+          retention-days: 7
+          if-no-files-found: error
+          path: dist/engine-desktop/mac/
+
+  macos:
+    needs: [preflight, engine]
     runs-on: macos-15
     timeout-minutes: 90
     env:
@@ -148,6 +235,62 @@ jobs:
           bun install --frozen-lockfile
           node node_modules/electron/install.js
 
+      - name: Stage the signed engine for local mode
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name engine-desktop-mac --dir dist/engine-desktop/mac
+          chmod 755 dist/engine-desktop/mac/arm64/engine
+          test "$(lipo -archs dist/engine-desktop/mac/arm64/engine)" = arm64
+          test -s dist/engine-desktop/mac/THIRD_PARTY_NOTICES.engine.txt
+
+      - name: Fetch PostgreSQL for local mode
+        run: |
+          set -euo pipefail
+          bun run --cwd apps/desktop scripts/fetch-postgres.ts --target darwin-arm64
+          test -x apps/desktop/resources/postgres/darwin-arm64/bin/postgres
+          test -x apps/desktop/resources/postgres/darwin-arm64/bin/initdb
+
+      - name: Fetch agent-desktop and agent-browser
+        working-directory: apps/desktop
+        run: |
+          set -euo pipefail
+          bun run scripts/fetch-agent-desktop.ts
+          bun run scripts/fetch-agent-browser.ts darwin-arm64
+          test -x resources/agent-desktop/darwin-arm64/agent-desktop
+          test -x resources/agent-desktop/darwin-arm64/agent-desktop-macos-helper
+          test -x resources/agent-browser/darwin-arm64/agent-browser
+
+      - name: Sign PostgreSQL, agent-desktop and agent-browser
+        if: ${{ needs.preflight.outputs.dry_run != 'true' }}
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          postgres=apps/desktop/resources/postgres/darwin-arm64
+          for name in CSC_LINK CSC_KEY_PASSWORD; do
+            [ -n "${!name:-}" ] || { echo "::error::missing macOS signing value $name" >&2; exit 1; }
+          done
+          keychain="$RUNNER_TEMP/postgres-signing.keychain-db"
+          certificate="$RUNNER_TEMP/postgres-signing.p12"
+          trap 'security delete-keychain "$keychain" >/dev/null 2>&1 || true; rm -f "$certificate"' EXIT
+          (umask 077 && printf '%s' "$CSC_LINK" | base64 --decode > "$certificate")
+          password=$(openssl rand -hex 24)
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$certificate" -k "$keychain" -P "$CSC_KEY_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain" >/dev/null
+          read -r -a keychains <<<"$(security list-keychains -d user | tr -d '"' | tr '\n' ' ')"
+          security list-keychains -d user -s "$keychain" "${keychains[@]}"
+          identity=$(security find-identity -v -p codesigning "$keychain" | awk '/"Developer ID Application: / { print $2; exit }')
+          [ -n "$identity" ] || { echo "::error::CSC_LINK holds no Developer ID Application identity" >&2; exit 1; }
+          sh scripts/codesign-macos-folder.sh "$postgres" "$identity"
+          bun run --cwd apps/desktop scripts/fetch-agent-desktop.ts --sign "$identity"
+          sh scripts/codesign-macos-folder.sh apps/desktop/resources/agent-browser/darwin-arm64 "$identity"
+
       - name: Build, sign and notarize
         if: ${{ needs.preflight.outputs.dry_run != 'true' }}
         working-directory: apps/desktop
@@ -167,9 +310,7 @@ jobs:
           trap 'rm -f "$key"' EXIT
           (umask 077 && printf '%s\n' "$APPLE_API_KEY_P8" > "$key")
           export APPLE_API_KEY="$key"
-          bun run scripts/build.ts --production
-          bun run scripts/notices.ts
-          bunx electron-builder --config electron-builder.yml --mac --publish never
+          bun run package --prebuilt --mac --publish never
 
       - name: Build unsigned dry run
         if: ${{ needs.preflight.outputs.dry_run == 'true' }}
@@ -179,9 +320,24 @@ jobs:
           SUBKIT_DESKTOP_UPDATES: "0"
         run: |
           set -euo pipefail
-          bun run scripts/build.ts --production
-          bun run scripts/notices.ts
-          bunx electron-builder --config electron-builder.yml --mac --publish never -c.mac.notarize=false
+          bun run package --prebuilt --mac --publish never -c.mac.notarize=false
+
+      - name: Check that the app carries the engine and PostgreSQL for local mode
+        working-directory: apps/desktop
+        run: |
+          set -euo pipefail
+          resources=release/mac-arm64/SubKit.app/Contents/Resources
+          for file in local/engine local/postgres/bin/postgres local/postgres/bin/initdb local/postgres/COPYRIGHT; do
+            test -s "$resources/$file" || { echo "::error::the app lacks $file" >&2; exit 1; }
+          done
+          grep -q "LOCAL MODE: POSTGRESQL AND ITS LIBRARIES" "$resources/THIRD_PARTY_NOTICES.txt"
+          grep -q "LOCAL MODE: SUBKIT ENGINE" "$resources/THIRD_PARTY_NOTICES.txt"
+          test -x "$resources/agent-browser/agent-browser" || { echo "::error::the app lacks agent-browser" >&2; exit 1; }
+          test -x "$resources/../Helpers/agent-desktop/agent-desktop" || { echo "::error::the app lacks agent-desktop" >&2; exit 1; }
+          grep -Eq "^agent-browser [0-9.]+ \(Apache-2.0\)$" "$resources/THIRD_PARTY_NOTICES.txt"
+          grep -Eq "^agent-desktop [0-9.]+ \(Apache-2.0\)$" "$resources/THIRD_PARTY_NOTICES.txt"
+          "$resources/local/postgres/bin/postgres" --version
+          "$resources/local/postgres/bin/initdb" --version
 
       - name: Verify signature, Gatekeeper and notarization ticket
         if: ${{ needs.preflight.outputs.dry_run != 'true' }}
@@ -199,10 +355,28 @@ jobs:
             grep -Eq "^CodeDirectory .*flags=.*runtime" <<<"$details" || { echo "::error::$app is not signed with the hardened runtime" >&2; exit 1; }
             spctl -a -t exec -vv "$app"
             xcrun stapler validate "$app"
+            local engine="$app/Contents/Resources/local/engine"
+            codesign --verify --strict --verbose=2 "$engine"
+            codesign --display --verbose=4 "$engine" 2>&1 | grep -Eq "^CodeDirectory .*flags=.*runtime" || { echo "::error::$engine is not signed with the hardened runtime" >&2; exit 1; }
+            codesign --display --entitlements - --xml "$engine" 2>/dev/null | grep -q "com.apple.security.cs.allow-jit" || { echo "::error::$engine lacks the JIT entitlement" >&2; exit 1; }
+            [ "$("$engine" --version)" = "$VERSION" ] || { echo "::error::$engine does not start from the signed app" >&2; exit 1; }
+            local postgres="$app/Contents/Resources/local/postgres"
+            local file
+            while IFS= read -r file; do
+              case "$(file -b "$file")" in
+                Mach-O*)
+                  codesign --verify --strict "$file"
+                  codesign --display --verbose=4 "$file" 2>&1 | grep -q "^Authority=Developer ID Application: " || { echo "::error::$file is not signed with a Developer ID Application certificate" >&2; exit 1; }
+                  codesign --display --verbose=4 "$file" 2>&1 | grep -Eq "^CodeDirectory .*flags=.*runtime" || { echo "::error::$file is not signed with the hardened runtime" >&2; exit 1; }
+                  ;;
+              esac
+            done < <(find "$postgres" "$app/Contents/Helpers/agent-desktop" "$app/Contents/Resources/agent-browser" -type f)
+            "$postgres/bin/postgres" --version
+            "$postgres/bin/initdb" --version
           }
           zips=(release/subkit-desktop-"$VERSION"-mac-*.zip)
           dmgs=(release/subkit-desktop-"$VERSION"-mac-*.dmg)
-          [ "${#zips[@]}" -eq 2 ] && [ "${#dmgs[@]}" -eq 2 ] || { echo "::error::expected an arm64 and an x64 zip and dmg" >&2; exit 1; }
+          [ "${#zips[@]}" -eq 1 ] && [ "${#dmgs[@]}" -eq 1 ] || { echo "::error::expected one arm64 zip and one arm64 dmg" >&2; exit 1; }
           for zip in "${zips[@]}"; do
             unpacked=$(mktemp -d)
             ditto -x -k "$zip" "$unpacked"
@@ -270,9 +444,7 @@ jobs:
           for name in WIN_CSC_LINK WIN_CSC_KEY_PASSWORD; do
             [ -n "${!name:-}" ] || { echo "::error::missing Windows signing value $name" >&2; exit 1; }
           done
-          bun run scripts/build.ts --production
-          bun run scripts/notices.ts
-          bunx electron-builder --config electron-builder.yml --win --publish never
+          bun run package --prebuilt --win --publish never
 
       - name: "Alternative, off by default: build and sign with a cloud signing service"
         if: ${{ needs.preflight.outputs.dry_run != 'true' && needs.preflight.outputs.windows_signing == 'cloud' }}
@@ -289,9 +461,7 @@ jobs:
           for name in WIN_CLOUD_SIGN_ENV WIN_CLOUD_SIGN_TOOL WIN_CLOUD_SIGN_ARGS WIN_PUBLISHER_NAME; do
             [ -n "${!name:-}" ] || { echo "::error::missing Windows cloud signing value $name" >&2; exit 1; }
           done
-          bun run scripts/build.ts --production
-          bun run scripts/notices.ts
-          bunx electron-builder --config electron-builder.yml --win --publish never \
+          bun run package --prebuilt --win --publish never \
             "-c.win.signtoolOptions.sign=scripts/win-cloud-sign.cjs" \
             "-c.win.signtoolOptions.publisherName=$WIN_PUBLISHER_NAME"
 
@@ -303,9 +473,7 @@ jobs:
           SUBKIT_DESKTOP_UPDATES: "0"
         run: |
           set -euo pipefail
-          bun run scripts/build.ts --production
-          bun run scripts/notices.ts
-          bunx electron-builder --config electron-builder.yml --win --publish never
+          bun run package --prebuilt --win --publish never
 
       - name: Verify Authenticode signatures
         if: ${{ needs.preflight.outputs.dry_run != 'true' }}
@@ -375,9 +543,7 @@ jobs:
           SUBKIT_DESKTOP_UPDATES: "1"
         run: |
           set -euo pipefail
-          bun run scripts/build.ts --production
-          bun run scripts/notices.ts
-          bunx electron-builder --config electron-builder.yml --linux --publish never
+          bun run package --prebuilt --linux --publish never
 
       - name: Build unsigned dry run
         if: ${{ needs.preflight.outputs.dry_run == 'true' }}
@@ -386,9 +552,7 @@ jobs:
           SUBKIT_DESKTOP_UPDATES: "0"
         run: |
           set -euo pipefail
-          bun run scripts/build.ts --production
-          bun run scripts/notices.ts
-          bunx electron-builder --config electron-builder.yml --linux --publish never
+          bun run package --prebuilt --linux --publish never
 
       - name: Stage artifacts
         working-directory: apps/desktop
@@ -413,7 +577,7 @@ jobs:
 
   publish:
     needs: [preflight, macos, windows, linux]
-    if: ${{ needs.preflight.outputs.dry_run != 'true' }}
+    if: ${{ !cancelled() && needs.preflight.outputs.dry_run != 'true' && needs.macos.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -435,6 +599,8 @@ jobs:
       - name: Collect the artifacts of this run
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WINDOWS_RESULT: ${{ needs.windows.result }}
+          LINUX_RESULT: ${{ needs.linux.result }}
         run: |
           set -euo pipefail
           download="$RUNNER_TEMP/desktop-artifacts"
@@ -442,7 +608,21 @@ jobs:
           rm -rf "$download" "$assets"
           mkdir -p "$download" "$assets"
           gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --dir "$download"
-          for name in desktop-macos desktop-windows desktop-linux; do
+          names="desktop-macos"
+          feeds="latest-mac.yml"
+          if [ "$WINDOWS_RESULT" = "success" ]; then
+            names="$names desktop-windows"
+            feeds="$feeds latest.yml"
+          else
+            echo "::warning::the Windows build ended with $WINDOWS_RESULT; this release ships without Windows"
+          fi
+          if [ "$LINUX_RESULT" = "success" ]; then
+            names="$names desktop-linux"
+            feeds="$feeds latest-linux.yml"
+          else
+            echo "::warning::the Linux build ended with $LINUX_RESULT; this release ships without Linux"
+          fi
+          for name in $names; do
             test -d "$download/$name"
             for file in "$download/$name"/*; do
               test -f "$file"
@@ -451,9 +631,10 @@ jobs:
             done
           done
           echo "ASSETS_DIR=$assets" >> "$GITHUB_ENV"
+          echo "FEEDS=$feeds" >> "$GITHUB_ENV"
 
       - name: Verify the update feeds against the artifacts
-        run: bun run apps/desktop/scripts/verify-feed.ts "$ASSETS_DIR" "$VERSION"
+        run: bun run apps/desktop/scripts/verify-feed.ts "$ASSETS_DIR" "$VERSION" $FEEDS
 
       - name: Write and sign desktop checksums
         env:
@@ -491,4 +672,4 @@ jobs:
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir "$download" --pattern 'subkit-desktop-*' --pattern 'latest*.yml' --pattern 'SHA256SUMS-desktop*'
           (cd "$download" && sha256sum --strict --check SHA256SUMS-desktop)
           RELEASE_DOWNLOAD_DIR="$download" bun -e 'import { verify } from "node:crypto"; import { readFileSync } from "node:fs"; import { RELEASE_PUBLIC_KEY } from "./packages/cli-core/src/release-public-key.ts"; const dir = process.env.RELEASE_DOWNLOAD_DIR; if (!dir || !verify(null, readFileSync(`${dir}/SHA256SUMS-desktop`), RELEASE_PUBLIC_KEY, readFileSync(`${dir}/SHA256SUMS-desktop.sig`))) throw new Error("downloaded desktop checksum signature does not match the updater public key");'
-          bun run apps/desktop/scripts/verify-feed.ts "$download" "$VERSION"
+          bun run apps/desktop/scripts/verify-feed.ts "$download" "$VERSION" $FEEDS

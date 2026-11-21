@@ -165,7 +165,6 @@ function steps(commitsExtra: Record<string, unknown> = {}) {
       language: "javascript",
       expression: `return { since: '${SINCE}' };`,
     },
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored workflow placeholder
     listStep("commits", { sha: "main", since: "${scope.window.data.since}" }, commitsExtra),
     listStep("issues", { state: "all" }, {}),
     listStep("open", { state: "open" }, {}),

@@ -1,11 +1,12 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { eq, isNull, like } from "drizzle-orm";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { permissions, roles, tenants, users } from "../schema/index.ts";
 import { seedAtBoot } from "../seed.ts";
 import { createTestDb, type TestDb } from "./setup.ts";
 
 let ctx: TestDb;
-const originalNodeEnv = process.env.NODE_ENV;
+const originalNodeEnv = testEnv.NODE_ENV;
 
 beforeAll(async () => {
   ctx = await createTestDb("seed_at_boot");
@@ -14,8 +15,8 @@ beforeAll(async () => {
 }, 60_000);
 
 function restoreNodeEnv(): void {
-  if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
-  else process.env.NODE_ENV = originalNodeEnv;
+  if (originalNodeEnv === undefined) delete testEnv.NODE_ENV;
+  else testEnv.NODE_ENV = originalNodeEnv;
 }
 
 afterAll(async () => {
@@ -29,7 +30,7 @@ afterEach(() => {
 
 describe("seedAtBoot (development)", () => {
   test("first call inserts dev fixtures + RBAC; second call is a no-op", async () => {
-    process.env.NODE_ENV = "development";
+    testEnv.NODE_ENV = "development";
     const r1 = await seedAtBoot(ctx.db);
     expect(r1.status).toBe("seeded");
     expect(r1.issued_keys.length).toBeGreaterThanOrEqual(1);
@@ -66,7 +67,7 @@ describe("seedAtBoot (production)", () => {
     await ctx.db.delete(users);
     await ctx.db.delete(tenants);
 
-    process.env.NODE_ENV = "production";
+    testEnv.NODE_ENV = "production";
     const r = await seedAtBoot(ctx.db);
     expect(r.status).toBe("already_seeded");
     expect(r.issued_keys).toEqual([]);

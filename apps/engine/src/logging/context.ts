@@ -35,7 +35,8 @@ export type LogContext = {
     | "token_exchange"
     | "external_bearer"
     | "task_run"
-    | "portal_token";
+    | "portal_token"
+    | "device_runner";
   audit_oauth_client_id?: string;
   audit_credential_origin?: "cli_oauth_session";
   auth_via?: "token_exchange" | undefined;

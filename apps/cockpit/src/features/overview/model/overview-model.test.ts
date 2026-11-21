@@ -1,0 +1,591 @@
+import { describe, expect, test } from "bun:test";
+import { routerPath, workflowAutomationHref } from "@/app/links";
+import { type TranslationKey, translate } from "@/lib/i18n";
+import type { AttentionItem } from "./attention-projection";
+import {
+  actionLabelKey,
+  attentionEnvironment,
+  attentionRow,
+  attentionSentence,
+  attentionTarget,
+  expiryDays,
+  SUBJECT_NAME_MAX,
+  sentenceText,
+  signsInFromRow,
+  sinceLabel,
+} from "./overview-model";
+import { daysAgo, de, item, NOW, W } from "./overview-model-fixtures.ts";
+
+const en = (key: TranslationKey, values?: Record<string, string | number>) =>
+  translate("en", key, values);
+
+describe("a hosted workspace without its own AI key", () => {
+  const action = {
+    verb: "open" as const,
+    href: "/cockpit/settings?area=ai",
+    primary: true,
+    permission: "identity:write",
+  };
+  const entry = item({
+    id: "ai-access",
+    class: "stopped",
+    severity: "critical",
+    kind: "no_access",
+    subject: { kind: "settings", id: W, name: "AI access" },
+    reason: "ai_access_missing",
+    since: null,
+    detail: "engine wording",
+    actions: [action],
+  });
+
+  test("reads as the entry to set up the AI access and says that nothing can work without it", () => {
+    const row = attentionRow(entry, de);
+    expect(row.name).toBe("KI-Zugang einrichten");
+    expect(row.reason).toBe("Ohne API-Schlüssel können Chat und Workflows nicht arbeiten.");
+    expect(row.machine).toBeNull();
+    expect(de(row.badge.label)).toBe("Wartet auf dich");
+    expect(sentenceText(attentionSentence(entry, de, NOW))).toBe(
+      "Ohne API-Schlüssel können Chat und Workflows nicht arbeiten.",
+    );
+    expect(attentionRow(entry, en)).toMatchObject({
+      name: "Set up AI access",
+      reason: "Without an API key, chat and workflows can’t work.",
+    });
+  });
+
+  test("offers the single action Einrichten that opens the AI settings", () => {
+    expect(entry.actions).toHaveLength(1);
+    expect(de(actionLabelKey(action, entry))).toBe("Einrichten");
+    expect(en(actionLabelKey(action, entry))).toBe("Set up");
+    expect(routerPath(action.href)).toBe("/settings?area=ai");
+    expect(attentionRow(entry, de).name).not.toContain("AI access");
+  });
+});
+
+describe("the sentence", () => {
+  test("a conversation named by its whole first request is shortened only on screen", () => {
+    const request =
+      "Bitte prüfe den fehlgeschlagenen Run des wöchentlichen Wachstumsberichts und schlage eine Reparatur vor, die den Versand nicht stoppt";
+    const waiting = item({
+      kind: "conversation",
+      subject: { kind: "conversation", id: W, name: request },
+      reason: "awaiting_answer",
+    });
+    const text = sentenceText(attentionSentence(waiting, de, NOW));
+    expect(text).not.toContain(request);
+    expect(text).toContain("…");
+    expect(attentionRow(waiting, de).name.length).toBeLessThanOrEqual(SUBJECT_NAME_MAX);
+  });
+  test("names the subject, the reason and since when", () => {
+    const text = sentenceText(attentionSentence(item(), de, NOW));
+    expect(text).toBe("Der Workflow „Monatsbericht“ scheitert — seit 3 Tagen.");
+    expect(sentenceText(attentionSentence(item(), en, NOW))).toBe(
+      "The workflow “Monatsbericht” is failing — for 3 days.",
+    );
+  });
+
+  test("a failing workflow says how often, why, and that a fix waits", () => {
+    const text = sentenceText(
+      attentionSentence(
+        item({ cause_class: "auth_failed", counts: { failures: 12, patches: 2 } }),
+        de,
+        NOW,
+      ),
+    );
+    expect(text).toBe(
+      "Der Workflow „Monatsbericht“ ist 12-mal gescheitert: Anmeldung abgelehnt; 2 Korrekturen liegen bereit — seit 3 Tagen.",
+    );
+  });
+
+  test("a held webhook is named as the webhook, never as a schedule", () => {
+    const held = (reason: AttentionItem["reason"], trigger: AttentionItem["trigger"]) =>
+      item({ reason, class: "stopped", severity: "critical", trigger });
+    const hook = { kind: "inbound_hook" as const, name: "findings-inbox" };
+    for (const reason of [
+      "execution_authority_required",
+      "execution_authority_unavailable",
+    ] as const) {
+      const german = attentionSentence(held(reason, hook), de, NOW).lead;
+      expect(german).toContain("„findings-inbox“");
+      expect(german).not.toContain("Zeitplan");
+      expect(attentionSentence(held(reason, hook), en, NOW).lead).not.toContain("schedule");
+      expect(
+        attentionSentence(held(reason, { kind: "schedule", name: null }), de, NOW).lead,
+      ).toContain("Zeitplan");
+      expect(attentionSentence(held(reason, null), de, NOW).lead).toContain("Zeitplan");
+    }
+  });
+
+  test("a version no approval may cover names its step and never offers to approve", () => {
+    const blocked = (repair: AttentionItem["repair"], actions: AttentionItem["actions"] = []) =>
+      item({
+        class: "decide",
+        reason: "version_needs_repair",
+        trigger: { kind: "inbound_hook", name: "findings" },
+        approval: { version: 9, environment: "prod" },
+        repair,
+        actions,
+        since: daysAgo(0),
+      });
+    const prepare = {
+      step_id: "send_email",
+      code: "report_delivery_unprepared",
+      remedy_kind: "prepare" as const,
+      steps: 1,
+      candidate_id: null,
+      execution_id: null,
+    };
+    expect(sentenceText(attentionSentence(blocked(prepare), de, NOW))).toBe(
+      "Der Workflow „Monatsbericht“ lässt sich in Version v9 nicht freigeben – Schritt „send_email“: wer seine E-Mail bekommt, hat noch niemand gesehen — seit gerade eben.",
+    );
+    const author = {
+      ...prepare,
+      step_id: "create_reader",
+      code: "novel_code",
+      remedy_kind: "author" as const,
+      steps: 3,
+    };
+    const lead = attentionSentence(blocked(author), de, NOW).lead;
+    expect(lead).toContain("„create_reader“: nur eine Änderung am Workflow löst das");
+    expect(lead).toContain("(und 2 weitere Schritte)");
+    expect(lead).not.toMatch(/[a-z]+_[a-z_]+:/);
+    expect(attentionSentence(blocked(null as never), en, NOW).lead).toContain(
+      "cannot be approved in version v9",
+    );
+    const open = { verb: "open" as const, href: "/x", primary: true, permission: "workflow:run" };
+    const chat = {
+      verb: "chat" as const,
+      href: "/y",
+      primary: true,
+      permission: "conversation:write",
+    };
+    expect(de(actionLabelKey(open, blocked(prepare, [open])))).toBe("Vorbereitung ausführen");
+    expect(de(actionLabelKey(open, blocked({ ...prepare, remedy_kind: "patch" }, [open])))).toBe(
+      "Automatisch korrigieren",
+    );
+    expect(de(actionLabelKey(chat, blocked(author, [chat])))).toBe("Im Chat beheben");
+    for (const remedy of ["patch", "prepare", "declare", "reconnect", "author"] as const) {
+      const entry = blocked({ ...prepare, remedy_kind: remedy }, [open]);
+      expect(de(actionLabelKey(open, entry))).not.toBe("Freigeben");
+      expect(de(actionLabelKey(chat, entry))).not.toBe("Freigeben");
+    }
+  });
+
+  test("a hold says what lifts it: a missing approval, or a change to the workflow", () => {
+    const held = (reason: AttentionItem["reason"], trigger: AttentionItem["trigger"]) =>
+      item({ reason, class: "stopped", severity: "critical", trigger });
+    for (const trigger of [
+      { kind: "inbound_hook" as const, name: "findings-inbox" },
+      { kind: "schedule" as const, name: null },
+    ]) {
+      const waits = attentionSentence(held("execution_authority_unavailable", trigger), de, NOW);
+      expect(waits.lead).toContain("Freigabe");
+      expect(waits.lead).not.toContain("ohne Änderung");
+      const blocked = attentionSentence(held("execution_authority_required", trigger), de, NOW);
+      expect(blocked.lead).toContain("ohne Änderung am Workflow nicht freigeben");
+      expect(
+        attentionSentence(held("execution_authority_unavailable", trigger), en, NOW).lead,
+      ).not.toContain("without a change");
+    }
+  });
+
+  test("a hold that needs a change names the step, offers the chat repair and never Approve", () => {
+    const chat = {
+      verb: "chat" as const,
+      href: `/cockpit/chat/new?workflow_id=${W}`,
+      primary: true,
+      permission: "conversation:write",
+    };
+    const entry = item({
+      reason: "execution_authority_required",
+      class: "stopped",
+      severity: "critical",
+      trigger: { kind: "schedule", name: null },
+      repair: {
+        step_id: "send_email",
+        code: "dynamic_request",
+        remedy_kind: "author",
+        steps: 2,
+        candidate_id: null,
+        execution_id: null,
+      },
+      actions: [chat],
+    });
+    const lead = attentionSentence(entry, de, NOW).lead;
+    expect(lead).toContain("Schritt „send_email“ muss geändert werden");
+    expect(lead).toContain("1 weiterer Schritt");
+    expect(de(actionLabelKey(chat, entry))).toBe("Im Chat beheben");
+    const row = attentionRow(entry, de);
+    expect(row.badge.label).toBe("automation.state.repair");
+    expect(row.reason).toContain("send_email");
+    const waiting = attentionRow(
+      item({ reason: "execution_authority_unavailable", class: "stopped", actions: [] }),
+      de,
+    );
+    expect(waiting.badge.label).toBe("workflowStrip.state.grant");
+    expect(waiting.reason).toBe("Automatische Starts warten auf Freigabe");
+  });
+
+  test("a version waiting for approval is said before anything is refused", () => {
+    const waiting = (trigger: AttentionItem["trigger"]) =>
+      item({
+        class: "decide",
+        reason: "version_awaiting_approval",
+        trigger,
+        approval: { version: 4, environment: "prod" },
+        since: daysAgo(0),
+      });
+    expect(
+      sentenceText(attentionSentence(waiting({ kind: "schedule", name: null }), de, NOW)),
+    ).toBe(
+      "Der Workflow „Monatsbericht“ hat eine neue Version v4, die auf Freigabe wartet – der nächste geplante Start wird sonst abgelehnt — seit gerade eben.",
+    );
+    const hook = attentionSentence(waiting({ kind: "inbound_hook", name: "findings" }), de, NOW);
+    expect(hook.lead).toContain("Version v4");
+    expect(hook.lead).toContain("„findings“");
+    expect(hook.lead).not.toContain("geplante");
+    const unnamed = attentionSentence(waiting({ kind: "inbound_hook", name: null }), de, NOW);
+    expect(unnamed.lead).toContain("automatische Start");
+    expect(unnamed.lead).not.toContain("„“");
+    expect(attentionSentence(waiting(null), en, NOW).lead).toContain("version v4");
+  });
+
+  test("a waiting version says what it reaches that the earlier approval did not", () => {
+    const grown = (growth: NonNullable<AttentionItem["approval"]>["growth"]) =>
+      item({
+        class: "decide",
+        reason: "version_awaiting_approval",
+        trigger: { kind: "inbound_hook", name: "findings" },
+        approval: { version: 5, environment: "prod", growth },
+        since: daysAgo(0),
+      });
+    const connector = {
+      kind: "new_connector" as const,
+      connector_id: "c1",
+      connector_name: "Ticket desk",
+      target: "https://desk.example.test/tickets",
+      effect: "write" as const,
+    };
+    expect(attentionSentence(grown([connector]), de, NOW).lead).toContain(
+      "Neues Ziel: Ticket desk",
+    );
+    const writes = { ...connector, kind: "wider_effect" as const };
+    expect(attentionSentence(grown([writes]), de, NOW).lead).toContain(
+      "Neu: schreibt an Ticket desk",
+    );
+    expect(attentionSentence(grown([connector, writes]), en, NOW).lead).toContain(
+      "New target: Ticket desk (and 1 more)",
+    );
+    expect(attentionSentence(grown(undefined), de, NOW).lead).not.toContain("Neu");
+  });
+
+  test("an approval item leads to the workflow's panel, named for the step", () => {
+    const open = {
+      verb: "open" as const,
+      href: `/cockpit/workflows/${W}#workflow-automation`,
+      primary: true,
+      permission: "workflow:write",
+    };
+    const waiting = item({ class: "decide", reason: "version_awaiting_approval", actions: [open] });
+    const ending = item({
+      class: "decide",
+      severity: "notice",
+      reason: "approval_expiring",
+      actions: [open],
+    });
+    expect(de(actionLabelKey(open, waiting))).toBe("Freigeben");
+    expect(de(actionLabelKey(open, ending))).toBe("Erneuern");
+    expect(en(actionLabelKey(open, ending))).toBe("Renew");
+    expect(sentenceText(attentionSentence(ending, de, NOW))).toBe(
+      "Der Workflow „Monatsbericht“ ist nur noch kurz freigegeben: Die Freigabe läuft bald ab oder ist fast aufgebraucht — seit 3 Tagen.",
+    );
+    expect(routerPath(open.href)).toBe(workflowAutomationHref(W));
+  });
+
+  test("an approval with an end date says in how many days it ends and offers renewing", () => {
+    const renew = {
+      verb: "renew" as const,
+      href: `/cockpit/workflows/${W}#workflow-automation`,
+      primary: true,
+      permission: "workflow:write",
+    };
+    const inDays = (days: number) =>
+      item({
+        class: "decide",
+        severity: "notice",
+        reason: "approval_expiring",
+        since: null,
+        deadline: new Date(NOW + days * 86_400_000).toISOString(),
+        actions: [renew],
+      });
+    expect(expiryDays(null, NOW)).toBeNull();
+    expect(expiryDays(new Date(NOW - 1000).toISOString(), NOW)).toBe(0);
+    expect(attentionSentence(inDays(5), de, NOW).lead).toBe(
+      "Der Workflow „Monatsbericht“: Die Freigabe läuft in 5 Tagen ab",
+    );
+    expect(attentionSentence(inDays(1), de, NOW).lead).toBe(
+      "Der Workflow „Monatsbericht“: Die Freigabe läuft morgen ab",
+    );
+    expect(attentionSentence(inDays(7), en, NOW).lead).toBe(
+      "The workflow “Monatsbericht”: the approval ends in 7 days",
+    );
+    expect(de(actionLabelKey(renew, inDays(5)))).toBe("Erneuern");
+    expect(en(actionLabelKey(renew, inDays(5)))).toBe("Renew");
+  });
+
+  test("a held workflow shows the hold reason in the person's language, not the engine's English", () => {
+    const held = item({
+      class: "stopped",
+      reason: "execution_authority_unavailable",
+      cause_class: "authority_mismatch",
+      since: null,
+      detail:
+        "The approval has expired, is used up or was revoked, so scheduled runs wait. Renew the approval to start them again. Nothing has run since the hold.",
+    });
+    expect(attentionSentence(held, de, NOW).lead).toEndWith(
+      ": Die Freigabe ist abgelaufen, aufgebraucht oder widerrufen, deshalb warten automatische Starts. Erneuere die Freigabe, dann laufen sie wieder. Seit dem Anhalten ist nichts gelaufen.",
+    );
+    expect(attentionSentence(held, de, NOW).lead).not.toContain("The approval");
+    expect(attentionSentence(held, en, NOW).lead).toContain("so automatic starts wait");
+  });
+
+  test("every reason the engine names has its own words, in both languages", () => {
+    const reasons: AttentionItem["reason"][] = [
+      "awaiting_answer",
+      "execution_authority_required",
+      "execution_authority_unavailable",
+      "version_awaiting_approval",
+      "version_needs_repair",
+      "approval_expiring",
+      "failing",
+      "patch_proposed",
+      "needs_reauth",
+      "needs_update",
+      "degraded",
+      "unhealthy",
+      "refresh_refused",
+      "refresh_failed",
+      "expired_no_refresh",
+      "secret_unreadable",
+      "secret_prepared",
+      "skills_proposed",
+      "spend_warning",
+      "spend_limit_reached",
+    ];
+    for (const reason of reasons) {
+      for (const t of [de, en]) {
+        const sentence = attentionSentence(item({ reason }), t, NOW);
+        expect(sentence.machine, reason).toBeNull();
+        expect(sentence.lead, reason).not.toContain("{");
+        expect(sentence.lead, reason).not.toMatch(/[a-z]+_[a-z_]+/);
+      }
+    }
+    expect(
+      sentenceText(
+        attentionSentence(
+          item({ reason: "scheduler_stale", kind: "self_healing.drift_scan", subject: null }),
+          de,
+          NOW,
+        ),
+      ),
+    ).toBe("Der Drift-Scan läuft nicht mehr — seit 3 Tagen.");
+    expect(
+      attentionSentence(
+        item({ reason: "risk_critical", kind: "memory_high_water", subject: null, since: null }),
+        de,
+        NOW,
+      ),
+    ).toEqual({
+      lead: "Kritisches Betriebssignal: Arbeitsspeicher fast voll",
+      machine: null,
+      since: null,
+    });
+    expect(
+      attentionSentence(
+        item({ reason: "risk_critical", kind: "llm_provider_quota", subject: null, since: null }),
+        de,
+        NOW,
+      ),
+    ).toEqual({
+      lead: "Kritisches Betriebssignal: Guthaben beim Sprachmodell-Anbieter aufgebraucht",
+      machine: null,
+      since: null,
+    });
+    expect(
+      sentenceText(
+        attentionSentence(
+          item({ id: "skills", reason: "skills_proposed", subject: null, counts: { skills: 4 } }),
+          de,
+          NOW,
+        ),
+      ),
+    ).toBe(
+      "4 Skill-Vorschläge aus wiederkehrenden Mustern warten auf deine Entscheidung — seit 3 Tagen.",
+    );
+  });
+
+  test("detected skill proposals and collected intake are separate entries", () => {
+    const proposals = item({
+      id: "skills",
+      reason: "skills_proposed",
+      subject: null,
+      counts: { skills: 3 },
+    });
+    expect(attentionRow(proposals, de)).toMatchObject({
+      name: "Skill-Vorschläge aus wiederkehrenden Mustern",
+      reason: "3 Vorschläge",
+    });
+    const collected = item({
+      id: "intake",
+      reason: "intake_collected",
+      subject: null,
+      counts: { intake: 5 },
+    });
+    expect(attentionRow(collected, de)).toMatchObject({
+      name: "Gesammeltes Material",
+      reason: "5 Einträge zu prüfen",
+    });
+    expect(attentionRow(collected, en).name).toBe("Collected material");
+    expect(sentenceText(attentionSentence(collected, de, NOW))).toBe(
+      "5 gesammelte Einträge warten auf deine Prüfung — seit 3 Tagen.",
+    );
+    expect(
+      attentionRow(
+        item({ id: "skills", reason: "skills_proposed", subject: null, counts: { skills: 1 } }),
+        de,
+      ).reason,
+    ).toBe("1 Vorschlag");
+  });
+
+  test("degraded overview entries say limited and use the shared warning state", () => {
+    const row = attentionRow(item({ reason: "degraded" }), de);
+    expect(row.reason).toBe("Eingeschränkt");
+    expect(row.badge).toEqual({
+      state: "degraded",
+      label: "connectors.healthState.degraded",
+    });
+    expect(attentionRow(item({ reason: "degraded" }), en).reason).toBe("Limited");
+    expect(de("operations.cause.degraded", { name: "A" })).toBe(
+      "Connector A antwortet wiederholt mit Fehlern",
+    );
+  });
+
+  test("a reason this build does not know keeps the subject and shows the engine's value, marked", () => {
+    const sentence = attentionSentence(
+      item({ reason: "quota_frozen" as AttentionItem["reason"] }),
+      de,
+      NOW,
+    );
+    expect(sentence.lead).toBe("Der Workflow „Monatsbericht“ braucht dich");
+    expect(sentence.machine).toBe("quota_frozen");
+    expect(sentenceText(sentence)).toBe(
+      "Der Workflow „Monatsbericht“ braucht dich (quota_frozen) — seit 3 Tagen.",
+    );
+    const unknownCause = attentionSentence(
+      item({ cause_class: "provider_paused" as AttentionItem["cause_class"] }),
+      de,
+      NOW,
+    );
+    expect(unknownCause.machine).toBe("provider_paused");
+    const signal = attentionSentence(
+      item({ reason: "risk_critical", kind: "disk_full", subject: null }),
+      de,
+      NOW,
+    );
+    expect(signal.machine).toBe("disk_full");
+    expect(sentenceText(signal).toLowerCase()).not.toContain("unbekannt");
+  });
+
+  test("a subject without a name is said, not left blank", () => {
+    const text = sentenceText(
+      attentionSentence(
+        item({
+          subject: { kind: "connection", id: "c", name: null },
+          reason: "expired_no_refresh",
+        }),
+        de,
+        NOW,
+      ),
+    );
+    expect(text).toBe("Die Verbindung (ohne Namen) ist abgelaufen — seit 3 Tagen.");
+  });
+
+  test("the engine's residual wording is not part of the list sentence", () => {
+    const text = sentenceText(
+      attentionSentence(item({ detail: "HTTP 401 from upstream" }), de, NOW),
+    );
+    expect(text).not.toContain("HTTP 401");
+  });
+
+  test("since when, in the coarsest honest unit", () => {
+    const at = (ms: number) => new Date(NOW - ms).toISOString();
+    expect(sinceLabel(null, NOW, de)).toBeNull();
+    expect(sinceLabel("not a date", NOW, de)).toBeNull();
+    expect(sinceLabel(at(20_000), NOW, de)).toBe("seit gerade eben");
+    expect(sinceLabel(at(60_000), NOW, de)).toBe("seit 1 Minute");
+    expect(sinceLabel(at(5 * 3_600_000), NOW, de)).toBe("seit 5 Stunden");
+    expect(sinceLabel(at(86_400_000), NOW, de)).toBe("seit 1 Tag");
+    expect(sinceLabel(at(20 * 86_400_000), NOW, de)).toBe("seit 2 Wochen");
+    expect(sinceLabel(at(90 * 86_400_000), NOW, de)).toBe("seit 3 Monaten");
+    expect(sinceLabel(at(5 * 3_600_000), NOW, en)).toBe("for 5 hours");
+  });
+});
+
+describe("the primary action of an expiry or a paused schedule", () => {
+  const renew = { verb: "renew", href: `/workflows/${W}#workflow-automation`, primary: true };
+  const open = { ...renew, verb: "open" };
+  const act = (verb: object) => ({ ...verb, permission: "workflow:write" }) as never;
+
+  test("an approval or task permission that expires soon says Erneuern and never signs in", () => {
+    for (const reason of ["approval_expiring", "task_grant_expiring"] as const) {
+      const entry = item({ reason, actions: [act(renew)] });
+      expect(de(actionLabelKey(act(renew), entry))).toBe("Erneuern");
+      expect(signsInFromRow(act(renew), entry)).toBe(false);
+      expect(attentionTarget(act(renew), entry)).toBe(renew.href);
+    }
+    const held = item({ reason: "approval_expiring" });
+    expect(de(actionLabelKey(act(open), held))).toBe("Erneuern");
+  });
+
+  test("only a connector or a linked account signs in from the row", () => {
+    const connector = item({
+      kind: "connector",
+      reason: "needs_reauth",
+      subject: { kind: "connector", id: "c1", name: "HubSpot CRM", environment: "prod" },
+    });
+    expect(signsInFromRow(act({ ...renew, verb: "reauth" }), connector)).toBe(true);
+    expect(signsInFromRow(act(open), connector)).toBe(false);
+    expect(signsInFromRow(act({ ...renew, verb: "reauth" }), item())).toBe(false);
+  });
+
+  test("workflow, schedule and task rows name their environment like connector rows do", () => {
+    const workflow = item({
+      subject: { kind: "workflow", id: W, name: "Monatsbericht", environment: "prod" },
+    });
+    expect(attentionEnvironment(workflow)).toBe("prod");
+    const task = item({
+      kind: "task",
+      reason: "task_run_failed",
+      subject: { kind: "task", id: "t1", name: "Tagesbericht", environment: "dev" },
+    });
+    expect(attentionEnvironment(task)).toBe("dev");
+    const approved = item({
+      approval: { version: 3, environment: "prod" },
+      subject: { kind: "workflow", id: W, name: "Monatsbericht", environment: "dev" },
+    });
+    expect(attentionEnvironment(approved)).toBe("prod");
+    expect(attentionEnvironment(item())).toBeNull();
+  });
+
+  test("a schedule paused after repeated failures leads to its schedule and offers to resume", () => {
+    const paused = item({ reason: "schedule_auto_paused", detail: "upstream_unavailable" });
+    expect(de(actionLabelKey(act(open), paused))).toBe("Zeitplan fortsetzen");
+    expect(attentionTarget(act(open), paused)).toBe(`/workflows/${W}?tab=schedule`);
+  });
+
+  test("a schedule paused over its approval leads to the approval and offers to renew it", () => {
+    const paused = item({ reason: "schedule_auto_paused", detail: "authority_mismatch" });
+    expect(de(actionLabelKey(act(open), paused))).toBe("Freigabe erneuern");
+    expect(attentionTarget(act(open), paused)).toBe(`/workflows/${W}#workflow-automation`);
+  });
+});

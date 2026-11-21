@@ -7,8 +7,9 @@ import { and, eq } from "drizzle-orm";
 import { _resetConfigForTests, loadConfig, setConfigKey } from "../../config/loader.ts";
 import { upsertCredential } from "../../credentials/service.ts";
 import { closeDb } from "../../db/client.ts";
-import { auditLog, credentials } from "../../db/schema/index.ts";
+import { auditLog, vaultItems } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   __resetMcpClientPoolForTests,
@@ -45,7 +46,7 @@ const fakeClient: McpClientLike = {
 
 let ctx: TestDb;
 let tenantId: string;
-const _origDatabaseUrl = process.env.DATABASE_URL;
+const _origDatabaseUrl = testEnv.DATABASE_URL;
 
 const TOKEN_VALID_UNTIL = new Date("2999-01-01T00:00:00.000Z");
 
@@ -53,7 +54,7 @@ beforeAll(async () => {
   __setMcpPoolFactoriesForTests({ makeClient: () => fakeClient });
   ctx = await createTestDb("mcp-pool-invoke-401");
   await closeDb();
-  process.env.DATABASE_URL = ctx.url;
+  testEnv.DATABASE_URL = ctx.url;
   const cfgDir = mkdtempSync(join(tmpdir(), "sk-cfg-pool-401-"));
   _resetConfigForTests();
   await loadConfig({
@@ -70,8 +71,8 @@ afterAll(async () => {
   __resetMcpClientPoolForTests();
   _resetConfigForTests();
   await closeDb();
-  if (_origDatabaseUrl === undefined) delete process.env.DATABASE_URL;
-  else process.env.DATABASE_URL = _origDatabaseUrl;
+  if (_origDatabaseUrl === undefined) delete testEnv.DATABASE_URL;
+  else testEnv.DATABASE_URL = _origDatabaseUrl;
   await ctx.cleanup();
 }, 30_000);
 
@@ -103,13 +104,13 @@ describe("pool: mid-session 401 invalidates the oauth2 token credential", () => 
     );
 
     const tokenRowsBefore = await ctx.db
-      .select({ id: credentials.id })
-      .from(credentials)
+      .select({ id: vaultItems.id })
+      .from(vaultItems)
       .where(
         and(
-          eq(credentials.tenant_id, tenantId),
-          eq(credentials.connector_id, server.id),
-          eq(credentials.mode, "oauth2"),
+          eq(vaultItems.tenant_id, tenantId),
+          eq(vaultItems.connector_id, server.id),
+          eq(vaultItems.mode, "oauth2"),
         ),
       );
     expect(tokenRowsBefore.length).toBe(1);
@@ -143,13 +144,13 @@ describe("pool: mid-session 401 invalidates the oauth2 token credential", () => 
     expect(invokedRows[0]!.result).toBe("error");
 
     const tokenRowsAfter = await ctx.db
-      .select({ id: credentials.id })
-      .from(credentials)
+      .select({ id: vaultItems.id })
+      .from(vaultItems)
       .where(
         and(
-          eq(credentials.tenant_id, tenantId),
-          eq(credentials.connector_id, server.id),
-          eq(credentials.mode, "oauth2"),
+          eq(vaultItems.tenant_id, tenantId),
+          eq(vaultItems.connector_id, server.id),
+          eq(vaultItems.mode, "oauth2"),
         ),
       );
     expect(tokenRowsAfter.length).toBe(0);

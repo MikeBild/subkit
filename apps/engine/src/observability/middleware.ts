@@ -1,11 +1,7 @@
 import type { MiddlewareHandler } from "hono";
 import type { AppEnv } from "../http/openapi.ts";
-import { logger } from "../logging/logger.ts";
-import {
-  recordUsageEvent,
-  trafficClassFromHeader,
-  type UsageEventInput,
-} from "../stats/usage-events.ts";
+import { logger } from "../logging/index.ts";
+import { recordUsageEvent, trafficClassFromHeader, type UsageEventInput } from "../stats/index.ts";
 import { emitRequestEvent } from "./analytics.ts";
 import { getMetrics, METRIC_NAMES } from "./metrics.ts";
 

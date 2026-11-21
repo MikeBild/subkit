@@ -1,7 +1,7 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import type { ConnectorOperationError } from "@shared/index.ts";
 import { exportPKCS8, generateKeyPair } from "jose";
-import { logger } from "../../../logging/logger.ts";
+import { logger } from "../../../logging/index.ts";
 import { probeGraphQLConnector, query } from "../graphql.ts";
 import { HttpRequestInvalidError } from "../http.ts";
 import {

@@ -29,9 +29,9 @@ describe("intake review execution boundary", () => {
     const chain = signals();
     const read = getTool("get_intake_item");
     if (!read) throw new Error("intake item tool is not registered");
-    expect(
-      (await executeWrapped(wrapOne(read, ctx, chain, [], db, {}, null), { id: item.id })).ok,
-    ).toBe(true);
+    expect((await executeWrapped(wrapOne(read, ctx, chain, [], db, {}), { id: item.id })).ok).toBe(
+      true,
+    );
     for (const name of ["update_skill", "delete_skill"] as const) {
       let calls = 0;
       const result = await executeWrapped(
@@ -42,7 +42,6 @@ describe("intake review execution boundary", () => {
           [],
           db,
           {},
-          null,
         ),
         {},
       );

@@ -10,7 +10,6 @@ function errorsFor(for_each: string): string[] {
         id: "each",
         kind: "transform",
         for_each,
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
         expression: "return '${item.key}';",
       },
     ],
@@ -20,7 +19,6 @@ function errorsFor(for_each: string): string[] {
 }
 
 test("a placeholder is not a selector", () => {
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: the wrong form under test
   const [message] = errorsFor("${scope.list_files.data.items}");
   expect(message).toContain("JavaScript arrow function");
   expect(message).toContain("(sourceData) => sourceData.");

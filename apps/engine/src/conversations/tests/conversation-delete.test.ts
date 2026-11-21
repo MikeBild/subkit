@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { auditLog, conversations, fileLinks, files } from "../../db/schema/index.ts";
 import { insertMcpTask } from "../../mcp/tasks/store.ts";
 import { registerConversationAbort, unregisterConversationAbort } from "../abort.ts";
-import { createConversation, deleteConversation } from "../service.ts";
+import { createConversation, deleteConversation } from "../service/index.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
 
 let ctx: ConversationTestCtx;

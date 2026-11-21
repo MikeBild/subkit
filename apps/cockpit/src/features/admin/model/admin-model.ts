@@ -1,8 +1,6 @@
 import { PEOPLE_SECTIONS, type PeopleSection } from "@/app/links";
-import type { TranslationKey } from "@/lib/i18n";
+import type { Translate, TranslationKey } from "@/lib/i18n";
 import { type CatalogLabel, catalogLabel } from "@/lib/machine-label";
-
-type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 
 const ROLE_KEYS: Readonly<Record<string, TranslationKey>> = {
   config: "settings.meta.configuration",
@@ -25,7 +23,6 @@ const PERMISSION_RESOURCE_KEYS: Readonly<Record<string, TranslationKey>> = {
   connection: "permission.resource.connections",
   connector: "resource.connectors.title",
   conversation: "nav.chat",
-  credential: "permission.resource.credentials",
   discovery: "permission.resource.discovery",
   execution: "resource.runs.title",
   file: "resource.files.title",
@@ -50,7 +47,10 @@ const PERMISSION_RESOURCE_KEYS: Readonly<Record<string, TranslationKey>> = {
   stats: "resource.usage.title",
   system: "permission.resource.engine",
   task: "permission.resource.tasks",
+  device: "permission.resource.devices",
+  local: "permission.resource.localSteps",
   task_run: "permission.resource.taskRuns",
+  vault: "permission.resource.vault",
   workflow: "resource.workflows.title",
 };
 
@@ -71,6 +71,7 @@ const PERMISSION_ACTION_KEYS: Readonly<Record<string, TranslationKey>> = {
   import: "permission.action.import",
   invoke: "permission.action.invoke",
   list: "permission.action.list",
+  manage: "permission.action.manage",
   oauth: "permission.action.oauth",
   pause: "permission.action.pause",
   promote: "permission.action.promote",
@@ -80,7 +81,9 @@ const PERMISSION_ACTION_KEYS: Readonly<Record<string, TranslationKey>> = {
   restore: "permission.action.restore",
   restart: "permission.action.restart",
   resume: "permission.action.resume",
+  reveal: "permission.action.reveal",
   revoke: "permission.action.revoke",
+  revoke_any: "permission.action.revokeAny",
   rotate: "permission.action.rotate",
   run: "permission.action.run",
   signal: "permission.action.signal",

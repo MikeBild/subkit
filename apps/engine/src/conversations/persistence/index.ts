@@ -13,7 +13,7 @@ import { countModelMessagesTokens } from "../../llm/accounting/index.ts";
 import { getStaticCapabilities } from "../../llm/runtime/capabilities.ts";
 import { buildFileContentBlocks, type FileContentBlock } from "../../llm/runtime/file-context.ts";
 import type { ProviderKind } from "../../llm/runtime/model-init.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { scrubString } from "../../logging/scrub-secrets.ts";
 import {
   recordFileLlmCapDowngrade,

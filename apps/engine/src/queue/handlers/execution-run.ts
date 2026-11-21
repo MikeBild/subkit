@@ -8,11 +8,13 @@ import { hostedQuotaError } from "../../db/hosted-quota-errors.ts";
 import { executionSteps, executions } from "../../db/schema/index.ts";
 import { auditAdmissionRefusal } from "../../execution/admission-audit.ts";
 import { rehydrateExecutionPrincipal } from "../../execution/authorization-context.ts";
+import { enqueueBudgetResume } from "../../execution/budget-park.ts";
 import { CallerContextSchema } from "../../execution/caller-context.ts";
 import {
   resolveExecutionCallerActor,
   resolveExecutionCallerOrigin,
 } from "../../execution/caller-origin.ts";
+import { isBudgetPark } from "../../execution/core/budget-pause.ts";
 import { runExecution } from "../../execution/engine.ts";
 import {
   captureWorkflowPermission,
@@ -20,8 +22,9 @@ import {
 } from "../../execution/index.ts";
 import { finalizeExecution, GOVERNANCE_REFUSALS } from "../../execution/state.ts";
 import type { RequestSource, RunOptions } from "../../execution/types.ts";
+import { spendVerdict } from "../../llm/accounting/spend.ts";
 import { getContext, type LogContext, withContext } from "../../logging/context.ts";
-import { log, logger } from "../../logging/logger.ts";
+import { log, logger } from "../../logging/index.ts";
 import { RequestSourceSchema } from "../../observability/service-metadata.ts";
 import { can } from "../../rbac/evaluator.ts";
 import {
@@ -39,12 +42,14 @@ import {
   withHostedWork,
 } from "../hosted-work.ts";
 import { withActiveTenantJobContext } from "../job-context.ts";
-import { EXECUTION_RUN_QUEUE, type ExecutionRunJob } from "../queues.ts";
+import { EXECUTION_RUN_QUEUE, type ExecutionRunJob, type QueueName } from "../queues.ts";
 import { enqueueGateDiagnosis, enqueueRepair } from "./workflow-repair.ts";
 
 interface RegisterExecutionRunOptions {
   boss: PgBoss;
   db: Db;
+  queue?: QueueName;
+  gate?: (job: Job<ExecutionRunJob>) => Promise<boolean>;
 }
 
 async function maybeEnqueueRepair(
@@ -153,11 +158,44 @@ async function maybeEnqueueGateDiagnosis(
   }
 }
 
-async function handleOne(job: Job<ExecutionRunJob>, db: Db, boss: PgBoss): Promise<void> {
+async function budgetResumeOptions(
+  db: Db,
+  data: ExecutionRunJob,
+  row: { status: string; budget_park: unknown },
+  boss: PgBoss,
+): Promise<Record<string, unknown> | null> {
+  if (row.status !== "queued" || !isBudgetPark(row.budget_park) || !data.execution_id) return null;
+  const verdict = await spendVerdict(
+    data.tenant_id,
+    { kind: "workflow_step", calls_model_provider: true },
+    db,
+  );
+  if (!verdict.ok) {
+    await enqueueBudgetResume(
+      db,
+      { tenant_id: data.tenant_id, workflow_id: data.workflow_id, execution_id: data.execution_id },
+      verdict.reading.window.to,
+      boss,
+    );
+    return null;
+  }
+  await db
+    .update(executions)
+    .set({ budget_park: null })
+    .where(and(eq(executions.tenant_id, data.tenant_id), eq(executions.id, data.execution_id)));
+  return row.budget_park.scope;
+}
+
+async function handleOne(
+  job: Job<ExecutionRunJob>,
+  db: Db,
+  boss: PgBoss,
+  queue: QueueName,
+): Promise<void> {
   const data = job.data;
   log.queue.job.dequeued({
     msg: "execution.run job dequeued",
-    queue: EXECUTION_RUN_QUEUE,
+    queue,
     job_id: job.id,
     tenant_id: data.tenant_id,
     workflow_id: data.workflow_id,
@@ -182,6 +220,8 @@ async function handleOne(job: Job<ExecutionRunJob>, db: Db, boss: PgBoss): Promi
             caller_origin: executions.caller_origin,
             authorization: executions.authorization_context,
             request_source: executions.request_source,
+            status: executions.status,
+            budget_park: executions.budget_park,
           })
           .from(executions)
           .where(
@@ -205,7 +245,7 @@ async function handleOne(job: Job<ExecutionRunJob>, db: Db, boss: PgBoss): Promi
           workflow_id: data.workflow_id,
           execution_id: data.execution_id ?? null,
           request_source: boundary?.request_source ?? (data.request_source as string) ?? "api",
-          extra: { queue: EXECUTION_RUN_QUEUE },
+          extra: { queue },
         },
         db,
       );
@@ -279,6 +319,11 @@ async function handleOne(job: Job<ExecutionRunJob>, db: Db, boss: PgBoss): Promi
       throw error;
     }
     runOptions.resume_authorized = true;
+    if (data.budget_resume || boundary.budget_park) {
+      const resume = await budgetResumeOptions(db, data, boundary, boss);
+      if (!resume) return;
+      runOptions.budget_resume = resume;
+    }
     const result = await runExecution({
       db,
       tenant_id: data.tenant_id,
@@ -288,7 +333,7 @@ async function handleOne(job: Job<ExecutionRunJob>, db: Db, boss: PgBoss): Promi
     });
     log.queue.job.completed({
       msg: "execution.run job completed",
-      queue: EXECUTION_RUN_QUEUE,
+      queue,
       job_id: job.id,
       execution_id: result.execution_id,
       status: result.status,
@@ -318,7 +363,7 @@ async function handleOne(job: Job<ExecutionRunJob>, db: Db, boss: PgBoss): Promi
     const message = err instanceof Error ? err.message : String(err);
     log.queue.job.failed({
       msg: "execution.run job failed",
-      queue: EXECUTION_RUN_QUEUE,
+      queue,
       job_id: job.id,
       error: message,
       duration_ms: Date.now() - started,
@@ -347,6 +392,8 @@ export async function registerExecutionRunHandler(
   opts: RegisterExecutionRunOptions,
 ): Promise<string> {
   const { boss, db } = opts;
+  const queue = opts.queue ?? EXECUTION_RUN_QUEUE;
+  const gate = opts.gate;
   let concurrency = 1;
   try {
     concurrency = getConfig().queue.concurrency;
@@ -354,7 +401,7 @@ export async function registerExecutionRunHandler(
     concurrency = 1;
   }
   const workerId = await boss.work<ExecutionRunJob>(
-    EXECUTION_RUN_QUEUE,
+    queue,
     {
       batchSize: 1,
       localConcurrency: concurrency,
@@ -393,9 +440,12 @@ export async function registerExecutionRunHandler(
                   db,
                   job.data.tenant_id,
                   "execution",
-                  () => handleOne(job, db, boss),
+                  async () => {
+                    if (gate && !(await gate(job))) return;
+                    await handleOne(job, db, boss, queue);
+                  },
                   {
-                    queue: EXECUTION_RUN_QUEUE,
+                    queue,
                     id: job.id,
                   },
                 );
@@ -417,27 +467,21 @@ export async function registerExecutionRunHandler(
           }
           if (error instanceof HostedWorkQuotaError && job.data.execution_id) {
             await withContext(settlementContext ?? {}, () =>
-              ifHostedJobStillPending(
-                db,
-                job.data.tenant_id,
-                EXECUTION_RUN_QUEUE,
-                job.id,
-                async () => {
-                  await finalizeExecution(
-                    db,
-                    job.data.tenant_id,
-                    job.data.execution_id ?? "",
-                    { type: "enqueue_failed" },
-                    {
-                      failure: {
-                        step_id: null,
-                        error_code: error.code,
-                        error_message: error.message,
-                      },
+              ifHostedJobStillPending(db, job.data.tenant_id, queue, job.id, async () => {
+                await finalizeExecution(
+                  db,
+                  job.data.tenant_id,
+                  job.data.execution_id ?? "",
+                  { type: "enqueue_failed" },
+                  {
+                    failure: {
+                      step_id: null,
+                      error_code: error.code,
+                      error_message: error.message,
                     },
-                  );
-                },
-              ),
+                  },
+                );
+              }),
             );
           }
           throw error;
@@ -446,7 +490,7 @@ export async function registerExecutionRunHandler(
     },
   );
   log.queue.worker.registered({
-    msg: "execution.run worker registered",
+    msg: `${queue} worker registered`,
     worker_id: workerId,
   });
   return workerId;

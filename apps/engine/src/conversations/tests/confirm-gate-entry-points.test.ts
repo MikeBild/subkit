@@ -7,11 +7,9 @@ import { auditLog, conversations, tenants, toolApprovals, users } from "../../db
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
-import { buildMcpStubCtx } from "../../mcp/adapter.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { hashToolArgs } from "../../tools/approval.ts";
-import { dispatchTool } from "../../tools/dispatcher.ts";
-import { getUnifiedRegistry } from "../../tools/index.ts";
 import { CHAT_READONLY_TOOLS } from "../tools/authoring-palette.ts";
 import { getTool, type ToolContext } from "../tools/index.ts";
 import { wrapOne } from "../tools/sdk-wrap/invoke.ts";
@@ -33,7 +31,7 @@ let db: Db;
 let tenantId: string;
 let otherTenantId: string;
 let principal: ResolvedPrincipal;
-const originalDatabaseUrl = process.env.DATABASE_URL;
+const originalDatabaseUrl = testEnv.DATABASE_URL;
 
 function toolCtx(
   conversation_id: string,
@@ -45,6 +43,7 @@ function toolCtx(
     conversation_id,
     actor_id: principal.id,
     principal,
+    ask_before_writing: true,
     connector_id: null,
     workflow_id: null,
     engineClient: new EngineClient({
@@ -107,7 +106,7 @@ beforeAll(async () => {
   tdb = await createTestDb("confirm-gate-entry-points");
   db = tdb.db as unknown as Db;
   await closeDb();
-  process.env.DATABASE_URL = tdb.url;
+  testEnv.DATABASE_URL = tdb.url;
   resetMockProvider();
   const [tenant] = await tdb.db
     .insert(tenants)
@@ -140,8 +139,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await closeDb();
-  if (originalDatabaseUrl === undefined) delete process.env.DATABASE_URL;
-  else process.env.DATABASE_URL = originalDatabaseUrl;
+  if (originalDatabaseUrl === undefined) delete testEnv.DATABASE_URL;
+  else testEnv.DATABASE_URL = originalDatabaseUrl;
   await tdb.cleanup();
 }, 30_000);
 
@@ -165,7 +164,6 @@ describe("one gated call through every entry point", () => {
         [] as TurnEvent[],
         db,
         {},
-        null,
       );
       const result = await wrapped.execute!(ARGS, {
         toolCallId: `entry-${surface}`,
@@ -179,25 +177,6 @@ describe("one gated call through every entry point", () => {
       expect(await transitionsFor(row.id, conversationId)).toEqual(conversationTransitions);
     });
   }
-
-  test("MCP direct dispatch: same args_hash, approval requested without a conversation transition", async () => {
-    const before = await approvalIds(tenantId);
-    const envelope = await dispatchTool(
-      {
-        registry: getUnifiedRegistry(),
-        db,
-        principal,
-        buildMcpStubCtx: () => buildMcpStubCtx({ db, principal }),
-        mcpMode: "authoring",
-      },
-      { surface: "mcp", name: TOOL, args: ARGS },
-    );
-    expect(envelope.status).toBe("needs_confirm");
-    const row = await newApproval(before);
-    expect(row.args_hash).toBe(expectedHash);
-    expect(row.consumed_at).toBeNull();
-    expect(await transitionsFor(row.id, null)).toEqual([AuditAction.APPROVAL_REQUESTED]);
-  });
 
   test("chat surface never reaches the gate: the tool is not in the palette and no approval opens", async () => {
     const before = await approvalIds(tenantId);
@@ -218,7 +197,7 @@ describe("one gated call through every entry point", () => {
   });
 
   test("another tenant sees none of these approvals", async () => {
-    expect((await approvalIds(tenantId)).size).toBeGreaterThanOrEqual(LOOP_SURFACES.length + 1);
+    expect((await approvalIds(tenantId)).size).toBeGreaterThanOrEqual(LOOP_SURFACES.length);
     expect((await approvalIds(otherTenantId)).size).toBe(0);
   });
 });

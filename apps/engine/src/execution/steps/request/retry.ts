@@ -1,3 +1,4 @@
+import { backoffDelay } from "@shared/backoff.ts";
 import type { RequestStep } from "../../../workflows/types.ts";
 
 export const RETRY_BASE_MS = 200;
@@ -8,14 +9,17 @@ export function requestMaxAttempts(step: Pick<RequestStep, "max_retries">): numb
   return (step.max_retries ?? REQUEST_MAX_RETRIES_DEFAULT) + 1;
 }
 
-function jitter(ms: number): number {
-  const j = ms * 0.2;
-  return ms + (Math.random() * 2 - 1) * j;
-}
-
-export function backoffMs(attempt: number, base_ms: number = RETRY_BASE_MS): number {
-  const raw = Math.min(RETRY_CAP_MS, base_ms * 2 ** attempt);
-  return Math.max(0, jitter(raw));
+export function backoffMs(
+  attempt: number,
+  base_ms: number = RETRY_BASE_MS,
+  random: number = Math.random(),
+): number {
+  return backoffDelay(attempt, random, {
+    baseMs: base_ms,
+    maxMs: RETRY_CAP_MS,
+    jitter: { symmetric: 0.2 },
+    round: false,
+  });
 }
 
 export function parseRetryAfter(header: string | null): number | null {

@@ -8,8 +8,9 @@ import {
 } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
 import { conversations } from "../db/schema/index.ts";
-import type { PermissionMode, ToolModeRule, ToolPolicies, ToolPolicyMode } from "../tools/types.ts";
+import type { ToolModeRule, ToolPolicies, ToolPolicyMode } from "../tools/types.ts";
 import { workflowInputObjectKeys } from "../workflows/run-input.ts";
+import { DEVICE_TOOL_NAMES } from "./core/device-tools/catalog.ts";
 import { getTaskRunMarker } from "./core/draft.ts";
 import { isDangerousTool } from "./dangerous-tools.ts";
 import { personCoverRule } from "./instruction-cover/policy.ts";
@@ -255,7 +256,12 @@ function forcesWorkflowSave(input: unknown): boolean {
   return asObj(input).force_commit === true;
 }
 
+const DEVICE_TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = Object.fromEntries(
+  [...DEVICE_TOOL_NAMES].map((name) => [name, { defaultMode: "no_confirm", neverGate: true }]),
+);
+
 export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
+  ...DEVICE_TOOL_POLICIES,
   load_skill: {
     defaultMode: "no_confirm",
     neverGate: true,
@@ -524,15 +530,17 @@ export function decideToolMode(args: {
   category: "draft_write" | "tenant_read" | "tenant_write";
   input: unknown;
   overrides: ToolPolicies;
-  permission_mode?: PermissionMode | null;
+  ask_before_writing?: boolean;
   connector_trust?: boolean;
   authority_covered?: boolean;
   instruction_covered?: boolean;
   rule_covered?: boolean;
   execution_data_transfer?: boolean;
   task_run?: boolean;
+  model_checked?: boolean;
 }): ToolModeDecision {
-  const { tool, category, input, permission_mode } = args;
+  const { tool, category, input } = args;
+  const askBeforeWriting = args.ask_before_writing === true;
   const overrides = args.task_run === true ? taskRunToolPolicies(args.overrides) : args.overrides;
 
   const def = TOOL_POLICIES[tool];
@@ -560,7 +568,7 @@ export function decideToolMode(args: {
     return { mode: "confirm_before_execution", rule: "computed_from_input" };
   }
 
-  if (args.connector_trust === true && args.task_run !== true && permission_mode !== "plan") {
+  if (args.connector_trust === true && args.task_run !== true) {
     return { mode: "no_confirm", rule: "connector_trust" };
   }
 
@@ -568,9 +576,17 @@ export function decideToolMode(args: {
     return { mode: "no_confirm", rule: "never_gate" };
   }
 
+  if (
+    !askBeforeWriting &&
+    args.model_checked === false &&
+    (category === "tenant_write" || isDangerous)
+  ) {
+    return { mode: "confirm_before_execution", rule: "write_gate" };
+  }
+
   const personCovered = personCoverRule({
     tool,
-    permission_mode: permission_mode ?? null,
+    ask_before_writing: askBeforeWriting,
     instruction_covered: args.instruction_covered === true,
     rule_covered: args.rule_covered === true,
     task_run: args.task_run === true,
@@ -578,55 +594,61 @@ export function decideToolMode(args: {
   });
   if (personCovered) return { mode: "no_confirm", rule: personCovered };
 
-  if (permission_mode === "yolo") {
-    return { mode: "no_confirm", rule: "permission_mode" };
-  }
-  if (permission_mode === "auto") {
-    const computed = def?.computeModeFromInput?.(input);
-    if (computed === "confirm_before_execution") {
-      return { mode: computed, rule: "computed_from_input" };
-    }
-    if (isDangerous) {
-      return { mode: "confirm_before_execution", rule: "permission_mode" };
-    }
-    if (
-      category === "tenant_write" &&
-      !AUTO_PREPARATION_WRITES.has(tool) &&
-      computed !== "no_confirm"
-    ) {
-      return { mode: "confirm_before_execution", rule: "permission_mode" };
-    }
-    const override = overrides[tool];
-    if (override && override !== "no_confirm") {
-      return { mode: override, rule: "conversation_override" };
-    }
-    return {
-      mode: computed ?? "no_confirm",
-      rule: computed ? "computed_from_input" : "permission_mode",
-    };
-  }
-  if (permission_mode === "ask" || permission_mode === "plan") {
-    if (
-      permission_mode === "ask" &&
-      args.authority_covered === true &&
-      tool === "run_workflow" &&
-      !isDangerous &&
-      overrides[tool] !== "confirm_before_execution"
-    ) {
-      return { mode: "no_confirm", rule: "authority_covered" };
-    }
-    if (category === "tenant_write" || isDangerous) {
-      return { mode: "confirm_before_execution", rule: "permission_mode" };
-    }
-  }
+  if (askBeforeWriting) return askBeforeWritingMode(args, def, isDangerous, overrides);
 
   const computed = def?.computeModeFromInput?.(input);
-  if (computed === "confirm_before_execution" || isDangerous) {
+  if (computed === "confirm_before_execution") {
+    return { mode: computed, rule: "computed_from_input" };
+  }
+  if (isDangerous) {
+    return { mode: "confirm_before_execution", rule: "write_gate" };
+  }
+  if (
+    category === "tenant_write" &&
+    !AUTO_PREPARATION_WRITES.has(tool) &&
+    computed !== "no_confirm"
+  ) {
+    return { mode: "confirm_before_execution", rule: "write_gate" };
+  }
+  const override = overrides[tool];
+  if (override && override !== "no_confirm") {
+    return { mode: override, rule: "conversation_override" };
+  }
+  return {
+    mode: computed ?? "no_confirm",
+    rule: computed ? "computed_from_input" : "category_default",
+  };
+}
+
+function askBeforeWritingMode(
+  args: {
+    tool: string;
+    category: "draft_write" | "tenant_read" | "tenant_write";
+    input: unknown;
+    authority_covered?: boolean;
+  },
+  def: ToolPolicyDefinition | undefined,
+  isDangerous: boolean,
+  overrides: ToolPolicies,
+): ToolModeDecision {
+  const { tool, category, input } = args;
+  if (
+    args.authority_covered === true &&
+    tool === "run_workflow" &&
+    !isDangerous &&
+    overrides[tool] !== "confirm_before_execution"
+  ) {
+    return { mode: "no_confirm", rule: "authority_covered" };
+  }
+  if (category === "tenant_write" || isDangerous) {
+    return { mode: "confirm_before_execution", rule: "ask_before_writing" };
+  }
+  const computed = def?.computeModeFromInput?.(input);
+  if (computed === "confirm_before_execution") {
     return { mode: "confirm_before_execution", rule: "computed_from_input" };
   }
   const override = overrides[tool];
   if (
-    permission_mode !== "plan" &&
     override &&
     ((override === "no_confirm" && canSetNoConfirmOverride(tool, override)) ||
       override === "confirm_before_execution")
@@ -651,7 +673,6 @@ export function autoPreparationProceeds(args: {
       category,
       input: args.input,
       overrides: args.overrides,
-      permission_mode: "auto",
     }).mode === "no_confirm"
   );
 }
@@ -661,7 +682,7 @@ export function resolveToolMode(args: {
   category: "draft_write" | "tenant_read" | "tenant_write";
   input: unknown;
   overrides: ToolPolicies;
-  permission_mode?: PermissionMode | null;
+  ask_before_writing?: boolean;
 }): ToolPolicyMode {
   return decideToolMode(args).mode;
 }

@@ -6,7 +6,7 @@ import { _resetRssHighWaterForTests, setDlqJobCount } from "../../observability/
 import { resetMetricsRegistryForTests } from "../../observability/metrics.ts";
 import { invalidateAttention } from "../../operator/attention.ts";
 import { _resetRiskSignalEdgesForTests } from "../../operator/risk-signals.ts";
-import { runRiskSignalEdges } from "../../scheduler/risk-signal-edges-runner.ts";
+import { runRiskSignalEdges } from "../../operator/scheduled/risk-signal-edges-runner.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 let suite: McpTestSuite;

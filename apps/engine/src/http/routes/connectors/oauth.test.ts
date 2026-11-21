@@ -273,7 +273,7 @@ describe("GET /v1/oauth/callback", () => {
       .where(
         and(
           eq(auditLog.tenant_id, server.tenantId),
-          inArray(auditLog.action, ["credential.created", "credential.updated"]),
+          inArray(auditLog.action, ["vault.item.created", "vault.item.updated"]),
         ),
       );
     await server.db.insert(auditLog).values({

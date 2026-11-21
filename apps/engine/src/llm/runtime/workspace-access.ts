@@ -1,4 +1,5 @@
 import { getConfig } from "../../config/loader.ts";
+import { readEnv } from "../../env.ts";
 import {
   CATALOG_MODEL_PROVIDERS,
   type CatalogModelProvider,
@@ -9,7 +10,7 @@ import { validateProviderSetup, workspaceOwnsProviderKey } from "./model-init.ts
 export const WORKSPACE_KEY_PROVIDERS = CATALOG_MODEL_PROVIDERS;
 
 export function mockProviderAllowed(): boolean {
-  return process.env.NODE_ENV === "test" || process.env.NODE_ENV === "development";
+  return readEnv("NODE_ENV") === "test" || readEnv("NODE_ENV") === "development";
 }
 
 export function workspaceKeyModel(provider: CatalogModelProvider, chosen?: string | null): string {

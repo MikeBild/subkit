@@ -7,7 +7,6 @@ import { createHttpTestServer, type HttpTestServer } from "../http/tests/setup.t
 import { buildAttention } from "../operator/attention.ts";
 import type { Candidate } from "../operator/attention-readers.ts";
 import type { AttentionItem } from "../operator/core/attention.ts";
-import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
 import {
   type CockpitPushFixture,
@@ -151,7 +150,7 @@ async function passPayloads(
 
 beforeAll(async () => {
   ctx = await createHttpTestServer("cockpit-push-schedule");
-  at = new Date(getTestNow());
+  at = new Date("2026-11-18T12:00:00.000Z");
   fixtures = createCockpitPushFixtures({ db: ctx.db, at, nextUuid });
 });
 

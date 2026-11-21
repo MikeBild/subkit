@@ -5,6 +5,7 @@ import { SYSTEM_TENANT_ID } from "../../../audit/index.ts";
 import { auditLog } from "../../../db/schema/audit.ts";
 import { apiKeys, systemAccounts, tenants, users } from "../../../db/schema/index.ts";
 import { builtinRoleId } from "../../../rbac/roles.ts";
+import { testEnv } from "../../../test-helpers/determinism/env.ts";
 import {
   authedFetch,
   det,
@@ -33,18 +34,18 @@ describe("PUT /v1/settings/{path}", () => {
       scopes: ["*"],
     });
 
-    const previousNodeEnv = process.env.NODE_ENV;
-    process.env.NODE_ENV = "test";
+    const previousNodeEnv = testEnv.NODE_ENV;
+    testEnv.NODE_ENV = "test";
     try {
       const response = await fetch(
-        `${server.baseUrl}/v1/settings/tokens.monthly_budget?tenant=${server.tenantId}`,
+        `${server.baseUrl}/v1/settings/connectors.mcp.per_server_manifest_byte_cap?tenant=${server.tenantId}`,
         {
           method: "PUT",
           headers: {
             "content-type": "application/json",
             authorization: `Bearer ${machineKey}`,
           },
-          body: JSON.stringify({ value: 100 }),
+          body: JSON.stringify({ value: 10_000 }),
         },
       );
       expect(response.status).toBe(200);
@@ -55,8 +56,8 @@ describe("PUT /v1/settings/{path}", () => {
         .where(eq(auditLog.action, "settings.changed"));
       expect(audit).toEqual({ actor_type: "system_account", actor_id: server.systemAccountId });
     } finally {
-      if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
-      else process.env.NODE_ENV = previousNodeEnv;
+      if (previousNodeEnv === undefined) delete testEnv.NODE_ENV;
+      else testEnv.NODE_ENV = previousNodeEnv;
     }
   });
 
@@ -190,8 +191,8 @@ describe("PUT /v1/settings/{path}", () => {
   });
 
   test("requires-restart in production returns 409 + envelope shape (without force)", async () => {
-    const prev = process.env.NODE_ENV;
-    process.env.NODE_ENV = "production";
+    const prev = testEnv.NODE_ENV;
+    testEnv.NODE_ENV = "production";
     try {
       const res = await authedFetch("/v1/settings/server.port", {
         method: "PUT",
@@ -212,14 +213,14 @@ describe("PUT /v1/settings/{path}", () => {
         .where(eq(auditLog.action, "settings.changed"));
       expect(rows.length).toBe(0);
     } finally {
-      if (prev === undefined) delete process.env.NODE_ENV;
-      else process.env.NODE_ENV = prev;
+      if (prev === undefined) delete testEnv.NODE_ENV;
+      else testEnv.NODE_ENV = prev;
     }
   });
 
   test("requires-restart in production with force=true returns 200 + audit row", async () => {
-    const prev = process.env.NODE_ENV;
-    process.env.NODE_ENV = "production";
+    const prev = testEnv.NODE_ENV;
+    testEnv.NODE_ENV = "production";
     try {
       const res = await authedFetch("/v1/settings/server.port", {
         method: "PUT",
@@ -240,8 +241,8 @@ describe("PUT /v1/settings/{path}", () => {
       expect(meta.force_applied).toBe(true);
       expect(meta.requires_restart).toBe(true);
     } finally {
-      if (prev === undefined) delete process.env.NODE_ENV;
-      else process.env.NODE_ENV = prev;
+      if (prev === undefined) delete testEnv.NODE_ENV;
+      else testEnv.NODE_ENV = prev;
     }
   });
 
@@ -401,7 +402,6 @@ describe("PUT /v1/settings/{path}", () => {
     });
 
     const targets: Array<[string, unknown]> = [
-      ["repl.permissionMode", "yolo"],
       ["ui.theme", "dark"],
       ["ui.personality", "verbose"],
       ["notifications.push.enabled", true],
@@ -467,8 +467,8 @@ describe("PUT /v1/settings/{path}", () => {
   });
 
   test("pending_restart_keys deduplicates repeat writes to the same leaf", async () => {
-    const prev = process.env.NODE_ENV;
-    process.env.NODE_ENV = "production";
+    const prev = testEnv.NODE_ENV;
+    testEnv.NODE_ENV = "production";
     try {
       await authedFetch("/v1/settings/server.port", {
         method: "PUT",
@@ -487,8 +487,8 @@ describe("PUT /v1/settings/{path}", () => {
       const matching = keys.filter((k) => k === "server.port");
       expect(matching.length).toBe(1);
     } finally {
-      if (prev === undefined) delete process.env.NODE_ENV;
-      else process.env.NODE_ENV = prev;
+      if (prev === undefined) delete testEnv.NODE_ENV;
+      else testEnv.NODE_ENV = prev;
     }
   });
 

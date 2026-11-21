@@ -43,7 +43,7 @@ const UNGATED_BY_DESIGN: Readonly<Record<string, readonly string[]>> = {
     "get_role",
     "get_skill_candidate",
     "get_subscription",
-    "get_token_budget",
+    "get_ai_budget",
     "inspect_role",
     "inspect_workflow",
     "list_attachments",

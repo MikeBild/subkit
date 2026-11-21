@@ -1,7 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import { listedDescription } from "../../api/catalog-metadata.ts";
 import { toFileId } from "../../api/files-schemas.ts";
-import { listConversationAttachments } from "../../files/service.ts";
+import { listConversationAttachments } from "../../files/service/index.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const ListInput = z.object({}).openapi("ListAttachmentsToolInput");

@@ -8,7 +8,8 @@ import {
   registerNativeUrlElicitationCompletion,
 } from "../conversations/public/elicitation.ts";
 import type { Db } from "../db/client.ts";
-import { errorFields, logger } from "../logging/logger.ts";
+import { readEnv } from "../env.ts";
+import { errorFields, logger } from "../logging/index.ts";
 import { buildOperatorHealthSummary } from "../operator/health-digest.ts";
 import { can } from "../rbac/evaluator.ts";
 import { buildCatalogSummaryLine } from "../workflows/catalog-view.ts";
@@ -29,7 +30,7 @@ interface CreateMcpServerParams {
 
 function resolveEngineVersion(): string {
   if (VERSION && VERSION !== "0.0.0-dev") return VERSION;
-  const env = process.env.ENGINE_VERSION;
+  const env = readEnv("ENGINE_VERSION");
   if (env && env !== "0.0.0-dev") return env;
   return VERSION ?? "0.0.0-dev";
 }

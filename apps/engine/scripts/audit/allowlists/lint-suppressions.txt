@@ -1,0 +1,11 @@
+# Burndown allowlist for the audit-invariants `lint_suppressions` check.
+# Rule: biome-ignore outside *.test.ts(x) files; fix the code or change the rule in biome.json with a reason.
+# Format: <path from repo root>  <budget in suppressions>. A listed file fails once it exceeds its budget;
+# an unlisted file fails at the first hit. Budgets only shrink: fix the file, then run
+# `bun run apps/engine/scripts/audit-invariants.ts --update-baseline` (lowers budgets, drops fixed files).
+# `--accept-new` also admits new offenders; use it only for a reviewed baseline reset.
+
+apps/sk/src/tests/helpers/ink.tsx                            1
+packages/chat-ui/src/elicit/FormPrompt.tsx                   1
+packages/chat-ui/src/elicit/TextPrompt.tsx                   1
+packages/shared/src/invoke-snippet.ts                        1

@@ -118,10 +118,7 @@ export const cliScanner: Scanner = {
   id: "cli",
   scan(text: string): Violation[] {
     const out: Violation[] = [];
-    FENCED_RE.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    // biome-ignore lint/suspicious/noAssignInExpressions: standard regex exec loop.
-    while ((m = FENCED_RE.exec(text)) !== null) {
+    for (const m of text.matchAll(FENCED_RE)) {
       const block = m[1] ?? "";
       const invocations = parseInvocations(block);
       for (const inv of invocations) {

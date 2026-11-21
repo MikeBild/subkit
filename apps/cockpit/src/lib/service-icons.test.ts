@@ -5,9 +5,11 @@ import { SERVICE_ICONS } from "./service-icon-marks.generated";
 import {
   isAiService,
   loadServiceMarks,
+  namedService,
   serviceIcon,
   serviceIdentity,
   serviceMarksReady,
+  serviceNameOf,
   templateIdentity,
 } from "./service-icons";
 import { TEMPLATE_SERVICES } from "./service-icons.generated";
@@ -40,6 +42,13 @@ describe("service marks load apart from the main bundle", () => {
 });
 
 describe("service identity", () => {
+  test("a service name or a service:resource reference finds its brand", () => {
+    expect(serviceNameOf("Gmail: invoices")).toBe("Gmail");
+    expect(namedService("Gmail")).toEqual({ kind: "brand", key: "google-gmail" });
+    expect(namedService("SubKit")).toEqual({ kind: "subkit" });
+    expect(namedService("Internal billing")).toEqual({ kind: "generic", driver: null });
+  });
+
   test("every branded template resolves to a generated icon", () => {
     for (const template of templates) {
       const identity = templateIdentity(template.slug);

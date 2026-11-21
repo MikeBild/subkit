@@ -10,8 +10,9 @@ import {
   recommendedUpdate,
   type SetupAnswers,
   type SetupQuestionId,
+  setupKeys,
   setupUpdate,
-} from "./model";
+} from "./model/setup-model";
 
 export type Invitation = NonNullable<Setup["invitation"]>;
 
@@ -53,7 +54,7 @@ export function useSetupFlow(setup: Setup, events: { onDone(): void; onLater(): 
     invitation,
     applySetup: (answers: SetupAnswers) => {
       later.reset();
-      save.mutate(setupUpdate(answers));
+      save.mutate(setupUpdate(answers, setupKeys(setup)));
     },
     skip: () => {
       save.reset();

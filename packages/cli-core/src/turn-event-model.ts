@@ -5,7 +5,6 @@ export { parseRenderableMessageContent, type RenderableMessagePart } from "./mes
 
 export interface TurnUsage {
   turn_tokens: number;
-  remaining_monthly_budget_tokens: number | null;
   context_cap_tokens?: number;
   cache_read_tokens?: number;
   cache_read_pct?: number;

@@ -61,21 +61,21 @@ describe("onboardingCredential", () => {
     ).toEqual({ ok: true, body: { mode: "header", headers: { apikey: "k-3" } } });
   });
 
-  test("a header or query key without a named field points to sk credentials set", () => {
+  test("a header or query key without a named field points to sk vault attach", () => {
     const header = onboardingCredential("c1", "header", noHints, "k-1");
     expect(header.ok).toBe(false);
     expect(header.ok ? "" : header.reason).toContain(
-      '`sk credentials set c1 --mode header --header "Name=Value"`',
+      "`sk vault attach c1 --mode header --header <name>` and the value on stdin",
     );
     const query = onboardingCredential("c1", "query", undefined, "k-1");
     expect(query.ok ? "" : query.reason).toContain(
-      '`sk credentials set c1 --mode query --query "name=Value"`',
+      "`sk vault attach c1 --mode query --query <name>` and the value on stdin",
     );
   });
 
   test("two-value modes and account sign-in are refused with the command that does them", () => {
     const basic = onboardingCredential("c1", "basic", noHints, "user:pass");
-    expect(basic.ok ? "" : basic.reason).toContain("`sk credentials set c1 --mode basic`");
+    expect(basic.ok ? "" : basic.reason).toContain("`sk vault attach c1 --mode basic`");
     const oauth = onboardingCredential("c1", "oauth2", noHints, "token");
     expect(oauth.ok ? "" : oauth.reason).toContain("`sk auth --connector-id c1`");
   });
@@ -175,7 +175,7 @@ describe("/onboard wizard", () => {
     if (!template) throw new Error("no template offered");
     const probe = await wizard.onProbe(template, "token-1");
     expect(probe.ok).toBe(false);
-    expect(probe.reason).toContain("sk credentials set conn-2 --mode query");
+    expect(probe.reason).toContain("sk vault attach conn-2 --mode query");
     expect(tested).toBe(false);
     expect(await wizard.onSave(template, "token-1")).toEqual({
       ok: false,

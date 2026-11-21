@@ -390,3 +390,35 @@ test("a tool call stated as a write is not covered by one approved as a read", (
     { kind: "changed_boundary", connector_id: connector, target: TOOL_TARGET, effect: "write" },
   ]);
 });
+
+test("a step that starts using another vault item grows the approval by that handle", () => {
+  const result = growth(
+    [effect("call", { secrets: ["crm-token"] })],
+    [effect("call", { secrets: ["crm-token", "me.erp"] })],
+  );
+  expect(result.growth).toEqual([
+    {
+      kind: "new_secret",
+      connector_id: connector,
+      target: "https://api.example.test/things",
+      effect: "read",
+      item: "me.erp",
+    },
+  ]);
+});
+
+test("fewer or the same vault items carry the approval forward", () => {
+  expect(
+    growth([effect("call", { secrets: ["a", "b"] })], [effect("call", { secrets: ["b"] })]).growth,
+  ).toEqual([]);
+  expect(growth([effect("call", { secrets: ["a"] })], [effect("call")]).growth).toEqual([]);
+});
+
+test("a vault item granted on another step still counts as known", () => {
+  expect(
+    growth(
+      [effect("first", { secrets: ["a"] }), effect("second")],
+      [effect("first"), effect("second", { secrets: ["a"] })],
+    ).growth,
+  ).toEqual([]);
+});

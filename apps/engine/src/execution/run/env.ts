@@ -83,6 +83,7 @@ export interface RunState {
   failedStepId: string | null;
   finalStatus: ExecutionStatus;
   validationError: { code: string; message: string; details?: unknown } | null;
+  budgetPark: { step_id: string; step_row_id: string } | null;
 }
 
 export interface StepFrame {
@@ -108,6 +109,7 @@ export function initialRunState(env: RunEnv): RunState {
     failedStepId: null,
     finalStatus: "succeeded",
     validationError: null,
+    budgetPark: null,
   };
 }
 

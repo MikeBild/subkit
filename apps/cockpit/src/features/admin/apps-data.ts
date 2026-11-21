@@ -2,8 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiCall } from "@/api/call";
 import { ApiError } from "@/api/client";
 import { useLiveQueryOptions } from "@/app/live-events";
-import type { TranslationKey } from "@/lib/i18n";
-import type { Translate } from "./data";
+import type { Translate, TranslationKey } from "@/lib/i18n";
 import {
   type AppActivationOutcome,
   type AppSettingsChanges,

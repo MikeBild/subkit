@@ -105,7 +105,7 @@ test("completion, citation attachment, suggestions, and error frames retain thei
     {
       type: "completed",
       status: "awaiting_input",
-      usage: { turn_tokens: 7, remaining_monthly_budget_tokens: null },
+      usage: { turn_tokens: 7 },
     },
     2,
   );

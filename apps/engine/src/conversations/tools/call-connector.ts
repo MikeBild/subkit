@@ -17,9 +17,8 @@ import {
 } from "../../connectors/services/call-connector.ts";
 import type { ConnectorView } from "../../connectors/types.ts";
 import { getCredentialForConnector } from "../../credentials/service.ts";
-import { scrubString } from "../../logging/index.ts";
-import { logger } from "../../logging/logger.ts";
-import { recordSuccessShape } from "../../schema-versions/service.ts";
+import { logger, scrubString } from "../../logging/index.ts";
+import { recordSuccessShape } from "../../schema-versions/index.ts";
 import {
   DirectConnectorBindingError,
   directConnectorUrl,

@@ -1,7 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { Db, Executor } from "../db/client.ts";
 import { connectors } from "../db/schema/index.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 
 export async function persistCircuitState(
   db: Db,

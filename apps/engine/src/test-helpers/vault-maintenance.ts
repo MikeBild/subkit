@@ -1,4 +1,4 @@
-import type { RewrapAcknowledgement } from "../preflight/rewrap-evidence.ts";
+import type { RewrapAcknowledgement } from "../preflight/index.ts";
 
 export const syntheticVaultStopAcknowledgement: RewrapAcknowledgement = {
   all_producers_stopped: true,

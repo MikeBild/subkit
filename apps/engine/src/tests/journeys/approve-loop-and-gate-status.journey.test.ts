@@ -1,10 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+import type { ResolvedPrincipal } from "../../auth/types.ts";
 import {
   registerConversationAbort,
   unregisterConversationAbort,
 } from "../../conversations/abort.ts";
-import * as conversationsSvc from "../../conversations/service.ts";
+import * as conversationsSvc from "../../conversations/service/index.ts";
 import type { Db } from "../../db/client.ts";
 import { type ConverseMockStep, getMockProvider } from "../../llm/mock-provider.ts";
 
@@ -12,6 +13,7 @@ async function createConversationAndRunTurn(
   params: conversationsSvc.CreateConversationParams,
   db: Db,
   plan?: ConverseMockStep[],
+  principal?: ResolvedPrincipal,
 ): Promise<conversationsSvc.ConversationTurnOutcome> {
   const created = await conversationsSvc.createConversation(params, db);
   if (plan) getMockProvider().setConversePlan(created.conversation.id, plan);
@@ -29,6 +31,7 @@ async function createConversationAndRunTurn(
         answer_actor: TEST_HUMAN_ANSWER,
         user_memory: created.user_memory,
         turn_abort_ctrl: ctrl,
+        ...(principal ? { principal } : {}),
       },
       db,
     );
@@ -43,6 +46,7 @@ import type { ToolContext } from "../../conversations/tools/index.ts";
 import type { DraftDocument } from "../../conversations/types.ts";
 import { conversationElicitations } from "../../db/schema/index.ts";
 import { runExecution } from "../../execution/engine.ts";
+import { writeSetupPreferences } from "../../identity/setup-preferences.ts";
 import { TEST_HUMAN_ANSWER } from "../../test-helpers/answer-actor.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import {
@@ -67,9 +71,13 @@ afterAll(async () => {
 
 describe("approve, loop and gate status", () => {
   test("AC1: duplicate /respond returns 409 elicitation_already_resolved with the previous decision", async () => {
+    await writeSetupPreferences(
+      ctx.db,
+      { tenant_id: ctx.tenantId, user_id: ctx.userId },
+      { ask_before_writing: true },
+    );
     const outcome = await createConversationAndRunTurn(
       {
-        permission_mode: "ask",
         tenant_id: ctx.tenantId,
         actor_id: ctx.userId,
         initial_message: "list users from jsonplaceholder",
@@ -81,6 +89,7 @@ describe("approve, loop and gate status", () => {
           args: { question: "Use the jsonplaceholder users endpoint?", kind: "generic" },
         },
       ],
+      { provider: "test", kind: "user", id: ctx.userId, tenant_id: ctx.tenantId, roles: ["admin"] },
     );
     const conversationId = outcome.conversation.id;
     const [elicit] = await ctx.db
@@ -137,7 +146,6 @@ describe("approve, loop and gate status", () => {
       actor_id: ctx.userId,
       connector_id: null,
       workflow_id: null,
-      permission_mode: "auto",
       // biome-ignore lint/suspicious/noExplicitAny: minimal stub matching the runtime shape
       engineClient: stubEngineClient as any,
       getDraft: () => draft,
@@ -257,7 +265,6 @@ describe("approve, loop and gate status", () => {
       },
       connector_id: null,
       workflow_id: seeded.id,
-      permission_mode: "auto",
       // biome-ignore lint/suspicious/noExplicitAny: minimal stub
       engineClient: stubEngineClient as any,
       getDraft: () => draft,
@@ -327,7 +334,6 @@ describe("approve, loop and gate status", () => {
             turn_tokens: number;
             turn_tokens_total?: number;
             prompt_tokens_last_call?: number;
-            remaining_monthly_budget_tokens: number | null;
             breakdown?: {
               system: number;
               skills: number;

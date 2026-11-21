@@ -4,7 +4,7 @@ import type { PgBoss } from "pg-boss";
 import { auditLog, executions, workflowsSchedules } from "../db/schema/index.ts";
 import * as authorityAdmission from "../execution/authority-admission.ts";
 import { createWorkflowRow } from "../execution/tests/setup.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import {
   getOperationalOverview,
   invalidateOperationalOverview,

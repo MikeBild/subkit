@@ -44,6 +44,7 @@ function makeCtx(initial: DraftDocument): ToolContext & { current: () => DraftDo
   return {
     db: ctx.testDb.db,
     tenant_id: ctx.tenant_id,
+    ask_before_writing: true,
     conversation_id: uuid(),
     actor_id: ctx.user_id,
     principal: {

@@ -1,4 +1,4 @@
-import { errorFields, logger } from "../logging/logger.ts";
+import { errorFields, logger } from "../logging/index.ts";
 import {
   boundedLabel,
   TASK_ADMISSION_REASON_LABELS,

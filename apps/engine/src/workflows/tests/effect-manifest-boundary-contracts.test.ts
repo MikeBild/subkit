@@ -82,11 +82,9 @@ for (const kind of ["storage", "read_path", "boundary"] as const) {
           ? {
               method: "GET",
               body: undefined,
-              // biome-ignore lint/suspicious/noTemplateCurlyInString: authored workflow placeholder
               path: "/v2/projects/${item.id}/resources",
             }
           : {
-              // biome-ignore lint/suspicious/noTemplateCurlyInString: authored workflow placeholder
               path: "/sites/${input.site}/releases",
               boundary: {
                 variables: { "input.site": { enum: ["company-cockpit"] } },
@@ -135,9 +133,7 @@ test("content publication rejects a target outside its approved item profile", (
   const origin = "https://content.example.test";
   const input = fixture({
     method: "PUT",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored workflow placeholder
     path: "/v1/content/${item.item_id}/revisions",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored workflow placeholder
     body: "${item.markdown}",
     headers: { "Content-Type": "text/markdown" },
   });
@@ -193,7 +189,6 @@ test("content releases require the exact reviewed revision producer", () => {
         method: "POST",
         path: `/v1/sites/${site}/releases`,
         headers: { "Content-Type": "application/json" },
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: authored workflow placeholder
         body: { revision_ids: "${scope.send.data.revision_ids}" },
       },
     ],
@@ -247,7 +242,6 @@ test("runtime query exemptions require an HTTP request without GraphQL", () => {
     method: "GET",
     body: undefined,
     path: "/reports",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored workflow placeholder
     query: { since: "${input.since}" },
   });
   const baseline = compileWorkflowEffectManifest(input);

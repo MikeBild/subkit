@@ -122,7 +122,6 @@ function buildToolCtx(params?: {
     actor_id: ctx.user_id,
     connector_id: null,
     workflow_id: null,
-    permission_mode: "auto",
     engineClient: engineClientStub,
     getDraft: () => params?.draft ?? createEmptyDraftDocument(),
     setDraft: params?.setDraft ?? (async () => {}),

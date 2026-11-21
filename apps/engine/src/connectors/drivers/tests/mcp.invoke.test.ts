@@ -7,6 +7,7 @@ import {
   type McpClientLike,
 } from "../../../mcp/client/pool.ts";
 import { seedMcpConnector } from "../../../mcp/client/test-fixtures.ts";
+import { testEnv } from "../../../test-helpers/determinism/env.ts";
 import { seedTenant } from "../../../test-helpers/seed.ts";
 import { getConnector } from "../../service.ts";
 import type { ConnectorView } from "../../types.ts";
@@ -46,13 +47,13 @@ let ctx: TestDb;
 let tenantA: string;
 let tenantB: string;
 let connector: ConnectorView;
-const originalDatabaseUrl = process.env.DATABASE_URL;
+const originalDatabaseUrl = testEnv.DATABASE_URL;
 
 beforeAll(async () => {
   __setMcpPoolFactoriesForTests({ makeClient: () => fakeClient });
   ctx = await createTestDb("mcp-driver-invoke");
   await closeDb();
-  process.env.DATABASE_URL = ctx.url;
+  testEnv.DATABASE_URL = ctx.url;
   tenantA = (await seedTenant(ctx.db, { slug: "t-mcp-invoke-a", display_name: "MCP A" })).id;
   tenantB = (await seedTenant(ctx.db, { slug: "t-mcp-invoke-b", display_name: "MCP B" })).id;
   const seeded = await seedMcpConnector(ctx.db, {
@@ -70,8 +71,8 @@ afterAll(async () => {
   __setMcpPoolFactoriesForTests(null);
   __resetMcpClientPoolForTests();
   await closeDb();
-  if (originalDatabaseUrl === undefined) delete process.env.DATABASE_URL;
-  else process.env.DATABASE_URL = originalDatabaseUrl;
+  if (originalDatabaseUrl === undefined) delete testEnv.DATABASE_URL;
+  else testEnv.DATABASE_URL = originalDatabaseUrl;
   await ctx.cleanup();
 }, 30_000);
 

@@ -325,8 +325,8 @@ describe("redaction across every payload field", () => {
     const entry = await auditAwait(
       {
         tenant_id: tenantA,
-        action: "credential.created",
-        resource_type: "credential",
+        action: "vault.item.created",
+        resource_type: "vault_item",
         resource_id: "redact-probe",
         result: "success",
         reason: `pasted ${PAT}`,

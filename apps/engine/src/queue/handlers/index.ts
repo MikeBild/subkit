@@ -2,12 +2,13 @@ import type { PgBoss } from "pg-boss";
 import type { ChatAdapterRegistry } from "../../chat/registry.ts";
 import { registerOAuth2RefreshHandler } from "../../credentials/oauth2/refresh-worker.ts";
 import type { Db } from "../../db/client.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { registerAgentSessionAnalyzeHandler } from "./agent-session-analyze.ts";
 import { registerCatalogDescribeHandler } from "./catalog-describe.ts";
 import { registerChatEventHandler } from "./chat-event.ts";
 import { registerConversationRunTurnHandler } from "./conversation-run-turn.ts";
 import { registerConversationRunTurnDlqHandler } from "./conversation-run-turn-dlq.ts";
+import { registerDeviceRunHandlers } from "./device-run.ts";
 import { registerEventFanoutHandler } from "./event-fanout.ts";
 import { registerExecutionRunHandler } from "./execution-run.ts";
 import { registerIngestDocsHandler } from "./ingest-docs.ts";
@@ -26,6 +27,7 @@ interface RegisterHandlersOptions {
 
 interface RegisteredHandlers {
   executionRunWorkerId: string;
+  deviceRunWorkerIds: Awaited<ReturnType<typeof registerDeviceRunHandlers>>;
   conversationRunTurnWorkerId: string;
   conversationRunTurnDlqWorkerId: string;
   taskRunTurnWorkerId: string;
@@ -49,6 +51,7 @@ export async function registerAllHandlers(
     boss: opts.boss,
     db: opts.db,
   });
+  const deviceRunWorkerIds = await registerDeviceRunHandlers({ boss: opts.boss, db: opts.db });
   const conversationRunTurnWorkerId = await registerConversationRunTurnHandler({
     boss: opts.boss,
     db: opts.db,
@@ -111,6 +114,7 @@ export async function registerAllHandlers(
     action: "handlers.registered",
     msg: "all queue handlers registered",
     execution_run_worker_id: executionRunWorkerId,
+    device_run_worker_id: deviceRunWorkerIds.run,
     conversation_run_turn_worker_id: conversationRunTurnWorkerId,
     conversation_run_turn_dlq_worker_id: conversationRunTurnDlqWorkerId,
     task_run_turn_worker_id: taskRunTurnWorkerId,
@@ -129,6 +133,7 @@ export async function registerAllHandlers(
   });
   return {
     executionRunWorkerId,
+    deviceRunWorkerIds,
     conversationRunTurnWorkerId,
     conversationRunTurnDlqWorkerId,
     taskRunTurnWorkerId,

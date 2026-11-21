@@ -1,5 +1,5 @@
+import { Switch } from "@ui/atoms/switch";
 import { useId } from "react";
-import { Switch } from "@/components/ui/switch";
 
 export function SwitchField({
   label,

@@ -2,6 +2,7 @@ import { exitCodeFor } from "@cli-core/errors";
 import { TransportError } from "@cli-core/errors.ts";
 import { printJson } from "@cli-core/format";
 import { colorizeLogLevel } from "@cli-core/log-levels";
+import { readSse } from "@cli-core/sse.ts";
 import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
@@ -154,33 +155,12 @@ export const logsCommand = defineCommand({
       process.exit(1);
     }
 
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let done = false;
-    while (!done) {
-      try {
-        const chunk = await reader.read();
-        if (chunk.done) {
-          done = true;
-          break;
-        }
-        if (chunk.value) buffer += decoder.decode(chunk.value, { stream: true });
-      } catch {
-        break;
-      }
-      const events = buffer.split("\n\n");
-      buffer = events.pop() ?? "";
-      for (const block of events) {
-        if (!block.trim()) continue;
-        if (block.startsWith(":")) continue;
-        const dataLine = block.split("\n").find((l) => l.startsWith("data: "));
-        if (!dataLine) continue;
+    try {
+      await readSse(res, (frame) => {
         try {
-          const entry = JSON.parse(dataLine.slice("data: ".length)) as LogEntry;
-          print(entry);
+          print(JSON.parse(frame.data) as LogEntry);
         } catch {}
-      }
-    }
+      });
+    } catch {}
   },
 });

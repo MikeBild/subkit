@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { encryptSecret } from "../crypto/aes-gcm.ts";
+import { encryptSecret } from "../crypto/index.ts";
 import { auditLog } from "../db/schema/audit.ts";
 import { cockpitInstallations } from "../db/schema/cockpit-installations.ts";
 import { cockpitPushSubscriptions } from "../db/schema/cockpit-push.ts";

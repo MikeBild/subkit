@@ -1,4 +1,4 @@
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { buildStepDag, topoSort } from "../../workflows/dag.ts";
 import { containerChildStepIds } from "../core/run.ts";
 import type { RunEnv, RunPlan } from "./env.ts";

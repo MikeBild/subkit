@@ -8,6 +8,7 @@ describe("confirmation state machine", () => {
       "partial",
       "declined",
       "auto_declined",
+      "expired",
       "oauth_success",
       "oauth_failure",
     ];

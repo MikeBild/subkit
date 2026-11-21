@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Executor } from "../db/client.ts";
+import { replaceTestEnv, testEnv } from "../test-helpers/determinism/env.ts";
 import {
   _withEgressTenantOriginForTests,
   assertEgressAllowed,
@@ -65,15 +66,15 @@ function fakeLookup(address: string): LookupStub {
   return async () => [{ address, family: address.includes(":") ? 6 : 4 }];
 }
 
-const PREV_ENV = { ...process.env };
+const PREV_ENV = { ...testEnv };
 
 beforeEach(() => {
-  delete process.env.EGRESS_GUARD;
-  delete process.env.NODE_ENV;
+  delete testEnv.EGRESS_GUARD;
+  delete testEnv.NODE_ENV;
 });
 
 afterEach(() => {
-  process.env = { ...PREV_ENV };
+  replaceTestEnv(PREV_ENV);
 });
 
 describe("isPrivateOrLoopback", () => {
@@ -319,7 +320,7 @@ describe("assertEgressAllowed (permissive mode)", () => {
 
 describe("assertEgressAllowed (mode resolution)", () => {
   test("explicit ctx.mode wins over env vars", () => {
-    process.env.EGRESS_GUARD = "permissive";
+    testEnv.EGRESS_GUARD = "permissive";
     expect(() => assertEgressAllowed("http://10.0.0.1/x", { mode: "strict" })).toThrow(
       EgressBlockedError,
     );
@@ -345,12 +346,12 @@ describe("assertEgressAllowed (mode resolution)", () => {
   });
 
   test("NODE_ENV=production defaults to strict", () => {
-    process.env.NODE_ENV = "production";
+    testEnv.NODE_ENV = "production";
     expect(() => assertEgressAllowed("http://10.0.0.1/x", {})).toThrow(EgressBlockedError);
   });
 
   test("development default is permissive (allows 10.x)", () => {
-    process.env.NODE_ENV = "development";
+    testEnv.NODE_ENV = "development";
     expect(() => assertEgressAllowed("http://10.0.0.1/x", {})).not.toThrow();
   });
 });

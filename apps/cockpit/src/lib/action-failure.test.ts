@@ -3,6 +3,7 @@ import {
   clearFailure,
   failureSnapshot,
   offerFailureRetry,
+  offerMutationRetry,
   registerFailureHost,
   reportFailure,
   subscribeFailure,
@@ -93,6 +94,29 @@ describe("where a failure is shown", () => {
     expect(calls).toBe("offered+explicit");
     reportFailure("Fehler", new Error("other"));
     expect(failureSnapshot().failure?.retry).toBeUndefined();
+  });
+
+  test("a sensitive mutation never leaves a repeat that holds its values", () => {
+    const secret = new Error("rejected");
+    let calls = 0;
+    offerMutationRetry(secret, { sensitive: true }, () => {
+      calls += 1;
+    });
+    reportFailure("Fehler", secret);
+    expect(failureSnapshot().failure?.retry).toBeUndefined();
+    const plain = new Error("rejected");
+    offerMutationRetry(plain, { sensitive: false }, () => {
+      calls += 1;
+    });
+    reportFailure("Fehler", plain);
+    failureSnapshot().failure?.retry?.();
+    const bare = new Error("rejected");
+    offerMutationRetry(bare, undefined, () => {
+      calls += 1;
+    });
+    reportFailure("Fehler", bare);
+    failureSnapshot().failure?.retry?.();
+    expect(calls).toBe(2);
   });
 
   test("a failure stays where it was shown when a dialog opens afterwards", () => {

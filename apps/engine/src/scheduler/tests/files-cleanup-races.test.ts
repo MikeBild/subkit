@@ -3,11 +3,11 @@ import { eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import { fileLinks, files } from "../../db/schema/index.ts";
 import { requireFileForTenant, resolvedFromRow } from "../../files/resolver.ts";
+import { runFilesCleanup } from "../../files/scheduled/files-cleanup-runner.ts";
 import { attachInlineForTest } from "../../files/test-helpers.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
-import { runFilesCleanup } from "../files-cleanup-runner.ts";
 import { createFilesCleanupBoss, disposeBoss } from "./pgboss-bootstrap.ts";
 
 const uuid = createDeterministicUuidFactory(0xface01);

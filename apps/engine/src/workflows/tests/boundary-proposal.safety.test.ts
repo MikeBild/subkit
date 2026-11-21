@@ -62,7 +62,6 @@ const query = (id: string, key: string) => ({
   connector_id: CONNECTOR,
   method: "GET",
   path: "/v1/export",
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
   query: { [key]: "${input.credential}" },
 });
 
@@ -115,7 +114,6 @@ test("a value shaped like a secret is never listed, in a query or in the path", 
       kind: "request",
       connector_id: CONNECTOR,
       method: "GET",
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
       path: "/v1/files/${input.file}",
     },
   ]);
@@ -142,7 +140,6 @@ test("the sample is the address pattern: no query string, no observed value, no 
       kind: "request",
       connector_id: CONNECTOR,
       method: "GET",
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
       path: "/v1/news/${input.year}",
     },
   ]);
@@ -167,7 +164,6 @@ test("runs the viewer may not see are not evidence", async () => {
     kind: "request",
     connector_id: CONNECTOR,
     method: "GET",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
     path: "/v1/pages/${input.slug}",
   };
   const operator = await propose([step]);

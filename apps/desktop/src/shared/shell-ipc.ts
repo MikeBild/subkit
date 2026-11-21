@@ -1,9 +1,9 @@
+import { DROP_CHOICES, type DropChoice } from "@shared/drop-choice.ts";
 import { parseAppUrl } from "./app-url.ts";
 import type { BrowserSheet } from "./browser-sheet-model.ts";
-import type { DropChoice, DropSheet } from "./drop-model.ts";
-import type { Locale } from "./i18n.ts";
+import type { DropSheet } from "./drop-model.ts";
+import type { Locale, Messages } from "./i18n.ts";
 import type { CaptureState } from "./quick-capture-model.ts";
-import type { ShellMessages } from "./shell-i18n.ts";
 
 export type ShellView = "capture" | "drop" | "sheet";
 export const SHELL_VIEWS: readonly ShellView[] = ["capture", "drop", "sheet"];
@@ -39,7 +39,7 @@ export interface ShellState {
   locale: Locale;
   platform: string;
   dark: boolean;
-  messages: ShellMessages;
+  messages: Messages;
   online: boolean;
   capture: CaptureState;
   drop: DropSheet | null;
@@ -56,5 +56,5 @@ export interface ShellBridge {
 }
 
 export function isDropChoice(value: unknown): value is DropChoice {
-  return value === "file" || value === "source" || value === "chat" || value === "inbox";
+  return DROP_CHOICES.includes(value as DropChoice);
 }

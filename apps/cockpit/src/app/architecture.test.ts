@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 
 const ROOT = join(import.meta.dir, "../../../..");
@@ -23,39 +23,32 @@ type Layer =
   | "app"
   | "cockpit"
   | "patterns"
-  | "ui"
   | "components"
-  | "hooks"
   | "lib"
   | "api"
-  | "queries"
   | "ds"
-  | "ds-controls"
+  | "ds-lib"
   | "other";
 
 function layerOfSpecifier(spec: string): Layer | null {
-  if (spec.startsWith("@ui/components/ui/")) return "ds-controls";
+  if (spec.startsWith("@ui/lib/")) return "ds-lib";
   if (spec.startsWith("@ui/")) return "ds";
   if (!spec.startsWith("@/")) return null;
   const path = spec.slice(2);
   if (path.startsWith("pages/")) return "pages";
   if (path.startsWith("features/")) return "features";
   if (path.startsWith("app/")) return "app";
-  if (path.startsWith("components/ui/")) return "ui";
   if (path.startsWith("components/cockpit/patterns")) return "patterns";
   if (path.startsWith("components/cockpit/")) return "cockpit";
   if (path.startsWith("components/")) return "components";
-  if (path.startsWith("hooks/")) return "hooks";
   if (path.startsWith("lib/")) return "lib";
   if (path.startsWith("api/")) return "api";
-  if (path.startsWith("queries/")) return "queries";
   return "other";
 }
 
 function areaOf(file: string): string {
   const path = relative(COCKPIT, file);
   if (!path.includes("/")) return "root";
-  if (path.startsWith("components/ui/")) return "components/ui";
   if (path.startsWith("components/cockpit/patterns/")) return "components/cockpit/patterns";
   if (path.startsWith("components/cockpit/")) return "components/cockpit";
   if (path.startsWith("components/")) return "components";
@@ -63,58 +56,15 @@ function areaOf(file: string): string {
 }
 
 const FORBIDDEN: Record<string, readonly Layer[]> = {
-  root: ["ds-controls"],
-  app: ["ds-controls"],
+  root: [],
+  app: [],
   pages: [],
   features: ["pages"],
   "components/cockpit": ["pages", "features"],
-  "components/cockpit/patterns": ["pages", "features", "api", "queries", "ds-controls"],
-  components: ["pages", "features", "ds-controls"],
-  "components/ui": [
-    "pages",
-    "features",
-    "app",
-    "cockpit",
-    "components",
-    "api",
-    "queries",
-    "patterns",
-  ],
-  hooks: [
-    "pages",
-    "features",
-    "app",
-    "cockpit",
-    "patterns",
-    "components",
-    "api",
-    "queries",
-    "ds-controls",
-  ],
-  lib: ["pages", "features", "cockpit", "ui", "patterns", "components", "ds", "ds-controls"],
-  queries: [
-    "pages",
-    "features",
-    "cockpit",
-    "ui",
-    "patterns",
-    "components",
-    "hooks",
-    "ds",
-    "ds-controls",
-  ],
-  api: [
-    "pages",
-    "features",
-    "cockpit",
-    "ui",
-    "patterns",
-    "components",
-    "hooks",
-    "queries",
-    "ds",
-    "ds-controls",
-  ],
+  "components/cockpit/patterns": ["pages", "features", "api"],
+  components: ["pages", "features"],
+  lib: ["pages", "features", "cockpit", "patterns", "components", "ds"],
+  api: ["pages", "features", "cockpit", "patterns", "components", "ds"],
 };
 
 function cockpitViolations(): string[] {
@@ -135,7 +85,8 @@ function featureInternals(): string[] {
     const own = relative(COCKPIT, file).match(/^features\/([^/]+)\//)?.[1];
     for (const spec of imports(file)) {
       const target = spec.match(/^@\/features\/([^/]+)\/(.+)$/);
-      if (target && target[1] !== own) out.add(`${relative(COCKPIT, file)} -> ${spec}`);
+      if (target && target[1] !== own && target[2] !== "model")
+        out.add(`${relative(COCKPIT, file)} -> ${spec}`);
     }
   }
   return [...out].sort();
@@ -152,117 +103,12 @@ function unclassified(): string[] {
   return [...out].sort();
 }
 
-const DEBT = new Set<string>([
-  "components/cockpit/automation-grant.tsx -> @/pages/chat-automation-tool",
-  "components/cockpit/automation-panel.tsx -> @/pages/decisions-context",
-  "components/cockpit/automation-panel.tsx -> @/pages/decisions-model",
-  "components/cockpit/automation-panel.tsx -> @/pages/runs-model",
-  "components/cockpit/change-summary.tsx -> @/pages/decisions-model",
-  "components/cockpit/connector-credentials.tsx -> @/pages/connections-model",
-  "components/cockpit/connector-credentials.tsx -> @/pages/connector-detail-model",
-  "components/cockpit/connector-detail.tsx -> @/pages/catalog-model",
-  "components/cockpit/connector-detail.tsx -> @/pages/connector-detail-model",
-  "components/cockpit/connector-detail.tsx -> @/pages/workflows-model",
-  "components/cockpit/connector-edit.tsx -> @/pages/connector-detail-model",
-  "components/cockpit/connector-page.tsx -> @/pages/connector-detail-model",
-  "components/cockpit/connector-view-model.ts -> @/pages/connector-detail-model",
-  "components/cockpit/create-connector-model.ts -> @/pages/connector-detail-model",
-  "components/cockpit/create-connector.tsx -> @/pages/connector-detail-model",
-  "components/cockpit/decision-card.tsx -> @/pages/decisions-context",
-  "components/cockpit/decision-card.tsx -> @/pages/decisions-model",
-  "components/cockpit/grant-task-authority.tsx -> @/features/operations",
-  "components/cockpit/grant-workflow-authority.tsx -> @/features/operations",
-  "components/cockpit/installation-dialogs.tsx -> @/features/pwa",
-  "components/cockpit/package-dialogs.tsx -> @/pages/settings-packages-model",
-  "components/cockpit/patterns/workspace-menu.tsx -> @/api/memberships",
-  "components/cockpit/patterns/workspace-recovery.tsx -> @/api/tenant-lifecycle",
-  "components/cockpit/prepared-changes.tsx -> @/pages/settings-model",
-  "components/cockpit/run-sheet.ts -> @/pages/runs-model",
-  "components/cockpit/schedule-history.tsx -> @/features/operations",
-  "components/cockpit/skill-proposal-sheet.tsx -> @/pages/decisions-model",
-  "components/cockpit/waiting-on.tsx -> @/pages/overview-model",
-  "components/cockpit/workflow-invocation.tsx -> @/features/admin",
-  "components/cockpit/workflow-invocation.tsx -> @/pages/api-access-model",
-  "components/cockpit/workflow-page.tsx -> @/features/admin",
-  "components/cockpit/workflow-page.tsx -> @/features/operations",
-  "components/cockpit/workflow-page.tsx -> @/pages/runs-model",
-  "components/cockpit/workflow-page.tsx -> @/pages/workflows-model",
-  "components/cockpit/workflow-review-dialog.tsx -> @/features/operations",
-  "components/cockpit/workflow-review.tsx -> @/features/operations",
-  "components/cockpit/workflow-runs.tsx -> @/features/operations",
-  "components/cockpit/workflow-runs.tsx -> @/pages/runs-model",
-  "components/cockpit/workflow-steps-list.tsx -> @/pages/runs-model",
-  "components/cockpit/workflow-versions.tsx -> @/features/admin",
-  "features/chat/composer-area.tsx -> @/pages/chat-attachments",
-  "features/chat/composer-area.tsx -> @/pages/chat-mode",
-  "features/chat/composer-area.tsx -> @/pages/chat-permission",
-  "features/chat/composer-area.tsx -> @/pages/chat-text",
-  "features/chat/composer-area.tsx -> @/pages/chat-turn",
-  "features/chat/composer.tsx -> @/pages/chat-attachments",
-  "features/chat/composer.tsx -> @/pages/chat-text",
-  "features/chat/context-content.tsx -> @/pages/chat-approval",
-  "features/chat/context-content.tsx -> @/pages/chat-held-schedule",
-  "features/chat/context-content.tsx -> @/pages/chat-playbook-panel",
-  "features/chat/context-content.tsx -> @/pages/chat-references",
-  "features/chat/context-content.tsx -> @/pages/chat-resume",
-  "features/chat/conversation-head.tsx -> @/pages/chat-policy",
-  "features/chat/conversation-head.tsx -> @/pages/chat-turn",
-  "features/chat/conversation-head.tsx -> @/pages/chat-workspace",
-  "features/chat/index.ts -> @/pages/chat-selection",
-  "features/chat/labels.ts -> @/pages/chat-preview-cards",
-  "features/chat/list-panel.tsx -> @/pages/chat-conversation-list",
-  "features/chat/message.tsx -> @/pages/chat-approval",
-  "features/chat/message.tsx -> @/pages/chat-approval-card",
-  "features/chat/message.tsx -> @/pages/chat-attachments",
-  "features/chat/message.tsx -> @/pages/chat-choice",
-  "features/chat/message.tsx -> @/pages/chat-choice-card",
-  "features/chat/message.tsx -> @/pages/chat-form",
-  "features/chat/message.tsx -> @/pages/chat-form-card",
-  "features/chat/message.tsx -> @/pages/chat-judge-findings-card",
-  "features/chat/message.tsx -> @/pages/chat-message-link",
-  "features/chat/message.tsx -> @/pages/chat-preview-cards",
-  "features/chat/message.tsx -> @/pages/chat-reauth",
-  "features/chat/message.tsx -> @/pages/chat-reauth-card",
-  "features/chat/message.tsx -> @/pages/chat-references",
-  "features/chat/message.tsx -> @/pages/chat-sensitive-preview-card",
-  "features/chat/message.tsx -> @/pages/chat-session",
-  "features/chat/message.tsx -> @/pages/chat-task-run",
-  "features/chat/message.tsx -> @/pages/chat-test-run",
-  "features/chat/message.tsx -> @/pages/chat-test-run-card",
-  "features/chat/message.tsx -> @/pages/chat-text",
-  "features/chat/message.tsx -> @/pages/chat-transcript",
-  "features/chat/parts.tsx -> @/pages/chat-attachments",
-  "features/chat/policy.tsx -> @/pages/chat-policy",
-  "features/chat/policy.tsx -> @/pages/chat-turn",
-  "features/chat/question-dock.tsx -> @/pages/chat-approval",
-  "features/chat/question-dock.tsx -> @/pages/chat-approval-card",
-  "features/chat/question-dock.tsx -> @/pages/chat-choice",
-  "features/chat/question-dock.tsx -> @/pages/chat-choice-card",
-  "features/chat/question-dock.tsx -> @/pages/chat-form",
-  "features/chat/question-dock.tsx -> @/pages/chat-form-card",
-  "features/chat/question-dock.tsx -> @/pages/chat-held-schedule",
-  "features/chat/question-dock.tsx -> @/pages/chat-resume",
-  "features/chat/question-dock.tsx -> @/pages/chat-turn",
-  "features/chat/task-run-line.tsx -> @/pages/chat-playbook",
-  "features/chat/task-run-line.tsx -> @/pages/chat-task-run",
-  "features/chat/task-run-line.tsx -> @/pages/tasks-stop-dialog",
-  "features/chat/transcript.tsx -> @/pages/chat-live-calls",
-  "features/chat/transcript.tsx -> @/pages/chat-lookups",
-  "features/chat/transcript.tsx -> @/pages/chat-questions",
-  "features/chat/transcript.tsx -> @/pages/chat-session",
-  "features/chat/transcript.tsx -> @/pages/chat-turn",
-  "lib/connector-strip.ts -> @/pages/connector-detail-model",
-  "lib/intake-model.ts -> @/components/cockpit/service-icon",
-  "lib/tool-parts.ts -> @/components/ai-elements/tool",
-]);
+const DEBT = new Set<string>([]);
 
-const INTERNAL_DEBT = new Set<string>([
-  "pages/chat-approval-card.tsx -> @/features/chat/policy",
-  "pages/settings-profile.tsx -> @/features/feedback/desktop-bridge",
-]);
+const INTERNAL_DEBT = new Set<string>([]);
 
-const DEBT_CEILING = 103;
-const INTERNAL_DEBT_CEILING = 2;
+const DEBT_CEILING = 0;
+const INTERNAL_DEBT_CEILING = 0;
 
 describe("architecture: dependencies point downward", () => {
   test("packages/ui imports nothing from an app, an API or a domain module", () => {
@@ -304,8 +150,67 @@ describe("architecture: dependencies point downward", () => {
     expect(INTERNAL_DEBT.size).toBeLessThanOrEqual(INTERNAL_DEBT_CEILING);
   });
 
+  test("pages hold only page components, models live in a feature or in lib", () => {
+    const stray = readdirSync(join(COCKPIT, "pages"), { recursive: true, encoding: "utf8" })
+      .filter((file) => /\.(ts|tsx)$/.test(file) && !/\.test\.tsx?$/.test(file))
+      .filter((file) => file.includes("/") || !file.endsWith(".tsx"));
+    expect(stray).toEqual([]);
+  });
+
+  test("every page is a route: the router or the entry mounts it", () => {
+    const mounted = new Set(
+      [join(COCKPIT, "app/router.tsx"), join(COCKPIT, "main.tsx")].flatMap((file) =>
+        imports(file)
+          .filter((spec) => spec.startsWith("@/pages/"))
+          .map((spec) => spec.slice("@/pages/".length)),
+      ),
+    );
+    const pages = readdirSync(join(COCKPIT, "pages"))
+      .filter((file) => file.endsWith(".tsx") && !/\.test\.tsx$/.test(file))
+      .map((file) => file.slice(0, -".tsx".length));
+    expect(pages.filter((page) => !mounted.has(page))).toEqual([]);
+  });
+
+  test("app reaches pages only from the router", () => {
+    const reach = sources(join(COCKPIT, "app"))
+      .filter((file) => !file.endsWith("/router.tsx"))
+      .flatMap((file) =>
+        imports(file)
+          .filter((spec) => layerOfSpecifier(spec) === "pages")
+          .map((spec) => `${relative(COCKPIT, file)} -> ${spec}`),
+      );
+    expect(reach).toEqual([]);
+  });
+
+  test("a feature's model entry exports pure models only", () => {
+    const impure: string[] = [];
+    const features = readdirSync(join(COCKPIT, "features"));
+    for (const feature of features) {
+      const entry = join(COCKPIT, "features", feature, "model/index.ts");
+      if (!existsSync(entry)) continue;
+      for (const spec of imports(entry)) {
+        if (spec.startsWith("@shared/")) continue;
+        if (!spec.startsWith("./")) {
+          impure.push(`${relative(COCKPIT, entry)} -> ${spec}`);
+          continue;
+        }
+        const model = join(COCKPIT, "features", feature, "model", `${spec.slice(2)}.ts`);
+        const source = existsSync(model) ? readFileSync(model, "utf8") : "";
+        if (/^import (?!type )[^;]*?from "(@\/api\/[^"]*|react|@tanstack\/[^"]*)"/ms.test(source))
+          impure.push(`${relative(COCKPIT, model)} is not pure`);
+      }
+    }
+    expect(impure).toEqual([]);
+  });
+
   test("every source file and every app import belongs to a classified layer", () => {
     expect(unclassified()).toEqual([]);
+  });
+
+  test("controls and hooks come from packages/ui, the Cockpit keeps no second set", () => {
+    expect(existsSync(join(COCKPIT, "components/ui"))).toBe(false);
+    expect(existsSync(join(COCKPIT, "hooks"))).toBe(false);
+    expect(existsSync(join(COCKPIT, "queries"))).toBe(false);
   });
 
   test("every classified area still has files to check", () => {

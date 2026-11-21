@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { lstat, readFile } from "node:fs/promises";
+import { type DropChoice, placedHref } from "@shared/drop-choice.ts";
 import { BrowserWindow, type IpcMainInvokeEvent, ipcMain, nativeTheme, screen } from "electron";
 import type { NativeNotification } from "../shared/attention.ts";
 import {
@@ -14,7 +15,6 @@ import {
 import {
   baseName,
   choiceBlocker,
-  type DropChoice,
   type DroppedFile,
   type DropSheet,
   type DropVia,
@@ -22,11 +22,10 @@ import {
   inboxRoute,
   MAX_DROP_FILES,
   openDrop,
-  placedHref,
   reduceDrop,
   sourceName,
 } from "../shared/drop-model.ts";
-import type { Locale } from "../shared/i18n.ts";
+import { dictionary, type Locale, t } from "../shared/i18n.ts";
 import {
   type CaptureState,
   canSend,
@@ -35,7 +34,6 @@ import {
   intakeNote,
   reduceCapture,
 } from "../shared/quick-capture-model.ts";
-import { shellDictionary, st } from "../shared/shell-i18n.ts";
 import {
   isDropChoice,
   isShellUrl,
@@ -164,7 +162,7 @@ export class ShellUi {
       locale,
       platform: process.platform,
       dark: nativeTheme.shouldUseDarkColors,
-      messages: shellDictionary(locale),
+      messages: dictionary(locale),
       online: this.hooks.online(),
       capture: this.capture,
       drop: this.drop,
@@ -236,7 +234,7 @@ export class ShellUi {
       this.hooks.notify(
         {
           id: `capture:${itemId}`,
-          title: st(locale, "quick.sent"),
+          title: t(locale, "quick.sent"),
           body: note.title,
           href: intakeHref(itemId),
           urgency: "low",

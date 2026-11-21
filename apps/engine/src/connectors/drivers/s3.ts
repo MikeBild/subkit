@@ -3,7 +3,7 @@ import type { CredentialUseSnapshot } from "../../credentials/index.ts";
 import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db, Executor } from "../../db/client.ts";
-import { errorFields, logger } from "../../logging/logger.ts";
+import { errorFields, logger } from "../../logging/index.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import { fetchWithEgressGuard } from "../egress-fetch.ts";
 import {

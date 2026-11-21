@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { _validateBootDependenciesForTests } from "../../test-helpers/boot.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 
 let testDb: TestDb;
 
@@ -68,8 +69,8 @@ describe("_validateBootDependenciesForTests", () => {
   });
 
   test("FS write probes ARE included when NODE_ENV=production", async () => {
-    const prev = process.env.NODE_ENV;
-    process.env.NODE_ENV = "production";
+    const prev = testEnv.NODE_ENV;
+    testEnv.NODE_ENV = "production";
     try {
       const { probes } = await _validateBootDependenciesForTests(testDb.db);
       const fsProbes = probes.filter((p) => p.name.startsWith("fs_write:"));
@@ -78,8 +79,8 @@ describe("_validateBootDependenciesForTests", () => {
         expect(p.blocker).toBe(false);
       }
     } finally {
-      if (prev === undefined) delete process.env.NODE_ENV;
-      else process.env.NODE_ENV = prev;
+      if (prev === undefined) delete testEnv.NODE_ENV;
+      else testEnv.NODE_ENV = prev;
     }
   });
 });

@@ -1,12 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import {
-  auditLog,
-  connectors,
-  conversations,
-  credentials,
-  tenants,
-} from "../../db/schema/index.ts";
+import { auditLog, connectors, conversations, tenants, vaultItems } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import {
@@ -120,9 +114,9 @@ describe("saveConnectorDraftTool — atomic credential save", () => {
 
     const credRows = await ctx.db
       .select()
-      .from(credentials)
+      .from(vaultItems)
       .where(
-        and(eq(credentials.tenant_id, tenant_id), eq(credentials.connector_id, data.connector.id)),
+        and(eq(vaultItems.tenant_id, tenant_id), eq(vaultItems.connector_id, data.connector.id)),
       );
     expect(credRows).toHaveLength(1);
     expect(credRows[0]!.mode).toBe("bearer");
@@ -165,8 +159,8 @@ describe("saveConnectorDraftTool — atomic credential save", () => {
 
     const credRows = await ctx.db
       .select()
-      .from(credentials)
-      .where(and(eq(credentials.tenant_id, tenant_id), eq(credentials.connector_id, firstId)));
+      .from(vaultItems)
+      .where(and(eq(vaultItems.tenant_id, tenant_id), eq(vaultItems.connector_id, firstId)));
     expect(credRows).toHaveLength(1);
   });
 

@@ -5,7 +5,7 @@ import { EngineClient } from "../../engine-client/index.ts";
 import { listWorkflowsUsingConnector } from "../../workflows/connector-refs.ts";
 import { createWorkflow } from "../../workflows/service.ts";
 import { dispatchDeleteConnector } from "../persistence/auto-persist/dispatch.ts";
-import { createConversation } from "../service.ts";
+import { createConversation } from "../service/index.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../tests/setup.ts";
 import type { CommitIntent } from "../tools/ask-user/commit-intent.ts";
 import type { DraftDocument } from "../types.ts";
@@ -76,7 +76,7 @@ async function makeToolCtx() {
     actor_id: ctx.user_id,
     connector_id: null,
     workflow_id: null,
-    permission_mode: null,
+    ask_before_writing: true,
     engineClient: new EngineClient({
       tenant_id: ctx.tenant_id,
       actor_id: ctx.user_id,
@@ -191,7 +191,7 @@ describe("dispatchDeleteConnector — dependency backstop", () => {
       actor_id: ctx.user_id,
       connector_id: null,
       workflow_id: null,
-      permission_mode: null,
+      ask_before_writing: true,
       engineClient: new EngineClient({
         tenant_id: wrongTenant,
         actor_id: ctx.user_id,

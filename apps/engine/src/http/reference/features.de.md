@@ -77,8 +77,9 @@ Jede Zeile sagt, was du bekommst, und verlinkt das Kapitel, das sie erklärt.
 | Funktion | Was du bekommst | Gilt | Mehr |
 | --- | --- | --- | --- |
 | Chat im Cockpit | Du entwirfst Workflows, stellst Fragen und startest freigegebene Workflows im Gespräch. | Überall | [Dein erster Workflow](setup.md#dein-erster-workflow) |
-| Chat-Modi | **Fragen**, **Automatisch** oder **Nur planen** legen fest, was SubKit ohne Rückfrage tut. | Überall | [Chat-Modi und Regeln](setup.md#chat-modi-und-regeln) |
-| Regeln | Nach dem zweiten **Einmal erlauben** für dieselbe Aktion speicherst du sie für 90 Tage als Regel. | Überall | [Chat-Modi und Regeln](setup.md#chat-modi-und-regeln) |
+| Wann SubKit fragt | Dein Auftrag entscheidet, was ohne Frage läuft; **Immer vorher fragen** lässt jeden schreibenden Schritt fragen. | Überall | [Wann SubKit fragt](setup.md#wann-subkit-fragt) |
+| Immer vorher fragen | Eine Regel nur für dich: Jeder Schritt, der schreibt, fragt dich vorher, im Chat, in Aufgaben und auf deinem Mac. | Überall | [Wann SubKit fragt](setup.md#wann-subkit-fragt) |
+| Regeln | Nach dem zweiten **Einmal erlauben** für dieselbe Aktion speicherst du sie für 90 Tage als Regel. | Überall | [Wann SubKit fragt](setup.md#wann-subkit-fragt) |
 | Dateien im Chat | Du hängst Dateien an eine Nachricht, auch aus SubKit Desktop. | Überall | [Referenz: Dateien vom Desktop, Run-Ergebnisse und Anmeldesignale](setup.md#referenz-dateien-vom-desktop-run-ergebnisse-und-anmeldesignale) |
 | Slack und Google Chat | Du stellst Fragen und startest freigegebene Workflows dort, wo dein Team arbeitet; in SubKit Cloud erst, wenn die Inhaberschaft des Chat-Workspace geprüft ist. | Überall | [SubKit Cloud nutzen](setup.md#subkit-cloud-nutzen) |
 | Dein eigenes Modell | Anthropic, OpenAI, Google Gemini, Azure, Amazon Bedrock oder Vertex AI mit deinem eigenen Key, dazu ein Fallback-Provider. | Überall | [Einstellungen](settings.md) |
@@ -112,22 +113,46 @@ Jede Zeile sagt, was du bekommst, und verlinkt das Kapitel, das sie erklärt.
 | Supabase-Daten | Nutze die Daten deines Supabase-Projekts in Produkt-Workflows, ohne Keys offenzulegen. | Admin | [Produkt-Workflows mit Supabase](setup.md#produkt-workflows-mit-supabase) |
 | Adressen im privaten Netz | Connectors erreichen Dienste wie `localhost` oder interne Firmenserver. | Selbst betrieben | [SubKit Cloud nutzen](setup.md#subkit-cloud-nutzen) |
 
-### Cockpit, Desktop-App und installierte App
+### Cockpit und installierte App
 
 | Funktion | Was du bekommst | Gilt | Mehr |
 | --- | --- | --- | --- |
 | Übersicht und „Braucht dich“ | Du siehst, was lief, was scheiterte und was auf deine Entscheidung wartet. | Überall | [Was ist SubKit?](setup.md#was-ist-subkit) |
 | Zurechtfinden | Navigation, Seitenleiste, Fehlerhinweise mit Abhilfe und eine Markdown-Ansicht. | Überall | [Im Cockpit zurechtfinden](setup.md#im-cockpit-zurechtfinden) |
-| Einrichtung in sechs Fragen | Deine Antworten setzen Chat-Modus, Standardumgebung, freigebende Person und Benachrichtigungen. | Überall | [SubKit auf dich einstellen](setup.md#subkit-auf-dich-einstellen) |
+| Einrichtung in fünf Fragen | Deine Antworten setzen Standardumgebung, freigebende Person und Benachrichtigungen. | Überall | [SubKit auf dich einstellen](setup.md#subkit-auf-dich-einstellen) |
 | Deutsch und Englisch | Das Cockpit und diese Dokumentation gibt es in beiden Sprachen. | Überall | [Was ist SubKit?](setup.md#was-ist-subkit) |
 | Branding | Gib dem Cockpit Namen, Logo und Farben deiner Firma. | Admin | [Cockpit-Branding](setup.md#cockpit-branding) |
 | Cockpit als App | Installiere das Cockpit eines Arbeitsbereichs als eigene App auf Computer und Smartphone, mit Push und Teilen aus anderen Apps. | Überall | [Cockpit als App](setup.md#cockpit-als-app) |
-| SubKit Desktop | Das Cockpit deines Servers als Programm für macOS, Windows und Linux, mit Symbol in der Menüleiste, Benachrichtigungen und Start bei der Anmeldung. | Überall | [SubKit Desktop](setup.md#subkit-desktop) |
-| Anmeldung über den Browser | Die Desktop-App meldet sich über deinen Browser an; jeder Computer ist ein eigenes Gerät, das du widerrufen kannst. | Überall | [SubKit Desktop](setup.md#subkit-desktop) |
+
+### SubKit Desktop
+
+| Funktion | Was du bekommst | Gilt | Mehr |
+| --- | --- | --- | --- |
+| SubKit Desktop | Das Cockpit deines Servers als Mac-App für Apple Silicon (ab macOS 13), mit Symbol in der Menüleiste, Benachrichtigungen und Start bei der Anmeldung. | Überall | [SubKit Desktop](setup.md#subkit-desktop) |
+| Willkommen und Einladungslink | Der erste Start erklärt, was SubKit tut, und öffnet den Einladungslink aus deiner E-Mail, sodass du in wenigen Schritten einem Arbeitsbereich beitrittst. | Überall | [SubKit Desktop](setup.md#subkit-desktop) |
+| Anmeldung über den Browser | Die App meldet sich über deinen Browser an; jeder Mac ist ein eigenes Gerät, das du widerrufen kannst. | Überall | [SubKit Desktop](setup.md#subkit-desktop) |
 | Mehrere Server | SubKit Desktop merkt sich ein Profil pro Server. | Überall | [SubKit Desktop](setup.md#subkit-desktop) |
-| Dateien ablegen | Zieh Dateien auf SubKit Desktop, um sie im Chat anzuhängen oder im Eingang zu sammeln. | Überall | [Referenz: Dateien vom Desktop, Run-Ergebnisse und Anmeldesignale](setup.md#referenz-dateien-vom-desktop-run-ergebnisse-und-anmeldesignale) |
+| Menüleiste | Die Zahl der Einträge, die dich brauchen, Ruhezeiten, Pause, Schnellnotiz, Live-Ansicht, Updates und „Fehler melden“ in einem Menü. | Überall | [SubKit Desktop](setup.md#subkit-desktop) |
+| Schnellnotiz | ⌥ Leertaste öffnet von überall eine Notiz; sie landet in deinem Eingang. | Überall | [SubKit Desktop](setup.md#subkit-desktop) |
+| Ablage „Wohin damit?“ | Zieh Dateien auf das Fenster, das Dock-Symbol oder das Symbol in der Menüleiste und wähle: als Datei ablegen, als Quelle einlesen, im Chat anhängen oder in den Eingang. | Überall | [Referenz: Dateien vom Desktop, Run-Ergebnisse und Anmeldesignale](setup.md#referenz-dateien-vom-desktop-run-ergebnisse-und-anmeldesignale) |
+| Pause | Halte Benachrichtigungen eine Stunde lang oder bis zum Fortsetzen zurück, direkt aus der Menüleiste. | Überall | [SubKit Desktop](setup.md#subkit-desktop) |
+| Fehler melden | Schick einen Fehlerbericht oder eine Idee in den Eingang deines Arbeitsbereichs, mit Screenshot und auf Wunsch mit Diagnosedaten. Ein offline geschriebener Bericht wartet in einer Warteschlange und geht raus, sobald du wieder online bist. | Überall | [Einen Fehler melden](setup.md#einen-fehler-melden) |
 | Desktop-Versionen und Geräte | Leg fest, welche App-Version dein Server annimmt, und widerrufe Geräte. | Admin · Selbst betrieben | [Desktop-Anmeldung betreiben](setup.md#desktop-anmeldung-betreiben) |
-| Fehler melden | Schick einen Fehlerbericht oder eine Idee in den Eingang deines Arbeitsbereichs, mit Screenshot aus SubKit Desktop und Warteschlange für offline geschriebene Berichte. | Überall | [Einen Fehler melden](setup.md#einen-fehler-melden) |
+
+### SubKit auf deinem Mac
+
+Diese Funktionen brauchen SubKit Desktop auf einem Mac mit Apple Silicon. Auf deinem Mac läuft nichts, bevor du es unter **Lokale Fähigkeiten** einschaltest.
+
+| Funktion | Was du bekommst | Gilt | Mehr |
+| --- | --- | --- | --- |
+| Lokale Dateien | Chat, Aufgaben und Workflows lesen und schreiben Dateien in Ordnern, die du erlaubt hast, pro Ordner mit Lese- oder Lese- und Schreibzugriff. | Überall | [SubKit Desktop](setup.md#subkit-desktop) |
+| Browser | SubKit arbeitet in Websites, die du erlaubt hast, in einem eigenen Browser auf deinem Mac. | Überall | [SubKit Desktop](setup.md#subkit-desktop) |
+| Computer-Use | SubKit bedient Knöpfe und Felder in Apps, die du erlaubt hast. Passwort-Manager, Banking, Terminal, Systemeinstellungen und andere heikle Apps bleiben gesperrt. | Überall | [SubKit Desktop](setup.md#subkit-desktop) |
+| Lokale Erlaubnisse | Ordner, Websites und Apps, die du erlaubst, dazu eine Liste dessen, was tabu bleibt, gespeichert auf dem Mac selbst. | Überall | [SubKit Desktop](setup.md#subkit-desktop) |
+| Live-Ansicht | Sieh, was SubKit auf deinem Mac tut, mit dem letzten geschwärzten Bildschirmfoto und jedem Schritt; stopp es jederzeit mit ⌘⇧⎋. | Überall | [SubKit Desktop](setup.md#subkit-desktop) |
+| Bestätigungen auf dem Mac | Ein Schritt, der schreibt und den deine Bitte nicht abdeckt, fragt mit **Einmal erlauben** oder **Ablehnen**; eine Anmeldung übergibt SubKit an dich, und du gibst sie zurück. | Überall | [Wann SubKit fragt](setup.md#wann-subkit-fragt) |
+| Lokale Workflow-Schritte | Workflows mit festen Schritten für Dateien, Browser und Apps; die Freigabe nennt Gerät, Ordner, Websites und Apps. | Überall | [Referenz: Workflow-Schritte auf deinem Gerät](setup.md#referenz-workflow-schritte-auf-deinem-gerät) |
+| Vollständig lokaler Arbeitsbereich | Betreib einen Arbeitsbereich nur auf deinem Mac, mit eigener Datenbank, Sicherungen und deinem eigenen KI-Key oder einem lokalen Modell-Server; zieh ihn später auf einen Server um. | Selbst betrieben | [SubKit Desktop](setup.md#subkit-desktop) |
 
 ### sk-CLI, HTTP-API und MCP
 
@@ -155,7 +180,7 @@ Jede Zeile sagt, was du bekommst, und verlinkt das Kapitel, das sie erklärt.
 | Funktion | Was du bekommst | Gilt | Mehr |
 | --- | --- | --- | --- |
 | Nutzung | KI-Kosten pro Run, Workflow, Person und Modell in einem Zeitraum deiner Wahl. | Überall | [Nutzung und Kosten im Blick](setup.md#nutzung-und-kosten-im-blick) |
-| Monatliches Token-Budget | Pausiert das Entwerfen mit KI, wenn es aufgebraucht ist; freigegebene Workflows laufen weiter. | Admin | [Nutzung und Kosten im Blick](setup.md#nutzung-und-kosten-im-blick) |
+| Monatliches KI-Budget | Eine Grenze für KI-Kosten in US-Dollar, 50 $ für einen neuen Arbeitsbereich. Bei 100 % pausieren Chat, Aufgaben und Modellschritte; Workflows ohne Modellschritt laufen weiter. | Admin | [Nutzung und Kosten im Blick](setup.md#nutzung-und-kosten-im-blick) |
 | Preise | Eingebaute Modellpreise, pro Modell überschreibbar. | Admin | [Nutzung und Kosten im Blick](setup.md#nutzung-und-kosten-im-blick) |
 | Export | Exportiere die Nutzungszahlen. | Überall | [Nutzung und Kosten im Blick](setup.md#nutzung-und-kosten-im-blick) |
 | Kosten von Aufgaben | Sieh, was die Runs jeder Aufgabe kosten. | Überall | [Ein Ziel als Aufgabe übergeben](setup.md#ein-ziel-als-aufgabe-übergeben) |
@@ -173,25 +198,14 @@ Jede Zeile sagt, was du bekommst, und verlinkt das Kapitel, das sie erklärt.
 | Backup und Wiederherstellung | Sichere die ganze Installation und stell sie mit demselben Image wieder her. | Selbst betrieben | [Die Engine betreiben](setup.md#die-engine-betreiben) |
 | Browser-Crawling | Durchsuche Seiten für die Connector-Erkennung mit einem abgeleiteten Image. | Selbst betrieben · Optional | [Die Engine betreiben](setup.md#die-engine-betreiben) |
 | Engine-Betreiber | Ein Arbeitsbereich verwaltet die ganze Engine. | Admin · Selbst betrieben | [Engine-Betreiber](setup.md#engine-betreiber) |
-| Laufzeiteinstellungen | Jede Einstellung der Engine mit Beschreibung und Standardwert, änderbar im Cockpit, über die API oder mit `sk`. | Admin | [Einstellungen](settings.md) |
+| Laufzeiteinstellungen | Jede Einstellung der Engine mit Beschreibung und Standardwert, änderbar mit `sk settings`, über die API oder in der Konfigurationsdatei. | Admin | [Einstellungen](settings.md) |
 
 ### Sicherheit und Audit
 
 | Funktion | Was du bekommst | Gilt | Mehr |
 | --- | --- | --- | --- |
 | Audit-Trail | Jeder Run, jede Freigabe und jede Änderung wird mit der handelnden Person aufgezeichnet, jedes Objekt zeigt seinen eigenen Verlauf. | Überall | [Im Cockpit zurechtfinden](setup.md#im-cockpit-zurechtfinden) |
-| Geschützte Keys | Keys und Passwörter bleiben verschlüsselt auf deinem Server. | Selbst betrieben | [Die Engine betreiben](setup.md#die-engine-betreiben) |
+| Tresor | API-Keys, Logins und Connector-Zugänge an einem Ort, verschlüsselt, für den Workspace oder nur für dich. Workflows nennen sie per Handle, die KI sieht nie einen Wert, und jede Nutzung, jedes Aufdecken und jede Rotation steht im Audit-Trail. | Überall | [Referenz: der Tresor](setup.md#referenz-der-tresor) |
 | Anmeldesitzungen | Installierte Apps halten eine Sitzung und melden sich sauber ab. | Überall | [Sitzungen installierter Cockpits](setup.md#sitzungen-installierter-cockpits) |
 | Schwärzung | Secrets werden aus gesammelten Seiten und Fehlerberichten entfernt, bevor sie gespeichert werden. | Überall | [Einen Fehler melden](setup.md#einen-fehler-melden) |
 | Lizenz | Open Source unter der Apache License 2.0. | Überall | [Lizenz](setup.md#lizenz) |
-
-### Bald: lokale Ausführung in SubKit Desktop
-
-Diese Funktionen sind für SubKit Desktop geplant und noch nicht veröffentlicht. Heute führt SubKit Desktop nichts auf deinem Computer aus. Termine gibt es noch nicht.
-
-| Funktion | Was sie tun wird | Stand |
-| --- | --- | --- |
-| Lokale Dateien | Mit Dateien auf deinem Computer arbeiten. | Kommt |
-| Browser | Für eine Aufgabe einen Browser auf deinem Computer nutzen. | Kommt |
-| Computer-Use | Andere Programme auf deinem Computer bedienen. | Kommt |
-| Vollständig lokaler Arbeitsbereich | Einen Arbeitsbereich komplett auf deinem Computer betreiben. | Kommt |

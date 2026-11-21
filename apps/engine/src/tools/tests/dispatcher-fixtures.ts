@@ -1,6 +1,7 @@
 import { afterAll, beforeAll } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
+import type { Db } from "../../db/client.ts";
 import { auditLog, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
@@ -14,19 +15,25 @@ export const PRINCIPAL: ResolvedPrincipal = {
   roles: [],
 };
 
-// biome-ignore lint/suspicious/noExplicitAny: drizzle chain shape
-const UPDATE_STUB: any = {
+interface UpdateStub {
+  set(): UpdateStub;
+  where(): UpdateStub;
+  returning(): Promise<unknown[]>;
+}
+
+const UPDATE_STUB: UpdateStub = {
   set: () => UPDATE_STUB,
   where: () => UPDATE_STUB,
   returning: () => Promise.resolve([]),
 };
 
-export // biome-ignore lint/suspicious/noExplicitAny: drizzle Db shape
-const DB_STUB: any = {
-  transaction: async (fn: (db: unknown) => unknown) => fn(DB_STUB),
+const dbStub: Record<string, unknown> = {
+  transaction: async (fn: (db: unknown) => unknown) => fn(dbStub),
   insert: () => ({ values: () => ({ onConflictDoNothing: async () => undefined }) }),
   update: () => UPDATE_STUB,
 };
+
+export const DB_STUB = dbStub as unknown as Db;
 
 export const nextId = createDeterministicUuidFactory(2);
 

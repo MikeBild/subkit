@@ -1,4 +1,3 @@
-import { APICallError } from "ai";
 import {
   HostedResourceCountError,
   HostedStorageQuotaError,
@@ -6,6 +5,7 @@ import {
 } from "../db/hosted-quota-errors.ts";
 import { LlmError, LlmProviderError } from "../llm/errors.ts";
 import { isToolSchemaError, toLlmProviderError } from "../llm/provider-errors.ts";
+import { isProviderCallError } from "../llm/runtime/sdk-errors.ts";
 import { isDatabaseQueryError } from "../logging/index.ts";
 import { now } from "../utils/clock.ts";
 import { ConversationTurnInProgressError } from "./turns.ts";
@@ -16,9 +16,10 @@ export type TurnFailureCode =
   | "hosted_storage_quota_exhausted"
   | "hosted_resource_count_exhausted"
   | "llm_provider_limited"
+  | "llm_provider_quota_exhausted"
   | "llm_provider_unavailable"
   | "llm_context_too_large"
-  | "llm_quota_exhausted"
+  | "llm_spend_limit_reached"
   | "llm_timeout"
   | "conversation_turn_in_progress"
   | "worker_expired"
@@ -73,9 +74,11 @@ function providerFailure(error: LlmProviderError, at: string): TurnFailure {
   const code: TurnFailureCode =
     error.kind === "context_length_exceeded"
       ? "llm_context_too_large"
-      : error.kind === "rate_limit" || error.kind === "quota_exhausted"
-        ? "llm_provider_limited"
-        : "llm_provider_unavailable";
+      : error.kind === "quota_exhausted"
+        ? "llm_provider_quota_exhausted"
+        : error.kind === "rate_limit"
+          ? "llm_provider_limited"
+          : "llm_provider_unavailable";
   return {
     code,
     message: error.message,
@@ -118,7 +121,7 @@ export function describeTurnFailure(error: unknown, now: Date = new Date()): Tur
   const providerErr =
     error instanceof LlmProviderError
       ? error
-      : APICallError.isInstance(error)
+      : isProviderCallError(error)
         ? toLlmProviderError(error)
         : null;
   if (providerErr) return providerFailure(providerErr, at);
@@ -138,8 +141,8 @@ export function describeTurnFailure(error: unknown, now: Date = new Date()): Tur
     (error.code === "llm_context_too_large" || error.code === "ai_access_missing")
   )
     return { code: error.code, message, at };
-  if (error instanceof LlmError && error.code === "llm_quota_exhausted") {
-    return { code: "llm_quota_exhausted", message, at };
+  if (error instanceof LlmError && error.code === "llm_spend_limit_reached") {
+    return { code: "llm_spend_limit_reached", message, at };
   }
   return { code: "internal", message: message || "internal_error", at };
 }

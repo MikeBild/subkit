@@ -10,7 +10,6 @@ import {
 } from "../../../conversations/public/authoring.ts";
 import { getConversation } from "../../../conversations/public/lifecycle.ts";
 import { withoutApprovalHandle } from "../../../conversations/public/tool-contract.ts";
-import { monthlyUsage, resolveModelRoute } from "../../../llm/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
@@ -179,19 +178,10 @@ export function registerStreamRoutes(app: OpenAPIHono<AppEnv>): void {
           }),
         );
       }
-      let usage: { remaining_monthly_budget_tokens: number | null } | undefined;
-      try {
-        const used = await monthlyUsage(principal.tenant_id, db);
-        const route = await resolveModelRoute(principal.tenant_id, db);
-        const remaining =
-          route.monthly_budget != null ? Math.max(0, route.monthly_budget - used) : null;
-        usage = { remaining_monthly_budget_tokens: remaining };
-      } catch {}
       await stream.writeSSE(
         serializeEvent({
           type: "completed",
           status: detail.conversation.status,
-          ...(usage ? { usage } : {}),
         }),
       );
     });

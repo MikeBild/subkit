@@ -1,19 +1,12 @@
+import { parseClock, DEFAULT_QUIET_HOURS as SHARED_QUIET_HOURS } from "@shared/quiet-hours.ts";
+
 export interface QuietHours {
   enabled: boolean;
   start: string;
   end: string;
 }
 
-export const DEFAULT_QUIET_HOURS: QuietHours = { enabled: false, start: "22:00", end: "07:00" };
-
-const CLOCK = /^([01]\d|2[0-3]):([0-5]\d)$/;
-
-export function parseClock(value: unknown): number | null {
-  if (typeof value !== "string") return null;
-  const match = CLOCK.exec(value);
-  if (!match) return null;
-  return Number(match[1]) * 60 + Number(match[2]);
-}
+export const DEFAULT_QUIET_HOURS: QuietHours = { enabled: false, ...SHARED_QUIET_HOURS };
 
 export function inQuietHours(quiet: QuietHours, now: Date): boolean {
   if (!quiet.enabled) return false;

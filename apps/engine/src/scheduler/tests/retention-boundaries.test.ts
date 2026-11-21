@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test";
 import { eq, sql } from "drizzle-orm";
 import { markChatEventSeen } from "../../chat/dedup.ts";
+import { runChatDedupCleanup } from "../../chat/scheduled/chat-dedup-cleanup-runner.ts";
 import type { Executor } from "../../db/client.ts";
 import {
   auditLog,
@@ -13,8 +14,7 @@ import { createTestDb, TEST_DB_HOOK_TIMEOUT, type TestDb } from "../../db/tests/
 import { logRing } from "../../observability/log-ring.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
-import { runChatDedupCleanup } from "../chat-dedup-cleanup-runner.ts";
-import { runToolApprovalsCleanup } from "../tool-approvals-cleanup-runner.ts";
+import { runToolApprovalsCleanup } from "../../tools/scheduled/tool-approvals-cleanup-runner.ts";
 
 const ids = createDeterministicUuidFactory(0x728162);
 const tenantIds = [ids(), ids()] as const;

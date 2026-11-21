@@ -1,0 +1,113 @@
+import {
+  isVaultItemName,
+  type VaultField,
+  type VaultHandle,
+  type VaultScope,
+  vaultItemNameFrom,
+} from "@shared/vault-handle.ts";
+
+export type VaultItemKind = "connector" | "secret" | "login" | "template_client";
+export type VaultEntryKind = "secret" | "login";
+export type VaultEnvironment = "dev" | "prod";
+export type VaultAction = "read" | "write" | "rotate" | "delete" | "reveal";
+
+export const VAULT_PERMISSION: Readonly<Record<VaultAction, string>> = {
+  read: "vault:read",
+  write: "vault:write",
+  rotate: "vault:rotate",
+  delete: "vault:delete",
+  reveal: "vault:reveal",
+};
+
+export interface VaultViewer {
+  readonly user_id: string | null;
+  readonly permissions: ReadonlySet<string>;
+}
+
+export interface VaultItemFacts {
+  readonly kind: VaultItemKind;
+  readonly owner_user_id: string | null;
+}
+
+export type VaultValue =
+  | { readonly kind: "secret"; readonly token: string }
+  | { readonly kind: "login"; readonly username: string; readonly password: string };
+
+const CONNECTOR_NAME_BASE = 54;
+
+export function connectorItemName(slug: string, environment: string, mode: string): string {
+  return vaultItemNameFrom(`${slug}-${environment}-${mode}`)
+    .slice(0, CONNECTOR_NAME_BASE)
+    .replace(/[-_]+$/, "");
+}
+
+export function templateClientItemName(templateSlug: string): string {
+  return vaultItemNameFrom(`template-${templateSlug}`);
+}
+
+export function withNameSuffix(name: string, suffix: string): string {
+  return `${name.slice(0, 63 - suffix.length - 1)}-${suffix}`;
+}
+
+export function vaultScopeOf(item: Pick<VaultItemFacts, "owner_user_id">): VaultScope {
+  return item.owner_user_id === null ? "workspace" : "person";
+}
+
+export function isEditableKind(kind: VaultItemKind): kind is VaultEntryKind {
+  return kind === "secret" || kind === "login";
+}
+
+export function vaultAccess(
+  viewer: VaultViewer,
+  item: VaultItemFacts,
+  action: VaultAction,
+): "allow" | "hidden" | "denied" {
+  if (item.owner_user_id !== null) {
+    return viewer.user_id === item.owner_user_id ? "allow" : "hidden";
+  }
+  if (!viewer.permissions.has(VAULT_PERMISSION.read)) return "hidden";
+  if ((action === "write" || action === "rotate") && !isEditableKind(item.kind)) return "denied";
+  return viewer.permissions.has(VAULT_PERMISSION[action]) ? "allow" : "denied";
+}
+
+export function vaultValueOf(
+  kind: VaultEntryKind,
+  input: {
+    token?: string | undefined;
+    username?: string | undefined;
+    password?: string | undefined;
+  },
+): VaultValue | string {
+  if (kind === "secret") {
+    if (!input.token) return "a secret needs a token";
+    return { kind, token: input.token };
+  }
+  if (!input.username || !input.password) return "a login needs a username and a password";
+  return { kind, username: input.username, password: input.password };
+}
+
+export function vaultFieldValue(value: VaultValue, field: VaultField | null): string | null {
+  if (value.kind === "secret") return field === null || field === "token" ? value.token : null;
+  if (field === "username") return value.username;
+  if (field === "password") return value.password;
+  return null;
+}
+
+export function vaultSecretsOf(value: VaultValue): string[] {
+  return value.kind === "secret" ? [value.token] : [value.password];
+}
+
+export function handleMatches(
+  handle: VaultHandle,
+  item: { readonly name: string; readonly owner_user_id: string | null },
+  user_id: string | null,
+): boolean {
+  if (handle.name !== item.name) return false;
+  if (handle.scope === "workspace") return item.owner_user_id === null;
+  return user_id !== null && item.owner_user_id === user_id;
+}
+
+export function normalizeItemName(raw: string): string | null {
+  const name = raw.trim();
+  return isVaultItemName(name) ? name : null;
+}

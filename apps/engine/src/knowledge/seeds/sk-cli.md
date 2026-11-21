@@ -102,7 +102,7 @@ Exit codes (headless): `0` clean, `1` engine validation/bad-request error or att
 Bare `sk` (optionally `sk "<initial prompt>"`, `sk -c`, `sk -r <id>`) opens the REPL. In-REPL slash commands (local = handled client-side; others call the engine):
 
 Session/authoring: `/clear`, `/compact`, `/resume`, `/fork`, `/rename`, `/draft`, `/connector`, `/workflow`, `/context`, `/templates`, `/probe`, `/preview`, `/versions`, `/restore <version>`, `/onboard`, `/setup`.
-Approvals/policy: `/approvals`, `/approve`, `/reject`, `/yolo` (arms a typed-confirmation bypass of the destructive-action gate; auto-disarms; `/yolo off`), `/policy <tool> <auto|ask|review|reset>`, `/permissions`.
+Approvals/policy: `/approvals`, `/approve`, `/reject`, `/policy <tool> <auto|ask|review|reset>`, `/permissions`.
 Status/usage: `/status`, `/cost`, `/usage`, `/exec [execution_id]`, `/verbose`, `/model`, `/queue`, `/history`.
 Identity: `/login`, `/logout`, `/profile [name]`, `/tenant`.
 Context/files: `/memory` (open `SK.md` in `$EDITOR`), `/init` (generate a starter `SK.md`), `/files`, `/paste`, `/mention`, `/copy`, `/export`, `/view chat|inspect`. In the interactive REPL, pasted or dropped local file paths are handled directly by the composer; do not route users to `/attach` or `/upload`.
@@ -129,7 +129,7 @@ They do not expose an intake-confirmation tool.
 
 `sk mcp` runs a stdio Model Context Protocol server that proxies the most-used conversation surfaces to the engine, so an IDE/MCP client can drive sk without the TUI. It requires a logged-in profile (else `sk mcp: not logged in` / exit 2). It authenticates with the resolved profile — i.e. `--api-key`/`--engine-url` flags, the `SUBKIT_API_KEY`/`SUBKIT_ENGINE_URL` environment variables, or the on-disk profile — not any `SK_*`-named variable. (`SK_API_KEY` appears only as a placeholder in the curl/python snippets `sk workflows invoke-snippet` generates for your own scripts; the CLI itself does not read it. The snippet always states where the call runs: `--environment prod` (the default) or `--environment dev` is printed as the `x-subkit-environment` header, because a call without that header runs in development.)
 
-The proxy exposes a small local toolset that forwards to engine HTTP endpoints: ping the engine, create a conversation, append a message, fetch a conversation, and list your conversations. This stdio proxy is distinct from the engine's own remote MCP server: the engine's MCP palette (reached over HTTP at the engine URL by clients like claude.ai/ChatGPT) uses underscore tool names — `wf_<slug>`, `conversation_start`, `conversation_append`, `conversation_get`, `conversation_commit`, `conversation_respond_elicitation`, `run_workflow`, `search_knowledge`, `list_knowledge_sources`, `get_engine_status`, `whoami`, `get_token_budget`, `get_llm_usage`, `list_inbound_hooks`, `get_inbound_hook` — never dotted.
+The proxy exposes a small local toolset that forwards to engine HTTP endpoints: ping the engine, create a conversation, append a message, fetch a conversation, and list your conversations. This stdio proxy is distinct from the engine's own remote MCP server: the engine's MCP palette (reached over HTTP at the engine URL by clients like claude.ai/ChatGPT) uses underscore tool names — `wf_<slug>`, `conversation_start`, `conversation_append`, `conversation_get`, `conversation_commit`, `conversation_respond_elicitation`, `run_workflow`, `search_knowledge`, `list_knowledge_sources`, `get_engine_status`, `whoami`, `get_ai_budget`, `get_llm_usage`, `list_inbound_hooks`, `get_inbound_hook` — never dotted.
 
 # sk settings — Engine Settings
 
@@ -158,7 +158,7 @@ Conversation sessions are cached locally in `~/.sk/sessions/` so `-c`/`-r` and a
 
 # Health, Doctor, Diagnostics, Logs
 
-`sk health` — runtime posture: liveness, token budget, failing runs, risk signals, schema drift, process runtime.
+`sk health` — runtime posture: liveness, AI budget, failing runs, risk signals, schema drift, process runtime.
 
 `sk doctor` — diagnose engine connectivity, authentication, and setup. Exits `0` (ok or warn) or `2` (blocked). Use `sk doctor` for connectivity/setup; `sk health` for runtime posture.
 
@@ -171,7 +171,7 @@ Conversation sessions are cached locally in `~/.sk/sessions/` so `-c`/`-r` and a
 - `sk workflows` (`workflow:read`) — `create`, `delete`, `dry-run`, `get`, `history`, `invoke-snippet`, `list`, `preview`, `restore`, `run`, `validate`.
 - `sk connectors` (`connector:read`) — `list`, `get`, `inspect`, `create`, `import`, `validate`, `patch`, `enable`, `disable`, `mcp-inspect`, `mcp-authorize`, `delete`, `promote`, `test`, `probe`, `docs-ingest`, `docs-list`, `docs-search`, `docs-delete`. `create --file` validates and probes the unsaved definition before creating it (`--skip-checks` bypasses), `patch --file` applies a partial definition and validates first, `validate <file>` checks a definition against its driver's config schema without saving or reaching upstream, and `import --spec` turns an API specification into a connector after showing the draft. `enable` / `disable` are the driver-agnostic on/off switch. This is also where external MCP servers live: they are connectors with `driver: "mcp"`, so `mcp-inspect` forces a handshake and lists the tools, capabilities and instructions the remote actually serves, and `mcp-authorize` prints the OAuth 2.1 URL to open in a browser. There is no `sk mcp-servers` command — that registry was removed, and `/mcp-servers` in the REPL now answers with a pointer to `/connectors`.
 - `sk connector-templates` (`connector:read`) — `create`, `delete`, `list`, `recipe`, `recipe-pack`, `recipes`, `search`, `set-oauth`.
-- `sk credentials` (`credential:read`) — `delete`, `list`, `rotate`, `set`.
+- `sk vault` — `list`, `show`, `add`, `rotate`, `reveal`, `refresh`, `rm`, `attach`, `connector`. Values come from stdin; `reveal` needs `--yes` and is audited.
 - `sk auth` (`connector:write`) — start a connector reauthentication flow (OAuth2 authorize URL).
 - `sk install` (`connector:write`) — guided enterprise integration setup: `github`, `google-workspace`, `hubspot`, `jira`, `salesforce`, `slack`, `teams`.
 - `sk executions` (`execution:read`) — `abort`, `get`, `list`, `rerun`, `result`, `steps`, `tail`.

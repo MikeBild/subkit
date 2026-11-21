@@ -1,8 +1,8 @@
 import type { Job, PgBoss } from "pg-boss";
-import { analyzeAgentSession } from "../../agent/sessions.ts";
+import { analyzeAgentSession } from "../../agent/index.ts";
 import type { Actor } from "../../audit/actor.ts";
 import type { Db } from "../../db/client.ts";
-import { log } from "../../logging/logger.ts";
+import { log } from "../../logging/index.ts";
 import { withActiveTenantJobContext } from "../job-context.ts";
 
 export const AGENT_SESSION_ANALYZE_QUEUE = "agent-session.analyze" as const;

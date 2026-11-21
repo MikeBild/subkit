@@ -168,7 +168,6 @@ async function fixture(
               method: "PUT",
               body: "report",
               s3: {
-                // biome-ignore lint/suspicious/noTemplateCurlyInString: runtime key boundary fixture
                 key: "${input.key}",
                 scope: { key_prefix: "daily/", max_bytes: 1000 },
               },
@@ -392,9 +391,7 @@ test("S3 runtime enforces the reviewed folder before any outbound write", async 
 test("an http boundary refuses an unreviewed target or an oversize body before any outbound request", async () => {
   const bounded = {
     method: "POST",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: runtime target boundary fixture
     path: "/sites/${input.site}/releases",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: runtime body boundary fixture
     body: { retire: "${input.ids}" },
     boundary: {
       variables: { "input.site": { enum: ["alpha"] } },
@@ -427,7 +424,6 @@ test("an http boundary refuses an unreviewed target or an oversize body before a
 test("the granted boundary is checked again at dispatch, independently of the step's own check", async () => {
   const f = await fixture("http", 1, false, {
     method: "POST",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: runtime target boundary fixture
     path: "/sites/${input.site}/releases",
     body: { retire: ["a"] },
     boundary: {

@@ -1,3 +1,4 @@
+import { type LocalConfirmation, localConfirmationOf } from "@shared/device/confirmation.ts";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { auditAwait } from "../../audit/audit.ts";
@@ -5,8 +6,13 @@ import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import { conversations, conversationToolCalls, users } from "../../db/schema/index.ts";
+import {
+  type LocalConfirmationPort,
+  NO_LOCAL_CONFIRMATION_PORT,
+} from "../../devices/confirmation-port.ts";
+import { askBeforeWritingFor } from "../../identity/index.ts";
 import { withContext } from "../../logging/context.ts";
-import { log } from "../../logging/logger.ts";
+import { log } from "../../logging/index.ts";
 import { rehydrateApprovalRequester } from "../../tools/approval-requester.ts";
 import type { AnswerActor } from "../answer-actor.ts";
 import { decidedByAuditActor, decidedByFor } from "../decided-by.ts";
@@ -18,6 +24,7 @@ import {
   ElicitationNotFoundError,
   ElicitationValidationError,
 } from "../errors.ts";
+import { checkLocalDecision, recordLocalDecision } from "../local-confirmation.ts";
 import { runLoop } from "../loop/index.ts";
 import { applyElicitationOutcome } from "../persistence/apply-outcome.ts";
 import { isProseQuestionElicitation } from "../prose-question-answer.ts";
@@ -26,20 +33,16 @@ import {
   normalizeConfirmOutput,
 } from "../tools/ask-user/interpret-confirm.ts";
 import { conversationTurnId, markConversationTurnFailed } from "../turns.ts";
-import type { ConversationPermissionMode, TaskRunMarker } from "../types.ts";
+import type { TaskRunMarker } from "../types.ts";
 import { getConversation } from "./get.ts";
 import {
   ConversationNotFoundError,
   type ConversationTurnOutcome,
   ElicitationAlreadyResolvedError,
-  getStoredPermissionMode,
   isAskUserToolName,
-  normalizePermissionMode,
-  persistPermissionModeIfChanged,
 } from "./shared.ts";
 import {
   assertTaskRunApprovalDecider,
-  assertTaskRunPermissionMode,
   assertTaskRunWriter,
   requireTaskRunPrincipal,
   TaskRunApprovalUnavailableError,
@@ -55,13 +58,14 @@ export interface RespondElicitationParams {
   output: unknown;
   reason?: string;
   resolution_status?: "resolved" | "cancelled";
-  permission_mode?: ConversationPermissionMode | null;
   require_same_actor?: boolean;
   onEvent?: Parameters<typeof runLoop>[0]["onEvent"];
   turn_abort_ctrl: AbortController;
   elicitationBridge?: ElicitationBridge;
   surface?: Parameters<typeof runLoop>[0]["surface"];
   locale?: "de" | "en";
+  local_confirmations?: LocalConfirmationPort;
+  now?: Date;
 }
 
 export { ConversationNotFoundError } from "./shared.ts";
@@ -113,7 +117,6 @@ async function driveElicitation(
   exec: Db,
 ): Promise<ConversationTurnOutcome> {
   const taskRun = await assertTaskRunWriter(exec, p);
-  assertTaskRunPermissionMode(taskRun, p.permission_mode);
   if (p.require_same_actor) {
     const detail = await getConversation(p.tenant_id, p.conversation_id, exec);
     if (!detail) throw new ConversationNotFoundError(p.conversation_id);
@@ -126,11 +129,27 @@ async function driveElicitation(
   const pendingRow = await getElicitation(p.tenant_id, p.elicitation_id, exec);
   if (!pendingRow || pendingRow.conversation_id !== p.conversation_id)
     throw new ElicitationNotFoundError(p.elicitation_id);
+  const confirmation =
+    pendingRow.status === "pending" ? localConfirmationOf(pendingRow.input) : null;
+  const local = confirmation
+    ? {
+        confirmation,
+        state: await checkLocalDecision(exec, {
+          tenant_id: p.tenant_id,
+          conversation_id: p.conversation_id,
+          principal: p.principal,
+          confirmation,
+          status: p.resolution_status ?? "resolved",
+          decision: interpretConfirmDecision(p.output),
+          now: p.now ?? new Date(),
+        }),
+      }
+    : null;
   const decider =
     pendingRow.status === "pending"
       ? await assertTaskRunApprovalDecider(exec, p, pendingRow.input)
       : null;
-  const state: SettleState = { taskRun, pendingRow, run_as: null };
+  const state: SettleState = { taskRun, pendingRow, run_as: null, local };
   if (decider && !decider.decided_by_owner) {
     const requester = await rehydrateApprovalRequester(exec, {
       tenant_id: p.tenant_id,
@@ -150,12 +169,13 @@ interface SettleState {
   taskRun: TaskRunMarker | null;
   pendingRow: ElicitationRecord;
   run_as: ResolvedPrincipal | null;
+  local: { confirmation: LocalConfirmation; state: "granted" | "declined" } | null;
 }
 
 async function settleElicitation(
   p: RespondElicitationParams,
   exec: Db,
-  { taskRun, pendingRow, run_as }: SettleState,
+  { taskRun, pendingRow, run_as, local }: SettleState,
 ): Promise<ConversationTurnOutcome> {
   const { resolveElicitation } = await import("../elicitations.ts");
   const acting = run_as ?? p.principal;
@@ -208,6 +228,7 @@ async function settleElicitation(
       decided_by,
       ...(p.resolution_status ? { status: p.resolution_status } : {}),
       ...(p.reason ? { reason: p.reason } : {}),
+      ...(local ? { local_confirmation_checked: true } : {}),
     },
     exec,
   );
@@ -283,6 +304,18 @@ async function settleElicitation(
     });
   }
 
+  if (local && resolved.tool_call_id && p.principal) {
+    await recordLocalDecision(exec, {
+      tenant_id: p.tenant_id,
+      conversation_id: p.conversation_id,
+      tool_call_id: resolved.tool_call_id,
+      actor_id: p.principal.id,
+      confirmation: local.confirmation,
+      state: local.state,
+      port: p.local_confirmations ?? NO_LOCAL_CONFIRMATION_PORT,
+    });
+  }
+
   const decisionLog = {
     conversation_id: p.conversation_id,
     approval_id: p.elicitation_id,
@@ -318,20 +351,11 @@ async function settleElicitation(
 
   const conv = await getConversation(p.tenant_id, p.conversation_id, exec);
   if (!conv) throw new Error("conversation not found");
-  const explicitPermissionMode = taskRun ? null : normalizePermissionMode(p.permission_mode);
-  const storedPermissionMode = getStoredPermissionMode(conv.draft);
-  const effectivePermissionMode = taskRun
-    ? "auto"
-    : (explicitPermissionMode ?? storedPermissionMode);
-  if (explicitPermissionMode && explicitPermissionMode !== storedPermissionMode) {
-    await persistPermissionModeIfChanged({
-      exec,
-      tenant_id: p.tenant_id,
-      conversation_id: p.conversation_id,
-      draft: conv.draft,
-      permission_mode: explicitPermissionMode,
-    });
-  }
+  const askBeforeWriting = await askBeforeWritingFor(exec, {
+    tenant_id: p.tenant_id,
+    principal,
+    unattended: taskRun !== null,
+  });
   const savedDraft = z
     .object({
       workflow_id: z.string(),
@@ -402,7 +426,7 @@ async function settleElicitation(
     turn_abort_ctrl: p.turn_abort_ctrl,
     ...(p.surface ? { surface: p.surface } : {}),
     ...(p.locale ? { locale: p.locale } : {}),
-    ...(effectivePermissionMode ? { permission_mode: effectivePermissionMode } : {}),
+    ...(askBeforeWriting ? { ask_before_writing: true } : {}),
     ...(p.onEvent ? { onEvent: p.onEvent } : {}),
     ...(p.elicitationBridge ? { elicitationBridge: p.elicitationBridge } : {}),
   });

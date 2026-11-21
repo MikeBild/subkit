@@ -77,7 +77,6 @@ const PersistedSnapshotSchema = z
     flags: z.record(z.string(), z.boolean()),
     prefs: z
       .object({
-        permissionMode: z.enum(["ask", "auto", "plan", "yolo"]),
         theme: z.enum(["auto", "light", "dark", "high-contrast"]),
         personality: z.enum(["concise", "balanced", "verbose"]),
         titleFormat: z.enum(["session-id", "tenant-session", "model-tenant-session"]),
@@ -174,7 +173,6 @@ function materialize(
 }
 
 const DEFAULT_SK_PREFS: SkBootstrapWireResponse["prefs"] = {
-  permissionMode: "ask",
   theme: "auto",
   personality: "balanced",
   titleFormat: "session-id",

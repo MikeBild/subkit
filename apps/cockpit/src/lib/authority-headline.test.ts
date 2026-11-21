@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import {
+  authorityHeadline,
+  authorityVersionLabel,
+} from "@/features/grants/model/workflow-authorities";
 import { type Locale, translate } from "@/lib/i18n";
-import { authorityHeadline, authorityVersionLabel } from "./workflow-authorities";
 
 const tr =
   (locale: Locale) =>

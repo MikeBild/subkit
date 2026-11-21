@@ -33,7 +33,6 @@ test("inert authoring saves a scheduled draft without approval or trigger activa
   const draft = readyDraft("inert-authoring-schedule");
   draft.workflow.trigger = { kind: "schedule", cron: "0 8 * * *", tz: "Europe/Berlin" };
   const toolCtx = stubToolCtx(conversationId, draft);
-  toolCtx.permission_mode = "auto";
   const result = await commitWorkflowAtomic({ ctx: toolCtx });
   expect(result.ok).toBe(true);
   expect(result.data).toMatchObject({
@@ -232,11 +231,11 @@ test("a failed sensitive metadata test run blocks saving and cannot be forced", 
   expect(forced).toMatchObject({ ok: false, error_code: "sensitive_save_override_forbidden" });
 });
 
-test("sensitive inert save retains the human confirmation gate", async () => {
+test("sensitive inert save retains the human confirmation gate when the person asks before writing", async () => {
   const conversationId = await freshConversation();
-  const result = await commitWorkflowAtomic({
-    ctx: stubToolCtx(conversationId, sensitiveDraft("sensitive-no-approval")),
-  });
+  const toolCtx = stubToolCtx(conversationId, sensitiveDraft("sensitive-no-approval"));
+  toolCtx.ask_before_writing = true;
+  const result = await commitWorkflowAtomic({ ctx: toolCtx });
   expect(result.ok).toBe(false);
   expect(result.data).toMatchObject({ error_code: "no_prior_approval" });
 });

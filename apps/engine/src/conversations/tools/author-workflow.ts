@@ -155,7 +155,8 @@ export const authorWorkflowTool: ConversationTool = {
               : result.error_code === "authoring_connectors_unresolved"
                 ? ["list_connectors", "find_connector", "author_workflow"]
                 : result.error_code === "llm_provider_limited" ||
-                    result.error_code === "llm_quota_exhausted"
+                    result.error_code === "llm_provider_quota_exhausted" ||
+                    result.error_code === "llm_spend_limit_reached"
                   ? []
                   : result.error_code === "authoring_definition_invalid"
                     ? ["author_workflow"]

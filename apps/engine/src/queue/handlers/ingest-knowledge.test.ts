@@ -10,9 +10,10 @@ import {
   createKnowledgeSourceFromUrl,
   refreshKnowledgeSource,
 } from "../../knowledge/url-source.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { type IngestKnowledgeJob, processIngestKnowledgeJob } from "./ingest-knowledge.ts";
 
-const skip = process.env.REQUIRES_PG === "0";
+const skip = testEnv.REQUIRES_PG === "0";
 
 let ctx: KnowledgeTestCtx;
 let sourceId: string;

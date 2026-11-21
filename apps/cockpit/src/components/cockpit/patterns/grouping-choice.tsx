@@ -1,5 +1,5 @@
-import { cn } from "@/lib/utils";
-import { SegmentedControl } from "./segmented-control";
+import { cn } from "@ui/lib/utils";
+import { SegmentedControl } from "@ui/molecules/segmented-control";
 
 export interface GroupingOption {
   value: string;

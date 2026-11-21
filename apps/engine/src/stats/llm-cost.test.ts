@@ -7,10 +7,11 @@ import { _resetConfigForTests, loadConfig } from "../config/loader.ts";
 import { llmUsage } from "../db/schema/llm.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { effectiveModelPrices, longContextThresholds, priceCalls } from "../llm/index.ts";
+import { testEnv } from "../test-helpers/determinism/env.ts";
 import { seedTenant } from "../test-helpers/seed.ts";
 import { readLlmCostByKey, readLlmWindowCost, readPricedTokens } from "./llm-cost.ts";
 
-const skip = process.env.REQUIRES_PG === "0";
+const skip = testEnv.REQUIRES_PG === "0";
 
 let testDb: TestDb;
 let tenantId: string;

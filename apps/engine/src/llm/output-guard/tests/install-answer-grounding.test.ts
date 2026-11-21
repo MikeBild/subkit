@@ -1,5 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: `${engine_url}` is the literal runtime-template token under test, asserted verbatim — not a template-literal typo.
-
 import { describe, expect, it } from "bun:test";
 import { applyRuntimeTemplate, basePromptFor } from "../../runtime/context-assembler.ts";
 import { runOutputGuard } from "../index.ts";

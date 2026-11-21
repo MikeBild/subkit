@@ -2,7 +2,7 @@ import {
   matchesPositiveWorkflowCreationPattern,
   matchesWorkflowAuthoringPattern,
 } from "./loop/authoring-intent.ts";
-import type { AuthoringSummary, ConversationPermissionMode } from "./types.ts";
+import type { AuthoringSummary } from "./types.ts";
 
 interface DetectedIntent {
   forceTool?: string;
@@ -267,10 +267,10 @@ export function detectEnvelopeResolution(userText: string | null | undefined): E
 
 export function inferStateDrivenFollowUpTool(params: {
   latestUserText: string | null | undefined;
-  permission_mode: ConversationPermissionMode | null;
+  ask_before_writing: boolean;
   summary: AuthoringSummary | null | undefined;
 }): string | null {
-  if (params.permission_mode !== "auto") return null;
+  if (params.ask_before_writing) return null;
   if (detectEnvelopeResolution(params.latestUserText) !== "approve") return null;
   const suggested = params.summary?.next_suggested_tool ?? null;
   if (suggested === "save_workflow_draft" || suggested === "save_connector_draft") {

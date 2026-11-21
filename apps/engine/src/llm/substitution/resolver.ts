@@ -1,3 +1,4 @@
+import { parseVaultHandle } from "@shared/vault-handle.ts";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import {
@@ -6,11 +7,12 @@ import {
 } from "../../connectors/public-view.ts";
 import type { CredentialUseSnapshot } from "../../credentials/index.ts";
 import type { CredentialMode, DecryptedCredential } from "../../credentials/types.ts";
-import { decryptSecret } from "../../crypto/aes-gcm.ts";
+import { decryptSecret } from "../../crypto/index.ts";
 import type { Db } from "../../db/client.ts";
-import { connectors, credentials } from "../../db/schema/connectors.ts";
-import { logger } from "../../logging/logger.ts";
+import { connectors, vaultItems } from "../../db/schema/connectors.ts";
+import { logger } from "../../logging/index.ts";
 import { can } from "../../rbac/evaluator.ts";
+import { resolveVaultHandle } from "../../vault/index.ts";
 import { authorityConnectorDigest } from "../../workflows/authority-configuration.ts";
 import { suggestClosest } from "../../workflows/levenshtein.ts";
 import { type Placeholder, parsePlaceholders } from "./parser.ts";
@@ -34,6 +36,12 @@ export interface ResolverContext {
   scope?: Record<string, unknown>;
   principal?: ResolvedPrincipal;
   own_connector?: { id: string; onSecret: (value: string) => void };
+  vault?: {
+    user_id: string | null;
+    execution_id: string | null;
+    step_id: string | null;
+    onSecret: (value: string) => void;
+  };
   onAuthorityReference?: (reference: ResolvedAuthorityReference) => void;
   onCredentialUse?: (snapshot: CredentialUseSnapshot) => void;
 }
@@ -224,6 +232,8 @@ async function resolveOneRaw(tok: Placeholder, ctx: ResolverContext): Promise<On
   switch (tok.kind) {
     case "cred":
       return resolveCred(tok, ctx);
+    case "secret":
+      return resolveSecret(tok, ctx);
     case "connector_url":
       return resolveConnectorUrl(tok, ctx);
     case "connector_config": {
@@ -302,6 +312,8 @@ async function resolveOne(tok: Placeholder, ctx: ResolverContext): Promise<OneRe
   switch (tok.kind) {
     case "cred":
       return resolveCred(tok, ctx);
+    case "secret":
+      return resolveSecret(tok, ctx);
     case "connector_url":
       return resolveConnectorUrl(tok, ctx);
     case "connector_config":
@@ -338,6 +350,29 @@ async function resolveOne(tok: Placeholder, ctx: ResolverContext): Promise<OneRe
       );
     }
   }
+}
+
+async function resolveSecret(tok: Placeholder, ctx: ResolverContext): Promise<OneResult> {
+  const handle = parseVaultHandle(tok.path);
+  if (!handle) return { ok: false, code: "parse_error", message: `malformed ${tok.raw}` };
+  if (!ctx.vault) {
+    return {
+      ok: false,
+      code: "secret_withheld",
+      message: `${tok.raw} is resolved only inside a connector step of an approved workflow run; approve the workflow and send it through its connector`,
+    };
+  }
+  const resolved = await resolveVaultHandle(ctx.db, {
+    tenant_id: ctx.tenant_id,
+    environment: ctx.environment,
+    user_id: ctx.vault.user_id,
+    handle,
+    execution_id: ctx.vault.execution_id,
+    step_id: ctx.vault.step_id,
+  });
+  if (!resolved.ok) return resolved;
+  for (const secret of resolved.secret.secrets) ctx.vault.onSecret(secret);
+  return { ok: true, value: resolved.secret.value };
 }
 
 async function resolveCred(tok: Placeholder, ctx: ResolverContext): Promise<OneResult> {
@@ -545,13 +580,13 @@ async function fetchConnector(ctx: ResolverContext, slug: string) {
 async function fetchCredential(ctx: ResolverContext, connectorId: string) {
   const rows = await ctx.db
     .select()
-    .from(credentials)
+    .from(vaultItems)
     .where(
       and(
-        eq(credentials.tenant_id, ctx.tenant_id),
-        eq(credentials.connector_id, connectorId),
-        eq(credentials.environment, ctx.environment),
-        isNull(credentials.deleted_at),
+        eq(vaultItems.tenant_id, ctx.tenant_id),
+        eq(vaultItems.connector_id, connectorId),
+        eq(vaultItems.environment, ctx.environment),
+        isNull(vaultItems.deleted_at),
       ),
     )
     .limit(1);

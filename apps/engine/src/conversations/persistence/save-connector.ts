@@ -15,7 +15,7 @@ import type { Db } from "../../db/client.ts";
 import { conversations } from "../../db/schema/index.ts";
 import { withTenantWork } from "../../execution/tenant-work.ts";
 import { analyzeConversationAttachments } from "../../llm/flows/analyze-conversation-attachments.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { now } from "../../utils/clock.ts";
 import {
   withConnectorAuthenticated,

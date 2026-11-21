@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { closeDb } from "../../db/client.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   __resetMcpClientPoolForTests,
@@ -45,7 +46,7 @@ function makeFakeClient(url: string): McpClientLike {
 
 let ctx: TestDb;
 let tenantId: string;
-const _origDatabaseUrl = process.env.DATABASE_URL;
+const _origDatabaseUrl = testEnv.DATABASE_URL;
 
 async function seedServer(slug: string, host: string): Promise<{ id: string; url: string }> {
   const url = `https://${host}.evicttest.example.com/mcp`;
@@ -57,7 +58,7 @@ beforeAll(async () => {
   __setMcpPoolFactoriesForTests({ makeClient: (row) => makeFakeClient(row.url) });
   ctx = await createTestDb("mcp-pool-evict");
   await closeDb();
-  process.env.DATABASE_URL = ctx.url;
+  testEnv.DATABASE_URL = ctx.url;
   const t = await seedTenant(ctx.db, { slug: "t-pool-evict", display_name: "Pool Evict Tenant" });
   tenantId = t.id;
 }, 30_000);
@@ -66,8 +67,8 @@ afterAll(async () => {
   __setMcpPoolFactoriesForTests(null);
   __resetMcpClientPoolForTests();
   await closeDb();
-  if (_origDatabaseUrl === undefined) delete process.env.DATABASE_URL;
-  else process.env.DATABASE_URL = _origDatabaseUrl;
+  if (_origDatabaseUrl === undefined) delete testEnv.DATABASE_URL;
+  else testEnv.DATABASE_URL = _origDatabaseUrl;
   await ctx.cleanup();
 }, 30_000);
 

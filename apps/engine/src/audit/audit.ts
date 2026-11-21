@@ -3,7 +3,7 @@ import type { Db, Executor } from "../db/client.ts";
 import { hostedQuotaError } from "../db/hosted-quota-errors.ts";
 import { retryTransient } from "../db/transient.ts";
 import { getContext } from "../logging/context.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { scrubAuditEntry } from "./scrub.ts";
 import type { AuditEntry } from "./types.ts";
 

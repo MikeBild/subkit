@@ -1,5 +1,5 @@
 import type { McpInvokeResult } from "../../../connectors/drivers/mcp.ts";
-import { logger } from "../../../logging/logger.ts";
+import { logger } from "../../../logging/index.ts";
 import { MCP_WIRE_METHOD } from "../../../mcp/client/remote-call.ts";
 import { recordRequestRetry } from "../../../observability/instrumentation.ts";
 import type { RequestStep } from "../../../workflows/types.ts";

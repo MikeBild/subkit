@@ -9,7 +9,7 @@ import {
 import type { Db } from "../../db/client.ts";
 import { executionSteps, workflows } from "../../db/schema/index.ts";
 import { supportsToolSchema } from "../../llm/runtime/tool-schema-compatibility.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { listWorkflowToolsForTenant } from "../../workflows/catalog.ts";
 import { resolveWorkflowInputContract } from "../../workflows/input-schema-synth.ts";
 import { resolveWorkflowByIdOrSlug } from "../../workflows/lookup.ts";

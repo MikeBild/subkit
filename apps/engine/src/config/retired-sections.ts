@@ -61,7 +61,7 @@ export function retiredSectionMessage(configPath: string, offenders: readonly st
     "declared server as a connector (`sk connectors create --file`), with:",
     '  driver: "mcp", environment: "prod", base_url: <the server url>,',
     '  config: { mcp: { transport: "http", auth: { kind: … } } }',
-    "and attach its secret with `sk credentials` — config never carries one.",
+    "and attach its secret with `sk vault` — config never carries one.",
     "",
     "The client-pool budgets moved to `connectors.mcp.*`:",
     "  mcp.client.per_server_manifest_byte_cap → connectors.mcp.per_server_manifest_byte_cap",

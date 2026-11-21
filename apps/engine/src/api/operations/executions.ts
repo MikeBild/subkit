@@ -78,6 +78,11 @@ const ListExecutionsQuery = z
         "Filter by whether one or more steps were held. `true` returns only runs with held effects; `false` returns runs without them.",
       ),
     parent_execution_id: z.string().uuid().optional(),
+    device_id: z
+      .string()
+      .uuid()
+      .optional()
+      .describe("Only runs that wait for this device (status `waiting_for_device`)."),
   })
   .openapi("ListExecutionsQuery");
 
@@ -148,6 +153,7 @@ function listOptionsFromQuery(q: ListQuery): Omit<ListExecutionsOptions, "princi
     ...(q.started_to !== undefined ? { started_to: new Date(q.started_to) } : {}),
     ...(q.held_effects !== undefined ? { held_effects: q.held_effects } : {}),
     ...(q.parent_execution_id !== undefined ? { parent_execution_id: q.parent_execution_id } : {}),
+    ...(q.device_id !== undefined ? { device_id: q.device_id } : {}),
   };
 }
 

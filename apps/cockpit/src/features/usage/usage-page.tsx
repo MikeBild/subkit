@@ -1,48 +1,48 @@
 import { useQuery } from "@tanstack/react-query";
 import { useRouterState } from "@tanstack/react-router";
-import { ErrorNotice } from "@ui/components/proto/ErrorNotice";
-import { PageHeader, Panel } from "@ui/components/proto/Pill";
-import { PageSkeleton } from "@ui/components/proto/Skeleton";
-import { IconTile } from "@ui/components/proto/visual";
-import { Progress } from "@ui/components/ui/progress";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@ui/components/ui/tabs";
+import { IconTile } from "@ui/atoms/icon-tile";
+import { Panel } from "@ui/atoms/pill";
+import { PageSkeleton } from "@ui/atoms/skeleton";
 import { useUi } from "@ui/lib/ui-context";
-import { Coins, Gauge } from "lucide-react";
+import { ErrorNotice } from "@ui/molecules/error-notice";
+import { PageHeader } from "@ui/molecules/page-header";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@ui/molecules/tabs";
+import { Coins } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { apiCall } from "@/api/call";
+import { absolute, settingsHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { ActionMenu } from "@/components/cockpit/patterns/action-menu";
-import { Button } from "@/components/cockpit/patterns/controls";
 import { Screen } from "@/components/cockpit/patterns/screen";
 import { SectionHeading } from "@/components/cockpit/patterns/section";
 import { ForbiddenState } from "@/components/failure-state";
-import { useI18n } from "@/lib/i18n-context";
 import {
   isStatsWindow,
-  llmStatsQuery,
-  rollingDays,
   usageWindowFromUrl,
   usageWindowSearch,
   type WindowBounds,
   windowBounds,
-} from "@/lib/operations-figures";
-import { budgetForecast, budgetSummary, llmWindow, windowCost } from "@/lib/usage-model";
-import { UsageBreakdown } from "./breakdown";
-import { BudgetDialog, CurrencyDialog, ExportDialog, ForecastText } from "./dialogs";
+} from "@/features/usage/model/operations-figures";
 import {
   AREAS,
   AXIS_WIDTH,
   axisNumber,
-  budgetView,
   lastDays,
   type UsageTab,
   usageSearch,
   usageTab,
   usageView,
-} from "./model";
+} from "@/features/usage/model/usage";
+import { budgetSummary, windowCost } from "@/features/usage/model/usage-model";
+import { useI18n } from "@/lib/i18n-context";
+import { UsageBreakdown } from "./breakdown";
+import { CurrencyDialog, ExportDialog } from "./dialogs";
+import { readOnlySpendPanel, spendPanel, usdFormatter } from "./spend-model";
+import { SpendPanelView } from "./spend-panel";
+import { useSpend } from "./use-spend";
 
-type UsageDialog = "budget" | "currency" | "export" | null;
+type UsageDialog = "currency" | "export" | null;
 
 function replaceSearch(search: string) {
   window.history.replaceState(
@@ -124,26 +124,11 @@ function UsageScreen() {
     queryKey: ["usage-status"],
     queryFn: () => apiCall("get", "/v1/status", {}),
   });
-  const seven = useMemo(
-    () => ({ ...rollingDays(7, new Date(now())), window: "thisWeek" as const }),
-    [now],
-  );
-  const lastSeven = useQuery({
-    queryKey: ["usage-llm", "window", seven.from.slice(0, 10)],
-    queryFn: () => apiCall("get", "/v1/stats/llm", { query: llmStatsQuery(seven) }),
-  });
   const summary = useMemo(() => budgetSummary(status.data), [status.data]);
-  const forecast = useMemo(
-    () =>
-      status.data
-        ? budgetForecast({
-            usedTokens: summary.usedTokens,
-            budgetTokens: summary.budgetTokens,
-            lastSevenDaysTokens: llmWindow(lastSeven.data)?.tokens.total ?? null,
-            now: new Date(now()),
-          })
-        : null,
-    [status.data, summary, lastSeven.data, now],
+  const spend = useSpend();
+  const spendMoney = useMemo(
+    () => usdFormatter(locale, spend.spend?.currency),
+    [locale, spend.spend?.currency],
   );
   const view = useMemo(() => (stats.data ? usageView(stats.data, span) : null), [stats.data, span]);
   const fmt = useMemo(() => {
@@ -159,7 +144,6 @@ function UsageScreen() {
     };
   }, [locale, stats.data]);
   const value = (v: number) => (view?.measure === "tokens" ? fmt.count(v) : fmt.money(v));
-  const budget = budgetView(status.data);
   const dayLabel = new Intl.DateTimeFormat(locale === "de" ? "de-DE" : "en-US", {
     day: "2-digit",
     month: "2-digit",
@@ -187,7 +171,8 @@ function UsageScreen() {
                 ? [
                     {
                       label: t("usage.hint.adjustBudget"),
-                      onSelect: () => setDialog("budget"),
+                      onSelect: () =>
+                        window.location.assign(absolute(settingsHref(null, { area: "usage" }))),
                       testId: "usage-menu-budget",
                     },
                     {
@@ -266,50 +251,18 @@ function UsageScreen() {
                     </span>
                   </div>
                 </Panel>
-                <Panel className="flex flex-col">
-                  <div className="mb-4 flex items-center gap-3">
-                    <IconTile icon={Gauge} size="sm" />
-                    <SectionHeading className="font-semibold">{t("us.budget")}</SectionHeading>
-                  </div>
-                  {budget ? (
-                    <>
-                      <p className="font-mono text-2xl font-semibold">{budget.pct} %</p>
-                      <Progress
-                        className="mt-3"
-                        value={Math.min(100, budget.pct)}
-                        aria-label={t("us.budget")}
-                      />
-                      <p className="mt-3 text-sm text-muted-foreground">
-                        {t("us.used", {
-                          used: fmt.count(budget.used),
-                          total: fmt.count(budget.total),
-                        })}
-                      </p>
-                      {forecast && forecast.kind !== "uncapped" && (
-                        <p className="mt-1 text-sm" data-testid="usage-forecast">
-                          <ForecastText forecast={forecast} />
-                        </p>
-                      )}
-                    </>
-                  ) : status.isError ? (
-                    <p className="text-sm text-muted-foreground">
-                      {t("resource.usage.budgetUnreadable")}
-                    </p>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">{t("us.noBudget")}</p>
-                  )}
-                  {canWriteSettings && (
-                    <Button
-                      data-testid={budget ? "usage-budget-open" : "usage-budget-set"}
-                      size="sm"
-                      variant="outline"
-                      className="mt-auto self-start"
-                      onClick={() => setDialog("budget")}
-                    >
-                      {t(budget ? "usage.hint.adjustBudget" : "resource.usage.setCap")}
-                    </Button>
-                  )}
-                </Panel>
+                <SpendPanelView
+                  panel={readOnlySpendPanel(spendPanel(spend.spend))}
+                  loading={spend.loading}
+                  failed={spend.failed}
+                  onRetry={spend.retry}
+                  usd={spendMoney}
+                  intent={null}
+                  saving={false}
+                  saveError={null}
+                  onRaise={() => {}}
+                  onContinue={() => {}}
+                />
               </div>
               <Panel className="mt-4">
                 <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -368,27 +321,10 @@ function UsageScreen() {
         </TabsContent>
         <TabsContent value="breakdown" className="mt-0">
           {tab === "breakdown" && (
-            <UsageBreakdown
-              bounds={bounds}
-              chooseWindow={chooseWindow}
-              budget={summary}
-              forecast={forecast}
-              onBudget={() => setDialog("budget")}
-            />
+            <UsageBreakdown bounds={bounds} chooseWindow={chooseWindow} budget={summary} />
           )}
         </TabsContent>
       </Tabs>
-      {dialog === "budget" && (
-        <BudgetDialog
-          open
-          onOpenChange={(open) => (open ? undefined : setDialog(null))}
-          budget={summary}
-          forecast={forecast}
-          canWrite={canWriteSettings}
-          canWriteGlobal={canWriteGlobal}
-          tenantId={session.tenant.id}
-        />
-      )}
       {dialog === "currency" && (
         <CurrencyDialog
           open

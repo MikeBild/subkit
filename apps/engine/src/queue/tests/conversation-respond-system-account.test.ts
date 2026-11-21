@@ -5,7 +5,7 @@ import { actorOf } from "../../audit/actor.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { createElicitation, stageElicitationAnswer } from "../../conversations/elicitations.ts";
-import * as svc from "../../conversations/service.ts";
+import * as svc from "../../conversations/service/index.ts";
 import {
   apiKeys,
   auditLog,
@@ -18,6 +18,7 @@ import { generateKey, sha256Hex } from "../../identity/api-key.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
 import { insertMcpTask } from "../../mcp/tasks/store.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { registerConversationRunTurnHandler } from "../handlers/conversation-run-turn.ts";
 import type { ConversationRunTurnJob } from "../queues.ts";
 import { ensureTestConfig } from "./test-config.ts";
@@ -26,7 +27,7 @@ let ctx: EngineTestCtx;
 let run: (jobs: Job<ConversationRunTurnJob>[]) => Promise<void>;
 
 beforeAll(async () => {
-  process.env.LLM_PROVIDER = "mock";
+  testEnv.LLM_PROVIDER = "mock";
   await ensureTestConfig();
   resetMockProvider();
   ctx = await createEngineCtx("conversation-respond-bot");

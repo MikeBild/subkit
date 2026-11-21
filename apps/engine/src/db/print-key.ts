@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { issueApiKey } from "../identity/service.ts";
 import { newTraceId, withContext } from "../logging/context.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { closeDb, getDb } from "./client.ts";
 import { systemAccounts, tenants } from "./schema/index.ts";
 

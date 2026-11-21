@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { setConfigKey } from "../../config/loader.ts";
 import { conversationElicitations, conversations, toolApprovals } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import {
   createEmptyDraftDocument,
   withLatestPreview,
@@ -38,7 +39,7 @@ const readyDraft: DraftDocument = withLatestPreview(
 );
 
 beforeAll(async () => {
-  process.env.MASTER_KEY = "a".repeat(64);
+  testEnv.MASTER_KEY = "a".repeat(64);
   ctx = await createConversationTestCtx("direct-mcp-confirm-url");
   await setConfigKey("server.public_base_url", "https://engine.example.test", { force: true });
 });
@@ -69,7 +70,7 @@ describe("direct MCP ask_user_confirm browser fallback", () => {
       actor_id: ctx.user_id,
       principal,
       surface: "mcp",
-      permission_mode: "ask",
+      ask_before_writing: true,
       connector_id: null,
       workflow_id: null,
       engineClient: new EngineClient({
@@ -130,7 +131,7 @@ describe("direct MCP ask_user_confirm browser fallback", () => {
       conversation_id: conversation.id,
       actor_id: null,
       surface: "mcp",
-      permission_mode: "ask",
+      ask_before_writing: true,
       connector_id: null,
       workflow_id: null,
       engineClient: new EngineClient({

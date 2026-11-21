@@ -70,7 +70,7 @@ describe("sk turn-event reducer", () => {
     s = applyTurnEvent(s, {
       type: "completed",
       status: "committed",
-      usage: { turn_tokens: 42, remaining_monthly_budget_tokens: 9958 },
+      usage: { turn_tokens: 42 },
     });
     expect(s.committedWorkflowId).toBe("wf-1");
     expect(s.status).toBe("completed");
@@ -88,7 +88,6 @@ describe("sk turn-event reducer", () => {
         turn_tokens_total: 3_900_000,
         cache_read_tokens: 120_000,
         cache_read_pct: 85.5,
-        remaining_monthly_budget_tokens: null,
         context_cap_tokens: 180_000,
       } as never,
     });

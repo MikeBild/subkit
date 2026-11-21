@@ -3,6 +3,8 @@ import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.
 import { projectWorkflowDraft } from "./draft-projection.ts";
 import { WorkflowDraftSchema } from "./draft-schemas.ts";
 
+const uuid = createDeterministicUuidFactory(7);
+
 describe("projectWorkflowDraft", () => {
   test("uses catalog-owned description while preserving the stored draft definition", () => {
     const draft = projectWorkflowDraft(

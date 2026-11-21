@@ -19,7 +19,7 @@ describe("the argument surface", () => {
 
   test("the module never reaches for the environment or for argv itself", () => {
     const source = readFileSync(CLI_SOURCE, "utf8");
-    expect(source).not.toContain("process.env");
+    expect(source).not.toMatch(/\bprocess\.env\b|\b(readEnv|envSnapshot|envFlag|envInt|envList)\(/);
     expect(source).not.toContain("process.argv");
   });
 

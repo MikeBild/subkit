@@ -7,7 +7,7 @@ import {
   intakeItems,
   users,
 } from "../../../db/schema/index.ts";
-import { createFeedbackRateLimiter } from "../../../feedback/rate-limit.ts";
+import { createFeedbackRateLimiter } from "../../../feedback/index.ts";
 import {
   browserSessionHeaders,
   createHttpTestServer,

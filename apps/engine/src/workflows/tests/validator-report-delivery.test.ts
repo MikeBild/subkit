@@ -4,7 +4,6 @@ import { GMAIL_SEND_TARGET } from "../report-delivery-boundary.ts";
 
 const CONNECTOR_ID = "5b0f3c1e-7a2d-4c8e-9f10-2a3b4c5d6e7f";
 const baseUrls = new Map([[CONNECTOR_ID, ["https://gmail.googleapis.com/gmail/v1"]]]);
-// biome-ignore lint/suspicious/noTemplateCurlyInString: the request placeholder grammar under test
 const RAW_FROM_SCOPE = "${scope.build_mail.data.raw}";
 
 const send = (overrides: Record<string, unknown> = {}) => ({

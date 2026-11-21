@@ -9,7 +9,7 @@ import type {
 import type { PendingIntake } from "../lib/intake-review.ts";
 import type { MentionCandidate } from "../repl/mention-picker.tsx";
 import type { PaneSpec } from "../repl/slash/handler.ts";
-import type { PermissionMode, StatusLineConfig } from "../repl/status-line/render.ts";
+import type { StatusLineConfig } from "../repl/status-line/render.ts";
 import type { PersonaProbe } from "../slash.ts";
 
 export interface InkAppProps {
@@ -38,7 +38,6 @@ export interface InkAppProps {
   } | null;
   digestSnapshot?: OperatorHealthDigest | null;
   pendingIntake?: PendingIntake | null;
-  permissionMode?: PermissionMode;
   engineClient?: EngineClient;
   engineMentionCandidates?: readonly MentionCandidate[];
   prefs?: {
@@ -56,7 +55,6 @@ export interface InkAppProps {
   onPrompt: (
     text: string,
     opts?: {
-      permission_mode?: "auto" | "ask" | "plan" | "yolo";
       event?: RequestCredentialFormEvent;
       raw_prompt?: string;
     },

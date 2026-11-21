@@ -1,8 +1,8 @@
-import { ErrorState } from "@ui/components/proto/ErrorNotice";
 import type { PageFailureSpec } from "@ui/lib/errors";
+import { cn } from "@ui/lib/utils";
+import { ErrorState } from "@ui/molecules/error-notice";
 import type { ReactNode } from "react";
 import { FAMILY_UI_VERSION } from "@/components/family-ui";
-import { cn } from "@/lib/utils";
 import { ActionFailureHost } from "./action-failure";
 import { ColumnToggleScope } from "./column-toggle-claim";
 import { usePageFailure } from "./use-error-detail";

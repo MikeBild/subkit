@@ -1,7 +1,8 @@
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { getConfig } from "../../../config/loader.ts";
-import { BOOTSTRAP_ONLY_ENV_KEYS } from "../../../crypto/aes-gcm.ts";
+import { BOOTSTRAP_ONLY_ENV_KEYS } from "../../../crypto/index.ts";
+import { readEnv } from "../../../env.ts";
 import { globalLlmStatus } from "../../../llm/index.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
@@ -275,6 +276,31 @@ function buildDatastoreSection(snapshot: ReturnType<typeof getConfig>): SetupSec
 }
 
 function buildStorageSection(snapshot: ReturnType<typeof getConfig>): SetupSection {
+  if (snapshot.storage.backend === "filesystem") {
+    const root = present(snapshot.storage.filesystem.root);
+    return buildSection(
+      "Object storage",
+      [
+        { key: "storage.backend", value: "filesystem", status_hint: null },
+        {
+          key: "storage.filesystem.root",
+          value: root ?? null,
+          status_hint: root ? null : "Missing",
+        },
+      ],
+      root
+        ? []
+        : [
+            buildIssue(
+              "filesystem-root-missing",
+              "blocker",
+              "Object storage",
+              "storage.backend is filesystem but storage.filesystem.root is not set. Set OBJECT_STORAGE_ROOT and restart.",
+            ),
+          ],
+      [],
+    );
+  }
   const s3 = snapshot.storage.object_store;
   const issues: SetupIssue[] = [];
   const recommendations: string[] = [];
@@ -337,14 +363,13 @@ function buildCryptoSection(): SetupSection {
       `BOOTSTRAP_ONLY_ENV_KEYS shape changed (${JSON.stringify(BOOTSTRAP_ONLY_ENV_KEYS)}); update buildCryptoSection to render every entry.`,
     );
   }
-  const masterKey = present(process.env.MASTER_KEY);
+  const masterKey = present(readEnv("MASTER_KEY"));
   const issues: SetupIssue[] = [];
   const recommendations: string[] = [];
-  const envFilePath =
-    typeof process.env.CONFIGURATION_DIRECTORY === "string" &&
-    process.env.CONFIGURATION_DIRECTORY.length > 0
-      ? `${process.env.CONFIGURATION_DIRECTORY.split(":")[0]}/.env`
-      : ".env (repo root for local dev) or /etc/subkit/.env (systemd)";
+  const configurationDirectory = readEnv("CONFIGURATION_DIRECTORY");
+  const envFilePath = configurationDirectory
+    ? `${configurationDirectory.split(":")[0]}/.env`
+    : ".env (repo root for local dev) or /etc/subkit/.env (systemd)";
   if (!masterKey) {
     issues.push(buildIssue("master-key", "blocker", "Master key", "MASTER_KEY is not set."));
     recommendations.push(

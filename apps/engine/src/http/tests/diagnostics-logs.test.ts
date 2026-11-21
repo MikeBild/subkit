@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { and, desc, eq, gte } from "drizzle-orm";
 import { apiKeys, auditLog, users } from "../../db/schema/index.ts";
 import { withContext } from "../../logging/context.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { logRing } from "../../observability/log-ring.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { adminHeaders } from "../../test-helpers/seed.ts";

@@ -43,6 +43,7 @@ describe("save_workflow_draft — policy gate", () => {
       actor_id: null,
       connector_id: null,
       workflow_id: null,
+      ask_before_writing: true,
       engineClient,
       getDraft: () => draft,
       setDraft: async () => {},

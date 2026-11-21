@@ -1,7 +1,10 @@
 import type { DocsBundle } from "@shared/llms-index";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useRouterState } from "@tanstack/react-router";
-import { ErrorNotice } from "@ui/components/proto/ErrorNotice";
+import { Skeleton } from "@ui/atoms/skeleton";
+import { cn } from "@ui/lib/utils";
+import { ErrorNotice } from "@ui/molecules/error-notice";
+import { FilterBar } from "@ui/organisms/filter-bar";
 import { ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
 import {
   type ComponentProps,
@@ -20,7 +23,6 @@ import { MessageResponse } from "@/components/ai-elements/message";
 import { renderAction, useErrorNotice } from "@/components/cockpit/patterns";
 import { ActionButton } from "@/components/cockpit/patterns/action-button";
 import { CodeBlock } from "@/components/cockpit/patterns/code-block";
-import { FilterBar } from "@/components/cockpit/patterns/filter-bar";
 import { Page } from "@/components/cockpit/patterns/page";
 import { PageHeader } from "@/components/cockpit/patterns/page-header";
 import {
@@ -31,12 +33,9 @@ import {
   ReadingScroll,
   ReadingSkeleton,
 } from "@/components/cockpit/patterns/reading";
-import { Loadable, Skeleton } from "@/components/cockpit/patterns/skeleton";
+import { Loadable } from "@/components/cockpit/patterns/skeleton";
 import { NotFoundPage } from "@/components/failure-state";
 import { FamilyAuditLink, FamilySection, FamilyState } from "@/components/family-ui";
-import type { Locale, TranslationKey } from "@/lib/i18n";
-import { useI18n } from "@/lib/i18n-context";
-import { cn } from "@/lib/utils";
 import {
   activeHeading,
   anchorFor,
@@ -60,7 +59,9 @@ import {
   resolveLink,
   safeDecode,
   sectionText,
-} from "./docs-model";
+} from "@/features/documentation/model";
+import type { Locale, TranslationKey } from "@/lib/i18n";
+import { useI18n } from "@/lib/i18n-context";
 
 const DOCS_QUERY_KEY = ["docs-bundle"] as const;
 

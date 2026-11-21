@@ -4,6 +4,18 @@ export const TASK_RUN_ACTING_TOOLS: readonly string[] = [
   "run_workflow",
   "call_connector",
   "probe_connector",
+  "browser_open",
+  "browser_press",
+  "browser_fill",
+  "computer_press",
+  "computer_select",
+  "computer_set_value",
+  "computer_type",
+  "computer_key",
+  "files_write",
+  "files_mkdir",
+  "files_move",
+  "files_trash",
 ];
 
 export interface TaskPlaybookProgress {

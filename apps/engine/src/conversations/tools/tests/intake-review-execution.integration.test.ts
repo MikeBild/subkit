@@ -22,7 +22,7 @@ import {
 useIntakeReviewExecutionSetup();
 
 describe("intake review execution boundary", () => {
-  test("proposal drafts run in auto mode while admission stays outside the tool", () => {
+  test("proposal drafts run without a question while admission stays outside the tool", () => {
     for (const name of ["create_intake_proposal", "revise_intake_proposal"] as const) {
       const tool = getTool(name);
       if (!tool) throw new Error(`intake tool ${name} is not registered`);
@@ -33,7 +33,6 @@ describe("intake review execution boundary", () => {
           category: tool.category,
           input: {},
           overrides: {},
-          permission_mode: "auto",
         }),
       ).toEqual({ mode: "no_confirm", rule: "computed_from_input" });
     }
@@ -61,7 +60,6 @@ describe("intake review execution boundary", () => {
         category: discard.category,
         input: { item_ids: [selected.id] },
         overrides: {},
-        permission_mode: "auto",
       }).mode,
     ).toBe("confirm_before_execution");
     expect(
@@ -70,7 +68,6 @@ describe("intake review execution boundary", () => {
         category: restore.category,
         input: {},
         overrides: {},
-        permission_mode: "auto",
       }),
     ).toEqual({ mode: "no_confirm", rule: "computed_from_input" });
 
@@ -176,7 +173,6 @@ describe("intake review execution boundary", () => {
           category: tool.category,
           input: {},
           overrides: {},
-          permission_mode: "auto",
         }),
       ).toEqual({ mode: "no_confirm", rule: "computed_from_input" });
     }
@@ -220,7 +216,7 @@ describe("intake review execution boundary", () => {
     const chain = signals();
     const read = getTool("get_intake_item");
     if (!read) throw new Error("intake item tool is not registered");
-    const readWrapped = wrapOne(read, ctx, chain, [] as TurnEvent[], db, {}, null);
+    const readWrapped = wrapOne(read, ctx, chain, [] as TurnEvent[], db, {});
     const readResult = await executeWrapped(readWrapped, { id: item.id });
     expect(readResult.ok).toBe(true);
     expect(draft().session?.intake_item_ids).toEqual([item.id]);
@@ -234,7 +230,6 @@ describe("intake review execution boundary", () => {
         [] as TurnEvent[],
         db,
         {},
-        null,
       );
       const result = await executeWrapped(blocked, {});
       expect(result).toMatchObject({
@@ -251,7 +246,7 @@ describe("intake review execution boundary", () => {
     const read = getTool("get_intake_item");
     if (!read) throw new Error("intake item tool is not registered");
     const events: TurnEvent[] = [];
-    const wrapped = wrapOne(read, ctx, signals(), events, db, {}, null);
+    const wrapped = wrapOne(read, ctx, signals(), events, db, {});
     const result = await executeWrapped(wrapped, { id: item.id });
     expect(result.ok).toBe(true);
     expect(result.data).toMatchObject({ _truncated: true });
@@ -291,7 +286,6 @@ describe("intake review execution boundary", () => {
       [] as TurnEvent[],
       db,
       {},
-      null,
     );
     expect(await executeWrapped(blocked, {})).toMatchObject({
       ok: false,

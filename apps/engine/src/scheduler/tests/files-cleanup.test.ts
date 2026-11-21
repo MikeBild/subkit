@@ -10,6 +10,7 @@ import {
   workflows,
   workflowsSchedules,
 } from "../../db/schema/index.ts";
+import { runFilesCleanup } from "../../files/scheduled/files-cleanup-runner.ts";
 import { attachInlineForTest } from "../../files/test-helpers.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
 import { logRing } from "../../observability/log-ring.ts";
@@ -17,7 +18,6 @@ import { EXECUTION_RUN_QUEUE } from "../../queue/queues.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
-import { runFilesCleanup } from "../files-cleanup-runner.ts";
 import { createFilesCleanupBoss, disposeBoss } from "./pgboss-bootstrap.ts";
 
 const uuid = createDeterministicUuidFactory(0xface02);

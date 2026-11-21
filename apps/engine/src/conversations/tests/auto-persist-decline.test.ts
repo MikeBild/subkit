@@ -5,7 +5,7 @@ import {
   conversationElicitations,
   conversations,
   conversationToolCalls,
-  credentials,
+  vaultItems,
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { TEST_HUMAN_ANSWER } from "../../test-helpers/answer-actor.ts";
@@ -141,10 +141,7 @@ describe("auto-persist — decline path", () => {
       .from(connectors)
       .where(and(eq(connectors.tenant_id, tenant_id), eq(connectors.slug, "ap-decline")));
     expect(conn).toHaveLength(0);
-    const cred = await ctx.db
-      .select()
-      .from(credentials)
-      .where(eq(credentials.tenant_id, tenant_id));
+    const cred = await ctx.db.select().from(vaultItems).where(eq(vaultItems.tenant_id, tenant_id));
     expect(cred).toHaveLength(0);
 
     const calls = await ctx.db

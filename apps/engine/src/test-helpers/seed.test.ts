@@ -7,6 +7,7 @@ import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { EngineClient } from "../engine-client/index.ts";
 import { WorkflowDefSchema } from "../workflows/types.ts";
 import { FROZEN_NOW } from "./determinism/clock.ts";
+import { testEnv } from "./determinism/env.ts";
 import { adminPrincipal } from "./principals.ts";
 import {
   adminHeaders,
@@ -48,7 +49,7 @@ describe("adminHeaders", () => {
   });
 });
 
-const skip = process.env.SKIP_DOCKER === "1" || process.env.REQUIRES_PG === "0";
+const skip = testEnv.SKIP_DOCKER === "1" || testEnv.REQUIRES_PG === "0";
 
 describe.skipIf(skip)("seeders against a migrated database", () => {
   let testDb: TestDb;

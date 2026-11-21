@@ -1,6 +1,6 @@
 import type { Db } from "../../db/client.ts";
 import { cliNotificationInbox } from "../../db/schema/notifications.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import type { NotificationAdapter } from "../../notifications/service.ts";
 import { classifyEvent } from "../../webhooks/events/catalog.ts";
 import type { ChatDelivery, OutboundSendResult } from "../types.ts";

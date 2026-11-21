@@ -40,7 +40,6 @@ const GATE: GateRecord = {
   mode: "confirm_before_execution",
   outcome: "confirm",
   surface: "web",
-  bypassed_confirmation: false,
   tenant_id: "00000000-0000-0000-0000-000000000002",
   conversation_id: "00000000-0000-0000-0000-000000000003",
 };

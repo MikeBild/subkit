@@ -45,7 +45,6 @@ const SHAPES: Record<string, { definition: unknown; bindings: unknown[]; calls?:
           kind: "request",
           connector_id: CONNECTOR,
           method: "GET",
-          // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
           path: "/v2/projects/${item.id}/resources",
         },
       ],
@@ -71,7 +70,6 @@ const SHAPES: Record<string, { definition: unknown; bindings: unknown[]; calls?:
           connector_id: CONNECTOR,
           method: "GET",
           path: "/v1/reports?limit=50",
-          // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
           query: { since: "${input.since}" },
         },
       ],
@@ -92,7 +90,6 @@ const SHAPES: Record<string, { definition: unknown; bindings: unknown[]; calls?:
           connector_id: GMAIL_CONNECTOR,
           method: "POST",
           path: "/gmail/v1/users/me/messages/send",
-          // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
           body: { raw: "${steps.render.data.raw}" },
         },
       ],
@@ -125,9 +122,7 @@ const SHAPES: Record<string, { definition: unknown; bindings: unknown[]; calls?:
           kind: "request",
           connector_id: CK_CONNECTOR,
           method: "PUT",
-          // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
           path: "/v1/content/${item.id}/revisions",
-          // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
           body: "${item.markdown}",
           headers: { "content-type": "text/markdown" },
         },
@@ -138,7 +133,6 @@ const SHAPES: Record<string, { definition: unknown; bindings: unknown[]; calls?:
           method: "POST",
           path: `/v1/sites/${SITE}/releases`,
           body: {
-            // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
             revision_ids: "${steps.revise.data.revision_ids}",
             reason: "weekly release",
           },
@@ -183,13 +177,10 @@ const SHAPES: Record<string, { definition: unknown; bindings: unknown[]; calls?:
           kind: "request",
           connector_id: CONNECTOR,
           method: "POST",
-          // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
           path: "/sites/${input.site}/releases",
           headers: { "content-type": "application/json" },
           body: {
-            // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
             reason: "retire ${scope.pick.data.count}",
-            // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
             retire_item_ids: "${scope.pick.data.ids}",
           },
           boundary: {
@@ -225,9 +216,7 @@ const SHAPES: Record<string, { definition: unknown; bindings: unknown[]; calls?:
           kind: "request",
           connector_id: CONNECTOR,
           method: "GET",
-          // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
           path: "/sites/${input.site}/stats/${item.id}",
-          // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
           query: { from: "${scope.window.data.start}", tz: "UTC" },
           boundary: {
             variables: {

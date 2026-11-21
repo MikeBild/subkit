@@ -39,7 +39,7 @@ async function constraintDefinition(table: string, name: string): Promise<string
 
 test("credential generations stay positive and step credential snapshots stay arrays", async () => {
   expect(
-    await constraintDefinition("credentials", "credentials_credential_generation_positive"),
+    await constraintDefinition("vault_items", "vault_items_credential_generation_positive"),
   ).toBe("CHECK ((credential_generation > 0))");
   expect(
     await constraintDefinition("execution_steps", "execution_steps_credential_snapshots_array"),

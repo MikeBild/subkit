@@ -114,7 +114,10 @@ describe("cockpit route table", () => {
     const source = readFileSync(new URL("./router.tsx", import.meta.url), "utf8");
     expect(source).toMatch(/path: "\/tasks",\s*component: \(\) => <TasksPage/);
     expect(source).toMatch(/path: "\/tasks\/\$resourceId",\s*component: \(\) => <TaskPage/);
-    const list = readFileSync(new URL("../pages/tasks-list.tsx", import.meta.url), "utf8");
+    const list = readFileSync(
+      new URL("../features/tasks/ui/tasks-list.tsx", import.meta.url),
+      "utf8",
+    );
     expect(list).toContain("rowHref={(row) => taskHref(row.task.id)}");
     expect(list).not.toMatch(/RecordSheet|\?item=/);
   });

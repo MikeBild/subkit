@@ -13,6 +13,7 @@ import {
   DATABASE_URL_BOOTSTRAP_SENTINEL,
   initializeRuntimeConfig,
 } from "../../../runtime-config/service.ts";
+import { testEnv } from "../../../test-helpers/determinism/env.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts";
 
 let server: HttpTestServer;
@@ -21,9 +22,9 @@ let configDir: string;
 let previousMasterKey: string | undefined;
 
 beforeAll(async () => {
-  previousMasterKey = process.env.MASTER_KEY;
-  process.env.MASTER_KEY = "22".repeat(32);
-  process.env.NODE_ENV = "test";
+  previousMasterKey = testEnv.MASTER_KEY;
+  testEnv.MASTER_KEY = "22".repeat(32);
+  testEnv.NODE_ENV = "test";
   configDir = mkdtempSync(join(tmpdir(), "sk-runtime-http-"));
   _resetConfigForTests();
   await loadConfig({
@@ -44,8 +45,8 @@ afterAll(async () => {
   await server.cleanup();
   _resetConfigForTests();
   rmSync(configDir, { recursive: true, force: true });
-  if (previousMasterKey === undefined) delete process.env.MASTER_KEY;
-  else process.env.MASTER_KEY = previousMasterKey;
+  if (previousMasterKey === undefined) delete testEnv.MASTER_KEY;
+  else testEnv.MASTER_KEY = previousMasterKey;
 });
 
 async function authedFetch(path: string, init: RequestInit = {}): Promise<Response> {
@@ -253,7 +254,7 @@ describe("runtime configuration HTTP contract", () => {
       method: "PATCH",
       body: JSON.stringify({
         expected_revision: listed.saved_revision,
-        changes: { "log.level": "debug", "tokens.monthly_budget": 500 },
+        changes: { "log.level": "debug", "connectors.mcp.per_server_manifest_byte_cap": 50_000 },
         scope: "global",
       }),
     });
@@ -266,15 +267,20 @@ describe("runtime configuration HTTP contract", () => {
     expect(after.items.length).toBe(before.items.length + 1);
     const revision = (await (
       await authedFetch(`/v1/settings/revisions/${state.saved_revision}`)
-    ).json()) as { document: { log: { level: string }; tokens: { monthly_budget: number } } };
+    ).json()) as {
+      document: {
+        log: { level: string };
+        connectors: { mcp: { per_server_manifest_byte_cap: number } };
+      };
+    };
     expect(revision.document.log.level).toBe("debug");
-    expect(revision.document.tokens.monthly_budget).toBe(500);
+    expect(revision.document.connectors.mcp.per_server_manifest_byte_cap).toBe(50_000);
 
     const invalid = await authedFetch("/v1/settings", {
       method: "PATCH",
       body: JSON.stringify({
         expected_revision: state.saved_revision,
-        changes: { "log.level": "warn", "tokens.monthly_budget": "a lot" },
+        changes: { "log.level": "warn", "connectors.mcp.per_server_manifest_byte_cap": "a lot" },
         scope: "global",
       }),
     });

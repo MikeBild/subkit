@@ -2,6 +2,7 @@ export * from "./actor.ts";
 export * from "./audit.ts";
 export * from "./audit-source.ts";
 export * from "./buckets.ts";
+export * from "./device-metadata.ts";
 export * from "./execution-traces.ts";
 export * from "./file-creators.ts";
 export * from "./query.ts";

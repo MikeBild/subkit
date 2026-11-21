@@ -1,4 +1,4 @@
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 
 export const EMBEDDING_MODEL = "Xenova/paraphrase-multilingual-MiniLM-L12-v2";
 const EMBEDDING_DIM = 384;

@@ -1,3 +1,4 @@
+import type { DeploymentMode } from "../config/deployment-mode.ts";
 import { ConfigSchema } from "../config/schema.ts";
 import { listConfigLeaves } from "../config/walk.ts";
 import type { PreflightCheckResult, PreflightNote, PreflightOutcome } from "./contracts.ts";
@@ -23,9 +24,13 @@ export interface PreflightEnvironment {
   databaseUrl(): string | undefined;
   pingDatabase(): Promise<void>;
   schemaAheadTags(): Promise<string[]>;
+  schemaBehindChainHead(): Promise<string | null>;
   activeSettingsDocument(): Promise<Record<string, unknown> | null>;
   objectStoreBinding(document: Record<string, unknown> | null): Promise<ObjectStoreBinding | null>;
   probeObjectStore(binding: ObjectStoreBinding): Promise<void>;
+  localObjectStoreRoot(): string | null;
+  deploymentMode(): DeploymentMode;
+  probeLocalObjectStore(root: string): Promise<void>;
   readSecretVersion(name: string, version: number): Promise<void>;
 }
 
@@ -179,6 +184,55 @@ export function checkMasterKey(value: string | undefined): PreflightCheckResult 
   return ok("master_key");
 }
 
+async function checkRemoteObjectStore(
+  env: PreflightEnvironment,
+  document: Record<string, unknown> | null,
+): Promise<PreflightCheckResult> {
+  let binding: ObjectStoreBinding | null;
+  try {
+    binding = await env.objectStoreBinding(document);
+  } catch (error) {
+    return refuse(
+      "object_store",
+      "secret_unreadable",
+      `the object-store credentials bound at storage.object_store do not decrypt under the running MASTER_KEY: ${messageOf(error)}`,
+    );
+  }
+  if (binding === null)
+    return refuse(
+      "object_store",
+      "object_store_missing",
+      "SubKit stores objects; no complete object-store binding was found in the active revision or in the OBJECT_STORAGE_* seed",
+    );
+  try {
+    await env.probeObjectStore(binding);
+  } catch (error) {
+    return refuse("object_store", "object_store_unreachable", messageOf(error));
+  }
+  return ok("object_store");
+}
+
+export const FILESYSTEM_STORE_LOCAL_ONLY_REMEDY =
+  "Use the filesystem store only in SubKit Desktop's local mode (SUBKIT_DEPLOYMENT_MODE=local_workspace); a server keeps OBJECT_STORAGE_BACKEND=s3 with an S3-compatible bucket, because several replicas would each write their own folder.";
+
+async function checkLocalObjectStore(
+  env: PreflightEnvironment,
+  root: string,
+): Promise<PreflightCheckResult> {
+  if (env.deploymentMode() !== "local_workspace")
+    return refuse(
+      "object_store",
+      "filesystem_store_needs_local_mode",
+      `storage.backend is filesystem outside local device mode. ${FILESYSTEM_STORE_LOCAL_ONLY_REMEDY}`,
+    );
+  try {
+    await env.probeLocalObjectStore(root);
+  } catch (error) {
+    return refuse("object_store", "object_store_unreachable", messageOf(error));
+  }
+  return ok("object_store");
+}
+
 export async function runPreflightChecks(env: PreflightEnvironment): Promise<PreflightOutcome> {
   const results: PreflightCheckResult[] = [];
   const notes: PreflightNote[] = [];
@@ -207,10 +261,22 @@ export async function runPreflightChecks(env: PreflightEnvironment): Promise<Pre
     return done();
   }
   let aheadTags: string[];
+  let requiredHead: string | null;
   try {
+    requiredHead = await env.schemaBehindChainHead();
     aheadTags = await env.schemaAheadTags();
   } catch (error) {
     push(refuse("schema", "database_unreachable", messageOf(error)));
+    return done();
+  }
+  if (requiredHead !== null) {
+    push(
+      refuse(
+        "schema",
+        "schema_behind",
+        `the database history stops before ${requiredHead}: upgrade it with a release that still ships the migration chain up to ${requiredHead} first`,
+      ),
+    );
     return done();
   }
   if (aheadTags.length > 0) {
@@ -233,36 +299,12 @@ export async function runPreflightChecks(env: PreflightEnvironment): Promise<Pre
     return done();
   }
 
-  let binding: ObjectStoreBinding | null;
-  try {
-    binding = await env.objectStoreBinding(document);
-  } catch (error) {
-    push(
-      refuse(
-        "object_store",
-        "secret_unreadable",
-        `the object-store credentials bound at storage.object_store do not decrypt under the running MASTER_KEY: ${messageOf(error)}`,
-      ),
-    );
-    return done();
-  }
-  if (binding === null) {
-    push(
-      refuse(
-        "object_store",
-        "object_store_missing",
-        "SubKit stores objects; no complete object-store binding was found in the active revision or in the OBJECT_STORAGE_* seed",
-      ),
-    );
-    return done();
-  }
-  try {
-    await env.probeObjectStore(binding);
-  } catch (error) {
-    push(refuse("object_store", "object_store_unreachable", messageOf(error)));
-    return done();
-  }
-  push(ok("object_store"));
+  const localRoot = env.localObjectStoreRoot();
+  const objectStore =
+    localRoot === null
+      ? await checkRemoteObjectStore(env, document)
+      : await checkLocalObjectStore(env, localRoot);
+  if (!push(objectStore)) return done();
 
   if (document === null) {
     push(ok("settings_revision"));

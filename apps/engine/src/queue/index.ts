@@ -30,3 +30,9 @@ export {
   type TenantErasureQueue,
   TenantQueueDrainRequired,
 } from "./tenant-erasure.ts";
+export {
+  pauseQueueWorkers,
+  queueWorkersPaused,
+  rememberWorkerRegistration,
+  resumeQueueWorkers,
+} from "./worker-pause.ts";

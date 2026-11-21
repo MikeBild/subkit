@@ -7,7 +7,7 @@ import type { Db, Executor } from "../db/client.ts";
 import { hostedQuotaError } from "../db/hosted-quota-errors.ts";
 import { conversations, conversationTurns } from "../db/schema/index.ts";
 import { retryTransient } from "../db/transient.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { setMcpTaskFailureIfNotTerminal } from "../mcp/tasks/store.ts";
 import { registerConversationAbort, unregisterConversationAbort } from "./abort.ts";
 import { ConversationTurnInProgressError } from "./errors.ts";

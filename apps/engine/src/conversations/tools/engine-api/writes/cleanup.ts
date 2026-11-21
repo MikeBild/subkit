@@ -1,5 +1,5 @@
 import { z } from "@hono/zod-openapi";
-import { logger } from "../../../../logging/logger.ts";
+import { logger } from "../../../../logging/index.ts";
 import { translateAutoPersistError } from "../../../persistence/auto-persist/index.ts";
 import type { ConversationTool } from "../../index.ts";
 

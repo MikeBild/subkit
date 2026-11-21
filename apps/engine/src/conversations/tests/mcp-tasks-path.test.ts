@@ -8,15 +8,16 @@ import { connectors, mcpTasks } from "../../db/schema/index.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
 import { getMcpTask } from "../../mcp/tasks/store.ts";
 import { type McpTestSuite, startMcpTestSuite } from "../../mcp/tests/setup.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
 
 let suite: McpTestSuite;
 let connectorId: string;
 
 beforeAll(async () => {
-  process.env.MASTER_KEY = "b".repeat(64);
-  process.env.LLM_PROVIDER = "mock";
-  process.env.SK_MCP_MODE = "authoring";
+  testEnv.MASTER_KEY = "b".repeat(64);
+  testEnv.LLM_PROVIDER = "mock";
+  testEnv.SK_MCP_MODE = "authoring";
   resetMockProvider();
   suite = await startMcpTestSuite("conversations-tasks", { withQueue: true });
   await setConfigKey("server.public_base_url", suite.http.baseUrl, { force: true });
@@ -39,7 +40,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await suite.cleanup();
-  delete process.env.SK_MCP_MODE;
+  delete testEnv.SK_MCP_MODE;
 });
 
 async function pollTask(
@@ -65,7 +66,6 @@ describe("mcp async Tasks — Tasks-capable client path", () => {
     client: Awaited<ReturnType<McpTestSuite["connectTasks"]>>,
     name: string,
     args: Record<string, unknown>,
-    permissionMode?: "ask",
   ): Promise<string> {
     const createResult = (await client.request(
       {
@@ -74,7 +74,6 @@ describe("mcp async Tasks — Tasks-capable client path", () => {
           name,
           arguments: args,
           task: {},
-          ...(permissionMode ? { _meta: { sk_permission_mode: permissionMode } } : {}),
         },
       },
       CreateTaskResultSchema,
@@ -108,15 +107,10 @@ describe("mcp async Tasks — Tasks-capable client path", () => {
   test("full Tasks path: start → input_required → browser approval → completed → tasks/result", async () => {
     const client = await suite.connectTasks();
 
-    const startTaskId = await callToolAsTask(
-      client,
-      "conversation_start",
-      {
-        connector_id: connectorId,
-        message: "please list users from the api",
-      },
-      "ask",
-    );
+    const startTaskId = await callToolAsTask(client, "conversation_start", {
+      connector_id: connectorId,
+      message: "please list users from the api",
+    });
 
     const startSettled = await pollTask(client, startTaskId);
     expect(startSettled.status).toBe("input_required");
@@ -209,7 +203,6 @@ describe("mcp async Tasks — Tasks-capable client path", () => {
         params: {
           name: "conversation_start",
           arguments: { connector_id: cancelConnector.id, message: "list users from the api" },
-          _meta: { sk_permission_mode: "ask" },
           task: {},
         },
       },

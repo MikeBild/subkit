@@ -1,6 +1,10 @@
+import { backoffDelay } from "@shared/backoff.ts";
+
 export const FAILURE_BACKOFF_AFTER = 3;
 export const FAILURE_PAUSE_AFTER = 5;
-export const FAILURE_BACKOFF_MINUTES = [2, 6, 18, 54] as const;
+const FAILURE_BACKOFF_BASE_MINUTES = 2;
+const FAILURE_BACKOFF_FACTOR = 3;
+const FAILURE_BACKOFF_MAX_MINUTES = 54;
 export const FAILURE_STREAK_WINDOW = FAILURE_PAUSE_AFTER;
 
 const MINUTE_MS = 60_000;
@@ -28,8 +32,12 @@ function isFailure(run: Pick<ScheduledRunOutcome, "status">): boolean {
 
 export function failureBackoffMs(streak: number): number {
   if (streak < FAILURE_BACKOFF_AFTER) return 0;
-  const step = Math.min(streak - FAILURE_BACKOFF_AFTER, FAILURE_BACKOFF_MINUTES.length - 1);
-  return (FAILURE_BACKOFF_MINUTES[step] ?? 0) * MINUTE_MS;
+  return backoffDelay(streak - FAILURE_BACKOFF_AFTER, 0, {
+    baseMs: FAILURE_BACKOFF_BASE_MINUTES * MINUTE_MS,
+    factor: FAILURE_BACKOFF_FACTOR,
+    maxMs: FAILURE_BACKOFF_MAX_MINUTES * MINUTE_MS,
+    jitter: "none",
+  });
 }
 
 export function failureStreak(newestFirst: readonly ScheduledRunOutcome[]): {

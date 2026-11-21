@@ -4,7 +4,15 @@ import { GRAPHQL_OVER_HTTP_REPAIR, GRAPHQL_OVER_HTTP_WARNING } from "./graphql-c
 import type { RequestBoundaryRefusal } from "./request-boundary.ts";
 import type { StorageBoundaryRefusal } from "./storage-boundary.ts";
 
-type Driver = "http" | "graphql" | "postgres" | "s3" | "mcp";
+type Driver =
+  | "http"
+  | "graphql"
+  | "postgres"
+  | "s3"
+  | "mcp"
+  | "local_files"
+  | "local_browser"
+  | "local_computer";
 
 const GMAIL_SEND_TARGET = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
 
@@ -30,7 +38,6 @@ const STORAGE_REFUSAL_REMEDY: Partial<Record<StorageBoundaryRefusal, string>> = 
     "This step already has `s3.scope`; the folder boundary is refused because the DELETE carries a " +
     "`body`. There is no bulk-delete shape: the driver ignores a DELETE body and removes the single " +
     "object named by `s3.key`. Remove `body`, set `s3.key` to the object key (for example " +
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: shows the literal authored placeholder
     "`${item.key}`), and iterate one request per object with a JavaScript selector, for example " +
     '`for_each: "(sourceData) => sourceData.<list_step_id>.data.items"` — not a placeholder and ' +
     "not a JSONata reference.",
@@ -61,9 +68,7 @@ const REQUEST_BOUNDARY_REMEDY =
   '"/boundary", value: {variables, max_body_bytes, max_calls}}]`. Do not re-author the workflow ' +
   "and do not change `path`, `query`, `body` or `for_each`. `boundary` sits directly on the step " +
   "beside `method` — not under `s3`, `config` or `body`. `variables` has exactly one entry per " +
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: shows the literal authored placeholder
   "`${…}` that is a whole segment of `path` or a whole value in `query`, keyed by the expression " +
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: shows the literal authored placeholder
   'WITHOUT the `${}` (for example `"input.site_id"`, `"item.slug"`, `"scope.window.data.start"`); ' +
   "use `{}` when neither varies. Each entry is `{enum: [every allowed value]}` — for `input.*` " +
   "copy the value from the saved schedule input (`list_schedules`), for `item.*` list every value " +
@@ -89,9 +94,7 @@ const REQUEST_BOUNDARY_REMEDY =
 const REQUEST_REFUSAL_REMEDY: Partial<Record<RequestBoundaryRefusal, string>> = {
   variables_mismatch:
     "This step already has `boundary`, but `boundary.variables` does not match the step: it needs " +
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: shows the literal authored placeholder
     "exactly one entry per `${…}` that is a whole segment of `path` or a whole value in `query`, " +
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: shows the literal authored placeholder
     "keyed by the expression without the `${}`, and NO entry for anything else. A placeholder that " +
     "appears only in the body gets no entry — remove it from `variables`; the body is limited by " +
     "`max_body_bytes` alone.",
@@ -125,7 +128,6 @@ const REQUEST_REFUSAL_REMEDY: Partial<Record<RequestBoundaryRefusal, string>> = 
   query_placeholder_unsupported:
     "`boundary` cannot cover this step as written: a `query` value mixes text with a placeholder, " +
     "is not a plain string, or names a root other than `input`, `scope` or `item`. Only a query " +
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: shows the literal authored placeholder
     'value that is one whole placeholder (`"${scope.window.data.start}"`) can be bounded, with an ' +
     "entry of its own in `boundary.variables`. Build the full value in a transform first if text " +
     "has to surround it.",
@@ -136,7 +138,6 @@ const REQUEST_REFUSAL_REMEDY: Partial<Record<RequestBoundaryRefusal, string>> = 
     "This step has a runtime placeholder in a field the engine substitutes and that a boundary " +
     "cannot hold: only the path (whole segments), whole query values and the body may vary. Make " +
     "that field a literal. This does NOT mean `for_each` or `data_selector`: those carry " +
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: shows the literal authored placeholder
     "JavaScript the sandbox evaluates, a `${…}` in them is a template literal, and they are not " +
     "checked — never rewrite a selector to satisfy this.",
   path_unsupported:
@@ -169,7 +170,6 @@ const REQUEST_REFUSAL_REMEDY: Partial<Record<RequestBoundaryRefusal, string>> = 
     "at once, one value per segment is needed: have the transform that builds it return each " +
     "segment separately (for `/billing/do:team:<uuid>/insights/<from>/<to>` that is an account " +
     "value, a from and a to), write the path with the literals in place and one placeholder per " +
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: shows the literal authored placeholder
     "segment (`/billing/${item.account}/insights/${item.from}/${item.to}`), and give each one its " +
     "own rule. A value may contain `:`, so `do:team:<uuid>` is one legal enum value; a value may " +
     "NOT contain `/`.",
@@ -242,12 +242,9 @@ const REQUEST_REFUSAL_REMEDY: Partial<Record<RequestBoundaryRefusal, string>> = 
 const MCP_BOUNDARY_REMEDY =
   "An MCP tool call is approvable only with `mcp.boundary` on the step, beside `mcp.tool`: " +
   "`{effect, variables, max_calls, descriptor}`. `mcp.tool` must be the literal tool name, with " +
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: shows the literal authored placeholder
   "no `${…}`. Inside `mcp.arguments` a runtime value must be one WHOLE placeholder per value " +
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: shows the literal authored placeholder
   '(`"${input.query}"`, never text around it and never in a key); every other argument is a ' +
   "literal. `variables` has exactly one entry per such placeholder, keyed by the expression " +
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: shows the literal authored placeholder
   "without `${}`, each `{enum: [every allowed value]}`, `{class: identifier|uuid|integer|date|" +
   "timestamp|timestamp_range|file_name}`, or `{caller_bound: true}` for `caller.subject` / " +
   "`caller.principalId`; use `{}` when nothing varies. `max_calls` is the most calls one run " +

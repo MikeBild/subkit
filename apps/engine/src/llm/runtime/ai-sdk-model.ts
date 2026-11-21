@@ -9,7 +9,7 @@ import {
   type Tool,
   tool,
 } from "ai";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { recordLlmFallbackInvocation } from "../../observability/instrumentation.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import { isTracingActive } from "../../observability/tracing.ts";

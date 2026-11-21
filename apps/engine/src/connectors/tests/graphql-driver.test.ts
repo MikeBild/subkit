@@ -7,7 +7,7 @@ import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { runRequestStep } from "../../execution/steps/request.ts";
 import type { StepRunContext } from "../../execution/types.ts";
 import { RunLlmBudget } from "../../llm/accounting/index.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import type { RequestStep } from "../../workflows/types.ts";
 import {

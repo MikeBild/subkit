@@ -3,7 +3,7 @@ import { AuditAction } from "../audit/types.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { captureWorkflowPermission, type WorkflowPermission } from "../execution/index.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { can } from "../rbac/evaluator.ts";
 import type { ApprovalAuditResource } from "../tools/approval.ts";
 

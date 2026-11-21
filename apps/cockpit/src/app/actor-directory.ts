@@ -3,7 +3,7 @@ import { useMemo } from "react";
 import { apiRequest } from "@/api/client";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useSession } from "@/app/session";
-import { canReadDirectory } from "@/lib/audit-model";
+import { canReadDirectory } from "@/features/audit/model";
 import { useI18n } from "@/lib/i18n-context";
 import {
   type Accounts,

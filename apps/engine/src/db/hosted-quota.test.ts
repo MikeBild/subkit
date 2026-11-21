@@ -5,7 +5,7 @@ import { errorMiddleware, mapKnownErrorResponse } from "../http/middleware/error
 import type { AppEnv } from "../http/openapi.ts";
 import { createHttpTestServer, type HttpTestServer } from "../http/tests/setup.ts";
 import { provisionSelfServiceTenant } from "../identity/self-service.ts";
-import { errorFields } from "../logging/logger.ts";
+import { errorFields } from "../logging/index.ts";
 import { logRing } from "../observability/log-ring.ts";
 import { waitFor } from "../test-helpers/determinism/wait.ts";
 import { configureHostedPolicyForTests } from "../test-helpers/hosted-policy.ts";

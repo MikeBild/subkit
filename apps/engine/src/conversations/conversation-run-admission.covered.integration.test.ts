@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
-import type { PermissionMode } from "../tools/types.ts";
 import { recordConfirmationSkipped } from "./confirmation.ts";
 import {
   ASK_FIRST,
@@ -31,98 +30,82 @@ const nextUuid = createDeterministicUuidFactory(0x7a5c02);
 
 useConversationRunAdmissionSetup();
 
-const TABLE: Record<
-  Path,
-  Partial<Record<PermissionMode, { covered: Observed; uncovered: Observed }>>
-> = {
-  generic: {
-    auto: { covered: RUN_LIVE, uncovered: RUN_HELD },
-    ask: { covered: RUN_LIVE, uncovered: ASK_UNCOVERED.generic },
-    plan: { covered: ASK_FIRST, uncovered: ASK_FIRST },
-    yolo: { covered: RUN_LIVE, uncovered: RUN_HELD },
-  },
-  synthetic: {
-    auto: { covered: RUN_LIVE, uncovered: ASK_HELD },
-    ask: { covered: RUN_LIVE, uncovered: ASK_UNCOVERED.synthetic },
-    plan: { covered: ASK_HELD, uncovered: ASK_HELD },
-    yolo: { covered: RUN_LIVE, uncovered: ASK_HELD },
-  },
-  fast: {
-    auto: { covered: RUN_LIVE, uncovered: RUN_HELD },
-    ask: { covered: RUN_LIVE, uncovered: ASK_UNCOVERED.fast },
-    plan: { covered: ASK_FIRST, uncovered: ASK_FIRST },
-  },
+type Expected = { covered: Observed; uncovered: Observed };
+
+const TABLE: Record<Path, readonly [boolean, Expected][]> = {
+  generic: [
+    [false, { covered: RUN_LIVE, uncovered: RUN_HELD }],
+    [true, { covered: RUN_LIVE, uncovered: ASK_UNCOVERED.generic }],
+  ],
+  synthetic: [
+    [false, { covered: RUN_LIVE, uncovered: ASK_HELD }],
+    [true, { covered: RUN_LIVE, uncovered: ASK_UNCOVERED.synthetic }],
+  ],
+  fast: [
+    [false, { covered: RUN_LIVE, uncovered: RUN_HELD }],
+    [true, { covered: RUN_LIVE, uncovered: ASK_UNCOVERED.fast }],
+  ],
 };
 
-describe("start path × mode × covered", () => {
+describe("start path × ask before writing × covered", () => {
   for (const path of Object.keys(TABLE) as Path[]) {
-    for (const [mode, expected] of Object.entries(TABLE[path]) as [
-      PermissionMode,
-      { covered: Observed; uncovered: Observed },
-    ][]) {
-      test(`${path} in ${mode} with a covering authority`, async () => {
+    for (const [ask, expected] of TABLE[path]) {
+      test(`${path} with ask_before_writing=${ask} and a covering authority`, async () => {
         const f = await fixture({ maxRuns: 2 });
-        expect(await observe(f, start(path, f, mode))).toEqual(expected.covered);
+        expect(await observe(f, start(path, f, ask))).toEqual(expected.covered);
         expect(await f.reserved()).toBe(expected.covered.writes === "live" ? 1 : 0);
       });
 
-      test(`${path} in ${mode} without an authority`, async () => {
+      test(`${path} with ask_before_writing=${ask} without an authority`, async () => {
         const f = await fixture();
-        expect(await observe(f, start(path, f, mode))).toEqual(expected.uncovered);
+        expect(await observe(f, start(path, f, ask))).toEqual(expected.uncovered);
       });
     }
   }
-
-  test("the fast path without a stored mode keeps running as before", async () => {
-    const covered = await fixture({ maxRuns: 2 });
-    expect(await observe(covered, () => startFast(covered, null))).toEqual(RUN_LIVE);
-    const uncovered = await fixture();
-    expect(await observe(uncovered, () => startFast(uncovered, null))).toEqual(RUN_HELD);
-  });
 });
 
-describe("special cases keep asking in ask although an authority covers the run", () => {
+describe("special cases keep asking before writing although an authority covers the run", () => {
   const CONFIRM = "confirm_before_execution";
 
   const cases: [string, (f: Fixture) => Promise<Started>, Observed][] = [
     [
       "generic: a confirm override for run_workflow",
-      (f) => startGeneric(f, "ask", { run_workflow: CONFIRM }),
+      (f) => startGeneric(f, true, { run_workflow: CONFIRM }),
       ASK_FIRST,
     ],
     [
       "generic: a confirm override for the workflow's own tool",
-      (f) => startGeneric(f, "ask", { [`wf_${f.workflow.slug}`]: CONFIRM }),
+      (f) => startGeneric(f, true, { [`wf_${f.workflow.slug}`]: CONFIRM }),
       ASK_FIRST,
     ],
     [
       "generic: an explicit preparation is not a covered run",
-      (f) => startGeneric(f, "ask", {}, { execute_writes: false }),
+      (f) => startGeneric(f, true, {}, { execute_writes: false }),
       ASK_FIRST,
     ],
     [
       "generic: a prepared version that is no longer active",
-      (f) => startGeneric(f, "ask", {}, { expected_workflow_version_id: nextUuid() }),
+      (f) => startGeneric(f, true, {}, { expected_workflow_version_id: nextUuid() }),
       ASK_FIRST,
     ],
     [
       "synthetic: a confirm override for the workflow's own tool",
-      (f) => startSynthetic(f, "ask", { [`wf_${f.workflow.slug}`]: CONFIRM }),
+      (f) => startSynthetic(f, true, { [`wf_${f.workflow.slug}`]: CONFIRM }),
       ASK_HELD,
     ],
     [
       "synthetic: a confirm override for run_workflow",
-      (f) => startSynthetic(f, "ask", { run_workflow: CONFIRM }),
+      (f) => startSynthetic(f, true, { run_workflow: CONFIRM }),
       ASK_HELD,
     ],
     [
       "fast path: a confirm override for run_workflow",
-      (f) => startFast(f, "ask", { run_workflow: CONFIRM }),
+      (f) => startFast(f, true, { run_workflow: CONFIRM }),
       ASK_FIRST,
     ],
     [
       "fast path: a confirm override for the workflow's own tool",
-      (f) => startFast(f, "ask", { [`wf_${f.workflow.slug}`]: CONFIRM }),
+      (f) => startFast(f, true, { [`wf_${f.workflow.slug}`]: CONFIRM }),
       ASK_FIRST,
     ],
   ];
@@ -139,10 +122,10 @@ describe("special cases keep asking in ask although an authority covers the run"
   test("a confirm override for another workflow's tool does not reach this one", async () => {
     const generic = await fixture({ maxRuns: 2 });
     expect(
-      await observe(generic, () => startGeneric(generic, "ask", { "wf_some-other": CONFIRM })),
+      await observe(generic, () => startGeneric(generic, true, { "wf_some-other": CONFIRM })),
     ).toEqual(RUN_LIVE);
     const fast = await fixture({ maxRuns: 2 });
-    expect(await observe(fast, () => startFast(fast, "ask", { "wf_some-other": CONFIRM }))).toEqual(
+    expect(await observe(fast, () => startFast(fast, true, { "wf_some-other": CONFIRM }))).toEqual(
       RUN_LIVE,
     );
   });
@@ -150,13 +133,13 @@ describe("special cases keep asking in ask although an authority covers the run"
   for (const path of ["generic", "synthetic", "fast"] as const) {
     test(`${path}: an expired authority covers nothing`, async () => {
       const f = await fixture({ maxRuns: 2, expired: true });
-      expect(await observe(f, start(path, f, "ask"))).toEqual(ASK_UNCOVERED[path]);
+      expect(await observe(f, start(path, f, true))).toEqual(ASK_UNCOVERED[path]);
       expect(await f.reserved()).toBe(0);
     });
 
     test(`${path}: an authority for the other environment covers nothing`, async () => {
       const f = await fixture({ maxRuns: 2, environment: "prod" });
-      expect(await observe(f, start(path, f, "ask"))).toEqual(ASK_UNCOVERED[path]);
+      expect(await observe(f, start(path, f, true))).toEqual(ASK_UNCOVERED[path]);
       expect(await f.reserved()).toBe(0);
     });
   }
@@ -166,10 +149,10 @@ describe("a repeated start under the same idempotency key", () => {
   test("generic: the replay starts nothing and records no second skip", async () => {
     const f = await fixture({ maxRuns: 3 });
     const args = { idempotency_key: "covered-replay" };
-    const first = await startGeneric(f, "ask", {}, args);
+    const first = await startGeneric(f, true, {}, args);
     expect(first.asked).toBe(false);
     expect(await skipAudits(f)).toHaveLength(1);
-    const replay = await startGeneric(f, "ask", {}, args);
+    const replay = await startGeneric(f, true, {}, args);
     expect(replay.asked).toBe(false);
     expect(replay.data).toMatchObject({ idempotent_replay: true });
     expect(await f.rows()).toHaveLength(1);
@@ -185,7 +168,7 @@ describe("a repeated start under the same idempotency key", () => {
 
   test("the record is written once per tool call", async () => {
     const f = await fixture({ maxRuns: 2 });
-    const started = await startGeneric(f, "ask");
+    const started = await startGeneric(f, true);
     const [call] = await toolCalls(f);
     if (!call) throw new Error("missing tool call");
     await recordConfirmationSkipped({
@@ -215,7 +198,7 @@ describe("the skipped question is recorded the same way on every path", () => {
   for (const path of ["generic", "synthetic", "fast"] as const) {
     test(`${path}: one audit row and the tool call name the covering authority`, async () => {
       const f = await fixture({ maxRuns: 2 });
-      const started = await start(path, f, "ask")();
+      const started = await start(path, f, true)();
       expect(started.asked).toBe(false);
       const metadata = {
         tool: tools[path](f),
@@ -241,7 +224,7 @@ describe("the skipped question is recorded the same way on every path", () => {
 
     test(`${path}: a run that needed no skip records none`, async () => {
       const f = await fixture({ maxRuns: 2 });
-      expect(await observe(f, start(path, f, "auto"))).toEqual(RUN_LIVE);
+      expect(await observe(f, start(path, f, false))).toEqual(RUN_LIVE);
       expect(await skipAudits(f)).toHaveLength(0);
       expect(JSON.stringify((await toolCalls(f))[0]?.confirmation_data ?? {})).not.toContain(
         "covering_authority_id",

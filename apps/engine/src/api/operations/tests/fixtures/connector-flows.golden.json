@@ -1,7 +1,7 @@
 {
   "http.validate.ok": "{\"status\":200,\"body\":{\"ok\":true,\"issues\":[]}}",
   "http.validate.issues": "{\"status\":200,\"body\":{\"ok\":false,\"issues\":[{\"path\":\"config.signed_jwt\",\"message\":\"Invalid input: expected object, received undefined\"}]}}",
-  "http.validate.malformed": "{\"status\":200,\"body\":{\"ok\":false,\"issues\":[{\"path\":\"name\",\"message\":\"Invalid input: expected string, received undefined\"},{\"path\":\"driver\",\"message\":\"Invalid option: expected one of \\\"http\\\"|\\\"postgres\\\"|\\\"s3\\\"|\\\"graphql\\\"|\\\"mcp\\\"\"},{\"path\":\"base_url\",\"message\":\"Invalid URL\"}]}}",
+  "http.validate.malformed": "{\"status\":200,\"body\":{\"ok\":false,\"issues\":[{\"path\":\"name\",\"message\":\"Invalid input: expected string, received undefined\"},{\"path\":\"driver\",\"message\":\"Invalid option: expected one of \\\"http\\\"|\\\"postgres\\\"|\\\"s3\\\"|\\\"graphql\\\"|\\\"mcp\\\"|\\\"local_files\\\"|\\\"local_browser\\\"|\\\"local_computer\\\"\"},{\"path\":\"base_url\",\"message\":\"Invalid URL\"}]}}",
   "http.validate.not-an-object": "{\"status\":200,\"body\":{\"ok\":false,\"issues\":[{\"path\":\"body\",\"message\":\"Invalid input: expected object, received array\"}]}}",
   "http.validate.writer": "{\"status\":200,\"body\":{\"ok\":true,\"issues\":[]}}",
   "http.validate.denied": "{\"status\":403,\"body\":{\"code\":\"forbidden\",\"message\":\"permission_denied:connector:write\",\"trace_id\":\"<trace>\",\"hint\":\"you lack connector:write; request a grant or a key with that permission\",\"details\":{\"required\":\"connector:write\",\"cause\":\"no_matching_grant\"}}}",

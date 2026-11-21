@@ -72,9 +72,7 @@ export function stubToolCtx(conversationId: string, draft: DraftDocument): ToolC
     actor_id: ctx.user_id,
     connector_id: null,
     workflow_id: null,
-    permission_mode: null,
-    // biome-ignore lint/suspicious/noExplicitAny: minimal engineClient stub
-    engineClient: {} as any,
+    engineClient: {} as ToolContext["engineClient"],
     getDraft: () => live,
     setDraft: async (next) => {
       live = next;

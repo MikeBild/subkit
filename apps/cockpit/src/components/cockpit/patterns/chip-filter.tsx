@@ -1,6 +1,6 @@
+import { cn } from "@ui/lib/utils";
 import { useState } from "react";
 import { useI18n } from "@/lib/i18n-context";
-import { cn } from "@/lib/utils";
 
 export interface ChipFilterOption {
   value: string;

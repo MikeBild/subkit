@@ -1,6 +1,5 @@
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
-import type { PermissionMode } from "../../tools/types.ts";
 import type { AnswerActor } from "../answer-actor.ts";
 import type { ConversationStatus, TurnEvent } from "../types.ts";
 
@@ -22,6 +21,6 @@ export interface FastPathParams {
   principal: ResolvedPrincipal;
   user_message: string;
   answer_actor: AnswerActor;
-  permission_mode?: PermissionMode | null;
+  ask_before_writing?: boolean;
   surface?: "sk_headless" | "sk_interactive" | "mcp" | "web" | "chat";
 }

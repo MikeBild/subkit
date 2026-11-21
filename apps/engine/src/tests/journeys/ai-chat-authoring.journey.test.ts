@@ -11,8 +11,10 @@ import { _resetConfigForTests, loadConfig } from "../../config/loader.ts";
 import { connectors, conversations, workflows } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { buildDefaultRegistry, createApp } from "../../http/server.ts";
+import { writeSetupPreferences } from "../../identity/setup-preferences.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
 import { JOURNEY_HOOK_TIMEOUT } from "./setup.ts";
 
@@ -36,7 +38,7 @@ let ctx: LocalCtx;
 let configDirectory: string;
 
 beforeAll(async () => {
-  process.env.LLM_PROVIDER = "mock";
+  testEnv.LLM_PROVIDER = "mock";
   resetMockProvider();
 
   const testDb = await createTestDb("j-chat-ai");
@@ -77,6 +79,11 @@ beforeAll(async () => {
     })
     .returning();
   if (!key) throw new Error("seed api_key");
+  await writeSetupPreferences(
+    testDb.db,
+    { tenant_id: tenant.id, user_id: user.id },
+    { ask_before_writing: true },
+  );
 
   const [connector] = await testDb.db
     .insert(connectors)
@@ -186,7 +193,6 @@ describe("AI chat authoring", () => {
       body: JSON.stringify({
         connector_id: ctx.connectorId,
         initial_message: "please list users from the api",
-        permission_mode: "ask",
       }),
     });
     expect(createRes.status).toBe(201);

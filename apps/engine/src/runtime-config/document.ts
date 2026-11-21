@@ -30,19 +30,6 @@ export function getDeep(source: unknown, path: string[]): unknown {
   return cursor;
 }
 
-export function setDeep(target: Record<string, unknown>, path: string[], value: unknown): void {
-  let cursor = target;
-  for (let index = 0; index < path.length - 1; index += 1) {
-    const segment = path[index]!;
-    const child = cursor[segment];
-    if (child === null || typeof child !== "object" || Array.isArray(child)) {
-      cursor[segment] = {};
-    }
-    cursor = cursor[segment] as Record<string, unknown>;
-  }
-  cursor[path.at(-1)!] = value;
-}
-
 function sameValue(left: unknown, right: unknown): boolean {
   return JSON.stringify(canonicalize(left)) === JSON.stringify(canonicalize(right));
 }

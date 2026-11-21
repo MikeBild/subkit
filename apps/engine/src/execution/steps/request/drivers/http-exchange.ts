@@ -4,8 +4,8 @@ import {
   flagConnectorContractFailure,
 } from "../../../../connectors/health-state.ts";
 import { clearReauthIfProved } from "../../../../connectors/reauth.ts";
-import { logger } from "../../../../logging/logger.ts";
-import { recordSuccessShape } from "../../../../schema-versions/service.ts";
+import { logger } from "../../../../logging/index.ts";
+import { recordSuccessShape } from "../../../../schema-versions/index.ts";
 import type { pagedBodyGuard } from "../../../../workflows/request-boundary.ts";
 import type { MaterializedRequest } from "../../../prepared-request.ts";
 import type { RequestMeta } from "../../../types.ts";

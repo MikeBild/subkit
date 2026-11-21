@@ -10,7 +10,7 @@ import {
   lockActiveTenant,
   SelfServiceIdentityError,
 } from "../identity/index.ts";
-import { log } from "../logging/logger.ts";
+import { log } from "../logging/index.ts";
 import { EMBEDDING_MODEL, embedChunkTextsPaced } from "./local-provider.ts";
 
 function extractMessageText(content: unknown): string {

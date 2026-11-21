@@ -1,16 +1,14 @@
-import { Server } from "lucide-react";
+import { Button } from "@ui/atoms/button";
+import { Input } from "@ui/atoms/input";
+import { Panel } from "@ui/atoms/pill";
+import { Switch } from "@ui/atoms/switch";
+import { SettingsRow } from "@ui/molecules/settings-row";
+import { StepFooter } from "@ui/molecules/step-footer";
+import { ToggleGroup, ToggleGroupItem } from "@ui/molecules/toggle-group";
+import { Cpu, Server } from "lucide-react";
 import { useSignIn } from "../../adapter/index.ts";
 import { type Command, quietHoursPatch, settingsFor } from "../../domain/index.ts";
-import {
-  Button,
-  Input,
-  Panel,
-  SettingRow,
-  StepFooter,
-  Switch,
-  ToggleGroup,
-  ToggleGroupItem,
-} from "../../ui/index.ts";
+import { LocalWorkspace } from "../local-workspace/index.ts";
 
 export function Settings() {
   const { main, t, dispatch: onCommand } = useSignIn();
@@ -61,8 +59,9 @@ export function Settings() {
           </ul>
         </Panel>
       )}
+      <LocalWorkspace />
       <Panel className="divide-y px-3 py-0">
-        <SettingRow id="launch" label={t("settings.launchAtLogin")}>
+        <SettingsRow id="launch" label={t("settings.launchAtLogin")}>
           <Switch
             data-testid="settings-launch"
             id="launch"
@@ -71,8 +70,8 @@ export function Settings() {
               onCommand({ type: "ChangeSettings", patch: { launchAtLogin: checked } })
             }
           />
-        </SettingRow>
-        <SettingRow id="quiet" label={t("settings.quiet")}>
+        </SettingsRow>
+        <SettingsRow id="quiet" label={t("settings.quiet")}>
           <div className="flex items-center gap-2">
             <Input
               data-testid="settings-quiet-start"
@@ -99,8 +98,8 @@ export function Settings() {
               onCheckedChange={(checked) => saveQuiet({ enabled: checked })}
             />
           </div>
-        </SettingRow>
-        <SettingRow label={t("settings.language")}>
+        </SettingsRow>
+        <SettingsRow label={t("settings.language")}>
           <ToggleGroup
             type="single"
             size="sm"
@@ -125,7 +124,17 @@ export function Settings() {
               EN
             </ToggleGroupItem>
           </ToggleGroup>
-        </SettingRow>
+        </SettingsRow>
+        <SettingsRow icon={Cpu} label={t("local.title")} hint={t("local.explain")}>
+          <Button
+            data-testid="settings-local-open"
+            size="sm"
+            variant="outline"
+            onClick={() => onCommand({ type: "OpenLocalCapabilities" })}
+          >
+            {t("local.manage")}
+          </Button>
+        </SettingsRow>
       </Panel>
       <Panel className="flex flex-wrap items-center gap-3 px-3 py-2">
         <div className="min-w-0 flex-1">

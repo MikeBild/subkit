@@ -1,5 +1,6 @@
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
+import { backoffDelay } from "@shared/backoff.ts";
 import { classifyMcpToolSideEffect, type SideEffect } from "@shared/index.ts";
 import {
   recordConnectorMcpHandshakeOk,
@@ -10,7 +11,7 @@ import { getConfig } from "../../config/loader.ts";
 import type { CredentialUseSnapshot } from "../../credentials/index.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
 import { withMcpCredentialObserver } from "./credential-observation.ts";
 import {
@@ -109,8 +110,9 @@ function tenantBucket(tenant_id: string): TenantMcpPool {
 }
 
 function backoffWindow(failures: number): number {
-  const delay = Math.min(BACKOFF_BASE_MS * 2 ** (failures - 1), BACKOFF_MAX_MS);
-  return Date.now() + delay;
+  return (
+    Date.now() + backoffDelay(failures - 1, 1, { baseMs: BACKOFF_BASE_MS, maxMs: BACKOFF_MAX_MS })
+  );
 }
 
 type ConnectClientOutcome = { pooled: PooledClient } | { pooled: null; error: string };

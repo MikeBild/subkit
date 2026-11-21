@@ -25,7 +25,7 @@ import { summarizeConnections } from "../../credentials/connections/service.ts";
 import { describeConnectorCredentialStates } from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";
 import { describeConnectorPlaceholders } from "../../llm/substitution/resolver.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import {
   CatalogGroupBySchema,
   compareCategoryCounts,

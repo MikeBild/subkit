@@ -67,6 +67,15 @@ export function offerFailureRetry(error: unknown, retry: () => void): void {
   if (typeof error === "object" && error !== null) offeredRetries.set(error, retry);
 }
 
+export function offerMutationRetry(
+  error: unknown,
+  meta: Readonly<Record<string, unknown>> | undefined,
+  retry: () => void,
+): void {
+  if (meta?.sensitive === true) return;
+  offerFailureRetry(error, retry);
+}
+
 function offeredRetry(error: unknown): (() => void) | undefined {
   return typeof error === "object" && error !== null ? offeredRetries.get(error) : undefined;
 }

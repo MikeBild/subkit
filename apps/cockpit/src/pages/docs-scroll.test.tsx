@@ -9,15 +9,15 @@ import {
   RouterProvider,
   useParams,
 } from "@tanstack/react-router";
+import { TooltipProvider } from "@ui/molecules/tooltip";
 import { JSDOM } from "jsdom";
 import { act } from "react";
 import type { Root } from "react-dom/client";
 import { DOCS } from "@/app/docs-bundle";
 import { i18nValue } from "@/components/cockpit/patterns/test-utils";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { article, findPage } from "@/features/documentation/model/docs-model";
 import { I18nContext } from "@/lib/i18n-context";
 import { DocsArticleView } from "./docs";
-import { article, findPage } from "./docs-model";
 
 const CHILD_FLAG = "SUBKIT_DOCS_SCROLL_DOM_CHILD";
 

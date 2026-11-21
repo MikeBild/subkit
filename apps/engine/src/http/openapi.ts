@@ -4,6 +4,7 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import type { PgBoss } from "pg-boss";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
+import { readEnv } from "../env.ts";
 import type { RequestSource, ServiceMetadata } from "../observability/service-metadata.ts";
 import { type JsonObject, refineOpenApiDocument } from "./openapi-document.ts";
 
@@ -52,7 +53,7 @@ export function createOpenApiApp(): OpenAPIHono<AppEnv> {
 
 function resolveEngineVersion(): string {
   if (VERSION && VERSION !== "0.0.0-dev") return VERSION;
-  const env = process.env.ENGINE_VERSION;
+  const env = readEnv("ENGINE_VERSION");
   if (env && env !== "0.0.0-dev") return env;
   return VERSION ?? "0.0.0-dev";
 }

@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { apiKeys, auditLog, llmUsage } from "../../db/schema/index.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
@@ -11,7 +12,7 @@ const nextKeyHex = createDeterministicHexFactory(0x51a11);
 let systemAccountKey = "";
 
 beforeAll(async () => {
-  process.env.LLM_PROVIDER = "mock";
+  testEnv.LLM_PROVIDER = "mock";
   resetMockProvider();
   srv = await createHttpTestServer("ai");
   systemAccountKey = `wf_live_${nextKeyHex(24)}`;

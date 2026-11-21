@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Executor } from "../db/client.ts";
 import { executionSteps } from "../db/schema/index.ts";
 import { RequestMetaSchema } from "../execution/request-meta-schema.ts";
-import { graphqlEndpointKey } from "../schema-versions/service.ts";
+import { graphqlEndpointKey } from "../schema-versions/index.ts";
 import type { FailingStepSnapshot } from "./drift-detector.ts";
 import type { DryRunStep } from "./types.ts";
 

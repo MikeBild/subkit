@@ -65,24 +65,29 @@
   },
 
   {
-    "name": "credential:read",
-    "description": "Read credential metadata",
-    "resource_type": "credential"
+    "name": "vault:read",
+    "description": "Read vault item metadata, never values",
+    "resource_type": "vault"
   },
   {
-    "name": "credential:write",
-    "description": "Create or update credentials",
-    "resource_type": "credential"
+    "name": "vault:write",
+    "description": "Create vault items or change their description",
+    "resource_type": "vault"
   },
   {
-    "name": "credential:rotate",
-    "description": "Rotate credential secrets",
-    "resource_type": "credential"
+    "name": "vault:rotate",
+    "description": "Replace the value of a vault item",
+    "resource_type": "vault"
   },
   {
-    "name": "credential:delete",
-    "description": "Delete credentials",
-    "resource_type": "credential"
+    "name": "vault:delete",
+    "description": "Delete vault items",
+    "resource_type": "vault"
+  },
+  {
+    "name": "vault:reveal",
+    "description": "Reveal the value of a workspace vault item",
+    "resource_type": "vault"
   },
 
   { "name": "skill:read", "description": "Read skills", "resource_type": "skill" },
@@ -152,6 +157,27 @@
   },
   { "name": "task_run:read", "description": "Read task runs", "resource_type": "task_run" },
   { "name": "task_run:abort", "description": "Stop a task run", "resource_type": "task_run" },
+
+  {
+    "name": "device:read",
+    "description": "List your own desktop devices, their state and their local allowances",
+    "resource_type": "device"
+  },
+  {
+    "name": "device:manage",
+    "description": "Enroll your own desktop device for local steps, mirror its allowances and revoke it",
+    "resource_type": "device"
+  },
+  {
+    "name": "device:revoke_any",
+    "description": "Revoke any person's desktop device in this workspace",
+    "resource_type": "device"
+  },
+  {
+    "name": "local:confirm",
+    "description": "Confirm or decline a committing local action of a run you may start",
+    "resource_type": "local"
+  },
 
   {
     "name": "subscription:read",

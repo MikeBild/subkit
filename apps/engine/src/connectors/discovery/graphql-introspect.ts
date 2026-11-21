@@ -5,7 +5,7 @@ import {
   type IntrospectionQuery,
   printSchema,
 } from "graphql";
-import { log } from "../../logging/logger.ts";
+import { log } from "../../logging/index.ts";
 import { getDriverFetch } from "../drivers/fetch-seam.ts";
 import { HttpRequestInvalidError, readBodyBytesCapped } from "../drivers/response-body.ts";
 import { scrubUrl } from "../egress.ts";

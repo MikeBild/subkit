@@ -1,5 +1,5 @@
 import type { OfflineFailure, OfflineIdentity, OfflineItem } from "@shared/offline-queue.ts";
-import type { FeedbackBody } from "./model";
+import type { FeedbackBody } from "@/features/feedback/model/feedback";
 
 export const FAILED_EXCERPT_MAX = 60;
 

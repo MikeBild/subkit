@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { AuditAction } from "../../audit/types.ts";
 import { auditLog } from "../../db/schema/index.ts";
-import { WINDOW_CAP_MS } from "../../stats/bucket-units.ts";
+import { WINDOW_CAP_MS } from "../../stats/index.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 

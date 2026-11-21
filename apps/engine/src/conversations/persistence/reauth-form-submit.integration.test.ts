@@ -6,7 +6,7 @@ import { auditLog, connectors, conversationElicitations } from "../../db/schema/
 import { EngineClient } from "../../engine-client/index.ts";
 import { TEST_HUMAN_ANSWER } from "../../test-helpers/answer-actor.ts";
 import { appendSnapshot } from "../draft.ts";
-import { createConversation } from "../service.ts";
+import { createConversation } from "../service/index.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../tests/setup.ts";
 import { askUserFormTool } from "../tools/ask-user/form.ts";
 import { requestConnectorReauthTool } from "../tools/request-connector-reauth.ts";
@@ -65,7 +65,7 @@ async function makeToolCtx(connectorId: string | null = null) {
     actor_id: ctx.user_id,
     connector_id: connectorId,
     workflow_id: null,
-    permission_mode: null,
+    ask_before_writing: true,
     engineClient: new EngineClient({
       tenant_id: ctx.tenant_id,
       actor_id: ctx.user_id,
@@ -243,7 +243,7 @@ describe("Cognito re-issue form-submit path — Part B: dispatcher rotates crede
       actor_id: ctx.user_id,
       connector_id: null,
       workflow_id: null,
-      permission_mode: null,
+      ask_before_writing: true,
       engineClient: new EngineClient({
         tenant_id: "00000000-0000-0000-0000-ffffffffffff",
         actor_id: ctx.user_id,

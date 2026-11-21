@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
-import { redactLearning } from "../agent/sessions.ts";
+import { redactLearning } from "../agent/index.ts";
 import type { Actor } from "../audit/actor.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";

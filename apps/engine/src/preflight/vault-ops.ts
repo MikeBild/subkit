@@ -9,7 +9,7 @@ import {
   encryptSecretBytesWithKey,
   parseMasterKeyHex,
   secureEqual,
-} from "../crypto/aes-gcm.ts";
+} from "../crypto/index.ts";
 import type { Db, Executor } from "../db/client.ts";
 import {
   runtimeConfigReplicas,
@@ -17,7 +17,8 @@ import {
   runtimeConfigState,
   runtimeSecretVersions,
 } from "../db/schema/index.ts";
-import { logger } from "../logging/logger.ts";
+import { readEnv } from "../env.ts";
+import { logger } from "../logging/index.ts";
 import { CONFIG_STATE_KEY, REPLICA_LEASE_MS } from "../runtime-config/contracts.ts";
 import { SECRET_VERSION_COLUMNS } from "../runtime-config/secret-columns.ts";
 import {
@@ -99,7 +100,7 @@ export async function rewrapMasterKey(
 ): Promise<{ names: number; versions: number }> {
   const evidenceDigest = rewrapEvidenceDigest(acknowledgement);
   const previousKey = parseMasterKeyHex(previousKeyHex);
-  const runningHex = process.env.MASTER_KEY ?? "";
+  const runningHex = readEnv("MASTER_KEY") ?? "";
   const runningKey = parseMasterKeyHex(runningHex);
   if (previousKey.equals(runningKey)) {
     throw new Error("the previous key and the running MASTER_KEY are the same — nothing to rewrap");

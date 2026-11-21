@@ -278,7 +278,6 @@ test("backfill uses persisted tenant credentials and refuses protected header ov
         id: "request",
         kind: "request",
         method: "GET",
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal per-item path validates the iteration migration.
         path: "/items/${item.id}",
         connector_id: connector.id,
         headers,

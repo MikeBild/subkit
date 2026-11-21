@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { deriveConversationOutcome } from "../../conversations/lifecycle-view.ts";
-import * as svc from "../../conversations/service.ts";
+import * as svc from "../../conversations/service/index.ts";
 import { auditLog, conversations, systemAccounts, users } from "../../db/schema/index.ts";
 import {
   getMcpTask,
@@ -10,6 +10,7 @@ import {
   setMcpTaskResult,
 } from "../../mcp/tasks/store.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
@@ -24,7 +25,7 @@ let userId: string;
 const nextUuid = createDeterministicUuidFactory(0xd1e2026);
 
 beforeAll(async () => {
-  process.env.LLM_PROVIDER = "mock";
+  testEnv.LLM_PROVIDER = "mock";
   await ensureTestConfig();
   queue = await createQueueCtx("conversation_run_turn_dlq");
   const t = await seedTenant(queue.testDb.db, {

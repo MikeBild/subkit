@@ -80,7 +80,6 @@ export function createFakeEngineClient(opts: FakeEngineClientOptions = {}): Engi
         recent_sessions: recent,
         flags: opts.bootstrap?.flags ?? {},
         prefs: {
-          permissionMode: "ask" as const,
           theme: "auto" as const,
           personality: "balanced" as const,
           titleFormat: "session-id" as const,

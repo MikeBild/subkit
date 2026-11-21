@@ -60,7 +60,11 @@ export function describeExecutionCaller(row: CallerRow): ExecutionCaller {
     provider: caller?.provider ?? null,
     product_id: caller?.productId ?? null,
     verified_by:
-      verifiedAuthorization && authorization.success ? authorization.data.source.kind : null,
+      verifiedAuthorization &&
+      authorization.success &&
+      authorization.data.source.kind !== "device_runner"
+        ? authorization.data.source.kind
+        : null,
     channel: row.request_source,
     origin_execution_id: origin && origin !== row.id ? origin : null,
   };

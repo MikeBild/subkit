@@ -15,7 +15,7 @@ import { writeEvent } from "../db/events.ts";
 import { catalogGroupOrder } from "../db/list-result.ts";
 import { auditLog, skillCandidates, skills } from "../db/schema/index.ts";
 import { ConflictError, HttpError, NotFoundError } from "../http/errors.ts";
-import { log } from "../logging/logger.ts";
+import { log } from "../logging/index.ts";
 import {
   type CreateSkillInput,
   type Skill,

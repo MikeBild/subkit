@@ -1,8 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${...}` placeholder tokens are part of the tested grammar.
-// reference-validator — authoring-time pre-flight that refuses a
-// workflow whose JSONata / placeholder references point at unknown
-// step ids. Pure-function tests; no DB.
-
 import { describe, expect, test } from "bun:test";
 import { validateStepReferences } from "../reference-validator.ts";
 import type { WorkflowDef } from "../types.ts";

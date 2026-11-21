@@ -21,6 +21,7 @@ import {
 } from "../../db/schema/index.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
 import { getMetrics, METRIC_NAMES } from "../../observability/metrics.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { makeToolCtx } from "../../test-helpers/seed.ts";
 import { hashToolArgs } from "../../tools/approval.ts";
@@ -29,8 +30,8 @@ import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 const ARGS = { slug: "parity-target" };
 const ARGS_HASH = hashToolArgs(ARGS);
-const CONFIRM_DECISION = "permission_mode|confirm_before_execution|confirm";
-const PROCEED_DECISION = "permission_mode|no_confirm|proceed";
+const CONFIRM_DECISION = "write_gate|confirm_before_execution|confirm";
+const PROCEED_DECISION = "category_default|no_confirm|proceed";
 
 let suite: McpTestSuite;
 let adminClient: Client;
@@ -39,7 +40,7 @@ let principal: ResolvedPrincipal;
 let approvalRequests = 0;
 let targetWorkflowId = "";
 let previousPublicBaseUrl = "";
-const previousLlmProvider = process.env.LLM_PROVIDER;
+const previousLlmProvider = testEnv.LLM_PROVIDER;
 
 const phase: {
   loopWebApprovalId: string;
@@ -91,7 +92,6 @@ async function runLoopTool(
     events,
     suite.http.db,
     {},
-    "auto",
   );
   const result = await wrapped.execute!(args, {
     toolCallId: `parity-${surface}-${tool}`,
@@ -196,7 +196,7 @@ async function expectLoopGate(approvalId: string, conversationId: string): Promi
   const requested = await auditRows(AuditAction.APPROVAL_REQUESTED, approvalId);
   expect(requested).toHaveLength(1);
   expect(requested[0]?.resource_type).toBe("conversation_tool_call");
-  expect(requested[0]?.metadata).toMatchObject({ resolver_reason: "permission_mode" });
+  expect(requested[0]?.metadata).toMatchObject({ resolver_reason: "write_gate" });
   expect(
     await auditRows(AuditAction.TOOL_POLICY_CONFIRMATION_REQUIRED, conversationId),
   ).toHaveLength(1);
@@ -243,7 +243,7 @@ async function waitForResumedTask(conversationId: string): Promise<void> {
 }
 
 beforeAll(async () => {
-  process.env.LLM_PROVIDER = "mock";
+  testEnv.LLM_PROVIDER = "mock";
   suite = await startMcpTestSuite("confirm-gate-parity-http", { withQueue: true });
   previousPublicBaseUrl = getConfig().server.public_base_url;
   await setConfigKey("server.public_base_url", suite.http.baseUrl, { force: true });
@@ -271,13 +271,13 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await setConfigKey("server.public_base_url", previousPublicBaseUrl, { force: true });
-  if (previousLlmProvider === undefined) delete process.env.LLM_PROVIDER;
-  else process.env.LLM_PROVIDER = previousLlmProvider;
+  if (previousLlmProvider === undefined) delete testEnv.LLM_PROVIDER;
+  else testEnv.LLM_PROVIDER = previousLlmProvider;
   await suite?.cleanup();
 }, 30_000);
 
 describe("confirm gate parity through the real MCP route — delete_workflow", () => {
-  test("phase 1 — loop on web under auto pauses on one permission_mode approval", async () => {
+  test("phase 1 — loop on web pauses on one write-gate approval", async () => {
     const { value, delta } = await decisionDelta(() => runLoopTool("delete_workflow", "web", ARGS));
     expect(value.result).toMatchObject({ ok: false, pause: { tool_name: "ask_user_confirm" } });
     expect(delta).toEqual({ [`${CONFIRM_DECISION}|web`]: 1 });
@@ -288,7 +288,7 @@ describe("confirm gate parity through the real MCP route — delete_workflow", (
     await expectLoopGate(phase.loopWebApprovalId, value.conversationId);
   });
 
-  test("phase 2 — loop on sk_headless under auto opens a second row with the same args_hash", async () => {
+  test("phase 2 — loop on sk_headless opens a second row with the same args_hash", async () => {
     const { value, delta } = await decisionDelta(() =>
       runLoopTool("delete_workflow", "sk_headless", ARGS),
     );
@@ -319,7 +319,7 @@ describe("confirm gate parity through the real MCP route — delete_workflow", (
     };
     expect(body.status).toBe("needs_confirm");
     expect(body.tool).toBe("delete_workflow");
-    expect(body.reason).toBe("permission_mode");
+    expect(body.reason).toBe("write_gate");
     expect(body.policy_mode).toBe("confirm_before_execution");
     const toolCallId = body.tool_call_id;
     if (!toolCallId) throw new Error("needs_confirm envelope carried no tool_call_id");
@@ -345,7 +345,7 @@ describe("confirm gate parity through the real MCP route — delete_workflow", (
     const requested = await auditRows(AuditAction.APPROVAL_REQUESTED, row.id);
     expect(requested).toHaveLength(1);
     expect(requested[0]?.resource_type).toBe("mcp_tool_call");
-    expect(requested[0]?.metadata).toMatchObject({ resolver_reason: "permission_mode" });
+    expect(requested[0]?.metadata).toMatchObject({ resolver_reason: "write_gate" });
     expect(await confirmationRequiredCount()).toBe(requiredBefore);
     expect(await targetWorkflowDeletedAt()).toBeNull();
   });
@@ -362,7 +362,7 @@ describe("confirm gate parity through the real MCP route — delete_workflow", (
           conversation_id: conversationId,
           message: "Remove the parity target, please.",
         },
-        _meta: { sk_permission_mode: "ask" },
+        _meta: { sk_ask_before_writing: true },
       });
       await waitFor(
         async () => {
@@ -477,7 +477,7 @@ describe("confirm gate parity through the real MCP route — delete_workflow", (
   }, 30_000);
 });
 
-describe("confirm gate parity through the real MCP route — create_knowledge_source under auto", () => {
+describe("confirm gate parity through the real MCP route — create_knowledge_source as preparation", () => {
   const sourceName = (path: string) => `Parity source ${path}`;
   const sourceArgs = (path: string) => ({
     mode: "inline",
@@ -524,7 +524,7 @@ describe("confirm gate parity through the real MCP route — create_knowledge_so
     expect(await approvalsFor("create_knowledge_source")).toHaveLength(0);
   });
 
-  test("conversation_append under auto: the loop runs the write to completion with no approval row", async () => {
+  test("conversation_append: the loop runs the write to completion with no approval row", async () => {
     const conversationId = await newConversation();
     getMockProvider().setConversePlan(conversationId, [
       { tool: "create_knowledge_source", args: sourceArgs("conversation") },
@@ -536,7 +536,6 @@ describe("confirm gate parity through the real MCP route — create_knowledge_so
           conversation_id: conversationId,
           message: "Capture the parity notes as a knowledge source.",
         },
-        _meta: { sk_permission_mode: "auto" },
       });
       await waitForAppendTask(conversationId);
       return result;

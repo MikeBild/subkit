@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import { createMcpOAuthProvider } from "../../auth/oauth/server-provider.ts";
 import { createMcpOAuthAuthProvider } from "../../auth/providers/mcp-oauth.ts";
+import { runMcpOAuthCleanup } from "../../auth/scheduled/mcp-oauth-cleanup-runner.ts";
 import type { Config } from "../../config/schema.ts";
 import { auditLog } from "../../db/schema/audit.ts";
 import {
@@ -12,7 +13,6 @@ import {
   mcpOauthRefreshTokens,
 } from "../../db/schema/mcp_oauth.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
-import { runMcpOAuthCleanup } from "../mcp-oauth-cleanup-runner.ts";
 
 let srv: HttpTestServer;
 

@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { JSDOM } from "jsdom";
 import { act } from "react";
 import type { Root } from "react-dom/client";
-import type { SettingItem } from "@/pages/settings-model";
+import type { SettingItem } from "@/features/settings/model/settings-model";
 
 const CHILD_FLAG = "SUBKIT_SETTINGS_SECRET_DOM_CHILD";
 
@@ -90,12 +90,12 @@ isolated(
     });
     install(dom);
     const { createRoot } = await import("react-dom/client");
-    const { TooltipProvider } = await import("@/components/ui/tooltip");
+    const { TooltipProvider } = await import("@ui/molecules/tooltip");
     const { I18nContext } = await import("@/lib/i18n-context");
     const { i18nValue } = await import("@/components/cockpit/patterns/test-utils");
-    const { AiArea } = await import("@/pages/settings-ai");
-    const model = await import("@/pages/settings-model");
-    const { useSettingsDrafts } = await import("@/pages/settings-drafts");
+    const { AiArea } = await import("@/features/settings/ui/settings-ai");
+    const model = await import("@/features/settings/model/settings-model");
+    const { useSettingsDrafts } = await import("@/features/settings/hooks/settings-drafts");
     let latest: ReturnType<typeof useSettingsDrafts> | null = null;
 
     function Harness() {

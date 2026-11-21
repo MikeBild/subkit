@@ -7,12 +7,12 @@ import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConfig } from "../../config/loader.ts";
 import { type Executor, getDb } from "../../db/client.ts";
 import { tenants } from "../../db/schema/index.ts";
-import { log, logger } from "../../logging/logger.ts";
+import { log, logger } from "../../logging/index.ts";
 import { zodToJsonSchema7 } from "../../mcp/json-schema.ts";
 import {
   recordLlmCacheUsage,
   recordLlmCallDuration,
-  recordLlmQuotaExhausted,
+  recordLlmSpendLimitReached,
   recordLlmTokens,
 } from "../../observability/instrumentation.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
@@ -20,13 +20,11 @@ import {
   account,
   actorFields,
   checkAndDecrement,
-  checkBudget,
   contextCapFor,
   recordUsage,
-  resolveMonthlyBudget,
   usageAttribution,
 } from "../accounting/index.ts";
-import { LlmGenerationAborted, LlmProviderError, LlmQuotaExhausted } from "../errors.ts";
+import { LlmGenerationAborted, LlmProviderError, LlmSpendLimitReached } from "../errors.ts";
 import { getMockProvider, type MockResult } from "../mock-provider.ts";
 import { classifyProviderError, shouldFallBack } from "../provider-errors.ts";
 import type { LlmFlow, LlmProviderKind, ModelRoute, UserTurn } from "../types.ts";
@@ -182,7 +180,6 @@ export async function resolveModelRoute(tenant_id: string, exec?: Executor): Pro
       "fallback",
       tenant_id,
     ) ?? (fallback_provider === provider ? primary : "");
-  const monthly_budget = resolveMonthlyBudget(tenant_id);
 
   return {
     tenant_id,
@@ -191,7 +188,6 @@ export async function resolveModelRoute(tenant_id: string, exec?: Executor): Pro
     provider,
     fallback_provider,
     context_cap: contextCapFor(primary),
-    monthly_budget,
   };
 }
 
@@ -345,24 +341,16 @@ async function invokeInner<T = unknown>(
   const actor = actorFields(params.principal);
   const estimated = assembled.prompt.token_counts.total + 1024;
   try {
-    await checkBudget(params.tenant_id, estimated, route.monthly_budget, db);
-    const verdict = await checkAndDecrement(
-      params.tenant_id,
-      estimated,
-      db,
-      actor.actor_type === "user" ? actor.user_id : null,
-    );
+    const verdict = await checkAndDecrement(params.tenant_id, estimated, db);
     if (!verdict.ok) {
-      throw new LlmQuotaExhausted("llm_quota_exhausted", {
+      throw new LlmSpendLimitReached(undefined, {
         used: verdict.used,
         projected_tokens: verdict.projected_tokens,
-        budget: verdict.budget,
-        remaining: verdict.remaining,
-        scope: verdict.scope ?? "tenant",
+        ...(verdict.spend ?? {}),
       });
     }
   } catch (err) {
-    if (err instanceof LlmQuotaExhausted) {
+    if (err instanceof LlmSpendLimitReached) {
       await recordUsage(
         {
           tenant_id: params.tenant_id,
@@ -372,12 +360,12 @@ async function invokeInner<T = unknown>(
           completion_tokens: 0,
           latency_ms: 0,
           result: "quota_exhausted",
-          error: "llm_quota_exhausted",
+          error: "llm_spend_limit_reached",
           ...actor,
         },
         db,
       );
-      recordLlmQuotaExhausted({ tenant_id: params.tenant_id });
+      recordLlmSpendLimitReached({ tenant_id: params.tenant_id });
     }
     throw err;
   }

@@ -1,6 +1,5 @@
-import { type PluralKey, pluralKey, type TranslationKey } from "@/lib/i18n";
-
-type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
+import type { Translate } from "@/lib/i18n";
+import { type PluralKey, pluralKey } from "@/lib/i18n";
 
 export function plural(
   t: Translate,

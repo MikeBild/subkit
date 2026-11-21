@@ -1,5 +1,11 @@
 import { expect, test } from "bun:test";
-import { coverageDatabaseUrl, coverageExecutionContext } from "../audit/coverage-environment.ts";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  coverageDatabaseUrl,
+  coverageExecutionContext,
+  mutationShardEnvironment,
+} from "../audit/coverage-environment.ts";
 
 test("db-tagged coverage shards require an explicit owned database URL", () => {
   expect(coverageDatabaseUrl({}, ["db"])).toEqual({
@@ -51,4 +57,29 @@ test("coverage context binds semantic test environment values", () => {
   expect(coverageExecutionContext({ FEATURE_FLAG: "enabled", RUNNER_OS: "Linux" }, [])).not.toEqual(
     base,
   );
+});
+
+test("mutation shards run their tests against the owned database", () => {
+  const owned = { SUBKIT_COVERAGE_OWNED_DATABASE_URL: "postgres://owned", PATH: "/bin" };
+  expect(mutationShardEnvironment(owned, ["db"])).toEqual({
+    ...owned,
+    DATABASE_URL: "postgres://owned",
+  });
+  expect(
+    mutationShardEnvironment({ ...owned, DATABASE_URL: "postgres://ambient" }, ["db"]).DATABASE_URL,
+  ).toBe("postgres://owned");
+  expect(mutationShardEnvironment(owned, []).DATABASE_URL).toBe("postgres://owned");
+  expect(() => mutationShardEnvironment({ DATABASE_URL: "postgres://ambient" }, ["db"])).toThrow(
+    "db-tagged mutation shard requires SUBKIT_COVERAGE_OWNED_DATABASE_URL",
+  );
+  expect(mutationShardEnvironment({ DATABASE_URL: "postgres://ambient" }, [])).toEqual({
+    DATABASE_URL: "postgres://ambient",
+  });
+});
+
+test("a shard whose tests open the database declares the db resource", () => {
+  const policy = JSON.parse(
+    readFileSync(join(import.meta.dir, "../../.quality-shard-policy.json"), "utf8"),
+  ) as { shards: { id: string; resource_tags: string[] }[] };
+  expect(policy.shards.find((shard) => shard.id === "cockpit")?.resource_tags).toContain("db");
 });

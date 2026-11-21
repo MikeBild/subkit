@@ -1,16 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${...}` placeholder tokens are part of the tested grammar.
-//
-// Fix G — hold-writes mode (`RunOptions.hold_writes`): side-effect-safe
-// previews. Write-classified steps are fully RESOLVED (URL, headers,
-// body materialized from real upstream data) but NEVER dispatched; the
-// materialized request is recorded as `held_request` on the step
-// summary. Read steps execute live. Dependents of a held step are
-// skipped explicitly (`skipped_dependency_held`), loop bodies hold per
-// iteration, and the default (no flag) behavior is byte-identical to
-// before.
-//
-// The egress tripwire is the mock server's request log: a held write
-// must leave ZERO entries for its path while sibling reads land.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { closeAllPools, getPoolForConnector } from "../../connectors/drivers/postgres.ts";
 import { getConnector } from "../../connectors/index.ts";

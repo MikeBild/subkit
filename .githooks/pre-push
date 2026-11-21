@@ -2,34 +2,12 @@
 
 set -e
 
-bun run check:bun-version
-
-echo "[pre-push] lint + typecheck + determinism + invariants + drift + commit messages + secrets + build"
-
-echo "[pre-push] 1/8 biome (lint)"
-bun run lint
-
-echo "[pre-push] 2/8 tsc (typecheck)"
-bun run typecheck
-
-echo "[pre-push] 3/8 determinism lint (no Date.now / randomBytes / Math.random in *.test.ts)"
-bun run test:determinism
-
-echo "[pre-push] 4/8 audit:invariants (route layering, file size, tenant filter, etc.)"
-bun run audit:invariants
-
-echo "[pre-push] 5/8 generated-artifact drift (regenerate; fail on diff)"
-bun run check:sandbox-tools-drift
-bun run check:openapi-drift
-bun run check:config-example-drift
-bun run check:embedded-drift
-bun run check:llms-txt-drift
-
-echo "[pre-push] 6/8 commit-message gate (each new commit on this push)"
 zero=$(git hash-object --stdin < /dev/null | tr 'a-f0-9' '0')
 push_refs=$(mktemp)
 trap 'rm -f "$push_refs"' EXIT
 cat > "$push_refs"
+
+echo "[pre-push] 1/3 commit messages of every new commit on this push"
 msg_failed=0
 while read -r _local_ref local_sha _remote_ref remote_sha; do
   [ "$local_sha" = "$zero" ] && continue
@@ -48,7 +26,7 @@ if [ "$msg_failed" -ne 0 ]; then
   exit 1
 fi
 
-echo "[pre-push] 7/8 gitleaks (secrets in the pushed commits)"
+echo "[pre-push] 2/3 gitleaks (secrets in the pushed commits)"
 while read -r _local_ref local_sha _remote_ref remote_sha; do
   [ "$local_sha" = "$zero" ] && continue
   if [ "$remote_sha" != "$zero" ] && git cat-file -e "$remote_sha" 2>/dev/null; then
@@ -66,8 +44,7 @@ while read -r _local_ref local_sha _remote_ref remote_sha; do
   gitleaks git . --config .gitleaks.toml --redact --no-banner --log-opts="$range"
 done < "$push_refs"
 
-echo "[pre-push] 8/8 build all binaries"
-bun run build:sk
-bun run build:engine
+echo "[pre-push] 3/3 the push profile of the gate"
+bun run verify push
 
 echo "[pre-push] all green — run \`bun run verify\` before tagging a release"

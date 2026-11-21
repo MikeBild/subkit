@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { cleanup, render } from "ink-testing-library";
 import type React from "react";
-import { engineHost, Footer, layoutFooterLines, MODE_LABELS } from "../repl/footer.tsx";
+import { engineHost, Footer, layoutFooterLines } from "../repl/footer.tsx";
 
 function stripAnsi(frame: string): string {
   const ansiPattern = `${String.fromCharCode(27)}\\[[0-9;]*m`;
@@ -17,7 +17,6 @@ function renderFooter(props: Partial<React.ComponentProps<typeof Footer>> = {}) 
       tenant={tenant}
       engineUrl={props.engineUrl ?? "https://subkit-api.example.dev"}
       sessionId={sessionId}
-      mode={props.mode ?? "ask"}
       transcriptMode={props.transcriptMode ?? "chat"}
     />,
   );
@@ -56,14 +55,13 @@ describe("Footer identity", () => {
   });
 });
 
-describe("Footer mode and view", () => {
-  test("ask mode shows compact labels and the inspect hint", () => {
-    const instance = renderFooter({ mode: "ask", transcriptMode: "chat" });
+describe("Footer view", () => {
+  test("the chat view shows its label and the inspect hint", () => {
+    const instance = renderFooter({ transcriptMode: "chat" });
     const frame = instance.lastFrame() ?? "";
     expect(frame).toContain("⏵⏵");
-    expect(frame).toContain(MODE_LABELS.ask);
     expect(frame).toContain("chat");
-    expect(frame).toContain("shift+tab mode");
+    expect(frame).not.toContain("shift+tab");
     expect(frame).toContain("ctrl-o inspect");
     instance.unmount();
     cleanup();
@@ -78,26 +76,19 @@ describe("Footer mode and view", () => {
     cleanup();
   });
 
-  test("mode labels are short and subkit-native", () => {
-    expect(MODE_LABELS.ask).toBe("ask");
-    expect(MODE_LABELS.auto).toBe("auto");
-    expect(MODE_LABELS.plan).toBe("plan");
-  });
-
-  test("narrow widths drop host and long hints before session + mode", () => {
+  test("narrow widths drop host and long hints before session + view", () => {
     const layout = layoutFooterLines({
       user: "alice@example.com",
       tenant: "acme",
       engineUrl: "https://subkit-api.example.dev",
       sessionId: "abcd1234-0000-0000-0000-000000000000",
-      mode: "ask",
       transcriptMode: "chat",
       columns: 22,
     });
     expect(layout.identityPrefix).toBe("session ");
     expect(layout.identityHighlight).toBe("abcd1234");
-    expect(layout.modeLabel).toBe("ask");
-    expect(layout.activitySuffix).toBe(" · chat");
+    expect(layout.viewLabel).toBe("chat");
+    expect(layout.activitySuffix).toBe("");
   });
 });
 
@@ -109,7 +100,6 @@ describe("Footer budget line — honest cost telemetry (Fix 7)", () => {
         tenant="acme"
         engineUrl="https://subkit-api.example.dev"
         sessionId={null}
-        mode="ask"
         transcriptMode="chat"
         sessionTokens={5_000_000}
         columns={120}
@@ -203,7 +193,6 @@ describe("Footer connection chip layout", () => {
       tenant: "default",
       engineUrl: "http://localhost:3000",
       sessionId: "f00b8d1c-d453-482e-8aa3-27b35a1cb5aa",
-      mode: "ask",
       transcriptMode: "chat",
       connectionState: "reconnecting",
       connectionReason: "Unable to connect. Is the computer able to reach localhost:3000?",
@@ -220,7 +209,6 @@ describe("Footer connection chip layout", () => {
       tenant: "default",
       engineUrl: "http://localhost:3000",
       sessionId: "f00b8d1c",
-      mode: "ask",
       transcriptMode: "chat",
       connectionState: "reconnecting",
       connectionReason: "Unable to connect — engine offline",
@@ -235,7 +223,6 @@ describe("Footer connection chip layout", () => {
       tenant: "default",
       engineUrl: "http://localhost:3000",
       sessionId: "f00b8d1c",
-      mode: "ask",
       transcriptMode: "chat",
       connectionState: "offline",
       connectionReason: null,
@@ -250,7 +237,6 @@ describe("Footer connection chip layout", () => {
       tenant: "acme",
       engineUrl: "http://localhost:3000",
       sessionId: "abcd1234",
-      mode: "ask",
       transcriptMode: "chat",
       connectionState: "online",
       columns: 80,
@@ -273,7 +259,6 @@ describe("Footer connection chip layout", () => {
           tenant: "acme",
           engineUrl: "http://localhost:3000",
           sessionId: "abcd1234",
-          mode: "ask",
           transcriptMode: "chat",
           connectionState: "reconnecting",
           connectionReason: reason,

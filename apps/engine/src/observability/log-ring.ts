@@ -1,12 +1,6 @@
 import { SYSTEM_TENANT_ID } from "../audit/types.ts";
 
-const DEFAULT_CAPACITY_FROM_ENV = (): number => {
-  const raw = process.env.SK_LOG_RING_SIZE;
-  if (!raw) return 10_000;
-  const n = Number(raw);
-  if (!Number.isFinite(n) || n <= 0) return 10_000;
-  return Math.floor(n);
-};
+const DEFAULT_CAPACITY_FROM_ENV = (): number => envInt("SK_LOG_RING_SIZE", 10_000);
 
 export interface CapturedLog {
   ts: number;
@@ -55,6 +49,7 @@ interface LogRing {
 export { logLevelWeight as levelWeight } from "@cli-core/log-levels.ts";
 
 import { logLevelWeight } from "@cli-core/log-levels.ts";
+import { envInt } from "../env.ts";
 
 function weight(level: string): number {
   return logLevelWeight(level);

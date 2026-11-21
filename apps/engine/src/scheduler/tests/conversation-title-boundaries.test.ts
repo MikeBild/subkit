@@ -1,6 +1,11 @@
 import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test";
 import { eq, sql } from "drizzle-orm";
 import {
+  CONVERSATION_TITLE_SWEEP_NAME,
+  resetConversationTitleSweep,
+  runConversationTitleSweep,
+} from "../../conversations/scheduled/conversation-title-runner.ts";
+import {
   buildTitlePrompt,
   deriveConversationTitle,
   isConversationTitleOpening,
@@ -13,11 +18,6 @@ import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
-import {
-  CONVERSATION_TITLE_SWEEP_NAME,
-  resetConversationTitleSweep,
-  runConversationTitleSweep,
-} from "../conversation-title-runner.ts";
 
 const nextUuid = createDeterministicUuidFactory(0x7171e);
 let ctx: TestDb;

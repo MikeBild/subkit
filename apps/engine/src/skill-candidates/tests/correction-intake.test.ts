@@ -20,6 +20,7 @@ import {
   installClock,
   restoreClock,
 } from "../../test-helpers/determinism/clock.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
 import { saveWorkflowDraft } from "../../workflows/drafts.ts";
@@ -30,7 +31,7 @@ import { runPatternAnalysis } from "../service.ts";
 
 const uuid = createDeterministicUuidFactory(0xc0a1a7);
 
-const skip = process.env.REQUIRES_PG === "0";
+const skip = testEnv.REQUIRES_PG === "0";
 const RECENT = new Date(FROZEN_NOW - 24 * 60 * 60 * 1000);
 const STALE = new Date(FROZEN_NOW - 40 * 24 * 60 * 60 * 1000);
 

@@ -2,7 +2,7 @@ import { z } from "@hono/zod-openapi";
 import { isTextLike } from "../../files/content-type.ts";
 import { executionDataFileIds } from "../../files/model-context.ts";
 import { requireFileForTenant, storageKey } from "../../files/resolver.ts";
-import { findConversationAttachmentBySlug } from "../../files/service.ts";
+import { findConversationAttachmentBySlug } from "../../files/service/index.ts";
 import { getObjectStore } from "../../storage/object-store.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 

@@ -3,12 +3,12 @@ import { and, eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/audit.ts";
 import { cliNotificationInbox, cliNotificationInboxReads } from "../../db/schema/notifications.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
-import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
-import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   NOTIFICATION_INBOX_RETENTION_BATCH_SIZE,
   runNotificationInboxRetention,
-} from "../notification-inbox-retention-runner.ts";
+} from "../../notifications/scheduled/notification-inbox-retention-runner.ts";
+import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 
 let srv: HttpTestServer;
 const ids = createDeterministicUuidFactory(0x72657461);

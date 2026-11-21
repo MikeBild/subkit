@@ -3,6 +3,8 @@ import type { ChatEvent } from "../chat/types.ts";
 
 export type QueueName =
   | "execution.run"
+  | "execution.run.device"
+  | "device.wait"
   | "conversation.run-turn"
   | "connector.refresh-oauth"
   | "connector.ingest-docs"
@@ -18,6 +20,8 @@ export type QueueName =
 
 export const QUEUE_NAMES: QueueName[] = [
   "execution.run",
+  "execution.run.device",
+  "device.wait",
   "conversation.run-turn",
   "connector.refresh-oauth",
   "connector.ingest-docs",
@@ -40,6 +44,7 @@ export interface QueueConfig {
 
 const EXECUTION_RUN_VISIBILITY_SECONDS = 10 * 60;
 const CONVERSATION_RUN_TURN_VISIBILITY_SECONDS = 10 * 60;
+const EXECUTION_RUN_DEVICE_VISIBILITY_SECONDS = 60 * 60;
 const DEFAULT_RETENTION_SECONDS = 14 * 24 * 60 * 60;
 
 const WEBHOOK_DELIVERY_RETRY_LIMIT = 11;
@@ -54,6 +59,24 @@ export const QUEUE_DEFINITIONS: Record<QueueName, QueueConfig> = {
       retryDelayMax: 60,
       expireInSeconds: EXECUTION_RUN_VISIBILITY_SECONDS,
       deadLetter: "execution.run.dlq",
+      retentionSeconds: DEFAULT_RETENTION_SECONDS,
+    },
+  },
+  "execution.run.device": {
+    name: "execution.run.device",
+    queue: {
+      retryLimit: 0,
+      expireInSeconds: EXECUTION_RUN_DEVICE_VISIBILITY_SECONDS,
+      deadLetter: "execution.run.device.dlq",
+      retentionSeconds: DEFAULT_RETENTION_SECONDS,
+    },
+  },
+  "device.wait": {
+    name: "device.wait",
+    queue: {
+      retryLimit: 3,
+      retryDelay: 30,
+      retryBackoff: true,
       retentionSeconds: DEFAULT_RETENTION_SECONDS,
     },
   },
@@ -164,6 +187,14 @@ export const QUEUE_DEFINITIONS: Record<QueueName, QueueConfig> = {
 
 export const EXECUTION_RUN_QUEUE: QueueName = "execution.run";
 export const EXECUTION_RUN_DLQ: string = "execution.run.dlq";
+export const EXECUTION_RUN_DEVICE_QUEUE: QueueName = "execution.run.device";
+export const EXECUTION_RUN_DEVICE_DLQ: string = "execution.run.device.dlq";
+export const DEVICE_WAIT_QUEUE: QueueName = "device.wait";
+
+export type DeviceWaitJob =
+  | { tenant_id: string; execution_id: string; phase: "attention" | "expire" }
+  | { tenant_id: string; phase: "upload_expire" }
+  | { tenant_id: string; phase: "screenshot_expire" };
 
 export const CONVERSATION_RUN_TURN_QUEUE: QueueName = "conversation.run-turn";
 export const CONVERSATION_RUN_TURN_DLQ: string = "conversation.run-turn.dlq";
@@ -186,7 +217,6 @@ export interface ConversationRunTurnJob {
   actor_id: string | null;
   principal?: import("../auth/types.ts").ResolvedPrincipal | null;
   kind: "start" | "append" | "respond_elicitation";
-  permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
   provider_limit_parks?: number;
   elicitation_id?: string;
   answer_channel?: "model_relay" | "mcp_native" | "portal";
@@ -209,4 +239,5 @@ export interface ExecutionRunJob {
   parent_execution_id?: string | null;
   trace_id?: string | null;
   execution_mode?: "dev" | "prod";
+  budget_resume?: boolean;
 }

@@ -33,7 +33,6 @@ function stubCtx(draft: DraftDocument): ToolContext & { current: () => DraftDocu
     actor_id: null,
     connector_id: null,
     workflow_id: null,
-    permission_mode: null,
     // biome-ignore lint/suspicious/noExplicitAny: skills catalog stub
     engineClient: { skills: { list: async () => [] } } as any,
     getDraft: () => live,

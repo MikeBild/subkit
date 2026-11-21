@@ -1,7 +1,7 @@
 import type { streamText, ToolSet } from "ai";
 import { runOutputGuardStream } from "../../llm/output-guard/index.ts";
 import { createStreamScrubber } from "../../llm/output-guard/stream-scrub.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { recordLlmStepTimeout } from "../../observability/instrumentation.ts";
 import { now } from "../../utils/clock.ts";
 import {

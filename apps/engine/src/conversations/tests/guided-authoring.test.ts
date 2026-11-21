@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { _resetConfigForTests, setConfigKey } from "../../config/loader.ts";
 import { auditLog, conversationToolCalls } from "../../db/schema/index.ts";
-import { getConversation } from "../service.ts";
+import { getConversation } from "../service/index.ts";
 import {
   type ConversationTestCtx,
   createConversationTestCtx,
@@ -44,7 +44,7 @@ describe("guided authoring conversation loop", () => {
         tenant_id: ctx.tenant_id,
         actor_id: ctx.user_id,
         initial_message: "subkit engine onboarding",
-        permission_mode: "ask",
+        ask_before_writing: true,
       },
       ctx.testDb.db,
     );
@@ -77,6 +77,7 @@ describe("guided authoring conversation loop", () => {
         conversation_id: created.conversation.id,
         elicitation_id: created.result.pending_elicitation_id!,
         actor_id: ctx.user_id,
+        ask_before_writing: true,
         output: { confirmed: true },
       },
       ctx.testDb.db,
@@ -143,6 +144,7 @@ describe("guided authoring conversation loop", () => {
         conversation_id: created.conversation.id,
         elicitation_id: resumedSave.result.pending_elicitation_id!,
         actor_id: ctx.user_id,
+        ask_before_writing: true,
         output: { confirmed: true },
       },
       ctx.testDb.db,

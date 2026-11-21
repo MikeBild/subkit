@@ -14,6 +14,7 @@ import {
   runConversationTurn,
 } from "../../conversations/public/authoring.ts";
 import {
+  deviceConfirmationPort,
   ElicitationValidationError,
   getElicitation,
   respondElicitation,
@@ -33,13 +34,14 @@ import {
 import type { Db } from "../../db/client.ts";
 import { hostedQuotaError } from "../../db/hosted-quota-errors.ts";
 import { conversationMessages, users } from "../../db/schema/index.ts";
+import { endDeviceSessions } from "../../devices/session-end.ts";
 import {
   authorizationContextFromPrincipal,
   rehydrateExecutionPrincipal,
 } from "../../execution/authorization-context.ts";
 import { callerFromPrincipal } from "../../execution/caller-context.ts";
 import { getContext, type LogContext, withContext } from "../../logging/context.ts";
-import { log } from "../../logging/logger.ts";
+import { log } from "../../logging/index.ts";
 import {
   type ConversationTurnEnvelope,
   clearMcpTaskPark,
@@ -56,7 +58,7 @@ import {
 import { readMemoryUsage } from "../../observability/runtime-telemetry.ts";
 import { RequestSourceSchema } from "../../observability/service-metadata.ts";
 import { can } from "../../rbac/evaluator.ts";
-import { recordUsageEvent } from "../../stats/usage-events.ts";
+import { recordUsageEvent } from "../../stats/index.ts";
 import {
   finalizeHostedContentQuota,
   hostedContentQuotaCode,
@@ -352,9 +354,9 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
             ? { resolution_status: "cancelled" as const }
             : {}),
           surface: "mcp",
+          local_confirmations: deviceConfirmationPort(db),
           turn_abort_ctrl: turnAbortCtrl,
           ...(data.reason ? { reason: data.reason } : {}),
-          ...(data.permission_mode ? { permission_mode: data.permission_mode } : {}),
         },
         db,
       );
@@ -378,7 +380,6 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
           answer_actor: MODEL_RELAYED_ANSWER,
           surface: "mcp",
           turn_abort_ctrl: turnAbortCtrl,
-          ...(data.permission_mode ? { permission_mode: data.permission_mode } : {}),
           ...(data.runtime_context ? { runtime_context: data.runtime_context } : {}),
         },
         db,
@@ -642,7 +643,12 @@ export async function registerConversationRunTurnHandler(
                   db,
                   job.data.tenant_id,
                   "chat",
-                  () => handleOne(job, db, boss),
+                  async () => {
+                    await handleOne(job, db, boss);
+                    await endDeviceSessions(db, job.data.tenant_id, {
+                      conversation_id: job.data.conversation_id,
+                    });
+                  },
                   {
                     queue: CONVERSATION_RUN_TURN_QUEUE,
                     id: job.id,

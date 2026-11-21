@@ -56,7 +56,6 @@ describe("resolveGraphqlStepEndpoint", () => {
     "/graphql%2f..",
     "/graphql?x=1",
     "/graphql#x",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: refused placeholder shape
     "/${input.host}",
     "/graphql\\evil.example",
     "/graphql/",

@@ -1,4 +1,4 @@
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { CriticRejectedDetailsSchema } from "./types.ts";
 
 export interface RecentToolCallRow {

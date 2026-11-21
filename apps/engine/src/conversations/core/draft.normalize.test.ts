@@ -59,12 +59,10 @@ describe("mode inference", () => {
 });
 
 describe("session normalization", () => {
-  test("keeps only valid permission modes and a true playground flag", () => {
-    for (const permission_mode of ["auto", "ask", "plan"] as const) {
-      expect(normalizeDraftDocument(now, { session: { permission_mode } }).session).toEqual({
-        permission_mode,
-      });
-    }
+  test("drops a stored permission mode and keeps a true playground flag", () => {
+    expect(
+      normalizeDraftDocument(now, { session: { permission_mode: "ask" } }).session,
+    ).toBeUndefined();
     expect(
       normalizeDraftDocument(now, { session: { permission_mode: "other", playground: true } })
         .session,

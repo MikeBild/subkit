@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { PerformanceObserver } from "node:perf_hooks";
+import { envFlag, readEnv } from "../env.ts";
 import { getContext } from "../logging/context.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { getLastEventLoopLagMs, sampleMemory } from "./runtime-telemetry.ts";
 
 export function runtimeDiagnosticsEnabled(): boolean {
-  return process.env.SUBKIT_DIAGNOSTICS === "1";
+  return envFlag("SUBKIT_DIAGNOSTICS");
 }
 
 export interface PoolCounts {
@@ -26,8 +27,8 @@ function boundedInt(raw: string | undefined, fallback: number, min: number, max:
 
 export function runtimeDiagnosticOptions(): { interval_ms: number; max_samples: number } {
   return {
-    interval_ms: boundedInt(process.env.SUBKIT_DIAGNOSTICS_INTERVAL_MS, 1_000, 250, 60_000),
-    max_samples: boundedInt(process.env.SUBKIT_DIAGNOSTICS_MAX_SAMPLES, 300, 1, 3_600),
+    interval_ms: boundedInt(readEnv("SUBKIT_DIAGNOSTICS_INTERVAL_MS"), 1_000, 250, 60_000),
+    max_samples: boundedInt(readEnv("SUBKIT_DIAGNOSTICS_MAX_SAMPLES"), 300, 1, 3_600),
   };
 }
 
@@ -96,7 +97,7 @@ let queryEvents = 0;
 let queryLimitReported = false;
 
 function diagnosticQueryEventLimit(): number {
-  return boundedInt(process.env.SUBKIT_DIAGNOSTICS_MAX_QUERY_EVENTS, 5_000, 1, 50_000);
+  return boundedInt(readEnv("SUBKIT_DIAGNOSTICS_MAX_QUERY_EVENTS"), 5_000, 1, 50_000);
 }
 
 export function beginDiagnosticTransaction(): string | undefined {
@@ -192,18 +193,17 @@ export function startRuntimeDiagnosticSampler(args: {
   let lastCpu = process.cpuUsage();
   let lastCgroup = cgroupCpuCounters();
   let lockSnapshotInFlight = false;
-  const gc =
-    process.env.SUBKIT_DIAGNOSTICS_GC === "1"
-      ? new PerformanceObserver((items) => {
-          for (const entry of items.getEntries()) {
-            const gcEntry = entry as PerformanceEntry & { detail?: { kind?: number } };
-            runtimeDiagnosticEvent("runtime.gc", {
-              duration_ms: Math.round(entry.duration * 1000) / 1000,
-              kind: gcEntry.detail?.kind ?? null,
-            });
-          }
-        })
-      : null;
+  const gc = envFlag("SUBKIT_DIAGNOSTICS_GC")
+    ? new PerformanceObserver((items) => {
+        for (const entry of items.getEntries()) {
+          const gcEntry = entry as PerformanceEntry & { detail?: { kind?: number } };
+          runtimeDiagnosticEvent("runtime.gc", {
+            duration_ms: Math.round(entry.duration * 1000) / 1000,
+            kind: gcEntry.detail?.kind ?? null,
+          });
+        }
+      })
+    : null;
   gc?.observe({ entryTypes: ["gc"] });
   const tick = () => {
     const now = Date.now();
@@ -232,7 +232,7 @@ export function startRuntimeDiagnosticSampler(args: {
     lastCpu = cpu;
     lastCgroup = cgroup;
     if (
-      process.env.SUBKIT_DIAGNOSTICS_LOCK_SNAPSHOT === "1" &&
+      envFlag("SUBKIT_DIAGNOSTICS_LOCK_SNAPSHOT") &&
       args.advisoryLockSnapshot &&
       !lockSnapshotInFlight
     ) {

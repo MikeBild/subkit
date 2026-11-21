@@ -1,10 +1,20 @@
 import { describe, expect, test } from "bun:test";
-import { cockpitEventTouchesAttention, projectCockpitEvent } from "./cockpit-stream.ts";
+import { RESOURCE_CHANGE_TYPES } from "../pubsub/resource-changes.ts";
+import {
+  COCKPIT_STREAM_FAMILIES,
+  cockpitEventTouchesAttention,
+  projectCockpitEvent,
+  projectCockpitPayload,
+} from "./cockpit-stream.ts";
 
 const WORKFLOW = "11111111-1111-4111-8111-111111111111";
 const CONNECTOR = "33333333-3333-4333-8333-333333333333";
 const CANDIDATE = "88888888-8888-4888-8888-888888888888";
 const TASK = "55555555-5555-4555-8555-555555555555";
+const DEVICE = "66666666-6666-4666-8666-666666666666";
+const EXECUTION = "77777777-7777-4777-8777-777777777777";
+const CONFIRMATION = "99999999-9999-4999-8999-999999999999";
+const COMMAND = "a".repeat(64);
 
 describe("cockpit stream notification target", () => {
   test("a connector notification names the attention item of its connector", () => {
@@ -130,6 +140,78 @@ describe("cockpit stream notification target", () => {
       "patch.proposed",
       "task_run.changed",
       "settings.changed",
+    ])
+      expect(cockpitEventTouchesAttention(type)).toBe(true);
+  });
+});
+
+describe("device and local confirmation stream families", () => {
+  const typesFor = (permission: string) =>
+    COCKPIT_STREAM_FAMILIES.filter(
+      (family) => family.permission === permission && family.channel === "resource.lifecycle",
+    ).flatMap((family) => family.types ?? []);
+
+  test("device changes reach device readers only", () => {
+    expect(typesFor("device:read")).toEqual([
+      "device.online",
+      "device.offline",
+      "device.command",
+      "device.session_ended",
+    ]);
+  });
+
+  test("a run waiting for its device reaches run readers", () => {
+    expect(typesFor("execution:read")).toEqual(["execution.waiting_for_device"]);
+  });
+
+  test("a requested confirmation reaches only people who may confirm", () => {
+    expect(typesFor("local:confirm")).toEqual(["local.confirmation_requested"]);
+  });
+
+  test("every resource change type has a family besides the audit log", () => {
+    const covered = new Set(
+      COCKPIT_STREAM_FAMILIES.filter((family) => family.permission !== "audit:read").flatMap(
+        (family) => family.types ?? [],
+      ),
+    );
+    expect(RESOURCE_CHANGE_TYPES.filter((type) => !covered.has(type))).toEqual([]);
+  });
+
+  test("device, command and confirmation ids leave the engine, a full sha256 included", () => {
+    expect(
+      projectCockpitPayload({
+        device_id: DEVICE,
+        command_id: COMMAND,
+        confirmation_id: CONFIRMATION,
+        execution_id: EXECUTION,
+        relative_path: "Rechnungen/2026.pdf",
+        device_label: "MacBook Pro (Mike)",
+      }),
+    ).toEqual({
+      execution_id: EXECUTION,
+      device_id: DEVICE,
+      command_id: COMMAND,
+      confirmation_id: CONFIRMATION,
+    });
+  });
+
+  test("a device going on or off line names its attention item", () => {
+    for (const type of ["device.online", "device.offline"])
+      expect(projectCockpitEvent({ type, payload: { device_id: DEVICE } }).attention_id).toBe(
+        `device:${DEVICE}`,
+      );
+    expect(
+      projectCockpitEvent({ type: "device.command", payload: { device_id: DEVICE } }).attention_id,
+    ).toBeUndefined();
+  });
+
+  test("command progress leaves the attention list untouched, a waiting run does not", () => {
+    expect(cockpitEventTouchesAttention("device.command")).toBe(false);
+    for (const type of [
+      "device.online",
+      "device.offline",
+      "local.confirmation_requested",
+      "execution.waiting_for_device",
     ])
       expect(cockpitEventTouchesAttention(type)).toBe(true);
   });

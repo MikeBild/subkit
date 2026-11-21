@@ -1,9 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { render } from "@/components/cockpit/patterns/test-utils";
-import { WaitingOnLine } from "@/components/cockpit/waiting-on";
+import {
+  attentionRow,
+  waitingOnLine,
+  waitingOnName,
+} from "@/features/overview/model/overview-model";
+import { de, item, W } from "@/features/overview/model/overview-model-fixtures.ts";
+import { WaitingOnLine } from "@/features/overview/ui/waiting-on";
 import { type TranslationKey, translate } from "@/lib/i18n";
-import { attentionRow, waitingOnLine, waitingOnName } from "./overview-model";
-import { de, item, W } from "./overview-model-fixtures.ts";
 
 const en = (key: TranslationKey, values?: Record<string, string | number>) =>
   translate("en", key, values);

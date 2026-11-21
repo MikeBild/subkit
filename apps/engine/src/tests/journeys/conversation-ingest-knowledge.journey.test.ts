@@ -104,7 +104,6 @@ function makeToolCtx(ctx: JourneyCtx): ToolContext {
     actor_id: ctx.userId,
     connector_id: null,
     workflow_id: null,
-    permission_mode: "auto",
     engineClient: engineClientStub,
     getDraft: () => ({ workflow: { name: "", steps: [] } }) as never,
     setDraft: async () => {},

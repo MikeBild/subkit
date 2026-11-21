@@ -35,6 +35,7 @@ function toolContext(
     conversation_id: "00000000-0000-4000-8000-000000000036",
     actor_id: principal.id,
     principal,
+    ask_before_writing: true,
     connector_id: null,
     workflow_id: null,
     engineClient: new EngineClient({

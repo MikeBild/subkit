@@ -8,6 +8,7 @@ import { runHeadless } from "../../../../sk/src/headless.ts";
 import { loadMemory } from "../../../../sk/src/memory.ts";
 import { loadSettings } from "../../../../sk/src/settings.ts";
 import { auditLog, conversations } from "../../db/schema/index.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 describe("the sk terminal chat runs headless, remembers and layers settings", () => {
@@ -337,13 +338,13 @@ describe("the sk terminal chat runs headless, remembers and layers settings", ()
       ctx = await createJourneyCtx("sk-cli-15-settings");
       userHome = mkdtempSync(join(tmpdir(), "sk-set-home-"));
       tmpWorkspace = mkdtempSync(join(tmpdir(), "sk-set-ws-"));
-      prevSkHome = process.env.SK_HOME;
-      process.env.SK_HOME = userHome;
+      prevSkHome = testEnv.SK_HOME;
+      testEnv.SK_HOME = userHome;
     }, JOURNEY_HOOK_TIMEOUT);
 
     afterAll(async () => {
-      if (prevSkHome !== undefined) process.env.SK_HOME = prevSkHome;
-      else delete process.env.SK_HOME;
+      if (prevSkHome !== undefined) testEnv.SK_HOME = prevSkHome;
+      else delete testEnv.SK_HOME;
       rmSync(userHome, { recursive: true, force: true });
       rmSync(tmpWorkspace, { recursive: true, force: true });
       await ctx.cleanup();

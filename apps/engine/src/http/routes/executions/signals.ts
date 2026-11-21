@@ -5,7 +5,7 @@ import {
   findTokenSignalTarget,
   isSensitivePayload,
 } from "../../../execution/index.ts";
-import { appendSignal } from "../../../workflow-signals/service.ts";
+import { appendSignal } from "../../../workflow-signals/index.ts";
 import { HttpError, NotFoundError, UnauthorizedError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";

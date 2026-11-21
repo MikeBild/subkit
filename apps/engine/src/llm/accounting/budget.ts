@@ -1,13 +1,11 @@
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
-import { getConfig, isConfigLoaded } from "../../config/loader.ts";
 import { type Executor, getDb } from "../../db/client.ts";
-import { llmUsage, tenants, userLlmSettings } from "../../db/schema/index.ts";
-import { logger } from "../../logging/logger.ts";
-import { LlmQuotaExhausted } from "../errors.ts";
+import { llmUsage, tenants } from "../../db/schema/index.ts";
 import { cacheWeightsFor } from "../model-price-catalog.ts";
 import { billedTokenUsage, weightedTotalTokens } from "../pricing.ts";
 import type { LlmCallLogEntry } from "../types.ts";
+import { spendRefusalDetails, spendVerdict } from "./spend.ts";
 
 export function currentMonthBucket(d: Date = new Date()): number {
   return d.getUTCFullYear() * 100 + (d.getUTCMonth() + 1);
@@ -44,178 +42,31 @@ export async function monthlyUsageForUser(
   return Number(out[0]?.total ?? 0);
 }
 
-export async function resolveUserMonthlyBudget(
-  tenant_id: string,
-  user_id: string,
-  exec?: Executor,
-): Promise<number | null> {
-  const db = exec ?? getDb();
-  const rows = await db
-    .select({ budget: userLlmSettings.llm_monthly_token_budget })
-    .from(userLlmSettings)
-    .where(and(eq(userLlmSettings.tenant_id, tenant_id), eq(userLlmSettings.user_id, user_id)))
-    .limit(1);
-  const raw = rows[0]?.budget ?? null;
-  if (raw == null) return null;
-  return Number(raw);
-}
-
-export async function checkBudget(
-  tenant_id: string,
-  projected_tokens: number,
-  budget: number | null,
-  exec?: Executor,
-): Promise<void> {
-  if (budget == null || budget <= 0) return;
-  const used = await monthlyUsage(tenant_id, exec);
-  if (used + projected_tokens > budget) {
-    logger.warn({
-      module: "llm",
-      action: "llm.budget.exhausted",
-      msg: "llm quota exhausted",
-      tenant_id,
-      used,
-      projected_tokens,
-      budget,
-    });
-    throw new LlmQuotaExhausted("llm_quota_exhausted", {
-      used,
-      projected_tokens,
-      budget,
-    });
-  }
-}
-
-export function resolveMonthlyBudget(tenant_id: string): number | null {
-  if (!isConfigLoaded()) return null;
-  const raw = getConfig(tenant_id).tokens?.monthly_budget ?? 0;
-  return raw > 0 ? raw : null;
-}
-
-export type BudgetState = "ample" | "tightening" | "critical";
-
-export const BUDGET_TIGHTENING_SHARE = 0.75;
-export const BUDGET_CRITICAL_SHARE = 0.9;
-
-export function budgetState(used: number, budget: number | null): BudgetState | null {
-  if (budget == null || budget <= 0) return null;
-  const share = used / budget;
-  if (share >= BUDGET_CRITICAL_SHARE) return "critical";
-  if (share >= BUDGET_TIGHTENING_SHARE) return "tightening";
-  return "ample";
-}
-
-export interface MonthlyBudgetFigures {
-  month_bucket: number;
-  used_tokens: number;
-  budget_tokens: number | null;
-  remaining_tokens: number | null;
-  state: BudgetState | null;
-}
-
-export function monthlyBudgetFigures(used: number, budget: number | null): MonthlyBudgetFigures {
-  return {
-    month_bucket: currentMonthBucket(),
-    used_tokens: used,
-    budget_tokens: budget,
-    remaining_tokens: budget == null ? null : Math.max(budget - used, 0),
-    state: budgetState(used, budget),
-  };
-}
-
-export async function readTenantMonthlyBudget(
-  tenant_id: string,
-  exec?: Executor,
-): Promise<MonthlyBudgetFigures> {
-  return monthlyBudgetFigures(await monthlyUsage(tenant_id, exec), resolveMonthlyBudget(tenant_id));
-}
-
 export interface CheckAndDecrementResult {
   ok: boolean;
   used: number;
   projected_tokens: number;
-  budget: number | null;
-  remaining: number | null;
-  scope?: "tenant" | "user";
+  scope?: "spend";
+  spend?: Record<string, unknown>;
 }
 
 export async function checkAndDecrement(
   tenant_id: string,
   estimated_tokens: number,
   exec?: Executor,
-  user_id?: string | null,
 ): Promise<CheckAndDecrementResult> {
-  const tenantBudget = resolveMonthlyBudget(tenant_id);
-  const tenantUsed = await monthlyUsage(tenant_id, exec);
-  const tenantUnlimited = tenantBudget == null || tenantBudget <= 0;
-  const tenantOk = tenantUnlimited || tenantUsed + estimated_tokens <= tenantBudget;
-
-  if (user_id) {
-    const userBudget = await resolveUserMonthlyBudget(tenant_id, user_id, exec);
-    if (userBudget != null && userBudget > 0) {
-      const userUsed = await monthlyUsageForUser(tenant_id, user_id, exec);
-      const userOk = userUsed + estimated_tokens <= userBudget;
-      if (!userOk) {
-        return {
-          ok: false,
-          used: userUsed,
-          projected_tokens: estimated_tokens,
-          budget: userBudget,
-          remaining: userBudget - userUsed,
-          scope: "user",
-        };
-      }
-    }
-  }
-
-  if (tenantUnlimited) {
-    return {
-      ok: true,
-      used: tenantUsed,
-      projected_tokens: estimated_tokens,
-      budget: tenantBudget,
-      remaining: null,
-    };
-  }
-  const remaining = tenantBudget - tenantUsed;
+  const [spend, used] = await Promise.all([
+    spendVerdict(tenant_id, { kind: "flow", flow: "any" }, exec),
+    monthlyUsage(tenant_id, exec),
+  ]);
+  if (spend.ok) return { ok: true, used, projected_tokens: estimated_tokens };
   return {
-    ok: tenantOk,
-    used: tenantUsed,
+    ok: false,
+    used,
     projected_tokens: estimated_tokens,
-    budget: tenantBudget,
-    remaining,
-    ...(tenantOk ? {} : { scope: "tenant" as const }),
+    scope: "spend",
+    spend: spendRefusalDetails(spend.reading),
   };
-}
-
-export interface TurnBudgetVerdict extends CheckAndDecrementResult {
-  source: "route" | "allowance";
-}
-
-export async function turnBudgetVerdict(
-  p: {
-    tenant_id: string;
-    estimated_tokens: number;
-    route_budget: number | null;
-    user_id: string | null;
-  },
-  exec?: Executor,
-): Promise<TurnBudgetVerdict> {
-  if (p.route_budget != null && p.route_budget > 0) {
-    const used = await monthlyUsage(p.tenant_id, exec);
-    if (used + p.estimated_tokens > p.route_budget)
-      return {
-        ok: false,
-        used,
-        projected_tokens: p.estimated_tokens,
-        budget: p.route_budget,
-        remaining: p.route_budget - used,
-        scope: "tenant",
-        source: "route",
-      };
-  }
-  const allowance = await checkAndDecrement(p.tenant_id, p.estimated_tokens, exec, p.user_id);
-  return { ...allowance, source: "allowance" };
 }
 
 export async function recordUsage(entry: LlmCallLogEntry, exec?: Executor): Promise<void> {

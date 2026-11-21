@@ -1,4 +1,4 @@
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { detectPlaceholderDestinations } from "../../workflows/destination-placeholders.ts";
 import {
   WORKFLOW_DEF_FIELD_KEYS,
@@ -71,11 +71,11 @@ export interface CommitWorkflowAtomicParams {
 
 type CommitGate = { name: string; run: () => Promise<ToolResult | null> };
 
-export function commitGateBypassedByAutoMode(p: {
+export function commitGateBypassed(p: {
   skipPriorApprovalCheck?: boolean | undefined;
-  permission_mode?: string | null | undefined;
+  ask_before_writing?: boolean | undefined;
 }): boolean {
-  return !p.skipPriorApprovalCheck && p.permission_mode === "auto";
+  return !p.skipPriorApprovalCheck && p.ask_before_writing !== true;
 }
 
 type SaveGauntletMode = "commit" | "proposal";
@@ -199,24 +199,23 @@ async function runSaveGauntlet(
     };
   };
 
-  const gateBypassedByAutoMode = commitGateBypassedByAutoMode({
+  const gateBypassed = commitGateBypassed({
     skipPriorApprovalCheck: p.skipPriorApprovalCheck,
-    permission_mode: ctx.permission_mode,
+    ask_before_writing: ctx.ask_before_writing,
   });
 
   const gatePriorApproval = async (): Promise<ToolResult | null> => {
-    if (gateBypassedByAutoMode) {
+    if (gateBypassed) {
       logger.warn({
         module: "conversation_persistence",
         action: "commit_gate.auto_bypass",
-        msg: "save_workflow_draft commit gate bypassed — permission_mode=auto",
+        msg: "save_workflow_draft commit gate bypassed — saving an inactive draft needs no approval",
         tenant_id: ctx.tenant_id,
         conversation_id: ctx.conversation_id,
-        permission_mode: "auto",
         bypassed_prior_approval: true,
       });
     }
-    if (!p.skipPriorApprovalCheck && ctx.permission_mode !== "auto") {
+    if (!p.skipPriorApprovalCheck && ctx.ask_before_writing === true) {
       const approval = await findPriorSaveWorkflowApproval(
         ctx.db,
         ctx.tenant_id,
@@ -229,7 +228,7 @@ async function runSaveGauntlet(
           msg: "commitWorkflowAtomic prior-approval gate denied — no resolved ask_user_confirm with commit_intent.kind:save_workflow_draft and confirmed:true found",
           tenant_id: ctx.tenant_id,
           conversation_id: ctx.conversation_id,
-          permission_mode: ctx.permission_mode,
+          ask_before_writing: true,
           intent_kind_expected: "save_workflow_draft",
         });
         return {

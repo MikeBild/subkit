@@ -63,15 +63,13 @@ export function reportAuthorityFixtures(state: { readonly ctx: EngineTestCtx }) 
                 url: analytics
                   ? "https://analyticsdata.googleapis.com/v1beta/properties/123:runReport"
                   : withRead === "path"
-                    ? // biome-ignore lint/suspicious/noTemplateCurlyInString: bounded identifier
-                      "https://metrics.example.test/v2/projects/${input.window}/resources"
+                    ? "https://metrics.example.test/v2/projects/${input.window}/resources"
                     : "https://metrics.example.test/history",
                 query:
                   withRead === "path" || analytics
                     ? undefined
                     : {
                         host_id: "fixed-resource",
-                        // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow query substitution
                         end: "${input.window}",
                       },
                 max_retries: 0,
@@ -83,7 +81,6 @@ export function reportAuthorityFixtures(state: { readonly ctx: EngineTestCtx }) 
           kind: "request",
           method: "POST",
           url: GMAIL_SEND_TARGET,
-          // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow substitution
           body: { raw: "${input.raw}" },
           max_retries: 0,
         },

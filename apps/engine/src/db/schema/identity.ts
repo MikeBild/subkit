@@ -6,6 +6,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgEnum,
   pgTable,
   text,
@@ -79,6 +80,12 @@ export const tenants = pgTable(
       withTimezone: true,
     }),
     workflow_approval_policy_changed_by: uuid("workflow_approval_policy_changed_by"),
+    spend_limit_usd: numeric("spend_limit_usd", { precision: 12, scale: 2, mode: "number" })
+      .default(50)
+      .notNull(),
+    spend_continue_month: text("spend_continue_month"),
+    spend_limit_chosen_at: timestamp("spend_limit_chosen_at", { withTimezone: true }).defaultNow(),
+    spend_limit_changed_by: uuid("spend_limit_changed_by"),
     ...timestamps,
   },
   (t) => [

@@ -3,10 +3,11 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Glob } from "bun";
 import { loadBuiltinTemplates } from "../../connectors/templates.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { ALL_PERMISSION_NAMES } from "../catalog.ts";
 
 function resolveRepoRoot(): string {
-  const fromEnv = process.env.SUBKIT_REPO_ROOT;
+  const fromEnv = testEnv.SUBKIT_REPO_ROOT;
   if (fromEnv && existsSync(resolve(fromEnv, "package.json"))) return fromEnv;
   return resolve(import.meta.dir, "..", "..", "..", "..", "..");
 }

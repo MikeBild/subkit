@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ErrorNotice } from "@ui/components/proto/ErrorNotice";
+import { ErrorNotice } from "@ui/molecules/error-notice";
+import { SettingsRow } from "@ui/molecules/settings-row";
 import { Users } from "lucide-react";
 import { useId } from "react";
 import {
@@ -21,7 +22,6 @@ import {
   policyErrorRows,
   policyView,
 } from "./approval-policy-model";
-import { Row } from "./row";
 
 export function ApprovalPolicyRow() {
   const session = useSession();
@@ -68,7 +68,7 @@ export function ApprovalPolicyPanel({
   const view = policyView(policy, permissions, busy, t);
   const twoMissing = needsTwoApprovers(error);
   return (
-    <Row
+    <SettingsRow
       id={id}
       icon={Users}
       label={t("approvalPolicy.label")}
@@ -102,6 +102,6 @@ export function ApprovalPolicyPanel({
         onCheckedChange={onChange}
         data-testid="settings-approval-policy-switch"
       />
-    </Row>
+    </SettingsRow>
   );
 }

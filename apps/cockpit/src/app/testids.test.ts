@@ -17,7 +17,6 @@ const interactive = new Set([
   "AlertDialogCancel",
   "Checkbox",
   "CommandItem",
-  "ConfirmationAction",
   "DialogClose",
   "DropdownMenuItem",
   "DropdownMenuRadioItem",

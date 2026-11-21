@@ -1,4 +1,4 @@
-import { logger } from "../../../logging/logger.ts";
+import { logger } from "../../../logging/index.ts";
 import { recordAuthoringGateBlock } from "../../../observability/instrumentation.ts";
 import { repairLoopMessage, type ToolCallRow, trippedRepairCodes } from "../../core/dry-run.ts";
 import { buildGateError } from "../authoring-contract.ts";

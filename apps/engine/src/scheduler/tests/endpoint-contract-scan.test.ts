@@ -1,10 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+import { runEndpointContractScanForTenant } from "../../connectors/scheduled/endpoint-contract-scan-runner.ts";
 import { connectors, events, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../test-helpers/mock-http.ts";
 import { seedConnector as seedConnectorRow, seedTenant } from "../../test-helpers/seed.ts";
-import { runEndpointContractScanForTenant } from "../endpoint-contract-scan-runner.ts";
 
 const NOW = new Date("2026-06-01T00:00:00.000Z");
 const SUNSET = "Sat, 31 Jan 2026 23:59:59 GMT";
@@ -157,7 +157,6 @@ describe("endpoint-contract scan", () => {
 
   test("placeholdered paths are never probed", async () => {
     const connectorId = await seedConnector(tenantId, "contract-placeholder");
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: the literal placeholder syntax is the subject under test
     await seedCommittedWorkflow(tenantId, "wf-ph", connectorId, "/items/${input.id}");
     requestedPaths = [];
 
@@ -188,7 +187,6 @@ describe("endpoint-contract scan", () => {
     const connectorId = await seedConnector(tenantId, "contract-query-placeholder");
     await seedCommittedWorkflow(tenantId, "wf-query-ph", connectorId, "/window", {
       bucket: "hour",
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: the literal placeholder syntax is the subject under test
       from: "${input.from}",
     });
     requestedPaths = [];

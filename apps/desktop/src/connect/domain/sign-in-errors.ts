@@ -1,4 +1,4 @@
-import type { ErrorCause } from "@ui/lib/errors";
+import type { ClientErrorCause } from "@shared/error-taxonomy.ts";
 
 export type SignInErrorCase =
   | "serverUnreachable"
@@ -13,7 +13,7 @@ export type SignInErrorCase =
   | "signinUnreachable"
   | "browserFailed";
 
-export const SIGN_IN_ERRORS: Record<SignInErrorCase, { cause: ErrorCause; code: string }> = {
+export const SIGN_IN_ERRORS: Record<SignInErrorCase, { cause: ClientErrorCause; code: string }> = {
   serverUnreachable: { cause: "timeout", code: "unreachable" },
   notSubkit: { cause: "schema_mismatch", code: "not_subkit" },
   serverTooOld: { cause: "version_unsupported", code: "server_too_old" },
@@ -24,5 +24,5 @@ export const SIGN_IN_ERRORS: Record<SignInErrorCase, { cause: ErrorCause; code: 
   signinRejected: { cause: "auth_failed", code: "rejected" },
   signinOutdated: { cause: "version_unsupported", code: "outdated" },
   signinUnreachable: { cause: "timeout", code: "unreachable" },
-  browserFailed: { cause: "unclassified", code: "browser-failed" },
+  browserFailed: { cause: "unknown", code: "browser-failed" },
 };

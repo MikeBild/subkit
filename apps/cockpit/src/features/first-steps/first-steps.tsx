@@ -1,12 +1,18 @@
 import { useRouter } from "@tanstack/react-router";
-import { IconTile, ServiceTile } from "@ui/components/proto/visual";
+import { IconTile } from "@ui/atoms/icon-tile";
 import { cn } from "@ui/lib/utils";
+import { IconButton } from "@ui/molecules/icon-button";
 import { Check, ChevronRight, MessageSquare, Play, Plug, Terminal, Users, X } from "lucide-react";
 import { absolute } from "@/app/links";
-import { IconButton } from "@/components/cockpit/icon-button";
 import { SectionHeading } from "@/components/cockpit/patterns";
+import { ServiceIcon } from "@/features/connectors";
+import {
+  checklistView,
+  type StartStepIcon,
+  startStepIcon,
+} from "@/features/first-steps/model/first-steps";
 import { useI18n } from "@/lib/i18n-context";
-import { checklistView, type StartStepIcon, startStepIcon } from "./model";
+import { namedService } from "@/lib/service-icons";
 
 const STEP_ICONS: Record<StartStepIcon, typeof Plug> = {
   plug: Plug,
@@ -98,7 +104,7 @@ export function FirstSteps({
                   {step.done && <Check className="size-4 text-success-ink" aria-hidden />}
                 </span>
                 {step.service ? (
-                  <ServiceTile name={step.service} size="md" />
+                  <ServiceIcon service={namedService(step.service)} tile="md" />
                 ) : (
                   <IconTile icon={STEP_ICONS[startStepIcon(step.id)]} size="md" />
                 )}

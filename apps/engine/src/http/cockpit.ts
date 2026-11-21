@@ -4,7 +4,7 @@ import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import type { Context } from "hono";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import {
   COCKPIT_BROWSER_WORKER,
   COCKPIT_INSTALLATION_WORKER,
@@ -240,7 +240,7 @@ export function registerCockpitRoutesWith(app: OpenAPIHono<AppEnv>, files: Cockp
     logger.warn({
       module: "http",
       action: "cockpit.bundle_missing",
-      msg: "cockpit bundle is not embedded; build:cockpit must run before release",
+      msg: "cockpit bundle is not embedded; build cockpit must run before release",
     });
   }
   const csp = shell

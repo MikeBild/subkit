@@ -21,7 +21,8 @@ export type ExecutionAuthSource =
       issued_at: string;
       expires_at: string;
     }
-  | { kind: "task_run"; task_id: string; task_run_id: string; grant_id: string | null };
+  | { kind: "task_run"; task_id: string; task_run_id: string; grant_id: string | null }
+  | { kind: "device_runner"; device_id: string; installation_id: string };
 
 export interface ResolvedPrincipal {
   provider: string;

@@ -64,7 +64,6 @@ export function bootstrapFixture(persona: PersonaFixture): SkBootstrapSnapshot {
     recentSessions: [],
     flags: {},
     prefs: {
-      permissionMode: "ask",
       theme: "auto",
       personality: "balanced",
       titleFormat: "session-id",

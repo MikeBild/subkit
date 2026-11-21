@@ -6,6 +6,7 @@ import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { _resetConfigForTests, getConfig, loadConfig } from "../../config/loader.ts";
 import { RuntimeConfigCoordinator } from "../../runtime-config/coordinator.ts";
 import { initializeRuntimeConfig } from "../../runtime-config/service.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import {
   createHttpTestServer,
   createSecondaryTenant,
@@ -58,13 +59,13 @@ export const operator: Credential = {
 };
 
 export async function withNodeEnv<T>(value: string, fn: () => Promise<T>): Promise<T> {
-  const previous = process.env.NODE_ENV;
-  process.env.NODE_ENV = value;
+  const previous = testEnv.NODE_ENV;
+  testEnv.NODE_ENV = value;
   try {
     return await fn();
   } finally {
-    if (previous === undefined) delete process.env.NODE_ENV;
-    else process.env.NODE_ENV = previous;
+    if (previous === undefined) delete testEnv.NODE_ENV;
+    else testEnv.NODE_ENV = previous;
   }
 }
 
@@ -106,9 +107,9 @@ export async function expectRefused(
 
 export function setupOperatorBoundary(): void {
   beforeAll(async () => {
-    previousMasterKey = process.env.MASTER_KEY;
-    process.env.MASTER_KEY = "44".repeat(32);
-    process.env.NODE_ENV = "test";
+    previousMasterKey = testEnv.MASTER_KEY;
+    testEnv.MASTER_KEY = "44".repeat(32);
+    testEnv.NODE_ENV = "test";
     configDir = mkdtempSync(join(tmpdir(), "sk-operator-boundary-"));
     _resetConfigForTests();
     await loadConfig({
@@ -126,7 +127,7 @@ export function setupOperatorBoundary(): void {
     await server.cleanup();
     _resetConfigForTests();
     rmSync(configDir, { recursive: true, force: true });
-    if (previousMasterKey === undefined) delete process.env.MASTER_KEY;
-    else process.env.MASTER_KEY = previousMasterKey;
+    if (previousMasterKey === undefined) delete testEnv.MASTER_KEY;
+    else testEnv.MASTER_KEY = previousMasterKey;
   });
 }

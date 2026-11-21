@@ -1,14 +1,14 @@
 import type { ModelMessage } from "ai";
 import {
   actorFields,
+  checkAndDecrement,
   contextCapFor,
   countModelMessagesTokens,
-  turnBudgetVerdict,
 } from "../../llm/accounting/index.ts";
-import { LlmContextTooLarge, LlmQuotaExhausted } from "../../llm/errors.ts";
+import { LlmContextTooLarge, LlmSpendLimitReached } from "../../llm/errors.ts";
 import { recordConversationBudgetReport } from "../../llm/runtime/conversation-budget-report.ts";
-import { logger } from "../../logging/logger.ts";
-import { recordLlmQuotaExhausted } from "../../observability/instrumentation.ts";
+import { logger } from "../../logging/index.ts";
+import { recordLlmSpendLimitReached } from "../../observability/instrumentation.ts";
 import { timePhase, timePhaseAsync } from "../../observability/runtime-telemetry.ts";
 import { turnTokenEstimate } from "../core/loop.ts";
 import { compactConversation } from "../service/compact.ts";
@@ -26,52 +26,26 @@ async function reserveBudget(
   estimated: number,
   estimatedPromptTokens: number,
 ): Promise<void> {
-  const { p, route, seedModel } = base;
+  const { p, seedModel } = base;
   const actor = actorFields(p.principal);
   try {
-    const verdict = await turnBudgetVerdict(
-      {
-        tenant_id: p.tenant_id,
-        estimated_tokens: estimated,
-        route_budget: route.monthly_budget,
-        user_id: actor.actor_type === "user" ? (actor.user_id ?? null) : null,
-      },
-      p.db,
-    );
-    if (!verdict.ok && verdict.source === "route") {
-      logger.warn({
-        module: "llm",
-        action: "llm.budget.exhausted",
-        msg: "llm quota exhausted",
-        tenant_id: p.tenant_id,
-        used: verdict.used,
-        projected_tokens: verdict.projected_tokens,
-        budget: verdict.budget,
-      });
-      throw new LlmQuotaExhausted("llm_quota_exhausted", {
-        used: verdict.used,
-        projected_tokens: verdict.projected_tokens,
-        budget: verdict.budget,
-      });
-    }
+    const verdict = await checkAndDecrement(p.tenant_id, estimated, p.db);
     if (!verdict.ok) {
-      throw new LlmQuotaExhausted("llm_quota_exhausted", {
+      throw new LlmSpendLimitReached(undefined, {
         used: verdict.used,
         projected_tokens: verdict.projected_tokens,
-        budget: verdict.budget,
-        remaining: verdict.remaining,
-        scope: verdict.scope ?? "tenant",
+        ...(verdict.spend ?? {}),
       });
     }
   } catch (err) {
-    if (err instanceof LlmQuotaExhausted) {
+    if (err instanceof LlmSpendLimitReached) {
       await recordFailedUsage(p, actor, {
         model: seedModel,
         prompt_tokens: estimatedPromptTokens,
         result: "quota_exhausted",
-        error: "llm_quota_exhausted",
+        error: "llm_spend_limit_reached",
       });
-      recordLlmQuotaExhausted({ tenant_id: p.tenant_id });
+      recordLlmSpendLimitReached({ tenant_id: p.tenant_id });
     }
     throw err;
   }

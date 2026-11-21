@@ -1,7 +1,7 @@
 import { getCredentialForConnector } from "../../../credentials/service.ts";
 import type { DecryptedCredential } from "../../../credentials/types.ts";
 import type { Db } from "../../../db/client.ts";
-import { log } from "../../../logging/logger.ts";
+import { log } from "../../../logging/index.ts";
 import {
   canSignalApiDisabled,
   detectErrorReasonBody,

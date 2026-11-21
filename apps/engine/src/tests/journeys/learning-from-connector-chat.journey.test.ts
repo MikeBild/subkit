@@ -46,7 +46,7 @@ describe("a learning from a connector-targeted chat is collected for review", ()
     async () => {
       const created = await journeyFetch(ctx, "/v1/conversations", {
         method: "POST",
-        body: JSON.stringify({ permission_mode: "ask", connector_id: connectorId }),
+        body: JSON.stringify({ connector_id: connectorId }),
       });
       expect(created.status).toBe(201);
       const conversation = (

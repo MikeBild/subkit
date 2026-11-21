@@ -4,6 +4,12 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  DEFER_MUTATION_FLAG,
+  mutationDeferralWarning,
+  parseMutationDeferral,
+  releaseGateDescription,
+} from "./lib/mutation-deferral.ts";
 import { liveGateFailureHint } from "./llm-live-checks.ts";
 import { assertReleaseRefsUnchanged, releaseGateContext } from "./release-gate-provenance.ts";
 import { releaseVersionWasUsed } from "./release-history.ts";
@@ -19,12 +25,14 @@ function require_(condition: boolean, message: string): void {
   if (!condition) problems.push(message);
 }
 
+const { mutation, rest: liveArgs } = parseMutationDeferral(process.argv.slice(2));
+
 const version = (
   JSON.parse(readFileSync(join(REPO, "package.json"), "utf8")) as { version: string }
 ).version;
 const tag = `v${version}`;
 
-console.log(`release:tag: preparing ${tag}\n`);
+console.log(`release tag: preparing ${tag}\n`);
 
 git("fetch", "origin", "--tags", "--quiet");
 
@@ -90,25 +98,28 @@ if (localTag !== "") {
 }
 
 if (problems.length > 0) {
-  console.error("release:tag: refusing to tag —\n");
+  console.error("release tag: refusing to tag —\n");
   for (const p of problems) console.error(`  · ${p}`);
   process.exit(1);
 }
 
-console.log("release:tag: checking the mutation evidence (bun run check:mutation:release)\n");
-try {
-  execFileSync("bun", ["run", "check:mutation:release"], { cwd: REPO, stdio: "inherit" });
-} catch {
-  console.error(
-    `release:tag: refusing to tag ${tag} — no passing mutation evidence for this commit. ` +
-      "Run `bun run test:mutation:release` first.",
-  );
-  process.exit(1);
+if (mutation === "deferred") console.error(`${mutationDeferralWarning(tag)}\n`);
+else {
+  console.log("release tag: checking the mutation evidence (bun run quality release --check)\n");
+  try {
+    execFileSync("bun", ["run", "quality", "release", "--check"], { cwd: REPO, stdio: "inherit" });
+  } catch {
+    console.error(
+      `release tag: refusing to tag ${tag} — no passing mutation evidence for this commit. ` +
+        "Run `bun run quality release` first.",
+    );
+    process.exit(1);
+  }
 }
 
-console.log("release:tag: running the live LLM gate (bun run verify:llm-live)\n");
+console.log("release tag: running the live LLM gate (bun run verify llm-live)\n");
 try {
-  execFileSync("bun", ["run", "verify:llm-live", "--", ...process.argv.slice(2)], {
+  execFileSync("bun", ["run", "verify", "llm-live", "--", ...liveArgs], {
     cwd: REPO,
     stdio: "inherit",
   });
@@ -117,11 +128,15 @@ try {
   process.exit(1);
 }
 
-console.log("release:tag: running the release gate (bun run verify:gate:release)\n");
+console.log("release tag: running the release gate (bun run verify release)\n");
 try {
-  execFileSync("bun", ["run", "verify:gate:release"], { cwd: REPO, stdio: "inherit" });
+  execFileSync(
+    "bun",
+    ["run", "verify", "release", ...(mutation === "deferred" ? [DEFER_MUTATION_FLAG] : [])],
+    { cwd: REPO, stdio: "inherit" },
+  );
 } catch {
-  console.error(`release:tag: refusing to tag ${tag} — bun run verify:gate:release failed.`);
+  console.error(`release tag: refusing to tag ${tag} — bun run verify release failed.`);
   process.exit(1);
 }
 
@@ -150,7 +165,7 @@ execFileSync(
     "-f",
     `context=${releaseGateContext(tag)}`,
     "-f",
-    "description=Mandatory local verification and live models passed",
+    `description=${releaseGateDescription(mutation)}`,
     "--silent",
   ],
   { cwd: REPO, stdio: "inherit" },
@@ -164,7 +179,7 @@ assertReleaseRefsUnchanged(
 );
 if (localTag === "") git("tag", tag, head);
 if (readLocalTag() !== head) throw new Error("Release tag no longer points to the verified commit");
-console.log(`release:tag: ${tag} → ${head.slice(0, 8)}`);
+console.log(`release tag: ${tag} → ${head.slice(0, 8)} (mutation: ${mutation})`);
 
 const pushed = execFileSync("git", ["push", "--porcelain", "origin", `${head}:refs/tags/${tag}`], {
   cwd: REPO,
@@ -174,5 +189,5 @@ const pushed = execFileSync("git", ["push", "--porcelain", "origin", `${head}:re
 process.stdout.write(pushed);
 if (!pushed.split("\n").some((line) => line.startsWith("*\t") && line.endsWith("[new tag]")))
   throw new Error("Release tag was not newly created on origin; refusing version reuse");
-console.log(`\nrelease:tag: pushed ${tag}. Verify the deployed engine with:`);
-console.log(`  bun run verify:release -- --engine-url <url> --version ${version}`);
+console.log(`\nrelease tag: pushed ${tag}. Verify the deployed engine with:`);
+console.log(`  bun run release verify -- --engine-url <url> --version ${version}`);

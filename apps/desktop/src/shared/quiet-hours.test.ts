@@ -1,17 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { currentMute, inQuietHours, muteReason, parseClock, quietEndsAt } from "./quiet-hours.ts";
+import { currentMute, inQuietHours, muteReason, quietEndsAt } from "./quiet-hours.ts";
 
 const at = (hour: number, minute: number) => new Date(2026, 10, 20, hour, minute, 0, 0);
 
 describe("quiet hours", () => {
-  test("parses 24-hour clock values", () => {
-    expect(parseClock("00:00")).toBe(0);
-    expect(parseClock("23:59")).toBe(1439);
-    expect(parseClock("24:00")).toBeNull();
-    expect(parseClock("7:00")).toBeNull();
-    expect(parseClock(700)).toBeNull();
-  });
-
   test("covers a window across midnight", () => {
     const quiet = { enabled: true, start: "22:00", end: "07:00" };
     expect(inQuietHours(quiet, at(21, 59))).toBe(false);

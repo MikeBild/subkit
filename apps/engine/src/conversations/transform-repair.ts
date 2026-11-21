@@ -11,7 +11,7 @@ import {
 } from "../execution/jsonata-engine.ts";
 import { checkOutputContract, summarizeViolations } from "../execution/output-contract.ts";
 import { invoke } from "../llm/runtime/invoke.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { truncateForLlm } from "../tools/truncate.ts";
 import { lintJsBody } from "../workflows/js-body-lint.ts";
 import {

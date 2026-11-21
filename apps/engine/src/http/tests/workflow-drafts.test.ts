@@ -262,7 +262,6 @@ test("the read shows the concrete limit for the reviewed environment, and apply 
           {
             kind: "request",
             id: "read_page",
-            // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
             url: "https://api.example.test/v1/pages/${input.page_id}",
             method: "GET",
           },

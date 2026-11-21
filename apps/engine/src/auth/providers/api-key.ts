@@ -4,7 +4,7 @@ import { AuditAction } from "../../audit/types.ts";
 import type { Db } from "../../db/client.ts";
 import { apiKeys } from "../../db/schema/index.ts";
 import { constantTimeHexEquals, KEY_PREFIX_LITERAL, parseKey } from "../../identity/api-key.ts";
-import { log } from "../../logging/logger.ts";
+import { log } from "../../logging/index.ts";
 import { recordAuthFailure } from "../failed-auth-tracker.ts";
 import type { AuthProvider, ResolvedPrincipal } from "../types.ts";
 import {

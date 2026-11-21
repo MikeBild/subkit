@@ -60,6 +60,7 @@ async function dryRun(conversation_id: string, slug: string, plan: string) {
   const toolCtx: ToolContext = {
     db: ctx.testDb.db,
     tenant_id: ctx.tenant_id,
+    ask_before_writing: true,
     conversation_id,
     actor_id: ctx.user_id,
     connector_id: null,

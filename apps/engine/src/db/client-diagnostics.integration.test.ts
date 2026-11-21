@@ -1,31 +1,32 @@
 import { afterAll, afterEach, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { sql } from "drizzle-orm";
 import { getContext, withContext } from "../logging/context.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
+import { testEnv } from "../test-helpers/determinism/env.ts";
 import { createDbFromUrl } from "./client.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT, type TestDb } from "./tests/setup.ts";
 
 let fixture: TestDb;
 let database: ReturnType<typeof createDbFromUrl>;
-const priorDiagnostics = process.env.SUBKIT_DIAGNOSTICS;
+const priorDiagnostics = testEnv.SUBKIT_DIAGNOSTICS;
 
 beforeAll(async () => {
-  process.env.SUBKIT_DIAGNOSTICS = "1";
+  testEnv.SUBKIT_DIAGNOSTICS = "1";
   fixture = await createTestDb("client_diagnostics");
   database = createDbFromUrl(fixture.url);
 }, TEST_DB_HOOK_TIMEOUT);
 
 afterEach(() => {
-  if (priorDiagnostics === undefined) delete process.env.SUBKIT_DIAGNOSTICS;
-  else process.env.SUBKIT_DIAGNOSTICS = priorDiagnostics;
-  process.env.SUBKIT_DIAGNOSTICS = "1";
+  if (priorDiagnostics === undefined) delete testEnv.SUBKIT_DIAGNOSTICS;
+  else testEnv.SUBKIT_DIAGNOSTICS = priorDiagnostics;
+  testEnv.SUBKIT_DIAGNOSTICS = "1";
 });
 
 afterAll(async () => {
   await database?.pool.end();
   await fixture?.cleanup();
-  if (priorDiagnostics === undefined) delete process.env.SUBKIT_DIAGNOSTICS;
-  else process.env.SUBKIT_DIAGNOSTICS = priorDiagnostics;
+  if (priorDiagnostics === undefined) delete testEnv.SUBKIT_DIAGNOSTICS;
+  else testEnv.SUBKIT_DIAGNOSTICS = priorDiagnostics;
 }, TEST_DB_HOOK_TIMEOUT);
 
 describe("instrumented createDbFromUrl", () => {

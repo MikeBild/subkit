@@ -1,5 +1,5 @@
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import type { PolicyDecision } from "../../tools/policy.ts";
 import type { ConfirmReason } from "../../tools/types.ts";
 import { decideToolMode } from "../tool-policies.ts";
@@ -29,17 +29,19 @@ export async function coverForCall(
   env: InvokeEnv,
   principal: ResolvedPrincipal | null,
   args: Record<string, unknown>,
+  now: Date,
 ): Promise<PersonCover> {
-  const { inner, ctx, toolPolicies, permissionMode } = env;
+  const { inner, ctx, toolPolicies, askBeforeWriting } = env;
   if (!isCoverCandidate(inner.name)) return NO_PERSON_COVER;
-  const taskRun = taskRunMarkerOf(ctx) !== null;
+  const marker = taskRunMarkerOf(ctx);
+  const taskRun = marker !== null;
   const asks =
     decideToolMode({
       tool: inner.name,
       category: inner.category,
       input: args,
       overrides: toolPolicies,
-      permission_mode: permissionMode,
+      ...(askBeforeWriting ? { ask_before_writing: true } : {}),
       ...(taskRun ? { task_run: true } : {}),
     }).mode === "confirm_before_execution";
   if (!asks) return NO_PERSON_COVER;
@@ -49,11 +51,13 @@ export async function coverForCall(
     conversation_id: ctx.conversation_id,
     principal,
     surface: ctx.surface,
-    permission_mode: permissionMode,
+    ask_before_writing: askBeforeWriting,
     task_run: taskRun,
+    task_run_id: marker?.task_run_id ?? null,
     tool: inner.name,
     args,
     because: env.because ?? null,
+    now,
   });
 }
 

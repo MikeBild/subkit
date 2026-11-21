@@ -280,6 +280,7 @@ export interface RunOptions {
   hold_writes?: boolean;
   sensitive_metadata_preview?: boolean;
   step_output_fixtures?: Record<string, unknown>;
+  budget_resume?: Record<string, unknown>;
 }
 
 export type SensitiveCheckVerdict = "passed" | "failed" | "not_defined" | "not_run";

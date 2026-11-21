@@ -1,7 +1,12 @@
+import { useEdgeFade } from "@ui/hooks/use-edge-fade";
 import { useLayoutEffect, useRef, useState } from "react";
-import { useEdgeFade } from "@/components/cockpit/patterns/tab-motion";
+import type {
+  BucketUnit,
+  OriginChart,
+  OriginRow,
+  UsageOrigin,
+} from "@/features/usage/model/usage-model";
 import { useI18n } from "@/lib/i18n-context";
-import type { BucketUnit, OriginChart, OriginRow, UsageOrigin } from "@/lib/usage-model";
 import {
   LEGEND_ORDER,
   ORIGIN_COLOR,

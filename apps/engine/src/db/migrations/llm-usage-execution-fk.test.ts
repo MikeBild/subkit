@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq, sql } from "drizzle-orm";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { executions, llmUsage, tenants, workflows } from "../schema/index.ts";
 import { createTestDb, type TestDb } from "../tests/setup.ts";
 
-const skip = process.env.REQUIRES_PG === "0";
+const skip = testEnv.REQUIRES_PG === "0";
 
 let testDb: TestDb;
 let tenantId: string;

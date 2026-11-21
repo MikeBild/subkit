@@ -472,6 +472,49 @@ export function checkRequest(
     : { ok: false, reason: "not_a_request" };
 }
 
+const HOLD_BACK = new Set([
+  "nicht",
+  "nichts",
+  "nie",
+  "not",
+  "never",
+  "nothing",
+  "dont",
+  "stop",
+  "stopp",
+  "halt",
+  "warte",
+  "wait",
+  "abbrechen",
+  "cancel",
+]);
+
+function sentenceWords(tokens: readonly string[], sentence: Sentence): string[] {
+  return tokens.slice(sentence.start, sentence.end).filter((token) => !PUNCTUATION.test(token));
+}
+
+function holdsBackWords(words: readonly string[]): boolean {
+  return words.some((token) => HOLD_BACK.has(token) || token.endsWith('"t'));
+}
+
+export function asksForWork(normalizedText: string): boolean {
+  const tokens = tokenize(normalizedText);
+  return sentencesOf(tokens).some((sentence) => {
+    const words = sentenceWords(tokens, sentence);
+    if (words.length === 0) return false;
+    if (sentence.question && QUESTION_OPENERS.has(tokens[sentence.start] ?? "")) return false;
+    return !holdsBackWords(words);
+  });
+}
+
+export function holdsBack(normalizedText: string): boolean {
+  const tokens = tokenize(normalizedText);
+  const sentences = sentencesOf(tokens)
+    .map((sentence) => sentenceWords(tokens, sentence))
+    .filter((words) => words.length > 0);
+  return sentences.length > 0 && sentences.every(holdsBackWords);
+}
+
 export function namesRequest(normalizedText: string): boolean {
   const tokens = tokenize(normalizedText);
   const quoted = quotedMask(tokens);

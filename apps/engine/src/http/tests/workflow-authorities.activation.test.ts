@@ -316,7 +316,6 @@ test("held report preparation works for a saved draft and cannot grant, activate
             kind: "request",
             method: "POST",
             url: "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
-            // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow expression
             body: { raw: "${input.raw}" },
             max_retries: 0,
           },

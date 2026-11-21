@@ -79,7 +79,6 @@ describe("buildWorkflowUsageFromParts — inputs from input_schema", () => {
 
 describe("buildWorkflowUsageFromParts — inputs synthesized from placeholders", () => {
   test("synthesizes inputs from placeholder references in a request step URL", () => {
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow step URL literals use ${input.*} syntax
     const stepUrl = "https://api.example.com/?d=${input.date}&fmt=${input.format}";
     const usage = buildWorkflowUsageFromParts({
       workflow: {

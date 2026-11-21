@@ -1,6 +1,6 @@
 import type { PreviewStepSummary } from "../../../execution/classify.ts";
 import type { RunResult } from "../../../execution/types.ts";
-import { logger } from "../../../logging/logger.ts";
+import { logger } from "../../../logging/index.ts";
 import type { WorkflowDef } from "../../../workflows/types.ts";
 import {
   heldReadHintOf,

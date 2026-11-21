@@ -57,17 +57,6 @@ describe("ConfigSchema", () => {
       expect(leaf?.meta.requiresRestart).toBe(true);
     }
   });
-  test("new REPL defaults allow preparation while explicit stored modes remain unchanged", () => {
-    expect(ConfigSchema.parse({ database: { url: "postgres://x" } }).repl.permissionMode).toBe(
-      "auto",
-    );
-    for (const permissionMode of ["ask", "auto", "plan", "yolo"] as const) {
-      expect(
-        ConfigSchema.parse({ database: { url: "postgres://x" }, repl: { permissionMode } }).repl
-          .permissionMode,
-      ).toBe(permissionMode);
-    }
-  });
   test("zero-config: empty input produces a fully-defaulted Config except for database.url", () => {
     const result = ConfigSchema.safeParse({});
     expect(result.success).toBe(false);
@@ -94,7 +83,7 @@ describe("ConfigSchema", () => {
     expect(result.data.queue.concurrency).toBe(1);
     expect(result.data.queue.abort_poll_interval_ms).toBe(500);
     expect(result.data.queue.crash_recovery_sweep_interval_ms).toBe(60_000);
-    expect(result.data.tokens.monthly_budget).toBe(0);
+    expect(result.data.tokens.currency).toBe("USD");
   });
 
   test("sandbox.max_transform_wall_ms defaults to five minutes and must be a positive integer", () => {
@@ -167,13 +156,13 @@ describe("ConfigSchema", () => {
       database: { url: "postgres://x" },
       tenants: {
         "tenant-a": { llm: { api_key: "tenant-a-key" } },
-        "tenant-b": { tokens: { monthly_budget: 50_000 } },
+        "tenant-b": { tokens: { currency: "EUR" } },
       },
     });
     expect(r.success).toBe(true);
     if (!r.success) return;
     expect(r.data.tenants?.["tenant-a"]?.llm?.api_key).toBe("tenant-a-key");
-    expect(r.data.tenants?.["tenant-b"]?.tokens?.monthly_budget).toBe(50_000);
+    expect(r.data.tenants?.["tenant-b"]?.tokens?.currency).toBe("EUR");
   });
 
   test("a tenant overlay keeps its own model prices and currency", () => {

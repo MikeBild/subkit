@@ -1,7 +1,7 @@
 import type { StepResult, ToolSet } from "ai";
 import { actorFields, recordUsage } from "../../llm/accounting/index.ts";
 import { runOutputGuard } from "../../llm/output-guard/index.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { recordLlmTokens } from "../../observability/instrumentation.ts";
 import { readMemoryUsage, timePhaseAsync } from "../../observability/runtime-telemetry.ts";
 import { now } from "../../utils/clock.ts";

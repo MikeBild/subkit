@@ -5,8 +5,8 @@ import { type ConverseMockStep, getMockProvider } from "../../llm/mock-provider.
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { seedConnector, seedWorkflow } from "../../test-helpers/seed.ts";
 import { getTaskRunMarker } from "../core/draft.ts";
-import type { ConversationTurnOutcome } from "../service.ts";
-import { createConversation } from "../service.ts";
+import type { ConversationTurnOutcome } from "../service/index.ts";
+import { createConversation } from "../service/index.ts";
 import type { TaskRunMarker } from "../types.ts";
 import { appendMessageWithTurn, type ConversationTestCtx } from "./setup.ts";
 

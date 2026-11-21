@@ -1,9 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { dictionary, type Locale } from "../../shared/i18n.ts";
-import type { CheckResult, CheckStatus, ConnectState } from "../../shared/ipc.ts";
+import {
+  type CheckResult,
+  type CheckStatus,
+  type ConnectState,
+  LOCAL_UNAVAILABLE,
+} from "../../shared/ipc.ts";
 import { completeStep, NO_ONBOARDING, startOnboarding } from "../../shared/onboarding.ts";
-import type { SignInStore } from "../adapter/index.ts";
+import { createMockLocalCapabilities, type SignInStore } from "../adapter/index.ts";
 import { type Event, evolveAll, INITIAL_STATE, type SignInState, viewOf } from "../domain/index.ts";
 import { desktopRunner } from "../lib/test-runner.ts";
 import { SignInWindow } from "./sign-in-window.tsx";
@@ -38,6 +43,12 @@ function main(patch: Partial<ConnectState> = {}, locale: Locale = "en"): Connect
     signedIn: null,
     onboarding: NO_ONBOARDING,
     update: { phase: "idle" },
+    permissions: {
+      supported: true,
+      permissions: { accessibility: false, screen: false, restartPending: false },
+      lost: [],
+    },
+    local: LOCAL_UNAVAILABLE,
     ...patch,
   };
 }
@@ -78,7 +89,9 @@ function storeAt(current: SignInState): SignInStore {
 }
 
 function render(current: SignInState): string {
-  return renderToStaticMarkup(<SignInWindow store={storeAt(current)} />);
+  return renderToStaticMarkup(
+    <SignInWindow store={storeAt(current)} local={createMockLocalCapabilities()} />,
+  );
 }
 
 const count = (html: string, text: string) => html.split(text).length - 1;
@@ -166,6 +179,49 @@ describe.skipIf(!desktopRunner)("sign-in window page", () => {
     expect(html).toContain("work.example.com");
     expect(html).toContain("Ruhezeiten");
     expect(html).toContain('role="switch"');
+  });
+  test("the permission setup shows both cards, a restart once granted and a lost permission", () => {
+    const html = render(
+      state(
+        {
+          view: "permissions",
+          permissions: {
+            supported: true,
+            permissions: { accessibility: false, screen: true, restartPending: true },
+            lost: ["accessibility"],
+          },
+        },
+        [],
+        "de",
+      ),
+    );
+    expect(html).toContain("Damit SubKit Apps bedienen kann");
+    expect(html).toContain('data-testid="permission-accessibility-open"');
+    expect(html).toContain('data-testid="permission-accessibility-check"');
+    expect(html).toContain('data-testid="permission-screen-restart"');
+    expect(html).toContain("SubKit neu starten");
+    expect(html).toContain('data-testid="permissions-lost"');
+    expect(html).toContain("Berechtigung fehlt: Bedienungshilfen");
+    expect(html).toMatch(/data-testid="permissions-next"[^>]*disabled/);
+    expect(html).toContain('data-testid="permissions-skip"');
+    expect(html).toContain('aria-label="Schritt 1 von 6" aria-hidden="true"');
+  });
+
+  test("settings lead to the local capabilities of this Mac", () => {
+    const html = render(state({ view: "settings" }, [], "de"));
+    expect(html).toContain("Lokale Fähigkeiten");
+    expect(html).toContain('data-testid="settings-local-open"');
+  });
+
+  test("local capabilities show the switch, the device and four tabs while they load", () => {
+    const html = render(state({ view: "local" }, [], "de"));
+    expect(html).toContain("Chat und Aufgaben dürfen diesen Mac nutzen");
+    expect(html).toContain("MacBook-Anna");
+    for (const label of ["Ordner (0)", "Websites (0)", "Apps (0)", "Tabu für SubKit (0)"]) {
+      expect(html).toContain(label);
+    }
+    expect(html).toContain('data-testid="local-choose-folder"');
+    expect(html).not.toContain("Deine Server");
   });
 });
 

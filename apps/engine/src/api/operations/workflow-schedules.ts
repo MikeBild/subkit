@@ -243,6 +243,7 @@ export const updateScheduleOperation = defineOperation<
         ...(body.execution_mode !== undefined ? { execution_mode: body.execution_mode } : {}),
         ...(body.paused !== undefined ? { paused: body.paused } : {}),
         ...(body.input !== undefined ? { input: body.input } : {}),
+        created_by: principal.kind === "user" ? principal.id : null,
       });
     } catch (err) {
       return scheduleRejection(err);

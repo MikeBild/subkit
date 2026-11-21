@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import {
+  DIALOG_BODY,
+  DIALOG_FRAME,
+  dialogWidthClass,
+  FILLED_DESTRUCTIVE,
+} from "@ui/organisms/dialog-frame";
 import { ChoiceCards } from "./choice-card";
-import { DIALOG_BODY, DIALOG_FRAME, dialogWidthClass, FILLED_DESTRUCTIVE } from "./dialog-frame";
 import { render } from "./test-utils";
 
 describe("P22 ChoiceCards", () => {

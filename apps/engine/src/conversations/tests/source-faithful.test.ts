@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { knowledgeChunks, knowledgeSources, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import type { Citation } from "../citations.ts";
 import {
   checkSourceFaithful,
@@ -10,7 +11,7 @@ import {
   keepResolvableCitations,
 } from "../source-faithful.ts";
 
-const skip = process.env.REQUIRES_PG === "0";
+const skip = testEnv.REQUIRES_PG === "0";
 
 const cite = (over: Partial<Citation> & { id: string }): Citation => ({
   source_type: "knowledge_chunk",
@@ -65,8 +66,8 @@ let previousLlmProvider: string | undefined;
 
 beforeAll(async () => {
   if (skip) return;
-  previousLlmProvider = process.env.LLM_PROVIDER;
-  process.env.LLM_PROVIDER = "mock";
+  previousLlmProvider = testEnv.LLM_PROVIDER;
+  testEnv.LLM_PROVIDER = "mock";
   resetMockProvider();
   testDb = await createTestDb("source-faithful");
   const [tenant] = await testDb.db
@@ -107,8 +108,8 @@ beforeAll(async () => {
 afterAll(async () => {
   if (!skip && testDb?.cleanup) await testDb.cleanup();
   resetMockProvider();
-  if (previousLlmProvider === undefined) delete process.env.LLM_PROVIDER;
-  else process.env.LLM_PROVIDER = previousLlmProvider;
+  if (previousLlmProvider === undefined) delete testEnv.LLM_PROVIDER;
+  else testEnv.LLM_PROVIDER = previousLlmProvider;
 }, 30_000);
 
 describe.skipIf(skip)("keepResolvableCitations", () => {

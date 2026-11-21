@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import type ts from "typescript";
 import {
@@ -13,15 +13,21 @@ import { parseTsconfigPaths } from "./import-graph.ts";
 import { collectImportsFromSource, parseSource, resolveImport } from "./imports.ts";
 import { assertCompletePureTargetInventory, discoverPureTargets } from "./pure-targets.ts";
 import {
+  COMPOSITION_ROOTS,
   conversationsLeafHits,
   dbImportHits,
   effectHits,
+  getDbCallHits,
   getDbFallbackHits,
   isGetDbFallbackScope,
   isTestPath,
   lineCount,
+  lintSuppressionHits,
+  processEnvHits,
   pureCoreImportHits,
   type ResolvedImport,
+  subsystemEntryHits,
+  vendorImportHits,
 } from "./rules.ts";
 import { findTransitivePurityHits } from "./transitive-purity.ts";
 import { routeSchemaHits, toolSchemaHits } from "./zod-boundaries.ts";
@@ -227,6 +233,67 @@ export const RATCHETS: readonly Ratchet[] = [
       for (const [rel, n] of tools) out.set(rel, (out.get(rel) ?? 0) + n);
       return out;
     },
+  },
+  {
+    id: "vendor_sdk_in_adapters",
+    allowlist: "vendor-sdk-imports.txt",
+    rule: "runtime import of drizzle-orm or pg outside db/, */persistence/ or */adapters/; pg-boss outside queue/boss.ts; @modelcontextprotocol/sdk outside mcp/client/, mcp/transports/ or mcp/server.ts; ai or @ai-sdk/* outside llm/runtime/ (type-only imports are allowed); move the call behind a port in an adapter",
+    unit: "imports",
+    measure: (cache) =>
+      countBy(
+        cache.list([ENGINE], (rel) => !isTestPath(rel)),
+        (rel) => vendorImportHits(rel, cache.resolvedImports(rel)).length,
+      ),
+  },
+  {
+    id: "getdb_callers",
+    allowlist: "getdb-callers.txt",
+    rule: "getDb() call outside a process entry point (COMPOSITION_ROOTS in audit/rules.ts); receive the executor from the caller instead",
+    unit: "calls",
+    measure: (cache) =>
+      countBy(
+        cache.list([ENGINE], (rel) => !isTestPath(rel) && !COMPOSITION_ROOTS.has(rel)),
+        (rel) => getDbCallHits(cache.tree(rel)).length,
+      ),
+  },
+  {
+    id: "subsystem_entry",
+    allowlist: "subsystem-entry.txt",
+    rule: "a top-level folder of apps/engine/src without index.ts, or a production import from another engine folder that bypasses its index.ts; import the subsystem through its index.ts",
+    unit: "imports",
+    measure: (cache) => {
+      const out = countBy(
+        cache.list([ENGINE], (rel) => !isTestPath(rel)),
+        (rel) => subsystemEntryHits(rel, cache.resolvedImports(rel)).length,
+      );
+      for (const entry of readdirSync(join(cache.repo, ENGINE), { withFileTypes: true })) {
+        const index = `${ENGINE}/${entry.name}/index.ts`;
+        if (entry.isDirectory() && !cache.exists(index)) out.set(index, 1);
+      }
+      return out;
+    },
+  },
+  {
+    id: "process_env",
+    allowlist: "process-env.txt",
+    rule: "process.env read or write outside apps/engine/src/env.ts and test-helpers/determinism/env.ts; read through env.ts",
+    unit: "reads",
+    measure: (cache) =>
+      countBy(
+        cache.list([ENGINE], () => true),
+        (rel) => processEnvHits(rel, cache.tree(rel)).length,
+      ),
+  },
+  {
+    id: "lint_suppressions",
+    allowlist: "lint-suppressions.txt",
+    rule: "biome-ignore outside *.test.ts(x) files; fix the code or change the rule in biome.json with a reason",
+    unit: "suppressions",
+    measure: (cache) =>
+      countBy(
+        cache.list(["apps", "packages", "tests", "scripts"], (rel) => !/\.test\.tsx?$/.test(rel)),
+        (rel) => lintSuppressionHits(cache.tree(rel)).length,
+      ),
   },
 ];
 

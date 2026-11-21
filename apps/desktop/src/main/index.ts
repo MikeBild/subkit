@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { app } from "electron";
 import { protocolRegistration } from "../shared/channel.ts";
 import { findDeepLink, secondInstanceAction } from "../shared/deep-link.ts";
@@ -59,13 +60,23 @@ function main(): void {
   });
   app.on("activate", () => shell?.open());
   app.on("window-all-closed", () => {});
-  app.on("before-quit", () => shell?.beforeQuit());
+  let localStopped = false;
+  app.on("before-quit", (event) => {
+    shell?.beforeQuit();
+    if (localStopped || !shell?.localWorkspace.running) return;
+    event.preventDefault();
+    void shell.localWorkspace.stop().finally(() => {
+      localStopped = true;
+      app.quit();
+    });
+  });
 
   process.on("uncaughtException", (error) => shell?.errors.record("main.uncaught", error));
   process.on("unhandledRejection", (reason) => shell?.errors.record("main.unhandled", reason));
 
   void app.whenReady().then(() => {
     registerProtocol();
+    if (!app.isPackaged) app.dock?.setIcon(join(app.getAppPath(), "dist/assets/icon-mac.png"));
     shell = new Shell();
     shell.start(pendingLink, launchedHidden());
     pendingLink = null;

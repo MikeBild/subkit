@@ -1,7 +1,7 @@
 import type { LanguageModel, ModelMessage, ToolChoice, ToolSet } from "ai";
 import type { ConversationTool } from "../../conversations/tools/index.ts";
 import type { AuthoringStage } from "../../conversations/types.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { vendorModelId } from "../pricing.ts";
 import type { LlmProviderKind } from "../types.ts";
 import type { ConversationSurface } from "./context-assembler/base-prompts.ts";

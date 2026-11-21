@@ -1,19 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${...}` placeholder tokens are part of the tested grammar.
-// Probe-evidence exemption for the loop-authoring gate. When a
-// loop's referenced upstream step is a `request` step routed through
-// a connector the operator has already successfully probed in this
-// conversation, the probe counts as shape evidence and the gate
-// skips.
-//
-// Pre-fix (session 0a01c5f3 16:18:26): the LLM successfully probed
-// the DigitalOcean connector twice (200 OK on /v2/projects and
-// /v2/projects/{id}/resources), then issued build_workflow with a
-// loop reading those same endpoints — and the gate STILL fired
-// `loop_authoring_requires_inspect` because the probe wasn't
-// recorded as a workflow dry_run. The LLM had to add an extra
-// dry_run round-trip just to satisfy the gate. This test pins the
-// new exemption.
-
 import { describe, expect, test } from "bun:test";
 import { stepFingerprint } from "../../step-fingerprint.ts";
 import type { DraftDocument } from "../../types.ts";

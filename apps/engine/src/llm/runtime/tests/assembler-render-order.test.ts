@@ -7,7 +7,8 @@ import {
   workflows,
 } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
-import { logger } from "../../../logging/logger.ts";
+import { logger } from "../../../logging/index.ts";
+import { testEnv } from "../../../test-helpers/determinism/env.ts";
 import { seedTenant } from "../../../test-helpers/seed.ts";
 import { resetMockProvider } from "../../mock-provider.ts";
 import type { AuthoringPromptHint } from "../../types.ts";
@@ -31,7 +32,7 @@ function authoringHintFor(mode: "connector" | "workflow"): AuthoringPromptHint {
 const SECTION_CONNECTOR_RECIPE_BODIES = "connector_recipe_bodies";
 const SECTION_CONNECTOR_RECIPES = "connector_recipes";
 
-const skip = process.env.REQUIRES_PG === "0";
+const skip = testEnv.REQUIRES_PG === "0";
 
 if (skip) {
   logger.warn({
@@ -92,7 +93,7 @@ const RECIPE_SNAPSHOT: Record<string, unknown> = {
 
 beforeAll(async () => {
   if (skip) return;
-  process.env.LLM_PROVIDER = "mock";
+  testEnv.LLM_PROVIDER = "mock";
   resetMockProvider();
 
   ctx = await createTestDb("assembler_render_order");

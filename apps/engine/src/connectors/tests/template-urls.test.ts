@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { loadBuiltinTemplates } from "../templates.ts";
 
-const RUN_URL_CHECKS = !!process.env.CHECK_URLS;
+const RUN_URL_CHECKS = !!testEnv.CHECK_URLS;
 
 describe.skipIf(!RUN_URL_CHECKS)("connector template ingestion URLs", () => {
   const templates = loadBuiltinTemplates();

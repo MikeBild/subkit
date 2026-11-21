@@ -6,7 +6,7 @@ import { buildOAuthRedirectUri, OAUTH_CALLBACK_PATH } from "../credentials/oauth
 import type { DecryptedCredential } from "../credentials/types.ts";
 import type { Db, Executor } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { invalidateTenantState } from "../operator/index.ts";
 import {
   type ConnectorAuthFailedPayload,

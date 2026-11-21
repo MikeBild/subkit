@@ -1,19 +1,9 @@
+import { Skeleton } from "@ui/atoms/skeleton";
+import { useArrived, useLoadingPhase } from "@ui/lib/loading-phase";
+import { cn } from "@ui/lib/utils";
 import type { ReactNode } from "react";
 import { useI18n } from "@/lib/i18n-context";
-import { useArrived, useLoadingPhase } from "@/lib/use-loading-phase";
-import { cn } from "@/lib/utils";
 import { KPI_TILE_BOX, KPI_TILE_DETAIL, KPI_TILE_LABEL, KPI_TILE_VALUE_ROW } from "./kpi-tile";
-
-export function Skeleton({ className, testId }: { className?: string; testId?: string }) {
-  return (
-    <span
-      aria-hidden="true"
-      data-slot="skeleton"
-      data-testid={testId}
-      className={cn("sk-skeleton block rounded-md", className)}
-    />
-  );
-}
 
 export function Loadable({
   loading,

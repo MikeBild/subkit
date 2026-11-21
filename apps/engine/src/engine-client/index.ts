@@ -27,15 +27,8 @@ import * as identitySvc from "../identity/service.ts";
 import { listKnowledgeChunks } from "../knowledge/bundle-service.ts";
 import * as knowledgeSvc from "../knowledge/service.ts";
 import type { CreateKnowledgeSourceInput, UpdateKnowledgeSourceInput } from "../knowledge/types.ts";
-import {
-  currentMonthBucket,
-  monthlyBudgetFigures,
-  monthlyUsage,
-  monthlyUsageForUser,
-  readTenantMonthlyBudget,
-  resolveMonthlyBudget,
-  resolveUserMonthlyBudget,
-} from "../llm/accounting/index.ts";
+import { currentMonthBucket, monthlyUsage, monthlyUsageForUser } from "../llm/accounting/index.ts";
+import { readSpend } from "../llm/accounting/spend.ts";
 import { describeConnectorPlaceholders } from "../llm/substitution/resolver.ts";
 import * as rbacRoles from "../rbac/roles.ts";
 import type { ScopeIssuer } from "../rbac/scope-issuance.ts";
@@ -45,7 +38,7 @@ import * as skillCandidatesSvc from "../skill-candidates/service.ts";
 import type { SkillCandidateStatus } from "../skill-candidates/types.ts";
 import * as skillsSvc from "../skills/service.ts";
 import type { CreateSkillInput, UpdateSkillInput } from "../skills/types.ts";
-import { readLlmWindowCost, statsBucketFor } from "../stats/llm-cost.ts";
+import { readLlmWindowCost, statsBucketFor } from "../stats/index.ts";
 import * as inboundSvc from "../webhooks/inbound/service.ts";
 import * as subscriptionsSvc from "../webhooks/outbound/service.ts";
 import { loadCategoryVocabulary } from "../workflows/catalog-view.ts";
@@ -402,11 +395,8 @@ export class EngineClient {
 
   metrics = {
     monthlyTokenUsage: () => monthlyUsage(this.tenant_id, this.db),
-    tenantTokenBudget: () => resolveMonthlyBudget(this.tenant_id),
     currentMonthBucket: () => currentMonthBucket(),
-    tenantMonthlyBudget: () => readTenantMonthlyBudget(this.tenant_id, this.db),
-    monthlyBudgetFigures: (used: number, budget: number | null) =>
-      monthlyBudgetFigures(used, budget),
+    aiBudget: () => readSpend(this.tenant_id, this.db),
     llmWindowCost: (window: { from: Date; to: Date; userId?: string | null }) =>
       readLlmWindowCost(this.db, {
         tenantId: this.tenant_id,
@@ -425,7 +415,6 @@ export class EngineClient {
         .limit(Math.min(limit, 200)),
     monthlyTokenUsageForUser: (userId: string) =>
       monthlyUsageForUser(this.tenant_id, userId, this.db),
-    userTokenBudget: (userId: string) => resolveUserMonthlyBudget(this.tenant_id, userId, this.db),
     llmUsageRecentForUser: async (userId: string, limit = 50) =>
       await this.db
         .select()

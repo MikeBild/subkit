@@ -4,7 +4,7 @@ import { assertInsertRow } from "../db/assert-insert.ts";
 import type { Executor } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
 import { patchCandidates } from "../db/schema/index.ts";
-import { log } from "../logging/logger.ts";
+import { log } from "../logging/index.ts";
 import { recordPatchCandidate } from "../observability/instrumentation.ts";
 import { closeIfUndecidable } from "./open-decisions.ts";
 

@@ -5,7 +5,7 @@ import {
   shouldFallBack,
   toLlmProviderError,
 } from "../../llm/provider-errors.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { isExpectedCancellation } from "../abort.ts";
 import { fallsBack } from "../core/loop.ts";
 import { inferReplyLocale } from "../handoff-summary.ts";

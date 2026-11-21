@@ -1,12 +1,12 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
-import { encryptSecret } from "../../crypto/aes-gcm.ts";
+import { encryptSecret } from "../../crypto/index.ts";
 import type { Db } from "../../db/client.ts";
-import { credentials } from "../../db/schema/index.ts";
+import { vaultItems } from "../../db/schema/index.ts";
 import { withTenantWork } from "../../execution/index.ts";
 import { lockActiveTenant, SelfServiceIdentityError } from "../../identity/index.ts";
-import { errorFields, logger } from "../../logging/logger.ts";
+import { errorFields, logger } from "../../logging/index.ts";
 import type { DecryptedCredential, TokenMintCredentialValue } from "../types.ts";
 import { runTokenMintGrant } from "./client.ts";
 
@@ -38,7 +38,7 @@ function mintConfig(decrypted: TokenMintCredential): TokenMintCredentialValue {
 export async function refreshTokenMintIfStale(
   db: Db,
   tenant_id: string,
-  credRow: typeof credentials.$inferSelect,
+  credRow: typeof vaultItems.$inferSelect,
   decrypted: TokenMintCredential,
 ): Promise<TokenMintCredential> {
   return withTenantWork(tenant_id, async () => {
@@ -62,9 +62,9 @@ export async function refreshTokenMintIfStale(
       const generation = await db.transaction(async (tx) => {
         await lockActiveTenant(tenant_id, tx);
         const [rotated] = await tx
-          .update(credentials)
+          .update(vaultItems)
           .set({
-            credential_generation: sql`${credentials.credential_generation} + 1`,
+            credential_generation: sql`${vaultItems.credential_generation} + 1`,
             verified_identity: null,
             ciphertext: toBuf(enc.ciphertext),
             iv: toBuf(enc.iv),
@@ -74,13 +74,13 @@ export async function refreshTokenMintIfStale(
           })
           .where(
             and(
-              eq(credentials.tenant_id, tenant_id),
-              eq(credentials.id, credRow.id),
-              eq(credentials.credential_generation, credRow.credential_generation),
-              isNull(credentials.deleted_at),
+              eq(vaultItems.tenant_id, tenant_id),
+              eq(vaultItems.id, credRow.id),
+              eq(vaultItems.credential_generation, credRow.credential_generation),
+              isNull(vaultItems.deleted_at),
             ),
           )
-          .returning({ credential_generation: credentials.credential_generation });
+          .returning({ credential_generation: vaultItems.credential_generation });
         if (!rotated)
           throw Object.assign(new Error("credential changed during refresh"), {
             code: "credential_generation_changed",
@@ -89,8 +89,8 @@ export async function refreshTokenMintIfStale(
           {
             tenant_id,
             actor_type: "system",
-            action: AuditAction.CREDENTIAL_OAUTH2_REFRESHED,
-            resource_type: "credential",
+            action: AuditAction.VAULT_ITEM_REFRESHED,
+            resource_type: "vault_item",
             resource_id: credRow.id,
             result: "success",
             metadata: { connector_id: credRow.connector_id, mode: "token_mint" },
@@ -132,8 +132,8 @@ export async function refreshTokenMintIfStale(
         {
           tenant_id,
           actor_type: "system",
-          action: AuditAction.CREDENTIAL_OAUTH2_REFRESHED,
-          resource_type: "credential",
+          action: AuditAction.VAULT_ITEM_REFRESHED,
+          resource_type: "vault_item",
           resource_id: credRow.id,
           result: "error",
           reason: err instanceof Error ? err.message : String(err),

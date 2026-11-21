@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { routeLogsToStderr } from "../../logging/logger.ts";
+import { routeLogsToStderr } from "../../logging/index.ts";
 import { preloadQuickJsModule, type RunJsOptions, runJsInCurrentProcess } from "./runtime.ts";
 import { SandboxError } from "./types.ts";
 import {

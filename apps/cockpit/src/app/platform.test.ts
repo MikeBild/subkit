@@ -1,36 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { createSseParser } from "@/lib/sse-stream";
 import { listPagePath, listQueryKey, nextPageParam } from "@/lib/use-infinite-list";
-import { loadingPhase, SKELETON_MIN_MS } from "@/lib/use-loading-phase";
-import { backoffDelay } from "./live-events";
 import { keyId, keysForEvent, LIVE_RULES } from "./live-invalidation";
 import { entersRoute, NO_PAGE, pageOf } from "./route-entrance";
 import { isNewVersion } from "./version-notice";
 
 const SRC = join(import.meta.dir, "..");
-
-describe("SSE parser", () => {
-  test("frames split across chunks, with ids, types and multi-line data", () => {
-    const parse = createSseParser();
-    expect(parse("id: 7\nevent: execution.started\nda")).toEqual([]);
-    expect(parse('ta: {"execution_id":"a"}\n\n')).toEqual([
-      { id: "7", event: "execution.started", data: '{"execution_id":"a"}' },
-    ]);
-    expect(parse("data: one\r\ndata: two\r\n\r\n")).toEqual([
-      { id: null, event: "message", data: "one\ntwo" },
-    ]);
-  });
-
-  test("heartbeat comments produce nothing", () => {
-    const parse = createSseParser();
-    expect(parse(": ping\n\n")).toEqual([]);
-    expect(parse("event: hello\ndata: {}\n\n: keepalive\n\n")).toEqual([
-      { id: null, event: "hello", data: "{}" },
-    ]);
-  });
-});
 
 describe("live invalidation table", () => {
   const ids = (type: string) => keysForEvent(type).map(keyId);
@@ -105,26 +81,10 @@ describe("live invalidation table", () => {
 });
 
 describe("reconnect and version", () => {
-  test("backoff grows and is capped", () => {
-    expect(backoffDelay(0)).toBe(1_000);
-    expect(backoffDelay(1)).toBeGreaterThan(backoffDelay(0));
-    expect(backoffDelay(99)).toBe(30_000);
-  });
-
   test("a new version is a different, announced one", () => {
     expect(isNewVersion("1.2.3", null)).toBe(false);
     expect(isNewVersion("1.2.3", "1.2.3")).toBe(false);
     expect(isNewVersion("1.2.3", "1.2.4")).toBe(true);
-  });
-});
-
-describe("loading phase", () => {
-  test("nothing shows before the delay; once shown, it holds the minimum", () => {
-    expect(loadingPhase({ loading: true, shownAt: null, now: 0 })).toBe("reserve");
-    expect(loadingPhase({ loading: true, shownAt: 0, now: 10 })).toBe("skeleton");
-    expect(loadingPhase({ loading: false, shownAt: 0, now: SKELETON_MIN_MS - 1 })).toBe("skeleton");
-    expect(loadingPhase({ loading: false, shownAt: 0, now: SKELETON_MIN_MS })).toBe("content");
-    expect(loadingPhase({ loading: false, shownAt: null, now: 0 })).toBe("content");
   });
 });
 

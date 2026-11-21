@@ -64,8 +64,7 @@ export function buildToolCtx(params: {
   afterWorkflowRead?: (id: string) => Promise<void>;
   recentUserMessage?: string;
 }): ToolContext {
-  // biome-ignore lint/suspicious/noExplicitAny: minimal stub matching ToolContext
-  const engineClientStub: any = {
+  const engineClientStub = {
     context: {
       actor_id: ctx.user_id,
       actor_type: "user",
@@ -113,9 +112,8 @@ export function buildToolCtx(params: {
     },
     connector_id: null,
     workflow_id: null,
-    permission_mode: "auto",
     ...(params.recentUserMessage ? { recentUserMessage: params.recentUserMessage } : {}),
-    engineClient: engineClientStub,
+    engineClient: engineClientStub as unknown as ToolContext["engineClient"],
     getDraft: () => params.draft,
     setDraft: params.setDraft,
   };

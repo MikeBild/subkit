@@ -1,25 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${…}` tokens are the sk placeholder grammar this module parses and matches — never JS template strings.
-// `evaluateEndpointGrounding` — refuses a workflow draft whose `request`
-// steps target a path the connector's discovered spec does not document.
-//
-// The failure mode (prod conversation 48cc3e4b): discovery correctly found
-// the connector's OpenAPI (`POST /v1/sites`, `POST /v1/sites/{site}/content`,
-// …), but the authoring model built the draft from its own generic-CMS prior
-// and emitted undocumented routes (`/sites`, `/sites/{site}/items`,
-// `/sites/{site}/keys`) plus a JSON body where the spec declares
-// `text/markdown`. Nothing cross-checked the authored paths against the
-// discovered set, so the wrong paths only surfaced reactively as live 404/500s
-// during preview — after real writes had already fired and tripped the
-// connector circuit breaker.
-//
-// This module is the missing check: a deterministic set-membership test of
-// each request step's (method, path) against the connector's discovered
-// endpoints, treating the discovered set as the CLOSED set of allowed routes.
-// It is **fail-open** — a connector with no discovered index (or an empty one)
-// is never penalised; the check only fires when there is ground truth to check
-// against. General by construction: keyed on "this connector has a discovered
-// spec", never on a vendor string.
-
 import { suggestClosest } from "../workflows/levenshtein.ts";
 
 export interface DiscoveredConnectorEndpoints {

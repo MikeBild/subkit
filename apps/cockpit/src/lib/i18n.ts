@@ -39,6 +39,7 @@ import { taskRunDe, taskRunEn } from "./i18n/task-run";
 import { tasksDe, tasksEn } from "./i18n/tasks";
 import { toolDe, toolEn } from "./i18n/tool";
 import { usageDe, usageEn } from "./i18n/usage";
+import { vaultDe, vaultEn } from "./i18n/vault";
 import { workflowDe, workflowEn } from "./i18n/workflow";
 import { workflowReviewDe, workflowReviewEn } from "./i18n/workflow-review";
 
@@ -92,11 +93,14 @@ const EN = {
   ...taskRunEn,
   ...toolEn,
   ...usageEn,
+  ...vaultEn,
   ...workflowEn,
   ...workflowReviewEn,
 } as const;
 
 export type TranslationKey = keyof typeof EN;
+
+export type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 
 const DE: Record<TranslationKey, string> = {
   ...accessDe,
@@ -140,6 +144,7 @@ const DE: Record<TranslationKey, string> = {
   ...taskRunDe,
   ...toolDe,
   ...usageDe,
+  ...vaultDe,
   ...workflowDe,
   ...workflowReviewDe,
 };

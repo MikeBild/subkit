@@ -1,3 +1,4 @@
+import { LOCAL_SETUP_STEPS } from "../../shared/local/local-workspace-model.ts";
 import type { FlowPath, Screen } from "./screens-model.ts";
 
 export const PATH_STEPS = {
@@ -36,9 +37,14 @@ export interface FrameModel {
 }
 
 export function frameFor(screen: Screen, path: FlowPath = "server"): FrameModel {
+  if (screen.kind === "local")
+    return {
+      dots: { visible: !screen.starting, current: screen.step, total: LOCAL_SETUP_STEPS.length },
+      settingsOpen: false,
+    };
   const index = stepIndex(screen, path);
   return {
     dots: { visible: index !== null, current: index ?? 0, total: PATH_STEPS[path].length },
-    settingsOpen: screen.kind === "settings",
+    settingsOpen: screen.kind === "settings" || screen.kind === "local-capabilities",
   };
 }

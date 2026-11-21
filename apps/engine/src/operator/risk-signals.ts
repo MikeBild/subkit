@@ -4,11 +4,6 @@ import { getConfig } from "../config/loader.ts";
 import type { Config } from "../config/schema.ts";
 import type { Executor } from "../db/client.ts";
 import { riskSignalEdges } from "../db/schema/index.ts";
-import {
-  BUDGET_CRITICAL_SHARE,
-  BUDGET_TIGHTENING_SHARE,
-  budgetState,
-} from "../llm/accounting/index.ts";
 import { getMetrics, METRIC_NAMES } from "../observability/metrics.ts";
 
 export type RiskSeverity = "warn" | "critical";
@@ -33,12 +28,7 @@ function sortBySeverity(a: RiskSignal, b: RiskSignal): number {
   return bOver - aOver;
 }
 
-interface RiskInputs {
-  monthTokens?: number;
-  monthBudget?: number | null;
-}
-
-export function computeRiskSignals(inputs: RiskInputs = {}): RiskSignal[] {
+export function computeRiskSignals(): RiskSignal[] {
   let predictive: Config["observability"]["predictive"];
   try {
     predictive = getConfig().observability.predictive;
@@ -50,31 +40,6 @@ export function computeRiskSignals(inputs: RiskInputs = {}): RiskSignal[] {
 
   const poolTotal = reg.gaugeSum(METRIC_NAMES.DB_POOL_TOTAL_CONNECTIONS);
   const poolIdle = reg.gaugeSum(METRIC_NAMES.DB_POOL_IDLE_CONNECTIONS);
-  const { monthTokens, monthBudget } = inputs;
-  const state =
-    typeof monthTokens === "number" && typeof monthBudget === "number"
-      ? budgetState(monthTokens, monthBudget)
-      : null;
-  if (typeof monthTokens === "number" && typeof monthBudget === "number" && state) {
-    const usedPct = Math.floor((monthTokens / monthBudget) * 100);
-    if (state !== "ample") {
-      const critical = state === "critical";
-      signals.push({
-        kind: "token_budget",
-        severity: critical ? "critical" : "warn",
-        headline: critical
-          ? `Token allowance ${usedPct}% spent`
-          : `Token allowance ${usedPct}% spent this month`,
-        detail: critical
-          ? "Model calls start being refused when it runs out, and a refused scheduled run looks like a broken workflow. Raise the monthly cap or let the month roll over."
-          : "Consumption is past three quarters of the monthly cap with the month still running. Worth deciding now whether to raise it.",
-        metric: METRIC_NAMES.LLM_TOKENS_TOTAL,
-        value: usedPct,
-        threshold: (critical ? BUDGET_CRITICAL_SHARE : BUDGET_TIGHTENING_SHARE) * 100,
-      });
-    }
-  }
-
   const poolWaiting = reg.gaugeSum(METRIC_NAMES.DB_POOL_SUSTAINED_WAITING_CONNECTIONS);
   if (poolTotal > 0) {
     const inUsePct = ((poolTotal - poolIdle) / poolTotal) * 100;
@@ -198,7 +163,7 @@ export function topRisk(signals: RiskSignal[]): RiskSignal | null {
   return signals.length > 0 ? (signals[0] as RiskSignal) : null;
 }
 
-export const SHARED_RISK_KINDS: ReadonlySet<string> = new Set(["dlq_growth", "token_budget"]);
+export const SHARED_RISK_KINDS: ReadonlySet<string> = new Set(["dlq_growth"]);
 
 function riskEdgeKey(kind: string, instance: string): string {
   return SHARED_RISK_KINDS.has(kind) ? kind : `${kind}@${instance}`;

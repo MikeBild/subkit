@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import {
   AES_IV_BYTES,
   activeMasterKeyDigest,
@@ -71,16 +72,16 @@ describe("aes-gcm", () => {
 });
 
 test("the master-key digest follows the cached crypto key rather than later environment edits", () => {
-  const configured = process.env.MASTER_KEY;
+  const configured = testEnv.MASTER_KEY;
   if (!configured) throw new Error("missing fixture master key");
   const expected = createHash("sha256").update(parseMasterKeyHex(configured)).digest("hex");
   const payload = encryptSecret("cached-key-fixture");
   expect(activeMasterKeyDigest()).toBe(expected);
   try {
-    process.env.MASTER_KEY = "54".repeat(32);
+    testEnv.MASTER_KEY = "54".repeat(32);
     expect(activeMasterKeyDigest()).toBe(expected);
     expect(decryptSecret(payload)).toBe("cached-key-fixture");
   } finally {
-    process.env.MASTER_KEY = configured;
+    testEnv.MASTER_KEY = configured;
   }
 });

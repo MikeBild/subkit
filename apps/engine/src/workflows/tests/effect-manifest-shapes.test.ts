@@ -58,7 +58,6 @@ function fixture(request: Record<string, unknown>, own?: ConnectorQuery) {
 
 const READ = {
   method: "GET",
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
   path: "/sites/${input.site}/stats",
   query: { tz: "UTC" },
   boundary: {
@@ -116,7 +115,6 @@ test("a binding whose connector keys the step could not have compiled with is a 
 
 const BODY_PAGED = (max_pages: number | undefined = 4, extra: Record<string, unknown> = {}) => ({
   method: "POST",
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
   path: "/sites/${input.site}/search",
   body: { filter: "open" },
   pagination: {
@@ -188,7 +186,6 @@ function toolFixture(boundary: Record<string, unknown> | null, bind = true) {
             mcp: {
               operation: "call_tool",
               tool: "search",
-              // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
               arguments: { q: "${input.q}" },
               ...(boundary
                 ? {

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "@hono/zod-openapi";
 import { FileIdSchema } from "../../api/files-schemas.ts";
 import { type ResolvedFile, resolvedFromRow } from "../../files/resolver.ts";
-import { findConversationReadyFile } from "../../files/service.ts";
+import { findConversationReadyFile } from "../../files/service/index.ts";
 import type { ToolContext } from "./index.ts";
 
 export const WorkflowInputFileSchema = z

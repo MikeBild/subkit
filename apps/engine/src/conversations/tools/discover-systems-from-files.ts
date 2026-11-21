@@ -16,7 +16,7 @@ import {
 } from "../../knowledge/discovery-candidates.ts";
 import { knowledgeContentHash } from "../../knowledge/version-record.ts";
 import { invoke } from "../../llm/runtime/invoke.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { auditActorFromToolContext } from "./audit-actor.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { toolActor } from "./tool-actor.ts";

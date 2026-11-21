@@ -1,4 +1,4 @@
-import { statSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import path from "node:path";
 import { runIsolatedTestFile } from "../apps/sk/src/tests/run-isolated-test-file";
 
@@ -135,10 +135,18 @@ if (listOnly) {
   process.exit(0);
 }
 
+function packageRoot(file: string): string {
+  let dir = path.dirname(file);
+  while (dir !== "." && !existsSync(path.join(repoRoot, dir, "bunfig.toml")))
+    dir = path.dirname(dir);
+  return dir;
+}
+
 for (const [index, file] of orderedTests.entries()) {
   const shardLabel = shardCount === 1 ? "" : ` shard=${shardIndex + 1}/${shardCount}`;
   process.stdout.write(
     `[isolated-test] ${index + 1}/${orderedTests.length}${shardLabel} ${file}\n`,
   );
-  await runIsolatedTestFile(file, { cwd: repoRoot });
+  const root = packageRoot(file);
+  await runIsolatedTestFile(path.relative(root, file), { cwd: path.join(repoRoot, root) });
 }

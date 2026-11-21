@@ -13,7 +13,7 @@ import {
   conversationExists,
   listConversationAttachments,
   unlinkConversationAttachment,
-} from "../../files/service.ts";
+} from "../../files/service/index.ts";
 import { fileReference, slugifyFilename } from "../../files/slug.ts";
 import {
   isPackageArchive,

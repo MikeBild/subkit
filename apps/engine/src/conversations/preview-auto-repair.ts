@@ -4,7 +4,7 @@ import { AuditAction } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
 import { containsOffloadRef } from "../execution/offload-rehydrate.ts";
 import type { RunResult } from "../execution/types.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { recordConversationRepair } from "../observability/instrumentation.ts";
 import type { WorkflowDef } from "../workflows/types.ts";
 import { getWorkflowDraft, withWorkflowDraft } from "./authoring-state/index.ts";

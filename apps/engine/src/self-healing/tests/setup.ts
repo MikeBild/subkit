@@ -8,6 +8,7 @@ import {
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { seedConnector, seedTenant, seedWorkflow } from "../../test-helpers/seed.ts";
 
 export interface SelfHealingTestCtx {
@@ -59,7 +60,7 @@ export async function resetSeedDag(ctx: SelfHealingTestCtx): Promise<void> {
 }
 
 export async function createSelfHealingCtx(label: string): Promise<SelfHealingTestCtx> {
-  process.env.LLM_PROVIDER = "mock";
+  testEnv.LLM_PROVIDER = "mock";
   resetMockProvider();
   const testDb = await createTestDb(`heal_${label}`);
 

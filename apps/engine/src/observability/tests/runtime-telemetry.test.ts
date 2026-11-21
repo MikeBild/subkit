@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { _resetLoggerForTests, reconfigureLogger } from "../../logging/logger.ts";
+import { _resetLoggerForTests, reconfigureLogger } from "../../logging/index.ts";
 import {
   bootPhase,
   instrument,

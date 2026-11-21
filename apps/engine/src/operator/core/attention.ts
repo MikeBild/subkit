@@ -1,3 +1,4 @@
+import type { RepairRemedy } from "@shared/error-taxonomy.ts";
 import type { PreviewClassification } from "../../execution/classify.ts";
 import type { BoundaryGrowth } from "../../workflows/authority-growth.ts";
 import type { HealthState } from "../operational-overview.ts";
@@ -56,8 +57,11 @@ export const ATTENTION_REASONS = [
   "secret_prepared",
   "skills_proposed",
   "intake_collected",
-  "budget_critical",
+  "spend_warning",
+  "spend_limit_reached",
+  "spend_limit_unset",
   "ai_access_missing",
+  "model_tools_missing",
   "risk_critical",
   "task_run_failed",
   "task_result_ready",
@@ -65,6 +69,10 @@ export const ATTENTION_REASONS = [
   "task_grant_expiring",
   "task_owner_unavailable",
   "pair_approval_requested",
+  "device_offline_waiting",
+  "local_confirmation_needed",
+  "device_permission_missing",
+  "folder_changed",
 ] as const;
 export type AttentionReason = (typeof ATTENTION_REASONS)[number];
 
@@ -76,6 +84,7 @@ export const ATTENTION_SUBJECT_KINDS = [
   "secret",
   "settings",
   "task",
+  "device",
 ] as const;
 
 export const APPROVAL_NEEDED_REASONS: ReadonlySet<AttentionReason> = new Set([
@@ -123,7 +132,7 @@ export interface AttentionItem {
   repair?: {
     step_id: string | null;
     code: string | null;
-    remedy_kind: "patch" | "prepare" | "declare" | "reconnect" | "author";
+    remedy_kind: RepairRemedy;
     steps: number;
     candidate_id: string | null;
     execution_id: string | null;

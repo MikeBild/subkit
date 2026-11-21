@@ -29,11 +29,11 @@ often in authoring contexts:
 | `workflow:run` | Invoke a workflow (start a run) |
 | `connector:read` | List connectors, read config, probe |
 | `connector:write` | Create/edit connectors, delete |
-| `credential:write` | Create/rotate credentials (read is never exposed) |
+| `vault:write` | Create/rotate credentials (read is never exposed) |
 | `skill:write` | Promote a skill candidate, edit a skill |
 | `patch:approve` | Approve an unsafe patch candidate from self-healing |
 
-Note: there is no `credential:read`. Credential values are decrypted only at
+Note: there is no `vault:read`. Credential values are decrypted only at
 step-execution time inside the engine; no API or tool exposes them in plaintext.
 
 ## Subject kinds
@@ -160,7 +160,7 @@ It cannot:
 - **Relying on portal-token inference.** Portal tokens must have explicit
   allowlists; inheriting broad user permissions into a public token is a
   common leak vector.
-- **Reading `credential:read` expecting values.** Neither exists. The engine
+- **Reading `vault:read` expecting values.** Neither exists. The engine
   surfaces credentials only to the driver layer at run-time.
 - **Skipping the audit check after a denial.** Every denial is logged in
   `audit.policy_denied`. If your workflow is hitting denials, read the audit

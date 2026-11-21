@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { and, eq, inArray } from "drizzle-orm";
-import { AGENT_GUIDE_TAG } from "../../../agent/briefing.ts";
+import { AGENT_GUIDE_TAG } from "../../../agent/index.ts";
 import { skills, tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EMBEDDED_SKILL_SEEDS } from "../../../skills/embedded-seeds.ts";

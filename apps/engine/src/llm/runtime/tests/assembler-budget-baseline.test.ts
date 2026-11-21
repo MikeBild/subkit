@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { connectors, skillCandidates } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
-import { logger } from "../../../logging/logger.ts";
+import { logger } from "../../../logging/index.ts";
+import { testEnv } from "../../../test-helpers/determinism/env.ts";
 import { seedTenant } from "../../../test-helpers/seed.ts";
 import { contextCapFor } from "../../accounting/index.ts";
 import { resetMockProvider } from "../../mock-provider.ts";
@@ -65,7 +66,7 @@ function loadBaseline(): BaselineFixture {
   }
 }
 
-const skip = process.env.REQUIRES_PG === "0";
+const skip = testEnv.REQUIRES_PG === "0";
 
 if (skip) {
   logger.warn({
@@ -87,7 +88,7 @@ beforeAll(async () => {
 
   baseline = loadBaseline();
 
-  process.env.LLM_PROVIDER = "mock";
+  testEnv.LLM_PROVIDER = "mock";
   resetMockProvider();
 
   ctx = await createTestDb("assembler_budget_baseline");

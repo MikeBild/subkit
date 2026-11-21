@@ -1,6 +1,8 @@
+import { Button } from "@ui/atoms/button";
+import { Pill } from "@ui/atoms/pill";
+import { StepFooter } from "@ui/molecules/step-footer";
 import { CircleCheck, Loader2 } from "lucide-react";
 import { useSignIn } from "../../adapter/index.ts";
-import { Button, Pill, StepFooter } from "../../ui/index.ts";
 import { SignInNotice } from "./SignInNotice.tsx";
 import { useSignInStep } from "./use-sign-in-step.ts";
 

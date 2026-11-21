@@ -1,8 +1,7 @@
 import { and, eq, isNull, ne } from "drizzle-orm";
 import { parseScopeList } from "../credentials/authority-scopes.ts";
-// biome-ignore lint/style/useImportType: Db is the runtime type the drizzle queries operate on
-import { type Db } from "../db/client.ts";
-import { credentials } from "../db/schema/index.ts";
+import type { Db } from "../db/client.ts";
+import { vaultItems } from "../db/schema/index.ts";
 import type { ConnectorView } from "./types.ts";
 
 interface ScopeDiff {
@@ -52,15 +51,15 @@ export async function computeConnectorScopeDiff(
   if (connector.auth_type !== "oauth2") return null;
   try {
     const credRows = await db
-      .select({ granted_scopes: credentials.granted_scopes })
-      .from(credentials)
+      .select({ granted_scopes: vaultItems.granted_scopes })
+      .from(vaultItems)
       .where(
         and(
-          eq(credentials.tenant_id, tenant_id),
-          eq(credentials.connector_id, connector.id),
-          eq(credentials.environment, connector.environment),
-          ne(credentials.mode, "oauth2_client"),
-          isNull(credentials.deleted_at),
+          eq(vaultItems.tenant_id, tenant_id),
+          eq(vaultItems.connector_id, connector.id),
+          eq(vaultItems.environment, connector.environment),
+          ne(vaultItems.mode, "oauth2_client"),
+          isNull(vaultItems.deleted_at),
         ),
       )
       .limit(1);

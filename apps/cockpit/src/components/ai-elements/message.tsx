@@ -1,15 +1,15 @@
 "use client";
 
+import { Button } from "@ui/atoms/button";
+import { cn } from "@ui/lib/utils";
+import { ButtonGroup, ButtonGroupText } from "@ui/molecules/button-group";
+import { IconButton } from "@ui/molecules/icon-button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@ui/molecules/tooltip";
 import type { UIMessage } from "ai";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
 import { createContext, memo, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { Streamdown } from "streamdown";
-import { IconButton } from "@/components/cockpit/icon-button";
-import { Button } from "@/components/ui/button";
-import { ButtonGroup, ButtonGroupText } from "@/components/ui/button-group";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];

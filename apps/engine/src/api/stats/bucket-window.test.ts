@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { HttpError } from "../../http/errors.ts";
-import { WINDOW_CAP_MS } from "../../stats/bucket-units.ts";
+import { WINDOW_CAP_MS } from "../../stats/index.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { resolveWindow } from "./bucket-window.ts";
 

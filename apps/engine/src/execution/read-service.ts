@@ -11,7 +11,7 @@ import {
   workflows,
   workflowVersions,
 } from "../db/schema/index.ts";
-import { readLlmCost } from "../stats/llm-cost.ts";
+import { readLlmCost } from "../stats/index.ts";
 import { executionVisibilityFilter, executionVisibleToPrincipal } from "./execution-owner.ts";
 import {
   type ExecutionListResult,

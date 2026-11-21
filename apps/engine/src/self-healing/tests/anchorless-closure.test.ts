@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/audit.ts";
 import { patchCandidates, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
-import { getLatestShape } from "../../schema-versions/service.ts";
+import { getLatestShape } from "../../schema-versions/index.ts";
 import { analyzeStepFailure } from "../drift-detector.ts";
 import { sweepUndecidableCandidates } from "../open-decisions.ts";
 import { processDriftSignal } from "../service.ts";

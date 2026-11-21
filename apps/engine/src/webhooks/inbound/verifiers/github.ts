@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { logger } from "../../../logging/logger.ts";
+import { logger } from "../../../logging/index.ts";
 import type { VerifierResult, VerifyInput } from "./types.ts";
 
 export function verifyGitHub(input: VerifyInput): VerifierResult {

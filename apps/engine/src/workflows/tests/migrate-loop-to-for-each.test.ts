@@ -169,7 +169,6 @@ describe("rewriteLoopsToForEach", () => {
           id: "send_row",
           method: "POST",
           url: "https://api.example.com/rows",
-          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal ${item.id} placeholder in workflow body — tests the for_each migration preserves the field
           body: { id: "${item.id}" },
         },
       ],

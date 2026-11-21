@@ -1,3 +1,4 @@
+import type { SseFrame } from "@shared/sse.ts";
 import type { Session } from "electron";
 import {
   type AttentionItem,
@@ -20,7 +21,6 @@ import {
   rememberDelivery,
   streamReaction,
 } from "../shared/server-contract.ts";
-import type { SseEvent } from "../shared/sse.ts";
 import { fetchAttention } from "./server-client.ts";
 
 const EVENT_SETTLE_MS = 400;
@@ -114,7 +114,7 @@ export class AttentionFeed {
     this.background = online ? setInterval(() => this.refresh(true), BACKGROUND_REFRESH_MS) : null;
   }
 
-  private onEvent(event: SseEvent): void {
+  private onEvent(event: SseFrame): void {
     if (event.id) this.hooks.saveProgress({ lastEventId: event.id });
     this.delivery = rememberDelivery(this.delivery, event.event, event.data, Date.now());
     this.hooks.onEvent(event.event, event.data);

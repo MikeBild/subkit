@@ -1,8 +1,7 @@
-import { extOf } from "@ui/lib/file-kinds";
+import type { DropChoice } from "@shared/drop-choice.ts";
+import { extOf } from "@shared/file-kinds.ts";
 
 export type DropVia = "window" | "dock" | "tray";
-export type DropChoice = "file" | "source" | "chat" | "inbox";
-export const DROP_CHOICES: readonly DropChoice[] = ["file", "source", "chat", "inbox"];
 
 export const MAX_FILE_BYTES = 5 * 1024 * 1024;
 export const MAX_SOURCE_BYTES = 50 * 1024 * 1024;
@@ -74,13 +73,6 @@ export function choiceBlocker(
     return { reason: "tooMany", max: MAX_COMPOSER_FILES };
   const max = choice === "source" ? MAX_SOURCE_BYTES : MAX_FILE_BYTES;
   return files.some((file) => file.size > max) ? { reason: "tooLarge", max } : null;
-}
-
-export function placedHref(choice: DropChoice, ids: readonly string[]): string {
-  if (choice === "chat") return "/chat";
-  const list = choice === "file" ? "/files" : choice === "source" ? "/knowledge" : "/intake";
-  const [only] = ids;
-  return ids.length === 1 && only ? `${list}/${encodeURIComponent(only)}` : list;
 }
 
 export type DropPhase = "choosing" | "placing" | "failed";

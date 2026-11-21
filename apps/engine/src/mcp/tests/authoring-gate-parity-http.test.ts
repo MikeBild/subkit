@@ -1,4 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: the parameterized recipient `${input.recipient}` is the correct design under test.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { and, eq } from "drizzle-orm";
@@ -12,6 +11,7 @@ import type { DraftDocument, TurnEvent } from "../../conversations/types.ts";
 import { conversations, conversationToolCalls, users } from "../../db/schema/index.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { makeToolCtx, seedTenant } from "../../test-helpers/seed.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
@@ -38,7 +38,7 @@ const UNKNOWN_FUNCTION_PATCH = {
 let suite: McpTestSuite;
 let adminClient: Client;
 let principal: ResolvedPrincipal;
-const previousLlmProvider = process.env.LLM_PROVIDER;
+const previousLlmProvider = testEnv.LLM_PROVIDER;
 
 function seedDraft(): DraftDocument {
   const draft = createEmptyDraftDocument("workflow_authoring");
@@ -102,7 +102,6 @@ async function runWrappedTool(
     events,
     suite.http.db,
     {},
-    "auto",
   );
   return wrapped.execute!(args, {
     toolCallId: `authoring-gate-${surface}-${tool}`,
@@ -159,14 +158,13 @@ async function runThroughMcpConversation(
   const result = await adminClient.callTool({
     name: "conversation_append",
     arguments: { conversation_id: conversationId, message: "Adjust the workflow." },
-    _meta: { sk_permission_mode: "auto" },
   });
   expect(result.isError).toBe(false);
   return recordedOutput(conversationId, tool);
 }
 
 beforeAll(async () => {
-  process.env.LLM_PROVIDER = "mock";
+  testEnv.LLM_PROVIDER = "mock";
   suite = await startMcpTestSuite("authoring-gate-parity-http", { withQueue: true });
   principal = {
     provider: "test",
@@ -180,8 +178,8 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  if (previousLlmProvider === undefined) delete process.env.LLM_PROVIDER;
-  else process.env.LLM_PROVIDER = previousLlmProvider;
+  if (previousLlmProvider === undefined) delete testEnv.LLM_PROVIDER;
+  else testEnv.LLM_PROVIDER = previousLlmProvider;
   await suite?.cleanup();
 }, 30_000);
 

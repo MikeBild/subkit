@@ -6,7 +6,7 @@ import {
   type CockpitPushSendResult,
   sendCockpitPushNotifications,
 } from "../identity/index.ts";
-import { errorFields, logger } from "../logging/logger.ts";
+import { errorFields, logger } from "../logging/index.ts";
 
 export function cockpitPushSubject(publicBaseUrl?: string): string | null {
   try {

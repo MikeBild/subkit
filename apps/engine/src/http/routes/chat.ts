@@ -12,7 +12,7 @@ import {
 import { getConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/index.ts";
-import { trafficClassFromHeader } from "../../stats/usage-events.ts";
+import { trafficClassFromHeader } from "../../stats/index.ts";
 import type { AppEnv } from "../openapi.ts";
 
 interface ChatRoutesDeps {

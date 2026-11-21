@@ -46,7 +46,6 @@ describe("the delivery gate reviews a buildMimeMessage report from its preparati
             id: "send_email",
             method: "POST",
             url: GMAIL_SEND_TARGET,
-            // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow substitution
             body: { raw: "${scope.compose.data.raw}" },
             max_retries: 0,
           },
@@ -153,7 +152,6 @@ describe("the delivery gate reviews a buildMimeMessage report from its preparati
             id: "send_email",
             method: "POST",
             url: GMAIL_SEND_TARGET,
-            // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow substitution
             body: { raw: "${scope.compose.data.raw}" },
             max_retries: 0,
           },

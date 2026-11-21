@@ -11,7 +11,7 @@ import { generateObject, jsonSchema } from "ai";
 import type { ZodType } from "zod";
 import type { KnownAuditActorType } from "../../audit/types.ts";
 import type { Executor } from "../../db/client.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { zodToJsonSchema7 } from "../../mcp/json-schema.ts";
 import { account } from "../accounting/accountant.ts";
 import { type AiSdkUsage, usageOf } from "./ai-sdk-model.ts";

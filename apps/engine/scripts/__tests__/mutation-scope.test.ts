@@ -13,13 +13,13 @@ describe("pure mutation scope", () => {
       expectedMutationScope([
         "apps/engine/src/workflows/core/workflow.ts",
         "apps/engine/src/workflows/service.ts",
-        "apps/cockpit/src/pages/audit-filter-state.ts",
+        "apps/cockpit/src/features/audit/model/audit-filter-state.ts",
         "apps/sk/src/domain/agent/agent-file.ts",
         "packages/shared/src/approval-choice.ts",
         "packages/shared/src/jsonl-ring.ts",
       ]),
     ).toEqual([
-      "apps/cockpit/src/pages/audit-filter-state.ts",
+      "apps/cockpit/src/features/audit/model/audit-filter-state.ts",
       "apps/engine/src/workflows/core/workflow.ts",
       "apps/sk/src/domain/agent/agent-file.ts",
       "packages/shared/src/approval-choice.ts",
@@ -37,7 +37,7 @@ describe("pure mutation scope", () => {
   test("derives the mutation scope from the same canonical discovery output", () => {
     const files = [
       "apps/engine/src/workflows/core/workflow.ts",
-      "apps/cockpit/src/pages/audit-labels.ts",
+      "apps/cockpit/src/features/audit/model/audit-labels.ts",
     ];
     expect(expectedMutationScope(files)).toEqual(pureTargetPaths(files));
   });

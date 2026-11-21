@@ -1,0 +1,52 @@
+{
+  "source": "https://github.com/vercel-labs/agent-browser",
+  "license": "Apache-2.0",
+  "version": "0.43.0",
+  "license_ref": "1cc19526f3641c8543d55aa6700e7c55b37ac356",
+  "licenses": [
+    {
+      "component": "agent-browser",
+      "license": "Apache-2.0",
+      "file": "agent-browser.LICENSE",
+      "upstream": "LICENSE",
+      "sha256": "014bb31e83d5c2e76aea1cc6e82217346ab41362f32cb355ad0f5c10aa0aeaff",
+      "source": "https://github.com/vercel-labs/agent-browser/tree/1cc19526f3641c8543d55aa6700e7c55b37ac356"
+    },
+    {
+      "component": "axe-core 4.12.1, built into agent-browser",
+      "license": "MPL-2.0",
+      "file": "agent-browser.axe-core.LICENSE",
+      "upstream": "cli/src/native/a11y/LICENSE-axe-core.txt",
+      "sha256": "af175b9d96ee93c21a036152e1b905b0b95304d4ae8c2c921c7609100ba8df7e",
+      "source": "https://github.com/dequelabs/axe-core/tree/5d002cca1f862a0699d9f1bb7b5a1ec334fa1b22"
+    },
+    {
+      "component": "third-party code inside axe-core",
+      "license": "MIT and others",
+      "file": "agent-browser.axe-core-third-party.LICENSE",
+      "upstream": "cli/src/native/a11y/LICENSE-axe-core-THIRD-PARTY.txt",
+      "sha256": "cadf92d5df0bf94bb4d74f906d5207f6198923e4f96aff0b6793d793f5f80e77",
+      "source": "https://github.com/dequelabs/axe-core/tree/5d002cca1f862a0699d9f1bb7b5a1ec334fa1b22"
+    }
+  ],
+  "targets": {
+    "darwin-arm64": {
+      "asset": "agent-browser-darwin-arm64",
+      "bytes": 17755040,
+      "sha256": "05338a8eeddf0b3f9ebf0c87a6c21aedc10685608c68618e1a8483c43eae9c3f"
+    }
+  },
+  "chrome_for_testing": {
+    "source": "https://storage.googleapis.com/chrome-for-testing-public",
+    "license": "BSD-3-Clause",
+    "version": "158.0.8127.36",
+    "targets": {
+      "darwin-arm64": {
+        "asset": "mac-arm64/chrome-mac-arm64.zip",
+        "bytes": 200339070,
+        "sha256": "b86d3b393def1f87d369b022abff0a51acb015d6fcb79ddfd1c379c9d72fbbe2",
+        "executable": "chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"
+      }
+    }
+  }
+}

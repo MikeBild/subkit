@@ -7,7 +7,7 @@ import {
   scheduleOccurrences,
   taskRuns,
 } from "../db/schema/index.ts";
-import { errorFields, logger } from "../logging/logger.ts";
+import { errorFields, logger } from "../logging/index.ts";
 import {
   type OccurrenceRunOutcome,
   type OccurrenceRunRef,

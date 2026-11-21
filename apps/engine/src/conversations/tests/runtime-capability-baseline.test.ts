@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { listCapabilityGaps } from "../../discovery/service.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
 import { loadTenantSummary, renderTenantSummaryBlock } from "../../llm/runtime/tenant-summary.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import {
   appendMessageWithTurn,
   type ConversationTestCtx,
@@ -9,7 +10,7 @@ import {
   createConversationWithTurn,
 } from "./setup.ts";
 
-const skip = process.env.REQUIRES_PG === "0";
+const skip = testEnv.REQUIRES_PG === "0";
 
 let ctx: ConversationTestCtx;
 

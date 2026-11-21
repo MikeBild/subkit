@@ -21,6 +21,7 @@ import graphqlConnectors from "./seeds/graphql-connectors.md" with { type: "text
 import httpConnectors from "./seeds/http-connectors.md" with { type: "text" };
 import intakeReviewToKnowledge from "./seeds/intake-review-to-knowledge.md" with { type: "text" };
 import knowledgeFindAndMaintain from "./seeds/knowledge-find-and-maintain.md" with { type: "text" };
+import localWorkflowSteps from "./seeds/local-workflow-steps.md" with { type: "text" };
 import mcpServerSetup from "./seeds/mcp-server-setup.md" with { type: "text" };
 import mcpToolContract from "./seeds/mcp-tool-contract.md" with { type: "text" };
 import multiStepBestPractices from "./seeds/multi-step-best-practices.md" with { type: "text" };
@@ -96,6 +97,7 @@ export const EMBEDDED_SKILL_SEEDS: readonly EmbeddedSeedFile[] = [
   { file: "http-connectors.md", content: httpConnectors },
   { file: "intake-review-to-knowledge.md", content: intakeReviewToKnowledge },
   { file: "knowledge-find-and-maintain.md", content: knowledgeFindAndMaintain },
+  { file: "local-workflow-steps.md", content: localWorkflowSteps },
   { file: "mcp-server-setup.md", content: mcpServerSetup },
   { file: "mcp-tool-contract.md", content: mcpToolContract },
   { file: "multi-step-best-practices.md", content: multiStepBestPractices },

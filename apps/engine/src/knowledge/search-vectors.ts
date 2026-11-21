@@ -1,7 +1,10 @@
 import { type SQL, sql } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
-import { embeddingsAvailable } from "../embeddings/local-provider.ts";
-import { fuseVectorFirst, vectorScoreCandidates } from "../embeddings/vector-rerank.ts";
+import {
+  embeddingsAvailable,
+  fuseVectorFirst,
+  vectorScoreCandidates,
+} from "../embeddings/index.ts";
 import type { KnowledgeSearchHit, SearchKnowledgeParams } from "./types.ts";
 
 const KNOWLEDGE_VECTOR_SCAN_CAP = 2000;

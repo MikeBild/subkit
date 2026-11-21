@@ -7,7 +7,7 @@ import {
   EMBEDDING_MODEL,
   embeddingsAvailable,
   embedTexts,
-} from "../embeddings/local-provider.ts";
+} from "../embeddings/index.ts";
 import {
   normalizeForExactMatch,
   suggestConnectorTemplates,

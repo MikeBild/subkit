@@ -482,7 +482,6 @@ export async function runScenario(
       method: "POST",
       body: JSON.stringify({
         initial_message: spec.goal,
-        permission_mode: "auto",
         title: `${EVAL_LIVE_TITLE_PREFIX}${spec.slug}`,
       }),
     });
@@ -509,13 +508,12 @@ export async function runScenario(
               method: "POST",
               body: JSON.stringify({
                 output: answerForElicitation(current.tool_name, current.input, message),
-                permission_mode: "auto",
               }),
             },
           )
         : await client.request(`/v1/conversations/${conversationId}/messages`, {
             method: "POST",
-            body: JSON.stringify({ message, permission_mode: "auto" }),
+            body: JSON.stringify({ message }),
           });
       if (!turnRes.ok) {
         return failureText(

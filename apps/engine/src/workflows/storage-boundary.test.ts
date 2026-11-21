@@ -16,10 +16,8 @@ const step = RequestStepSchema.parse({
   kind: "request",
   connector_id: "00000000-0000-4000-8000-000000000001",
   method: "PUT",
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: authored runtime-expression fixture
   body: "${scope.report.data}",
   s3: {
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored runtime-expression fixture
     key: "${scope.report.key}",
     content_type: "application/json",
     scope: { key_prefix: "reports/daily/", max_bytes: 10 },
@@ -44,7 +42,6 @@ test("storage endpoint matches path-style and virtual-hosted configuration", () 
   expect(
     storageBaseUrl({ bucket: "bucket", endpoint: "https://user:secret@store.example.test" }),
   ).toBeNull();
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: authored runtime-expression fixture
   expect(storageBaseUrl({ bucket: "bucket", endpoint: "https://${input.host}" })).toBeNull();
 });
 test("scoped dynamic report keys are bounded at dispatch", () => {
@@ -71,7 +68,6 @@ test("no root or unresolved prefix can be proposed", () => {
     "",
     "../",
     "reports/../",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored runtime-expression fixture
     "${input.prefix}/",
     "reports%2F/",
     "/reports/",
@@ -96,7 +92,6 @@ const deleteStep = RequestStepSchema.parse({
   connector_id: "00000000-0000-4000-8000-000000000001",
   method: "DELETE",
   s3: {
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored runtime-expression fixture
     key: "${item.key}",
     scope: { key_prefix: "reports/daily/", max_bytes: 10, max_deletes: 500 },
   },
@@ -154,7 +149,6 @@ test("LIST cannot change bucket, prefix, page size or operation", () => {
       ...step,
       method: "LIST",
       body: undefined,
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: authored runtime-expression fixture
       s3: { prefix: "${item.prefix}", max_keys: 20, paginate: true, scope: step.s3!.scope },
     }),
     base,

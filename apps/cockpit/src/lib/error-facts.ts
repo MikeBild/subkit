@@ -2,9 +2,7 @@ import { ApiError } from "@/api/transport";
 import { causeClassKey } from "@/lib/cause-class";
 import { engineSentenceKey } from "@/lib/engine-sentence";
 import { failureFacts } from "@/lib/failure-remedy";
-import type { TranslationKey } from "@/lib/i18n";
-
-type Translate = (key: TranslationKey) => string;
+import type { Translate, TranslationKey } from "@/lib/i18n";
 
 export interface ErrorTechnicalRow {
   key: "code" | "http" | "request" | "time";

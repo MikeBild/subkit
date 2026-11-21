@@ -119,7 +119,6 @@ describe("install-grounding rule is surface-gated (chat/mcp/web), not in the aut
         authoring_hint: makeHint("workflow"),
       });
       expect(r.content).toContain("GROUNDING sk SELF-QUESTIONS");
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal grounding token asserted verbatim; the assembler substitutes it.
       expect(r.content).toContain("curl -fsSL ${engine_url}/install | bash");
       expect(r.content).toContain("@subkit/cli");
     }
@@ -221,7 +220,6 @@ describe("chat surface persona", () => {
       authoring_hint: makeHint("execution"),
     });
     expect(r.content).toContain("GROUNDING sk SELF-QUESTIONS");
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal grounding token asserted verbatim; the assembler substitutes it.
     expect(r.content).toContain("curl -fsSL ${engine_url}/install | bash");
     expect(r.content).toContain("@subkit/cli");
     expect(r.content).toContain("docker-compose install step");
@@ -233,9 +231,7 @@ describe("chat surface persona", () => {
       authoring_hint: makeHint("execution"),
     });
     expect(r.content).toContain("NO AUTHORING PLACEHOLDERS ON CHAT");
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal authoring placeholder syntax the persona rule must name verbatim.
     expect(r.content).toContain("${connector.<slug>...}");
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal authoring placeholder syntax the persona rule must name verbatim.
     expect(r.content).toContain("${cred.<slug>...}");
   });
 

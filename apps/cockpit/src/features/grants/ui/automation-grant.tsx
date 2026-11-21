@@ -1,0 +1,327 @@
+import { useQuery } from "@tanstack/react-query";
+import { Button } from "@ui/atoms/button";
+import { Play } from "lucide-react";
+import { apiCall } from "@/api/call";
+import { useSession } from "@/app/session";
+import type { ToolPart } from "@/components/ai-elements/tool";
+import { chatAutomationTool } from "@/features/chat";
+import { useAuthorityCarryOver } from "@/features/grants/api/automation-queries";
+import {
+  type AutomationWorkflow,
+  automationActionKey,
+  automationCard,
+} from "@/features/grants/model/automation-state";
+import { grantOpeningNotice, hookStartedOnly } from "@/features/grants/model/grant-context";
+import { useWorkflowAutomation } from "@/features/workflows";
+import { useI18n } from "@/lib/i18n-context";
+import { GrantOpeningNotice } from "./grant-notices";
+import { GrantWorkflowAuthority } from "./grant-workflow-authority";
+
+function useAutomationWorkflow(workflowId: string) {
+  return useQuery({
+    queryKey: ["chat-automation-workflow", workflowId],
+    enabled: workflowId !== "",
+    queryFn: async () => {
+      const current = await apiCall("get", "/v1/workflows/{id}", { path: { id: workflowId } });
+      const pending =
+        typeof current.draft_version_id === "string" &&
+        current.draft_version_id !== current.current_version_id;
+      const draft = pending
+        ? await apiCall("get", "/v1/workflows/{id}/draft", { path: { id: workflowId } })
+        : null;
+      if (
+        draft &&
+        (draft.version_id !== current.draft_version_id ||
+          draft.current_version_id !== current.current_version_id)
+      )
+        throw new Error("workflow_changed");
+      return { current, draft };
+    },
+    staleTime: 0,
+  });
+}
+
+export function AutomationToolCard({
+  conversationId,
+  tool,
+  onAdjust,
+  onPrepareSingleRun,
+}: {
+  conversationId?: string;
+  tool: ToolPart;
+  onAdjust?: (workflowId: string) => void;
+  onPrepareSingleRun?: (workflowId: string) => void;
+}) {
+  const { t } = useI18n();
+  const automation = chatAutomationTool(tool);
+  const workflowId = automation?.workflowId ?? "";
+  const workflow = useAutomationWorkflow(workflowId);
+  if (!automation || automation.environments.length === 0) return null;
+  return (
+    <div
+      className="rounded-xl border border-accent/30 bg-accent/10 p-4"
+      data-testid="chat-automation-tool"
+    >
+      {workflow.data ? (
+        <AutomationCardBody
+          conversationId={conversationId}
+          workflowId={workflowId}
+          workflow={workflow.data.current}
+          onAdjust={onAdjust ? () => onAdjust(workflowId) : undefined}
+          onPrepareSingleRun={onPrepareSingleRun ? () => onPrepareSingleRun(workflowId) : undefined}
+        />
+      ) : workflow.isPending ? (
+        <p role="status">{t("chat.activation.loading")}</p>
+      ) : (
+        <CardUnread onRetry={() => void workflow.refetch()} />
+      )}
+    </div>
+  );
+}
+
+function CardUnread({ onRetry }: { onRetry: () => void }) {
+  const { t } = useI18n();
+  return (
+    <div role="status" className="flex flex-col items-start gap-2">
+      <p>{t("chat.activation.failed")}</p>
+      <Button
+        variant="outline"
+        size="sm"
+        data-testid="chat-automation-tool-retry"
+        onClick={onRetry}
+      >
+        {t("chat.activation.retry")}
+      </Button>
+    </div>
+  );
+}
+
+function AutomationCardBody({
+  conversationId,
+  workflowId,
+  workflow,
+  onAdjust,
+  onPrepareSingleRun,
+}: {
+  conversationId?: string;
+  workflowId: string;
+  workflow: AutomationWorkflow;
+  onAdjust?: () => void;
+  onPrepareSingleRun?: () => void;
+}) {
+  const { t } = useI18n();
+  const session = useSession();
+  const automation = useWorkflowAutomation(workflowId, workflow, session.permissions);
+  if (automation.failed) return <CardUnread onRetry={automation.retry} />;
+  const { state } = automation;
+  if (!state) return <p role="status">{t("chat.activation.loading")}</p>;
+  const card = automationCard(state, workflow.webhooks_active);
+  const notice =
+    card.environments.length > 0
+      ? grantOpeningNotice({
+          diagnoses: automation.diagnosis?.diagnoses,
+          hookStarted: hookStartedOnly(state.triggers, workflow.webhooks_active),
+          mayRun: automation.canRun,
+        })
+      : null;
+  const [only, ...further] = card.environments;
+  return (
+    <div data-state={state.state} data-testid="chat-automation-tool-body">
+      <p className="mb-2 font-medium">{t(card.titleKey)}</p>
+      <p className="mb-3 text-sm text-muted-foreground">{t(card.hintKey)}</p>
+      {notice ? (
+        <div className="mb-3">
+          <GrantOpeningNotice notice={notice} />
+        </div>
+      ) : null}
+      {card.act === "resume" && state.primaryAction?.kind === "resume" && automation.canWrite ? (
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={automation.resume.pending}
+          onClick={() =>
+            state.primaryAction?.kind === "resume" &&
+            automation.resume.run(state.primaryAction.scheduleIds)
+          }
+          data-testid="chat-automation-tool-resume"
+        >
+          <Play data-icon="inline-start" />
+          {t(automationActionKey(state.primaryAction))}
+        </Button>
+      ) : card.act === "recheck" ? (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={automation.refresh}
+          data-testid="chat-automation-tool-recheck"
+        >
+          {t(card.actionKey)}
+        </Button>
+      ) : card.act !== "review" ? null : only && further.length === 0 ? (
+        <AutomationGrant
+          conversationId={conversationId}
+          workflowId={workflowId}
+          environment={only}
+          testId="chat-automation-tool-review"
+          triggerLabel={t(card.actionKey)}
+          onAdjust={onAdjust}
+          onPrepareSingleRun={onPrepareSingleRun}
+        />
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {card.environments.map((environment) =>
+            environment === "prod" ? (
+              <AutomationGrant
+                conversationId={conversationId}
+                key={environment}
+                workflowId={workflowId}
+                environment="prod"
+                testId="chat-automation-tool-review-prod"
+                triggerLabel={t("chat.automationCard.review.prod")}
+                onAdjust={onAdjust}
+                onPrepareSingleRun={onPrepareSingleRun}
+              />
+            ) : (
+              <AutomationGrant
+                conversationId={conversationId}
+                key={environment}
+                workflowId={workflowId}
+                environment="dev"
+                testId="chat-automation-tool-review-dev"
+                triggerLabel={t("chat.automationCard.review.dev")}
+                triggerVariant="outline"
+                onAdjust={onAdjust}
+                onPrepareSingleRun={onPrepareSingleRun}
+              />
+            ),
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function AutomationGrant({
+  conversationId,
+  workflowId,
+  environment,
+  testId,
+  triggerLabel,
+  triggerVariant = "default",
+  onPrepareSingleRun,
+  onAdjust,
+}: {
+  conversationId?: string;
+  workflowId: string;
+  environment: "dev" | "prod";
+  testId: string;
+  triggerLabel?: string;
+  triggerVariant?: "default" | "outline";
+  onPrepareSingleRun?: () => void;
+  onAdjust?: () => void;
+}) {
+  const { t } = useI18n();
+  const workflow = useAutomationWorkflow(workflowId);
+  const versionId = workflow.data?.draft?.version_id ?? workflow.data?.current.current_version_id;
+  const carryOver = useAuthorityCarryOver({
+    workflowId,
+    versionId,
+    environment,
+    activation: workflow.data?.draft
+      ? { expected_current_version_id: workflow.data.current.current_version_id ?? null }
+      : undefined,
+    conversationId,
+  });
+  if (workflow.isPending) return <p role="status">{t("chat.activation.loading")}</p>;
+  if (workflow.error || !workflow.data || !versionId)
+    return (
+      <div role="status" className="flex flex-col gap-2">
+        <p>{t("chat.activation.failed")}</p>
+        <Button
+          variant="outline"
+          size="sm"
+          data-testid="chat-activation-retry"
+          onClick={() => void workflow.refetch()}
+        >
+          {t("chat.activation.retry")}
+        </Button>
+      </div>
+    );
+  const { current, draft } = workflow.data;
+  if (draft && carryOver.choice === "adopt")
+    return (
+      <div className="flex flex-col items-start gap-1">
+        <Button
+          type="button"
+          size="sm"
+          variant={triggerVariant}
+          disabled={carryOver.adopting}
+          title={t("authority.review.help.adopt")}
+          data-testid={`${testId}-adopt`}
+          onClick={carryOver.adopt}
+        >
+          {t("authority.review.adopt")}
+        </Button>
+        <p className="text-muted-foreground text-xs">{t("authority.review.help.adopt")}</p>
+      </div>
+    );
+  return (
+    <GrantWorkflowAuthority
+      conversationId={conversationId}
+      key={workflowId}
+      workflowId={workflowId}
+      versionId={versionId}
+      activation={
+        draft ? { expected_current_version_id: current.current_version_id ?? null } : undefined
+      }
+      reviewContent={
+        draft ? (
+          <div className="flex flex-col gap-2" data-testid="chat-activation-change-summary">
+            <p>{t("chat.activation.version", { version: String(draft.version) })}</p>
+            <p>
+              {t("chat.activation.active", {
+                version:
+                  current.current_version == null
+                    ? t("chat.activation.none")
+                    : String(current.current_version),
+              })}
+            </p>
+            <p>
+              {t("chat.activation.stepsChanged", {
+                count: String(
+                  draft.definition.steps.filter(
+                    (step) =>
+                      JSON.stringify(step) !==
+                      JSON.stringify(
+                        current.steps?.find(
+                          (value) =>
+                            value &&
+                            typeof value === "object" &&
+                            "id" in value &&
+                            value.id === step.id,
+                        ),
+                      ),
+                  ).length,
+                ),
+              })}
+            </p>
+            <p>
+              {t(
+                JSON.stringify(current.trigger ?? null) ===
+                  JSON.stringify(draft.definition.trigger ?? null)
+                  ? "chat.activation.scheduleKept"
+                  : "chat.activation.scheduleChanged",
+              )}
+            </p>
+          </div>
+        ) : undefined
+      }
+      onSingleRun={onPrepareSingleRun}
+      onAdjust={onAdjust}
+      initialEnvironment={environment}
+      triggerTestId={testId}
+      triggerLabel={triggerLabel ?? t("chat.schedule.review")}
+      triggerVariant={triggerVariant}
+    />
+  );
+}

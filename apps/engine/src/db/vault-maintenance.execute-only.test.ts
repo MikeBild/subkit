@@ -1,9 +1,8 @@
 import { expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { decryptSecretBytesWithKey, encryptSecretBytesWithKey } from "../crypto/aes-gcm.ts";
-import { rewrapRegistryWithMaintenance } from "../preflight/rewrap-maintenance.ts";
-import { createVaultOps } from "../preflight/vault-ops.ts";
+import { decryptSecretBytesWithKey, encryptSecretBytesWithKey } from "../crypto/index.ts";
+import { createVaultOps, rewrapRegistryWithMaintenance } from "../preflight/index.ts";
 import * as schema from "./schema/index.ts";
 import { hostedTenantUsage } from "./schema/index.ts";
 import {

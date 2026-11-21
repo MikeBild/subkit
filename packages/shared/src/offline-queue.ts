@@ -1,3 +1,4 @@
+import { backoffDelay } from "./backoff.ts";
 export const OFFLINE_QUEUE_MAX_ITEMS = 20;
 export const OFFLINE_QUEUE_MAX_AGE_MS = 14 * 24 * 60 * 60_000;
 export const OFFLINE_RETRY_BASE_MS = 30_000;
@@ -107,10 +108,10 @@ export function classifyOutcome(
 }
 
 export function retryDelayMs(attempts: number, jitter: number): number {
-  const exponent = Math.max(0, attempts - 1);
-  const base = Math.min(OFFLINE_RETRY_BASE_MS * 2 ** exponent, OFFLINE_RETRY_MAX_MS);
-  const factor = 0.5 + 0.5 * Math.min(1, Math.max(0, jitter));
-  return Math.round(base * factor);
+  return backoffDelay(attempts - 1, jitter, {
+    baseMs: OFFLINE_RETRY_BASE_MS,
+    maxMs: OFFLINE_RETRY_MAX_MS,
+  });
 }
 
 export function applyOutcome<P>(

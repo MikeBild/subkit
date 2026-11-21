@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import type { TurnEvent } from "../types.ts";
 import { buildNextSuggestionFrame } from "./suggest-next-emitter.ts";
 

@@ -1,22 +1,11 @@
 import type { components } from "@cli-core/engine-api/openapi";
 import { useNavigate } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
-import { IconTile } from "@ui/components/proto/visual";
+import { IconTile } from "@ui/atoms/icon-tile";
 import { listPageFailure } from "@ui/lib/errors";
 import { Bot, Workflow } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { absolute, chatNewHref, recordHref, runsHref } from "@/app/links";
-import { CatalogSummary, useCatalogCreatedBy } from "@/components/cockpit/catalog-categories";
-import {
-  CatalogCategoryChips,
-  catalogCategoryGrouping,
-  categoryCounts,
-} from "@/components/cockpit/catalog-grouping";
-import { CatalogNameCell } from "@/components/cockpit/catalog-metadata";
-import { recordCategory } from "@/components/cockpit/catalog-metadata-model";
-import { CATALOG_CREATED_BY_FILTER } from "@/components/cockpit/catalog-origin-model";
-import { CreateAction } from "@/components/cockpit/create-choice";
-import { usePackageActions } from "@/components/cockpit/package-dialogs";
 import {
   ActionMenu,
   Button,
@@ -30,30 +19,40 @@ import {
   StatusBadge,
 } from "@/components/cockpit/patterns";
 import { tableColumns } from "@/components/cockpit/table-columns";
-import { WorkflowOnboarding } from "@/components/cockpit/workflow-onboarding";
-import { TRIGGER_ICONS } from "@/components/cockpit/workflow-steps-list";
 import { ForbiddenState } from "@/components/failure-state";
+import {
+  CATALOG_CATEGORY_GROUP,
+  CATALOG_CREATED_BY_FILTER,
+  CATALOG_WORKFLOW_FILTER_STATUSES,
+  CATALOG_WORKFLOW_GROUPS,
+  CatalogCategoryChips,
+  CatalogNameCell,
+  CatalogSummary,
+  catalogCategoryGrouping,
+  catalogGroupFromSearch,
+  catalogListParams,
+  catalogOperatingStatus,
+  categoryCounts,
+  OPERATING_STATUS_KEYS,
+  recordCategory,
+  useCatalogCreatedBy,
+  type WorkflowStatusFilter,
+  workflowNeedsAttention,
+} from "@/features/catalog";
 import { WorkflowStatusPill } from "@/features/operations";
-import { cronWords } from "@/lib/cron-words";
+import { usePackageActions } from "@/features/settings";
+import {
+  CreateAction,
+  TRIGGER_ICONS,
+  triggerLabelKey,
+  WorkflowOnboarding,
+} from "@/features/workflows";
+import { cronWords, humanizeCategory, triggerKindOf } from "@/features/workflows/model";
 import { LOCALE_TAGS, type Locale, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { type CursorPage, useInfiniteList } from "@/lib/use-infinite-list";
-import { humanizeCategory } from "@/lib/workflow-category";
-import { triggerKindOf } from "@/lib/workflow-flow";
-import {
-  CATALOG_CATEGORY_GROUP,
-  CATALOG_WORKFLOW_FILTER_STATUSES,
-  CATALOG_WORKFLOW_GROUPS,
-  catalogGroupFromSearch,
-  catalogListParams,
-  catalogOperatingStatus,
-  OPERATING_STATUS_KEYS,
-  type WorkflowStatusFilter,
-  workflowNeedsAttention,
-} from "@/pages/catalog-model";
-import { triggerLabelKey } from "@/pages/workflows-model";
 
 type CatalogRow = Record<string, unknown>;
 type WorkflowListItem = components["schemas"]["WorkflowListItem"];

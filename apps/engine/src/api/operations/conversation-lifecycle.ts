@@ -125,7 +125,7 @@ export interface ConversationLifecycleServices {
     },
     exec: Db,
   ): Promise<object>;
-  assertTaskRunTurn(
+  assertTaskRunWriter(
     exec: Db,
     writer: {
       tenant_id: string;
@@ -326,7 +326,7 @@ export function conversationLifecycleOperations(svc: ConversationLifecycleServic
     async handler(scope, { id, keep_last }) {
       const principal = scope.principal;
       if (!principal) return reject.unauthorized();
-      await svc.assertTaskRunTurn(scope.db, {
+      await svc.assertTaskRunWriter(scope.db, {
         tenant_id: scope.tenant_id,
         conversation_id: id,
         actor_id: principal.id,

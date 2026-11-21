@@ -46,7 +46,7 @@ describe("theme tokens", () => {
     expect(values.length).toBeGreaterThan(40);
   });
 
-  test("dark palette covers every documented role / severity / mode", () => {
+  test("dark palette covers every documented role and severity", () => {
     const t = PALETTES.dark;
     expect(t.role.user).toBeTruthy();
     expect(t.role.assistant).toBeTruthy();
@@ -57,8 +57,6 @@ describe("theme tokens", () => {
     expect(t.severity.info).toBeTruthy();
     expect(t.severity.success).toBeTruthy();
     expect(t.severity.dim).toBeTruthy();
-    expect(t.mode.plan).toBeTruthy();
-    expect(t.mode.yolo).toBe("red");
     expect(t.gutter.assistant).toBe(t.role.assistant);
   });
 
@@ -75,11 +73,10 @@ describe("theme tokens", () => {
     expect(shouldForceNoColor({ SK_PLAIN: "" })).toBe(false);
   });
 
-  test("token registry exhaustiveness — surfaces all 13 token groups", () => {
+  test("token registry exhaustiveness — surfaces all 12 token groups", () => {
     const groups = Object.keys(PALETTES.dark) as (keyof ThemeTokens)[];
     expect(groups).toContain("role");
     expect(groups).toContain("severity");
-    expect(groups).toContain("mode");
     expect(groups).toContain("emphasis");
     expect(groups).toContain("surface");
     expect(groups).toContain("border");
@@ -90,7 +87,7 @@ describe("theme tokens", () => {
     expect(groups).toContain("diff");
     expect(groups).toContain("spinner");
     expect(groups).toContain("badge");
-    expect(groups.length).toBe(13);
+    expect(groups.length).toBe(12);
   });
 });
 

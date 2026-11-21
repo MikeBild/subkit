@@ -1,7 +1,7 @@
 import { expect } from "bun:test";
-import { isolatedIn, staged } from "@/components/cockpit/task-grant-dom-fixtures";
-import { TASK_ID } from "@/components/cockpit/task-grant-fixtures";
-import { run, task } from "./tasks-fixtures";
+import { isolatedIn, staged } from "@/features/grants/model/task-grant-dom-fixtures";
+import { TASK_ID } from "@/features/grants/model/task-grant-fixtures";
+import { run, task } from "@/features/tasks/model/tasks-fixtures";
 
 const isolated = isolatedIn(import.meta.path);
 
@@ -18,7 +18,7 @@ for (const [locale, title, confirm, dismiss] of [
       await staged(
         { previews: [], locale },
         async () => {
-          const { StopRunDialog } = await import("./tasks-stop-dialog");
+          const { StopRunDialog } = await import("@/features/tasks/stop-dialog");
           return (
             <StopRunDialog
               name="Wetter Berlin"
@@ -51,7 +51,7 @@ isolated("stopping a run without a known task name still has two different butto
   await staged(
     { previews: [] },
     async () => {
-      const { StopRunDialog } = await import("./tasks-stop-dialog");
+      const { StopRunDialog } = await import("@/features/tasks/stop-dialog");
       return (
         <StopRunDialog
           name={null}
@@ -73,7 +73,7 @@ isolated("stopping a run without a known task name still has two different butto
 });
 
 const review = (results: { id: string; label: string; text: string }[]) => async () => {
-  const { TaskReviewDialog } = await import("./tasks-runs");
+  const { TaskReviewDialog } = await import("@/features/tasks/ui/tasks-runs");
   return (
     <TaskReviewDialog
       task={task({ name: "Wetter Berlin", done_when: "Nennt Temperatur und Wind." })}
@@ -140,7 +140,7 @@ for (const [name, refusal] of [
     await staged(
       { previews: [], previewRefusal: refusal },
       async () => {
-        const { TaskPermissions } = await import("@/components/cockpit/task-permissions");
+        const { TaskPermissions } = await import("@/features/grants/ui/task-permissions");
         return <TaskPermissions taskId={TASK_ID} />;
       },
       async (stage) => {
@@ -158,7 +158,7 @@ isolated("another failure of the permissions tab keeps the retry", async () => {
   await staged(
     { previews: [], previewRefusal: { status: 500, body: { code: "internal" } } },
     async () => {
-      const { TaskPermissions } = await import("@/components/cockpit/task-permissions");
+      const { TaskPermissions } = await import("@/features/grants/ui/task-permissions");
       return <TaskPermissions taskId={TASK_ID} />;
     },
     async (stage) => {
@@ -175,7 +175,7 @@ isolated("the permission dialog names the browser sign-in for an API key", async
       previewRefusal: { status: 403, body: { code: "human_session_required" } },
     },
     async () => {
-      const { GrantTaskAuthority } = await import("@/components/cockpit/grant-task-authority");
+      const { GrantTaskAuthority } = await import("@/features/grants/ui/grant-task-authority");
       return <GrantTaskAuthority taskId={TASK_ID} open onOpenChange={() => {}} />;
     },
     async (stage) => {

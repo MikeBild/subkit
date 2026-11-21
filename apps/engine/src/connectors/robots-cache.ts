@@ -1,7 +1,7 @@
 import robotsParser, { type Robot } from "robots-parser";
 import { getConfig } from "../config/loader.ts";
 import type { Executor } from "../db/client.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { getDriverFetch } from "./drivers/fetch-seam.ts";
 import { readBodyCapped } from "./drivers/response-body.ts";
 import { fetchWithEgressGuard } from "./egress-fetch.ts";

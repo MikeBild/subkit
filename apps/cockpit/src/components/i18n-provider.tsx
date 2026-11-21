@@ -1,9 +1,14 @@
+import { errorCatalog } from "@shared/error-catalog.ts";
 import { UiProvider } from "@ui/lib/ui-context";
+import { Workflow } from "lucide-react";
 import { type ReactNode, useMemo, useSyncExternalStore } from "react";
+import { ActionFailureHost } from "@/components/cockpit/patterns/action-failure";
 import { formatDateTime, translate, translatePlural } from "@/lib/i18n";
 import { I18nContext, type I18nValue } from "@/lib/i18n-context";
 import { createLocaleStore } from "@/lib/locale-store";
 import { LOCALE_COOKIE, sharePreference } from "@/lib/preference-cookie";
+
+const DIALOG_NOTICE = <ActionFailureHost className="mt-2" />;
 
 const localeStore = createLocaleStore({
   read: (key) => {
@@ -50,7 +55,14 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   );
   return (
     <I18nContext.Provider value={value}>
-      <UiProvider lang={snapshot.locale === "en" ? "en" : "de"} fmt={value.dateTime}>
+      <UiProvider
+        lang={snapshot.locale === "en" ? "en" : "de"}
+        fmt={value.dateTime}
+        mark={Workflow}
+        appName="SubKit"
+        dialogNotice={DIALOG_NOTICE}
+        errors={errorCatalog(snapshot.locale === "en" ? "en" : "de")}
+      >
         {children}
       </UiProvider>
     </I18nContext.Provider>

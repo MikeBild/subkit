@@ -1,4 +1,4 @@
-import { isDatabaseQueryError } from "../logging/logger.ts";
+import { isDatabaseQueryError } from "../logging/index.ts";
 
 export const DATABASE_FAILURE_MESSAGE = "the lookup failed; check the arguments";
 

@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { readEnv } from "../../env.ts";
 import { logger } from "../../logging/index.ts";
 import type { AppEnv } from "../openapi.ts";
 
@@ -19,7 +20,7 @@ interface BundleManifest {
 const manifestCache = new Map<string, BundleManifest>();
 
 function getBinariesDir(): string {
-  const envDir = process.env.SUBKIT_BINARIES_DIR;
+  const envDir = readEnv("SUBKIT_BINARIES_DIR");
   return envDir && envDir.length > 0 ? envDir : DEFAULT_BINARIES_DIR;
 }
 

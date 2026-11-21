@@ -4,7 +4,8 @@ import * as jose from "jose";
 import { getConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { oidcLoginStates, roles, sessions, users } from "../../db/schema/index.ts";
-import { logger } from "../../logging/logger.ts";
+import { readEnv } from "../../env.ts";
+import { logger } from "../../logging/index.ts";
 import {
   browserSessionDenyReason,
   clearBrowserSessionCookie,
@@ -36,7 +37,7 @@ export function deriveSessionSecret(override?: Uint8Array): Uint8Array {
   if (fromConfig.length > 0) {
     return new TextEncoder().encode(fromConfig);
   }
-  const masterKey = process.env.MASTER_KEY ?? "";
+  const masterKey = readEnv("MASTER_KEY") ?? "";
   return new Uint8Array(createHash("sha256").update(`${masterKey}:session`).digest());
 }
 
@@ -56,7 +57,7 @@ export function parseCookies(header: string | null): Record<string, string> {
 const ACCOUNT_CHOICE_COOKIE = "subkit_login_account_choice";
 
 export function accountChoiceCookie(requested: boolean): string {
-  const secure = process.env.NODE_ENV !== "development" ? "; Secure" : "";
+  const secure = readEnv("NODE_ENV") !== "development" ? "; Secure" : "";
   return `${ACCOUNT_CHOICE_COOKIE}=${requested ? "1" : ""}; Path=/v1/identity/login; HttpOnly; SameSite=Lax; Max-Age=${requested ? 600 : 0}${secure}`;
 }
 
@@ -93,7 +94,7 @@ export async function verifySessionCookie(
 
 export function buildCookieHeader(jwt: string): string {
   const maxAge = Math.floor(SESSION_ABSOLUTE_TTL_MS / 1000);
-  const secure = process.env.NODE_ENV !== "development" ? " Secure;" : "";
+  const secure = readEnv("NODE_ENV") !== "development" ? " Secure;" : "";
   return `${SESSION_COOKIE}=${encodeURIComponent(
     jwt,
   )}; Path=/; HttpOnly; SameSite=Lax;${secure} Max-Age=${maxAge}`;

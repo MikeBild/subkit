@@ -5,8 +5,8 @@ import {
   readDiscoveryIndexForConnector,
 } from "../connectors/discovery/service.ts";
 import type { DiscoveredEndpoint, DiscoveryResult } from "../connectors/discovery/types.ts";
-import { logger } from "../logging/logger.ts";
-import { listLatestShapes } from "../schema-versions/service.ts";
+import { logger } from "../logging/index.ts";
+import { listLatestShapes } from "../schema-versions/index.ts";
 import type { GroundedConnector } from "./authoring-grounding.ts";
 import { discoverConnectorEndpointsTool } from "./tools/discover-connector-endpoints.ts";
 import type { ToolContext } from "./tools/index.ts";

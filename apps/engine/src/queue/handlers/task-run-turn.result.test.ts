@@ -8,14 +8,17 @@ import {
   conversationMessages,
   conversationToolCalls,
   executions,
+  llmUsage,
   tasks,
-  userLlmSettings,
+  tenants,
   workflows,
   workflowVersions,
 } from "../../db/schema/index.ts";
+import { currentMonthBucket } from "../../llm/accounting/index.ts";
 import { createTask, updateTask } from "../../tasks/index.ts";
 import { advanceTaskRun } from "../../tasks/run-driver.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { now } from "../../utils/clock.ts";
 import { enqueueTaskRunTurn } from "./task-run-turn.ts";
 import {
   auditOf,
@@ -456,26 +459,29 @@ describe("the language of a run", () => {
 
 const SWEEP_AT = new Date("2027-01-01T00:00:00.000Z");
 
-describe("a run that waits for the token allowance", () => {
-  test("it is resumed only when the refused turn would be admitted, and writes nothing while it would not", async () => {
+describe("a run that waits for the AI budget", () => {
+  test("it is resumed only once the budget allows it again, and writes nothing while it does not", async () => {
     const w = await workspace();
     const run = await queuedRun(w);
-    const allow = async (budget: number) => {
-      await db
-        .insert(userLlmSettings)
-        .values({ tenant_id: w.tenant_id, user_id: w.owner.id, llm_monthly_token_budget: budget })
-        .onConflictDoUpdate({
-          target: [userLlmSettings.tenant_id, userLlmSettings.user_id],
-          set: { llm_monthly_token_budget: budget },
-        });
+    const limit = async (spend_limit_usd: number) => {
+      await db.update(tenants).set({ spend_limit_usd }).where(eq(tenants.id, w.tenant_id));
     };
-    await allow(2_000);
+    const at = new Date(now());
+    await db.insert(llmUsage).values({
+      tenant_id: w.tenant_id,
+      flow: "converse",
+      model: "claude-sonnet-4-5",
+      completion_tokens: 1_000_000,
+      total_tokens: 1_000_000,
+      result: "success",
+      month_bucket: currentMonthBucket(at),
+      created_at: at,
+    });
+    await limit(1);
     script(run.conversation_id, [{ text: "never reached" }]);
     expect(await workQueuedTurn()).toBe(true);
     const waiting = await runRow(w, run.id);
     expect(waiting).toMatchObject({ state: "waiting", waiting_reason: "budget", turns_used: 0 });
-    const refused = waiting.budget_wait_tokens ?? 0;
-    expect(refused).toBeGreaterThan(2_000);
 
     const scope = { tenant_id: w.tenant_id, task_run_id: run.id };
     const trail = async () => (await auditOf(w.tenant_id, run.id)).map((row) => row.action);
@@ -488,12 +494,10 @@ describe("a run that waits for the token allowance", () => {
           now: new Date(SWEEP_AT.getTime() + minutes * 60_000),
         }),
       ).toBe("idle");
-    await allow(refused - 1);
-    expect(await advanceTaskRun(db, { ...scope, now: SWEEP_AT })).toBe("idle");
     expect(await trail()).toEqual(before);
     expect(await queuedJobs(run.id)).toHaveLength(0);
 
-    await allow(refused * 10);
+    await limit(200);
     expect(await advanceTaskRun(db, { ...scope, now: SWEEP_AT })).toBe("resumed");
     expect(await trail()).toEqual([...before, "task_run.resumed"]);
     expect(await queuedJobs(run.id)).toHaveLength(1);

@@ -237,7 +237,7 @@ describe("GET /v1/connectors/{id}/runtime — a new credential resolves an older
   async function credentialStored(
     id: string,
     at: number,
-    action: "credential.created" | "credential.updated" | "credential.rotated",
+    action: "vault.item.created" | "vault.item.updated" | "vault.item.rotated",
   ): Promise<void> {
     await srv.db.insert(auditLog).values({
       id: uuid(),
@@ -245,7 +245,7 @@ describe("GET /v1/connectors/{id}/runtime — a new credential resolves an older
       tenant_id: srv.tenantId,
       actor_type: "system",
       action,
-      resource_type: "credential",
+      resource_type: "vault_item",
       resource_id: uuid(),
       result: "success",
       metadata: { connector_id: id, environment: "prod", mode: "oauth2", source: "oauth_callback" },
@@ -261,7 +261,7 @@ describe("GET /v1/connectors/{id}/runtime — a new credential resolves an older
   test("a rejected sign-in before the newest sign-in is not the last failure", async () => {
     const id = await connector();
     await failedCall(id, getTestNow() - 60 * minute, 401);
-    await credentialStored(id, getTestNow() - 10 * minute, "credential.updated");
+    await credentialStored(id, getTestNow() - 10 * minute, "vault.item.updated");
     const body = await runtime(id);
     expect(body.last_failure).toBeNull();
     expect(body.last_success_at).toBeNull();
@@ -269,7 +269,7 @@ describe("GET /v1/connectors/{id}/runtime — a new credential resolves an older
 
   test("a rejected sign-in after the newest sign-in is still the last failure", async () => {
     const id = await connector();
-    await credentialStored(id, getTestNow() - 60 * minute, "credential.created");
+    await credentialStored(id, getTestNow() - 60 * minute, "vault.item.created");
     await failedCall(id, getTestNow() - 10 * minute, 403);
     expect((await runtime(id)).last_failure).toMatchObject({ cause_class: "auth_failed" });
   });
@@ -277,14 +277,14 @@ describe("GET /v1/connectors/{id}/runtime — a new credential resolves an older
   test("a failure that is not about the credential stays after a sign-in", async () => {
     const id = await connector();
     await failedCall(id, getTestNow() - 60 * minute, 503);
-    await credentialStored(id, getTestNow() - 10 * minute, "credential.updated");
+    await credentialStored(id, getTestNow() - 10 * minute, "vault.item.updated");
     expect((await runtime(id)).last_failure).toMatchObject({ code: "5xx" });
   });
 
   test("a background token refresh resolves no rejected sign-in", async () => {
     const id = await connector();
     await failedCall(id, getTestNow() - 60 * minute, 401);
-    await credentialStored(id, getTestNow() - 10 * minute, "credential.rotated");
+    await credentialStored(id, getTestNow() - 10 * minute, "vault.item.rotated");
     expect((await runtime(id)).last_failure).toMatchObject({ cause_class: "auth_failed" });
   });
 
@@ -292,7 +292,7 @@ describe("GET /v1/connectors/{id}/runtime — a new credential resolves an older
     const id = await connector();
     const other = await connector();
     await failedCall(id, getTestNow() - 60 * minute, 401);
-    await credentialStored(other, getTestNow() - 10 * minute, "credential.updated");
+    await credentialStored(other, getTestNow() - 10 * minute, "vault.item.updated");
     expect((await runtime(id)).last_failure).toMatchObject({ cause_class: "auth_failed" });
   });
 });

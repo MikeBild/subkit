@@ -22,7 +22,8 @@ import {
 } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { OPENAPI_INFO } from "../http/openapi.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
+import { testEnv } from "../test-helpers/determinism/env.ts";
 import { createDeterministicHexFactory } from "../test-helpers/determinism/ids.ts";
 import { waitFor } from "../test-helpers/determinism/wait.ts";
 import { seedTenant } from "../test-helpers/seed.ts";
@@ -32,8 +33,8 @@ const entry = join(import.meta.dir, "../index.ts");
 const tsconfig = join(import.meta.dir, "../../../../tsconfig.json");
 const MAX_CAPTURE_CHARS = 256 * 1024;
 const PROCESS_TEST_TIMEOUT_MS =
-  process.env.SUBKIT_ENGINE_TEST_BINARY !== undefined ||
-  process.env.SUBKIT_ENGINE_TEST_VERSION !== undefined
+  testEnv.SUBKIT_ENGINE_TEST_BINARY !== undefined ||
+  testEnv.SUBKIT_ENGINE_TEST_VERSION !== undefined
     ? 180_000
     : 60_000;
 
@@ -51,8 +52,8 @@ async function binarySha256(path: string): Promise<string> {
 
 async function engineTestTarget(): Promise<EngineTestTarget> {
   selectedTarget ??= (async () => {
-    const binaryPath = process.env.SUBKIT_ENGINE_TEST_BINARY;
-    const version = process.env.SUBKIT_ENGINE_TEST_VERSION;
+    const binaryPath = testEnv.SUBKIT_ENGINE_TEST_BINARY;
+    const version = testEnv.SUBKIT_ENGINE_TEST_VERSION;
     if (binaryPath === undefined && version === undefined)
       return { kind: "source-bun", version: OPENAPI_INFO.version } as const;
     if (
@@ -71,7 +72,7 @@ async function engineTestTarget(): Promise<EngineTestTarget> {
     const sha256 = await binarySha256(resolved);
     const result = Bun.spawnSync([resolved, "--version"], {
       cwd: tmpdir(),
-      env: { PATH: process.env.PATH, NODE_ENV: "test", NO_UPDATE_CHECK: "1" },
+      env: { PATH: testEnv.PATH, NODE_ENV: "test", NO_UPDATE_CHECK: "1" },
       stdin: "ignore",
       stdout: "pipe",
       stderr: "pipe",
@@ -171,7 +172,7 @@ async function processFixture(label: string) {
     const child = Bun.spawn(argv, {
       cwd: directory,
       env: {
-        PATH: process.env.PATH,
+        PATH: testEnv.PATH,
         NODE_ENV: "test",
         MASTER_KEY: masterKey,
         DATABASE_URL: db.url,

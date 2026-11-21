@@ -1,36 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
-import {
-  BookOpen,
-  Bug,
-  ChevronsUpDown,
-  Globe,
-  KeyRound,
-  Loader2,
-  LogOut,
-  Palette,
-  Settings as SettingsIcon,
-  Sparkles,
-} from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { logout } from "@/api/client";
-import { installationId } from "@/app/installation-context";
-import { PauseMenu } from "@/app/pause-menu";
-import {
-  BrandingAppearance,
-  BrandingAttribution,
-  BrandingWordmark,
-} from "@/components/cockpit/branding";
-import { InstallationFollowupPrompt } from "@/components/cockpit/installation-dialogs";
-import { InstallationImportDialog } from "@/components/cockpit/installation-import-dialog";
-import { ActionFailureHost } from "@/components/cockpit/patterns";
-import { ResponsiveWorkspace } from "@/components/cockpit/patterns/responsive-workspace";
-import { ReleaseNotesDialog } from "@/components/cockpit/release-notes-dialog";
-import { WorkspaceSwitcher } from "@/components/cockpit/workspace-switcher";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@ui/atoms/avatar";
+import { cn } from "@ui/lib/utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
@@ -40,7 +15,7 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@ui/molecules/dropdown-menu";
 import {
   Sidebar,
   SidebarContent,
@@ -56,20 +31,50 @@ import {
   SidebarProvider,
   SidebarRail,
   useSidebar,
-} from "@/components/ui/sidebar";
-import { Toaster } from "@/components/ui/sonner";
-import { FeedbackHost, openFeedback } from "@/features/feedback";
-import { PwaRuntime, releaseOnSignOut } from "@/features/pwa";
+} from "@ui/organisms/sidebar";
+import {
+  BookOpen,
+  ChevronsUpDown,
+  Download,
+  Globe,
+  KeyRound,
+  Loader2,
+  LogOut,
+  Palette,
+  Sparkles,
+} from "lucide-react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import { logout } from "@/api/client";
+import { installationId } from "@/app/installation-context";
+import { PauseMenu } from "@/app/pause-menu";
+import { ActionFailureHost } from "@/components/cockpit/patterns";
+import { ResponsiveWorkspace } from "@/components/cockpit/patterns/responsive-workspace";
+import { FeedbackHost, feedbackBridge } from "@/features/feedback";
+import { attentionEntries } from "@/features/overview";
+import {
+  InstallationFollowupPrompt,
+  InstallationImportDialog,
+  installOffered,
+  openInstall,
+  PwaRuntime,
+  ReleaseNotesDialog,
+  releaseOnSignOut,
+  runsInstalled,
+} from "@/features/pwa";
+import { RunOverlays } from "@/features/runs";
+import {
+  BrandingAppearance,
+  BrandingAttribution,
+  BrandingWordmark,
+  visibleSettingAreas,
+  WorkspaceSwitcher,
+} from "@/features/settings";
 import { clearFailure, reportFailure } from "@/lib/action-failure";
 import type { TranslationKey } from "@/lib/i18n";
 import { type LocalePreference, useI18n } from "@/lib/i18n-context";
 import { readStartLayout } from "@/lib/start-layout";
 import { type Theme, useTheme } from "@/lib/theme";
-import { cn } from "@/lib/utils";
-import { attentionEntries } from "@/pages/overview-model";
-import { RunOverlays } from "@/pages/runs";
-import { visibleSettingAreas } from "@/pages/settings-areas";
-import { accountMenuFallbacks } from "./account-menu-model";
+import { type AccountMenuEntry, accountMenu } from "./account-menu-model";
 import { inboxCount } from "./attention-model";
 import { AttentionNotice } from "./attention-notice";
 import { DesktopStatusBanner } from "./desktop-status";
@@ -82,6 +87,7 @@ import { pageOf, useRouteEntrance } from "./route-entrance";
 import { useSession } from "./session";
 import { ACCOUNT_TRIGGER, SHELL_BAR, ShellHeader } from "./shell-header";
 import { SidePanel, SidePanelProvider } from "./side-panel";
+import { AppToaster } from "./toaster";
 import { useAttention } from "./use-attention";
 import { VersionNotice } from "./version-notice";
 
@@ -284,7 +290,7 @@ export function AppShell() {
             </div>
           </div>
         </SidePanelProvider>
-        <Toaster richColors position="bottom-right" />
+        <AppToaster />
         <InstallationImportDialog />
         <VersionNotice />
         <RoutedFeedbackHost />
@@ -408,7 +414,12 @@ function AccountMenu() {
     session.principal.role_name ||
     t("common.member");
   const role = localizedRole(session.principal.role_name || "member", t);
-  const fallbacks = accountMenuFallbacks({
+  const groups = accountMenu({
+    installOffered: installOffered({
+      installed: runsInstalled(),
+      desktop: feedbackBridge() !== null,
+      secure: typeof window !== "undefined" && window.isSecureContext,
+    }),
     permissions: session.permissions,
     settingAreas: visibleSettingAreas({
       permissions: session.permissions,
@@ -460,6 +471,148 @@ function AccountMenu() {
     </DropdownMenuRadioGroup>
   );
 
+  const entries: Record<AccountMenuEntry, ReactNode> = {
+    profile: (
+      <DropdownMenuItem asChild key="profile" data-testid="account-summary">
+        <Link
+          to="/settings"
+          search={{ area: "profile" }}
+          data-testid="account-link-profile"
+          onClick={closeOnPhone}
+          className="flex-col items-start gap-0.5"
+        >
+          <span className="block text-sm font-medium whitespace-normal text-foreground [overflow-wrap:anywhere]">
+            {identity}
+          </span>
+          {session.principal.email && session.principal.email !== identity ? (
+            <span className="block max-w-full truncate text-xs text-muted-foreground">
+              {session.principal.email}
+            </span>
+          ) : null}
+          <span className="block text-xs text-muted-foreground">{role}</span>
+        </Link>
+      </DropdownMenuItem>
+    ),
+    language: isMobile ? (
+      <div key="language">
+        <DropdownMenuLabel
+          className="text-xs font-medium text-muted-foreground"
+          data-testid="account-language-menu"
+        >
+          {t("account.language")}
+        </DropdownMenuLabel>
+        {languages}
+      </div>
+    ) : (
+      <DropdownMenuSub key="language">
+        <DropdownMenuSubTrigger data-testid="account-language-menu">
+          <Globe data-icon="inline-start" />
+          {t("account.language")}
+        </DropdownMenuSubTrigger>
+        <DropdownMenuSubContent
+          collisionPadding={8}
+          className="w-48"
+          data-testid="account-language-content"
+        >
+          {languages}
+        </DropdownMenuSubContent>
+      </DropdownMenuSub>
+    ),
+    theme: isMobile ? (
+      <div key="theme">
+        <DropdownMenuLabel
+          className="text-xs font-medium text-muted-foreground"
+          data-testid="account-theme-menu"
+        >
+          {t("account.theme")}
+        </DropdownMenuLabel>
+        {themes}
+      </div>
+    ) : (
+      <DropdownMenuSub key="theme">
+        <DropdownMenuSubTrigger data-testid="account-theme-menu">
+          <Palette data-icon="inline-start" />
+          {t("account.theme")}
+        </DropdownMenuSubTrigger>
+        <DropdownMenuSubContent
+          collisionPadding={8}
+          className="w-48"
+          data-testid="account-theme-content"
+        >
+          {themes}
+        </DropdownMenuSubContent>
+      </DropdownMenuSub>
+    ),
+    docs: (
+      <DropdownMenuItem
+        asChild
+        key="docs"
+        className={under("/docs") ? "bg-accent text-accent-foreground" : undefined}
+        data-testid="account-nav-docs"
+      >
+        <Link
+          to="/docs"
+          data-testid="account-link-docs"
+          aria-current={under("/docs") ? "page" : undefined}
+          onClick={closeOnPhone}
+        >
+          <BookOpen data-icon="inline-start" />
+          {t("docs.menu")}
+        </Link>
+      </DropdownMenuItem>
+    ),
+    apiAccess: (
+      <DropdownMenuItem
+        asChild
+        key="apiAccess"
+        className={under("/api-access") ? "bg-accent text-accent-foreground" : undefined}
+        data-testid="account-nav-api-access"
+      >
+        <Link
+          to="/api-access"
+          data-testid="account-link-api-access"
+          aria-current={under("/api-access") ? "page" : undefined}
+          onClick={closeOnPhone}
+        >
+          <KeyRound data-icon="inline-start" />
+          {t("nav.apiAccess")}
+        </Link>
+      </DropdownMenuItem>
+    ),
+    pause: <PauseMenu key="pause" />,
+    releaseNotes: (
+      <DropdownMenuItem
+        key="releaseNotes"
+        onSelect={() => setReleaseNotesOpen(true)}
+        data-testid="account-release-notes"
+      >
+        <Sparkles data-icon="inline-start" />
+        {t("releaseNotes.menu")}
+      </DropdownMenuItem>
+    ),
+    install: (
+      <DropdownMenuItem key="install" onSelect={() => openInstall()} data-testid="account-install">
+        <Download data-icon="inline-start" />
+        {t("pwa.install.menu")}
+      </DropdownMenuItem>
+    ),
+    signOut: (
+      <DropdownMenuItem
+        key="signOut"
+        disabled={signingOut}
+        data-testid="account-sign-out"
+        onSelect={() => void signOut()}
+      >
+        {signingOut ? (
+          <Loader2 data-icon="inline-start" className="animate-spin" />
+        ) : (
+          <LogOut data-icon="inline-start" />
+        )}
+        {t(signingOut ? "account.signingOut" : "account.signOut")}
+      </DropdownMenuItem>
+    ),
+  };
+
   return (
     <>
       <DropdownMenu>
@@ -500,143 +653,12 @@ function AccountMenu() {
           className="w-64"
           data-testid="account-menu"
         >
-          <DropdownMenuLabel className="font-normal" data-testid="account-summary">
-            <span className="block text-sm font-medium whitespace-normal text-foreground [overflow-wrap:anywhere]">
-              {identity}
-            </span>
-            <span className="block truncate text-xs text-muted-foreground">
-              {session.tenant.display_name}
-            </span>
-          </DropdownMenuLabel>
-          <DropdownMenuSeparator />
-
-          <DropdownMenuItem
-            asChild
-            className={under("/settings") ? "bg-accent text-accent-foreground" : undefined}
-            data-testid="account-nav-settings"
-          >
-            <Link
-              to="/settings"
-              data-testid="account-link-settings"
-              aria-current={under("/settings") ? "page" : undefined}
-              onClick={closeOnPhone}
-            >
-              <SettingsIcon data-icon="inline-start" />
-              {t("nav.settings")}
-            </Link>
-          </DropdownMenuItem>
-
-          <DropdownMenuItem onSelect={() => openFeedback()} data-testid="account-feedback">
-            <Bug data-icon="inline-start" />
-            {t("feedback.menu")}
-          </DropdownMenuItem>
-
-          <DropdownMenuItem
-            asChild
-            className={under("/docs") ? "bg-accent text-accent-foreground" : undefined}
-            data-testid="account-nav-docs"
-          >
-            <Link
-              to="/docs"
-              data-testid="account-link-docs"
-              aria-current={under("/docs") ? "page" : undefined}
-              onClick={closeOnPhone}
-            >
-              <BookOpen data-icon="inline-start" />
-              {t("docs.menu")}
-            </Link>
-          </DropdownMenuItem>
-
-          <DropdownMenuItem
-            onSelect={() => setReleaseNotesOpen(true)}
-            data-testid="account-release-notes"
-          >
-            <Sparkles data-icon="inline-start" />
-            {t("releaseNotes.menu")}
-          </DropdownMenuItem>
-
-          {fallbacks.apiAccess ? (
-            <DropdownMenuItem
-              asChild
-              className={under("/api-access") ? "bg-accent text-accent-foreground" : undefined}
-              data-testid="account-nav-api-access"
-            >
-              <Link
-                to="/api-access"
-                data-testid="account-link-api-access"
-                aria-current={under("/api-access") ? "page" : undefined}
-                onClick={closeOnPhone}
-              >
-                <KeyRound data-icon="inline-start" />
-                {t("nav.apiAccess")}
-              </Link>
-            </DropdownMenuItem>
-          ) : null}
-          {fallbacks.pause ? <PauseMenu /> : null}
-
-          <DropdownMenuSeparator />
-          {isMobile ? (
-            <>
-              <DropdownMenuLabel
-                className="text-xs font-medium text-muted-foreground"
-                data-testid="account-language-menu"
-              >
-                {t("account.language")}
-              </DropdownMenuLabel>
-              {languages}
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel
-                className="text-xs font-medium text-muted-foreground"
-                data-testid="account-theme-menu"
-              >
-                {t("account.theme")}
-              </DropdownMenuLabel>
-              {themes}
-            </>
-          ) : (
-            <>
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger data-testid="account-language-menu">
-                  <Globe data-icon="inline-start" />
-                  {t("account.language")}
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent
-                  collisionPadding={8}
-                  className="w-48"
-                  data-testid="account-language-content"
-                >
-                  {languages}
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger data-testid="account-theme-menu">
-                  <Palette data-icon="inline-start" />
-                  {t("account.theme")}
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent
-                  collisionPadding={8}
-                  className="w-48"
-                  data-testid="account-theme-content"
-                >
-                  {themes}
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-            </>
-          )}
-
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            disabled={signingOut}
-            data-testid="account-sign-out"
-            onSelect={() => void signOut()}
-          >
-            {signingOut ? (
-              <Loader2 data-icon="inline-start" className="animate-spin" />
-            ) : (
-              <LogOut data-icon="inline-start" />
-            )}
-            {t(signingOut ? "account.signingOut" : "account.signOut")}
-          </DropdownMenuItem>
+          {groups.map((group, index) => (
+            <DropdownMenuGroup key={group[0]}>
+              {index > 0 ? <DropdownMenuSeparator /> : null}
+              {group.map((entry) => entries[entry])}
+            </DropdownMenuGroup>
+          ))}
         </DropdownMenuContent>
       </DropdownMenu>
       <ReleaseNotesDialog open={releaseNotesOpen} onOpenChange={setReleaseNotesOpen} />

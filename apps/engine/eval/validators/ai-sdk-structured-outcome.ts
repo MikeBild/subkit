@@ -1,6 +1,10 @@
 import { AiSdkModel } from "../../src/llm/runtime/ai-sdk-model.ts";
 import type { FixtureRecord, ValidationResult } from "../runner.ts";
 
+type GenerateText = NonNullable<
+  Exclude<ConstructorParameters<typeof AiSdkModel>[0], string | undefined>["generateTextFn"]
+>;
+
 export async function validate(fixture: FixtureRecord): Promise<ValidationResult> {
   const input = fixture.input as {
     schema: Record<string, unknown>;
@@ -24,8 +28,7 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
   };
   const model = new AiSdkModel({
     defaultModel: "claude-sonnet-4-5",
-    // biome-ignore lint/suspicious/noExplicitAny: eval stub
-    generateTextFn: answering as any,
+    generateTextFn: answering as unknown as GenerateText,
   });
   const result = await model.generateObject({
     messages: [{ role: "user", content: "x" }],
@@ -58,8 +61,7 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
   });
   const refusingModel = new AiSdkModel({
     defaultModel: "claude-sonnet-4-5",
-    // biome-ignore lint/suspicious/noExplicitAny: eval stub
-    generateTextFn: refusing as any,
+    generateTextFn: refusing as unknown as GenerateText,
   });
   const refused = await refusingModel.generateObject({
     messages: [{ role: "user", content: "x" }],

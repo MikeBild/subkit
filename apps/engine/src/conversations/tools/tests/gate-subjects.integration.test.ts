@@ -14,6 +14,7 @@ import { EngineClient } from "../../../engine-client/index.ts";
 import { buildMcpStubCtx } from "../../../mcp/adapter.ts";
 import { builtinRoleId } from "../../../rbac/roles.ts";
 import { getSkillCandidate } from "../../../skill-candidates/service.ts";
+import { testEnv } from "../../../test-helpers/determinism/env.ts";
 import { grantApproval, hashToolArgs } from "../../../tools/approval.ts";
 import { dispatchTool } from "../../../tools/dispatcher.ts";
 import { getUnifiedRegistry } from "../../../tools/index.ts";
@@ -34,7 +35,7 @@ let tenantId: string;
 let userId: string;
 let principal: ResolvedPrincipal;
 let seq = 0;
-const originalDatabaseUrl = process.env.DATABASE_URL;
+const originalDatabaseUrl = testEnv.DATABASE_URL;
 
 async function newConversation(): Promise<string> {
   const [row] = await tdb.db
@@ -117,15 +118,7 @@ async function chatCall(
   const inner = getTool(name);
   if (!inner) throw new Error(`${name} is not registered`);
   const events: TurnEvent[] = [];
-  const wrapped = wrapOne(
-    inner,
-    toolCtx(await newConversation()),
-    freshSignals(),
-    events,
-    db,
-    {},
-    null,
-  );
+  const wrapped = wrapOne(inner, toolCtx(await newConversation()), freshSignals(), events, db, {});
   seq += 1;
   const result = await wrapped.execute!(args, {
     toolCallId: `gate-subjects-${seq}`,
@@ -164,7 +157,7 @@ beforeAll(async () => {
   tdb = await createTestDb("gate-subjects");
   db = tdb.db as unknown as Db;
   await closeDb();
-  process.env.DATABASE_URL = tdb.url;
+  testEnv.DATABASE_URL = tdb.url;
   const [tenant] = await tdb.db
     .insert(tenants)
     .values({ slug: "t-gate-subjects", display_name: "Gate Subjects" })
@@ -186,8 +179,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await closeDb();
-  if (originalDatabaseUrl === undefined) delete process.env.DATABASE_URL;
-  else process.env.DATABASE_URL = originalDatabaseUrl;
+  if (originalDatabaseUrl === undefined) delete testEnv.DATABASE_URL;
+  else testEnv.DATABASE_URL = originalDatabaseUrl;
   await tdb.cleanup();
 }, 30_000);
 

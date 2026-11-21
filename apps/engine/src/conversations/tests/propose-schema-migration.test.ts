@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { connectors } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
-import { recordSuccessShape } from "../../schema-versions/service.ts";
+import { recordSuccessShape } from "../../schema-versions/index.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import type { ToolContext } from "../tools/index.ts";
 import { proposeSchemaMigrationTool } from "../tools/propose-schema-migration.ts";

@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import { conversationToolCalls } from "../../db/schema/index.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import type { AnswerActor } from "../answer-actor.ts";
 import { describeBoundAction } from "../instruction-cover/bound-action.ts";
 import { collectContent } from "../instruction-cover/content.ts";

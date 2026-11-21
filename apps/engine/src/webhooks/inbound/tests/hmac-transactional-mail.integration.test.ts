@@ -78,7 +78,6 @@ beforeAll(async () => {
             kind: "request",
             method: "POST",
             url: GMAIL_SEND_TARGET,
-            // biome-ignore lint/suspicious/noTemplateCurlyInString: engine workflow placeholder
             body: { raw: "${input.body.mime}" },
             max_retries: 0,
             transactional_delivery: {

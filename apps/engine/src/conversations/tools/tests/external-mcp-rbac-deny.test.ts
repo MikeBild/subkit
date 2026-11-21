@@ -12,6 +12,7 @@ import {
 } from "../../../mcp/client/pool.ts";
 import { seedMcpConnector } from "../../../mcp/client/test-fixtures.ts";
 import { seedBuiltinRolesAndPermissions } from "../../../rbac/seed.ts";
+import { testEnv } from "../../../test-helpers/determinism/env.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
 import { seedTenant } from "../../../test-helpers/seed.ts";
 import { freshSignals } from "../../tests/turn-signals.ts";
@@ -51,13 +52,13 @@ let ctx: TestDb;
 let tenant_id: string;
 let actor_id: string;
 let conversation_id: string;
-const _origDatabaseUrl = process.env.DATABASE_URL;
+const _origDatabaseUrl = testEnv.DATABASE_URL;
 
 beforeAll(async () => {
   __setMcpPoolFactoriesForTests({ makeClient: () => fakeClient });
   ctx = await createTestDb("external-mcp-rbac-deny");
   await closeDb();
-  process.env.DATABASE_URL = ctx.url;
+  testEnv.DATABASE_URL = ctx.url;
   tenant_id = (await seedTenant(ctx.db, { slug: "t-mcp-rbac-deny", display_name: "MCP RBAC Deny" }))
     .id;
   actor_id = createDeterministicUuidFactory(322)();
@@ -81,8 +82,8 @@ afterAll(async () => {
   __setMcpPoolFactoriesForTests(null);
   __resetMcpClientPoolForTests();
   await closeDb();
-  if (_origDatabaseUrl === undefined) delete process.env.DATABASE_URL;
-  else process.env.DATABASE_URL = _origDatabaseUrl;
+  if (_origDatabaseUrl === undefined) delete testEnv.DATABASE_URL;
+  else testEnv.DATABASE_URL = _origDatabaseUrl;
   await ctx.cleanup();
 }, 30_000);
 

@@ -1,10 +1,8 @@
 import type { components } from "@cli-core/engine-api/openapi";
-import type { TranslationKey } from "@/lib/i18n";
+import type { Translate, TranslationKey } from "@/lib/i18n";
 import { type CatalogLabel, catalogLabel } from "@/lib/machine-label";
 
 export type CauseClass = components["schemas"]["FailureCauseClass"];
-
-type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 
 const CAUSE_CLASS_KEYS = {
   ok: "cause.ok",

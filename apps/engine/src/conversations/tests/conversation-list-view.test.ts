@@ -10,7 +10,7 @@ import {
   listConversations,
   patchConversation,
   setConversationHidden,
-} from "../service.ts";
+} from "../service/index.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
 
 let ctx: ConversationTestCtx;

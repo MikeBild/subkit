@@ -1,8 +1,8 @@
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import type { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import { logger } from "../../logging/logger.ts";
-import { recordUsageEvent, type TrafficClass } from "../../stats/usage-events.ts";
+import { logger } from "../../logging/index.ts";
+import { recordUsageEvent, type TrafficClass } from "../../stats/index.ts";
 import { now } from "../../utils/clock.ts";
 
 export const SESSION_IDLE_TTL_MS = 30 * 60_000;

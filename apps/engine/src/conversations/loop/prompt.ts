@@ -98,7 +98,7 @@ export async function assembleTurnPrompt(
   const connectorIds = authoringConnectorIds(activeConnectorId, state.draft);
   const hint = authoringHint(state.draft.summary, {
     runVerb: currentUserText ? RUN_VERB_RE.test(currentUserText) : false,
-    permission_mode: p.permission_mode ?? null,
+    ask_before_writing: p.ask_before_writing === true,
     locked_tools: lockedToolsBySkill(new Set(base.loadedEntries.map((entry) => entry.slug))),
   });
   const previewFailures = priorFailuresFromPreview(state.draft.latest_preview?.warnings ?? []);
@@ -170,7 +170,7 @@ export async function assembleTurnPrompt(
           actor_email: p.runtime_context?.actor_email,
           actor_role: p.runtime_context?.actor_role,
           surface: p.surface,
-          permission_mode: p.permission_mode,
+          ask_before_writing: p.ask_before_writing === true,
         }),
       },
       p.db,

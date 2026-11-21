@@ -1,4 +1,4 @@
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { getMetrics, METRIC_NAMES } from "../../observability/metrics.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import { runSandboxWorkerJob } from "../../sandboxes/quickjs/runtime.ts";

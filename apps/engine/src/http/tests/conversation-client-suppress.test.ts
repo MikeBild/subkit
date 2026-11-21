@@ -3,13 +3,14 @@ import type { SuggestNextKind, SuggestNextReason } from "@shared/suggest-next-re
 import { eq } from "drizzle-orm";
 import { tenants } from "../../db/schema/index.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { adminHeaders } from "../../test-helpers/seed.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
 
 beforeAll(async () => {
-  process.env.LLM_PROVIDER = "mock";
+  testEnv.LLM_PROVIDER = "mock";
   resetMockProvider();
   srv = await createHttpTestServer("conv-client-suppress");
   await srv.db

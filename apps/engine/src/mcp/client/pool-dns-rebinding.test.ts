@@ -7,6 +7,7 @@ import { getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
 import { closeDb } from "../../db/client.ts";
 import { connectors } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   __resetMcpClientPoolForTests,
@@ -18,7 +19,7 @@ import { getMcpConnector } from "./registry.ts";
 import { seedMcpConnector } from "./test-fixtures.ts";
 
 let ctx: TestDb;
-const origDatabaseUrl = process.env.DATABASE_URL;
+const origDatabaseUrl = testEnv.DATABASE_URL;
 let origEgressMode: "strict" | "permissive" | null | undefined;
 
 let connects = 0;
@@ -71,7 +72,7 @@ beforeAll(async () => {
   origEgressMode = getConfig().egress.mode;
   await setConfigKey("egress.mode", "strict", { force: true });
   ctx = await createTestDb("mcp-pool-dns-rebinding");
-  process.env.DATABASE_URL = ctx.url;
+  testEnv.DATABASE_URL = ctx.url;
 }, 60_000);
 
 afterEach(() => {
@@ -87,8 +88,8 @@ afterAll(async () => {
     await setConfigKey("egress.mode", origEgressMode ?? null, { force: true });
   }
   await closeDb();
-  if (origDatabaseUrl === undefined) delete process.env.DATABASE_URL;
-  else process.env.DATABASE_URL = origDatabaseUrl;
+  if (origDatabaseUrl === undefined) delete testEnv.DATABASE_URL;
+  else testEnv.DATABASE_URL = origDatabaseUrl;
   await ctx?.cleanup();
 }, 30_000);
 

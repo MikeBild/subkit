@@ -1,16 +1,17 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 let suite: McpTestSuite;
 
 beforeAll(async () => {
-  process.env.SK_MCP_MODE = "authoring";
+  testEnv.SK_MCP_MODE = "authoring";
   suite = await startMcpTestSuite("preview-attachment-flat-name");
 });
 
 afterAll(async () => {
   await suite.cleanup();
-  delete process.env.SK_MCP_MODE;
+  delete testEnv.SK_MCP_MODE;
 });
 
 describe("mcp tools/list — preview_attachment naming", () => {

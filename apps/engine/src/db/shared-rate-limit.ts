@@ -1,5 +1,5 @@
 import { getConfig } from "../config/loader.ts";
-import { errorFields, logger } from "../logging/logger.ts";
+import { errorFields, logger } from "../logging/index.ts";
 import type { Executor } from "./client.ts";
 import { admitPersistentRateLimits, rateLimitBucketKey } from "./rate-limits.ts";
 

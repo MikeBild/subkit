@@ -1,16 +1,18 @@
+import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { and, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { type Actor, auditActor } from "../audit/actor.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { resolveActor } from "../audit/recorders/types.ts";
 import { AuditAction } from "../audit/types.ts";
-import type { EncryptedPayload } from "../crypto/aes-gcm.ts";
-import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
+import type { EncryptedPayload } from "../crypto/index.ts";
+import { decryptSecret, encryptSecret } from "../crypto/index.ts";
 import type { Db, Executor } from "../db/client.ts";
-import { connectors, credentials, outboundConnections } from "../db/schema/index.ts";
-import { logger } from "../logging/logger.ts";
+import { connectors, outboundConnections, vaultItems } from "../db/schema/index.ts";
+import { logger } from "../logging/index.ts";
 import { invalidateTenantState } from "../operator/tenant-state.ts";
 import { emitCredentialChange } from "../pubsub/resource-changes.ts";
+import { connectorItemName, withNameSuffix } from "../vault/index.ts";
 import type { ConnectionAuthorityIdentity } from "./authority-metadata.ts";
 import { authorityScopeSet, sameAuthorityScopes, storedScopes } from "./authority-scopes.ts";
 import { readAccessToken, summarizeConnections } from "./connections/service.ts";
@@ -77,11 +79,37 @@ type CredentialWriteSource =
   | "service_package_enrollment"
   | "unspecified";
 
+async function connectorItemNameFor(
+  tx: Executor,
+  input: { tenant_id: string; connector_id: string; environment: "dev" | "prod"; mode: string },
+): Promise<string> {
+  const [connector] = await tx
+    .select({ slug: connectors.slug })
+    .from(connectors)
+    .where(and(eq(connectors.tenant_id, input.tenant_id), eq(connectors.id, input.connector_id)))
+    .limit(1);
+  const base = connectorItemName(connector?.slug ?? "connector", input.environment, input.mode);
+  const [taken] = await tx
+    .select({ id: vaultItems.id })
+    .from(vaultItems)
+    .where(
+      and(
+        eq(vaultItems.tenant_id, input.tenant_id),
+        isNull(vaultItems.owner_user_id),
+        eq(vaultItems.name, base),
+        eq(vaultItems.environment, input.environment),
+        isNull(vaultItems.deleted_at),
+      ),
+    )
+    .limit(1);
+  return taken ? withNameSuffix(base, randomUUID().replace(/-/g, "").slice(0, 8)) : base;
+}
+
 export async function upsertCredential(
   input: UpsertCredentialInput,
   db: Executor,
 ): Promise<CredentialRow> {
-  const ownerPredicate = eq(credentials.connector_id, input.connector_id);
+  const ownerPredicate = eq(vaultItems.connector_id, input.connector_id);
   const row = await db.transaction(async (tx) => {
     if (input.mode === "signed_jwt") {
       if (input.value.mode !== "signed_jwt") {
@@ -126,31 +154,31 @@ export async function upsertCredential(
     }
     const isClientSlot = input.mode === "oauth2_client";
     const slotPredicate = isClientSlot
-      ? eq(credentials.mode, "oauth2_client")
-      : ne(credentials.mode, "oauth2_client");
+      ? eq(vaultItems.mode, "oauth2_client")
+      : ne(vaultItems.mode, "oauth2_client");
     const existing = await tx
       .select({
-        id: credentials.id,
-        mode: credentials.mode,
-        ciphertext: credentials.ciphertext,
-        iv: credentials.iv,
-        auth_tag: credentials.auth_tag,
-        oauth2_refresh_ciphertext: credentials.oauth2_refresh_ciphertext,
-        oauth2_refresh_iv: credentials.oauth2_refresh_iv,
-        oauth2_refresh_auth_tag: credentials.oauth2_refresh_auth_tag,
-        granted_scopes: credentials.granted_scopes,
-        connection_id: credentials.connection_id,
+        id: vaultItems.id,
+        mode: vaultItems.mode,
+        ciphertext: vaultItems.ciphertext,
+        iv: vaultItems.iv,
+        auth_tag: vaultItems.auth_tag,
+        oauth2_refresh_ciphertext: vaultItems.oauth2_refresh_ciphertext,
+        oauth2_refresh_iv: vaultItems.oauth2_refresh_iv,
+        oauth2_refresh_auth_tag: vaultItems.oauth2_refresh_auth_tag,
+        granted_scopes: vaultItems.granted_scopes,
+        connection_id: vaultItems.connection_id,
       })
-      .from(credentials)
+      .from(vaultItems)
       .where(
         and(
-          eq(credentials.tenant_id, input.tenant_id),
+          eq(vaultItems.tenant_id, input.tenant_id),
           ownerPredicate,
-          eq(credentials.environment, input.environment),
+          eq(vaultItems.environment, input.environment),
           slotPredicate,
         ),
       )
-      .orderBy(desc(credentials.created_at), desc(credentials.id))
+      .orderBy(desc(vaultItems.created_at), desc(vaultItems.id))
       .limit(1)
       .for("update");
     const priorId = existing[0]?.id ?? null;
@@ -160,10 +188,13 @@ export async function upsertCredential(
     if (priorId) {
       id = priorId;
     } else {
+      const name = await connectorItemNameFor(tx, input);
       const [row] = await tx
-        .insert(credentials)
+        .insert(vaultItems)
         .values({
           tenant_id: input.tenant_id,
+          kind: "connector",
+          name,
           connector_id: input.connector_id,
           environment: input.environment,
           mode: input.mode,
@@ -171,7 +202,7 @@ export async function upsertCredential(
           iv: Buffer.from(placeholder.iv),
           auth_tag: Buffer.from(placeholder.auth_tag),
         })
-        .returning({ id: credentials.id });
+        .returning({ id: vaultItems.id });
       if (!row) throw new Error("credential insert returned no row");
       id = row.id;
     }
@@ -228,10 +259,10 @@ export async function upsertCredential(
     }
 
     await tx
-      .update(credentials)
+      .update(vaultItems)
       .set({
         mode: input.mode,
-        credential_generation: priorId ? sql`${credentials.credential_generation} + 1` : 1,
+        credential_generation: priorId ? sql`${vaultItems.credential_generation} + 1` : 1,
         verified_identity: input.verified_identity
           ? VerifiedProviderIdentitySchema.parse(input.verified_identity)
           : null,
@@ -244,19 +275,19 @@ export async function upsertCredential(
         oauth2_expires_at: input.oauth2_expires_at ?? null,
         granted_scopes: grantedScopes,
         ...(authorityChanged
-          ? { authority_revision: sql`${credentials.authority_revision} + 1` }
+          ? { authority_revision: sql`${vaultItems.authority_revision} + 1` }
           : {}),
         connection_id: input.connection_id ?? null,
         updated_at: new Date(),
       })
-      .where(eq(credentials.id, id));
+      .where(eq(vaultItems.id, id));
 
     await auditAwait(
       {
         tenant_id: input.tenant_id,
         ...(input.actor ? auditActor(input.actor) : resolveActor(input)),
-        action: priorId ? AuditAction.CREDENTIAL_UPDATED : AuditAction.CREDENTIAL_CREATED,
-        resource_type: "credential",
+        action: priorId ? AuditAction.VAULT_ITEM_UPDATED : AuditAction.VAULT_ITEM_CREATED,
+        resource_type: "vault_item",
         resource_id: id,
         result: "success",
         metadata: {
@@ -308,17 +339,15 @@ export async function rotateOAuth2Tokens(
   const identity = await db.transaction(async (tx) => {
     const [prior] = await tx
       .select({
-        mode: credentials.mode,
-        credential_generation: credentials.credential_generation,
-        granted_scopes: credentials.granted_scopes,
-        ciphertext: credentials.ciphertext,
-        iv: credentials.iv,
-        auth_tag: credentials.auth_tag,
+        mode: vaultItems.mode,
+        credential_generation: vaultItems.credential_generation,
+        granted_scopes: vaultItems.granted_scopes,
+        ciphertext: vaultItems.ciphertext,
+        iv: vaultItems.iv,
+        auth_tag: vaultItems.auth_tag,
       })
-      .from(credentials)
-      .where(
-        and(eq(credentials.tenant_id, input.tenant_id), eq(credentials.id, input.credential_id)),
-      )
+      .from(vaultItems)
+      .where(and(eq(vaultItems.tenant_id, input.tenant_id), eq(vaultItems.id, input.credential_id)))
       .for("update");
     if (
       input.expected_generation !== undefined &&
@@ -367,9 +396,9 @@ export async function rotateOAuth2Tokens(
       ? encryptSecret(input.refresh_token, refreshAadFor(input.tenant_id, input.credential_id))
       : null;
     const updated = await tx
-      .update(credentials)
+      .update(vaultItems)
       .set({
-        credential_generation: sql`${credentials.credential_generation} + 1`,
+        credential_generation: sql`${vaultItems.credential_generation} + 1`,
         verified_identity: input.verified_identity
           ? VerifiedProviderIdentitySchema.parse(input.verified_identity)
           : null,
@@ -385,24 +414,22 @@ export async function rotateOAuth2Tokens(
           : {}),
         granted_scopes: nextScope,
         ...(authorityChanged
-          ? { authority_revision: sql`${credentials.authority_revision} + 1` }
+          ? { authority_revision: sql`${vaultItems.authority_revision} + 1` }
           : {}),
         oauth2_expires_at: input.expires_at ?? null,
         updated_at: new Date(),
       })
-      .where(
-        and(eq(credentials.tenant_id, input.tenant_id), eq(credentials.id, input.credential_id)),
-      )
+      .where(and(eq(vaultItems.tenant_id, input.tenant_id), eq(vaultItems.id, input.credential_id)))
       .returning({
-        credential_generation: credentials.credential_generation,
-        verified_identity: credentials.verified_identity,
+        credential_generation: vaultItems.credential_generation,
+        verified_identity: vaultItems.verified_identity,
       });
     await auditAwait(
       {
         tenant_id: input.tenant_id,
         ...(input.actor ? auditActor(input.actor) : resolveActor(input)),
-        action: AuditAction.CREDENTIAL_ROTATED,
-        resource_type: "credential",
+        action: AuditAction.VAULT_ITEM_ROTATED,
+        resource_type: "vault_item",
         resource_id: input.credential_id,
         result: "success",
         metadata: { reason: "oauth2_refresh", authority_changed: authorityChanged },
@@ -414,7 +441,7 @@ export async function rotateOAuth2Tokens(
 
   logger.info({
     module: "credentials",
-    action: "credential.rotated",
+    action: "vault.item.rotated",
     msg: "oauth2 credential rotated",
     credential_id: input.credential_id,
     tenant_id: input.tenant_id,
@@ -429,7 +456,7 @@ export async function getCredentialForConnector(
   environment: "dev" | "prod",
   db: Executor,
 ): Promise<{
-  row: typeof credentials.$inferSelect;
+  row: typeof vaultItems.$inferSelect;
   value: DecryptedCredential;
   connection_authority?: ConnectionAuthorityIdentity | null;
   credential_snapshot?: CredentialUseSnapshot;
@@ -437,17 +464,17 @@ export async function getCredentialForConnector(
   if (!UUID_RE.test(connector_id)) return null;
   const rows = await db
     .select()
-    .from(credentials)
+    .from(vaultItems)
     .where(
       and(
-        eq(credentials.tenant_id, tenant_id),
-        eq(credentials.connector_id, connector_id),
-        eq(credentials.environment, environment),
-        ne(credentials.mode, "oauth2_client"),
-        isNull(credentials.deleted_at),
+        eq(vaultItems.tenant_id, tenant_id),
+        eq(vaultItems.connector_id, connector_id),
+        eq(vaultItems.environment, environment),
+        ne(vaultItems.mode, "oauth2_client"),
+        isNull(vaultItems.deleted_at),
       ),
     )
-    .orderBy(desc(credentials.created_at), desc(credentials.id))
+    .orderBy(desc(vaultItems.created_at), desc(vaultItems.id))
     .limit(1);
   const row = rows[0];
   if (!row) return null;
@@ -509,9 +536,9 @@ export async function getCredentialForConnector(
 
 function authenticatingCredentials(tenant_id: string, connector_ids: readonly string[]) {
   return and(
-    eq(credentials.tenant_id, tenant_id),
-    inArray(credentials.connector_id, [...connector_ids]),
-    ne(credentials.mode, "oauth2_client"),
+    eq(vaultItems.tenant_id, tenant_id),
+    inArray(vaultItems.connector_id, [...connector_ids]),
+    ne(vaultItems.mode, "oauth2_client"),
   );
 }
 
@@ -530,14 +557,14 @@ export async function describeConnectorCredentialStates(
   if (ids.length === 0) return found;
   const rows = await db
     .select({
-      connector_id: credentials.connector_id,
-      environment: credentials.environment,
-      mode: credentials.mode,
-      connection_id: credentials.connection_id,
+      connector_id: vaultItems.connector_id,
+      environment: vaultItems.environment,
+      mode: vaultItems.mode,
+      connection_id: vaultItems.connection_id,
     })
-    .from(credentials)
+    .from(vaultItems)
     .where(authenticatingCredentials(tenant_id, ids))
-    .orderBy(desc(credentials.created_at), desc(credentials.id));
+    .orderBy(desc(vaultItems.created_at), desc(vaultItems.id));
   const latest = new Map<string, (typeof rows)[number]>();
   for (const row of rows) {
     const key = `${row.connector_id}:${row.environment}`;
@@ -580,24 +607,24 @@ export async function describeCredentialForConnector(
   if (!UUID_RE.test(connector_id)) return null;
   const rows = await db
     .select({
-      id: credentials.id,
-      verified_identity: credentials.verified_identity,
-      mode: credentials.mode,
-      environment: credentials.environment,
-      updated_at: credentials.updated_at,
-      connection_id: credentials.connection_id,
-      ciphertext: credentials.ciphertext,
-      iv: credentials.iv,
-      auth_tag: credentials.auth_tag,
+      id: vaultItems.id,
+      verified_identity: vaultItems.verified_identity,
+      mode: vaultItems.mode,
+      environment: vaultItems.environment,
+      updated_at: vaultItems.updated_at,
+      connection_id: vaultItems.connection_id,
+      ciphertext: vaultItems.ciphertext,
+      iv: vaultItems.iv,
+      auth_tag: vaultItems.auth_tag,
     })
-    .from(credentials)
+    .from(vaultItems)
     .where(
       and(
         authenticatingCredentials(tenant_id, [connector_id]),
-        eq(credentials.environment, environment),
+        eq(vaultItems.environment, environment),
       ),
     )
-    .orderBy(desc(credentials.created_at), desc(credentials.id))
+    .orderBy(desc(vaultItems.created_at), desc(vaultItems.id))
     .limit(1);
   const row = rows[0];
   if (!row) return null;
@@ -651,13 +678,13 @@ export async function getOAuth2ClientCredential(
   if (!UUID_RE.test(connector_id)) return null;
   const rows = await db
     .select()
-    .from(credentials)
+    .from(vaultItems)
     .where(
       and(
-        eq(credentials.tenant_id, tenant_id),
-        eq(credentials.connector_id, connector_id),
-        eq(credentials.environment, environment),
-        eq(credentials.mode, "oauth2_client"),
+        eq(vaultItems.tenant_id, tenant_id),
+        eq(vaultItems.connector_id, connector_id),
+        eq(vaultItems.environment, environment),
+        eq(vaultItems.mode, "oauth2_client"),
       ),
     )
     .limit(1);
@@ -696,14 +723,14 @@ export async function resolveDefaultEnvironmentForConnector(
 ): Promise<"dev" | "prod" | null> {
   if (!UUID_RE.test(connector_id)) return null;
   const rows = await db
-    .select({ environment: credentials.environment })
-    .from(credentials)
+    .select({ environment: vaultItems.environment })
+    .from(vaultItems)
     .where(
       and(
-        eq(credentials.tenant_id, tenant_id),
-        eq(credentials.connector_id, connector_id),
-        ne(credentials.mode, "oauth2_client"),
-        inArray(credentials.environment, ["dev", "prod"]),
+        eq(vaultItems.tenant_id, tenant_id),
+        eq(vaultItems.connector_id, connector_id),
+        ne(vaultItems.mode, "oauth2_client"),
+        inArray(vaultItems.environment, ["dev", "prod"]),
       ),
     )
     .limit(2);
@@ -778,16 +805,16 @@ export async function getOAuth2PrivateKeyCredential(
   if (!UUID_RE.test(connector_id)) return null;
   const rows = await db
     .select()
-    .from(credentials)
+    .from(vaultItems)
     .where(
       and(
-        eq(credentials.tenant_id, tenant_id),
-        eq(credentials.connector_id, connector_id),
-        eq(credentials.environment, environment),
-        eq(credentials.mode, "oauth2_private_key"),
+        eq(vaultItems.tenant_id, tenant_id),
+        eq(vaultItems.connector_id, connector_id),
+        eq(vaultItems.environment, environment),
+        eq(vaultItems.mode, "oauth2_private_key"),
       ),
     )
-    .orderBy(desc(credentials.created_at), desc(credentials.id))
+    .orderBy(desc(vaultItems.created_at), desc(vaultItems.id))
     .limit(1);
   const row = rows[0];
   if (!row) return null;
@@ -832,20 +859,20 @@ export async function recordCredentialProviderIdentity(
   const identity = input.identity ? VerifiedProviderIdentitySchema.parse(input.identity) : null;
   await db.transaction(async (tx) => {
     const rows = await tx
-      .update(credentials)
+      .update(vaultItems)
       .set({ verified_identity: identity })
       .where(
         and(
-          eq(credentials.tenant_id, input.tenant_id),
-          eq(credentials.id, credentialId),
-          eq(credentials.connector_id, input.snapshot.connector_id),
-          eq(credentials.environment, input.snapshot.environment),
-          eq(credentials.credential_generation, generation),
-          inArray(credentials.mode, ["oauth2_client", "oauth2_private_key"]),
-          sql`${credentials.verified_identity} IS DISTINCT FROM ${identity ? JSON.stringify(identity) : null}::jsonb`,
+          eq(vaultItems.tenant_id, input.tenant_id),
+          eq(vaultItems.id, credentialId),
+          eq(vaultItems.connector_id, input.snapshot.connector_id),
+          eq(vaultItems.environment, input.snapshot.environment),
+          eq(vaultItems.credential_generation, generation),
+          inArray(vaultItems.mode, ["oauth2_client", "oauth2_private_key"]),
+          sql`${vaultItems.verified_identity} IS DISTINCT FROM ${identity ? JSON.stringify(identity) : null}::jsonb`,
         ),
       )
-      .returning({ id: credentials.id });
+      .returning({ id: vaultItems.id });
     const row = rows[0];
     if (!row) return;
     await auditAwait(
@@ -853,8 +880,8 @@ export async function recordCredentialProviderIdentity(
         tenant_id: input.tenant_id,
         actor_type: "system",
         actor_id: null,
-        action: AuditAction.CREDENTIAL_UPDATED,
-        resource_type: "credential",
+        action: AuditAction.VAULT_ITEM_UPDATED,
+        resource_type: "vault_item",
         resource_id: row.id,
         result: "success",
         metadata: { reason: "provider_identity_observed", request_source: input.request_source },
@@ -870,9 +897,9 @@ export async function credentialExists(
   credential_id: string,
 ): Promise<boolean> {
   const rows = await db
-    .select({ id: credentials.id })
-    .from(credentials)
-    .where(and(eq(credentials.tenant_id, tenant_id), eq(credentials.id, credential_id)))
+    .select({ id: vaultItems.id })
+    .from(vaultItems)
+    .where(and(eq(vaultItems.tenant_id, tenant_id), eq(vaultItems.id, credential_id)))
     .limit(1);
   return rows.length > 0;
 }
@@ -881,15 +908,15 @@ export async function findLiveCredential(
   db: Executor,
   tenant_id: string,
   credential_id: string,
-): Promise<typeof credentials.$inferSelect | null> {
+): Promise<typeof vaultItems.$inferSelect | null> {
   const rows = await db
     .select()
-    .from(credentials)
+    .from(vaultItems)
     .where(
       and(
-        eq(credentials.tenant_id, tenant_id),
-        eq(credentials.id, credential_id),
-        isNull(credentials.deleted_at),
+        eq(vaultItems.tenant_id, tenant_id),
+        eq(vaultItems.id, credential_id),
+        isNull(vaultItems.deleted_at),
       ),
     )
     .limit(1);
@@ -903,9 +930,9 @@ export async function deleteCredential(
   db: Executor,
 ): Promise<boolean> {
   const deleted = await db
-    .delete(credentials)
-    .where(and(eq(credentials.tenant_id, tenant_id), eq(credentials.id, credential_id)))
-    .returning({ connector_id: credentials.connector_id });
+    .delete(vaultItems)
+    .where(and(eq(vaultItems.tenant_id, tenant_id), eq(vaultItems.id, credential_id)))
+    .returning({ connector_id: vaultItems.connector_id });
   const ok = deleted.length > 0;
   if (ok) {
     invalidateTenantState(tenant_id);
@@ -918,8 +945,8 @@ export async function deleteCredential(
           : actor_input
             ? auditActor(actor_input)
             : resolveActor({ tenant_id, actor_id: null })),
-        action: AuditAction.CREDENTIAL_DELETED,
-        resource_type: "credential",
+        action: AuditAction.VAULT_ITEM_DELETED,
+        resource_type: "vault_item",
         resource_id: credential_id,
         result: "success",
         metadata: {},

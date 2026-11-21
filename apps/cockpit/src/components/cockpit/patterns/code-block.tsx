@@ -1,5 +1,5 @@
+import { IconButton } from "@ui/molecules/icon-button";
 import { Copy } from "lucide-react";
-import { IconButton } from "@/components/cockpit/icon-button";
 import { useI18n } from "@/lib/i18n-context";
 import { useCopy } from "./copy-field";
 

@@ -1,4 +1,5 @@
 import { hostname } from "node:os";
+import { readEnv } from "../env.ts";
 
 export const CONFIG_STATE_KEY = "runtime";
 export const REPLICA_HEARTBEAT_MS = 10_000;
@@ -6,7 +7,7 @@ export const REPLICA_LEASE_MS = 30_000;
 export const ACTIVATION_TIMEOUT_MS = 60_000;
 
 export function defaultReplicaInstanceId(): string {
-  return process.env.SUBKIT_REPLICA_ID || `${hostname()}-${process.pid}`;
+  return readEnv("SUBKIT_REPLICA_ID") || `${hostname()}-${process.pid}`;
 }
 
 export type RevisionStatus = "saved" | "preparing" | "active" | "failed" | "restart_required";

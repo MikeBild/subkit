@@ -1,4 +1,5 @@
 import { isTextLike } from "../../files/content-type.ts";
+import { isC0OrDelete, withoutCodes } from "../../utils/control-chars.ts";
 
 export const PROMOTE_SIZE_THRESHOLD_BYTES = 25 * 1024 * 1024;
 
@@ -48,8 +49,7 @@ const EXTENSION_BY_TYPE: Record<string, string> = {
 
 function sanitizeFilename(raw: string): string | null {
   const base = raw.split(/[/\\]/).pop() ?? "";
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping control chars from vendor-supplied filenames is the point
-  const cleaned = base.replace(/[\u0000-\u001f\u007f]/g, "").trim();
+  const cleaned = withoutCodes(base, isC0OrDelete).trim();
   if (!cleaned || cleaned === "." || cleaned === "..") return null;
   return cleaned.slice(0, 255);
 }

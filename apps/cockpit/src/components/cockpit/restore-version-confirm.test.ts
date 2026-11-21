@@ -1,14 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { confirmTitle } from "@/components/cockpit/patterns";
+import { uiDicts } from "@ui/lib/ui-context";
 import { type Locale, translate } from "@/lib/i18n";
 
 function wording(locale: Locale) {
   const t = (key: Parameters<typeof translate>[1], values?: Record<string, string | number>) =>
     translate(locale, key, values);
   return {
-    title: confirmTitle(
-      t,
-      locale,
+    title: uiDicts[locale].confirm.title(
       t("knowledge.versions.confirmObject"),
       t("knowledge.versions.confirmVerb"),
     ),

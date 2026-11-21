@@ -1,7 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${...}` placeholder tokens are part of the tested grammar.
-// Step dependency DAG — unit tests for buildStepDag, detectCycles,
-// topoSort, and renderCycleReport. Pure data, no I/O.
-
 import { describe, expect, test } from "bun:test";
 import { buildStepDag, detectCycles, renderCycleReport, topoSort } from "../core/dag.ts";
 import type { WorkflowDef } from "../types.ts";

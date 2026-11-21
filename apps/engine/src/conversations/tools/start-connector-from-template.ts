@@ -3,7 +3,7 @@ import { withMcpConfigDefaults } from "../../connectors/config-schemas.ts";
 import { runDiscoveryCached } from "../../connectors/discovery/service.ts";
 import { enrichConnectorFromTemplate } from "../../connectors/template-enrichment.ts";
 import { resolveConnectorTemplate } from "../../connectors/template-resolver.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { withConnectorDraft } from "../authoring-state/index.ts";
 import { validateConnectorDraft } from "../connector-draft.ts";
 import {

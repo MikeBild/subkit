@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 
 const LOAD_TIME_FETCH: typeof fetch = globalThis.fetch.bind(globalThis);
 

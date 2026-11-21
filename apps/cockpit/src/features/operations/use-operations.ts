@@ -1,7 +1,7 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { apiCall } from "@/api/call";
+import { occurrenceSentenceKey } from "@/features/workflows/model";
 import { useI18n } from "@/lib/i18n-context";
-import { occurrenceSentenceKey } from "@/lib/schedule-occurrences";
 import { type Occurrence, sortOccurrences, toOccurrence } from "./schedule-model";
 
 const OCCURRENCE_PAGE = 30;

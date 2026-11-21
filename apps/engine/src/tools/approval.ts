@@ -3,12 +3,12 @@ import { and, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
-import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
+import { decryptSecret, encryptSecret } from "../crypto/index.ts";
 import type { Db, Executor } from "../db/client.ts";
 import { toolApprovals } from "../db/schema/index.ts";
 import { authorizationContextFromPrincipal } from "../execution/authorization-context.ts";
 import { callerFromPrincipal } from "../execution/caller-context.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { approvalOwnerFilter } from "./approval-owner.ts";
 import {
   type ApprovalPreview,

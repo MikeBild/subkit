@@ -1,3 +1,4 @@
+import { testEnv } from "./env.ts";
 export interface SeededRandom {
   float(): number;
   int(min: number, max: number): number;
@@ -42,7 +43,7 @@ export function createSeededRandom(seed: number): SeededRandom {
 }
 
 export function seedFromEnv(fallback = 1): number {
-  const raw = process.env.SUBKIT_DETERMINISTIC_SEED;
+  const raw = testEnv.SUBKIT_DETERMINISTIC_SEED;
   if (!raw) return fallback;
   const n = Number.parseInt(raw, 10);
   return Number.isFinite(n) ? n : fallback;

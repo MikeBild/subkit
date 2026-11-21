@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { testEnv } from "../test-helpers/determinism/env.ts";
 import { withContext } from "./context.ts";
 import {
   _resetLoggerForTests,
@@ -219,12 +220,12 @@ describe("ndjson field-length cap", () => {
 describe("sd-daemon priority prefix", () => {
   function captureRawLine(env: Record<string, string | undefined>, fn: () => void): string {
     const savedEnv: Record<string, string | undefined> = {
-      SK_LOG_SD_DAEMON: process.env.SK_LOG_SD_DAEMON,
-      JOURNAL_STREAM: process.env.JOURNAL_STREAM,
+      SK_LOG_SD_DAEMON: testEnv.SK_LOG_SD_DAEMON,
+      JOURNAL_STREAM: testEnv.JOURNAL_STREAM,
     };
     for (const [k, v] of Object.entries(env)) {
-      if (v === undefined) delete process.env[k];
-      else process.env[k] = v;
+      if (v === undefined) delete testEnv[k];
+      else testEnv[k] = v;
     }
     _resetLoggerForTests();
     reconfigureLogger({ format: "ndjson", level: "trace" });
@@ -239,8 +240,8 @@ describe("sd-daemon priority prefix", () => {
     } finally {
       process.stdout.write = orig as typeof process.stdout.write;
       for (const [k, v] of Object.entries(savedEnv)) {
-        if (v === undefined) delete process.env[k];
-        else process.env[k] = v;
+        if (v === undefined) delete testEnv[k];
+        else testEnv[k] = v;
       }
       _resetLoggerForTests();
     }

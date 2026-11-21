@@ -1,6 +1,6 @@
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
-import { consumeMatchingSignal } from "../../workflow-signals/service.ts";
+import { consumeMatchingSignal } from "../../workflow-signals/index.ts";
 import type { WaitForEventStep } from "../../workflows/types.ts";
 import type { StepResult, StepRunContext } from "../types.ts";
 import { clearWaitCheckpoint, writeWaitCheckpoint } from "./wait-checkpoint.ts";

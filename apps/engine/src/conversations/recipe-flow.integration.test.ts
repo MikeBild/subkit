@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { conversations, tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { testEnv } from "../test-helpers/determinism/env.ts";
 import { createEmptyDraftDocument } from "./authoring-state/index.ts";
 import { startWorkflowFromRecipeTool } from "./tools/start-workflow-from-recipe.ts";
 import type { DraftDocument } from "./types.ts";
 
-const skip = process.env.REQUIRES_PG === "0";
+const skip = testEnv.REQUIRES_PG === "0";
 let ctx: TestDb;
 let tenant_id: string;
 let conversation_id: string;

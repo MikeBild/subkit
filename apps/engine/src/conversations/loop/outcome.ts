@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { conversations } from "../../db/schema/index.ts";
-import { log, logger } from "../../logging/logger.ts";
+import { log, logger } from "../../logging/index.ts";
 import { CONVERSATION_CANCELLED_REASON } from "../abort.ts";
 import {
   budgetExhausted,

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
+import { testEnv } from "../../../test-helpers/determinism/env.ts";
 import {
   __resetDevtoolsCacheForTests,
   maybeWrapForDevtools,
@@ -24,22 +25,22 @@ const stubV4Model = (): StubModel => ({
 });
 
 describe("maybeWrapForDevtools", () => {
-  const originalNodeEnv = process.env.NODE_ENV;
+  const originalNodeEnv = testEnv.NODE_ENV;
 
   afterEach(() => {
-    if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
-    else process.env.NODE_ENV = originalNodeEnv;
+    if (originalNodeEnv === undefined) delete testEnv.NODE_ENV;
+    else testEnv.NODE_ENV = originalNodeEnv;
     __resetDevtoolsCacheForTests();
   });
 
   it("passes through the mock sentinel string unchanged", async () => {
-    process.env.NODE_ENV = "development";
+    testEnv.NODE_ENV = "development";
     const out = await maybeWrapForDevtools("mock:never-dispatched");
     expect(out).toBe("mock:never-dispatched");
   });
 
   it("does not wrap when NODE_ENV is production", async () => {
-    process.env.NODE_ENV = "production";
+    testEnv.NODE_ENV = "production";
     const model = stubV4Model();
     // biome-ignore lint/suspicious/noExplicitAny: stub satisfies the runtime contract
     const out = await maybeWrapForDevtools(model as any);
@@ -48,7 +49,7 @@ describe("maybeWrapForDevtools", () => {
   });
 
   it("wraps in DEV and returns a different instance", async () => {
-    process.env.NODE_ENV = "development";
+    testEnv.NODE_ENV = "development";
     const model = stubV4Model();
     // biome-ignore lint/suspicious/noExplicitAny: stub satisfies the runtime contract
     const out = await maybeWrapForDevtools(model as any);
@@ -59,8 +60,8 @@ describe("maybeWrapForDevtools", () => {
 
   for (const env of ["", "staging", "test", "smoke"] as const) {
     it(`does not wrap when NODE_ENV is ${env === "" ? "unset" : `"${env}"`}`, async () => {
-      if (env === "") delete process.env.NODE_ENV;
-      else process.env.NODE_ENV = env;
+      if (env === "") delete testEnv.NODE_ENV;
+      else testEnv.NODE_ENV = env;
       const model = stubV4Model();
       // biome-ignore lint/suspicious/noExplicitAny: stub satisfies the runtime contract
       const out = await maybeWrapForDevtools(model as any);
@@ -70,7 +71,7 @@ describe("maybeWrapForDevtools", () => {
   }
 
   it("passes through models with unsupported specificationVersion", async () => {
-    process.env.NODE_ENV = "development";
+    testEnv.NODE_ENV = "development";
     const legacyModel = { ...stubV4Model(), specificationVersion: "v2" };
     // biome-ignore lint/suspicious/noExplicitAny: stub satisfies the runtime contract
     const out = await maybeWrapForDevtools(legacyModel as any);

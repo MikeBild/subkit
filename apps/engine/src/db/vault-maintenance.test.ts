@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { decryptSecretBytesWithKey } from "../crypto/aes-gcm.ts";
+import { decryptSecretBytesWithKey } from "../crypto/index.ts";
 import { EMBEDDED_MIGRATIONS } from "./migrations/embedded.ts";
 import { auditLog, hostedTenantUsage } from "./schema/index.ts";
 import {

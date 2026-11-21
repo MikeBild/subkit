@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { and, eq, gte } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { executionSteps, executions } from "../../db/schema/index.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { now } from "../../utils/clock.ts";
 import { computeConfidence, type PatternSignal } from "../types.ts";
 

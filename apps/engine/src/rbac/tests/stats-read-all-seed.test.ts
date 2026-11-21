@@ -13,7 +13,7 @@ function memberAllows(name: string): boolean {
   if (name === "api_key:rotate") return false;
   if (name === "api_key:revoke") return false;
   if (name === "connector:promote") return false;
-  if (name.startsWith("credential:") && name !== "credential:read") return false;
+  if (name.startsWith("vault:") && name !== "vault:read") return false;
   if (name === "discovery:approve") return false;
   if (name === "mcp:admin") return false;
   if (name.startsWith("mcp_oauth_client:")) return false;
@@ -49,8 +49,8 @@ describe("stats:read:all — catalog and seed invariants", () => {
     expect(memberAllows("connector:promote")).toBe(false);
   });
 
-  it("member role still allows credential:read (the one credential permission members keep)", () => {
-    expect(memberAllows("credential:read")).toBe(true);
+  it("member role still allows vault:read (the one credential permission members keep)", () => {
+    expect(memberAllows("vault:read")).toBe(true);
   });
 
   it("stats:read:all description mentions other users and cross-user breakdowns", () => {

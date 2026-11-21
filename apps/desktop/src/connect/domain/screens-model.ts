@@ -6,6 +6,21 @@ import type {
   LoginPhase,
   ProfileSummary,
 } from "../../shared/ipc.ts";
+import {
+  LAST_SETUP_STEP,
+  type LocalErrorKind,
+  type PhaseRow,
+  setupComplete,
+  setupRows,
+} from "../../shared/local/local-workspace-model.ts";
+import {
+  PERMISSION_KEYS,
+  type PermissionKey,
+  permissionGranted,
+  permissionsDone,
+} from "../../shared/local/permission-model.ts";
+import type { PermissionView } from "../../shared/local/permission-port.ts";
+import type { DataFolderRefusal } from "../../shared/local/supervisor-model.ts";
 import { currentStep, type WorkspaceOption } from "../../shared/onboarding.ts";
 import { hostOf } from "../../shared/server-address.ts";
 import { REVOKED_CODE } from "../../shared/server-contract.ts";
@@ -23,7 +38,7 @@ import { SIGN_IN_ERRORS, type SignInErrorCase } from "./sign-in-errors.ts";
 
 export { hostOf };
 
-export type FlowStep = "welcome" | "invite" | "connect" | "signin";
+export type FlowStep = "welcome" | "invite" | "connect" | "signin" | "local";
 export type FlowPath = "server" | "invite";
 export type ConsentTopic = "notifications" | "diagnostics";
 
@@ -34,6 +49,7 @@ export interface FlowUi {
   target: { origin: string; serverVersion: string | null } | null;
   check: CheckSlot;
   reloginDismissed: boolean;
+  localStep: number;
   invite: InviteField;
   invitation: Invitation | null;
   consent: Record<ConsentTopic, boolean | null>;
@@ -52,6 +68,7 @@ export const INITIAL_FLOW: FlowUi = {
   target: null,
   check: { phase: "idle" },
   reloginDismissed: false,
+  localStep: 0,
   invite: CLOSED_INVITE,
   invitation: null,
   consent: { notifications: null, diagnostics: null },
@@ -102,8 +119,23 @@ export type SignInModel =
   | { phase: "done"; serverVersion: string | null }
   | { phase: "failed"; strip: StripModel; error: SignInErrorCase; facts: Fact[] };
 
+export interface LocalSetupModel {
+  kind: "local";
+  step: number;
+  starting: boolean;
+  folder: string;
+  folderRefusal: DataFolderRefusal | null;
+  rows: PhaseRow[];
+  error: LocalErrorKind | null;
+  working: boolean;
+  done: boolean;
+}
+
 export type Screen =
   | { kind: "settings" }
+  | { kind: "permissions"; setup: PermissionSetupModel }
+  | { kind: "local-capabilities"; device: string; signedIn: boolean }
+  | LocalSetupModel
   | { kind: "welcome"; invite: WelcomeInvite }
   | { kind: "invite"; invite: InviteView }
   | {
@@ -115,6 +147,7 @@ export type Screen =
       slot: SlotModel;
       examples: string[];
       canContinue: boolean;
+      localAvailable: boolean;
       back: boolean;
     }
   | { kind: "signin"; origin: string; host: string; signin: SignInModel; joining: boolean }
@@ -332,11 +365,70 @@ export function forcedStep(state: ConnectState, ui: FlowUi): FlowUi {
     };
   }
   if (ui.step === "welcome" && !welcomeAvailable(state)) return { ...ui, step: "connect" };
+  if (ui.step !== "local") return ui;
+  const { error } = state.local;
+  if (error === "folder" && ui.localStep > 0) return { ...ui, localStep: 0 };
+  if (error === "keyRejected" && ui.localStep > 2) return { ...ui, localStep: 2 };
   return ui;
+}
+
+export interface PermissionCard {
+  key: PermissionKey;
+  granted: boolean;
+  restart: boolean;
+}
+
+export interface PermissionSetupModel {
+  supported: boolean;
+  cards: PermissionCard[];
+  done: boolean;
+  lost: boolean;
+}
+
+export function permissionSetupFor(view: PermissionView): PermissionSetupModel {
+  const { permissions } = view;
+  return {
+    supported: view.supported,
+    cards: PERMISSION_KEYS.map((key) => ({
+      key,
+      granted: permissionGranted(permissions, key),
+      restart: key === "screen" && permissions.restartPending,
+    })),
+    done: permissionsDone(permissions),
+    lost: view.lost.length > 0,
+  };
+}
+
+export function localScreenFor(state: ConnectState, ui: FlowUi): LocalSetupModel | null {
+  const { local } = state;
+  const setup = ui.step === "local";
+  if (!setup && !local.attention) return null;
+  const done = setupComplete(local.progress);
+  return {
+    kind: "local",
+    step: setup ? Math.min(ui.localStep, LAST_SETUP_STEP) : LAST_SETUP_STEP,
+    starting: !setup,
+    folder: local.folder,
+    folderRefusal: local.folderRefusal,
+    rows: setupRows(local.progress, local.working && local.error === null),
+    error: local.error,
+    working: local.working,
+    done,
+  };
 }
 
 export function screenFor(state: ConnectState, ui: FlowUi): Screen {
   if (state.view === "settings") return { kind: "settings" };
+  if (state.view === "local")
+    return {
+      kind: "local-capabilities",
+      device: state.deviceLabel,
+      signedIn: Boolean(state.signedIn),
+    };
+  if (state.view === "permissions")
+    return { kind: "permissions", setup: permissionSetupFor(state.permissions) };
+  const local = localScreenFor(state, ui);
+  if (local) return local;
   if (state.signedIn && state.onboarding.loading) {
     const { origin, serverVersion } = state.signedIn;
     return {
@@ -398,5 +490,6 @@ export function screenFor(state: ConnectState, ui: FlowUi): Screen {
     examples: exampleAddresses(state.profiles),
     canContinue: slot.kind === "outcome" && slot.outcome.kind === "ok",
     back: welcomeAvailable(state),
+    localAvailable: state.local.available && !state.local.configured,
   };
 }

@@ -30,7 +30,7 @@ export function makeCtx(
   initial: DraftDocument,
   opts?: {
     surface?: ToolContext["surface"];
-    permission_mode?: ToolContext["permission_mode"];
+    ask_before_writing?: boolean;
   },
 ): ToolContext & { current: () => DraftDocument } {
   let draft = initial;
@@ -42,7 +42,7 @@ export function makeCtx(
     connector_id: null,
     workflow_id: null,
     ...(opts?.surface ? { surface: opts.surface } : {}),
-    ...(opts?.permission_mode ? { permission_mode: opts.permission_mode } : {}),
+    ...(opts?.ask_before_writing ? { ask_before_writing: true } : {}),
     engineClient: new EngineClient({
       tenant_id: ctx.tenant_id,
       actor_id: ctx.user_id,

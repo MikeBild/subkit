@@ -1,11 +1,11 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
+import { runMcpOAuthCleanup } from "../../auth/scheduled/mcp-oauth-cleanup-runner.ts";
 import { auditLog } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
 import { seedMcpConnector } from "../../mcp/client/test-fixtures.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
-import { runMcpOAuthCleanup } from "../mcp-oauth-cleanup-runner.ts";
 
 let srv: HttpTestServer;
 let connectorId: string;

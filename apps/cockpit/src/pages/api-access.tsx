@@ -37,9 +37,6 @@ import {
 } from "@/components/cockpit/patterns";
 import { tableColumns } from "@/components/cockpit/table-columns";
 import { ForbiddenState } from "@/components/failure-state";
-import { reportFailure } from "@/lib/action-failure";
-import { formatRelativeTime } from "@/lib/i18n";
-import { useI18n } from "@/lib/i18n-context";
 import {
   API_KEYS_QUERY,
   type ApiKeyItem,
@@ -61,9 +58,11 @@ import {
   scopeLabel,
   scopeRisk,
   scopeRiskKey,
-} from "@/pages/api-access-model";
-
-type Translate = ReturnType<typeof useI18n>["t"];
+} from "@/features/admin";
+import { reportFailure } from "@/lib/action-failure";
+import type { Translate } from "@/lib/i18n";
+import { formatRelativeTime } from "@/lib/i18n";
+import { useI18n } from "@/lib/i18n-context";
 
 const CLIENTS_QUERY = ["admin", "oauth-clients"] as const;
 

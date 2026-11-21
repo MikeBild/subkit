@@ -7,7 +7,7 @@ import {
   UNCATEGORIZED,
 } from "../api/catalog-metadata.ts";
 import type { Executor } from "../db/client.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { scrubString } from "../logging/scrub-secrets.ts";
 import { invoke } from "./runtime/invoke.ts";
 

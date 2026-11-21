@@ -1,5 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { CONVERSATION_REFERENCE_TYPES } from "@shared/conversation-reference.ts";
+import { LOCAL_CONFIRMATION_KIND, LocalConfirmationSchema } from "@shared/device/confirmation.ts";
 import type { ConversationTurnOutcome } from "../../../conversations/public/authoring.ts";
 import {
   PlaybookViewSchema,
@@ -30,8 +31,6 @@ export const ToolCallRespondParam = z.object({
   tool_call_id: z.string().uuid(),
 });
 
-const PermissionModeSchema = z.enum(["auto", "ask", "plan", "yolo"]);
-
 export const CONFIRM_PROMPT_KINDS = [
   "save_workflow_draft",
   "external_write",
@@ -45,7 +44,6 @@ export const RespondElicitationBody = z
   .object({
     output: z.unknown(),
     reason: z.string().optional(),
-    permission_mode: PermissionModeSchema.optional(),
   })
   .openapi("RespondElicitationBody");
 
@@ -225,8 +223,11 @@ export const ConversationDetailSchema = z
                   .optional(),
                 subjects: z.array(z.string()).optional(),
                 transfer_bytes: z.number().int().positive().optional(),
+                device: LocalConfirmationSchema.optional().describe(
+                  "The device, capability, redacted target and deadline of a local step that asks (kind local_confirmation).",
+                ),
                 kind: z
-                  .enum(CONFIRM_PROMPT_KINDS)
+                  .enum([...CONFIRM_PROMPT_KINDS, LOCAL_CONFIRMATION_KIND])
                   .optional()
                   .describe(
                     "Confirm kind of an ask_user_confirm question, as in the live prompt; drives the confirm card.",
@@ -282,7 +283,6 @@ export const CreateBody = z
     memory: z.string().optional(),
     model: z.string().optional(),
     title: z.string().optional(),
-    permission_mode: PermissionModeSchema.optional(),
     step_budget: z.number().int().min(1).max(64).optional(),
     playground: z.boolean().optional(),
     playbook_mode: z.enum(["off", "auto"]).optional(),
@@ -295,7 +295,6 @@ export const AppendMessageBody = z
   .object({
     message: z.string().min(1),
     memory: z.string().optional(),
-    permission_mode: PermissionModeSchema.optional(),
     step_budget: z.number().int().min(1).max(64).optional(),
     references: ReferencesField,
     client_suppress: z.boolean().optional(),

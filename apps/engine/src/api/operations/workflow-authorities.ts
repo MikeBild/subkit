@@ -230,6 +230,9 @@ export const AUTHORITY_ERROR_STATUSES: Record<string, RejectionStatus> = {
   authority_preparation_failed: 409,
   prepared_credential_unavailable: 409,
   input_schema_violation: 400,
+  device_approval_elsewhere: 403,
+  device_unavailable: 409,
+  device_binding_multiple: 409,
 };
 
 export function authorityRejection(error: unknown): Rejection {

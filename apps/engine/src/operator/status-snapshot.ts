@@ -1,17 +1,12 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { connectors, llmUsage, skills, tenants } from "../db/schema/index.ts";
-import {
-  monthlyUsageForUser,
-  readTenantMonthlyBudget,
-  resolveUserMonthlyBudget,
-} from "../llm/index.ts";
+import { readSpend, type SpendReading } from "../llm/accounting/spend.ts";
+import { monthlyUsage, monthlyUsageForUser } from "../llm/index.ts";
 
 interface StatusUserUsage {
   tokens_today: number;
   tokens_month: number;
-  budget_tokens: number | null;
-  remaining_tokens: number | null;
 }
 
 interface StatusSnapshot {
@@ -19,7 +14,8 @@ interface StatusSnapshot {
   connectors_count: number;
   skills_count: number;
   tokens_today: number;
-  month: Awaited<ReturnType<typeof readTenantMonthlyBudget>>;
+  tokens_month: number;
+  spend: SpendReading;
   user: StatusUserUsage | null;
 }
 
@@ -33,7 +29,7 @@ async function userUsage(
   userId: string,
   startOfDay: Date,
 ): Promise<StatusUserUsage> {
-  const [todayUserRow, monthUser, resolvedUserBudget] = await Promise.all([
+  const [todayUserRow, monthUser] = await Promise.all([
     db
       .select({ total: sql<number>`coalesce(sum(${llmUsage.total_tokens}), 0)::int` })
       .from(llmUsage)
@@ -45,15 +41,10 @@ async function userUsage(
         ),
       ),
     monthlyUsageForUser(tenantId, userId, db),
-    resolveUserMonthlyBudget(tenantId, userId, db),
   ]);
-  const tokensMonth = Number(monthUser);
   return {
     tokens_today: Number(todayUserRow[0]?.total ?? 0),
-    tokens_month: tokensMonth,
-    budget_tokens: resolvedUserBudget,
-    remaining_tokens:
-      resolvedUserBudget == null ? null : Math.max(resolvedUserBudget - tokensMonth, 0),
+    tokens_month: Number(monthUser),
   };
 }
 
@@ -64,7 +55,7 @@ export async function loadStatusSnapshot(
   now: Date,
 ): Promise<StatusSnapshot> {
   const startOfDay = startOfUtcDay(now);
-  const [connectorRow, skillsRow, todayRow, tenantRow, month] = await Promise.all([
+  const [connectorRow, skillsRow, todayRow, tenantRow, tokensMonth, spend] = await Promise.all([
     db
       .select({ n: sql<number>`count(*)::int` })
       .from(connectors)
@@ -75,14 +66,16 @@ export async function loadStatusSnapshot(
       .from(llmUsage)
       .where(and(eq(llmUsage.tenant_id, tenantId), sql`${llmUsage.created_at} >= ${startOfDay}`)),
     db.select({ slug: tenants.slug }).from(tenants).where(eq(tenants.id, tenantId)).limit(1),
-    readTenantMonthlyBudget(tenantId, db),
+    monthlyUsage(tenantId, db),
+    readSpend(tenantId, db, now),
   ]);
   return {
     tenant_slug: tenantRow[0]?.slug ?? null,
     connectors_count: Number(connectorRow[0]?.n ?? 0),
     skills_count: Number(skillsRow[0]?.n ?? 0),
     tokens_today: Number(todayRow[0]?.total ?? 0),
-    month,
+    tokens_month: tokensMonth,
+    spend,
     user: userId ? await userUsage(db, tenantId, userId, startOfDay) : null,
   };
 }

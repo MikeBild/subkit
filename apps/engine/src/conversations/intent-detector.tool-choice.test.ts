@@ -75,21 +75,21 @@ describe("detectEnvelopeResolution", () => {
 });
 
 describe("inferStateDrivenFollowUpTool", () => {
-  test("maps a short approval onto save_workflow_draft for a ready workflow draft in auto mode", () => {
+  test("maps a short approval onto save_workflow_draft for a ready workflow draft ", () => {
     expect(
       inferStateDrivenFollowUpTool({
         latestUserText: "yes",
-        permission_mode: "auto",
+        ask_before_writing: false,
         summary: summary(),
       }),
     ).toBe("save_workflow_draft");
   });
 
-  test("maps a short approval onto save_connector_draft for a ready connector draft in auto mode", () => {
+  test("maps a short approval onto save_connector_draft for a ready connector draft ", () => {
     expect(
       inferStateDrivenFollowUpTool({
         latestUserText: "ja",
-        permission_mode: "auto",
+        ask_before_writing: false,
         summary: summary({
           mode: "connector",
           stage: "connector_probed",
@@ -110,11 +110,11 @@ describe("inferStateDrivenFollowUpTool", () => {
     ).toBe("save_connector_draft");
   });
 
-  test("does not force a follow-up tool outside auto mode", () => {
+  test("does not force a follow-up tool when the person asks before writing", () => {
     expect(
       inferStateDrivenFollowUpTool({
         latestUserText: "yes",
-        permission_mode: "ask",
+        ask_before_writing: true,
         summary: summary(),
       }),
     ).toBeNull();
@@ -124,7 +124,7 @@ describe("inferStateDrivenFollowUpTool", () => {
     expect(
       inferStateDrivenFollowUpTool({
         latestUserText: "yes",
-        permission_mode: "auto",
+        ask_before_writing: false,
         summary: summary({
           lifecycle_state: "persisted",
           stage: "workflow_persisted",

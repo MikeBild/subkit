@@ -38,18 +38,31 @@ const RETRY_AT_RE = /regain access on (\d{4}-\d{2}-\d{2}) at (\d{2}:\d{2}) ?utc/
 const PROVIDER_TIMEOUT_RE = /^timed out after \d+ s$/i;
 
 export type EngineErrorKind =
+  | "spend_limit"
   | "provider_limit"
   | "provider_unavailable"
   | "provider_timeout"
+  | "unsafe_regex"
   | "validation"
   | null;
 
+const SPEND_LIMIT_LABEL = "Monthly AI budget reached";
+const SPEND_LIMIT_HINT =
+  "an admin raises it under Settings › Usage in the Cockpit, or wait for the next month";
+const UNSAFE_REGEX_LABEL = "Pattern rejected as unsafe";
+const UNSAFE_REGEX_HINT =
+  "use a simpler pattern: at most 256 characters, no nested quantifiers, no backreferences";
+const UNSAFE_REGEX_RE = /^regex_unsafe\b/;
+
 export function classifyEngineError(e: RawValidationError): EngineErrorKind {
+  if (e.path === "llm_spend_limit_reached") return "spend_limit";
+  if (e.path === "regex_unsafe" || UNSAFE_REGEX_RE.test(e.message)) return "unsafe_regex";
   if (e.path === "llm_timeout" || PROVIDER_TIMEOUT_RE.test(e.message)) {
     return "provider_timeout";
   }
   if (
     e.path === "llm_provider_limited" ||
+    e.path === "llm_provider_quota_exhausted" ||
     e.path === "quota_exhausted" ||
     PROVIDER_LIMIT_RE.test(e.message)
   ) {
@@ -70,6 +83,16 @@ export function classifyEngineError(e: RawValidationError): EngineErrorKind {
 
 export function humanizeValidationError(e: RawValidationError): HumanizedValidationError {
   const kind = classifyEngineError(e);
+  if (kind === "spend_limit") {
+    return { label: SPEND_LIMIT_LABEL, detail: e.message, hint: SPEND_LIMIT_HINT };
+  }
+  if (kind === "unsafe_regex") {
+    return {
+      label: UNSAFE_REGEX_LABEL,
+      detail: e.path === "regex_unsafe" ? e.message : e.path,
+      hint: UNSAFE_REGEX_HINT,
+    };
+  }
   if (kind === "provider_limit") {
     const m = RETRY_AT_RE.exec(e.message);
     const retryAt = m?.[1] && m[2] ? `${m[1]} at ${m[2]} UTC` : null;
@@ -147,6 +170,18 @@ export function summarizeToolFailure(
       hint: "Start with author_workflow (one call builds the complete draft), then dry_run_workflow.",
     };
   }
+  if (errCode === "llm_spend_limit_reached") {
+    return { label: SPEND_LIMIT_LABEL, hint: SPEND_LIMIT_HINT };
+  }
+  if (errCode === "llm_provider_quota_exhausted") {
+    return {
+      label: "LLM provider quota exhausted",
+      hint: "top up the provider account, switch the engine's model route, or wait for the reset",
+    };
+  }
+  if (errCode === "regex_unsafe") {
+    return { label: `${toolName}: ${UNSAFE_REGEX_LABEL}`, hint: UNSAFE_REGEX_HINT };
+  }
   if (typeof obj.error === "string") return { label: obj.error };
   if (Array.isArray(obj.errors) && obj.errors.length > 0) {
     const first = obj.errors[0] as RawValidationError | undefined;
@@ -179,7 +214,7 @@ export function summarizeToolFailure(
 const HINT_PATTERNS: ReadonlyArray<{ match: RegExp; hint: string }> = [
   {
     match: /\b401\b.*missing_or_invalid_credentials\b/i,
-    hint: "no api_key configured — run `sk profile login` (or pass `--api-key <key>`); on a fresh engine, mint one with `bun run db:issue-admin-key`",
+    hint: "no api_key configured — run `sk profile login` (or pass `--api-key <key>`); on a fresh engine, mint one with `bun run db admin-key`",
   },
   {
     match: /\b(invalid_grant|token expired|token_expired|401|403)\b/i,
@@ -187,11 +222,20 @@ const HINT_PATTERNS: ReadonlyArray<{ match: RegExp; hint: string }> = [
   },
   {
     match: /\b(429|rate.?limit)/i,
-    hint: "rate limited; back off and retry — /status shows the tenant's budget",
+    hint: "rate limited; back off and retry — /status shows the workspace's AI budget",
   },
   {
-    match: /\b(402|quota|monthly.?budget|budget.?exceeded|budget.?exhausted)\b/i,
-    hint: "monthly budget exhausted — raise it via /admin set-budget",
+    match:
+      /\b(402|quota|llm_spend_limit_reached|budget.?exceeded|budget.?exhausted|budget.?reached)\b/i,
+    hint: "monthly AI budget reached — an admin raises it under Settings › Usage in the Cockpit",
+  },
+  {
+    match: /\bllm_provider_quota_exhausted\b/i,
+    hint: "provider quota exhausted — top up the provider account, switch the engine's model route, or wait for the reset",
+  },
+  {
+    match: /\bregex_unsafe\b/i,
+    hint: UNSAFE_REGEX_HINT,
   },
   {
     match: /\bscope_envelope_field_missing\b/i,
@@ -279,6 +323,14 @@ function providerHint(err: EngineError): string | null {
       ? `provider usage limit reached — retry after ${retryAt}`
       : "provider usage limit reached — retry later or switch the engine's configured model route";
   }
+  if (err.code === "llm_spend_limit_reached") {
+    const retryAt = readRetryAt(err.details);
+    return retryAt ? `monthly AI budget reached — resets ${retryAt}` : SPEND_LIMIT_HINT;
+  }
+  if (err.code === "llm_provider_quota_exhausted") {
+    return "provider quota exhausted — top up the provider account, switch the engine's model route, or wait for the reset";
+  }
+  if (err.code === "regex_unsafe") return UNSAFE_REGEX_HINT;
   if (err.code === "llm_provider_unavailable") {
     return "provider temporarily unavailable — retry later or switch the engine's configured model route";
   }

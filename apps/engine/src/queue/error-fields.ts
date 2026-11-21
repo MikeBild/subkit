@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { errorFields } from "../logging/logger.ts";
+import { errorFields } from "../logging/index.ts";
 
 const queueErrorSchema = z.object({
   message: z.unknown(),

@@ -1,7 +1,9 @@
 import { z } from "@hono/zod-openapi";
 import { resolveUrl } from "../connectors/drivers/resolve-url.ts";
 import type { MaterializedRequest } from "../execution/prepared-request.ts";
+import { hasCode, isC0OrDelete } from "../utils/control-chars.ts";
 import { canonicalWorkflowJson, workflowJsonDigest } from "./canonical-json.ts";
+import { onlyVaultHandles } from "./core/vault-uses.ts";
 import type { McpBoundaryRefusal } from "./mcp-boundary.ts";
 import { hasRuntimeValue } from "./report-delivery-boundary.ts";
 import type { RequestStep } from "./types.ts";
@@ -10,7 +12,6 @@ const expression = z
   .string()
   .regex(/^(?:(?:item|input|scope)(?:\.[A-Za-z_][A-Za-z0-9_]*)+|caller\.(?:subject|principalId))$/);
 const VARIABLES_KEY_ERROR =
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: shows the literal authored placeholder
   "a `variables` key is the placeholder expression without its `${}`, rooted at `input`, " +
   "`scope` or `item` — for example `scope.window.data.start` or `item.id` — or one of " +
   "`caller.subject` and `caller.principalId` with the rule `{ caller_bound: true }`. A query " +
@@ -28,8 +29,7 @@ const enumValue = z
     } catch {
       return false;
     }
-    // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what is refused
-    if (/[\u0000-\u001f\u007f\\]/.test(decoded)) return false;
+    if (decoded.includes("\\") || hasCode(decoded, isC0OrDelete)) return false;
     return !decoded.split("/").some((part) => part === "." || part === "..");
   });
 export const VALUE_CLASSES = {
@@ -333,7 +333,7 @@ export function compileRequestBoundary(
   let idempotencyKey: { var: string } | undefined;
   for (const [name, value] of Object.entries(step.headers ?? {})) {
     if (hasRuntimeValue(name)) return refuse("runtime_header");
-    if (!hasRuntimeValue(value)) continue;
+    if (!hasRuntimeValue(value) || onlyVaultHandles(value)) continue;
     const whole = typeof value === "string" ? WHOLE_SEGMENT.exec(value) : null;
     if (
       name.toLowerCase() !== "idempotency-key" ||

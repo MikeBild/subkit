@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
+import { parseClock } from "@shared/quiet-hours.ts";
 import type { LocaleSetting } from "./i18n.ts";
-import { DEFAULT_QUIET_HOURS, parseClock, type QuietHours } from "./quiet-hours.ts";
+import { DEFAULT_QUIET_HOURS, type QuietHours } from "./quiet-hours.ts";
 import { normalizeServerAddress, safeServerPath } from "./server-address.ts";
 
 export interface Profile {

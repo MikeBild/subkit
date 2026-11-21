@@ -1,9 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${...}` placeholder tokens are part of the tested grammar.
-// Bare-path validation. The skill documents `<step_id>.data` as
-// equivalent to `$scope.<step_id>.data`, so the LLM uses both forms.
-// The original validator only caught $scope./$steps./${scope.X}
-// references; this pass covers the bare form.
-
 import { describe, expect, test } from "bun:test";
 import { validateStepReferences } from "../reference-validator.ts";
 import type { WorkflowDef } from "../types.ts";

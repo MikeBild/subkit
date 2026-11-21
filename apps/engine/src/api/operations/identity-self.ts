@@ -11,7 +11,7 @@ import {
   loadWhoamiProfile,
 } from "../../identity/principal-profile.ts";
 import { resolveEngineUrl } from "../../llm/runtime-context.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { can, connectorAccessLevel } from "../../rbac/evaluator.ts";
 import { isOperatorPrincipal } from "../../rbac/operator.ts";
 import { UX_GATING_PERMISSIONS, type UxGatingPermission } from "../../rbac/ux-gating.ts";
@@ -175,9 +175,6 @@ const PERMISSIONS_CHECKED_RESPONSE: UxGatingPermission[] = [...UX_GATING_PERMISS
 
 const SkBootstrapPrefsSchema = z
   .object({
-    permissionMode: z
-      .enum(["ask", "auto", "plan", "yolo"])
-      .describe("Default REPL permission mode."),
     theme: z.enum(["auto", "light", "dark", "high-contrast"]).describe("REPL color theme."),
     personality: z.enum(["concise", "balanced", "verbose"]).describe("Assistant response style."),
     titleFormat: z
@@ -242,7 +239,6 @@ function resolvePrefs(tenantId: string): SkBootstrapPrefs {
   const cfg = getConfig();
   const overlay = cfg.tenants?.[tenantId];
   return {
-    permissionMode: overlay?.repl?.permissionMode ?? cfg.repl.permissionMode,
     theme: overlay?.ui?.theme ?? cfg.ui.theme,
     personality: overlay?.ui?.personality ?? cfg.ui.personality,
     titleFormat: overlay?.ui?.title?.format ?? cfg.ui.title.format,

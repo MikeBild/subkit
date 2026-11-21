@@ -267,6 +267,7 @@ export const workflowsSchedules = pgTable(
     paused_failure_class: text("paused_failure_class"),
     paused_failure_count: integer("paused_failure_count"),
     failures_reset_at: timestamp("failures_reset_at", { withTimezone: true }),
+    created_by: uuid("created_by"),
     ...timestamps,
   },
   (t) => [

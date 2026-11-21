@@ -1,7 +1,7 @@
+import { IconButton } from "@ui/molecules/icon-button";
 import { Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { IconButton } from "@/components/cockpit/icon-button";
 import {
   Button,
   Checkbox,

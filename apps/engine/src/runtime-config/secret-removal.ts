@@ -1,3 +1,4 @@
+import { secretReference } from "@shared/vault-handle.ts";
 import { and, eq, inArray } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import {
@@ -6,7 +7,6 @@ import {
   runtimeSecretVersions,
 } from "../db/schema/index.ts";
 import { CONFIG_STATE_KEY } from "./contracts.ts";
-import { secretReference } from "./secret-reference.ts";
 import { runtimeStateColumns } from "./state-columns.ts";
 
 export async function removeUnreferencedSecretVersion(

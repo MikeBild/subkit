@@ -1,1 +1,1 @@
-export { AuditTimelinePage as AuditPage } from "./audit-timeline";
+export { AuditTimelinePage as AuditPage } from "@/features/audit";

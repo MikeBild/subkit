@@ -1,6 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: `${item.…}` /
-// `${input.…}` are workflow placeholder tokens the steps below are meant to
-// carry verbatim — a template literal would resolve them in the test.
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { closeDb } from "../../db/client.ts";
@@ -10,6 +7,7 @@ import {
   __setMcpPoolFactoriesForTests,
 } from "../../mcp/client/pool.ts";
 import { seedMcpConnector } from "../../mcp/client/test-fixtures.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { runExecution } from "../engine.ts";
 import { mcpRequestStepFixtures, SLUG } from "./mcp-request-step-fixtures.ts";
 import { createEngineCtx, createWorkflowRow, type EngineTestCtx } from "./setup.ts";
@@ -22,7 +20,7 @@ let boundedConnectorId: string;
 
 let countedConnectorId: string;
 
-const _origDatabaseUrl = process.env.DATABASE_URL;
+const _origDatabaseUrl = testEnv.DATABASE_URL;
 
 const { fakeClient, remote, resetRemote, run } = mcpRequestStepFixtures({
   get connectorId() {
@@ -37,7 +35,7 @@ beforeAll(async () => {
   __setMcpPoolFactoriesForTests({ makeClient: () => fakeClient });
   ctx = await createEngineCtx("mcp-request-step");
   await closeDb();
-  process.env.DATABASE_URL = ctx.testDb.url;
+  testEnv.DATABASE_URL = ctx.testDb.url;
 
   const server = await seedMcpConnector(ctx.testDb.db, {
     tenant_id: ctx.tenantId,
@@ -89,8 +87,8 @@ afterAll(async () => {
   __setMcpPoolFactoriesForTests(null);
   __resetMcpClientPoolForTests();
   await closeDb();
-  if (_origDatabaseUrl === undefined) delete process.env.DATABASE_URL;
-  else process.env.DATABASE_URL = _origDatabaseUrl;
+  if (_origDatabaseUrl === undefined) delete testEnv.DATABASE_URL;
+  else testEnv.DATABASE_URL = _origDatabaseUrl;
   await ctx.cleanup();
 }, 30_000);
 

@@ -401,6 +401,99 @@ export function referencesKeyMaterialPath(text: string): boolean {
   return KEY_MATERIAL_PATH_PATTERNS.some((pattern) => pattern.test(text));
 }
 
+function encodedForms(secret: string): string[] {
+  const form = new URLSearchParams({ v: secret }).toString().slice(2);
+  return [secret, encodeURIComponent(secret), form, JSON.stringify(secret).slice(1, -1)];
+}
+
+export function knownValueForms(secrets: readonly string[]): string[] {
+  const forms = new Set<string>();
+  for (const secret of secrets) {
+    if (secret.length === 0) continue;
+    for (const form of encodedForms(secret)) forms.add(form);
+  }
+  return [...forms].sort((a, b) => b.length - a.length);
+}
+
+function redactKnownText(text: string, forms: readonly string[]): string {
+  let out = text;
+  for (const form of forms) out = out.split(form).join(DEFAULT_REDACTED);
+  return out;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== "object") return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+export function redactKnownValues<T>(value: T, secrets: readonly string[]): T {
+  const forms = knownValueForms(secrets);
+  if (forms.length === 0) return value;
+  const walk = (current: unknown): unknown => {
+    if (typeof current === "string") return redactKnownText(current, forms);
+    if (Array.isArray(current)) return current.map(walk);
+    if (current instanceof Error) {
+      current.message = redactKnownText(current.message, forms);
+      return current;
+    }
+    if (isPlainRecord(current)) {
+      const out: Record<string, unknown> = {};
+      for (const [key, item] of Object.entries(current)) out[key] = walk(item);
+      return out;
+    }
+    return current;
+  };
+  return walk(value) as T;
+}
+
+const DIAGNOSTIC_URL = /\b[a-z][a-z0-9+.-]{1,20}:\/\/[^\s"'<>)\]}]+/gi;
+const DIAGNOSTIC_AUTH_SCHEME = /\b(Bearer|Basic|Token)\s+[A-Za-z0-9._~+/=-]{4,}/gi;
+const DIAGNOSTIC_UNIX_PATH =
+  /(?<![\w.:/~-])(?:~|\/(?:Users|home|root|var|private|tmp|etc|opt|usr|Volumes|mnt|srv|Library|Applications|System))\/[^\s"'`<>|;,()]*/g;
+const DIAGNOSTIC_WINDOWS_PATH = /(?<!\w)(?:[A-Za-z]:\\|\\\\)[^\s"'`<>|;,()]*/g;
+const DIAGNOSTIC_JWT = /\beyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]*/g;
+const DIAGNOSTIC_API_KEY = /\bsk[_-][A-Za-z0-9_-]{8,}/g;
+const DIAGNOSTIC_EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+const DIAGNOSTIC_NAMED_SECRET =
+  /\b(code_verifier|code_challenge|code|state|access_token|refresh_token|id_token|client_secret|token|password|passwd|secret|api[_-]?key|set-cookie|cookie|authorization|session(?:_id)?)\b(["']?\s*[:=]\s*["']?)([^\s"',;&}]+)/gi;
+export const REDACTED_EMAIL = "***email***";
+const WEB_PROTOCOLS = new Set(["http:", "https:", "ws:", "wss:"]);
+
+export function redactUrl(raw: string, mask = DEFAULT_REDACTED): string {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return mask;
+  }
+  if (WEB_PROTOCOLS.has(url.protocol)) {
+    const detail = url.pathname !== "/" || url.search || url.hash;
+    return `${url.protocol}//${url.host}${detail ? `/${mask}` : ""}`;
+  }
+  return `${url.protocol}//${mask}`;
+}
+
+export function redactDiagnosticText(
+  text: string,
+  options: { mask?: string | undefined; homeDir?: string | undefined } = {},
+): string {
+  const { mask, homeDir } = options;
+  const secret = mask ?? DEFAULT_REDACTED;
+  const home = homeDir && homeDir.length > 1 ? text.split(homeDir).join("~") : text;
+  let out = home.replace(DIAGNOSTIC_URL, (match) => redactUrl(match, secret));
+  out = out.replace(DIAGNOSTIC_AUTH_SCHEME, (_match, scheme: string) => `${scheme} ${secret}`);
+  out = out.replace(DIAGNOSTIC_JWT, secret);
+  out = out.replace(DIAGNOSTIC_API_KEY, secret);
+  out = out.replace(
+    DIAGNOSTIC_NAMED_SECRET,
+    (_match, name: string, separator: string) => `${name}${separator}${secret}`,
+  );
+  out = out.replace(DIAGNOSTIC_UNIX_PATH, secret);
+  out = out.replace(DIAGNOSTIC_WINDOWS_PATH, secret);
+  return out.replace(DIAGNOSTIC_EMAIL, mask ?? REDACTED_EMAIL);
+}
+
 export function redactedRequestTarget(raw: string | null | undefined): string | null {
   if (!raw) return null;
   let url: URL;

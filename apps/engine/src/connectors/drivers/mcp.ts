@@ -2,7 +2,7 @@ import type { AuditActorType } from "../../audit/types.ts";
 import type { CredentialUseSnapshot } from "../../credentials/index.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
-import { errorFields, logger } from "../../logging/logger.ts";
+import { errorFields, logger } from "../../logging/index.ts";
 import type { RemoteToolDescriptor } from "../../mcp/client/manifest.ts";
 import {
   connectServerById,

@@ -1,6 +1,6 @@
 import type { KnownAuditActorType } from "../../audit/types.ts";
 import type { Executor } from "../../db/client.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { getMetrics, METRIC_NAMES } from "../../observability/metrics.ts";
 import type { SubkitLlmTelemetryMetadata, SubkitLlmUsage } from "../runtime/base-types.ts";
 import { recordUsage } from "./budget.ts";

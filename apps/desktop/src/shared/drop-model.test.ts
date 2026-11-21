@@ -10,7 +10,6 @@ import {
   MAX_FILE_BYTES,
   MAX_INBOX_BYTES,
   openDrop,
-  placedHref,
   reduceDrop,
   sourceName,
 } from "./drop-model.ts";
@@ -80,14 +79,6 @@ describe("choices", () => {
       max: MAX_FILE_BYTES,
     });
     expect(choiceBlocker("source", [file("a.pdf", MAX_FILE_BYTES + 1)], true)).toBeNull();
-  });
-
-  test("opens the placed item, its list, or the chat", () => {
-    expect(placedHref("file", ["f1"])).toBe("/files/f1");
-    expect(placedHref("file", ["f1", "f2"])).toBe("/files");
-    expect(placedHref("source", ["s1"])).toBe("/knowledge/s1");
-    expect(placedHref("inbox", [])).toBe("/intake");
-    expect(placedHref("chat", ["a1"])).toBe("/chat");
   });
 });
 

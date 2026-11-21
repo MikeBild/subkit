@@ -1,11 +1,14 @@
+import { extOf, formatBytes, parseCsv } from "@shared/file-kinds.ts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { DropZone } from "@ui/components/proto/DropZone";
-import { ErrorState, FieldError } from "@ui/components/proto/ErrorNotice";
-import { MarkdownDocument, CodeBlock as SourceCode } from "@ui/components/proto/MarkdownDocument";
-import { MarkdownEditor } from "@ui/components/proto/MarkdownEditor";
-import { PageHeader } from "@ui/components/proto/Pill";
-import { IconTile } from "@ui/components/proto/visual";
+import { IconTile } from "@ui/atoms/icon-tile";
+import { listPageFailure } from "@ui/lib/errors";
+import { cn } from "@ui/lib/utils";
+import { DropZone } from "@ui/molecules/drop-zone";
+import { DropdownMenuItem } from "@ui/molecules/dropdown-menu";
+import { ErrorState, FieldError } from "@ui/molecules/error-notice";
+import { PageHeader } from "@ui/molecules/page-header";
+import { SegmentedControl } from "@ui/molecules/segmented-control";
 import {
   Dialog,
   DialogContent,
@@ -13,10 +16,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@ui/components/ui/dialog";
-import { DropdownMenuItem } from "@ui/components/ui/dropdown-menu";
-import { listPageFailure } from "@ui/lib/errors";
-import { cn } from "@ui/lib/utils";
+} from "@ui/organisms/dialog";
+import { dialogWidthClass } from "@ui/organisms/dialog-frame";
+import { MarkdownDocument, CodeBlock as SourceCode } from "@ui/organisms/markdown-document";
+import { MarkdownEditor } from "@ui/organisms/markdown-editor";
 import {
   ArrowLeft,
   BookOpen,
@@ -44,16 +47,24 @@ import { loadKnowledgeChunks } from "@/api/knowledge";
 import { useActorDirectory } from "@/app/actor-directory";
 import { absolute, chatNewHref, recordHref } from "@/app/links";
 import { useSession } from "@/app/session";
-import { CatalogPurpose } from "@/components/cockpit/catalog-metadata";
 import { CodeBlock } from "@/components/cockpit/patterns/code-block";
 import { Button, Input, Label } from "@/components/cockpit/patterns/controls";
 import { CopyField } from "@/components/cockpit/patterns/copy-field";
-import { dialogWidthClass } from "@/components/cockpit/patterns/dialog-frame";
-import { SegmentedControl } from "@/components/cockpit/patterns/segmented-control";
 import { usePageFailure } from "@/components/cockpit/patterns/use-error-detail";
-import { reportFailure } from "@/lib/action-failure";
-import { useI18n } from "@/lib/i18n-context";
-import { urlSourceBody } from "@/lib/knowledge-source-request";
+import { CatalogPurpose } from "@/features/catalog";
+import { urlSourceBody } from "@/features/knowledge/api/knowledge-source-request";
+import {
+  failedSourceRemedy,
+  groupBy,
+  MAX_FILE,
+  matches,
+  SOURCE_EXT,
+  SOURCE_TONE,
+  type SourceKindView,
+  type SourceView,
+  sectionTarget,
+  sourceView,
+} from "@/features/knowledge/model/knowledge";
 import {
   type ApiEndpoint,
   matchesEndpoint,
@@ -65,27 +76,18 @@ import {
   sourceKind,
   sourcePrimaryAction,
   sourceSections,
-} from "@/lib/knowledge-sources-model";
-import { authorName, versionText, versionWhy } from "@/lib/knowledge-versions-model";
+} from "@/features/knowledge/model/knowledge-sources-model";
+import {
+  authorName,
+  versionText,
+  versionWhy,
+} from "@/features/knowledge/model/knowledge-versions-model";
+import { humanizeCategory } from "@/features/workflows/model";
+import { reportFailure } from "@/lib/action-failure";
+import { useI18n } from "@/lib/i18n-context";
 import { plural } from "@/lib/plural";
 import { useSearchParamState } from "@/lib/use-search-param-state";
-import { humanizeCategory } from "@/lib/workflow-category";
 import { categoryCounts, createdByMatches, sortRows } from "./list-model";
-import {
-  extOf,
-  failedSourceRemedy,
-  fileSize,
-  groupBy,
-  MAX_FILE,
-  matches,
-  parseCsv,
-  SOURCE_EXT,
-  SOURCE_TONE,
-  type SourceKindView,
-  type SourceView,
-  sectionTarget,
-  sourceView,
-} from "./model";
 import { KEYS, useMarkdownRefs, useRefreshKnowledge, useSources } from "./queries";
 import {
   ChatMenu,
@@ -458,7 +460,7 @@ function AddSourceDialog({
     if (mode === "text" && (!name.trim() || !text.trim())) return;
     create.mutate();
   };
-  const pickFile = async (fl: FileList) => {
+  const pickFile = async (fl: FileList | readonly File[]) => {
     const f = fl[0];
     if (!f) return;
     if (!SOURCE_EXT.includes(extOf(f.name))) {
@@ -548,7 +550,7 @@ function AddSourceDialog({
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">{file.file.name}</p>
                       <p className="text-xs text-muted-foreground">
-                        {fileSize(file.file.size, locale)}
+                        {formatBytes(file.file.size, locale)}
                       </p>
                     </div>
                     <Button
@@ -628,7 +630,7 @@ function FilePreview({ name, text }: { name: string; text: string | null }) {
   if (e === "md")
     return <MarkdownDocument text={text.slice(0, 4000)} toolbar={false} toc={false} compact />;
   if (e === "csv") {
-    const rows = parseCsv(text).slice(0, 6);
+    const rows = parseCsv(text, 6);
     return (
       <div className="md-doc">
         <div className="md-table">
@@ -1135,7 +1137,7 @@ function SourceDetail({ src }: { src: Source }) {
             label: t("kn.sources.col.size"),
             value: [
               plural(t, "kn.sources.sections", v.sections),
-              typeof src.bytes_total === "number" ? fileSize(src.bytes_total, locale) : null,
+              typeof src.bytes_total === "number" ? formatBytes(src.bytes_total, locale) : null,
             ]
               .filter(Boolean)
               .join(" · "),

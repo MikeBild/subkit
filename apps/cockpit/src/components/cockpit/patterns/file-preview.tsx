@@ -1,21 +1,14 @@
+import { formatBytes, parseCsv, previewKind } from "@shared/file-kinds.ts";
+import { Button } from "@ui/atoms/button";
+import { Skeleton } from "@ui/atoms/skeleton";
+import { cn } from "@ui/lib/utils";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@ui/molecules/table";
 import { FileText } from "lucide-react";
 import { type ComponentProps, type ReactNode, useEffect, useState } from "react";
 import { Streamdown } from "streamdown";
-import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
-import { cn } from "@/lib/utils";
 import { CodeBlock } from "./code-block";
-import { formatBytes, parseCsv, previewKind } from "./file-kinds";
-import { Skeleton } from "./skeleton";
 
 export const CSV_PREVIEW_ROWS = 20;
 const TEXT_PREVIEW_CHARS = 20_000;

@@ -1,17 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${...}` placeholder tokens are part of the tested grammar.
-// Authoring-time check: a request step with `connector_id` must not
-// also set an `Authorization` header. Pre-fix the LLM routinely
-// authored both — driving the GitHub "Bad credentials" loop in
-// session 1222158a where the explicit header
-// `Bearer ${cred.github-api.token}` overrode the connector's
-// auto-injected auth, the placeholder failed to expand, and the
-// runtime sent a literal "Bearer ${cred.github-api.token}" string
-// that GitHub rejected with HTTP 401. The probe (which does NOT use
-// the workflow runtime substitution) succeeded with the same token,
-// which made the failure mode confusing for the user. The validator
-// now refuses the redundant header so the LLM gets a typed error
-// before dry_run.
-
 import { describe, expect, test } from "bun:test";
 import { validateWorkflowDef } from "../validator.ts";
 

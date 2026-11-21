@@ -10,7 +10,7 @@ import {
   parseDeprecation,
 } from "../../../connectors/health.ts";
 import type { Db } from "../../../db/client.ts";
-import { logger } from "../../../logging/logger.ts";
+import { logger } from "../../../logging/index.ts";
 import { recordRequestRetry } from "../../../observability/instrumentation.ts";
 import type { Clock } from "../../clock.ts";
 import type { MaterializedRequest } from "../../prepared-request.ts";

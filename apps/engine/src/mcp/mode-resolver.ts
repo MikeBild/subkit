@@ -1,12 +1,11 @@
 import { MCP_ADMIN_SCOPE, MCP_AUTHORING_SCOPE } from "../auth/scopes.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
+import { readEnv } from "../env.ts";
 
 export type McpMode = "product" | "authoring" | "admin";
 
-const ENV_OVERRIDE_NAME = "SK_MCP_MODE";
-
 function readEnvOverride(): McpMode | null {
-  const v = process.env[ENV_OVERRIDE_NAME];
+  const v = readEnv("SK_MCP_MODE");
   if (v === "product" || v === "authoring" || v === "admin") return v;
   return null;
 }

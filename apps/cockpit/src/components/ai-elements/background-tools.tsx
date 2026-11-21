@@ -1,9 +1,9 @@
 "use client";
 
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@ui/atoms/collapsible";
+import { cn } from "@ui/lib/utils";
 import { ChevronDownIcon } from "lucide-react";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useI18n } from "@/lib/i18n-context";
-import { cn } from "@/lib/utils";
 import { Shimmer } from "./shimmer";
 
 export interface BackgroundToolLine {

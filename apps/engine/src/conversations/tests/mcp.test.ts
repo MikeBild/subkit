@@ -4,15 +4,16 @@ import { setConfigKey } from "../../config/loader.ts";
 import { connectors } from "../../db/schema/index.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
 import { type McpTestSuite, startMcpTestSuite } from "../../mcp/tests/setup.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
 
 let suite: McpTestSuite;
 let connectorId: string;
 
 beforeAll(async () => {
-  process.env.MASTER_KEY = "c".repeat(64);
-  process.env.LLM_PROVIDER = "mock";
-  process.env.SK_MCP_MODE = "authoring";
+  testEnv.MASTER_KEY = "c".repeat(64);
+  testEnv.LLM_PROVIDER = "mock";
+  testEnv.SK_MCP_MODE = "authoring";
   resetMockProvider();
   suite = await startMcpTestSuite("conversations", { withQueue: true });
   await setConfigKey("server.public_base_url", suite.http.baseUrl, { force: true });
@@ -35,7 +36,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await suite.cleanup();
-  delete process.env.SK_MCP_MODE;
+  delete testEnv.SK_MCP_MODE;
 });
 
 interface GetResult {
@@ -86,7 +87,6 @@ describe("mcp conversation tools", () => {
 
     const start = await client.callTool({
       name: "conversation_start",
-      _meta: { sk_permission_mode: "ask" },
       arguments: {
         connector_id: connectorId,
         message: "please list users from the api",

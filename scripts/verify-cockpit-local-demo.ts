@@ -20,7 +20,7 @@ async function readJson<T>(path: string): Promise<T | null> {
 }
 
 if (args.includes("--help") || args.includes("-h")) {
-  console.log("Usage: bun run demo:local:verify");
+  console.log("Usage: bun run demo verify");
   console.log(
     "Checks the local API installation. Use browser-use with Codex or Claude Code for browser acceptance.",
   );

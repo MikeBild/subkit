@@ -23,3 +23,15 @@ test("keeps version failures distinct from other run failures", () => {
   expect(version.recommended_mode).toBe("workflow");
   expect(describeRunWorkflowError(new Error("network failure")).error_code).toBe("run_failed");
 });
+
+test("an archived workflow keeps its refusal code so the person sees why it did not run", () => {
+  const archived = describeRunWorkflowError(
+    Object.assign(new Error("this workflow is archived and cannot run until it is restored"), {
+      code: "workflow_archived",
+    }),
+  );
+  expect(archived.error_code).toBe("workflow_archived");
+  expect(archived.message).toBe("this workflow is archived and cannot run until it is restored");
+  expect(archived.recommended_mode).toBe("workflow");
+  expect(archived.recoverable).toBe(true);
+});

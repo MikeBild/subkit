@@ -9,7 +9,7 @@ audience: public
 ## Reference: desktop app, rules, schedules and problem reports
 
 This page lists what version 11.2.0 added to the HTTP API, the events, the audit trail and the settings.
-It is for developers and operators who build on these parts. The task-oriented chapters are “SubKit Desktop”, “Chat modes and rules”, “Keep an eye on schedules”, “Notifications and quiet hours”, “Set SubKit up for yourself” and “Report a bug”.
+It is for developers and operators who build on these parts. The task-oriented chapters are “SubKit Desktop”, “When SubKit asks”, “Keep an eye on schedules”, “Notifications and quiet hours”, “Set SubKit up for yourself” and “Report a bug”.
 The complete, machine-readable description of every route is at `/openapi.json` on your engine.
 
 ### Routes
@@ -76,7 +76,7 @@ A run now names the cause of a failure as `outcome.cause_class` in `GET /v1/exec
 
 | Field | Values | Sets |
 | --- | --- | --- |
-| `default_chat_mode` | `ask`, `auto`, `plan` | The mode a new conversation starts in. Recommended: `auto`. |
+| `ask_before_writing` | `true`, `false` | The rule **Always ask first**: every step that writes asks, even when the request covers it. Default `false`. |
 | `default_environment` | `dev`, `prod` | The environment for new tasks and for the review of new workflows. Recommended: `dev`. |
 | `approver` | `{"kind":"self"}` or `{"kind":"teammate","email":"…"}` | Who gets approval notifications. Recommended: `self`. |
 | `notifications` | `{"mode":"immediately"}`, `{"mode":"working_hours","from":"HH:MM","to":"HH:MM","days":[1,2,3,4,5]}` or `{"mode":"daily_digest","at":"HH:MM"}` | When push is delivered. Recommended: `immediately`. `days` names the working days as weekdays from `1` (Monday) to `7` (Sunday), each at most once; without the field, Monday to Friday applies. |
@@ -85,7 +85,7 @@ A run now names the cause of a failure as `outcome.cause_class` in `GET /v1/exec
 | `first_job` | Text of at most 120 characters, or `null` | The first suggestion in the Cockpit. |
 | `services` | Up to 50 connector slugs | Which connectors the Cockpit offers first. |
 
-The answer adds `unset` (which of chat mode, environment, approver and notifications are not chosen yet), `recommended`, `updated_at` and, for a teammate, `approver.user_id`, `approver.invitation` with `member`, `pending` or `needs_admin`, `approver.can_approve` and `approver.missing_permissions`. `can_approve` is `true` when the person’s role holds `conversation:approve`, `task:grant` and `workflow:write`; the member role holds all three. With `false`, `missing_permissions` names the missing permissions, and approval notifications stay with the person who asks. While the person does not exist in the workspace, `can_approve` is `null`. When an administrator names an unknown address, the answer carries `invitation` with `invite_id`, `plaintext_token` and `expires_at` exactly once; the invitation carries the member role, and no email is sent. When someone without the right to invite named an address (`needs_admin`), the engine links the choice by itself as soon as an administrator invites or adds that address. `PUT` answers `409 approver_already_known` when the address already belongs to a person who cannot be invited again.
+The answer adds `unset` (which of environment, approver and notifications are not chosen yet), `recommended`, `updated_at` and, for a teammate, `approver.user_id`, `approver.invitation` with `member`, `pending` or `needs_admin`, `approver.can_approve` and `approver.missing_permissions`. `can_approve` is `true` when the person’s role holds `conversation:approve`, `task:grant` and `workflow:write`; the member role holds all three. With `false`, `missing_permissions` names the missing permissions, and approval notifications stay with the person who asks. While the person does not exist in the workspace, `can_approve` is `null`. When an administrator names an unknown address, the answer carries `invitation` with `invite_id`, `plaintext_token` and `expires_at` exactly once; the invitation carries the member role, and no email is sent. When someone without the right to invite named an address (`needs_admin`), the engine links the choice by itself as soon as an administrator invites or adds that address. `PUT` answers `409 approver_already_known` when the address already belongs to a person who cannot be invited again.
 
 ### Approval rules
 
@@ -109,7 +109,9 @@ A tool call in a conversation carries `policy` when the chat rule looked at it: 
 
 | `ask_reason` | Meaning |
 | --- | --- |
-| `mode` | The conversation asks before every action with an outside effect. |
+| `ask_before_writing` | The person turned on **Always ask first**, so every step that writes asks. |
+| `no_person` | No person stands behind the call, for example a system account or a task run someone else started. |
+| `write_gate` | No current request of the person can cover the action. |
 | `no_browser_session` | The caller is not a person signed in in the browser. |
 | `tool_not_coverable`, `effect_class_never`, `effect_unknown` | The kind of action always asks, or its effect is unknown. |
 | `no_user_message`, `no_quote`, `quote_too_short`, `quote_too_long`, `quote_not_in_user_words`, `not_a_request`, `verb_mismatch` | The person did not ask for this action in their own words. |

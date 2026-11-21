@@ -10,9 +10,11 @@ import { AuthProviderRegistry } from "../auth/registry.ts";
 import { ChatAdapterRegistry } from "../chat/registry.ts";
 import { getConfig } from "../config/loader.ts";
 import type { Config } from "../config/schema.ts";
-import { type Db, getDb } from "../db/client.ts";
+import type { Db } from "../db/client.ts";
+import { createDeviceRunnerProvider } from "../devices/index.ts";
+import type { LocalWorkspace } from "../identity/local-workspace.ts";
 import { applyWorkspaceContentSeeds } from "../identity/workspace-seeds.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { registerMcpHttpRoutes } from "../mcp/transports/streamable-http.ts";
 import { errorRing } from "../observability/error-ring.ts";
 import { metricsMiddleware } from "../observability/middleware.ts";
@@ -66,7 +68,8 @@ import { registerConnectorTemplateRoutes } from "./routes/connector-templates/in
 import { registerConnectorRoutes } from "./routes/connectors/index.ts";
 import { registerConversationAttachmentRoutes } from "./routes/conversation-attachments.ts";
 import { registerConversationRoutes } from "./routes/conversations/index.ts";
-import { registerCredentialRoutes } from "./routes/credentials.ts";
+import { registerDeviceRunnerRoutes } from "./routes/device-runner.ts";
+import { registerDeviceRoutes } from "./routes/devices.ts";
 import { registerDiagnosticsRoutes } from "./routes/diagnostics/index.ts";
 import { registerDiscoveryRoutes } from "./routes/discovery.ts";
 import { registerDocsImageRoutes } from "./routes/docs-images.ts";
@@ -84,6 +87,8 @@ import { registerCliSessionRoute } from "./routes/identity/cli-session.ts";
 import { registerCockpitIdentityRoutes } from "./routes/identity/cockpit.ts";
 import { registerDesktopLoginRoutes } from "./routes/identity/desktop-login.ts";
 import { registerInviteRoutes } from "./routes/identity/invites.ts";
+import { localHostGuard, registerLocalSessionRoute } from "./routes/identity/local-session.ts";
+import { registerLocalWorkspaceRoutes } from "./routes/identity/local-workspace.ts";
 import { registerLoginRoutes } from "./routes/identity/login.ts";
 import { registerMembershipRoutes } from "./routes/identity/memberships.ts";
 import { registerOnboardingRoutes } from "./routes/identity/onboarding.ts";
@@ -142,10 +147,11 @@ import { registerSystemRestartRoutes } from "./routes/system-restart.ts";
 import { registerTaskRoutes } from "./routes/tasks.ts";
 import { registerTenantBrandingRoutes } from "./routes/tenant-branding.ts";
 import { registerToolApprovalRoutes } from "./routes/tool-approvals.ts";
+import { registerVaultRoutes } from "./routes/vault.ts";
 import { registerWorkflowRoutes } from "./routes/workflows.ts";
 
 export interface CreateAppOptions {
-  db?: Db;
+  db: Db;
   boss?: PgBoss;
   registry?: AuthProviderRegistry;
   chatRegistry?: ChatAdapterRegistry;
@@ -153,29 +159,11 @@ export interface CreateAppOptions {
   agentSessionEnqueue?: (job: AgentSessionAnalyzeJob) => Promise<void>;
   rateLimit?: { max?: number; windowMs?: number };
   seedWorkspace?: (tenant_id: string, db: Db) => Promise<void>;
+  localWorkspace?: LocalWorkspace;
 }
 
-function lazyDb(): Db {
-  let resolved: Db | null = null;
-  const target = (): Db => {
-    resolved ??= getDb();
-    return resolved;
-  };
-  return new Proxy({} as Db, {
-    get(_shell, prop) {
-      const real = target();
-      const value = Reflect.get(real, prop, real);
-      return typeof value === "function" ? value.bind(real) : value;
-    },
-    has(_shell, prop) {
-      return Reflect.has(target(), prop);
-    },
-  });
-}
-
-export function buildDefaultRegistry(db?: Db, cfg?: Config["auth"]): AuthProviderRegistry {
+export function buildDefaultRegistry(db: Db, cfg?: Config["auth"]): AuthProviderRegistry {
   const reg = new AuthProviderRegistry();
-  const boundDb = db ?? lazyDb();
 
   let auth = cfg;
   if (!auth) {
@@ -186,19 +174,21 @@ export function buildDefaultRegistry(db?: Db, cfg?: Config["auth"]): AuthProvide
   const enableMcpOAuth = auth?.mcp_oauth.enabled ?? true;
   const registered: string[] = [];
 
-  reg.register(createOidcBearerProvider({ db: boundDb }));
+  reg.register(createDeviceRunnerProvider({ db }));
+  registered.push("device_runner");
+  reg.register(createOidcBearerProvider({ db }));
   registered.push("oidc_bearer");
   if (enableMcpOAuth) {
-    reg.register(createMcpOAuthAuthProvider({ db: boundDb }));
+    reg.register(createMcpOAuthAuthProvider({ db }));
     registered.push("mcp_oauth");
   }
-  reg.register(createPortalTokenProvider({ db: boundDb }));
+  reg.register(createPortalTokenProvider({ db }));
   registered.push("portal_token");
-  reg.register(createTokenExchangeProvider({ db: boundDb }));
+  reg.register(createTokenExchangeProvider({ db }));
   registered.push("token_exchange");
-  reg.register(createApiKeyProvider({ db: boundDb }));
+  reg.register(createApiKeyProvider({ db }));
   registered.push("api_key");
-  reg.register(createBrowserSessionProvider({ db: boundDb }));
+  reg.register(createBrowserSessionProvider({ db }));
   registered.push("browser_session");
 
   logger.info({
@@ -224,7 +214,7 @@ const SCALAR_HTML = `<!doctype html>
   </body>
 </html>`;
 
-export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
+export function createApp(opts: CreateAppOptions): OpenAPIHono<AppEnv> {
   const app = createOpenApiApp();
   const registry = opts.registry ?? buildDefaultRegistry(opts.db);
 
@@ -232,6 +222,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   app.use("*", loggingMiddleware());
   app.use("*", metricsMiddleware());
   app.use("*", errorMiddleware());
+  if (opts.localWorkspace) app.use("*", localHostGuard(opts.localWorkspace));
 
   app.onError((err, c) => {
     const traceId = c.get("trace_id") ?? null;
@@ -286,19 +277,11 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
         })
       : c.text("404 Not Found", 404, { vary: NEGOTIATED_VARY }),
   );
-  if (opts.db) {
-    const boundDb = opts.db;
-    app.use("*", async (c, next) => {
-      c.set("db", boundDb);
-      await next();
-    });
-  } else {
-    app.use("*", async (c, next) => {
-      const { getDb } = await import("../db/client.ts");
-      c.set("db", getDb());
-      await next();
-    });
-  }
+  const boundDb = opts.db;
+  app.use("*", async (c, next) => {
+    c.set("db", boundDb);
+    await next();
+  });
   if (opts.boss) {
     const boundBoss = opts.boss;
     app.use("*", async (c, next) => {
@@ -317,7 +300,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   app.use("/v1/*", browserTenantMiddleware());
   registerChangeAnnouncements(app);
 
-  registerHealthRoute(app, opts.db ? { db: opts.db } : {});
+  registerHealthRoute(app, { db: opts.db });
   registerInstallRoute(app);
   registerInstallSkillRoute(app);
   registerInstallClipperRoute(app);
@@ -356,6 +339,8 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerLoginRoutes(app);
   registerCockpitIdentityRoutes(app);
   registerCockpitInstallationRoutes(app);
+  registerDeviceRoutes(app);
+  registerDeviceRunnerRoutes(app);
   registerCockpitPushRoutes(app, resolveCockpitPushContext);
   registerTenantBrandingRoutes(app);
   registerMcpOAuthRoutes(app);
@@ -371,7 +356,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerConnectorRoutes(app);
   registerConnectorDiscoveryRoutes(app);
   registerConnectorDocsRoutes(app);
-  registerCredentialRoutes(app);
+  registerVaultRoutes(app);
   registerSkillRoutes(app);
   registerTaskRoutes(app);
   registerCategoryRoutes(app);
@@ -430,6 +415,10 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   const cockpitApiRoutes = app.routes.filter((route) => route.path.startsWith("/v1/"));
   for (const route of cockpitApiRoutes) {
     app.on(route.method, `/cockpit/i/:installationId/api${route.path}`, route.handler);
+  }
+  if (opts.localWorkspace) {
+    registerLocalSessionRoute(app, opts.localWorkspace);
+    registerLocalWorkspaceRoutes(app, opts.localWorkspace);
   }
   registerCockpitInstallationAssets(app);
   registerCockpitRoutes(app);

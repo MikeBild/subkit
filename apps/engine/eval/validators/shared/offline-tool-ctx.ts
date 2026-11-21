@@ -36,7 +36,6 @@ export function makeOfflineToolCtx(
     connector_id: null,
     workflow_id: null,
     engineClient,
-    permission_mode: "auto",
     getDraft: () => draft,
     setDraft: async (next) => {
       draft = next;

@@ -65,7 +65,7 @@ async function openConversation() {
     actor_id: ctx.user_id,
     connector_id: null,
     workflow_id: null,
-    permission_mode: "ask",
+    ask_before_writing: true,
     engineClient: new EngineClient({
       tenant_id: ctx.tenant_id,
       actor_id: ctx.user_id,

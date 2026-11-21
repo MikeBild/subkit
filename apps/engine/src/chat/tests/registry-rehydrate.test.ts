@@ -5,7 +5,7 @@ import {
   type ConversationTestCtx,
   createConversationTestCtx,
 } from "../../conversations/tests/setup.ts";
-import { encryptSecret } from "../../crypto/aes-gcm.ts";
+import { encryptSecret } from "../../crypto/index.ts";
 import type { Db } from "../../db/client.ts";
 import { chatWorkspaces } from "../../db/schema/index.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";

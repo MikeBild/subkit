@@ -15,10 +15,10 @@ import {
 } from "../db/schema/index.ts";
 import { beginTenantWork } from "../execution/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../http/tests/setup.ts";
-import { runTenantErasureSweep } from "../scheduler/tenant-erasure-runner.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { configureHostedPolicyForTests } from "../test-helpers/hosted-policy.ts";
 import { TEST_WORKSPACE_REGISTRATION } from "../test-helpers/workspace-registration.ts";
+import { runTenantErasureSweep } from "./scheduled/tenant-erasure-runner.ts";
 import { provisionSelfServiceTenant } from "./self-service.ts";
 import { eraseExpiredTenant } from "./tenant-erasure.ts";
 import { queue, tenantErasureFixtures } from "./tenant-erasure-fixtures.ts";

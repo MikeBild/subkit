@@ -2,7 +2,6 @@ import { decideToolMode } from "../conversations/public/policy.ts";
 import type {
   ConfirmEnvelope,
   ConfirmReason,
-  PermissionMode,
   ToolCategory,
   ToolModeRule,
   ToolPolicies,
@@ -89,7 +88,7 @@ export interface PolicyDecideInput {
   readonly surface: ToolSurface;
   readonly args: Record<string, unknown>;
   readonly meta?: Record<string, unknown>;
-  readonly permission_mode?: PermissionMode | null;
+  readonly ask_before_writing?: boolean;
   readonly overrides?: ToolPolicies;
   readonly connector_trust?: boolean;
   readonly authority_covered?: boolean;
@@ -98,6 +97,7 @@ export interface PolicyDecideInput {
   readonly prior_approval?: boolean;
   readonly execution_data_transfer?: boolean;
   readonly task_run?: boolean;
+  readonly model_checked?: boolean;
 }
 
 export function policyDecide(input: PolicyDecideInput): PolicyDecision {
@@ -106,13 +106,14 @@ export function policyDecide(input: PolicyDecideInput): PolicyDecision {
     category: input.category,
     input: input.args,
     overrides: input.overrides ?? {},
-    permission_mode: input.permission_mode ?? null,
+    ...(input.ask_before_writing ? { ask_before_writing: true } : {}),
     ...(input.connector_trust ? { connector_trust: true } : {}),
     ...(input.authority_covered ? { authority_covered: true } : {}),
     ...(input.instruction_covered ? { instruction_covered: true } : {}),
     ...(input.rule_covered ? { rule_covered: true } : {}),
     ...(input.execution_data_transfer ? { execution_data_transfer: true } : {}),
     ...(input.task_run ? { task_run: true } : {}),
+    ...(input.model_checked === false ? { model_checked: false } : {}),
   });
 
   if (input.category === "draft_write" && input.surface === "mcp") {

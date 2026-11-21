@@ -37,6 +37,7 @@ const AuditEntrySchema = z
         "external_bearer",
         "task_run",
         "portal_token",
+        "device_runner",
       ])
       .nullable(),
     oauth_client_id: z.string().nullable(),
@@ -106,6 +107,7 @@ const FilterQuery = z
         "external_bearer",
         "task_run",
         "portal_token",
+        "device_runner",
       ])
       .optional(),
     oauth_client_id: z
@@ -239,6 +241,7 @@ interface RawFilterQuery {
     | "external_bearer"
     | "task_run"
     | "portal_token"
+    | "device_runner"
     | undefined;
   oauth_client_id?: string | undefined;
   request_source?: z.infer<typeof RequestSourceSchema> | undefined;

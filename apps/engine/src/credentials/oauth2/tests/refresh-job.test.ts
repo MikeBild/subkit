@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { connectors, credentials, tenants } from "../../../db/schema/index.ts";
+import { connectors, tenants, vaultItems } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { getCredentialForConnector, upsertCredential } from "../../service.ts";
 import { __resetOAuth2CacheForTests, runClientCredentialsGrant } from "../client.ts";
@@ -82,10 +82,7 @@ describe("connector.refresh-oauth job", () => {
       ctx.db,
     );
     const backdated = new Date("2026-01-01T00:00:00.000Z");
-    await ctx.db
-      .update(credentials)
-      .set({ updated_at: backdated })
-      .where(eq(credentials.id, row.id));
+    await ctx.db.update(vaultItems).set({ updated_at: backdated }).where(eq(vaultItems.id, row.id));
 
     await new Promise((r) => setTimeout(r, 1200)); // allow-wall-clock: token-refresh skew window for the OAuth2 fixture clock
     mock.setExpiresIn(3600);

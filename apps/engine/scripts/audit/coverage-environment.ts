@@ -9,6 +9,15 @@ export function coverageDatabaseUrl(
     return { error: "db-tagged coverage shard requires SUBKIT_COVERAGE_OWNED_DATABASE_URL" };
   return owned ? { url: owned } : {};
 }
+export function mutationShardEnvironment(
+  env: Readonly<NodeJS.ProcessEnv>,
+  resourceTags: readonly string[],
+): NodeJS.ProcessEnv {
+  const owned = env.SUBKIT_COVERAGE_OWNED_DATABASE_URL;
+  if (resourceTags.includes("db") && !owned)
+    throw new Error("db-tagged mutation shard requires SUBKIT_COVERAGE_OWNED_DATABASE_URL");
+  return owned ? { ...env, DATABASE_URL: owned } : { ...env };
+}
 export function coverageTestEnvironment(
   env: Readonly<NodeJS.ProcessEnv>,
   databaseUrl?: string,

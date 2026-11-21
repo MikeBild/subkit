@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 540 380" width="540" height="380" role="img" aria-label="SubKit">
+  <rect width="540" height="380" fill="#f8fafc" />
+  <g fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M220 190H320" />
+    <path d="M308 178l12 12-12 12" />
+  </g>
+</svg>

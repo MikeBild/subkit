@@ -1,9 +1,24 @@
 # SubKit Desktop
 
-A thin, hardened Electron shell for SubKit. It has no UI of its own beyond a small connect
-screen: it loads `<server>/cockpit` same-origin in a sandboxed window with the normal Cockpit
-cookie session, and brings the attention list to the tray, the dock badge and native
-notifications. There is no API key in the window, no local server and no local execution.
+A hardened Electron app for SubKit on Macs with Apple Silicon. It loads `<server>/cockpit`
+same-origin in a sandboxed window with the normal Cockpit cookie session, and brings the
+attention list to the tray, the dock badge and native notifications. Its own windows are the
+connect, sign-in and settings screens, quick capture, the drop sheet, the browser sheet and the
+live view. There is no API key in the Cockpit window.
+
+On top of the shell it runs on the person's Mac what they allow:
+
+- **Local capabilities.** A runner host executes device commands for files, a filtered browser
+  (agent-browser) and computer use (agent-desktop), only inside the folders, websites and apps
+  allowed under “Local capabilities”. Screenshots are redacted on the device.
+- **Live view.** A window and an overlay pill show what runs on the Mac, ask for confirmations
+  and stop everything with ⌘⇧⎋.
+- **Local workspace.** “Only on this Mac” starts a bundled PostgreSQL 18 and the engine on the
+  Mac, with backups, restore, a move to a server and removal.
+
+The user guide is the reference chapter “SubKit Desktop”
+(`apps/engine/src/http/reference/subkit-desktop.en.md`); the step bodies of local workflow steps
+are in `reference-local-steps.en.md`.
 
 ## Run it in development
 
@@ -14,7 +29,7 @@ bun run dev
 ```
 
 `bun run dev` bundles into `dist/` and starts Electron. The Electron binary is downloaded on
-the first start. Start a local server with `bun run start:local` in the repository root and
+the first start. Start a local server with `bun run compose start` in the repository root and
 enter `localhost:3000` in the connect screen. A server without the desktop login (no
 `clients.desktop` in its service descriptor) is reported as too old.
 
@@ -25,13 +40,15 @@ enter `localhost:3000` in the connect screen. A server without the desktop login
 | `bun run test` | Unit tests for the pure logic in `src/shared` |
 | `bun run typecheck` | `tsc` for this app (uses the TypeScript of the repository root) |
 | `bun run notices` | Write `dist/THIRD_PARTY_NOTICES.txt` for the bundled packages, the runtime and its FFmpeg library; needs the Electron distribution |
-| `bun run notices:check` | The same checks without writing; the gate runs it |
-| `bun run verify:feed <dir> <version>` | Compare the update feed files in a folder with the artifacts next to them |
-| `bun run preview:shell <dir> [prefix]` | After a build: screenshots of quick capture, drop sheet and browser sheet in every state, de/en, light/dark |
-| `bun run tray-icon` | Render the menu bar template image from the Cockpit mark (needs `rsvg-convert`) |
-| `bun run package` | Production build, notices, then `electron-builder` for the current platform |
-| `bun run package:dir` | The same, unpacked into `release/` without installers |
-| `bun run package:dev` | Development build, unpacked into `release-dev/` as “SubKit Dev” |
+| `bun run notices --check` | The same checks without writing; the gate runs it |
+| `bun scripts/fetch-postgres.ts [--target darwin-arm64\|win32-x64\|all]` | Download the pinned PostgreSQL 18 build from `vendor/postgres.json`, verify its size and SHA-256, keep only what local mode needs and check on macOS that every library resolves inside the bundle; the result lands in the git-ignored `resources/postgres/<target>` and is packaged as `local/postgres` by every macOS `bun run package` |
+| `bun scripts/verify-feed.ts <dir> <version>` | Compare the update feed files in a folder with the artifacts next to them |
+| `bun scripts/preview-shell.ts <dir> [prefix]` | After a build: screenshots of quick capture, drop sheet and browser sheet in every state, de/en, light/dark |
+| `bun run build --icons` | Render the app icon (`icon.icns`), the menu bar template image and the DMG background from the Cockpit mark, then build (macOS with `rsvg-convert`) |
+| `bun run package` | Fetch agent-desktop and agent-browser, build the engine and fetch PostgreSQL for local mode, production build, notices, then `electron-builder` for the current platform; arguments it does not know go to `electron-builder` |
+| `bun run package --dir` | The same, unpacked into `release/` without installers |
+| `bun run package --dev` | Development build, unpacked into `release-dev/` as “SubKit Dev” |
+| `bun run package --prebuilt` | Skip the fetches and the engine build; the release workflow stages and signs them first |
 
 `apps/desktop` is a standalone package with its own `bun.lock`. It is deliberately not part of
 the root workspace, so the Electron toolchain stays out of the root lockfile and out of the
@@ -41,23 +58,54 @@ compiler and the notice scripts come from there.
 ## Layout
 
 ```
-src/shared/    pure logic with unit tests, no Electron import
-src/main/      main process
-src/preload/   bridges: window.subkitConnect (connect screen), window.subkitDesktop (Cockpit)
-src/connect/   connect and settings screen, German and English
-src/shell/     the shell's own small windows in React with packages/ui: quick capture,
-               drop sheet, browser sheet
-scripts/       build.ts, notices.ts, fonts.ts, tray-icon.ts
+src/shared/        pure logic with unit tests, no Electron import
+src/shared/local/  pure cores of the local capabilities, the live view and the local workspace
+src/main/          main process, runner host, live view, local workspace supervisor
+src/preload/       bridges: window.subkitConnect (connect, settings, local capabilities and
+                   local workspace screens), window.subkitDesktop (Cockpit), window.subkitShell
+                   (shell windows), the live view bridge
+src/connect/       connect, sign-in, settings, local capabilities, permissions and local
+                   workspace screens, German and English
+src/shell/         the shell's own small windows in React with packages/ui: quick capture,
+                   drop sheet, browser sheet
+src/live/          live view window and overlay pill
+scripts/           build.ts, icons.ts, after-pack.cjs, notices.ts, fonts.ts, package.ts, fetches
 ```
 
 Everything the shell assumes about the server lives in `src/shared/server-contract.ts`
 (paths, descriptor fields, answers, error codes) and `src/main/server-client.ts` (the three
 requests). Adjust those two files when the contract changes.
 
+### Mutation testing of the local cores
+
+The pure cores of the local capabilities are held at 100 % mutation. They are not part of the
+engine's shared `stryker.config.json`, whose runner only runs engine-side tests. Each scope has
+its own configuration:
+
+| Configuration | Mutates |
+| --- | --- |
+| `stryker.computer.json` | Computer use: allowlist and frontmost decision, typing-idle wait, redaction rectangles, command mapping, helper envelope, AX tree, file-dialog detector, live progress, helper bundle |
+| `stryker.browser.json` | Browser: the site decision of the filtering proxy (`packages/shared/src/local-policy/proxy-decision.ts`) and the agent-browser license pin and notice |
+| `stryker.live.json` | Live view and permissions: live-view state, macOS permission model, device step actions and the Cockpit device-step timeline model |
+| `stryker.local.json` | Local workspace: setup and workspace models, data-folder checks of the supervisor, local profile, the restart policy and the model-server check |
+| `stryker.kernel.json` | Shared kernel used by the desktop and the Cockpit: file kinds and byte format, SSE parser, backoff, quiet-hours clock, runner wire constants |
+| `stryker.shell.json` | Shell window: session model of the main process and the shell text helpers |
+
+Run one from the repository root with `bun run quality mutation <scope>`, where the scope is
+`computer`, `browser`, `live`, `local`, `kernel` or `shell`:
+
+```sh
+bun run quality mutation computer
+```
+
+Each run mutates the files in place (`inPlace: true`), so do not edit them while it runs, and
+writes `reports/mutation/desktop-<scope>.json`. Add a new pure core to both `mutate` and the
+test command of its scope when you create one.
+
 ## Production and development builds
 
 Two builds must never answer the same link. Only a packaged build made with `--production`
-(`bun run package`) is the production channel; `bun run dev`, `bun run package:dev` and every
+(`bun run package`) is the production channel; `bun run dev`, `bun run package --dev` and every
 unpackaged start are the development channel. `src/shared/channel.ts` holds both:
 
 | | Production | Development |
@@ -75,7 +123,8 @@ build as too old for it.
 
 ## Server contract the shell codes against
 
-The shell needs a server from version 11.2.0 on, the first release with the desktop sign-in.
+The shell needs a server from version 12.0.0 on, the first release with the local
+capabilities, the live view and the device routes. It reports an older server as too old.
 
 - `GET /.well-known/service-descriptor.json` with `version` and `clients.desktop`:
   `min_version` and `login` with `start`, `session`, `callback` (`subkit://callback`),
@@ -121,12 +170,12 @@ The shell needs a server from version 11.2.0 on, the first release with the desk
 
 ## Cockpit bridge
 
-The Cockpit sees `window.subkitDesktop` (protocol version 4) and nothing else of the shell.
+The Cockpit sees `window.subkitDesktop` (protocol version 7) and nothing else of the shell.
 Only the main frame of the signed-in server origin may call it.
 
 - `diagnostics()` answers the local diagnostics bundle: app, runtime, operating system, server
   version, connection state and the last ten errors, already cleaned by
-  `src/shared/redaction.ts`.
+  `src/shared/diagnostics.ts` on the shared redaction core.
 - `captureWindow()` answers a PNG of the Cockpit window as base64, or `null`. Before the
   capture the shell hides password fields, input fields and text areas whose name, id or
   autocomplete hint mentions a password, secret, token or API key, and everything marked
@@ -145,13 +194,20 @@ Only the main frame of the signed-in server origin may call it.
   (`{version, ready}`), so the Cockpit can show them with its `ErrorNotice`.
 - `sessionEnded()` and `setLocale()` tell the shell that the session ended or the language
   changed.
+- `desktopSettings()`, `onDesktopSettings(listener)` and `updateDesktopSettings(patch)` read and
+  change the app's own settings that the Cockpit shows (launch at login, diagnostics, updates);
+  `runUpdateAction()` runs the pending update action and `recheckServer()` checks the server
+  version again.
+- `openLocalCapabilities()` opens “Local capabilities” in the app, so the Cockpit can send the
+  person there from a device step or an approval.
 
 ## Tray, notifications and the shell windows
 
 The tray follows the click-dummy: open, “Needs you” with the count (also the menu bar title and
-the Dock badge), pause or resume notifications with the time they come back (“Paused until
-15:05”, or “Quiet hours until 07:00” while quiet hours hold banners back), launch at login,
-updates, quick note, settings, report a problem, quit. `src/shared/tray-model.ts` builds the menu as data.
+the Dock badge), “Open live view” while something runs on the Mac, pause or resume
+notifications with the time they come back (“Paused until 15:05”, or “Quiet hours until 07:00”
+while quiet hours hold banners back), launch at login, updates, quick note, settings, report a
+problem, quit. `src/shared/tray-model.ts` builds the menu as data.
 
 Native notifications open their entry: attention items their Cockpit address, a quick note the
 inbox item, a session end the sign-in window, an update the update settings. The shell announces
@@ -168,7 +224,7 @@ app window as its overlay.
 | View | Opens on | Does |
 | --- | --- | --- |
 | `capture` | ⌥ Space (Ctrl+Alt+Space on Windows and Linux) or the tray | `POST /v1/intake/items` as a note |
-| `drop` | files dropped on the Dock icon, the menu bar icon or opened with SubKit | file: `POST /v1/files/inline` (5 MB); source: `POST /v1/knowledge-sources` (50 MB); inbox: text files as notes (1 MB); chat: not available yet |
+| `drop` | files dropped on the window, the Dock icon, the menu bar icon or opened with SubKit (at most 20) | file: `POST /v1/files/inline` (5 MB); source: `POST /v1/knowledge-sources` (50 MB); inbox: text files as notes (1 MB); chat: `/v1/chat/composer/attachments` for the next message (10 files), then the Cockpit opens `/chat` |
 | `sheet` | the Cockpit sends the window to an OAuth authorization address whose `redirect_uri` is this server's `/v1/oauth/callback` | opens it in the system browser, shows host and path with the lock, and reloads the Cockpit when the person comes back |
 
 The writes use the installation's cookie session and the CSRF token from
@@ -184,8 +240,9 @@ The writes use the installation's cookie session and the CSRF token from
   else. The response headers of the server, including its CSP, are not touched.
 - One persistent session partition per server. Profiles live in `profiles.json` in the user
   data folder and hold no secret: the session is an HttpOnly cookie in the cookie jar, which
-  the `enableCookieEncryption` fuse encrypts in packaged builds. `src/main/vault.ts` wraps
-  `safeStorage` for future secrets and stores nothing today.
+  the `enableCookieEncryption` fuse encrypts in packaged builds. `src/main/vault.ts` is the
+  device vault: typed items sealed with `safeStorage`, among them the runner keys as system
+  items.
 - Packaged builds refuse debugging switches, and the fuses in `electron-builder.base.yml` turn
   off `RunAsNode`, `NODE_OPTIONS` and `--inspect`, load only the integrity-checked `app.asar`
   and take the extra privileges away from `file://` (`grantFileProtocolExtraPrivileges: false`).
@@ -225,8 +282,9 @@ needs an entry in `src/shared/app-files.ts`.
 
 ## Packaging, signing and updates
 
-`electron-builder.base.yml` targets macOS (dmg and zip, arm64 and x64), Windows (NSIS, x64) and
-Linux (AppImage and deb). `electron-builder.yml` adds name, bundle id, scheme, artifact names,
+`electron-builder.base.yml` targets macOS (dmg and zip, Apple silicon only), Windows (NSIS, x64) and
+Linux (AppImage and deb). Only the macOS build carries the local engine, PostgreSQL,
+agent-browser and agent-desktop; the local capabilities and the local workspace exist only there. `electron-builder.yml` adds name, bundle id, scheme, artifact names,
 notarization and the update feed of the production channel, `electron-builder.dev.yml` those of
 the development channel; the schemes live only there because the builder joins lists of an
 extended file.
@@ -234,9 +292,9 @@ extended file.
 Signed installers are built only by the workflow `.github/workflows/desktop-release.yml`;
 [RELEASING.md](RELEASING.md) names the secrets, the first dry run, how to verify a download and
 how to roll an update back. Locally only unpacked, unsigned builds for macOS arm64 were made
-with `bun run package:dir` and `bun run package:dev`.
+with `bun run package --dir` and `bun run package --dev`.
 
-The app carries the version of the repository: `bun run bump <version>` in the repository root
+The app carries the version of the repository: `bun run release bump <version>` in the repository root
 writes it into `apps/desktop/package.json` as well, and the release workflow refuses a tag whose
 two versions differ.
 
@@ -312,3 +370,14 @@ frameworks live in `vendor/desktop-runtime-notices`; its `scope` names what is n
 The script also reads `LICENSES.chromium.html` from the installed Electron distribution, copies
 it and the Electron license into the package and appends the FFmpeg entry of that file with its
 LGPL text, the source revision and the written offer from the manifest.
+
+The two bundled helper tools ship with their license texts pinned by SHA-256:
+`vendor/agent-desktop.LICENSE` (Apache-2.0) and, for agent-browser, the texts listed under
+`licenses` in `vendor/agent-browser.json`, taken from the upstream repository at the commit in
+`license_ref`: its own Apache-2.0 license (upstream has no NOTICE file), and the MPL-2.0 license
+of axe-core and the licenses of the code inside axe-core, which the agent-browser binary
+embeds unmodified. Each entry names its source at a pinned commit (axe-core 4.12.1 at
+`dequelabs/axe-core` commit `5d002cc`), and the notice prints that link next to the text. `bun run notices` and `bun run notices --check` fail when a text does not match its pin.
+`bun scripts/fetch-agent-desktop.ts` and `bun scripts/fetch-agent-browser.ts` download the pinned binaries;
+the release workflow presigns them (no entitlements) and the build leaves them unsigned through
+`signIgnore`.

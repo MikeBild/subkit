@@ -95,11 +95,11 @@ That is usually the AI model's API and, if the app deletes accounts, the identit
 
 ```bash
 sk connectors create --file connector-model.json --skip-checks
-sk credentials set <model-connector-id> --mode bearer --token "$MODEL_API_KEY"
-sk credentials set <idp-admin-connector-id> --mode header --header "Authorization=Bearer $IDP_ADMIN_KEY,apikey=$IDP_ADMIN_KEY"
+printf '%s' "$MODEL_API_KEY" | sk vault attach <model-connector-id> --mode bearer
+printf 'Authorization=Bearer %s\napikey=%s\n' "$IDP_ADMIN_KEY" "$IDP_ADMIN_KEY" | sk vault attach <idp-admin-connector-id> --mode header
 ```
 
-- `--skip-checks` is needed because the credentials are still missing when the connector is created. `credentials set` checks them afterwards.
+- `--skip-checks` is needed because the credentials are still missing when the connector is created. `sk vault attach` checks them afterwards.
 - `bearer` sends `Authorization: Bearer <token>`. `header` sends the named headers (comma-separated `Name=Value`).
 - Credentials come from your shell or secret store, never from a file, the app or this repository.
 - If you replace credentials with several headers in the Cockpit, fill all header fields. If you leave all of them empty, the old values stay.
@@ -191,9 +191,9 @@ Credentials in connectors can expire, and admin keys get rotated regularly.
 Record the name, connector, owner and expiry date of all credentials in the app's repository, never the value.
 Renew them before they expire.
 
-1. Store the new value with `sk credentials set`.
+1. Store the new value with `sk vault attach`.
 2. Check it with `sk connectors test <connector-id>`.
-3. Remove the old one with `sk credentials delete <credential-id>`.
+3. Remove the old one with `sk vault rm <vault-item-id>`.
 
 The Cockpit and `GET /v1/health` show failing connectors.
 

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { HttpDispatchObservation } from "../connectors/drivers/http.ts";
-import { secretComparisonProof } from "../crypto/aes-gcm.ts";
+import { secretComparisonProof } from "../crypto/index.ts";
 import { scrubString } from "../logging/scrub-secrets.ts";
 import { authorityRequestReview } from "../workflows/authority-request-review.ts";
 import { canonicalWorkflowJson } from "../workflows/canonical-json.ts";

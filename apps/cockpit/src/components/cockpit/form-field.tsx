@@ -1,6 +1,6 @@
+import { cn } from "@ui/lib/utils";
 import { type ReactNode, useState } from "react";
 import { useI18n } from "@/lib/i18n-context";
-import { cn } from "@/lib/utils";
 import { ContextHelp, CopyField, SECTION_LABEL, SearchInput, SegmentedControl } from "./patterns";
 
 export const CHECK_LIST_FILTER_FROM = 9;

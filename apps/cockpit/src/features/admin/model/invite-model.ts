@@ -1,4 +1,4 @@
-export { INVITE_PAGE, inviteLink } from "@/lib/invite-link";
+export { INVITE_PAGE, inviteLink } from "@/features/admin/model/invite-link";
 
 export function inviteToken(hash: string): string | null {
   const raw = hash.startsWith("#") ? hash.slice(1) : hash;

@@ -109,7 +109,7 @@ Credentials, approvals, roles, categories, settings and the history stay behind.
 To copy a whole self-hosted installation, make a backup instead, as described in "Run the engine".
 
 You need `package:export` on the source engine and `package:import` on the target engine. Members and administrators have both.
-After the import, someone with `credential:write`, usually an administrator, adds the credentials. A member can complete an OAuth sign-in.
+After the import, someone with `vault:write`, usually an administrator, adds the credentials. A member can complete an OAuth sign-in.
 
 1. Sign in to both engines, each with its own profile:
 

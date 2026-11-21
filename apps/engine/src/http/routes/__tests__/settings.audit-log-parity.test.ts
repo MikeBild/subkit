@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { _resetConfigForTests, loadConfig } from "../../../config/loader.ts";
 import { auditLog } from "../../../db/schema/audit.ts";
 import { logRing } from "../../../observability/log-ring.ts";
+import { testEnv } from "../../../test-helpers/determinism/env.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts";
 
 let server: HttpTestServer;
@@ -247,8 +248,8 @@ describe("audit_log ↔ setting.applied bijection", () => {
   });
 
   test("409 restart-required (production, no force) emits zero audit rows and zero applied logs", async () => {
-    const prev = process.env.NODE_ENV;
-    process.env.NODE_ENV = "production";
+    const prev = testEnv.NODE_ENV;
+    testEnv.NODE_ENV = "production";
     try {
       const r = await put("server.port", 4001);
       expect(r.status).toBe(409);
@@ -259,8 +260,8 @@ describe("audit_log ↔ setting.applied bijection", () => {
       expect(rows.length).toBe(0);
       expect(appliedLeavesSinceBaseline().length, "applied delta").toBe(0);
     } finally {
-      if (prev === undefined) delete process.env.NODE_ENV;
-      else process.env.NODE_ENV = prev;
+      if (prev === undefined) delete testEnv.NODE_ENV;
+      else testEnv.NODE_ENV = prev;
     }
   });
 });

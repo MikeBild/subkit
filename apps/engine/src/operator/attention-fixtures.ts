@@ -9,7 +9,6 @@ import {
   connectors,
   conversationElicitations,
   conversations,
-  credentials,
   executionSteps,
   executions,
   llmUsage,
@@ -20,6 +19,7 @@ import {
   skillCandidates,
   tenants,
   users,
+  vaultItems,
   workflowsSchedules,
 } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
@@ -122,7 +122,7 @@ export function useAttentionTenant(): void {
 
     const dir = mkdtempSync(join(tmpdir(), "sk-cfg-attention-"));
     const configPath = join(dir, "subkit.config.json");
-    writeFileSync(configPath, JSON.stringify({ tokens: { monthly_budget: 1000 } }));
+    writeFileSync(configPath, JSON.stringify({}));
     await loadConfig({
       env: { DATABASE_URL: testDb.url, NODE_ENV: "test" },
       configPathOverride: configPath,
@@ -233,7 +233,7 @@ export function useAttentionTenant(): void {
       .values({ ...connectionRow, name: "wiki" })
       .returning();
     connectionId = connection!.id;
-    await db.insert(credentials).values({
+    await db.insert(vaultItems).values({
       tenant_id,
       connector_id: brokenConnectorId,
       environment: "prod",
@@ -279,9 +279,10 @@ export function useAttentionTenant(): void {
     await db.insert(llmUsage).values({
       tenant_id,
       flow: "chat",
-      model: "m",
-      total_tokens: 950,
-      result: "ok",
+      model: "claude-sonnet-4-5",
+      completion_tokens: 4_000_000,
+      total_tokens: 4_000_000,
+      result: "success",
       month_bucket: currentMonthBucket(new Date(now)),
     });
 

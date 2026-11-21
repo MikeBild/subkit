@@ -2,7 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { type Executor, getDb } from "../db/client.ts";
 import { conversations } from "../db/schema/conversations.ts";
 import { notTaskRunConversation } from "../db/task-run-conversations.ts";
-import { vectorScoreCandidates } from "../embeddings/vector-rerank.ts";
+import { vectorScoreCandidates } from "../embeddings/index.ts";
 
 const TOPIC_MIN_COSINE = 0.425;
 

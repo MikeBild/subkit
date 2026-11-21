@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
+import type { PromptCacheFlow } from "@/features/usage/model/operations-figures";
 import { type Locale, translate, translatePlural } from "@/lib/i18n";
 import { I18nContext, type I18nValue } from "@/lib/i18n-context";
-import type { PromptCacheFlow } from "@/lib/operations-figures";
 import { type PromptCacheRead, PromptCacheSection, PromptCacheTile } from "./prompt-cache";
 
 function i18nValue(locale: Locale): I18nValue {

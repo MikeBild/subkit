@@ -1,5 +1,4 @@
-import { and, asc, eq, inArray, isNull, notExists, notInArray, sql } from "drizzle-orm";
-import type { ResolvedPrincipal } from "../auth/types.ts";
+import { and, asc, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import { connectorCountsAgainstHealth } from "../connectors/health-ratio.ts";
 import { listConnections } from "../credentials/connections/index.ts";
 import type { Db } from "../db/client.ts";
@@ -11,7 +10,7 @@ import {
   workflows,
   workflowsSchedules,
 } from "../db/schema/index.ts";
-import { monthlyUsage, resolveMonthlyBudget } from "../llm/accounting/index.ts";
+import { readSpend } from "../llm/accounting/spend.ts";
 import { listPendingSecretVersions } from "../runtime-config/pending-secrets.ts";
 import { nextScheduleFire } from "../scheduler/next-fire.ts";
 import { scheduleBindingState } from "../scheduler/trigger-bindings.ts";
@@ -29,6 +28,7 @@ import type {
   AttentionSource,
 } from "./attention.ts";
 import { heldCauseClass, heldDetail } from "./core/held-detail.ts";
+import type { PermissionGap, WaitingDevice } from "./device-attention.ts";
 import { readFailureStreaks } from "./failure-streaks.ts";
 import {
   collectFailureGroups,
@@ -41,6 +41,7 @@ import { getOperationalOverview, type HealthState } from "./operational-overview
 import type { PendingPairRequest } from "./pair-approval-attention.ts";
 import { type ProviderOutage, readProviderOutage } from "./provider-outage.ts";
 import { computeRiskSignals, type RiskSignal } from "./risk-signals.ts";
+import { spendCandidates } from "./spend-attention.ts";
 
 export const attentionHref = {
   review: (id: string) => `/cockpit?review=${id}`,
@@ -74,6 +75,8 @@ export interface TenantFacts {
   candidates: Candidate[];
   status: { health_state: HealthState; next_run_at: string | null } | null;
   pair_requests?: readonly PendingPairRequest[];
+  device_waits?: readonly WaitingDevice[];
+  device_permissions?: readonly PermissionGap[];
 }
 
 export type TenantReader = (db: Db, tenantId: string, now: Date) => Promise<Candidate[]>;
@@ -711,17 +714,16 @@ const readIntake: TenantReader = async (db, tenantId) => {
   return intakeCandidates(rows);
 };
 
-function signalItem(signal: RiskSignal, source: "budget" | "risk"): Candidate {
-  const budget = source === "budget";
+function signalItem(signal: RiskSignal): Candidate {
   return {
-    source,
+    source: "risk",
     item: {
-      id: budget ? "budget" : `risk:${signal.kind}`,
+      id: `risk:${signal.kind}`,
       class: "failing",
       severity: "critical",
       kind: signal.kind,
       subject: null,
-      reason: budget ? "budget_critical" : "risk_critical",
+      reason: "risk_critical",
       trigger: null,
       cause_class: null,
       counts: {},
@@ -731,24 +733,17 @@ function signalItem(signal: RiskSignal, source: "budget" | "risk"): Candidate {
       actions: [
         {
           verb: "open",
-          href: budget ? attentionHref.usage : attentionHref.operations,
+          href: attentionHref.operations,
           primary: true,
-          permission: budget ? "stats:read" : "audit:read",
+          permission: "audit:read",
         },
       ],
     },
   };
 }
 
-const readBudget: TenantReader = async (db, tenantId) => {
-  const signals = computeRiskSignals({
-    monthTokens: await monthlyUsage(tenantId, db),
-    monthBudget: resolveMonthlyBudget(tenantId),
-  });
-  return signals
-    .filter((signal) => signal.kind === "token_budget" && signal.severity === "critical")
-    .map((signal) => signalItem(signal, "budget"));
-};
+const readBudget: TenantReader = async (db, tenantId, now) =>
+  spendCandidates(await readSpend(tenantId, db, now));
 
 function providerOutageItem(outage: ProviderOutage): Candidate {
   return {
@@ -779,7 +774,7 @@ const readRisk: TenantReader = async (db, tenantId, now) => {
     ...(outage ? [providerOutageItem(outage)] : []),
     ...computeRiskSignals()
       .filter((signal) => signal.severity === "critical")
-      .map((signal) => signalItem(signal, "risk")),
+      .map((signal) => signalItem(signal)),
   ];
 };
 

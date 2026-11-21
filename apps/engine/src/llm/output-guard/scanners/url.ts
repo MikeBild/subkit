@@ -20,10 +20,7 @@ export const urlScanner: Scanner = {
         engineUrl = new URL(ctx.engine_url);
       } catch {}
     }
-    URL_RE.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    // biome-ignore lint/suspicious/noAssignInExpressions: standard regex exec loop.
-    while ((m = URL_RE.exec(text)) !== null) {
+    for (const m of text.matchAll(URL_RE)) {
       let parsed: URL;
       try {
         parsed = new URL(m[0]);

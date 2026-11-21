@@ -109,7 +109,6 @@ describe("openai with an empty model", () => {
       provider: "openai",
       fallback_provider: "openai",
       context_cap: 110_000,
-      monthly_budget: null,
     } as ModelRoute;
     const elevated = applyFlowModelElevation(route, "judge");
     const resolved = await initializeModel({

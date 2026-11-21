@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { localConfirmationOf } from "@shared/device/confirmation.ts";
 import { and, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { resolveActor } from "../audit/recorders/types.ts";
@@ -10,7 +11,9 @@ import {
   conversations,
   conversationToolCalls,
 } from "../db/schema/index.ts";
-import { logger } from "../logging/logger.ts";
+import { LocalConfirmationForbiddenError } from "../devices/confirmation-errors.ts";
+import { grantsConfirmation, NOTHING_CHANGED } from "../devices/core/local-confirmation.ts";
+import { logger } from "../logging/index.ts";
 import { APPROVAL_TTL_MS } from "../tools/approval.ts";
 import { type DecidedBy, decidedByAuditActor } from "./decided-by.ts";
 import { applyPlaybookDecision } from "./playbook.ts";
@@ -474,6 +477,7 @@ interface ResolveElicitationInput {
   reason?: string;
   status?: "resolved" | "cancelled" | "timeout";
   transport?: ElicitationTransportOutcome;
+  local_confirmation_checked?: boolean;
 }
 
 export async function resolveElicitation(
@@ -523,6 +527,13 @@ async function resolveElicitationWithin(
       ),
     )
     .limit(1);
+  if (
+    !p.local_confirmation_checked &&
+    localConfirmationOf(pendingRow?.input) !== null &&
+    grantsConfirmation(p.status ?? "resolved", interpretConfirmDecision(p.output))
+  ) {
+    throw new LocalConfirmationForbiddenError("unchecked");
+  }
   const persistedOutput = pendingRow
     ? redactElicitationOutput(pendingRow.tool_name, pendingRow.input, p.output ?? null)
     : (p.output ?? null);
@@ -724,6 +735,7 @@ export type ElicitationExpiryReason =
   | "approval_expired"
   | "approval_abandoned"
   | "credential_setup_expired"
+  | "local_confirmation_expired"
   | "prompt_expired";
 
 const EXPIRY_NOTES: Readonly<Record<ElicitationExpiryReason, string>> = {
@@ -733,6 +745,7 @@ const EXPIRY_NOTES: Readonly<Record<ElicitationExpiryReason, string>> = {
     "the operator DID approve this, but the approval could not be carried out before it expired, so nothing ran. Tell the user their approval was received and arrived too late to execute, and re-issue the tool call if they still want it.",
   credential_setup_expired:
     "the secure credential setup link expired before the operator submitted it; no credential was stored. Ask whether they want a fresh credential prompt and re-issue the tool call if so.",
+  local_confirmation_expired: `nobody confirmed this local step before its deadline. ${NOTHING_CHANGED.en} Choose another way or finish with a written result; ask again only if the person still wants it.`,
   prompt_expired:
     "the question went unanswered long enough to expire; nothing ran. Ask it again if the answer is still needed.",
 };
@@ -749,6 +762,7 @@ export function expiredToolCallUpdate(reason: ElicitationExpiryReason): {
       outcome: "expired",
       reason,
       note: EXPIRY_NOTES[reason],
+      ...(reason === "local_confirmation_expired" ? { message: NOTHING_CHANGED } : {}),
     },
     outcome: "expired",
     confirmation_state: "expired",

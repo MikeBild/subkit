@@ -1,17 +1,18 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { DRAFT_WRITE_MCP_UNAVAILABLE_REASON } from "../../tools/policy.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 let suite: McpTestSuite;
 
 beforeAll(async () => {
-  process.env.SK_MCP_MODE = "authoring";
+  testEnv.SK_MCP_MODE = "authoring";
   suite = await startMcpTestSuite("inspect-execution-call");
 });
 
 afterAll(async () => {
   await suite.cleanup();
-  delete process.env.SK_MCP_MODE;
+  delete testEnv.SK_MCP_MODE;
 });
 
 describe("mcp inspect_execution — surface-agnostic tenant_read", () => {

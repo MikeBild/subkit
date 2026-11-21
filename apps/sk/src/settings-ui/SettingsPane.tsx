@@ -11,7 +11,6 @@ interface SettingsPaneProps {
   initialTab?: string;
   sessionId?: string | null;
   sessionTitle?: string | null;
-  permissionMode?: "ask" | "auto" | "plan" | "yolo";
   sessionTokens?: number | null;
   weekTokens?: number | null;
   onDismiss: () => void;
@@ -32,7 +31,6 @@ export const SettingsPane: React.FC<SettingsPaneProps> = ({
   initialTab,
   sessionId,
   sessionTitle,
-  permissionMode,
   sessionTokens,
   weekTokens,
   onDismiss,
@@ -113,7 +111,6 @@ export const SettingsPane: React.FC<SettingsPaneProps> = ({
   if (sessionId !== undefined) props.sessionId = sessionId;
   const resolvedTitle = state.fetchedSessionTitle ?? sessionTitle;
   if (resolvedTitle !== undefined) props.sessionTitle = resolvedTitle;
-  if (permissionMode !== undefined) props.permissionMode = permissionMode;
   if (sessionTokens !== undefined) props.sessionTokens = sessionTokens;
   if (weekTokens !== undefined) props.weekTokens = weekTokens;
   return <SettingsModal {...props} />;

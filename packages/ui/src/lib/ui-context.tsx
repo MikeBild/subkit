@@ -1,5 +1,7 @@
 import { de, type UiDict } from "@ui/i18n/de";
 import { en } from "@ui/i18n/en";
+import { type ErrorCatalog, NO_ERROR_CATALOG } from "@ui/lib/errors";
+import { Box, type LucideIcon } from "lucide-react";
 import { createContext, type ReactNode, useContext, useMemo } from "react";
 
 export type UiLang = "de" | "en";
@@ -11,12 +13,20 @@ export interface UiEnvironment {
   server?: string | undefined;
   onReport?: ((text: string) => void) | undefined;
   now?: (() => number) | undefined;
+  mark?: LucideIcon | undefined;
+  appName?: string | undefined;
+  dialogNotice?: ReactNode;
+  errors?: ErrorCatalog | undefined;
 }
 
 interface UiValue extends UiEnvironment {
   t: UiDict;
   fmt: (iso: string) => string;
   now: () => number;
+  mark: LucideIcon;
+  appName: string;
+  dialogNotice: ReactNode;
+  errors: ErrorCatalog;
 }
 
 const defaultFmt = (lang: UiLang) => (iso: string) =>
@@ -30,6 +40,10 @@ const UiContext = createContext<UiValue>({
   t: de,
   fmt: defaultFmt("de"),
   now: () => Date.now(),
+  mark: Box,
+  appName: "",
+  dialogNotice: null,
+  errors: NO_ERROR_CATALOG,
 });
 
 export function UiProvider({
@@ -39,6 +53,10 @@ export function UiProvider({
   server,
   onReport,
   now,
+  mark,
+  appName,
+  dialogNotice,
+  errors,
 }: UiEnvironment & { children: ReactNode }) {
   const value = useMemo<UiValue>(
     () => ({
@@ -48,8 +66,12 @@ export function UiProvider({
       server,
       onReport,
       now: now ?? (() => Date.now()),
+      mark: mark ?? Box,
+      appName: appName ?? "",
+      dialogNotice: dialogNotice ?? null,
+      errors: errors ?? NO_ERROR_CATALOG,
     }),
-    [lang, fmt, server, onReport, now],
+    [lang, fmt, server, onReport, now, mark, appName, dialogNotice, errors],
   );
   return <UiContext.Provider value={value}>{children}</UiContext.Provider>;
 }
@@ -60,6 +82,6 @@ export function useI18n() {
 }
 
 export function useUi() {
-  const { server, onReport, now } = useContext(UiContext);
-  return { server, onReport, now };
+  const { server, onReport, now, mark, appName, dialogNotice, errors } = useContext(UiContext);
+  return { server, onReport, now, mark, appName, dialogNotice, errors };
 }

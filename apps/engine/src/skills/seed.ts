@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { PLATFORM_CATEGORY } from "../api/catalog-metadata.ts";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
-import { type Db, getDb } from "../db/client.ts";
+import type { Db } from "../db/client.ts";
 import { skills, tenants } from "../db/schema/index.ts";
 import { retryTransient } from "../db/transient.ts";
 import { withTenantWork } from "../execution/index.ts";
@@ -98,7 +98,7 @@ export function loadSkillSeedsFromContent(files: readonly SeedSource[]): LoadRes
 export async function applySkillSeeds(
   seeds: SeededSkill[],
   tenant_id: string,
-  db: Db = getDb(),
+  db: Db,
 ): Promise<ApplyOutcome> {
   return withTenantWork(tenant_id, async () => {
     if (await seedsAlreadyApplied(seeds, tenant_id, db)) {
@@ -254,7 +254,7 @@ function applyChangedSkillSeeds(
 export async function applySkillSeedsWithRetry(
   seeds: SeededSkill[],
   tenant_id: string,
-  db: Db = getDb(),
+  db: Db,
 ): Promise<ApplyOutcome> {
   return retryTransient(() => applySkillSeeds(seeds, tenant_id, db), {
     tries: 8,
@@ -266,7 +266,7 @@ export async function applySkillSeedsWithRetry(
 
 export async function applySkillSeedsForAllTenants(
   seeds: SeededSkill[],
-  db: Db = getDb(),
+  db: Db,
 ): Promise<ApplyOutcome[]> {
   const allTenants = await db
     .select({ id: tenants.id })

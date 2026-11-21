@@ -1,6 +1,6 @@
 import { expect, spyOn, test } from "bun:test";
 import { Hono } from "hono";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import {
   __resetProxyUntrustedWarning,
   clientIpMiddleware,

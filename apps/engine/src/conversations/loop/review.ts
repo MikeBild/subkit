@@ -1,7 +1,7 @@
 import { AuditAction, auditAwait } from "../../audit/index.ts";
 import { resolveActor } from "../../audit/recorders/types.ts";
 import { type CriticVerdict, runCritic, summarizeToolResult } from "../../llm/critic/index.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { type Citation, harvestCitations } from "../citations.ts";
 import {
   abstentionRequest,

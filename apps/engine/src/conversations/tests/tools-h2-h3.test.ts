@@ -105,7 +105,7 @@ describe("conversation tools — registration", () => {
     "list_audit",
     "get_audit_entry",
     "get_llm_usage",
-    "get_token_budget",
+    "get_ai_budget",
     "whoami",
     "list_users",
     "get_user",

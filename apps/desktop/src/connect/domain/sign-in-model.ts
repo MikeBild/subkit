@@ -1,5 +1,13 @@
 import type { InviteCheck } from "../../shared/invite-link.ts";
-import type { CheckResult, ConnectState, ConnectView, SettingsPatch } from "../../shared/ipc.ts";
+import type {
+  CheckResult,
+  ConnectState,
+  ConnectView,
+  LocalFinishInput,
+  SettingsPatch,
+} from "../../shared/ipc.ts";
+import { LAST_SETUP_STEP } from "../../shared/local/local-workspace-model.ts";
+import type { PermissionKey } from "../../shared/local/permission-model.ts";
 import { CLOSED_INVITE, inviteLinkOf } from "./invite-model.ts";
 import {
   type ConsentTopic,
@@ -34,9 +42,27 @@ export type Command =
   | { type: "RemoveServer"; profileId: string }
   | { type: "ActOnNotice"; action: NoticeAction }
   | { type: "ToggleSettings" }
+  | { type: "OpenLocalCapabilities" }
+  | { type: "OpenPermissions" }
   | { type: "ChangeSettings"; patch: SettingsPatch }
   | { type: "RunUpdateAction" }
   | { type: "ReportProblem" }
+  | { type: "CheckPermissions" }
+  | { type: "OpenPermissionSettings"; key: PermissionKey }
+  | { type: "RestartApp" }
+  | { type: "ClosePermissions" }
+  | { type: "StartLocalSetup" }
+  | { type: "LocalPickDataFolder" }
+  | { type: "LocalNext" }
+  | { type: "LocalBack" }
+  | { type: "LocalFinish"; input: LocalFinishInput }
+  | { type: "LocalRetry" }
+  | { type: "LocalOpen" }
+  | { type: "LocalBackup" }
+  | { type: "LocalRestore"; name: string }
+  | { type: "LocalMove"; serverOrigin: string }
+  | { type: "LocalMoveSignIn"; origin: string }
+  | { type: "LocalRemoveAll" }
   | { type: "ChooseWorkspace"; tenantId: string }
   | { type: "KeepWorkspace" }
   | { type: "StartConnect" }
@@ -65,7 +91,9 @@ export type Event =
   | { type: "InviteCheckFailed"; requestId: number; link: string }
   | { type: "InviteJoined"; origin: string }
   | { type: "ConsentChosen"; topic: ConsentTopic; give: boolean }
-  | { type: "MainStateReceived"; state: ConnectState };
+  | { type: "MainStateReceived"; state: ConnectState }
+  | { type: "LocalSetupOpened" }
+  | { type: "LocalStepChanged"; step: number };
 
 export type Effect =
   | { kind: "checkServer"; address: string; requestId: number }
@@ -77,6 +105,18 @@ export type Effect =
   | { kind: "updateSettings"; patch: SettingsPatch }
   | { kind: "updateAction" }
   | { kind: "reportProblem" }
+  | { kind: "checkPermissions" }
+  | { kind: "openPermissionSettings"; key: PermissionKey }
+  | { kind: "restartApp" }
+  | { kind: "localPickDataFolder" }
+  | { kind: "localBegin" }
+  | { kind: "localFinish"; input: LocalFinishInput }
+  | { kind: "localCancel" }
+  | { kind: "localOpen" }
+  | { kind: "localBackup" }
+  | { kind: "localRestore"; name: string }
+  | { kind: "localMove"; serverOrigin: string }
+  | { kind: "localRemoveAll" }
   | { kind: "chooseWorkspace"; tenantId: string }
   | { kind: "answerNotifications"; allow: boolean }
   | { kind: "answerDiagnostics"; share: boolean }
@@ -155,7 +195,11 @@ export function decide(state: SignInState, command: Command, context: DecideCont
     case "CancelSignIn":
       return only({ kind: "cancelLogin" });
     case "GoBack": {
-      if (screen?.kind === "settings") return only({ kind: "showView", view: "connect" });
+      if (screen?.kind === "settings" || screen?.kind === "permissions")
+        return only({ kind: "showView", view: "connect" });
+      if (screen?.kind === "local-capabilities")
+        return only({ kind: "showView", view: "settings" });
+      if (screen?.kind === "local") return decideLocal(state, { type: "LocalBack" });
       const waiting = screen?.kind === "signin" && screen.signin.phase === "waiting";
       return {
         events: [{ type: "WentBack", to: backStep(state, screen) }],
@@ -189,14 +233,27 @@ export function decide(state: SignInState, command: Command, context: DecideCont
     case "ToggleSettings":
       return only({
         kind: "showView",
-        view: state.main?.view === "settings" ? "connect" : "settings",
+        view:
+          state.main?.view === "settings" || state.main?.view === "local" ? "connect" : "settings",
       });
+    case "OpenLocalCapabilities":
+      return screen?.kind === "settings" ? only({ kind: "showView", view: "local" }) : NOTHING;
+    case "OpenPermissions":
+      return only({ kind: "showView", view: "permissions" });
     case "ChangeSettings":
       return only({ kind: "updateSettings", patch: command.patch });
     case "RunUpdateAction":
       return only({ kind: "updateAction" });
     case "ReportProblem":
       return only({ kind: "reportProblem" });
+    case "CheckPermissions":
+      return only({ kind: "checkPermissions" });
+    case "OpenPermissionSettings":
+      return only({ kind: "openPermissionSettings", key: command.key });
+    case "RestartApp":
+      return only({ kind: "restartApp" });
+    case "ClosePermissions":
+      return only({ kind: "showView", view: "connect" });
     case "ChooseWorkspace":
       return screen?.kind === "workspace" &&
         screen.workspaces.some((workspace) => workspace.tenantId === command.tenantId)
@@ -235,6 +292,79 @@ export function decide(state: SignInState, command: Command, context: DecideCont
         : NOTHING;
     case "ConfirmConsent":
       return confirmConsent(screen);
+    default:
+      return decideLocal(state, command);
+  }
+}
+
+function stepTo(step: number, ...effects: Effect[]): Decision {
+  return { events: [{ type: "LocalStepChanged", step }], effects };
+}
+
+type LocalCommand = Extract<
+  Command,
+  {
+    type:
+      | "StartLocalSetup"
+      | "LocalPickDataFolder"
+      | "LocalNext"
+      | "LocalBack"
+      | "LocalFinish"
+      | "LocalRetry"
+      | "LocalOpen"
+      | "LocalBackup"
+      | "LocalRestore"
+      | "LocalMove"
+      | "LocalMoveSignIn"
+      | "LocalRemoveAll";
+  }
+>;
+
+export function decideLocal(state: SignInState, command: LocalCommand): Decision {
+  const screen = screenOf(state);
+  const local = screen?.kind === "local" ? screen : null;
+  const busy = state.main?.local.busy !== null;
+  switch (command.type) {
+    case "StartLocalSetup":
+      return state.main?.local.available && !state.main.local.configured
+        ? { events: [{ type: "LocalSetupOpened" }], effects: [] }
+        : NOTHING;
+    case "LocalPickDataFolder":
+      return local?.step === 0 && !local.working ? only({ kind: "localPickDataFolder" }) : NOTHING;
+    case "LocalNext":
+      if (local?.step === 0)
+        return local.folderRefusal ? NOTHING : stepTo(1, { kind: "localBegin" });
+      return local?.step === 1 ? stepTo(2) : NOTHING;
+    case "LocalBack":
+      if (!local || local.starting) return NOTHING;
+      if (local.step === 0)
+        return {
+          events: [{ type: "WentBack", to: "connect" }],
+          effects: [{ kind: "localCancel" }],
+        };
+      return stepTo(local.step - 1);
+    case "LocalFinish":
+      return local?.step === 2
+        ? stepTo(LAST_SETUP_STEP, { kind: "localFinish", input: command.input })
+        : NOTHING;
+    case "LocalRetry":
+      return local?.error ? only({ kind: "localBegin" }) : NOTHING;
+    case "LocalOpen":
+      return local?.done ? only({ kind: "localOpen" }) : NOTHING;
+    case "LocalBackup":
+      return busy ? NOTHING : only({ kind: "localBackup" });
+    case "LocalRestore":
+      return busy ? NOTHING : only({ kind: "localRestore", name: command.name });
+    case "LocalMove":
+      return busy || state.main?.local.moved
+        ? NOTHING
+        : only({ kind: "localMove", serverOrigin: command.serverOrigin });
+    case "LocalRemoveAll":
+      return busy || !state.main?.local.configured ? NOTHING : only({ kind: "localRemoveAll" });
+    case "LocalMoveSignIn":
+      return state.main?.local.moved
+        ? only({ kind: "showView", view: "connect" }, { kind: "login", origin: command.origin })
+        : NOTHING;
   }
 }
 
@@ -350,6 +480,10 @@ export function evolve(state: SignInState, event: Event): SignInState {
       };
     case "ReloginDismissed":
       return { ...state, flow: { ...flow, step: "connect", reloginDismissed: true } };
+    case "LocalSetupOpened":
+      return { ...state, flow: { ...flow, step: "local", localStep: 0 } };
+    case "LocalStepChanged":
+      return { ...state, flow: { ...flow, localStep: event.step } };
     case "MainStateReceived": {
       const restart = Boolean(state.main?.signedIn) && !event.state.signedIn;
       const base = restart ? INITIAL_FLOW : flow;

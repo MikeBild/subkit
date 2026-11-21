@@ -14,10 +14,11 @@ Wie Personen die App benutzen, steht in „SubKit Desktop“.
 
 ### Was du brauchst
 
-- Eine Engine ab Version 11.2.0. Das Update führt die Migrationen für die Anmeldung der App aus.
+- Eine Engine ab Version 12.0.0. Das Update führt die Migrationen für die Anmeldung der App aus.
 - Eine Adresse mit `https://`. Die App verbindet sich nur mit `https`; `http` erlaubt sie allein für `localhost`.
 - Einen eingerichteten Weg, sich im Browser am Cockpit anzumelden. Die App nutzt genau diese Anmeldung und keinen API-Schlüssel.
-- Die App selbst. Fertige Installationsdateien und einen Download gibt es heute nicht: SubKit Desktop ist mit der öffentlichen Version von SubKit verfügbar. Wer Zugriff auf das Repository hat, baut die App für macOS (dmg und zip), Windows (Installer) und Linux (AppImage und deb) selbst; signieren und verteilen gehört dann dazu. Was du dafür brauchst, steht unten. Das Cockpit als installierte Web-App funktioniert schon jetzt.
+- Die App selbst. SubKit Desktop läuft auf einem Mac mit Apple Silicon ab macOS 13. Einen öffentlichen Download gibt es noch nicht: Er kommt mit der öffentlichen Version von SubKit. Wer Zugriff auf das Repository hat, baut die App für macOS (dmg und zip) selbst; signieren und verteilen gehört dann dazu. Was du dafür brauchst, steht unten. Das Cockpit als installierte Web-App funktioniert schon jetzt auf jedem System.
+- Für die lokalen Fähigkeiten (Dateien, Browser und Apps auf dem Mac) eine Engine ab Version 12.0.0.
 
 ### Was der Server der App mitteilt
 
@@ -44,7 +45,7 @@ Die App liest vor jeder Verbindung `GET /.well-known/service-descriptor.json`. D
 
 | Feld | Bedeutung |
 | --- | --- |
-| `version` | Die Version der Engine. Die App verlangt mindestens 11.2.0. |
+| `version` | Die Version der Engine. Die App verlangt mindestens 12.0.0. |
 | `clients.desktop.min_version` | Die älteste App-Version, die dieser Server annimmt. Eine ältere App bittet um ein Update, statt sich anzumelden. |
 | `clients.desktop.login.start` | Die Adresse, die die App im Browser öffnet. |
 | `clients.desktop.login.session` | Die Adresse, an der die App ihren Code gegen eine Sitzung tauscht. |
@@ -142,7 +143,6 @@ Einen öffentlichen Download gibt es bis zur öffentlichen Version von SubKit ni
 | Wofür | Was du bereitstellst |
 | --- | --- |
 | Signatur für macOS | Ein Developer-ID-Zertifikat und die Zugangsdaten für die Notarisierung. |
-| Signatur für Windows | Ein Code-Signing-Zertifikat. |
 | Updates | Einen Ort, an dem du Versionen über `https` veröffentlichst, und die Entscheidung, Updates einzuschalten (`SUBKIT_DESKTOP_UPDATES=1` beim Bauen). |
 
 Ohne eingeschaltete Updates zeigt die App „Automatische Updates sind in diesem Build nicht aktiv.“ Eine unsignierte App kann sich unter macOS nicht selbst aktualisieren. Keiner dieser Werte gehört ins Repository. Die Einzelheiten stehen in der README-Datei unter `apps/desktop`.
@@ -164,7 +164,7 @@ Ein Tausch mit unbekanntem Code steht nur im Log der Engine, nicht im Audit-Trai
 
 | Was du siehst | Was du tust |
 | --- | --- |
-| Die App meldet, der Server sei zu alt | Prüfe `version` im Service-Descriptor. Die App braucht 11.2.0 oder neuer und den Abschnitt `clients.desktop`. |
+| Die App meldet, der Server sei zu alt | Prüfe `version` im Service-Descriptor. Die App braucht 12.0.0 oder neuer und den Abschnitt `clients.desktop`. |
 | Die App meldet, der Server biete die nötige Anmeldung nicht an | Die App ist ein Entwicklungs-Build und dein Server nimmt `subkit-dev://callback` nicht an, oder `login` fehlt im Descriptor. |
 | `400 invalid_redirect_uri` beim Start | Das Ziel der App steht nicht in `callbacks`. Nutze einen Produktions-Build oder schalte `server.desktop_dev_callback` ein. |
 | `401 invalid_grant` beim Tausch | Der Code ist unbekannt, verbraucht, abgelaufen oder passt nicht zum `code_verifier`. Die Person startet die Anmeldung neu. |

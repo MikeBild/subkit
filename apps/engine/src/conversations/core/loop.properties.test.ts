@@ -8,7 +8,6 @@ import {
   isContinuationTurn,
   PROSE_TAIL_WINDOW,
   priorFailuresFromPreview,
-  remainingMonthlyBudget,
   scanProseChunk,
   topSkillsByTokens,
   turnBudgetMs,
@@ -86,15 +85,6 @@ describe("loop core properties", () => {
         expect(u.cache_read_tokens).toBe(cached);
         expect(u.cache_read_pct).toBeGreaterThanOrEqual(0);
         expect(u.cache_read_pct).toBeLessThanOrEqual(100);
-      }),
-      { seed: 20261106, numRuns: 200 },
-    );
-  });
-
-  test("remaining budget is never negative", () => {
-    fc.assert(
-      fc.property(fc.nat(1_000_000), fc.nat(2_000_000), (budget, used) => {
-        expect(remainingMonthlyBudget(budget, used)).toBe(Math.max(0, budget - used));
       }),
       { seed: 20261106, numRuns: 200 },
     );

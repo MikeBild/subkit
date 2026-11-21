@@ -4,7 +4,7 @@ import type { AddressInfo } from "node:net";
 import { and, eq } from "drizzle-orm";
 import { setConfigKey } from "../../../config/loader.ts";
 import { __resetOAuth2CacheForTests } from "../../../credentials/oauth2/client.ts";
-import { auditLog, connectors, credentials } from "../../../db/schema/index.ts";
+import { auditLog, connectors, vaultItems } from "../../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts";
 
 async function readBody(req: IncomingMessage): Promise<string> {
@@ -285,8 +285,8 @@ describe("POST /v1/connectors/{id}/oauth/start — dynamic_registration=true", (
 
     const credRows = await server.db
       .select()
-      .from(credentials)
-      .where(and(eq(credentials.tenant_id, server.tenantId), eq(credentials.connector_id, row.id)));
+      .from(vaultItems)
+      .where(and(eq(vaultItems.tenant_id, server.tenantId), eq(vaultItems.connector_id, row.id)));
     expect(credRows.length).toBe(1);
     expect(credRows[0]!.mode).toBe("oauth2_client");
 
@@ -353,8 +353,8 @@ describe("POST /v1/connectors/{id}/oauth/start — dynamic_registration=true", (
 
     const credRows = await server.db
       .select()
-      .from(credentials)
-      .where(and(eq(credentials.tenant_id, server.tenantId), eq(credentials.connector_id, row.id)));
+      .from(vaultItems)
+      .where(and(eq(vaultItems.tenant_id, server.tenantId), eq(vaultItems.connector_id, row.id)));
     expect(credRows.length).toBe(0);
 
     const auditRows = await server.db

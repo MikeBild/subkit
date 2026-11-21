@@ -54,3 +54,4 @@ export {
 } from "../tools/ask-user/elicit-bridge.ts";
 export { interpretConfirmDecision } from "../tools/ask-user/interpret-confirm.ts";
 export { validateElicitationAnswer } from "../tools/ask-user/validate-answer.ts";
+export { deviceConfirmationPort } from "../tools/device-tools/port.ts";

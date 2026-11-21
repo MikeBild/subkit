@@ -6,9 +6,10 @@ import { join } from "node:path";
 import { and, eq, sql } from "drizzle-orm";
 import { discoveryRuns, fileLinks, files } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
 
-const skip = process.env.REQUIRES_PG === "0";
+const skip = testEnv.REQUIRES_PG === "0";
 
 function _makeZip(entries: Record<string, string>): Buffer {
   const dir = mkdtempSync(join(tmpdir(), "c20-archive-test-"));

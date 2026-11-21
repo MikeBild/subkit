@@ -67,8 +67,8 @@ function input(conversation_id: string, extra: Partial<PersonCoverInput> = {}): 
     tenant_id,
     conversation_id,
     principal,
+    ask_before_writing: false,
     surface: "web",
-    permission_mode: "auto",
     task_run: false,
     tool: "call_connector",
     args: sendArgs("anna@firma.de"),
@@ -131,12 +131,10 @@ describe("the person's words at the gate, against stored messages", () => {
     });
   });
 
-  test("ask and plan mode, a system account, an MCP client and a task run keep asking", async () => {
+  test("asking before writing, a system account, an MCP client and a task run keep asking", async () => {
     const conversation_id = await conversationWith([REQUEST]);
     const variants: Array<Partial<PersonCoverInput>> = [
-      { permission_mode: "ask" },
-      { permission_mode: "plan" },
-      { permission_mode: null },
+      { ask_before_writing: true },
       { principal: { ...principal, kind: "system_account" } },
       { principal: null },
       { surface: "mcp" },
@@ -384,7 +382,7 @@ describe("the person's words at the gate, against stored messages", () => {
     expect(answered.instruction_covered).toBe(true);
   });
 
-  test("a rule the person stored covers ask mode too, and never a task run", async () => {
+  test("a rule the person stored covers also when asking before writing, and never a task run", async () => {
     const conversation_id = await conversationWith([{ text: "Was steht heute an?" }]);
     const owner = { tenant_id, user_id };
     const action = describeBoundAction("call_connector", sendArgs("kunde@example.com"), [
@@ -396,13 +394,13 @@ describe("the person's words at the gate, against stored messages", () => {
     const offer = await noteApprovedAction(tdb.db, owner, action, approved);
     if (!offer) throw new Error("offer missing");
     const before = await resolvePersonCover(
-      input(conversation_id, { args, because: null, permission_mode: "ask" }),
+      input(conversation_id, { args, because: null, ask_before_writing: true }),
     );
     expect(before.rule_covered).toBe(false);
     await decideRule(tdb.db, owner, offer.rule_id, "accept");
-    for (const permission_mode of ["ask", "auto"] as const) {
+    for (const ask_before_writing of [false, true]) {
       const cover = await resolvePersonCover(
-        input(conversation_id, { args, because: null, permission_mode }),
+        input(conversation_id, { args, because: null, ask_before_writing }),
       );
       expect(cover.rule_covered).toBe(true);
       expect(cover.record).toMatchObject({
@@ -416,10 +414,6 @@ describe("the person's words at the gate, against stored messages", () => {
       input(conversation_id, { args, because: null, task_run: true }),
     );
     expect(unattended.rule_covered).toBe(false);
-    const plan = await resolvePersonCover(
-      input(conversation_id, { args, because: null, permission_mode: "plan" }),
-    );
-    expect(plan.rule_covered).toBe(false);
     const withKey = await resolvePersonCover(
       input(conversation_id, {
         args,

@@ -1,4 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${…}` tokens are the sk placeholder grammar under test — never JS template strings.
 import { describe, expect, test } from "bun:test";
 import {
   type DiscoveredConnectorEndpoints,

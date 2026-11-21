@@ -1,0 +1,1 @@
+export { VaultArea } from "./page";

@@ -20,7 +20,7 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction, type AuditActorType } from "../audit/types.ts";
 import { liveBrowserSessionWhere } from "../auth/browser-session-validity.ts";
 import { assertEgressAllowedResolved } from "../connectors/index.ts";
-import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
+import { decryptSecret, encryptSecret } from "../crypto/index.ts";
 import type { Db, Executor } from "../db/client.ts";
 import { cockpitInstallations } from "../db/schema/cockpit-installations.ts";
 import { cockpitPushKeys, cockpitPushSubscriptions } from "../db/schema/cockpit-push.ts";

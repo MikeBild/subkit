@@ -96,7 +96,6 @@ describe("the palette of a task run is closed", () => {
         ctx.testDb.db,
         ["workflow-authoring", "connector-creation-guidance", "http-connectors"],
         { save_workflow_draft: "no_confirm" },
-        "yolo",
         { ...owner, provider: surface === "chat" ? "chat" : owner.provider },
       );
       expect(Object.keys(tools).sort()).toEqual([...TASK_RUN_TOOLS, `wf_${bound.slug}`].sort());
@@ -143,11 +142,11 @@ describe("the palette of a task run is closed", () => {
     const marker = markerFor({ workflow_ids: [bound.id] });
     const conversation_id = await createRunConversation(ctx, owner.id, marker);
     const base = await toolCtx(conversation_id);
-    const tools = await wrapTools(base, freshSignals(), [], ctx.testDb.db, [], {}, "yolo", null);
+    const tools = await wrapTools(base, freshSignals(), [], ctx.testDb.db, [], {}, null);
     expect(Object.keys(tools).filter((name) => name.startsWith("wf_"))).toEqual([]);
     expect(base.task_run?.sealed).toBe(true);
     expect(base.principal).toBeNull();
-    expect(base.permission_mode).toBe("auto");
+    expect(base.ask_before_writing).toBe(false);
   }, 60_000);
 
   test("an ordinary conversation never sees the run-only tool and keeps its authoring tools", async () => {

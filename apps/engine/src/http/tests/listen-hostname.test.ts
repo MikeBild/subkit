@@ -101,6 +101,17 @@ describe("engine bind hostname — defense-in-depth", () => {
       }
     });
 
+    test("local device mode binds loopback whatever ENGINE_LISTEN_HOST says", () => {
+      expect(engineServeOptions(40_000, { ENGINE_LISTEN_HOST: "0.0.0.0" }, true)).toEqual({
+        port: 40_000,
+        hostname: DEFAULT_ENGINE_LISTEN_HOSTNAME,
+      });
+      expect(engineServeOptions(40_000, { ENGINE_LISTEN_HOST: "0.0.0.0" })).toEqual({
+        port: 40_000,
+        hostname: "0.0.0.0",
+      });
+    });
+
     test("a non-empty but malformed value fails fast instead of binding the wrong interface", () => {
       for (const bad of ["0.0.0..1", "not a host", "10.0.0.1;rm"]) {
         expect(() => resolveListenHostname({ ENGINE_LISTEN_HOST: bad })).toThrow(

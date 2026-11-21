@@ -1,6 +1,7 @@
 import type { Config } from "../config/schema.ts";
 import type { Db } from "../db/client.ts";
-import { logger } from "../logging/logger.ts";
+import { readEnv } from "../env.ts";
+import { logger } from "../logging/index.ts";
 import { runPreflightChecks } from "./checks.ts";
 import {
   firstRefusal,
@@ -13,7 +14,7 @@ import { createPreflightEnvironment } from "./environment.ts";
 import type { VaultCliOutcome } from "./vault-cli.ts";
 
 export function isProduction(): boolean {
-  return (process.env.NODE_ENV ?? "").toLowerCase() === "production";
+  return (readEnv("NODE_ENV") ?? "").toLowerCase() === "production";
 }
 
 export function logPreflightOutcome(outcome: PreflightOutcome): void {
@@ -53,7 +54,7 @@ export async function runProductionPreflightOrExit(db: Db, cfg: Config): Promise
       module: "preflight",
       action: "preflight.skipped_non_production",
       msg: "bootstrap preflight runs on production starts only",
-      node_env: process.env.NODE_ENV ?? "development",
+      node_env: readEnv("NODE_ENV") ?? "development",
     });
     return;
   }

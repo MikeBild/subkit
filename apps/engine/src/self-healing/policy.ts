@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { workflowAutohealPolicies } from "../db/schema/workflows.ts";
-import { log } from "../logging/logger.ts";
+import { log } from "../logging/index.ts";
 
 import {
   type AutohealPolicy,

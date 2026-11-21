@@ -69,13 +69,14 @@ describe("tools/policy.policyDecide (active parity)", () => {
     expect(DRAFT_WRITE_MCP_UNAVAILABLE_REASON.includes(MCP_ELICITATION_BLURB)).toBe(true);
   });
 
-  test("save_workflow_draft chat (draft_write) without prior confirm → needs_confirm", () => {
+  test("save_workflow_draft chat (draft_write) without prior confirm → needs_confirm when the person asks before writing", () => {
     expect(
       policyDecide({
         tool: "save_workflow_draft",
         category: "draft_write",
         surface: "chat",
         args: { force_commit: false },
+        ask_before_writing: true,
       }),
     ).toEqual({ kind: "needs_confirm", mode: "confirm_before_execution", rule: "tool_default" });
   });
@@ -87,6 +88,7 @@ describe("tools/policy.policyDecide (active parity)", () => {
         category: "draft_write",
         surface: "chat",
         args: { force_commit: false },
+        ask_before_writing: true,
         prior_approval: true,
       }),
     ).toEqual({
@@ -116,6 +118,7 @@ describe("tools/policy.policyDecide (active parity)", () => {
         category: "draft_write",
         surface: "chat",
         args: { __policy_confirmed: true, force_commit: false },
+        ask_before_writing: true,
       }),
     ).toEqual({
       kind: "proceed",
@@ -137,7 +140,7 @@ describe("tools/policy.policyDecide (active parity)", () => {
     ).toEqual({
       kind: "proceed",
       mode: "confirm_before_execution",
-      rule: "category_default",
+      rule: "write_gate",
       skip_reason: "confirmed_marker",
     });
   });
@@ -153,7 +156,7 @@ describe("tools/policy.policyDecide (active parity)", () => {
     ).toEqual({
       kind: "needs_confirm",
       mode: "confirm_before_execution",
-      rule: "category_default",
+      rule: "write_gate",
     });
   });
 
@@ -211,23 +214,6 @@ describe("tools/policy.policyDecide (active parity)", () => {
         }).resume,
       ).toContain("ask_user_confirm");
     }
-  });
-
-  test("permission_mode=yolo → proceed for save_workflow_draft (escape hatch honored)", () => {
-    expect(
-      policyDecide({
-        tool: "save_workflow_draft",
-        category: "draft_write",
-        surface: "chat",
-        args: {},
-        permission_mode: "yolo",
-      }),
-    ).toEqual({
-      kind: "proceed",
-      mode: "no_confirm",
-      rule: "permission_mode",
-      skip_reason: "mode_not_confirm_before_execution",
-    });
   });
 
   test("chat-surface decision mirrors resolveToolMode for representative tools", () => {
@@ -467,51 +453,36 @@ describe("tools/policy.policyDecide — call_connector gates on real side effect
     ).toBe("needs_confirm");
   });
 
-  test("a write still confirms under permission_mode=auto (ordering fix)", () => {
+  test("a write still confirms (ordering fix)", () => {
     const decision = policyDecide({
       tool: "call_connector",
       category: "tenant_read",
       surface: "chat",
       args: read({ method: "PATCH", path: "/x" }),
-      permission_mode: "auto",
     });
     expect(decision.kind).toBe("needs_confirm");
   });
 
-  test("a read auto-runs under permission_mode=auto", () => {
+  test("a read runs without a question", () => {
     expect(
       policyDecide({
         tool: "call_connector",
         category: "tenant_read",
         surface: "chat",
         args: read({ method: "GET", path: "/x" }),
-        permission_mode: "auto",
       }).kind,
     ).toBe("proceed");
-  });
-
-  test("yolo honours the user's armed override even for a write", () => {
-    expect(
-      policyDecide({
-        tool: "call_connector",
-        category: "tenant_read",
-        surface: "chat",
-        args: read({ method: "DELETE", path: "/x" }),
-        permission_mode: "yolo",
-      }),
-    ).toMatchObject({ kind: "proceed", mode: "no_confirm", rule: "permission_mode" });
   });
 });
 
 describe("tools/policy.policyDecide execution data transfer", () => {
-  test("a workflow run carrying collected execution data waits for confirmation even in yolo mode", () => {
+  test("a workflow run carrying collected execution data waits for confirmation even with a no-confirm override", () => {
     expect(
       policyDecide({
         tool: "run_workflow",
         category: "tenant_write",
         surface: "chat",
         args: { workflow: "service-send" },
-        permission_mode: "yolo",
         overrides: { run_workflow: "no_confirm" },
         execution_data_transfer: true,
       }),

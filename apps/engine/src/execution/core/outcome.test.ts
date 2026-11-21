@@ -183,7 +183,7 @@ test("stopping step respects explicit parent IDs, latest timestamp, stable ties 
 });
 
 test("queued and running executions suppress failure facts and do not count unstarted steps as skipped", () => {
-  for (const status of ["queued", "running"]) {
+  for (const status of ["queued", "waiting_for_device", "running"]) {
     expect(
       deriveExecutionOutcome(
         { status, failure: { step_id: "read" }, output_contract: null },

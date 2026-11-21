@@ -4,7 +4,7 @@ import { AuditAction, type AuditActorType } from "../audit/types.ts";
 import { ConfigSchema } from "../config/schema.ts";
 import type { Executor } from "../db/client.ts";
 import { tenants } from "../db/schema/index.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { configDigest } from "./document.ts";
 
 type Entry = Record<string, unknown>;

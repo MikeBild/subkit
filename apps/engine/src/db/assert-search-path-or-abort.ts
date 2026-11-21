@@ -1,4 +1,4 @@
-import { errorFields, logger } from "../logging/logger.ts";
+import { errorFields, logger } from "../logging/index.ts";
 import { assertSearchPath, getPool } from "./client.ts";
 
 export async function assertSearchPathOrAbort(): Promise<void> {

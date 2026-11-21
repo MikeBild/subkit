@@ -14,6 +14,7 @@ import {
 } from "../../http/tests/setup.ts";
 import { RuntimeConfigCoordinator } from "../../runtime-config/coordinator.ts";
 import { getRuntimeConfigState, initializeRuntimeConfig } from "../../runtime-config/service.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { handleSubkitUpdateSetting } from "../tools/settings.ts";
 
 const GOLDEN_PATH = new URL("./fixtures/settings-write.golden.json", import.meta.url).pathname;
@@ -95,9 +96,9 @@ async function runWrites(prefix: string, writes: readonly Write[]): Promise<void
 }
 
 beforeAll(async () => {
-  previousMasterKey = process.env.MASTER_KEY;
-  process.env.MASTER_KEY = "67".repeat(32);
-  process.env.NODE_ENV = "test";
+  previousMasterKey = testEnv.MASTER_KEY;
+  testEnv.MASTER_KEY = "67".repeat(32);
+  testEnv.NODE_ENV = "test";
   configDir = mkdtempSync(join(tmpdir(), "sk-mcp-settings-golden-"));
   _resetConfigForTests();
   await loadConfig({
@@ -116,8 +117,8 @@ afterAll(async () => {
   await ctx?.cleanup();
   _resetConfigForTests();
   rmSync(configDir, { recursive: true, force: true });
-  if (previousMasterKey === undefined) delete process.env.MASTER_KEY;
-  else process.env.MASTER_KEY = previousMasterKey;
+  if (previousMasterKey === undefined) delete testEnv.MASTER_KEY;
+  else testEnv.MASTER_KEY = previousMasterKey;
 }, 30_000);
 
 describe("subkit_update_setting results and audit rows", () => {
@@ -146,8 +147,8 @@ describe("subkit_update_setting results and audit rows", () => {
     const operator = principal(ctx.userId, ctx.tenantId);
     const admin = principal(secondary.admin.userId, secondary.tenantId);
     const own = secondary.tenantId;
-    const previousNodeEnv = process.env.NODE_ENV;
-    process.env.NODE_ENV = "production";
+    const previousNodeEnv = testEnv.NODE_ENV;
+    testEnv.NODE_ENV = "production";
     try {
       await runWrites("mcp.put.production", [
         ["secret", operator, { path: "mcp.api_key", value: "golden-mcp-secret" }],
@@ -166,8 +167,8 @@ describe("subkit_update_setting results and audit rows", () => {
         ["operator.tenant", operator, { path: "llm.model", value: "operator", tenant_id: own }],
       ]);
     } finally {
-      if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
-      else process.env.NODE_ENV = previousNodeEnv;
+      if (previousNodeEnv === undefined) delete testEnv.NODE_ENV;
+      else testEnv.NODE_ENV = previousNodeEnv;
     }
     recordRows("mcp.production.audit", await changesSince(seen));
   });
@@ -175,8 +176,8 @@ describe("subkit_update_setting results and audit rows", () => {
   test("a refused restart write reports the revision it saved", async () => {
     const seen = await auditIds();
     const operator = principal(ctx.userId, ctx.tenantId);
-    const previousNodeEnv = process.env.NODE_ENV;
-    process.env.NODE_ENV = "production";
+    const previousNodeEnv = testEnv.NODE_ENV;
+    testEnv.NODE_ENV = "production";
     let result: Awaited<ReturnType<typeof handleSubkitUpdateSetting>>;
     try {
       result = await handleSubkitUpdateSetting(
@@ -184,8 +185,8 @@ describe("subkit_update_setting results and audit rows", () => {
         { path: "server.port", value: 4113 },
       );
     } finally {
-      if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
-      else process.env.NODE_ENV = previousNodeEnv;
+      if (previousNodeEnv === undefined) delete testEnv.NODE_ENV;
+      else testEnv.NODE_ENV = previousNodeEnv;
     }
     expect(result.ok).toBe(false);
     if (result.ok) return;

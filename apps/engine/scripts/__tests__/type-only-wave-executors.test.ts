@@ -7,7 +7,6 @@ import {
   assertCompletePureTargetInventory,
   canonicalPureTargetDigest,
 } from "../audit/pure-targets.ts";
-import { executeCoverageWave } from "../run-coverage-shards.ts";
 import { executeMutationWave, loadMutationWave } from "../run-mutation-shards.ts";
 import { frozenWaveFixture } from "./fixtures/frozen-wave.ts";
 
@@ -57,23 +56,8 @@ function receipt(unionPath: string): Record<string, unknown> {
   return JSON.parse(readFileSync(join(dirname(unionPath), shard.id, "receipt.json"), "utf8"));
 }
 
-test("frozen AST type-only wave emits no-tool coverage and mutation receipts", async () => {
+test("frozen AST type-only wave emits a no-tool mutation receipt", async () => {
   const fixture = typeOnlyFixture();
-  const coverageUnion = await executeCoverageWave({
-    repo: fixture.root,
-    manifestPath: fixture.manifestPath,
-    timeoutMs: 1_000,
-  });
-  const coverage = receipt(coverageUnion);
-  expect(coverage).toMatchObject({
-    not_applicable: "type_only_ast",
-    runtime_targets: [],
-    type_only_targets: fixture.targets,
-    direct_target_evidence: [],
-  });
-  const coverageShard = join(dirname(coverageUnion), "fixture");
-  expect(existsSync(join(coverageShard, "coverage", "latest.json"))).toBe(false);
-
   const mutationUnion = await executeMutationWave({
     repo: fixture.root,
     manifestPath: fixture.manifestPath,

@@ -1,4 +1,6 @@
-import { ErrorNotice } from "@ui/components/proto/ErrorNotice";
+import { Button } from "@ui/atoms/button";
+import { cn } from "@ui/lib/utils";
+import { ErrorNotice } from "@ui/molecules/error-notice";
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   absolute,
@@ -10,7 +12,6 @@ import {
   workflowAutomationHref,
 } from "@/app/links";
 import { loginHref } from "@/app/login-href";
-import { Button } from "@/components/ui/button";
 import {
   type ActionFailure,
   clearFailure,
@@ -25,9 +26,9 @@ import {
   failureFacts,
   failureRemedy,
 } from "@/lib/failure-remedy";
+import type { Translate } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { REMEDY_LABEL } from "@/lib/remedy";
-import { cn } from "@/lib/utils";
 import type { ActionSpec } from "./action-button";
 import { renderAction } from "./action-button";
 import { useErrorNotice } from "./use-error-detail";
@@ -58,8 +59,6 @@ export function failureRemedyHref(
       return absolute(peopleHref());
   }
 }
-
-type Translate = ReturnType<typeof useI18n>["t"];
 
 export function failureRemedyAction(
   input: { title: string; error?: unknown; retry?: () => void; testId?: string },

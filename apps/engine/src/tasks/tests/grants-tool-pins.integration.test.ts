@@ -1,5 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: the step below carries an authored
-// placeholder token verbatim.
 import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test";
 import { closeDb, type Db } from "../../db/client.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -9,12 +7,13 @@ import {
   type McpClientLike,
 } from "../../mcp/client/pool.ts";
 import { seedMcpConnector } from "../../mcp/client/test-fixtures.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { mcpToolDescriptorPin } from "../../workflows/mcp-boundary.ts";
 import { grantTaskAuthority } from "../grants.ts";
 import { taskGrantFixtures } from "./grants-fixtures.ts";
 
 let ctx: TestDb;
-const originalDatabaseUrl = process.env.DATABASE_URL;
+const originalDatabaseUrl = testEnv.DATABASE_URL;
 
 const f = taskGrantFixtures({
   get ctx() {
@@ -79,7 +78,7 @@ beforeAll(async () => {
   __setMcpPoolFactoriesForTests({ makeClient: () => fakeClient });
   ctx = await createTestDb("task_grant_tool_pins");
   await closeDb();
-  process.env.DATABASE_URL = ctx.url;
+  testEnv.DATABASE_URL = ctx.url;
 }, 30_000);
 
 beforeEach(() => {
@@ -93,8 +92,8 @@ afterAll(async () => {
   __setMcpPoolFactoriesForTests(null);
   __resetMcpClientPoolForTests();
   await closeDb();
-  if (originalDatabaseUrl === undefined) delete process.env.DATABASE_URL;
-  else process.env.DATABASE_URL = originalDatabaseUrl;
+  if (originalDatabaseUrl === undefined) delete testEnv.DATABASE_URL;
+  else testEnv.DATABASE_URL = originalDatabaseUrl;
   await ctx.cleanup();
 }, 30_000);
 

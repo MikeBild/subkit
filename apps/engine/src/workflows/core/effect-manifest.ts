@@ -1,4 +1,10 @@
 import { z } from "@hono/zod-openapi";
+import {
+  DeviceBoundaryAppSchema,
+  DeviceBoundaryFolderSchema,
+  DeviceBoundarySiteSchema,
+} from "@shared/device/boundary.ts";
+import { DEVICE_CAPABILITIES } from "@shared/device/protocol.ts";
 import { classifyHttpSideEffect, inferGraphqlOperation } from "@shared/side-effects.ts";
 import { graphqlPathShapeError } from "../../connectors/drivers/graphql-endpoint.ts";
 import { workflowJsonDigest } from "../canonical-json.ts";
@@ -32,11 +38,35 @@ import {
   TransactionalDeliveryBoundarySchema,
 } from "../transactional-delivery-boundary.ts";
 import { type CallStep, JsonValueSchema, type RequestStep, WorkflowDefSchema } from "../types.ts";
+import { deviceListsCanonical } from "./device-uses.ts";
+import { stepVaultUses, VAULT_USES_MAX } from "./vault-uses.ts";
 
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 const environment = z.enum(["dev", "prod"]);
 
 const CallPathSchema = z.array(z.string().min(1)).length(1);
+
+export const LOCAL_DRIVER_CAPABILITY = {
+  local_files: "files",
+  local_browser: "browser",
+  local_computer: "computer",
+} as const;
+type LocalDriver = keyof typeof LOCAL_DRIVER_CAPABILITY;
+
+export function isLocalDriver(driver: string): driver is LocalDriver {
+  return Object.hasOwn(LOCAL_DRIVER_CAPABILITY, driver);
+}
+
+export const DeviceBindingSchema = z
+  .object({
+    device_id: z.string().uuid(),
+    capability: z.enum(DEVICE_CAPABILITIES),
+    folders: z.array(DeviceBoundaryFolderSchema).max(50).optional(),
+    sites: z.array(DeviceBoundarySiteSchema).max(50).optional(),
+    apps: z.array(DeviceBoundaryAppSchema).max(50).optional(),
+  })
+  .strict();
+export type DeviceBinding = z.infer<typeof DeviceBindingSchema>;
 type CallPath = z.infer<typeof CallPathSchema>;
 
 export const ResolvedEffectBindingSchema = z
@@ -44,7 +74,16 @@ export const ResolvedEffectBindingSchema = z
     tenant_id: z.string().uuid(),
     step_id: z.string().min(1),
     connector_id: z.string().uuid().nullable(),
-    driver: z.enum(["http", "graphql", "postgres", "s3", "mcp"]),
+    driver: z.enum([
+      "http",
+      "graphql",
+      "postgres",
+      "s3",
+      "mcp",
+      "local_files",
+      "local_browser",
+      "local_computer",
+    ]),
     environment,
     request_digest: digest,
     target: z.string().min(1).nullable(),
@@ -59,6 +98,7 @@ export const ResolvedEffectBindingSchema = z
     storage: StorageBoundarySchema.optional(),
     boundary: RequestBoundarySchema.optional(),
     mcp: McpBoundarySchema.optional(),
+    device: DeviceBindingSchema.optional(),
   })
   .strict();
 export type ResolvedEffectBinding = z.infer<typeof ResolvedEffectBindingSchema>;
@@ -136,6 +176,11 @@ export const WorkflowEffectManifestSchema = z
         operation: z.string(),
         effect: z.enum(["read", "write", "unknown", "destructive"]),
         call_path: CallPathSchema.optional(),
+        secrets: z
+          .array(z.string().min(1))
+          .max(VAULT_USES_MAX)
+          .optional()
+          .describe("Vault handles the step uses, by name; never values."),
       }),
     ),
     issues: z.array(
@@ -318,13 +363,15 @@ export function compileWorkflowEffectManifest(raw: unknown): {
       binding.driver === "http" &&
       step.url === undefined &&
       graphqlPathShapeError(step.path) === null;
+    const localOnRequest = isLocalDriver(binding.driver) && declaredDriver === "http";
     if (
       binding.tenant_id !== input.tenant_id ||
       binding.connector_id !== (step.connector_id ?? null) ||
-      (binding.driver !== declaredDriver && !graphqlOnHttp) ||
+      (binding.driver !== declaredDriver && !graphqlOnHttp && !localOnRequest) ||
       binding.request_digest !== workflowJsonDigest(step)
     )
       issue("binding_mismatch");
+    if (deviceBindingMismatch(binding)) issue("binding_mismatch");
     if (binding.environment !== input.execution_environment) issue("environment_mismatch");
     const storage =
       binding.driver === "s3" && binding.storage
@@ -436,11 +483,13 @@ export function compileWorkflowEffectManifest(raw: unknown): {
     if (effect === "unknown") issue("unknown_effect");
     if (effect === "destructive" && !supportedStorage && !supportedBoundary)
       issue("destructive_effect");
+    const secrets = stepVaultUses(step);
     manifest.effects.push({
       ...binding,
       ...(readQuery ? { read_query: readQueryBoundary(step) } : {}),
       operation: operationOf(step, binding.driver),
       effect,
+      ...(secrets.length > 0 ? { secrets } : {}),
     });
   }
   for (const step of requests) {
@@ -474,6 +523,37 @@ export function compileWorkflowEffectManifest(raw: unknown): {
     eligible_for_repeated_runs: manifest.issues.length === 0,
     call_refusals: call_refusals.sort((a, b) => compareText(a.step_id, b.step_id)),
   };
+}
+
+function capabilityOf(driver: string): string | undefined {
+  return (LOCAL_DRIVER_CAPABILITY as Readonly<Record<string, string>>)[driver];
+}
+
+export function deviceBindingMismatch(
+  binding: Pick<ResolvedEffectBinding, "driver" | "device">,
+): boolean {
+  return (
+    binding.device?.capability !== capabilityOf(binding.driver) ||
+    !deviceListsCanonical(binding.device ?? {})
+  );
+}
+
+export function deviceBindingFor(driver: string, config: unknown): DeviceBinding | null {
+  const device_id = (config as { device_id?: unknown } | null | undefined)?.device_id;
+  const parsed = DeviceBindingSchema.safeParse({ device_id, capability: capabilityOf(driver) });
+  return parsed.success ? parsed.data : null;
+}
+
+export function deviceTarget(device: DeviceBinding): string {
+  return `device:${device.device_id}/${device.capability}`;
+}
+
+export function manifestDeviceIds(manifest: Pick<WorkflowEffectManifest, "effects">): string[] {
+  return [
+    ...new Set(
+      manifest.effects.flatMap((effect) => (effect.device ? [effect.device.device_id] : [])),
+    ),
+  ].sort();
 }
 
 function compareText(a: string, b: string): number {

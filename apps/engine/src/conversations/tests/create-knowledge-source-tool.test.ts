@@ -71,7 +71,6 @@ function toolCtx(): ToolContext {
     actor_id: ctx.user_id,
     connector_id: null,
     workflow_id: null,
-    permission_mode: "auto",
     engineClient: engineClientStub,
     getDraft: () => ({ workflow: { name: "", steps: [] } }) as never,
     setDraft: async () => {},

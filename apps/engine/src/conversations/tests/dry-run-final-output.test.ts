@@ -18,6 +18,7 @@ function makeCtx(initial: DraftDocument): SeededToolContext {
   return makeToolCtx({
     db: ctx.testDb.db,
     tenant_id: ctx.tenant_id,
+    ask_before_writing: true,
     actor_id: ctx.user_id,
     draft: initial,
   });

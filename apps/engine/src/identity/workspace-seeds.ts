@@ -1,7 +1,7 @@
 import { getConfig } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
 import { applyKnowledgeSeedsWithRetry, loadEmbeddedKnowledgeSeeds } from "../knowledge/seed.ts";
-import { errorFields, logger } from "../logging/logger.ts";
+import { errorFields, logger } from "../logging/index.ts";
 import { applySkillSeedsWithRetry, loadEmbeddedSkillSeeds } from "../skills/seed.ts";
 
 export async function applyWorkspaceContentSeeds(tenant_id: string, db: Db): Promise<void> {

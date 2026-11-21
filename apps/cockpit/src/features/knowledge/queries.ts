@@ -1,6 +1,9 @@
 import { type QueryClient, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { MarkdownRefs } from "@ui/organisms/markdown-editor";
+import { BookOpen, FileText, Sparkles } from "lucide-react";
 import { apiCall } from "@/api/call";
 import { listIntakeClips, listIntakeProposals } from "@/api/intake";
+import { useI18n } from "@/lib/i18n-context";
 
 export const KEYS = {
   entries: ["intake", "clips", "all"] as const,
@@ -64,18 +67,35 @@ export function useFiles() {
   });
 }
 
-export function useMarkdownRefs() {
+export function useMarkdownRefs(): MarkdownRefs {
+  const { t } = useI18n();
   const files = useFiles();
   const skills = useSkills();
   const sources = useSources();
-  return [
-    ...(files.data?.items ?? []).map((f) => ({
-      kind: "file" as const,
-      name: f.reference ?? f.slug ?? f.filename,
-    })),
-    ...(skills.data?.items ?? []).map((s) => ({ kind: "skill" as const, name: s.slug ?? s.title })),
-    ...(sources.data?.items ?? []).map((s) => ({ kind: "source" as const, name: s.slug })),
-  ];
+  return {
+    search: t("kn.refs.search"),
+    hint: t("kn.refs.hint"),
+    groups: [
+      {
+        prefix: "attachment",
+        label: t("kn.refs.files"),
+        icon: FileText,
+        names: (files.data?.items ?? []).map((f) => f.reference ?? f.slug ?? f.filename),
+      },
+      {
+        prefix: "skill",
+        label: t("kn.refs.skills"),
+        icon: Sparkles,
+        names: (skills.data?.items ?? []).map((s) => s.slug ?? s.title),
+      },
+      {
+        prefix: "source",
+        label: t("kn.refs.sources"),
+        icon: BookOpen,
+        names: (sources.data?.items ?? []).map((s) => s.slug),
+      },
+    ],
+  };
 }
 
 export function refreshKnowledge(client: QueryClient): Promise<unknown> {

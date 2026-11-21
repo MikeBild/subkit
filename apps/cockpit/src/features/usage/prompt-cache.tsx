@@ -1,7 +1,11 @@
 import { ActionButton, KpiTile, Section, TileSkeleton } from "@/components/cockpit/patterns";
+import {
+  type PromptCacheFlow,
+  promptCacheShare,
+  type Read,
+} from "@/features/usage/model/operations-figures";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
-import { type PromptCacheFlow, promptCacheShare, type Read } from "@/lib/operations-figures";
 
 const FLOW_LABEL: Readonly<Record<string, { label: TranslationKey; hint: TranslationKey }>> = {
   converse: { label: "usage.cache.flow.converse", hint: "usage.cache.hint.converse" },

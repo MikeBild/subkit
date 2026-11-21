@@ -3,9 +3,11 @@ import { auditAwait } from "../audit/audit.ts";
 import { recordToolPolicyConfirmationRequired } from "../audit/recorders/index.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
+import { currentDeploymentMode } from "../config/deployment-mode.ts";
+import { getConfig } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
 import { conversationMessages, conversationToolCalls } from "../db/schema/index.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import {
   recordConfirmationTransition,
   recordToolPolicyDecision,
@@ -17,15 +19,9 @@ import {
   requestApproval,
 } from "../tools/approval.ts";
 import { type PolicyDecideInput, type PolicyDecision, policyDecide } from "../tools/policy.ts";
-import type {
-  ConfirmReason,
-  PermissionMode,
-  ToolCategory,
-  ToolModeRule,
-  ToolPolicyMode,
-} from "../tools/types.ts";
-import { isDangerousTool } from "./dangerous-tools.ts";
+import type { ConfirmReason, ToolCategory, ToolModeRule, ToolPolicyMode } from "../tools/types.ts";
 import type { ConversationSurface } from "./lifecycle-view.ts";
+import { writesModelChecked } from "./model-trust.ts";
 import type { ToolEffect, ToolPrecheck, ToolResult } from "./tools/index.ts";
 
 export type ConfirmationState =
@@ -35,6 +31,7 @@ export type ConfirmationState =
   | "partial"
   | "declined"
   | "auto_declined"
+  | "expired"
   | "oauth_success"
   | "oauth_failure";
 
@@ -67,7 +64,7 @@ function transcriptMarkerFor(state: ConfirmationState, tool: string | undefined)
 function keepingPolicyRecord(data: Record<string, unknown>) {
   const kept = (key: string) =>
     sql`CASE WHEN jsonb_exists(${conversationToolCalls.confirmation_data}, ${key}) THEN jsonb_build_object(${key}::text, ${conversationToolCalls.confirmation_data} -> ${key}) ELSE '{}'::jsonb END`;
-  return sql`${JSON.stringify(data)}::jsonb || ${kept("policy")} || ${kept("rule_offer")}`;
+  return sql`${JSON.stringify(data)}::jsonb || ${kept("policy")} || ${kept("rule_offer")} || ${kept("device")} || ${kept("device_step")} || ${kept("device_pending")}`;
 }
 
 export async function recordTransition(
@@ -137,6 +134,7 @@ export function isTerminalState(s: ConfirmationState): boolean {
     s === "partial" ||
     s === "declined" ||
     s === "auto_declined" ||
+    s === "expired" ||
     s === "oauth_success" ||
     s === "oauth_failure"
   );
@@ -157,7 +155,6 @@ export interface GateRecord {
   readonly mode: ToolPolicyMode;
   readonly outcome: GateOutcome;
   readonly surface: ConversationSurface;
-  readonly bypassed_confirmation: boolean;
   readonly tenant_id: string;
   readonly conversation_id: string | null;
 }
@@ -196,7 +193,7 @@ type ConfirmGateResult =
 export type GateRecordInput = Pick<
   ConfirmGateInput,
   "approval_tool" | "category" | "record_surface" | "tenant_id" | "conversation_id"
-> & { readonly permission_mode: PermissionMode | null };
+>;
 
 export function gateRecordFor(
   input: GateRecordInput,
@@ -211,11 +208,6 @@ export function gateRecordFor(
     mode: decision.mode,
     outcome,
     surface: input.record_surface,
-    bypassed_confirmation:
-      input.permission_mode === "yolo" &&
-      decision.mode === "no_confirm" &&
-      decision.rule === "permission_mode" &&
-      isDangerousTool(input.approval_tool),
     tenant_id: input.tenant_id,
     conversation_id: input.conversation_id,
   };
@@ -237,18 +229,6 @@ export function logGateDecision(record: GateRecord): void {
   });
   recordToolPolicyDecision(record);
   enrichActiveSpan(toolSpanAttributes({ rule: record.rule, mode: record.mode }));
-  if (record.bypassed_confirmation) {
-    logger.warn({
-      module: "tool",
-      action: "tool.executed_yolo",
-      msg: "dangerous tool executed under yolo — confirmation gate bypassed",
-      tenant_id: record.tenant_id,
-      ...(record.conversation_id ? { conversation_id: record.conversation_id } : {}),
-      tool: record.tool,
-      permission_mode: "yolo",
-      bypassed_confirmation: true,
-    });
-  }
 }
 
 function emitted<T extends ConfirmGateResult>(result: T): T {
@@ -391,15 +371,29 @@ export async function recordConfirmationSkipped(
   }
 }
 
+export function writesModelUnchecked(tenantId: string, askBeforeWriting: boolean): boolean {
+  if (askBeforeWriting) return false;
+  const mode = currentDeploymentMode();
+  if (mode !== "local_workspace") return false;
+  try {
+    return !writesModelChecked(mode, getConfig(tenantId).llm);
+  } catch {
+    return true;
+  }
+}
+
 export async function runConfirmGate(input: ConfirmGateInput): Promise<ConfirmGateResult> {
-  const decision = policyDecide(input);
+  const decision = policyDecide(
+    writesModelUnchecked(input.tenant_id, input.ask_before_writing === true)
+      ? { ...input, model_checked: false }
+      : input,
+  );
   const recordInput: GateRecordInput = {
     approval_tool: input.approval_tool,
     category: input.category,
     record_surface: input.record_surface,
     tenant_id: input.tenant_id,
     conversation_id: input.conversation_id,
-    permission_mode: input.permission_mode ?? null,
   };
   const record = (outcome: GateOutcome): GateRecord =>
     gateRecordFor(recordInput, decision, outcome);
@@ -512,7 +506,6 @@ export async function openHeldWritesApproval(p: {
     record_surface: p.record_surface,
     tenant_id: p.principal.tenant_id,
     conversation_id: p.conversation_id,
-    permission_mode: null,
   };
   await recordConfirmationRequired({
     db: p.db,

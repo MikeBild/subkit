@@ -102,7 +102,6 @@ export function validateWorkflowDef(
         errors.push({
           path: `steps.${step.id}.for_each`,
           message:
-            // biome-ignore lint/suspicious/noTemplateCurlyInString: shows the literal authored placeholder
             "for_each is a JavaScript arrow function over the run scope, not a placeholder or a JSONata reference. Write it as `(sourceData) => sourceData.<step_id>.data.<array_path>` — for example `(sourceData) => sourceData.list_files.data.items`. Inside the step, each element is then available as `${item.<field>}`.",
         });
       }
@@ -142,7 +141,6 @@ export function validateWorkflowDef(
           errors.push({
             path: `steps.${step.id}.url`,
             message:
-              // biome-ignore lint/suspicious/noTemplateCurlyInString: operator-facing message must show the literal `${connector.<slug>.base_url}` placeholder syntax — see substitution/parser.ts
               "url must start with http(s):// OR with `${connector.<slug>.base_url}` — alternatively set `connector_id` and `path` so the driver merges base_url + path",
           });
         }
@@ -258,7 +256,6 @@ export function validateWorkflowDef(
         errors.push({
           path: `steps.${step.id}`,
           message:
-            // biome-ignore lint/suspicious/noTemplateCurlyInString: operator-facing message names the literal `${item.field}` placeholder grammar.
             "loop body never references the iteration item — use `${item.field}` in URLs/strings or `$item.field` in JSONata. Without it the loop runs N copies of the same call.",
         });
       }
@@ -291,7 +288,6 @@ export function validateWorkflowDef(
       errors.push({
         path: `steps.${step.id}`,
         message:
-          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal `${item.…}` token names the placeholder grammar surfaced to the LLM.
           'step uses `${item.…}` placeholder but is not contained in any `loop.body[]` and has no `for_each` declared. Set `for_each: "(sourceData) => sourceData.<prev_step>.<array_path>"` on this step to bind `$item` per element (the placeholder resolver only sets `$item` inside a `for_each` iteration or a loop body).',
       });
     }

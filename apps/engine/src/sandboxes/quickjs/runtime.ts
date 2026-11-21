@@ -6,8 +6,9 @@ import {
   type QuickJSWASMModule,
 } from "quickjs-emscripten-core";
 import { getConfig } from "../../config/loader.ts";
+import { readEnv } from "../../env.ts";
 import { getContext } from "../../logging/context.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { recordSandboxWorkerEvent } from "../../observability/instrumentation.ts";
 import { STDLIB_HELPER_SOURCES, STDLIB_SOURCE } from "./stdlib/index.ts";
 import {
@@ -659,7 +660,7 @@ class WorkerLane {
       stdout: "ignore",
       stderr: "ignore",
       cwd: "/tmp",
-      env: { PATH: process.env.PATH ?? "", NODE_ENV: process.env.NODE_ENV ?? "production" },
+      env: { PATH: readEnv("PATH") ?? "", NODE_ENV: readEnv("NODE_ENV") ?? "production" },
       ipc: (message, source) => {
         if (source !== this.child) return;
         if (isReadyMessage(message)) {

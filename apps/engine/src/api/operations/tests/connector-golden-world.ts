@@ -55,12 +55,7 @@ export async function seedConnectorWorld(name: string): Promise<ConnectorWorld> 
     await emptyRoleId(ctx.db, ctx.tenantId),
   );
   const writerRole = await createRole(ctx.db, ctx.tenantId, `${name}-writer`);
-  for (const permission of [
-    "connector:read",
-    "connector:write",
-    "connector:test",
-    "credential:write",
-  ]) {
+  for (const permission of ["connector:read", "connector:write", "connector:test", "vault:write"]) {
     await grantPermissionToRole(ctx.db, ctx.tenantId, writerRole.id, permission);
   }
   const writerUserId = await seedUser(ctx, `writer-${name}@test.local`, writerRole.id);

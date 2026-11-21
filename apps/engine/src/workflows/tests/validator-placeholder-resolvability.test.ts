@@ -1,15 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${…}` tokens are the subject under test — they encode the placeholder grammar.
-// Commit-time placeholder resolvability on request addressing surfaces
-// (audit M4). The runtime fails a request step with
-// `placeholder_unresolved` when path/url (or the graphql query/variables,
-// or the s3 key/prefix) still carry tokens the resolver cannot substitute
-// — production logged 67 runs of `unresolved placeholder(s) in path/url:
-// ${item}` in 2 seconds. Every one of those defs was committable: the bare
-// `${item}` (no field path) is a grammar error, but it slipped past the
-// unsupported-placeholder linter (known kind) and the item-containment
-// check (requires `item.` + field). validateWorkflowDef now parses the
-// same grammar the resolver uses and rejects at commit.
-
 import { describe, expect, test } from "bun:test";
 import { validateWorkflowDef } from "../core/validator.ts";
 

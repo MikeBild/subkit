@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { REPAIR_REMEDIES } from "@shared/error-taxonomy.ts";
 import { PREVIEW_CLASSIFICATIONS } from "../../../execution/index.ts";
 import {
   ATTENTION_REASONS,
@@ -70,7 +71,7 @@ const AttentionItem = z
       .object({
         step_id: z.string().nullable(),
         code: z.string().nullable(),
-        remedy_kind: z.enum(["patch", "prepare", "declare", "reconnect", "author"]),
+        remedy_kind: z.enum(REPAIR_REMEDIES),
         steps: z.number().int(),
         candidate_id: z.string().uuid().nullable(),
         execution_id: z.string().uuid().nullable(),

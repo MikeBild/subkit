@@ -8,9 +8,9 @@ import {
   fileLinks,
   files,
 } from "../../db/schema/index.ts";
+import { runFilesCleanup } from "../../files/scheduled/files-cleanup-runner.ts";
 import { attachInlineForTest } from "../../files/test-helpers.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
-import { runFilesCleanup } from "../../scheduler/files-cleanup-runner.ts";
 import { createFilesCleanupBoss, disposeBoss } from "../../scheduler/tests/pgboss-bootstrap.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { forkConversation } from "./fork.ts";

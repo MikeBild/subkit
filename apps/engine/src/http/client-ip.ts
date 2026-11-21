@@ -2,7 +2,7 @@ import { isIP } from "node:net";
 import type { MiddlewareHandler } from "hono";
 import { getConfig } from "../config/loader.ts";
 import { isPrivateOrLoopback } from "../connectors/egress-guard.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import type { AppEnv } from "./openapi.ts";
 
 export function normalizeClientIp(value: string | undefined): string | undefined {

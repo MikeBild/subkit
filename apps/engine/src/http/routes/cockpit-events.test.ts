@@ -3,11 +3,19 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import { and, asc } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { writeEvent } from "../../db/events.ts";
-import { events, tasks } from "../../db/schema/index.ts";
+import {
+  cockpitInstallations,
+  conversationToolCalls,
+  deviceRunners,
+  events,
+  tasks,
+  users,
+} from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { cockpitStreamConds, projectCockpitPayload } from "../../identity/cockpit-stream.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { adminPrincipal } from "../../test-helpers/principals.ts";
-import { seedTenant } from "../../test-helpers/seed.ts";
+import { seedConversation, seedTenant } from "../../test-helpers/seed.ts";
 import { type AppEnv, OPENAPI_INFO } from "../openapi.ts";
 import { registerCockpitEventRoutes } from "./cockpit-events.ts";
 
@@ -303,6 +311,145 @@ describe("cockpitStreamConds", () => {
     expect(await heard(["audit:read"], { task_owner_id: TASK_OWNER })).toEqual(ownEvents);
     expect(await heard(["audit:read"])).toEqual([]);
     expect(await heard(["audit:read"], { task_owner_id: null })).toHaveLength(7);
+  });
+
+  test("device changes reach the device's person and admins, nobody else", async () => {
+    const device = async (label: string) => {
+      const [user] = await ctx.db
+        .insert(users)
+        .values({
+          tenant_id: tenantA,
+          email: `${label}@devices.test`,
+          role_id: await builtinRoleId(ctx.db, "member"),
+        })
+        .returning({ id: users.id });
+      if (!user) throw new Error("user fixture missing");
+      const [installation] = await ctx.db
+        .insert(cockpitInstallations)
+        .values({
+          tenant_id: tenantA,
+          owner_user_id: user.id,
+          kind: "desktop",
+          device_id: label === "own" ? RUN : GRANT,
+          device_label: label,
+        })
+        .returning({ id: cockpitInstallations.id });
+      if (!installation) throw new Error("installation fixture missing");
+      const [runner] = await ctx.db
+        .insert(deviceRunners)
+        .values({
+          tenant_id: tenantA,
+          installation_id: installation.id,
+          owner_user_id: user.id,
+          device_label: label,
+          public_key: "key",
+        })
+        .returning({ id: deviceRunners.id });
+      if (!runner) throw new Error("runner fixture missing");
+      return { owner: user.id, device_id: runner.id };
+    };
+    const mine = await device("own");
+    const theirs = await device("theirs");
+    const first = await emit(tenantA, "resource.lifecycle", "device.online", {
+      device_id: mine.device_id,
+    });
+    await emit(tenantA, "resource.lifecycle", "device.command", { device_id: mine.device_id });
+    await emit(tenantA, "resource.lifecycle", "device.offline", { device_id: theirs.device_id });
+    const heard = async (permissions: string[], viewer?: { task_owner_id: string | null }) => {
+      const conds = cockpitStreamConds(tenantA, new Set(permissions), viewer);
+      if (!conds) return [];
+      const rows = await ctx.db
+        .select({ id: events.id, type: events.type, payload: events.payload })
+        .from(events)
+        .where(and(...conds))
+        .orderBy(asc(events.id));
+      return rows
+        .filter((row) => row.id >= first)
+        .map((row) => [row.type, (row.payload as { device_id?: string }).device_id ?? null]);
+    };
+    const own = [
+      ["device.online", mine.device_id],
+      ["device.command", mine.device_id],
+    ];
+    expect(await heard(["device:read"], { task_owner_id: mine.owner })).toEqual(own);
+    expect(await heard(["device:read"], { task_owner_id: theirs.owner })).toEqual([
+      ["device.offline", theirs.device_id],
+    ]);
+    expect(await heard(["device:read"], { task_owner_id: null })).toEqual([
+      ...own,
+      ["device.offline", theirs.device_id],
+    ]);
+    expect(await heard(["device:read"])).toEqual([]);
+    expect(await heard(["audit:read"], { task_owner_id: mine.owner })).toEqual(own);
+    expect(await heard(["task:read", "execution:read"], { task_owner_id: null })).toEqual([]);
+  });
+
+  test("a requested local confirmation reaches only the job's owner, never admins", async () => {
+    const person = async (label: string, role: string) => {
+      const [user] = await ctx.db
+        .insert(users)
+        .values({
+          tenant_id: tenantA,
+          email: `${label}@confirm.test`,
+          role_id: await builtinRoleId(ctx.db, role),
+        })
+        .returning({ id: users.id });
+      if (!user) throw new Error("user fixture missing");
+      return user.id;
+    };
+    const step = async (owner_id: string) => {
+      const conversation = await seedConversation(ctx.db, { tenant_id: tenantA, owner_id });
+      const [call] = await ctx.db
+        .insert(conversationToolCalls)
+        .values({
+          tenant_id: tenantA,
+          conversation_id: conversation.id,
+          tool: "browser_press",
+          input: {},
+          output: null,
+        })
+        .returning({ id: conversationToolCalls.id });
+      if (!call) throw new Error("tool call fixture missing");
+      return call.id;
+    };
+    const owner = await person("job-owner", "member");
+    const colleague = await person("job-colleague", "member");
+    const admin = await person("job-admin", "admin");
+    const mine = await step(owner);
+    const theirs = await step(colleague);
+    const first = await emit(tenantA, "resource.lifecycle", "local.confirmation_requested", {
+      confirmation_id: mine,
+    });
+    await emit(tenantA, "resource.lifecycle", "local.confirmation_requested", {
+      confirmation_id: theirs,
+    });
+    const heard = async (
+      permissions: string[],
+      viewer?: { task_owner_id: string | null; viewer_id?: string | null },
+    ) => {
+      const conds = cockpitStreamConds(tenantA, new Set(permissions), viewer);
+      if (!conds) return [];
+      const rows = await ctx.db
+        .select({ id: events.id, payload: events.payload })
+        .from(events)
+        .where(and(...conds))
+        .orderBy(asc(events.id));
+      return rows
+        .filter((row) => row.id >= first)
+        .map((row) => (row.payload as { confirmation_id?: string }).confirmation_id ?? null);
+    };
+    expect(await heard(["local:confirm"], { task_owner_id: owner, viewer_id: owner })).toEqual([
+      mine,
+    ]);
+    expect(
+      await heard(["local:confirm"], { task_owner_id: colleague, viewer_id: colleague }),
+    ).toEqual([theirs]);
+    expect(await heard(["local:confirm"], { task_owner_id: null, viewer_id: admin })).toEqual([]);
+    expect(await heard(["local:confirm"], { task_owner_id: owner })).toEqual([]);
+    expect(await heard(["local:confirm"])).toEqual([]);
+    expect(await heard(["audit:read"], { task_owner_id: null, viewer_id: admin })).toEqual([]);
+    expect(await heard(["audit:read"], { task_owner_id: owner, viewer_id: owner })).toEqual([mine]);
+    expect(await heard(["audit:read"])).toEqual([]);
   });
 
   test("the stream hands a member only the changes of own tasks, as ids", async () => {

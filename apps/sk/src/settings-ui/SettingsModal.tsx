@@ -22,7 +22,6 @@ interface Props {
   onExit: (code: number) => void;
   sessionId?: string | null | undefined;
   sessionTitle?: string | null | undefined;
-  permissionMode?: "ask" | "auto" | "plan" | "yolo" | undefined;
   sessionTokens?: number | null | undefined;
   weekTokens?: number | null | undefined;
 }
@@ -46,7 +45,6 @@ export const SettingsModal: React.FC<Props> = ({
   onExit,
   sessionId,
   sessionTitle,
-  permissionMode,
   sessionTokens,
   weekTokens,
 }) => {
@@ -96,7 +94,6 @@ export const SettingsModal: React.FC<Props> = ({
             overrideKeys={overrideKeys}
             sessionId={sessionId ?? null}
             sessionTitle={sessionTitle ?? null}
-            permissionMode={permissionMode ?? null}
             sessionTokens={sessionTokens ?? null}
             weekTokens={weekTokens ?? null}
           />

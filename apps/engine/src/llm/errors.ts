@@ -1,8 +1,9 @@
+import { SPEND_LIMIT_REACHED } from "@shared/error-taxonomy.ts";
 import type { GenerationAbort, GenerationNeed } from "./runtime/generation-abort.ts";
 
 export class LlmError extends Error {
   readonly code:
-    | "llm_quota_exhausted"
+    | typeof SPEND_LIMIT_REACHED
     | "llm_context_too_large"
     | "llm_provider_error"
     | "llm_unavailable"
@@ -17,13 +18,13 @@ export class LlmError extends Error {
   }
 }
 
-export class LlmQuotaExhausted extends LlmError {
+export class LlmSpendLimitReached extends LlmError {
   constructor(
-    message = "tenant monthly token budget exhausted",
+    message = "workspace monthly spend limit reached",
     details?: Record<string, unknown>,
   ) {
-    super("llm_quota_exhausted", message, details);
-    this.name = "LlmQuotaExhausted";
+    super(SPEND_LIMIT_REACHED, message, details);
+    this.name = "LlmSpendLimitReached";
   }
 }
 

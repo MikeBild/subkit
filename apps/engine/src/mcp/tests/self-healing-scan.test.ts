@@ -14,6 +14,7 @@ import {
   type SelfHealingTestCtx,
 } from "../../self-healing/tests/setup.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { handleSelfHealingScan } from "../tools/self-healing-scan.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
@@ -21,15 +22,15 @@ let suite: McpTestSuite;
 let prevMode: string | undefined;
 
 beforeAll(async () => {
-  prevMode = process.env.SK_MCP_MODE;
-  process.env.SK_MCP_MODE = "admin";
+  prevMode = testEnv.SK_MCP_MODE;
+  testEnv.SK_MCP_MODE = "admin";
   suite = await startMcpTestSuite("self-healing-scan");
 });
 
 afterAll(async () => {
   await suite.cleanup();
-  if (prevMode === undefined) delete process.env.SK_MCP_MODE;
-  else process.env.SK_MCP_MODE = prevMode;
+  if (prevMode === undefined) delete testEnv.SK_MCP_MODE;
+  else testEnv.SK_MCP_MODE = prevMode;
 });
 
 describe("mcp self_healing_scan tool", () => {

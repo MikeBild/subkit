@@ -1,5 +1,6 @@
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import { TransportError } from "@cli-core/errors.ts";
+import { readSse } from "@cli-core/sse.ts";
 import type { EngineClient } from "../engine-client.ts";
 import type { ApiBody, ApiQuery } from "./http.ts";
 
@@ -79,60 +80,40 @@ export const connectorsMethods = {
       cancel();
       throw new TransportError(new Error(`oauth events stream returned HTTP ${res.status}`));
     }
-    void (async () => {
-      const reader = res.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      try {
-        let live = false;
-        while (!ac.signal.aborted) {
-          const chunk = await reader.read();
-          if (chunk.done) break;
-          if (chunk.value) buffer += decoder.decode(chunk.value, { stream: true });
-          const frames = buffer.split("\n\n");
-          buffer = frames.pop() ?? "";
-          for (const block of frames) {
-            if (!block.trim()) continue;
-            if (block.startsWith(":")) continue;
-            const lines = block.split("\n");
-            const eventLine = lines.find((l) => l.startsWith("event: "));
-            const dataLine = lines.find((l) => l.startsWith("data: "));
-            if (!dataLine) continue;
-            if (eventLine && eventLine.slice("event: ".length).trim() === "hello") {
-              live = true;
-              continue;
-            }
-            if (!live) continue;
-            try {
-              const payload = JSON.parse(dataLine.slice("data: ".length)) as {
-                connector_id?: unknown;
-                connector_slug?: unknown;
-                has_refresh_token?: unknown;
-              };
-              if (
-                typeof payload.connector_id === "string" &&
-                payload.connector_id === opts.connectorId &&
-                typeof payload.connector_slug === "string" &&
-                typeof payload.has_refresh_token === "boolean"
-              ) {
-                opts.onSucceeded({
-                  connector_id: payload.connector_id,
-                  connector_slug: payload.connector_slug,
-                  has_refresh_token: payload.has_refresh_token,
-                });
-                cancel();
-                return;
-              }
-            } catch {}
-          }
+    let live = false;
+    void readSse(
+      res,
+      (frame) => {
+        if (frame.event === "hello") {
+          live = true;
+          return true;
         }
-      } catch {
-      } finally {
+        if (!live) return true;
         try {
-          reader.releaseLock();
+          const payload = JSON.parse(frame.data) as {
+            connector_id?: unknown;
+            connector_slug?: unknown;
+            has_refresh_token?: unknown;
+          };
+          if (
+            typeof payload.connector_id === "string" &&
+            payload.connector_id === opts.connectorId &&
+            typeof payload.connector_slug === "string" &&
+            typeof payload.has_refresh_token === "boolean"
+          ) {
+            opts.onSucceeded({
+              connector_id: payload.connector_id,
+              connector_slug: payload.connector_slug,
+              has_refresh_token: payload.has_refresh_token,
+            });
+            cancel();
+            return false;
+          }
         } catch {}
-      }
-    })();
+        return true;
+      },
+      ac.signal,
+    ).catch(() => {});
     return { cancel };
   },
 
@@ -214,7 +195,7 @@ export const connectorsMethods = {
     }
     const name = typeof record.slug === "string" ? record.slug : id;
     throw new Error(
-      `connector '${name}' has no browser sign-in — store its credential instead (sk credentials --help)`,
+      `connector '${name}' has no browser sign-in — store its credential instead (sk vault --help)`,
     );
   },
   async ingestConnectorDocs(
@@ -258,16 +239,6 @@ export const connectorsMethods = {
       body,
     });
     return data as CreatedCredential;
-  },
-  async rotateCredential(this: EngineClient, credentialId: string): Promise<CredentialRow> {
-    const { data } = await this.api.POST("/v1/credentials/{id}/rotate", {
-      params: { path: { id: credentialId } },
-      body: {},
-    });
-    return data as CredentialRow;
-  },
-  async deleteCredential(this: EngineClient, credentialId: string): Promise<void> {
-    await this.api.DELETE("/v1/credentials/{id}", { params: { path: { id: credentialId } } });
   },
 
   async enableConnector(this: EngineClient, id: string): Promise<Connector> {

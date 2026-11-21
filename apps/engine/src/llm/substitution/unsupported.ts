@@ -1,21 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${…}` tokens are the subject under test/detection — these strings encode the placeholder grammar.
-// Detects placeholder-shaped substrings the runtime will NOT substitute.
-//
-// Pre-fix, the LLM author repeatedly wrote Mustache placeholders
-// (`{{ $item.id }}`, `{{ $loop.item.id }}`) and runtime shipped them
-// verbatim to the upstream API — `URL` percent-encoded the curly braces
-// and DigitalOcean returned 404. Session f00b8d1c spent 16 of its 19
-// 404s on this single mistake. The lone signal back to the LLM was
-// `http 404` with no hint that the path contained an unsubstituted
-// placeholder.
-//
-// `findUnsupportedPlaceholders()` walks any string field a draft author
-// might write (URL, path, header values, query values, body strings, even
-// JSONata expressions) and flags every shape the parser rejects, with a
-// concrete `did_you_mean` rewrite. The reference-validator wires this in
-// at draft validation time so the LLM gets the fix on the next round-
-// trip rather than after a doomed dry-run.
-
 export type UnsupportedPlaceholderCode = "mustache" | "bad_kind" | "loop_alias" | "item_alias";
 
 export interface UnsupportedPlaceholder {
@@ -29,7 +11,16 @@ export interface UnsupportedPlaceholder {
 const MUSTACHE_RE = /\{\{\s*([^{}]*?)\s*\}\}/g;
 const DOLLAR_RE = /\$\{([^{}]*)\}/g;
 
-const KNOWN_KINDS = new Set(["cred", "connector", "input", "caller", "scope", "item", "state"]);
+const KNOWN_KINDS = new Set([
+  "cred",
+  "secret",
+  "connector",
+  "input",
+  "caller",
+  "scope",
+  "item",
+  "state",
+]);
 
 function suggestRewrite(body: string): string {
   const trimmed = body.trim();

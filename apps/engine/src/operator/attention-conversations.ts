@@ -3,6 +3,7 @@ import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { conversationElicitations, conversationHidden, conversations } from "../db/schema/index.ts";
 import { attentionHref, type Candidate } from "./attention-readers.ts";
+import { conversationAttentionItem, type OpenQuestion } from "./core/conversation-item.ts";
 
 export async function readOwnConversations(
   db: Db,
@@ -41,6 +42,7 @@ export async function readOwnConversations(
       conversation_id: conversationElicitations.conversation_id,
       created_at: conversationElicitations.created_at,
       expires_at: conversationElicitations.expires_at,
+      local: sql<boolean>`${conversationElicitations.input} ? 'device'`,
     })
     .from(conversationElicitations)
     .where(
@@ -53,38 +55,18 @@ export async function readOwnConversations(
         eq(conversationElicitations.status, "pending"),
       ),
     );
-  const byConversation = new Map<string, { created_at: Date; expires_at: Date }>();
+  const byConversation = new Map<string, OpenQuestion>();
   for (const row of pending) {
     const prior = byConversation.get(row.conversation_id);
     if (!prior || row.created_at > prior.created_at) byConversation.set(row.conversation_id, row);
   }
-  return rows.map((row) => {
-    const question = byConversation.get(row.id);
-    return {
-      source: "conversations",
-      resource: { type: "conversation", id: row.id },
-      item: {
-        id: `conversation:${row.id}`,
-        class: "stopped",
-        severity: "urgent",
-        kind: "conversation",
-        subject: { kind: "conversation", id: row.id, name: row.title },
-        reason: "awaiting_answer",
-        trigger: null,
-        cause_class: null,
-        counts: {},
-        since: (question?.created_at ?? row.updated_at).toISOString(),
-        deadline: question?.expires_at.toISOString() ?? null,
-        detail: null,
-        actions: [
-          {
-            verb: "answer",
-            href: attentionHref.conversation(row.id),
-            primary: true,
-            permission: "conversation:write",
-          },
-        ],
-      },
-    };
-  });
+  return rows.map((row) => ({
+    source: "conversations",
+    resource: { type: "conversation", id: row.id },
+    item: conversationAttentionItem(
+      row,
+      byConversation.get(row.id),
+      attentionHref.conversation(row.id),
+    ),
+  }));
 }

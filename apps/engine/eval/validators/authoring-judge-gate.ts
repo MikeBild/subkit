@@ -89,7 +89,6 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
       ...env.makeToolCtx(
         previewableDraft("eval-judge-passes", input.goal, input.correct_expression),
       ),
-      permission_mode: "auto" as const,
     };
     const committed = await dryRunWorkflowTool.execute(rightCtx, { input: null });
     c.check(committed.ok === true, "correct-content preview did not come back green");

@@ -64,11 +64,15 @@ describe("canTransition", () => {
       EXECUTION_STATUSES.filter((to) => canTransition(from, to)).map((to) => `${from}>${to}`),
     );
     expect(allowed).toEqual([
+      "queued>waiting_for_device",
       "queued>running",
       "queued>succeeded",
       "queued>failed",
       "queued>aborted",
       "queued>timed_out",
+      "waiting_for_device>queued",
+      "waiting_for_device>failed",
+      "waiting_for_device>aborted",
       "running>succeeded",
       "running>failed",
       "running>aborted",
@@ -85,9 +89,10 @@ describe("canTransition", () => {
     );
   });
 
-  test("property: every transition makes progress and never re-enters queued", () => {
+  test("property: every transition makes progress; only a waiting run returns to queued", () => {
     const rank: Record<ExecutionStatus, number> = {
       queued: 0,
+      waiting_for_device: 1,
       running: 1,
       succeeded: 2,
       failed: 2,
@@ -96,7 +101,7 @@ describe("canTransition", () => {
     };
     fc.assert(
       fc.property(statusArb, statusArb, (from, to) => {
-        if (canTransition(from, to)) {
+        if (canTransition(from, to) && !(from === "waiting_for_device" && to === "queued")) {
           expect(rank[to]).toBeGreaterThan(rank[from]);
           expect(to).not.toBe("queued");
         }
@@ -108,9 +113,10 @@ describe("canTransition", () => {
 
 describe("transitionSources", () => {
   test("defaults to every status that may reach the target", () => {
-    expect(transitionSources("failed")).toEqual(["queued", "running"]);
+    expect(transitionSources("failed")).toEqual(["queued", "waiting_for_device", "running"]);
     expect(transitionSources("running")).toEqual(["queued"]);
-    expect(transitionSources("queued")).toEqual([]);
+    expect(transitionSources("queued")).toEqual(["waiting_for_device"]);
+    expect(transitionSources("waiting_for_device")).toEqual(["queued"]);
   });
 
   test("narrows an allowed list to legal sources", () => {
@@ -281,6 +287,7 @@ const OUTCOMES: ExecutionOutcome[] = [
   { type: "enqueue_failed" },
   { type: "admission_failed", refused: false },
   { type: "admission_failed", refused: true },
+  { type: "device_unavailable" },
   { type: "cancelled" },
 ];
 
@@ -295,13 +302,13 @@ describe("outcomeTransition", () => {
       },
       {
         status: "failed",
-        sources: ["queued", "running"],
+        sources: ["queued", "waiting_for_device", "running"],
         refused: false,
         event_type: "execution.failed",
       },
       {
         status: "aborted",
-        sources: ["queued", "running"],
+        sources: ["queued", "waiting_for_device", "running"],
         refused: false,
         event_type: "execution.aborted",
       },
@@ -311,10 +318,36 @@ describe("outcomeTransition", () => {
         refused: false,
         event_type: "execution.timed_out",
       },
-      { status: "failed", sources: ["queued"], refused: false, event_type: "execution.failed" },
-      { status: "failed", sources: ["queued"], refused: false, event_type: "execution.failed" },
-      { status: "failed", sources: ["queued"], refused: true, event_type: "execution.refused" },
-      { status: "aborted", sources: ["queued"], refused: false, event_type: "execution.aborted" },
+      {
+        status: "failed",
+        sources: ["queued", "waiting_for_device"],
+        refused: false,
+        event_type: "execution.failed",
+      },
+      {
+        status: "failed",
+        sources: ["queued", "waiting_for_device"],
+        refused: false,
+        event_type: "execution.failed",
+      },
+      {
+        status: "failed",
+        sources: ["queued", "waiting_for_device"],
+        refused: true,
+        event_type: "execution.refused",
+      },
+      {
+        status: "failed",
+        sources: ["queued", "waiting_for_device"],
+        refused: false,
+        event_type: "execution.failed",
+      },
+      {
+        status: "aborted",
+        sources: ["queued", "waiting_for_device"],
+        refused: false,
+        event_type: "execution.aborted",
+      },
     ]);
   });
 
@@ -347,6 +380,7 @@ describe("settledOutcome", () => {
 
   test("a non-terminal status settles as failed", () => {
     expect(NON_TERMINAL_EXECUTION_STATUSES.map(settledOutcome)).toEqual([
+      { type: "failed" },
       { type: "failed" },
       { type: "failed" },
     ]);

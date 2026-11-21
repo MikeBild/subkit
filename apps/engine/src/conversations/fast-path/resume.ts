@@ -1,7 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { conversationToolCalls } from "../../db/schema/index.ts";
 import { authorizeWorkflowRun } from "../../execution/use-cases/run-workflow.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import {
   approvalAuditResource,
   consumeApproval,

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { llmUsage, tenants } from "../../db/schema/index.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { runGenerateFlow } from "../flows/generate.ts";
 import { getMockProvider } from "../mock-provider.ts";
 import { invoke } from "../runtime/invoke.ts";

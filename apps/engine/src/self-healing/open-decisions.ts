@@ -3,7 +3,7 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { Db, Executor } from "../db/client.ts";
 import { patchCandidates } from "../db/schema/index.ts";
-import { errorFields, log } from "../logging/logger.ts";
+import { errorFields, log } from "../logging/index.ts";
 import { recordPatchCandidate } from "../observability/instrumentation.ts";
 import { invalidateTenantState } from "../operator/index.ts";
 import { lockWorkflowForVersionWrite } from "../workflows/version-write-lock.ts";

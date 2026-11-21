@@ -171,7 +171,7 @@ export const doctorCommand = defineCommand({
             name: "authn",
             status: "blocked",
             detail: `engine rejected the api_key (HTTP 401 ${err.code})`,
-            hint: "rotate or re-issue the api_key; on a fresh engine, mint one with `bun run db:issue-admin-key`",
+            hint: "rotate or re-issue the api_key; on a fresh engine, mint one with `bun run db admin-key`",
           });
           results.push({
             name: "setup",

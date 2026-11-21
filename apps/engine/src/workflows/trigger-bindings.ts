@@ -3,7 +3,7 @@ import { recordWorkflowScheduleNotBound as recordWorkflowScheduleNotBoundAudit }
 import type { AuditActorType } from "../audit/types.ts";
 import type { Executor } from "../db/client.ts";
 import { workflows } from "../db/schema/index.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import {
   recordWorkflowScheduleNotBound,
   recordWorkflowTriggerKind,

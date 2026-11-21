@@ -104,17 +104,13 @@ type CreateConversationBody = ApiBody<"/v1/conversations", "post">;
 
 type AppendConversationMessageBody = ApiBody<"/v1/conversations/{id}/messages", "post">;
 
-type PermissionMode = NonNullable<CreateConversationBody["permission_mode"]>;
-
 function respondElicitationBody(
   output: unknown,
   reason: string | undefined,
-  permission_mode: PermissionMode | undefined,
 ): ApiBody<"/v1/conversations/{id}/elicitations/{elicitation_id}/respond", "post"> {
   return {
     output,
     ...(reason ? { reason } : {}),
-    ...(permission_mode ? { permission_mode } : {}),
   };
 }
 
@@ -277,11 +273,10 @@ export const conversationsMethods = {
     output: unknown,
     reason?: string,
     debugContext?: DebugCorrelationFields,
-    permission_mode?: PermissionMode,
   ): Promise<Response> {
     return this.streamPost(
       `/v1/conversations/${conversationId}/elicitations/${elicitationId}/respond`,
-      respondElicitationBody(output, reason, permission_mode),
+      respondElicitationBody(output, reason),
       debugContext,
     );
   },
@@ -293,10 +288,9 @@ export const conversationsMethods = {
     output: unknown,
     reason?: string,
     debugContext?: DebugCorrelationFields,
-    permission_mode?: PermissionMode,
   ): Promise<ConversationRunOutcome> {
     const path = `/v1/conversations/${conversationId}/elicitations/${elicitationId}/respond`;
-    const body = respondElicitationBody(output, reason, permission_mode);
+    const body = respondElicitationBody(output, reason);
     try {
       return await this.request<ConversationRunOutcome>(
         "POST",

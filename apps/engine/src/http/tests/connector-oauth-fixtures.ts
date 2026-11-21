@@ -14,8 +14,8 @@ import {
   auditLog,
   connectorOauthStates,
   connectors,
-  credentials,
   sessions,
+  vaultItems,
 } from "../../db/schema/index.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { now } from "../../utils/clock.ts";
@@ -50,12 +50,12 @@ export async function seedStateRow(
 export async function getCredentialRow() {
   const rows = await server.db
     .select()
-    .from(credentials)
+    .from(vaultItems)
     .where(
       and(
-        eq(credentials.tenant_id, server.tenantId),
-        eq(credentials.connector_id, connectorId),
-        eq(credentials.environment, "dev"),
+        eq(vaultItems.tenant_id, server.tenantId),
+        eq(vaultItems.connector_id, connectorId),
+        eq(vaultItems.environment, "dev"),
       ),
     )
     .limit(1);

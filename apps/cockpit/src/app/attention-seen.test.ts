@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type AttentionItem, entrySnapshot } from "@/pages/overview-model";
+import { type AttentionItem, entrySnapshot } from "@/features/overview/model/attention-projection";
 import {
   attentionSeenKey,
   createSeenStore,

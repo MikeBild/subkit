@@ -10,7 +10,7 @@ import { retryTransient } from "../../db/transient.ts";
 import { getIntakeItem } from "../../knowledge/intake.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
 import { detectConfiguredProvider } from "../../llm/runtime/model-init.ts";
-import { log } from "../../logging/logger.ts";
+import { log } from "../../logging/index.ts";
 import { can } from "../../rbac/evaluator.ts";
 import { getWorkflow } from "../../workflows/service.ts";
 import { resolveAttachmentSlugsInText } from "../attachments.ts";
@@ -27,8 +27,7 @@ import type {
   LatestExecutionSummary,
   TaskRunMarker,
 } from "../types.ts";
-import { defaultChatModeFor } from "./default-mode.ts";
-import { normalizePermissionMode, rowToRecord } from "./shared.ts";
+import { rowToRecord } from "./shared.ts";
 
 export interface CreateConversationParams {
   tenant_id: string;
@@ -42,7 +41,6 @@ export interface CreateConversationParams {
   memory?: string | null;
   model?: string | null;
   title?: string | null;
-  permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
   origin_client?: string | null;
   surface?: ConversationSurface | null;
   playground?: boolean;
@@ -156,13 +154,6 @@ export async function createConversation(
       code: "task_run_marker_invalid",
     });
   const memory = typeof p.memory === "string" ? p.memory : null;
-  const initialPermissionMode =
-    normalizePermissionMode(p.permission_mode) ??
-    (await defaultChatModeFor(exec, {
-      tenant_id: p.tenant_id,
-      principal: p.principal,
-      unattended: taskRun !== null,
-    }));
   const focus = p.focus_execution ?? null;
   const references = await canonicalReferences(p, focus, exec);
   const initialDraft: DraftDocument = focus
@@ -170,9 +161,8 @@ export async function createConversation(
     : createEmptyDraftDocument();
   const playground = p.playground === true;
   const targetWorkflowId = playground ? null : (p.workflow_id ?? focus?.workflow_id ?? null);
-  if (initialPermissionMode || playground || p.intake_item_ids?.length || taskRun) {
+  if (playground || p.intake_item_ids?.length || taskRun) {
     initialDraft.session = {
-      ...(initialPermissionMode ? { permission_mode: initialPermissionMode } : {}),
       ...(playground ? { playground: true } : {}),
       ...(p.intake_item_ids?.length ? { intake_item_ids: [...new Set(p.intake_item_ids)] } : {}),
       ...(p.intake_item_ids?.length ? { intake_review_locked: true } : {}),

@@ -1,9 +1,10 @@
 import { afterAll, beforeAll } from "bun:test";
 import { TEST_DB_HOOK_TIMEOUT } from "../../db/tests/setup.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { createKnowledgeTestCtx, type KnowledgeTestCtx } from "./setup.ts";
 
-export const skip = process.env.REQUIRES_PG === "0";
+export const skip = testEnv.REQUIRES_PG === "0";
 
 export const nextUuid = createDeterministicUuidFactory(0x6b10_20);
 

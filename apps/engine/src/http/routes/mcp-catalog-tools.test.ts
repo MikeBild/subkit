@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { workflows, workflowVersions } from "../../db/schema/index.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { assembleCatalog, listWorkflowTools, resolveMcpMode } from "../../mcp/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../tests/setup.ts";
 

@@ -178,7 +178,7 @@ describe("rbac-and-scopes — permission vocabulary", () => {
       "workflow:read",
       "connector:read",
       "connector:write",
-      "credential:write",
+      "vault:write",
       "skill:write",
     ];
     for (const p of perms) {

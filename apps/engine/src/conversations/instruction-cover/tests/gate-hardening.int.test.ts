@@ -70,8 +70,8 @@ function input(conversation_id: string, extra: Partial<PersonCoverInput> = {}): 
     tenant_id,
     conversation_id,
     principal,
+    ask_before_writing: false,
     surface: "web",
-    permission_mode: "auto",
     task_run: false,
     tool: "call_connector",
     args: sendArgs("anna@firma.de"),
@@ -123,7 +123,7 @@ describe("limits of running without a question, against stored messages and rule
     const args = sendArgs("kunde@example.com");
     const ask = (extra: Partial<PersonCoverInput> = {}) =>
       resolvePersonCover(
-        input(conversation_id, { args, because: null, permission_mode: "ask", ...extra }),
+        input(conversation_id, { args, because: null, ask_before_writing: true, ...extra }),
       );
     const other = await ask({
       args: { ...args, body: { ...args.body, text: "Wir kündigen den Vertrag." } },
@@ -217,7 +217,7 @@ describe("limits of running without a question, against stored messages and rule
       .set({ daily_limit: 1 })
       .where(eq(toolApprovalRules.id, rule.id));
     const cover = await resolvePersonCover(
-      input(conversation_id, { args, because: null, permission_mode: "ask", now: day }),
+      input(conversation_id, { args, because: null, ask_before_writing: true, now: day }),
     );
     expect(cover.rule_covered).toBe(true);
     await tdb.db

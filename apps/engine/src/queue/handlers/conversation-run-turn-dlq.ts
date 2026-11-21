@@ -8,13 +8,13 @@ import {
   stopConversationTaskTurn,
 } from "../../conversations/public/lifecycle.ts";
 import type { Db } from "../../db/client.ts";
-import { log } from "../../logging/logger.ts";
+import { log } from "../../logging/index.ts";
 import {
   getMcpTask,
   laterTurnCompleted,
   setMcpTaskFailureIfNotTerminal,
 } from "../../mcp/tasks/store.ts";
-import { recordUsageEvent } from "../../stats/usage-events.ts";
+import { recordUsageEvent } from "../../stats/index.ts";
 import { withActiveTenantJobContext } from "../job-context.ts";
 import { CONVERSATION_RUN_TURN_DLQ, type ConversationRunTurnJob } from "../queues.ts";
 

@@ -43,12 +43,13 @@ describe("tool-policy wiring", () => {
     expect(mode).toBe("confirm_before_execution");
   });
 
-  it("save_workflow_draft (draft_write) still requires confirm", () => {
+  it("save_workflow_draft (draft_write) requires confirm when the person asks before writing", () => {
     const mode = resolveToolMode({
       tool: "save_workflow_draft",
       category: "draft_write",
       input: {},
       overrides: {},
+      ask_before_writing: true,
     });
     expect(mode).toBe("confirm_before_execution");
   });

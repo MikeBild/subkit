@@ -1,6 +1,6 @@
 import { eq, isNull } from "drizzle-orm";
 import { WILDCARD_SCOPE } from "../../auth/scopes.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import type { Db } from "../client.ts";
 import {
   apiKeys,

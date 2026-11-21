@@ -576,7 +576,7 @@ export async function finalizeWorkflowReview(
           savedDraft = next;
           await appendSnapshot(p.tenant_id, p.conversation_id, next, tx);
         },
-        permission_mode: "ask",
+        ask_before_writing: true,
       };
       const saved = await commitWorkflowAtomic({
         ctx,

@@ -3,6 +3,7 @@ import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
 import { assembleEnhancedPrompt } from "../../llm/runtime/context-assembler.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { createSeededRandom } from "../../test-helpers/determinism/random.ts";
 import { createWorkflow } from "../../workflows/service.ts";
 
@@ -13,7 +14,7 @@ let ctx: TestDb;
 const rng = createSeededRandom(0xc0_03_5e_ed);
 
 beforeAll(async () => {
-  process.env.LLM_PROVIDER = "mock";
+  testEnv.LLM_PROVIDER = "mock";
   resetMockProvider();
   ctx = await createTestDb("prior_workflows_in_prompt");
 });

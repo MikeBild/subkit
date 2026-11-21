@@ -1,9 +1,10 @@
-import { ErrorNotice, ErrorState } from "@ui/components/proto/ErrorNotice";
+import { Button } from "@ui/atoms/button";
+import { Skeleton } from "@ui/atoms/skeleton";
+import { cn } from "@ui/lib/utils";
+import { EmptyState } from "@ui/molecules/empty-state";
+import { ErrorNotice, ErrorState } from "@ui/molecules/error-notice";
 import type { ReactNode } from "react";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useI18n } from "@/lib/i18n-context";
-import { cn } from "@/lib/utils";
 import { useErrorNotice, usePageFailure } from "./use-error-detail";
 
 export type DataStateKind = "loading" | "empty" | "error";
@@ -82,23 +83,5 @@ export function DataState({
         actions={shown}
       />
     );
-  return (
-    <div
-      className={cn(
-        "flex min-h-11 flex-wrap items-center gap-3 rounded-lg border border-dashed px-4 py-2.5 text-left",
-        className,
-      )}
-      data-testid={testId}
-      data-state={state}
-      data-family-slot="data-state"
-      data-family-state={state}
-    >
-      {line ? (
-        <p className="text-sm text-muted-foreground" data-slot="data-state-line">
-          {line}
-        </p>
-      ) : null}
-      {shown}
-    </div>
-  );
+  return <EmptyState inline title={line} action={shown} testId={testId} className={className} />;
 }

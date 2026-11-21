@@ -9,6 +9,7 @@ import {
   initializeRuntimeConfig,
   readSecretVersion,
 } from "../../runtime-config/service.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { runPreflightChecks } from "../checks.ts";
 import { firstRefusal, PREFLIGHT_EXIT_OK, PREFLIGHT_EXIT_REFUSED } from "../contracts.ts";
 import { createPreflightEnvironment } from "../environment.ts";
@@ -29,7 +30,7 @@ const OBJECT_STORE_ENV = {
 };
 
 beforeAll(async () => {
-  process.env.MASTER_KEY = "22".repeat(32);
+  testEnv.MASTER_KEY = "22".repeat(32);
   tdb = await createTestDb("preflight-database");
   scratch = mkdtempSync(join(tmpdir(), "sk-preflight-database-"));
   _resetConfigForTests();
@@ -44,11 +45,11 @@ beforeAll(async () => {
     created_by: null,
   });
   await rebindSettingPath(tdb.db, BINDING_PATH, SECRET_NAME, created.version);
-  Object.assign(process.env, OBJECT_STORE_ENV);
+  Object.assign(testEnv, OBJECT_STORE_ENV);
 });
 
 afterAll(async () => {
-  for (const key of Object.keys(OBJECT_STORE_ENV)) delete process.env[key];
+  for (const key of Object.keys(OBJECT_STORE_ENV)) delete testEnv[key];
   _resetConfigForTests();
   rmSync(scratch, { recursive: true, force: true });
   await tdb.cleanup();

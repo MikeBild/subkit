@@ -1,4 +1,4 @@
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import { runJs } from "../../sandboxes/quickjs/runtime.ts";
 import { extractStepIdReferences, suggestClosest } from "../../workflows/levenshtein.ts";

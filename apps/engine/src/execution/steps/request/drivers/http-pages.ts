@@ -1,6 +1,6 @@
 import { withEgressAudit } from "../../../../connectors/egress.ts";
 import { classifyConnectorHealth } from "../../../../connectors/health.ts";
-import { logger } from "../../../../logging/logger.ts";
+import { logger } from "../../../../logging/index.ts";
 import {
   MAX_PAGES,
   makeStrategy,

@@ -8,8 +8,9 @@ import { getConfig, setConfigKey } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
 import { engineSettings, tenants } from "../db/schema/identity.ts";
 import { seedTenantBootstrap, type TenantBootstrapPayload } from "../db/seed.ts";
+import { readEnv } from "../env.ts";
 import { type LlmAccessProbe, probeLlmAccess } from "../llm/runtime/access-probe.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import type { SeededRoleIds } from "../rbac/seed.ts";
 import { RuntimeConfigNotFoundError } from "../runtime-config/contracts.ts";
 import { persistLlmAccess } from "../runtime-config/llm-access.ts";
@@ -113,7 +114,7 @@ export async function isBootstrapTokenExpired(db: Db): Promise<boolean> {
 }
 
 async function mintToken(db: Db): Promise<{ plaintext: string; expires_at: Date }> {
-  const plaintext = process.env.SUBKIT_BOOTSTRAP_KEY ?? randomBytes(32).toString("hex");
+  const plaintext = readEnv("SUBKIT_BOOTSTRAP_KEY") ?? randomBytes(32).toString("hex");
   if (plaintext.length < 64 || plaintext.length > 128) {
     throw new Error("SUBKIT_BOOTSTRAP_KEY must contain 64..128 characters");
   }

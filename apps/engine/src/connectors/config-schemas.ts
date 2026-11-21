@@ -17,6 +17,8 @@ const S3ConnectorConfigSchema = z.object({
 
 const PostgresConnectorConfigSchema = z.object({});
 
+const DeviceConnectorConfigSchema = z.object({ device_id: z.string().uuid() }).strict();
+
 export const McpConnectorConfigSchema = z
   .object({
     mcp: z
@@ -36,6 +38,9 @@ export const CONNECTOR_CONFIG_SCHEMAS: Record<DriverName, z.ZodType> = {
   s3: S3ConnectorConfigSchema,
   postgres: PostgresConnectorConfigSchema,
   mcp: McpConnectorConfigSchema,
+  local_files: DeviceConnectorConfigSchema,
+  local_browser: DeviceConnectorConfigSchema,
+  local_computer: DeviceConnectorConfigSchema,
 };
 
 export const MCP_ONLY_AUTH_TYPES: readonly AuthType[] = ["oauth2_client", "oauth2_private_key"];

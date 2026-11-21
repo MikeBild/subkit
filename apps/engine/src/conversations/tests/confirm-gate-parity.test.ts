@@ -15,8 +15,7 @@ import {
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
-import { _resetLoggerForTests, reconfigureLogger } from "../../logging/logger.ts";
-import { buildMcpStubCtx } from "../../mcp/adapter.ts";
+import { _resetLoggerForTests, reconfigureLogger } from "../../logging/index.ts";
 import {
   __resetMcpClientPoolForTests,
   __setMcpPoolFactoriesForTests,
@@ -26,10 +25,9 @@ import { seedMcpConnector } from "../../mcp/client/test-fixtures.ts";
 import { type CapturedLog, logRing } from "../../observability/log-ring.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { TEST_HUMAN_ANSWER } from "../../test-helpers/answer-actor.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../test-helpers/mock-http.ts";
 import { hashToolArgs } from "../../tools/approval.ts";
-import { dispatchTool } from "../../tools/dispatcher.ts";
-import { getUnifiedRegistry } from "../../tools/index.ts";
 import { tryFastPath } from "../fast-path.ts";
 import { getTool, type ToolContext } from "../tools/index.ts";
 import { buildExternalMcpTools } from "../tools/sdk-wrap/external-mcp-tools.ts";
@@ -73,7 +71,7 @@ let userId: string;
 let principal: ResolvedPrincipal;
 let remote: MockServer;
 let remoteWrites = 0;
-const originalDatabaseUrl = process.env.DATABASE_URL;
+const originalDatabaseUrl = testEnv.DATABASE_URL;
 
 const KNOWLEDGE_ARGS = { mode: "inline", name: "Parity source", content: "# Parity" };
 const EXTERNAL_ARGS = { title: "Parity page" };
@@ -81,6 +79,7 @@ const EXTERNAL_ARGS = { title: "Parity page" };
 function toolCtx(
   conversation_id: string,
   surface: NonNullable<ToolContext["surface"]>,
+  askBeforeWriting = false,
 ): ToolContext {
   return {
     db,
@@ -88,6 +87,7 @@ function toolCtx(
     conversation_id,
     actor_id: userId,
     principal,
+    ...(askBeforeWriting ? { ask_before_writing: true } : {}),
     connector_id: null,
     workflow_id: null,
     engineClient: new EngineClient({
@@ -196,25 +196,12 @@ async function confirmationRequiredRows(conversationId: string) {
     );
 }
 
-async function confirmationRequiredCount(): Promise<number> {
-  const rows = await tdb.db
-    .select({ id: auditLog.id })
-    .from(auditLog)
-    .where(
-      and(
-        eq(auditLog.tenant_id, tenantId),
-        eq(auditLog.action, AuditAction.TOOL_POLICY_CONFIRMATION_REQUIRED),
-      ),
-    );
-  return rows.length;
-}
-
 beforeAll(async () => {
   __setMcpPoolFactoriesForTests({ makeClient: () => fakeMcpClient });
   tdb = await createTestDb("confirm-gate-parity");
   db = tdb.db as unknown as Db;
   await closeDb();
-  process.env.DATABASE_URL = tdb.url;
+  testEnv.DATABASE_URL = tdb.url;
   resetMockProvider();
   reconfigureLogger({ level: "debug" });
   remote = await createMockServer((req, res) => {
@@ -253,27 +240,24 @@ afterAll(async () => {
   __resetMcpClientPoolForTests();
   await remote.close();
   await closeDb();
-  if (originalDatabaseUrl === undefined) delete process.env.DATABASE_URL;
-  else process.env.DATABASE_URL = originalDatabaseUrl;
+  if (originalDatabaseUrl === undefined) delete testEnv.DATABASE_URL;
+  else testEnv.DATABASE_URL = originalDatabaseUrl;
   await tdb.cleanup();
 }, 30_000);
 
 describe("confirm gate parity — one gate behind every entry point", () => {
-  let invokeHash = "";
-
-  test("loop conversation tool (wrapOne): one approval, one APPROVAL_REQUESTED, confirmation_required, one decision log", async () => {
+  test("loop conversation tool (wrapOne) when the person asks before writing: one approval, one APPROVAL_REQUESTED, confirmation_required, one decision log", async () => {
     const conversationId = await newConversation();
     const inner = getTool("create_knowledge_source");
     if (!inner) throw new Error("create_knowledge_source is not registered");
     const events: TurnEvent[] = [];
     const wrapped = wrapOne(
       inner,
-      toolCtx(conversationId, "web"),
+      toolCtx(conversationId, "web", true),
       freshSignals(),
       events,
       db,
       {},
-      null,
     );
     const { value: result, logs } = await gateDecisionLogs(async () =>
       wrapped.execute!(KNOWLEDGE_ARGS, { toolCallId: "parity-invoke", messages: [], context: {} }),
@@ -286,59 +270,18 @@ describe("confirm gate parity — one gate behind every entry point", () => {
     expect(rows).toHaveLength(1);
     const row = rows[0]!;
     expect(row.args_hash).toBe(hashToolArgs(KNOWLEDGE_ARGS));
-    invokeHash = row.args_hash;
     expect(await approvalRequestedRows(row.id)).toHaveLength(1);
     expect(await confirmationRequiredRows(conversationId)).toHaveLength(1);
 
     expect(logs).toHaveLength(1);
     expect(logs[0]?.fields).toMatchObject({
       tool: "create_knowledge_source",
-      rule: "category_default",
+      rule: "ask_before_writing",
       mode: "confirm_before_execution",
       outcome: "confirm",
       surface: "web",
       conversation_id: conversationId,
     });
-  });
-
-  test("dispatcher without permission mode (category default): the same call yields the same args_hash, APPROVAL_REQUESTED on mcp_tool_call and no conversation audit", async () => {
-    const requiredBefore = await confirmationRequiredCount();
-    const { value: envelope, logs } = await gateDecisionLogs(() =>
-      dispatchTool(
-        {
-          registry: getUnifiedRegistry(),
-          db,
-          principal,
-          buildMcpStubCtx: () => buildMcpStubCtx({ db, principal }),
-          mcpMode: "authoring",
-        },
-        { surface: "mcp", name: "create_knowledge_source", args: KNOWLEDGE_ARGS },
-      ),
-    );
-    expect(envelope.status).toBe("needs_confirm");
-    if (envelope.status !== "needs_confirm") throw new Error("expected needs_confirm");
-
-    const rows = (await approvalsFor("create_knowledge_source")).filter((r) => r.surface === "mcp");
-    expect(rows).toHaveLength(1);
-    const row = rows[0]!;
-    expect(row.id).toBe(envelope.confirm.tool_call_id);
-    expect(row.args_hash).toBe(hashToolArgs(KNOWLEDGE_ARGS));
-    expect(invokeHash).not.toBe("");
-    expect(row.args_hash).toBe(invokeHash);
-    const requested = await approvalRequestedRows(row.id);
-    expect(requested).toHaveLength(1);
-    expect(requested[0]?.resource_type).toBe("mcp_tool_call");
-    expect(await confirmationRequiredCount()).toBe(requiredBefore);
-
-    expect(logs).toHaveLength(1);
-    expect(logs[0]?.fields).toMatchObject({
-      tool: "create_knowledge_source",
-      rule: "category_default",
-      mode: "confirm_before_execution",
-      outcome: "confirm",
-      surface: "mcp",
-    });
-    expect(logs[0]?.fields.conversation_id).toBeUndefined();
   });
 
   test("external MCP tool: one approval with the remote args' hash, confirmation_required, one decision log, no remote call", async () => {
@@ -372,7 +315,7 @@ describe("confirm gate parity — one gate behind every entry point", () => {
     expect(logs).toHaveLength(1);
     expect(logs[0]?.fields).toMatchObject({
       tool: "mcp_paritymcp__create_page",
-      rule: "computed_from_input",
+      rule: "write_gate",
       mode: "confirm_before_execution",
       outcome: "confirm",
       surface: "sk_interactive",

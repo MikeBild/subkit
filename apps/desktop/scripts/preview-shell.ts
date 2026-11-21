@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 
 const root = resolve(import.meta.dir, "..");
 const [out, prefix = "shell"] = process.argv.slice(2);
-if (!out) throw new Error("Usage: bun run preview:shell <out-dir> [prefix]");
+if (!out) throw new Error("Usage: bun scripts/preview-shell.ts <out-dir> [prefix]");
 
 const dir = join(root, "dist", "preview");
 await mkdir(dir, { recursive: true });

@@ -58,7 +58,6 @@ describe("lintJsBody", () => {
       "const [first, , ...rest] = rows;",
       "const item = input.scope.$item;",
       "const idx = input.scope.$loop_index;",
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: the authored body is a template literal
       "function label(row, { prefix } = {}) { return `${prefix ?? ''}${row.name}`; }",
       "const byKey = sk.groupBy(rows, (r) => r.kind);",
       "const total = sk.fmt.number(rows.length, { locale: 'de', digits: 0 });",

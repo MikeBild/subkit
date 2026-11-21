@@ -1,6 +1,6 @@
 import pg from "pg";
 import type { Executor } from "../../db/client.ts";
-import { errorFields, logger } from "../../logging/logger.ts";
+import { errorFields, logger } from "../../logging/index.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import type { EgressGuardContext } from "../egress-guard.ts";
 import {

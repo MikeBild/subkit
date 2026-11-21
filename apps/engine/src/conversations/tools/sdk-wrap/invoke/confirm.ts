@@ -1,4 +1,4 @@
-import { logger } from "../../../../logging/logger.ts";
+import { logger } from "../../../../logging/index.ts";
 import { listWorkflowsUsingConnector } from "../../../../workflows/connector-refs.ts";
 import { confirmQuestion, policyPauseNote } from "../../../core/tool-invoke.ts";
 import { createElicitation } from "../../../elicitations.ts";

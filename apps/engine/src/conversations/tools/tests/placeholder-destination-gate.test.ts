@@ -1,4 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: the parameterized recipient `${input.recipient}` is the correct design under test.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { conversations, workflows } from "../../../db/schema/index.ts";
@@ -55,7 +54,7 @@ function draftWith(steps: Array<Record<string, unknown>>): DraftDocument {
 
 function makeCtx(
   initial: DraftDocument,
-  opts: { permission_mode?: ToolContext["permission_mode"]; conversation_id?: string } = {},
+  opts: { ask_before_writing?: boolean; conversation_id?: string } = {},
 ): ToolContext & { current: () => DraftDocument; writes: () => number } {
   let draft = initial;
   let writes = 0;
@@ -66,7 +65,7 @@ function makeCtx(
     actor_id: ctx.user_id,
     connector_id: null,
     workflow_id: null,
-    ...(opts.permission_mode ? { permission_mode: opts.permission_mode } : {}),
+    ...(opts.ask_before_writing ? { ask_before_writing: true } : {}),
     engineClient: new EngineClient({
       tenant_id: ctx.tenant_id,
       actor_id: ctx.user_id,
@@ -153,7 +152,7 @@ describe("edit_workflow_patch · placeholder destinations", () => {
 describe("dry_run_workflow · placeholder destinations", () => {
   test("the preview is refused before any execution, no draft mutation, zero egress", async () => {
     fetchCalls = 0;
-    const toolCtx = makeCtx(draftWith([sendStep("user@example.com")]), { permission_mode: "auto" });
+    const toolCtx = makeCtx(draftWith([sendStep("user@example.com")]));
     const result = await withSelfHostedDriverFetchForTests(tripwire, () =>
       dryRunWorkflowTool.execute(toolCtx, { input: {} }),
     );
@@ -191,7 +190,6 @@ describe("commit gate · placeholder destinations are never persisted", () => {
   test("commitWorkflowAtomic refuses after the inspect/validate gate and persists nothing", async () => {
     const conversation_id = await seedConversation();
     const toolCtx = makeCtx(readyDraft([sendStep("recipient@example.com")]), {
-      permission_mode: "auto",
       conversation_id,
     });
     const result = await commitWorkflowAtomic({ ctx: toolCtx, reason: "test" });
@@ -206,14 +204,12 @@ describe("commit gate · placeholder destinations are never persisted", () => {
 
   test("save_workflow_draft reaches the same gate; the parameterized draft saves", async () => {
     const blockedCtx = makeCtx(readyDraft([sendStep("someone@acme.com")]), {
-      permission_mode: "auto",
       conversation_id: await seedConversation(),
     });
     const blocked = await saveWorkflowDraftTool.execute(blockedCtx, {});
     expectPlaceholderGate(blocked);
 
     const okCtx = makeCtx(readyDraft([sendStep("${input.recipient}")]), {
-      permission_mode: "auto",
       conversation_id: await seedConversation(),
     });
     const saved = await saveWorkflowDraftTool.execute(okCtx, {});

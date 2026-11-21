@@ -1,8 +1,10 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { backoffDelay } from "@shared/backoff.ts";
 import { backoffMs, parseRetryAfter } from "./retry.ts";
 
 const RATE_LIMIT_MAX_WAIT_MS = 60 * 60_000;
 const SECONDARY_MIN_WAIT_MS = 60_000;
+const SECONDARY_MAX_WAIT_MS = Number.POSITIVE_INFINITY;
 const RESET_MARGIN_MS = 1000;
 
 type RateLimitReason = "retry_after" | "primary_reset" | "secondary_backoff" | "backoff";
@@ -57,7 +59,14 @@ export function rateLimitDelayMs(input: RateLimitInput): RateLimitVerdict {
       : exhausted && Number.isFinite(resetSeconds)
         ? [Math.max(0, resetSeconds * 1000 - input.now_ms) + RESET_MARGIN_MS, "primary_reset"]
         : messageSignal || input.status === 403
-          ? [SECONDARY_MIN_WAIT_MS * 2 ** Math.max(0, input.attempt - 1), "secondary_backoff"]
+          ? [
+              backoffDelay(input.attempt - 1, 0, {
+                baseMs: SECONDARY_MIN_WAIT_MS,
+                maxMs: SECONDARY_MAX_WAIT_MS,
+                jitter: "none",
+              }),
+              "secondary_backoff",
+            ]
           : [backoffMs(input.attempt, input.backoff_base_ms), "backoff"];
   const tooLong = delay_ms > RATE_LIMIT_MAX_WAIT_MS || input.now_ms + delay_ms >= input.deadline_ms;
   return { kind: tooLong ? "fail" : "wait", delay_ms, reason };

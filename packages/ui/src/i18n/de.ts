@@ -4,6 +4,8 @@ export const de = {
     next: "Weiter",
     cancel: "Abbrechen",
     close: "Schließen",
+    filters: "Filter",
+    applyFilters: "Filter anwenden",
     retry: "Erneut versuchen",
     remove: "Entfernen",
     add: "Hinzufügen",
@@ -12,97 +14,7 @@ export const de = {
     step: (a: number, b: number) => `Schritt ${a} von ${b}`,
   },
   err: {
-    causes: {
-      auth_failed: "Anmeldung abgelehnt",
-      timeout: "Zeitüberschreitung",
-      schema_mismatch: "Antwort in unerwarteter Form",
-      connector_missing: "Connector fehlt",
-      connector_unavailable: "Connector nicht verfügbar",
-      budget_exhausted: "Token-Budget erschöpft",
-      approval_mismatch: "Freigabe passt nicht mehr",
-      upstream_error: "Fehler im Fremdsystem",
-      rate_limited: "Abrufgrenze des Anbieters erreicht",
-      version_unsupported: "Version nicht unterstützt",
-      unclassified: "Nicht eingeordnet",
-    },
-    cases: {
-      unreachable: {
-        title: "Server nicht erreichbar",
-        body: "SubKit hat unter dieser Adresse keine Antwort bekommen. Geändert wurde nichts.",
-      },
-      tooOld: {
-        title: "Version 9.2.0 wird nicht unterstützt",
-        body: "Diese App braucht 10.20 oder neuer. Geändert wurde nichts.",
-      },
-      signinCancelled: {
-        title: "Anmeldung abgebrochen",
-        body: "Im Browser wurde die Anmeldung nicht abgeschlossen. Du bist noch nicht angemeldet, geändert wurde nichts.",
-      },
-      session: {
-        title: "Anmeldung abgelaufen",
-        body: "Deine Sitzung ist abgelaufen. Laufende Freigaben bleiben bestehen, bis du dich neu anmeldest.",
-      },
-      keyRejected: {
-        title: "Anmeldung abgelehnt",
-        body: "Der Anbieter hat diesen API-Schlüssel nicht angenommen. Der Arbeitsbereich wurde noch nicht angelegt.",
-      },
-      tooBig: {
-        title: "Datei ist größer als 5 MB",
-        body: "Diese Datei wurde nicht hochgeladen. Die anderen Dateien sind davon nicht betroffen.",
-      },
-      duplicate: {
-        title: "Datei gibt es schon",
-        body: "Eine andere Datei hat genau diesen Inhalt. Diese wurde nicht noch einmal angelegt.",
-      },
-      feedbackFailed: {
-        title: "Feedback nicht gesendet",
-        body: "Dein Entwurf ist gespeichert und wurde nicht verworfen. Du kannst es gleich noch einmal versuchen.",
-      },
-      offline: {
-        title: "Server offline",
-        body: "SubKit kann gerade nichts ausführen. Neue Nachrichten warten in der Warteschlange, geändert wurde nichts.",
-      },
-      runFailed: {
-        title: "Run fehlgeschlagen",
-        body: "Gmail hat die Anmeldung abgelehnt. Bereits erledigte Schritte bleiben, weitere wurden nicht ausgeführt und nichts wurde abgelegt.",
-      },
-      taskFailed: {
-        title: "Aufgabe fehlgeschlagen",
-        body: "Der Run ist an einem Schritt hängen geblieben. Vor deiner Freigabe wurde nichts geändert.",
-      },
-      reauth: {
-        title: "Anmeldung abgelaufen",
-        body: "Workflows, die diesen Connector nutzen, pausieren. Geändert wurde nichts.",
-      },
-      skillConflict: {
-        title: "Freigabe passt nicht mehr",
-        body: "Jemand hat den Skill inzwischen geändert. Deine Version wurde nicht gespeichert.",
-      },
-      pageFailed: {
-        title: "Diese Seite ließ sich nicht anzeigen",
-        body: "Die Daten für diese Ansicht kamen nicht an. Geändert wurde nichts.",
-      },
-      autoPaused: {
-        title: "Automatisch pausiert",
-        body: "5 Runs in Folge sind an derselben Ursache gescheitert. Geändert wurde nichts.",
-      },
-      runApproval: {
-        title: "Run gescheitert",
-        body: "Die Freigabe deckt diesen Run nicht mehr ab. Der Run hat nichts gesendet.",
-      },
-    },
-    remedies: {
-      retry: "Erneut versuchen",
-      relogin: "Neu anmelden",
-      checkApproval: "Freigabe prüfen",
-      fixInChat: "Im Chat beheben",
-      askAdmin: "Administrator fragen",
-      overview: "Zur Übersicht",
-      reload: "Neu laden",
-      examples: "Beispiel verwenden",
-      chooseOther: "Andere Datei wählen",
-      openExisting: "Vorhandene Datei öffnen",
-    },
+    overview: "Zur Übersicht",
     tech: "Technische Einzelheit",
     cause: "Ursache",
     code: "Code",
@@ -116,9 +28,14 @@ export const de = {
     askedAdmin: "Dein Administrator wurde benachrichtigt.",
     unknown: {
       title: "Das hat nicht geklappt",
-      body: "SubKit konnte den Schritt nicht abschließen. Geändert wurde nichts.",
+      body: "Der Schritt ließ sich nicht abschließen. Geändert wurde nichts.",
     },
     reportText: (title: string, details: string) => `Fehler: ${title}\n\n${details}`,
+  },
+  confirm: {
+    title: (object: string, verb: string) =>
+      `${object} ${verb.charAt(0).toLocaleLowerCase("de") + verb.slice(1)}?`,
+    action: "Bestätigen",
   },
   approval: {
     wants: "Möchte das ausführen",
@@ -150,12 +67,10 @@ export const de = {
       link: "Link",
       code: "Code",
       ref: "@ Verweis einfügen",
-      refSearch: "Datei, Skill oder Quelle suchen …",
-      refGroups: { file: "Dateien", skill: "Skills", source: "Quellen" },
       refNone: "Nichts gefunden",
       view: "Ansicht:",
       modes: { write: "Schreiben", split: "Geteilt", preview: "Vorschau" },
-      footer: "Markdown · @ fügt einen Verweis auf Dateien, Skills oder Quellen ein",
+      footer: "Markdown",
       chars: (n: number) => `${n} Zeichen`,
       empty: "Noch nichts zu sehen.",
       linkText: "Linktext",

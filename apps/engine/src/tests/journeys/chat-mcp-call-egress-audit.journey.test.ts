@@ -136,7 +136,7 @@ describe("a chat MCP call is egress like a workflow's", () => {
   test("AC1: the chat call leaves the egress row a workflow call leaves", async () => {
     const created = await journeyFetch(ctx, "/v1/conversations", {
       method: "POST",
-      body: JSON.stringify({ permission_mode: "ask" }),
+      body: JSON.stringify({}),
     });
     expect(created.status).toBe(201);
     const conversationId = ((await created.json()) as { conversation: { id: string } }).conversation

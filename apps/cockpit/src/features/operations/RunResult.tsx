@@ -1,10 +1,11 @@
-import { MarkdownDocument } from "@ui/components/proto/MarkdownDocument";
-import { Panel } from "@ui/components/proto/Pill";
-import { IconTile, StepGraph } from "@ui/components/proto/visual";
+import { IconTile } from "@ui/atoms/icon-tile";
+import { Panel } from "@ui/atoms/pill";
+import { MarkdownDocument } from "@ui/organisms/markdown-document";
+import { StepGraph } from "@ui/organisms/step-graph";
 import { FileText, ShieldCheck } from "lucide-react";
 import { type ReactNode, useId } from "react";
+import type { RunGraphStep } from "@/features/operations/model/operations";
 import { useI18n } from "@/lib/i18n-context";
-import type { RunGraphStep } from "./model";
 
 export function RunWhy({
   rows,

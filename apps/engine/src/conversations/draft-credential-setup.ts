@@ -4,7 +4,7 @@ import { AuditAction } from "../audit/types.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import { generateCredentialSetupGrant } from "../connectors/credential-setup-grant.ts";
 import { buildOAuthRedirectUri, OAUTH_CALLBACK_PATH } from "../credentials/oauth2/redirect-uri.ts";
-import { secureEqual } from "../crypto/aes-gcm.ts";
+import { secureEqual } from "../crypto/index.ts";
 import type { Db } from "../db/client.ts";
 import { conversationElicitations } from "../db/schema/index.ts";
 import { now } from "../utils/clock.ts";

@@ -1,4 +1,4 @@
-import { errorFields, logger } from "../logging/logger.ts";
+import { errorFields, logger } from "../logging/index.ts";
 import { getMetrics, METRIC_NAMES } from "./metrics.ts";
 
 let _lastTransientTotal = 0;

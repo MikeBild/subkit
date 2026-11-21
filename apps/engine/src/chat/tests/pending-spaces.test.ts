@@ -6,7 +6,7 @@ import {
   type ConversationTestCtx,
   createConversationTestCtx,
 } from "../../conversations/tests/setup.ts";
-import { encryptSecret } from "../../crypto/aes-gcm.ts";
+import { encryptSecret } from "../../crypto/index.ts";
 import { chatIdentities, chatWorkspaces, users } from "../../db/schema/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";

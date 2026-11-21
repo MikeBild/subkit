@@ -1,43 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${…}` tokens in the generation prompt are the placeholder grammar surfaced to the LLM.
-// Engine-side one-shot authoring pipeline (Fix A).
-//
-// The authoring PROCESS moves into code: instead of the conversation
-// model micro-iterating across ~30 tool calls (propose_step ×9,
-// update_param ×9, dry_run ×9 — session 784c1b02), `author_workflow`
-// runs this deterministic pipeline once and hands the model a complete,
-// evaluated draft:
-//
-//   1. GROUND   — resolve the named connectors (tenant-scoped), load
-//                 their recorded endpoint samples (`schema_versions`
-//                 latest shapes) and a bounded slice of ingested docs,
-//                 and build ONE generation prompt carrying the goal
-//                 verbatim plus the authoring contracts.
-//   2. GENERATE — ONE schema-constrained `invoke({flow:"generate"})`
-//                 producing the complete definition (name, slug, steps
-//                 with `language:"javascript"` transforms by default,
-//                 input/output schema where derivable, trigger when the
-//                 goal phrases cadence).
-//   3. EVALUATE — `validateWorkflowDef` + `runRecordedEval` (with the
-//                 bounded repair stage armed). Structural/validation
-//                 failures earn exactly ONE regenerate pass with the
-//                 findings appended; expression-level findings ride
-//                 recorded-eval's own bounded repair instead. Hard cap:
-//                 `MAX_GENERATION_PASSES` LLM generation passes total.
-//   4. EMIT     — stash the result as the conversation draft
-//                 (`withWorkflowDraft`, goal + connector ids stashed as
-//                 draft-only metadata for the post-preview judge) and return
-//                 `{ definition, recorded_eval, attempts, next:
-//                 "dry_run_workflow" }`. Even a findings-laden
-//                 definition is stashed — the model repairs from the
-//                 findings via `edit_workflow_patch` / `update_param`.
-//
-// The only live HTTP is the bounded read-only pre-flight before pass 1:
-// discovery of a missing endpoint index and GET shape probes through the
-// existing discover/probe tools. Generation goes through `invoke()`
-// (tenant token budget enforced like every other engine LLM call), and
-// recorded evaluation runs JSONata / QuickJS against recorded evidence
-// only. `dry_run_workflow` stays the explicit preview step.
-
 import { z } from "zod";
 import { readDiscoveryIndexForConnector } from "../connectors/discovery/service.ts";
 import type { DiscoveryResult } from "../connectors/discovery/types.ts";
@@ -53,7 +13,7 @@ import { formatProbeShapeExamples } from "../llm/runtime/context-assembler/forma
 import { loadProbeShapeExamples } from "../llm/runtime/context-assembler/loaders.ts";
 import type { GenerationNeed } from "../llm/runtime/generation-abort.ts";
 import { invoke } from "../llm/runtime/invoke.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { recordAuthoringGateBlock } from "../observability/instrumentation.ts";
 import { renderSandboxGlobalsContract } from "../sandboxes/quickjs/stdlib/sandbox-globals.ts";
 import {
@@ -213,7 +173,8 @@ export type AuthoringPipelineResult =
         | "authoring_connectors_unresolved"
         | "authoring_definition_invalid"
         | "llm_provider_limited"
-        | "llm_quota_exhausted";
+        | "llm_provider_quota_exhausted"
+        | "llm_spend_limit_reached";
       message: string;
       deadline_exceeded?: true;
       requires_user_input?: true;
@@ -649,10 +610,10 @@ export async function runAuthoringPipeline(
         priorFindings = renderValidationFindings(passErrors);
         continue;
       }
-      if (err instanceof LlmError && err.code === "llm_quota_exhausted") {
+      if (err instanceof LlmError && err.code === "llm_spend_limit_reached") {
         return {
           ok: false,
-          error_code: "llm_quota_exhausted",
+          error_code: "llm_spend_limit_reached",
           message:
             "The tenant LLM token budget is exhausted. Increase the authorized budget or retry after reset. No draft was changed.",
           errors: [{ path: "(llm)", message: "tenant token budget exhausted" }],
@@ -671,7 +632,10 @@ export async function runAuthoringPipeline(
           : null;
         return {
           ok: false,
-          error_code: "llm_provider_limited",
+          error_code:
+            providerFailure === "quota_exhausted"
+              ? "llm_provider_quota_exhausted"
+              : "llm_provider_limited",
           message: safeRetryAt
             ? `The generation provider is limited. Retry after ${safeRetryAt}, or configure an available provider. No draft was changed.`
             : "The generation provider is limited. Check its quota or configure an available provider before retrying. No draft was changed.",

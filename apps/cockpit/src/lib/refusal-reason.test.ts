@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { diagnosisCauseKey } from "@/features/grants/model/gate-diagnosis";
 import {
   REPORT_DELIVERY_DISCREPANCIES,
   REPORT_MESSAGE_REFUSALS,
 } from "../../../engine/src/workflows/core/report-refusal.ts";
-import { diagnosisCauseKey } from "./gate-diagnosis";
 import { CATALOGS, type TranslationKey } from "./i18n";
 import { REFUSAL_REASON_KEYS, refusalReasonKey, refusalReasonLabel } from "./refusal-reason";
 

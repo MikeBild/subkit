@@ -1,9 +1,9 @@
+import { cn } from "@ui/lib/utils";
 import { CalendarClock, FileText, Gauge, type LucideIcon, Mail, Plug, Route } from "lucide-react";
 import type { ApprovalRule } from "@/api/approval-rules";
 import { Chip } from "@/components/cockpit/patterns";
+import { type RuleFact, ruleFacts } from "@/features/rules/model/rules";
 import { useI18n } from "@/lib/i18n-context";
-import { cn } from "@/lib/utils";
-import { type RuleFact, ruleFacts } from "./model";
 
 const FACT_ICON: Readonly<Record<RuleFact["id"], LucideIcon>> = {
   connector: Plug,

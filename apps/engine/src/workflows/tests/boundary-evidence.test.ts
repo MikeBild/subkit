@@ -24,7 +24,6 @@ function fixture(key_prefix: string) {
             method: "PUT",
             body: "payload",
             s3: {
-              // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
               key: "${scope.build.data.manifest.key}",
               scope: { key_prefix, max_bytes: 1_000_000 },
             },

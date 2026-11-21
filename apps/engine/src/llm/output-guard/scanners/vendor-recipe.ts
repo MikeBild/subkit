@@ -78,10 +78,7 @@ export const vendorRecipeScanner: Scanner = {
   id: "vendor_recipe",
   scan(text: string, ctx: ScannerContext): Violation[] {
     const out: Violation[] = [];
-    FENCED_JSON_RE.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    // biome-ignore lint/suspicious/noAssignInExpressions: standard regex exec loop.
-    while ((m = FENCED_JSON_RE.exec(text)) !== null) {
+    for (const m of text.matchAll(FENCED_JSON_RE)) {
       const body = m[1] ?? "";
       let parsed: unknown;
       try {

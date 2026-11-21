@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { Actor } from "../audit/actor.ts";
 import { AuditAction } from "../audit/types.ts";
-import { type Db, type Executor, getDb } from "../db/client.ts";
+import type { Db, Executor } from "../db/client.ts";
 import {
   type IntakeCollectedSnapshot,
   intakeCategoryDefaults,
@@ -122,9 +122,9 @@ function itemRequestDigest(p: CreateIntakeItemParams, intakeCategory: string): s
 
 export async function listIntakeCategories(
   p: { tenant_id: string; actor: Actor },
-  exec?: Executor,
+  exec: Executor,
 ): Promise<{ items: IntakeCategoryView[]; default_category: string }> {
-  const db = exec ?? getDb();
+  const db = exec;
   const defaults = await db
     .select({ category: intakeCategoryDefaults.category })
     .from(intakeCategoryDefaults)
@@ -155,9 +155,9 @@ export async function listIntakeCategories(
 
 export async function setIntakeDefaultCategory(
   p: SetIntakeDefaultCategoryParams,
-  exec?: Executor,
+  exec: Executor,
 ): Promise<{ category: string }> {
-  const db = exec ?? getDb();
+  const db = exec;
   const intakeCategory = parseIntakeCategory(p.category);
   return (db as Db).transaction(async (tx) => {
     await tx
@@ -192,9 +192,9 @@ export async function setIntakeDefaultCategory(
 
 export async function createIntakeItem(
   p: CreateIntakeItemParams,
-  exec?: Executor,
+  exec: Executor,
 ): Promise<IntakeItemView> {
-  const db = exec ?? getDb();
+  const db = exec;
   return (db as Db).transaction(async (tx) => {
     const intakeCategory = p.category
       ? parseIntakeCategory(p.category)
@@ -279,9 +279,9 @@ export async function listIntakeItems(
     state?: IntakeItemView["state"] | undefined;
     origin?: IntakeItemOriginFilter | undefined;
   },
-  exec?: Executor,
+  exec: Executor,
 ): Promise<IntakeItemView[]> {
-  const db = exec ?? getDb();
+  const db = exec;
   const tenantConds = [eq(intakeItems.tenant_id, p.tenant_id)];
   if (p.category) tenantConds.push(eq(intakeItems.category, parseIntakeCategory(p.category)));
   if (p.state) tenantConds.push(eq(intakeItems.state, p.state));
@@ -303,9 +303,9 @@ export async function listIntakeItems(
 export async function getIntakeItem(
   tenant_id: string,
   id: string,
-  exec?: Executor,
+  exec: Executor,
 ): Promise<IntakeItemView | null> {
-  const db = exec ?? getDb();
+  const db = exec;
   const rows = await db
     .select()
     .from(intakeItems)
@@ -324,10 +324,10 @@ interface IntakeItemReviewSubject {
 export async function getIntakeItemsForReview(
   tenant_id: string,
   ids: readonly string[],
-  exec?: Executor,
+  exec: Executor,
 ): Promise<IntakeItemReviewSubject[]> {
   if (ids.length === 0) return [];
-  const db = exec ?? getDb();
+  const db = exec;
   return db
     .select({
       id: intakeItems.id,
@@ -399,9 +399,9 @@ async function staleDraftProposalsForItems(
 
 export async function patchIntakeItem(
   p: PatchIntakeItemParams,
-  exec?: Executor,
+  exec: Executor,
 ): Promise<IntakeItemView | null> {
-  const db = exec ?? getDb();
+  const db = exec;
   return (db as Db).transaction(async (tx) => {
     const rows = await tx
       .select()
@@ -474,9 +474,9 @@ export async function patchIntakeItem(
 
 export async function deleteDiscardedIntakeItem(
   p: DeleteIntakeItemParams,
-  exec?: Executor,
+  exec: Executor,
 ): Promise<boolean> {
-  const db = exec ?? getDb();
+  const db = exec;
   return (db as Db).transaction(async (tx) => {
     const rows = await tx
       .select()
@@ -701,9 +701,9 @@ async function insertProposalRevision(
 
 export async function createIntakeProposal(
   p: CreateIntakeProposalParams,
-  exec?: Executor,
+  exec: Executor,
 ): Promise<IntakeProposalView> {
-  const db = exec ?? getDb();
+  const db = exec;
   return (db as Db).transaction(async (tx) => {
     const items = await itemsForProposal(tx, p.tenant_id, p.item_ids, p.expected_item_versions);
     const [proposal] = await tx
@@ -729,16 +729,16 @@ export async function createIntakeProposal(
 export async function getIntakeProposal(
   tenant_id: string,
   id: string,
-  exec?: Executor,
+  exec: Executor,
 ): Promise<IntakeProposalView | null> {
-  return proposalView(exec ?? getDb(), tenant_id, id);
+  return proposalView(exec, tenant_id, id);
 }
 
 export async function listIntakeProposals(
   p: { tenant_id: string; status?: IntakeProposalView["status"] | undefined },
-  exec?: Executor,
+  exec: Executor,
 ): Promise<IntakeProposalView[]> {
-  const db = exec ?? getDb();
+  const db = exec;
   const tenantConds = [eq(intakeProposals.tenant_id, p.tenant_id)];
   if (p.status) tenantConds.push(eq(intakeProposals.status, p.status));
   const rows = await db
@@ -752,9 +752,9 @@ export async function listIntakeProposals(
 
 export async function reviseIntakeProposal(
   p: ReviseIntakeProposalParams,
-  exec?: Executor,
+  exec: Executor,
 ): Promise<IntakeProposalView | null> {
-  const db = exec ?? getDb();
+  const db = exec;
   return (db as Db).transaction(async (tx) => {
     const items = await itemsForProposal(tx, p.tenant_id, p.item_ids, p.expected_item_versions);
     const rows = await tx
@@ -795,9 +795,9 @@ export async function reviseIntakeProposal(
 
 export async function confirmIntakeProposal(
   p: ConfirmIntakeProposalParams,
-  exec?: Executor,
+  exec: Executor,
 ): Promise<IntakeProposalView | null> {
-  const db = exec ?? getDb();
+  const db = exec;
   let published: PublishedIntakeTarget | null = null;
   const view = await (db as Db).transaction(async (tx) => {
     const preflight = await proposalRevision(tx, p.tenant_id, p.id, p.expected_revision);
@@ -916,9 +916,9 @@ export async function confirmIntakeProposal(
 
 export async function rejectIntakeProposal(
   p: { tenant_id: string; actor: Actor; id: string; expected_revision: number },
-  exec?: Executor,
+  exec: Executor,
 ): Promise<IntakeProposalView | null> {
-  const db = exec ?? getDb();
+  const db = exec;
   return (db as Db).transaction(async (tx) => {
     const rows = await tx
       .select()

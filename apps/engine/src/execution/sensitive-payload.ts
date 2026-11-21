@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
+import { decryptSecret, encryptSecret } from "../crypto/index.ts";
+import { DEVICE_STEP_ERROR_CODES, DEVICE_STEP_REMEDIES } from "../devices/core/step-output.ts";
 import { classifyFailure, type PreviewClassification } from "./core/classify.ts";
 import type { RequestMeta, SensitiveOutputField } from "./types.ts";
 
@@ -55,6 +56,7 @@ export function recoverExecutionPayload(
 }
 
 const safeFailureCodes = new Set([
+  ...DEVICE_STEP_ERROR_CODES,
   "request_outside_declared_boundary",
   "execution_authority_changed",
   "execution_boundary_mismatch",
@@ -65,8 +67,9 @@ const safeFailureCodes = new Set([
   "connector_not_found",
   "connector_environment_mismatch",
   "prepared_credential_unavailable",
-  "llm_quota_exhausted",
+  "llm_spend_limit_reached",
   "llm_budget_exceeded",
+  "llm_spend_limit_reached",
   "authority_redirect_denied",
   "sensitive_resume_forbidden",
   "sensitive_execution_unsupported",
@@ -136,6 +139,12 @@ const SAFE_FAILURE_MESSAGES: Readonly<Record<string, string>> = {
   skipped_dependency_held:
     "This step was skipped because an earlier write step was held in the test run.",
   caller_saved_workflow_required: "This caller can only run a saved workflow version, not a draft.",
+  ...Object.fromEntries(
+    Object.entries(DEVICE_STEP_REMEDIES).map(([code, remedy]) => [
+      code,
+      `${remedy.message} ${remedy.guidance}`,
+    ]),
+  ),
 };
 
 const SAFE_CLASS_MESSAGES: Readonly<Partial<Record<PreviewClassification, string>>> = {

@@ -2,3 +2,6 @@ dist/
 release/
 node_modules/
 release-dev/
+resources/agent-browser/
+resources/agent-desktop/
+resources/postgres/

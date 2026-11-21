@@ -1,5 +1,5 @@
+import { Alert, AlertDescription, AlertTitle } from "@ui/molecules/alert";
 import type { ReactNode } from "react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export function StandaloneStatus({
   layout,

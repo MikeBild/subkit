@@ -9,7 +9,7 @@ audience: public
 ## Referenz: Desktop-App, Regeln, Zeitpläne und Fehlerberichte
 
 Diese Seite listet, was Version 11.2.0 an der HTTP-API, den Ereignissen, dem Audit-Trail und den Einstellungen ergänzt.
-Sie ist für alle, die mit eigenem Code oder im Betrieb auf diesen Teilen aufbauen. Die Kapitel mit den Arbeitsschritten sind „SubKit Desktop“, „Chat-Modi und Regeln“, „Zeitpläne im Blick behalten“, „Benachrichtigungen und Ruhezeiten“, „SubKit auf dich einstellen“ und „Einen Fehler melden“.
+Sie ist für alle, die mit eigenem Code oder im Betrieb auf diesen Teilen aufbauen. Die Kapitel mit den Arbeitsschritten sind „SubKit Desktop“, „Wann SubKit fragt“, „Zeitpläne im Blick behalten“, „Benachrichtigungen und Ruhezeiten“, „SubKit auf dich einstellen“ und „Einen Fehler melden“.
 Die vollständige, maschinenlesbare Beschreibung jeder Route steht unter `/openapi.json` auf deiner Engine.
 
 ### Routen
@@ -76,7 +76,7 @@ Ein Run nennt die Ursache eines Fehlers jetzt als `outcome.cause_class` in `GET 
 
 | Feld | Werte | Stellt ein |
 | --- | --- | --- |
-| `default_chat_mode` | `ask`, `auto`, `plan` | Den Modus, in dem eine neue Unterhaltung startet. Empfohlen: `auto`. |
+| `ask_before_writing` | `true`, `false` | Die Regel **Immer vorher fragen**: Jeder schreibende Schritt fragt, auch wenn der Auftrag ihn deckt. Standard `false`. |
 | `default_environment` | `dev`, `prod` | Die Umgebung für neue Aufgaben und für die Prüfung neuer Workflows. Empfohlen: `dev`. |
 | `approver` | `{"kind":"self"}` oder `{"kind":"teammate","email":"…"}` | Wer Freigabe-Hinweise bekommt. Empfohlen: `self`. |
 | `notifications` | `{"mode":"immediately"}`, `{"mode":"working_hours","from":"HH:MM","to":"HH:MM","days":[1,2,3,4,5]}` oder `{"mode":"daily_digest","at":"HH:MM"}` | Wann Push zugestellt wird. Empfohlen: `immediately`. `days` nennt die Arbeitstage als Wochentage von `1` (Montag) bis `7` (Sonntag), jeden höchstens einmal; fehlt das Feld, gilt Montag bis Freitag. |
@@ -85,7 +85,7 @@ Ein Run nennt die Ursache eines Fehlers jetzt als `outcome.cause_class` in `GET 
 | `first_job` | Text mit höchstens 120 Zeichen oder `null` | Den ersten Vorschlag im Cockpit. |
 | `services` | Bis zu 50 Connector-Slugs | Welche Connectors das Cockpit zuerst anbietet. |
 
-Die Antwort ergänzt `unset` (was von Chat-Modus, Umgebung, Freigaben und Benachrichtigungen noch nicht gewählt ist), `recommended`, `updated_at` und bei einer anderen Person `approver.user_id`, `approver.invitation` mit `member`, `pending` oder `needs_admin`, `approver.can_approve` und `approver.missing_permissions`. `can_approve` ist `true`, wenn die Rolle der Person `conversation:approve`, `task:grant` und `workflow:write` enthält; die Rolle Mitglied enthält alle drei. Bei `false` nennt `missing_permissions` die fehlenden Rechte, und Freigabe-Hinweise bleiben bei der Person, die fragt. Solange es die Person im Arbeitsbereich nicht gibt, ist `can_approve` `null`. Nennt ein Administrator eine unbekannte Adresse, enthält die Antwort genau einmal `invitation` mit `invite_id`, `plaintext_token` und `expires_at`; die Einladung trägt die Rolle Mitglied, und eine E-Mail wird nicht verschickt. Hat jemand ohne das Recht einzuladen eine Adresse genannt (`needs_admin`), verknüpft die Engine die Wahl von selbst, sobald ein Administrator diese Adresse einlädt oder anlegt. `PUT` antwortet mit `409 approver_already_known`, wenn die Adresse schon einer Person gehört, die nicht erneut eingeladen werden kann.
+Die Antwort ergänzt `unset` (was von Umgebung, Freigaben und Benachrichtigungen noch nicht gewählt ist), `recommended`, `updated_at` und bei einer anderen Person `approver.user_id`, `approver.invitation` mit `member`, `pending` oder `needs_admin`, `approver.can_approve` und `approver.missing_permissions`. `can_approve` ist `true`, wenn die Rolle der Person `conversation:approve`, `task:grant` und `workflow:write` enthält; die Rolle Mitglied enthält alle drei. Bei `false` nennt `missing_permissions` die fehlenden Rechte, und Freigabe-Hinweise bleiben bei der Person, die fragt. Solange es die Person im Arbeitsbereich nicht gibt, ist `can_approve` `null`. Nennt ein Administrator eine unbekannte Adresse, enthält die Antwort genau einmal `invitation` mit `invite_id`, `plaintext_token` und `expires_at`; die Einladung trägt die Rolle Mitglied, und eine E-Mail wird nicht verschickt. Hat jemand ohne das Recht einzuladen eine Adresse genannt (`needs_admin`), verknüpft die Engine die Wahl von selbst, sobald ein Administrator diese Adresse einlädt oder anlegt. `PUT` antwortet mit `409 approver_already_known`, wenn die Adresse schon einer Person gehört, die nicht erneut eingeladen werden kann.
 
 ### Regeln
 
@@ -109,7 +109,9 @@ Ein Tool-Aufruf in einer Unterhaltung trägt `policy`, wenn die Chat-Regel ihn g
 
 | `ask_reason` | Bedeutung |
 | --- | --- |
-| `mode` | Die Unterhaltung fragt vor jeder Aktion mit Wirkung nach außen. |
+| `ask_before_writing` | Die Person hat **Immer vorher fragen** eingeschaltet, deshalb fragt jeder Schritt, der schreibt. |
+| `no_person` | Hinter dem Aufruf steht keine Person, zum Beispiel ein Systemkonto oder ein Run einer Aufgabe, den jemand anderes gestartet hat. |
+| `write_gate` | Keine aktuelle Bitte der Person kann die Aktion abdecken. |
 | `no_browser_session` | Der Aufrufer ist keine im Browser angemeldete Person. |
 | `tool_not_coverable`, `effect_class_never`, `effect_unknown` | Diese Art von Aktion fragt immer, oder die Wirkung ist unbekannt. |
 | `no_user_message`, `no_quote`, `quote_too_short`, `quote_too_long`, `quote_not_in_user_words`, `not_a_request`, `verb_mismatch` | Die Person hat diese Aktion nicht mit eigenen Worten verlangt. |

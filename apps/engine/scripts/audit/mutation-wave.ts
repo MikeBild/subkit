@@ -8,6 +8,7 @@ import {
 } from "./external-runtime-tests.ts";
 import { createClosureAnalysis, reviewedClosurePlanFromAnalysis } from "./mutation-closure.ts";
 import { assertWaveMatchesQualityPolicy, parseQualityShardPolicy } from "./quality-shard-policy.ts";
+import { REEXPORT_BARREL_EXCLUSION, reexportBarrelExclusion } from "./reexport-barrel.ts";
 import { reviewedRuntimeWitnesses } from "./runtime-witnesses.ts";
 
 export type ClosureKind =
@@ -277,10 +278,7 @@ export function validateMutationWaveManifest(input: {
       if (!isCanonicalRepoPath(consumer.path) || !known.has(consumer.path))
         errors.push(`shard ${shard.id} has invalid consumer: ${String(consumer.path)}`);
       const witnesses = Array.isArray(consumer.witnesses) ? consumer.witnesses : [];
-      if (
-        witnesses.length === 0 &&
-        (typeof consumer.exclusion_rationale !== "string" || !consumer.exclusion_rationale.trim())
-      )
+      if (witnesses.length === 0 && consumer.exclusion_rationale !== REEXPORT_BARREL_EXCLUSION)
         errors.push(`consumer has no witness or reviewed exclusion: ${consumer.path}`);
       for (const witness of witnesses)
         if (!tests.has(witness))
@@ -362,6 +360,13 @@ export function validateWaveClosure(input: {
     for (const consumer of actual.consumers) {
       const declared = declaredConsumers.get(consumer.path);
       if (!declared) errors.push(`shard ${shard.id} omits production consumer: ${consumer.path}`);
+      else if (
+        declared.exclusion_rationale !== undefined &&
+        declared.exclusion_rationale !== reexportBarrelExclusion(consumer.path, read(consumer.path))
+      )
+        errors.push(
+          `shard ${shard.id} consumer exclusion is not a re-export barrel: ${consumer.path}`,
+        );
       else if (
         !declared.exclusion_rationale &&
         !declared.witnesses.some(

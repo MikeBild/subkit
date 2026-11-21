@@ -109,7 +109,6 @@ test("an MCP tool call shows its tool, the effect as stated, its ceiling and its
         mcp: {
           operation: "call_tool",
           tool: "search",
-          // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
           arguments: { q: "${input.q}", mode: "exact" },
           boundary: {
             effect: "read",

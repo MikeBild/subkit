@@ -16,11 +16,12 @@ import { _resetRssHighWaterForTests, setDlqJobCount } from "../../observability/
 import { resetMetricsRegistryForTests } from "../../observability/metrics.ts";
 import { invalidateAttention } from "../../operator/attention.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 function resolveEngineVersionForTest(): string {
   if (VERSION && VERSION !== "0.0.0-dev") return VERSION;
-  const env = process.env.ENGINE_VERSION;
+  const env = testEnv.ENGINE_VERSION;
   if (env && env !== "0.0.0-dev") return env;
   return VERSION ?? "0.0.0-dev";
 }

@@ -7,7 +7,7 @@ import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import type { Db, Executor } from "../db/client.ts";
 import { patchCandidates } from "../db/schema/executions.ts";
 import { skillCandidateEvidence, skillCandidates } from "../db/schema/skills.ts";
-import { log } from "../logging/logger.ts";
+import { log } from "../logging/index.ts";
 import {
   recordLoopPatchToSkillCandidate,
   recordLoopSkillCandidatePromoted,

@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
   assessFailures,
-  FAILURE_BACKOFF_MINUTES,
   failureBackoffMs,
   failureClassOf,
   failureStreak,
@@ -35,9 +34,7 @@ describe("failureClassOf", () => {
 describe("failureBackoffMs", () => {
   test("no delay before the third failure, then 2, 6, 18, 54 minutes, capped", () => {
     expect([0, 1, 2].map(failureBackoffMs)).toEqual([0, 0, 0]);
-    expect([3, 4, 5, 6].map(failureBackoffMs)).toEqual(
-      FAILURE_BACKOFF_MINUTES.map((minutes) => minutes * MINUTE),
-    );
+    expect([3, 4, 5, 6].map(failureBackoffMs)).toEqual([2, 6, 18, 54].map((m) => m * MINUTE));
     expect(failureBackoffMs(7)).toBe(54 * MINUTE);
     expect(failureBackoffMs(500)).toBe(54 * MINUTE);
   });

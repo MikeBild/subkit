@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { expireBrowserSession, revokeBrowserSession } from "../auth/browser-session.ts";
-import { encryptSecret } from "../crypto/aes-gcm.ts";
+import { encryptSecret } from "../crypto/index.ts";
 import { auditLog } from "../db/schema/audit.ts";
 import { cockpitPushKeys, cockpitPushSubscriptions } from "../db/schema/cockpit-push.ts";
 import { sessions, tenants, users } from "../db/schema/identity.ts";

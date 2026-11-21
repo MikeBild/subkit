@@ -1,14 +1,14 @@
-import { ChatBubble as Bubble } from "@ui/components/proto/ChatBubble";
-import { ErrorNotice } from "@ui/components/proto/ErrorNotice";
-import { IconTile } from "@ui/components/proto/visual";
+import { IconTile } from "@ui/atoms/icon-tile";
+import { ChatBubble as Bubble } from "@ui/molecules/chat-bubble";
+import { ErrorNotice } from "@ui/molecules/error-notice";
 import { useEffect, useRef, useState } from "react";
 import type { Setup } from "@/api/setup";
 import { Button, SectionHeading, StandalonePage } from "@/components/cockpit/patterns";
 import { errorRows } from "@/lib/error-rows";
 import { useI18n } from "@/lib/i18n-context";
 import { PreparedInvitation } from "./invitation";
-import { type SetupAnswers, setupValue } from "./model";
-import { SETUP_ICON, SETUP_KEYS, type SetupKey, SetupQuestion } from "./setup-question";
+import { type SetupAnswers, setupKeys, setupValue } from "./model/setup-model";
+import { SETUP_ICON, type SetupKey, SetupQuestion } from "./setup-question";
 import { usePairOption, useSetupFlow } from "./use-setup";
 
 export function About({
@@ -24,10 +24,11 @@ export function About({
   const a = useSetupFlow(stored, { onDone, onLater });
   const offerPair = usePairOption(stored);
   const [setup, setSetup] = useState<SetupAnswers>(a.setup);
+  const keys = setupKeys(stored);
   const [answered, setAnswered] = useState(0);
   const [editing, setEditing] = useState<SetupKey | null>(null);
   const end = useRef<HTMLDivElement>(null);
-  const done = answered >= SETUP_KEYS.length && !editing;
+  const done = answered >= keys.length && !editing;
   const position = `${answered}-${editing ?? ""}`;
   useEffect(() => {
     if (position !== "0-") end.current?.scrollIntoView({ block: "end", behavior: "smooth" });
@@ -38,7 +39,7 @@ export function About({
     if (editing) setEditing(null);
     else setAnswered(answered + 1);
   };
-  const current = editing ?? SETUP_KEYS[answered];
+  const current = editing ?? keys[answered];
 
   if (a.invitation)
     return (
@@ -94,7 +95,7 @@ export function About({
         <div data-testid="setup-intro">
           <Bubble>{t("setup.intro")}</Bubble>
         </div>
-        {(done ? [] : SETUP_KEYS.slice(0, answered))
+        {(done ? [] : keys.slice(0, answered))
           .filter((k) => k !== editing)
           .map((k) => (
             <div key={k} data-testid={`setup-answered-${k}`}>
@@ -129,7 +130,7 @@ export function About({
               {t("setup.summaryTitle")}
             </SectionHeading>
             <ul className="divide-y">
-              {SETUP_KEYS.map((k) => (
+              {keys.map((k) => (
                 <li key={k} className="flex min-h-12 items-center gap-3 py-2 text-sm">
                   <IconTile icon={SETUP_ICON[k]} size="sm" />
                   <span className="min-w-0 flex-1">

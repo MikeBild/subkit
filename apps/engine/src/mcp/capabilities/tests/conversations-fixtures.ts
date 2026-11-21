@@ -8,6 +8,7 @@ import { resetMockProvider } from "../../../llm/mock-provider.ts";
 import { startBoss, stopBoss } from "../../../queue/index.ts";
 import { ensureTestConfig } from "../../../queue/tests/test-config.ts";
 import { builtinRoleId } from "../../../rbac/roles.ts";
+import { testEnv } from "../../../test-helpers/determinism/env.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
 import { seedTenant, seedWorkflow as seedWorkflowRow } from "../../../test-helpers/seed.ts";
 
@@ -45,7 +46,7 @@ export async function seedWorkflow(
 export function setupConversationCapabilities(): void {
   nextIntakeUuid = createDeterministicUuidFactory(0x1a2b_3c4d);
   beforeAll(async () => {
-    process.env.LLM_PROVIDER = "mock";
+    testEnv.LLM_PROVIDER = "mock";
     await ensureTestConfig();
     resetMockProvider();
     testDb = await createTestDb("mcp_conv_tool");

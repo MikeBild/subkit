@@ -1,10 +1,10 @@
 import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
-import { encryptSecret } from "../crypto/aes-gcm.ts";
+import { encryptSecret } from "../crypto/index.ts";
 import type { Db } from "../db/client.ts";
 import { chatIdentities, chatWorkspaces } from "../db/schema/index.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { chatWorkspaceAad } from "./api.ts";
 import { requiresHostedChatOwnership } from "./hosted-ownership.ts";
 import { type ChatEvent, PLATFORM_HAS_GLOBAL_USER_IDS } from "./types.ts";

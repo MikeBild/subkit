@@ -8,10 +8,10 @@ import { initializeModel } from "../llm/runtime/model-init.ts";
 import { getContext, withContext } from "../logging/context.ts";
 import { createBoss, disposeBoss } from "../queue/boss.ts";
 import { SKILL_CANDIDATE_ANALYZE_QUEUE } from "../queue/handlers/skill-candidate-analyze.ts";
+import { runSkillCandidateAnalysisSweep } from "../skill-candidates/scheduled/skill-candidate-analyze-runner.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
 import { runTenantCadenceSweep } from "./cadence-sweep.ts";
-import { runSkillCandidateAnalysisSweep } from "./skill-candidate-analyze-runner.ts";
 import { SWEEP_PAGE_LIMIT } from "./sweep-cursor.ts";
 
 const uuid = createDeterministicUuidFactory(0x5cad123);

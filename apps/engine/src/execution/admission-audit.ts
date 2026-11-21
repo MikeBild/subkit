@@ -1,6 +1,6 @@
 import { AuditAction, type AuditActorType, auditAwait, sanitizeForAudit } from "../audit/index.ts";
 import type { Executor } from "../db/client.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 
 interface AdmissionRefusal {
   tenant_id: string;

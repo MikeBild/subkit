@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
-import { connectors, credentials, tenants } from "../../../db/schema/index.ts";
+import { connectors, tenants, vaultItems } from "../../../db/schema/index.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT, type TestDb } from "../../../db/tests/setup.ts";
 import { PubSubEmitter } from "../../../pubsub/emitter.ts";
 import { PubSubListener } from "../../../pubsub/listener.ts";
@@ -74,7 +74,7 @@ afterAll(async () => {
 
 async function insertCredential(connectorId: string): Promise<string> {
   const [row] = await ctx.db
-    .insert(credentials)
+    .insert(vaultItems)
     .values({
       tenant_id,
       connector_id: connectorId,
@@ -84,21 +84,21 @@ async function insertCredential(connectorId: string): Promise<string> {
       iv: PLACEHOLDER,
       auth_tag: PLACEHOLDER,
     })
-    .returning({ id: credentials.id });
+    .returning({ id: vaultItems.id });
   return row!.id;
 }
 
 async function softDeleteCredential(id: string): Promise<void> {
   const { eq } = await import("drizzle-orm");
   await ctx.db
-    .update(credentials)
+    .update(vaultItems)
     .set({ deleted_at: new Date() }) // allow-wall-clock: deleted_at marker, value irrelevant
-    .where(eq(credentials.id, id));
+    .where(eq(vaultItems.id, id));
 }
 
 async function hardDeleteCredential(id: string): Promise<void> {
   const { eq } = await import("drizzle-orm");
-  await ctx.db.delete(credentials).where(eq(credentials.id, id));
+  await ctx.db.delete(vaultItems).where(eq(vaultItems.id, id));
 }
 
 function succeededEvent(connectorId: string): EventEnvelope {

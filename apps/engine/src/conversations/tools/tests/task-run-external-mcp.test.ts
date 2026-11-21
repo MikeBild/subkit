@@ -11,6 +11,7 @@ import {
   type McpClientLike,
 } from "../../../mcp/client/pool.ts";
 import { seedMcpConnector } from "../../../mcp/client/test-fixtures.ts";
+import { testEnv } from "../../../test-helpers/determinism/env.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
 import { seedTenant } from "../../../test-helpers/seed.ts";
 import { freshSignals } from "../../tests/turn-signals.ts";
@@ -54,8 +55,8 @@ let actor_id: string;
 let conversation_id: string;
 let bound_id: string;
 let unbound_id: string;
-const originalDatabaseUrl = process.env.DATABASE_URL;
-const originalMasterKey = process.env.MASTER_KEY;
+const originalDatabaseUrl = testEnv.DATABASE_URL;
+const originalMasterKey = testEnv.MASTER_KEY;
 
 function marker(overrides: Partial<TaskRunMarker> = {}): TaskRunMarker {
   return {
@@ -70,11 +71,11 @@ function marker(overrides: Partial<TaskRunMarker> = {}): TaskRunMarker {
 }
 
 beforeAll(async () => {
-  process.env.MASTER_KEY = "a".repeat(64);
+  testEnv.MASTER_KEY = "a".repeat(64);
   __setMcpPoolFactoriesForTests({ makeClient: () => fakeClient });
   ctx = await createTestDb("task-run-external-mcp");
   await closeDb();
-  process.env.DATABASE_URL = ctx.url;
+  testEnv.DATABASE_URL = ctx.url;
   tenant_id = (await seedTenant(ctx.db, { slug: "t-run-mcp", display_name: "Run MCP" })).id;
   actor_id = createDeterministicUuidFactory(911)();
   const [conv] = await ctx.db
@@ -112,10 +113,10 @@ afterAll(async () => {
   __setMcpPoolFactoriesForTests(null);
   __resetMcpClientPoolForTests();
   await closeDb();
-  if (originalDatabaseUrl === undefined) delete process.env.DATABASE_URL;
-  else process.env.DATABASE_URL = originalDatabaseUrl;
-  if (originalMasterKey === undefined) delete process.env.MASTER_KEY;
-  else process.env.MASTER_KEY = originalMasterKey;
+  if (originalDatabaseUrl === undefined) delete testEnv.DATABASE_URL;
+  else testEnv.DATABASE_URL = originalDatabaseUrl;
+  if (originalMasterKey === undefined) delete testEnv.MASTER_KEY;
+  else testEnv.MASTER_KEY = originalMasterKey;
   await ctx.cleanup();
 }, 60_000);
 
@@ -202,7 +203,6 @@ describe("policy and web search for a task run", () => {
       category: "tenant_write" as const,
       input: {},
       overrides: {},
-      permission_mode: "auto" as const,
       connector_trust: true,
     };
     expect(decideToolMode(base)).toEqual({ mode: "no_confirm", rule: "connector_trust" });
@@ -212,7 +212,7 @@ describe("policy and web search for a task run", () => {
       category: "draft_write" as const,
       input: {},
       overrides: { save_workflow_draft: "no_confirm" as const },
-      permission_mode: null,
+      ask_before_writing: true,
     };
     expect(decideToolMode(save).mode).toBe("no_confirm");
     expect(decideToolMode({ ...save, task_run: true }).mode).toBe("confirm_before_execution");

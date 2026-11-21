@@ -48,6 +48,10 @@ export interface ScheduleRow {
 
 export type ScheduleCreator = Pick<ResolvedPrincipal, "kind" | "id" | "tenant_id">;
 
+function creatorUserId(creator: ScheduleCreator): string | null {
+  return creator.kind === "user" ? creator.id : null;
+}
+
 interface CreateScheduleInput {
   tenant_id: string;
   workflow_id: string;
@@ -210,6 +214,7 @@ export async function createScheduleLocked(
         }),
         input: scheduleInput as never,
         input_error: null,
+        created_by: input.creator ? creatorUserId(input.creator) : null,
         updated_at: new Date(),
       })
       .where(
@@ -233,6 +238,7 @@ export async function createScheduleLocked(
       }),
       input: scheduleInput as never,
       input_error: null,
+      created_by: input.creator ? creatorUserId(input.creator) : null,
     })
     .returning();
   await scheduleChanged(db, rows[0] as ScheduleRow | undefined);
@@ -285,6 +291,7 @@ interface UpdateScheduleInput {
   execution_mode?: "dev" | "prod";
   paused?: boolean;
   input?: unknown;
+  created_by?: string | null;
 }
 
 export async function updateSchedule(
@@ -336,6 +343,7 @@ async function updateScheduleLocked(
     if (existing.paused && !patch.paused) set.failures_reset_at = new Date();
   }
   if (patch.input !== undefined) set.input = patch.input;
+  if (patch.created_by !== undefined) set.created_by = patch.created_by;
   const rows = await db
     .update(workflowsSchedules)
     .set(set)
@@ -370,6 +378,10 @@ type BindScheduleOutcome =
   | { status: "created"; row: ScheduleRow }
   | { status: "updated"; row: ScheduleRow }
   | { status: "noop"; row: ScheduleRow };
+
+function personOf(input: { actor_id: string | null; actor_type?: AuditActorType }): string | null {
+  return input.actor_type === "user" ? input.actor_id : null;
+}
 
 export async function bindFromWorkflow(
   db: Executor,
@@ -428,6 +440,7 @@ export async function bindFromWorkflow(
         timezone: tz,
         execution_mode: executionMode,
         input: inputPayload as never,
+        created_by: personOf(input),
         updated_at: new Date(),
       })
       .where(
@@ -468,6 +481,7 @@ export async function bindFromWorkflow(
       paused: false,
       execution_mode: executionMode,
       input: inputPayload as never,
+      created_by: personOf(input),
     })
     .returning();
   const row = inserted[0] as ScheduleRow;

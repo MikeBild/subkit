@@ -65,7 +65,7 @@ async function newestCredentialRenewal(
     .where(
       and(
         eq(auditLog.tenant_id, tenant_id),
-        inArray(auditLog.action, [AuditAction.CREDENTIAL_CREATED, AuditAction.CREDENTIAL_UPDATED]),
+        inArray(auditLog.action, [AuditAction.VAULT_ITEM_CREATED, AuditAction.VAULT_ITEM_UPDATED]),
         eq(auditLog.result, "success"),
         sql`${auditLog.metadata}->>'connector_id' = ${connector_id}`,
       ),

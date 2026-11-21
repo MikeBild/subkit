@@ -5,10 +5,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { _resetConfigForTests, loadConfig } from "../../config/loader.ts";
+import { createDbFromUrl } from "../../db/client.ts";
 import { DOCS_IMAGES, type EmbeddedDocsImage } from "../docs-images-embedded.ts";
 import type { AppEnv } from "../openapi.ts";
 import { createApp } from "../server.ts";
 import { registerDocsImageRoutes } from "./docs-images.ts";
+
+const offlineDb = createDbFromUrl("postgres://localhost/offline").db;
 
 const FILE = "first-run-result.en.webp";
 
@@ -126,7 +129,7 @@ describe("GET /docs-images/{file}", () => {
   });
 
   test("the full engine answers an anonymous caller and keeps /docs on Scalar", async () => {
-    const engine = createApp({ rateLimit: { max: 10_000, windowMs: 60_000 } });
+    const engine = createApp({ db: offlineDb, rateLimit: { max: 10_000, windowMs: 60_000 } });
     const missing = await engine.request("http://127.0.0.1/docs-images/missing.en.webp");
     expect(missing.status).toBe(404);
     expect(await missing.text()).toBe("Not found: /docs-images/missing.en.webp\n");
@@ -138,7 +141,7 @@ describe("GET /docs-images/{file}", () => {
   test("the full engine serves an embedded screenshot with its image headers", async () => {
     const [file, image] = Object.entries(DOCS_IMAGES)[0] ?? [];
     if (!file || !image) throw new Error("no embedded docs image");
-    const engine = createApp({ rateLimit: { max: 10_000, windowMs: 60_000 } });
+    const engine = createApp({ db: offlineDb, rateLimit: { max: 10_000, windowMs: 60_000 } });
     const res = await engine.request(
       `http://127.0.0.1/docs-images/${file}?v=${image.sha256.slice(0, 12)}`,
     );
@@ -154,7 +157,7 @@ describe("GET /docs-images/{file}", () => {
   });
 
   test("the OpenAPI document lists the route as a WebP binary", async () => {
-    const engine = createApp({ rateLimit: { max: 10_000, windowMs: 60_000 } });
+    const engine = createApp({ db: offlineDb, rateLimit: { max: 10_000, windowMs: 60_000 } });
     const spec = (await (await engine.request("http://127.0.0.1/openapi.json")).json()) as {
       paths: Record<string, { get?: { tags?: string[]; responses: Record<string, unknown> } }>;
     };

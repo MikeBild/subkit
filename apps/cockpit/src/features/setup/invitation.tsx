@@ -1,6 +1,6 @@
 import { CopyField } from "@/components/cockpit/patterns";
+import { inviteLink } from "@/features/admin/model";
 import { useI18n } from "@/lib/i18n-context";
-import { inviteLink } from "@/lib/invite-link";
 import type { Invitation } from "./use-setup";
 
 export function PreparedInvitation({

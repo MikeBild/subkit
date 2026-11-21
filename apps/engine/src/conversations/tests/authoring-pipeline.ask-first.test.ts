@@ -7,7 +7,7 @@ import { connectors, knowledgeChunks, tenants } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { createKnowledgeSource } from "../../knowledge/service.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
-import { listLatestShapes } from "../../schema-versions/service.ts";
+import { listLatestShapes } from "../../schema-versions/index.ts";
 import { withSelfHostedDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { runAuthoringPipeline } from "../authoring-pipeline.ts";
 import { _withConnectorPreflightForTests, preflightConnector } from "../authoring-preflight.ts";
@@ -65,7 +65,6 @@ describe("runAuthoringPipeline — ask-first: placeholder destinations are refus
         kind: "request",
         method: "POST",
         url: "https://api.acme.com/send",
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: the parameterized recipient is the correct design under test
         body: { to: "${input.recipient}", subject: "Droplets" },
       },
     ],

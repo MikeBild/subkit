@@ -1,5 +1,5 @@
 import pg from "pg";
-import { log } from "../../logging/logger.ts";
+import { log } from "../../logging/index.ts";
 import { scrubUrl } from "../egress.ts";
 import { postgresPoolConfiguration } from "../postgres-egress.ts";
 import {

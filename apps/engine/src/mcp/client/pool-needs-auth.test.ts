@@ -8,6 +8,7 @@ import { _resetConfigForTests, loadConfig, setConfigKey } from "../../config/loa
 import { upsertCredential } from "../../credentials/service.ts";
 import { closeDb } from "../../db/client.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   __resetMcpClientPoolForTests,
@@ -51,14 +52,14 @@ function makeFakeClient(slug: string): McpClientLike {
 let ctx: TestDb;
 let tenantId: string;
 
-const _origDatabaseUrl = process.env.DATABASE_URL;
+const _origDatabaseUrl = testEnv.DATABASE_URL;
 
 beforeAll(async () => {
   __setMcpPoolFactoriesForTests({ makeClient: (row) => makeFakeClient(row.slug) });
   ctx = await createTestDb("mcp-pool-needs-auth");
 
   await closeDb();
-  process.env.DATABASE_URL = ctx.url;
+  testEnv.DATABASE_URL = ctx.url;
 
   const cfgDir = mkdtempSync(join(tmpdir(), "sk-cfg-pool-needs-auth-"));
   _resetConfigForTests();
@@ -79,9 +80,9 @@ afterAll(async () => {
 
   await closeDb();
   if (_origDatabaseUrl === undefined) {
-    delete process.env.DATABASE_URL;
+    delete testEnv.DATABASE_URL;
   } else {
-    process.env.DATABASE_URL = _origDatabaseUrl;
+    testEnv.DATABASE_URL = _origDatabaseUrl;
   }
 
   await ctx.cleanup();

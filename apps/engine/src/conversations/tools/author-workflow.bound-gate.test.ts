@@ -51,7 +51,6 @@ function ctxFor(draft: DraftDocument): ToolContext {
     actor_id: "00000000-0000-4000-8000-0000000000b3",
     connector_id: null,
     workflow_id: WORKFLOW_ID,
-    permission_mode: "auto",
     // biome-ignore lint/suspicious/noExplicitAny: a refused call must never reach these
     engineClient: forbidden as any,
     getDraft: () => draft,

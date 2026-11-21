@@ -1,7 +1,7 @@
-import type { Tone } from "@ui/components/proto/Pill";
-import { IconTile as UiIconTile } from "@ui/components/proto/visual";
+import { IconTile as UiIconTile } from "@ui/atoms/icon-tile";
+import type { Tone } from "@ui/atoms/pill";
+import { cn } from "@ui/lib/utils";
 import type { ReactNode } from "react";
-import { cn } from "@/lib/utils";
 
 export type IconTileSize = "sm" | "md" | "lg";
 

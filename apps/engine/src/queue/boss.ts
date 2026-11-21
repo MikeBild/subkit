@@ -1,7 +1,7 @@
 import type { Db as BossDb, ConstructorOptions, QueueResult } from "pg-boss";
 import { PgBoss } from "pg-boss";
 import { databasePoolOptions } from "../db/connection-options.ts";
-import { errorFields, logger } from "../logging/logger.ts";
+import { errorFields, logger } from "../logging/index.ts";
 import { setDlqJobCount, setQueueDepth, setQueueLag } from "../observability/instrumentation.ts";
 import {
   diagnoseOperation,

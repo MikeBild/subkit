@@ -1,3 +1,4 @@
+import { redactKnownValues } from "@shared/redaction.ts";
 import { persistCircuitState } from "../../../connectors/circuit-breaker.ts";
 import { serializeXmlBody } from "../../../connectors/drivers/http.ts";
 import { lookupDriver, requestDriverKind } from "../../../connectors/drivers/port.ts";
@@ -9,7 +10,7 @@ import {
   resolvePlaceholdersTypePreserving,
   resolveStringPlaceholders,
 } from "../../../llm/substitution/resolver.ts";
-import { logger } from "../../../logging/logger.ts";
+import { logger } from "../../../logging/index.ts";
 import { getMetrics, METRIC_NAMES } from "../../../observability/metrics.ts";
 import { authorityConnectorDigest } from "../../../workflows/authority-configuration.ts";
 import { outboxSourceFacts } from "../../../workflows/outbox-delivery-boundary.ts";
@@ -36,7 +37,6 @@ import {
 } from "./drivers/context.ts";
 import { DRIVERS } from "./drivers/registry.ts";
 import { RequestError } from "./errors.ts";
-import { redactOwnCredentials } from "./own-credentials.ts";
 import { rateLimitDeadline } from "./rate-limit.ts";
 import { isDocumentedReadOperation } from "./read-operations.ts";
 import { requestMaxAttempts } from "./retry.ts";
@@ -55,7 +55,7 @@ export const REQUEST_TIMEOUT_DEFAULT_MS = 60 * 60_000;
 export async function runRequestStep(p: RunRequestStepParams): Promise<StepResult> {
   const dispatchedEffects: Array<"read" | "write"> = [];
   const ownCredentials: string[] = [];
-  let result = redactOwnCredentials(
+  let result = redactKnownValues(
     await dispatchRequestStep(
       p,
       (effect) => {
@@ -225,7 +225,7 @@ async function resolveRequestParts(
     ...(headersRes?.unresolved ?? []),
     ...(queryRes?.unresolved ?? []),
     ...(bodyRes?.unresolved ?? []),
-  ].filter((u) => /^\$\{\s*cred\./.test(u.token));
+  ].filter((u) => /^\$\{\s*(?:cred|secret)\./.test(u.token));
   if (credentialUnresolved.length > 0) {
     return {
       result: failedStep(
@@ -486,6 +486,14 @@ async function dispatchRequestStep(
       ownConnector && ownConnector.environment === p.ctx.execution_mode
         ? {
             ...resolver,
+            vault: {
+              user_id: p.ctx.principal?.kind === "user" ? p.ctx.principal.id : null,
+              execution_id: p.ctx.execution_id,
+              step_id: p.step.id,
+              onSecret: (value: string) => {
+                ownCredentials.push(value);
+              },
+            },
             own_connector: {
               id: ownConnector.id,
               onSecret: (value: string) => {

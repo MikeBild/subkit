@@ -10,7 +10,7 @@ const step = (code: string, message: string) => ({
 
 describe("a run that ran out of allowance", () => {
   test("the monthly cap is its own class, not a driver error", () => {
-    expect(classifyFailure(step("llm_quota_exhausted", "llm quota exhausted"))).toBe(
+    expect(classifyFailure(step("llm_spend_limit_reached", "llm quota exhausted"))).toBe(
       "budget_exhausted",
     );
   });
@@ -22,7 +22,7 @@ describe("a run that ran out of allowance", () => {
   });
 
   test("is not mistaken for a timeout because its message says 'exceeded'", () => {
-    expect(classifyFailure(step("llm_quota_exhausted", "monthly budget exceeded"))).toBe(
+    expect(classifyFailure(step("llm_spend_limit_reached", "monthly budget exceeded"))).toBe(
       "budget_exhausted",
     );
   });

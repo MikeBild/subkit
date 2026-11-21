@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { bytes, MISSING, stringValue } from "@/components/cockpit/table-columns";
+import { MISSING, stringValue } from "@/components/cockpit/table-columns";
 
 describe("a missing number is never zero", () => {
   test("nothing at all reads as a missing value", () => {
@@ -19,24 +19,5 @@ describe("a missing number is never zero", () => {
   test("a measured zero stays a zero", () => {
     expect(stringValue(0)).toBe("0");
     expect(stringValue(false)).toBe("false");
-  });
-});
-
-describe("byte counts separate unmeasured from empty", () => {
-  test("an unmeasured size reads as a missing value", () => {
-    expect(bytes(null)).toBe(MISSING);
-    expect(bytes(undefined)).toBe(MISSING);
-    expect(bytes("1840")).toBe(MISSING);
-    expect(bytes(Number.NaN)).toBe(MISSING);
-  });
-
-  test("a measured empty file reads as zero bytes", () => {
-    expect(bytes(0)).toBe("0 B");
-  });
-
-  test("scales to the unit an operator can read", () => {
-    expect(bytes(1023)).toBe("1023 B");
-    expect(bytes(18_400)).toBe("18.0 KB");
-    expect(bytes(5 * 1024 * 1024)).toBe("5.0 MB");
   });
 });

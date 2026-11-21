@@ -1,3 +1,4 @@
+import { Skeleton } from "@ui/atoms/skeleton";
 import type { ComponentProps, ReactNode } from "react";
 import { technicalFactsPlace } from "@/app/side-panel-model";
 import { useI18n } from "@/lib/i18n-context";
@@ -7,7 +8,6 @@ import { Page } from "./page";
 import { PageHeader } from "./page-header";
 import { type PageTab, PageTabs } from "./page-tabs";
 import { SideDetails, SideSection, useSideDetailsAvailable } from "./side-details";
-import { Skeleton } from "./skeleton";
 import { StatusStrip } from "./status-strip";
 import { TechnicalDetails } from "./tab-body";
 

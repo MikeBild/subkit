@@ -6,7 +6,7 @@ interface RuntimeContext {
   actor_email?: string;
   actor_role?: string;
   surface?: string;
-  permission_mode?: "auto" | "ask" | "plan" | "yolo";
+  ask_before_writing?: boolean;
 }
 
 export function renderRuntimeContextBlock(ctx: RuntimeContext): string | null {
@@ -16,7 +16,7 @@ export function renderRuntimeContextBlock(ctx: RuntimeContext): string | null {
   if (ctx.actor_email) lines.push(`- actor_email: ${ctx.actor_email}`);
   if (ctx.actor_role) lines.push(`- actor_role: ${ctx.actor_role}`);
   if (ctx.surface) lines.push(`- surface: ${ctx.surface}`);
-  if (ctx.permission_mode) lines.push(`- permission_mode: ${ctx.permission_mode}`);
+  if (ctx.ask_before_writing) lines.push("- ask_before_writing: true");
   if (lines.length === 0) return null;
   return [
     "RUNTIME CONTEXT (real values for this turn — quote verbatim, never paraphrase):",

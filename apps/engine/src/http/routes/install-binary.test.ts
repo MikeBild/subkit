@@ -4,6 +4,7 @@ import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { OpenAPIHono } from "@hono/zod-openapi";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import type { AppEnv } from "../openapi.ts";
 import { _internal, registerInstallBinaryRoute } from "./install-binary.ts";
 
@@ -40,15 +41,15 @@ let originalEnvDir: string | undefined;
 let activeDir: string | null = null;
 
 beforeEach(() => {
-  originalEnvDir = process.env.SUBKIT_BINARIES_DIR;
+  originalEnvDir = testEnv.SUBKIT_BINARIES_DIR;
   _internal.clearCache();
 });
 
 afterEach(async () => {
   if (originalEnvDir === undefined) {
-    delete process.env.SUBKIT_BINARIES_DIR;
+    delete testEnv.SUBKIT_BINARIES_DIR;
   } else {
-    process.env.SUBKIT_BINARIES_DIR = originalEnvDir;
+    testEnv.SUBKIT_BINARIES_DIR = originalEnvDir;
   }
   if (activeDir) {
     await fs.rm(activeDir, { recursive: true, force: true });
@@ -108,7 +109,7 @@ describe("GET /install/{asset} — bundled image", () => {
       const bytes = new TextEncoder().encode("license fixture");
       const fixture = await mkBundle({ [name]: bytes });
       activeDir = fixture.dir;
-      process.env.SUBKIT_BINARIES_DIR = fixture.dir;
+      testEnv.SUBKIT_BINARIES_DIR = fixture.dir;
       const response = await buildApp().request(`/install/${name}`);
       expect(response.status).toBe(200);
       expect(await response.text()).toBe("license fixture");
@@ -125,7 +126,7 @@ describe("GET /install/{asset} — bundled image", () => {
     const bytes = new Uint8Array([0x7f, 0x45, 0x4c, 0x46, 0x02, 0x01, 0x01]);
     const fixture = await mkBundle({ sk_linux_x64: bytes });
     activeDir = fixture.dir;
-    process.env.SUBKIT_BINARIES_DIR = fixture.dir;
+    testEnv.SUBKIT_BINARIES_DIR = fixture.dir;
     _internal.clearCache();
 
     const res = await buildApp().request("/install/sk-linux-x64");
@@ -146,7 +147,7 @@ describe("GET /install/{asset} — bundled image", () => {
     const bytes = new Uint8Array([0xde, 0xad, 0xbe, 0xef]);
     const fixture = await mkBundle({ sk_linux_x64: bytes });
     activeDir = fixture.dir;
-    process.env.SUBKIT_BINARIES_DIR = fixture.dir;
+    testEnv.SUBKIT_BINARIES_DIR = fixture.dir;
     _internal.clearCache();
 
     const res = await buildApp().request("/install/sk-linux-x64", { method: "HEAD" });
@@ -161,7 +162,7 @@ describe("GET /install/{asset} — bundled image", () => {
     const bytes = new TextEncoder().encode("MZ-header-stub");
     const fixture = await mkBundle({ "sk_windows_x64.exe": bytes });
     activeDir = fixture.dir;
-    process.env.SUBKIT_BINARIES_DIR = fixture.dir;
+    testEnv.SUBKIT_BINARIES_DIR = fixture.dir;
     _internal.clearCache();
 
     const res = await buildApp().request("/install/sk-windows-x64");
@@ -176,7 +177,7 @@ describe("GET /install/{asset} — 404 paths (pointer body, install-script fallb
   test("malformed asset slug → 404 with pointer body", async () => {
     const fixture = await mkBundle({ sk_linux_x64: new Uint8Array([1, 2, 3]) });
     activeDir = fixture.dir;
-    process.env.SUBKIT_BINARIES_DIR = fixture.dir;
+    testEnv.SUBKIT_BINARIES_DIR = fixture.dir;
     _internal.clearCache();
 
     const res = await buildApp().request("/install/sk_linux_x64");
@@ -187,7 +188,7 @@ describe("GET /install/{asset} — 404 paths (pointer body, install-script fallb
   test("unbuilt platform combo (windows-arm64) → 404", async () => {
     const fixture = await mkBundle({ sk_linux_x64: new Uint8Array([1, 2, 3]) });
     activeDir = fixture.dir;
-    process.env.SUBKIT_BINARIES_DIR = fixture.dir;
+    testEnv.SUBKIT_BINARIES_DIR = fixture.dir;
     _internal.clearCache();
 
     const res = await buildApp().request("/install/sk-windows-arm64");
@@ -197,7 +198,7 @@ describe("GET /install/{asset} — 404 paths (pointer body, install-script fallb
   test("bundle absent (slim image) → 404 for every asset URL", async () => {
     const dir = await fs.mkdtemp(path.join(tmpdir(), "subkit-empty-bundle-"));
     activeDir = dir;
-    process.env.SUBKIT_BINARIES_DIR = dir;
+    testEnv.SUBKIT_BINARIES_DIR = dir;
     _internal.clearCache();
 
     const app = buildApp();
@@ -213,7 +214,7 @@ describe("GET /install/{asset} — 404 paths (pointer body, install-script fallb
     await fs.writeFile(path.join(dir, "sk_linux_x64"), bytes);
     const sha = createHash("sha256").update(bytes).digest("hex");
     await fs.writeFile(path.join(dir, "SHA256SUMS"), `${sha}  sk_linux_x64\n`);
-    process.env.SUBKIT_BINARIES_DIR = dir;
+    testEnv.SUBKIT_BINARIES_DIR = dir;
     _internal.clearCache();
 
     const res = await buildApp().request("/install/sk-darwin-arm64");
@@ -226,7 +227,7 @@ describe("GET /install/sha256sums", () => {
     const bytes = new Uint8Array([1, 2, 3]);
     const fixture = await mkBundle({ sk_linux_x64: bytes });
     activeDir = fixture.dir;
-    process.env.SUBKIT_BINARIES_DIR = fixture.dir;
+    testEnv.SUBKIT_BINARIES_DIR = fixture.dir;
     _internal.clearCache();
 
     const res = await buildApp().request("/install/sha256sums");
@@ -241,7 +242,7 @@ describe("GET /install/sha256sums", () => {
   test("returns 404 with pointer body when the bundle is absent", async () => {
     const dir = await fs.mkdtemp(path.join(tmpdir(), "subkit-empty-sums-"));
     activeDir = dir;
-    process.env.SUBKIT_BINARIES_DIR = dir;
+    testEnv.SUBKIT_BINARIES_DIR = dir;
     _internal.clearCache();
 
     const res = await buildApp().request("/install/sha256sums");
@@ -254,7 +255,7 @@ describe("manifest cache", () => {
   test("re-uses parsed SHA256SUMS across requests for the same dir", async () => {
     const fixture = await mkBundle({ sk_linux_x64: new Uint8Array([1, 2, 3]) });
     activeDir = fixture.dir;
-    process.env.SUBKIT_BINARIES_DIR = fixture.dir;
+    testEnv.SUBKIT_BINARIES_DIR = fixture.dir;
     _internal.clearCache();
 
     const first = await _internal.loadManifest(fixture.dir);
@@ -265,7 +266,7 @@ describe("manifest cache", () => {
   test("clearCache forces a fresh parse", async () => {
     const fixture = await mkBundle({ sk_linux_x64: new Uint8Array([1, 2, 3]) });
     activeDir = fixture.dir;
-    process.env.SUBKIT_BINARIES_DIR = fixture.dir;
+    testEnv.SUBKIT_BINARIES_DIR = fixture.dir;
     _internal.clearCache();
 
     const first = await _internal.loadManifest(fixture.dir);
@@ -277,7 +278,7 @@ describe("manifest cache", () => {
   test("absence is NOT cached — a bundle staged after a miss is served without restart", async () => {
     const dir = await fs.mkdtemp(path.join(tmpdir(), "subkit-late-stage-"));
     activeDir = dir;
-    process.env.SUBKIT_BINARIES_DIR = dir;
+    testEnv.SUBKIT_BINARIES_DIR = dir;
     _internal.clearCache();
     const app = buildApp();
 
@@ -299,7 +300,7 @@ describe("GET /install/sha256sums.sig", () => {
   test("serves the release signature beside the bundled sums, and 404 without it", async () => {
     const bundle = await mkBundle({ sk_darwin_arm64: new Uint8Array([1, 2, 3]) });
     activeDir = bundle.dir;
-    process.env.SUBKIT_BINARIES_DIR = bundle.dir;
+    testEnv.SUBKIT_BINARIES_DIR = bundle.dir;
     const missing = await buildApp().request("/install/sha256sums.sig");
     expect(missing.status).toBe(404);
     const signature = new Uint8Array(64).fill(7);

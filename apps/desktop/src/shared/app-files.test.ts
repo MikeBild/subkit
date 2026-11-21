@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
-import { contentTypeFor, isInside, resolveAppFile } from "./app-files.ts";
+import { belowRoot, contentTypeFor, resolveAppFile } from "./app-files.ts";
 
 const root = "/opt/SubKit/resources/app.asar/dist/connect";
 const get = (url: string) => resolveAppFile("GET", url, root);
@@ -74,7 +74,7 @@ describe("resolveAppFile", () => {
       "subkit-app://shell/./index.html",
     ]) {
       const file = get(url);
-      expect(file.ok && isInside(root, file.path)).toBe(true);
+      expect(file.ok && belowRoot(root, file.path)).toBe(true);
     }
   });
 
@@ -106,17 +106,17 @@ describe("resolveAppFile", () => {
   });
 });
 
-describe("isInside", () => {
+describe("belowRoot", () => {
   test("accepts only paths below the root", () => {
-    expect(isInside(root, join(root, "index.html"))).toBe(true);
-    expect(isInside(root, join(root, "fonts", "a.woff2"))).toBe(true);
-    expect(isInside(`${root}/`, join(root, "index.html"))).toBe(true);
-    expect(isInside(root, root)).toBe(false);
-    expect(isInside(root, join(root, ".."))).toBe(false);
-    expect(isInside(root, join(root, "..", "main.cjs"))).toBe(false);
-    expect(isInside(root, `${root}-other/index.html`)).toBe(false);
-    expect(isInside(root, "/etc/passwd")).toBe(false);
-    expect(isInside(root, join(root, "..x", "index.html"))).toBe(true);
+    expect(belowRoot(root, join(root, "index.html"))).toBe(true);
+    expect(belowRoot(root, join(root, "fonts", "a.woff2"))).toBe(true);
+    expect(belowRoot(`${root}/`, join(root, "index.html"))).toBe(true);
+    expect(belowRoot(root, root)).toBe(false);
+    expect(belowRoot(root, join(root, ".."))).toBe(false);
+    expect(belowRoot(root, join(root, "..", "main.cjs"))).toBe(false);
+    expect(belowRoot(root, `${root}-other/index.html`)).toBe(false);
+    expect(belowRoot(root, "/etc/passwd")).toBe(false);
+    expect(belowRoot(root, join(root, "..x", "index.html"))).toBe(true);
   });
 });
 

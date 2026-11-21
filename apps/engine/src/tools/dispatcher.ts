@@ -12,8 +12,9 @@ import {
 import type { ToolContext, ToolPrecheck, ToolResult } from "../conversations/tools/index.ts";
 import type { Db } from "../db/client.ts";
 import { withTenantWork } from "../execution/tenant-work.ts";
+import { askBeforeWritingFor } from "../identity/index.ts";
 import { assertTenantActive } from "../identity/tenant-status.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { denialDetails, denialHint } from "../rbac/denial.ts";
 import {
   type ConnectorAccessLevel,
@@ -42,7 +43,7 @@ import {
 import type { ConversationProviderEntry } from "./providers/conversation.ts";
 import type { StaticProviderEntry } from "./providers/static.ts";
 import type { ToolRegistry } from "./registry.ts";
-import type { PermissionMode, ToolEnvelope, ToolInvocation, ToolSurface } from "./types.ts";
+import type { ToolEnvelope, ToolInvocation, ToolSurface } from "./types.ts";
 
 export interface DispatchDeps {
   readonly registry: ToolRegistry;
@@ -50,7 +51,6 @@ export interface DispatchDeps {
   readonly principal: ResolvedPrincipal;
   readonly conversationCtx?: ToolContext;
   readonly buildMcpStubCtx?: (toolName: string) => ToolContext;
-  readonly permissionMode?: PermissionMode | null;
   readonly loadedSkills?: ReadonlySet<string>;
   readonly mcpMode?: "product" | "authoring" | "admin";
   readonly readOnly?: boolean;
@@ -421,15 +421,18 @@ async function dispatchTenantTool(
             )
           : null;
       if (preparedGate) execArgs = preparedGate.args;
+      const askBeforeWriting = await askBeforeWritingFor(deps.db, {
+        tenant_id: deps.principal.tenant_id,
+        principal: deps.principal,
+        unattended: false,
+      });
       const gate = await runConfirmGate({
         tool: entry.descriptor.name,
         category: entry.descriptor.category,
         surface: invocation.surface,
         args: execArgs,
         ...(policyMeta !== undefined ? { meta: policyMeta } : {}),
-        ...(deps.permissionMode !== undefined && deps.permissionMode !== null
-          ? { permission_mode: deps.permissionMode }
-          : {}),
+        ...(askBeforeWriting ? { ask_before_writing: true } : {}),
         db: deps.db,
         tenant_id: deps.principal.tenant_id,
         principal: deps.principal,

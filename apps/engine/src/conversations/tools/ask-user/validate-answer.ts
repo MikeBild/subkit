@@ -1,3 +1,4 @@
+import { type SafeRegex, safeRegex, UnsafeRegexError } from "../../../utils/safe-regex.ts";
 import { APPROVAL_WITH_CHANGE_MESSAGE, approvalChange } from "./confirm-change.ts";
 import { type FormFieldDefinition, validateFormFieldValue } from "./form.ts";
 import { interpretConfirmDecision } from "./interpret-confirm.ts";
@@ -76,10 +77,12 @@ export function validateElicitationAnswer(
             ? outputObj.value
             : null;
       if (answer === null) return { ok: true };
-      let re: RegExp;
+      let re: SafeRegex;
       try {
-        re = new RegExp(regex);
-      } catch {
+        re = safeRegex(regex);
+      } catch (error) {
+        if (error instanceof UnsafeRegexError && error.reason !== "invalid")
+          return { ok: false, field_errors: [{ name: "text", message: error.message }] };
         return { ok: true };
       }
       return re.test(answer)

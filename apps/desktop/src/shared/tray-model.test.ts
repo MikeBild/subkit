@@ -18,6 +18,7 @@ const base: TrayModel = {
   update: null,
   quickCapture: "Alt+Space",
   launchAtLogin: { checked: true, enabled: true },
+  liveView: false,
 };
 
 const at = (hour: number, minute: number) => new Date(2026, 10, 21, hour, minute, 0, 0);
@@ -136,6 +137,19 @@ describe("tray menu", () => {
     const menu = trayMenu({ ...base, connection: "signed-out", quickCapture: null });
     expect(actions(menu)).not.toContain("quickCapture");
     expect(actions(menu)).not.toContain("update");
+  });
+
+  test("a running live session offers its live view right below “Needs you”", () => {
+    const items = trayMenu({ ...base, liveView: true });
+    expect(items[2]).toEqual({
+      kind: "item",
+      action: "liveView",
+      label: "Live-Ansicht öffnen",
+      enabled: true,
+    });
+    expect(trayMenu(base).some((item) => item.kind === "item" && item.action === "liveView")).toBe(
+      false,
+    );
   });
 
   test("quick capture is disabled while offline", () => {

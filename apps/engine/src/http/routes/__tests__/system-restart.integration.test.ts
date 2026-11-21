@@ -20,6 +20,7 @@ import {
   registerRestartTrigger,
 } from "../../../runtime-config/restart.ts";
 import { initializeRuntimeConfig } from "../../../runtime-config/service.ts";
+import { testEnv } from "../../../test-helpers/determinism/env.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts";
 
 const PREVIOUS_BOOT_ID = "00000000-0000-4000-8000-0000000b0071";
@@ -30,9 +31,9 @@ let configDir: string;
 let previousMasterKey: string | undefined;
 
 beforeAll(async () => {
-  previousMasterKey = process.env.MASTER_KEY;
-  process.env.MASTER_KEY = "33".repeat(32);
-  process.env.NODE_ENV = "test";
+  previousMasterKey = testEnv.MASTER_KEY;
+  testEnv.MASTER_KEY = "33".repeat(32);
+  testEnv.NODE_ENV = "test";
   configDir = mkdtempSync(join(tmpdir(), "sk-system-restart-"));
   _resetConfigForTests();
   await loadConfig({
@@ -50,8 +51,8 @@ afterAll(async () => {
   await server.cleanup();
   _resetConfigForTests();
   rmSync(configDir, { recursive: true, force: true });
-  if (previousMasterKey === undefined) delete process.env.MASTER_KEY;
-  else process.env.MASTER_KEY = previousMasterKey;
+  if (previousMasterKey === undefined) delete testEnv.MASTER_KEY;
+  else testEnv.MASTER_KEY = previousMasterKey;
 });
 
 function call(path: string, init: RequestInit = {}, key = server.apiKey): Promise<Response> {

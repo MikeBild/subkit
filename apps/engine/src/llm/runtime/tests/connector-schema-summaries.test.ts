@@ -4,11 +4,12 @@ import { runDiscoveryCached } from "../../../connectors/discovery/service.ts";
 import type { DiscoveryResult } from "../../../connectors/discovery/types.ts";
 import { connectors } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
+import { testEnv } from "../../../test-helpers/determinism/env.ts";
 import { seedTenant } from "../../../test-helpers/seed.ts";
 import { formatConnectorSchemaSummaries } from "../context-assembler/formatters.ts";
 import { loadConnectorSchemaSummaries } from "../context-assembler/loaders.ts";
 
-const skip = process.env.REQUIRES_PG === "0";
+const skip = testEnv.REQUIRES_PG === "0";
 
 let ctx: TestDb;
 let tenantA: string;

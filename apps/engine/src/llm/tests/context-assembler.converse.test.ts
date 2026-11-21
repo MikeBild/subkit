@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { createKnowledgeSource } from "../../knowledge/service.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { createWorkflow } from "../../workflows/service.ts";
 import { assembleEnhancedPrompt } from "../runtime/context-assembler.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "./setup.ts";
 
-const skip = process.env.REQUIRES_PG === "0";
+const skip = testEnv.REQUIRES_PG === "0";
 
 let ctx: LlmTestCtx;
 

@@ -6,7 +6,7 @@ import {
   resolveProviderIdentity,
 } from "../auth/identity-link.ts";
 import { getConfig, setConfigKey } from "../config/loader.ts";
-import { encryptSecret } from "../crypto/aes-gcm.ts";
+import { encryptSecret } from "../crypto/index.ts";
 import {
   chatIdentities,
   chatWorkspaces,

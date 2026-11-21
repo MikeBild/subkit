@@ -48,10 +48,7 @@ export const toolScanner: Scanner = {
   scan(text: string): Violation[] {
     const out: Violation[] = [];
     const manifest = getToolManifest();
-    BACKTICKED_RE.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    // biome-ignore lint/suspicious/noAssignInExpressions: standard regex exec loop.
-    while ((m = BACKTICKED_RE.exec(text)) !== null) {
+    for (const m of text.matchAll(BACKTICKED_RE)) {
       const token = m[1]!;
       if (ALLOW_LIST.has(token)) continue;
       if (!looksLikeToolName(token)) continue;

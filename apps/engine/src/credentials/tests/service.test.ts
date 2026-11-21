@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { auditLog, connectors, credentials, events, tenants } from "../../db/schema/index.ts";
+import { auditLog, connectors, events, tenants, vaultItems } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import {
@@ -58,7 +58,7 @@ describe("credentials/service", () => {
     );
     expect(row.id).toBeDefined();
 
-    const dbRows = await ctx.db.select().from(credentials).where(eq(credentials.id, row.id));
+    const dbRows = await ctx.db.select().from(vaultItems).where(eq(vaultItems.id, row.id));
     const dbRow = dbRows[0]!;
     const hex = Buffer.from(dbRow.ciphertext).toString("hex");
     const plainHex = Buffer.from("sk-secret-123", "utf8").toString("hex");
@@ -76,7 +76,7 @@ describe("credentials/service", () => {
       .from(auditLog)
       .where(and(eq(auditLog.tenant_id, tenant_id), eq(auditLog.resource_id, row.id)));
     const actions = audits.map((a) => a.action);
-    expect(actions).toContain("credential.created");
+    expect(actions).toContain("vault.item.created");
   });
 
   test("rotate oauth2 tokens writes audit and new ciphertext", async () => {
@@ -122,7 +122,7 @@ describe("credentials/service", () => {
       .select()
       .from(auditLog)
       .where(and(eq(auditLog.tenant_id, tenant_id), eq(auditLog.resource_id, created.id)));
-    expect(audits.map((a) => a.action)).toContain("credential.rotated");
+    expect(audits.map((a) => a.action)).toContain("vault.item.rotated");
   });
 
   test("delete removes row and writes audit", async () => {
@@ -139,13 +139,13 @@ describe("credentials/service", () => {
       ctx.db,
     );
     await deleteCredential(tenant_id, created.id, null, ctx.db);
-    const remaining = await ctx.db.select().from(credentials).where(eq(credentials.id, created.id));
+    const remaining = await ctx.db.select().from(vaultItems).where(eq(vaultItems.id, created.id));
     expect(remaining.length).toBe(0);
     const audits = await ctx.db
       .select()
       .from(auditLog)
       .where(and(eq(auditLog.tenant_id, tenant_id), eq(auditLog.resource_id, created.id)));
-    expect(audits.map((a) => a.action)).toContain("credential.deleted");
+    expect(audits.map((a) => a.action)).toContain("vault.item.deleted");
   });
 
   test("storing and deleting a credential reach the live feed as the connector id only", async () => {

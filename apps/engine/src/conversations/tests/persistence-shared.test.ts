@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { connectors, conversations, credentials, tenants } from "../../db/schema/index.ts";
+import { connectors, conversations, tenants, vaultItems } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import {
@@ -136,12 +136,12 @@ describe("persistence/save-connector vs tool wrapper", () => {
 
     const [credA] = await ctx.db
       .select()
-      .from(credentials)
-      .where(and(eq(credentials.tenant_id, tenant_id), eq(credentials.connector_id, idA)));
+      .from(vaultItems)
+      .where(and(eq(vaultItems.tenant_id, tenant_id), eq(vaultItems.connector_id, idA)));
     const [credB] = await ctx.db
       .select()
-      .from(credentials)
-      .where(and(eq(credentials.tenant_id, tenant_id), eq(credentials.connector_id, idB)));
+      .from(vaultItems)
+      .where(and(eq(vaultItems.tenant_id, tenant_id), eq(vaultItems.connector_id, idB)));
     expect(credA?.mode).toBe("bearer");
     expect(credB?.mode).toBe("bearer");
     expect(credA?.environment).toBe(credB?.environment);

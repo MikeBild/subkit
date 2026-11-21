@@ -14,7 +14,7 @@ import {
 } from "../../credentials/service.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
 import { McpDbOAuthClientProvider } from "./oauth-provider.ts";
 import { buildMcpOAuthRedirectUri } from "./oauth-redirect.ts";

@@ -14,7 +14,8 @@ import {
 } from "ai";
 import { getConfig } from "../../config/loader.ts";
 import type { Executor } from "../../db/client.ts";
-import { logger } from "../../logging/logger.ts";
+import { envSnapshot, isEnvKey } from "../../env.ts";
+import { logger } from "../../logging/index.ts";
 import {
   type CatalogModelProvider,
   DEFAULT_MODELS,
@@ -270,7 +271,7 @@ function readEnv(name: string, tenantId?: string): string | undefined {
       return undefined;
     }
   }
-  const raw = process.env[name];
+  const raw = isEnvKey(name) ? envSnapshot()[name] : undefined;
   return raw && raw.length > 0 ? raw : undefined;
 }
 

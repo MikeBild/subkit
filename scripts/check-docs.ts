@@ -90,15 +90,18 @@ const KEY_FILE = /\bid_(?:rsa|dsa|ecdsa|ed25519)\b|\bAuthKey_[A-Z0-9]{10}\.p8\b|
 
 const KEY_TEXT_FILE = /(?<![\w.-])[\w.-]+[-_]key\.txt\b/gi;
 
-const LOCAL_ONLY = /(?<![\w.-])\.artifacts\/|\b[A-Z0-9_]*DEMO_URL\b|\bdemo:local\b/g;
+const LOCAL_ONLY = /(?<![\w.-])\.artifacts\/|\b[A-Z0-9_]*DEMO_URL\b/g;
 
 const DEVELOPER_COMMANDS = [
   "verify",
-  "verify:intake",
-  "verify:intake-live",
-  "start:local",
-  "gen:sandbox-tools",
-  "check:sandbox-tools-drift",
+  "demo",
+  "gen",
+  "compose",
+  "quality",
+  "test",
+  "db",
+  "eval",
+  "release",
 ];
 
 const DEVELOPER_COMMAND = new RegExp(

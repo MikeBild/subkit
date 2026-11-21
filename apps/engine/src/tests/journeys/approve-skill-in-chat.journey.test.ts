@@ -61,7 +61,7 @@ describe("a detected skill proposal is approved in the chat behind the confirm g
     async () => {
       const created = await journeyFetch(ctx, "/v1/conversations", {
         method: "POST",
-        body: JSON.stringify({ permission_mode: "ask", connector_id: connectorId }),
+        body: JSON.stringify({ connector_id: connectorId }),
       });
       expect(created.status).toBe(201);
       const conversationId = ((await created.json()) as { conversation: { id: string } })

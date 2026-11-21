@@ -33,7 +33,6 @@ describe("install script template", () => {
   test("probes the engine's bundled binary endpoint first", () => {
     const script = buildScript("3.4.0", "https://engine.example.com");
     expect(script).toContain("BUNDLED_ASSET_URL=");
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal shell variables in generated install script
     expect(script).toContain("/install/sk-${os}-${arch}");
     expect(script).toContain("/install/sha256sums");
     expect(script).toMatch(/curl -fsSI[^\n]*BUNDLED_ASSET_URL/);
@@ -47,12 +46,9 @@ describe("install script template", () => {
 
   test("accepts an operator-supplied mirror as the second source", () => {
     const script = buildScript("3.4.0", "https://engine.example.com");
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal shell variable in generated install script
     expect(script).toContain('MIRROR_BASE="${SK_INSTALL_BASE_URL:-}"');
     expect(script).toMatch(/elif \[ -n "\$MIRROR_BASE" \]; then/);
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal shell variables in generated install script
     expect(script).toContain("${MIRROR_BASE%/}/${ASSET}");
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal shell variable in generated install script
     expect(script).toContain("${MIRROR_BASE%/}/SHA256SUMS");
   });
 

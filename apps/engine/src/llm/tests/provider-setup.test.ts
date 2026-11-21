@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { _resetConfigForTests } from "../../config/loader.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { validateProviderSetup } from "../runtime/model-init.ts";
 
 const ENV_KEYS = [
@@ -22,16 +23,16 @@ let saved: Record<string, string | undefined>;
 beforeEach(() => {
   saved = {};
   for (const k of ENV_KEYS) {
-    saved[k] = process.env[k];
-    delete process.env[k];
+    saved[k] = testEnv[k];
+    delete testEnv[k];
   }
   _resetConfigForTests();
 });
 
 afterEach(() => {
   for (const k of ENV_KEYS) {
-    if (saved[k] === undefined) delete process.env[k];
-    else process.env[k] = saved[k];
+    if (saved[k] === undefined) delete testEnv[k];
+    else testEnv[k] = saved[k];
   }
   _resetConfigForTests();
 });
@@ -45,8 +46,8 @@ describe("validateProviderSetup", () => {
   });
 
   test("anthropic ok when ANTHROPIC_API_KEY is set", () => {
-    process.env.LLM_PROVIDER = "anthropic";
-    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+    testEnv.LLM_PROVIDER = "anthropic";
+    testEnv.ANTHROPIC_API_KEY = "sk-ant-test";
     const report = validateProviderSetup();
     expect(report.detected).toBe("anthropic");
     expect(report.ok).toBe(true);
@@ -54,7 +55,7 @@ describe("validateProviderSetup", () => {
   });
 
   test("bedrock missing AWS_REGION surfaces the missing key", () => {
-    process.env.LLM_PROVIDER = "bedrock";
+    testEnv.LLM_PROVIDER = "bedrock";
     const report = validateProviderSetup();
     expect(report.detected).toBe("bedrock");
     expect(report.ok).toBe(false);
@@ -63,31 +64,31 @@ describe("validateProviderSetup", () => {
   });
 
   test("vertex requires both PROJECT and LOCATION", () => {
-    process.env.LLM_PROVIDER = "vertex";
-    process.env.GOOGLE_VERTEX_PROJECT = "p";
+    testEnv.LLM_PROVIDER = "vertex";
+    testEnv.GOOGLE_VERTEX_PROJECT = "p";
     const report = validateProviderSetup();
     expect(report.ok).toBe(false);
     expect(report.missing).toEqual(["GOOGLE_VERTEX_LOCATION"]);
   });
 
   test("azure with API key but neither resource_name nor base_url is misconfigured", () => {
-    process.env.LLM_PROVIDER = "azure";
-    process.env.AZURE_API_KEY = "k";
+    testEnv.LLM_PROVIDER = "azure";
+    testEnv.AZURE_API_KEY = "k";
     const report = validateProviderSetup();
     expect(report.ok).toBe(false);
     expect(report.missing).toContain("AZURE_RESOURCE_NAME|AZURE_BASE_URL");
   });
 
   test("gateway ready when both AI_GATEWAY_* are set", () => {
-    process.env.AI_GATEWAY_API_KEY = "k";
-    process.env.AI_GATEWAY_MODEL = "m";
+    testEnv.AI_GATEWAY_API_KEY = "k";
+    testEnv.AI_GATEWAY_MODEL = "m";
     const report = validateProviderSetup();
     expect(report.detected).toBe("gateway");
     expect(report.ok).toBe(true);
   });
 
   test("mock provider is always reported ready", () => {
-    process.env.LLM_PROVIDER = "mock";
+    testEnv.LLM_PROVIDER = "mock";
     const report = validateProviderSetup();
     expect(report.detected).toBe("mock");
     expect(report.ok).toBe(true);

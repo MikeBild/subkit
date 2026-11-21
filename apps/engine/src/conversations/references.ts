@@ -10,7 +10,7 @@ import type { Executor } from "../db/client.ts";
 import { conversationMessages } from "../db/schema/index.ts";
 import { getKnowledgeSource } from "../knowledge/catalog.ts";
 import { getIntakeItem } from "../knowledge/intake.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { scrubString } from "../logging/scrub-secrets.ts";
 import { can } from "../rbac/evaluator.ts";
 import { getSkill } from "../skills/service.ts";

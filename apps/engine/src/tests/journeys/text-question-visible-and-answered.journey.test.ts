@@ -71,7 +71,7 @@ describe("a text question is visible and answered on purpose", () => {
   test("AC1: the turn waits on the question and the detail carries it", async () => {
     const created = await journeyFetch(ctx, "/v1/conversations", {
       method: "POST",
-      body: JSON.stringify({ permission_mode: "ask" }),
+      body: JSON.stringify({}),
     });
     expect(created.status).toBe(201);
     conversationId = ((await created.json()) as { conversation: { id: string } }).conversation.id;
@@ -164,7 +164,7 @@ describe("a text question is visible and answered on purpose", () => {
   test("AC4: a question parked from prose is shown, answered and replayed as the user's turn", async () => {
     const created = await journeyFetch(ctx, "/v1/conversations", {
       method: "POST",
-      body: JSON.stringify({ permission_mode: "auto" }),
+      body: JSON.stringify({}),
     });
     expect(created.status).toBe(201);
     const id = ((await created.json()) as { conversation: { id: string } }).conversation.id;

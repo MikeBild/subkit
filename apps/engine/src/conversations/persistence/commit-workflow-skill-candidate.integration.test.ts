@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, count, eq } from "drizzle-orm";
 import { conversations, skillCandidates, skills } from "../../db/schema/index.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import {
   withLatestPreview,
   withWorkflowInspection,
@@ -11,7 +12,7 @@ import type { ToolContext } from "../tools/index.ts";
 import type { DraftDocument } from "../types.ts";
 import { commitWorkflowAtomic } from "./commit-workflow.ts";
 
-const skip = process.env.REQUIRES_PG === "0";
+const skip = testEnv.REQUIRES_PG === "0";
 
 let ctx: ConversationTestCtx;
 
@@ -112,7 +113,6 @@ function stubToolCtx(conversationId: string, draft: DraftDocument): ToolContext 
     actor_id: ctx.user_id,
     connector_id: null,
     workflow_id: null,
-    permission_mode: null,
     // biome-ignore lint/suspicious/noExplicitAny: minimal engineClient stub
     engineClient: {} as any,
     getDraft: () => live,

@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { chatWorkspaces } from "../db/schema/index.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import type { ChatAdapter } from "./adapter.ts";
 import { markChatEventSeen } from "./dedup.ts";
 import { deliverChatReply, handleChatEvent } from "./dispatcher.ts";

@@ -11,7 +11,6 @@ describe("WelcomeBanner — size budget (H8)", () => {
         engineUrl="http://engine.long.example.com:3000"
         profileName="default"
         sessionId="abcdef0123456789-1234567890abcdef"
-        mode="auto"
         transcriptMode="chat"
         connectionState="online"
         targetKind="workflow"
@@ -22,7 +21,7 @@ describe("WelcomeBanner — size budget (H8)", () => {
       />,
     );
     try {
-      await ui.waitFor((t) => t.includes("auto"));
+      await ui.waitFor((t) => t.includes("online"));
       const text = ui.text();
       const lineCount = text.split("\n").length;
       const byteCount = Buffer.byteLength(text, "utf8");

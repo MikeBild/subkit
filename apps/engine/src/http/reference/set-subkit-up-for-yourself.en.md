@@ -1,7 +1,7 @@
 ---
 slug: set-subkit-up-for-yourself
 title: Set SubKit up for yourself
-summary: Answer six questions and decide how SubKit works for you.
+summary: Answer five questions and decide how SubKit works for you.
 section: work
 order: 13
 audience: public
@@ -9,7 +9,7 @@ audience: public
 ## Set SubKit up for yourself
 
 This chapter is for anyone who comes to the Cockpit for the first time or wants to change their defaults.
-Afterwards you have answered the step “How SubKit works for you” and know what each of the six answers sets and where you change it later.
+Afterwards you have answered the step “How SubKit works for you” and know what each of the five answers sets and where you change it later.
 
 ### What you need
 
@@ -21,26 +21,27 @@ Afterwards you have answered the step “How SubKit works for you” and know wh
 The step appears once, after your first sign-in to a workspace.
 
 1. Read the question and choose an answer. Under **Settings** › **Setup**, the line “Sets: …” says what each answer does. The recommended answer carries the addition **recommended**.
-2. Select **Continue** until all six questions are answered.
+2. Select **Continue** until all five questions are answered.
 3. Check the summary “This is what I will set up for you”. **Change** corrects a single answer.
 4. Select **Apply these**.
 
 **Not now** skips the step. SubKit then applies the recommended settings and does not ask again.
 
-### The six answers and what they set
+### The five answers and what they set
 
 | Question | Choices | Sets |
 | --- | --- | --- |
 | “What should SubKit do for you first?” | **File invoices**, **Daily numbers by email**, **Summarize the week**, **List open tickets**, **Watch the pricing page**, **Unlock access after payment** or **Something else** with your own text | The first suggestion in chat and the first item of “First steps”. |
 | “Which services do you use for it?” | Gmail, Google Drive, Google Sheets, Slack, Jira, GitHub, Notion, HubSpot, Stripe or **Other service** | Which connectors “First steps” offers first. |
 | “Who approves what SubKit may do?” | **Me** (recommended), **Someone else on the team** or **Two of us: one builds, one approves**, each with an email address | Who gets approval notifications, whether an invitation is prepared and, for two of us, whether every workflow approval needs two people. |
-| “How much should SubKit do on its own in chat?” | **Always ask**, **Ask only when unexpected** (recommended) or **Plan only at first** | The chat mode **Ask**, **Automatic** or **Plan only** for new conversations. |
 | “Where should new things run first?” | **Test first** (recommended) or **Straight to production** | The default environment for new workflows and tasks. |
 | “When may SubKit notify you?” | **Right away** (recommended), **Only during my working hours** or **Once a day as a summary** | Notifications and quiet hours. |
+| “How much may SubKit spend on AI per month?” (administrators only) | **$20**, **$50** (recommended), **$200** or **No limit** | The monthly AI budget of the workspace. |
 
-The first two answers only change what the Cockpit suggests to you first. They connect no service and create no workflow. The other four change how SubKit works:
+As an administrator you get this sixth question. The AI budget applies to the whole workspace; “Usage and costs” explains what happens at 80% and 100%. Under **Settings** › **Setup** this row leads to **Settings** › **Usage**, the one place where the budget is changed.
 
-- **Chat mode.** Every new conversation starts in this mode. In the conversation you can choose another one at any time. “Chat modes and rules” explains what the modes mean.
+The first two answers only change what the Cockpit suggests to you first. They connect no service and create no workflow. The other three change how SubKit works:
+
 - **Default environment.** A new task and the review of a new workflow start in this environment. You still choose the environment of a single workflow or task yourself.
 - **Approvals and notifications.** Both are described in “Notifications and quiet hours”.
 
@@ -61,15 +62,17 @@ With this answer, every workflow approval in the workspace needs two different p
 2. Select **Change** on the answer you want to change.
 3. Choose the new answer and then **Apply**. You read “Setting applied”.
 
-Each change applies right away to the setting named. Open conversations keep their mode; the new chat mode applies to the next new conversation.
+Each change applies right away to the setting named.
 
-The overview of **Settings** shows your choice in one line, for example “Ask only when unexpected · Test first · Right away”.
+When SubKit asks before a step is not a setup answer. Your request and your rules decide it; “When SubKit asks” explains how, including the rule **Always ask first**.
+
+The overview of **Settings** shows your choice in one line, for example “Test first · Right away”.
 
 ### Good to know
 
 - The answers belong to you, not to the workspace. Every person sets SubKit up for themselves.
 - The audit trail records every change as “Setup choices changed”.
-- The recommended values are: **Automatic**, **Test**, **Me** and **Right away**.
+- The recommended values are: **Test first**, **Me** and **Right away**, and for administrators **$50** as the monthly AI budget.
 - If you, as an administrator, name an address that is not in the workspace yet, SubKit prepares an invitation and sends no email. The invited person joins the workspace as a member; that is why “Role: Member” is shown next to the field. This role may approve.
 - If you name a person whose role may not approve, SubKit stores the choice and warns under **Settings** › **Setup**: “… cannot approve with the current role. Approval notifications stay with you until an administrator changes the role.”
 - If you name an unknown address without the Administrator role, it is stored but nobody is invited. As soon as an administrator invites or adds the address, SubKit links your choice by itself; the notifications go to the person once they have joined.
@@ -95,7 +98,7 @@ The overview of **Settings** shows your choice in one line, for example “Ask o
 curl -s -X PUT "$SK_URL/v1/identity/me/setup" \
   -H "Authorization: Bearer $SK_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"default_chat_mode":"ask","default_environment":"dev"}'
+  -d '{"ask_before_writing":true,"default_environment":"dev"}'
 ```
 
 Every field is listed in “Reference: desktop app, rules, schedules and problem reports”.

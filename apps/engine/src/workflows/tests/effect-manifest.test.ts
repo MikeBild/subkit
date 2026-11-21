@@ -208,11 +208,8 @@ test("version, recipient, environment, configuration, credentials and execution 
 
 test("runtime recipients, paths, and target-rewriting hooks cannot receive repeated-run authority", () => {
   for (const request of [
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: Workflow interpolation, not JavaScript.
     { path: "/messages/${input.target}" },
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: Workflow interpolation, not JavaScript.
     { body: { recipient: "${input.recipient}" } },
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: Workflow interpolation, not JavaScript.
     { headers: { "X-Tenant": "${input.tenant}" } },
   ]) {
     const result = compileWorkflowEffectManifest(fixture(request));
@@ -385,7 +382,6 @@ test("a reusable path authority must bind the exact reviewed identifier template
   const input = fixture({
     method: "GET",
     body: undefined,
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow runtime template
     path: "/v2/projects/${item.id}/resources",
   });
   const step = input.definition.steps[0];
@@ -407,10 +403,8 @@ test("S3 recurring authority requires an explicit folder profile bound to the au
   const input = fixture({
     method: "PUT",
     path: undefined,
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored runtime-expression fixture
     body: "${input.report}",
     s3: {
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: authored runtime-expression fixture
       key: "${input.key}",
       content_type: "application/json",
       scope: { key_prefix: "reports/daily/", max_bytes: 1000 },
@@ -464,7 +458,6 @@ test("a removal becomes grantable only with a declared ceiling, and stays visibl
     path: undefined,
     body: undefined,
     s3: {
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: authored runtime-expression fixture
       key: "${item.key}",
       scope: { key_prefix: "reports/daily/", max_bytes: 10, max_deletes: 500 },
     },
@@ -501,9 +494,7 @@ test("a removal becomes grantable only with a declared ceiling, and stays visibl
 function boundaryFixture(request: Record<string, unknown> = {}) {
   const input = fixture({
     method: "POST",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored runtime-expression fixture
     path: "/sites/${input.site}/releases",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored runtime-expression fixture
     body: { ids: "${scope.pick.data.ids}" },
     boundary: {
       variables: { "input.site": { enum: ["company-cockpit"] } },
@@ -557,7 +548,6 @@ test("a refused boundary does not fall back to an unchecked read-query exemption
     method: "GET",
     path: "/reports",
     body: undefined,
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored runtime-expression fixture
     query: { since: "${input.since}" },
     boundary: { variables: {}, max_body_bytes: 0, max_calls: 1 },
   });

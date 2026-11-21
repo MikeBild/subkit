@@ -379,7 +379,6 @@ describe("a version no approval may cover", () => {
         kind: "request",
         id: "fetch_target",
         method: "GET",
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow substitution
         url: "${input.target}",
       },
     ],
@@ -398,7 +397,6 @@ describe("a version no approval may cover", () => {
         id: "send_report",
         method: "POST",
         url: GMAIL_SEND_TARGET,
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow substitution
         body: { raw: "${scope.compose.data.raw}" },
       },
     ],

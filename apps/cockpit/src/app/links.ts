@@ -60,6 +60,7 @@ export const RUNS_FILTER_PARAMS = {
   q: "runs_q",
   startedFrom: "runs_from",
   startedTo: "runs_to",
+  device: "runs_device",
 } as const;
 
 export function runsHref(
@@ -70,6 +71,7 @@ export function runsHref(
     q?: string | null;
     startedFrom?: string | null;
     startedTo?: string | null;
+    device?: string | null;
   } = {},
 ): string {
   return withQuery("/", {
@@ -80,6 +82,7 @@ export function runsHref(
     [RUNS_FILTER_PARAMS.q]: filter.q,
     [RUNS_FILTER_PARAMS.startedFrom]: filter.startedFrom,
     [RUNS_FILTER_PARAMS.startedTo]: filter.startedTo,
+    [RUNS_FILTER_PARAMS.device]: filter.device,
   });
 }
 

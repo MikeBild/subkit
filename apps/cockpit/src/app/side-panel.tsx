@@ -1,7 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { ChatBubble } from "@ui/components/proto/ChatBubble";
-import { ErrorNotice } from "@ui/components/proto/ErrorNotice";
-import { EmptyState } from "@ui/components/proto/visual";
+import { Textarea } from "@ui/atoms/textarea";
+import { cn } from "@ui/lib/utils";
+import { ChatBubble } from "@ui/molecules/chat-bubble";
+import { EmptyState } from "@ui/molecules/empty-state";
+import { ErrorNotice } from "@ui/molecules/error-notice";
+import { IconButton } from "@ui/molecules/icon-button";
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@ui/organisms/sheet";
 import {
   History,
   Info,
@@ -28,8 +32,6 @@ import {
 } from "react";
 import { apiCall } from "@/api/call";
 import type { ConversationsAboutTarget } from "@/api/client";
-import { ConversationsAbout } from "@/components/cockpit/conversations-about";
-import { IconButton } from "@/components/cockpit/icon-button";
 import {
   Button,
   DataState,
@@ -40,14 +42,12 @@ import {
   type TimelineItem,
   useErrorNotice,
 } from "@/components/cockpit/patterns";
-import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
-import { Textarea } from "@/components/ui/textarea";
-import { auditActionLabel } from "@/lib/audit-model";
+import { auditActionLabel } from "@/features/audit/model";
+import { ConversationsAbout } from "@/features/chat";
 import type { TranslationKey } from "@/lib/i18n";
 import { formatDate } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { readStartLayout, startPanelOpen } from "@/lib/start-layout";
-import { cn } from "@/lib/utils";
 import { absolute, auditHref, conversationHref } from "./links";
 import { navigationItem } from "./navigation";
 import { useSession } from "./session";
@@ -549,9 +549,7 @@ function PanelBody({ pathname, overlay }: { pathname: string; overlay: boolean }
       )}
     >
       {overlay ? null : (
-        // biome-ignore lint/a11y/useSemanticElements: a focusable separator is the window splitter pattern
-        <div
-          role="separator"
+        <hr
           aria-orientation="vertical"
           aria-label={t("sidePanel.resize")}
           aria-valuemin={SIDE_PANEL_MIN}
@@ -563,15 +561,12 @@ function PanelBody({ pathname, overlay }: { pathname: string; overlay: boolean }
           onPointerDown={startDrag}
           onDoubleClick={() => panel.update({ width: SIDE_PANEL_DEFAULT })}
           onKeyDown={onResizeKey}
-          className="group absolute inset-y-0 -left-1 z-10 w-2 cursor-col-resize touch-none focus-visible:outline-none"
-        >
-          <span
-            className={cn(
-              "absolute inset-y-0 left-[3px] w-0.5 rounded-full transition-colors group-hover:bg-ring/50 group-focus-visible:bg-ring",
-              drag !== null && "bg-ring",
-            )}
-          />
-        </div>
+          className={cn(
+            "absolute inset-y-0 -left-1 z-10 m-0 h-auto w-2 cursor-col-resize touch-none border-0 bg-transparent focus-visible:outline-none",
+            "before:absolute before:inset-y-0 before:left-[3px] before:w-0.5 before:rounded-full before:transition-colors before:content-[''] hover:before:bg-ring/50 focus-visible:before:bg-ring",
+            drag !== null && "before:bg-ring",
+          )}
+        />
       )}
       <div className="flex h-14 shrink-0 items-center gap-1 border-b px-3">
         <div

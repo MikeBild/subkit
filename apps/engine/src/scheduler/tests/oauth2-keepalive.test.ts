@@ -1,15 +1,15 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
-import type { RefreshOAuthJob } from "../../credentials/oauth2/refresh-worker.ts";
-import { upsertCredential } from "../../credentials/service.ts";
-import { connectors, credentials } from "../../db/schema/index.ts";
-import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
-import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   OAUTH2_KEEPALIVE_IDLE_MS,
   runOAuth2RefreshKeepAliveForTenant,
-} from "../connector-reauth-scan-runner.ts";
+} from "../../connectors/scheduled/connector-reauth-scan-runner.ts";
+import type { RefreshOAuthJob } from "../../credentials/oauth2/refresh-worker.ts";
+import { upsertCredential } from "../../credentials/service.ts";
+import { connectors, vaultItems } from "../../db/schema/index.ts";
+import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { seedTenant } from "../../test-helpers/seed.ts";
 
 const NOW = new Date("2026-06-01T00:00:00.000Z");
 const STALE = new Date(NOW.getTime() - OAUTH2_KEEPALIVE_IDLE_MS - 24 * 60 * 60 * 1000);
@@ -83,12 +83,12 @@ async function seedConnectorWithCredential(opts: {
     db.db,
   );
   await db.db
-    .update(credentials)
+    .update(vaultItems)
     .set({
       updated_at: opts.updated_at ?? STALE,
       ...(opts.credential_deleted ? { deleted_at: NOW } : {}),
     })
-    .where(eq(credentials.id, row.id));
+    .where(eq(vaultItems.id, row.id));
   return row.id;
 }
 

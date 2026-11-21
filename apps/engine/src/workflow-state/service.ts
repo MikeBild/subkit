@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
+import { decryptSecret, encryptSecret } from "../crypto/index.ts";
 import type { Db } from "../db/client.ts";
 import { workflowRunState } from "../db/schema/workflow_run_state.ts";
 

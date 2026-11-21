@@ -1,10 +1,11 @@
-import { ErrorNotice } from "@ui/components/proto/ErrorNotice";
-import { Panel } from "@ui/components/proto/Pill";
-import { IconTile, StatusStrip } from "@ui/components/proto/visual";
+import { IconTile } from "@ui/atoms/icon-tile";
+import { Panel } from "@ui/atoms/pill";
+import { ErrorNotice } from "@ui/molecules/error-notice";
+import { StatusStrip } from "@ui/molecules/status-strip";
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import type { Setup } from "@/api/setup";
-import { absolute, peopleHref } from "@/app/links";
+import { absolute, peopleHref, settingsHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { Button, DataState } from "@/components/cockpit/patterns";
 import { InviteLinkDialog, useInviteSend } from "@/features/admin";
@@ -140,6 +141,7 @@ export function SetupSection() {
         invitation={a.invitation}
         canSeePeople={canSeePeople}
         canInvite={permissions.includes("identity:write")}
+        canSeeUsage={permissions.includes("stats:read")}
         onSend={invite.send}
         sending={invite.pending}
         policy={<ApprovalPolicyRow />}
@@ -170,6 +172,7 @@ export function SetupSectionPanel({
   invitation,
   canSeePeople,
   canInvite = false,
+  canSeeUsage = false,
   onSend = () => {},
   sending = false,
   policy,
@@ -186,6 +189,7 @@ export function SetupSectionPanel({
   invitation: Invitation | null;
   canSeePeople: boolean;
   canInvite?: boolean;
+  canSeeUsage?: boolean;
   onSend?: (id: string, email: string) => void;
   sending?: boolean;
   policy?: ReactNode;
@@ -233,17 +237,28 @@ export function SetupSectionPanel({
                   {t("setup.sets", { effect: t(`setup.effect.${k}`) })}
                 </p>
               </div>
-              <Button
-                size="sm"
-                variant="outline"
-                aria-expanded={open === k}
-                disabled={a.saving}
-                aria-label={t("setup.changeItem", { label: t(`setup.label.${k}`) })}
-                onClick={() => onOpen(open === k ? null : k)}
-                data-testid={`settings-setup-change-${k}`}
-              >
-                {t("setup.change")}
-              </Button>
+              {k === "budget" && !canSeeUsage ? null : k === "budget" ? (
+                <Button asChild size="sm" variant="outline">
+                  <a
+                    href={absolute(settingsHref(null, { area: "usage" }))}
+                    data-testid="settings-setup-open-usage"
+                  >
+                    {t("setup.openUsage")}
+                  </a>
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  aria-expanded={open === k}
+                  disabled={a.saving}
+                  aria-label={t("setup.changeItem", { label: t(`setup.label.${k}`) })}
+                  onClick={() => onOpen(open === k ? null : k)}
+                  data-testid={`settings-setup-change-${k}`}
+                >
+                  {t("setup.change")}
+                </Button>
+              )}
             </div>
             {open === k && (
               <div className="mt-3 pl-12">

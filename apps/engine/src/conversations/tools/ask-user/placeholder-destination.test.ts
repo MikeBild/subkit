@@ -57,7 +57,6 @@ describe("stripPlaceholderDestinationHints — ask_user_form", () => {
       question: "Where should the report go?",
       fields: [
         { name: "to", label: "Recipient", type: "text", placeholder: "name@company.tld" },
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: a runtime placeholder the detector must skip
         { name: "cc", label: "Copy", type: "text", default: "${input.recipient}" },
       ],
     };

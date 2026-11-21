@@ -1,5 +1,5 @@
 import { getConfig } from "../../config/loader.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 
 interface CriticConfig {
   enabled: boolean;

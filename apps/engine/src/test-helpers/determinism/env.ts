@@ -6,6 +6,18 @@ export interface EnvHandle {
 
 export const TEST_MASTER_KEY = `${"0".repeat(63)}1`;
 
+export const testEnv: NodeJS.ProcessEnv = process.env;
+
+export function replaceTestEnv(next: EnvOverrides): void {
+  for (const key of Object.keys(process.env)) {
+    if (!(key in next)) delete process.env[key];
+  }
+  for (const [key, value] of Object.entries(next)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+}
+
 export function withTestEnv(overrides: EnvOverrides): EnvHandle {
   const snapshot = new Map<string, string | undefined>();
   for (const key of Object.keys(overrides)) {

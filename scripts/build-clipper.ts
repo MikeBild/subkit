@@ -124,7 +124,7 @@ export async function buildClipper(check = false): Promise<string> {
       readFile(join(output, "manifest.json"), "utf8"),
     ]);
     if (!archive.equals(existing) || metadata !== manifest) {
-      throw new Error("Clipper archive is stale; run bun run build:clipper");
+      throw new Error("Clipper archive is stale; run bun run build clipper");
     }
   } else {
     await mkdir(output, { recursive: true });

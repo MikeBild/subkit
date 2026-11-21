@@ -70,7 +70,7 @@ describe("external MCP palette-assembly failure audit", () => {
       roles: ["admin"],
     };
 
-    const wrapped = await wrapTools(toolCtx, freshSignals(), events, db, [], {}, null, principal);
+    const wrapped = await wrapTools(toolCtx, freshSignals(), events, db, [], {}, principal);
 
     expect(Object.keys(wrapped).length).toBeGreaterThan(0);
 

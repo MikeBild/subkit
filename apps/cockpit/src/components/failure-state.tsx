@@ -1,11 +1,11 @@
 import type { ErrorComponentProps } from "@tanstack/react-router";
-import { ErrorNotice } from "@ui/components/proto/ErrorNotice";
+import { Button } from "@ui/atoms/button";
+import { ErrorNotice } from "@ui/molecules/error-notice";
 import { Lock, RouteOff, TriangleExclamationPoint } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
 import { absolute } from "@/app/links";
 import { useErrorNotice } from "@/components/cockpit/patterns/use-error-detail";
 import { FAMILY_UI_VERSION, FamilyFailureState } from "@/components/family-ui";
-import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n-context";
 
 type QueryView = "loading" | "error" | "empty" | "ready";

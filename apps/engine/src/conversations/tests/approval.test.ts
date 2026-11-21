@@ -8,7 +8,7 @@ import {
 import { decidedByFor } from "../decided-by.ts";
 import { createElicitation, resolveElicitation } from "../elicitations.ts";
 import { buildModelMessages } from "../persistence/index.ts";
-import { createConversation, getConversation } from "../service.ts";
+import { createConversation, getConversation } from "../service/index.ts";
 import {
   appendMessageWithTurn,
   type ConversationTestCtx,
@@ -85,7 +85,7 @@ describe("conversations/elicitation", () => {
         actor_id: ctx.user_id,
         connector_id: ctx.connector_id,
         initial_message: "list users",
-        permission_mode: "ask",
+        ask_before_writing: true,
       },
       ctx.testDb.db,
     );
@@ -106,6 +106,7 @@ describe("conversations/elicitation", () => {
         conversation_id: outcome.conversation.id,
         elicitation_id: elicitationId,
         actor_id: ctx.user_id,
+        ask_before_writing: true,
         output: { confirmed: false },
         reason: "not ready",
       },
@@ -169,7 +170,7 @@ describe("conversations/elicitation", () => {
         actor_id: ctx.user_id,
         connector_id: ctx.connector_id,
         initial_message: "list users",
-        permission_mode: "ask",
+        ask_before_writing: true,
       },
       ctx.testDb.db,
     );
@@ -182,6 +183,7 @@ describe("conversations/elicitation", () => {
         conversation_id: outcome.conversation.id,
         elicitation_id: elicitationId,
         actor_id: ctx.user_id,
+        ask_before_writing: true,
         output: { confirmed: true },
       },
       ctx.testDb.db,
@@ -194,6 +196,7 @@ describe("conversations/elicitation", () => {
           conversation_id: outcome.conversation.id,
           elicitation_id: elicitationId,
           actor_id: ctx.user_id,
+          ask_before_writing: true,
           output: { confirmed: true },
         },
         ctx.testDb.db,
@@ -212,7 +215,7 @@ describe("conversations/elicitation", () => {
         actor_id: ctx.user_id,
         connector_id: ctx.connector_id,
         initial_message: "list users",
-        permission_mode: "ask",
+        ask_before_writing: true,
       },
       ctx.testDb.db,
     );
@@ -282,6 +285,7 @@ test("a prose answer does not resolve or change an older text tool call", async 
       conversation_id,
       elicitation_id: pending.id,
       actor_id: ctx.user_id,
+      ask_before_writing: true,
       output: { value: "Blau" },
     },
     ctx.testDb.db,

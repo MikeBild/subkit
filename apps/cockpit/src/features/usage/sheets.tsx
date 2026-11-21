@@ -14,15 +14,13 @@ import {
   RecordSheet,
   Section,
 } from "@/components/cockpit/patterns";
-import { pluralKey, type TranslationKey } from "@/lib/i18n";
-import { useI18n } from "@/lib/i18n-context";
 import {
   type LlmStatsFilter,
   llmStatsQuery,
   type StatsWindow,
   type TimeSpan,
   type WindowBounds,
-} from "@/lib/operations-figures";
+} from "@/features/usage/model/operations-figures";
 import {
   type ConsumptionAxis,
   FAILED_RESULTS,
@@ -39,7 +37,9 @@ import {
   type UsageOrigin,
   type UsageSheet,
   type WorkflowRunCost,
-} from "@/lib/usage-model";
+} from "@/features/usage/model/usage-model";
+import { pluralKey, type TranslationKey } from "@/lib/i18n";
+import { useI18n } from "@/lib/i18n-context";
 import {
   ORIGIN_COLOR,
   ORIGIN_HELP,

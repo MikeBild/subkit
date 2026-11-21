@@ -33,7 +33,7 @@ export function onboardingCredential(
   secret: string,
 ): OnboardingCredential {
   const byHand = (flags: string) =>
-    `store it with \`sk credentials set ${connectorId} --mode ${authType}${flags}\` instead`;
+    `store it with \`sk vault attach ${connectorId} --mode ${authType}${flags}\` and the value on stdin instead`;
   const value = secret.trim();
   if (!value) return { ok: true, body: null };
   switch (authType) {
@@ -49,7 +49,7 @@ export function onboardingCredential(
         ? { ok: true, body: { mode: "header", headers: { [name]: value } } }
         : {
             ok: false,
-            reason: `the template names no header for this key; ${byHand(' --header "Name=Value"')}`,
+            reason: `the template names no header for this key; ${byHand(" --header <name>")}`,
           };
     }
     case "query": {
@@ -58,7 +58,7 @@ export function onboardingCredential(
         ? { ok: true, body: { mode: "query", query: { [name]: value } } }
         : {
             ok: false,
-            reason: `the template names no query parameter for this key; ${byHand(' --query "name=Value"')}`,
+            reason: `the template names no query parameter for this key; ${byHand(" --query <name>")}`,
           };
     }
     case "oauth2":

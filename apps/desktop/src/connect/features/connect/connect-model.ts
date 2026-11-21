@@ -11,6 +11,7 @@ export interface ConnectActions {
   next: (() => void) | undefined;
   act: (action: NoticeAction) => void;
   back: (() => void) | undefined;
+  startLocal: () => void;
 }
 
 export function connectActions(
@@ -23,6 +24,7 @@ export function connectActions(
     next: s.canContinue ? () => dispatch({ type: "ContinueToSignIn" }) : undefined,
     act: (action) => dispatch({ type: "ActOnNotice", action }),
     back: s.back ? () => dispatch({ type: "GoBack" }) : undefined,
+    startLocal: () => dispatch({ type: "StartLocalSetup" }),
   };
 }
 

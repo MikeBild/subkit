@@ -76,7 +76,7 @@ async function buildRealPalette(recentUserMessage?: string): Promise<Record<stri
     tenant_id: tenantId,
     roles: ["admin"],
   };
-  return wrapTools(toolCtx, freshSignals(), events, db, [], {}, null, principal) as Promise<
+  return wrapTools(toolCtx, freshSignals(), events, db, [], {}, principal) as Promise<
     Record<string, unknown>
   >;
 }

@@ -2,7 +2,7 @@ import { and, eq, type SQL, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { llmUsage } from "../db/schema/index.ts";
 import type { CostResult } from "../llm/index.ts";
-import { readLlmCost } from "../stats/llm-cost.ts";
+import { readLlmCost } from "../stats/index.ts";
 
 export interface ConversationUsage {
   tokens: number;

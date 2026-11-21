@@ -14,7 +14,7 @@ import { createWorkflowRow } from "../execution/tests/setup.ts";
 import { deactivateUser } from "../identity/provisioning.ts";
 import { issueApiKey } from "../identity/service.ts";
 import { DomainRefusal } from "../logging/domain-refusal.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { builtinRoleId } from "../rbac/roles.ts";
 import { databaseNow } from "../test-helpers/database-clock.ts";
 import { inspectScheduleAutomation } from "./automation-status.ts";

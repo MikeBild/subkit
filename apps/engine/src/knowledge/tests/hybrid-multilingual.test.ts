@@ -1,10 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { backfillEmbeddings } from "../../embeddings/backfill.ts";
-import { embeddingsAvailable } from "../../embeddings/local-provider.ts";
+import { backfillEmbeddings, embeddingsAvailable } from "../../embeddings/index.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { createKnowledgeSource, searchKnowledge } from "../service.ts";
 import { createKnowledgeTestCtx, type KnowledgeTestCtx } from "./setup.ts";
 
-const skip = process.env.REQUIRES_PG === "0" || process.env.RUN_EMBEDDING_E2E !== "1";
+const skip = testEnv.REQUIRES_PG === "0" || testEnv.RUN_EMBEDDING_E2E !== "1";
 
 let ctx: KnowledgeTestCtx;
 

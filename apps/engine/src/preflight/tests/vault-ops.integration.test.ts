@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { _resetConfigForTests, getConfig, loadConfig } from "../../config/loader.ts";
-import { encryptSecretWithKey, parseMasterKeyHex } from "../../crypto/aes-gcm.ts";
+import { encryptSecretWithKey, parseMasterKeyHex } from "../../crypto/index.ts";
 import { runtimeSecretVersions } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import {
@@ -12,6 +12,7 @@ import {
   getRuntimeRevision,
   initializeRuntimeConfig,
 } from "../../runtime-config/service.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { syntheticVaultStopAcknowledgement } from "../../test-helpers/vault-maintenance.ts";
 import { activeSettingsDocument, secretAad } from "../environment.ts";
 import { probeCurrentVersion, rebindSettingPath, rewrapMasterKey } from "../vault-ops.ts";
@@ -24,7 +25,7 @@ let tdb: TestDb;
 let configDir: string;
 
 beforeAll(async () => {
-  process.env.MASTER_KEY = RUNNING_KEY;
+  testEnv.MASTER_KEY = RUNNING_KEY;
   tdb = await createTestDb("preflight-vault-ops");
   configDir = mkdtempSync(join(tmpdir(), "sk-preflight-vault-"));
   _resetConfigForTests();

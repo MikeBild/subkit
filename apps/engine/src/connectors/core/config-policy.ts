@@ -1,6 +1,14 @@
 import { SignedJwtConfigSchema } from "../../credentials/core/signed-jwt-config.ts";
 
-type DriverName = "http" | "postgres" | "s3" | "graphql" | "mcp";
+type DriverName =
+  | "http"
+  | "postgres"
+  | "s3"
+  | "graphql"
+  | "mcp"
+  | "local_files"
+  | "local_browser"
+  | "local_computer";
 type AuthType =
   | "none"
   | "header"
@@ -52,6 +60,15 @@ export function validateConnectorAuthType(
   auth_type: AuthType | undefined | null,
 ): ConnectorConfigIssue[] {
   if (!auth_type) return [];
+  if (driver.startsWith("local_")) {
+    if (auth_type === "none") return [];
+    return [
+      {
+        path: "auth_type",
+        message: "a connector for this device takes no credentials — use auth_type 'none'",
+      },
+    ];
+  }
   if (driver === "mcp") {
     if (mcpAuthKindForType(auth_type)) return [];
     return [

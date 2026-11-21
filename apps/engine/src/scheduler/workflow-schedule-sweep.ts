@@ -4,7 +4,7 @@ import type { Db, Executor } from "../db/client.ts";
 import { tenants, workflows, workflowsSchedules } from "../db/schema/index.ts";
 import { tenantWorkBootId, withTenantWork } from "../execution/index.ts";
 import { lockActiveTenant } from "../identity/index.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import type { ExecutionRunJob } from "../queue/queues.ts";
 import { inspectScheduleAutomation } from "./automation-status.ts";
 import { calendarGateSkipReason, readCalendarGates, stripCalendarGates } from "./calendar-gates.ts";

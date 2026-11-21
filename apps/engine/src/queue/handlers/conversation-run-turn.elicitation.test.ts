@@ -2,7 +2,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { createElicitation } from "../../conversations/elicitations.ts";
 import { _setConverseFirstChunkTimeoutMsForTests } from "../../conversations/loop/index.ts";
-import * as svc from "../../conversations/service.ts";
+import * as svc from "../../conversations/service/index.ts";
 import { auditLog, users } from "../../db/schema/index.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import {

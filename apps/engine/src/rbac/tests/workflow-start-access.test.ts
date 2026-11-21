@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import { permissions, resourceGrants, roles } from "../../db/schema/index.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { grantResource, revokeResource } from "../grants.ts";
 import { workflowStartAccess } from "../workflow-start-access.ts";
 import {

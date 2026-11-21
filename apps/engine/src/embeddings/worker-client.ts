@@ -1,4 +1,5 @@
-import { logger } from "../logging/logger.ts";
+import { envFlag } from "../env.ts";
+import { logger } from "../logging/index.ts";
 import type { EmbeddingRequest, EmbeddingResponse } from "./worker-protocol.ts";
 
 interface Pending {
@@ -114,10 +115,7 @@ const client = createEmbeddingWorkerClient(
 );
 
 function diagnosticInline(): boolean {
-  return (
-    process.env.SUBKIT_DIAGNOSTICS === "1" &&
-    process.env.SUBKIT_DIAGNOSTICS_EMBEDDING_INLINE === "1"
-  );
+  return envFlag("SUBKIT_DIAGNOSTICS") && envFlag("SUBKIT_DIAGNOSTICS_EMBEDDING_INLINE");
 }
 
 export async function workerEmbeddingsAvailable(): Promise<boolean> {

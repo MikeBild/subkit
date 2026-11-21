@@ -4,6 +4,7 @@ import { adminMessage, connectActions, problemCode } from "./connect-model.ts";
 
 const screen = (canContinue: boolean, back = false): Extract<Screen, { kind: "connect" }> => ({
   kind: "connect",
+  localAvailable: false,
   address: "subkit.example.com",
   checking: false,
   strip: null,

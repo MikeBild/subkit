@@ -1,4 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal runtime placeholder is the workflow contract.
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { createConnector } from "../../connectors/service.ts";
 import { createEngineCtx, type EngineTestCtx } from "../../execution/tests/setup.ts";

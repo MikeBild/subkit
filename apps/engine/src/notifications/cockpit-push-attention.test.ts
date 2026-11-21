@@ -3,7 +3,8 @@ import type { ResolvedPrincipal } from "../auth/types.ts";
 import { tenants } from "../db/schema/identity.ts";
 import { createHttpTestServer, type HttpTestServer } from "../http/tests/setup.ts";
 import type { CockpitPushAudienceRow } from "../identity/index.ts";
-import { logger } from "../logging/logger.ts";
+import { spendStatus } from "../llm/core/spend-budget.ts";
+import { logger } from "../logging/index.ts";
 import type {
   AttentionClass,
   AttentionItem,
@@ -11,6 +12,7 @@ import type {
   AttentionV1,
 } from "../operator/attention.ts";
 import type { Candidate } from "../operator/attention-readers.ts";
+import { spendCandidates } from "../operator/spend-attention.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
 import {
@@ -118,6 +120,26 @@ describe("attention-driven cockpit push", () => {
     }
   });
 
+  test("the AI budget notifies once at 80 % and once at the limit, not again after continuing", async () => {
+    const spent = (amount: number, continue_month = "") =>
+      spendCandidates({
+        ...spendStatus({ limit_usd: 50, spent_usd: amount, month: "2026-11", continue_month }),
+        currency: "USD",
+        countable: true,
+        timezone: "UTC",
+        window: { month: "2026-11", from: at, to: at },
+        unpriced_calls: 0,
+        chosen: true,
+      }).map((candidate) => candidate.item);
+    expect(await dispatch(fixture, spent(10))).toBe(0);
+    expect(await dispatch(fixture, spent(41))).toBe(1);
+    expect(await dispatch(fixture, spent(48))).toBe(0);
+    expect(await dispatch(fixture, spent(50))).toBe(1);
+    expect(await dispatch(fixture, spent(51))).toBe(0);
+    expect(await dispatch(fixture, spent(60, "2026-11"))).toBe(0);
+    expect(await dispatch(fixture, spent(90, "2026-11"))).toBe(0);
+  });
+
   test("stores only hashed attention keys", async () => {
     await dispatch(fixture, [conversation, authority]);
     const keys = await fixtures.storedKeys(fixture);
@@ -191,7 +213,7 @@ describe("attention-driven cockpit push", () => {
 });
 
 test("attention RBAC decides who is woken", async () => {
-  const budgetItem = item("budget-1", "failing", "budget_critical");
+  const budgetItem = item("budget-1", "failing", "spend_limit_reached");
   const readers = {
     budget: async (): Promise<Candidate[]> => [{ item: budgetItem, source: "budget" }],
   };

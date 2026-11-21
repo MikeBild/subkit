@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
-import { recordUsageEvent } from "../stats/usage-events.ts";
+import { recordUsageEvent } from "../stats/index.ts";
 
 interface MarkChatEventSeenInput {
   tenant_id: string;

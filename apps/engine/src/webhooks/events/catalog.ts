@@ -1,7 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import type { Executor } from "../../db/client.ts";
 import { writeEvent } from "../../db/events.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import {
   ConnectorAuthFailedPayloadSchema,
   ConnectorHealthChangedPayloadSchema,

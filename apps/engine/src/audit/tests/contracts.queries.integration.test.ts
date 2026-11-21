@@ -164,8 +164,8 @@ describe("query filter coverage", () => {
         tenant_id: tenantA,
         actor_type: "user",
         actor_id: actorId,
-        action: "credential.created",
-        resource_type: "credential",
+        action: "vault.item.created",
+        resource_type: "vault_item",
         resource_id: resourceId,
         result: "success",
         trace_id: traceId,
@@ -176,8 +176,8 @@ describe("query filter coverage", () => {
       {
         tenant_id: tenantA,
         actor_type: "system",
-        action: "credential.deleted",
-        resource_type: "credential",
+        action: "vault.item.deleted",
+        resource_type: "vault_item",
         resource_id: resourceId,
         result: "denied",
         reason: "not authorised",
@@ -233,11 +233,11 @@ describe("query filter coverage", () => {
   test("actions[] filter is an OR over the array", async () => {
     const r = await queryAuditLog(testDb.db, {
       tenant_id: tenantA,
-      actions: ["credential.created", "credential.deleted"],
+      actions: ["vault.item.created", "vault.item.deleted"],
     });
     expect(r.items.length).toBeGreaterThanOrEqual(2);
     expect(
-      r.items.every((e) => e.action === "credential.created" || e.action === "credential.deleted"),
+      r.items.every((e) => e.action === "vault.item.created" || e.action === "vault.item.deleted"),
     ).toBe(true);
   });
 

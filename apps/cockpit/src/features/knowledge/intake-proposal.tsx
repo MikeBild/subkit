@@ -4,7 +4,6 @@ import { apiCall } from "@/api/call";
 import { ApiError } from "@/api/client";
 import type { IntakeProposal } from "@/api/intake";
 import { absolute, recordHref } from "@/app/links";
-import { FocusedDiff } from "@/components/cockpit/diff-card";
 import {
   Button,
   Chip,
@@ -14,6 +13,7 @@ import {
   Section,
   StatusBadge,
 } from "@/components/cockpit/patterns";
+import { FocusedDiff } from "@/features/workflows";
 import { useI18n } from "@/lib/i18n-context";
 import {
   changedSkillLine,
@@ -24,7 +24,7 @@ import {
   skillBodyChange,
   skillConventionsView,
   skillTargetIds,
-} from "@/lib/intake-model";
+} from "./model/intake-model";
 
 export async function loadSkillBinding(created: {
   connector_id?: string;

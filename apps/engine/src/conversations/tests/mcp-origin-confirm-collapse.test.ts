@@ -11,7 +11,6 @@ import {
 import { EngineClient } from "../../engine-client/index.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "../../llm/tests/setup.ts";
 import { policyDecide } from "../../tools/policy.ts";
-import type { PermissionMode } from "../../tools/types.ts";
 import { getTool, listTools, type ToolContext } from "../tools/index.ts";
 import { wrapOne } from "../tools/sdk-wrap/invoke.ts";
 import { wrapTools } from "../tools/sdk-wrap.ts";
@@ -37,7 +36,11 @@ async function newConversation(): Promise<string> {
   return row.id;
 }
 
-function toolCtxFor(conversation_id: string, surface: ToolContext["surface"]): ToolContext {
+function toolCtxFor(
+  conversation_id: string,
+  surface: ToolContext["surface"],
+  askBeforeWriting = false,
+): ToolContext {
   const engineClient = new EngineClient({
     tenant_id: ctx.tenant_id,
     actor_id: null,
@@ -51,6 +54,7 @@ function toolCtxFor(conversation_id: string, surface: ToolContext["surface"]): T
     actor_id: null,
     connector_id: null,
     workflow_id: null,
+    ...(askBeforeWriting ? { ask_before_writing: true } : {}),
     engineClient,
     getDraft: () => ({ workflow: { name: "", steps: [] } }),
     setDraft: async () => {},
@@ -63,7 +67,7 @@ async function runGatedTool(
   surface: ToolContext["surface"],
   tool: string,
   args: Record<string, unknown>,
-  permissionMode: PermissionMode | null = null,
+  askBeforeWriting = false,
 ): Promise<{ result: { ok: boolean; pause?: unknown; data?: unknown }; events: TurnEvent[] }> {
   const inner = getTool(tool);
   expect(inner).toBeDefined();
@@ -71,12 +75,11 @@ async function runGatedTool(
   const events: TurnEvent[] = [];
   const wrapped = wrapOne(
     inner,
-    toolCtxFor(conversation_id, surface),
+    toolCtxFor(conversation_id, surface, askBeforeWriting),
     freshSignals(),
     events,
     ctx.testDb.db as unknown as Db,
     {},
-    permissionMode,
   );
   // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
   const result = await (wrapped.execute as any)(args, { toolCallId: "fake", messages: [] });
@@ -96,13 +99,14 @@ async function pendingElicitations(conversation_id: string) {
 }
 
 describe("conversation confirmation — no transport bypass", () => {
-  it("create_knowledge_source over MCP pauses when policy requires confirmation", async () => {
+  it("create_knowledge_source over MCP pauses when the person asks before writing", async () => {
     const conversation_id = await newConversation();
     const { result, events } = await runGatedTool(
       conversation_id,
       "mcp",
       "create_knowledge_source",
       { mode: "inline", name: "Pending source", content: "# Pending" },
+      true,
     );
     expect(result.ok).toBe(false);
     expect(result.pause).toBeDefined();
@@ -123,14 +127,13 @@ describe("conversation confirmation — no transport bypass", () => {
   });
 
   for (const surface of ["mcp", "chat"] as const) {
-    it(`auto preparation creates a source without an approval over ${surface}`, async () => {
+    it(`preparation creates a source without an approval over ${surface}`, async () => {
       const conversation_id = await newConversation();
       const { result, events } = await runGatedTool(
         conversation_id,
         surface,
         "create_knowledge_source",
         { mode: "inline", name: `Auto source ${surface}`, content: "# Preparation" },
-        "auto",
       );
       expect(result.ok).toBe(true);
       expect(result.pause).toBeUndefined();
@@ -176,20 +179,6 @@ describe("conversation confirmation — no transport bypass", () => {
         ),
       );
     expect(audits).toHaveLength(0);
-  });
-
-  it("control: create_knowledge_source over chat PAUSES like today", async () => {
-    const conversation_id = await newConversation();
-    const { result } = await runGatedTool(conversation_id, "chat", "create_knowledge_source", {
-      mode: "inline",
-      name: "Chat Control Probe",
-      content: "# Control\n\nThe chat surface must still pause this write.",
-    });
-
-    expect(result.ok).toBe(false);
-    expect(result.pause).toBeDefined();
-    expect((result.pause as { tool_name?: string }).tool_name).toBe("ask_user_confirm");
-    expect(await pendingElicitations(conversation_id)).toHaveLength(1);
   });
 });
 

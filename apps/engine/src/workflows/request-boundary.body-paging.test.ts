@@ -23,9 +23,7 @@ const cursor = (over: Record<string, unknown> = {}) => ({
 const search = (over: Record<string, unknown> = {}) =>
   step({
     method: "POST",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
     path: "/sites/${input.site}/search",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
     body: { filter: { status: "open" }, since: "${scope.window.data.start}" },
     pagination: cursor(),
     boundary: {
@@ -106,13 +104,11 @@ test("every unbounded variant of body paging is refused", () => {
   expect(refusal({ method: "GET", body: undefined })).toBe("pagination_body_unsupported");
   expect(refusal({ method: "HEAD", body: undefined })).toBe("pagination_body_unsupported");
   expect(refusal({ body: "cursor=1" })).toBe("pagination_body_unsupported");
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
   expect(refusal({ body: "${scope.build.data.body}" })).toBe("pagination_body_unsupported");
   expect(refusal({ body: [{ filter: "open" }] })).toBe("pagination_body_unsupported");
   expect(refusal({ body: 5 })).toBe("pagination_body_unsupported");
   expect(refusal({ body: { "${input.field}": "x" } })).toBe("pagination_body_unsupported");
   expect(refusal({ body: { cursor: "start" } })).toBe("pagination_param_conflict");
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
   expect(refusal({ body: { limit: "${input.limit}" } })).toBe("pagination_param_conflict");
   expect(
     refusal({

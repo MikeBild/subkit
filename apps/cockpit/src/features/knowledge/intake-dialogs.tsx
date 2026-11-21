@@ -1,10 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { type CreateIntakeClipInput, createIntakeClip, type IntakeClip } from "@/api/intake";
-import {
-  categoryChoices,
-  normalizeCategoryInput,
-} from "@/components/cockpit/catalog-metadata-model";
 import { SelectField, TextField } from "@/components/cockpit/form-field";
 import {
   Button,
@@ -15,9 +11,10 @@ import {
   FormDialog,
   MarkdownEditor,
 } from "@/components/cockpit/patterns";
+import { categoryChoices, normalizeCategoryInput } from "@/features/catalog";
+import { humanizeCategory, UNCATEGORIZED } from "@/features/workflows/model";
 import { useI18n } from "@/lib/i18n-context";
-import { intakeNoteRequest } from "@/lib/intake-model";
-import { humanizeCategory, UNCATEGORIZED } from "@/lib/workflow-category";
+import { intakeNoteRequest } from "./model/intake-model";
 
 import { refreshKnowledge as invalidateIntake } from "./queries";
 

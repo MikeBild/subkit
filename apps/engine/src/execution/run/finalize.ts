@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { workflows } from "../../db/schema/index.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { getMetrics, METRIC_NAMES } from "../../observability/metrics.ts";
 import { recordExecutionOutcome } from "../../self-healing/outcome-tracker.ts";
 import { unregisterAbort } from "../abort.ts";

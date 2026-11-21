@@ -135,8 +135,8 @@ describe("providerOutageFrom", () => {
   test("a refused token budget is not a provider failure", () => {
     expect(
       providerOutageFrom([
-        { result: "quota_exhausted", error: "llm_quota_exhausted", created_at: at(1) },
-        { result: "quota_exhausted", error: "llm_quota_exhausted", created_at: at(2) },
+        { result: "quota_exhausted", error: "llm_spend_limit_reached", created_at: at(1) },
+        { result: "quota_exhausted", error: "llm_spend_limit_reached", created_at: at(2) },
       ]),
     ).toBeNull();
   });

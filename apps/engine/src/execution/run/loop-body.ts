@@ -1,4 +1,4 @@
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { recordLoopIterationsOffloaded } from "../../observability/instrumentation.ts";
 import type { LoopStep, StepDef } from "../../workflows/types.ts";
 import {

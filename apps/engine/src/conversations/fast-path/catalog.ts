@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { executionSteps, executions, workflows } from "../../db/schema/index.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { can } from "../../rbac/evaluator.ts";
 import { listToolFor, READ_PERMISSION_BY_LIST, stepLine } from "../core/fast-path.ts";
 import type { ReplyLanguage } from "../fast-path-lists.ts";

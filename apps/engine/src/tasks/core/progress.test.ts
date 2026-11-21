@@ -59,12 +59,26 @@ describe("taskRunToolCallActs", () => {
     expect(taskRunToolCallActs({ tool, outcome })).toBe(acts);
   });
 
-  test("the acting tools are the ones that run a bound workflow or connector", () => {
+  test("the acting tools run a bound workflow or connector, or change something on the device", () => {
     expect([...TASK_RUN_ACTING_TOOLS]).toEqual([
       "run_workflow",
       "call_connector",
       "probe_connector",
+      "browser_open",
+      "browser_press",
+      "browser_fill",
+      "computer_press",
+      "computer_select",
+      "computer_set_value",
+      "computer_type",
+      "computer_key",
+      "files_write",
+      "files_mkdir",
+      "files_move",
+      "files_trash",
     ]);
+    expect(taskRunToolCallActs({ tool: "files_trash", outcome: "ok" })).toBe(true);
+    expect(taskRunToolCallActs({ tool: "browser_snapshot", outcome: "ok" })).toBe(false);
   });
 });
 

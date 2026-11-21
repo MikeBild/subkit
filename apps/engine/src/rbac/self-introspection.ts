@@ -12,5 +12,6 @@ export const SELF_INTROSPECTION_ROUTES = Object.freeze([
   "identity-providers",
   "identity-onboarding",
   "identity-workspace",
+  "identity-local-launcher",
   "health",
 ] as const);

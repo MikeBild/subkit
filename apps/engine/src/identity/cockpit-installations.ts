@@ -8,6 +8,7 @@ import {
   cockpitInstallations,
 } from "../db/schema/cockpit-installations.ts";
 import { sessions } from "../db/schema/identity.ts";
+import { revokeDeviceRunnersForInstallation } from "../devices/registry.ts";
 import { endCockpitPushForSessions } from "./cockpit-push.ts";
 
 export const COCKPIT_INSTALLATION_LIST_MAX = 50;
@@ -248,6 +249,12 @@ export async function revokeCockpitInstallation(
         ),
       )
       .returning({ id: sessions.id });
+    await revokeDeviceRunnersForInstallation(tx, {
+      tenant_id: tenantId,
+      installation_id: installationId,
+      actor_id: ownerUserId,
+      reason: "installation_revoked",
+    });
     await endCockpitPushForSessions(
       tx,
       { tenant_id: tenantId, installation_id: installationId },

@@ -1,31 +1,48 @@
 import { describe, expect, it } from "bun:test";
-import { ErrorNotice, ErrorState, FieldError, TechDetail } from "@ui/components/proto/ErrorNotice";
 import { de } from "@ui/i18n/de";
-import { errorMeta, requestId, techRows } from "@ui/lib/errors";
+import { type ErrorCatalog, errorMeta, requestId, techRows } from "@ui/lib/errors";
 import { UiProvider } from "@ui/lib/ui-context";
+import { ErrorNotice, ErrorState, FieldError, TechDetail } from "@ui/molecules/error-notice";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 const AT = Date.UTC(2026, 10, 21, 9, 30, 0);
 const fmt = (iso: string) => `at ${iso}`;
+const CATALOG: ErrorCatalog = {
+  cases: {
+    unreachable: {
+      meta: { cause: "timeout", code: "timeout", http: null },
+      copy: { title: "Server nicht erreichbar", body: "Keine Antwort unter dieser Adresse." },
+    },
+    offline: {
+      meta: { cause: "timeout", code: "server_offline", http: 503 },
+      copy: { title: "Server offline", body: "Gerade läuft nichts." },
+    },
+    pageFailed: {
+      meta: { cause: "unknown", code: "load_failed", http: 500 },
+      copy: { title: "Die Seite ließ sich nicht anzeigen", body: "Die Daten kamen nicht an." },
+    },
+  },
+  causes: { timeout: "Zeitüberschreitung", unknown: "Nicht eingeordnet" },
+};
 const html = (node: ReactNode, now = () => AT) =>
   renderToStaticMarkup(
-    <UiProvider lang="de" fmt={fmt} now={now} server="https://subkit.example">
+    <UiProvider lang="de" fmt={fmt} now={now} server="https://app.example" errors={CATALOG}>
       {node}
     </UiProvider>,
   );
 
 describe("error catalog fallback", () => {
-  it("keeps catalog entries", () => {
-    expect(errorMeta("keyRejected")).toEqual({
-      cause: "auth_failed",
-      code: "auth_failed",
-      http: 401,
+  it("reads a case from the catalog the app hands in", () => {
+    expect(errorMeta(CATALOG, "offline")).toEqual({
+      cause: "timeout",
+      code: "server_offline",
+      http: 503,
     });
   });
   it("shows an unknown code neutrally instead of crashing", () => {
-    expect(errorMeta("server_too_old")).toEqual({
-      cause: "unclassified",
+    expect(errorMeta(CATALOG, "server_too_old")).toEqual({
+      cause: "unknown",
       code: "server_too_old",
       http: null,
     });
@@ -34,7 +51,14 @@ describe("error catalog fallback", () => {
 
 describe("technical rows", () => {
   it("are pure: time and formatting come in as parameters", () => {
-    const rows = techRows({ kind: "offline", at: AT, labels: de.err, fmt, server: "srv" });
+    const rows = techRows({
+      kind: "offline",
+      at: AT,
+      catalog: CATALOG,
+      labels: de.err,
+      fmt,
+      server: "srv",
+    });
     expect(rows).toEqual([
       ["Ursache", "Zeitüberschreitung"],
       ["Code", "server_offline"],
@@ -48,7 +72,7 @@ describe("technical rows", () => {
 
 describe("ErrorNotice", () => {
   it("renders an unknown code with the neutral copy", () => {
-    const out = html(<ErrorNotice kind="not_subkit" />);
+    const out = html(<ErrorNotice kind="not_an_app" />);
     expect(out).toContain(de.err.unknown.title);
     expect(out).toContain(de.err.unknown.body);
   });
@@ -78,7 +102,7 @@ describe("TechDetail", () => {
     const out = html(<TechDetail kind="offline" defaultOpen />);
     expect(out).toContain(`at ${new Date(AT).toISOString()}`);
     expect(out).toContain(requestId("offline", AT));
-    expect(out).toContain("https://subkit.example");
+    expect(out).toContain("https://app.example");
   });
 
   it("prefers an explicit time over the clock", () => {

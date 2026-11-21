@@ -159,7 +159,6 @@ afterAll(async () => {
 describe("credential placeholders under an execution authority", () => {
   test("the step's own connector credential is inside the approved boundary", async () => {
     bodies = [];
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
     const result = await authorizedRun("secret=${cred.own-token.client_secret}");
     expect(result.status).toBe("succeeded");
     expect(bodies).toEqual([`secret=${OWN_SECRET}`]);
@@ -167,7 +166,6 @@ describe("credential placeholders under an execution authority", () => {
 
   test("a caller without connector:read gets the own credential under the authority", async () => {
     bodies = [];
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
     const result = await authorizedRun("secret=${cred.own-token.client_secret}", readerless());
     expect(result.status).toBe("succeeded");
     expect(bodies).toEqual([`secret=${OWN_SECRET}`]);
@@ -176,7 +174,6 @@ describe("credential placeholders under an execution authority", () => {
 
   test("another connector's credential is outside it and nothing is sent", async () => {
     bodies = [];
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
     const result = await authorizedRun("secret=${cred.other-token.client_secret}");
     expect(result.status).toBe("failed");
     expect(JSON.stringify(result)).toContain("execution_authority_changed");
@@ -198,7 +195,6 @@ describe("credential placeholders without an execution authority", () => {
     const result = await runExecution({
       db: ctx.testDb.db,
       tenant_id: ctx.tenantId,
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
       source: { kind: "step", step: readStep("${cred.own-token.client_secret}") },
       input: {},
       options: { principal: readerless(), hold_writes: true },
@@ -214,7 +210,6 @@ describe("credential placeholders without an execution authority", () => {
       tenant_id: ctx.tenantId,
       source: {
         kind: "draft",
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
         definition: { name: "probe draft", steps: [readStep("${cred.own-token.client_secret}")] },
       },
       input: {},
@@ -229,7 +224,6 @@ describe("credential placeholders without an execution authority", () => {
     runs += 1;
     const workflow = await createWorkflowRow(ctx, {
       name: `unauthorized ${runs}`,
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
       steps: [readStep("${cred.own-token.client_secret}")],
     });
     const result = await runExecution({
@@ -248,7 +242,6 @@ describe("credential placeholders without an execution authority", () => {
     runs += 1;
     const workflow = await createWorkflowRow(ctx, {
       name: `held ${runs}`,
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
       steps: [readStep("${cred.own-token.client_secret}")],
     });
     const result = await runExecution({

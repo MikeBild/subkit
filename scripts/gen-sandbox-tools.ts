@@ -42,7 +42,7 @@ for (const name of names) {
   const destination = resolve(root, `apps/engine/src/sandboxes/quickjs/stdlib/helpers/${name}.js`);
   if (process.argv.includes("--check")) {
     if ((await Bun.file(destination).text()) !== source)
-      throw new Error(`Sandbox ${name} helper bundle drift; run bun run gen:sandbox-tools`);
+      throw new Error(`Sandbox ${name} helper bundle drift; run bun run gen sandbox`);
   } else await Bun.write(destination, source);
   sources[name] = source;
 }
@@ -58,7 +58,7 @@ const coreSource = await coreBuild.outputs[0].text();
 const corePath = resolve(root, "apps/engine/src/sandboxes/quickjs/stdlib/helpers/core.js");
 if (process.argv.includes("--check")) {
   if ((await Bun.file(corePath).text()) !== coreSource)
-    throw new Error("Sandbox core bundle drift; run bun run gen:sandbox-tools");
+    throw new Error("Sandbox core bundle drift; run bun run gen sandbox");
 } else await Bun.write(corePath, coreSource);
 sources.core = coreSource;
 const bundleNames = [...names, "core"];

@@ -90,7 +90,6 @@ function stubToolCtx(conversationId: string, draft: DraftDocument): ToolContext 
     principal: testPrincipal(),
     connector_id: null,
     workflow_id: null,
-    permission_mode: null,
     // biome-ignore lint/suspicious/noExplicitAny: stub for gate test
     engineClient: {} as any,
     getDraft: () => live,
@@ -202,7 +201,6 @@ describe("run_workflow · withStatus contract on gate paths", () => {
       principal: testPrincipal(),
       connector_id: null,
       workflow_id: null,
-      permission_mode: null,
       // biome-ignore lint/suspicious/noExplicitAny: minimal engineClient stub
       engineClient: {} as any,
       getDraft: () => live,
@@ -281,7 +279,6 @@ describe("inspect_execution_step", () => {
       principal: testPrincipal(),
       connector_id: null,
       workflow_id: null,
-      permission_mode: null,
       // biome-ignore lint/suspicious/noExplicitAny: minimal engineClient stub
       engineClient: {} as any,
       getDraft: () => draft,
@@ -341,7 +338,6 @@ describe("inspect_execution_step", () => {
       principal: testPrincipal(),
       connector_id: null,
       workflow_id: null,
-      permission_mode: null,
       // biome-ignore lint/suspicious/noExplicitAny: minimal engineClient stub
       engineClient: {} as any,
       getDraft: () => draft,
@@ -392,7 +388,6 @@ describe("inspect_execution_step", () => {
       principal: testPrincipal(),
       connector_id: null,
       workflow_id: null,
-      permission_mode: null,
       // biome-ignore lint/suspicious/noExplicitAny: minimal engineClient stub
       engineClient: {} as any,
       getDraft: () => draft,

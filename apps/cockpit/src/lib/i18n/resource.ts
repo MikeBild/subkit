@@ -22,7 +22,7 @@ export const resourceEn = {
   "resource.usage.runs": "Runs",
   "resource.usage.budgetUnreadable":
     "The budget could not be read — this says nothing about whether one is set.",
-  "resource.usage.noCap": "No budget set",
+  "resource.usage.noCap": "No AI budget set",
   "resource.usage.axis.model": "Model",
   "resource.field.tokens": "Tokens",
   "resource.field.share": "Share",
@@ -70,7 +70,7 @@ export const resourceEn = {
   "detail.cause.atStep": "The latest failed run stopped at step “{step}” — cause: {cause}.",
   "detail.cause.class": "The latest failed run failed — cause: {cause}.",
   "detail.cause.noRun": "The engine reports this workflow as {state}; no failed run is on record.",
-  "resource.usage.setCap": "Set a budget",
+  "resource.usage.setCap": "Set an AI budget",
   "resource.usage.unknownWorkflow": "A workflow this workspace no longer has",
   "resource.usage.workflowUnreadable": "Name not readable",
 } as const;
@@ -99,7 +99,7 @@ export const resourceDe: Record<keyof typeof resourceEn, string> = {
   "resource.usage.runs": "Runs",
   "resource.usage.budgetUnreadable":
     "Das Kontingent war nicht lesbar — das sagt nichts darüber, ob eines gesetzt ist.",
-  "resource.usage.noCap": "Kein Kontingent gesetzt",
+  "resource.usage.noCap": "Kein KI-Budget gesetzt",
   "resource.usage.axis.model": "Modell",
   "resource.field.tokens": "Token",
   "resource.field.share": "Anteil",
@@ -148,7 +148,7 @@ export const resourceDe: Record<keyof typeof resourceEn, string> = {
   "detail.cause.class": "Der letzte fehlgeschlagene Run scheiterte – Ursache: {cause}.",
   "detail.cause.noRun":
     "Die Engine meldet diesen Workflow als {state}; ein fehlgeschlagener Run liegt nicht vor.",
-  "resource.usage.setCap": "Kontingent setzen",
+  "resource.usage.setCap": "KI-Budget festlegen",
   "resource.usage.unknownWorkflow": "Ein Workflow, den dieser Arbeitsbereich nicht mehr führt",
   "resource.usage.workflowUnreadable": "Name nicht lesbar",
 };

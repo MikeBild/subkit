@@ -203,6 +203,7 @@ const CONVERSATIONS_ENTRY_POINTS: ReadonlySet<string> = new Set([
   `${CONVERSATIONS_PREFIX}public/context.ts`,
   `${CONVERSATIONS_PREFIX}public/elicitation.ts`,
   `${CONVERSATIONS_PREFIX}public/policy.ts`,
+  `${CONVERSATIONS_PREFIX}public/scheduled.ts`,
   `${CONVERSATIONS_PREFIX}public/tool-contract.ts`,
 ]);
 
@@ -215,4 +216,147 @@ export function conversationsLeafHits(file: string, imports: readonly ResolvedIm
         !CONVERSATIONS_ENTRY_POINTS.has(imp.resolved),
     )
     .map((imp) => ({ line: imp.line, what: imp.resolved }));
+}
+
+export function engineFolderOf(path: string): string | null {
+  if (!path.startsWith(ENGINE_SRC_PREFIX)) return null;
+  const rest = path.slice(ENGINE_SRC_PREFIX.length);
+  const slash = rest.indexOf("/");
+  return slash > 0 ? rest.slice(0, slash) : null;
+}
+
+export function subsystemEntryHits(file: string, imports: readonly ResolvedImport[]): RuleHit[] {
+  const from = engineFolderOf(file);
+  return imports
+    .filter((imp) => {
+      const to = engineFolderOf(imp.resolved);
+      return to !== null && to !== from && imp.resolved !== `${ENGINE_SRC_PREFIX}${to}/index.ts`;
+    })
+    .map((imp) => ({ line: imp.line, what: imp.resolved }));
+}
+
+interface VendorSdk {
+  name: string;
+  matches(specifier: string): boolean;
+  adapter(rest: string): boolean;
+}
+
+const inAdapterFolder = (rest: string) =>
+  rest.startsWith("adapters/") || rest.includes("/adapters/");
+const inPersistence = (rest: string) =>
+  rest.startsWith("db/") || rest.includes("/persistence/") || inAdapterFolder(rest);
+
+export const VENDOR_SDKS: readonly VendorSdk[] = [
+  {
+    name: "drizzle-orm",
+    matches: (s) => s === "drizzle-orm" || s.startsWith("drizzle-orm/"),
+    adapter: inPersistence,
+  },
+  {
+    name: "pg",
+    matches: (s) => s === "pg",
+    adapter: (rest) =>
+      inPersistence(rest) || rest.startsWith("connectors/drivers/") || rest.startsWith("pubsub/"),
+  },
+  {
+    name: "pg-boss",
+    matches: (s) => s === "pg-boss",
+    adapter: (rest) => rest === "queue/boss.ts" || inAdapterFolder(rest),
+  },
+  {
+    name: "@modelcontextprotocol/sdk",
+    matches: (s) => s === "@modelcontextprotocol/sdk" || s.startsWith("@modelcontextprotocol/sdk/"),
+    adapter: (rest) =>
+      rest.startsWith("mcp/client/") ||
+      rest.startsWith("mcp/transports/") ||
+      rest === "mcp/server.ts" ||
+      inAdapterFolder(rest),
+  },
+  {
+    name: "ai",
+    matches: (s) => s === "ai" || s.startsWith("ai/") || s.startsWith("@ai-sdk/"),
+    adapter: (rest) => rest.startsWith("llm/runtime/") || inAdapterFolder(rest),
+  },
+];
+
+export function vendorImportHits(file: string, imports: readonly ResolvedImport[]): RuleHit[] {
+  if (!file.startsWith(ENGINE_SRC_PREFIX) || isTestPath(file)) return [];
+  const rest = file.slice(ENGINE_SRC_PREFIX.length);
+  const hits: RuleHit[] = [];
+  for (const imp of imports) {
+    if (imp.typeOnly) continue;
+    const sdk = VENDOR_SDKS.find((candidate) => candidate.matches(imp.specifier));
+    if (sdk && !sdk.adapter(rest)) hits.push({ line: imp.line, what: imp.specifier });
+  }
+  return hits;
+}
+
+function lineAt(sf: ts.SourceFile, node: ts.Node): number {
+  return sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
+}
+
+export const COMPOSITION_ROOTS: ReadonlySet<string> = new Set([
+  `${ENGINE_SRC_PREFIX}db/client.ts`,
+  `${ENGINE_SRC_PREFIX}engine-main.ts`,
+  `${ENGINE_SRC_PREFIX}preflight/cli-entry.ts`,
+  `${ENGINE_SRC_PREFIX}db/print-key.ts`,
+  `${ENGINE_SRC_PREFIX}auth/oauth/token-exchange-cli.ts`,
+]);
+
+export function getDbCallHits(sf: ts.SourceFile): RuleHit[] {
+  const hits: RuleHit[] = [];
+  const visit = (node: ts.Node) => {
+    if (ts.isCallExpression(node) && isNamed(node.expression, "getDb")) {
+      hits.push({ line: lineAt(sf, node), what: "getDb()" });
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return hits;
+}
+
+export const ENV_SEAMS: ReadonlySet<string> = new Set([
+  `${ENGINE_SRC_PREFIX}env.ts`,
+  `${ENGINE_SRC_PREFIX}test-helpers/determinism/env.ts`,
+]);
+
+export function processEnvHits(file: string, sf: ts.SourceFile): RuleHit[] {
+  if (ENV_SEAMS.has(file)) return [];
+  const hits: RuleHit[] = [];
+  const visit = (node: ts.Node) => {
+    if (
+      ts.isPropertyAccessExpression(node) &&
+      isNamed(node.expression, "process") &&
+      propertyName(node) === "env"
+    ) {
+      hits.push({ line: lineAt(sf, node), what: "process.env" });
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return hits;
+}
+
+const LINT_SUPPRESSION = /^(?:\/\/|\/\*)\s*biome-ignore/;
+
+export function lintSuppressionHits(sf: ts.SourceFile): RuleHit[] {
+  const text = sf.getFullText();
+  const seen = new Map<number, RuleHit>();
+  const collect = (ranges: ts.CommentRange[] | undefined) => {
+    for (const r of ranges ?? []) {
+      if (seen.has(r.pos) || !LINT_SUPPRESSION.test(text.slice(r.pos, r.end))) continue;
+      seen.set(r.pos, {
+        line: sf.getLineAndCharacterOfPosition(r.pos).line + 1,
+        what: "biome-ignore",
+      });
+    }
+  };
+  const walk = (node: ts.Node) => {
+    if (node.kind === ts.SyntaxKind.JsxText) return;
+    collect(ts.getLeadingCommentRanges(text, node.getFullStart()));
+    collect(ts.getTrailingCommentRanges(text, node.getEnd()));
+    for (const child of node.getChildren(sf)) walk(child);
+  };
+  walk(sf);
+  return [...seen.values()].sort((a, b) => a.line - b.line);
 }

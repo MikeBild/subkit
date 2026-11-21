@@ -32,7 +32,6 @@ function defaultRoute(): ModelRoute {
     provider: "anthropic",
     fallback_provider: "anthropic",
     context_cap: 200_000,
-    monthly_budget: null,
   } as ModelRoute;
 }
 

@@ -2,9 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Glob } from "bun";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 
 function resolveRepoRoot(): string {
-  const fromEnv = process.env.SUBKIT_REPO_ROOT;
+  const fromEnv = testEnv.SUBKIT_REPO_ROOT;
   if (fromEnv && existsSync(resolve(fromEnv, "package.json"))) return fromEnv;
   return resolve(import.meta.dir, "..", "..", "..", "..", "..");
 }
@@ -47,6 +48,7 @@ const ALLOWED = new Set<string>([
   "apps/engine/src/conversations/playbook-evidence.ts",
   "apps/engine/src/conversations/tools/sdk-wrap/pregate.ts",
   "apps/engine/src/http/routes/cockpit-events.ts",
+  "apps/engine/src/vault/service.ts",
   "apps/engine/src/http/routes/categories.ts",
   "apps/engine/src/rbac/evaluator.ts",
   "apps/engine/src/rbac/tests/evaluator.test.ts",

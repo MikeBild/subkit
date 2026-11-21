@@ -4,7 +4,7 @@ import { engineClientActorType, monthlyUsage } from "../../llm/accounting/index.
 import { resolveModelRoute } from "../../llm/runtime/invoke.ts";
 import type { StepRouterSignals } from "../../llm/runtime/step-router.ts";
 import { engineUrlFromConfig } from "../../llm/runtime-context.ts";
-import { log, logger } from "../../logging/logger.ts";
+import { log, logger } from "../../logging/index.ts";
 import { now } from "../../utils/clock.ts";
 import { resolveAttachmentSlugsInText } from "../attachments.ts";
 import { hasInProgressWorkflowDraft, startNewWorkflowDraft } from "../authoring-state/index.ts";
@@ -26,6 +26,7 @@ import { assertConversationTurn } from "../turns.ts";
 import type { TurnEvent } from "../types.ts";
 import { loadEnumerationCoverage } from "./enumeration-coverage.ts";
 import { parseLoadedSkills } from "./skill-recency.ts";
+import { conversationSpendBefore } from "./spend-notice.ts";
 import type { RunLoopParams, ToolPolicies, TurnBase, TurnState } from "./types.ts";
 
 async function ingestUserMessage(p: RunLoopParams, events: TurnEvent[]): Promise<string | null> {
@@ -71,6 +72,7 @@ export async function openTurn(
   });
 
   const usageBefore = await monthlyUsage(p.tenant_id, p.db).catch(() => 0);
+  const spendBefore = await conversationSpendBefore(p);
   const ingestedUserMessage = await ingestUserMessage(p, events);
 
   const referenced = await resolveReferences(p.user_references, {
@@ -139,7 +141,7 @@ export async function openTurn(
     task_run: taskRun,
     connector_id: p.connector_id,
     workflow_id: workflowIdForTurn,
-    permission_mode: p.permission_mode ?? null,
+    ask_before_writing: p.ask_before_writing === true,
     ...(p.surface ? { surface: p.surface } : {}),
     engineClient: new EngineClient({
       tenant_id: p.tenant_id,
@@ -209,6 +211,7 @@ export async function openTurn(
       engineUrl,
       abort,
       usageBefore,
+      spendBefore,
       ingestedUserMessage,
       currentUserText,
       referenced,

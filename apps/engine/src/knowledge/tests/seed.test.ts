@@ -4,10 +4,11 @@ import { knowledgeSources, tenants } from "../../db/schema/index.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT, type TestDb } from "../../db/tests/setup.ts";
 import * as localProvider from "../../embeddings/local-provider.ts";
 import { loadEmbeddedSkillSeeds } from "../../skills/seed.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { EMBEDDED_KNOWLEDGE_SEEDS } from "../embedded-seeds.ts";
 import { NEW_SKILL_SLUGS, src, validKnowledgeMd } from "./seed.test-helpers.ts";
 
-const skip = process.env.REQUIRES_PG === "0";
+const skip = testEnv.REQUIRES_PG === "0";
 
 let dbCtx: TestDb;
 let tenantA: string;

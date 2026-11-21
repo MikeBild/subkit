@@ -41,7 +41,9 @@ describe("every source, as an admin reads it", () => {
     expect(classOf(`workflow:${wf.chat}`)).toBe("failing");
     expect(classOf(`connector:${brokenConnectorId}`)).toBe("failing");
     expect(classOf(`connection:${connectionId}`)).toBe("failing");
-    expect(classOf("budget")).toBe("failing");
+    expect(attention.items.find((item) => item.reason === "spend_limit_reached")?.class).toBe(
+      "stopped",
+    );
     expect(classOf(`workflow:${wf.patch}`)).toBe("decide");
     expect(classOf("secret-approval:settings.llm.api_key@2")).toBe("decide");
     expect(classOf("skills")).toBe("decide");
@@ -134,7 +136,7 @@ describe("per reader", () => {
     expect(ids).toContain(`workflow:${wf.fail}`);
     expect(ids).toContain("skills");
     expect(ids).not.toContain(`connector:${brokenConnectorId}`);
-    expect(ids).not.toContain("budget");
+    expect(attention.items.some((item) => item.reason === "spend_limit_reached")).toBe(false);
     expect(attention.sources.connectors).toBe("not_permitted");
     expect(attention.sources.connections).toBe("not_permitted");
     expect(attention.sources.secret_approvals).toBe("not_permitted");

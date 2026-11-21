@@ -15,7 +15,6 @@ import { chatCommand } from "./commands/chat.ts";
 import { clipperCommand } from "./commands/clipper.ts";
 import { connectorTemplatesCommand } from "./commands/connector-templates.ts";
 import { connectorsCommand } from "./commands/connectors.ts";
-import { credentialsCommand } from "./commands/credentials.ts";
 import { diagnosticsCommand } from "./commands/diagnostics.ts";
 import { discoveryCommand } from "./commands/discovery.ts";
 import { doctorCommand } from "./commands/doctor.ts";
@@ -52,6 +51,7 @@ import { systemAccountsCommand } from "./commands/system-accounts.ts";
 import { tasksCommand } from "./commands/tasks.ts";
 import { updateCommand } from "./commands/update.ts";
 import { usersCommand } from "./commands/users.ts";
+import { vaultCommand } from "./commands/vault.ts";
 import { workflowsCommand } from "./commands/workflows.ts";
 import {
   configPath,
@@ -448,7 +448,7 @@ const mainCommand = defineCommand({
     chat: chatCommand,
     clipper: clipperCommand,
     "connector-templates": connectorTemplatesCommand,
-    credentials: credentialsCommand,
+    vault: vaultCommand,
     skills: skillsCommand,
     "skill-candidates": skillCandidatesCommand,
     "knowledge-sources": knowledgeSourcesCommand,
@@ -621,7 +621,7 @@ export const SUB_COMMANDS: Record<string, SubEntry> = {
   chat: { command: chatCommand, requires: "chat_workspace:read" },
   clipper: { command: clipperCommand },
   "connector-templates": { command: connectorTemplatesCommand, requires: "connector:read" },
-  credentials: { command: credentialsCommand, requires: "credential:read" },
+  vault: { command: vaultCommand },
   skills: { command: skillsCommand, requires: "skill:read" },
   "skill-candidates": { command: skillCandidatesCommand, requires: "skill:read" },
   "knowledge-sources": { command: knowledgeSourcesCommand, requires: "knowledge:read" },

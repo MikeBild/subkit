@@ -96,7 +96,7 @@ const idle = { progress_marks: ["ready:1"] };
 const noisy: Partial<TaskRunObservation> = {
   pending_elicitation: "question",
   requested_check_at: at(5000),
-  turn_failure: failure("llm_quota_exhausted", at(9000)),
+  turn_failure: failure("llm_spend_limit_reached", at(9000)),
   turn_interrupted: true,
 };
 const stuck: Partial<TaskRunProgress> = {
@@ -195,7 +195,7 @@ describe("decideTaskRunState", () => {
 
   test("a turn refused before the model was called does not use up a turn", () => {
     expect(TASK_TURN_FAILURES_BEFORE_THE_MODEL).toEqual([
-      "llm_quota_exhausted",
+      "llm_spend_limit_reached",
       "ai_access_missing",
     ]);
     for (const code of TASK_TURN_FAILURES_BEFORE_THE_MODEL)
@@ -205,9 +205,9 @@ describe("decideTaskRunState", () => {
         turn_seen: true,
       });
     expect(decide({ turn_failure: failure("llm_provider_limited", at(5_000)) }).turns_used).toBe(5);
-    expect(decide({ turn_seq: 3, turn_failure: failure("llm_quota_exhausted") }).turns_used).toBe(
-      4,
-    );
+    expect(
+      decide({ turn_seq: 3, turn_failure: failure("llm_spend_limit_reached") }).turns_used,
+    ).toBe(4);
   });
 
   test("a turn somebody stopped waits for the person instead of failing the run", () => {
@@ -302,7 +302,9 @@ describe("decideTaskRunState", () => {
   test("an exhausted budget and missing AI access wait", () => {
     const rest = { turn_interrupted: true, requested_check_at: at(1) };
     expect(
-      outcome(decide({ ...rest, turn_failure: failure("llm_quota_exhausted", at(9000)) }, stuck)),
+      outcome(
+        decide({ ...rest, turn_failure: failure("llm_spend_limit_reached", at(9000)) }, stuck),
+      ),
     ).toEqual(settled("waiting", { waiting_reason: "budget" }));
     expect(
       outcome(decide({ ...rest, turn_failure: failure("ai_access_missing", at(9000)) }, stuck)),

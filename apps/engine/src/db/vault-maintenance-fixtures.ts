@@ -2,8 +2,9 @@ import { afterAll, beforeAll, beforeEach, expect } from "bun:test";
 import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 import pg from "pg";
-import { decryptSecretBytesWithKey, encryptSecretBytesWithKey } from "../crypto/aes-gcm.ts";
+import { decryptSecretBytesWithKey, encryptSecretBytesWithKey } from "../crypto/index.ts";
 import { provisionSelfServiceTenant } from "../identity/self-service.ts";
+import { testEnv } from "../test-helpers/determinism/env.ts";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
 import { configureHostedPolicyForTests } from "../test-helpers/hosted-policy.ts";
 import { TEST_WORKSPACE_REGISTRATION } from "../test-helpers/workspace-registration.ts";
@@ -37,7 +38,7 @@ export const digest = (value: Uint8Array) => createHash("sha256").update(value).
 
 export const evidence = digest(Buffer.from("operator reviewed every producer origin stopped"));
 
-const previousEnvKey = process.env.MASTER_KEY;
+const previousEnvKey = testEnv.MASTER_KEY;
 
 export const statusSignature = "subkit.vault_maintenance_status()";
 
@@ -234,8 +235,8 @@ export function useVaultMaintenanceDb(): void {
     tenantId = owned.tenant.id;
   });
   afterAll(async () => {
-    if (previousEnvKey === undefined) delete process.env.MASTER_KEY;
-    else process.env.MASTER_KEY = previousEnvKey;
+    if (previousEnvKey === undefined) delete testEnv.MASTER_KEY;
+    else testEnv.MASTER_KEY = previousEnvKey;
     await runtime?.end();
     await maintenance?.end();
     const adminUrl = fixture?.url;
@@ -254,7 +255,7 @@ export function useVaultMaintenanceDb(): void {
     }
   });
   beforeEach(async () => {
-    process.env.MASTER_KEY = newKey.toString("hex");
+    testEnv.MASTER_KEY = newKey.toString("hex");
     await fixture.pool.query(
       "UPDATE subkit.runtime_config_revisions SET document=jsonb_set(jsonb_set(document,'{storage,hosted,tenant_bytes}','\"50000000\"'::jsonb),'{storage,hosted,retained_rows_per_resource}','1000'::jsonb) WHERE revision=(SELECT active_revision FROM subkit.runtime_config_state WHERE key='runtime')",
     );

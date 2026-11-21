@@ -95,7 +95,7 @@ export interface ToolContext {
   abortSignal?: AbortSignal;
   availableToolNames?: ReadonlySet<string>;
   onLog?: (level: "debug" | "info" | "warn" | "error", message: string) => void;
-  permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
+  ask_before_writing?: boolean;
   surface?: "sk_headless" | "sk_interactive" | "mcp" | "web" | "chat";
   mcp_client_name?: string;
   direct_mcp_invocation?: boolean;

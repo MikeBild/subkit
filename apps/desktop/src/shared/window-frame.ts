@@ -44,3 +44,15 @@ export function overlayBounds(appContent: Rect | null, workArea: Rect): Rect {
     height,
   };
 }
+
+export const LIVE_WINDOW = { width: 960, height: 680, minWidth: 560, minHeight: 520 };
+export const PILL_WINDOW = { width: 420, height: 56, top: 8 };
+
+export function pillBounds(workArea: Rect): Rect {
+  return {
+    x: Math.round(workArea.x + (workArea.width - PILL_WINDOW.width) / 2),
+    y: workArea.y + PILL_WINDOW.top,
+    width: PILL_WINDOW.width,
+    height: PILL_WINDOW.height,
+  };
+}

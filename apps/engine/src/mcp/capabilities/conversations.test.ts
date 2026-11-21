@@ -4,7 +4,7 @@ import { getConfig, setConfigKey } from "../../config/loader.ts";
 import { loadDraft } from "../../conversations/draft.ts";
 import { conversationElicitations, conversations, mcpTasks } from "../../db/schema/index.ts";
 import { createIntakeItem } from "../../knowledge/index.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { handleConversationTool } from "./conversations.ts";
 import {
   finishQueuedConversation,

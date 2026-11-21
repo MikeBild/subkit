@@ -31,6 +31,7 @@ const bridge: CockpitBridge = {
     ipcRenderer.invoke(COCKPIT_CHANNELS.updateDesktopSettings, desktopSettingsPatch(patch)),
   runUpdateAction: () => ipcRenderer.invoke(COCKPIT_CHANNELS.runUpdateAction),
   recheckServer: () => ipcRenderer.invoke(COCKPIT_CHANNELS.recheckServer),
+  openLocalCapabilities: () => ipcRenderer.invoke(COCKPIT_CHANNELS.openLocalCapabilities),
   onDesktopSettings: (listener) => {
     if (typeof listener !== "function") return () => {};
     const handler = (_event: unknown, settings: DesktopSettingsView) => listener(settings);

@@ -8,7 +8,7 @@ import {
 import { DiscoveryError, type DiscoveryResult } from "../../connectors/discovery/types.ts";
 import { getConnector } from "../../connectors/service.ts";
 import { getBuiltinTemplate } from "../../connectors/templates.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 export const KNOWLEDGE_SOURCE_TTL_MS = DISCOVERY_TTL_MS;

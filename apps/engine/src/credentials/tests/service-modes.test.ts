@@ -188,7 +188,6 @@ describe("credentials/service — mode round trips", () => {
           refresh_token_path: "AuthenticationResult.RefreshToken",
           expires_in_path: "AuthenticationResult.ExpiresIn",
           expires_at_path: "AuthenticationResult.ExpiresAt",
-          // biome-ignore lint/suspicious/noTemplateCurlyInString: header_template is a literal placeholder string, not a JS template
           header_template: "Bearer ${token}",
         },
         actor_id: null,
@@ -207,7 +206,6 @@ describe("credentials/service — mode round trips", () => {
       expect(fetched!.value.refresh_token_path).toBe("AuthenticationResult.RefreshToken");
       expect(fetched!.value.expires_in_path).toBe("AuthenticationResult.ExpiresIn");
       expect(fetched!.value.expires_at_path).toBe("AuthenticationResult.ExpiresAt");
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: header_template is a literal placeholder string, not a JS template
       expect(fetched!.value.header_template).toBe("Bearer ${token}");
     }
   });

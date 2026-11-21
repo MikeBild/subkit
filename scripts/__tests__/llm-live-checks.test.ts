@@ -285,7 +285,7 @@ describe("llm-live-checks · liveGateFailureHint", () => {
     expect(hint).toContain("--openai-key-file");
     expect(hint).toContain("openai:<primary>,openai:<fallback>");
     expect(hint).toContain("--models");
-    expect(hint).toContain("verify:llm-live");
+    expect(hint).toContain("verify llm-live");
     expect(hint).toContain("no bypass");
   });
 });

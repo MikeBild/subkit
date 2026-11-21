@@ -1,10 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${...}` tokens are part of the tested grammar.
-// An authoring step answers only for the step references it introduces.
-//
-// The expressions are the production ones that triggered this: shared transform
-// code that reads a step of a sibling workflow behind a test on ANOTHER step, so
-// no guard-syntax heuristic could ever clear them.
-
 import { expect, test } from "bun:test";
 import {
   partitionStepReferences,

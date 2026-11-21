@@ -1,6 +1,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConfig, loadConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import {
@@ -12,11 +13,25 @@ import {
   users,
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { writeSetupPreferences } from "../../identity/setup-preferences.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { registerConversationAbort, unregisterConversationAbort } from "../abort.ts";
 import { type AnswerActor, MODEL_RELAYED_ANSWER } from "../answer-actor.ts";
-import * as svc from "../service.ts";
+import * as svc from "../service/index.ts";
+
+type AskBeforeWritingOption = { ask_before_writing?: boolean };
+
+async function personWhoAsksBeforeWriting(
+  db: Db,
+  tenant_id: string,
+  actor_id: string | null | undefined,
+): Promise<ResolvedPrincipal> {
+  if (!actor_id) throw new Error("ask_before_writing needs a person as actor");
+  await writeSetupPreferences(db, { tenant_id, user_id: actor_id }, { ask_before_writing: true });
+  return { provider: "test", kind: "user", id: actor_id, tenant_id, roles: ["admin"] };
+}
 
 function testAnswerActor(actor_id: string | null | undefined, override?: AnswerActor): AnswerActor {
   if (override) return override;
@@ -27,10 +42,14 @@ export async function createConversationWithTurn(
   params: svc.CreateConversationParams &
     Pick<svc.RunConversationTurnParams, "onEvent" | "runtime_context" | "principal"> & {
       answer_actor?: AnswerActor;
-    },
+    } & AskBeforeWritingOption,
   db: Db,
 ): Promise<svc.ConversationTurnOutcome> {
-  const { onEvent, runtime_context, answer_actor, principal, ...createParams } = params;
+  const { onEvent, runtime_context, answer_actor, ask_before_writing, ...rest } = params;
+  const { principal: givenPrincipal, ...createParams } = rest;
+  const principal = ask_before_writing
+    ? await personWhoAsksBeforeWriting(db, createParams.tenant_id, createParams.actor_id)
+    : givenPrincipal;
   const created = await svc.createConversation(createParams, db);
   if (!created.initial_message) {
     return { conversation: created.conversation, result: { events: [], status: "active" } };
@@ -46,7 +65,6 @@ export async function createConversationWithTurn(
         answer_actor: testAnswerActor(createParams.actor_id, answer_actor),
         user_memory: created.user_memory,
         turn_abort_ctrl: ctrl,
-        ...(createParams.permission_mode ? { permission_mode: createParams.permission_mode } : {}),
         ...(onEvent ? { onEvent } : {}),
         ...(runtime_context ? { runtime_context } : {}),
         ...(principal !== undefined ? { principal } : {}),
@@ -61,14 +79,19 @@ export async function createConversationWithTurn(
 export async function respondElicitationForTest(
   params: Omit<svc.RespondElicitationParams, "turn_abort_ctrl" | "answer_actor"> & {
     answer_actor?: AnswerActor;
-  },
+  } & AskBeforeWritingOption,
   db: Db,
 ): Promise<svc.ConversationTurnOutcome> {
+  const { ask_before_writing, ...rest } = params;
+  const principal = ask_before_writing
+    ? await personWhoAsksBeforeWriting(db, rest.tenant_id, rest.actor_id)
+    : rest.principal;
   const ctrl = registerConversationAbort(params.tenant_id, params.conversation_id);
   try {
     return await svc.respondElicitation(
       {
-        ...params,
+        ...rest,
+        ...(principal !== undefined ? { principal } : {}),
         answer_actor: testAnswerActor(params.actor_id, params.answer_actor),
         turn_abort_ctrl: ctrl,
       },
@@ -89,7 +112,7 @@ export async function appendMessageWithTurn(
       | "next_suggestion_suppress"
       | "principal"
       | "elicitationBridge"
-    > & { answer_actor?: AnswerActor },
+    > & { answer_actor?: AnswerActor } & AskBeforeWritingOption,
   db: Db,
 ): Promise<svc.ConversationTurnOutcome> {
   const {
@@ -98,10 +121,14 @@ export async function appendMessageWithTurn(
     surface,
     next_suggestion_suppress,
     answer_actor,
-    principal,
+    principal: givenPrincipal,
     elicitationBridge,
+    ask_before_writing,
     ...appendParams
   } = params;
+  const principal = ask_before_writing
+    ? await personWhoAsksBeforeWriting(db, appendParams.tenant_id, appendParams.actor_id)
+    : givenPrincipal;
   const appended = await svc.appendUserMessage(appendParams, db);
   const ctrl = registerConversationAbort(appendParams.tenant_id, appendParams.conversation_id);
   try {
@@ -114,7 +141,6 @@ export async function appendMessageWithTurn(
         answer_actor: testAnswerActor(appendParams.actor_id, answer_actor),
         user_memory: appended.user_memory,
         turn_abort_ctrl: ctrl,
-        ...(appendParams.permission_mode ? { permission_mode: appendParams.permission_mode } : {}),
         ...(onEvent ? { onEvent } : {}),
         ...(runtime_context ? { runtime_context } : {}),
         ...(surface ? { surface } : {}),
@@ -150,7 +176,7 @@ export interface ConversationTestCtx {
 }
 
 export async function createConversationTestCtx(label: string): Promise<ConversationTestCtx> {
-  process.env.LLM_PROVIDER = "mock";
+  testEnv.LLM_PROVIDER = "mock";
   await ensureConfigLoaded();
   resetMockProvider();
   const testDb = await createTestDb(`conv_${label}`);

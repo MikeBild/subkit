@@ -6,7 +6,7 @@ import {
   METRIC_NAMES,
   resetMetricsRegistryForTests,
 } from "../../observability/metrics.ts";
-import { getConversation } from "../service.ts";
+import { getConversation } from "../service/index.ts";
 import {
   appendMessageWithTurn,
   type ConversationTestCtx,
@@ -34,7 +34,7 @@ describe("conversations/loop", () => {
         actor_id: ctx.user_id,
         connector_id: ctx.connector_id,
         initial_message: "please list users from the api",
-        permission_mode: "ask",
+        ask_before_writing: true,
       },
       ctx.testDb.db,
     );
@@ -90,6 +90,7 @@ describe("conversations/loop", () => {
         conversation_id: outcome.conversation.id,
         elicitation_id: elicitationId,
         actor_id: ctx.user_id,
+        ask_before_writing: true,
         output: { confirmed: true },
       },
       ctx.testDb.db,

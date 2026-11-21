@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { connectors, skills as skillsTable } from "../db/schema/index.ts";
-import { log } from "../logging/logger.ts";
+import { log } from "../logging/index.ts";
 import type { WorkflowDef } from "./types.ts";
 import { validateOutputSchemaSuperset } from "./validator.ts";
 

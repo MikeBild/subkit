@@ -15,6 +15,7 @@ import { chatEventsSeen, chatIdentities, chatWorkspaces, users } from "../../db/
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
 import { createBoss, disposeBoss } from "../boss.ts";
@@ -52,8 +53,8 @@ let adapter: RecordingSlackAdapter;
 let previousLlmProvider: string | undefined;
 
 beforeAll(async () => {
-  previousLlmProvider = process.env.LLM_PROVIDER;
-  process.env.LLM_PROVIDER = "mock";
+  previousLlmProvider = testEnv.LLM_PROVIDER;
+  testEnv.LLM_PROVIDER = "mock";
   resetMockProvider();
   testDb = await createTestDb("chat-event-handler");
   const tenant = await seedTenant(testDb.db, { slug: "t-ce", display_name: "ChatEvent" });
@@ -105,8 +106,8 @@ afterAll(async () => {
   await disposeBoss(boss);
   await testDb.cleanup();
   resetMockProvider();
-  if (previousLlmProvider === undefined) delete process.env.LLM_PROVIDER;
-  else process.env.LLM_PROVIDER = previousLlmProvider;
+  if (previousLlmProvider === undefined) delete testEnv.LLM_PROVIDER;
+  else testEnv.LLM_PROVIDER = previousLlmProvider;
 });
 
 describe("queue: chat.event worker", () => {

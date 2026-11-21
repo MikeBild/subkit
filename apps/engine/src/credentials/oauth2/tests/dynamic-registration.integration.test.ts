@@ -2,8 +2,8 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { and, eq } from "drizzle-orm";
-import { decryptSecret, encryptSecret } from "../../../crypto/aes-gcm.ts";
-import { auditLog, connectors, credentials, tenants } from "../../../db/schema/index.ts";
+import { decryptSecret, encryptSecret } from "../../../crypto/index.ts";
+import { auditLog, connectors, tenants, vaultItems } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
 import {
@@ -165,8 +165,8 @@ describe("dynamic registration + credential persistence — crypto roundtrip + A
 
     const rows = await ctx.db
       .select()
-      .from(credentials)
-      .where(and(eq(credentials.tenant_id, tenantId), eq(credentials.connector_id, connectorId)))
+      .from(vaultItems)
+      .where(and(eq(vaultItems.tenant_id, tenantId), eq(vaultItems.connector_id, connectorId)))
       .limit(1);
     const row = rows[0]!;
 

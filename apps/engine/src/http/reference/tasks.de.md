@@ -163,7 +163,7 @@ Ein Run wartet in diesen Fällen auf dich:
 - Er stellt eine Rückfrage oder braucht deine Freigabe für einen Schreibzugriff.
 - Zwei Runden hintereinander brachten keinen echten Fortschritt. Als Fortschritt zählt, dass ein Schritt fertig wird, ein neuer Beleg oder ein neues Ergebnis dazukommt, ein gebundener Workflow oder Connector läuft, du schreibst oder antwortest oder der Run seine nächste Prüfung plant. Nur Notizen im Plan umzuschreiben zählt nicht.
 - Du hast am Eingabefeld **Stoppen** gewählt, während eine Runde lief.
-- Das Monatskontingent ist aufgebraucht, oder der Arbeitsbereich hat gerade keinen KI-Anbieter. In diesen beiden Fällen musst du im Run nichts tun: Er arbeitet von selbst weiter, sobald wieder Kontingent frei oder ein Anbieter eingerichtet ist.
+- Das monatliche KI-Budget ist erreicht, oder der Arbeitsbereich hat gerade keinen KI-Anbieter. In diesen beiden Fällen musst du im Run nichts tun: Er arbeitet von selbst weiter, sobald das Budget es wieder erlaubt oder ein Anbieter eingerichtet ist.
 
 Ein Run schläft, wenn er sich selbst eine nächste Prüfung gesetzt hat, wenn der KI-Anbieter SubKit bremst oder solange die Aufgabe pausiert ist. Eine nächste Prüfung liegt höchstens 31 Tage voraus und nie hinter der Frist des Runs.
 
@@ -171,7 +171,7 @@ Zum Eingreifen öffnest du den Run im Reiter **Runs** und wählst **Unterhaltung
 
 Die Unterhaltung kennt zwei Arten anzuhalten. **Abbrechen** in der Zeile darüber beendet den Run endgültig. **Stoppen** am Eingabefeld unterbricht nur die laufende Runde: Der Run wartet dann auf dich und arbeitet weiter, wenn du ihm schreibst.
 
-Schreibst du in einen Run hinein, gelten für dich dieselben Grenzen. Der Run bleibt, was du erlaubt hast: Er nutzt weiter nur, was gebunden ist, er fragt weiter vor Schreibzugriffen, die keine Freigabe deckt, und du kannst ihn nicht in einen Modus schalten, der nicht mehr fragt. Deinen Run lesen und in ihn schreiben können nur du und Admins. Für alle anderen gibt es seine Unterhaltung nicht. Bittet ein Run darum, zurückgehaltene Schreibzugriffe freizugeben, kannst du als Besitzerin antworten oder ein Admin. Alle anderen sehen statt der Antwort-Schaltflächen einen Hinweis. Run-Unterhaltungen stehen nicht in der normalen Liste der Unterhaltungen. Du öffnest sie über die Aufgabe.
+Schreibst du in einen Run hinein, gelten für dich dieselben Grenzen. Der Run bleibt, was du erlaubt hast: Er nutzt weiter nur, was gebunden ist, und er fragt weiter vor Schreibzugriffen, die keine Freigabe deckt. Deinen Run lesen und in ihn schreiben können nur du und Admins. Für alle anderen gibt es seine Unterhaltung nicht. Bittet ein Run darum, zurückgehaltene Schreibzugriffe freizugeben, kannst du als Besitzerin antworten oder ein Admin. Alle anderen sehen statt der Antwort-Schaltflächen einen Hinweis. Run-Unterhaltungen stehen nicht in der normalen Liste der Unterhaltungen. Du öffnest sie über die Aufgabe.
 
 Eine offene Rückfrage hält den nächsten geplanten Start auf, weil der Run noch offen ist. Beantworte sie oder brich den Run ab.
 
@@ -221,7 +221,7 @@ Admins sehen außerdem einen Hinweis, wenn eine Aufgabe pausiert ist, weil ihre 
 
 ### Kosten
 
-Jede Runde eines Runs ist ein oder mehrere KI-Aufrufe. Sie zählen zum Monatskontingent des Arbeitsbereichs. Ist das Kontingent aufgebraucht, wartet ein Run. Er schlägt nicht fehl und arbeitet von selbst weiter, sobald wieder Kontingent frei ist.
+Jede Runde eines Runs ist ein oder mehrere KI-Aufrufe. Haben sie einen Preis, zählen sie zum monatlichen KI-Budget des Arbeitsbereichs. Ist das Budget erreicht, wartet ein Run. Er schlägt nicht fehl und arbeitet von selbst weiter, sobald das Budget es wieder erlaubt.
 
 Auf der Seite **Nutzung** wählst du unter **Aufschlüsseln nach** den Eintrag **Aufgabe** und siehst Kosten und KI-Aufrufe je Aufgabe. Weil das die Aufgaben aller Personen umfasst, braucht es `stats:read:all`. Auf der Seite der Aufgabe zeigt die Kachel **Verbrauch** im Reiter **Überblick** den letzten Run und den laufenden Monat. Dafür brauchst du kein zusätzliches Recht.
 
@@ -258,7 +258,7 @@ Der `sk`-Eingang eines neuen Arbeitsbereichs erhält zusätzlich `task_run.waiti
 | Die Dauererlaubnis endete, nachdem du die Aufgabe bearbeitet hast | Das ist gewollt. Prüfe die Änderung und wähle erneut **Erlauben**. |
 | **Starten** meldet, dass schon ein Run läuft | Öffne den Run. Beantworte ihn, warte auf ihn oder wähle **Abbrechen**, dann starte erneut. |
 | Der geplante Start blieb aus | Lies die Zeile zum nächsten Start. **fällig, wartet auf Erlaubnis**: Wähle **Erlauben**. **wartet auf den laufenden Run**: Beantworte den offenen Run oder brich ihn ab. Sonst prüfe, ob die Aufgabe pausiert ist. |
-| Der Run wartet und nennt das Kontingent | Das Monatskontingent ist aufgebraucht. Erhöhe es auf der Seite **Nutzung** oder warte auf den Monatsersten. Der Run arbeitet dann von selbst weiter. |
+| Der Run wartet und nennt das Budget | Das monatliche KI-Budget ist erreicht. Ein Administrator erhöht es unter **Einstellungen** › **Nutzung** oder macht diesen Monat weiter; sonst wartet der Run auf den nächsten Monat. Er arbeitet dann von selbst weiter. |
 | Der Run wartet ohne Rückfrage | Er kam nicht voran, oder eine Runde wurde angehalten: Sag ihm, was fehlt. |
 | Der Run endete am Rundenlimit oder an der Frist | Er lässt sich nicht fortsetzen. Wähle **Neu starten**. Reichen die Runden für die Aufgabe nicht, erhöhe sie beim Bearbeiten der Aufgabe. |
 | „This workflow is not part of the task.“ | Binde den Workflow an die Aufgabe. Das beendet die Dauererlaubnis. Erlaube sie danach erneut. |

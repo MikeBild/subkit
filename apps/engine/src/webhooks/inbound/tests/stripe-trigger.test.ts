@@ -111,7 +111,6 @@ beforeAll(async () => {
             headers: { "Content-Type": "application/json; charset=utf-8" },
             body: {
               channel: "C0123ALERT",
-              // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow template placeholders are evaluated by the engine, not JS string interpolation
               text: "[stripe] charge.failed — ${scope.extract.data.currency} ${scope.extract.data.amount} — ${scope.extract.data.failure_code} — ${scope.extract.data.email} — ${scope.extract.data.charge_id}",
             },
           },

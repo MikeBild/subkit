@@ -7,7 +7,7 @@ import { upsertCredential } from "../credentials/service.ts";
 import { executionSteps, executions } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { RunLlmBudget } from "../llm/accounting/index.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../test-helpers/mock-http.ts";
 import { seedTenant } from "../test-helpers/seed.ts";
@@ -159,7 +159,6 @@ async function storedText(): Promise<string> {
 }
 
 const FORM_BODY =
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
   "client_id=${cred.own-idp.client_id}&client_secret=${cred.own-idp.client_secret}&code=${input.code}";
 
 const capturedLevels = ["debug", "info", "warn", "error"] as const;
@@ -218,7 +217,6 @@ describe("credentials of the step's own connector", () => {
       side_effects: "write",
       headers: {
         "content-type": "application/x-www-form-urlencoded",
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
         "x-client-assertion": "${cred.own-idp.client_secret}",
       },
       body: FORM_BODY,
@@ -244,7 +242,6 @@ describe("credentials of the step's own connector", () => {
         connector_id: ownConnectorId,
         path: "/auth/token",
         method: "GET",
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
         headers: { "x-probe": "${cred.own-idp.client_secret}" },
       },
       { under_authority: false },
@@ -262,7 +259,6 @@ describe("credentials of the step's own connector", () => {
         connector_id: ownConnectorId,
         path: "/auth/revoke",
         side_effects: "write",
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
         body: { grant: "${cred.own-idp.client_secret}", token: "t-1" },
       },
       { hold_writes: true },
@@ -277,7 +273,6 @@ describe("credentials of the step's own connector", () => {
       connector_id: ownConnectorId,
       path: "/auth/token",
       side_effects: "write",
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
       body: "client_secret=${cred.foreign-idp.token}",
     });
     expect(result.status).toBe("failed");
@@ -306,7 +301,6 @@ describe("credentials of the step's own connector", () => {
         connector_id: ownConnectorId,
         path: "/auth/token",
         side_effects: "write",
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
         body: "assertion=${cred.foreign-idp.token}",
       },
       { principal: null },

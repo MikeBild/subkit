@@ -98,7 +98,6 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
           output_schema: input.output_schema,
         }),
       ),
-      permission_mode: "auto" as const,
     };
     const { result: shaped, fetch_calls: shapedFetch } = await withEgressTripwire(() =>
       dryRunWorkflowTool.execute(shapedCtx, { input: null }),

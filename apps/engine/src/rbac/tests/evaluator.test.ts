@@ -1,6 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { can } from "../evaluator.ts";
 import {
   adminUserId,

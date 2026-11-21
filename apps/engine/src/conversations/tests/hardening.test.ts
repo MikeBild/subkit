@@ -1,10 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
-import { conversationMessages, llmUsage, tenants, userLlmSettings } from "../../db/schema/index.ts";
+import { conversationMessages, llmUsage, tenants } from "../../db/schema/index.ts";
 import type { LlmProviderError } from "../../llm/errors.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
-import { invoke } from "../../llm/runtime/invoke.ts";
 
 import type { ConversationTool, ToolContext, ToolResult } from "../tools/index.ts";
 import { type TurnSignals, wrapTools } from "../tools/sdk-wrap.ts";
@@ -145,7 +144,7 @@ describe("conversations/hardening", () => {
         actor_id: ctx.user_id,
         connector_id: ctx.connector_id,
         initial_message: "please list users from the api",
-        permission_mode: "ask",
+        ask_before_writing: true,
       },
       ctx.testDb.db,
     );
@@ -245,115 +244,5 @@ describe("conversations/hardening", () => {
       .where(and(eq(llmUsage.tenant_id, ctx.tenant_id), eq(llmUsage.model, "quota-fallback")));
     expect(fallbackRows.length).toBe(0);
     expect(await providerFailureNotices()).toHaveLength(noticesBefore);
-  });
-
-  test("system-account conversation ignores a colliding user's configured token cap", async () => {
-    resetMockProvider();
-    const systemAccountId = ctx.user_id;
-    await ctx.testDb.db.insert(userLlmSettings).values({
-      tenant_id: ctx.tenant_id,
-      user_id: systemAccountId,
-      llm_monthly_token_budget: 1,
-    });
-
-    try {
-      await createConversationWithTurn(
-        {
-          tenant_id: ctx.tenant_id,
-          actor_id: systemAccountId,
-          principal: {
-            provider: "test",
-            kind: "system_account",
-            id: systemAccountId,
-            tenant_id: ctx.tenant_id,
-            roles: ["admin"],
-          },
-          initial_message: "hello",
-        },
-        ctx.testDb.db,
-      );
-
-      const usage = await ctx.testDb.db
-        .select()
-        .from(llmUsage)
-        .where(
-          and(
-            eq(llmUsage.tenant_id, ctx.tenant_id),
-            eq(llmUsage.user_id, systemAccountId),
-            eq(llmUsage.actor_type, "system_account"),
-            eq(llmUsage.result, "success"),
-          ),
-        );
-      expect(usage.length).toBeGreaterThan(0);
-    } finally {
-      await ctx.testDb.db
-        .delete(userLlmSettings)
-        .where(
-          and(
-            eq(userLlmSettings.tenant_id, ctx.tenant_id),
-            eq(userLlmSettings.user_id, systemAccountId),
-          ),
-        );
-    }
-  });
-
-  test("direct LLM invoke ignores a colliding user's configured token cap", async () => {
-    resetMockProvider();
-    const systemAccountId = ctx.user_id;
-    await ctx.testDb.db.insert(userLlmSettings).values({
-      tenant_id: ctx.tenant_id,
-      user_id: systemAccountId,
-      llm_monthly_token_budget: 1,
-    });
-
-    try {
-      await invoke(
-        {
-          flow: "converse",
-          tenant_id: ctx.tenant_id,
-          user_turns: [{ role: "user", content: "hello" }],
-          principal: {
-            provider: "test",
-            kind: "system_account",
-            id: systemAccountId,
-            tenant_id: ctx.tenant_id,
-            roles: ["admin"],
-          },
-          route: {
-            tenant_id: ctx.tenant_id,
-            primary: "system-account-budget-primary",
-            fallback: "system-account-budget-fallback",
-            provider: "mock",
-            fallback_provider: "mock",
-            context_cap: 200_000,
-            monthly_budget: null,
-          },
-        },
-        ctx.testDb.db,
-      );
-
-      const usage = await ctx.testDb.db
-        .select()
-        .from(llmUsage)
-        .where(
-          and(
-            eq(llmUsage.tenant_id, ctx.tenant_id),
-            eq(llmUsage.user_id, systemAccountId),
-            eq(llmUsage.actor_type, "system_account"),
-            eq(llmUsage.model, "system-account-budget-primary"),
-            eq(llmUsage.result, "success"),
-          ),
-        );
-      expect(usage).toHaveLength(1);
-    } finally {
-      await ctx.testDb.db
-        .delete(userLlmSettings)
-        .where(
-          and(
-            eq(userLlmSettings.tenant_id, ctx.tenant_id),
-            eq(userLlmSettings.user_id, systemAccountId),
-          ),
-        );
-    }
   });
 });

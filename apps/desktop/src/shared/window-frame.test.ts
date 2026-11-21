@@ -5,6 +5,8 @@ import {
   captureBounds,
   initialWindowSize,
   overlayBounds,
+  PILL_WINDOW,
+  pillBounds,
   windowBackground,
 } from "./window-frame.ts";
 
@@ -38,6 +40,15 @@ describe("app window frame", () => {
       y: 104,
       width: 1280,
       height: 800,
+    });
+  });
+
+  test("the stop pill sits centred just below the top of the display", () => {
+    expect(pillBounds({ x: 0, y: 25, width: 1512, height: 957 })).toEqual({
+      x: 546,
+      y: 33,
+      width: PILL_WINDOW.width,
+      height: PILL_WINDOW.height,
     });
   });
 

@@ -1,3 +1,4 @@
+import { backoffDelay } from "@shared/backoff.ts";
 import { buildProviderErrorDetails, classifyProviderError } from "../../llm/provider-errors.ts";
 
 export const PROVIDER_LIMIT_PARK_MAX = 3;
@@ -22,7 +23,10 @@ export function planProviderLimitPark(
   if (priorParks >= PROVIDER_LIMIT_PARK_MAX) return null;
 
   const base = kind === "rate_limit" ? RATE_LIMIT_PARK_BASE_DELAY_MS : QUOTA_PARK_BASE_DELAY_MS;
-  const backoffMs = base * 2 ** priorParks;
+  const backoffMs = backoffDelay(priorParks, 1, {
+    baseMs: base,
+    maxMs: Number.POSITIVE_INFINITY,
+  });
 
   const retryAtRaw = buildProviderErrorDetails(err)?.retry_at;
   if (typeof retryAtRaw === "string") {

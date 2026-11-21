@@ -1,5 +1,5 @@
 import type { Db } from "../db/client.ts";
-import { errorFields, logger } from "../logging/logger.ts";
+import { errorFields, logger } from "../logging/index.ts";
 
 export interface ConversationTurnRelease {
   db: Db;

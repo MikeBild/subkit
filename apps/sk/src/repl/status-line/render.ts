@@ -2,7 +2,6 @@ import { type ChildProcess, spawn } from "node:child_process";
 import path from "node:path";
 
 export type AuthStatus = "signed_in" | "signed_out";
-export type PermissionMode = "ask" | "auto" | "plan" | "yolo";
 export type ConnectionState = "online" | "reconnecting" | "offline" | "unknown";
 
 export interface StatusLineInput {
@@ -16,11 +15,10 @@ export interface StatusLineInput {
   model: string | null;
   session_id: string | null;
   turn_tokens: number | null;
-  remaining_monthly_budget_tokens: number | null;
+  ai_budget: string | null;
   tokens_today: number | null;
   connectors_count: number | null;
   status_message: string | null;
-  permission_mode: PermissionMode;
   cwd: string;
   git_branch: string | null;
   timestamp: string;
@@ -42,6 +40,24 @@ export interface StatusLineConfig {
   refreshMs?: number | undefined;
 }
 
+export interface AiBudget {
+  currency: string;
+  limit: number | null;
+  spent: number;
+  state: string;
+}
+
+export function aiBudgetLabel(budget: AiBudget): string {
+  const money = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: budget.currency,
+    maximumFractionDigits: 2,
+  });
+  return budget.limit === null
+    ? money.format(budget.spent)
+    : `${money.format(budget.spent)} / ${money.format(budget.limit)}`;
+}
+
 const DEFAULT_FORMAT = "";
 const DEFAULT_REFRESH_MS = 500;
 
@@ -56,10 +72,6 @@ export function renderTemplate(template: string, input: StatusLineInput): string
 function resolvePlaceholders(input: StatusLineInput): Record<string, string> {
   const tokensTodayStr = input.tokens_today == null ? "0" : String(input.tokens_today);
   const turnTokensStr = input.turn_tokens == null ? "0" : String(input.turn_tokens);
-  const remaining =
-    input.remaining_monthly_budget_tokens == null
-      ? "∞"
-      : String(input.remaining_monthly_budget_tokens);
   const connectors = input.connectors_count == null ? "0" : String(input.connectors_count);
   const statusMessage = input.status_message ? ` · ${input.status_message}` : "";
 
@@ -83,10 +95,9 @@ function resolvePlaceholders(input: StatusLineInput): Record<string, string> {
     model: input.model ?? "",
     session_id: input.session_id ? input.session_id.slice(0, 8) : "",
     turn_tokens: turnTokensStr,
-    remaining_tokens: remaining,
+    ai_budget: input.ai_budget ?? "",
     tokens_today: tokensTodayStr,
     connectors_count: connectors,
-    permission_mode: input.permission_mode,
     status_message: statusMessage,
     cwd: path.basename(input.cwd),
     git_branch: input.git_branch ?? "",

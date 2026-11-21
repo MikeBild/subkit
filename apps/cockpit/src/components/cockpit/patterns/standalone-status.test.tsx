@@ -1,11 +1,11 @@
 import { expect, test } from "bun:test";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { Alert, AlertDescription, AlertTitle } from "@ui/molecules/alert";
+import { SidebarProvider } from "@ui/organisms/sidebar";
+import { WorkspaceMenu } from "@/features/settings/ui/workspace-menu";
 import { FormDialog } from "./form-dialog";
 import { StandaloneStatus } from "./standalone-status";
 import { render, renderInRouter } from "./test-utils";
 import { WorkspaceConfirmation } from "./workspace-confirmation";
-import { WorkspaceMenu } from "./workspace-menu";
 
 test("centered status preserves the existing main and notice markup", () => {
   expect(

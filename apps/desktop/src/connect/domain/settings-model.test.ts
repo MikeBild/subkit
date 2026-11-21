@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { dictionary } from "../../shared/i18n.ts";
-import type { ConnectState } from "../../shared/ipc.ts";
+import { type ConnectState, LOCAL_UNAVAILABLE } from "../../shared/ipc.ts";
 import { NO_ONBOARDING } from "../../shared/onboarding.ts";
 import { quietHoursPatch, settingsFor } from "./settings-model.ts";
 
@@ -39,6 +39,12 @@ function main(patch: Partial<ConnectState> = {}): ConnectState {
     signedIn: null,
     onboarding: NO_ONBOARDING,
     update: { phase: "idle" },
+    permissions: {
+      supported: true,
+      permissions: { accessibility: false, screen: false, restartPending: false },
+      lost: [],
+    },
+    local: LOCAL_UNAVAILABLE,
     ...patch,
   };
 }

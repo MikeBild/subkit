@@ -23,7 +23,7 @@ const PERM_TIER: Record<string, number> = {
   "connector:read": 3,
   "connector:write": 3,
   "chat_workspace:read": 3,
-  "credential:read": 3,
+  "vault:read": 3,
   "execution:read": 3,
   "notification:read": 3,
   "notification:write": 3,

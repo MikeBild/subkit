@@ -1,4 +1,4 @@
-import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
+import { invalidParams } from "../transports/protocol-errors.ts";
 
 const DEFAULT_PAGE_SIZE = 100;
 const MAX_PAGE_SIZE = 250;
@@ -28,7 +28,7 @@ function decodeCursor(kind: string, cursor: string | undefined): CursorPayload {
     }
     return { kind, offset: parsed.offset };
   } catch {
-    throw new McpError(ErrorCode.InvalidParams, `Invalid pagination cursor for ${kind}`);
+    throw invalidParams(`Invalid pagination cursor for ${kind}`);
   }
 }
 

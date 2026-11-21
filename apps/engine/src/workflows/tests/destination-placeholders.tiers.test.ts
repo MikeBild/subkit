@@ -1,4 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${…}` runtime placeholders are part of the tested grammar.
 import { describe, expect, test } from "bun:test";
 import type { DestinationPlaceholderKind, PlaceholderTier } from "../destination-placeholders.ts";
 import type { WorkflowDef } from "../types.ts";

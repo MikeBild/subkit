@@ -1,4 +1,4 @@
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import type { AuthDenial, RegisteredAuthProvider, ResolvedPrincipal } from "./types.ts";
 import { isAuthDenial } from "./types.ts";
 

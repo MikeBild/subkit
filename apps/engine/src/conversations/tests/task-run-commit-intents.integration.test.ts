@@ -8,6 +8,7 @@ import {
   executions,
   workflows,
 } from "../../db/schema/index.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { createElicitation, listElicitationsForConversation } from "../elicitations.ts";
 import { appendMessage, insertToolCall } from "../persistence/index.ts";
@@ -34,10 +35,10 @@ let owner: ResolvedPrincipal;
 let bound: Awaited<ReturnType<typeof seedRunnableWorkflow>>;
 let other: Awaited<ReturnType<typeof seedRunnableWorkflow>>;
 let connector: Awaited<ReturnType<typeof seedBoundConnector>>;
-const originalMasterKey = process.env.MASTER_KEY;
+const originalMasterKey = testEnv.MASTER_KEY;
 
 beforeAll(async () => {
-  process.env.MASTER_KEY = "a".repeat(64);
+  testEnv.MASTER_KEY = "a".repeat(64);
   ctx = await createConversationTestCtx("task_run_intents");
   owner = principalOf(ctx, ctx.user_id, "admin");
   bound = await seedRunnableWorkflow(ctx, "intent-bound");
@@ -46,8 +47,8 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(async () => {
-  if (originalMasterKey === undefined) delete process.env.MASTER_KEY;
-  else process.env.MASTER_KEY = originalMasterKey;
+  if (originalMasterKey === undefined) delete testEnv.MASTER_KEY;
+  else testEnv.MASTER_KEY = originalMasterKey;
   await ctx.cleanup();
 }, 60_000);
 

@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { _internal } from "./install.ts";
 
 const roots: string[] = [];
@@ -67,8 +68,8 @@ cp "$FIXTURE_DOWNLOADS/$name" "$output"
   const result = spawnSync("bash", [script], {
     encoding: "utf8",
     env: {
-      ...process.env,
-      PATH: `${bin}:${process.env.PATH}`,
+      ...testEnv,
+      PATH: `${bin}:${testEnv.PATH}`,
       TMPDIR: temporary,
       SK_INSTALL_DIR: installed,
       SK_INSTALL_BASE_URL: "https://mirror.example.com",

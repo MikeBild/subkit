@@ -1,8 +1,8 @@
-import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { auditAwait } from "../../../audit/audit.ts";
 import { AuditAction } from "../../../audit/types.ts";
-import { logger } from "../../../logging/logger.ts";
+import { logger } from "../../../logging/index.ts";
 import { scrubString, scrubStringsDeep } from "../../../logging/scrub-secrets.ts";
+import { urlElicitationRequired } from "../../../mcp/transports/protocol-errors.ts";
 import { recordAuthoringGateBlock } from "../../../observability/instrumentation.ts";
 import { humanInBandAnswer } from "../../answer-actor.ts";
 import { decidedByFor } from "../../decided-by.ts";
@@ -219,8 +219,7 @@ export async function pauseForUserInput(
           },
           ctx.db,
         );
-        throw new McpError(
-          ErrorCode.UrlElicitationRequired,
+        throw urlElicitationRequired(
           "Secret/password fields must be collected via URL-mode elicitation (oob/url), not form-mode. Re-issue the request using elicitation mode: url.",
         );
       }

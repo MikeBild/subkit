@@ -123,7 +123,6 @@ interface SlashDispatchContext {
   showError: (message: string) => void;
   showStructuredError: (err: unknown, slashName?: string) => void;
   respondElicitation: (elicitationId: string, output: unknown, reason?: string) => Promise<void>;
-  runYoloSlash: (trimmed: string, hasPendingElicitation: boolean) => void;
   runBuiltin: (trimmed: string) => Promise<boolean>;
 }
 
@@ -145,7 +144,6 @@ export async function dispatchSlashSubmit(
     showError,
     showStructuredError,
     respondElicitation,
-    runYoloSlash,
     runBuiltin,
   } = ctx;
   if (trimmed === "/exit" || trimmed === "/quit") {
@@ -223,10 +221,6 @@ export async function dispatchSlashSubmit(
       { confirmed, ...(feedback ? { feedback } : {}) },
       confirmed ? undefined : "user_declined",
     );
-    return true;
-  }
-  if (cmd.name === "yolo") {
-    runYoloSlash(trimmed, session.pendingElicitation !== null);
     return true;
   }
   if (onSlash) {

@@ -1,6 +1,6 @@
 import { expect, spyOn, test } from "bun:test";
 import type { Db } from "../../db/client.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import * as attention from "../../operator/attention.ts";
 import { EVENT_CATALOG } from "../events/catalog.ts";
 import {

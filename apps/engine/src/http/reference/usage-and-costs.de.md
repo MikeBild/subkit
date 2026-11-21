@@ -1,14 +1,14 @@
 ---
 slug: usage-and-costs
 title: Nutzung und Kosten im Blick
-summary: Sieh, was KI-Aufrufe kosten, und lege Budget und Preise fest.
+summary: Sieh, was KI-Aufrufe kosten, und lege KI-Budget und Preise fest.
 section: work
 order: 11
 audience: public
 ---
 ## Nutzung und Kosten im Blick
 
-Dieses Kapitel ist für alle, die wissen müssen, was die KI im Arbeitsbereich kostet, meist Teamleitung oder Admin. Danach kennst du die Kosten je Workflow, Person und Modell und legst fest, wie viele Token pro Monat erlaubt sind. Ein KI-Aufruf ist dabei eine Anfrage von SubKit an ein KI-Modell.
+Dieses Kapitel ist für alle, die wissen müssen, was die KI im Arbeitsbereich kostet, meist Teamleitung oder Admin. Danach kennst du die Kosten je Workflow, Person und Modell und weißt, wie das monatliche KI-Budget wirkt. Ein KI-Aufruf ist dabei eine Anfrage von SubKit an ein KI-Modell.
 
 Alles steht auf der Seite **Nutzung**. Ganz oben fasst ein Satz den Zeitraum zusammen, etwa „Diese Woche 84,20 $ für 1.240 KI-Aufrufe.“ Steigen die Kosten, nennt der Satz den größten Treiber.
 
@@ -16,7 +16,7 @@ Alles steht auf der Seite **Nutzung**. Ganz oben fasst ein Satz den Zeitraum zus
 
 - Zum Ansehen: `stats:read`. Standardmäßig hat das nur die Rolle Admin.
 - Für **Person**, **Unterhaltung** und **Aufgabe** unter **Aufschlüsseln nach**: `stats:read:all`. Ohne dieses Recht siehst du diese Tabs nicht.
-- Zum Ändern von Kontingent und Preisen: `settings:write`. Die Rolle Admin hat beide Rechte.
+- Zum Ändern der Preise: `settings:write`. Zum Ändern des KI-Budgets: `identity:write`. Die Rolle Admin hat beide Rechte.
 
 ### Den Zeitraum wählen
 
@@ -24,7 +24,7 @@ Wähle oben rechts den **Zeitraum**: **24 Std**, **Diese Woche**, **Letzte Woche
 Wochen beginnen am Montag, und es gilt deine Zeitzone.
 Alle Zahlen vergleichen den Zeitraum mit dem gleich langen Abschnitt davor.
 
-Die **Übersicht** bietet dieselbe Auswahl. Dort folgt die Kachel **Nutzung** dem gewählten Zeitraum und zeigt die Kosten darin oder „Keine KI-Aufrufe im Zeitraum“. Darunter steht, wie viel des Monatskontingents verbraucht ist, etwa „42 % des Monatskontingents“. Für den schnellen Blick reicht diese Kachel, für die Gründe öffnest du **Nutzung**.
+Die **Übersicht** bietet dieselbe Auswahl. Dort folgt die Kachel **Nutzung** dem gewählten Zeitraum und zeigt die Kosten darin oder „Keine KI-Aufrufe im Zeitraum“. Darunter steht, wie viel des KI-Budgets ausgegeben ist, etwa „42 % des monatlichen KI-Budgets“. Für den schnellen Blick reicht diese Kachel, für die Gründe öffnest du **Nutzung**.
 
 So liest du den Trend:
 
@@ -37,17 +37,9 @@ So liest du den Trend:
 
 - **Kosten**: geschätzte Kosten aller KI-Aufrufe im Zeitraum.
 - **KI-Aufrufe**: wie oft SubKit ein KI-Modell gefragt hat. Gibt es Fehler, steht darunter etwa **3 fehlgeschlagen**. Ein Klick öffnet die Fehlgeschlagenen KI-Aufrufe.
-- **Kontingent · Monat**: wie viel vom Monatskontingent verbraucht ist. Diese Kachel gilt immer für den laufenden Monat.
+- **KI-Budget · Monat**: wie viel vom monatlichen KI-Budget ausgegeben ist. Diese Kachel gilt immer für den laufenden Monat.
 - **Gespart durch Cache**: was wiederverwendete Eingaben gegenüber dem vollen Preis gespart haben.
 - **Aus dem Zwischenspeicher**: welcher Anteil der Eingabe wiederverwendet statt neu bezahlt wurde. Darunter zeigt **Zwischenspeicher je Ablauf** den Anteil je Herkunft. Höher ist günstiger und schneller. **Ohne Daten** heißt: Der Anbieter meldet für diese Herkunft keinen Zwischenspeicher.
-
-Unter dem Kontingent steht die Prognose. SubKit rechnet dafür den Verbrauch der letzten 7 Tage hoch:
-
-- **Reicht bis Monatsende.**
-- **Bis Monatsende etwa 94 %.** Das Kontingent wird knapp.
-- **Aufgebraucht am 26.** Das Kontingent reicht nicht bis Monatsende.
-- **Aufgebraucht. Chat, Erstellen und Korrekturen stehen still.**
-- **Noch keine Prognose. Zu wenige Tage im Monat.** Das gilt für die ersten beiden Tage im Monat.
 
 Fehlt für ein Modell ein Preis, steht vor den Kosten **mind.**
 Der Betrag ist dann eine Untergrenze. Die echten Kosten sind höher.
@@ -64,7 +56,6 @@ Jeder Hinweis hat eine passende Aktion:
 | Ein Workflow kostet je Run mindestens 1,5-mal so viel wie im Zeitraum davor. | **Kosten ansehen** |
 | Für ein Modell ist kein Preis hinterlegt. | **Modell ansehen** |
 | Für mehrere Modelle ist kein Preis hinterlegt. | **Modelle ansehen** |
-| Das Monatskontingent ist voraussichtlich vor Monatsende aufgebraucht. | **Kontingent anpassen** |
 | Eine Person verursacht mindestens die Hälfte der Kosten. | **Aufschlüsselung ansehen** |
 
 Ist alles ruhig, steht dort „Nichts Auffälliges in diesem Zeitraum.“
@@ -118,29 +109,30 @@ Lange Unterhaltungen werden teurer, weil jede Antwort den bisherigen Verlauf mit
 **Fehlgeschlagene KI-Aufrufe** öffnest du über die Kachel **KI-Aufrufe**.
 Fehlgeschlagene Aufrufe können trotzdem kosten. Das Sheet nennt den Betrag.
 Unter **Wo sie auftreten** siehst du Workflow oder Unterhaltung und den Grund:
-**Fehler beim Anbieter**, **Eingabe zu groß** oder **Kontingent aufgebraucht**.
+**Fehler beim Anbieter**, **Eingabe zu groß** oder **KI-Budget erreicht**.
 
-### Kontingent anpassen
+### Das KI-Budget
 
-Das Monatskontingent ist die Höchstmenge an Token, die dein Arbeitsbereich im Monat verbrauchen darf. Es gilt für alle Personen und Workflows zusammen.
+Jeder Arbeitsbereich hat genau eine Grenze für KI-Kosten: das monatliche KI-Budget in US-Dollar. Token werden weiter gezählt, aber nicht begrenzt. Ein neuer Arbeitsbereich beginnt mit 50 $ im Monat. Ein Arbeitsbereich, den es schon vor dem KI-Budget gab, beginnt ohne Grenze und bekommt einen Punkt unter **Braucht dich**: „Monatliches KI-Budget festlegen“. Der Monat richtet sich nach der Zeitzone deines Arbeitsbereichs.
 
-1. Klick auf **Kontingent anpassen** in den Auffälligkeiten oder auf die Prognose in der Kachel.
-   Ohne Kontingent wählst du **Kontingent setzen** in der Kachel.
-2. Trag unter **Token pro Monat** einen Wert ein.
-3. Speichere. Die Meldung **Kontingent gespeichert** bestätigt die Änderung.
+Das Budget steht an einer Stelle: **Einstellungen** › **Nutzung**. Dort siehst du, was die Modellaufrufe dieses Monats gekostet haben, zum Beispiel „12,40 $ von 50 $“. Sehen kannst du es mit `stats:read`; Administratoren ändern es dort, alle anderen mit `stats:read` sehen es nur.
 
-Dafür brauchst du `settings:write`, standardmäßig also die Rolle Admin.
-Ohne dieses Recht siehst du nur den Stand und „Frag eine Person mit Admin-Rolle.“
+- Es zählen nur Aufrufe mit Preis. Ein lokales Modell oder ein Modell ohne Preis zählt nie zum KI-Budget.
+- Bei 80 % bekommst du einen Punkt unter **Braucht dich** und eine Benachrichtigung, einmal im Monat.
+- Bei 100 % pausieren Chat, Aufgaben und Modellschritte in Workflows. Ein Run einer Aufgabe wartet und arbeitet von selbst weiter. Ein Workflow-Run wartet vor seinem Modellschritt, gibt seinen Worker frei und läuft von selbst weiter, sobald das Budget es wieder erlaubt: nach **Budget erhöhen**, nach **Diesen Monat weiter ohne Grenze** oder wenn der nächste Monat beginnt. Schritte, die schon gelaufen sind, laufen nicht noch einmal. Workflows ohne Modellschritt laufen weiter.
+- Kostet eine Chat-Antwort oder ein Run einer Aufgabe mehr als 5 $, erscheint ein Hinweis, einmal je Run. Nichts hält an.
 
-Was beim Verbrauch passiert:
+Was ein Administrator tun kann, wenn das Budget erreicht ist:
 
-- Ab 75 % erscheint ein Hinweis.
-- Ab 100 % pausieren Chat, das Entwerfen von Workflows und Korrekturen bis zum Monatsersten.
-- Freigegebene Workflows laufen weiter. Was schon im Betrieb ist, bleibt also nicht stehen.
-- Ein Run einer Aufgabe wartet. Er schlägt nicht fehl und arbeitet von selbst weiter, sobald wieder Kontingent frei ist.
-- Anfragen, die SubKit wegen des Kontingents abweist, zählen nicht zum Verbrauch.
+1. Öffne den Punkt unter **Braucht dich** oder **Einstellungen** › **Nutzung**.
+2. Wähle **Budget erhöhen** und eine neue Grenze: 20 $, 50 $, 200 $ oder **Ohne Grenze**.
+3. Oder wähle **Diesen Monat weiter ohne Grenze**. Der nächste Monat beginnt wieder mit der Grenze.
 
-Ohne Kontingent sind KI-Aufrufe unbegrenzt.
+Für beides brauchst du `identity:write`, also die Rolle Administrator. Das gilt auch in gehosteten Arbeitsbereichen: Das KI-Budget entscheidet der Arbeitsbereich. Der Audit-Trail hält jede Änderung als „Monatliches KI-Budget geändert“ oder „KI-Arbeit läuft diesen Monat ohne Grenze weiter“ fest.
+
+Rechnet der Arbeitsbereich Preise in einer anderen Währung als USD (`tokens.currency`), gibt es keinen Dollarbetrag, und das KI-Budget gilt nicht.
+
+Für Entwicklerinnen und Entwickler: `GET /v1/workspace/spend-limit` (`stats:read`) liest den Monat, `PUT /v1/workspace/spend-limit` mit `{"limit_usd": 200}` setzt die Grenze (0 heißt: keine Grenze), `POST /v1/workspace/spend-limit/continue` macht diesen Monat weiter. Ein abgewiesener Modellaufruf antwortet mit dem Code `llm_spend_limit_reached` (HTTP 429); ein Provider-Konto ohne Kontingent antwortet mit `llm_provider_quota_exhausted`. Ein wartender Workflow-Run behält den Status `queued` und zeigt `waiting_reason: "budget"`; ein Modellschritt, der nicht warten kann, schlägt mit `llm_spend_limit_reached` fehl.
 
 ### Preis hinterlegen
 
@@ -169,7 +161,7 @@ Klappe **Technische Angaben** am Ende der Seite auf. Dort stehen:
 
 - **Eingabe-Token**, **Ausgabe-Token**, **Aus Cache gelesen**, **In Cache geschrieben** und **Gesamt**.
 - **Modelle ohne Preis** und die Zahl der Aufrufe ohne Preis.
-- Das **Kontingent** in Token, etwa „120.000 von 150.000 Token · 30.000 übrig“.
+- Das **KI-Budget**, etwa „12,40 $ von 50 $ · 37,60 $ übrig“.
 - Die **Preisquelle**: eingebaute Listenpreise je Modell oder die Preise in `tokens.prices`.
 - Deine **Zeitzone** und die **Internen Abläufe je Herkunft**.
 - Die **Abfrage**, mit der du dieselben Zahlen per CLI oder API holst.
@@ -182,10 +174,10 @@ Klappe **Technische Angaben** am Ende der Seite auf. Dort stehen:
 | **Person**, **Unterhaltung** und **Aufgabe** fehlen | Dir fehlt `stats:read:all`. Bitte eine Person mit Admin-Rolle darum. |
 | **mind.** vor den Kosten | Für manche Modelle fehlt ein Preis. Hinterleg ihn über **Preis hinterlegen**. |
 | **Kosten unbekannt** | Für keines der genutzten Modelle ist ein Preis hinterlegt. Hinterleg die Preise. |
-| „Frag eine Person mit Admin-Rolle.“ statt **Kontingent anpassen** | Dir fehlt `settings:write`. Bitte eine Person mit Admin-Rolle, das Kontingent zu ändern. |
-| Chat, Entwerfen und Korrekturen stehen still | Das Monatskontingent ist aufgebraucht. Erhöhe es oder warte bis zum Monatsersten. |
-| „Das Kontingent war nicht lesbar …“ | Lad die Seite neu. Das sagt nichts darüber, ob ein Kontingent gesetzt ist. |
+| Chat, Aufgaben und Modellschritte pausieren | Das KI-Budget ist erreicht. Ein Administrator erhöht es unter **Einstellungen** › **Nutzung** oder macht diesen Monat weiter. |
 | „Keine KI-Aufrufe in diesem Zeitraum.“ | Wähle **Dieser Monat anzeigen** oder einen anderen Zeitraum. |
+| Ein Workflow-Run schlägt mit `llm_spend_limit_reached` fehl | Sein Modellschritt liegt in einer Schleife, einem parallelen Block oder einem „für jeden“, wo ein Run nicht warten kann, ohne Schritte zu wiederholen. Erhöhe die Grenze oder mach diesen Monat unter **Einstellungen** › **Nutzung** weiter, dann starte den Workflow erneut. |
+| Ein Workflow-Run bleibt **wartend** mit „Wartet auf Budget“ | Das KI-Budget ist erreicht. Erhöhe es oder mach diesen Monat weiter; der Run läuft dann von selbst weiter. |
 
 ### Dasselbe im Terminal
 

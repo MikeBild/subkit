@@ -9,7 +9,7 @@ import { fetchWithEgressGuard } from "../../connectors/index.ts";
 import type { Db } from "../../db/client.ts";
 import { deliveries, subscriptions } from "../../db/schema/index.ts";
 import { assertTenantActive } from "../../identity/self-service.ts";
-import { log, logger } from "../../logging/logger.ts";
+import { log, logger } from "../../logging/index.ts";
 import { recordWebhookDelivery } from "../../observability/instrumentation.ts";
 import * as breaker from "./circuit-breaker.ts";
 import { classifyFailure, isPermanentFailure } from "./failure-classifier.ts";

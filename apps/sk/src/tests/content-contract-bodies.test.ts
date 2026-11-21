@@ -470,15 +470,12 @@ describe("conversation and settings bodies follow the contract", () => {
       "e-1",
       { confirmed: true },
       "looks right",
-      undefined,
-      "ask",
     );
 
     expect(seen[0]?.path).toBe(`/v1/conversations/${conversation.id}/elicitations/e-1/respond`);
     expect(seen[0]?.body).toEqual({
       output: { confirmed: true },
       reason: "looks right",
-      permission_mode: "ask",
     } satisfies Schemas["RespondElicitationBody"]);
     expect(result.pending_elicitation_id).toBe(outcome.pending_elicitation_id);
   });

@@ -6,7 +6,7 @@ import type { Db } from "../../../db/client.ts";
 import { apiKeys, tenants, users } from "../../../db/schema/index.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT, type TestDb } from "../../../db/tests/setup.ts";
 import { generateKey } from "../../../identity/api-key.ts";
-import { logger } from "../../../logging/logger.ts";
+import { logger } from "../../../logging/index.ts";
 import { builtinRoleId } from "../../../rbac/roles.ts";
 import { FROZEN_NOW } from "../../../test-helpers/determinism/clock.ts";
 import { createApiKeyProvider } from "../api-key.ts";

@@ -1,17 +1,11 @@
-export { Bubble, BubbleContent } from "@/components/ui/bubble";
-export {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
+export { ScrollArea } from "@ui/atoms/scroll-area";
+export { Bubble, BubbleContent } from "@ui/molecules/bubble";
 export {
   Message,
   MessageContent,
   MessageFooter,
   MessageHeader,
-} from "@/components/ui/message";
+} from "@ui/molecules/message";
 export {
   MessageScroller,
   MessageScrollerButton,
@@ -20,6 +14,12 @@ export {
   MessageScrollerProvider,
   MessageScrollerViewport,
   useMessageScroller,
-} from "@/components/ui/message-scroller";
-export { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-export { ScrollArea } from "@/components/ui/scroll-area";
+} from "@ui/molecules/message-scroller";
+export { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@ui/molecules/popover";
+export {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+  CommandList,
+} from "@ui/organisms/command";

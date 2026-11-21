@@ -19,7 +19,7 @@ import {
   type OAuthWaitStatus,
   waitForOAuthCredential,
 } from "../../credentials/oauth2/wait.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { withConnectorAuthenticated } from "../authoring-state/index.ts";
 import { decidedByFor } from "../decided-by.ts";
 import { ElicitationUnsupportedError } from "../elicitation-bridge.ts";

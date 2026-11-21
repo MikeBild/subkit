@@ -3,6 +3,9 @@
     "level": "info",
     "format": "ndjson"
   },
+  "deployment": {
+    "mode": "server"
+  },
   "server": {
     "hosted_rate_limit": {
       "tenant_per_month": 0,
@@ -141,6 +144,10 @@
     }
   },
   "storage": {
+    "backend": "s3",
+    "filesystem": {
+      "root": ""
+    },
     "hosted": {
       "tenant_bytes": "0",
       "retained_rows_per_resource": 1000,
@@ -215,8 +222,7 @@
   },
   "tokens": {
     "currency": "USD",
-    "prices": [],
-    "monthly_budget": 0
+    "prices": []
   },
   "operations": {
     "update_check_enabled": true,
@@ -236,7 +242,6 @@
     "prewarm": false
   },
   "repl": {
-    "permissionMode": "auto",
     "portalTokenTtlMin": 15
   },
   "ui": {
@@ -253,8 +258,8 @@
     "push": {
       "enabled": false,
       "thresholdSec": 30,
-      "quietHoursStart": "",
-      "quietHoursEnd": ""
+      "quietHoursStart": "22:00",
+      "quietHoursEnd": "07:00"
     },
     "inbox": {
       "retention_days": 30

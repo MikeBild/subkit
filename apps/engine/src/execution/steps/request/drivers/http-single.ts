@@ -1,3 +1,4 @@
+import { redactKnownValues } from "@shared/redaction.ts";
 import { auditAwait } from "../../../../audit/audit.ts";
 import { AuditAction } from "../../../../audit/types.ts";
 import { filenameFromResponse } from "../../../../connectors/drivers/file-promotion.ts";
@@ -10,14 +11,14 @@ import {
   LlmBudgetExceededError,
   parseLlmUsage,
 } from "../../../../llm/accounting/index.ts";
-import { logger } from "../../../../logging/logger.ts";
+import { spendRefusalDetails, spendVerdict } from "../../../../llm/accounting/spend.ts";
+import { logger } from "../../../../logging/index.ts";
 import { inspectContentRevisionResponse } from "../../../../workflows/content-publication-boundary.ts";
 import { applyResponseFilters, ResponseFilterFailError } from "../../../response-filter.ts";
 import type { StepResult } from "../../../types.ts";
 import { RequestError } from "../errors.ts";
 import { promoteResponseToFile } from "../file-output.ts";
 import { doOnePage, type FetchAttemptResult } from "../http-attempt.ts";
-import { redactOwnCredentials } from "../own-credentials.ts";
 import { checkRequired, extractModelHint } from "../shape.ts";
 import { egressScope, elapsed, failedStep } from "./context.ts";
 import {
@@ -48,6 +49,22 @@ function llmBudgetRefusal(x: HttpExchange): StepResult | null {
     }
     throw err;
   }
+}
+
+async function spendRefusal(x: HttpExchange): Promise<StepResult | null> {
+  const { d } = x;
+  const verdict = await spendVerdict(
+    d.p.ctx.tenant_id,
+    { kind: "workflow_step", calls_model_provider: true },
+    d.p.ctx.db,
+  );
+  if (verdict.ok) return null;
+  return failedStep(d, {
+    code: "llm_spend_limit_reached",
+    message:
+      "This month's AI budget is reached, so this model step did not run. Raise the limit or continue this month under Settings › Usage, then run the workflow again.",
+    details: spendRefusalDetails(verdict.reading),
+  });
 }
 
 async function accountLlmUsage(x: HttpExchange, res: FetchAttemptResult): Promise<void> {
@@ -121,12 +138,12 @@ export async function runHttpSinglePage(x: HttpExchange): Promise<StepResult> {
         driver: "http" as const,
         credential_id: x.active_credential_id,
         operation: p.step.method,
-        url: redactOwnCredentials(recordedUrl(baseUrl, x.masked_query_keys), d.own_credentials),
+        url: redactKnownValues(recordedUrl(baseUrl, x.masked_query_keys), d.own_credentials),
       }
     : null;
   const llmCall = isLlmProviderUrl(baseUrl);
   if (llmCall) {
-    const refusal = llmBudgetRefusal(x);
+    const refusal = llmBudgetRefusal(x) ?? (await spendRefusal(x));
     if (refusal) return refusal;
   }
   const callDoOnePage = () =>

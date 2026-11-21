@@ -68,7 +68,7 @@ async function approvalBackedMcpIntent(
       tool,
       surface: "chat",
       via: "chat",
-      reason: "permission_mode",
+      reason: "write_gate",
       execution_mode: null,
       args: { commit_intent: intent },
     });
@@ -101,13 +101,13 @@ const AUTO_SAVE_DEPS: AutoSaveDeps = {
   commit: commitWorkflowAtomic,
 };
 
-export async function autoModeSaveWithoutPause(
+export async function saveDraftWithoutPause(
   ctx: ToolCtx,
   intent: ModelCommitIntent | undefined,
   destructive: boolean,
   deps: AutoSaveDeps = AUTO_SAVE_DEPS,
 ): Promise<ToolResult | null> {
-  if (ctx.permission_mode !== "auto" || destructive || ctx.surface === "mcp") return null;
+  if (ctx.ask_before_writing === true || destructive || ctx.surface === "mcp") return null;
   if (intent?.kind !== "save_workflow_draft") return null;
   const payload = intent.payload;
   if (payload.force_commit === true || payload.target_workflow_id !== undefined) return null;
@@ -143,7 +143,7 @@ export async function autoModeSaveWithoutPause(
       auto_resolved: true,
       performed: "save_workflow_draft",
       reason:
-        "permission_mode=auto: saving an inactive draft needs no confirmation, so the engine saved it without asking. Do not call save_workflow_draft again.",
+        "Saving an inactive draft needs no confirmation, so the engine saved it without asking. Do not call save_workflow_draft again.",
     },
   };
 }
@@ -193,7 +193,7 @@ const inputSchema = z
 export const askUserConfirmTool: ConversationTool = {
   name: "ask_user_confirm",
   description:
-    'Ask the user to approve or reject a specific action. The client renders a styled confirm prompt with an optional feedback reason; the resolved boolean resumes the loop. In permission_mode=auto a non-destructive question without commit_intent is skipped: the result has auto_skipped=true and user_asked=false, meaning the user was NOT asked and confirmed nothing; continue by calling the tool that performs the action, or repeat the question with a commit_intent when the action needs the user\'s own yes, and never claim the user confirmed. A question with commit_intent is asked in every mode. If you pass `commit_intent`, the harness applies the intended write atomically when the operator approves — you DO NOT need to call the underlying tool afterwards (the next turn will already see a synthetic tool result with source="harness_auto_persist").',
+    "Ask the user to approve or reject a specific action. The client renders a styled confirm prompt with an optional feedback reason; the resolved boolean resumes the loop. Unless the person's rule says to ask before writing, a non-destructive question without commit_intent is skipped: the result has auto_skipped=true and user_asked=false, meaning the user was NOT asked and confirmed nothing; continue by calling the tool that performs the action, or repeat the question with a commit_intent when the action needs the user's own yes, and never claim the user confirmed. A question with commit_intent is always asked. If you pass `commit_intent`, the harness applies the intended write atomically when the operator approves — you DO NOT need to call the underlying tool afterwards (the next turn will already see a synthetic tool result with source=\"harness_auto_persist\").",
   inputSchema,
   category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
@@ -208,7 +208,7 @@ export const askUserConfirmTool: ConversationTool = {
     if (denied?.fingerprint && intentHasDistinguishingAction(confirmIntent)) {
       const candidateFp = authoringIntentFingerprint(confirmIntent, ctx.getDraft());
       if (candidateFp && candidateFp === denied.fingerprint) {
-        if (ctx.permission_mode !== "auto") {
+        if (ctx.ask_before_writing === true) {
           const draft = ctx.getDraft();
           if (draft.state) {
             draft.state.last_denied_intent = null;
@@ -228,14 +228,14 @@ export const askUserConfirmTool: ConversationTool = {
         };
       }
     }
-    const autoSaved = await autoModeSaveWithoutPause(
+    const autoSaved = await saveDraftWithoutPause(
       ctx,
       proposedCommitIntent,
       args.destructive === true,
     );
     if (autoSaved) return autoSaved;
     if (
-      ctx.permission_mode === "auto" &&
+      ctx.ask_before_writing !== true &&
       args.destructive !== true &&
       proposedCommitIntent === undefined &&
       !askedInsideTaskRun(ctx)
@@ -247,7 +247,7 @@ export const askUserConfirmTool: ConversationTool = {
           auto_skipped: true,
           user_asked: false,
           performed: null,
-          reason: `permission_mode=auto skipped the ${args.kind} question: the user was NOT asked and did not confirm anything, and nothing ran. Never tell the user they confirmed. If this action needs the user's own yes, repeat this question with a commit_intent such as {kind: "run_workflow", payload: {workflow_id, input_partial}}: that question is asked in auto mode too, and the engine performs the action after the yes. Otherwise call the action's own tool; a run in auto mode may not ask again.`,
+          reason: `The ${args.kind} question was skipped: the user was NOT asked and did not confirm anything, and nothing ran. Never tell the user they confirmed. If this action needs the user's own yes, repeat this question with a commit_intent such as {kind: "run_workflow", payload: {workflow_id, input_partial}}: that question is always asked, and the engine performs the action after the yes. Otherwise call the action's own tool; the trust check decides whether it asks.`,
         },
       };
     }

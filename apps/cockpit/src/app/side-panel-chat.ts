@@ -1,9 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { getConversation, sendConversationTurn } from "@/api/client";
-import { useSetup } from "@/api/setup";
-import { createEmptyConversation, linkAttachment } from "@/pages/chat-attachments";
-import { newChatMode } from "@/pages/chat-default-mode";
+import { createEmptyConversation, linkAttachment } from "@/features/chat";
 import {
   type PanelLine,
   panelLines,
@@ -27,7 +25,6 @@ export function useSidePanelChat(
   label: string | null,
 ): SidePanelChat {
   const client = useQueryClient();
-  const mode = newChatMode(null, useSetup().data?.default_chat_mode);
   const key = panelSubjectKey(subject);
   const [thread, setThread] = useState<{ key: string; id: string | null }>({ key, id: null });
   const conversationId = thread.key === key ? thread.id : null;
@@ -43,7 +40,7 @@ export function useSidePanelChat(
       let id = conversationId;
       let message = text;
       if (subject?.type === "file") {
-        if (!id) id = (await createEmptyConversation({ permissionMode: mode })).id;
+        if (!id) id = (await createEmptyConversation({})).id;
         const slug = await linkAttachment(id, {
           key: subject.id,
           kind: "file",
@@ -60,10 +57,7 @@ export function useSidePanelChat(
       };
       return id
         ? sendConversationTurn({ conversationId: id, message, references }, onEvent)
-        : sendConversationTurn(
-            { message, references, permissionMode: mode, target: panelTarget(subject) },
-            onEvent,
-          );
+        : sendConversationTurn({ message, references, target: panelTarget(subject) }, onEvent);
     },
     onSuccess: async (result) => {
       setThread({ key, id: result.conversation.id });

@@ -228,7 +228,6 @@ describe("inspect_workflow · multi-section + multi-step in one call", () => {
         ...empty.workflow,
         name: "Render deck",
         slug: "render-deck",
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal ${...} placeholder is the fixture under test.
         steps: [{ id: "upload", kind: "request", method: "POST", url: "/u/${input.markdown}" }],
         input_schema_sample: { markdown: "# hi", filename: "deck.md" },
       } as never,

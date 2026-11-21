@@ -1,7 +1,5 @@
 import { errorFacts } from "@/lib/failure-remedy";
-import type { TranslationKey } from "@/lib/i18n";
-
-type Translate = (key: TranslationKey) => string;
+import type { Translate } from "@/lib/i18n";
 
 export function errorRows(error: unknown, t: Translate): [string, string][] {
   const { code, status, traceId } = errorFacts(error);

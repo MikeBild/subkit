@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { cockpitInstallations } from "../../db/schema/cockpit-installations.ts";
 import { roles, sessions, users } from "../../db/schema/index.ts";
-import { log, logger } from "../../logging/logger.ts";
+import { log, logger } from "../../logging/index.ts";
 import {
   browserSessionDenyReason,
   browserSessionFromRequest,

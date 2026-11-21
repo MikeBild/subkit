@@ -1,7 +1,7 @@
 export type ReleaseNotes = { version: string; notes: string[] };
 
 export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: string[] } = {
-  "source": "6b77fd9429fa8098e30e944ca7f2ae6eb2e677e8",
+  "source": "1203ca02558842d03472aa8efa0c4e358f0e3726",
   "releases": [
     {
       "version": "v1.0.0",
@@ -1724,22 +1724,110 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
     {
       "version": "v10.20.11",
       "notes": []
+    },
+    {
+      "version": "v10.20.13",
+      "notes": [
+        "preserve workflow authoring intent during connector preparation",
+        "knowledge chunks preserve Unicode characters within byte limits",
+        "cancelled connector requests no longer leak rejected operations",
+        "Escape closes the settings editor before the settings dialog",
+        "writes wait briefly for a busy tenant catalog instead of failing at once",
+        "a typed slash command with its Enter in one chunk runs at once and docker tests pass",
+        "built-in role names are reserved in the database and duplicate role names answer 409",
+        "reserved role names, tenant-scoped role lookup, safe S3 range reads and clear refusals",
+        "draft test runs behave like the saved workflow",
+        "unreadable template imports answer 422 and chat runs need dev connectors",
+        "settings readers see pending secret approvals",
+        "clearing a category or description works and API-key templates store their key",
+        "sk subscription deliveries, onboarding credentials and resumed approvals work",
+        "sk commands, cockpit and settings send and show what the engine API defines"
+      ]
+    },
+    {
+      "version": "v10.20.14",
+      "notes": [
+        "an upgrade from the pre-squash migration chain starts again"
+      ]
+    },
+    {
+      "version": "v10.20.15",
+      "notes": [
+        "a workflow review with a far expiry stays ready instead of expiring at once"
+      ]
+    },
+    {
+      "version": "v10.20.16",
+      "notes": []
+    },
+    {
+      "version": "v10.21.0",
+      "notes": [
+        "an approval given right after the question waits for the asking turn instead of failing",
+        "a welcome page sets up new workspaces with an own AI key, people join by invitation link",
+        "conversation writes wait out a busy workspace quota instead of answering 409"
+      ]
+    },
+    {
+      "version": "v10.22.0",
+      "notes": [
+        "cloud workspaces run AI on their own key only; budget and prices live on Usage",
+        "cancelling, stopping or parking a turn waits for a busy workspace instead of failing"
+      ]
+    },
+    {
+      "version": "v10.23.0",
+      "notes": [
+        "invitation sign-in works in the browser; removed people can be invited again"
+      ]
+    },
+    {
+      "version": "v10.24.0",
+      "notes": [
+        "the sign-in page says \"Sign in with work account\" when there is one sign-in service"
+      ]
+    },
+    {
+      "version": "v10.25.0",
+      "notes": []
+    },
+    {
+      "version": "v11.0.0",
+      "notes": [
+        "tasks work towards a goal on their own, and workflow approvals ask less often"
+      ]
+    },
+    {
+      "version": "v11.1.0",
+      "notes": [
+        "task runs hand over a written result, stop when stuck, admins release held writes"
+      ]
+    },
+    {
+      "version": "v11.2.0",
+      "notes": [
+        "a desktop app signs in through your browser, setup turns answers into settings",
+        "a new task allows 10 rounds per run unless you set another limit"
+      ]
     }
   ],
   "unpublished": [
-    "preserve workflow authoring intent during connector preparation",
-    "knowledge chunks preserve Unicode characters within byte limits",
-    "cancelled connector requests no longer leak rejected operations",
-    "Escape closes the settings editor before the settings dialog",
-    "writes wait briefly for a busy tenant catalog instead of failing at once",
-    "a typed slash command with its Enter in one chunk runs at once and docker tests pass",
-    "built-in role names are reserved in the database and duplicate role names answer 409",
-    "reserved role names, tenant-scoped role lookup, safe S3 range reads and clear refusals",
-    "draft test runs behave like the saved workflow",
-    "unreadable template imports answer 422 and chat runs need dev connectors",
-    "settings readers see pending secret approvals",
-    "clearing a category or description works and API-key templates store their key",
-    "sk subscription deliveries, onboarding credentials and resumed approvals work",
-    "sk commands, cockpit and settings send and show what the engine API defines"
+    "cockpit and desktop follow the new design, one control set, journeys cover the core",
+    "desktop notifications can be switched back on, a failed workspace switch can be skipped",
+    "the help area names its report action",
+    "settings show desktop updates, privacy, open at login and the sidebar start",
+    "a refused invitation offers one way on, sign-in only when signed out",
+    "people carry one name under settings, more options hide when empty",
+    "settings keep a fixed list of areas, people and devices live there, help links the docs",
+    "a refused invitation offers a way back and one action",
+    "the AI budget needs stats:read; get_ai_budget and {ai_budget} replace the token names",
+    "the monthly AI budget in the price currency is the only limit, the token budget goes",
+    "one settings row, the approval says early where it works, folder access behind the port",
+    "chat tool approvals use the one approval card, device refusals keep their code",
+    "a workflow run at the AI budget waits before its model step and continues by itself",
+    "the AI budget lives on the workspace, hosted admins set it, older ones start unlimited",
+    "a monthly AI budget in dollars pauses model work at the limit and asks an admin",
+    "pair requests reach the second person, mailed invite links use the configured address",
+    "two people can approve together, invitations send or hand back a link, pause alerts"
   ]
 };

@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { eq, sql } from "drizzle-orm";
-import { activeMasterKeyDigest } from "../crypto/aes-gcm.ts";
+import { activeMasterKeyDigest } from "../crypto/index.ts";
 import { runtimeConfigReplicas, runtimeConfigState } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
-import { assertRegistryRewrapScope } from "../preflight/rewrap-stock.ts";
+import { assertRegistryRewrapScope } from "../preflight/index.ts";
 import { FROZEN_NOW } from "../test-helpers/determinism/clock.ts";
 import { type EnvHandle, withTestEnv } from "../test-helpers/determinism/env.ts";
 import {

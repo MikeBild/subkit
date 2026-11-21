@@ -34,7 +34,7 @@ interface Detail {
 async function newConversation(): Promise<string> {
   const res = await journeyFetch(ctx, "/v1/conversations", {
     method: "POST",
-    body: JSON.stringify({ permission_mode: "ask" }),
+    body: JSON.stringify({}),
   });
   expect(res.status).toBe(201);
   return ((await res.json()) as { conversation: { id: string } }).conversation.id;

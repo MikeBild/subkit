@@ -15,6 +15,7 @@ import {
   createQualityWaveManifest,
   QUALITY_SHARD_POLICY_PATH,
 } from "./audit/quality-wave-manifest.ts";
+import { reexportBarrelExclusion } from "./audit/reexport-barrel.ts";
 import { reviewedRuntimeWitnesses } from "./audit/runtime-witnesses.ts";
 
 const repo = resolve(import.meta.dir, "../../..");
@@ -80,8 +81,15 @@ const next = [...grouped.entries()]
           covers_targets: shard.targets,
           rationale: "Hash-bound independently reviewed source launch in runtime witness ledger.",
         });
-      if (!witness) unresolved.push({ shard: shard.id, consumer: consumer.path });
-      return { path: consumer.path, witnesses: witness ? [witness] : [] };
+      const exclusion = witness
+        ? undefined
+        : reexportBarrelExclusion(consumer.path, read(consumer.path));
+      if (!witness && !exclusion) unresolved.push({ shard: shard.id, consumer: consumer.path });
+      return {
+        path: consumer.path,
+        witnesses: witness ? [witness] : [],
+        ...(exclusion ? { exclusion_rationale: exclusion } : {}),
+      };
     });
     return {
       ...shard,

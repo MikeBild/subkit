@@ -60,9 +60,7 @@ test("only the documented authored revision shape can acquire a reusable boundar
     connector_id: site,
     kind: "request",
     method: "PUT",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored identifier substitution
     path: "/v1/content/${item.item_id}/revisions",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored content substitution
     body: "${item.markdown}",
     headers: { "Content-Type": "text/markdown" },
   };
@@ -79,10 +77,8 @@ test("only the documented authored revision shape can acquire a reusable boundar
     { method: "DELETE" },
     { headers: { "Content-Type": "application/json" } },
     { headers: { "Content-Type": "text/markdown", "X-HTTP-Method-Override": "DELETE" } },
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: reject variable origin
     { path: "https://${input.host}/v1/content/${item.item_id}/revisions" },
     { query: { publish: "true" } },
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: reject variable header
     { headers: { "Content-Type": "${input.type}" } },
   ])
     expect(contentPublicationShape(parsed(change), origin)).toBeNull();

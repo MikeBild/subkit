@@ -20,82 +20,43 @@ describe("isDangerousTool — mcp_ prefix", () => {
   });
 });
 
-describe("resolveToolMode — mcp_ tools under auto mode", () => {
-  it("auto mode: mcp tool still requires confirm_before_execution (dangerous gate)", () => {
+describe("resolveToolMode — mcp_ tools on the default path", () => {
+  it("an mcp tool still requires confirm_before_execution (dangerous gate)", () => {
     const mode = resolveToolMode({
       tool: FAKE_MCP_TOOL,
       category: "tenant_write",
       input: {},
       overrides: {},
-      permission_mode: "auto",
     });
     expect(mode).toBe("confirm_before_execution");
   });
 
-  it("auto mode: second mcp tool namespace also gated", () => {
+  it("a second mcp tool namespace is also gated", () => {
     const mode = resolveToolMode({
       tool: FAKE_MCP_TOOL_2,
       category: "tenant_write",
       input: {},
       overrides: {},
-      permission_mode: "auto",
     });
     expect(mode).toBe("confirm_before_execution");
   });
 });
 
-describe("resolveToolMode — mcp_ tools under ask mode", () => {
-  it("ask mode: mcp tool resolves to confirm_before_execution", () => {
+describe("resolveToolMode — mcp_ tools when the person asks before writing", () => {
+  it("an mcp tool resolves to confirm_before_execution", () => {
     const mode = resolveToolMode({
       tool: FAKE_MCP_TOOL,
       category: "tenant_write",
       input: {},
       overrides: {},
-      permission_mode: "ask",
+      ask_before_writing: true,
     });
     expect(mode).toBe("confirm_before_execution");
   });
 });
 
-describe("resolveToolMode — mcp_ tools under plan mode", () => {
-  it("plan mode: mcp tool resolves to confirm_before_execution", () => {
-    const mode = resolveToolMode({
-      tool: FAKE_MCP_TOOL,
-      category: "tenant_write",
-      input: {},
-      overrides: {},
-      permission_mode: "plan",
-    });
-    expect(mode).toBe("confirm_before_execution");
-  });
-});
-
-describe("resolveToolMode — mcp_ tools under yolo mode", () => {
-  it("yolo bypasses the dangerous-tool gate for mcp_ tools", () => {
-    const mode = resolveToolMode({
-      tool: FAKE_MCP_TOOL,
-      category: "tenant_write",
-      input: {},
-      overrides: {},
-      permission_mode: "yolo",
-    });
-    expect(mode).toBe("no_confirm");
-  });
-
-  it("yolo also lifts the gate for a second mcp namespace", () => {
-    const mode = resolveToolMode({
-      tool: FAKE_MCP_TOOL_2,
-      category: "tenant_write",
-      input: {},
-      overrides: {},
-      permission_mode: "yolo",
-    });
-    expect(mode).toBe("no_confirm");
-  });
-});
-
-describe("resolveToolMode — mcp_ tool with no permission_mode (default path)", () => {
-  it("no permission_mode: falls through to category default = confirm_before_execution", () => {
+describe("resolveToolMode — mcp_ tool on the default path", () => {
+  it("a tenant write asks before execution", () => {
     const mode = resolveToolMode({
       tool: FAKE_MCP_TOOL,
       category: "tenant_write",
@@ -109,13 +70,12 @@ describe("resolveToolMode — mcp_ tool with no permission_mode (default path)",
 describe("resolveToolMode — per-conversation overrides and the external-MCP dispatch path", () => {
   const storedNoConfirmOverride = { [FAKE_MCP_TOOL]: "no_confirm" as const };
 
-  it("loop path: a stored no_confirm preference cannot grant external authority under auto", () => {
+  it("loop path: a stored no_confirm preference cannot grant external authority", () => {
     const mode = resolveToolMode({
       tool: FAKE_MCP_TOOL,
       category: "tenant_write",
       input: {},
       overrides: storedNoConfirmOverride,
-      permission_mode: "auto",
     });
     expect(mode).toBe("confirm_before_execution");
   });
@@ -157,19 +117,6 @@ describe("decideToolMode — operator trust (connector_trust)", () => {
         connector_trust: true,
       }),
     ).toEqual({ mode: "no_confirm", rule: "connector_trust" });
-  });
-
-  it("permission_mode plan outranks operator trust", () => {
-    expect(
-      decideToolMode({
-        tool: FAKE_MCP_TOOL,
-        category: "tenant_write",
-        input: {},
-        overrides: {},
-        permission_mode: "plan",
-        connector_trust: true,
-      }),
-    ).toEqual({ mode: "confirm_before_execution", rule: "permission_mode" });
   });
 
   it("the inline-credential safeguard outranks operator trust", () => {

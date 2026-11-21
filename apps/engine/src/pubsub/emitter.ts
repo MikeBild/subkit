@@ -1,4 +1,4 @@
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import type { EventEnvelope, EventHandler, OutboxChannel } from "./types.ts";
 
 export class PubSubEmitter {

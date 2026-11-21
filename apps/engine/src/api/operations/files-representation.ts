@@ -1,5 +1,5 @@
 import { z } from "@hono/zod-openapi";
-import type { FileRow } from "../../files/service.ts";
+import type { FileRow } from "../../files/service/index.ts";
 import { fileReference } from "../../files/slug.ts";
 import { catalogMetadataView } from "../catalog-metadata.ts";
 import { FileIdSchema, type FileWire, toFileId } from "../files-schemas.ts";

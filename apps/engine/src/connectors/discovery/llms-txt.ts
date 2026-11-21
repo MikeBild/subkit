@@ -1,4 +1,4 @@
-import { log } from "../../logging/logger.ts";
+import { log } from "../../logging/index.ts";
 import { getDriverFetch } from "../drivers/fetch-seam.ts";
 import { scrubUrl } from "../egress.ts";
 import { assertEgressAllowed } from "../egress-guard.ts";

@@ -1,13 +1,5 @@
 export { categoryCounts, sortRows } from "./list-model";
 export {
-  checkUploads,
-  DROP_CHOICES,
-  type DropChoice,
-  dropTarget,
-  fileKindOf,
-  fileSize,
-} from "./model";
-export {
   FilePage,
   FilesPage,
   InboxEntryPage,

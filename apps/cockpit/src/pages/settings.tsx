@@ -23,56 +23,64 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/cockpit/patterns";
-import { PreparedChanges } from "@/components/cockpit/prepared-changes";
 import { LoadFailed, queryView } from "@/components/failure-state";
+import { PeopleArea } from "@/features/admin";
+import type { BrandingDraftHandle, GuidedContext } from "@/features/settings";
 import {
-  LaunchAtLoginRow,
-  Notifications,
-  PrivacyPanel,
-  SetupSection,
-  StartLayoutRows,
-  UpdatesPanel,
-  useDesktopSettings,
-} from "@/features/settings";
-import { reportFailure } from "@/lib/action-failure";
-import { useI18n } from "@/lib/i18n-context";
-import { PeopleArea } from "@/pages/admin";
-import type { BrandingDraftHandle } from "@/pages/branding";
-import { NotificationSettings, useNotificationActions } from "@/pages/notification-settings";
-import { AiArea } from "@/pages/settings-ai";
-import { AreaList } from "@/pages/settings-area-list";
-import {
+  AiArea,
+  AreaList,
+  applySettingsPatch,
   areaStatus,
+  changedSettings,
+  cockpitSettings,
+  DevicesArea,
   ENGINE_AREA_IDS,
   type EngineAreaId,
   engineSettingsAccess,
+  HelpArea,
   isPersonalArea,
+  LaunchAtLoginRow,
+  LocalDevicesQuestion,
+  modelCatalogQueryKey,
+  NO_SETTING_DRAFTS,
+  NotificationSettings,
+  Notifications,
+  nextSettingsSave,
   openSettingsLevel,
+  PackagesSettings,
+  type PersonalDrafts,
+  PersonalSaveError,
+  PrivacyPanel,
+  ProfileArea,
   pageScope,
+  personalChanges,
+  personalRefusal,
+  profileStatus,
+  RESTART_STATUS_QUERY_KEY,
+  RulesArea,
+  restartOfferAfterSave,
+  restartSaveNote,
   type ScopedArea,
   type SettingAreaId,
+  type SettingDraftScope,
+  SettingField,
+  type SettingItem,
+  SettingsAreaFrame,
+  SettingsAttentionLine,
+  type SettingsFilter,
   type SettingsLevel,
+  SettingsReadOnlyNotice,
+  type SettingsResponse,
+  SettingsRestartDialog,
+  SettingsRestartOffer,
+  SettingsSaveBar,
+  SettingsSection,
+  SettingsSectionNav,
+  SettingsSummary,
+  SetupSection,
+  StartLayoutRows,
   scopedAreaOf,
   settingAreaOf,
-  settingsGuidedErrors,
-  settingsLevelFromUrl,
-  visibleSettingAreas,
-  workspaceAiEditable,
-} from "@/pages/settings-areas";
-import { modelCatalogQueryKey } from "@/pages/settings-catalog";
-import { DevicesArea } from "@/pages/settings-devices";
-import { useSettingsDrafts } from "@/pages/settings-drafts";
-import { SettingsAreaFrame, UsageNote } from "@/pages/settings-frame";
-import type { GuidedContext } from "@/pages/settings-guided";
-import { HelpArea } from "@/pages/settings-help";
-import {
-  changedSettings,
-  NO_SETTING_DRAFTS,
-  nextSettingsSave,
-  type SettingDraftScope,
-  type SettingItem,
-  type SettingsFilter,
-  type SettingsResponse,
   settingDraftError,
   settingIsChanged,
   settingLeafTarget,
@@ -81,43 +89,31 @@ import {
   settingSectionLabel,
   settingSectionOf,
   settingsAttention,
+  settingsGuidedErrors,
+  settingsLevelFromUrl,
   settingsPatches,
+  settingsReadQuery,
   settingsSaveFailure,
   settingsSaveReason,
   settingsViewFromUrl,
-} from "@/pages/settings-model";
-import { PackagesSettings } from "@/pages/settings-packages";
-import {
-  type PersonalDrafts,
-  PersonalSaveError,
-  personalChanges,
-  personalRefusal,
-  profileStatus,
-  workspaceAiStatus,
-} from "@/pages/settings-personal";
-import { ProfileArea } from "@/pages/settings-profile";
-import {
-  RESTART_STATUS_QUERY_KEY,
-  SettingsRestartDialog,
-  SettingsRestartOffer,
+  settleSettings,
+  UpdatesPanel,
+  UsageNote,
+  useDesktopSettings,
+  useNotificationActions,
   useRestartOffer,
-} from "@/pages/settings-restart";
-import { restartOfferAfterSave, restartSaveNote } from "@/pages/settings-restart-model";
-import {
-  SettingField,
-  SettingsAttentionLine,
-  SettingsReadOnlyNotice,
-  SettingsSaveBar,
-  SettingsSection,
-  SettingsSectionNav,
-  SettingsSummary,
-} from "@/pages/settings-rows";
-import { RulesArea } from "@/pages/settings-rules";
-import { applySettingsPatch, settingsReadQuery, settleSettings } from "@/pages/settings-save";
-import { WorkspaceArea } from "@/pages/settings-workspace";
-import { WorkspaceAiArea } from "@/pages/settings-workspace-ai";
-
-export * from "@/pages/settings-rows";
+  useSettingsDrafts,
+  visibleSettingAreas,
+  WorkspaceAiArea,
+  WorkspaceArea,
+  workspaceAiEditable,
+  workspaceAiStatus,
+} from "@/features/settings";
+import { SpendSettings } from "@/features/usage";
+import { VaultArea } from "@/features/vault";
+import { PreparedChanges } from "@/features/workflows";
+import { reportFailure } from "@/lib/action-failure";
+import { useI18n } from "@/lib/i18n-context";
 
 const SYSTEM_TENANT_ID = "00000000-0000-0000-0000-000000000000";
 
@@ -216,8 +212,9 @@ export function SettingsPage() {
     enabled: tenantReadable,
     ...live,
   });
-  const globalItems = query.data?.items ?? [];
-  const tenantItems = tenantReadable ? (tenantQuery.data?.items ?? null) : null;
+  const globalItems = cockpitSettings(query.data?.items ?? []);
+  const tenantItems =
+    tenantReadable && tenantQuery.data ? cockpitSettings(tenantQuery.data.items) : null;
   const effectiveItems = tenantItems ?? globalItems;
   const scope: SettingDraftScope = pageScope(level, scopeAvailable, areaScopes, tenantItems);
   const viewItems =
@@ -266,7 +263,8 @@ export function SettingsPage() {
   );
   const publicBaseUrl =
     draftState.drafts.global["server.public_base_url"] ??
-    (stringItem(globalItems, "server.public_base_url") || (globalThis.location?.origin ?? ""));
+    (stringItem(query.data?.items ?? [], "server.public_base_url") ||
+      (globalThis.location?.origin ?? ""));
   useDirtyGuard(changed.length > 0 || personalChange.count > 0);
 
   async function savePersonal(): Promise<void> {
@@ -506,7 +504,13 @@ export function SettingsPage() {
         ) : personalArea === "people" ? (
           frame("people", <PeopleArea />)
         ) : personalArea === "devices" ? (
-          frame("devices", <DevicesArea />)
+          frame(
+            "devices",
+            <>
+              <DevicesArea />
+              <LocalDevicesQuestion />
+            </>,
+          )
         ) : personalArea === "updates" && desktop ? (
           frame("updates", <UpdatesPanel control={desktop} />)
         ) : personalArea === "privacy" && desktop ? (
@@ -515,6 +519,10 @@ export function SettingsPage() {
           frame("help", <HelpArea />)
         ) : personalArea === "rules" ? (
           frame("rules", <RulesArea />)
+        ) : personalArea === "vault" ? (
+          frame("vault", <VaultArea />)
+        ) : personalArea === "usage" ? (
+          frame("usage", <SpendSettings />)
         ) : personalArea === "workspace" ? (
           frame(
             "workspace",
@@ -647,7 +655,6 @@ function GuidedArea({
   ctx: GuidedContext;
   restart: ReactNode;
 }) {
-  const { t } = useI18n();
   const session = useSession();
   if (area === "ai")
     return (
@@ -665,21 +672,7 @@ function GuidedArea({
       />
     );
   if (area === "operations")
-    return (
-      <AreaList
-        area="operations"
-        ctx={ctx}
-        before={
-          <>
-            {restart}
-            <p className="text-sm text-muted-foreground">
-              {t("settings.question.operations.hint")}
-            </p>
-          </>
-        }
-        after={<PackagesSettings />}
-      />
-    );
+    return <AreaList area="operations" ctx={ctx} before={restart} after={<PackagesSettings />} />;
   return <AreaList area={area} ctx={ctx} />;
 }
 

@@ -1,4 +1,4 @@
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { recordPreviewJudgeVerdict } from "../observability/instrumentation.ts";
 import { workflowSpecDigest } from "../workflows/core/spec.ts";
 import type { WorkflowSpec } from "../workflows/draft-schemas.ts";

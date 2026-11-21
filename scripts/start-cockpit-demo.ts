@@ -598,7 +598,7 @@ async function main(): Promise<void> {
     visualReview: "manual",
   });
   process.stdout.write(
-    `\nCockpit: http://localhost:${PORT}/cockpit\nLocal admin API key: ${key}\nKey file: ${KEY_FILE}\nProvider: ${provider.value} / ${model.value}\nDemo records: ${JSON.stringify(counts)}\nStart preserves edits; demo:local:reset restores the synthetic dataset and issues a new key.\n`,
+    `\nCockpit: http://localhost:${PORT}/cockpit\nLocal admin API key: ${key}\nKey file: ${KEY_FILE}\nProvider: ${provider.value} / ${model.value}\nDemo records: ${JSON.stringify(counts)}\nStart preserves edits; demo reset restores the synthetic dataset and issues a new key.\n`,
   );
 }
 

@@ -3,7 +3,7 @@ import { and, eq, lt } from "drizzle-orm";
 import { getConfig } from "../config/loader.ts";
 import type { Executor } from "../db/client.ts";
 import { usageEvents } from "../db/schema/index.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { RequestSourceSchema } from "../observability/service-metadata.ts";
 import { now } from "../utils/clock.ts";
 

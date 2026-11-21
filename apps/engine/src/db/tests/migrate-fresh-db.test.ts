@@ -43,7 +43,7 @@ describe("runMigrations on a fresh database", () => {
       "workflows",
       "executions",
       "audit_log",
-      "credentials",
+      "vault_items",
     ];
     for (const t of expected) {
       expect(await tableExists(t)).toBe(true);

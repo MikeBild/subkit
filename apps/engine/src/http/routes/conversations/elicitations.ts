@@ -7,12 +7,13 @@ import {
   turnFailureFramePayload,
 } from "../../../conversations/public/authoring.ts";
 import {
+  deviceConfirmationPort,
   ElicitationAlreadyResolvedError,
   ElicitationValidationError,
   respondElicitation,
 } from "../../../conversations/public/elicitation.ts";
 import {
-  assertTaskRunTurn,
+  assertTaskRunWriter,
   clearConversationTurnFailure,
   recordConversationTurnFailure,
   registerConversationAbort,
@@ -94,17 +95,17 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id, elicitation_id } = c.req.valid("param");
     const body = c.req.valid("json");
-    await assertTaskRunTurn(db, {
+    await assertTaskRunWriter(db, {
       tenant_id: principal.tenant_id,
       conversation_id: id,
       actor_id: principal.id,
       principal,
-      permission_mode: body.permission_mode,
     });
     const turnAbortCtrl = await registerConversationAbort(principal.tenant_id, id, db);
     let ownershipTransferred = false;
     try {
       const baseParams = {
+        local_confirmations: deviceConfirmationPort(db),
         tenant_id: principal.tenant_id,
         conversation_id: id,
         elicitation_id,
@@ -115,7 +116,6 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
         output: body.output,
         turn_abort_ctrl: turnAbortCtrl,
         ...(body.reason ? { reason: body.reason } : {}),
-        ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
       } as const;
 
       if (wantsSSE(c.req.header("accept"))) {
@@ -214,17 +214,17 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
     if (!elicit) {
       throw new NotFoundError("elicitation_for_tool_call");
     }
-    await assertTaskRunTurn(db, {
+    await assertTaskRunWriter(db, {
       tenant_id: principal.tenant_id,
       conversation_id: id,
       actor_id: principal.id,
       principal,
-      permission_mode: body.permission_mode,
     });
     const turnAbortCtrl = await registerConversationAbort(principal.tenant_id, id, db);
     let ownershipTransferred = false;
     try {
       const baseParams = {
+        local_confirmations: deviceConfirmationPort(db),
         tenant_id: principal.tenant_id,
         conversation_id: id,
         elicitation_id: elicit.id,
@@ -235,7 +235,6 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
         output: body.output,
         turn_abort_ctrl: turnAbortCtrl,
         ...(body.reason ? { reason: body.reason } : {}),
-        ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
       } as const;
 
       if (wantsSSE(c.req.header("accept"))) {

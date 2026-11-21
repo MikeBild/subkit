@@ -1,7 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { translate } from "@/lib/i18n";
+import { render, visibleMarkup } from "@/features/settings/model/settings-fixtures";
+import {
+  changedSettings,
+  pendingSettingDrafts,
+  type SettingItem,
+  settingDraftTexts,
+  settingsPatches,
+} from "@/features/settings/model/settings-model";
+import { AiArea } from "@/features/settings/ui/settings-ai";
+import { SettingsAreaFrame, UsageNote } from "@/features/settings/ui/settings-frame";
+import type { GuidedContext } from "@/features/settings/ui/settings-guided";
 import {
   AuthProvidersEditor,
   authProvidersFromDraft,
@@ -11,18 +21,8 @@ import {
   SettingsFilterToggle,
   SettingsReadOnlyNotice,
   SettingsSaveBar,
-} from "@/pages/settings";
-import { AiArea } from "@/pages/settings-ai";
-import { SettingsAreaFrame, UsageNote } from "@/pages/settings-frame";
-import type { GuidedContext } from "@/pages/settings-guided";
-import {
-  changedSettings,
-  pendingSettingDrafts,
-  type SettingItem,
-  settingDraftTexts,
-  settingsPatches,
-} from "@/pages/settings-model";
-import { render, visibleMarkup } from "./settings-fixtures.tsx";
+} from "@/features/settings/ui/settings-rows";
+import { translate } from "@/lib/i18n";
 
 describe("the page's frame", () => {
   test("the filter offers Alle and Geändert", () => {
@@ -81,7 +81,10 @@ describe("the page's frame", () => {
 
   test("the page saves once, with PATCH, and no longer per field", () => {
     const source = readFileSync(resolve(import.meta.dir, "settings.tsx"), "utf8");
-    const save = readFileSync(resolve(import.meta.dir, "settings-save.ts"), "utf8");
+    const save = readFileSync(
+      resolve(import.meta.dir, "../features/settings/api/settings-save.ts"),
+      "utf8",
+    );
     expect(source).toContain("applySettingsPatch(");
     expect(save).toContain('apiCall("patch", "/v1/settings"');
     expect(source).not.toMatch(/method: "PUT"|apiCall\("put"|saveSetting\(/);
@@ -214,7 +217,7 @@ describe("the guided settings pages", () => {
     leaf("llm.api_key", "", { kind: "string", sensitive: true, default: "" }),
     leaf("llm.providers.openai.api_key", "***", { kind: "string", sensitive: true, default: "" }),
     leaf("log.level", "info", { kind: "enum", scope: "global", default: "info" }),
-    leaf("tokens.monthly_budget", 0, { kind: "number", default: 0 }),
+    leaf("connectors.mcp.tools_list_max_pages", 0, { kind: "number", default: 0 }),
   ];
   const catalog = {
     currency: "USD",

@@ -1,6 +1,6 @@
+import { cn } from "@ui/lib/utils";
 import { ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
-import { cn } from "@/lib/utils";
 import { SECTION_LABEL } from "./section";
 import { STATUS_DOT, type StatusTone } from "./status-strip";
 

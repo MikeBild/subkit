@@ -1,5 +1,10 @@
-import { Panel, Pill } from "@ui/components/proto/Pill";
-import { EmptyState, IconTile, Sparkline, StatusDot } from "@ui/components/proto/visual";
+import { IconTile } from "@ui/atoms/icon-tile";
+import type { Tone } from "@ui/atoms/pill";
+import { Panel, Pill } from "@ui/atoms/pill";
+import { StatusDot } from "@ui/atoms/status-dot";
+import { cn } from "@ui/lib/utils";
+import { Sparkline } from "@ui/molecules/charts";
+import { EmptyState } from "@ui/molecules/empty-state";
 import {
   Activity,
   CalendarClock,
@@ -19,9 +24,8 @@ import {
   Wrench,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { connectorDots, type NeedIcon, needVisual } from "@/features/operations/model/operations";
 import { useI18n } from "@/lib/i18n-context";
-import { cn } from "@/lib/utils";
-import { connectorDots, type NeedIcon, needVisual, type Tone } from "./model";
 
 export interface KpiCard {
   id: string;

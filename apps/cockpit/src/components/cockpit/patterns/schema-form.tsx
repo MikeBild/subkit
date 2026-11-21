@@ -1,11 +1,12 @@
+import { Button } from "@ui/atoms/button";
+import { Input } from "@ui/atoms/input";
+import { Switch } from "@ui/atoms/switch";
+import { Textarea } from "@ui/atoms/textarea";
+import { Field, FieldDescription, FieldError, FieldLabel } from "@ui/molecules/field";
+import { IconButton } from "@ui/molecules/icon-button";
+import { SegmentedControl } from "@ui/molecules/segmented-control";
 import { Plus, X } from "lucide-react";
 import { type ReactNode, useId, useState } from "react";
-import { IconButton } from "@/components/cockpit/icon-button";
-import { Button } from "@/components/ui/button";
-import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import { useI18n } from "@/lib/i18n-context";
 import {
   buildSchemaInput,
@@ -18,7 +19,6 @@ import {
 } from "@/lib/schema-form";
 import type { InputField } from "@/lib/workflow-inputs";
 import { CollapsibleSection } from "./section";
-import { SegmentedControl } from "./segmented-control";
 
 const MAX_SEGMENTS = 4;
 

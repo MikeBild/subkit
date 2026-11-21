@@ -42,8 +42,8 @@ describe("GET /v1/settings", () => {
       "error",
       "fatal",
     ]);
-    const budget = body.items.find((i) => i.path === "tokens.monthly_budget");
-    expect(budget!.meta.default).toBe(0);
+    const budget = body.items.find((i) => i.path === "connectors.mcp.per_server_manifest_byte_cap");
+    expect(budget!.meta.default).toBe(30_000);
     expect(budget!.meta).not.toHaveProperty("enum_values");
     const fallback = body.items.find((i) => i.path === "llm.fallback_provider");
     expect(fallback!.meta).toHaveProperty("default", null);
@@ -52,10 +52,10 @@ describe("GET /v1/settings", () => {
   });
 
   test("tenant source metadata is scoped to the requested tenant", async () => {
-    const path = "tokens.monthly_budget";
+    const path = "connectors.mcp.per_server_manifest_byte_cap";
     const put = await authedFetch(`/v1/settings/${path}?tenant=${server.tenantId}`, {
       method: "PUT",
-      body: JSON.stringify({ value: 123 }),
+      body: JSON.stringify({ value: 12_300 }),
     });
     expect(put.status).toBe(200);
 
@@ -65,7 +65,7 @@ describe("GET /v1/settings", () => {
       value: unknown;
       meta: { source: string };
     };
-    expect(globalBody.value).toBe(0);
+    expect(globalBody.value).toBe(30_000);
     expect(globalBody.meta.source).toBe("default");
 
     const tenantRes = await authedFetch(`/v1/settings/${path}?tenant=${server.tenantId}`);
@@ -74,7 +74,7 @@ describe("GET /v1/settings", () => {
       value: unknown;
       meta: { source: string };
     };
-    expect(tenantBody.value).toBe(123);
+    expect(tenantBody.value).toBe(12_300);
     expect(tenantBody.meta.source).toBe("tenant");
   });
 
@@ -106,7 +106,7 @@ describe("GET /v1/settings", () => {
     });
     expect(res.status).toBe(403);
     const leafRes = await fetch(
-      `${server.baseUrl}/v1/settings/tokens.monthly_budget?tenant=${server.tenantId}`,
+      `${server.baseUrl}/v1/settings/connectors.mcp.per_server_manifest_byte_cap?tenant=${server.tenantId}`,
       { headers: { authorization: `Bearer ${plaintext}` } },
     );
     expect(leafRes.status).toBe(403);

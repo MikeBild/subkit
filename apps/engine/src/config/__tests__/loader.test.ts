@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import {
   _resetConfigForTests,
   getConfig,
@@ -62,6 +63,53 @@ describe("loadConfig", () => {
       secret_access_key: "secret",
       force_path_style: true,
     });
+  });
+
+  test("the filesystem object-store binding seeds storage.backend and its root", async () => {
+    await loadFresh({
+      DATABASE_URL: "postgres://localhost/test",
+      NODE_ENV: "test",
+      OBJECT_STORAGE_BACKEND: "filesystem",
+      OBJECT_STORAGE_ROOT: "/data/local/files",
+    });
+    expect(getConfig().storage.backend).toBe("filesystem");
+    expect(getConfig().storage.filesystem.root).toBe("/data/local/files");
+  });
+
+  test("the object-store backend defaults to s3 and refuses unknown values", async () => {
+    await loadFresh({ DATABASE_URL: "postgres://localhost/test", NODE_ENV: "test" });
+    expect(getConfig().storage.backend).toBe("s3");
+    _resetConfigForTests();
+    await expect(
+      loadFresh({
+        DATABASE_URL: "postgres://localhost/test",
+        NODE_ENV: "test",
+        OBJECT_STORAGE_BACKEND: "seaweed",
+      }),
+    ).rejects.toThrow(/s3 or filesystem/);
+  });
+
+  test("the deployment mode is seeded from SUBKIT_DEPLOYMENT_MODE and defaults to server", async () => {
+    await loadFresh({ DATABASE_URL: "postgres://localhost/test", NODE_ENV: "test" });
+    expect(getConfig().deployment.mode).toBe("server");
+    expect(getConfig().database.pool_max).toBe(10);
+    _resetConfigForTests();
+    await loadFresh({
+      DATABASE_URL: "postgres://localhost/test",
+      NODE_ENV: "test",
+      SUBKIT_DEPLOYMENT_MODE: "local_workspace",
+    });
+    expect(getConfig().deployment.mode).toBe("local_workspace");
+    expect(getConfig().database.pool_max).toBe(6);
+    expect(getConfig().queue.concurrency).toBe(1);
+    _resetConfigForTests();
+    await expect(
+      loadFresh({
+        DATABASE_URL: "postgres://localhost/test",
+        NODE_ENV: "test",
+        SUBKIT_DEPLOYMENT_MODE: "desktop",
+      }),
+    ).rejects.toThrow(/server or local_workspace/);
   });
 
   test("conflicting path-style bootstrap aliases fail closed", async () => {
@@ -176,8 +224,8 @@ describe("setConfigKey", () => {
   });
 
   test("requires-restart in production blocks without force", async () => {
-    const prev = process.env.NODE_ENV;
-    process.env.NODE_ENV = "production";
+    const prev = testEnv.NODE_ENV;
+    testEnv.NODE_ENV = "production";
     try {
       _resetConfigForTests();
       await loadConfig({
@@ -188,8 +236,8 @@ describe("setConfigKey", () => {
       const r = await setConfigKey("server.port", 4000, { force: true });
       expect(r.requiresRestart).toBe(true);
     } finally {
-      if (prev === undefined) delete process.env.NODE_ENV;
-      else process.env.NODE_ENV = prev;
+      if (prev === undefined) delete testEnv.NODE_ENV;
+      else testEnv.NODE_ENV = prev;
     }
   });
 

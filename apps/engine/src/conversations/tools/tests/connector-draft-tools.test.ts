@@ -1,10 +1,10 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { auditLog, connectors, credentials } from "../../../db/schema/index.ts";
+import { auditLog, connectors, vaultItems } from "../../../db/schema/index.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
 import { createEmptyDraftDocument } from "../../authoring-state/index.ts";
-import { createConversation } from "../../service.ts";
+import { createConversation } from "../../service/index.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../../tests/setup.ts";
 import type { DraftDocument } from "../../types.ts";
 import type { ToolContext } from "../index.ts";
@@ -50,7 +50,7 @@ afterAll(async () => {
 });
 
 afterEach(async () => {
-  await ctx.testDb.db.delete(credentials).where(eq(credentials.tenant_id, ctx.tenant_id));
+  await ctx.testDb.db.delete(vaultItems).where(eq(vaultItems.tenant_id, ctx.tenant_id));
   await ctx.testDb.db.delete(connectors).where(eq(connectors.tenant_id, ctx.tenant_id));
 });
 

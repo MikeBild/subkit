@@ -1,5 +1,5 @@
 import { getConnectorForEnvironment, isCircuitOpenBlocking } from "../../connectors/service.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import {
   recordForEachExecution,
   recordLoopIterationsOffloaded,

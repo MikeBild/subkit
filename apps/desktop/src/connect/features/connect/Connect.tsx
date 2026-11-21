@@ -1,19 +1,18 @@
+import { Button } from "@ui/atoms/button";
+import { IconTile } from "@ui/atoms/icon-tile";
+import { Input } from "@ui/atoms/input";
+import { Label } from "@ui/atoms/label";
+import { Skel } from "@ui/atoms/skeleton";
+import { useLoadingPhase } from "@ui/lib/loading-phase";
+import { BusyButton } from "@ui/molecules/busy-button";
+import { ErrorNotice, FieldError } from "@ui/molecules/error-notice";
+import { StatusStrip } from "@ui/molecules/status-strip";
+import { StepFooter } from "@ui/molecules/step-footer";
+import { Laptop, Server } from "lucide-react";
 import { useState } from "react";
 import { useSignIn } from "../../adapter/index.ts";
 import { EXAMPLE_ADDRESS, type Problem } from "../../domain/index.ts";
 import { factRows } from "../../lib/text.ts";
-import {
-  BusyButton,
-  Button,
-  ErrorNotice,
-  FieldError,
-  Input,
-  Label,
-  Skel,
-  StatusStrip,
-  StepFooter,
-  useHeldPhase,
-} from "../../ui/index.ts";
 import { adminMessage, problemCode } from "./connect-model.ts";
 import { ConnectionOk, ConnectionProblem } from "./connection-result.tsx";
 import { useConnect } from "./use-connect.ts";
@@ -79,12 +78,35 @@ function ProblemNotice({
 export function Connect() {
   const { s, a } = useConnect();
   const { t } = useSignIn();
-  const phase = useHeldPhase(s.checking);
+  const phase = useLoadingPhase(s.checking);
   const { strip, slot } = s;
   return (
     <div>
       <h1 className="text-2xl font-semibold">{t("connect.title")}</h1>
       <p className="mt-2 text-sm text-muted-foreground">{t("connect.lead")}</p>
+      {s.localAvailable && (
+        <div className="my-4 flex flex-col gap-2">
+          <Button
+            data-testid="connect-choice-server"
+            variant="secondary"
+            aria-pressed="true"
+            className="h-auto w-full justify-start whitespace-normal p-4 text-left"
+          >
+            <IconTile icon={Server} size="md" />
+            {t("workspace.choice.server")}
+          </Button>
+          <Button
+            data-testid="connect-choice-local"
+            variant="outline"
+            aria-pressed="false"
+            className="h-auto w-full justify-start whitespace-normal p-4 text-left"
+            onClick={a.startLocal}
+          >
+            <IconTile icon={Laptop} size="md" />
+            {t("workspace.choice.local")}
+          </Button>
+        </div>
+      )}
       {strip?.body ? (
         <ErrorNotice
           className="mt-3"
@@ -180,7 +202,7 @@ export function Connect() {
       </form>
 
       <div className="mt-2" aria-live="polite" aria-busy={s.checking}>
-        {slot.kind === "checking" || phase !== "ready" ? (
+        {slot.kind === "checking" || phase !== "content" ? (
           <div className="h-[86px]">{phase === "skeleton" && <Skel.Connection />}</div>
         ) : slot.outcome.kind === "idle" ? (
           <div aria-hidden className="h-[86px] rounded-xl border border-dashed" />

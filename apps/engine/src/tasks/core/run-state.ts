@@ -6,7 +6,7 @@ import { taskRunProgress } from "./progress.ts";
 export const TASK_NO_PROGRESS_LIMIT = 2;
 export const TASK_TURN_STOPPED = "turn_stopped";
 export const TASK_TURN_FAILURES_BEFORE_THE_MODEL: readonly string[] = [
-  "llm_quota_exhausted",
+  "llm_spend_limit_reached",
   "ai_access_missing",
 ];
 export const TASK_SLEEP_REASONS = ["paused", "check_requested", "provider_throttled"] as const;
@@ -145,7 +145,7 @@ export function decideTaskRunState(
     return settle("result_ready");
   if (observation.pending_elicitation)
     return settle("waiting", { waiting_reason: observation.pending_elicitation });
-  if (failure?.code === "llm_quota_exhausted")
+  if (failure?.code === "llm_spend_limit_reached")
     return settle("waiting", { waiting_reason: "budget" });
   if (failure?.code === "ai_access_missing")
     return settle("waiting", { waiting_reason: "ai_access" });

@@ -39,14 +39,13 @@ describe("tool-policies.ts × loop pre-dispatch hook", () => {
     ).toBe("no_confirm");
   });
 
-  it("the inline-credential safeguard outranks permission_mode=yolo", () => {
+  it("the inline-credential safeguard always asks", () => {
     expect(
       resolveToolMode({
         tool: "update_connector_draft",
         category: "draft_write",
         input: { config: { token: DOP_TOKEN } },
         overrides: {},
-        permission_mode: "yolo",
       }),
     ).toBe("confirm_before_execution");
   });
@@ -81,18 +80,6 @@ describe("tool-policies.ts × loop pre-dispatch hook", () => {
           category: "draft_write",
           input: { steps: [{ headers: { authorization: JWT } }] },
           overrides: {},
-        }),
-      ).toBe("no_confirm");
-    });
-
-    it("permission_mode=yolo clears a token-shaped read", () => {
-      expect(
-        resolveToolMode({
-          tool: "dry_run_transform",
-          category: "tenant_read",
-          input: { code: `return atob('${BASE64_LITERAL}');` },
-          overrides: {},
-          permission_mode: "yolo",
         }),
       ).toBe("no_confirm");
     });

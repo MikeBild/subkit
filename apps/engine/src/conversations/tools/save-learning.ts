@@ -1,5 +1,5 @@
 import { z } from "@hono/zod-openapi";
-import { collectSessionLearning, learningTargetOf } from "../../agent/sessions.ts";
+import { collectSessionLearning, learningTargetOf } from "../../agent/index.ts";
 import { LearningKindSchema } from "../../api/agent-sessions.ts";
 import { DOMAIN_SLUG_RE } from "../../api/domain-slug.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";

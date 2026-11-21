@@ -1,11 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, desc, eq } from "drizzle-orm";
-import { auditLog, connectors, credentials } from "../../../db/schema/index.ts";
+import { auditLog, connectors, vaultItems } from "../../../db/schema/index.ts";
 import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
 import { withSelfHostedDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
 import { createEmptyDraftDocument, withConnectorProbe } from "../../authoring-state/index.ts";
 import { setDraftCredential } from "../../persistence/draft-credential-cache.ts";
-import { createConversation } from "../../service.ts";
+import { createConversation } from "../../service/index.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../../tests/setup.ts";
 import type { DraftDocument } from "../../types.ts";
 import { inspectConnectorDraftTool } from "../inspect-connector-draft.ts";
@@ -131,8 +131,8 @@ describe("save_connector_draft — diagnostic re-issue", () => {
         .where(eq(connectors.id, connectorId));
       const credentialRowsBefore = await ctx.testDb.db
         .select()
-        .from(credentials)
-        .where(eq(credentials.connector_id, connectorId));
+        .from(vaultItems)
+        .where(eq(vaultItems.connector_id, connectorId));
 
       const second = await saveConnectorDraftTool.execute(toolCtx.base, {
         credential: { mode: "bearer", token: "tkn-original" },
@@ -154,8 +154,8 @@ describe("save_connector_draft — diagnostic re-issue", () => {
       expect(connectorRowsAfter[0]?.updated_at).toEqual(connectorRowsBefore[0]?.updated_at);
       const credentialRowsAfter = await ctx.testDb.db
         .select()
-        .from(credentials)
-        .where(eq(credentials.connector_id, connectorId));
+        .from(vaultItems)
+        .where(eq(vaultItems.connector_id, connectorId));
       expect(credentialRowsAfter[0]?.updated_at).toEqual(credentialRowsBefore[0]?.updated_at);
     },
   );

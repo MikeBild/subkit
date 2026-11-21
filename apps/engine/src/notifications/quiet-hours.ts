@@ -1,3 +1,5 @@
+import { DEFAULT_WORKING_DAYS, parseClock } from "@shared/quiet-hours.ts";
+
 export type PushSchedule =
   | { readonly mode: "immediately" }
   | {
@@ -7,8 +9,6 @@ export type PushSchedule =
       readonly days?: readonly number[] | undefined;
     }
   | { readonly mode: "daily_digest"; readonly at: string };
-
-export const DEFAULT_WORKING_DAYS: readonly number[] = [1, 2, 3, 4, 5];
 
 export function workingDays(days: readonly number[] | undefined): ReadonlySet<number> {
   const valid = (days ?? DEFAULT_WORKING_DAYS).filter(
@@ -71,8 +71,7 @@ export function localDateTime(instant: Date, timezone: string): LocalDateTime {
 }
 
 export function clockMinutes(clock: string): number {
-  const match = /^([01]\d|2[0-3]):([0-5]\d)$/u.exec(clock);
-  return match ? Number(match[1]) * 60 + Number(match[2]) : 0;
+  return parseClock(clock) ?? 0;
 }
 
 function wallClock(local: LocalDateTime): number {

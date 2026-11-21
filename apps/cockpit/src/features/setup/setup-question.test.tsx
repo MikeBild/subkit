@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { render } from "@/components/cockpit/patterns/test-utils";
-import type { SetupAnswers } from "./model";
+import type { SetupAnswers } from "./model/setup-model";
 import { SetupQuestion } from "./setup-question";
 
 const answers: SetupAnswers = {
@@ -9,7 +9,6 @@ const answers: SetupAnswers = {
   services: [],
   approver: "self",
   approverEmail: "",
-  chatMode: "auto",
   env: "dev",
   notify: "working_hours",
   from: "08:00",
@@ -18,6 +17,7 @@ const answers: SetupAnswers = {
   days: [1, 2, 3, 4, 5],
   timezone: "Europe/Berlin",
   critical: true,
+  budget: 50,
 };
 
 function question(value: SetupAnswers, locale: "de" | "en" = "de"): string {
@@ -72,4 +72,12 @@ test("the approver question hides approving together unless the workspace offers
     "de",
   );
   expect(offered).toContain('data-testid="setup-approver-pair"');
+});
+
+test("the budget question offers 20, 50 recommended, 200 and no limit", () => {
+  const html = render(<SetupQuestion k="budget" value={answers} onDone={() => {}} />, "de");
+  for (const choice of [20, 50, 200, 0]) expect(html).toContain(`setup-budget-${choice}`);
+  expect(html).toContain("50 $");
+  expect(html).toContain("empfohlen");
+  expect(html).toContain("Ohne Grenze");
 });

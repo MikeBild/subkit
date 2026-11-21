@@ -363,7 +363,7 @@ describe("what may break through quiet hours", () => {
         reason: "needs_reauth",
         subject: { kind: "connector", environment: "prod" },
       },
-      { class: "stopped", reason: "budget_critical", subject: null },
+      { class: "stopped", reason: "spend_limit_reached", subject: null },
     ] as const) {
       expect(isCriticalPush(item)).toBe(false);
     }

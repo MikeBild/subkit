@@ -1,7 +1,7 @@
-import { ToolChoiceViolationError } from "ai";
+import { isToolChoiceViolation } from "../../llm/runtime/sdk-errors.ts";
 
 export function answeredDespiteToolChoice(error: unknown): boolean {
-  if (!ToolChoiceViolationError.isInstance(error)) return false;
+  if (!isToolChoiceViolation(error)) return false;
   if (error.content.some((part) => part.type === "tool-call")) return false;
   return error.content.some((part) => part.type === "text" && part.text.trim().length > 0);
 }

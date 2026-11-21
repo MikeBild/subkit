@@ -2,10 +2,11 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { conversationMessages, conversations } from "../../db/schema/conversations.ts";
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
-import { backfillEmbeddings } from "../../embeddings/backfill.ts";
+import { backfillEmbeddings } from "../../embeddings/index.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { suggestConversationsByTopic } from "../topic-routing.ts";
 
-const skip = process.env.REQUIRES_PG === "0" || process.env.RUN_EMBEDDING_E2E !== "1";
+const skip = testEnv.REQUIRES_PG === "0" || testEnv.RUN_EMBEDDING_E2E !== "1";
 
 let testDb: TestDb;
 let tenantId: string;

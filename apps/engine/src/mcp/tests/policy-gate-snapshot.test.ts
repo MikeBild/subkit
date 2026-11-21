@@ -77,13 +77,14 @@ describe("policy-gate snapshot — resolveToolMode characterization", () => {
     ).toBe("confirm_before_execution");
   });
 
-  test("save_workflow_draft draft_write → confirm_before_execution (default)", () => {
+  test("save_workflow_draft draft_write → confirm_before_execution when the person asks before writing", () => {
     expect(
       resolveToolMode({
         tool: "save_workflow_draft",
         category: "draft_write",
         input: { target_workflow_id: null, force_commit: false },
         overrides: EMPTY_OVERRIDES,
+        ask_before_writing: true,
       }),
     ).toBe("confirm_before_execution");
   });
@@ -99,26 +100,25 @@ describe("policy-gate snapshot — resolveToolMode characterization", () => {
     ).toBe("no_confirm");
   });
 
-  test("permission_mode=yolo → no_confirm for save_workflow_draft (escape hatch honored)", () => {
+  test("save_workflow_draft as a draft write → no_confirm", () => {
     expect(
       resolveToolMode({
         tool: "save_workflow_draft",
         category: "draft_write",
         input: {},
         overrides: EMPTY_OVERRIDES,
-        permission_mode: "yolo",
       }),
     ).toBe("no_confirm");
   });
 
-  test("permission_mode=ask + tenant_write → confirm_before_execution", () => {
+  test("ask_before_writing + tenant_write → confirm_before_execution", () => {
     expect(
       resolveToolMode({
         tool: "save_workflow_draft",
         category: "tenant_write",
         input: {},
         overrides: EMPTY_OVERRIDES,
-        permission_mode: "ask",
+        ask_before_writing: true,
       }),
     ).toBe("confirm_before_execution");
   });

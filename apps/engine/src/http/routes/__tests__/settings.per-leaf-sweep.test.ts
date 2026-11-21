@@ -9,6 +9,7 @@ import {
   sampleConfigLeaf,
 } from "../../../config/__tests__/leaf-samples.ts";
 import { _resetConfigForTests, loadConfig, setConfigKey } from "../../../config/loader.ts";
+import { PROCESS_BINDING_PATHS } from "../../../config/process-bindings.ts";
 import { dottedPath } from "../../../config/walk.ts";
 import { auditLog } from "../../../db/schema/audit.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts";
@@ -84,7 +85,7 @@ async function authedFetch(path: string, init: RequestInit = {}): Promise<Respon
 }
 
 const LEAVES = configurationSweepLeaves();
-const BOOTSTRAP_ONLY_PATHS = new Set(["database.url"]);
+const BOOTSTRAP_ONLY_PATHS = new Set<string>(PROCESS_BINDING_PATHS);
 const EDITABLE_LEAVES = LEAVES.filter((leaf) => !BOOTSTRAP_ONLY_PATHS.has(dottedPath(leaf)));
 const SWEPT_LEAVES = EDITABLE_LEAVES.filter((leaf) => leaf.path[0] !== "log");
 

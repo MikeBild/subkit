@@ -1,4 +1,6 @@
 import { z } from "@hono/zod-openapi";
+import { runNoticeDue } from "../../llm/core/spend-budget.ts";
+import { MODEL_PRICE_CATALOG_CURRENCY } from "../../llm/model-price-catalog.ts";
 import {
   getTask,
   TASK_USAGE_ATTRIBUTIONS,
@@ -31,12 +33,25 @@ const TaskUsagePeriodSchema = z
   .openapi("TaskUsagePeriod");
 
 const TaskUsageResponse = z
-  .object({ last_run: TaskUsagePeriodSchema, current_month: TaskUsagePeriodSchema })
+  .object({
+    last_run: TaskUsagePeriodSchema,
+    current_month: TaskUsagePeriodSchema,
+    last_run_notice: z
+      .object({ run_cost_usd: z.number(), threshold_usd: z.number() })
+      .nullable()
+      .describe("Set when the latest run cost more US dollars than the per-run notice threshold."),
+  })
   .openapi("TaskUsageResponse");
 
 interface TaskUsageResult {
   readonly last_run: TaskUsage;
   readonly current_month: TaskUsage;
+  readonly last_run_notice: { run_cost_usd: number; threshold_usd: number } | null;
+}
+
+function lastRunNotice(usage: TaskUsage): TaskUsageResult["last_run_notice"] {
+  if (usage.cost?.currency.toUpperCase() !== MODEL_PRICE_CATALOG_CURRENCY) return null;
+  return runNoticeDue({ run: "task_run", before_usd: 0, after_usd: usage.cost.amount });
 }
 
 export const getTaskUsageOperation = defineOperation<{ id: string }, TaskUsageResult>({
@@ -59,7 +74,7 @@ export const getTaskUsageOperation = defineOperation<{ id: string }, TaskUsageRe
       taskUsage(scope.db, scope.tenant_id, id, "last_run", at),
       taskUsage(scope.db, scope.tenant_id, id, "current_month", at),
     ]);
-    return { last_run, current_month };
+    return { last_run, current_month, last_run_notice: lastRunNotice(last_run) };
   },
   http: {
     method: "get",

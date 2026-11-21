@@ -166,7 +166,6 @@ test("production tool policy admits an existing local grant without a second gat
       category: "tenant_write",
       input: { workflow: f.workflow.id, environment: "prod" },
       overrides: {},
-      permission_mode: "auto",
     }).mode,
   ).toBe("no_confirm");
   const before = remote.callCount();
@@ -191,10 +190,10 @@ test("an ordinary production tool start without authority remains held", async (
   });
 });
 
-test("synthetic tools in ask run a start that a standing grant covers without a question", async () => {
+test("synthetic tools that ask before writing run a start that a standing grant covers without a question", async () => {
   const f = await fixture({ maxRuns: 1 });
   const before = remote.callCount();
-  const result = await f.runTool("synthetic", undefined, { permissionMode: "ask" });
+  const result = await f.runTool("synthetic", undefined, { askBeforeWriting: true });
   expect(result).toMatchObject({ ok: true });
   expect(remote.callCount() - before).toBe(1);
   expect(await f.reserved()).toBe(1);
@@ -209,31 +208,10 @@ test("synthetic tools in ask run a start that a standing grant covers without a 
   expect(pending).toHaveLength(0);
 });
 
-for (const permissionMode of ["plan"] as const) {
-  test(`synthetic tools preserve ${permissionMode} despite an available standing grant`, async () => {
-    const f = await fixture({ maxRuns: 1 });
-    const before = remote.callCount();
-    await f.runTool("synthetic", undefined, {
-      permissionMode,
-      toolPolicies: { [`wf_${f.workflow.slug}`]: "no_confirm" },
-    });
-    expect(remote.callCount()).toBe(before);
-    expect(await f.reserved()).toBe(0);
-    expect((await f.rows())[0]).toMatchObject({ hold_writes: true, execution_authority_id: null });
-    const pending = await tdb.db
-      .select()
-      .from(conversationElicitations)
-      .where(eq(conversationElicitations.tenant_id, f.tenant.id));
-    expect(pending).toHaveLength(1);
-    expect(pending[0]?.status).toBe("pending");
-  });
-}
-
 test("synthetic tools preserve an explicit per-workflow approval preference", async () => {
   const f = await fixture({ maxRuns: 1 });
   const before = remote.callCount();
   await f.runTool("synthetic", undefined, {
-    permissionMode: "auto",
     toolPolicies: { [`wf_${f.workflow.slug}`]: "confirm_before_execution" },
   });
   expect(remote.callCount()).toBe(before);

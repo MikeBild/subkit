@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { _drainAuditWritesForTests } from "../../audit/audit.ts";
 import { apiKeys, auditLog } from "../../db/schema/index.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { EXTRACT_BODY_CAP_BYTES } from "../routes/ai/extract.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
@@ -11,7 +12,7 @@ let srv: HttpTestServer;
 let systemAccountKey: string;
 
 beforeAll(async () => {
-  process.env.LLM_PROVIDER = "mock";
+  testEnv.LLM_PROVIDER = "mock";
   resetMockProvider();
   srv = await createHttpTestServer("extract-cap");
   systemAccountKey = "wf_live_0123456789abcdef0123456789abcdef";

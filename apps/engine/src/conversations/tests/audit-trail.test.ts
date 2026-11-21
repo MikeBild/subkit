@@ -9,7 +9,7 @@ import {
 } from "../../db/schema/index.ts";
 import { createSystemAccount } from "../../identity/service.ts";
 import { answeringModelLabel } from "../loop/model-resolver.ts";
-import { createConversation } from "../service.ts";
+import { createConversation } from "../service/index.ts";
 import {
   type ConversationTestCtx,
   createConversationTestCtx,
@@ -80,7 +80,7 @@ describe("conversations/audit-trail", () => {
         actor_id: ctx.user_id,
         connector_id: ctx.connector_id,
         initial_message: "please list users from the api",
-        permission_mode: "ask",
+        ask_before_writing: true,
       },
       ctx.testDb.db,
     );
@@ -170,6 +170,7 @@ describe("conversations/audit-trail", () => {
         conversation_id: created.conversation.id,
         elicitation_id: elicitationId,
         actor_id: ctx.user_id,
+        ask_before_writing: true,
         output: { confirmed: true },
       },
       ctx.testDb.db,

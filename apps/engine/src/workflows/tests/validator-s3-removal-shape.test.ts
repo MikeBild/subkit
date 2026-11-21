@@ -17,7 +17,6 @@ test("the production shape — DELETE at a prefix with the keys in a body — is
   const messages = messagesFor({
     method: "DELETE",
     path: "v1/sources/",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
     body: { items: "${scope.list_sources.data.items}" },
     s3: { scope: { key_prefix: "v1/sources/", max_bytes: 10, max_deletes: 50 } },
   });
@@ -38,7 +37,6 @@ test("the per-object removal the driver actually supports is valid", () => {
     messagesFor({
       method: "DELETE",
       s3: {
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
         key: "${input.key}",
         scope: { key_prefix: "v1/sources/", max_bytes: 10, max_deletes: 50 },
       },

@@ -2,7 +2,7 @@ import { describe, expect } from "bun:test";
 import { setConfigKey } from "../../config/loader.ts";
 import { callerFromPrincipal } from "../../execution/caller-context.ts";
 import { runExecution } from "../../execution/engine.ts";
-import { LlmProviderError, LlmQuotaExhausted } from "../../llm/errors.ts";
+import { LlmProviderError, LlmSpendLimitReached } from "../../llm/errors.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
 import { MAX_GENERATION_PASSES, runAuthoringPipeline } from "../authoring-pipeline.ts";
 import { createEmptyDraftDocument } from "../authoring-state/index.ts";
@@ -252,7 +252,7 @@ describe("runAuthoringPipeline — one-shot contract", () => {
     const result = await authorWorkflowTool.execute(toolCtx, { goal: "digest the repos" });
     expect(result.ok).toBe(false);
     expect(result.data).toMatchObject({
-      error_code: "llm_provider_limited",
+      error_code: "llm_provider_quota_exhausted",
       attempts: 1,
       next_best_actions: [],
     });
@@ -266,13 +266,13 @@ describe("runAuthoringPipeline — one-shot contract", () => {
     let calls = 0;
     getMockProvider().generateOverrides.generate = () => {
       calls += 1;
-      throw new LlmQuotaExhausted();
+      throw new LlmSpendLimitReached();
     };
     const toolCtx = makeCtx();
     const result = await authorWorkflowTool.execute(toolCtx, { goal: "digest the repos" });
     expect(result.ok).toBe(false);
     expect(result.data).toMatchObject({
-      error_code: "llm_quota_exhausted",
+      error_code: "llm_spend_limit_reached",
       attempts: 1,
       next_best_actions: [],
     });
@@ -291,7 +291,7 @@ describe("runAuthoringPipeline — one-shot contract", () => {
     const result = await runAuthoringPipeline({ ctx: toolCtx, goal: "digest the repos" });
     expect(result).toMatchObject({
       ok: false,
-      error_code: "llm_provider_limited",
+      error_code: "llm_provider_quota_exhausted",
       attempts: 1,
     });
     expect(calls).toBe(1);

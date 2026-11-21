@@ -10,13 +10,13 @@ import { auditLog, riskSignalEdges } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { _resetRssHighWaterForTests, setDlqJobCount } from "../observability/instrumentation.ts";
 import { resetMetricsRegistryForTests } from "../observability/metrics.ts";
-import { runRiskSignalEdges } from "../scheduler/risk-signal-edges-runner.ts";
 import { adminPrincipal } from "../test-helpers/principals.ts";
 import { seedTenant } from "../test-helpers/seed.ts";
 import { buildAttention, invalidateAttention } from "./attention.ts";
 import { buildOperatorHealthDigest, buildOperatorHealthSummary } from "./health-digest.ts";
 import { invalidateOperationalOverview } from "./operational-overview.ts";
 import { _resetRiskSignalEdgesForTests, type RiskSignal, takeRiskEdges } from "./risk-signals.ts";
+import { runRiskSignalEdges } from "./scheduled/risk-signal-edges-runner.ts";
 
 let testDb: TestDb;
 let tenant_id: string;

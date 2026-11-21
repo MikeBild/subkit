@@ -1,12 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${...}` placeholder tokens are part of the tested grammar.
-// Validation-fingerprint loop-break — repeated identical-shape
-// validation failures across DIFFERENT args trigger a structured
-// short-circuit. Distinct from the args-hash repeat detector, which
-// only catches IDENTICAL args; this one catches the case where the
-// model varies the args trying to dodge the same constraint
-// (session f00b8d1c: build_workflow → propose_step → build_workflow
-// all hitting "${item.…} placeholder outside loop body").
-
 import { describe, expect, test } from "bun:test";
 import { computeValidationFingerprint } from "../sdk-wrap.ts";
 

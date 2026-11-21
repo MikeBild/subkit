@@ -1,6 +1,7 @@
+import { Pill } from "@ui/atoms/pill";
+import { StepFooter } from "@ui/molecules/step-footer";
 import { Laptop } from "lucide-react";
 import { useSignIn } from "../../adapter/index.ts";
-import { Pill, StepFooter } from "../../ui/index.ts";
 import { useSignInStep } from "./use-sign-in-step.ts";
 
 export function DeviceRegistered() {

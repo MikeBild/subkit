@@ -1,5 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { FileRefSchema } from "../api/files-schemas.ts";
+import { isSafeRegex, SAFE_REGEX_REMEDY } from "../utils/safe-regex.ts";
 import { WORKFLOW_MAX_STEPS } from "./core/definition.ts";
 import type { JsonValue } from "./domain-types.ts";
 import { McpBoundaryScopeSchema } from "./mcp-boundary.ts";
@@ -44,7 +45,7 @@ export const ResponseFilterSchema = z
   .object({
     target: z.enum(["KEYS", "VALUES", "BOTH"]),
     action: z.enum(["REMOVE", "MASK", "FAIL"]),
-    pattern: z.string(),
+    pattern: z.string().refine(isSafeRegex, { message: `regex_unsafe: ${SAFE_REGEX_REMEDY}` }),
     mask: z.string().optional(),
     scope: z.enum(["FIELD", "ITEM", "ENTRY"]).optional(),
   })
@@ -961,6 +962,7 @@ const _baseWorkflowDefSchema = z.object({
   response_filters: z.array(ResponseFilterSchema).optional(),
   steps: z.array(StepSchema).min(1).max(WORKFLOW_MAX_STEPS),
   timeout_ms: z.number().int().positive().optional(),
+  device_offline: z.enum(["wait", "fail"]).optional(),
   max_llm_tokens_per_run: z.number().int().positive().optional(),
   runtime: WorkflowRuntimeSchema.optional(),
   trigger: TriggerSchema.optional(),

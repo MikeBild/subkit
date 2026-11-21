@@ -5,7 +5,7 @@ import {
 } from "../../../../connectors/drivers/postgres.ts";
 import { withEgressAudit } from "../../../../connectors/egress.ts";
 import { clearReauthIfProved } from "../../../../connectors/reauth.ts";
-import { recordSuccessShape } from "../../../../schema-versions/service.ts";
+import { recordSuccessShape } from "../../../../schema-versions/index.ts";
 import { type ExpectedRowCount, evaluateExpectedRowCount } from "../../../expected-row-count.ts";
 import type { ConnectorResolutionSummary, StepResult } from "../../../types.ts";
 import { buildStepErrorDetail } from "../../error-detail.ts";

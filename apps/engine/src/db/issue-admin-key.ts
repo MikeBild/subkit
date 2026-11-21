@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
 import { getConfig } from "../config/loader.ts";
+import { readEnv } from "../env.ts";
 import { sha256Hex } from "../identity/api-key.ts";
 import { createDbFromUrl } from "./client.ts";
 import { apiKeys, roles, tenants, users } from "./schema/index.ts";
@@ -12,7 +13,7 @@ export type IssuedAdminKey = {
 };
 
 function bootstrapDatabaseUrl(): string {
-  const url = process.env.DATABASE_URL;
+  const url = readEnv("DATABASE_URL");
   if (!url) {
     throw new Error("DATABASE_URL is required for issue-admin-key");
   }

@@ -1,28 +1,25 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { ErrorNotice } from "@ui/components/proto/ErrorNotice";
-import { PageHeader, Panel, Pill } from "@ui/components/proto/Pill";
-import { PageSkeleton } from "@ui/components/proto/Skeleton";
-import {
-  ConnectionGraphic,
-  EmptyState,
-  EnvChip,
-  ServiceTile,
-  StatusStrip,
-  SubKitMark,
-} from "@ui/components/proto/visual";
+import { Panel, Pill } from "@ui/atoms/pill";
+import { PageSkeleton } from "@ui/atoms/skeleton";
+import { ConnectionGraphic } from "@ui/molecules/connection-graphic";
+import { EmptyState } from "@ui/molecules/empty-state";
+import { EnvChip } from "@ui/molecules/env-chip";
+import { ErrorNotice } from "@ui/molecules/error-notice";
+import { PageHeader } from "@ui/molecules/page-header";
+import { StatusStrip } from "@ui/molecules/status-strip";
 import { Bot, KeyRound, LockKeyhole, Plug, UserRound } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { apiCall } from "@/api/call";
 import { absolute, chatNewHref, connectorHref } from "@/app/links";
 import { subscribeLiveFrames } from "@/app/live-events";
 import { useSession } from "@/app/session";
-import { ConnectorOnboarding } from "@/components/cockpit/connector-onboarding";
-import { CreateAction } from "@/components/cockpit/create-choice";
 import { Button } from "@/components/cockpit/patterns/controls";
 import { Screen } from "@/components/cockpit/patterns/screen";
 import { SectionHeading } from "@/components/cockpit/patterns/section";
 import { ForbiddenState } from "@/components/failure-state";
+import { connectorSignIn, signInFailure } from "@/features/connectors/api/connector-sign-in";
+import { driverLabel } from "@/features/connectors/model/connector-labels";
 import {
   allPages,
   ChatMenu,
@@ -35,16 +32,16 @@ import {
   useListState,
   usePageMenu,
 } from "@/features/knowledge";
+import { CreateAction } from "@/features/workflows";
+import { humanizeCategory } from "@/features/workflows/model";
 import { reportFailure } from "@/lib/action-failure";
-import { driverLabel } from "@/lib/connector-labels";
-import { connectorSignIn, signInFailure } from "@/lib/connector-sign-in";
 import { useI18n } from "@/lib/i18n-context";
 import { plural } from "@/lib/plural";
+import { namedService } from "@/lib/service-icons";
 import { useSearchParamState } from "@/lib/use-search-param-state";
-import { humanizeCategory } from "@/lib/workflow-category";
 import {
-  type Attention,
   CONNECTOR_KINDS,
+  type ConnectorAttention,
   type ConnectorCard,
   type ConnectorKind,
   connectorCard,
@@ -59,7 +56,9 @@ import {
   type TestOutcome,
   testOutcome,
   usageBySlug,
-} from "./model";
+} from "./model/connectors-model";
+import { ConnectorOnboarding } from "./ui/connector-onboarding";
+import { ServiceIcon, SubKitMark } from "./ui/service-icon";
 
 const METHOD_ICON = { account: UserRound, key: KeyRound, secured: LockKeyhole } as const;
 const LIMIT = 200;
@@ -110,7 +109,7 @@ function ConnectorsScreen() {
   const st = useListState();
   const menu = usePageMenu({ pkg: "connector", categories: "connector", category: st.cat });
   const [kind, setKind] = useSearchParamState<KindFilter>("kind", "all", isKind);
-  const [health, setHealth] = useSearchParamState<Attention>("health", "", isAttention);
+  const [health, setHealth] = useSearchParamState<ConnectorAttention>("health", "", isAttention);
   const [order, setOrder] = useSearchParamState<CardSort>("sort", "status", isCardSort);
   const attention = health === "not_ok";
   const filtered = filterCards(cards, {
@@ -327,7 +326,7 @@ function Card({
         className="flex flex-wrap items-center gap-3 rounded-md text-left"
         onClick={() => void navigate({ to: connectorHref(c.id) })}
       >
-        <ServiceTile name={c.name} size="lg" />
+        <ServiceIcon service={namedService(c.name)} tile="lg" />
         <span className="min-w-[8rem] flex-1">
           <span className="block truncate font-semibold" title={c.name}>
             {c.name}
@@ -354,7 +353,7 @@ function Card({
       <ConnectionGraphic
         from={<SubKitMark size="md" />}
         via={METHOD_ICON[c.method]}
-        to={<ServiceTile name={c.name} />}
+        to={<ServiceIcon service={namedService(c.name)} tile="md" />}
         tone={tone}
         state={t(`cn.state.${c.health}`)}
       />

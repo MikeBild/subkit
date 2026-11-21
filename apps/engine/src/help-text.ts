@@ -1,4 +1,4 @@
-import { PREFLIGHT_HELP } from "./preflight/cli-entry.ts";
+import { PREFLIGHT_HELP } from "./preflight/index.ts";
 
 export function engineHelp(version: string): string {
   return (

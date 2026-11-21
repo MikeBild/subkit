@@ -7,6 +7,7 @@ import { AuditAction } from "../../audit/types.ts";
 import { getConfig, isConfigLoaded } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { oidcLoginStates, sessions, tenants } from "../../db/schema/index.ts";
+import { readEnv } from "../../env.ts";
 import {
   acceptVerifiedMembershipInvite,
   assertTenantActive,
@@ -21,7 +22,7 @@ import {
   resolveHostedIdentity,
   SelfServiceIdentityError,
 } from "../../identity/index.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import {
   issueBrowserSession,
   SESSION_ABSOLUTE_TTL_MS,
@@ -275,7 +276,7 @@ export function createOidcProvider(opts: OidcProviderOptions): AuthProvider {
       });
 
       if (hostedSignup && redirectTo === "/v1/identity/recovery") {
-        const secure = process.env.NODE_ENV !== "development" ? "; Secure" : "";
+        const secure = readEnv("NODE_ENV") !== "development" ? "; Secure" : "";
         return new Response(null, {
           status: 302,
           headers: {

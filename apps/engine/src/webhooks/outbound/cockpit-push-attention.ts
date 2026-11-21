@@ -1,5 +1,5 @@
 import type { Db } from "../../db/client.ts";
-import { errorFields, logger } from "../../logging/logger.ts";
+import { errorFields, logger } from "../../logging/index.ts";
 import { dispatchCockpitPushAttention } from "../../notifications/cockpit-push-attention.ts";
 import { invalidateAttention } from "../../operator/attention.ts";
 import { classifyEvent } from "../events/catalog.ts";

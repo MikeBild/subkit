@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { SettingsAreaFrame } from "@/pages/settings-frame";
-import { ProfileQuestions } from "@/pages/settings-profile";
-import { WorkspaceQuestions } from "@/pages/settings-workspace";
-import { render } from "./settings-fixtures.tsx";
+import { render } from "@/features/settings/model/settings-fixtures";
+import { SettingsAreaFrame } from "@/features/settings/ui/settings-frame";
+import { ProfileQuestions } from "@/features/settings/ui/settings-profile";
+import { WorkspaceQuestions } from "@/features/settings/ui/settings-workspace";
 
 const count = (html: string, pattern: RegExp) => html.match(pattern)?.length ?? 0;
 const filled = (html: string) => count(html, /<button[^>]*data-variant="default"/g);
@@ -155,25 +155,34 @@ describe("Arbeitsbereich", () => {
   });
 
   test("the workspace has one name: the branding form no longer asks for a second", () => {
-    const form = readFileSync(resolve(import.meta.dir, "branding-form.tsx"), "utf8");
+    const form = readFileSync(
+      resolve(import.meta.dir, "../features/settings/ui/branding-form.tsx"),
+      "utf8",
+    );
     expect(form).not.toContain("branding-name");
     expect(form).not.toMatch(/display_name:/);
     const wordmark = readFileSync(
-      resolve(import.meta.dir, "../components/cockpit/branding.tsx"),
+      resolve(import.meta.dir, "../features/settings/ui/branding-mark.tsx"),
       "utf8",
     );
     expect(wordmark).not.toContain("value.display_name");
   });
 
   test("appearance and the danger zone live here, in one place", () => {
-    const area = readFileSync(resolve(import.meta.dir, "settings-workspace.tsx"), "utf8");
+    const area = readFileSync(
+      resolve(import.meta.dir, "../features/settings/ui/settings-workspace.tsx"),
+      "utf8",
+    );
     expect(area).toContain("<BrandingSettings ");
     expect(area).toContain("<WorkspaceDeletion />");
     expect(area.indexOf("<BrandingSettings ")).toBeLessThan(area.indexOf("<WorkspaceDeletion />"));
     const page = readFileSync(resolve(import.meta.dir, "settings.tsx"), "utf8");
     expect(page).not.toContain("BrandingSettings");
     expect(page).not.toContain("WorkspaceDeletion");
-    const branding = readFileSync(resolve(import.meta.dir, "branding.tsx"), "utf8");
+    const branding = readFileSync(
+      resolve(import.meta.dir, "../features/settings/ui/branding.tsx"),
+      "utf8",
+    );
     expect(branding).not.toContain("SaveBar");
   });
 

@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "../db/client.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { type EveryScheduleDefinition, EveryScheduleRegistry } from "./every-schedule-registry.ts";
 import { boundedTransaction, SWEEP_METADATA_MAX_BYTES, SWEEP_PAGE_LIMIT } from "./sweep-cursor.ts";
 import { sweepSource } from "./sweep-cursor-source.ts";

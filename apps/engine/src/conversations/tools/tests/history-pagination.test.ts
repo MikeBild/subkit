@@ -14,7 +14,7 @@ const nextCursor = formatKeysetCursor({
 });
 
 function definitionFor(tool: ConversationTool) {
-  return wrapOne(tool, {} as ToolContext, {} as TurnSignals, [], {} as Db, {}, "plan");
+  return wrapOne(tool, {} as ToolContext, {} as TurnSignals, [], {} as Db, {});
 }
 
 for (const tool of [listExecutionsTool, queryAuditTool]) {

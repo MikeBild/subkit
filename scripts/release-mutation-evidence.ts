@@ -20,7 +20,7 @@ export interface ReleaseMutationReceipt {
   recorded_at: string;
 }
 
-export const RELEASE_MUTATION_COMMAND = "bun run test:mutation:release";
+export const RELEASE_MUTATION_COMMAND = "bun run quality release";
 
 const hash = (text: string): string => createHash("sha256").update(text).digest("hex");
 

@@ -6,12 +6,12 @@ import type { Db } from "../../../db/client.ts";
 import { admittedCoveringAuthority } from "../../../execution/core/run-coverage.ts";
 import { HELD_PREVIEW_WARNING_CODE } from "../../../execution/types.ts";
 import { completedRun, createRunWorkflow } from "../../../execution/use-cases/run-workflow.ts";
-import { logger } from "../../../logging/logger.ts";
+import { logger } from "../../../logging/index.ts";
 import { recordConversationToolCall } from "../../../observability/instrumentation.ts";
 import { stripConfirmMarkers } from "../../../tools/approval.ts";
 import { policyDecide } from "../../../tools/policy.ts";
 import { sampleWorkflowOutputForLlm } from "../../../tools/truncate.ts";
-import type { PermissionMode, ToolPolicies } from "../../../tools/types.ts";
+import type { ToolPolicies } from "../../../tools/types.ts";
 import {
   listWorkflowToolsForTenant,
   type WorkflowToolDescriptor,
@@ -23,6 +23,7 @@ import {
   logGateDecision,
   openHeldWritesApproval,
   recordConfirmationSkipped,
+  writesModelUnchecked,
 } from "../../confirmation.ts";
 import { createElicitation } from "../../elicitations.ts";
 import { executionSuppressionRefusal } from "../../execution-suppression.ts";
@@ -45,7 +46,6 @@ export interface BuildSyntheticWorkflowToolsParams {
   ctx: ToolContext;
   signals: TurnSignals;
   events: TurnEvent[];
-  permissionMode?: PermissionMode | null;
   toolPolicies?: ToolPolicies;
   taskRun?: TaskRunMarker | null;
 }
@@ -198,10 +198,10 @@ async function executeSyntheticRun(
     ctx.onLog?.("info", `running workflow ${entry.slug} in env=${environment}`);
     const policies = taskRun ? taskRunToolPolicies(p.toolPolicies ?? {}) : (p.toolPolicies ?? {});
     const specificPolicy = policies[name] ?? policies.run_workflow;
-    const permissionMode = taskRun ? "auto" : (p.permissionMode ?? ctx.permission_mode ?? null);
+    const askBeforeWriting = !taskRun && ctx.ask_before_writing === true;
     const transfersExecutionData =
       (await executionDataTransfer(workflowInput, ctx.tenant_id, db)) !== null;
-    const coverage = await loadRunCoverage(db, permissionMode, () =>
+    const coverage = await loadRunCoverage(db, askBeforeWriting, () =>
       workflowConfirmOverride(policies, entry.slug)
         ? null
         : {
@@ -218,8 +218,11 @@ async function executeSyntheticRun(
       ...(transfersExecutionData ? { execution_data_transfer: true } : {}),
       ...(coverage.covered ? { authority_covered: true } : {}),
       ...(taskRun ? { task_run: true } : {}),
+      ...(!taskRun && writesModelUnchecked(ctx.tenant_id, askBeforeWriting)
+        ? { model_checked: false }
+        : {}),
       overrides: specificPolicy ? { run_workflow: specificPolicy } : {},
-      permission_mode: permissionMode,
+      ...(askBeforeWriting ? { ask_before_writing: true } : {}),
     });
     const gateRecordInput: GateRecordInput = {
       approval_tool: name,
@@ -227,7 +230,6 @@ async function executeSyntheticRun(
       record_surface: ctx.surface ?? "api",
       tenant_id: ctx.tenant_id,
       conversation_id: ctx.conversation_id,
-      permission_mode: permissionMode,
     };
     const holdWrites = decision.mode !== "no_confirm";
     if (!holdWrites) logGateDecision(gateRecordFor(gateRecordInput, decision, "proceed"));

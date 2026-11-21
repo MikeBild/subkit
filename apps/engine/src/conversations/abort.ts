@@ -1,4 +1,5 @@
-import { logger } from "../logging/logger.ts";
+import { readEnv } from "../env.ts";
+import { logger } from "../logging/index.ts";
 import { now } from "../utils/clock.ts";
 import { isAbortError } from "./loop/usage.ts";
 
@@ -88,7 +89,7 @@ export function isExpectedCancellation(err: unknown, signal: AbortSignal): boole
 }
 
 export function __hasConversationAbort(tenantId: string, conversationId: string): boolean {
-  if (process.env.NODE_ENV !== "test") {
+  if (readEnv("NODE_ENV") !== "test") {
     throw new Error(
       "__hasConversationAbort is test-only and must not be called outside NODE_ENV=test. " +
         "Use cancelConversationAbort from production code; the registry's slot state is not a public surface.",

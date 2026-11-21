@@ -3,7 +3,7 @@ import { exportPKCS8, generateKeyPair } from "jose";
 import { createDbFromUrl } from "../../db/client.ts";
 import { authIdentities } from "../../db/schema/index.ts";
 import { createTestDb } from "../../db/tests/setup.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { configureHostedPolicyForTests } from "../../test-helpers/hosted-policy.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";

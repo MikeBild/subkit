@@ -202,7 +202,6 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
   const onPrompt = async (
     text: string,
     promptOpts?: {
-      permission_mode?: "auto" | "ask" | "plan" | "yolo";
       event?: RequestCredentialFormEvent;
       raw_prompt?: string;
     },
@@ -222,7 +221,6 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
       {
         input_kind: "prompt",
         raw_input: text,
-        permission_mode: promptOpts?.permission_mode ?? null,
         memory_sources: memory.sources,
       },
       baseCtx(),
@@ -269,9 +267,6 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
               ...(resolved.references.length > 0 ? { references: resolved.references } : {}),
               ...(turnMemory ? { memory: turnMemory } : {}),
               ...(settings.merged.model ? { model: settings.merged.model } : {}),
-              ...(promptOpts?.permission_mode
-                ? { permission_mode: promptOpts.permission_mode }
-                : {}),
             },
             baseCtx(),
           )
@@ -281,9 +276,6 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
               message: resolved.prompt,
               ...(resolved.references.length > 0 ? { references: resolved.references } : {}),
               ...(turnMemory ? { memory: turnMemory } : {}),
-              ...(promptOpts?.permission_mode
-                ? { permission_mode: promptOpts.permission_mode }
-                : {}),
               ...(promptOpts?.event ? { event: promptOpts.event } : {}),
             },
             baseCtx(),

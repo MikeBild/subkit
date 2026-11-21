@@ -2,7 +2,7 @@ import type { Job, PgBoss } from "pg-boss";
 import type { Db, Executor } from "../../db/client.ts";
 import * as docs from "../../docs-ingestion/service.ts";
 import type { DocSourceType } from "../../docs-ingestion/types.ts";
-import { log } from "../../logging/logger.ts";
+import { log } from "../../logging/index.ts";
 import { withActiveTenantJobContext } from "../job-context.ts";
 import { queuedSendTransaction } from "../transaction-adapter.ts";
 

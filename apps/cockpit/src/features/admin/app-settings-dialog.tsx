@@ -11,7 +11,7 @@ import {
   FormDialog,
   Input,
 } from "@/components/cockpit/patterns";
-import { useCurrentVersionDag } from "@/components/cockpit/workflow-versions";
+import { useCurrentVersionDag } from "@/features/workflows";
 import { useI18n } from "@/lib/i18n-context";
 import {
   dialogError,

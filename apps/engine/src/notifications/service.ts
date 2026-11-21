@@ -10,7 +10,7 @@ import {
   notificationChannels,
   notificationDeliveries,
 } from "../db/schema/notifications.ts";
-import { logger } from "../logging/logger.ts";
+import { logger } from "../logging/index.ts";
 import { canPass, onFailure, onSuccess } from "./circuit-breaker.ts";
 import {
   type MatchedRule,

@@ -15,7 +15,6 @@ import {
 import type { extractMention } from "../repl/mention-picker.tsx";
 import { looksLikePaste } from "../repl/paste-store.ts";
 import type { PaneSpec } from "../repl/slash/handler.ts";
-import type { PermissionMode } from "../repl/status-line/render.ts";
 import { resolveTaskActionSuggestion, type TaskAction } from "../repl/task-actions.ts";
 import type { SlashCommand } from "../slash.ts";
 import type { TranscriptMode } from "./types.ts";
@@ -48,7 +47,6 @@ interface ComposerKeyDeps {
   setPagerOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setAltScreen: React.Dispatch<React.SetStateAction<boolean>>;
   setTranscriptMode: React.Dispatch<React.SetStateAction<TranscriptMode>>;
-  setActiveMode: React.Dispatch<React.SetStateAction<PermissionMode>>;
   secretRedirectArmed: boolean;
   cancelSecretRedirect: () => void;
   latestChipsRef: React.MutableRefObject<string[]>;
@@ -88,7 +86,6 @@ export function useComposerKeys(deps: ComposerKeyDeps): void {
     setPagerOpen,
     setAltScreen,
     setTranscriptMode,
-    setActiveMode,
     secretRedirectArmed,
     cancelSecretRedirect,
     latestChipsRef,
@@ -117,14 +114,6 @@ export function useComposerKeys(deps: ComposerKeyDeps): void {
         setTranscriptMode((mode) => {
           const next = mode === "chat" ? "inspect" : "chat";
           showInfo(`/view: ${next}`);
-          return next;
-        });
-        return;
-      }
-      if (key.shift && key.tab) {
-        setActiveMode((m) => {
-          const next = m === "ask" ? "auto" : m === "auto" ? "plan" : "ask";
-          showInfo(`/mode: ${next}`);
           return next;
         });
         return;

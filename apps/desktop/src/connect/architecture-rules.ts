@@ -4,13 +4,10 @@ export type Layer =
   | "feature"
   | "adapter"
   | "domain"
-  | "ui"
   | "lib"
   | "shared"
   | "design-system"
   | "package";
-
-const UI_LEVELS = ["atoms", "molecules", "organisms", "templates"] as const;
 
 export interface SourceFile {
   path: string;
@@ -24,11 +21,10 @@ export interface Target {
 
 const ALLOWED: Record<Layer, Layer[]> = {
   entry: ["page", "adapter", "shared", "package"],
-  page: ["page", "feature", "ui", "adapter", "domain", "lib", "shared", "design-system", "package"],
-  feature: ["feature", "ui", "domain", "adapter", "lib", "shared", "design-system", "package"],
+  page: ["page", "feature", "adapter", "domain", "lib", "shared", "design-system", "package"],
+  feature: ["feature", "domain", "adapter", "lib", "shared", "design-system", "package"],
   adapter: ["adapter", "domain", "lib", "shared", "package"],
-  domain: ["domain", "shared", "design-system"],
-  ui: ["ui", "design-system", "package"],
+  domain: ["domain", "shared"],
   lib: ["lib", "shared"],
   shared: ["shared"],
   "design-system": [],
@@ -47,8 +43,6 @@ export function layerOf(path: string): Layer {
       return "adapter";
     case "domain":
       return "domain";
-    case "ui":
-      return "ui";
     case "lib":
       return "lib";
     default:
@@ -65,17 +59,37 @@ function normalize(parts: string[]): string {
   return out.join("/");
 }
 
-export function targetOf(from: string, specifier: string): Target {
+export interface WindowRules {
+  root: string;
+  bridge: RegExp;
+}
+
+export const CONNECT_RULES: WindowRules = {
+  root: "src/connect",
+  bridge: /subkitConnect|ConnectBridge|CONNECT_CHANNELS/,
+};
+
+export const LIVE_RULES: WindowRules = {
+  root: "src/live",
+  bridge: /subkitLive|LiveBridge|LIVE_CHANNELS/,
+};
+
+export const SHELL_RULES: WindowRules = {
+  root: "src/shell",
+  bridge: /subkitShell|ShellBridge|SHELL_CHANNELS/,
+};
+
+export function targetOf(from: string, specifier: string, rules = CONNECT_RULES): Target {
   if (specifier.startsWith("@ui/")) return { layer: "design-system", path: specifier };
+  if (specifier.startsWith("@shared/")) return { layer: "shared", path: specifier };
   if (!specifier.startsWith(".")) return { layer: "package", path: specifier };
   const resolved = normalize([
-    "src",
-    "connect",
+    ...rules.root.split("/"),
     ...from.split("/").slice(0, -1),
     ...specifier.split("/"),
   ]);
-  if (!resolved.startsWith("src/connect/")) return { layer: "shared", path: resolved };
-  const local = resolved.slice("src/connect/".length);
+  if (!resolved.startsWith(`${rules.root}/`)) return { layer: "shared", path: resolved };
+  const local = resolved.slice(rules.root.length + 1);
   return { layer: layerOf(local), path: local };
 }
 
@@ -83,12 +97,6 @@ const IMPORT = /(?:^|\n)\s*(?:import|export)\b[^;]*?\bfrom\s*["']([^"']+)["']/g;
 
 export function importsOf(source: string): string[] {
   return [...source.matchAll(IMPORT)].map((match) => match[1] ?? "");
-}
-
-function uiLevel(path: string): number {
-  const level = path.split("/")[1] ?? "";
-  const index = UI_LEVELS.indexOf(level as (typeof UI_LEVELS)[number]);
-  return index === -1 ? UI_LEVELS.length : index;
 }
 
 function featureOf(path: string): string {
@@ -126,28 +134,22 @@ export function missingTestIds(files: SourceFile[]): string[] {
   return out;
 }
 
-export function violations(files: SourceFile[]): string[] {
+export function violations(files: SourceFile[], rules = CONNECT_RULES): string[] {
   const out: string[] = [];
   for (const file of files) {
     const from = layerOf(file.path);
     const isTest = /\.test\.tsx?$/.test(file.path);
     for (const specifier of importsOf(file.source)) {
       if (specifier.startsWith("bun")) continue;
-      const target = targetOf(file.path, specifier);
+      const target = targetOf(file.path, specifier, rules);
       const where = `${file.path} → ${specifier}`;
       const testHelper = isTest && target.layer === "lib";
       if (!testHelper && !ALLOWED[from].includes(target.layer)) {
         out.push(`${where}: ${from} may not import ${target.layer}`);
         continue;
       }
-      if (from === "domain" && target.layer === "design-system" && specifier !== "@ui/lib/errors") {
-        out.push(`${where}: the domain uses only the shared error catalog`);
-      }
       if (from === "domain" && DOMAIN_PACKAGES.test(specifier)) {
         out.push(`${where}: the domain stays free of UI packages`);
-      }
-      if (from === "ui" && target.layer === "ui" && uiLevel(target.path) > uiLevel(file.path)) {
-        out.push(`${where}: an Atomic Design level may not use a higher level`);
       }
       if (target.layer === "feature" && !isTest) {
         const own = from === "feature" && featureOf(file.path) === featureOf(target.path);
@@ -159,12 +161,48 @@ export function violations(files: SourceFile[]): string[] {
       out.push(`${file.path}: the domain gets time and ids as parameters`);
     }
     const bridgeHome = from === "adapter" || from === "entry";
-    if (
-      !bridgeHome &&
-      !isTest &&
-      /subkitConnect|ConnectBridge|CONNECT_CHANNELS/.test(file.source)
-    ) {
+    if (!bridgeHome && !isTest && rules.bridge.test(file.source)) {
       out.push(`${file.path}: only the adapter talks to the preload bridge`);
+    }
+  }
+  return out;
+}
+
+export interface ModuleRules {
+  root: string;
+  reach: string[];
+  packages: RegExp;
+}
+
+export const SHARED_MODULE_RULES: ModuleRules = {
+  root: "src/shared",
+  reach: ["src/shared"],
+  packages: /^(zod|node:[a-z_/]+|@shared\/.+|@cli-core\/engine-api\/openapi)$/,
+};
+
+export const MAIN_MODULE_RULES: ModuleRules = {
+  root: "src/main",
+  reach: ["src/main", "src/shared", "src/runner", "vendor"],
+  packages: /^(electron|zod|bun|node:[a-z_/]+|@shared\/.+)$/,
+};
+
+export function moduleViolations(files: SourceFile[], rules: ModuleRules): string[] {
+  const out: string[] = [];
+  for (const file of files) {
+    if (/\.test\.tsx?$/.test(file.path) || /\.fixture\.ts$/.test(file.path)) continue;
+    for (const specifier of importsOf(file.source)) {
+      const where = `${file.path} → ${specifier}`;
+      if (!specifier.startsWith(".")) {
+        if (!rules.packages.test(specifier)) out.push(`${where}: ${rules.root} may not use it`);
+        continue;
+      }
+      const resolved = normalize([
+        ...rules.root.split("/"),
+        ...file.path.split("/").slice(0, -1),
+        ...specifier.split("/"),
+      ]);
+      if (!rules.reach.some((root) => resolved.startsWith(`${root}/`)))
+        out.push(`${where}: ${rules.root} may not reach ${resolved}`);
     }
   }
   return out;

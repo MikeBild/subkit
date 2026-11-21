@@ -1,4 +1,3 @@
-// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal runtime placeholder is the workflow contract.
 import { expect, test } from "bun:test";
 import {
   assertOutboxMessage,

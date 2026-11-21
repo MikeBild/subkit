@@ -1,4 +1,5 @@
-import { Panel } from "@ui/components/proto/Pill";
+import { Panel } from "@ui/atoms/pill";
+import { SettingsRow } from "@ui/molecules/settings-row";
 import { Power, RefreshCw, ShieldCheck } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { Button, Switch } from "@/components/cockpit/patterns";
@@ -10,7 +11,6 @@ import {
   type DesktopSettingsPatch,
   desktopSettingsBridge,
 } from "./desktop-settings-model";
-import { Row } from "./row";
 
 export interface DesktopSettingsControl {
   settings: DesktopSettings;
@@ -54,7 +54,7 @@ export function LaunchAtLoginRow({ control }: { control: DesktopSettingsControl 
   const id = useId();
   if (!control?.settings.launchAtLoginAvailable) return null;
   return (
-    <Row
+    <SettingsRow
       id={id}
       icon={Power}
       label={t("settings.desktop.launch")}
@@ -67,7 +67,7 @@ export function LaunchAtLoginRow({ control }: { control: DesktopSettingsControl 
         onCheckedChange={(launchAtLogin) => control.change({ launchAtLogin })}
         data-testid="settings-desktop-launch-switch"
       />
-    </Row>
+    </SettingsRow>
   );
 }
 
@@ -120,7 +120,7 @@ export function PrivacyPanel({ control }: { control: DesktopSettingsControl }) {
   return (
     <div data-testid="settings-area-privacy">
       <Panel className="divide-y py-1">
-        <Row
+        <SettingsRow
           id={id}
           icon={ShieldCheck}
           label={t("settings.desktop.diagnostics")}
@@ -133,7 +133,7 @@ export function PrivacyPanel({ control }: { control: DesktopSettingsControl }) {
             onCheckedChange={(shareDiagnostics) => control.change({ shareDiagnostics })}
             data-testid="settings-desktop-diagnostics-switch"
           />
-        </Row>
+        </SettingsRow>
       </Panel>
     </div>
   );

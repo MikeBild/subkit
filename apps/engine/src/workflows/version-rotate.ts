@@ -5,7 +5,7 @@ import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import type { Executor } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
-import { log } from "../logging/logger.ts";
+import { log } from "../logging/index.ts";
 import { carryApprovalsForward } from "./authority-inheritance.ts";
 import { toStoredDefinition } from "./core/definition.ts";
 import { carriedSpecColumns } from "./core/spec.ts";

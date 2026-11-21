@@ -9,6 +9,7 @@ import {
   verifyLoginState,
 } from "../../../auth/index.ts";
 import * as loader from "../../../config/loader.ts";
+import { testEnv } from "../../../test-helpers/determinism/env.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { registerDesktopLoginRoutes } from "./desktop-login.ts";
 import {
@@ -128,8 +129,8 @@ describe("GET /v1/identity/desktop-login/start", () => {
     const location = new URL(accepted.headers.get("location") ?? "", ORIGIN);
     const signed = await verifyDesktopLoginRequest(location.searchParams.get("request") ?? "");
     expect(signed?.redirect_uri).toBe("subkit-dev://callback");
-    const before = process.env.NODE_ENV;
-    process.env.NODE_ENV = "production";
+    const before = testEnv.NODE_ENV;
+    testEnv.NODE_ENV = "production";
     try {
       const refused = await buildApp("198.51.100.14").request(startUrl(dev));
       expect(refused.status).toBe(400);
@@ -140,8 +141,8 @@ describe("GET /v1/identity/desktop-login/start", () => {
       );
       expect(plain.status).toBe(302);
     } finally {
-      if (before === undefined) delete process.env.NODE_ENV;
-      else process.env.NODE_ENV = before;
+      if (before === undefined) delete testEnv.NODE_ENV;
+      else testEnv.NODE_ENV = before;
     }
   });
 

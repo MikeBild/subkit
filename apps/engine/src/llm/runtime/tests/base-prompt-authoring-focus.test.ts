@@ -22,17 +22,16 @@ function hint(overrides: Partial<AuthoringPromptHint>): AuthoringPromptHint {
 }
 
 describe("converse base prompt — authoring focus blocks", () => {
-  it("names the permission mode and the tools a skill would unlock", async () => {
+  it("names the tools a skill would unlock", async () => {
     const prompt = await basePromptFor(
       "converse",
       "sk_interactive",
       hint({
-        permission_mode: "auto",
         locked_tools: [{ skill: "workflow-authoring", tools: ["save_workflow_draft"] }],
       }),
     );
     const text = `${prompt.content}${prompt.volatile ?? ""}`;
-    expect(text).toContain("- Permission mode: auto.");
+    expect(text).not.toContain("Permission mode");
     expect(text).toContain('- Hidden until load_skill("workflow-authoring"): save_workflow_draft.');
   });
 

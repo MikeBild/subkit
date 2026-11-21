@@ -63,7 +63,6 @@ function stubToolCtx(conversationId: string, draft: DraftDocument): ToolContext 
     actor_id: ctx.user_id,
     connector_id: null,
     workflow_id: null,
-    permission_mode: null,
     engineClient: new EngineClient({
       tenant_id: ctx.tenant_id,
       actor_id: ctx.user_id,

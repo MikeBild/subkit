@@ -14,8 +14,14 @@ import { pageColumn, pageGutter } from "@/components/cockpit/patterns/page";
 import { ReadingScroll, ReadingSkeleton } from "@/components/cockpit/patterns/reading";
 import { render, renderInRouter } from "@/components/cockpit/patterns/test-utils";
 import { NotFoundPage } from "@/components/failure-state";
+import {
+  article,
+  docsRows,
+  findPage,
+  neighbours,
+  orderedPages,
+} from "@/features/documentation/model/docs-model";
 import { DocsArticleView, DocsIndexView } from "./docs";
-import { article, docsRows, findPage, neighbours, orderedPages } from "./docs-model";
 
 function withHostingChoice(): DocsBundle {
   return {

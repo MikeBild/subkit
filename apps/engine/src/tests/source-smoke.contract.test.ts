@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { startOwnedChild } from "../../../../scripts/lib/owned-process-watchdog.ts";
+import { testEnv } from "../test-helpers/determinism/env.ts";
 
 test("source engine entry completes its real worker and redaction smoke path", async () => {
   const repo = resolve(import.meta.dir, "../../../..");
@@ -15,7 +16,7 @@ test("source engine entry completes its real worker and redaction smoke path", a
     {
       cwd: repo,
       env: {
-        ...process.env,
+        ...testEnv,
         NODE_ENV: "test",
         LLM_PROVIDER: "mock",
         OTEL_SDK_DISABLED: "true",

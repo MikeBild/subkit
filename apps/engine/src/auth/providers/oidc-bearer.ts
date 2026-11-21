@@ -14,7 +14,7 @@ import type { OidcBearerProviderConfig } from "../../config/schema.ts";
 import type { Db } from "../../db/client.ts";
 import { tenants } from "../../db/schema/index.ts";
 import { fetchDiscovery } from "../../identity/oidc-discovery.ts";
-import { log } from "../../logging/logger.ts";
+import { log } from "../../logging/index.ts";
 import {
   IdentityLinkConflictError,
   ProductIdentityErasedError,

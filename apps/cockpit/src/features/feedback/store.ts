@@ -1,5 +1,4 @@
 import { useSyncExternalStore } from "react";
-import { CAPTURE_TIMEOUT_MS, type FeedbackBridge, feedbackBridge, within } from "./desktop-bridge";
 import {
   appendClientError,
   clientErrorCode,
@@ -13,7 +12,8 @@ import {
   readStoredDraft,
   type ScreenshotCapability,
   writeStoredDraft,
-} from "./model";
+} from "@/features/feedback/model/feedback";
+import { CAPTURE_TIMEOUT_MS, type FeedbackBridge, feedbackBridge, within } from "./desktop-bridge";
 
 export interface FeedbackState {
   open: boolean;

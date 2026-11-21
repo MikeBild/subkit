@@ -41,15 +41,15 @@ const BOUND: Array<[ConversationTool, ConversationTool]> = [
   [abortTaskRunTool, toConversationTool(abortTaskRunOperation)],
 ];
 
-const MODES = ["ask", "plan", "auto", "yolo", null] as const;
+const ASKS = [true, false] as const;
 const ID = "0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f";
 
 function modeOf(
   tool: string,
   category: "tenant_read" | "tenant_write",
-  permission_mode: (typeof MODES)[number],
+  ask_before_writing: boolean,
 ) {
-  return decideToolMode({ tool, category, input: {}, overrides: {}, permission_mode }).mode;
+  return decideToolMode({ tool, category, input: {}, overrides: {}, ask_before_writing }).mode;
 }
 
 function mcpNames(mcpMode: "product" | "authoring" | "admin"): string[] {
@@ -86,28 +86,23 @@ describe("task tools", () => {
   });
 
   test("reads never ask", () => {
-    for (const permission_mode of MODES)
+    for (const ask of ASKS)
       for (const tool of [listTasksTool, findTaskTool, getTaskTool, getTaskRunTool])
-        expect(modeOf(tool.name, "tenant_read", permission_mode)).toBe("no_confirm");
+        expect(modeOf(tool.name, "tenant_read", ask)).toBe("no_confirm");
   });
 
   test("run_task asks exactly when run_workflow asks", () => {
-    for (const permission_mode of MODES)
-      expect(modeOf("run_task", "tenant_write", permission_mode)).toBe(
-        modeOf("run_workflow", "tenant_write", permission_mode),
+    for (const ask of ASKS)
+      expect(modeOf("run_task", "tenant_write", ask)).toBe(
+        modeOf("run_workflow", "tenant_write", ask),
       );
-    expect(modeOf("run_task", "tenant_write", "ask")).toBe("confirm_before_execution");
-    expect(modeOf("run_task", "tenant_write", "auto")).toBe("no_confirm");
+    expect(modeOf("run_task", "tenant_write", true)).toBe("confirm_before_execution");
+    expect(modeOf("run_task", "tenant_write", false)).toBe("no_confirm");
   });
 
-  test("abort_task_run and save_task ask in every mode but yolo", () => {
+  test("abort_task_run and save_task always ask", () => {
     for (const tool of ["abort_task_run", "save_task"])
-      expect(MODES.filter((mode) => modeOf(tool, "tenant_write", mode) !== "no_confirm")).toEqual([
-        "ask",
-        "plan",
-        "auto",
-        null,
-      ]);
+      for (const ask of ASKS) expect(modeOf(tool, "tenant_write", ask)).not.toBe("no_confirm");
   });
 
   test("a direct MCP call of abort_task_run or save_task needs a confirmation", () => {
@@ -133,7 +128,7 @@ describe("task tools", () => {
           category: "tenant_write",
           input: {},
           overrides: { [tool]: "no_confirm" },
-          permission_mode: "ask",
+          ask_before_writing: true,
         }).mode,
       ).toBe("confirm_before_execution");
     }

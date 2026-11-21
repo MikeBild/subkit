@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import {
   isTaskDue,
   nextTaskStart,
@@ -161,13 +162,13 @@ describe("nextTaskStart and isTaskDue", () => {
   test("a cron without a timezone runs on UTC whatever zone the host is in", () => {
     const daily = schedule({ schedule_cron: "0 8 * * *" });
     const host = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    process.env.TZ = "Asia/Tokyo";
+    testEnv.TZ = "Asia/Tokyo";
     try {
       expect(nextTaskStart(daily, { last_claimed_at: null, anchor })).toEqual(
         new Date("2026-11-17T08:00:00.000Z"),
       );
     } finally {
-      process.env.TZ = host;
+      testEnv.TZ = host;
     }
   });
 

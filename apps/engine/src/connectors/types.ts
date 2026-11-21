@@ -8,7 +8,8 @@ import {
 } from "../api/catalog-metadata.ts";
 import { SignedJwtConfigSchema } from "../credentials/signed-jwt.ts";
 
-export const DriverEnum = z.enum(["http", "postgres", "s3", "graphql", "mcp"]);
+export const LOCAL_DRIVERS = ["local_files", "local_browser", "local_computer"] as const;
+export const DriverEnum = z.enum(["http", "postgres", "s3", "graphql", "mcp", ...LOCAL_DRIVERS]);
 export type DriverName = z.infer<typeof DriverEnum>;
 
 export const CONNECTOR_SLUG_RE = /^[a-zA-Z0-9]([a-zA-Z0-9_-]{0,62}[a-zA-Z0-9])?$/;

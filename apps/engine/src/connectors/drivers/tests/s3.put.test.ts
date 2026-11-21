@@ -1,5 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test";
-import { logger } from "../../../logging/logger.ts";
+import { logger } from "../../../logging/index.ts";
 import { _withEgressLookupForTests } from "../../egress-guard.ts";
 import { executeS3Request, probeS3Connector } from "../s3.ts";
 import {

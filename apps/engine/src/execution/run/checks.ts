@@ -1,4 +1,4 @@
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { runJs } from "../../sandboxes/quickjs/runtime.ts";
 import { heldPreviewWarning } from "../core/run.ts";
 import { evaluate as evaluateJsonata } from "../jsonata-engine.ts";

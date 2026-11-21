@@ -1,5 +1,6 @@
 import { MutationCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
+import { TooltipProvider } from "@ui/molecules/tooltip";
 import { type ReactElement, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { retryQuery } from "@/api/client";
@@ -14,12 +15,11 @@ import {
 import { router } from "@/app/router";
 import { SessionGate } from "@/app/session";
 import { SetupGate } from "@/app/setup-gate";
+import { AppToaster } from "@/app/toaster";
 import { CockpitUiProvider } from "@/app/ui-provider";
 import { I18nProvider } from "@/components/i18n-provider";
-import { Toaster } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import { guardDeviceState } from "@/features/pwa";
-import { offerFailureRetry } from "@/lib/action-failure";
+import { offerMutationRetry } from "@/lib/action-failure";
 import { IdentityRecoveryPage } from "@/pages/identity-recovery";
 import { InvitePage } from "@/pages/invite";
 import { WelcomePage } from "@/pages/welcome";
@@ -29,7 +29,11 @@ import "./branding.css";
 const queryClient = new QueryClient({
   mutationCache: new MutationCache({
     onError: (error, variables, _context, mutation) =>
-      offerFailureRetry(error, () => void mutation.execute(variables).catch(() => undefined)),
+      offerMutationRetry(
+        error,
+        mutation.meta,
+        () => void mutation.execute(variables).catch(() => undefined),
+      ),
   }),
   defaultOptions: {
     queries: {
@@ -64,7 +68,7 @@ createRoot(root).render(
             {StandalonePage ? (
               <>
                 <StandalonePage />
-                <Toaster richColors position="bottom-right" />
+                <AppToaster />
               </>
             ) : (
               <SessionGate>

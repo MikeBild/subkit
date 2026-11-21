@@ -18,10 +18,9 @@ import {
   users,
 } from "../../db/schema/index.ts";
 import { ForbiddenError, NotFoundError } from "../../http/errors.ts";
-import { turnBudgetVerdict } from "../../llm/accounting/budget.ts";
-import { resolveModelRoute } from "../../llm/runtime/invoke.ts";
+import { checkAndDecrement } from "../../llm/accounting/budget.ts";
 import { workspaceAiAccess } from "../../llm/runtime/workspace-access.ts";
-import { errorFields, logger } from "../../logging/logger.ts";
+import { errorFields, logger } from "../../logging/index.ts";
 import { recordTaskAdmission, recordTaskRunOutcome } from "../../observability/task-metrics.ts";
 import { hasBuiltinAdminRole } from "../../rbac/evaluator.ts";
 import { now } from "../../utils/clock.ts";
@@ -275,17 +274,12 @@ export const TASK_TURN_COMPLETION_ALLOWANCE = 1024;
 export async function tenantLlmBudgetAvailable(
   db: Executor,
   tenant_id: string,
-  owner_id: string,
+  _owner_id: string,
   projected_tokens: number | null = null,
 ): Promise<boolean> {
-  const route = await resolveModelRoute(tenant_id, db);
-  const verdict = await turnBudgetVerdict(
-    {
-      tenant_id,
-      estimated_tokens: projected_tokens ?? TASK_TURN_COMPLETION_ALLOWANCE,
-      route_budget: route.monthly_budget,
-      user_id: owner_id,
-    },
+  const verdict = await checkAndDecrement(
+    tenant_id,
+    projected_tokens ?? TASK_TURN_COMPLETION_ALLOWANCE,
     db,
   );
   return verdict.ok;

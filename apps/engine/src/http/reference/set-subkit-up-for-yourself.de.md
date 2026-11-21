@@ -1,7 +1,7 @@
 ---
 slug: set-subkit-up-for-yourself
 title: SubKit auf dich einstellen
-summary: Beantworte sechs Fragen und lege fest, wie SubKit für dich arbeitet.
+summary: Beantworte fünf Fragen und lege fest, wie SubKit für dich arbeitet.
 section: work
 order: 13
 audience: public
@@ -9,7 +9,7 @@ audience: public
 ## SubKit auf dich einstellen
 
 Dieses Kapitel ist für alle, die zum ersten Mal ins Cockpit kommen oder ihre Voreinstellungen ändern wollen.
-Danach hast du den Schritt „So arbeitet SubKit für dich“ beantwortet und weißt, was jede der sechs Antworten einstellt und wo du sie später änderst.
+Danach hast du den Schritt „So arbeitet SubKit für dich“ beantwortet und weißt, was jede der fünf Antworten einstellt und wo du sie später änderst.
 
 ### Was du brauchst
 
@@ -21,26 +21,27 @@ Danach hast du den Schritt „So arbeitet SubKit für dich“ beantwortet und we
 Der Schritt erscheint einmal, nach deiner ersten Anmeldung in einem Arbeitsbereich.
 
 1. Lies die Frage und wähle eine Antwort. Was jede Antwort bewirkt, steht unter **Einstellungen** › **Einrichtung** in der Zeile „Stellt ein: …“. Die empfohlene Antwort trägt den Zusatz **empfohlen**.
-2. Wähle **Weiter**, bis alle sechs Fragen beantwortet sind.
+2. Wähle **Weiter**, bis alle fünf Fragen beantwortet sind.
 3. Prüfe die Zusammenfassung „Das stelle ich für dich ein“. Mit **Ändern** korrigierst du eine einzelne Antwort.
 4. Wähle **So übernehmen**.
 
 Mit **Jetzt nicht** überspringst du den Schritt. SubKit übernimmt dann die empfohlenen Einstellungen und fragt nicht noch einmal.
 
-### Die sechs Antworten und was sie einstellen
+### Die fünf Antworten und was sie einstellen
 
 | Frage | Auswahl | Stellt ein |
 | --- | --- | --- |
 | „Was soll SubKit als Erstes für dich erledigen?“ | **Rechnungen ablegen**, **Tageszahlen per Mail**, **Woche zusammenfassen**, **Offene Tickets auflisten**, **Preisseite beobachten**, **Nach Zahlung Zugang freischalten** oder **Etwas anderes** mit eigenem Text | Den ersten Vorschlag im Chat und den ersten Punkt der „Ersten Schritte“. |
 | „Welche Dienste nutzt du dafür?“ | Gmail, Google Drive, Google Sheets, Slack, Jira, GitHub, Notion, HubSpot, Stripe oder **Anderer Dienst** | Welche Connectors die „Ersten Schritte“ zuerst anbieten. |
 | „Wer gibt frei, was SubKit tun darf?“ | **Ich selbst** (empfohlen), **Jemand anderes im Team** oder **Wir zu zweit: einer baut, einer gibt frei**, jeweils mit E-Mail-Adresse | Wer Freigabe-Hinweise bekommt, ob eine Einladung vorbereitet wird und, bei „Wir zu zweit“, ob jede Workflow-Freigabe zwei Personen braucht. |
-| „Wie viel soll SubKit im Chat allein tun?“ | **Immer fragen**, **Nur bei Unerwartetem fragen** (empfohlen) oder **Erst nur planen** | Den Chat-Modus **Fragen**, **Automatisch** oder **Nur planen** für neue Unterhaltungen. |
 | „Wo soll Neues zuerst laufen?“ | **Erst im Test** (empfohlen) oder **Direkt im Echtbetrieb** | Die Standardumgebung für neue Workflows und Aufgaben. |
 | „Wann darf SubKit dich benachrichtigen?“ | **Sofort** (empfohlen), **Nur zu meinen Arbeitszeiten** oder **Einmal täglich als Zusammenfassung** | Benachrichtigungen und Ruhezeiten. |
+| „Wie viel darf SubKit im Monat für KI ausgeben?“ (nur Administratoren) | **20 $**, **50 $** (empfohlen), **200 $** oder **Ohne Grenze** | Das monatliche KI-Budget des Arbeitsbereichs. |
 
-Die ersten beiden Antworten ändern nur, was dir das Cockpit zuerst vorschlägt. Sie verbinden keinen Dienst und legen keinen Workflow an. Die anderen vier ändern, wie SubKit arbeitet:
+Als Administratorin oder Administrator bekommst du diese sechste Frage. Das KI-Budget gilt für den ganzen Arbeitsbereich; was bei 80 % und 100 % passiert, steht in „Nutzung und Kosten im Blick“. Unter **Einstellungen** › **Einrichtung** führt diese Zeile zu **Einstellungen** › **Nutzung**, der einen Stelle, an der das Budget geändert wird.
 
-- **Chat-Modus.** Jede neue Unterhaltung startet in diesem Modus. In der Unterhaltung wählst du jederzeit einen anderen. Was die Modi bedeuten, steht in „Chat-Modi und Regeln“.
+Die ersten beiden Antworten ändern nur, was dir das Cockpit zuerst vorschlägt. Sie verbinden keinen Dienst und legen keinen Workflow an. Die anderen drei ändern, wie SubKit arbeitet:
+
 - **Standardumgebung.** Eine neue Aufgabe und die Prüfung eines neuen Workflows starten in dieser Umgebung. Die Umgebung eines einzelnen Workflows oder einer Aufgabe wählst du weiterhin selbst.
 - **Freigaben und Benachrichtigungen.** Beides ist in „Benachrichtigungen und Ruhezeiten“ beschrieben.
 
@@ -61,15 +62,17 @@ Mit dieser Antwort braucht jede Workflow-Freigabe im Arbeitsbereich zwei verschi
 2. Wähle bei der Antwort, die du ändern willst, **Ändern**.
 3. Wähle die neue Antwort und dann **Übernehmen**. Du liest „Einstellung übernommen“.
 
-Jede Änderung wirkt sofort auf die genannte Einstellung. Offene Unterhaltungen behalten ihren Modus; der neue Chat-Modus gilt für die nächste neue Unterhaltung.
+Jede Änderung wirkt sofort auf die genannte Einstellung.
 
-Die Übersicht der **Einstellungen** zeigt deine Wahl in einer Zeile, zum Beispiel „Nur bei Unerwartetem fragen · Erst im Test · Sofort“.
+Wann SubKit vor einem Schritt fragt, ist keine Antwort der Einrichtung. Das entscheiden dein Auftrag und deine Regeln; wie, steht in „Wann SubKit fragt“, auch die Regel **Immer vorher fragen**.
+
+Die Übersicht der **Einstellungen** zeigt deine Wahl in einer Zeile, zum Beispiel „Erst im Test · Sofort“.
 
 ### Gut zu wissen
 
 - Die Antworten gehören dir, nicht dem Arbeitsbereich. Jede Person stellt SubKit für sich ein.
 - Der Audit-Trail hält jede Änderung als „Einrichtung geändert“ fest.
-- Die empfohlenen Werte sind: **Automatisch**, **Test**, **Ich selbst** und **Sofort**.
+- Die empfohlenen Werte sind: **Erst im Test**, **Ich selbst** und **Sofort**, für Administratoren außerdem **50 $** als monatliches KI-Budget.
 - Nennst du als Administrator eine Adresse, die noch nicht im Arbeitsbereich ist, bereitet SubKit eine Einladung vor und verschickt keine E-Mail. Die eingeladene Person kommt als Mitglied in den Arbeitsbereich; neben dem Feld steht deshalb „Rolle: Mitglied“. Diese Rolle darf freigeben.
 - Nennst du eine Person, deren Rolle nicht freigeben darf, speichert SubKit die Wahl und warnt unter **Einstellungen** › **Einrichtung**: „… darf mit der aktuellen Rolle nichts freigeben. Freigabe-Mitteilungen bleiben bei dir, bis ein Administrator die Rolle ändert.“
 - Nennst du ohne Administrator-Rolle eine unbekannte Adresse, wird sie gespeichert, aber niemand eingeladen. Sobald ein Administrator die Adresse einlädt oder anlegt, verknüpft SubKit deine Wahl von selbst; die Hinweise gehen an die Person, sobald sie beigetreten ist.
@@ -95,7 +98,7 @@ Die Übersicht der **Einstellungen** zeigt deine Wahl in einer Zeile, zum Beispi
 curl -s -X PUT "$SK_URL/v1/identity/me/setup" \
   -H "Authorization: Bearer $SK_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"default_chat_mode":"ask","default_environment":"dev"}'
+  -d '{"ask_before_writing":true,"default_environment":"dev"}'
 ```
 
 Alle Felder stehen in „Referenz: Desktop-App, Regeln, Zeitpläne und Fehlerberichte“.

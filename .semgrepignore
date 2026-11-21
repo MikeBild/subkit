@@ -1,0 +1,16 @@
+# Dependencies and build output: not our source.
+node_modules/
+dist/
+vendor/
+# Test files and fixtures: fake tokens, plain websocket and TLS-off cases and regexes from fixtures are the point of the test.
+*.test.ts
+*.test.tsx
+__tests__/
+tests/
+# Developer tooling: runs on this checkout with repository-controlled input, never in a product.
+scripts/
+apps/engine/scripts/
+apps/engine/eval/
+apps/desktop/scripts/
+# Generated sandbox bundles (bun run gen sandbox): minified builds of reviewed sources and pinned libraries.
+apps/engine/src/sandboxes/quickjs/stdlib/helpers/*.js

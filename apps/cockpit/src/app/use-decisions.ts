@@ -8,12 +8,12 @@ import {
   listProposedPatchCandidates,
   listProposedSkillCandidates,
 } from "@/api/decisions";
+import type { DecidableItem } from "@/features/decisions";
+import { heldForWorkflow, reviewDecisionItems } from "@/features/decisions";
+import { type ReviewAccess, type ReviewTarget, reviewAccess } from "@/features/overview";
 import { useI18n } from "@/lib/i18n-context";
 import type { NameIndex } from "@/lib/name-index";
 import { buildNameIndex, EMPTY_NAME_INDEX, type NamedEntity } from "@/lib/name-index";
-import { heldForWorkflow, reviewDecisionItems } from "@/pages/core/review-decisions";
-import type { DecidableItem } from "@/pages/decisions-model";
-import { type ReviewAccess, type ReviewTarget, reviewAccess } from "@/pages/overview-model";
 import { useLiveQueryOptions } from "./live-events";
 
 export function useNameIndex(permissions: readonly string[], enabled: boolean): NameIndex {

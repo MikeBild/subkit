@@ -107,8 +107,8 @@ describe("parseDescriptor", () => {
     expect(parseDescriptor("<html>")).toBeNull();
   });
 
-  test("requires the first server release with the desktop sign-in", () => {
-    expect(MIN_SERVER_VERSION).toBe("11.2.0");
+  test("requires the first server release with the local capabilities", () => {
+    expect(MIN_SERVER_VERSION).toBe("12.0.0");
   });
 });
 

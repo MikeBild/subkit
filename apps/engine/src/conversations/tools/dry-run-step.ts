@@ -1,7 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import { classifyRunResult, isTransientRunResult } from "../../execution/classify.ts";
 import { runSingleStep } from "../../execution/step-run.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import {
   recordExecutionDryRun,
   recordExecutionWarningsEmitted,

@@ -367,7 +367,6 @@ test("documentation placeholders do not turn a fixed request into a dynamic targ
     .update(connectors)
     .set({
       template_snapshot: {
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: documentation fixture
         documentation: { examples: ["GET /items/${id}"] },
       },
     })
@@ -375,10 +374,8 @@ test("documentation placeholders do not turn a fixed request into a dynamic targ
   const result = await resolveWorkflowEffectManifest(f.input, ctx.db);
   expect(result.eligible_for_repeated_runs).toBe(true);
   expect(result.manifest.effects[0]?.rewrites_target).toBe(false);
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: runtime configuration fixture
   await ctx.db
     .update(connectors)
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored runtime-expression fixture
     .set({ config: { static_headers: { "X-Target": "${input.destination}" } } })
     .where(eq(connectors.id, f.connector.id));
   expect((await resolveWorkflowEffectManifest(f.input, ctx.db)).eligible_for_repeated_runs).toBe(
@@ -390,10 +387,8 @@ test("resolves S3 scope from the loaded connector without a network probe", asyn
   const f = await fixture({
     method: "PUT",
     path: undefined,
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored runtime-expression fixture
     body: "${input.report}",
     s3: {
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: authored runtime-expression fixture
       key: "${input.key}",
       content_type: "application/json",
       scope: { key_prefix: "reports/daily/", max_bytes: 1000 },

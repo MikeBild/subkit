@@ -7,7 +7,7 @@ import { MODEL_RELAYED_ANSWER } from "../answer-actor.ts";
 import { getTaskRunCheck } from "../core/draft.ts";
 import { DirectInvokeError, invokeConversationToolDirect } from "../direct-invoke.ts";
 import { listElicitationsForConversation } from "../elicitations.ts";
-import * as svc from "../service.ts";
+import * as svc from "../service/index.ts";
 import { getToolPolicies, setToolPolicies } from "../tool-policies.ts";
 import {
   appendMessageWithTurn,

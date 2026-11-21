@@ -35,4 +35,13 @@ export const QUALITY_RUNTIME_WITNESSES = [
     independent_review:
       "Root inspected the exact index source dispatch to runSandboxWorker and the real IPC request/result assertions after lifecycle hardening.",
   })),
+  ...["http.ts", "scheduler.ts", "shutdown.ts", "worker.ts"].map((file) => ({
+    consumer: `apps/engine/src/composition/${file}`,
+    test: "apps/engine/src/tests/source-boot.contract.test.ts",
+    kind: "source-process",
+    rationale:
+      "The test launches the source index.ts without flags against its own test database; engine-main runs startWorker, startScheduler, runBootSeeds and startHttp, the test waits for the ready and scheduler-installed events, gets 200 from /health, sends SIGTERM and asserts exit code 0 with shutdown.complete.",
+    independent_review:
+      "No separate review: the pair is accepted only through the hash-bound passing execution receipt that record-quality-runtime-witnesses.ts writes for this exact source and test.",
+  })),
 ];

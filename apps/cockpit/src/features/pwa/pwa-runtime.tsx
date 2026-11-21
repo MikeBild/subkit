@@ -8,11 +8,11 @@ import { routerPath, routerTarget } from "@/app/links";
 import { useLiveStatus } from "@/app/live-events";
 import { useSession } from "@/app/session";
 import { useAttention } from "@/app/use-attention";
-import { InstallationDialog } from "@/components/cockpit/installation-dialogs";
 import { badgeCount, showAppBadge } from "./app-badge";
 import { deepLinkRoute, LINK_PARAM, launchRoute } from "./deep-link";
 import { closeInstall, openInstall, useInstallOpen } from "./install-store";
 import { onLaunch } from "./launch";
+import { InstallationDialog } from "./ui/installation-dialogs";
 import { checkForWorkerUpdate, watchInstallationWorker } from "./worker-update";
 
 function InstallHost() {

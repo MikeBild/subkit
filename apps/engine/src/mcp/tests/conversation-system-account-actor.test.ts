@@ -3,13 +3,14 @@ import { and, eq } from "drizzle-orm";
 import { MCP_AUTHORING_SCOPE } from "../../auth/scopes.ts";
 import { mcpTasks } from "../../db/schema/index.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 let suite: McpTestSuite;
 
 beforeAll(async () => {
-  process.env.LLM_PROVIDER = "mock";
+  testEnv.LLM_PROVIDER = "mock";
   resetMockProvider();
   suite = await startMcpTestSuite("conversation-system-account-actor", { withQueue: true });
 }, 90_000);

@@ -1,6 +1,6 @@
-import { TEST_MASTER_KEY } from "../test-helpers/determinism/env.ts";
+import { TEST_MASTER_KEY, testEnv } from "../test-helpers/determinism/env.ts";
 
-delete process.env.JOURNAL_STREAM;
-delete process.env.SK_LOG_SD_DAEMON;
+delete testEnv.JOURNAL_STREAM;
+delete testEnv.SK_LOG_SD_DAEMON;
 
-process.env.MASTER_KEY ??= TEST_MASTER_KEY;
+testEnv.MASTER_KEY ??= TEST_MASTER_KEY;

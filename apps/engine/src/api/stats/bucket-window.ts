@@ -1,7 +1,11 @@
 import type { Db } from "../../db/client.ts";
 import { BadRequestError } from "../../http/errors.ts";
-import { BUCKET_UNITS, type BucketUnit, WINDOW_CAP_MS } from "../../stats/bucket-units.ts";
-import { oldestAuditTimestamp } from "../../stats/retention-horizon.ts";
+import {
+  BUCKET_UNITS,
+  type BucketUnit,
+  oldestAuditTimestamp,
+  WINDOW_CAP_MS,
+} from "../../stats/index.ts";
 
 function isValidTimezone(tz: string): boolean {
   try {

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { asStreamedDiff } from "@/features/chat";
+import { asToolPart } from "@/features/chat/model/tool-parts";
 import { conversationExcerpt, hideTechnicalIdentifiers, humanFacingText } from "@/lib/presentation";
-import { asToolPart } from "@/lib/tool-parts";
 
 describe("cockpit presentation", () => {
   test("hides UUIDs in conversational text", () => {

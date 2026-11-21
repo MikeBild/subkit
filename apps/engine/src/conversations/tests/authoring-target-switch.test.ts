@@ -59,7 +59,6 @@ async function openConversationFor(workflowId: string | null) {
     actor_id: ctx.user_id,
     connector_id: null,
     workflow_id: workflowId,
-    permission_mode: "auto",
     engineClient: new EngineClient({
       tenant_id: ctx.tenant_id,
       actor_id: ctx.user_id,

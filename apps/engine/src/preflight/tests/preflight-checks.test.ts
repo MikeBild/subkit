@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { ConfigSchema } from "../../config/schema.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import {
+  FILESYSTEM_STORE_LOCAL_ONLY_REMEDY,
   identityFinding,
   type ObjectStoreBinding,
   type PreflightEnvironment,
@@ -39,6 +41,7 @@ function healthyEnvironment(overrides: Partial<PreflightEnvironment> = {}): {
       touched.push("schemaAheadTags");
       return [];
     },
+    schemaBehindChainHead: async () => null,
     activeSettingsDocument: async () => {
       touched.push("activeSettingsDocument");
       return null;
@@ -49,6 +52,11 @@ function healthyEnvironment(overrides: Partial<PreflightEnvironment> = {}): {
     },
     probeObjectStore: async () => {
       touched.push("probeObjectStore");
+    },
+    localObjectStoreRoot: () => null,
+    deploymentMode: () => "server",
+    probeLocalObjectStore: async () => {
+      touched.push("probeLocalObjectStore");
     },
     readSecretVersion: async () => {
       touched.push("readSecretVersion");
@@ -109,11 +117,29 @@ describe("check 2 — DATABASE_URL and the schema version", () => {
     expect(touched).not.toContain("probeObjectStore");
   });
 
+  test("an S3 deployment never probes a local folder", async () => {
+    const { env, touched } = healthyEnvironment();
+    await runPreflightChecks(env);
+    expect(touched).toContain("probeObjectStore");
+    expect(touched).not.toContain("probeLocalObjectStore");
+  });
+
   test("a schema newer than this release refuses with schema_ahead", async () => {
     const { env } = healthyEnvironment({ schemaAheadTags: async () => ["0099_from_the_future"] });
     const outcome = await runPreflightChecks(env);
     expect(firstRefusal(outcome)?.code).toBe("schema_ahead");
     expect(firstRefusal(outcome)?.detail).toContain("0099_from_the_future");
+  });
+
+  test("a database that stops before the squashed chain head refuses with schema_behind", async () => {
+    const { env } = healthyEnvironment({
+      schemaAheadTags: async () => ["0015_from_the_old_chain"],
+      schemaBehindChainHead: async () => "0099_chain_head",
+    });
+    const outcome = await runPreflightChecks(env);
+    expect(firstRefusal(outcome)?.code).toBe("schema_behind");
+    expect(firstRefusal(outcome)?.detail).toContain("0099_chain_head");
+    expect(firstRefusal(outcome)?.detail).not.toContain("0015_from_the_old_chain");
   });
 
   test("a virgin database — no tags ahead — passes and migrates forward", async () => {
@@ -153,6 +179,46 @@ describe("check 3 — the object store", () => {
     const outcome = await runPreflightChecks(env);
     expect(firstRefusal(outcome)?.code).toBe("object_store_unreachable");
     expect(firstRefusal(outcome)?.detail).toContain("NoSuchBucket");
+  });
+
+  test("a local device store is probed on disk and needs no S3 binding", async () => {
+    const { env, touched } = healthyEnvironment({
+      objectStoreBinding: async () => null,
+      localObjectStoreRoot: () => "/data/files",
+      deploymentMode: () => "local_workspace",
+    });
+    const outcome = await runPreflightChecks(env);
+    expect(outcome.refused).toBe(false);
+    expect(touched).toContain("probeLocalObjectStore");
+    expect(touched).not.toContain("objectStoreBinding");
+    expect(touched).not.toContain("probeObjectStore");
+  });
+
+  test("a local device store that cannot be written refuses with object_store_unreachable", async () => {
+    const { env } = healthyEnvironment({
+      localObjectStoreRoot: () => "/data/files",
+      deploymentMode: () => "local_workspace",
+      probeLocalObjectStore: async () => {
+        throw new Error("EACCES");
+      },
+    });
+    const outcome = await runPreflightChecks(env);
+    expect(firstRefusal(outcome)?.code).toBe("object_store_unreachable");
+    expect(firstRefusal(outcome)?.detail).toContain("EACCES");
+  });
+});
+
+describe("check 3b — the filesystem store belongs to local mode", () => {
+  test("a filesystem store on a server refuses before probing, with a remedy", async () => {
+    const { env, touched } = healthyEnvironment({
+      localObjectStoreRoot: () => "/srv/subkit/files",
+    });
+    const outcome = await runPreflightChecks(env);
+    const refusal = firstRefusal(outcome);
+    expect(refusal?.code).toBe("filesystem_store_needs_local_mode");
+    expect(refusal?.detail).toContain(FILESYSTEM_STORE_LOCAL_ONLY_REMEDY);
+    expect(touched).not.toContain("probeLocalObjectStore");
+    expect(touched).not.toContain("readSecretVersion");
   });
 });
 
@@ -323,13 +389,13 @@ describe("T2 does not apply to SubKit — and this is the proof, not the claim",
     const { hashKey } = await import("../../identity/api-key.ts");
     const token = "wf_live_0123456789abcdefghijklmnopqrstuv";
     const before = hashKey(token);
-    const original = process.env.MASTER_KEY;
+    const original = testEnv.MASTER_KEY;
     try {
-      process.env.MASTER_KEY = "b".repeat(64);
+      testEnv.MASTER_KEY = "b".repeat(64);
       expect(hashKey(token)).toBe(before);
     } finally {
-      if (original === undefined) delete process.env.MASTER_KEY;
-      else process.env.MASTER_KEY = original;
+      if (original === undefined) delete testEnv.MASTER_KEY;
+      else testEnv.MASTER_KEY = original;
     }
   });
 });

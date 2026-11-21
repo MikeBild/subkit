@@ -26,7 +26,16 @@ describe("DRIVERS", () => {
       Object.fromEntries(
         Object.entries(DRIVERS).map(([kind, d]) => [kind, d.capabilities.response_filters]),
       ),
-    ).toEqual({ http: "page", graphql: "none", mcp: "result", s3: "none", postgres: "none" });
+    ).toEqual({
+      http: "page",
+      graphql: "none",
+      mcp: "result",
+      s3: "none",
+      postgres: "none",
+      local_files: "none",
+      local_browser: "none",
+      local_computer: "none",
+    });
   });
 
   test("only http pages through the pipeline, keeps the step timer and maps its own setup errors", () => {
@@ -41,5 +50,42 @@ describe("DRIVERS", () => {
     expect(DRIVERS.http.classifySideEffects(step)).toBe("read");
     expect(DRIVERS.http.classifySideEffects({ ...step, method: "POST" })).toBe("write");
     expect(DRIVERS.s3.classifySideEffects({ ...step, method: "PUT" })).toBe("write");
+  });
+
+  test("device drivers classify by the action their step names and never retry", () => {
+    expect(DRIVERS.local_files.classifySideEffects({ ...step, path: "/files.list" })).toBe("read");
+    expect(DRIVERS.local_files.classifySideEffects({ ...step, path: "files.write" })).toBe("write");
+    expect(DRIVERS.local_browser.classifySideEffects({ ...step, path: "/files.list" })).toBe(
+      "write",
+    );
+    for (const kind of ["local_files", "local_browser", "local_computer"] as const) {
+      const driver = DRIVERS[kind];
+      expect(driver.retryPolicy(step)).toBeNull();
+      expect(driver.classifySideEffects(step)).toBe("write");
+    }
+  });
+
+  test("a device step that names no action of its capability runs nothing", async () => {
+    for (const kind of ["local_files", "local_browser", "local_computer"] as const) {
+      const driver = DRIVERS[kind];
+      const result = await driver.execute({
+        clock: { now: () => 0 },
+        start: 0,
+        connector: { config: { device_id: "11111111-1111-4111-8111-111111111111" } },
+        parts: { path: "/nothing.here", body: null },
+      } as unknown as Parameters<typeof driver.execute>[0]);
+      expect(result.status).toBe("failed");
+      expect(result.error?.code).toBe("local_command_unknown");
+    }
+  });
+
+  test("a device connector without a device runs nothing", async () => {
+    const result = await DRIVERS.local_files.execute({
+      clock: { now: () => 0 },
+      start: 0,
+      connector: { config: {} },
+      parts: { path: "/files.list", body: null },
+    } as unknown as Parameters<typeof DRIVERS.local_files.execute>[0]);
+    expect(result.error?.code).toBe("device_not_configured");
   });
 });

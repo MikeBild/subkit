@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { ErrorNotice, ErrorState } from "@ui/components/proto/ErrorNotice";
 import { listPageFailure } from "@ui/lib/errors";
+import { ErrorNotice, ErrorState } from "@ui/molecules/error-notice";
 import { ApiError } from "@/api/transport";
 import { errorTechnicalRows, labelledTechnicalRows } from "@/lib/error-facts";
 import { translate } from "@/lib/i18n";

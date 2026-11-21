@@ -1,11 +1,11 @@
 import { describe, expect, it } from "bun:test";
-import { BusyButton } from "@ui/components/proto/BusyButton";
-import { SettingRow } from "@ui/components/proto/SettingRow";
-import { StepDots } from "@ui/components/proto/StepDots";
-import { StepFooter } from "@ui/components/proto/StepFooter";
-import { VersionChips } from "@ui/components/proto/VersionChips";
-import { OnboardingFrame } from "@ui/components/templates/OnboardingFrame";
+import { StepDots } from "@ui/atoms/step-dots";
 import { UiProvider } from "@ui/lib/ui-context";
+import { BusyButton } from "@ui/molecules/busy-button";
+import { SettingsRow } from "@ui/molecules/settings-row";
+import { StepFooter } from "@ui/molecules/step-footer";
+import { VersionChips } from "@ui/molecules/version-chips";
+import { OnboardingFrame } from "@ui/templates/onboarding-frame";
 import { Bell } from "lucide-react";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -65,12 +65,12 @@ describe("VersionChips", () => {
   });
 });
 
-describe("SettingRow", () => {
+describe("SettingsRow", () => {
   it("ties the label to its control and shows the hint", () => {
     const markup = html(
-      <SettingRow id="quiet" label="Quiet hours" hint="No alerts at night" icon={Bell}>
+      <SettingsRow id="quiet" label="Quiet hours" hint="No alerts at night" icon={Bell}>
         <input id="quiet" />
-      </SettingRow>,
+      </SettingsRow>,
     );
     expect(markup).toContain('for="quiet"');
     expect(markup).toContain("No alerts at night");
@@ -79,9 +79,9 @@ describe("SettingRow", () => {
 
   it("leaves out hint and icon when none are given", () => {
     const markup = html(
-      <SettingRow label="Language">
+      <SettingsRow label="Language">
         <span>EN</span>
-      </SettingRow>,
+      </SettingsRow>,
     );
     expect(markup).not.toContain("<p");
     expect(markup).not.toContain("<svg");

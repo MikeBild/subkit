@@ -1,4 +1,5 @@
 import { app, Menu, type MenuItemConstructorOptions } from "electron";
+import { aboutPanel } from "../shared/app-identity.ts";
 import { type Locale, t } from "../shared/i18n.ts";
 import type { ProfileSummary } from "../shared/ipc.ts";
 import type { MenuUpdateItem } from "../shared/tray-model.ts";
@@ -21,6 +22,7 @@ export interface MenuActions {
 export function applyMenu(model: MenuModel, actions: MenuActions): void {
   const { locale } = model;
   const mac = process.platform === "darwin";
+  if (mac) app.setAboutPanelOptions(aboutPanel(locale, app.name, app.getVersion()));
   const settings: MenuItemConstructorOptions = {
     label: t(locale, "menu.settings"),
     accelerator: "CmdOrCtrl+,",

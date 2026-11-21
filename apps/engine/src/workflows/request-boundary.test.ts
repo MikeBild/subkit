@@ -31,16 +31,10 @@ test("the reviewed target keeps the base path and names the variable", () => {
 });
 
 test("review and dispatch agree, including when the author repeats the base prefix", () => {
-  for (const path of [
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
-    "/sites/${input.site}/releases",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
-    "/v2/sites/${input.site}/releases",
-  ]) {
+  for (const path of ["/sites/${input.site}/releases", "/v2/sites/${input.site}/releases"]) {
     const { boundary } = compileRequestBoundary(step({ ...release, path }), BASE);
     expect(boundary).toBeDefined();
     for (const site of ["company-cockpit", "blog"]) {
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
       const url = resolveUrl(BASE, path.replace("${input.site}", site)).toString();
       expect(() =>
         assertRequestBoundary(boundary!, { method: "POST", url, headers: {}, body: { a: 1 } }),
@@ -81,13 +75,9 @@ test("every refusal names its cause", () => {
       },
     }),
   ).toBe("pagination_unsupported");
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
   expect(reason({ query: { since: "from-${input.since}" } })).toBe("query_placeholder_unsupported");
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
   expect(reason({ query: { since: "${input.since}" } })).toBe("variables_mismatch");
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
   expect(reason({ headers: { "x-tenant": "${input.tenant}" } })).toBe("runtime_header");
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
   expect(reason({ path: "/properties/${input.id}:run" })).toBe("partial_segment_placeholder");
   expect(reason({ path: "/sites/a?x=1" })).toBe("path_unsupported");
   expect(reason({ path: "/sites/a%2Fb" })).toBe("path_unsupported");
@@ -99,7 +89,6 @@ test("every refusal names its cause", () => {
   expect(reason({}, null)).toBe("target_unresolved");
   expect(
     reason({
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
       path: "/${input.site}/releases",
     }),
   ).toBe("variable_in_base_prefix");
@@ -151,7 +140,6 @@ test("a static query is part of the boundary; a GET may not carry a body", () =>
   const { boundary } = compileRequestBoundary(
     step({
       method: "GET",
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
       path: "/spaces/${item.slug}/proposals",
       query: { status: "pending" },
       boundary: {
@@ -340,7 +328,6 @@ test("the other classes accept their members and nothing near them", () => {
     compileRequestBoundary(
       step({
         method: "GET",
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
         path: "/things/${item.value}",
         boundary: { variables: { "item.value": { class: cls } }, max_body_bytes: 0, max_calls: 5 },
       }),
@@ -374,7 +361,6 @@ test("the other classes accept their members and nothing near them", () => {
 test("a removal may only vary over listed values", () => {
   const removal = step({
     method: "DELETE",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
     path: "/things/${item.id}",
     boundary: {
       variables: { "item.id": { class: "uuid" } },
@@ -389,7 +375,6 @@ test("a removal may only vary over listed values", () => {
 test("a removal of the authenticated caller's own record is bound to the caller", () => {
   const removal = step({
     method: "DELETE",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
     path: "/auth/v1/admin/users/${caller.subject}",
     boundary: {
       variables: { "caller.subject": { caller_bound: true } },
@@ -416,7 +401,6 @@ test("a removal of the authenticated caller's own record is bound to the caller"
 test("caller_bound belongs only to caller expressions and a value class on DELETE stays refused", () => {
   const classOnDelete = step({
     method: "DELETE",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
     path: "/users/${caller.subject}",
     boundary: {
       variables: { "caller.subject": { class: "uuid" } },
@@ -428,7 +412,6 @@ test("caller_bound belongs only to caller expressions and a value class on DELET
   expect(compileRequestBoundary(classOnDelete, BASE).refusal).toBe("caller_bound_mismatch");
   const inputBound = step({
     method: "DELETE",
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
     path: "/users/${input.user}",
     boundary: {
       variables: { "input.user": { caller_bound: true } },

@@ -11,6 +11,7 @@ import {
 } from "../engine-client.ts";
 import { totalFailureCount } from "../lib/operator-digest.ts";
 import { formatTokens, humanMs } from "../render/format.ts";
+import { aiBudgetLabel } from "../repl/status-line/render.ts";
 
 async function tryFetch<T>(fn: () => Promise<T>): Promise<T | null> {
   try {
@@ -35,28 +36,23 @@ function uptimeHuman(seconds: number): string {
 }
 
 function renderTokenBudget(status: StatusSummary): void {
-  const { tokens_today, tokens_month, monthly_budget_tokens } = status;
-  process.stdout.write(`\n${pc.bold("Token budget")}\n`);
-  const monthLine =
-    monthly_budget_tokens != null && monthly_budget_tokens > 0
-      ? `${formatTokens(tokens_month)} / ${formatTokens(monthly_budget_tokens)}`
-      : formatTokens(tokens_month);
+  const { tokens_today, tokens_month, ai_budget } = status;
+  process.stdout.write(`\n${pc.bold("AI budget")}\n`);
   const pct =
-    monthly_budget_tokens != null && monthly_budget_tokens > 0
-      ? Math.min(100, Math.round((tokens_month / monthly_budget_tokens) * 100))
+    ai_budget.limit != null && ai_budget.limit > 0
+      ? Math.min(100, Math.round((ai_budget.spent / ai_budget.limit) * 100))
       : null;
-  const state = status.monthly_budget_state ?? null;
   const colorize =
-    state === "critical"
+    ai_budget.state === "reached"
       ? pc.red
-      : state === "tightening"
+      : ai_budget.state === "warning" || ai_budget.state === "continued"
         ? pc.yellow
-        : state === "ample"
+        : ai_budget.state === "ok"
           ? (s: string) => s
           : pc.dim;
   process.stdout.write(
-    `  month ${colorize(monthLine)}${pct != null ? colorize(` (${pct}%)`) : ""}` +
-      `${state ? ` ${colorize(state)}` : ""} · today ${formatTokens(tokens_today)}\n`,
+    `  month ${colorize(aiBudgetLabel(ai_budget))}${pct != null ? colorize(` (${pct}%)`) : ""}` +
+      ` ${colorize(ai_budget.state)} · tokens month ${formatTokens(tokens_month)} · today ${formatTokens(tokens_today)}\n`,
   );
 }
 

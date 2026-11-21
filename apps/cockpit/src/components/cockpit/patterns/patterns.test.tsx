@@ -1,14 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@ui/atoms/badge";
+import { uiDicts } from "@ui/lib/ui-context";
+import { SearchInput } from "@ui/molecules/search-input";
+import { revealScrollLeft, SegmentedControl } from "@ui/molecules/segmented-control";
+import { FilterBar } from "@ui/organisms/filter-bar";
 import { translate } from "@/lib/i18n";
 import { ActionMenu } from "./action-menu";
 import { ChatCard } from "./chat-card";
 import { CodeBlock } from "./code-block";
-import { confirmTitle } from "./confirm-dialog";
 import { CopyField } from "./copy-field";
 import { DataState } from "./data-state";
 import { FactList } from "./fact-list";
-import { FilterBar } from "./filter-bar";
 import { dialogWidthClass } from "./form-dialog";
 import {
   KPI_TILE_BOX,
@@ -21,9 +23,7 @@ import { Page, READING_COLUMN } from "./page";
 import { PageHeader } from "./page-header";
 import { searchWithTab, tabFromSearch } from "./page-tabs";
 import { sheetWidthClass } from "./record-sheet";
-import { SearchInput } from "./search-input";
 import { CollapsibleSection, Section } from "./section";
-import { revealScrollLeft, SegmentedControl } from "./segmented-control";
 import { TileSkeleton } from "./skeleton";
 import { StatusBadge, statusTone } from "./status-badge";
 import { StatusStrip } from "./status-strip";
@@ -308,16 +308,11 @@ describe("P12 DataState", () => {
 });
 
 describe("P13 ConfirmDialog", () => {
-  const t =
-    (locale: "de" | "en") =>
-    (key: Parameters<typeof translate>[1], values?: Record<string, string | number>) =>
-      translate(locale, key, values);
-
   test("the title is the object and the verb, the verb lower-cased in German", () => {
-    expect(confirmTitle(t("de"), "de", "Freigabe v4", "Widerrufen")).toBe(
+    expect(uiDicts["de"].confirm.title("Freigabe v4", "Widerrufen")).toBe(
       "Freigabe v4 widerrufen?",
     );
-    expect(confirmTitle(t("en"), "en", "approval v4", "Revoke")).toBe("Revoke approval v4?");
+    expect(uiDicts["en"].confirm.title("approval v4", "Revoke")).toBe("Revoke approval v4?");
   });
 });
 

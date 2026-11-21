@@ -2,7 +2,7 @@ import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { getConfig } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
 import { executions } from "../db/schema/index.ts";
-import { errorFields, logger } from "../logging/logger.ts";
+import { errorFields, logger } from "../logging/index.ts";
 
 interface RegisteredAbort {
   controller: AbortController;

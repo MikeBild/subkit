@@ -1,3 +1,4 @@
+import { RUNNER_ROUTE_PREFIX } from "@shared/device/runner-wire.ts";
 import type { MiddlewareHandler } from "hono";
 import {
   browserSessionForPrincipal,
@@ -7,6 +8,7 @@ import {
 import { recordAuthFailure } from "../../auth/failed-auth-tracker.ts";
 import type { AuthProviderRegistry } from "../../auth/registry.ts";
 import { isAuthDenial, type ResolvedPrincipal } from "../../auth/types.ts";
+import { isRunnerPrincipal } from "../../devices/index.ts";
 import { beginTenantWork } from "../../execution/tenant-work.ts";
 import { assertTenantActive, SelfServiceIdentityError } from "../../identity/self-service.ts";
 import { withContext } from "../../logging/context.ts";
@@ -21,11 +23,26 @@ export function authMiddleware(registry: AuthProviderRegistry): MiddlewareHandle
       return next();
     }
     const principal = await registry.resolve(c.req.raw);
+    if (isAuthDenial(principal) && principal.reason === "device_revoked") {
+      return c.json(
+        { code: "device_revoked", message: "this device was signed out of local steps" },
+        403,
+      );
+    }
     if (isAuthDenial(principal)) {
       recordAuthFailure(c.get("client_ip") ?? "unknown");
       return c.json(
         { code: "unauthorized", error: "unauthorized", message: "invalid bearer token" },
         401,
+      );
+    }
+    if (principal && isRunnerPrincipal(principal) && !c.req.path.startsWith(RUNNER_ROUTE_PREFIX)) {
+      return c.json(
+        {
+          code: "device_runner_scope",
+          message: "a device runner credential works only on the device runner routes",
+        },
+        403,
       );
     }
     if (principal) {

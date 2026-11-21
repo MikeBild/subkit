@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, asc, count, eq } from "drizzle-orm";
 import type { Actor } from "../../audit/actor.ts";
 import { auditLog, knowledgeChunks, knowledgeSourceVersions } from "../../db/schema/index.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { upsertKnowledgeBundle } from "../bundle-service.ts";
 import { getKnowledgeSource } from "../catalog.ts";
@@ -11,7 +12,7 @@ import { KNOWLEDGE_VERSIONS_KEPT, recordKnowledgeVersion } from "../version-reco
 import { getKnowledgeVersion, listKnowledgeHistory, restoreKnowledgeVersion } from "../versions.ts";
 import { createKnowledgeTestCtx, type KnowledgeTestCtx } from "./setup.ts";
 
-const skip = process.env.REQUIRES_PG === "0";
+const skip = testEnv.REQUIRES_PG === "0";
 const nextUuid = createDeterministicUuidFactory(0x6b20_30);
 
 let ctx: KnowledgeTestCtx;

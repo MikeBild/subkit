@@ -1,4 +1,4 @@
-import { APICallError, NoObjectGeneratedError } from "ai";
+import { PROVIDER_LIMITED, PROVIDER_QUOTA_EXHAUSTED } from "@shared/error-taxonomy.ts";
 import type { Context, MiddlewareHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { DescriptionAcceptanceError } from "../../api/catalog-metadata.ts";
@@ -19,9 +19,10 @@ import { CatalogVocabularyBusyError } from "../../db/catalog-vocabulary.ts";
 import { hostedQuotaError } from "../../db/hosted-quota-errors.ts";
 import { HostedFileQuotaError } from "../../files/hosted-quota.ts";
 import { ApiKeyOwnerNotFoundError } from "../../identity/api-key-owner.ts";
-import { LlmAccessMissing, LlmProviderError, LlmQuotaExhausted } from "../../llm/errors.ts";
+import { LlmAccessMissing, LlmProviderError, LlmSpendLimitReached } from "../../llm/errors.ts";
 import { toLlmProviderError } from "../../llm/provider-errors.ts";
-import { logger } from "../../logging/logger.ts";
+import { isNoObjectGenerated, isProviderCallError } from "../../llm/runtime/sdk-errors.ts";
+import { logger } from "../../logging/index.ts";
 import type { CapturedError } from "../../observability/error-ring.ts";
 import { errorRing } from "../../observability/error-ring.ts";
 import { HostedWorkQuotaError } from "../../queue/hosted-work.ts";
@@ -117,10 +118,10 @@ function mapLlmError(c: Context<AppEnv>, err: unknown): Response | null {
       hint: "Ask the engine operator to review the file quota; retained files remain charged until verified cleanup succeeds",
     });
   }
-  if (err instanceof LlmQuotaExhausted) {
-    captureToRing(c, err, 429, "llm_quota_exhausted", "llm_quota");
+  if (err instanceof LlmSpendLimitReached) {
+    captureToRing(c, err, 429, "llm_spend_limit_reached", "llm_quota");
     const retryAfter = readRetryAfter(err.details) ?? 60;
-    return envelope(c, 429, "llm_quota_exhausted", err.message, {
+    return envelope(c, 429, "llm_spend_limit_reached", err.message, {
       hint: "raise the provider quota or wait for the reset window before retrying",
       retry_after: retryAfter,
       details: err.details,
@@ -129,7 +130,7 @@ function mapLlmError(c: Context<AppEnv>, err: unknown): Response | null {
   const providerErr =
     err instanceof LlmProviderError
       ? err
-      : APICallError.isInstance(err)
+      : isProviderCallError(err)
         ? toLlmProviderError(err)
         : null;
   if (providerErr) {
@@ -141,9 +142,11 @@ function mapLlmError(c: Context<AppEnv>, err: unknown): Response | null {
       });
     }
     if (providerErr.kind === "rate_limit" || providerErr.kind === "quota_exhausted") {
-      captureToRing(c, providerErr, 429, "llm_provider_limited", "llm_provider");
+      const code =
+        providerErr.kind === "quota_exhausted" ? PROVIDER_QUOTA_EXHAUSTED : PROVIDER_LIMITED;
+      captureToRing(c, providerErr, 429, code, "llm_provider");
       const retryAfter = readRetryAfter(providerErr.details) ?? 30;
-      return envelope(c, 429, "llm_provider_limited", providerErr.message, {
+      return envelope(c, 429, code, providerErr.message, {
         hint:
           providerErr.kind === "quota_exhausted"
             ? "provider quota exhausted — raise it in the provider console or wait for the next window"
@@ -161,7 +164,7 @@ function mapLlmError(c: Context<AppEnv>, err: unknown): Response | null {
       });
     }
   }
-  if (NoObjectGeneratedError.isInstance(err)) {
+  if (isNoObjectGenerated(err)) {
     captureToRing(c, err, 502, "llm_no_object", "llm_no_object");
     return envelope(c, 502, "llm_no_object", "llm output did not match the expected schema", {
       details: {

@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+import { runElicitationExpiry } from "../../conversations/scheduled/elicitation-expiry-runner.ts";
 import {
   auditLog,
   conversationElicitations,
@@ -12,7 +13,6 @@ import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setu
 import { handleConversationTool } from "../../mcp/capabilities/conversations.ts";
 import { ConversationTaskStore } from "../../mcp/tasks/task-store.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
-import { runElicitationExpiry } from "../elicitation-expiry-runner.ts";
 
 let srv: HttpTestServer;
 

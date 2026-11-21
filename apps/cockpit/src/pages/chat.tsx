@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { cn } from "@ui/lib/utils";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { apiCall } from "@/api/call";
@@ -11,58 +12,59 @@ import { queryView } from "@/components/failure-state";
 import {
   type AttachmentPreview,
   AttachmentPreviewSheet,
+  activeConversationId,
+  addAttachments,
+  budgetPill,
   ChatComposerArea,
   ChatContextContent,
   ChatContextDock,
   ChatContextSheet,
   ChatListPanel,
+  ChatPlaybookSummary,
+  ChatStart,
   ChatTranscript,
   ConversationDialogs,
   ConversationHead,
+  type ConversationSelection,
+  chatHeaderTitle,
+  conversationFailureKind,
+  conversationRefreshInterval,
+  optimisticVisible,
   originLine,
-  QuestionDock,
-  ReadingColumn,
-  type RestoreComposer,
-  selectionFromPath,
-  setChatPath,
-  shownMode,
-  switchedOrDefault,
-  TaskRunLine,
-  TurnErrors,
-  useContextDock,
-  useConversationDialogs,
-  useRunOfConversation,
-} from "@/features/chat";
-import { formatDateTime } from "@/lib/i18n";
-import { useI18n } from "@/lib/i18n-context";
-import { humanFacingText } from "@/lib/presentation";
-import { budgetPressure, budgetSummary } from "@/lib/usage-model";
-import { useInfiniteList } from "@/lib/use-infinite-list";
-import { cn } from "@/lib/utils";
-import { conversationRefreshInterval, waitsForPerson } from "./chat-approval";
-import { addAttachments, type PendingAttachment, takeAttachmentFiles } from "./chat-attachments";
-import { useNewChatMode } from "./chat-default-mode";
-import { conversationFailureKind, retryConversationRead } from "./chat-load-failure";
-import { useChatLookups } from "./chat-lookups";
-import { modeLabelKey } from "./chat-mode";
-import { type AuthoringMode, storedAuthoringMode } from "./chat-permission";
-import {
+  type PendingAttachment,
   type PlaybookAction,
   playbookActionTarget,
   playbookAnchorIndex,
   playbookSummaryVisible,
-} from "./chat-playbook";
-import { ChatPlaybookSummary } from "./chat-playbook-panel";
-import { useChatQuestions } from "./chat-questions";
-import { resumeNextAction, resumeSummaryLine } from "./chat-resume";
-import { activeConversationId, type ConversationSelection } from "./chat-selection";
-import { budgetPill, chatHeaderTitle, optimisticVisible } from "./chat-session";
-import { ChatStart } from "./chat-start";
-import { startersVisible } from "./chat-start-model";
-import { runMarker, runPlaybook } from "./chat-task-run";
-import { questionExcerpt } from "./chat-text";
-import { useChatTurn } from "./chat-turn";
-import { useChatWorkspace } from "./chat-workspace";
+  QuestionDock,
+  questionExcerpt,
+  ReadingColumn,
+  type RestoreComposer,
+  resumeNextAction,
+  resumeSummaryLine,
+  retryConversationRead,
+  runMarker,
+  runPlaybook,
+  selectionFromPath,
+  setChatPath,
+  startersVisible,
+  TaskRunLine,
+  TurnErrors,
+  takeAttachmentFiles,
+  useChatLookups,
+  useChatQuestions,
+  useChatTurn,
+  useChatWorkspace,
+  useContextDock,
+  useConversationDialogs,
+  useRunOfConversation,
+  waitsForPerson,
+} from "@/features/chat";
+import { budgetPressure, budgetSummary } from "@/features/usage/model";
+import { formatDateTime } from "@/lib/i18n";
+import { useI18n } from "@/lib/i18n-context";
+import { humanFacingText } from "@/lib/presentation";
+import { useInfiniteList } from "@/lib/use-infinite-list";
 
 export function ChatPage() {
   const { t, locale } = useI18n();
@@ -71,8 +73,6 @@ export function ChatPage() {
     selectionFromPath(initialPrompt),
   );
   const [showHidden, setShowHidden] = useState(false);
-  const [newPermissionMode, setNewPermissionMode, resetNewPermissionMode] = useNewChatMode();
-  const [switched, setSwitched] = useState<{ id: string; mode: AuthoringMode } | null>(null);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [preview, setPreview] = useState<AttachmentPreview | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -105,12 +105,6 @@ export function ChatPage() {
     refetchInterval: (query) => conversationRefreshInterval(query.state.data),
   });
   const messages = detail.data?.messages ?? [];
-  const storedMode = detail.data ? storedAuthoringMode(detail.data.draft) : "loading";
-  const switchedMode = switchedOrDefault({
-    switched: activeId && switched?.id === activeId ? switched.mode : null,
-    stored: storedMode,
-    fallback: newPermissionMode,
-  });
   const turn = useChatTurn({
     selection,
     setSelection,
@@ -118,8 +112,6 @@ export function ChatPage() {
     activeId,
     detail,
     messages,
-    newPermissionMode,
-    switchedMode: switchedMode,
     attachments,
     setAttachments,
     restoreComposer,
@@ -263,7 +255,6 @@ export function ChatPage() {
   const startNew = () => {
     setSelection({ kind: "new" });
     turn.navigate("startNew", true);
-    resetNewPermissionMode();
     setChatPath(null);
     setListOpen(false);
   };
@@ -310,20 +301,6 @@ export function ChatPage() {
             visible: true,
           }
         : null;
-  const storedConcrete: AuthoringMode | null =
-    storedMode === "auto" || storedMode === "ask" || storedMode === "plan" ? storedMode : null;
-  const pillMode: AuthoringMode | null = shownMode({
-    existing: Boolean(activeId),
-    picked: newPermissionMode,
-    switched: switchedMode,
-    stored: storedConcrete,
-    sent: storedMode === "loading" ? turn.sentMode : null,
-  });
-  const pillLabel = pillMode
-    ? t(modeLabelKey(pillMode))
-    : storedMode === "yolo"
-      ? t("chat.mode.yolo")
-      : null;
   const headerTitle = chatHeaderTitle({
     title: current?.title,
     listTitle: activeRow?.title,
@@ -555,12 +532,7 @@ export function ChatPage() {
             conversationFailed={conversationFailed}
             busy={busy}
             status={status}
-            pillMode={pillMode}
-            pillLabel={run ? null : pillLabel}
             runScope={run ? t("chat.taskRun.scope") : null}
-            setNewPermissionMode={(mode) =>
-              activeId ? setSwitched({ id: activeId, mode }) : setNewPermissionMode(mode)
-            }
             composerHint={composerHint}
             initialInput={selection.kind === "new" ? initialPrompt : ""}
             choiceOpen={choiceOpen}

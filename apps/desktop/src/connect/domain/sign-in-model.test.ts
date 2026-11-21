@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { dictionary } from "../../shared/i18n.ts";
-import type { CheckResult, CheckStatus, ConnectState, ProfileSummary } from "../../shared/ipc.ts";
+import {
+  type CheckResult,
+  type CheckStatus,
+  type ConnectState,
+  LOCAL_UNAVAILABLE,
+  type ProfileSummary,
+} from "../../shared/ipc.ts";
 import { NO_ONBOARDING } from "../../shared/onboarding.ts";
 import { INITIAL_FLOW } from "./screens-model.ts";
 import {
@@ -58,6 +64,12 @@ function main(patch: Partial<ConnectState> = {}): ConnectState {
     signedIn: null,
     onboarding: NO_ONBOARDING,
     update: { phase: "disabled" },
+    permissions: {
+      supported: true,
+      permissions: { accessibility: false, screen: false, restartPending: false },
+      lost: [],
+    },
+    local: LOCAL_UNAVAILABLE,
     ...patch,
   };
 }
@@ -274,6 +286,52 @@ describe("sign-in model: settings", () => {
     ).toEqual([{ kind: "showView", view: "connect" }]);
   });
 
+  test("back from the permission setup returns to the flow", () => {
+    const { events, effects } = run(ready({ view: "permissions" }), { type: "GoBack" });
+    expect(events).toEqual([]);
+    expect(effects).toEqual([{ kind: "showView", view: "connect" }]);
+  });
+
+  test("local capabilities open from settings as their own view and back returns to settings", () => {
+    const opened = run(ready({ view: "settings" }), { type: "OpenLocalCapabilities" });
+    expect(opened.effects).toEqual([{ kind: "showView", view: "local" }]);
+    const shown = ready({ view: "local" });
+    expect(viewOf(shown)?.screen).toEqual({
+      kind: "local-capabilities",
+      device: "MacBook-Anna",
+      signedIn: false,
+    });
+    expect(viewOf(shown)?.frame.settingsOpen).toBe(true);
+    expect(run(shown, { type: "GoBack" }).effects).toEqual([
+      { kind: "showView", view: "settings" },
+    ]);
+  });
+
+  test("the permissions view opens from anywhere", () => {
+    expect(run(ready({ view: "local" }), { type: "OpenPermissions" }).effects).toEqual([
+      { kind: "showView", view: "permissions" },
+    ]);
+  });
+
+  test("local capabilities open only from settings", () => {
+    expect(decide(ready(), { type: "OpenLocalCapabilities" }, CONTEXT)).toEqual({
+      events: [],
+      effects: [],
+    });
+  });
+
+  test("closing settings also closes local capabilities, so settings reopen at the top", () => {
+    expect(run(ready({ view: "local" }), { type: "ToggleSettings" }).effects).toEqual([
+      { kind: "showView", view: "connect" },
+    ]);
+    expect(run(ready({ view: "settings" }), { type: "ToggleSettings" }).effects).toEqual([
+      { kind: "showView", view: "connect" },
+    ]);
+    expect(run(ready(), { type: "ToggleSettings" }).effects).toEqual([
+      { kind: "showView", view: "settings" },
+    ]);
+  });
+
   test("back from settings returns to the flow without changing the step", () => {
     const { events, effects } = run(ready({ view: "settings" }), { type: "GoBack" });
     expect(events).toEqual([]);
@@ -309,6 +367,13 @@ describe("sign-in model: settings", () => {
       ],
       [{ type: "RunUpdateAction" }, { kind: "updateAction" }],
       [{ type: "ReportProblem" }, { kind: "reportProblem" }],
+      [{ type: "CheckPermissions" }, { kind: "checkPermissions" }],
+      [
+        { type: "OpenPermissionSettings", key: "screen" },
+        { kind: "openPermissionSettings", key: "screen" },
+      ],
+      [{ type: "RestartApp" }, { kind: "restartApp" }],
+      [{ type: "ClosePermissions" }, { kind: "showView", view: "connect" }],
     ];
     for (const [command, effect] of cases) {
       expect(decide(ready(), command, CONTEXT)).toEqual({ events: [], effects: [effect] });

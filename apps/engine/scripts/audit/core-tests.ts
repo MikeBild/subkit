@@ -3,9 +3,9 @@ import { isTestFile, pathVariants } from "./import-graph.ts";
 const CORE_TEST = /(?:^|\/)core\.test\.ts$|\/core\/(?:.+\/)?[^/]+\.test\.ts$/;
 const SHARED_TEST = /^packages\/shared\/src\/.+\.test\.ts$/;
 const EXPLICIT_PURE_TESTS = new Set([
-  "apps/cockpit/src/pages/audit-filter-state.test.ts",
-  "apps/cockpit/src/pages/audit-labels.test.ts",
-  "apps/cockpit/src/pages/knowledge-sources-url.test.ts",
+  "apps/cockpit/src/features/audit/model/audit-filter-state.test.ts",
+  "apps/cockpit/src/features/audit/model/audit-labels.test.ts",
+  "apps/cockpit/src/features/knowledge/api/knowledge-source-request.test.ts",
   "apps/engine/src/workflows/draft-projection.test.ts",
   "apps/sk/src/domain/agent/agent-file.test.ts",
   "apps/sk/src/commands/workflow-file-model.test.ts",

@@ -19,6 +19,11 @@ test("placeholder diagnostics preserve the public message and exact source span"
     ["cred", "malformed_cred", "expected ${cred.<slug>.<field>}"],
     ["cred.!a.key", "bad_identifier", "invalid cred identifier"],
     [
+      "secret",
+      "malformed_secret",
+      "expected ${secret.<name>}, ${secret.<name>.<field>} or ${secret.me.<name>}",
+    ],
+    [
       "connector",
       "malformed_connector",
       "expected ${connector.<slug>.base_url} or ${connector.<slug>.config.<path>}",
@@ -49,7 +54,7 @@ test("placeholder diagnostics preserve the public message and exact source span"
     [
       "unknown.x",
       "unknown_kind",
-      "unknown placeholder kind 'unknown'; expected one of: cred, connector, input, caller, scope, item, state",
+      "unknown placeholder kind 'unknown'; expected one of: cred, secret, connector, input, caller, scope, item, state",
     ],
   ] as const;
   for (const [body, code, message] of cases) {

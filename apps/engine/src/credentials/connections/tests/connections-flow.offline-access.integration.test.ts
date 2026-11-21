@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog, outboundConnections } from "../../../db/schema/index.ts";
-import { logger } from "../../../logging/logger.ts";
+import { logger } from "../../../logging/index.ts";
 import { listSecretVersions } from "../../../runtime-config/service.ts";
 import { secretNames } from "../service.ts";
 import type { ConnectionView } from "../types.ts";

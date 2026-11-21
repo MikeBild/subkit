@@ -1,30 +1,4 @@
 export const settingsHelpEn = {
-  "settings.help.server.hosted_rate_limit.tenant_per_month":
-    "Monthly request allowance for each hosted workspace. A zero value blocks requests.",
-  "settings.help.server.hosted_rate_limit.principal_per_minute":
-    "Request ceiling per authenticated identity and workspace per minute; zero blocks requests.",
-  "settings.help.server.hosted_rate_limit.peer_per_minute":
-    "Ingress ceiling per verified connection peer per minute; zero blocks ingress.",
-  "settings.help.server.hosted_rate_limit.tenant_per_minute":
-    "Request ceiling per hosted workspace per minute; zero blocks requests.",
-  "settings.help.server.hosted_rate_limit.global_per_minute":
-    "Shared ingress ceiling across hosted workspaces per minute; zero blocks ingress.",
-  "settings.help.server.trusted_proxy_hops":
-    "Forwarding hops trusted from the right of X-Forwarded-For. Zero ignores forwarding headers.",
-  "settings.help.server.trusted_proxy_ips":
-    "Exact socket-peer IP addresses of trusted reverse proxies. Every configured hop must match.",
-  "settings.help.database.pool_max":
-    "Maximum application connections per pool and replica. Requires a restart.",
-  "settings.help.database.connect_timeout_ms":
-    "Deadline in milliseconds to acquire or establish a PostgreSQL connection. Requires a restart.",
-  "settings.help.database.query_timeout_ms":
-    "Client-side deadline for PostgreSQL queries in milliseconds. Requires a restart.",
-  "settings.help.database.statement_timeout_ms":
-    "Server-side statement deadline in milliseconds, applied on each session. Requires a restart.",
-  "settings.help.database.idle_timeout_ms":
-    "Milliseconds before an unused pooled connection closes. Requires a restart.",
-  "settings.help.database.keepalive_delay_ms":
-    "Initial TCP keepalive delay for database connections in milliseconds. Requires a restart.",
   "settings.help.auth.hosted.enabled":
     "Enable identity-first hosted browser authentication for explicitly selected providers. Requires a restart.",
   "settings.help.auth.hosted.registration_enabled":
@@ -45,12 +19,6 @@ export const settingsHelpEn = {
     "Retained row ceiling per resource table, including histories and soft-deleted rows. Zero blocks creation.",
   "settings.help.storage.hosted.max_file_bytes":
     "Maximum declared bytes for each new hosted file. Zero blocks file admission.",
-  "settings.help.queue.hosted.execution_concurrency":
-    "Ceiling for simultaneous root runs per hosted workspace. Zero blocks work.",
-  "settings.help.queue.hosted.chat_concurrency":
-    "Ceiling for simultaneous chat steps per hosted workspace, including direct calls. Zero blocks work.",
-  "settings.help.queue.hosted.pending_jobs":
-    "Ceiling for queued run and conversation jobs per workspace. Zero blocks queue admission.",
   "settings.help.auth.enable_signup":
     "Creates a member account for someone signing in by SSO for the first time. Off: only people who already have an account get in.",
   "settings.help.auth.mcp_oauth.access_token_ttl_seconds":
@@ -71,12 +39,14 @@ export const settingsHelpEn = {
     "How people sign in to the cockpit. Keep at least one provider you can use yourself; removing the last one locks everybody out.",
   "settings.help.auth.session.secret":
     "Signs sign-in sessions. Generated on first start if empty; replacing it signs everybody out.",
-  "settings.help.database.url":
-    "Set only through the DATABASE_URL environment variable at startup. To change it, rotate the variable and restart every replica.",
+  "settings.help.deployment.mode":
+    "server for a shared engine, local_workspace when SubKit Desktop runs the engine on this device. Set only through SUBKIT_DEPLOYMENT_MODE at startup.",
+  "settings.help.storage.backend":
+    "Where files are kept: s3 uses the object store below, filesystem keeps them in a folder on this device. Set only through OBJECT_STORAGE_BACKEND at startup.",
+  "settings.help.storage.filesystem.root":
+    "The folder for files when the backend is filesystem. Set only through OBJECT_STORAGE_ROOT at startup; its parent folder must exist.",
   "settings.help.egress.mode":
     "Whether workflows may reach addresses inside your network: strict blocks private and local hosts, permissive allows them. Not set follows the environment.",
-  "settings.help.errors.ring_size":
-    "How many recent errors the engine keeps in memory for diagnosis. Read at startup.",
   "settings.help.llm.api_key":
     "Key for the primary provider. A key stored under the provider below takes the same role; one of the two is enough.",
   "settings.help.llm.context_1m":
@@ -165,10 +135,6 @@ export const settingsHelpEn = {
     "Provider for summarising long conversations. Not set uses the primary provider.",
   "settings.help.llm.web_search":
     "Lets the assistant search the web on Anthropic models. Every search is billed by the provider.",
-  "settings.help.log.format":
-    "How each log line is written. ndjson and json suit a log collector; pretty and dev are for reading in a terminal.",
-  "settings.help.log.level":
-    "How much the engine writes to its log. Debug and trace help while hunting a fault and fill the log quickly.",
   "settings.help.notifications.inbox.retention_days":
     "How long a finished inbox task is kept before it is deleted.",
   "settings.help.notifications.push.enabled":
@@ -177,10 +143,6 @@ export const settingsHelpEn = {
   "settings.help.notifications.push.quietHoursStart":
     "Start of the quiet hours, as HH:MM. Empty: no quiet hours.",
   "settings.help.notifications.push.thresholdSec": "Only runs longer than this notify you.",
-  "settings.help.operations.seed_skills_at_boot":
-    "Refreshes the built-in skills for every workspace at startup.",
-  "settings.help.operations.update_check_enabled":
-    "Checks at startup whether a newer engine release exists.",
   "settings.help.platform.googlechat.audience":
     "Audience Google Chat signs its requests for; they are checked against it. Read at startup: takes effect after a restart.",
   "settings.help.platform.googlechat.client_email":
@@ -195,55 +157,13 @@ export const settingsHelpEn = {
     "Client secret of your Slack app. Read at startup: takes effect after a restart.",
   "settings.help.platform.slack.signing_secret":
     "Verifies that incoming Slack requests really come from Slack. Read at startup: takes effect after a restart.",
-  "settings.help.queue.concurrency":
-    "How many runs one engine instance executes at once. More means faster throughput and more memory; takes effect after a restart.",
-  "settings.help.repl.permissionMode":
-    "How sk confirms before acting: ask asks before every write unless an approval covers exactly this run, auto asks when it matters, plan only plans, yolo lifts the confirmation for destructive actions.",
-  "settings.help.server.port":
-    "The port the engine listens on. A change takes effect only after a restart, and anything pointing at the old port must follow.",
-  "settings.help.server.public_base_url":
-    "The address people and connected apps reach this installation at. Links in mails, sign-in callbacks and approvals are built from it.",
-  "settings.help.server.restart_supervised":
-    "A supervisor (systemd with Restart=on-failure, Docker with a restart policy) starts the engine again after it ends. Only then can SubKit restart itself from here.",
   "settings.help.tokens.currency":
     "Currency of the prices below. The built-in price list is in USD and applies only while this is USD.",
-  "settings.help.tokens.monthly_budget":
-    "Most tokens this installation may use in a calendar month. When it is reached, AI steps stop until the next month. 0 means no limit.",
   "settings.help.tokens.prices":
     "Your own prices per million tokens, per model. An entry replaces that model's built-in price; a model with neither is shown as unpriced.",
-  "settings.help.ui.personality": "How long the assistant's answers in sk are.",
-  "settings.help.ui.statusline.format": "How much the status line under the sk prompt shows.",
-  "settings.help.ui.theme": "Colours of the sk terminal. auto follows the terminal.",
-  "settings.help.ui.title.format": "What the sk terminal window title shows.",
 } as const;
 
 export const settingsHelpDe: Record<keyof typeof settingsHelpEn, string> = {
-  "settings.help.server.hosted_rate_limit.tenant_per_month":
-    "Monatliches Anfragekontingent je Hosted-Arbeitsbereich. Der Wert null sperrt Anfragen.",
-  "settings.help.server.hosted_rate_limit.principal_per_minute":
-    "Anfragegrenze je angemeldeter Identität und Arbeitsbereich pro Minute; null sperrt Anfragen.",
-  "settings.help.server.hosted_rate_limit.peer_per_minute":
-    "Eingangsgrenze je geprüfter Verbindungsgegenstelle pro Minute; null sperrt den Zugang.",
-  "settings.help.server.hosted_rate_limit.tenant_per_minute":
-    "Anfragegrenze je Hosted-Arbeitsbereich pro Minute; null sperrt Anfragen.",
-  "settings.help.server.hosted_rate_limit.global_per_minute":
-    "Gemeinsame Eingangsgrenze aller Hosted-Arbeitsbereiche pro Minute; null sperrt den Zugang.",
-  "settings.help.server.trusted_proxy_hops":
-    "Vertrauenswürdige Schritte von rechts in X-Forwarded-For. Null ignoriert Weiterleitungsheader.",
-  "settings.help.server.trusted_proxy_ips":
-    "Exakte IP-Adressen vertrauenswürdiger Reverse-Proxys. Jeder konfigurierte Schritt muss passen.",
-  "settings.help.database.pool_max":
-    "Maximale Anwendungsverbindungen je Pool und Replikat. Erfordert einen Neustart.",
-  "settings.help.database.connect_timeout_ms":
-    "Zeitlimit in Millisekunden zum Erhalten oder Aufbauen einer PostgreSQL-Verbindung. Erfordert einen Neustart.",
-  "settings.help.database.query_timeout_ms":
-    "Clientseitiges Zeitlimit für PostgreSQL-Abfragen in Millisekunden. Erfordert einen Neustart.",
-  "settings.help.database.statement_timeout_ms":
-    "Serverseitiges Zeitlimit für Anweisungen in Millisekunden, gesetzt je Sitzung. Erfordert einen Neustart.",
-  "settings.help.database.idle_timeout_ms":
-    "Millisekunden bis zum Schließen einer ungenutzten Pool-Verbindung. Erfordert einen Neustart.",
-  "settings.help.database.keepalive_delay_ms":
-    "Anfängliche TCP-Keepalive-Wartezeit für Datenbankverbindungen in Millisekunden. Erfordert einen Neustart.",
   "settings.help.auth.hosted.enabled":
     "Aktiviert die identitätsbasierte Hosted-Browseranmeldung für ausdrücklich ausgewählte Anbieter. Erfordert einen Neustart.",
   "settings.help.auth.hosted.registration_enabled":
@@ -264,12 +184,6 @@ export const settingsHelpDe: Record<keyof typeof settingsHelpEn, string> = {
     "Datensatzgrenze je Ressourcentabelle einschließlich Historien und vorgemerkter Löschungen. Null sperrt neue Datensätze.",
   "settings.help.storage.hosted.max_file_bytes":
     "Maximale angegebene Bytezahl je neuer Hosted-Datei. Null sperrt die Dateiübernahme.",
-  "settings.help.queue.hosted.execution_concurrency":
-    "Grenze gleichzeitiger Hauptausführungen je Hosted-Arbeitsbereich. Null sperrt Arbeit.",
-  "settings.help.queue.hosted.chat_concurrency":
-    "Grenze gleichzeitiger Chatschritte je Hosted-Arbeitsbereich einschließlich direkter Aufrufe. Null sperrt Arbeit.",
-  "settings.help.queue.hosted.pending_jobs":
-    "Grenze eingereihter Ausführungs- und Gesprächsaufträge je Arbeitsbereich. Null sperrt die Aufnahme in die Warteschlange.",
   "settings.help.auth.enable_signup":
     "Legt beim ersten SSO-Login ein Mitgliedskonto an. Aus: nur wer schon ein Konto hat, kommt hinein.",
   "settings.help.auth.mcp_oauth.access_token_ttl_seconds":
@@ -290,12 +204,14 @@ export const settingsHelpDe: Record<keyof typeof settingsHelpEn, string> = {
     "Wie sich Menschen im Cockpit anmelden. Behalte mindestens einen Anbieter, den du selbst nutzen kannst; ohne ihn ist niemand mehr drin.",
   "settings.help.auth.session.secret":
     "Signiert Anmelde-Sitzungen. Wird beim ersten Start erzeugt, wenn leer; ein neuer Wert meldet alle ab.",
-  "settings.help.database.url":
-    "Wird nur beim Start über die Umgebungsvariable DATABASE_URL gesetzt. Zum Ändern die Variable tauschen und jede Instanz neu starten.",
+  "settings.help.deployment.mode":
+    "„server“ für eine gemeinsame Engine, „local_workspace“, wenn SubKit Desktop die Engine auf diesem Gerät ausführt. Wird nur beim Start über SUBKIT_DEPLOYMENT_MODE gesetzt.",
+  "settings.help.storage.backend":
+    "Wo Dateien liegen: „s3“ nutzt den Objektspeicher unten, „filesystem“ einen Ordner auf diesem Gerät. Wird nur beim Start über OBJECT_STORAGE_BACKEND gesetzt.",
+  "settings.help.storage.filesystem.root":
+    "Der Ordner für Dateien, wenn das Backend „filesystem“ ist. Wird nur beim Start über OBJECT_STORAGE_ROOT gesetzt; der übergeordnete Ordner muss existieren.",
   "settings.help.egress.mode":
     "Ob Workflows Adressen im eigenen Netz erreichen dürfen: „strict“ sperrt private und lokale Hosts, „permissive“ erlaubt sie. Nicht gesetzt: je nach Umgebung.",
-  "settings.help.errors.ring_size":
-    "Wie viele jüngste Fehler die Engine zur Diagnose im Speicher hält. Wird beim Start gelesen.",
   "settings.help.llm.api_key":
     "Schlüssel für den Hauptanbieter. Ein weiter unten beim Anbieter hinterlegter Schlüssel erfüllt denselben Zweck; einer von beiden genügt.",
   "settings.help.llm.context_1m":
@@ -385,10 +301,6 @@ export const settingsHelpDe: Record<keyof typeof settingsHelpEn, string> = {
     "Anbieter für Zusammenfassungen langer Gespräche. Nicht gesetzt: der Hauptanbieter.",
   "settings.help.llm.web_search":
     "Erlaubt dem Assistenten bei Anthropic-Modellen die Websuche. Jede Suche berechnet der Anbieter.",
-  "settings.help.log.format":
-    "Wie jede Protokollzeile geschrieben wird. „ndjson“ und „json“ passen zu einem Log-Sammler, „pretty“ und „dev“ zum Lesen im Terminal.",
-  "settings.help.log.level":
-    "Wie viel die Engine protokolliert. „debug“ und „trace“ helfen bei der Fehlersuche und füllen das Protokoll schnell.",
   "settings.help.notifications.inbox.retention_days":
     "Wie lange eine erledigte Postfach-Aufgabe aufbewahrt wird, bevor sie gelöscht wird.",
   "settings.help.notifications.push.enabled":
@@ -397,10 +309,6 @@ export const settingsHelpDe: Record<keyof typeof settingsHelpEn, string> = {
   "settings.help.notifications.push.quietHoursStart":
     "Beginn der Ruhezeit, als HH:MM. Leer: keine Ruhezeit.",
   "settings.help.notifications.push.thresholdSec": "Nur Runs, die länger dauern, melden sich.",
-  "settings.help.operations.seed_skills_at_boot":
-    "Frischt beim Start die mitgelieferten Skills für jeden Arbeitsbereich auf.",
-  "settings.help.operations.update_check_enabled":
-    "Prüft beim Start, ob es eine neuere Engine-Version gibt.",
   "settings.help.platform.googlechat.audience":
     "Empfänger, für den Google Chat seine Anfragen signiert; sie werden dagegen geprüft. Wird beim Start gelesen: wirkt nach einem Neustart.",
   "settings.help.platform.googlechat.client_email":
@@ -415,24 +323,8 @@ export const settingsHelpDe: Record<keyof typeof settingsHelpEn, string> = {
     "Client-Secret deiner Slack-App. Wird beim Start gelesen: wirkt nach einem Neustart.",
   "settings.help.platform.slack.signing_secret":
     "Prüft, dass eingehende Slack-Anfragen wirklich von Slack stammen. Wird beim Start gelesen: wirkt nach einem Neustart.",
-  "settings.help.queue.concurrency":
-    "Wie viele Runs eine Engine-Instanz gleichzeitig ausführt. Mehr heißt mehr Durchsatz und mehr Speicher; wirkt nach einem Neustart.",
-  "settings.help.repl.permissionMode":
-    "Wie sk vor einer Aktion nachfragt: „ask“ vor jedem Schreiben, außer es gibt eine Freigabe, die genau diesen Run deckt, „auto“ wenn es darauf ankommt, „plan“ plant nur, „yolo“ hebt die Bestätigung für zerstörende Aktionen auf.",
-  "settings.help.server.port":
-    "Der Port, auf dem die Engine lauscht. Wirkt erst nach einem Neustart; alles, was auf den alten Port zeigt, muss mitziehen.",
-  "settings.help.server.public_base_url":
-    "Die Adresse, unter der Menschen und verbundene Apps diese Installation erreichen. Links in Mails, Anmelde-Rückrufe und Freigaben werden daraus gebaut.",
-  "settings.help.server.restart_supervised":
-    "Ein Aufseher (systemd mit Restart=on-failure, Docker mit restart-Policy) startet die Engine nach einem Ende neu. Nur dann kann SubKit sich von hier aus selbst neu starten.",
   "settings.help.tokens.currency":
     "Währung der Preise darunter. Die eingebaute Preisliste ist in USD und gilt nur, solange hier USD steht.",
-  "settings.help.tokens.monthly_budget":
-    "Höchstens so viele Tokens darf die Installation je Kalendermonat verbrauchen. Ist die Grenze erreicht, halten KI-Schritte bis zum nächsten Monat an. 0 heißt: keine Grenze.",
   "settings.help.tokens.prices":
     "Eigene Preise je Million Tokens und Modell. Ein Eintrag ersetzt den eingebauten Preis; ein Modell ohne beides erscheint als „ohne Preis“.",
-  "settings.help.ui.personality": "Wie ausführlich der Assistent in sk antwortet.",
-  "settings.help.ui.statusline.format": "Wie viel die Statuszeile unter der sk-Eingabe zeigt.",
-  "settings.help.ui.theme": "Farben des sk-Terminals. „auto“ folgt dem Terminal.",
-  "settings.help.ui.title.format": "Was der Fenstertitel des sk-Terminals zeigt.",
 };

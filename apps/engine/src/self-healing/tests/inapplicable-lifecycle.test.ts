@@ -4,7 +4,7 @@ import { auditLog } from "../../db/schema/audit.ts";
 import { events, patchCandidates, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
 import { getMetrics, resetMetricsRegistryForTests } from "../../observability/metrics.ts";
-import { getLatestShape } from "../../schema-versions/service.ts";
+import { getLatestShape } from "../../schema-versions/index.ts";
 import { approvePatchCandidate, PatchDecisionError } from "../candidate-decision.ts";
 import { analyzeStepFailure } from "../drift-detector.ts";
 import { sweepUndecidableCandidates } from "../open-decisions.ts";

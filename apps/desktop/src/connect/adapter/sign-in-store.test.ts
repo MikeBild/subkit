@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { dictionary } from "../../shared/i18n.ts";
-import type { CheckResult, ConnectBridge, ConnectState } from "../../shared/ipc.ts";
+import {
+  type CheckResult,
+  type ConnectBridge,
+  type ConnectState,
+  LOCAL_UNAVAILABLE,
+} from "../../shared/ipc.ts";
 import { NO_ONBOARDING } from "../../shared/onboarding.ts";
 import { createSignInStore } from "./sign-in-store.ts";
 
@@ -26,6 +31,12 @@ function main(patch: Partial<ConnectState> = {}): ConnectState {
     signedIn: null,
     onboarding: NO_ONBOARDING,
     update: { phase: "disabled" },
+    permissions: {
+      supported: true,
+      permissions: { accessibility: false, screen: false, restartPending: false },
+      lost: [],
+    },
+    local: LOCAL_UNAVAILABLE,
     ...patch,
   };
 }
@@ -69,6 +80,29 @@ function stubBridge(
     answerDiagnostics: record("answerDiagnostics") as ConnectBridge["answerDiagnostics"],
     updateAction: record("updateAction") as ConnectBridge["updateAction"],
     reportProblem: record("reportProblem") as ConnectBridge["reportProblem"],
+    local: {
+      pickFolder: () => Promise.resolve({ status: "cancelled" }),
+      listAllowances: () => Promise.resolve({ personal_enabled: false, items: [] }),
+      removeAllowance: () => Promise.resolve({ personal_enabled: false, items: [] }),
+      setAccess: () => Promise.resolve({ personal_enabled: false, items: [] }),
+      setPersonalEnabled: (enabled) => Promise.resolve({ personal_enabled: enabled, items: [] }),
+      addSite: () => Promise.resolve({ personal_enabled: false, items: [] }),
+      addApp: () => Promise.resolve({ status: "cancelled" }),
+    },
+    checkPermissions: record("checkPermissions") as ConnectBridge["checkPermissions"],
+    openPermissionSettings: record(
+      "openPermissionSettings",
+    ) as ConnectBridge["openPermissionSettings"],
+    restartApp: record("restartApp") as ConnectBridge["restartApp"],
+    localPickDataFolder: record("localPickDataFolder") as ConnectBridge["localPickDataFolder"],
+    localBegin: record("localBegin") as ConnectBridge["localBegin"],
+    localFinish: record("localFinish") as ConnectBridge["localFinish"],
+    localCancel: record("localCancel") as ConnectBridge["localCancel"],
+    localOpen: record("localOpen") as ConnectBridge["localOpen"],
+    localBackup: record("localBackup") as ConnectBridge["localBackup"],
+    localRestore: record("localRestore") as ConnectBridge["localRestore"],
+    localMove: record("localMove") as ConnectBridge["localMove"],
+    localRemoveAll: record("localRemoveAll") as ConnectBridge["localRemoveAll"],
     checkInvite: (link) => {
       calls.push(["checkInvite", link]);
       return Promise.resolve({ kind: "link" });
@@ -157,6 +191,9 @@ describe("sign-in store over the preload bridge", () => {
     store.dispatch({ type: "ChangeSettings", patch: { locale: "de" } });
     store.dispatch({ type: "RunUpdateAction" });
     store.dispatch({ type: "ReportProblem" });
+    store.dispatch({ type: "CheckPermissions" });
+    store.dispatch({ type: "OpenPermissionSettings", key: "accessibility" });
+    store.dispatch({ type: "RestartApp" });
     expect(stub.calls).toEqual([
       ["openProfile", "p1"],
       ["cancelLogin"],
@@ -165,6 +202,9 @@ describe("sign-in store over the preload bridge", () => {
       ["updateSettings", { locale: "de" }],
       ["updateAction"],
       ["reportProblem"],
+      ["checkPermissions"],
+      ["openPermissionSettings", "accessibility"],
+      ["restartApp"],
     ]);
   });
 

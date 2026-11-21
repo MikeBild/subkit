@@ -1,3 +1,4 @@
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 export interface Captured {
   stdout: string;
   stderr: string;
@@ -78,16 +79,16 @@ export function withEnv(
   apiKey: string | undefined,
   fn: () => Promise<void>,
 ): Promise<void> {
-  const prevUrl = process.env.SUBKIT_ENGINE_URL;
-  const prevKey = process.env.SUBKIT_API_KEY;
-  process.env.SUBKIT_ENGINE_URL = url;
-  if (apiKey !== undefined) process.env.SUBKIT_API_KEY = apiKey;
-  else delete process.env.SUBKIT_API_KEY;
+  const prevUrl = testEnv.SUBKIT_ENGINE_URL;
+  const prevKey = testEnv.SUBKIT_API_KEY;
+  testEnv.SUBKIT_ENGINE_URL = url;
+  if (apiKey !== undefined) testEnv.SUBKIT_API_KEY = apiKey;
+  else delete testEnv.SUBKIT_API_KEY;
   return fn().finally(() => {
-    if (prevUrl === undefined) delete process.env.SUBKIT_ENGINE_URL;
-    else process.env.SUBKIT_ENGINE_URL = prevUrl;
-    if (prevKey === undefined) delete process.env.SUBKIT_API_KEY;
-    else process.env.SUBKIT_API_KEY = prevKey;
+    if (prevUrl === undefined) delete testEnv.SUBKIT_ENGINE_URL;
+    else testEnv.SUBKIT_ENGINE_URL = prevUrl;
+    if (prevKey === undefined) delete testEnv.SUBKIT_API_KEY;
+    else testEnv.SUBKIT_API_KEY = prevKey;
   });
 }
 

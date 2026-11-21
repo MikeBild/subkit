@@ -13,7 +13,7 @@ import {
   recordCredentialProviderIdentity,
 } from "../../credentials/index.ts";
 import { upsertCredential } from "../../credentials/service.ts";
-import { credentials, mcpOauthStates } from "../../db/schema/index.ts";
+import { mcpOauthStates, vaultItems } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../test-helpers/mock-http.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
@@ -255,8 +255,8 @@ test("real MCP transport binds the selected token generation before and after SD
   expect(observed.some((entry) => entry.environment === "dev")).toBe(false);
   const stored = await db.db
     .select()
-    .from(credentials)
-    .where(and(eq(credentials.tenant_id, tenantId), eq(credentials.connector_id, connectorId)));
+    .from(vaultItems)
+    .where(and(eq(vaultItems.tenant_id, tenantId), eq(vaultItems.connector_id, connectorId)));
   expect(stored.find((entry) => entry.environment === "dev")?.credential_generation).toBe(1);
   expect(stored.find((entry) => entry.environment === "prod")?.credential_generation).toBe(2);
   expect(stored.find((entry) => entry.environment === "prod")?.verified_identity).toEqual({
@@ -305,13 +305,13 @@ test("the initial SDK authorization code exchange retains the token endpoint sub
   expect(oauth.lastGrantType()).toBe("authorization_code");
   const [stored] = await db.db
     .select()
-    .from(credentials)
+    .from(vaultItems)
     .where(
       and(
-        eq(credentials.tenant_id, tenantId),
-        eq(credentials.connector_id, connector.id),
-        eq(credentials.environment, "prod"),
-        eq(credentials.mode, "oauth2"),
+        eq(vaultItems.tenant_id, tenantId),
+        eq(vaultItems.connector_id, connector.id),
+        eq(vaultItems.environment, "prod"),
+        eq(vaultItems.mode, "oauth2"),
       ),
     );
   expect(stored?.credential_generation).toBe(1);
@@ -385,13 +385,13 @@ test("M2M transports bind both client-secret and private-key tokens to their sel
       const read = () =>
         db.db
           .select()
-          .from(credentials)
+          .from(vaultItems)
           .where(
             and(
-              eq(credentials.tenant_id, tenantId),
-              eq(credentials.connector_id, connector.id),
-              eq(credentials.environment, "prod"),
-              eq(credentials.mode, mode),
+              eq(vaultItems.tenant_id, tenantId),
+              eq(vaultItems.connector_id, connector.id),
+              eq(vaultItems.environment, "prod"),
+              eq(vaultItems.mode, mode),
             ),
           );
       const [credential] = await read();
@@ -495,13 +495,13 @@ for (const replacement of ["rotate", "recreate"] as const)
           const body = await response.json();
           if (replacement === "recreate")
             await db.db
-              .delete(credentials)
+              .delete(vaultItems)
               .where(
                 and(
-                  eq(credentials.tenant_id, tenantId),
-                  eq(credentials.connector_id, connector.id),
-                  eq(credentials.environment, "prod"),
-                  eq(credentials.mode, "oauth2"),
+                  eq(vaultItems.tenant_id, tenantId),
+                  eq(vaultItems.connector_id, connector.id),
+                  eq(vaultItems.environment, "prod"),
+                  eq(vaultItems.mode, "oauth2"),
                 ),
               );
           await store("replacement-during-refresh");
@@ -524,12 +524,12 @@ for (const replacement of ["rotate", "recreate"] as const)
     expect(result).not.toBe("AUTHORIZED");
     const [stored] = await db.db
       .select()
-      .from(credentials)
+      .from(vaultItems)
       .where(
         and(
-          eq(credentials.tenant_id, tenantId),
-          eq(credentials.connector_id, connector.id),
-          eq(credentials.environment, "prod"),
+          eq(vaultItems.tenant_id, tenantId),
+          eq(vaultItems.connector_id, connector.id),
+          eq(vaultItems.environment, "prod"),
         ),
       );
     expect(stored?.credential_generation).toBe(replacement === "recreate" ? 1 : 2);
@@ -579,12 +579,12 @@ test("SDK refresh without a provider subject rotates with unknown identity", asy
     expect(result).toBe("AUTHORIZED");
     const [stored] = await db.db
       .select()
-      .from(credentials)
+      .from(vaultItems)
       .where(
         and(
-          eq(credentials.tenant_id, tenantId),
-          eq(credentials.connector_id, connector.id),
-          eq(credentials.environment, "prod"),
+          eq(vaultItems.tenant_id, tenantId),
+          eq(vaultItems.connector_id, connector.id),
+          eq(vaultItems.environment, "prod"),
         ),
       );
     expect(stored?.credential_generation).toBe(2);

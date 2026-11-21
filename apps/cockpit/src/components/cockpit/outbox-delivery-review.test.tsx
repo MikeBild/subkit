@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { OutboxDeliveryReview } from "@/components/cockpit/grant-workflow-authority";
+import { OutboxDeliveryReview } from "@/features/grants/ui/grant-workflow-authority";
 import { type Locale, translate, translatePlural } from "@/lib/i18n";
 import { I18nContext, type I18nValue } from "@/lib/i18n-context";
 

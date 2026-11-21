@@ -8,6 +8,7 @@ import { upsertCredential } from "../../credentials/service.ts";
 import { closeDb } from "../../db/client.ts";
 import { auditLog, connectors } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
 import {
   __resetMcpClientPoolForTests,
@@ -46,7 +47,7 @@ function makeFakeM2mClient(slug: string): McpClientLike {
 
 let ctx: TestDb;
 let tenantId: string;
-const _origDatabaseUrl = process.env.DATABASE_URL;
+const _origDatabaseUrl = testEnv.DATABASE_URL;
 
 beforeAll(async () => {
   __setMcpPoolFactoriesForTests({
@@ -56,7 +57,7 @@ beforeAll(async () => {
   ctx = await createTestDb("mcp-m2m-oauth");
 
   await closeDb();
-  process.env.DATABASE_URL = ctx.url;
+  testEnv.DATABASE_URL = ctx.url;
 
   const cfgDir = mkdtempSync(join(tmpdir(), "sk-cfg-m2m-oauth-"));
   _resetConfigForTests();
@@ -79,9 +80,9 @@ afterAll(async () => {
 
   await closeDb();
   if (_origDatabaseUrl === undefined) {
-    delete process.env.DATABASE_URL;
+    delete testEnv.DATABASE_URL;
   } else {
-    process.env.DATABASE_URL = _origDatabaseUrl;
+    testEnv.DATABASE_URL = _origDatabaseUrl;
   }
 
   await ctx.cleanup();

@@ -135,7 +135,7 @@ export {
   taskServiceDeps,
   tenantAiAccessConfigured,
 } from "./service/shared.ts";
-export type { ListTasksParams, ResumeTaskResult, UpdateTaskResult } from "./service.ts";
+export type { ListTasksParams, ResumeTaskResult, UpdateTaskResult } from "./service/tasks.ts";
 export {
   countTasks,
   createTask,
@@ -147,7 +147,7 @@ export {
   pauseTasksOfOwnerLocked,
   resumeTask,
   updateTask,
-} from "./service.ts";
+} from "./service/tasks.ts";
 export * from "./trace.ts";
 export * from "./types.ts";
 export * from "./usage.ts";

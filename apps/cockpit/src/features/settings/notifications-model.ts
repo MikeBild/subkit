@@ -1,11 +1,6 @@
+import { DEFAULT_QUIET_HOURS, DEFAULT_WORKING_DAYS } from "@shared/quiet-hours.ts";
 import type { SetupUpdate } from "@/api/setup";
-import {
-  DEFAULT_WORKING_DAYS,
-  isClock,
-  questionError,
-  questionUpdate,
-  type SetupAnswers,
-} from "@/features/setup";
+import { isClock, questionError, questionUpdate, type SetupAnswers } from "@/features/setup";
 import type { TranslationKey } from "@/lib/i18n";
 
 export interface NotificationView {
@@ -31,14 +26,12 @@ export interface NotificationChange {
   timezone?: string;
 }
 
-export const QUIET_DEFAULT = { from: "18:00", until: "08:00" } as const;
-
 export function notificationView(answers: SetupAnswers): NotificationView {
   const quiet = answers.notify === "working_hours";
   return {
     quiet,
-    quietFrom: quiet ? answers.to : QUIET_DEFAULT.from,
-    quietUntil: quiet ? answers.from : QUIET_DEFAULT.until,
+    quietFrom: quiet ? answers.to : DEFAULT_QUIET_HOURS.start,
+    quietUntil: quiet ? answers.from : DEFAULT_QUIET_HOURS.end,
     days: quiet ? answers.days : [...DEFAULT_WORKING_DAYS],
     digest: answers.notify === "daily_digest",
     digestAt: answers.at,

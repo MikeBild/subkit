@@ -118,7 +118,6 @@ function gateDefinition(connectorId: string) {
         path: "/v1/responses",
         side_effects: "write",
         timeout_ms: 30000,
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
         body: "${scope.payload.data}",
         boundary: { variables: {}, max_body_bytes: 400000, max_calls: 1 },
       },

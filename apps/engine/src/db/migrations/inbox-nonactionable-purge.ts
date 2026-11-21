@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import type { Db } from "../client.ts";
 import { cliNotificationInbox, dataMigrations } from "../schema/index.ts";
 

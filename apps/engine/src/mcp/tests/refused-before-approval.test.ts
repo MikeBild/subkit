@@ -2,18 +2,19 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { eq } from "drizzle-orm";
 import { toolApprovals } from "../../db/schema/index.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 let suite: McpTestSuite;
 
 beforeAll(async () => {
-  process.env.SK_MCP_MODE = "authoring";
+  testEnv.SK_MCP_MODE = "authoring";
   suite = await startMcpTestSuite("refused-before-approval");
 });
 
 afterAll(async () => {
   await suite?.cleanup();
-  delete process.env.SK_MCP_MODE;
+  delete testEnv.SK_MCP_MODE;
 });
 
 function body(result: Awaited<ReturnType<Client["callTool"]>>) {

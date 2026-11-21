@@ -95,11 +95,11 @@ Das ist meist die API des KI-Modells und, falls die App Konten löscht, die Admi
 
 ```bash
 sk connectors create --file connector-model.json --skip-checks
-sk credentials set <model-connector-id> --mode bearer --token "$MODEL_API_KEY"
-sk credentials set <idp-admin-connector-id> --mode header --header "Authorization=Bearer $IDP_ADMIN_KEY,apikey=$IDP_ADMIN_KEY"
+printf '%s' "$MODEL_API_KEY" | sk vault attach <model-connector-id> --mode bearer
+printf 'Authorization=Bearer %s\napikey=%s\n' "$IDP_ADMIN_KEY" "$IDP_ADMIN_KEY" | sk vault attach <idp-admin-connector-id> --mode header
 ```
 
-- `--skip-checks` ist nötig, weil die Zugangsdaten beim Anlegen des Connectors noch fehlen. `credentials set` prüft sie anschließend.
+- `--skip-checks` ist nötig, weil die Zugangsdaten beim Anlegen des Connectors noch fehlen. `sk vault attach` prüft sie anschließend.
 - `bearer` sendet `Authorization: Bearer <token>`. `header` sendet die genannten Header (kommagetrennt `Name=Value`).
 - Zugangsdaten stammen aus deiner Shell oder deinem Secret-Speicher, nie aus einer Datei, der App oder diesem Repository.
 - Ersetzt du im Cockpit Zugangsdaten mit mehreren Headern, füll alle Header-Felder aus. Lässt du alle leer, bleiben die alten Werte.
@@ -191,9 +191,9 @@ Zugangsdaten in Connectors können ablaufen, und Admin-Schlüssel werden regelm�
 Halte Name, Connector, Verantwortliche und Ablaufdatum aller Zugangsdaten im Repository der App fest, nie den Wert.
 Erneuere sie vor Ablauf.
 
-1. Hinterlege den neuen Wert mit `sk credentials set`.
+1. Hinterlege den neuen Wert mit `sk vault attach`.
 2. Prüfe ihn mit `sk connectors test <connector-id>`.
-3. Entferne den alten mit `sk credentials delete <credential-id>`.
+3. Entferne den alten mit `sk vault rm <vault-item-id>`.
 
 Das Cockpit und `GET /v1/health` zeigen fehlschlagende Connectors.
 

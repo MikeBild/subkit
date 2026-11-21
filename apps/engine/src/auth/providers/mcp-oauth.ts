@@ -11,7 +11,7 @@ import {
 } from "../../db/schema/index.ts";
 import { sha256Hex } from "../../identity/api-key.ts";
 import { withContext } from "../../logging/context.ts";
-import { log, logger } from "../../logging/logger.ts";
+import { log, logger } from "../../logging/index.ts";
 import { recordAuthFailure } from "../failed-auth-tracker.ts";
 import { clientLivenessRefusal, userLivenessRefusal } from "../liveness.ts";
 import {

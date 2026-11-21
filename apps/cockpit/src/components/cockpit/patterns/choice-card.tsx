@@ -1,5 +1,5 @@
+import { cn } from "@ui/lib/utils";
 import { type ReactNode, useId } from "react";
-import { cn } from "@/lib/utils";
 import { IconTile } from "./icon-tile";
 
 export interface ChoiceCardItem {

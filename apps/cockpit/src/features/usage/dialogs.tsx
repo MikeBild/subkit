@@ -5,22 +5,14 @@ import { apiCall } from "@/api/call";
 import { saveSetting } from "@/api/settings";
 import { ChoiceField, SelectField, TextField } from "@/components/cockpit/form-field";
 import { FormDialog } from "@/components/cockpit/patterns";
-import { useI18n } from "@/lib/i18n-context";
+import { parseAmount } from "@/features/settings/model";
 import {
-  BUDGET_SETTING,
   llmStatsQuery,
   type StatsWindow,
   type WindowBounds,
-} from "@/lib/operations-figures";
-import { parseAmount, parseTokens } from "@/lib/settings-units";
-import {
-  type BudgetForecast,
-  type BudgetSummary,
-  budgetPercent,
-  budgetSummary,
-  unpricedModels,
-  usageCsv,
-} from "@/lib/usage-model";
+} from "@/features/usage/model/operations-figures";
+import { unpricedModels, usageCsv } from "@/features/usage/model/usage-model";
+import { useI18n } from "@/lib/i18n-context";
 import { ORIGIN_LABEL, WINDOW_OPTION } from "./format";
 
 export const PRICE_SETTING = "tokens.prices";
@@ -79,111 +71,6 @@ async function settle<T>(read: () => Promise<T | null>): Promise<T | null> {
     await new Promise((resolve) => setTimeout(resolve, SETTLE_DELAY_MS));
   }
   return null;
-}
-
-export function ForecastText({ forecast }: { forecast: BudgetForecast | null }) {
-  const { t } = useI18n();
-  if (!forecast) return null;
-  if (forecast.kind === "runsOut") return <>{t("usage.forecast.runsOut", { day: forecast.day })}</>;
-  if (forecast.kind === "tight")
-    return <>{t("usage.forecast.tight", { percent: forecast.percent })}</>;
-  if (forecast.kind === "exhausted") return <>{t("usage.forecast.exhausted")}</>;
-  if (forecast.kind === "insufficient") return <>{t("usage.forecast.insufficient")}</>;
-  if (forecast.kind === "lasts") return <>{t("usage.forecast.lasts")}</>;
-  return null;
-}
-
-export function BudgetDialog({
-  open,
-  onOpenChange,
-  budget,
-  forecast,
-  canWrite,
-  canWriteGlobal,
-  tenantId,
-}: {
-  open: boolean;
-  onOpenChange(open: boolean): void;
-  tenantId: string;
-  budget: BudgetSummary;
-  forecast: BudgetForecast | null;
-  canWrite: boolean;
-  canWriteGlobal: boolean;
-}) {
-  const { t, locale } = useI18n();
-  const client = useQueryClient();
-  const tag = locale === "de" ? "de-DE" : "en-US";
-  const tokens = new Intl.NumberFormat(tag);
-  const [draft, setDraft] = useState(() =>
-    budget.budgetTokens ? String(budget.budgetTokens) : "",
-  );
-  const value = parseTokens(draft);
-  const { scope, setScope, target } = useSettingScope(tenantId);
-  const save = useMutation({
-    mutationFn: () => saveSetting(BUDGET_SETTING, target, value ?? 0),
-    onSuccess: async () => {
-      const expected = value && value > 0 ? value : null;
-      const applied = await settle(async () => {
-        const status = await apiCall("get", "/v1/status", {});
-        return budgetSummary(status).budgetTokens === expected ? status : null;
-      });
-      if (applied) client.setQueryData(["usage-status"], applied);
-      await client.invalidateQueries({ queryKey: ["usage-status"] });
-      toast.success(t("usage.budget.saved"));
-      onOpenChange(false);
-    },
-  });
-  const percent = budgetPercent(budget);
-  return (
-    <FormDialog
-      open={open}
-      onOpenChange={onOpenChange}
-      title={t("usage.budget.title")}
-      testId="usage-budget-dialog"
-      submit={
-        canWrite
-          ? {
-              label: t("common.save"),
-              pending: save.isPending,
-              disabled: value === null,
-              testId: "usage-budget-save",
-            }
-          : undefined
-      }
-      onSubmit={canWrite ? () => save.mutate() : undefined}
-      error={save.isError ? t("usage.budget.saveFailed") : null}
-      failure={save.error}
-    >
-      <p className="text-sm" data-testid="usage-budget-state">
-        {budget.budgetTokens !== null && budget.usedTokens !== null
-          ? t("usage.budget.used", {
-              used: tokens.format(budget.usedTokens),
-              budget: tokens.format(budget.budgetTokens),
-              percent: percent ?? 0,
-            })
-          : t("usage.budget.none")}{" "}
-        <ForecastText forecast={forecast} />
-      </p>
-      {canWrite ? (
-        <>
-          <TextField
-            id="usage-budget-tokens"
-            label={t("usage.budget.field")}
-            value={draft}
-            onChange={setDraft}
-            placeholder={t("usage.budget.placeholder")}
-            help={t("usage.budget.help")}
-            invalid={draft !== "" && value === null}
-          />
-          {canWriteGlobal ? (
-            <ScopeField scope={scope} onScope={setScope} testId="usage-budget-scope" />
-          ) : null}
-        </>
-      ) : (
-        <p className="text-sm text-muted-foreground">{t("usage.askAdmin")}</p>
-      )}
-    </FormDialog>
-  );
 }
 
 export function PriceDialog({

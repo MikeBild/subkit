@@ -1,5 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { testEnv } from "../test-helpers/determinism/env.ts";
 
 const IMAGE =
   "chrislusf/seaweedfs@sha256:bb05d66d2963b1cc48073190781c3dd29e2c4c88a2ae2986bf58e38c86d89c6e";
@@ -24,7 +25,7 @@ export interface ObjectStoreFixture {
 }
 
 export async function dockerAvailable(): Promise<boolean> {
-  if (process.env.SKIP_DOCKER === "1") return false;
+  if (testEnv.SKIP_DOCKER === "1") return false;
   const { spawnSync } = await import("node:child_process");
   try {
     return spawnSync("docker", ["info"], { stdio: "ignore" }).status === 0;
@@ -35,7 +36,7 @@ export async function dockerAvailable(): Promise<boolean> {
 
 export async function startObjectStore(namePrefix: string): Promise<ObjectStoreFixture> {
   const name = `${namePrefix}-${Math.random().toString(36).slice(2, 8)}`; // allow-random: unique container name per run
-  const storageRoot = process.env.SUBKIT_TEST_OBJECT_STORE_ROOT;
+  const storageRoot = testEnv.SUBKIT_TEST_OBJECT_STORE_ROOT;
   let dataDirectory: string | undefined;
   if (storageRoot) {
     const root = resolve(storageRoot);

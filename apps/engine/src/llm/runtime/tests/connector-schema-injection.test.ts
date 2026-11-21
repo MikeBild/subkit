@@ -4,11 +4,12 @@ import { runDiscoveryCached } from "../../../connectors/discovery/service.ts";
 import type { DiscoveryResult } from "../../../connectors/discovery/types.ts";
 import { connectors } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
+import { testEnv } from "../../../test-helpers/determinism/env.ts";
 import { seedTenant } from "../../../test-helpers/seed.ts";
 import type { AuthoringPromptHint } from "../../types.ts";
 import { assembleEnhancedPrompt } from "../context-assembler.ts";
 
-const skip = process.env.REQUIRES_PG === "0";
+const skip = testEnv.REQUIRES_PG === "0";
 const ROOMY_MODEL = "claude-sonnet-4-5";
 
 let ctx: TestDb;

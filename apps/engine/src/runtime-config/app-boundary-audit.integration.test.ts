@@ -6,6 +6,7 @@ import { and, eq, like } from "drizzle-orm";
 import { _resetConfigForTests, getConfig, loadConfig } from "../config/loader.ts";
 import { auditLog } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { testEnv } from "../test-helpers/determinism/env.ts";
 import { seedTenant } from "../test-helpers/seed.ts";
 import { RuntimeConfigCoordinator } from "./coordinator.ts";
 import {
@@ -33,7 +34,7 @@ const bearer = {
 const apiKey = { protocol: "api_key", id: "api-key", label: "SubKit API key" };
 
 beforeAll(async () => {
-  process.env.MASTER_KEY = "55".repeat(32);
+  testEnv.MASTER_KEY = "55".repeat(32);
   tdb = await createTestDb("runtime-config-app-boundary");
   configDir = mkdtempSync(join(tmpdir(), "sk-app-boundary-"));
   _resetConfigForTests();

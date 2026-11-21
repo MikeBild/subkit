@@ -1,5 +1,5 @@
 import type { Executor } from "../../db/client.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { inspectAutomationReadiness } from "../../workflows/automation-readiness.ts";
 import type { WorkflowView } from "../../workflows/view.ts";
 

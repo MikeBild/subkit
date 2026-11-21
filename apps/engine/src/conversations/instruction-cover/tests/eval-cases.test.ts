@@ -5,13 +5,13 @@ import { type CoverEvalInput, gradeEvalCase } from "../eval-cases.ts";
 
 const fixture = JSON.parse(
   readFileSync(
-    join(import.meta.dir, "../../../../eval/fixtures/convo-auto-mode-asks-only-when-needed.json"),
+    join(import.meta.dir, "../../../../eval/fixtures/convo-trust-check-asks-only-when-needed.json"),
     "utf8",
   ),
 ) as { input: CoverEvalInput };
 const input = fixture.input;
 
-describe("auto mode asks only when the person's words do not cover the action", () => {
+describe("a step asks only when the person's words do not cover the action", () => {
   test("the suite covers both directions in German and English", () => {
     const count = (expect: "run" | "ask", lang: "de" | "en") =>
       input.cases.filter((item) => item.expect === expect && item.lang === lang).length;

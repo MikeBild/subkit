@@ -3,7 +3,6 @@ import { Box, Text } from "ink";
 import type React from "react";
 import { memo } from "react";
 import { formatTokens } from "../render/format.ts";
-import type { PermissionMode } from "./status-line/render.ts";
 
 export { formatTokens };
 
@@ -12,14 +11,12 @@ interface FooterProps {
   tenant: string | null;
   engineUrl: string;
   sessionId: string | null;
-  mode: PermissionMode;
   transcriptMode: "chat" | "inspect";
   connectionState?: "online" | "reconnecting" | "offline" | "unknown";
   connectionReason?: string | null;
   sessionTokens?: number;
   tokensToday?: number | null;
   tokensMonth?: number | null;
-  monthlyBudget?: number | null;
   promptTokensLastCall?: number | null;
   turnTokensTotal?: number | null;
   contextCapTokens?: number | null;
@@ -28,13 +25,6 @@ interface FooterProps {
   columns?: number | undefined;
   hintLine?: string | null | undefined;
 }
-
-export const MODE_LABELS: Record<PermissionMode, string> = {
-  ask: "ask",
-  auto: "auto",
-  plan: "plan",
-  yolo: "yolo",
-};
 
 export function engineHost(url: string): string {
   try {
@@ -50,14 +40,12 @@ const FooterImpl: React.FC<FooterProps> = ({
   tenant,
   engineUrl,
   sessionId,
-  mode,
   transcriptMode,
   connectionState = "unknown",
   connectionReason,
   sessionTokens = 0,
   tokensToday = null,
   tokensMonth = null,
-  monthlyBudget = null,
   promptTokensLastCall = null,
   turnTokensTotal = null,
   contextCapTokens = null,
@@ -67,13 +55,12 @@ const FooterImpl: React.FC<FooterProps> = ({
   hintLine = null,
 }) => {
   const theme = useTheme();
-  const modeColor = theme.mode[mode];
+  const viewColor = theme.role.assistant;
   const layout = layoutFooterLines({
     user,
     tenant,
     engineUrl,
     sessionId,
-    mode,
     transcriptMode,
     connectionState,
     connectionReason: connectionReason ?? null,
@@ -83,8 +70,7 @@ const FooterImpl: React.FC<FooterProps> = ({
   const hasAnyUsage =
     sessionTokens > 0 ||
     (tokensToday != null && tokensToday > 0) ||
-    (tokensMonth != null && tokensMonth > 0) ||
-    (monthlyBudget != null && monthlyBudget > 0);
+    (tokensMonth != null && tokensMonth > 0);
   return (
     <Box flexDirection="column" marginTop={1}>
       <Box>
@@ -96,10 +82,10 @@ const FooterImpl: React.FC<FooterProps> = ({
       </Box>
       <Box>
         <Text color={theme.severity.dim}> </Text>
-        <Text color={modeColor} bold>
+        <Text color={viewColor} bold>
           ⏵⏵{" "}
         </Text>
-        <Text color={modeColor}>{layout.modeLabel}</Text>
+        <Text color={viewColor}>{layout.viewLabel}</Text>
         <Text color={theme.severity.dim}>{layout.activitySuffix}</Text>
       </Box>
       {hintLine ? (
@@ -112,7 +98,6 @@ const FooterImpl: React.FC<FooterProps> = ({
           sessionTokens={sessionTokens}
           tokensToday={tokensToday}
           tokensMonth={tokensMonth}
-          monthlyBudget={monthlyBudget}
           promptTokensLastCall={promptTokensLastCall}
           turnTokensTotal={turnTokensTotal}
           contextCapTokens={contextCapTokens}
@@ -129,7 +114,6 @@ interface BudgetLineProps {
   sessionTokens: number;
   tokensToday: number | null;
   tokensMonth: number | null;
-  monthlyBudget: number | null;
   promptTokensLastCall: number | null;
   turnTokensTotal: number | null;
   contextCapTokens: number | null;
@@ -142,7 +126,6 @@ const BudgetLine: React.FC<BudgetLineProps> = ({
   sessionTokens,
   tokensToday,
   tokensMonth,
-  monthlyBudget,
   promptTokensLastCall,
   turnTokensTotal,
   contextCapTokens,
@@ -150,22 +133,8 @@ const BudgetLine: React.FC<BudgetLineProps> = ({
   cacheReadPct,
   theme,
 }) => {
-  const monthDisplay =
-    monthlyBudget != null && monthlyBudget > 0
-      ? `${formatTokens(tokensMonth)} / ${formatTokens(monthlyBudget)}`
-      : formatTokens(tokensMonth);
-  const pct =
-    monthlyBudget != null && monthlyBudget > 0 && tokensMonth != null
-      ? Math.min(100, Math.round((tokensMonth / monthlyBudget) * 100))
-      : null;
-  const monthColor =
-    pct == null
-      ? theme.severity.dim
-      : pct >= 90
-        ? theme.severity.error
-        : pct >= 60
-          ? theme.severity.warning
-          : theme.severity.dim;
+  const monthDisplay = formatTokens(tokensMonth);
+  const monthColor = theme.severity.dim;
 
   const ctxPct =
     promptTokensLastCall != null && contextCapTokens != null && contextCapTokens > 0
@@ -194,7 +163,6 @@ const BudgetLine: React.FC<BudgetLineProps> = ({
       <Text color={theme.severity.dim}>{formatTokens(tokensToday)}</Text>
       <Text color={theme.severity.dim}> · month </Text>
       <Text color={monthColor}>{monthDisplay}</Text>
-      {pct != null ? <Text color={monthColor}> ({pct}%)</Text> : null}
       {showTurn ? (
         <>
           <Text color={theme.severity.dim}> · turn </Text>
@@ -261,7 +229,7 @@ type FooterLayout = {
   identityPrefix: string;
   identityHighlight: string;
   identitySuffix: string;
-  modeLabel: string;
+  viewLabel: string;
   activitySuffix: string;
   connectionVariant: "none" | "compact" | "full";
 };
@@ -333,19 +301,11 @@ export function layoutFooterLines(props: FooterProps): FooterLayout {
   ];
 
   const activityVariants = [
-    {
-      modeLabel: MODE_LABELS[props.mode],
-      suffix: ` · ${props.transcriptMode} · shift+tab mode · ctrl-o ${nextView}`,
-    },
-    {
-      modeLabel: MODE_LABELS[props.mode],
-      suffix: ` · ${props.transcriptMode} · ctrl-o ${nextView}`,
-    },
-    { modeLabel: MODE_LABELS[props.mode], suffix: ` · ${props.transcriptMode}` },
-    { modeLabel: MODE_LABELS[props.mode], suffix: "" },
+    { viewLabel: props.transcriptMode, suffix: ` · ctrl-o ${nextView}` },
+    { viewLabel: props.transcriptMode, suffix: "" },
   ] as const satisfies readonly [
-    { modeLabel: string; suffix: string },
-    ...Array<{ modeLabel: string; suffix: string }>,
+    { viewLabel: string; suffix: string },
+    ...Array<{ viewLabel: string; suffix: string }>,
   ];
 
   const compactChipWidth = hasConnection
@@ -366,14 +326,14 @@ export function layoutFooterLines(props: FooterProps): FooterLayout {
 
   const activity = pickVariant(
     activityVariants,
-    (variant) => variant.modeLabel.length + variant.suffix.length <= width - 4,
+    (variant) => variant.viewLabel.length + variant.suffix.length <= width - 4,
   );
 
   return {
     identityPrefix: identity.prefix,
     identityHighlight: identity.highlight,
     identitySuffix: identity.suffix,
-    modeLabel: activity.modeLabel,
+    viewLabel: activity.viewLabel,
     activitySuffix: activity.suffix,
     connectionVariant,
   };

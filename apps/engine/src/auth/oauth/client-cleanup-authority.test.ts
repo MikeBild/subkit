@@ -2,9 +2,9 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { ConfigSchema } from "../../config/schema.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
-import { runMcpOAuthCleanup } from "../../scheduler/mcp-oauth-cleanup-runner.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
+import { runMcpOAuthCleanup } from "../scheduled/mcp-oauth-cleanup-runner.ts";
 import { createMcpOAuthProvider, type McpOAuthProvider } from "./server-provider.ts";
 
 let srv: HttpTestServer;

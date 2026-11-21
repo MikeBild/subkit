@@ -3,7 +3,7 @@ import {
   applyMigration,
   listShapeHistory,
   proposeSchemaMigration,
-} from "../../schema-versions/service.ts";
+} from "../../schema-versions/index.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const inputSchema = z

@@ -26,8 +26,8 @@ import {
   connectors,
   conversationElicitations,
   conversations,
-  credentials,
   sessions,
+  vaultItems,
 } from "../../../db/schema/index.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
 import { withSelfHostedDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
@@ -95,12 +95,12 @@ async function getGrantRow(token: string) {
 async function getCredentialRow() {
   const rows = await server.db
     .select()
-    .from(credentials)
+    .from(vaultItems)
     .where(
       and(
-        eq(credentials.tenant_id, server.tenantId),
-        eq(credentials.connector_id, connectorId),
-        eq(credentials.environment, "dev"),
+        eq(vaultItems.tenant_id, server.tenantId),
+        eq(vaultItems.connector_id, connectorId),
+        eq(vaultItems.environment, "dev"),
       ),
     )
     .limit(1);
@@ -513,12 +513,12 @@ describe("unsaved connector draft credential setup", () => {
     expect(persisted[0]?.environment).toBe("prod");
     const persistedCredentials = await server.db
       .select()
-      .from(credentials)
+      .from(vaultItems)
       .where(
         and(
-          eq(credentials.tenant_id, server.tenantId),
-          eq(credentials.connector_id, persisted[0]!.id),
-          eq(credentials.environment, "prod"),
+          eq(vaultItems.tenant_id, server.tenantId),
+          eq(vaultItems.connector_id, persisted[0]!.id),
+          eq(vaultItems.environment, "prod"),
         ),
       );
     expect(persistedCredentials).toHaveLength(1);

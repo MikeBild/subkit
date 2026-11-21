@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { type MutationEvidence, mutationFromGateDescription } from "./lib/mutation-deferral.ts";
 
 export function releaseGateContext(tag: string): string {
   if (!/^v\d+\.\d+\.\d+$/.test(tag)) throw new Error("Invalid release tag");
@@ -33,6 +34,21 @@ export function assertReleaseGateStatus(raw: unknown, tag: string, commit: strin
   );
   if (matches.length !== 1 || (matches[0] as { state?: unknown }).state !== "success")
     throw new Error("The selected release has no successful mandatory local gate status");
+}
+
+export function releaseGateMutation(raw: unknown, tag: string): MutationEvidence {
+  const context = releaseGateContext(tag);
+  const statuses = (raw as { statuses?: unknown } | null)?.statuses;
+  const match = Array.isArray(statuses)
+    ? statuses.find(
+        (entry: unknown) =>
+          entry &&
+          typeof entry === "object" &&
+          (entry as { context?: unknown }).context === context,
+      )
+    : undefined;
+  if (!match) throw new Error("Missing release gate status");
+  return mutationFromGateDescription((match as { description?: unknown }).description);
 }
 
 if (import.meta.main) {

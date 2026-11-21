@@ -191,7 +191,7 @@ export interface PreviewDecisionInput {
   judgeSkipped: boolean;
   judgeEscalate: boolean;
   doneGuidance: string | null;
-  autoMode: boolean;
+  askBeforeWriting: boolean;
   saveDeclined: boolean;
   wouldReplacePersisted: boolean;
   stoppedForDraft: string;
@@ -249,7 +249,7 @@ function nextPromptOf(
 }
 
 export function previewDecision(input: PreviewDecisionInput): PreviewDecision {
-  const autoCommitAllowed = input.autoMode && !input.saveDeclined;
+  const autoCommitAllowed = !input.askBeforeWriting && !input.saveDeclined;
   const autoUnjudgedCommit = autoCommitAllowed && !input.wouldReplacePersisted;
   const greenUnblocked = input.dryRunGreen && !input.judgeBlocked;
   const cleanPreview =

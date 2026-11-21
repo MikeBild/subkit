@@ -2,6 +2,7 @@ import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
 import type { EngineClient } from "../../engine-client.ts";
+import { type AiBudget, aiBudgetLabel } from "../../repl/status-line/render.ts";
 
 interface Props {
   client: EngineClient;
@@ -29,7 +30,7 @@ export const UsageTab: React.FC<Props> = ({ client }) => {
   const [totalPrompt, setTotalPrompt] = useState(0);
   const [totalCompletion, setTotalCompletion] = useState(0);
   const [cacheRead, setCacheRead] = useState(0);
-  const [budget, setBudget] = useState<number | null>(null);
+  const [budget, setBudget] = useState<AiBudget | null>(null);
   const [userRows, setUserRows] = useState<UserRow[]>([]);
   const [canReadAll, setCanReadAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,7 +62,7 @@ export const UsageTab: React.FC<Props> = ({ client }) => {
         setTotalPrompt(stats.totals.tokens.prompt);
         setTotalCompletion(stats.totals.tokens.completion);
         setCacheRead(stats.totals.tokens.cache_read);
-        setBudget(status.monthly_budget_tokens);
+        setBudget(status.ai_budget);
 
         const allowed = (bootstrap.permissions ?? []).includes("stats:read:all");
         setCanReadAll(allowed);
@@ -108,10 +109,10 @@ export const UsageTab: React.FC<Props> = ({ client }) => {
           totals: {totalPrompt.toLocaleString()} input + {totalCompletion.toLocaleString()} output ={" "}
           {grandTotal.toLocaleString()} tokens · cache hit {cacheHitPct}%
         </Text>
-        {budget != null ? (
-          <BudgetBar used={grandTotal} budget={budget} />
+        {budget?.limit != null ? (
+          <BudgetBar budget={budget} />
         ) : (
-          <Text color="gray">monthly budget: unlimited</Text>
+          <Text color="gray">monthly AI budget: no limit</Text>
         )}
       </Box>
       <Box marginTop={1} flexDirection="column">
@@ -157,22 +158,23 @@ export const UsageTab: React.FC<Props> = ({ client }) => {
   );
 };
 
-const BudgetBar: React.FC<{ used: number; budget: number }> = ({ used, budget }) => {
+const BudgetBar: React.FC<{ budget: AiBudget }> = ({ budget }) => {
   const width = 24;
-  const ratio = budget > 0 ? Math.min(1, used / budget) : 0;
+  const limit = budget.limit ?? 0;
+  const ratio = limit > 0 ? Math.min(1, budget.spent / limit) : 0;
   const filled = Math.round(ratio * width);
   const bar = "█".repeat(filled) + "░".repeat(Math.max(0, width - filled));
   const pct = (ratio * 100).toFixed(0);
-  const color = ratio >= 0.9 ? "red" : ratio >= 0.7 ? "yellow" : "green";
+  const color = ratio >= 1 ? "red" : ratio >= 0.8 ? "yellow" : "green";
   return (
     <Box>
       <Box width={20}>
-        <Text>monthly budget</Text>
+        <Text>monthly AI budget</Text>
       </Box>
       <Text color={color}>{bar}</Text>
       <Text color="gray">
         {" "}
-        {pct}% ({used.toLocaleString()} / {budget.toLocaleString()})
+        {pct}% ({aiBudgetLabel(budget)})
       </Text>
     </Box>
   );

@@ -1,5 +1,5 @@
 import type { Db } from "../../../../db/client.ts";
-import { logger } from "../../../../logging/logger.ts";
+import { logger } from "../../../../logging/index.ts";
 import { skillAudienceForAuthoringMode } from "../../../../skills/types.ts";
 import { parseLoadedSkills } from "../../../loop/skill-recency.ts";
 import { resolveScopeFactsForConversation } from "../../../scope-facts.ts";

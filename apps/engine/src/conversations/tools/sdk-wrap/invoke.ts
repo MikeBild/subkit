@@ -1,7 +1,7 @@
 import type { z } from "@hono/zod-openapi";
 import { type Tool, tool } from "ai";
 import type { Db } from "../../../db/client.ts";
-import type { PermissionMode, ToolPolicies } from "../../../tools/types.ts";
+import type { ToolPolicies } from "../../../tools/types.ts";
 import { pinAttachmentFileId } from "../../attachments.ts";
 import { isCoverCandidate } from "../../instruction-cover/gate.ts";
 import { takeBecause, withBecauseField } from "../../instruction-cover/marker.ts";
@@ -30,10 +30,9 @@ export function wrapOne(
   events: TurnEvent[],
   db: Db,
   toolPolicies: ToolPolicies,
-  permissionMode: PermissionMode | null,
 ): Tool<Record<string, unknown>, WrappedToolOutput> {
-  const quotable =
-    permissionMode === "auto" && inner.strict !== true && isCoverCandidate(inner.name);
+  const askBeforeWriting = ctx.ask_before_writing === true;
+  const quotable = !askBeforeWriting && inner.strict !== true && isCoverCandidate(inner.name);
   const inputSchema = (quotable
     ? withBecauseField(inner.inputSchema)
     : inner.inputSchema) as unknown as z.ZodType<Record<string, unknown>>;
@@ -68,7 +67,7 @@ export function wrapOne(
             events,
             db,
             toolPolicies,
-            permissionMode,
+            askBeforeWriting,
             release,
             because: quotable ? taken.because : null,
           },

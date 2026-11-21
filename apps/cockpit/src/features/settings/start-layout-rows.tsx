@@ -1,9 +1,9 @@
+import { SettingsRow } from "@ui/molecules/settings-row";
 import { PanelLeftClose, PanelRightOpen } from "lucide-react";
 import { useId, useState } from "react";
 import { Switch } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
 import { readStartLayout, type StartLayout, writeStartLayout } from "@/lib/start-layout";
-import { Row } from "./row";
 
 export function StartLayoutRows() {
   const { t } = useI18n();
@@ -19,7 +19,7 @@ export function StartLayoutRows() {
       <div className="py-3" data-testid="settings-start-layout">
         <p className="text-sm font-semibold">{t("settings.startLayout.title")}</p>
       </div>
-      <Row
+      <SettingsRow
         id={`${id}-left`}
         icon={PanelLeftClose}
         label={t("settings.startLayout.left")}
@@ -32,8 +32,8 @@ export function StartLayoutRows() {
           onCheckedChange={(leftCollapsed) => change({ leftCollapsed })}
           data-testid="settings-start-left-switch"
         />
-      </Row>
-      <Row
+      </SettingsRow>
+      <SettingsRow
         id={`${id}-right`}
         icon={PanelRightOpen}
         label={t("settings.startLayout.right")}
@@ -46,7 +46,7 @@ export function StartLayoutRows() {
           onCheckedChange={(open) => change({ rightOpen: open ? true : null })}
           data-testid="settings-start-right-switch"
         />
-      </Row>
+      </SettingsRow>
     </>
   );
 }

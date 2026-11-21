@@ -13,7 +13,7 @@ describe("canonical pure target discovery", () => {
     const entries = discoverPureTargets([
       "apps/engine/src/workflows/core/workflow.ts",
       "apps/engine/src/workflows/service.ts",
-      "apps/cockpit/src/pages/audit-filter-state.ts",
+      "apps/cockpit/src/features/audit/model/audit-filter-state.ts",
       "apps/sk/src/commands/workflow-file-model.ts",
       "packages/shared/src/approval-choice.ts",
       "packages/shared/src/jsonl-ring.ts",
@@ -21,7 +21,7 @@ describe("canonical pure target discovery", () => {
 
     expect(entries).toEqual([
       {
-        path: "apps/cockpit/src/pages/audit-filter-state.ts",
+        path: "apps/cockpit/src/features/audit/model/audit-filter-state.ts",
         owner_shard: "cockpit",
         subsystem: "cockpit",
         target_kind: "cockpit",
@@ -85,7 +85,7 @@ describe("canonical pure target discovery", () => {
 
   test("reports a missing reviewed target in a production inventory", () => {
     expect(validatePureTargetInventory(["packages/shared/src/jsonl-ring.ts"])).toContain(
-      "reviewed pure target is missing from inventory: apps/cockpit/src/pages/audit-filter-state.ts",
+      "reviewed pure target is missing from inventory: apps/cockpit/src/features/audit/model/audit-filter-state.ts",
     );
   });
 

@@ -5,14 +5,12 @@ import {
   authProviderConfigs,
   chatWorkspaces,
   connectors,
-  connectorTemplateCredentials,
-  credentials,
-  endUserCredentials,
   executionSteps,
   executions,
   subscriptions,
   tenants,
   toolApprovals,
+  vaultItems,
   webhooksInbound,
   workflowRunState,
   workflows,
@@ -120,17 +118,9 @@ const byteStocks = [
     },
   },
   {
-    table: connectorTemplateCredentials,
+    table: vaultItems,
     seed: async (tx: Executor, id: string) => {
-      await tx
-        .insert(connectorTemplateCredentials)
-        .values({ id, tenant_id: tenantId, template_slug: id, ...envelope });
-    },
-  },
-  {
-    table: credentials,
-    seed: async (tx: Executor, id: string) => {
-      await tx.insert(credentials).values({
+      await tx.insert(vaultItems).values({
         id,
         tenant_id: tenantId,
         connector_id: connectorId,
@@ -141,19 +131,6 @@ const byteStocks = [
         oauth2_refresh_ciphertext: envelope.ciphertext,
         oauth2_refresh_iv: envelope.iv,
         oauth2_refresh_auth_tag: envelope.auth_tag,
-      });
-    },
-  },
-  {
-    table: endUserCredentials,
-    seed: async (tx: Executor, id: string) => {
-      await tx.insert(endUserCredentials).values({
-        id,
-        tenant_id: tenantId,
-        connector_id: connectorId,
-        enduser_ref: id,
-        combine_mode: "replace",
-        ...envelope,
       });
     },
   },

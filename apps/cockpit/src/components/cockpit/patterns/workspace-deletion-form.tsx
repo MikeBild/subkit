@@ -1,9 +1,9 @@
+import { Button } from "@ui/atoms/button";
+import { Input } from "@ui/atoms/input";
+import { Label } from "@ui/atoms/label";
+import { Separator } from "@ui/atoms/separator";
+import { Alert, AlertDescription } from "@ui/molecules/alert";
 import { Trash2 } from "lucide-react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import { useI18n } from "@/lib/i18n-context";
 import { WorkspaceConfirmation } from "./workspace-confirmation";
 

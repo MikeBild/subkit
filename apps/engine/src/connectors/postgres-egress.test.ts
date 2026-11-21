@@ -5,6 +5,7 @@ import net from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pg from "pg";
+import { testEnv } from "../test-helpers/determinism/env.ts";
 import { flush } from "../test-helpers/determinism/wait.ts";
 import { _withEgressLookupForTests } from "./egress-guard.ts";
 import { postgresPoolConfiguration } from "./postgres-egress.ts";
@@ -264,13 +265,13 @@ test("a timed-out pg connection cannot dial after its delayed DNS validation fin
 
 test("strict PG credentials never inherit process PG defaults or pgpass fallback", async () => {
   const previous = Object.fromEntries(
-    ["PGPASSWORD", "PGUSER", "PGDATABASE", "PGPORT"].map((name) => [name, process.env[name]]),
+    ["PGPASSWORD", "PGUSER", "PGDATABASE", "PGPORT"].map((name) => [name, testEnv[name]]),
   );
   try {
-    process.env.PGPASSWORD = "synthetic-process-secret";
-    process.env.PGUSER = "synthetic-process-user";
-    process.env.PGDATABASE = "synthetic-process-db";
-    process.env.PGPORT = "12345";
+    testEnv.PGPASSWORD = "synthetic-process-secret";
+    testEnv.PGUSER = "synthetic-process-user";
+    testEnv.PGDATABASE = "synthetic-process-db";
+    testEnv.PGPORT = "12345";
     const prepared = await postgresPoolConfiguration(`postgresql://tenant-user@${host}`, {
       mode: "strict",
     });
@@ -284,8 +285,8 @@ test("strict PG credentials never inherit process PG defaults or pgpass fallback
     ).rejects.toThrow("postgres_explicit_target_required");
   } finally {
     for (const [name, value] of Object.entries(previous)) {
-      if (value === undefined) delete process.env[name];
-      else process.env[name] = value;
+      if (value === undefined) delete testEnv[name];
+      else testEnv[name] = value;
     }
   }
 });

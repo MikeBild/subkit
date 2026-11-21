@@ -7,8 +7,9 @@ import {
   conversationToolCalls,
   workflows,
 } from "../../db/schema/index.ts";
+import { writeSetupPreferences } from "../../identity/setup-preferences.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import {
   createEmptyDraftDocument,
   withLatestPreview,
@@ -32,6 +33,11 @@ let ctx: ConversationTestCtx;
 
 beforeAll(async () => {
   ctx = await createConversationTestCtx("handoff_summary_turn");
+  await writeSetupPreferences(
+    ctx.testDb.db,
+    { tenant_id: ctx.tenant_id, user_id: ctx.user_id },
+    { ask_before_writing: true },
+  );
 });
 
 afterAll(async () => {
@@ -107,6 +113,13 @@ async function turn(conversationId: string, message: string) {
       conversation_id: conversationId,
       actor_id: ctx.user_id,
       message,
+      principal: {
+        provider: "test",
+        kind: "user",
+        id: ctx.user_id,
+        tenant_id: ctx.tenant_id,
+        roles: ["admin"],
+      },
     },
     ctx.testDb.db,
   );

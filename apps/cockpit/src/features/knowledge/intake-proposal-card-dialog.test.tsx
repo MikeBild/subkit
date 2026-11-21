@@ -97,7 +97,7 @@ isolated(
     const { createRoot } = await import("react-dom/client");
     const { I18nContext } = await import("@/lib/i18n-context");
     const { translate, translatePlural } = await import("@/lib/i18n");
-    const { TooltipProvider } = await import("@/components/ui/tooltip");
+    const { TooltipProvider } = await import("@ui/molecules/tooltip");
     const { ProposalCard } = await import("./intake-proposal");
     let root: Root | undefined;
     const settle = () =>

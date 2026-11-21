@@ -5,6 +5,7 @@ import pg from "pg";
 import { localDatabaseUrl } from "../../../../../scripts/lib/local-database-url.ts";
 import { tenantWorkSnapshot } from "../../execution/tenant-work.ts";
 import { seedBuiltinRolesAndPermissions } from "../../rbac/seed.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { createMigrationDbFromUrl } from "../client.ts";
 import { runMigrations } from "../migrate.ts";
@@ -27,7 +28,7 @@ async function preflightPostgres(adminUrl: string): Promise<void> {
     const cause = err instanceof Error ? err.message : String(err);
     throw new Error(
       `PostgreSQL is not reachable at ${adminUrl.replace(/\/\/[^@]*@/, "//<credentials>@")} — ` +
-        `database-backed tests need it. Run \`bun run compose:up\` first, ` +
+        `database-backed tests need it. Run \`bun run compose up\` first, ` +
         `or point DATABASE_URL at a running server.` +
         (cause ? ` (probe error: ${cause})` : ""),
     );
@@ -85,7 +86,7 @@ function ensureOrphanSweep(adminUrl: string): Promise<void> {
 }
 
 function getAdminUrl(): string {
-  return localDatabaseUrl(process.env);
+  return localDatabaseUrl(testEnv);
 }
 
 function rewriteDbName(url: string, newName: string): string {

@@ -1,14 +1,20 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { connectors, skills } from "../../db/schema/index.ts";
-import { createHttpTestServer, type HttpTestServer } from "../../http/tests/setup.ts";
+import {
+  browserSessionHeaders,
+  createHttpTestServer,
+  type HttpTestServer,
+} from "../../http/tests/setup.ts";
+import { writeSetupPreferences } from "../../identity/setup-preferences.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 
 let http: HttpTestServer;
 let connectorId: string;
 
 beforeAll(async () => {
-  process.env.LLM_PROVIDER = "mock";
+  testEnv.LLM_PROVIDER = "mock";
   resetMockProvider();
   http = await createHttpTestServer("conv-stream");
   const [row] = await http.db
@@ -36,16 +42,18 @@ afterAll(async () => {
 
 describe("http/conversations streaming", () => {
   test("SSE stream replays the full event trace after an approved commit", async () => {
+    await writeSetupPreferences(
+      http.db,
+      { tenant_id: http.tenantId, user_id: http.userId },
+      { ask_before_writing: true },
+    );
+    const person = await browserSessionHeaders(http, http.userId);
     const createRes = await fetch(`${http.baseUrl}/v1/conversations`, {
       method: "POST",
-      headers: {
-        authorization: `Bearer ${http.apiKey}`,
-        "content-type": "application/json",
-      },
+      headers: person,
       body: JSON.stringify({
         connector_id: connectorId,
         initial_message: "list users from the api",
-        permission_mode: "ask",
       }),
     });
     expect(createRes.status).toBe(201);
@@ -61,10 +69,7 @@ describe("http/conversations streaming", () => {
       `${http.baseUrl}/v1/conversations/${created.conversation.id}/elicitations/${created.pending_elicitation_id}/respond`,
       {
         method: "POST",
-        headers: {
-          authorization: `Bearer ${http.apiKey}`,
-          "content-type": "application/json",
-        },
+        headers: person,
         body: JSON.stringify({ output: { confirmed: true } }),
       },
     );
@@ -76,7 +81,7 @@ describe("http/conversations streaming", () => {
 
     const streamRes = await fetch(
       `${http.baseUrl}/v1/conversations/${created.conversation.id}/stream`,
-      { headers: { authorization: `Bearer ${http.apiKey}` } },
+      { headers: person },
     );
     expect(streamRes.status).toBe(200);
     expect(streamRes.headers.get("content-type") ?? "").toMatch(/text\/event-stream/);

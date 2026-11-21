@@ -1,6 +1,6 @@
 import type { Executor } from "../../db/client.ts";
 import { invoke } from "../../llm/runtime/invoke.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import { recordCriticRubricItems, recordCriticRun } from "../../observability/instrumentation.ts";
 import {
   type AppliedConvention,

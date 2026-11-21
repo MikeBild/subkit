@@ -4,7 +4,6 @@ import { apiCall } from "./call";
 
 export type Setup = components["schemas"]["Setup"];
 export type SetupUpdate = components["schemas"]["UpdateSetupBody"];
-export type SetupChatMode = Setup["default_chat_mode"];
 export type SetupEnvironment = Setup["default_environment"];
 
 export const SETUP_KEY = ["identity-setup"] as const;

@@ -1,10 +1,10 @@
-import { BellOff, BellRing } from "lucide-react";
 import {
   DropdownMenuItem,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@ui/molecules/dropdown-menu";
+import { BellOff, BellRing } from "lucide-react";
 import { PAUSE_OPTION_KEYS, PAUSE_OPTIONS, usePauseControl } from "@/features/settings";
 import { useI18n } from "@/lib/i18n-context";
 

@@ -1,7 +1,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
-import { credentials } from "../../db/schema/index.ts";
-import { logger } from "../../logging/logger.ts";
+import { vaultItems } from "../../db/schema/index.ts";
+import { logger } from "../../logging/index.ts";
 import { getListener } from "../../pubsub/listener.ts";
 import type { EventEnvelope } from "../../pubsub/types.ts";
 import {
@@ -84,7 +84,7 @@ async function credentialExistsWithBoundedPool(
   try {
     const query = client.query({
       text: `SELECT id
-               FROM credentials
+               FROM vault_items
               WHERE tenant_id = $1
                 AND connector_id = $2
                 AND environment = $3
@@ -127,14 +127,14 @@ async function credentialExists(
     );
   }
   const rows = await db
-    .select({ id: credentials.id })
-    .from(credentials)
+    .select({ id: vaultItems.id })
+    .from(vaultItems)
     .where(
       and(
-        eq(credentials.tenant_id, tenant_id),
-        eq(credentials.connector_id, connector_id),
-        eq(credentials.environment, environment),
-        isNull(credentials.deleted_at),
+        eq(vaultItems.tenant_id, tenant_id),
+        eq(vaultItems.connector_id, connector_id),
+        eq(vaultItems.environment, environment),
+        isNull(vaultItems.deleted_at),
       ),
     )
     .limit(1);

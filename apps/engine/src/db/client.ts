@@ -1,8 +1,9 @@
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import { getConfig } from "../config/loader.ts";
+import { readEnv } from "../env.ts";
 import { withContext } from "../logging/context.ts";
-import { errorFields, logger } from "../logging/logger.ts";
+import { errorFields, logger } from "../logging/index.ts";
 import {
   beginDiagnosticTransaction,
   diagnoseOperation,
@@ -64,7 +65,7 @@ function instrumentPoolDiagnostics(pool: pg.Pool): void {
 export function getPool(): pg.Pool {
   if (_pool) return _pool;
   let url = "";
-  if (process.env.NODE_ENV === "test") url = process.env.DATABASE_URL ?? "";
+  if (readEnv("NODE_ENV") === "test") url = readEnv("DATABASE_URL") ?? "";
   if (!url) {
     try {
       url = getConfig().database.url;
@@ -72,7 +73,7 @@ export function getPool(): pg.Pool {
       url = "";
     }
   }
-  if (!url) url = process.env.DATABASE_URL ?? "";
+  if (!url) url = readEnv("DATABASE_URL") ?? "";
   if (!url) {
     throw new Error(
       "database.url is not set. Configure via `sk settings set database.url '\"…\"'` or set DATABASE_URL.",

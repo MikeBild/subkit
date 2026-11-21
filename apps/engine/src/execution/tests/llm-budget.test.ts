@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { and, eq } from "drizzle-orm";
 import { _resetConfigForTests, getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
-import { auditLog } from "../../db/schema/index.ts";
+import { auditLog, llmUsage, tenants } from "../../db/schema/index.ts";
+import { currentMonthBucket } from "../../llm/accounting/index.ts";
+import { now } from "../../utils/clock.ts";
 import { runExecution } from "../engine.ts";
 import {
   createEngineCtx,
@@ -158,5 +160,58 @@ describe("execution · per-run LLM token budget", () => {
     const execMeta = execAudit?.metadata as Record<string, unknown>;
     expect(execMeta.total_llm_tokens).toBe(120);
     expect(execMeta.max_llm_tokens_per_run).toBeUndefined();
+  });
+
+  test("a reached AI budget stops the model step before the call, other steps still run", async () => {
+    const at = new Date(now());
+    await ctx.testDb.db.insert(llmUsage).values({
+      tenant_id: ctx.tenantId,
+      flow: "converse",
+      model: "claude-sonnet-4-5",
+      completion_tokens: 1_000_000,
+      total_tokens: 1_000_000,
+      result: "success",
+      month_bucket: currentMonthBucket(at),
+      created_at: at,
+    });
+    await ctx.testDb.db
+      .update(tenants)
+      .set({ spend_limit_usd: 1 })
+      .where(eq(tenants.id, ctx.tenantId));
+    try {
+      const { workflow_id } = await createWorkflowRow(ctx, {
+        name: "llm-budget-spend",
+        steps: [
+          {
+            kind: "request",
+            id: "plain_call",
+            method: "GET",
+            url: `${mock.baseUrl.replace("127.0.0.1", "localhost")}/plain`,
+          },
+          {
+            kind: "request",
+            id: "model_call",
+            method: "POST",
+            url: `${mock.baseUrl}/responses`,
+            body: { model: "gpt-4.1-mini", input: "hi" },
+          },
+        ],
+      });
+      const callsBefore = mock.callCount();
+      const result = await runExecution({
+        db: ctx.testDb.db,
+        tenant_id: ctx.tenantId,
+        source: { kind: "saved", workflow_id },
+        input: null,
+      });
+      expect(result.status).toBe("failed");
+      expect(result.error?.code).toBe("llm_spend_limit_reached");
+      expect(mock.callCount() - callsBefore).toBe(1);
+    } finally {
+      await ctx.testDb.db
+        .update(tenants)
+        .set({ spend_limit_usd: 50 })
+        .where(eq(tenants.id, ctx.tenantId));
+    }
   });
 });

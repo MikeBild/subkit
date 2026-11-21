@@ -26,7 +26,7 @@ describe("architecture of the sign-in window", () => {
 
   test("the scan sees every layer", () => {
     const layers = new Set(files.map((file) => layerOf(file.path)));
-    for (const layer of ["entry", "page", "feature", "adapter", "domain", "ui", "lib"] as const) {
+    for (const layer of ["entry", "page", "feature", "adapter", "domain", "lib"] as const) {
       expect(layers.has(layer)).toBe(true);
     }
     expect(files.length).toBeGreaterThan(30);
@@ -63,14 +63,6 @@ describe("architecture rules catch planted violations", () => {
         'import { ConnectStep } from "../../features/connect/index.ts";',
       ),
     ).toHaveLength(1);
-  });
-
-  test("an atom may not use a molecule", () => {
-    expect(
-      planted("ui/atoms/x.tsx", 'import { BusyButton } from "../molecules/index.ts";'),
-    ).toEqual([
-      "ui/atoms/x.tsx → ../molecules/index.ts: an Atomic Design level may not use a higher level",
-    ]);
   });
 
   test("a feature may use another feature only through its index", () => {
@@ -111,7 +103,10 @@ describe("architecture rules catch planted violations", () => {
       layer: "shared",
       path: "src/shared/ipc.ts",
     });
-    expect(targetOf("pages/a.tsx", "../ui/index.ts")).toEqual({ layer: "ui", path: "ui/index.ts" });
+    expect(targetOf("pages/a.tsx", "../lib/text.ts")).toEqual({
+      layer: "lib",
+      path: "lib/text.ts",
+    });
   });
 
   test("an interactive element without a test id is caught", () => {

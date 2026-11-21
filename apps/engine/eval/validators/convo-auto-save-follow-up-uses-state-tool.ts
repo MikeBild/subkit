@@ -36,7 +36,7 @@ export function validate(fixture: FixtureRecord): ValidationResult {
 
   const workflowTool = inferStateDrivenFollowUpTool({
     latestUserText: input.approval_reply,
-    permission_mode: "auto",
+    ask_before_writing: false,
     summary: workflowDraft.summary,
   });
   if (workflowTool !== "save_workflow_draft") {
@@ -96,7 +96,7 @@ export function validate(fixture: FixtureRecord): ValidationResult {
 
   const connectorTool = inferStateDrivenFollowUpTool({
     latestUserText: input.approval_reply,
-    permission_mode: "auto",
+    ask_before_writing: false,
     summary: connectorDraft.summary,
   });
   if (connectorTool !== "save_connector_draft") {

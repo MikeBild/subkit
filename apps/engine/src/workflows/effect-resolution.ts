@@ -5,6 +5,7 @@ import { resolveUrl } from "../connectors/drivers/resolve-url.ts";
 import { type ConnectorSystem, loadConnectorSystem } from "../connectors/system.ts";
 import type { Executor } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
+import { activeAllowances } from "../devices/index.ts";
 import {
   connectorUnavailability,
   type FoundConnectorUnavailability,
@@ -23,6 +24,8 @@ import {
   type ContentPublicationBoundaries,
   proposeContentPublicationBoundaries,
 } from "./content-publication-proposal.ts";
+import { deviceListsFor, deviceUsesOf } from "./core/device-uses.ts";
+import { type DeviceBinding, deviceBindingFor, deviceTarget } from "./core/effect-manifest.ts";
 import {
   compileWorkflowEffectManifest,
   type ResolvedCall,
@@ -426,6 +429,17 @@ async function resolveBindings(
         }
       }
     }
+    const deviceBase = deviceBindingFor(driver, connector?.config);
+    let device: DeviceBinding | null = null;
+    if (deviceBase) {
+      const resolved = deviceListsFor(
+        deviceUsesOf(step, deviceBase.capability),
+        await activeAllowances(db, input.tenant_id, deviceBase.device_id),
+      );
+      if (!resolved.complete) unavailable_steps.push(step.id);
+      device = { ...deviceBase, ...resolved.lists };
+      target = deviceTarget(device);
+    }
     const configuration = authorityConnectorConfiguration(connector);
     bindings.push({
       tenant_id: input.tenant_id,
@@ -435,6 +449,7 @@ async function resolveBindings(
       ...(storage ? { storage } : {}),
       ...(boundary ? { boundary } : {}),
       ...(toolCall ? { mcp: toolCall } : {}),
+      ...(device ? { device } : {}),
       ...(transactional ? { transactional_delivery: transactional } : {}),
       ...(outbox ? { outbox_delivery: outbox } : {}),
       ...(declaredDelivery

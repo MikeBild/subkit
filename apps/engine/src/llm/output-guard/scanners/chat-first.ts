@@ -77,10 +77,7 @@ export const chatFirstScanner: Scanner = {
   scan(text: string): Violation[] {
     const out: Violation[] = [];
 
-    FENCED_RE.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    // biome-ignore lint/suspicious/noAssignInExpressions: standard regex exec loop.
-    while ((m = FENCED_RE.exec(text)) !== null) {
+    for (const m of text.matchAll(FENCED_RE)) {
       const fullStart = m.index;
       const fullEnd = m.index + m[0].length;
       const body = m[2] ?? "";
@@ -100,9 +97,7 @@ export const chatFirstScanner: Scanner = {
     }
 
     const sentenceRe = /[^.!?\n]+[.!?]?/g;
-    let s: RegExpExecArray | null;
-    // biome-ignore lint/suspicious/noAssignInExpressions: standard regex exec loop.
-    while ((s = sentenceRe.exec(text)) !== null) {
+    for (const s of text.matchAll(sentenceRe)) {
       const sentence = s[0];
       if (!TRIGGER_RE.test(sentence)) continue;
       if (!SURFACE_RE.test(sentence)) continue;

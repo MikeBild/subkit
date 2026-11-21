@@ -6,7 +6,7 @@ import {
   conversationMessages,
   conversations,
   conversationToolCalls,
-  credentials,
+  vaultItems,
 } from "../../db/schema/index.ts";
 import { TEST_HUMAN_ANSWER } from "../../test-helpers/answer-actor.ts";
 import {
@@ -128,8 +128,8 @@ describe("auto-persist on confirmation — save_connector_draft", () => {
 
     const cred = await ctx.db
       .select()
-      .from(credentials)
-      .where(and(eq(credentials.tenant_id, tenant_id), eq(credentials.connector_id, conn[0]!.id)));
+      .from(vaultItems)
+      .where(and(eq(vaultItems.tenant_id, tenant_id), eq(vaultItems.connector_id, conn[0]!.id)));
     expect(cred).toHaveLength(1);
     expect(cred[0]!.mode).toBe("bearer");
 
@@ -279,8 +279,8 @@ describe("auto-persist on confirmation — save_connector_draft", () => {
 
     const cred = await ctx.db
       .select()
-      .from(credentials)
-      .where(and(eq(credentials.tenant_id, tenant_id), eq(credentials.connector_id, conn[0]!.id)));
+      .from(vaultItems)
+      .where(and(eq(vaultItems.tenant_id, tenant_id), eq(vaultItems.connector_id, conn[0]!.id)));
     expect(cred).toHaveLength(0);
 
     const audit = await ctx.db.select().from(auditLog).where(eq(auditLog.tenant_id, tenant_id));
@@ -416,8 +416,8 @@ describe("auto-persist on confirmation — save_connector_draft basic-auth", () 
 
     const cred = await ctx.db
       .select()
-      .from(credentials)
-      .where(and(eq(credentials.tenant_id, tenant_id), eq(credentials.connector_id, conn[0]!.id)));
+      .from(vaultItems)
+      .where(and(eq(vaultItems.tenant_id, tenant_id), eq(vaultItems.connector_id, conn[0]!.id)));
     expect(cred).toHaveLength(1);
     expect(cred[0]!.mode).toBe("basic");
 

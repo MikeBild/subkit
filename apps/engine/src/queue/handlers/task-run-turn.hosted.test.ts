@@ -11,6 +11,7 @@ import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
 import { sweepTenantTasks } from "../../scheduler/task-sweep.ts";
 import { createTask, startTaskRun } from "../../tasks/index.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { configureHostedPolicyForTests } from "../../test-helpers/hosted-policy.ts";
 import { provisionTestWorkspace } from "../../test-helpers/workspace-registration.ts";
 import { createBoss, disposeBoss } from "../boss.ts";
@@ -28,7 +29,7 @@ let boss: PgBoss;
 let dir: string;
 
 beforeAll(async () => {
-  process.env.LLM_PROVIDER = "mock";
+  testEnv.LLM_PROVIDER = "mock";
   resetMockProvider();
   tdb = await createTestDb("task-run-turn-hosted");
   await tdb.db

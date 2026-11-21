@@ -117,7 +117,7 @@ export async function reportPreview(
     judgeSkipped: judge.judgeOutcome?.verdict === "skipped",
     judgeEscalate: judge.judgeEscalate,
     doneGuidance: judge.judgeDoneSignal?.guidance ?? null,
-    autoMode: ctx.permission_mode === "auto",
+    askBeforeWriting: ctx.ask_before_writing === true,
     saveDeclined,
     wouldReplacePersisted: replacesPersistedWorkflow(ctx.getDraft().summary),
     stoppedForDraft,

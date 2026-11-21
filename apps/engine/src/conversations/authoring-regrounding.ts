@@ -4,8 +4,8 @@ import type { Executor } from "../db/client.ts";
 import { connectors as connectorsTable, workflowExecutionAuthorities } from "../db/schema/index.ts";
 import { fitShapeSummary } from "../llm/runtime/context-assembler/formatters.ts";
 import { type GenerationNeed, isUserNeed } from "../llm/runtime/generation-abort.ts";
-import { logger } from "../logging/logger.ts";
-import { listLatestShapes } from "../schema-versions/service.ts";
+import { logger } from "../logging/index.ts";
+import { listLatestShapes } from "../schema-versions/index.ts";
 import type { SchemaShape } from "../self-healing/types.ts";
 
 export const REGROUND_ROUTE_CAP = 120;

@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { LLMS_PAGE_PATHS } from "@shared/llms-index.ts";
 import { _resetConfigForTests, loadConfig } from "../../config/loader.ts";
+import { createDbFromUrl } from "../../db/client.ts";
 import type { AppEnv } from "../openapi.ts";
 import { createApp } from "../server.ts";
 import {
@@ -15,6 +16,8 @@ import {
   SKILL_REFERENCES,
 } from "./install-skill.ts";
 import { registerLlmsTxtRoutes } from "./llms-txt.ts";
+
+const offlineDb = createDbFromUrl("postgres://localhost/offline").db;
 
 let configDirectory: string;
 beforeAll(async () => {
@@ -132,7 +135,7 @@ describe("the installer", () => {
 
 describe("in the real route table", () => {
   test("/install/skill is reached before /install/{asset} can 404 it", async () => {
-    const app = createApp();
+    const app = createApp({ db: offlineDb });
     const res = await app.request("http://127.0.0.1/install/skill");
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/x-shellscript");

@@ -12,6 +12,7 @@ import {
   getRuntimeRevision,
   initializeRuntimeConfig,
 } from "../runtime-config/service.ts";
+import { testEnv } from "../test-helpers/determinism/env.ts";
 import { _resetRateLimitForTests, consume, run } from "./bootstrap.ts";
 
 let tdb: TestDb;
@@ -20,7 +21,7 @@ let configDir: string;
 let coordinator: RuntimeConfigCoordinator;
 
 beforeAll(async () => {
-  process.env.MASTER_KEY = "66".repeat(32);
+  testEnv.MASTER_KEY = "66".repeat(32);
   tdb = await createTestDb("onboarding_bootstrap_global_llm");
   rbacIds = await seedBuiltinRolesAndPermissions(tdb.db);
   configDir = mkdtempSync(join(tmpdir(), "sk-bootstrap-global-llm-"));

@@ -4,10 +4,10 @@ import { getConnectorForEnvironment } from "../../connectors/service.ts";
 import { upsertCredential } from "../../credentials/service.ts";
 import {
   connectors,
-  credentials,
   executionSteps,
   executions,
   outboundConnections,
+  vaultItems,
   workflowExecutionAuthorities,
   workflows,
   workflowVersions,
@@ -169,19 +169,19 @@ for (const driver of ["http", "graphql"] as const) {
         }
         const [originalCredential] = await ctx.db
           .select()
-          .from(credentials)
+          .from(vaultItems)
           .where(
             and(
-              eq(credentials.tenant_id, f.params.tenant_id),
-              eq(credentials.connector_id, f.connector.id),
+              eq(vaultItems.tenant_id, f.params.tenant_id),
+              eq(vaultItems.connector_id, f.connector.id),
             ),
           );
         if (!originalCredential) throw new Error("missing credential fixture");
         if (change === "credential_missing")
           await ctx.db
-            .update(credentials)
+            .update(vaultItems)
             .set({ deleted_at: await databaseNow(ctx.db) })
-            .where(eq(credentials.id, originalCredential.id));
+            .where(eq(vaultItems.id, originalCredential.id));
         if (change === "credential")
           await upsertCredential(
             {
@@ -240,9 +240,9 @@ for (const driver of ["http", "graphql"] as const) {
             if (change === "credential_missing") {
               expect(snapshot.credential_id).toBeNull();
               await ctx.db
-                .update(credentials)
+                .update(vaultItems)
                 .set({ deleted_at: null })
-                .where(eq(credentials.id, originalCredential.id));
+                .where(eq(vaultItems.id, originalCredential.id));
             }
             if (change === "connection_changed") {
               if (!f.connection) throw new Error("missing connection fixture");
@@ -267,7 +267,7 @@ for (const driver of ["http", "graphql"] as const) {
                 .where(eq(connectors.id, f.connector.id));
             if (change === "credential")
               await ctx.db
-                .update(credentials)
+                .update(vaultItems)
                 .set({
                   ciphertext: originalCredential.ciphertext,
                   iv: originalCredential.iv,
@@ -276,8 +276,8 @@ for (const driver of ["http", "graphql"] as const) {
                 })
                 .where(
                   and(
-                    eq(credentials.tenant_id, f.params.tenant_id),
-                    eq(credentials.id, originalCredential.id),
+                    eq(vaultItems.tenant_id, f.params.tenant_id),
+                    eq(vaultItems.id, originalCredential.id),
                   ),
                 );
             return await assertExecutionAuthorityCurrent(

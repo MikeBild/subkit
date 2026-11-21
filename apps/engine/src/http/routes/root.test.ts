@@ -5,12 +5,15 @@ import { join } from "node:path";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { LLMS_PAGE_PATHS } from "@shared/llms-index.ts";
 import { _resetConfigForTests, loadConfig, setConfigKey } from "../../config/loader.ts";
+import { createDbFromUrl } from "../../db/client.ts";
 import type { AppEnv } from "../openapi.ts";
 import { createApp } from "../server.ts";
 import { COMPOSE_YAML, registerComposeRoute } from "./compose.ts";
 import { registerInstallSkillRoute } from "./install-skill.ts";
 import { registerLlmsTxtRoutes } from "./llms-txt.ts";
 import { cockpitLocation, ROOT_ENTRY_PATHS, registerRootRoute } from "./root.ts";
+
+const offlineDb = createDbFromUrl("postgres://localhost/offline").db;
 
 let configDirectory: string;
 
@@ -174,7 +177,7 @@ describe("what the entry point promises", () => {
 
   test("the full engine serves the documentation bundle to an anonymous caller", async () => {
     expect(ROOT_ENTRY_PATHS).toContain("/docs.json");
-    const app = createApp({ rateLimit: { max: 10_000, windowMs: 60_000 } });
+    const app = createApp({ db: offlineDb, rateLimit: { max: 10_000, windowMs: 60_000 } });
     const res = await app.request("http://127.0.0.1/docs.json");
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("application/json");

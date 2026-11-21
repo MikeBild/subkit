@@ -24,7 +24,7 @@ export const userSetupPreferences = pgTable(
     user_id: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    default_chat_mode: text("default_chat_mode").$type<"ask" | "auto" | "plan">(),
+    ask_before_writing: boolean("ask_before_writing").notNull().default(false),
     default_environment: text("default_environment").$type<"dev" | "prod">(),
     approver_kind: text("approver_kind").$type<"self" | "teammate" | "pair">(),
     approver_email: text("approver_email"),
@@ -42,10 +42,6 @@ export const userSetupPreferences = pgTable(
   },
   (t) => [
     primaryKey({ columns: [t.tenant_id, t.user_id] }),
-    check(
-      "user_setup_preferences_chat_mode_check",
-      sql`${t.default_chat_mode} IS NULL OR ${t.default_chat_mode} IN ('ask', 'auto', 'plan')`,
-    ),
     check(
       "user_setup_preferences_environment_check",
       sql`${t.default_environment} IS NULL OR ${t.default_environment} IN ('dev', 'prod')`,

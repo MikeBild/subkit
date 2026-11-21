@@ -1,4 +1,4 @@
-/* SubKit design-system tokens (Lovable `src/styles.css`).
+/* Design-system tokens (Lovable `src/styles.css`).
  *
  * The base palette (background, foreground, primary, accent, destructive, warning, success,
  * border, ring, sidebar …) comes from the app: in the Cockpit it is the cockpit-ui family
@@ -11,6 +11,8 @@
  *   @import "<path>/packages/ui/src/styles/tokens.css";
  *   @source "<path>/packages/ui/src";
  */
+
+@custom-variant nav-docked (@media (width >= 68.75rem));
 
 @theme inline {
   --radius-control: 0.5rem;

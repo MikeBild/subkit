@@ -82,9 +82,6 @@ export const finishTurnRender = (session: SkSessionState, line: RenderLineSink):
     if (footer) line(footer);
   }
   if (session.usage) {
-    line(
-      `   (usage: ${session.usage.turn_tokens} tokens this turn; ` +
-        `${session.usage.remaining_monthly_budget_tokens ?? "∞"} remaining)`,
-    );
+    line(`   (usage: ${session.usage.turn_tokens} tokens this turn)`);
   }
 };

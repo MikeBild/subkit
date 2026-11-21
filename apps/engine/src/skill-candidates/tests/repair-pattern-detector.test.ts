@@ -5,6 +5,7 @@ import { executionFixtures, patchCandidates } from "../../db/schema/executions.t
 import { tenants } from "../../db/schema/identity.ts";
 import { workflows } from "../../db/schema/workflows.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { detectRepairPatterns } from "../detectors/repair-pattern.ts";
 
 // allow-wall-clock: anchor for patch created_at — the detector computes its
@@ -12,7 +13,7 @@ import { detectRepairPatterns } from "../detectors/repair-pattern.ts";
 // tests must stay within the real 30-day window.
 const RECENT_TS = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-const skip = process.env.REQUIRES_PG === "0";
+const skip = testEnv.REQUIRES_PG === "0";
 
 let testDb: TestDb;
 let tenantId: string;

@@ -1,19 +1,29 @@
-import { absolute, chatNewHref, conversationHref } from "@/app/links";
-import type { ConversationSelection } from "@/pages/chat-selection";
-
+export { conversationFailureKind, retryConversationRead } from "@/features/chat/api/load-failure";
+export {
+  addAttachments,
+  createEmptyConversation,
+  linkAttachment,
+  type PendingAttachment,
+  takeAttachmentFiles,
+} from "./api/attachments";
+export { selectionFromPath, setChatPath } from "./hooks/chat-path";
+export { useChatLookups } from "./hooks/lookups";
+export { useChatQuestions } from "./hooks/questions";
+export {
+  COMPOSER_TRAY_KEY,
+  type ComposerTray,
+  claimComposerTray,
+  useComposerTray,
+} from "./hooks/tray";
+export { useChatTurn } from "./hooks/turn";
+export { useChatWorkspace } from "./hooks/workspace";
+export { conversationRefreshInterval, waitsForPerson } from "./model/approval";
+export { chatAutomationTool } from "./model/automation-tool";
 export {
   answerPhase,
   bubbleSide,
   previousSides,
-  shownMode,
-  switchedOrDefault,
-} from "./bubble-model";
-export { ChatComposer } from "./composer";
-export { ChatComposerArea } from "./composer-area";
-export { ChatContextContent } from "./context-content";
-export { ChatContextDock, ChatContextSheet, useContextDock } from "./context-dock";
-export { ConversationDialogs, useConversationDialogs } from "./conversation-dialogs";
-export { ConversationHead, TurnErrors } from "./conversation-head";
+} from "./model/bubble-model";
 export {
   type AttachmentPreview,
   actionLabel,
@@ -24,14 +34,20 @@ export {
   originLine,
   type RestoreComposer,
   type StreamedDiff,
-} from "./labels";
-export { ChatListPanel } from "./list-panel";
-export { ChatMessage } from "./message";
-export { AttachmentPreviewSheet, FollowSubmittedTurn, ReadingColumn } from "./parts";
-export { QuestionDock } from "./question-dock";
-export { TaskRunLine, useRunOfConversation } from "./task-run-line";
-export { ChatTranscript } from "./transcript";
-export { COMPOSER_TRAY_KEY, type ComposerTray, claimComposerTray, useComposerTray } from "./tray";
+} from "./model/labels";
+export {
+  type PlaybookAction,
+  playbookActionTarget,
+  playbookAnchorIndex,
+  playbookSummaryVisible,
+} from "./model/playbook";
+export { ruleName } from "./model/policy";
+export { resumeNextAction, resumeSummaryLine } from "./model/resume";
+export { activeConversationId, type ConversationSelection } from "./model/selection";
+export { budgetPill, chatHeaderTitle, optimisticVisible } from "./model/session";
+export { startersVisible } from "./model/start-model";
+export { runMarker, runPlaybook } from "./model/task-run";
+export { questionExcerpt } from "./model/text";
 export {
   type ClaimedFile,
   claimedAsPending,
@@ -39,18 +55,20 @@ export {
   type TrayItem,
   type TrayProblem,
   trayChips,
-} from "./tray-model";
-export { ComposerTrayChips, ComposerTrayNotice } from "./tray-view";
-
-export function selectionFromPath(initialPrompt: string): ConversationSelection {
-  if (initialPrompt || window.location.pathname.endsWith("/chat/new")) return { kind: "new" };
-  const match = window.location.pathname.match(/\/chat\/([^/?]+)$/);
-  return match?.[1]
-    ? { kind: "existing", id: decodeURIComponent(match[1]) }
-    : { kind: "automatic" };
-}
-
-export function setChatPath(id: string | null, replace = false): void {
-  const path = absolute(id ? conversationHref(id) : chatNewHref());
-  window.history[replace ? "replaceState" : "pushState"]({}, "", path);
-}
+} from "./model/tray-model";
+export { ChatComposer } from "./ui/composer";
+export { ChatComposerArea } from "./ui/composer-area";
+export { ChatContextContent } from "./ui/context-content";
+export { ChatContextDock, ChatContextSheet, useContextDock } from "./ui/context-dock";
+export { ConversationDialogs, useConversationDialogs } from "./ui/conversation-dialogs";
+export { ConversationHead, TurnErrors } from "./ui/conversation-head";
+export { ConversationsAbout } from "./ui/conversations-about";
+export { ChatListPanel } from "./ui/list-panel";
+export { ChatMessage } from "./ui/message";
+export { AttachmentPreviewSheet, FollowSubmittedTurn, ReadingColumn } from "./ui/parts";
+export { ChatPlaybookSummary } from "./ui/playbook-panel";
+export { QuestionDock } from "./ui/question-dock";
+export { ChatStart } from "./ui/start";
+export { TaskRunLine, useRunOfConversation } from "./ui/task-run-line";
+export { ChatTranscript } from "./ui/transcript";
+export { ComposerTrayChips, ComposerTrayNotice } from "./ui/tray-view";

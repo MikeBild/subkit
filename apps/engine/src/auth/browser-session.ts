@@ -8,6 +8,7 @@ import type { Db } from "../db/client.ts";
 import type { CockpitInstallationKind } from "../db/schema/cockpit-installations.ts";
 import { cockpitInstallations } from "../db/schema/cockpit-installations.ts";
 import { sessions } from "../db/schema/index.ts";
+import { readEnv } from "../env.ts";
 import {
   assertTenantActive,
   endCockpitPushForSessions,
@@ -78,7 +79,7 @@ export function browserSessionSecret(): Uint8Array {
   if (configured) return new TextEncoder().encode(configured);
   return new Uint8Array(
     createHash("sha256")
-      .update(`${process.env.MASTER_KEY ?? ""}:session`)
+      .update(`${readEnv("MASTER_KEY") ?? ""}:session`)
       .digest(),
   );
 }
@@ -208,7 +209,7 @@ export function browserSessionCookie(
   installationId?: string,
 ): string {
   const age = maxAge ?? Math.floor(SESSION_ABSOLUTE_TTL_MS / 1000);
-  const secure = process.env.NODE_ENV !== "development" ? " Secure;" : "";
+  const secure = readEnv("NODE_ENV") !== "development" ? " Secure;" : "";
   const name = installationId
     ? cockpitInstallationSessionCookie(installationId)
     : BROWSER_SESSION_COOKIE;
@@ -221,7 +222,7 @@ export function clearBrowserSessionCookie(installationId?: string): string {
     ? cockpitInstallationSessionCookie(installationId)
     : BROWSER_SESSION_COOKIE;
   const path = installationId ? `/cockpit/i/${installationId}/` : "/";
-  const secure = process.env.NODE_ENV !== "development" ? " Secure;" : "";
+  const secure = readEnv("NODE_ENV") !== "development" ? " Secure;" : "";
   return `${name}=; Path=${path}; HttpOnly; SameSite=Lax;${secure} Max-Age=0`;
 }
 

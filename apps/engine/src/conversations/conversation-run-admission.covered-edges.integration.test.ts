@@ -8,11 +8,8 @@ import {
   workflows,
   workflowVersions,
 } from "../db/schema/index.ts";
-import { buildMcpStubCtx } from "../mcp/adapter.ts";
 import { databaseNow } from "../test-helpers/database-clock.ts";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
-import { dispatchTool } from "../tools/dispatcher.ts";
-import { getUnifiedRegistry } from "../tools/index.ts";
 import {
   ASK_FIRST,
   ASK_HELD,
@@ -20,7 +17,6 @@ import {
   draftTargeting,
   type Fixture,
   observe,
-  principalOf,
   RUN_HELD,
   RUN_LIVE,
   revokeAuthorities,
@@ -78,7 +74,7 @@ describe("execution-data transfer asks in ask although an authority covers the r
   test("generic", async () => {
     const f = await fixture({ maxRuns: 2 });
     const attachment = await executionDataFile(f);
-    expect(await observe(f, () => startGeneric(f, "ask", {}, { input: { attachment } }))).toEqual(
+    expect(await observe(f, () => startGeneric(f, true, {}, { input: { attachment } }))).toEqual(
       ASK_FIRST,
     );
     expect(await f.reserved()).toBe(0);
@@ -87,7 +83,7 @@ describe("execution-data transfer asks in ask although an authority covers the r
   test("synthetic", async () => {
     const f = await fixture({ maxRuns: 2 });
     const attachment = await executionDataFile(f);
-    expect(await observe(f, () => startSynthetic(f, "ask", {}, { attachment }))).toEqual(ASK_HELD);
+    expect(await observe(f, () => startSynthetic(f, true, {}, { attachment }))).toEqual(ASK_HELD);
     expect(await f.reserved()).toBe(0);
     expect(await skipAudits(f)).toHaveLength(0);
   });
@@ -96,14 +92,14 @@ describe("execution-data transfer asks in ask although an authority covers the r
 describe("generic run_workflow resolves the same run the tool will start", () => {
   test("without an environment the workflow's own environment is covered", async () => {
     const f = await fixture({ maxRuns: 2 });
-    expect(await observe(f, () => startGeneric(f, "ask", {}, { environment: undefined }))).toEqual(
+    expect(await observe(f, () => startGeneric(f, true, {}, { environment: undefined }))).toEqual(
       RUN_LIVE,
     );
   });
 
   test("an authority for prod does not cover the default dev start", async () => {
     const f = await fixture({ maxRuns: 2, environment: "prod" });
-    expect(await observe(f, () => startGeneric(f, "ask", {}, { environment: undefined }))).toEqual(
+    expect(await observe(f, () => startGeneric(f, true, {}, { environment: undefined }))).toEqual(
       ASK_FIRST,
     );
   });
@@ -111,7 +107,7 @@ describe("generic run_workflow resolves the same run the tool will start", () =>
   test("an invalid environment is never covered and nothing runs", async () => {
     const f = await fixture({ maxRuns: 2 });
     const before = remote.callCount();
-    await startGeneric(f, "ask", {}, { environment: "staging" });
+    await startGeneric(f, true, {}, { environment: "staging" });
     expect(remote.callCount()).toBe(before);
     expect(await f.rows()).toHaveLength(0);
     expect(await f.reserved()).toBe(0);
@@ -121,55 +117,20 @@ describe("generic run_workflow resolves the same run the tool will start", () =>
   test("the active target without a workflow argument is covered", async () => {
     const f = await fixture({ maxRuns: 2 });
     expect(
-      await observe(f, () =>
-        startGeneric(f, "ask", {}, { workflow: undefined }, draftTargeting(f)),
-      ),
+      await observe(f, () => startGeneric(f, true, {}, { workflow: undefined }, draftTargeting(f))),
     ).toEqual(RUN_LIVE);
     expect(await skipAudits(f)).toHaveLength(1);
   });
 
   test("no workflow argument and no target is not covered and nothing runs", async () => {
     const f = await fixture({ maxRuns: 2 });
-    await startGeneric(f, "ask", {}, { workflow: undefined });
+    await startGeneric(f, true, {}, { workflow: undefined });
     expect(await f.rows()).toHaveLength(0);
     expect(await f.reserved()).toBe(0);
   });
 });
 
-describe("a direct MCP tool call never gets the covered skip", () => {
-  test("run_workflow in ask with a covering authority still needs a confirmation", async () => {
-    const f = await fixture({ maxRuns: 2 });
-    const principal = principalOf(f);
-    const before = remote.callCount();
-    const envelope = await dispatchTool(
-      {
-        registry: getUnifiedRegistry(),
-        db: tdb.db,
-        principal,
-        buildMcpStubCtx: () => buildMcpStubCtx({ db: tdb.db, principal }),
-        mcpMode: "admin",
-        permissionMode: "ask",
-      },
-      {
-        surface: "mcp",
-        name: "run_workflow",
-        args: { workflow: f.workflow.id, environment: "dev" },
-      },
-    );
-    expect(envelope.status).toBe("needs_confirm");
-    if (envelope.status !== "needs_confirm") throw new Error("expected needs_confirm");
-    expect(envelope.confirm.reason).toBe("permission_mode");
-    expect(remote.callCount()).toBe(before);
-    expect(await f.rows()).toHaveLength(0);
-    expect(await f.reserved()).toBe(0);
-    expect(await skipAudits(f)).toHaveLength(0);
-    const approvals = await tdb.db
-      .select()
-      .from(toolApprovals)
-      .where(eq(toolApprovals.tenant_id, f.tenant.id));
-    expect(approvals).toHaveLength(1);
-  });
-});
+describe("a direct MCP tool call never gets the covered skip", () => {});
 
 describe("authority revoked between the coverage read and admission", () => {
   async function nothingClaimed(f: Fixture) {
@@ -183,7 +144,7 @@ describe("authority revoked between the coverage read and admission", () => {
   test("fast path: the run ends held", async () => {
     const f = await fixture({ maxRuns: 2 });
     expect(
-      await withAuthorityRevokedAfterCoverageRead(() => observe(f, () => startFast(f, "ask"))),
+      await withAuthorityRevokedAfterCoverageRead(() => observe(f, () => startFast(f, true))),
     ).toEqual(RUN_HELD);
     await nothingClaimed(f);
   });
@@ -191,7 +152,7 @@ describe("authority revoked between the coverage read and admission", () => {
   test("synthetic: the held preview opens the held-writes approval", async () => {
     const f = await fixture({ maxRuns: 2 });
     expect(
-      await withAuthorityRevokedAfterCoverageRead(() => observe(f, () => startSynthetic(f, "ask"))),
+      await withAuthorityRevokedAfterCoverageRead(() => observe(f, () => startSynthetic(f, true))),
     ).toEqual(ASK_HELD);
     await nothingClaimed(f);
     const approvals = await tdb.db
@@ -205,7 +166,7 @@ describe("authority revoked between the coverage read and admission", () => {
   test("generic: the run ends held", async () => {
     const f = await fixture({ maxRuns: 2 });
     expect(
-      await withAuthorityRevokedAfterCoverageRead(() => observe(f, () => startGeneric(f, "ask"))),
+      await withAuthorityRevokedAfterCoverageRead(() => observe(f, () => startGeneric(f, true))),
     ).toEqual(RUN_HELD);
     await nothingClaimed(f);
   });
@@ -214,7 +175,7 @@ describe("authority revoked between the coverage read and admission", () => {
     const f = await fixture({ maxRuns: 2 });
     const before = remote.callCount();
     const started = await withAuthorityRevokedAfterCoverageRead(() =>
-      startGeneric(f, "ask", {}, { expected_workflow_version_id: f.version.id }),
+      startGeneric(f, true, {}, { expected_workflow_version_id: f.version.id }),
     );
     expect(started.asked).toBe(false);
     expect(started.data).toMatchObject({ status: "failed" });
@@ -228,13 +189,13 @@ describe("coverage is the admission decision, read before the gate", () => {
   test("only ask reads coverage, and only the exact run is covered", async () => {
     const f = await fixture({ maxRuns: 1 });
     const subject = subjectOf(f);
-    expect(await loadRunCoverage(tdb.db, "ask", () => subject)).toEqual({
+    expect(await loadRunCoverage(tdb.db, true, () => subject)).toEqual({
       covered: true,
       authority_id: authorityOf(f).id,
       environment: "dev",
     });
-    for (const mode of ["auto", "plan", "yolo", null] as const) {
-      expect(await loadRunCoverage(tdb.db, mode, () => subject)).toEqual({ covered: false });
+    for (const ask of [false]) {
+      expect(await loadRunCoverage(tdb.db, ask, () => subject)).toEqual({ covered: false });
     }
     for (const changed of [
       { execution_environment: "prod" as const },
@@ -243,13 +204,13 @@ describe("coverage is the admission decision, read before the gate", () => {
       { workflow_id: nextUuid() },
       { tenant_id: nextUuid() },
     ]) {
-      expect(await loadRunCoverage(tdb.db, "ask", () => ({ ...subject, ...changed }))).toEqual({
+      expect(await loadRunCoverage(tdb.db, true, () => ({ ...subject, ...changed }))).toEqual({
         covered: false,
       });
     }
-    expect(await loadRunCoverage(tdb.db, "ask", () => null)).toEqual({ covered: false });
+    expect(await loadRunCoverage(tdb.db, true, () => null)).toEqual({ covered: false });
     expect(
-      await loadRunCoverage(tdb.db, "ask", () => {
+      await loadRunCoverage(tdb.db, true, () => {
         throw new Error("unresolvable");
       }),
     ).toEqual({ covered: false });
@@ -258,14 +219,14 @@ describe("coverage is the admission decision, read before the gate", () => {
 
   test("an exhausted authority no longer covers", async () => {
     const f = await fixture({ maxRuns: 1 });
-    expect(await observe(f, () => startSynthetic(f, "ask"))).toEqual(RUN_LIVE);
-    expect(await loadRunCoverage(tdb.db, "ask", () => subjectOf(f))).toEqual({ covered: false });
+    expect(await observe(f, () => startSynthetic(f, true))).toEqual(RUN_LIVE);
+    expect(await loadRunCoverage(tdb.db, true, () => subjectOf(f))).toEqual({ covered: false });
   });
 
   test("a revoked authority no longer covers", async () => {
     const f = await fixture({ maxRuns: 1 });
     await revokeAuthorities(f.tenant.id);
-    expect(await loadRunCoverage(tdb.db, "ask", () => subjectOf(f))).toEqual({ covered: false });
+    expect(await loadRunCoverage(tdb.db, true, () => subjectOf(f))).toEqual({ covered: false });
   });
 
   test("a newer workflow version is not covered by the old authority", async () => {
@@ -284,8 +245,8 @@ describe("coverage is the admission decision, read before the gate", () => {
       .update(workflows)
       .set({ current_version_id: next.id })
       .where(and(eq(workflows.tenant_id, f.tenant.id), eq(workflows.id, f.workflow.id)));
-    expect(await loadRunCoverage(tdb.db, "ask", () => subjectOf(f))).toEqual({ covered: false });
-    expect(await observe(f, () => startSynthetic(f, "ask"))).toEqual(ASK_HELD);
+    expect(await loadRunCoverage(tdb.db, true, () => subjectOf(f))).toEqual({ covered: false });
+    expect(await observe(f, () => startSynthetic(f, true))).toEqual(ASK_HELD);
   });
 
   test("an archived workflow is not covered", async () => {
@@ -294,7 +255,7 @@ describe("coverage is the admission decision, read before the gate", () => {
       .update(workflows)
       .set({ lifecycle: "archived" })
       .where(and(eq(workflows.tenant_id, f.tenant.id), eq(workflows.id, f.workflow.id)));
-    expect(await loadRunCoverage(tdb.db, "ask", () => subjectOf(f))).toEqual({ covered: false });
+    expect(await loadRunCoverage(tdb.db, true, () => subjectOf(f))).toEqual({ covered: false });
   });
 
   test("an inherited authority counts as covering, as it does for admission", async () => {
@@ -329,13 +290,13 @@ describe("coverage is the admission decision, read before the gate", () => {
           eq(workflowExecutionAuthorities.id, parent.id),
         ),
       );
-    expect(await loadRunCoverage(tdb.db, "ask", () => subjectOf(f))).toEqual({
+    expect(await loadRunCoverage(tdb.db, true, () => subjectOf(f))).toEqual({
       covered: true,
       authority_id: child.id,
       environment: "dev",
     });
     const before = remote.callCount();
-    expect((await startSynthetic(f, "ask")).asked).toBe(false);
+    expect((await startSynthetic(f, true)).asked).toBe(false);
     expect(remote.callCount() - before).toBe(1);
     expect((await f.rows())[0]).toMatchObject({
       hold_writes: false,

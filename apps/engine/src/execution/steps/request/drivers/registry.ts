@@ -4,6 +4,11 @@ import type { StepResult } from "../../../types.ts";
 import type { RequestDispatch } from "./context.ts";
 import { graphqlRequestDriver } from "./graphql.ts";
 import { httpRequestDriver } from "./http.ts";
+import {
+  localBrowserRequestDriver,
+  localComputerRequestDriver,
+  localFilesRequestDriver,
+} from "./local.ts";
 import { mcpRequestDriver } from "./mcp.ts";
 import { postgresRequestDriver } from "./postgres.ts";
 import { s3RequestDriver } from "./s3.ts";
@@ -14,4 +19,7 @@ export const DRIVERS: DriverRegistry<RequestDispatch, StepResult, RequestStep> =
   mcp: mcpRequestDriver,
   s3: s3RequestDriver,
   postgres: postgresRequestDriver,
+  local_files: localFilesRequestDriver,
+  local_browser: localBrowserRequestDriver,
+  local_computer: localComputerRequestDriver,
 };

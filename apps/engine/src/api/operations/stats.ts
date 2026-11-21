@@ -6,11 +6,13 @@ import {
   type AuditGroupDim,
   type AuditOutcome,
   aggregateAudit,
+  aggregateExecutions,
+  aggregateQuality,
+  type ExecutionGroupDim,
+  fillGroups,
+  readBucketSeries,
   type StatusClass,
-} from "../../stats/aggregate-audit.ts";
-import { aggregateExecutions, type ExecutionGroupDim } from "../../stats/aggregate-executions.ts";
-import { aggregateQuality } from "../../stats/aggregate-quality.ts";
-import { fillGroups, readBucketSeries } from "../../stats/bucket-fill.ts";
+} from "../../stats/index.ts";
 import { clampToRetentionHorizon, resolveWindow } from "../stats/bucket-window.ts";
 import { EVENT_CLASS_ACTIONS, type EventClass } from "../stats/event-classes.ts";
 import {

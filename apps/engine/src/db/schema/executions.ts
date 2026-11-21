@@ -16,10 +16,7 @@ import {
 import type { CredentialUseSnapshot } from "../../credentials/provider-identity.ts";
 import type { ExecutionAuthorizationContext } from "../../execution/authorization-context.ts";
 import type { CallerOrigin } from "../../execution/caller-origin.ts";
-import {
-  EXECUTION_STATUSES,
-  NON_TERMINAL_EXECUTION_STATUSES,
-} from "../../execution/core/status.ts";
+import { EXECUTION_STATUSES } from "../../execution/core/status.ts";
 import { executionModeEnum, tenantId, timestamps } from "./_common.ts";
 import { connectors } from "./connectors.ts";
 import { tenants } from "./identity.ts";
@@ -27,8 +24,8 @@ import { workflowExecutionAuthorities, workflows, workflowVersions } from "./wor
 
 export const executionStatusEnum = pgEnum("execution_status", EXECUTION_STATUSES);
 
-const nonTerminalStatusList = sql.raw(
-  NON_TERMINAL_EXECUTION_STATUSES.map((status) => `'${status}'`).join(", "),
+const guardUnitStatusList = sql.raw(
+  ["queued", "running"].map((status) => `'${status}'`).join(", "),
 );
 
 export const patchClassificationEnum = pgEnum("patch_classification", ["safe", "unsafe"]);
@@ -96,6 +93,12 @@ export const executions = pgTable(
     output_contract: text("output_contract"),
     result_markdown: text("result_markdown"),
     result_markdown_truncated: boolean("result_markdown_truncated").notNull().default(false),
+    budget_park: jsonb("budget_park").$type<{
+      step_id: string;
+      month: string;
+      parked_at: string;
+      scope: Record<string, unknown>;
+    } | null>(),
     guard_bucket: text("guard_bucket"),
     guard_unit_key: text("guard_unit_key"),
     started_at: timestamp("started_at", { withTimezone: true }),
@@ -158,7 +161,7 @@ export const executions = pgTable(
     index("executions_tenant_source_kind_idx").on(t.tenant_id, t.source_kind),
     index("executions_active_guard_unit_idx")
       .on(t.tenant_id, t.guard_unit_key)
-      .where(sql`${t.status} IN (${nonTerminalStatusList}) AND ${t.guard_unit_key} IS NOT NULL`),
+      .where(sql`${t.status} IN (${guardUnitStatusList}) AND ${t.guard_unit_key} IS NOT NULL`),
     uniqueIndex("executions_tenant_idempotency_key_uidx")
       .on(t.tenant_id, t.idempotency_key)
       .where(sql`${t.idempotency_key} IS NOT NULL`),

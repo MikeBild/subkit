@@ -17,6 +17,7 @@ export {
 
 import { z } from "@hono/zod-openapi";
 import type { MaterializedRequest } from "../execution/prepared-request.ts";
+import { hasCode, isC0OrDeleteExceptTab } from "../utils/control-chars.ts";
 import type { RequestStep } from "./types.ts";
 
 const mailbox = z
@@ -68,8 +69,6 @@ const TEXT_TYPE = /^(text\/(?:plain|html))(?:;\s*charset="?utf-8"?)?$/i;
 const ALTERNATIVE_TYPE = /^multipart\/alternative;\s*boundary=(?:"([^"]*)"|([^\s";]+))$/i;
 const BOUNDARY = /^[0-9A-Za-z'()+_,./:=?-]{1,70}$/;
 const ENCODED_WORD = /^=\?utf-8\?b\?([A-Za-z0-9+/]+={0,2})\?=$/i;
-// biome-ignore lint/suspicious/noControlCharactersInRegex: reject ambiguous MIME control bytes
-const CONTROL_BYTE = /[\x00-\x08\x0a-\x1f\x7f]/;
 const FIELD = /^([A-Za-z0-9-]+):[ \t]*(.*)$/;
 
 function strictUtf8(bytes: Uint8Array): string | null {
@@ -132,7 +131,7 @@ function inspectPart(part: string): { type: string; text: string } | Refused {
   if (end < 0) return refuse("multipart_unsupported");
   const headers = new Map<string, string>();
   for (const line of part.slice(0, end).split("\r\n")) {
-    if (CONTROL_BYTE.test(line)) return refuse("header_control_byte");
+    if (hasCode(line, isC0OrDeleteExceptTab)) return refuse("header_control_byte");
     if (/^[ \t]/.test(line)) return refuse("header_folded");
     const field = FIELD.exec(line);
     const key = field?.[1]?.toLowerCase();
@@ -205,7 +204,7 @@ export function inspectReportMessage(body: unknown): ReportMessageInspection {
   const subjectWords: string[] = [];
   let previous: string | null = null;
   for (const line of message.slice(0, end).split("\r\n")) {
-    if (CONTROL_BYTE.test(line)) return refuse("header_control_byte");
+    if (hasCode(line, isC0OrDeleteExceptTab)) return refuse("header_control_byte");
     if (/^[ \t]/.test(line)) {
       const word = line.slice(1);
       if (previous !== "subject" || line[0] !== " " || !ENCODED_WORD.test(word))

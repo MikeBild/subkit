@@ -64,7 +64,7 @@ describe("tool_policy_decision_total — one gated call, counted once on every s
       expect(result.kind).toBe("needs_confirm");
       expect(
         decisionCount({
-          rule: "category_default",
+          rule: "write_gate",
           mode: "confirm_before_execution",
           outcome: "confirm",
           surface,
@@ -99,7 +99,6 @@ describe("tool_policy_decision_total — one gated call, counted once on every s
       mode: "confirm_before_execution",
       outcome: "confirm",
       surface: "chat",
-      bypassed_confirmation: false,
       tenant_id: PRINCIPAL.tenant_id,
       conversation_id: CONVERSATION_ID,
     };

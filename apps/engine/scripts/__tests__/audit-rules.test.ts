@@ -11,6 +11,7 @@ import {
   lineCount,
   pureCoreImportHits,
   type ResolvedImport,
+  subsystemEntryHits,
 } from "../audit/rules.ts";
 
 const imp = (specifier: string, resolved = specifier, typeOnly = false): ResolvedImport => ({
@@ -257,5 +258,29 @@ describe("conversationsLeafHits", () => {
       'const { x } = await import("../conversations/elicitations.ts");',
     ).map((r) => ({ ...r, resolved: `${prefix}elicitations.ts` }));
     expect(conversationsLeafHits("apps/engine/src/queue/h.ts", refs)).toHaveLength(1);
+  });
+});
+
+describe("subsystemEntryHits", () => {
+  const src = "apps/engine/src/";
+
+  test("flags an import from another engine folder that bypasses its index.ts", () => {
+    expect(
+      subsystemEntryHits(`${src}mcp/server.ts`, [
+        imp("../files/read.ts", `${src}files/read.ts`),
+        imp("../files", `${src}files/index.ts`),
+        imp("./registry.ts", `${src}mcp/registry.ts`),
+        imp("zod", "zod"),
+      ]).map((hit) => hit.what),
+    ).toEqual([`${src}files/read.ts`]);
+  });
+
+  test("counts deep imports from top-level engine files too", () => {
+    expect(
+      subsystemEntryHits(`${src}engine-main.ts`, [
+        imp("./db/client.ts", `${src}db/client.ts`),
+        imp("./composition", `${src}composition/index.ts`),
+      ]).map((hit) => hit.what),
+    ).toEqual([`${src}db/client.ts`]);
   });
 });

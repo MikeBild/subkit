@@ -1,2 +1,1 @@
-export { TaskPage } from "@/pages/tasks-detail";
-export { TasksPage } from "@/pages/tasks-list";
+export { TaskPage, TasksPage } from "@/features/tasks";

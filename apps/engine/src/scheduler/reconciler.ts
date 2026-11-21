@@ -2,50 +2,57 @@ import { and, asc, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
+import { runMcpOAuthCleanup } from "../auth/scheduled/mcp-oauth-cleanup-runner.ts";
+import { runChatDedupCleanup } from "../chat/scheduled/chat-dedup-cleanup-runner.ts";
 import { probeAllSelfDescriptionLinks } from "../connectors/discovery/self-description-probe.ts";
 import { runDiscoveryCached } from "../connectors/discovery/service.ts";
+import {
+  runConnectorReauthScanForTenant,
+  runOAuth2RefreshKeepAliveForTenant,
+} from "../connectors/scheduled/connector-reauth-scan-runner.ts";
+import { runEndpointContractScanForTenant } from "../connectors/scheduled/endpoint-contract-scan-runner.ts";
 import { attachConnectorSelfDescriptionLinks } from "../connectors/service.ts";
+import { deviceConfirmationPort } from "../conversations/public/elicitation.ts";
+import {
+  runConversationTitleSweepSafely,
+  runElicitationExpiry,
+} from "../conversations/public/scheduled.ts";
 import { refreshDueConnections } from "../credentials/index.ts";
 import type { Db } from "../db/client.ts";
 import { connectors, tenants } from "../db/schema/index.ts";
 import { retryTransient } from "../db/transient.ts";
-import { backfillEmbeddings } from "../embeddings/backfill.ts";
+import { enqueueExecutionRun } from "../devices/waiting.ts";
+import { backfillEmbeddings } from "../embeddings/index.ts";
 import { admitSystemWorkflowExecution } from "../execution/authority-admission.ts";
+import { runFilesCleanup } from "../files/scheduled/files-cleanup-runner.ts";
+import { runTenantErasureSweep } from "../identity/scheduled/tenant-erasure-runner.ts";
+import {
+  runDocsRefreshSweep,
+  runKnowledgeRefreshSweep,
+} from "../knowledge/scheduled/refresh-producer-runner.ts";
 import { withContext } from "../logging/context.ts";
-import { errorFields, logger } from "../logging/logger.ts";
+import { errorFields, logger } from "../logging/index.ts";
+import { runCockpitPushAttention } from "../notifications/scheduled/cockpit-push-attention-runner.ts";
+import { runNotificationInboxRetention } from "../notifications/scheduled/notification-inbox-retention-runner.ts";
 import { diagnoseOperation, runtimeDiagnosticEvent } from "../observability/runtime-diagnostics.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
+import { runRiskSignalEdges } from "../operator/scheduled/risk-signal-edges-runner.ts";
 import { enqueueApprovalElicitationResume } from "../queue/approval-resume.ts";
 import { enqueueGateDiagnosis } from "../queue/handlers/workflow-repair.ts";
-import { enqueueHostedWork } from "../queue/hosted-work.ts";
-import { EXECUTION_RUN_QUEUE, type ExecutionRunJob } from "../queue/queues.ts";
+import type { ExecutionRunJob } from "../queue/queues.ts";
+import { runProactiveDriftScanForTenant } from "../self-healing/scheduled/proactive-drift-scan-runner.ts";
+import { runSkillCandidateAnalysisSweep } from "../skill-candidates/scheduled/skill-candidate-analyze-runner.ts";
 import { getObjectStore } from "../storage/object-store.ts";
-import { runApprovalExpiryNotices } from "./approval-expiry-notice-runner.ts";
+import { runToolApprovalsCleanup } from "../tools/scheduled/tool-approvals-cleanup-runner.ts";
+import { runApprovalExpiryNotices } from "../workflows/scheduled/approval-expiry-notice-runner.ts";
+import { runCatalogDescribeSweep } from "../workflows/scheduled/catalog-describe-runner.ts";
 import { runTenantCadenceSweep } from "./cadence-sweep.ts";
-import { runCatalogDescribeSweep } from "./catalog-describe-runner.ts";
-import { runChatDedupCleanup } from "./chat-dedup-cleanup-runner.ts";
-import { runCockpitPushAttention } from "./cockpit-push-attention-runner.ts";
-import {
-  runConnectorReauthScanForTenant,
-  runOAuth2RefreshKeepAliveForTenant,
-} from "./connector-reauth-scan-runner.ts";
-import { runConversationTitleSweepSafely } from "./conversation-title-runner.ts";
-import { runElicitationExpiry } from "./elicitation-expiry-runner.ts";
-import { runEndpointContractScanForTenant } from "./endpoint-contract-scan-runner.ts";
 import { EveryScheduleSweep } from "./every-schedule-sweep.ts";
-import { runFilesCleanup } from "./files-cleanup-runner.ts";
-import { runMcpOAuthCleanup } from "./mcp-oauth-cleanup-runner.ts";
-import { runNotificationInboxRetention } from "./notification-inbox-retention-runner.ts";
-import { runProactiveDriftScanForTenant } from "./proactive-drift-scan-runner.ts";
-import { runDocsRefreshSweep, runKnowledgeRefreshSweep } from "./refresh-producer-runner.ts";
-import { runRiskSignalEdges } from "./risk-signal-edges-runner.ts";
+import { ALWAYS_RUNNING, type BackgroundWork } from "./power-state.ts";
 import { recordScheduleAdmission } from "./schedule-admission-state.ts";
 import { logScheduleFireFailure } from "./schedule-fire-failure.ts";
 import { runScheduleOccurrenceRetention } from "./schedule-occurrences.ts";
-import { runSkillCandidateAnalysisSweep } from "./skill-candidate-analyze-runner.ts";
 import { runTaskSweep } from "./task-sweep.ts";
-import { runTenantErasureSweep } from "./tenant-erasure-runner.ts";
-import { runToolApprovalsCleanup } from "./tool-approvals-cleanup-runner.ts";
 import { fireEverySchedule, runWorkflowCronSweep } from "./workflow-schedule-sweep.ts";
 
 const FILES_CLEANUP_CADENCE_MS = 60 * 60 * 1000;
@@ -80,6 +87,7 @@ export interface ReconcilerOptions {
   discoveryRunner?: typeof runDiscoveryCached;
   probeRunner?: typeof probeAllSelfDescriptionLinks;
   cockpitPushAttentionRunner?: typeof runCockpitPushAttention;
+  backgroundWork?: BackgroundWork | undefined;
 }
 
 export { isCronDue } from "./cron.ts";
@@ -147,10 +155,12 @@ export class SchedulerReconciler {
   private readonly discoveryRunner: typeof runDiscoveryCached;
 
   private readonly probeRunner: typeof probeAllSelfDescriptionLinks;
+  private readonly backgroundWork: BackgroundWork;
 
   constructor(private readonly opts: ReconcilerOptions) {
     this.discoveryRunner = opts.discoveryRunner ?? runDiscoveryCached;
     this.probeRunner = opts.probeRunner ?? probeAllSelfDescriptionLinks;
+    this.backgroundWork = opts.backgroundWork ?? ALWAYS_RUNNING;
     this.everySweep = new EveryScheduleSweep(opts.db, (definition) => {
       const key = `wf-schedule.${definition.schedule_id}`;
       let pending = false;
@@ -500,6 +510,7 @@ export class SchedulerReconciler {
   }
 
   async reconcileDocsAutoRefresh(): Promise<void> {
+    if (this.backgroundWork.deferred()) return;
     await instrument({
       module: "scheduler",
       action: "docs_auto_refresh.run",
@@ -526,6 +537,7 @@ export class SchedulerReconciler {
   }
 
   async reconcileProactiveDriftScans(now: Date = new Date()): Promise<void> {
+    if (this.backgroundWork.deferred()) return;
     await runTenantCadenceSweep("drift", now, this.opts.db, async (tenantId) => {
       try {
         await runProactiveDriftScanForTenant(tenantId, now, this.opts.db);
@@ -569,6 +581,7 @@ export class SchedulerReconciler {
   }
 
   async reconcileEndpointContractScans(now: Date = new Date()): Promise<void> {
+    if (this.backgroundWork.deferred()) return;
     await runTenantCadenceSweep("endpoint-contract", now, this.opts.db, async (tenantId) => {
       try {
         await runEndpointContractScanForTenant(tenantId, now, this.opts.db);
@@ -585,10 +598,12 @@ export class SchedulerReconciler {
   }
 
   async reconcileSkillCandidateAnalysis(now: Date = new Date()): Promise<void> {
+    if (this.backgroundWork.deferred()) return;
     await runSkillCandidateAnalysisSweep(now, this.opts.db, this.opts.boss);
   }
 
   async reconcileCatalogDescribe(): Promise<void> {
+    if (this.backgroundWork.deferred()) return;
     await runCatalogDescribeSweep(this.opts.db, this.opts.boss);
   }
 
@@ -704,10 +719,16 @@ export class SchedulerReconciler {
     this.lastElicitationExpiryAt = now;
     await runElicitationExpiry(now, this.opts.db, {
       resume: (resume) => enqueueApprovalElicitationResume(resume, this.opts.db, this.opts.boss),
+      local: deviceConfirmationPort(this.opts.db),
+      continue_after_local: async (step) => {
+        const { continueTaskRunOfConversation } = await import("../tasks/run-driver.ts");
+        await continueTaskRunOfConversation(this.opts.db, { ...step, now });
+      },
     });
   }
 
   async reconcileEmbeddingBackfill(now: Date = new Date()): Promise<void> {
+    if (this.backgroundWork.deferred()) return;
     if (this.lastEmbeddingBackfillAt === null) {
       this.lastEmbeddingBackfillAt = now;
       return;
@@ -719,6 +740,7 @@ export class SchedulerReconciler {
   }
 
   async reconcileConnectorSelfDescription(now: Date = new Date()): Promise<void> {
+    if (this.backgroundWork.deferred()) return;
     if (this.lastConnectorSelfDescriptionAt === null) {
       this.lastConnectorSelfDescriptionAt = now;
       return;
@@ -882,9 +904,7 @@ export class SchedulerReconciler {
     const { input: _queuedInput, ...queuedPayload } = payload;
     const job: ExecutionRunJob = { ...queuedPayload, execution_id, request_source: "scheduler" };
     if (admitted.status === "queued")
-      await enqueueHostedWork(this.opts.db, this.opts.boss, "execution", EXECUTION_RUN_QUEUE, job, {
-        id: execution_id,
-      });
+      await enqueueExecutionRun(this.opts.db, this.opts.boss, { ...job, execution_id });
     await recordScheduleAdmission(this.opts.db, audit, null);
     await auditAwait(
       {
@@ -917,6 +937,7 @@ export class SchedulerReconciler {
   }
 
   async reconcileKnowledgeAutoRefresh(): Promise<void> {
+    if (this.backgroundWork.deferred()) return;
     await instrument({
       module: "scheduler",
       action: "knowledge_auto_refresh.run",

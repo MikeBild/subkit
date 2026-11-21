@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
+import { SkillProposalActions } from "@/features/decisions/ui/skill-proposal-sheet";
 import { type Locale, translate, translatePlural } from "@/lib/i18n";
 import { I18nContext, type I18nValue } from "@/lib/i18n-context";
-import { SkillProposalActions } from "./skill-proposal-sheet";
 
 function i18n(locale: Locale): I18nValue {
   return {

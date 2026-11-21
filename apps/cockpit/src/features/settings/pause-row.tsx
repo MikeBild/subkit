@@ -1,11 +1,11 @@
-import { ErrorNotice } from "@ui/components/proto/ErrorNotice";
-import { Pill } from "@ui/components/proto/Pill";
+import { Pill } from "@ui/atoms/pill";
+import { ErrorNotice } from "@ui/molecules/error-notice";
+import { SettingsRow } from "@ui/molecules/settings-row";
 import { BellOff } from "lucide-react";
 import { Button } from "@/components/cockpit/patterns";
 import { errorRows } from "@/lib/error-rows";
 import { useI18n } from "@/lib/i18n-context";
 import { PAUSE_OPTION_KEYS, PAUSE_OPTIONS } from "./pause-model";
-import { Row } from "./row";
 import type { PauseControl } from "./use-notification-pause";
 
 export function PauseRow({
@@ -20,7 +20,7 @@ export function PauseRow({
   if (when === "paused" && !control.label) return null;
   if (when === "running" && control.label) return null;
   return (
-    <Row
+    <SettingsRow
       icon={BellOff}
       label={t("pause.label")}
       hint={t("pause.hint")}
@@ -79,6 +79,6 @@ export function PauseRow({
           ))}
         </fieldset>
       )}
-    </Row>
+    </SettingsRow>
   );
 }

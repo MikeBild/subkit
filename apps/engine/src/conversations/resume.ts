@@ -1,3 +1,4 @@
+import { type LocalConfirmation, localConfirmationOf } from "@shared/device/confirmation.ts";
 import { refreshDraftSummary, WORKFLOW_BINDING_TOOL } from "./authoring-state/index.ts";
 import type { ResumeFormField } from "./resume-form.ts";
 import { resumeFormFields } from "./resume-form.ts";
@@ -42,6 +43,7 @@ export interface ResumeSummary {
       subjects?: string[];
       kind?: string;
       diffs?: ConfirmDiff[];
+      device?: LocalConfirmation;
     };
     summary: string;
     expires_at: string;
@@ -448,6 +450,7 @@ export function pendingPrompt(
     transfer_bytes?: number;
     kind?: string;
     diffs?: ConfirmDiff[];
+    device?: LocalConfirmation;
   };
 } {
   if (!input || typeof input !== "object" || Array.isArray(input)) return {};
@@ -462,6 +465,7 @@ export function pendingPrompt(
   const confirm = tool_name === "ask_user_confirm";
   const confirmKind = confirm && typeof value.kind === "string" ? value.kind : undefined;
   const diffs = confirm ? confirmDiffs(value.diffs) : undefined;
+  const device = confirm ? localConfirmationOf(value) : null;
   let authorizationUrl: string | undefined;
   if (intent?.kind === "oauth_completed" && typeof value.authorization_url === "string") {
     try {
@@ -489,6 +493,7 @@ export function pendingPrompt(
       ...(transferBytes ? { transfer_bytes: transferBytes } : {}),
       ...(confirmKind ? { kind: confirmKind } : {}),
       ...(diffs ? { diffs } : {}),
+      ...(device ? { device } : {}),
     },
   };
 }

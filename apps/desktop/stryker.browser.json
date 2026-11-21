@@ -1,0 +1,53 @@
+{
+  "$schema": "../../node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "testRunner": "command",
+  "commandRunner": {
+    "command": "bun test packages/shared/src/local-policy/proxy-decision.test.ts && cd apps/desktop && bun test src/shared/local/browser-runtime.test.ts"
+  },
+  "coverageAnalysis": "off",
+  "inPlace": true,
+  "mutate": [
+    "packages/shared/src/local-policy/proxy-decision.ts",
+    "apps/desktop/src/shared/local/browser-runtime.ts:13-20",
+    "apps/desktop/src/shared/local/browser-runtime.ts:26-27",
+    "apps/desktop/src/shared/local/browser-runtime.ts:73-112"
+  ],
+  "ignorePatterns": [
+    "/.artifacts",
+    "/.stryker-tmp*",
+    "/.stryker-tmp-root",
+    "/.stryker-tmp-tests",
+    "/.stryker-tmp-redaction",
+    "/.stryker-tmp-shared",
+    "/.stryker-tmp-workflow-automation",
+    "/.tmp",
+    "/.devtools",
+    "/.superdesign",
+    "/.claude",
+    "/.sk",
+    "/dist",
+    "/docs",
+    "/benchmarks",
+    "/reports",
+    "/coverage",
+    "/assets/cockpit",
+    "/assets/clipper",
+    "/apps/clipper",
+    "/apps/engine/assets/embeddings",
+    "/apps/engine/eval/out",
+    "/subkit.config.json",
+    "/creds.txt",
+    "apps/engine/.devtools",
+    "*.log",
+    "*-key.txt",
+    ".env*",
+    "*.pem",
+    "*.key",
+    "apps/engine/subkit.config.json"
+  ],
+  "reporters": ["clear-text", "json"],
+  "jsonReporter": { "fileName": "reports/mutation/desktop-browser.json" },
+  "concurrency": 4,
+  "timeoutMS": 30000,
+  "thresholds": { "high": 100, "low": 100, "break": 100 }
+}

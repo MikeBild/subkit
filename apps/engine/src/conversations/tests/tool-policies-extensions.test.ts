@@ -30,24 +30,22 @@ describe("hasInlineCredential", () => {
 });
 
 describe("resolveToolMode — credentialFields gate", () => {
-  test("auto mode is overridden to confirm_before when an inline credential is staged", () => {
+  test("an inline credential forces confirm_before", () => {
     const mode = resolveToolMode({
       tool: "update_connector_draft",
       category: "draft_write",
       input: { config: { token: "ghp_xxx" } },
       overrides: {},
-      permission_mode: "auto",
     });
     expect(mode).toBe("confirm_before_execution");
   });
 
-  test("auto mode stays auto when no inline credential is present", () => {
+  test("no inline credential keeps no_confirm", () => {
     const mode = resolveToolMode({
       tool: "update_connector_draft",
       category: "draft_write",
       input: { config: {} },
       overrides: {},
-      permission_mode: "auto",
     });
     expect(mode).toBe("no_confirm");
   });
@@ -107,7 +105,7 @@ describe("buildPendingOutputForTool", () => {
 
 describe("execution data transfer", () => {
   test("sending collected execution data requires confirmation in every permission mode", () => {
-    for (const permission_mode of ["auto", "ask", "plan", "yolo", null] as const) {
+    for (const ask_before_writing of [false, true]) {
       for (const connector_trust of [false, true]) {
         expect(
           decideToolMode({
@@ -115,7 +113,7 @@ describe("execution data transfer", () => {
             category: "tenant_write",
             input: { workflow: "subkit-support-send" },
             overrides: { run_workflow: "no_confirm" },
-            permission_mode,
+            ask_before_writing,
             connector_trust,
             execution_data_transfer: true,
           }).mode,
@@ -131,7 +129,6 @@ describe("execution data transfer", () => {
         category: "tenant_write",
         input: { workflow: "subkit-support-list" },
         overrides: {},
-        permission_mode: "auto",
       }).mode,
     ).toBe("no_confirm");
   });

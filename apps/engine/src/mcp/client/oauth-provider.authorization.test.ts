@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { credentials, mcpOauthStates } from "../../db/schema/index.ts";
+import { mcpOauthStates, vaultItems } from "../../db/schema/index.ts";
 import { makeMcpOAuthProvider } from "./oauth-provider.ts";
 import {
   ctx,
@@ -71,13 +71,13 @@ describe("McpDbOAuthClientProvider.invalidateCredentials", () => {
     });
 
     const beforeRows = await ctx.db
-      .select({ id: credentials.id })
-      .from(credentials)
+      .select({ id: vaultItems.id })
+      .from(vaultItems)
       .where(
         and(
-          eq(credentials.tenant_id, tenantA),
-          eq(credentials.connector_id, serverId),
-          eq(credentials.mode, "oauth2"),
+          eq(vaultItems.tenant_id, tenantA),
+          eq(vaultItems.connector_id, serverId),
+          eq(vaultItems.mode, "oauth2"),
         ),
       );
     expect(beforeRows.length).toBe(1);
@@ -85,13 +85,13 @@ describe("McpDbOAuthClientProvider.invalidateCredentials", () => {
     await provider.invalidateCredentials("tokens");
 
     const afterRows = await ctx.db
-      .select({ id: credentials.id })
-      .from(credentials)
+      .select({ id: vaultItems.id })
+      .from(vaultItems)
       .where(
         and(
-          eq(credentials.tenant_id, tenantA),
-          eq(credentials.connector_id, serverId),
-          eq(credentials.mode, "oauth2"),
+          eq(vaultItems.tenant_id, tenantA),
+          eq(vaultItems.connector_id, serverId),
+          eq(vaultItems.mode, "oauth2"),
         ),
       );
     expect(afterRows.length).toBe(0);
@@ -108,13 +108,13 @@ describe("McpDbOAuthClientProvider.invalidateCredentials", () => {
     });
 
     const beforeRows = await ctx.db
-      .select({ id: credentials.id })
-      .from(credentials)
+      .select({ id: vaultItems.id })
+      .from(vaultItems)
       .where(
         and(
-          eq(credentials.tenant_id, tenantA),
-          eq(credentials.connector_id, serverId),
-          eq(credentials.mode, "oauth2_client"),
+          eq(vaultItems.tenant_id, tenantA),
+          eq(vaultItems.connector_id, serverId),
+          eq(vaultItems.mode, "oauth2_client"),
         ),
       );
     expect(beforeRows.length).toBe(1);
@@ -122,13 +122,13 @@ describe("McpDbOAuthClientProvider.invalidateCredentials", () => {
     await provider.invalidateCredentials("client");
 
     const afterRows = await ctx.db
-      .select({ id: credentials.id })
-      .from(credentials)
+      .select({ id: vaultItems.id })
+      .from(vaultItems)
       .where(
         and(
-          eq(credentials.tenant_id, tenantA),
-          eq(credentials.connector_id, serverId),
-          eq(credentials.mode, "oauth2_client"),
+          eq(vaultItems.tenant_id, tenantA),
+          eq(vaultItems.connector_id, serverId),
+          eq(vaultItems.mode, "oauth2_client"),
         ),
       );
     expect(afterRows.length).toBe(0);

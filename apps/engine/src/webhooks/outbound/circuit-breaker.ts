@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import type { Executor } from "../../db/client.ts";
 import { subscriptions } from "../../db/schema/index.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 
 export const FAILURE_THRESHOLD = 10;
 export const OPEN_DURATION_MS = 5 * 60_000;

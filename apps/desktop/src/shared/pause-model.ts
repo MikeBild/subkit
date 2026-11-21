@@ -2,7 +2,7 @@ import {
   type NotificationPauseBody,
   pauseRequestForMinutes,
   pauseState,
-} from "../../../../packages/shared/src/notification-pause.ts";
+} from "@shared/notification-pause.ts";
 import { currentMute, type Mute, type QuietHours } from "./quiet-hours.ts";
 
 export const PAUSE_PATH = "/v1/identity/me/notification-pause";

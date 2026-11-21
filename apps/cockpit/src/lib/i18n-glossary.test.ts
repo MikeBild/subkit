@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ERROR_CATALOG, ERROR_CAUSE_LABELS } from "@shared/error-catalog.ts";
 import { de as uiGerman } from "@ui/i18n/de";
 import { en as uiEnglish } from "@ui/i18n/en";
 import { CATALOGS } from "@/lib/i18n";
@@ -11,7 +12,7 @@ const ROOT = dirname(dirname(dirname(dirname(dirname(fileURLToPath(import.meta.u
 function flatten(value: unknown, path: string, out: Record<string, string>): void {
   if (typeof value === "string") out[path] = value;
   else if (typeof value === "function") {
-    const text = (value as (...args: unknown[]) => unknown)(1, 2, "x");
+    const text = (value as (...args: unknown[]) => unknown)("1", "2", "x");
     if (typeof text === "string") out[path] = text;
   } else if (value && typeof value === "object")
     for (const [key, child] of Object.entries(value))
@@ -31,7 +32,7 @@ function desktopCatalog(file: string, locale: "de" | "en"): Record<string, strin
   return out;
 }
 
-const DESKTOP_FILES = ["apps/desktop/src/shared/i18n.ts", "apps/desktop/src/shared/shell-i18n.ts"];
+const DESKTOP_FILES = ["apps/desktop/src/shared/i18n.ts"];
 const flat = (dict: unknown) => {
   const out: Record<string, string> = {};
   flatten(dict, "ui", out);
@@ -40,10 +41,29 @@ const flat = (dict: unknown) => {
 const UI_GERMAN = flat(uiGerman);
 const DESKTOP_GERMAN = Object.assign({}, ...DESKTOP_FILES.map((f) => desktopCatalog(f, "de")));
 const DESKTOP_ENGLISH = Object.assign({}, ...DESKTOP_FILES.map((f) => desktopCatalog(f, "en")));
-const ALL_GERMAN: Record<string, string> = { ...CATALOGS.de, ...UI_GERMAN, ...DESKTOP_GERMAN };
+const errorTexts = (lang: "de" | "en") => {
+  const out: Record<string, string> = {};
+  flatten(
+    {
+      cases: Object.fromEntries(Object.entries(ERROR_CATALOG).map(([k, v]) => [k, v.text[lang]])),
+      causes: ERROR_CAUSE_LABELS[lang],
+    },
+    "errors",
+    out,
+  );
+  return out;
+};
+const ERRORS_GERMAN = errorTexts("de");
+const ALL_GERMAN: Record<string, string> = {
+  ...CATALOGS.de,
+  ...UI_GERMAN,
+  ...ERRORS_GERMAN,
+  ...DESKTOP_GERMAN,
+};
 const ALL_ENGLISH: Record<string, string> = {
   ...CATALOGS.en,
   ...flat(uiEnglish),
+  ...errorTexts("en"),
   ...DESKTOP_ENGLISH,
 };
 
@@ -200,10 +220,10 @@ describe("redesign glossary", () => {
   });
 
   test("the shared UI and desktop catalogs are part of the check", () => {
-    expect(UI_GERMAN["ui.err.cases.reauth.body"]).toContain("Connector");
+    expect(ERRORS_GERMAN["errors.cases.reauth.body"]).toContain("Connector");
     expect(Object.keys(UI_GERMAN).length).toBeGreaterThan(50);
     expect(DESKTOP_GERMAN["apps/desktop/src/shared/i18n.ts:tray.open"]).toBe("SubKit öffnen");
-    expect(DESKTOP_GERMAN["apps/desktop/src/shared/shell-i18n.ts:tray.paused"]).toBe(
+    expect(DESKTOP_GERMAN["apps/desktop/src/shared/i18n.ts:tray.paused"]).toBe(
       "Pausiert bis zum Fortsetzen",
     );
     expect(DESKTOP_ENGLISH["apps/desktop/src/shared/i18n.ts:tray.open"]).toBe("Open SubKit");

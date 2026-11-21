@@ -1,17 +1,23 @@
 import { describe, expect, test } from "bun:test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { DIALOG_BODY } from "@ui/organisms/dialog-frame";
 import type { ReactElement } from "react";
 import type { UiMessage } from "@/api/client";
 import { CheckListField, checkListMatches } from "@/components/cockpit/form-field";
 import { KpiTile, SegmentedControl } from "@/components/cockpit/patterns";
-import { DIALOG_BODY } from "@/components/cockpit/patterns/dialog-frame";
 import { render, renderInRouter } from "@/components/cockpit/patterns/test-utils";
-import { ChatMessage } from "@/features/chat/message";
-import { fromSetup } from "./tasks-default-environment";
-import { TaskDetail } from "./tasks-detail";
-import { CONVERSATION_ID, latestRun, run, TASK_ID, task } from "./tasks-fixtures";
-import { TaskFormFields, TaskScheduleFields } from "./tasks-form";
-import { emptyDraft, scheduleDraft, type TaskRun } from "./tasks-model";
+import { ChatMessage } from "@/features/chat/ui/message";
+import { fromSetup } from "@/features/tasks/hooks/tasks-default-environment";
+import {
+  CONVERSATION_ID,
+  latestRun,
+  run,
+  TASK_ID,
+  task,
+} from "@/features/tasks/model/tasks-fixtures";
+import { emptyDraft, scheduleDraft, type TaskRun } from "@/features/tasks/model/tasks-model";
+import { TaskDetail } from "@/features/tasks/ui/tasks-detail";
+import { TaskFormFields, TaskScheduleFields } from "@/features/tasks/ui/tasks-form";
 
 const ALL = [
   "task:read",

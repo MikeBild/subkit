@@ -10,7 +10,7 @@ import { startAuthorizationCode } from "../../credentials/oauth2/client.ts";
 import { buildOAuthRedirectUri } from "../../credentials/oauth2/redirect-uri.ts";
 import type { Db } from "../../db/client.ts";
 import { connectorOauthStates } from "../../db/schema/index.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 
 export const AUTHENTICATE_TOOL_NAME = "authenticate";
 

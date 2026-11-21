@@ -42,7 +42,6 @@ function readyDraft() {
   });
   return {
     ...draft,
-    session: { permission_mode: "auto" as const },
   };
 }
 
@@ -83,7 +82,7 @@ async function getDetail(conversationId: string): Promise<{
   };
 }
 
-describe("ready workflow saves stay deterministic in auto mode", () => {
+describe("ready workflow saves stay deterministic", () => {
   test("a short yes follow-up saves an inert draft without an extra confirm stall", async () => {
     const conversationId = await seedConversation();
 

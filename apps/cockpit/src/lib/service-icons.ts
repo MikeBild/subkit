@@ -133,6 +133,14 @@ export function serviceIdentity(source: ServiceSource, selfHost?: string | null)
   return { kind: "generic", driver: source.driver ?? null };
 }
 
+export function serviceNameOf(ref: string): string {
+  return ref.split(":")[0]?.trim() ?? ref;
+}
+
+export function namedService(name: string): ServiceIdentity {
+  return serviceIdentity({ display_name: name });
+}
+
 export function templateIdentity(
   templateSlug: string,
   baseUrl?: string | null,

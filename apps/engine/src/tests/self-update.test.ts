@@ -18,6 +18,7 @@ import { closeDb } from "../db/client.ts";
 import { auditLog } from "../db/schema/audit.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { runRollback, runSelfUpdate } from "../self-update.ts";
+import { testEnv } from "../test-helpers/determinism/env.ts";
 import { createDeterministicHexFactory, getTestNow } from "../test-helpers/determinism/index.ts";
 
 const detHex = createDeterministicHexFactory(151);
@@ -42,8 +43,8 @@ const originalStdoutWrite = process.stdout.write;
 
 beforeAll(async () => {
   testDb = await createTestDb("engine-self-update");
-  savedDatabaseUrl = process.env.DATABASE_URL;
-  process.env.DATABASE_URL = testDb.url;
+  savedDatabaseUrl = testEnv.DATABASE_URL;
+  testEnv.DATABASE_URL = testDb.url;
   cacheDir = mkdtempSync(join(tmpdir(), "engine-self-update-cache-"));
   await closeDb();
 });
@@ -52,9 +53,9 @@ afterAll(async () => {
   process.stdout.write = originalStdoutWrite;
   await closeDb();
   if (savedDatabaseUrl !== undefined) {
-    process.env.DATABASE_URL = savedDatabaseUrl;
+    testEnv.DATABASE_URL = savedDatabaseUrl;
   } else {
-    delete process.env.DATABASE_URL;
+    delete testEnv.DATABASE_URL;
   }
   rmSync(cacheDir, { recursive: true, force: true });
   await testDb.cleanup();

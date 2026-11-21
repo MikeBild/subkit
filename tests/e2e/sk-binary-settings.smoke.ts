@@ -13,7 +13,7 @@ function run(args: string[]): SpawnSyncReturns<string> {
 }
 
 describe("sk binary smoke (v3.5)", () => {
-  test("dist/sk exists — run `bun run build:sk` first if this fails", () => {
+  test("dist/sk exists — run `bun run build sk` first if this fails", () => {
     expect(existsSync(BINARY)).toBe(true);
   });
 

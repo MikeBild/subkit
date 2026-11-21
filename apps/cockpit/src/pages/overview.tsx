@@ -29,10 +29,6 @@ import { visibleNavigation } from "@/app/navigation";
 import { useSession, useSessionUpdate } from "@/app/session";
 import { hideAttentionEntry, restoreAttentionEntry, useAttention } from "@/app/use-attention";
 import { useReviewDecisions } from "@/app/use-decisions";
-import { AutomationGrant } from "@/components/cockpit/automation-grant";
-import { DecisionCard } from "@/components/cockpit/decision-card";
-import { EnvironmentChip } from "@/components/cockpit/environment-chip";
-import { InboundHookReviewCard } from "@/components/cockpit/inbound-hook-review-card";
 import {
   ActionButton,
   ActionMenu,
@@ -47,40 +43,24 @@ import {
   SummaryParts,
   TileSkeleton,
 } from "@/components/cockpit/patterns";
-import { useOpenRunSheet } from "@/components/cockpit/run-sheet";
-import { ScheduleReviewCard } from "@/components/cockpit/schedule-review-card";
-import { WaitingOnLine } from "@/components/cockpit/waiting-on";
 import { ForbiddenState } from "@/components/failure-state";
+import { connectorSignIn, signInFailure } from "@/features/connectors";
+import type { DecisionItem } from "@/features/decisions";
+import { DecisionCard, InboundHookReviewCard } from "@/features/decisions";
 import { FirstSteps } from "@/features/first-steps";
+import { AutomationGrant } from "@/features/grants";
 import {
   isLiveRun,
+  kpiCards,
   NeedRow,
   NeedsAllClear,
   OverviewKpis,
+  RepairRequiredHint,
   RunRow,
   runTone,
-} from "@/features/operations";
-import { personalStartSteps } from "@/features/setup";
-import { reportFailure } from "@/lib/action-failure";
-import { connectorSignIn, signInFailure } from "@/lib/connector-sign-in";
-import type { TranslationKey } from "@/lib/i18n";
-import { useI18n } from "@/lib/i18n-context";
-import { EngineWording } from "@/lib/machine-label";
-import {
-  type OperatingFigureId,
-  STATS_WINDOWS,
-  type StatsWindow,
-  type WindowBounds,
-  windowBounds,
-} from "@/lib/operations-figures";
-import { statusLabel } from "@/lib/status-label";
-import type { DecisionItem } from "./decisions-model";
-import {
-  kpiCards,
-  RepairRequiredHint,
   useOperationsFigures,
   useRepairRequiredCount,
-} from "./operations-bar";
+} from "@/features/operations";
 import {
   type AttentionAction,
   type AttentionItem,
@@ -102,9 +82,24 @@ import {
   signsInFromRow,
   sinceLabel,
   sourceLabel,
-} from "./overview-model";
-import { startSteps } from "./overview-start-steps";
-import { isExecutionRecord, latestFailedRun, runName } from "./runs-model";
+  startSteps,
+  WaitingOnLine,
+} from "@/features/overview";
+import { isExecutionRecord, latestFailedRun, runName } from "@/features/runs";
+import { personalStartSteps } from "@/features/setup";
+import {
+  type OperatingFigureId,
+  STATS_WINDOWS,
+  type StatsWindow,
+  type WindowBounds,
+  windowBounds,
+} from "@/features/usage/model";
+import { EnvironmentChip, ScheduleReviewCard, useOpenRunSheet } from "@/features/workflows";
+import { reportFailure } from "@/lib/action-failure";
+import type { TranslationKey } from "@/lib/i18n";
+import { useI18n } from "@/lib/i18n-context";
+import { EngineWording } from "@/lib/machine-label";
+import { statusLabel } from "@/lib/status-label";
 
 type ExecutionListItem = components["schemas"]["ExecutionListItem"];
 

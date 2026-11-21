@@ -1,3 +1,4 @@
+import { classifyErrorCode, ERROR_CAUSES } from "@shared/error-taxonomy.ts";
 import {
   isReportMessageRefusal,
   reportRefusalReason,
@@ -9,25 +10,7 @@ type ClassificationInput = Pick<StepResult, "status" | "error">;
 
 export const CONNECTOR_DISABLED_CODE = "connector_disabled";
 
-export const PREVIEW_CLASSIFICATIONS = [
-  "ok",
-  "auth_failed",
-  "placeholder_unresolved",
-  "schema_mismatch",
-  "timeout",
-  "aborted",
-  "connector_missing",
-  "budget_exhausted",
-  "connector_unavailable",
-  "refused_before_start",
-  "authority_mismatch",
-  "payload_invalid",
-  "driver_error",
-  "preview_unsupported",
-  "unknown",
-  "incomplete_read",
-  "rate_limited",
-] as const;
+export const PREVIEW_CLASSIFICATIONS = ["ok", ...ERROR_CAUSES] as const;
 
 export type PreviewClassification = (typeof PREVIEW_CLASSIFICATIONS)[number];
 
@@ -96,37 +79,25 @@ export function isTransientRunResult(run: RunResult): boolean {
   return code != null && TRANSIENT_RUN_CODES.has(code);
 }
 
-const RATE_LIMIT_CODES: ReadonlySet<string> = new Set([
-  "upstream_rate_limited",
-  "http_429",
-  "graphql_throttle",
-]);
-
 export function classifyFailure(result: StepResult | ClassificationInput): PreviewClassification {
   if (result.status === "aborted") return "aborted";
   if (result.status === "skipped") return "aborted";
   if (result.status === "timed_out") return "timeout";
   const code = result.error?.code ?? "";
   const message = (result.error?.message ?? "").toLowerCase();
-  if (code === "connector_not_found") return "connector_missing";
-  if (code === "prepared_credential_unavailable" || code === CONNECTOR_DISABLED_CODE) {
-    return "connector_unavailable";
-  }
-  if (code === "orphaned_preparation") return "refused_before_start";
-  if (code.startsWith("execution_authority_"))
-    return isReportMessageRefusal(reportRefusalReason(result.error))
-      ? "payload_invalid"
-      : "authority_mismatch";
-  if (code === "llm_quota_exhausted" || code === "llm_budget_exceeded") return "budget_exhausted";
-  if (code === "missing_graphql" || code === "unknown_step_kind") return "driver_error";
-  if (code === "data_selector_error") return "schema_mismatch";
-  if (code.startsWith("pagination_") || code === "graphql_pagination_incomplete")
-    return "incomplete_read";
-  if (RATE_LIMIT_CODES.has(code)) return "rate_limited";
+  if (
+    code.startsWith("execution_authority_") &&
+    isReportMessageRefusal(reportRefusalReason(result.error))
+  )
+    return "payload_invalid";
+  const known = classifyErrorCode(code);
+  if (known) return known.cause;
+  return causeFromUnstructuredMessage(message);
+}
+
+function causeFromUnstructuredMessage(message: string): PreviewClassification {
   if (/rate limit/i.test(message)) return "rate_limited";
-  if (/unresolved|placeholder/.test(message) || code === "placeholder_unresolved") {
-    return "placeholder_unresolved";
-  }
+  if (/unresolved|placeholder/.test(message)) return "placeholder_unresolved";
   if (/401|403|unauthori[sz]ed|forbidden|\bauth\b|authenticat/i.test(message)) return "auth_failed";
   if (/timeout|timed out|exceeded/i.test(message)) return "timeout";
   if (/abort/i.test(message)) return "aborted";

@@ -1,14 +1,18 @@
+import { formatBytes } from "@shared/file-kinds.ts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
-import { ConfirmDialog } from "@ui/components/proto/ConfirmDialog";
-import { ErrorState } from "@ui/components/proto/ErrorNotice";
-import { MarkdownDocument } from "@ui/components/proto/MarkdownDocument";
-import { PageHeader, Panel } from "@ui/components/proto/Pill";
-import { IconTile, Timeline } from "@ui/components/proto/visual";
-import { Checkbox } from "@ui/components/ui/checkbox";
-import { DropdownMenuItem } from "@ui/components/ui/dropdown-menu";
+import { Checkbox } from "@ui/atoms/checkbox";
+import { IconTile } from "@ui/atoms/icon-tile";
+import { Panel } from "@ui/atoms/pill";
 import { listPageFailure } from "@ui/lib/errors";
 import { FILE_ICON } from "@ui/lib/files";
+import { DropdownMenuItem } from "@ui/molecules/dropdown-menu";
+import { ErrorState } from "@ui/molecules/error-notice";
+import { PageHeader } from "@ui/molecules/page-header";
+import { ConfirmDialog } from "@ui/organisms/confirm-dialog";
+import { dialogFailure } from "@ui/organisms/dialog-frame";
+import { MarkdownDocument } from "@ui/organisms/markdown-document";
+import { Timeline } from "@ui/organisms/timeline";
 import {
   ArrowRight,
   BookOpen,
@@ -46,13 +50,30 @@ import { actorLabel } from "@/app/actor-directory-model";
 import { chatNewHref, conversationHref, recordHref, routerTarget } from "@/app/links";
 import { useSession } from "@/app/session";
 import { Button } from "@/components/cockpit/patterns/controls";
-import { dialogFailure } from "@/components/cockpit/patterns/dialog-frame";
 import { Measured } from "@/components/cockpit/patterns/measure";
 import { searchWithTab, tabFromSearch } from "@/components/cockpit/patterns/page-tabs";
 import { CollapsibleSection } from "@/components/cockpit/patterns/section";
 import { usePageFailure } from "@/components/cockpit/patterns/use-error-detail";
+import {
+  awaitingAssistantReview,
+  ENTRY_TONE,
+  type EntryAttachment,
+  type EntryView,
+  entryStrip,
+  entryView,
+  groupBy,
+  isOpenEntry,
+  matches,
+  type Origin,
+} from "@/features/knowledge/model/knowledge";
+import { humanizeCategory } from "@/features/workflows/model";
 import { reportFailure } from "@/lib/action-failure";
 import { useI18n } from "@/lib/i18n-context";
+import { plural } from "@/lib/plural";
+import { useSearchParamState } from "@/lib/use-search-param-state";
+import { IntakeDefaultCategoryDialog, IntakeEditDialog, IntakeNoteDialog } from "./intake-dialogs";
+import { ProposalCard } from "./intake-proposal";
+import { categoryCounts, sortRows, withCategory } from "./list-model";
 import {
   INTAKE_ORIGINS,
   INTAKE_STATES,
@@ -63,26 +84,7 @@ import {
   sessionLabel,
   sessionPlace,
   sessionSnapshot,
-} from "@/lib/intake-model";
-import { plural } from "@/lib/plural";
-import { useSearchParamState } from "@/lib/use-search-param-state";
-import { humanizeCategory } from "@/lib/workflow-category";
-import { IntakeDefaultCategoryDialog, IntakeEditDialog, IntakeNoteDialog } from "./intake-dialogs";
-import { ProposalCard } from "./intake-proposal";
-import { categoryCounts, sortRows, withCategory } from "./list-model";
-import {
-  awaitingAssistantReview,
-  ENTRY_TONE,
-  type EntryAttachment,
-  type EntryView,
-  entryStrip,
-  entryView,
-  fileSize,
-  groupBy,
-  isOpenEntry,
-  matches,
-  type Origin,
-} from "./model";
+} from "./model/intake-model";
 import { KEYS, useEntries, useProposals, useRefreshKnowledge } from "./queries";
 import {
   ChatMenu,
@@ -481,7 +483,7 @@ export function InboxPage() {
                           title={e.title}
                           sub={
                             e.attachment
-                              ? `${e.attachment.name} · ${fileSize(e.attachment.size, locale)}`
+                              ? `${e.attachment.name} · ${formatBytes(e.attachment.size, locale)}`
                               : t(ORIGIN_KEY[e.origin])
                           }
                         />
@@ -529,6 +531,8 @@ export function InboxPage() {
         />
       )}
       <ConfirmDialog
+        destructive
+        testId="kn-inbox-delete-selected-confirm"
         open={doomed.length > 0}
         onOpenChange={(v) => !v && setDoomed([])}
         title={
@@ -536,10 +540,10 @@ export function InboxPage() {
             ? t("intake.deleteSelected", { count: doomed.length })
             : t("kn.deleteTitle", { name: doomed[0]?.title ?? "" })
         }
-        body={t(
+        consequence={t(
           doomed.length > 1 ? "intake.deleteSelectedConsequence" : "intake.deleteConsequence",
         )}
-        action={t("intake.delete")}
+        confirmLabel={t("intake.delete")}
         onConfirm={() => remove.mutate(doomed)}
       />
       {menu.dialogs}
@@ -981,11 +985,13 @@ function EntryDetail({ clip, proposals }: { clip: Clip; proposals: Proposal[] })
         />
       )}
       <ConfirmDialog
+        destructive
+        testId="kn-inbox-delete-confirm"
         open={deleting}
         onOpenChange={setDeleting}
         title={t("kn.deleteTitle", { name: clip.title })}
-        body={t("intake.deleteConsequence")}
-        action={t("intake.delete")}
+        consequence={t("intake.deleteConsequence")}
+        confirmLabel={t("intake.delete")}
         onConfirm={() => remove.mutate()}
       />
     </>
@@ -1024,7 +1030,7 @@ function AttachmentCard({ attachment: a }: { attachment: EntryAttachment }) {
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">{a.name}</p>
           <p className="text-xs text-muted-foreground">
-            {t("kn.inbox.attachment")} · {fileSize(a.size, locale)}
+            {t("kn.inbox.attachment")} · {formatBytes(a.size, locale)}
           </p>
         </div>
         {a.ready && (

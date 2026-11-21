@@ -33,7 +33,7 @@ import {
   findDownloadableFile,
   findUploadSlot,
   storeUpload,
-} from "../../files/service.ts";
+} from "../../files/service/index.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { gateOtherMethods, requireAnyPermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";

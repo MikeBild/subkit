@@ -1,9 +1,9 @@
-import { NoSuchToolError } from "ai";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { humanChatAnswer } from "../conversations/public/authoring.ts";
 import {
   ConversationNotFoundError,
+  deviceConfirmationPort,
   ElicitationActorMismatchError,
   ElicitationAlreadyResolvedError,
   ElicitationNotFoundError,
@@ -11,12 +11,13 @@ import {
   respondElicitation,
 } from "../conversations/public/elicitation.ts";
 import {
-  assertTaskRunTurn,
+  assertTaskRunWriter,
   registerConversationAbort,
   unregisterConversationAbort,
 } from "../conversations/public/lifecycle.ts";
 import type { Db } from "../db/client.ts";
-import { logger } from "../logging/logger.ts";
+import { isNoSuchTool } from "../llm/runtime/sdk-errors.ts";
+import { logger } from "../logging/index.ts";
 import {
   ChatInteractionEnvelopeSchema,
   ChatViewMetadataSchema,
@@ -99,7 +100,7 @@ type ChatElicitErrorClass =
   | { kind: "rethrow" };
 
 export function classifyChatElicitError(err: unknown): ChatElicitErrorClass {
-  if (NoSuchToolError.isInstance(err)) {
+  if (isNoSuchTool(err)) {
     return {
       kind: "surface_unsupported",
       tool_name: err.toolName,
@@ -243,7 +244,7 @@ export async function routeChatInteraction(
   }
 
   const principal = await resolveChatPrincipal(db, tenant_id, user_id);
-  await assertTaskRunTurn(db, { tenant_id, conversation_id, actor_id: user_id, principal });
+  await assertTaskRunWriter(db, { tenant_id, conversation_id, actor_id: user_id, principal });
   const turnAbortCtrl = await registerConversationAbort(tenant_id, conversation_id, db);
   try {
     await withConversationTurnLock(tenant_id, conversation_id, () =>
@@ -259,6 +260,7 @@ export async function routeChatInteraction(
           turn_abort_ctrl: turnAbortCtrl,
           require_same_actor: true,
           surface: "chat",
+          local_confirmations: deviceConfirmationPort(db),
         },
         db,
       ),

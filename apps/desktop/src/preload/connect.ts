@@ -13,6 +13,38 @@ const bridge: ConnectBridge = {
   showView: (view) => ipcRenderer.invoke(CONNECT_CHANNELS.showView, view),
   updateAction: () => ipcRenderer.invoke(CONNECT_CHANNELS.updateAction),
   reportProblem: () => ipcRenderer.invoke(CONNECT_CHANNELS.reportProblem),
+  local: {
+    pickFolder: (options) =>
+      ipcRenderer.invoke(CONNECT_CHANNELS.localPickFolder, {
+        access: options?.access === "write" ? "write" : "read",
+        keepOut: options?.keepOut === true,
+      }),
+    listAllowances: () => ipcRenderer.invoke(CONNECT_CHANNELS.localListAllowances),
+    removeAllowance: (id) => ipcRenderer.invoke(CONNECT_CHANNELS.localRemoveAllowance, String(id)),
+    setAccess: (id, access) =>
+      ipcRenderer.invoke(
+        CONNECT_CHANNELS.localSetAccess,
+        String(id),
+        access === "write" ? "write" : "read",
+      ),
+    setPersonalEnabled: (enabled) =>
+      ipcRenderer.invoke(CONNECT_CHANNELS.localSetPersonalEnabled, enabled === true),
+    addSite: (origin) => ipcRenderer.invoke(CONNECT_CHANNELS.localAddSite, String(origin)),
+    addApp: () => ipcRenderer.invoke(CONNECT_CHANNELS.localAddApp),
+  },
+  checkPermissions: () => ipcRenderer.invoke(CONNECT_CHANNELS.checkPermissions),
+  openPermissionSettings: (key) =>
+    ipcRenderer.invoke(CONNECT_CHANNELS.openPermissionSettings, String(key)),
+  restartApp: () => ipcRenderer.invoke(CONNECT_CHANNELS.restartApp),
+  localPickDataFolder: () => ipcRenderer.invoke(CONNECT_CHANNELS.localPickDataFolder),
+  localBegin: () => ipcRenderer.invoke(CONNECT_CHANNELS.localBegin),
+  localFinish: (input) => ipcRenderer.invoke(CONNECT_CHANNELS.localFinish, input),
+  localCancel: () => ipcRenderer.invoke(CONNECT_CHANNELS.localCancel),
+  localOpen: () => ipcRenderer.invoke(CONNECT_CHANNELS.localOpen),
+  localBackup: () => ipcRenderer.invoke(CONNECT_CHANNELS.localBackup),
+  localRestore: (name) => ipcRenderer.invoke(CONNECT_CHANNELS.localRestore, String(name)),
+  localMove: (origin) => ipcRenderer.invoke(CONNECT_CHANNELS.localMove, String(origin)),
+  localRemoveAll: () => ipcRenderer.invoke(CONNECT_CHANNELS.localRemoveAll),
   chooseWorkspace: (tenantId) =>
     ipcRenderer.invoke(CONNECT_CHANNELS.chooseWorkspace, String(tenantId)),
   answerNotifications: (allow) =>

@@ -8,7 +8,7 @@ import {
   readBodyCapped,
   scraperUserAgent,
 } from "../../connectors/index.ts";
-import { logger } from "../../logging/logger.ts";
+import { logger } from "../../logging/index.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
 const SITEMAP_FETCH_TIMEOUT_MS = 5_000;
