@@ -95,6 +95,7 @@ const REASON_KEYS = {
   execution_authority_required: "notify.reason.execution_authority_required",
   execution_authority_unavailable: "notify.reason.execution_authority_unavailable",
   version_awaiting_approval: "notify.reason.version_awaiting_approval",
+  pair_approval_requested: "notify.reason.pair_approval_requested",
   version_needs_repair: "notify.reason.version_needs_repair",
   approval_expiring: "notify.reason.approval_expiring",
   schedule_auto_paused: "notify.reason.schedule_auto_paused",

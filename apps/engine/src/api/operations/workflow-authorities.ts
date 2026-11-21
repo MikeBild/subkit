@@ -209,8 +209,9 @@ export const authorityFailures = {
 export const AUTHORITY_DESCRIPTION =
   "Exact local authority; explicit activation promotes the reviewed draft atomically; a run starts only when start_run is set";
 
-const AUTHORITY_ERROR_STATUSES: Record<string, RejectionStatus> = {
+export const AUTHORITY_ERROR_STATUSES: Record<string, RejectionStatus> = {
   workflow_version_unavailable: 404,
+  workflow_version_invalid: 409,
   authority_not_found: 404,
   human_session_required: 403,
   human_session_expired: 403,
@@ -223,6 +224,7 @@ const AUTHORITY_ERROR_STATUSES: Record<string, RejectionStatus> = {
   mcp_tool_changed: 409,
   mcp_tool_unavailable: 409,
   authority_revoked: 409,
+  pair_approval_required: 409,
   authority_not_live: 409,
   authority_preparation_ambiguous: 409,
   authority_preparation_failed: 409,

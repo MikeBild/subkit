@@ -389,6 +389,14 @@ export function loopBodyEmptyWarning(stepId: string, iterations: readonly unknow
   };
 }
 
+export function heldWriteSteps(
+  steps: readonly StepSummary[],
+): Array<{ step_key: string; method: string | null }> {
+  return steps
+    .filter((step) => step.held === true)
+    .map((step) => ({ step_key: step.step_key, method: step.held_request?.method ?? null }));
+}
+
 export function heldPreviewWarning(steps: readonly StepSummary[]): RunWarning {
   const held = steps.filter((s) => s.held === true);
   const skipped = steps.filter(

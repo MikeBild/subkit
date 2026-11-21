@@ -7,8 +7,27 @@ import { type Envelope, useGrants, useGroups, usePeopleList, useRoles } from "./
 export { AppsTab } from "./apps-tab";
 export { GrantAccessDialog, GrantsTab } from "./grants-tab";
 export { GroupsTab } from "./groups-tab";
-export { InvitePersonDialog, PeopleTab } from "./people-tab";
+export {
+  openPeopleSection,
+  permissionLabel,
+  readablePeopleSections,
+  roleLabel,
+  roleName,
+} from "./model/admin-model";
+export { definitionProductId, fetchCurrentVersionDag } from "./model/apps-model";
+export {
+  INVITE_PAGE,
+  type InvitePreview,
+  type InviteSession,
+  inviteToken,
+  inviteView,
+  joinCommand,
+  type RefusedInvite,
+  refusalActions,
+} from "./model/invite-model";
+export { InviteLinkDialog, InvitePersonDialog, PeopleTab } from "./people-tab";
 export { CreateRecordDialog, RolesTab } from "./roles-tab";
+export { useInviteSend } from "./use-invite-send";
 
 export const SECTION_LABEL: Record<PeopleSection, TranslationKey> = {
   people: "people.section.people",

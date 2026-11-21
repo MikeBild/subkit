@@ -20,7 +20,7 @@ Danach hast du den Schritt „So arbeitet SubKit für dich“ beantwortet und we
 
 Der Schritt erscheint einmal, nach deiner ersten Anmeldung in einem Arbeitsbereich.
 
-1. Lies die Frage und wähle eine Antwort. Unter jeder Frage steht in der Zeile „Stellt ein: …“, was die Antwort bewirkt. Die empfohlene Antwort trägt den Zusatz **empfohlen**.
+1. Lies die Frage und wähle eine Antwort. Was jede Antwort bewirkt, steht unter **Einstellungen** › **Einrichtung** in der Zeile „Stellt ein: …“. Die empfohlene Antwort trägt den Zusatz **empfohlen**.
 2. Wähle **Weiter**, bis alle sechs Fragen beantwortet sind.
 3. Prüfe die Zusammenfassung „Das stelle ich für dich ein“. Mit **Ändern** korrigierst du eine einzelne Antwort.
 4. Wähle **So übernehmen**.
@@ -32,8 +32,8 @@ Mit **Jetzt nicht** überspringst du den Schritt. SubKit übernimmt dann die emp
 | Frage | Auswahl | Stellt ein |
 | --- | --- | --- |
 | „Was soll SubKit als Erstes für dich erledigen?“ | **Rechnungen ablegen**, **Tageszahlen per Mail**, **Woche zusammenfassen**, **Offene Tickets auflisten**, **Preisseite beobachten**, **Nach Zahlung Zugang freischalten** oder **Etwas anderes** mit eigenem Text | Den ersten Vorschlag im Chat und den ersten Punkt der „Ersten Schritte“. |
-| „Welche Dienste nutzt du dafür?“ | Gmail, Google Drive, Google Sheets, Slack, Jira, GitHub, Notion, HubSpot, Stripe oder **Anderer Dienst** | Welche Konnektoren die „Ersten Schritte“ zuerst anbieten. |
-| „Wer gibt frei, was SubKit tun darf?“ | **Ich selbst** (empfohlen) oder **Jemand anderes im Team** mit E-Mail-Adresse | Wer Freigabe-Hinweise bekommt und ob eine Einladung vorbereitet wird. |
+| „Welche Dienste nutzt du dafür?“ | Gmail, Google Drive, Google Sheets, Slack, Jira, GitHub, Notion, HubSpot, Stripe oder **Anderer Dienst** | Welche Connectors die „Ersten Schritte“ zuerst anbieten. |
+| „Wer gibt frei, was SubKit tun darf?“ | **Ich selbst** (empfohlen), **Jemand anderes im Team** oder **Wir zu zweit: einer baut, einer gibt frei**, jeweils mit E-Mail-Adresse | Wer Freigabe-Hinweise bekommt, ob eine Einladung vorbereitet wird und, bei „Wir zu zweit“, ob jede Workflow-Freigabe zwei Personen braucht. |
 | „Wie viel soll SubKit im Chat allein tun?“ | **Immer fragen**, **Nur bei Unerwartetem fragen** (empfohlen) oder **Erst nur planen** | Den Chat-Modus **Fragen**, **Automatisch** oder **Nur planen** für neue Unterhaltungen. |
 | „Wo soll Neues zuerst laufen?“ | **Erst im Test** (empfohlen) oder **Direkt im Echtbetrieb** | Die Standardumgebung für neue Workflows und Aufgaben. |
 | „Wann darf SubKit dich benachrichtigen?“ | **Sofort** (empfohlen), **Nur zu meinen Arbeitszeiten** oder **Einmal täglich als Zusammenfassung** | Benachrichtigungen und Ruhezeiten. |
@@ -43,6 +43,17 @@ Die ersten beiden Antworten ändern nur, was dir das Cockpit zuerst vorschlägt.
 - **Chat-Modus.** Jede neue Unterhaltung startet in diesem Modus. In der Unterhaltung wählst du jederzeit einen anderen. Was die Modi bedeuten, steht in „Chat-Modi und Regeln“.
 - **Standardumgebung.** Eine neue Aufgabe und die Prüfung eines neuen Workflows starten in dieser Umgebung. Die Umgebung eines einzelnen Workflows oder einer Aufgabe wählst du weiterhin selbst.
 - **Freigaben und Benachrichtigungen.** Beides ist in „Benachrichtigungen und Ruhezeiten“ beschrieben.
+
+### Wir zu zweit: einer baut, einer gibt frei
+
+Mit dieser Antwort braucht jede Workflow-Freigabe im Arbeitsbereich zwei verschiedene Personen. Die erste Person gibt frei, die Freigabe wartet, und erst die Freigabe einer zweiten Person, die freigeben darf, lässt den Workflow laufen. Niemand gibt allein frei, auch nicht im Chat oder über eine Aufgabe.
+
+- Einschalten darf das nur eine Administratorin oder ein Administrator. Bist du keine bzw. keiner, liest du, dass jemand mit diesen Rechten es einschalten muss.
+- Es braucht mindestens zwei Personen, die freigeben dürfen. Ist die genannte Person noch nicht beigetreten, startet die Freigabe zu zweit von selbst, sobald sie beigetreten ist.
+- Eine wartende Freigabe endet nach 72 Stunden. Sie endet auch, wenn sich der Workflow vor der zweiten Freigabe ändert.
+- Wählst du später **Ich selbst**, bleibt die Freigabe zu zweit eingeschaltet. Ausschalten kann sie nur eine Administratorin oder ein Administrator, und das Audit-Log hält es fest.
+
+„Referenz: Freigabe zu zweit, Einladungen, Offline-Berichte und Benachrichtigungspause“ listet Routen und Zustände.
 
 ### Antworten später ändern
 

@@ -136,6 +136,7 @@ async function stage(scene: Scene, props: Record<string, unknown> = {}) {
     navigator: dom.window.navigator,
     HTMLElement: dom.window.HTMLElement,
     HTMLInputElement: dom.window.HTMLInputElement,
+    HTMLFormElement: dom.window.HTMLFormElement,
     Node: dom.window.Node,
     NodeFilter: dom.window.NodeFilter,
     MutationObserver: dom.window.MutationObserver,

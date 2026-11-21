@@ -41,7 +41,7 @@ Schlägt das Senden fehl, bleibt dein Entwurf erhalten: die Art, der Text und di
 | Diagnosebericht, wenn eingeschaltet | **App** (Browser, Desktop-App oder Installierte Web-App), **App-Version**, **Betriebssystem**, **Server-Version**, **Verbindungsstatus**, **Seite** und die **Letzten 10 Fehlermeldungen** mit Code und Zeit. |
 | Bildschirmfoto, nur in SubKit Desktop und nur wenn du es anhakst | Ein Bild des Cockpit-Fensters. |
 
-Von der **Seite** geht nur der Pfad mit, ohne Parameter. Inhalte deiner Workflows, Läufe oder Unterhaltungen gehen nicht mit, außer du schreibst sie in den Text oder hängst sie an.
+Von der **Seite** geht nur der Pfad mit, ohne Parameter. Inhalte deiner Workflows, Runs oder Unterhaltungen gehen nicht mit, außer du schreibst sie in den Text oder hängst sie an.
 
 ### Was vor dem Speichern entfernt wird
 
@@ -68,6 +68,10 @@ Passwortfelder und Felder für Geheimnisse sind im Bild ausgeblendet. Was offen 
 
 Ist die App nicht angemeldet, öffnet **Fehler melden …** stattdessen den Dialog **Diagnosedaten** mit **Diagnose kopieren** und **Als Datei speichern …**. Die Daten enthalten App-Version, Betriebssystem, Server-Version und die letzten 10 Fehler. Füg sie deiner Meldung an die Person bei, die deinen Server betreibt.
 
+### Einen Bericht offline schreiben
+
+Erreicht SubKit den Server nicht, schreib den Bericht trotzdem und wähle **In Warteschlange**. SubKit sendet ihn, sobald die Verbindung wieder steht, einen Bericht nach dem anderen, und behält den Zeitpunkt, zu dem du ihn geschrieben hast. Wurdest du zwischendurch abgemeldet, wartet er bis zur nächsten Anmeldung. Jeder Bericht kommt nur einmal an, auch wenn ein Versand wiederholt wird. Ein Bericht, der sich in 14 Tagen nicht senden ließ, verfällt.
+
 ### Grenzen
 
 - **E-Mail-Adressen in deinem Text bleiben stehen.** Das ist Absicht: Dein Text gehört dir und wird gesendet, wie du ihn schreibst. Der Server entfernt daraus nur Geheimnisse und Dateipfade. E-Mail-Adressen entfernt er aus dem Diagnosebericht, aus Textdateien und aus Dateinamen.
@@ -91,6 +95,6 @@ Ist die App nicht angemeldet, öffnet **Fehler melden …** stattdessen den Dial
 
 ### Das Gleiche über die HTTP-API
 
-`POST /v1/feedback` nimmt einen Bericht an. Die Route arbeitet nur mit einer Browsersitzung und braucht kein eigenes Recht. Sie antwortet mit `201` und den Feldern `id` und `intake_item_id`.
+`POST /v1/feedback` nimmt einen Bericht an. Die Route arbeitet nur mit einer Browsersitzung und braucht kein eigenes Recht. Sie antwortet mit `201` und den Feldern `id`, `intake_item_id` und `replayed`. `replayed` ist `true`, wenn dieselbe `client_request_id` schon abgelegt wurde.
 
 Alle Felder, Grenzen und Fehlercodes stehen in „Referenz: Desktop-App, Regeln, Zeitpläne und Fehlerberichte“.

@@ -21,7 +21,6 @@ import { Page, READING_COLUMN } from "./page";
 import { PageHeader } from "./page-header";
 import { searchWithTab, tabFromSearch } from "./page-tabs";
 import { sheetWidthClass } from "./record-sheet";
-import { activeRouteTab } from "./route-tabs";
 import { SearchInput } from "./search-input";
 import { CollapsibleSection, Section } from "./section";
 import { revealScrollLeft, SegmentedControl } from "./segmented-control";
@@ -48,20 +47,21 @@ describe("P1 Page", () => {
       expect(html).toContain(`data-page-kind="${kind}"`);
       expect(count(html, new RegExp(width.replace(/[[\]]/g, "\\$&"), "g"))).toBe(2);
       expect(count(html, /mx-auto/g)).toBe(0);
-      expect(html).toContain("px-4 sm:px-6");
+      expect(html).toContain("px-4 sm:px-8");
       expect(html).toContain('data-family-slot="scroll-region"');
     }
     expect(READING_COLUMN).not.toContain("mx-auto");
   });
 
-  test("a workspace spans the full width without a gutter", () => {
+  test("a workspace body spans the full width, its header keeps the page gutter", () => {
     const html = render(
       <Page kind="workspace" scroll="page" testId="p" header={<div>head</div>}>
         body
       </Page>,
     );
     expect(html).toContain("w-full");
-    expect(html).not.toContain("px-4");
+    expect(count(html, /px-4 sm:px-8/g)).toBe(1);
+    expect(html).toMatch(/class="shrink-0 px-4 sm:px-8"><div class="w-full"><div>head<\/div>/);
     expect(html).not.toContain("mx-auto");
   });
 
@@ -154,23 +154,13 @@ describe("P4 PageTabs", () => {
       "?tab=b&q=k",
     );
   });
-
-  test("a tab that is a page of its own is active on its list and on its records", () => {
-    const tabs = [
-      { to: "/knowledge", label: "Quellen" },
-      { to: "/skills", label: "Skills" },
-    ];
-    expect(activeRouteTab("/cockpit/skills", tabs)).toBe("/skills");
-    expect(activeRouteTab("/cockpit/knowledge/abc", tabs)).toBe("/knowledge");
-    expect(activeRouteTab("/cockpit/files", tabs)).toBeNull();
-  });
 });
 
 describe("P5 SummaryLine", () => {
   test("one sentence and the control on the right", () => {
-    const html = render(<SummaryLine text="3 Läufe" aside={<span data-x="seg" />} />);
+    const html = render(<SummaryLine text="3 Runs" aside={<span data-x="seg" />} />);
     expect(html).toContain('data-slot="summary-line"');
-    expect(html).toContain("3 Läufe");
+    expect(html).toContain("3 Runs");
     expect(html).toContain('data-x="seg"');
   });
 });

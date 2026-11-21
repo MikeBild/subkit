@@ -2,10 +2,11 @@ import type { ConversationDetail } from "@/api/client";
 import type { HeldSchedule } from "@/api/decisions";
 import { absolute, runHref } from "@/app/links";
 import { useSession } from "@/app/session";
-import { useWaitingOn } from "@/app/use-attention";
+import { usePairWaiting, useWaitingOn } from "@/app/use-attention";
 import { Button, ChatCard, MessageScrollerItem, StatusStrip } from "@/components/cockpit/patterns";
 import { WaitingOnLine } from "@/components/cockpit/waiting-on";
 import { useI18n } from "@/lib/i18n-context";
+import { pairRequestedLine } from "@/lib/workflow-review";
 import type { ChatApproval } from "@/pages/chat-approval";
 import { ChatApprovalCard } from "@/pages/chat-approval-card";
 import type { ChatChoice } from "@/pages/chat-choice";
@@ -58,7 +59,9 @@ export function QuestionDock({
   readySchedules: ReadySchedule[];
 }) {
   const { t, locale } = useI18n();
-  const waitingOn = useWaitingOn(targetWorkflowId, useSession().permissions);
+  const permissions = useSession().permissions;
+  const waitingOn = useWaitingOn(targetWorkflowId, permissions);
+  const pairWaiting = usePairWaiting(targetWorkflowId, permissions);
   const { submitApproval, submitChoice, submitForm, submitTurn } = turn;
   return (
     <MessageScrollerItem data-testid="chat-next-action">
@@ -171,6 +174,13 @@ export function QuestionDock({
         />
       )}
 
+      {pairWaiting && !unanchoredDecision && !(showScheduleStep && heldTarget && waitingOn) && (
+        <StatusStrip
+          tone="info"
+          testId="chat-pair-waiting"
+          line={pairRequestedLine(pairWaiting, t)}
+        />
+      )}
       {!heldTarget && !unsaved && readyAutomations > 0 && status === "ready" && (
         <StatusStrip
           tone="ok"

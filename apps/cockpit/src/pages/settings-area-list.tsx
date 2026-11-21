@@ -71,12 +71,6 @@ const AREA_QUESTIONS: Readonly<Partial<Record<EngineAreaId, readonly AreaQuestio
       testId: "threshold",
     },
     {
-      title: "settings.question.notifications.quiet",
-      help: "settings.question.notifications.quietHelp",
-      paths: ["notifications.push.quietHoursStart", "notifications.push.quietHoursEnd"],
-      testId: "quiet",
-    },
-    {
       title: "settings.question.notifications.retention",
       paths: ["notifications.inbox.retention_days"],
       testId: "retention",

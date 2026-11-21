@@ -1,4 +1,5 @@
 import { ApiError } from "@/api/client";
+import type { TranslationKey } from "@/lib/i18n";
 
 type ReviewFailure = "stale" | "expired" | "failed" | "uncertain" | "blocked";
 
@@ -15,6 +16,7 @@ const BLOCKED_MESSAGE_KEYS = {
   workflow_not_ready: "reviewWorkflow.blocked.workflow_not_ready",
   preview_failed: "reviewWorkflow.blocked.preview_failed",
   no_prior_approval: "reviewWorkflow.blocked.no_prior_approval",
+  pair_schedule_unsupported: "reviewWorkflow.blocked.pair_schedule_unsupported",
 } as const;
 
 export type ReviewBlockedMessageKey =
@@ -27,4 +29,25 @@ export function workflowReviewBlockedKey(error: unknown): ReviewBlockedMessageKe
 
 export function workflowReviewStorageKey(conversationId: string, elicitationId: string): string {
   return `subkit:workflow-review:${conversationId}:${elicitationId}`;
+}
+
+export interface PairReview {
+  waitingOn: string | null;
+}
+
+export function pairReview(
+  pairOn: boolean,
+  approver: { kind: string; email?: string } | undefined,
+): PairReview | null {
+  if (!pairOn) return null;
+  return { waitingOn: approver?.kind === "pair" && approver.email ? approver.email : null };
+}
+
+export function pairRequestedLine(
+  pair: PairReview,
+  t: (key: TranslationKey, values?: Record<string, string>) => string,
+): string {
+  return pair.waitingOn
+    ? t("reviewWorkflow.pairRequested", { name: pair.waitingOn })
+    : t("reviewWorkflow.pairRequestedAnyone");
 }

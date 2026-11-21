@@ -27,6 +27,7 @@ import {
   signedInPage,
   signInFailedPage,
 } from "../connectors/signin-result.ts";
+import { type SignInFailedReason, signalSignInFinished } from "../connectors/signin-signals.ts";
 
 const CallbackQuery = z
   .object({
@@ -67,10 +68,34 @@ function signInFailureOf(code: ConnectionFailureCode): SignInFailure {
   return CONNECTION_SIGN_IN_FAILURE[code] ?? "not_saved";
 }
 
-async function soleConnector(db: Db, result: CompleteConnectionResult): Promise<string | null> {
-  if (!result.tenant_id || !result.connection_id) return null;
-  const users = await connectorsUsingConnection(db, result.tenant_id, result.connection_id);
-  return users.length === 1 ? (users[0] ?? null) : null;
+const CONNECTION_SIGN_IN_REASON: Partial<Record<ConnectionFailureCode, SignInFailedReason>> = {
+  denied: "provider_error",
+  token_exchange_failed: "token_exchange_failed",
+};
+
+async function connectorsOf(db: Db, result: CompleteConnectionResult): Promise<string[]> {
+  if (!result.tenant_id || !result.connection_id) return [];
+  return connectorsUsingConnection(db, result.tenant_id, result.connection_id);
+}
+
+async function signalConnectionFinished(
+  db: Db,
+  result: CompleteConnectionResult,
+  connectorIds: readonly string[],
+): Promise<void> {
+  if (!result.tenant_id) return;
+  for (const connector_id of connectorIds)
+    await signalSignInFinished(
+      db,
+      {
+        module: "connections",
+        tenant_id: result.tenant_id,
+        connector_id,
+        connector_slug: null,
+        reason: result.ok ? null : (CONNECTION_SIGN_IN_REASON[result.code] ?? null),
+      },
+      result.ok ? "succeeded" : "failed",
+    );
 }
 
 export function registerConnectionRoutes(app: OpenAPIHono<AppEnv>): void {
@@ -115,7 +140,9 @@ export function registerConnectionRoutes(app: OpenAPIHono<AppEnv>): void {
         code: result.code,
         name: result.name,
       });
-    const connectorId = await soleConnector(db, result);
+    const connectorIds = await connectorsOf(db, result);
+    await signalConnectionFinished(db, result, connectorIds);
+    const connectorId = connectorIds.length === 1 ? (connectorIds[0] ?? null) : null;
     const outcome = result.ok
       ? ({ kind: "signed_in" } as const)
       : ({ kind: "signin_failed", failure: signInFailureOf(result.code) } as const);

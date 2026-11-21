@@ -72,9 +72,12 @@ describe("workflowStrip", () => {
     expect(workflowStrip(input({ noSteps: true }))).toEqual({
       kind: "empty",
       tone: "info",
-      action: null,
+      action: { kind: "addStep" },
       lower: [],
     });
+    expect(
+      workflowStrip(input({ noSteps: true, rights: { write: false, chat: true } })).action,
+    ).toBeNull();
     expect(workflowStrip(input())).toEqual({
       kind: "loading",
       tone: "ok",
@@ -183,7 +186,11 @@ describe("workflowStrip", () => {
         input({ failed: true }),
         { kind: "failed", tone: "error", action: { kind: "retry" } },
       ],
-      ["empty", input({ noSteps: true }), { kind: "empty", tone: "info", action: null }],
+      [
+        "empty",
+        input({ noSteps: true }),
+        { kind: "empty", tone: "info", action: { kind: "addStep" } },
+      ],
       ["loading", input(), { kind: "loading", tone: "ok", action: null }],
       [
         "disabled",

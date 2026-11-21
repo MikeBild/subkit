@@ -1,8 +1,9 @@
 import type { ErrorComponentProps } from "@tanstack/react-router";
+import { ErrorNotice } from "@ui/components/proto/ErrorNotice";
 import { Lock, RouteOff, TriangleExclamationPoint } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
 import { absolute } from "@/app/links";
-import { ErrorNotice } from "@/components/cockpit/patterns/error-notice";
+import { useErrorNotice } from "@/components/cockpit/patterns/use-error-detail";
 import { FAMILY_UI_VERSION, FamilyFailureState } from "@/components/family-ui";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n-context";
@@ -34,22 +35,28 @@ export function LoadFailed({
   children?: ReactNode;
 }) {
   const { t } = useI18n();
+  const notice = useErrorNotice({
+    error,
+    body: description ?? t("resource.loadFailedDescription"),
+  });
   return (
     <ErrorNotice
+      {...notice}
       testId={testId}
       title={title}
-      body={description ?? t("resource.loadFailedDescription")}
-      error={error}
-      remedy={
-        onRetry ? (
-          <Button size="sm" onClick={onRetry} data-testid={`${testId}-retry`}>
-            {t("session.retry")}
-          </Button>
+      actions={
+        onRetry || children ? (
+          <>
+            {onRetry ? (
+              <Button size="sm" onClick={onRetry} data-testid={`${testId}-retry`}>
+                {t("session.retry")}
+              </Button>
+            ) : null}
+            {children}
+          </>
         ) : undefined
       }
-    >
-      {children}
-    </ErrorNotice>
+    />
   );
 }
 

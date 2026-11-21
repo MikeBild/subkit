@@ -15,6 +15,7 @@ import {
 } from "@/components/cockpit/patterns";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { moneyText } from "@/lib/settings-units";
 import { cn } from "@/lib/utils";
 import { PROVIDER_KEY_PAGES, PROVIDER_MARK } from "@/pages/ai-providers";
 import { providerKeyPath } from "@/pages/settings-areas";
@@ -35,7 +36,6 @@ import {
 } from "@/pages/settings-guided";
 import { settingSecretStored } from "@/pages/settings-model";
 import { SettingSecretControl } from "@/pages/settings-rows";
-import { moneyText } from "@/pages/settings-units";
 
 export { providerName };
 

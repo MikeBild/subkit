@@ -1,27 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { invokeForSdk } from "../../conversations/tools/dispatch-adapter.ts";
 import { callToolViaDispatcher } from "../../mcp/adapter.ts";
 import { DRAFT_WRITE_MCP_UNAVAILABLE_REASON } from "../policy.ts";
-import { makeStubCtx, makeStubDb, makeTestPrincipal, usePolicyFixture } from "./_helpers.ts";
+import { makeStubDb, makeTestPrincipal, usePolicyFixture } from "./_helpers.ts";
 
 usePolicyFixture(["00000000-0000-0000-0000-aaaaaaaaaaaa", "00000000-0000-0000-0000-cccccccccccc"]);
 
 const PRINCIPAL = makeTestPrincipal();
 const { db: DB_STUB } = makeStubDb();
-function stubCtx() {
-  return makeStubCtx({ db: DB_STUB, principal: PRINCIPAL });
-}
 
 describe("tools/cross-surface-parity", () => {
-  test("unknown tool — both surfaces emit tool_not_found in their native shape", async () => {
-    const chatResult = await invokeForSdk({
-      db: DB_STUB,
-      principal: PRINCIPAL,
-      conversationCtx: stubCtx(),
-      permissionMode: null,
-      loadedSkills: new Set(),
-      invocation: { surface: "chat", name: "no_such_tool", args: {} },
-    });
+  test("unknown tool — MCP emits tool_not_found", async () => {
     const mcpResult = await callToolViaDispatcher({
       db: DB_STUB,
       principal: PRINCIPAL,
@@ -30,11 +18,6 @@ describe("tools/cross-surface-parity", () => {
       invocation: { surface: "mcp", name: "no_such_tool", args: {} },
     });
 
-    expect(chatResult.ok).toBe(false);
-    if (!chatResult.ok) {
-      expect(chatResult.error_code).toBe("tool_not_found");
-    }
-
     expect(mcpResult.isError).toBe(true);
     const parsed = JSON.parse(mcpResult.content[0]!.text) as {
       error_code?: string;
@@ -42,15 +25,7 @@ describe("tools/cross-surface-parity", () => {
     expect(parsed.error_code).toBe("tool_not_found");
   });
 
-  test("draft_write tool — both surfaces honor not_available_on_surface", async () => {
-    const chatResult = await invokeForSdk({
-      db: DB_STUB,
-      principal: PRINCIPAL,
-      conversationCtx: stubCtx(),
-      permissionMode: null,
-      loadedSkills: new Set(),
-      invocation: { surface: "mcp", name: "save_workflow_draft", args: {} },
-    });
+  test("draft_write tool — MCP honors not_available_on_surface", async () => {
     const mcpResult = await callToolViaDispatcher({
       db: DB_STUB,
       principal: PRINCIPAL,
@@ -59,10 +34,6 @@ describe("tools/cross-surface-parity", () => {
       invocation: { surface: "mcp", name: "save_workflow_draft", args: {} },
     });
 
-    expect(chatResult.ok).toBe(false);
-    if (!chatResult.ok) {
-      expect(chatResult.error_code).toBe("not_available_on_surface");
-    }
     expect(mcpResult.isError).toBe(true);
     const parsed = JSON.parse(mcpResult.content[0]!.text) as {
       error_code?: string;

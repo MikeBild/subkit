@@ -1,13 +1,16 @@
+import { ServiceChips } from "@ui/components/proto/visual";
 import {
   BookOpen,
   ChevronRight,
   CircleHelp,
   type LucideIcon,
   PenLine,
+  ShieldCheck,
   Trash2,
   TriangleExclamationPoint,
 } from "lucide-react";
-import { chipClass, RowsSkeleton } from "@/components/cockpit/patterns";
+import type { ReactNode } from "react";
+import { CollapsibleSection, chipClass, RowsSkeleton } from "@/components/cockpit/patterns";
 import { ServiceIcon } from "@/components/cockpit/service-icon";
 import { type BoundaryGrowth, growthLine } from "@/lib/authority-growth";
 import { mcpBoundaryOf, presentMcpBoundary } from "@/lib/authority-mcp";
@@ -32,7 +35,7 @@ const ICONS: Record<ReviewRow["effect"], LucideIcon> = {
 
 const TONE = {
   read: "text-muted-foreground",
-  write: "text-amber-700 dark:text-amber-400",
+  write: "text-warning-ink",
   risky: "text-destructive",
 } as const;
 
@@ -139,7 +142,15 @@ function RowDetails({ row, toolPinsCompared }: { row: ReviewRow; toolPinsCompare
   );
 }
 
-function RowNotes({ row, toolPinsCompared }: { row: ReviewRow; toolPinsCompared: boolean }) {
+function RowNotes({
+  row,
+  toolPinsCompared,
+  toolNotesAbove,
+}: {
+  row: ReviewRow;
+  toolPinsCompared: boolean;
+  toolNotesAbove: boolean;
+}) {
   const { t, tn } = useI18n();
   const boundary = row.source.boundary as RequestBoundaryView | undefined;
   const bodyPages =
@@ -150,7 +161,8 @@ function RowNotes({ row, toolPinsCompared }: { row: ReviewRow; toolPinsCompared:
       boundary.connector_query.credential.length >
       0;
   const toolBoundary = mcpBoundaryOf(row.source);
-  const tool = toolBoundary ? presentMcpBoundary(toolBoundary, toolPinsCompared) : null;
+  const tool =
+    toolBoundary && !toolNotesAbove ? presentMcpBoundary(toolBoundary, toolPinsCompared) : null;
   if (!connectorAdds && bodyPages === null && !tool) return null;
   return (
     <div className="flex flex-col gap-1" data-testid={`authority-effect-notes-${row.step_id}`}>
@@ -162,7 +174,7 @@ function RowNotes({ row, toolPinsCompared }: { row: ReviewRow; toolPinsCompared:
           <p className="text-muted-foreground">{t(tool.hint)}</p>
           {tool.unconfirmedRead && (
             <p
-              className="text-amber-700 dark:text-amber-400"
+              className="text-warning-ink"
               data-testid={`authority-effect-unconfirmed-${row.step_id}`}
             >
               {t("authority.mcp.statedReadUnconfirmed")}
@@ -175,7 +187,15 @@ function RowNotes({ row, toolPinsCompared }: { row: ReviewRow; toolPinsCompared:
   );
 }
 
-function EffectRow({ row, toolPinsCompared }: { row: ReviewRow; toolPinsCompared: boolean }) {
+function EffectRow({
+  row,
+  toolPinsCompared,
+  toolNotesAbove,
+}: {
+  row: ReviewRow;
+  toolPinsCompared: boolean;
+  toolNotesAbove: boolean;
+}) {
   const { t } = useI18n();
   const Icon = ICONS[row.effect];
   const label = effectLabel(t, row.subject, row.step_id);
@@ -218,21 +238,26 @@ function EffectRow({ row, toolPinsCompared }: { row: ReviewRow; toolPinsCompared
       </summary>
       <div className="flex flex-col gap-1 pb-1 pl-6 text-sm">
         {row.unbound.length > 0 && (
-          <p
-            className="text-amber-700 dark:text-amber-400"
-            data-testid={`authority-effect-unbound-${row.step_id}`}
-          >
+          <p className="text-warning-ink" data-testid={`authority-effect-unbound-${row.step_id}`}>
             {t("authority.review.unbound", { names: row.unbound.join(", ") })}
           </p>
         )}
-        <RowNotes row={row} toolPinsCompared={toolPinsCompared} />
+        <RowNotes row={row} toolPinsCompared={toolPinsCompared} toolNotesAbove={toolNotesAbove} />
         <RowDetails row={row} toolPinsCompared={toolPinsCompared} />
       </div>
     </details>
   );
 }
 
-function Group({ group, toolPinsCompared }: { group: ReviewGroup; toolPinsCompared: boolean }) {
+function Group({
+  group,
+  toolPinsCompared,
+  toolNotesAbove,
+}: {
+  group: ReviewGroup;
+  toolPinsCompared: boolean;
+  toolNotesAbove: boolean;
+}) {
   const { t } = useI18n();
   return (
     <details
@@ -264,18 +289,58 @@ function Group({ group, toolPinsCompared }: { group: ReviewGroup; toolPinsCompar
       </summary>
       <div className="px-3">
         {group.rows.map((row) => (
-          <EffectRow key={row.key} row={row} toolPinsCompared={toolPinsCompared} />
+          <EffectRow
+            key={row.key}
+            row={row}
+            toolPinsCompared={toolPinsCompared}
+            toolNotesAbove={toolNotesAbove}
+          />
         ))}
       </div>
     </details>
   );
 }
 
-function Tile({ label, value, tone }: { label: string; value: number; tone?: string }) {
+function ToolNotes({
+  model,
+  toolPinsCompared,
+}: {
+  model: AuthorityReviewModel;
+  toolPinsCompared: boolean;
+}) {
+  const { t } = useI18n();
+  const tools = model.groups.flatMap((group) =>
+    group.rows.flatMap((row) => {
+      const boundary = mcpBoundaryOf(row.source);
+      return boundary ? [{ row, tool: presentMcpBoundary(boundary, toolPinsCompared) }] : [];
+    }),
+  );
+  if (tools.length === 0) return null;
   return (
-    <div className={cn("flex flex-col rounded-md border px-3 py-2", tone)}>
-      <span className="text-xs">{label}</span>
-      <span className="text-lg font-semibold tabular-nums">{value}</span>
+    <div className="flex flex-col gap-2 text-sm" data-testid="authority-tool-notes">
+      {tools.map(({ row, tool }) => (
+        <div
+          key={row.key}
+          className="flex flex-col gap-0.5"
+          data-testid={`authority-tool-note-${row.step_id}`}
+        >
+          <p>
+            <span className="font-medium">{effectLabel(t, row.subject, row.step_id)}</span>
+            {" · "}
+            {t(tool.stated)}
+          </p>
+          <p className="text-muted-foreground">{t(tool.hint)}</p>
+          {tool.unconfirmedRead && (
+            <p
+              className="text-warning-ink"
+              data-testid={`authority-effect-unconfirmed-${row.step_id}`}
+            >
+              {t("authority.mcp.statedReadUnconfirmed")}
+            </p>
+          )}
+        </div>
+      ))}
+      <p className="text-xs text-muted-foreground">{t("authority.mcp.pinned")}</p>
     </div>
   );
 }
@@ -286,18 +351,45 @@ export function GrantEffectReview({
   problems,
   loading,
   toolPinsCompared = false,
+  compact = false,
+  beforeDetails,
+  children,
 }: {
   toolPinsCompared?: boolean;
+  compact?: boolean;
+  beforeDetails?: ReactNode;
+  children?: ReactNode;
   model: AuthorityReviewModel | null;
   growth: readonly BoundaryGrowth[] | undefined;
   problems: readonly string[];
   loading: boolean;
 }) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   if (loading || !model)
     return loading ? <RowsSkeleton count={4} testId="authority-review-loading" /> : null;
   const { tiles, sentence, comparison } = model;
   const growthText = sentence.kind === "growth" ? growthLine(t, growth) : null;
+  const groups = (
+    <>
+      {model.groups.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{t("authority.noEffects")}</p>
+      ) : (
+        model.groups.map((group) => (
+          <Group
+            key={group.key}
+            group={group}
+            toolPinsCompared={toolPinsCompared}
+            toolNotesAbove={compact}
+          />
+        ))
+      )}
+      {model.groups.length > 0 && (
+        <p className="text-xs text-muted-foreground" data-testid="authority-review-runtime">
+          {t("authority.review.runtimeValues")}
+        </p>
+      )}
+    </>
+  );
   return (
     <div className="flex min-w-0 flex-col gap-3" data-testid="authority-effect-review">
       {problems.length > 0 && (
@@ -317,41 +409,37 @@ export function GrantEffectReview({
           </ul>
         </details>
       )}
-      <div
-        className={cn("grid gap-2", tiles.risky > 0 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3")}
-        id="authority-review-tiles"
-        data-testid="authority-review-tiles"
-      >
-        <Tile label={t("authority.review.tile.read")} value={tiles.read} />
-        <Tile
-          label={t("authority.review.tile.write")}
-          value={tiles.write}
-          tone={tiles.write > 0 ? cn(TONE.write, "border-amber-500/50") : undefined}
-        />
-        <Tile label={t("authority.review.tile.services")} value={tiles.services} />
-        {tiles.risky > 0 && (
-          <Tile
-            label={t("authority.review.tile.risky")}
-            value={tiles.risky}
-            tone={cn(TONE.risky, "border-destructive/50")}
-          />
+      <div className="rounded-xl border bg-secondary p-6" data-testid="authority-review-tiles">
+        <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
+          <ShieldCheck className="size-4" aria-hidden />
+          {t("ops.boundary")}:
+          <span className="font-mono" data-testid="authority-review-summary">
+            {[
+              tn("ops.boundary.reads", tiles.read),
+              tn("ops.boundary.writes", tiles.write),
+              tn("ops.boundary.services", tiles.services),
+            ].join(" · ")}
+          </span>
+          {tiles.risky > 0 ? (
+            <span className="font-mono text-destructive-ink">
+              · {tn("ops.boundary.risky", tiles.risky)}
+            </span>
+          ) : null}
+        </div>
+        {sentence.kind !== "none" && (
+          <p
+            className={cn("mt-1 text-sm", sentence.kind === "growth" && "text-warning-ink")}
+            data-testid="authority-review-sentence"
+          >
+            {sentence.kind === "readOnly"
+              ? t("authority.review.readOnly", { scope: sentence.scope, service: sentence.service })
+              : sentence.kind === "writes"
+                ? t("authority.review.writes", { service: sentence.service })
+                : growthText}
+          </p>
         )}
+        <ServiceChips className="mt-3" refs={model.groups.map((group) => group.name)} />
       </div>
-      {sentence.kind !== "none" && (
-        <p
-          className={cn(
-            "text-sm font-medium",
-            sentence.kind === "growth" && "text-amber-700 dark:text-amber-400",
-          )}
-          data-testid="authority-review-sentence"
-        >
-          {sentence.kind === "readOnly"
-            ? t("authority.review.readOnly", { scope: sentence.scope, service: sentence.service })
-            : sentence.kind === "writes"
-              ? t("authority.review.writes", { service: sentence.service })
-              : growthText}
-        </p>
-      )}
       {comparison && (
         <p
           className="flex flex-wrap items-center gap-1.5 text-xs"
@@ -376,17 +464,24 @@ export function GrantEffectReview({
           )}
         </p>
       )}
-      {model.groups.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t("authority.noEffects")}</p>
+      {compact ? <ToolNotes model={model} toolPinsCompared={toolPinsCompared} /> : null}
+      {beforeDetails}
+      {compact ? (
+        <CollapsibleSection
+          label={t("authority.review.details")}
+          count={model.groups.reduce((sum, group) => sum + group.rows.length, 0)}
+          testId="authority-effect-details"
+        >
+          <div className="flex min-w-0 flex-col gap-3">
+            {groups}
+            {children}
+          </div>
+        </CollapsibleSection>
       ) : (
-        model.groups.map((group) => (
-          <Group key={group.key} group={group} toolPinsCompared={toolPinsCompared} />
-        ))
-      )}
-      {model.groups.length > 0 && (
-        <p className="text-xs text-muted-foreground" data-testid="authority-review-runtime">
-          {t("authority.review.runtimeValues")}
-        </p>
+        <>
+          {groups}
+          {children}
+        </>
       )}
     </div>
   );

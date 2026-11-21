@@ -15,9 +15,9 @@ const WAY_ICON: Record<TemplateSignIn, ReactNode> = {
 };
 
 const TONE_TEXT: Record<StatusTone, string> = {
-  ok: "text-emerald-700 dark:text-emerald-400",
+  ok: "text-success-ink",
   info: "text-muted-foreground",
-  warn: "text-amber-700 dark:text-amber-400",
+  warn: "text-warning-ink",
   error: "text-destructive",
 };
 

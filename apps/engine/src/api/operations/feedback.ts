@@ -15,6 +15,7 @@ import {
   FEEDBACK_MESSAGE_MAX,
 } from "../../feedback/report.ts";
 import {
+  existingReport,
   FeedbackRefusedError,
   type SubmittedFeedback,
   submitFeedback,
@@ -60,7 +61,16 @@ export const SubmitFeedbackSchema = z
       .string()
       .uuid()
       .optional()
-      .describe("Send the same id again to retry a report without filing it twice."),
+      .describe(
+        "Send the same id again to retry a report without filing it twice. A retry of a report that was already filed is answered from the stored report and never counts against the rate limit.",
+      ),
+    created_on_device_at: z
+      .string()
+      .datetime({ offset: true })
+      .optional()
+      .describe(
+        "When the person wrote the report on their device, for a report sent later from an offline queue. Kept as the capture time when it lies within the last 30 days; otherwise the server time counts.",
+      ),
     kind: z.enum(FEEDBACK_KINDS),
     message: z.string().trim().min(1).max(FEEDBACK_MESSAGE_MAX),
     diagnostics: FeedbackDiagnosticsSchema.optional(),
@@ -87,7 +97,11 @@ export const SubmitFeedbackSchema = z
   .openapi("SubmitFeedbackBody");
 
 export const SubmittedFeedbackSchema = z
-  .object({ id: z.string().uuid(), intake_item_id: z.string().uuid() })
+  .object({
+    id: z.string().uuid(),
+    intake_item_id: z.string().uuid(),
+    replayed: z.boolean().describe("true when this id was filed before and nothing new was filed."),
+  })
   .openapi("SubmittedFeedback");
 
 type SubmitFeedbackInput = z.infer<typeof SubmitFeedbackSchema>;
@@ -117,6 +131,20 @@ export const submitFeedbackOperation = defineOperation<SubmitFeedbackInput, Subm
     const principal = scope.principal;
     if (!principal) return reject.unauthorized();
     requireSignedInPerson(principal, "a signed-in person is required to send feedback");
+    const actor = actorOf(principal);
+    if (body.client_request_id) {
+      try {
+        const replay = await existingReport(scope.db, {
+          tenant_id: scope.tenant_id,
+          actor,
+          report_id: body.client_request_id,
+        });
+        if (replay) return replay;
+      } catch (error) {
+        if (error instanceof FeedbackRefusedError) return refusal(error);
+        throw error;
+      }
+    }
     const limit = await limiter.take(scope.db, `${scope.tenant_id}:${principal.id}`);
     if (!limit.allowed)
       return reject.status(429, "rate_limit_exceeded", "too many feedback reports", {
@@ -125,7 +153,7 @@ export const submitFeedbackOperation = defineOperation<SubmitFeedbackInput, Subm
     try {
       return await submitFeedback(scope.db, {
         tenant_id: scope.tenant_id,
-        actor: actorOf(principal),
+        actor,
         report_id: body.client_request_id ?? randomUUID(),
         kind: body.kind,
         message: body.message,
@@ -133,6 +161,9 @@ export const submitFeedbackOperation = defineOperation<SubmitFeedbackInput, Subm
         attachments: body.attachments,
         screenshot_png_base64: body.screenshot_png_base64,
         now: new Date(now()),
+        created_on_device_at: body.created_on_device_at
+          ? new Date(body.created_on_device_at)
+          : undefined,
       });
     } catch (error) {
       if (error instanceof FeedbackRefusedError) return refusal(error);

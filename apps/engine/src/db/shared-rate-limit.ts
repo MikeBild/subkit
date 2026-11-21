@@ -35,7 +35,7 @@ function configuredSecret(): string {
 }
 
 export function createSharedRateLimiter(input: {
-  scope: "desktop_login" | "feedback";
+  scope: "desktop_login" | "feedback" | "invite_send";
   name: string;
   limits: WindowLimit;
   local: LocalRateLimiter;

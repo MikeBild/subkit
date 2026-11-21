@@ -1,7 +1,12 @@
 import { z } from "@hono/zod-openapi";
 import { SCHEDULE_OCCURRENCE_STATES, type ScheduleOccurrenceRow } from "../../db/schema/index.ts";
 import {
+  OCCURRENCE_RUN_OUTCOMES,
+  type OccurrenceRunOutcome,
+} from "../../scheduler/occurrence-outcome.ts";
+import {
   listScheduleOccurrences,
+  readOccurrenceRunOutcomes,
   SCHEDULE_OCCURRENCE_PAGE_MAX,
 } from "../../scheduler/schedule-occurrences.ts";
 import { getTask } from "../../tasks/index.ts";
@@ -48,6 +53,12 @@ export const ScheduleOccurrenceSchema = z
       ),
     execution_id: z.string().uuid().nullable(),
     task_run_id: z.string().uuid().nullable(),
+    run_outcome: z
+      .enum(OCCURRENCE_RUN_OUTCOMES)
+      .nullable()
+      .describe(
+        "What became of the run this occurrence started: running, succeeded, failed (failed or timed out) or aborted. Null when it started no run or the run is gone.",
+      ),
     created_at: z.string().datetime(),
     updated_at: z.string().datetime(),
   })
@@ -86,6 +97,7 @@ interface OccurrenceListInput {
 export function scheduleOccurrencePage(
   rows: readonly ScheduleOccurrenceRow[],
   limit: number,
+  outcomes: ReadonlyMap<string, OccurrenceRunOutcome | null> = new Map(),
 ): OccurrencePage {
   const items = rows.slice(0, limit).map((row) => ({
     id: row.id,
@@ -100,6 +112,7 @@ export function scheduleOccurrencePage(
     skipped_count: row.skipped_count,
     execution_id: row.execution_id,
     task_run_id: row.task_run_id,
+    run_outcome: outcomes.get(row.id) ?? null,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
   }));
@@ -133,7 +146,11 @@ export const listWorkflowScheduleOccurrencesOperation = defineOperation<
       { tenant_id: scope.tenant_id, workflow_id: id },
       { limit: limit + 1, ...(before ? { before } : {}) },
     );
-    return scheduleOccurrencePage(rows, limit);
+    return scheduleOccurrencePage(
+      rows,
+      limit,
+      await readOccurrenceRunOutcomes(scope.db, scope.tenant_id, rows.slice(0, limit)),
+    );
   },
   http: {
     method: "get",
@@ -171,7 +188,11 @@ export const listTaskScheduleOccurrencesOperation = defineOperation<
       { tenant_id: scope.tenant_id, task_id: id },
       { limit: limit + 1, ...(before ? { before } : {}) },
     );
-    return scheduleOccurrencePage(rows, limit);
+    return scheduleOccurrencePage(
+      rows,
+      limit,
+      await readOccurrenceRunOutcomes(scope.db, scope.tenant_id, rows.slice(0, limit)),
+    );
   },
   http: {
     method: "get",

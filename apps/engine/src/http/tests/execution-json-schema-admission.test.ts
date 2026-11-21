@@ -203,7 +203,9 @@ test("omitted input still refuses required object fields before creating a row",
   });
   const response = await compatibilityRun(workflow.workflow_id);
   expect(response.status).toBe(400);
-  expect(await response.json()).toMatchObject({ code: "input_schema_violation" });
+  const body = (await response.json()) as { code: string; message: string };
+  expect(body.code).toBe("input_schema_violation");
+  expect(body.message).toContain("requestId");
   expect(await compatibilityRows(workflow.workflow_id)).toHaveLength(0);
 });
 

@@ -191,6 +191,7 @@ export async function seedSourceTenant(
   ids.push(parentWorkflow.id);
 
   const schedule = await createScheduleLocked(db, {
+    creator: null,
     tenant_id,
     workflow_id: childWorkflow.id,
     cron: "0 9 * * 1",

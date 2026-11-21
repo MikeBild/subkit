@@ -45,5 +45,7 @@ export function stripActionKey(action: StripAction): TranslationKey {
       return "workflowStrip.action.cause";
     case "review":
       return "remedy.reviewRepair";
+    case "addStep":
+      return "workflowStrip.action.addStep";
   }
 }

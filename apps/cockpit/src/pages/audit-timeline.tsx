@@ -1,4 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
+import { TechDetail } from "@ui/components/proto/ErrorNotice";
+import { Pill } from "@ui/components/proto/Pill";
 import { CalendarDays, ExternalLink, Filter, Search } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -15,22 +17,19 @@ import {
   PageHeader,
   RecordSheet,
   SectionHeading,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   Skeleton,
   StatusBadge,
-  TimelineGroupingTabs,
 } from "@/components/cockpit/patterns";
 import { ForbiddenState } from "@/components/failure-state";
-import type { Locale, TranslationKey } from "@/lib/i18n";
-import { useI18n } from "@/lib/i18n-context";
-import { type ListParams, useInfiniteList } from "@/lib/use-infinite-list";
-import { FilterForm, FocusFields } from "./audit-filter-form";
-import { auditFilterFromSearch, EMPTY, type FilterState, validUrlUuid } from "./audit-filter-state";
-import { accessLabel, sourceLabel } from "./audit-labels";
+import { auditKind, auditTone } from "@/features/audit";
 import {
   actorTypeLabel,
   auditActionLabel,
-  auditActorName,
-  auditObjectName,
   auditReasonLabel,
   auditResourceHref,
   auditResourceLabel,
@@ -40,15 +39,29 @@ import {
   canReadDirectory,
   isAuditEntry,
   normalizedAuditScope,
-} from "./audit-model";
+} from "@/lib/audit-model";
+import type { Locale, TranslationKey } from "@/lib/i18n";
+import { useI18n } from "@/lib/i18n-context";
+import { type ListParams, useInfiniteList } from "@/lib/use-infinite-list";
+import { API_KEYS_QUERY } from "./api-access-model";
+import { FilterForm, FocusFields } from "./audit-filter-form";
+import { auditFilterFromSearch, EMPTY, type FilterState, validUrlUuid } from "./audit-filter-state";
+import { accessLabel, sourceLabel } from "./audit-labels";
 import { auditTaskFacts } from "./audit-task";
 import {
   AUDIT_GROUPS,
   type AuditGroup,
+  type AuditNameBook,
+  auditAccessSubject,
+  auditActorDisplay,
+  auditExecutionSubject,
   auditIdentityOptions,
   auditInitiatingSource,
+  auditNameBook,
+  auditObjectDisplay,
   auditRecordedAccess,
   groupLoadedAudit,
+  type IdentityOption,
   localTimeZone,
   type TimelineEntry,
   utcFromLocalInputPreservingInstant,
@@ -118,6 +131,27 @@ export function unverifiedApiKeyClient(entry: TimelineEntry): boolean {
     auditInitiatingSource(entry) === "api"
   );
 }
+function actorName(
+  entry: Pick<TimelineEntry, "actor_type" | "actor_id">,
+  identities: readonly IdentityOption[],
+  t: ReturnType<typeof useI18n>["t"],
+): string {
+  return auditActorDisplay(
+    entry,
+    identities,
+    (kind) => actorTypeLabel(kind, t).text,
+    t("audit.timeline.notRecorded"),
+  );
+}
+function objectName(
+  entry: Pick<TimelineEntry, "resource_type" | "resource_name">,
+  t: ReturnType<typeof useI18n>["t"],
+): string {
+  const name = auditObjectDisplay(entry, (type) => auditResourceLabel(type, t).text);
+  return entry.resource_name?.trim()
+    ? `${name} · ${auditResourceLabel(entry.resource_type, t).text}`
+    : name;
+}
 function TimelineSkeleton() {
   const { t } = useI18n();
   return (
@@ -139,12 +173,18 @@ function TimelineSkeleton() {
     </div>
   );
 }
+interface GroupNames {
+  identities: readonly IdentityOption[];
+  book: AuditNameBook;
+  time(at: string): string;
+}
 function groupLabel(
   key: string,
   group: AuditGroup,
   entry: TimelineEntry,
   zone: string,
   locale: Locale,
+  names: GroupNames,
   t: ReturnType<typeof useI18n>["t"],
 ): string {
   if (group === "day")
@@ -152,46 +192,47 @@ function groupLabel(
       dateStyle: "full",
       timeZone: zone,
     }).format(new Date(entry.ts));
-  if (group === "actor") return auditActorName(entry, t)?.text ?? t("audit.timeline.notRecorded");
+  if (group === "actor") return actorName(entry, names.identities, t);
   if (group === "access") {
+    const subject = auditAccessSubject(entry, names.book, actorName(entry, names.identities, t));
     if (entry.api_key_id) {
       const access =
         entry.credential_origin === "cli_oauth_session"
           ? t("audit.timeline.credentialOrigin.cliOAuthSession")
           : accessLabel(entry.access_type || "api_key", t);
-      return `${access} · ${entry.api_key_id}`;
+      return `${access} · ${subject}`;
     }
     if (entry.session_id)
-      return `${accessLabel(entry.access_type || "browser_session", t)} · ${entry.session_id}`;
+      return `${accessLabel(entry.access_type || "browser_session", t)} · ${subject} · ${names.time(entry.ts)}`;
     if (entry.oauth_client_id)
-      return `${accessLabel(entry.access_type || "mcp_oauth", t)} · ${entry.oauth_client_id}`;
+      return `${accessLabel(entry.access_type || "mcp_oauth", t)} · ${subject}`;
     return accessLabel(entry.access_type, t);
   }
   if (group === "resourceType") return auditResourceLabel(entry.resource_type, t).text;
-  if (group === "resource") {
-    const object = auditObjectName(entry, t);
-    return entry.resource_name?.trim()
-      ? `${object} · ${auditResourceLabel(entry.resource_type, t).text}`
-      : object;
-  }
+  if (group === "resource") return objectName(entry, t);
   if (group === "source") return sourceLabel(key === "unknown" ? null : key, t);
   if (group === "executed") return sourceLabel(key === "unknown" ? null : key, t);
   if (group === "result") return auditResultLabel(key, t).text;
-  return key === "unknown" ? t("audit.timeline.notRecorded") : key;
+  if (key === "unknown") return t("audit.timeline.notRecorded");
+  if (group === "execution")
+    return `${auditExecutionSubject(entry, names.book) ?? t("au.kind.run")} · ${names.time(entry.ts)}`;
+  return `${actionLabel(entry.action, t)} · ${names.time(entry.ts)}`;
 }
 function EventCard({
   entry,
   selected,
   open,
   zone,
+  identities,
 }: {
   entry: TimelineEntry;
   selected: boolean;
   open(): void;
   zone: string;
+  identities: readonly IdentityOption[];
 }) {
   const { t, dateTime, locale } = useI18n();
-  const actor = auditActorName(entry, t)?.text ?? t("audit.timeline.notRecorded");
+  const actor = actorName(entry, identities, t);
   const label = actionLabel(entry.action, t);
   const local = new Intl.DateTimeFormat(locale === "de" ? "de-DE" : "en-US", {
     timeZone: zone,
@@ -214,7 +255,7 @@ function EventCard({
       >
         <span
           aria-hidden
-          className={`absolute -left-[35px] top-5 size-4 rounded-full border-[3px] border-background ${entry.result === "denied" || entry.result === "error" ? "bg-destructive" : "bg-emerald-600"}`}
+          className={`absolute -left-[35px] top-5 size-4 rounded-full border-[3px] border-background ${entry.result === "denied" || entry.result === "error" ? "bg-destructive" : "bg-success"}`}
         />
         <time
           dateTime={entry.ts}
@@ -222,21 +263,16 @@ function EventCard({
         >
           {local}
         </time>
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <StatusBadge state={entry.result} label={auditResultLabel(entry.result, t).text} />
+        <div className="flex flex-wrap items-center gap-2">
+          <Pill tone={auditTone(entry)}>{t(`au.kind.${auditKind(entry)}`)}</Pill>
+          <span className="text-xs text-muted-foreground">{t("au.by", { name: actor })}</span>
+          <span className="ml-auto">
+            <StatusBadge state={entry.result} label={auditResultLabel(entry.result, t).text} />
+          </span>
         </div>
         <div className="mt-2 text-sm font-semibold">{label}</div>
-        <div className="mt-1 text-sm text-muted-foreground">
-          {auditObjectName(entry, t)}
-          {entry.resource_name?.trim()
-            ? ` · ${auditResourceLabel(entry.resource_type, t).text}`
-            : null}
-        </div>
+        <div className="mt-1 text-sm text-muted-foreground">{objectName(entry, t)}</div>
         <div className="mt-3 grid gap-x-4 gap-y-1 border-t pt-3 text-xs sm:grid-cols-2">
-          <div>
-            <span className="text-muted-foreground">{t("audit.column.actor")}: </span>
-            {actor}
-          </div>
           <div>
             <span className="text-muted-foreground">{t("audit.timeline.initiated")}: </span>
             {sourceLabel(auditInitiatingSource(entry), t)}
@@ -249,10 +285,12 @@ function EventCard({
 function AuditDetail({
   entry,
   zone,
+  identities,
   onOperation,
 }: {
   entry: TimelineEntry;
   zone: string;
+  identities: readonly IdentityOption[];
   onOperation(correlationId: string): void;
 }) {
   const { t, dateTime } = useI18n();
@@ -272,30 +310,40 @@ function AuditDetail({
       />
     );
   const missing = t("audit.timeline.notRecorded");
-  const actor = auditActorName(current, t)?.text ?? missing;
+  const actor = actorName(current, identities, t);
   const reason = auditReasonLabel(current.reason, t);
   const recordedAccess = auditRecordedAccess(current);
-  const facts = [
-    { label: t("audit.timeline.actionCode"), value: current.action },
+  const facts: { label: string; value: string; tech?: boolean }[] = [
+    { tech: true, label: t("audit.timeline.actionCode"), value: current.action },
     { label: t("audit.timeline.local"), value: `${dateTime(current.ts)} · ${zone}` },
-    { label: t("audit.timeline.utc"), value: new Date(current.ts).toISOString() },
-    { label: t("audit.timeline.eventId"), value: current.id },
+    { tech: true, label: t("audit.timeline.utc"), value: new Date(current.ts).toISOString() },
+    { tech: true, label: t("audit.timeline.eventId"), value: current.id },
     { label: t("audit.column.actor"), value: actor },
     {
       label: t("audit.timeline.actorType"),
       value: current.actor_type ? actorTypeLabel(current.actor_type, t).text : missing,
     },
-    { label: t("audit.timeline.actorId"), value: current.actor_id || missing },
+    { tech: true, label: t("audit.timeline.actorId"), value: current.actor_id || missing },
     { label: t("audit.timeline.accessType"), value: accessLabel(current.access_type, t) },
-    { label: t("audit.timeline.apiKey"), value: current.api_key_id || missing },
+    { tech: true, label: t("audit.timeline.apiKey"), value: current.api_key_id || missing },
     ...(recordedAccess.apiKeyId
-      ? [{ label: t("audit.timeline.recordedApiKey"), value: recordedAccess.apiKeyId }]
+      ? [{ tech: true, label: t("audit.timeline.recordedApiKey"), value: recordedAccess.apiKeyId }]
       : []),
-    { label: t("audit.timeline.session"), value: current.session_id || missing },
+    { tech: true, label: t("audit.timeline.session"), value: current.session_id || missing },
     ...(recordedAccess.sessionId
-      ? [{ label: t("audit.timeline.recordedSession"), value: recordedAccess.sessionId }]
+      ? [
+          {
+            tech: true,
+            label: t("audit.timeline.recordedSession"),
+            value: recordedAccess.sessionId,
+          },
+        ]
       : []),
-    { label: t("audit.timeline.oauthClient"), value: current.oauth_client_id || missing },
+    {
+      tech: true,
+      label: t("audit.timeline.oauthClient"),
+      value: current.oauth_client_id || missing,
+    },
     {
       label: t("audit.timeline.credentialOrigin"),
       value:
@@ -311,15 +359,19 @@ function AuditDetail({
           },
         ]
       : []),
-    { label: t("audit.timeline.execution"), value: current.execution_id || missing },
-    { label: t("audit.timeline.conversation"), value: current.conversation_id || missing },
-    { label: t("audit.timeline.workflow"), value: current.workflow_id || missing },
+    { tech: true, label: t("audit.timeline.execution"), value: current.execution_id || missing },
+    {
+      tech: true,
+      label: t("audit.timeline.conversation"),
+      value: current.conversation_id || missing,
+    },
+    { tech: true, label: t("audit.timeline.workflow"), value: current.workflow_id || missing },
     ...auditTaskFacts(current, t, dateTime),
     {
       label: t("audit.timeline.resourceType"),
       value: auditResourceLabel(current.resource_type, t).text,
     },
-    { label: t("audit.timeline.resourceId"), value: current.resource_id || missing },
+    { tech: true, label: t("audit.timeline.resourceId"), value: current.resource_id || missing },
     { label: t("audit.timeline.initiated"), value: sourceLabel(auditInitiatingSource(current), t) },
     { label: t("audit.timeline.executed"), value: sourceLabel(current.execution_source, t) },
     { label: t("audit.timeline.recordedSource"), value: sourceLabel(current.request_source, t) },
@@ -334,8 +386,8 @@ function AuditDetail({
           ? t("audit.timeline.otherReason")
           : missing,
     },
-    { label: t("audit.timeline.trace"), value: current.trace_id || missing },
-    { label: t("audit.timeline.operation"), value: current.correlation_id || missing },
+    { tech: true, label: t("audit.timeline.trace"), value: current.trace_id || missing },
+    { tech: true, label: t("audit.timeline.operation"), value: current.correlation_id || missing },
     {
       label: t("audit.timeline.changedFields"),
       value: current.changed_fields?.length
@@ -355,7 +407,7 @@ function AuditDetail({
         />
       )}
       <div
-        className={`rounded-lg border p-4 ${current.result === "denied" || current.result === "error" ? "border-destructive/30 bg-destructive/5 text-destructive" : "border-emerald-300 bg-emerald-50 text-emerald-800 dark:bg-emerald-950"}`}
+        className={`rounded-lg border p-4 ${current.result === "denied" || current.result === "error" ? "border-destructive/30 bg-destructive/5 text-destructive-ink" : "border-success/40 bg-success/10 text-success-ink"}`}
       >
         <div className="text-sm font-semibold">{auditResultLabel(current.result, t).text}</div>
         <div className="mt-1 text-xs">{actionLabel(current.action, t)}</div>
@@ -397,10 +449,19 @@ function AuditDetail({
         )}
       </section>
       <FactList
-        items={facts.map((fact) => ({
-          label: fact.label,
-          value: <span className="break-all">{fact.value}</span>,
-        }))}
+        items={facts
+          .filter((fact) => !fact.tech)
+          .map((fact) => ({
+            label: fact.label,
+            value: <span className="break-all">{fact.value}</span>,
+          }))}
+      />
+      <TechDetail
+        kind="audit"
+        testId="audit-detail"
+        rows={facts
+          .filter((fact) => fact.tech && fact.value !== missing)
+          .map((fact) => [fact.label, fact.value])}
       />
       {current.correlation_id ? (
         <Button
@@ -461,6 +522,43 @@ export function AuditTimelinePage() {
   const identities = useMemo(
     () => auditIdentityOptions(people.data?.items ?? [], accounts.data?.items ?? []),
     [people.data, accounts.data],
+  );
+  const can = (permission: string) => session.permissions.includes(permission);
+  const apiKeys = useQuery({
+    queryKey: API_KEYS_QUERY,
+    enabled: allowed && can("api_key:read"),
+    queryFn: () => apiCall("get", "/v1/identity/api-keys", {}),
+    ...live,
+  });
+  const oauthClients = useQuery({
+    queryKey: ["admin", "oauth-clients"],
+    enabled: allowed && can("mcp_oauth_client:read"),
+    queryFn: () => apiCall("get", "/v1/oauth/clients", {}),
+    ...live,
+  });
+  const workflows = useQuery({
+    queryKey: ["catalog-workflow-index"],
+    enabled: allowed && can("workflow:read"),
+    queryFn: () => apiCall("get", "/v1/workflows", { query: { limit: 200 } }),
+  });
+  const groupNames = useMemo<GroupNames>(
+    () => ({
+      identities,
+      book: auditNameBook({
+        apiKeys: apiKeys.data?.items,
+        oauthClients: oauthClients.data?.items,
+        workflows: workflows.data?.items,
+      }),
+      time: (at) =>
+        new Intl.DateTimeFormat(locale === "de" ? "de-DE" : "en-US", {
+          timeZone: zone,
+          day: "2-digit",
+          month: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+        }).format(new Date(at)),
+    }),
+    [identities, apiKeys.data, oauthClients.data, workflows.data, locale, zone],
   );
   const invalidAppliedCorrelation = !validAuditCorrelationId(filter.correlationId);
   const params = useMemo<ListParams>(
@@ -841,7 +939,7 @@ export function AuditTimelinePage() {
         surface="audit"
         testId="resource-audit"
         scroll="page"
-        header={<PageHeader title={t("nav.audit")} />}
+        header={<PageHeader title={t("nav.audit")} purpose={t("audit.lead")} />}
       >
         <ForbiddenState />
       </Page>
@@ -852,7 +950,7 @@ export function AuditTimelinePage() {
       surface="audit"
       testId="resource-audit"
       scroll="content"
-      header={<PageHeader title={t("nav.audit")} />}
+      header={<PageHeader title={t("nav.audit")} purpose={t("audit.lead")} />}
     >
       <div
         className="flex min-h-0 min-w-0 flex-1 overflow-hidden border-t"
@@ -873,17 +971,35 @@ export function AuditTimelinePage() {
           />
         </aside>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <div className="flex shrink-0 flex-col gap-3 border-b px-4 py-3 min-[1600px]:hidden">
+          <div className="flex shrink-0 flex-col gap-3 border-b px-4 py-3 sm:px-8">
             <div className="flex items-center gap-3">
               <Button
                 variant="outline"
                 size="sm"
+                className="min-[1600px]:hidden"
                 onClick={() => setFilterOpen(true)}
                 data-testid="audit-filter-open"
               >
                 <Filter className="size-4" />
                 {t("audit.timeline.filters")}
               </Button>
+              <Select value={group} onValueChange={(value) => setGroup(value as AuditGroup)}>
+                <SelectTrigger
+                  size="sm"
+                  aria-label={t("audit.timeline.group")}
+                  data-testid="audit-group"
+                  className="w-auto"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {AUDIT_GROUPS.map((value) => (
+                    <SelectItem key={value} value={value} data-testid={`audit-group-${value}`}>
+                      {t(GROUP_KEYS[value])}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <span className="truncate text-xs text-muted-foreground">
                 <CalendarDays className="mr-1 inline size-3" />
                 {zone}
@@ -915,21 +1031,12 @@ export function AuditTimelinePage() {
               )}
             </form>
           </div>
-          <TimelineGroupingTabs
-            value={group}
-            onChange={(value) => setGroup(value as AuditGroup)}
-            options={AUDIT_GROUPS.map((value) => ({ value, label: t(GROUP_KEYS[value]) }))}
-          />
-          <div className="flex shrink-0 items-center gap-x-3 gap-y-1 border-b px-4 py-2 text-xs text-muted-foreground max-sm:flex-wrap sm:px-6 sm:whitespace-nowrap">
-            <span className="min-w-0 sm:truncate">{t("audit.timeline.loadedOnly")}</span>
-            <span aria-hidden>·</span>
-            <span>{zone}</span>
-            <span aria-hidden>·</span>
+          <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b px-4 py-2 text-xs text-muted-foreground sm:px-8">
             <span>
               {t(liveStatus.status === "live" ? "audit.timeline.live" : "audit.timeline.offline")}
             </span>
             {list.query.dataUpdatedAt ? (
-              <span className="min-w-0 sm:truncate">
+              <span>
                 {t("audit.timeline.lastUpdated", {
                   time: dateTime(new Date(list.query.dataUpdatedAt)),
                 })}
@@ -938,7 +1045,7 @@ export function AuditTimelinePage() {
           </div>
           <div
             ref={scrollRef}
-            className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6"
+            className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-8"
             data-testid="audit-timeline-scroll"
           >
             <div style={{ maxWidth: "56rem" }}>
@@ -993,6 +1100,7 @@ export function AuditTimelinePage() {
                         bucket.entries[0]!,
                         zone,
                         locale,
+                        groupNames,
                         t,
                       )}
                     >
@@ -1001,7 +1109,15 @@ export function AuditTimelinePage() {
                         className="absolute -left-[9px] top-0 size-4 rounded-full border-[3px] border-background bg-slate-400"
                       />
                       <SectionHeading className="mb-4 flex flex-wrap items-baseline gap-2 pl-6 text-sm font-semibold text-muted-foreground sm:pl-8">
-                        {groupLabel(bucket.key, group, bucket.entries[0]!, zone, locale, t)}
+                        {groupLabel(
+                          bucket.key,
+                          group,
+                          bucket.entries[0]!,
+                          zone,
+                          locale,
+                          groupNames,
+                          t,
+                        )}
                         {list.infinite.hasNextPage && (
                           <span className="text-xs font-normal">
                             {t("audit.timeline.groupPartial")}
@@ -1018,6 +1134,7 @@ export function AuditTimelinePage() {
                             openEntry(entry.id);
                           }}
                           zone={zone}
+                          identities={identities}
                         />
                       ))}
                     </section>
@@ -1102,7 +1219,12 @@ export function AuditTimelinePage() {
           }
         >
           {current ? (
-            <AuditDetail entry={current} zone={zone} onOperation={onOperation} />
+            <AuditDetail
+              entry={current}
+              zone={zone}
+              identities={identities}
+              onOperation={onOperation}
+            />
           ) : detailUnavailable ? (
             <DataState
               state="empty"

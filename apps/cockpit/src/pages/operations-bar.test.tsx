@@ -1,12 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
+import { OverviewKpis } from "@/features/operations";
 import { type Locale, translate, translatePlural } from "@/lib/i18n";
 import { I18nContext, type I18nValue } from "@/lib/i18n-context";
+import { operatingFigures, type StatsWindow, windowBounds } from "@/lib/operations-figures";
 import { STATS_WINDOWS } from "@/lib/stats-window";
-import { OperationsBar, RepairRequiredHint } from "./operations-bar";
-import { operatingFigures, type StatsWindow, windowBounds } from "./operations-figures";
-import { budgetSummary } from "./usage-model";
+import { budgetSummary } from "@/lib/usage-model";
+import { kpiCards, RepairRequiredHint } from "./operations-bar";
 
 const NOW = new Date("2026-09-28T12:00:00.000Z");
 const DAY = windowBounds("24h", NOW);
@@ -42,33 +43,10 @@ function i18nValue(locale: Locale): I18nValue {
   } as I18nValue;
 }
 
-function render(
-  figures: ReturnType<typeof operatingFigures>,
-  locale: Locale = "de",
-  window?: StatsWindow,
-): string {
-  return renderToStaticMarkup(
-    <I18nContext.Provider value={i18nValue(locale)}>
-      <OperationsBar figures={figures} pending={false} onRetry={() => {}} window={window} />
-    </I18nContext.Provider>,
-  );
-}
-
-const hrefs = (html: string) =>
-  [...html.matchAll(/href="([^"]+)"/g)].map((match) => (match[1] ?? "").replaceAll("&amp;", "&"));
-
-function figureText(html: string, id: string): string {
-  const start = html.indexOf(`data-testid="operations-figure-${id}"`);
-  const open = html.lastIndexOf("<div", start);
-  const next = html.indexOf("data-figure-state=", html.indexOf("data-figure-state=", start) + 1);
-  const slice = html.slice(open, next === -1 ? undefined : html.lastIndexOf("<div", next));
-  return slice
-    .replace(/<[^>]+>/g, "")
-    .replaceAll("&nbsp;", " ")
-    .replaceAll(" ", " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
+const visuals = {
+  trends: { runs: [3, 5, 4], successRate: [90, 100], cost: null, budget: [1, 2] },
+  connectors: { enabled: 8, notOk: 2, needsReauth: 1 },
+};
 
 const counts = (
   over: {
@@ -100,56 +78,97 @@ const figuresOf = (overrides: Partial<Parameters<typeof operatingFigures>[0]> = 
     ...overrides,
   });
 
-describe("the operations bar", () => {
-  test("holds six figures, every link carrying the window it counted", () => {
-    const html = render(figuresOf());
-    expect([...html.matchAll(/data-testid="operations-figure-[a-zA-Z]+"/g)]).toHaveLength(6);
-    const links = hrefs(html);
-    expect(links).toHaveLength(6);
-    const from = encodeURIComponent(DAY.from);
-    for (const link of [links[0], links[1], links[3]])
-      expect(link?.includes(from) || link?.includes(DAY.from)).toBe(true);
-    expect(links[1]).toContain("status=failed");
-    expect(links[2]).toContain("health=not_ok");
-    expect(html).toContain("Stand jetzt");
-    expect(links[4]).toBe("/cockpit/usage?window=24h");
-    expect(links[5]).toBe("/cockpit/usage?window=24h");
+type Figures = ReturnType<typeof operatingFigures>;
+
+function cardsOf(figures: Figures, locale: Locale = "de", window: StatsWindow = "24h") {
+  return kpiCards(figures, visuals, i18nValue(locale).t, locale, window);
+}
+
+function card(figures: Figures, id: string, locale: Locale = "de") {
+  const found = cardsOf(figures, locale).find((entry) => entry.id === id);
+  if (!found) throw new Error(`no card ${id}`);
+  return found;
+}
+
+function render(figures: Figures, locale: Locale = "de"): string {
+  return renderToStaticMarkup(
+    <I18nContext.Provider value={i18nValue(locale)}>
+      <OverviewKpis cards={cardsOf(figures, locale)} onRetry={() => {}} />
+    </I18nContext.Provider>,
+  );
+}
+
+const hrefs = (html: string) =>
+  [...html.matchAll(/href="([^"]+)"/g)].map((match) => (match[1] ?? "").replaceAll("&amp;", "&"));
+
+describe("the overview KPI cards keep every operating fact once", () => {
+  test("the runs card shows the failure count below its value", () => {
+    expect(card(figuresOf(), "runs")).toMatchObject({ value: "40", detail: "2 fehlgeschlagen" });
+    const clean = figuresOf({
+      counts: counts({ runs: { total: 40, failed: 0, successRatePercent: 100 } }),
+    });
+    expect(card(clean, "runs").detail).toBeNull();
   });
 
-  test("window tiles name the chosen period, connector health stays current", () => {
-    const labels = {
-      "24h": "24 Std",
-      thisWeek: "Diese Woche",
-      lastWeek: "Letzte Woche",
-      thisMonth: "Dieser Monat",
-      lastMonth: "Letzter Monat",
-    } as const;
-    for (const window of STATS_WINDOWS) {
-      const html = render(figuresOf({ bounds: windowBounds(window, NOW) }), "de", window);
-      const label = labels[window];
-      expect(figureText(html, "runs")).toContain(`Läufe · ${label}`);
-      expect(figureText(html, "successRate")).toContain(`Erfolgsquote · ${label}`);
-      expect(figureText(html, "cost")).toContain(`Kosten · ${label}`);
-      expect(figureText(html, "connectorHealth")).toContain("Gesunde Konnektoren · Stand jetzt");
-      expect(figureText(html, "budget")).toContain(`Nutzung · ${label}`);
-    }
-    expect(figureText(render(figuresOf(), "de"), "runs")).not.toContain("·");
+  test("budget pressure colours the value with the tone's ink", () => {
+    expect(card(figuresOf(), "budget")).toMatchObject({
+      tone: null,
+      detail: "27 % des Monatskontingents",
+    });
+    const critical = figuresOf({ budget: month(142_500_000, 150_000_000, "critical") });
+    expect(card(critical, "budget").tone).toBe("danger");
+    const html = render(critical);
+    expect(html).toContain("text-destructive-ink");
+    expect(html).toContain('data-budget-pressure="danger"');
+    const tight = figuresOf({ budget: month(120_000_000, 150_000_000, "tightening") });
+    expect(card(tight, "budget").tone).toBe("warning");
+    expect(render(tight)).toContain("text-warning-ink");
   });
 
-  test("the usage tile keeps its value unshrinkable and puts the token share in the detail line", () => {
-    const html = render(figuresOf());
-    expect(html).toContain("shrink-0 text-2xl");
-    const detail = html.match(/data-testid="operations-figure-budget-detail"[^>]*>([^<]+)</);
-    expect(detail?.[1]).toBe("27\u00a0% des Monatskontingents");
-    const partial = render(
+  test("without a cap the budget card says so and links to set one", () => {
+    const html = render(figuresOf({ budget: month(5_000, null) }));
+    expect(hrefs(html)).toContain("/settings?leaf=tokens.monthly_budget");
+    expect(html).toContain('data-testid="operations-figure-budget-set-budget"');
+    expect(html).toContain("Kein Kontingent");
+    expect(html).toContain("Kontingent setzen");
+    const reader = figuresOf({
+      budget: month(5_000, null),
+      canOpen: { ...all, budgetSetting: false },
+    });
+    expect(card(reader, "budget").link).toBeNull();
+    expect(card(reader, "budget").detail).toBe("Kein Kontingent");
+  });
+
+  test("a partly priced period is a floor and names the calls without a price", () => {
+    const partial = figuresOf({
+      spend: answered({
+        calls: 900,
+        cost: { amount: 135.8, currency: "USD", unpricedModels: ["x"], unpricedCalls: 12 },
+      }),
+    });
+    const usage = card(partial, "budget");
+    expect(usage.value.replaceAll(" ", " ")).toBe("mind. 135,80 $");
+    expect(usage.detail).toBe("Aufrufe ohne Preis: 12 · 27 % des Monatskontingents");
+  });
+
+  test("calls without any price say so and lead to Nutzung, never 0,00", () => {
+    const html = render(figuresOf({ spend: answered({ calls: 30, cost: null }) }));
+    expect(html).toContain("Modelle ohne Preis");
+    expect(hrefs(html)).toContain("/usage?window=24h");
+    expect(html).not.toContain("0,00");
+  });
+
+  test("a failed read is said per card with a way to read again", () => {
+    const html = render(
       figuresOf({
-        spend: answered({
-          calls: 900,
-          cost: { amount: 135.8, currency: "USD", unpricedModels: ["x"], unpricedCalls: 14 },
-        }),
+        counts: { state: "failed" },
+        spend: { state: "failed" },
+        budget: { state: "failed" },
       }),
     );
-    expect(partial).toContain("Aufrufe ohne Preis: 14 · 27\u00a0% des Monatskontingents");
+    for (const id of ["runs", "successRate", "connectorHealth", "budget"])
+      expect(html).toContain(`data-testid="operations-figure-${id}-retry"`);
+    expect(html).toContain("Nicht lesbar");
   });
 
   test("the repair hint links to the filtered workflow list only when workflows need repair", () => {
@@ -166,185 +185,24 @@ describe("the operations bar", () => {
     expect(hint(1)).toContain("1 Workflow braucht eine Korrektur");
   });
 
-  test("the cost figure shows the window's spend in its currency", () => {
-    const html = render(figuresOf());
-    expect(figureText(html, "cost")).toBe("Kosten87,22 $");
-    expect(html.replaceAll(" ", " ")).toContain('data-family-kpi-value="87,22 $"');
-    expect(html).not.toContain("mind.");
-  });
-
-  test("the runs tile keeps its Cockpit label and shows the failed count below", () => {
-    const html = render(figuresOf());
-    expect(figureText(html, "runs")).toContain("Läufe");
-    expect(figureText(html, "runs")).toContain("2 fehlgeschlagen");
-  });
-
-  test("the connector tile reports only persisted sign-in requirements", () => {
-    const html = render(figuresOf());
-    expect(figureText(html, "connectorHealth")).toContain("1 braucht Anmeldung");
-    const several = render(
-      figuresOf({
-        counts: counts({
-          connectors: { enabled: 8, notOk: 2, needsReauth: 3, healthyPercent: 75 },
-        }),
-      }),
-    );
-    expect(figureText(several, "connectorHealth")).toContain("3 brauchen Anmeldung");
-    const connected = render(
-      figuresOf({
-        counts: counts({
-          connectors: { enabled: 8, notOk: 2, needsReauth: 0, healthyPercent: 75 },
-        }),
-      }),
-    );
-    expect(figureText(connected, "connectorHealth")).toContain("Alle verbunden");
-  });
-
-  test("a partly priced window reads 'mind.' and names what it leaves out", () => {
-    const html = render(
-      figuresOf({
-        spend: answered({
-          calls: 120,
-          cost: {
-            amount: 412.87,
-            currency: "EUR",
-            unpricedModels: ["some-new-model"],
-            unpricedCalls: 47,
-          },
-        }),
-      }),
-    );
-    expect(figureText(html, "cost")).toBe("Kostenmind. 412,87 €Aufrufe ohne Preis: 47");
-  });
-
-  test("calls without any price say so and lead to Nutzung, never '0,00 $'", () => {
-    const html = render(figuresOf({ spend: answered({ calls: 30, cost: null }) }));
-    expect(figureText(html, "cost")).toBe("KostenModelle ohne PreisNutzung");
-    expect(html).toContain('data-figure-state="unpriced"');
-    expect(hrefs(html)).toContain("/cockpit/usage?window=24h");
-    expect(html).not.toContain("0,00");
-  });
-
-  test("the month's usage shows money and token percentage with pressure styling", () => {
-    const html = render(figuresOf());
-    expect(figureText(html, "budget")).toBe("Nutzung87,22 $27 % des Monatskontingents");
-    expect(html).toContain('data-budget-pressure="ample"');
-    expect(hrefs(html)).toContain("/cockpit/usage?window=24h");
-    const critical = render(figuresOf({ budget: month(142_500_000, 150_000_000, "critical") }));
-    expect(figureText(critical, "budget")).toBe("Nutzung87,22 $95 % des Monatskontingents");
-    expect(critical).toContain('data-budget-pressure="critical"');
-    expect(critical).toContain("text-destructive");
-    expect(figureText(render(figuresOf(), "en"), "budget")).toBe(
-      "Usage$87.2227% of the monthly token budget",
-    );
-  });
-
-  test("a partly priced period is a floor; an unpriced one says so and keeps the share below", () => {
-    const partial = render(
-      figuresOf({
-        spend: answered({
-          calls: 900,
-          cost: { amount: 135.8, currency: "USD", unpricedModels: ["x"], unpricedCalls: 12 },
-        }),
-      }),
-    );
-    expect(figureText(partial, "budget")).toBe(
-      "Nutzungmind. 135,80 $Aufrufe ohne Preis: 12 · 27 % des Monatskontingents",
-    );
-    const unpriced = render(figuresOf({ spend: answered({ calls: 30, cost: null }) }), "de", "24h");
-    expect(figureText(unpriced, "budget")).toBe(
-      "Nutzung · 24 StdModelle ohne PreisNutzung27 % des Monatskontingents",
-    );
-  });
-
-  test("no cap still shows the period's money and says 'Kein Kontingent' below", () => {
-    const html = render(figuresOf({ budget: month(5_000, null) }));
-    expect(figureText(html, "budget")).toBe("Nutzung87,22 $Kein Kontingent · Kontingent setzen");
-    expect(hrefs(html)).toContain("/cockpit/usage?window=24h");
-    expect(hrefs(html)).toContain("/cockpit/settings?leaf=tokens.monthly_budget");
-  });
-
-  test("every period names itself; without AI calls the tile says so and the budget stays the detail", () => {
+  test("every window names itself in the card label, connector health stays current", () => {
     for (const window of STATS_WINDOWS) {
-      const figures = operatingFigures({
-        bounds: windowBounds(window, NOW),
-        counts: counts(),
-        connectorsPermitted: true,
-        spend: answered({ calls: 0, cost: null }),
-        budget: month(5_000, null),
-        canOpen: all,
-      });
-      const html = render(figures, "de", window);
-      const text = figureText(html, "budget");
-      expect(text).toStartWith(
-        `Nutzung · ${translate("de", `overview.operations.windowOption.${window}`)}`,
+      const cards = cardsOf(figuresOf({ bounds: windowBounds(window, NOW) }), "de", window);
+      const label = translate("de", `overview.operations.windowOption.${window}`);
+      expect(cards.find((entry) => entry.id === "runs")?.label).toBe(`Runs · ${label}`);
+      expect(cards.find((entry) => entry.id === "connectorHealth")?.label).toBe(
+        "Gesunde Connectors · Stand jetzt",
       );
-      expect(text).toEndWith("Keine KI-Aufrufe im ZeitraumKein Kontingent · Kontingent setzen");
-      expect(html).toContain('data-testid="operations-figure-budget-detail"');
     }
-    const reader = render(
-      figuresOf({
-        budget: month(5_000, null),
-        spend: answered({ calls: 0, cost: null }),
-        canOpen: { ...all, budgetSetting: false },
-      }),
-      "de",
-      "lastMonth",
-    );
-    expect(figureText(reader, "budget")).toBe(
-      "Nutzung · Letzter MonatKeine KI-Aufrufe im ZeitraumKein Kontingent",
-    );
-    const capped = render(
-      figuresOf({ spend: answered({ calls: 0, cost: null }) }),
-      "en",
-      "lastMonth",
-    );
-    expect(figureText(capped, "budget")).toBe(
-      "Usage · Last monthNo AI calls in this window27% of the monthly token budget",
-    );
-  });
-
-  test("a figure with nothing to count says so — no 0, no link", () => {
-    const html = render(
-      figuresOf({
-        counts: counts({
-          runs: { total: 0, failed: 0, successRatePercent: null },
-          connectors: { enabled: 0, notOk: 0, needsReauth: 0, healthyPercent: null },
-          repairs: { decided: 0, appliedPercent: null },
-        }),
-        spend: answered({ calls: 0, cost: null }),
-        budget: month(0, null),
-        canOpen: { ...all, budgetSetting: false },
-      }),
-    );
-    expect([...html.matchAll(/data-testid="operations-figure-[a-zA-Z]+"/g)]).toHaveLength(6);
-    expect(hrefs(html)).toEqual([]);
-    expect(html).not.toContain("data-family-kpi-value");
-    expect(html).toContain("Keine im Zeitraum");
-    expect(html).toContain("Keine aktiven Konnektoren");
-    expect(html).toContain("Keine KI-Aufrufe im Zeitraum");
-  });
-
-  test("a failed read is said per figure, with a way to read again", () => {
-    const html = render(
-      figuresOf({
-        counts: { state: "failed" },
-        spend: { state: "failed" },
-        budget: { state: "failed" },
-      }),
-    );
-    for (const id of ["runs", "successRate", "connectorHealth", "repairRate", "cost", "budget"])
-      expect(html).toContain(`data-testid="operations-figure-${id}-retry"`);
-    expect(html).toContain("Nicht lesbar");
-    const partial = render(figuresOf({ spend: { state: "failed" } }));
-    expect(partial).toContain('data-testid="operations-figure-cost-retry"');
-    expect(partial).not.toContain('data-testid="operations-figure-repairRate-retry"');
   });
 });
 
 describe("Nutzung", () => {
   test("carries no operations block — the figures live on the Übersicht only", () => {
-    const source = readFileSync(new URL("./usage.tsx", import.meta.url), "utf8");
+    const source = readFileSync(
+      new URL("../features/usage/breakdown.tsx", import.meta.url),
+      "utf8",
+    );
     for (const mirror of [
       "operatingFigures",
       "OperationsBar",
@@ -352,12 +210,42 @@ describe("Nutzung", () => {
       "usage-summary",
       "operatingCounts",
     ])
-      expect(source, `usage.tsx mirrors ${mirror}`).not.toContain(mirror);
+      expect(source, `the usage breakdown mirrors ${mirror}`).not.toContain(mirror);
   });
 
   test("reads the window its address names, so the cost figure's link lands on its window", () => {
-    const source = readFileSync(new URL("./usage.tsx", import.meta.url), "utf8");
-    expect(source).toContain("usageWindowFromUrl(window.location.search)");
-    expect(source).toContain(`useLlmQuery(allowed, bounds, "flow")`);
+    const page = readFileSync(new URL("../features/usage/usage-page.tsx", import.meta.url), "utf8");
+    const breakdown = readFileSync(
+      new URL("../features/usage/breakdown.tsx", import.meta.url),
+      "utf8",
+    );
+    expect(page).toContain("windowBounds(usageWindowFromUrl(search))");
+    expect(breakdown).toContain(`useLlmQuery(allowed, bounds, "flow")`);
+  });
+});
+
+describe("the overview's KPI cards", () => {
+  test("each card names its period, its value and draws its trend", () => {
+    const runs = card(figuresOf(), "runs");
+    expect(runs).toMatchObject({ label: "Runs · 24 Std", value: "40", trend: [3, 5, 4] });
+    expect(runs.href).toContain("runs=all");
+  });
+
+  test("connector health draws dots instead of a line and no sign-in sentence", () => {
+    expect(card(figuresOf(), "connectorHealth")).toMatchObject({
+      value: "75 %",
+      trend: null,
+      dots: visuals.connectors,
+      detail: null,
+    });
+  });
+
+  test("a figure that could not be read shows a dash and why", () => {
+    expect(card(figuresOf({ counts: { state: "failed" } }), "runs")).toMatchObject({
+      value: "—",
+      note: "Nicht lesbar",
+      trend: null,
+      retry: true,
+    });
   });
 });

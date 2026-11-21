@@ -59,9 +59,9 @@ export const automationEn = {
   "automation.state.apply": "Change waiting",
   "automation.state.repair": "Fix needed",
   "automation.state.unknown": "Not verified",
-  "automation.state.grant": "Approval needed",
+  "automation.state.grant": "Needs approval",
   "automation.state.approved": "Approved",
-  "automation.state.manual": "On request",
+  "automation.state.manual": "Manual",
   "automation.action.resume": "Resume",
   "automation.action.apply": "Review change",
   "automation.action.grant": "Approve now",
@@ -137,7 +137,7 @@ export const automationEn = {
   "scheduleHistory.openRun": "Open the run",
   "scheduleHistory.covers.one": "Stands for {count} scheduled time",
   "scheduleHistory.covers.other": "Stands for {count} scheduled times",
-  "scheduleHistory.state.ran": "Ran on time.",
+  "scheduleHistory.state.ran": "On time",
   "scheduleHistory.state.ran_late": "Ran later than planned.",
   "scheduleHistory.state.skipped": "Skipped on purpose.",
   "scheduleHistory.state.held": "On hold until you act.",
@@ -162,15 +162,17 @@ export const automationEn = {
   "scheduleHistory.reason.grant_expired":
     "On hold: the standing permission has ended. Renew it and the schedule runs again.",
   "scheduleHistory.reason.previous_run_active": "Skipped: the previous run was still going.",
-  "scheduleAutoPause.title": "“{workflow}” was paused automatically",
-  "scheduleAutoPause.body":
-    "{count} runs in a row failed for the same reason. No run has started since {date}. Nothing else was changed.",
-  "scheduleAutoPause.meansApproval": "Renew the approval first, then resume the schedule.",
-  "scheduleAutoPause.meansResume":
-    "Fix the cause, then resume the schedule. Failures are counted afresh.",
+  "scheduleAutoPause.title": "Schedule paused automatically",
+  "scheduleAutoPause.body": "{count} failures in a row with the same cause, no run since {date}.",
+  "scheduleAutoPause.meansApproval": "Renew the approval, then resume.",
+  "scheduleAutoPause.meansResume": "Fix the cause, then resume.",
   "scheduleAutoPause.renew": "Renew approval",
   "scheduleAutoPause.resume": "Resume schedule",
   "scheduleAutoPause.resumeFailed": "The schedule could not be resumed and stays paused.",
+  "scheduleAutoPause.fact.schedule": "Schedule ID",
+  "scheduleAutoPause.fact.cron": "Cron expression",
+  "scheduleAutoPause.fact.cause": "Failure class",
+  "scheduleAutoPause.fact.since": "Paused since",
   "schedule.deleted": "Schedule deleted",
   "schedule.object": "schedule",
   "schedule.deleteVerb": "Delete",
@@ -196,8 +198,8 @@ export const automationDe: Record<keyof typeof automationEn, string> = {
   "schedules.held.reviewPrepared": "Entwurf prüfen",
   "schedules.held.reviewGrant": "Freigabe prüfen",
   "automation.fact.untilRevoked": "bis auf Widerruf",
-  "automation.fact.runsSoFar.one": "{count} Lauf bisher",
-  "automation.fact.runsSoFar.other": "{count} Läufe bisher",
+  "automation.fact.runsSoFar.one": "{count} Run bisher",
+  "automation.fact.runsSoFar.other": "{count} Runs bisher",
   "schedules.held.title": "Zeitplan angehalten",
   "schedules.held.status": "Prüfung nötig",
   "schedules.held.kind": "Zeitgesteuerte Workflows",
@@ -205,14 +207,14 @@ export const automationDe: Record<keyof typeof automationEn, string> = {
   "schedules.held.groupHint":
     "Diese zeitgesteuerten Workflows können nicht starten. Im Workflow die Ausführungsgrenzen prüfen.",
   "schedules.held.concreteShort":
-    "Aktionen und Ziele müssen vor weiteren automatischen Läufen geprüft werden.",
-  "schedules.held.authorityShort": "Für den nächsten Lauf liegt keine gültige Freigabe vor.",
+    "Aktionen und Ziele müssen vor weiteren automatischen Runs geprüft werden.",
+  "schedules.held.authorityShort": "Für den nächsten Run liegt keine gültige Freigabe vor.",
   "schedules.held.preparedShort":
     "Ein Entwurf wartet. Die Prüfung beurteilt den Entwurf; übernommen läuft der Zeitplan weiter.",
   "schedules.held.details": "Grund und Zeitplan",
   "schedules.held.schedule": "Zeitplan",
   "schedules.held.concrete":
-    "Der letzte Start wurde angehalten: Die dynamischen Effekte lassen sich derzeit nicht für wiederholte Läufe freigeben. Workflow öffnen, eine Vorschau prüfen oder die Effekte auf unterstützte, feste Ziele begrenzen.",
+    "Der letzte Start wurde angehalten: Die dynamischen Effekte lassen sich derzeit nicht für wiederholte Runs freigeben. Workflow öffnen, eine Vorschau prüfen oder die Effekte auf unterstützte, feste Ziele begrenzen.",
   "schedules.held.authority":
     "Der letzte Start wurde angehalten: Eine gültige Freigabe fehlt, ist abgelaufen, widerrufen oder ausgeschöpft. Im Workflow die genaue Version, Ziele und endlichen Grenzen prüfen und freigeben.",
   "schedules.held.prepared":
@@ -227,15 +229,14 @@ export const automationDe: Record<keyof typeof automationEn, string> = {
   "hooks.held.status": "Aufrufe abgewiesen",
   "hooks.held.since": "Weist seit {when} ab",
   "hooks.held.concrete":
-    "Aufrufe werden abgewiesen, weil Aktionen und Ziele dieses Workflows für unbeaufsichtigte Läufe nicht geprüft sind. Die Prüfung bereitet mit einem Beispielaufruf einen zurückgehaltenen Lauf vor – es wird nichts gesendet – und fragt dann nach deiner Freigabe.",
+    "Aufrufe werden abgewiesen, weil Aktionen und Ziele dieses Workflows für unbeaufsichtigte Runs nicht geprüft sind. Die Prüfung bereitet mit einem Beispielaufruf einen zurückgehaltenen Run vor – es wird nichts gesendet – und fragt dann nach deiner Freigabe.",
   "hooks.held.authority":
     "Aufrufe werden abgewiesen, weil die Freigabe fehlt, abgelaufen, widerrufen oder aufgebraucht ist. Prüfe Version, Ziele und Grenzen und erteile sie neu.",
   "hooks.held.review": "Freigabe prüfen",
   "agentPanel.open": "Zu diesem Workflow fragen",
   "agentPanel.title": "Zu diesem Workflow fragen",
   "agentPanel.description": "Fragen zu {name}, direkt daneben beantwortet.",
-  "agentPanel.empty":
-    "Frag, was ein Schritt tut, warum ein Lauf scheiterte oder was zu ändern ist.",
+  "agentPanel.empty": "Frag, was ein Schritt tut, warum ein Run scheiterte oder was zu ändern ist.",
   "agentPanel.placeholder": "Deine Frage",
   "agentPanel.send": "Fragen",
   "agentPanel.thinking": "Antwort wird erarbeitet …",
@@ -253,9 +254,9 @@ export const automationDe: Record<keyof typeof automationEn, string> = {
   "automation.state.apply": "Übernahme nötig",
   "automation.state.repair": "Korrektur nötig",
   "automation.state.unknown": "Nicht geprüft",
-  "automation.state.grant": "Freigabe nötig",
+  "automation.state.grant": "Braucht Freigabe",
   "automation.state.approved": "Freigegeben",
-  "automation.state.manual": "Auf Abruf",
+  "automation.state.manual": "Manuell",
   "automation.action.resume": "Fortsetzen",
   "automation.action.apply": "Änderung prüfen",
   "automation.action.grant": "Jetzt freigeben",
@@ -265,7 +266,7 @@ export const automationDe: Record<keyof typeof automationEn, string> = {
   "automation.action.recheck": "Erneut prüfen",
   "automation.fact.version": "{version}",
   "automation.fact.until": "bis {until}",
-  "automation.fact.runs": "noch {left} von {max} Läufen",
+  "automation.fact.runs": "noch {left} von {max} Runs",
   "approvalExpiry.today": "Die Freigabe läuft heute ab",
   "approvalExpiry.tomorrow": "Die Freigabe läuft morgen ab",
   "approvalExpiry.days": "Die Freigabe läuft in {count} Tagen ab",
@@ -295,7 +296,7 @@ export const automationDe: Record<keyof typeof automationEn, string> = {
   "automation.trigger.paused": "{trigger} (pausiert)",
   "automation.hookOff":
     "Der Webhook ist abgeschaltet. Wieder einschalten lässt er sich hier nicht – er muss neu angelegt werden.",
-  "automation.opening.trial": "Beim Öffnen startet ein Probelauf ohne Wirkung.",
+  "automation.opening.trial": "Beim Öffnen startet ein Probe-Run ohne Wirkung.",
   "automation.opening.sample": "Für die Prüfung brauchst du einen Beispielaufruf des Webhooks.",
   "schedule.createTitle": "Zeitplan anlegen",
   "schedule.editTitle": "Zeitplan bearbeiten",
@@ -316,7 +317,7 @@ export const automationDe: Record<keyof typeof automationEn, string> = {
   "schedule.none": "Noch kein Zeitplan.",
   "schedule.inChat": "Im Chat anlegen",
   "schedule.chatPrompt": "Richte folgenden Zeitplan ein: ",
-  "schedule.next": "Nächster Lauf",
+  "schedule.next": "Nächster Run",
   "schedule.isPaused": "Pausiert",
   "schedule.actions": "Zeitplan-Aktionen",
   "schedule.edit": "Bearbeiten",
@@ -329,10 +330,10 @@ export const automationDe: Record<keyof typeof automationEn, string> = {
   "scheduleHistory.empty": "Bisher war noch kein Termin fällig.",
   "scheduleHistory.failed": "Der Zeitplan-Verlauf konnte nicht geladen werden",
   "scheduleHistory.older": "Ältere anzeigen",
-  "scheduleHistory.openRun": "Lauf öffnen",
+  "scheduleHistory.openRun": "Run öffnen",
   "scheduleHistory.covers.one": "Steht für {count} Termin",
   "scheduleHistory.covers.other": "Steht für {count} Termine",
-  "scheduleHistory.state.ran": "Pünktlich gelaufen.",
+  "scheduleHistory.state.ran": "Pünktlich",
   "scheduleHistory.state.ran_late": "Später gelaufen als geplant.",
   "scheduleHistory.state.skipped": "Bewusst übersprungen.",
   "scheduleHistory.state.held": "Angehalten, bis du handelst.",
@@ -349,7 +350,7 @@ export const automationDe: Record<keyof typeof automationEn, string> = {
   "scheduleHistory.reason.repeated_failures":
     "Nicht gestartet: Der Zeitplan wurde automatisch pausiert, weil sich derselbe Fehler wiederholt hat.",
   "scheduleHistory.reason.input_required":
-    "Angehalten: Dem Lauf fehlen Eingaben. Ergänze sie im Zeitplan.",
+    "Angehalten: Dem Run fehlen Eingaben. Ergänze sie im Zeitplan.",
   "scheduleHistory.reason.execution_authority_required":
     "Angehalten: Für diese Version fehlt die Freigabe. Erteile sie, dann läuft der Zeitplan weiter.",
   "scheduleHistory.reason.execution_authority_unavailable":
@@ -359,18 +360,20 @@ export const automationDe: Record<keyof typeof automationEn, string> = {
   "scheduleHistory.reason.grant_expired":
     "Angehalten: Die Dauererlaubnis ist abgelaufen. Erneuere sie, dann läuft der Zeitplan weiter.",
   "scheduleHistory.reason.previous_run_active":
-    "Übersprungen: Der vorherige Lauf war noch nicht fertig.",
-  "scheduleAutoPause.title": "„{workflow}“ wurde automatisch pausiert",
+    "Übersprungen: Der vorherige Run war noch nicht fertig.",
+  "scheduleAutoPause.title": "Zeitplan automatisch pausiert",
   "scheduleAutoPause.body":
-    "{count} Läufe in Folge sind an derselben Ursache gescheitert. Seit {date} ist kein Lauf gestartet. Geändert wurde sonst nichts.",
-  "scheduleAutoPause.meansApproval":
-    "Erneuere zuerst die Freigabe und setz dann den Zeitplan fort.",
-  "scheduleAutoPause.meansResume":
-    "Behebe die Ursache und setz dann den Zeitplan fort. Fehler werden neu gezählt.",
+    "{count} Fehlschläge in Folge mit derselben Ursache, seit {date} kein Run.",
+  "scheduleAutoPause.meansApproval": "Erneuere die Freigabe, dann setz fort.",
+  "scheduleAutoPause.meansResume": "Behebe die Ursache, dann setz fort.",
   "scheduleAutoPause.renew": "Freigabe erneuern",
   "scheduleAutoPause.resume": "Zeitplan fortsetzen",
   "scheduleAutoPause.resumeFailed":
     "Der Zeitplan konnte nicht fortgesetzt werden und bleibt pausiert.",
+  "scheduleAutoPause.fact.schedule": "Zeitplan-Kennung",
+  "scheduleAutoPause.fact.cron": "Cron-Ausdruck",
+  "scheduleAutoPause.fact.cause": "Fehlerklasse",
+  "scheduleAutoPause.fact.since": "Pausiert seit",
   "schedule.deleted": "Zeitplan gelöscht",
   "schedule.object": "Zeitplan",
   "schedule.deleteVerb": "Löschen",

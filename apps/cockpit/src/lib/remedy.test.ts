@@ -22,12 +22,12 @@ describe("remedyFor", () => {
     [
       "an expired sign-in leads to the connector",
       { ...base, authState: { connectorId: CONNECTOR, state: "expired" } },
-      { kind: "reauth", href: connectorHref(CONNECTOR) },
+      { kind: "reconnect", href: connectorHref(CONNECTOR) },
     ],
     [
       "missing credentials lead to the connector too",
       { ...base, authState: { connectorId: CONNECTOR, state: "credentials_missing" } },
-      { kind: "reauth", href: connectorHref(CONNECTOR) },
+      { kind: "reconnect", href: connectorHref(CONNECTOR) },
     ],
     [
       "a rejected request on a connector that reports itself connected is checked, not re-signed",
@@ -76,7 +76,7 @@ describe("remedyFor", () => {
     [
       "on the connector's own surfaces a lost sign-in lands on its sign-in card",
       { ...base, authState: { connectorId: CONNECTOR, state: "expired", section: "credentials" } },
-      { kind: "reauth", href: `${connectorHref(CONNECTOR)}#connector-credentials` },
+      { kind: "reconnect", href: `${connectorHref(CONNECTOR)}#connector-credentials` },
     ],
     ["no chat permission and nothing else: no dead link", { ...base, canChat: false }, null],
     [

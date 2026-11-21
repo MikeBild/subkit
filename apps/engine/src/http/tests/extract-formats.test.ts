@@ -7,6 +7,7 @@ import {
   buildPptxFixture,
   buildXlsxFixture,
 } from "../../test-helpers/binary-fixtures.ts";
+import { EXTRACT_BODY_CAP_BYTES } from "../routes/ai/extract.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
@@ -56,6 +57,37 @@ describe("/v1/extract file-format matrix", () => {
     expect(body.data[0]?.name).toBe("alice");
     expect(body.data[1]?.name).toBe("bob");
   });
+
+  test("1 MB CSV body → 200 + every row parsed", async () => {
+    let csv = "id,name\n";
+    let rows = 0;
+    while (csv.length < 1024 * 1024) {
+      csv += `${rows},name-${rows}\n`;
+      rows += 1;
+    }
+    const res = await fetch(`${srv.baseUrl}/v1/extract`, {
+      method: "POST",
+      headers: authHeaders("text/csv"),
+      body: csv,
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { format: string; data: Array<Record<string, string>> };
+    expect(body.format).toBe("csv");
+    expect(body.data).toHaveLength(rows);
+    expect(body.data[rows - 1]?.name).toBe(`name-${rows - 1}`);
+  });
+
+  test("body over the extract cap → 413 + payload_too_large", async () => {
+    const overhead = '{"sample":""}'.length;
+    const body = JSON.stringify({ sample: "a".repeat(EXTRACT_BODY_CAP_BYTES + 1 - overhead) });
+    const res = await fetch(`${srv.baseUrl}/v1/extract`, {
+      method: "POST",
+      headers: authHeaders("application/json"),
+      body,
+    });
+    expect(res.status).toBe(413);
+    expect(((await res.json()) as { code: string }).code).toBe("payload_too_large");
+  }, 60_000);
 
   test("YAML body → 200 + parsed keys", async () => {
     const yaml = "title: demo\ncount: 3\n";

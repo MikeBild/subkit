@@ -177,7 +177,7 @@ describe("what a call will be", () => {
 
   test("the unconfirmed line promises no live run", () => {
     expect(CATALOGS.de["invocation.http.unconfirmed"]).toContain("nicht bestätigt");
-    expect(CATALOGS.de["invocation.http.unconfirmed"]).toContain("Probelauf");
+    expect(CATALOGS.de["invocation.http.unconfirmed"]).toContain("Probe-Run");
     expect(CATALOGS.en["invocation.http.unconfirmed"]).toContain("not confirmed");
   });
 });

@@ -6,7 +6,9 @@ files:
   - dist/main.cjs
   - dist/preload-connect.cjs
   - dist/preload-cockpit.cjs
+  - dist/preload-shell.cjs
   - dist/connect/**
+  - dist/shell/**
   - dist/assets/**
   - package.json
   - "!node_modules"
@@ -36,6 +38,15 @@ mac:
   entitlements: assets/entitlements.mac.plist
   entitlementsInherit: assets/entitlements.mac.plist
   notarize: false
+  # Files dropped on the Dock icon open "Where should it go?"; SubKit never claims a file type.
+  extendInfo:
+    CFBundleDocumentTypes:
+      - CFBundleTypeName: Document
+        CFBundleTypeRole: Viewer
+        LSHandlerRank: Alternate
+        LSItemContentTypes:
+          - public.data
+          - public.content
   extraResources:
     - from: dist/LICENSES.chromium.html
       to: LICENSES.chromium.html

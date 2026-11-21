@@ -199,7 +199,7 @@ describe("the sentence with the schedule", () => {
 
 describe("what the allow request carries", () => {
   test("the reviewed fingerprint, no run limit and the digest of every workflow that is allowed with it", () => {
-    expect(taskGrantInput(preview(), "until_revoked", NOW)).toEqual({
+    expect(taskGrantInput(preview(), { validUntil: null, maxRuns: null })).toEqual({
       expected_fingerprint: FINGERPRINT,
       valid_until: null,
       max_runs: null,
@@ -207,16 +207,16 @@ describe("what the allow request carries", () => {
     });
   });
 
-  test("a duration ends that many days after now", () => {
-    expect(taskGrantInput(preview(), "7d", NOW).valid_until).toBe("2026-11-26T10:00:00.000Z");
-    expect(taskGrantInput(preview(), "30d", NOW).valid_until).toBe("2026-12-19T10:00:00.000Z");
+  test("the chosen end and run limit are sent as they are", () => {
+    expect(
+      taskGrantInput(preview(), { validUntil: "2026-11-26T22:59:59.000Z", maxRuns: 5 }),
+    ).toMatchObject({ valid_until: "2026-11-26T22:59:59.000Z", max_runs: 5 });
   });
 
   test("a workflow the person was told would ask is never sent as reviewed", () => {
     const digests = taskGrantInput(
       preview({ workflows: [QUOTE, REPORT, workflow({ may_grant: false })] }),
-      "until_revoked",
-      NOW,
+      { validUntil: null, maxRuns: null },
     ).expected_workflow_digests;
     expect(digests).toEqual({});
   });

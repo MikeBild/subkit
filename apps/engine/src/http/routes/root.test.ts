@@ -10,7 +10,7 @@ import { createApp } from "../server.ts";
 import { COMPOSE_YAML, registerComposeRoute } from "./compose.ts";
 import { registerInstallSkillRoute } from "./install-skill.ts";
 import { registerLlmsTxtRoutes } from "./llms-txt.ts";
-import { ROOT_ENTRY_PATHS, registerRootRoute } from "./root.ts";
+import { cockpitLocation, ROOT_ENTRY_PATHS, registerRootRoute } from "./root.ts";
 
 let configDirectory: string;
 
@@ -28,38 +28,103 @@ afterAll(() => {
   rmSync(configDirectory, { recursive: true, force: true });
 });
 
-async function get(path: string, headers: Record<string, string> = {}): Promise<Response> {
+async function get(
+  path: string,
+  headers: Record<string, string> = {},
+  options: { cockpitAvailable?: boolean } = {},
+): Promise<Response> {
   const app = new OpenAPIHono<AppEnv>();
-  registerRootRoute(app);
+  registerRootRoute(app, { cockpitAvailable: () => options.cockpitAvailable ?? true });
   registerComposeRoute(app);
   registerInstallSkillRoute(app);
   registerLlmsTxtRoutes(app);
   return app.request(`http://127.0.0.1${path}`, { headers });
 }
 
+const BROWSER_ACCEPT =
+  "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8";
+
 describe("GET /", () => {
-  test("an operator can redirect browsers to the Cockpit while agents keep the Markdown entry point", async () => {
-    await setConfigKey("server.root_redirect_to_cockpit", true, { force: true });
+  test("a browser that opens the address lands in the Cockpit", async () => {
+    const browser = await get("/", { accept: BROWSER_ACCEPT, "sec-fetch-mode": "navigate" });
+    expect(browser.status).toBe(302);
+    expect(browser.headers.get("location")).toBe("/cockpit");
+    expect(browser.headers.get("cache-control")).toBe("no-store");
+    expect(browser.headers.get("vary")).toBe("Accept, Sec-Fetch-Mode");
+    expect((await get("/", { accept: "text/html" })).status).toBe(302);
+    expect((await get("/", { "sec-fetch-mode": "navigate" })).status).toBe(302);
+  });
+
+  test("the redirect target never comes from the request", async () => {
+    const browser = await get("/?next=https://external.example.test&return_to=//evil.test", {
+      accept: "text/html",
+      host: "external.example.test",
+      "x-forwarded-host": "external.example.test",
+      "x-forwarded-proto": "https",
+      "x-forwarded-prefix": "/evil",
+    });
+    expect(browser.status).toBe(302);
+    expect(browser.headers.get("location")).toBe("/cockpit");
+  });
+
+  test("the redirect keeps the base path of the configured public address", async () => {
+    expect(cockpitLocation("")).toBe("/cockpit");
+    expect(cockpitLocation("https://engine.example.test")).toBe("/cockpit");
+    expect(cockpitLocation("https://engine.example.test/")).toBe("/cockpit");
+    expect(cockpitLocation("https://example.test/subkit/")).toBe("/subkit/cockpit");
+    expect(cockpitLocation("not a url")).toBe("/cockpit");
+    await setConfigKey("server.public_base_url", "https://example.test/subkit", { force: true });
     try {
-      const browser = await get("/?next=https://external.example.test", {
-        accept: "text/html",
-        "x-forwarded-host": "external.example.test",
-        "x-forwarded-proto": "https",
-      });
-      expect(browser.status).toBe(302);
-      expect(browser.headers.get("location")).toBe("/cockpit");
-      expect(browser.headers.get("cache-control")).toBe("no-store");
-      for (const accept of ["text/markdown", "*/*"]) {
-        const agent = await get("/", { accept });
-        expect(agent.status).toBe(200);
-        expect(agent.headers.get("content-type")).toContain("text/markdown");
-      }
-      expect((await get("/llms.txt")).status).toBe(200);
+      const browser = await get("/", { accept: "text/html", "x-forwarded-host": "evil.test" });
+      expect(browser.headers.get("location")).toBe("/subkit/cockpit");
     } finally {
-      await setConfigKey("server.root_redirect_to_cockpit", false, { force: true });
+      await setConfigKey("server.public_base_url", "", { force: true });
     }
-    expect((await get("/")).status).toBe(200);
-    expect((await get("/", { accept: "text/html" })).status).toBe(200);
+  });
+
+  test("agents and command-line clients keep the Markdown entry point", async () => {
+    for (const headers of [
+      {},
+      { accept: "*/*" },
+      { accept: "text/markdown" },
+      { accept: "text/markdown, text/plain" },
+      { accept: "text/markdown", "sec-fetch-mode": "navigate" },
+    ] as Record<string, string>[]) {
+      const agent = await get("/", headers);
+      expect(agent.status).toBe(200);
+      expect(agent.headers.get("content-type")).toContain("text/markdown");
+      expect(agent.headers.get("vary")).toBe("Accept, Sec-Fetch-Mode");
+    }
+    for (const path of [
+      "/llms.txt",
+      "/.well-known/llms.txt",
+      "/.well-known/service-descriptor.json",
+    ])
+      expect((await get(path, { accept: BROWSER_ACCEPT })).status).toBe(200);
+  });
+
+  test("a client that ranks Markdown above HTML keeps the HTML index it gets today", async () => {
+    const res = await get("/", { accept: "text/markdown, text/html" });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/html");
+  });
+
+  test("with the redirect turned off a browser gets the HTML index", async () => {
+    await setConfigKey("server.root_redirect_to_cockpit", false, { force: true });
+    try {
+      const res = await get("/", { accept: BROWSER_ACCEPT, "sec-fetch-mode": "navigate" });
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toContain("text/html");
+      expect(await res.text()).toContain("<h1>SubKit</h1>");
+    } finally {
+      await setConfigKey("server.root_redirect_to_cockpit", true, { force: true });
+    }
+  });
+
+  test("without a Cockpit bundle a browser gets the HTML index instead of a dead end", async () => {
+    const res = await get("/", { accept: BROWSER_ACCEPT }, { cockpitAvailable: false });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/html");
   });
 
   test("answers a machine with Markdown", async () => {
@@ -71,8 +136,11 @@ describe("GET /", () => {
     expect(body).toMatch(/\(https?:\/\/[^)]+\/llms\.txt\)/);
   });
 
-  test("answers a browser with HTML", async () => {
-    const res = await get("/", { accept: "text/html,application/xhtml+xml" });
+  test("the engine index stays at /engine, as HTML for a browser", async () => {
+    const res = await get("/engine", {
+      accept: "text/html,application/xhtml+xml",
+      "sec-fetch-mode": "navigate",
+    });
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/html");
     const body = await res.text();
@@ -85,7 +153,8 @@ describe("GET /", () => {
 
   test("both renderings list the same entries", async () => {
     const markdown = await (await get("/")).text();
-    const html = await (await get("/", { accept: "text/html" })).text();
+    const html = await (await get("/engine", { accept: "text/html" })).text();
+    expect(await (await get("/engine")).text()).toBe(markdown);
     for (const path of ROOT_ENTRY_PATHS) {
       expect(markdown).toContain(path);
       expect(html).toContain(path);
@@ -155,7 +224,7 @@ describe("the self-description set", () => {
       ].map((m) => m[1] as string);
       for (const target of links) {
         const dir = rel.split("/").slice(0, -1).join("/");
-        const resolved = new URL(target, `http://x/${dir}/`).pathname.replace(/^\//, "");
+        const resolved = new URL(target, `http://x/${dir ? `${dir}/` : ""}`).pathname.slice(1);
         const res = await get(`/llms/${resolved}`);
         expect(`${rel} -> ${target}: ${res.status}`).toBe(`${rel} -> ${target}: 200`);
       }

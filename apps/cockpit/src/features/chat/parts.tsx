@@ -33,7 +33,7 @@ export function ReadingColumn({
   return (
     <div
       className={cn(
-        "scrollbar-thin overflow-hidden px-4 sm:px-6 [scrollbar-gutter:stable]",
+        "scrollbar-thin overflow-hidden px-4 sm:px-8 [scrollbar-gutter:stable]",
         className,
       )}
       data-testid={testId}
@@ -98,6 +98,7 @@ export function PatchProposalDiff({
 export function AttachmentChip({
   name,
   size,
+  sizeLabel,
   icon: Icon,
   onOpen,
   onRemove,
@@ -105,6 +106,7 @@ export function AttachmentChip({
 }: {
   name: string;
   size?: number;
+  sizeLabel?: string;
   icon: typeof FileText;
   onOpen: () => void;
   onRemove?: () => void;
@@ -125,7 +127,11 @@ export function AttachmentChip({
         <Icon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
         <span className="truncate">
           {name}
-          {size !== undefined ? ` · ${formatBytes(size, LOCALE_TAGS[locale])}` : ""}
+          {sizeLabel !== undefined
+            ? ` · ${sizeLabel}`
+            : size !== undefined
+              ? ` · ${formatBytes(size, LOCALE_TAGS[locale])}`
+              : ""}
         </span>
       </button>
       {onRemove ? (

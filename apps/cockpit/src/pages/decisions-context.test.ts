@@ -17,8 +17,8 @@ const index = buildNameIndex(
 const labels: ContextLabels = {
   cause: "Ein Feld ist umgezogen",
   causeFallback: "Ursache unbekannt",
-  failedRun: "Fehlgeschlagener Lauf",
-  endpoint: "Konnektor",
+  failedRun: "Fehlgeschlagener Run",
+  endpoint: "Connector",
   workflow: "Workflow",
   conversation: "Zur Unterhaltung",
   allWorkflows: "Gilt für alle Workflows",
@@ -52,7 +52,7 @@ describe("patchContext", () => {
     const { sources, targets } = patchContext(patch, labels, index, true);
     expect(sources.map((entry) => entry.label)).toEqual([
       "Ein Feld ist umgezogen",
-      "Fehlgeschlagener Lauf",
+      "Fehlgeschlagener Run",
       "GitHub",
     ]);
     expect(sources[2]?.note).toBe("GET /reports");
@@ -76,14 +76,14 @@ describe("patchContext", () => {
     );
     expect(sources.map((entry) => entry.label)).toEqual([
       "Ein Feld ist umgezogen",
-      "Fehlgeschlagener Lauf",
+      "Fehlgeschlagener Run",
     ]);
     expect(JSON.stringify(sources)).not.toContain("gate:");
   });
 
   test("drops the run link when the person cannot open runs", () => {
     const { sources } = patchContext(patch, labels, index, false);
-    expect(sources.map((entry) => entry.label)).not.toContain("Fehlgeschlagener Lauf");
+    expect(sources.map((entry) => entry.label)).not.toContain("Fehlgeschlagener Run");
   });
 
   test("a candidate with no run keeps its cause and target", () => {
@@ -101,7 +101,7 @@ describe("patchContext", () => {
     const { sources } = patchContext({ ...patch, connectorId: "gone" }, labels, index, true);
     const endpoint = sources.find((entry) => entry.note === "GET /reports");
     expect(endpoint?.href).toBe("/connectors/gone");
-    expect(endpoint?.label).toBe("Konnektor");
+    expect(endpoint?.label).toBe("Connector");
   });
 
   test("a workflow with no id and no name yields no target rather than an empty link", () => {

@@ -194,9 +194,13 @@ export function rowLinkColumn(
   return visible.find((column) => !column.interactive)?.id;
 }
 
+export function actionColumnRem(actions: boolean | "menu"): number {
+  return actions === "menu" ? 4.5 : actions ? 14 : 0;
+}
+
 export function tableColumnWidths(
   widths: readonly (string | undefined)[],
-  controls: { actions: boolean; select?: boolean },
+  controls: { actions: boolean | "menu"; select?: boolean },
 ): string[] {
   const specified = widths.map((width) => {
     const match = width?.match(/w-\[(\d+(?:\.\d+)?)%\]/);
@@ -206,7 +210,7 @@ export function tableColumnWidths(
   const fallback = known.length ? known.reduce((sum, weight) => sum + weight, 0) / known.length : 1;
   const weights = specified.map((weight) => weight ?? fallback);
   const total = weights.reduce((sum, weight) => sum + weight, 0);
-  const reservedRem = (controls.actions ? 14 : 0) + (controls.select ? SELECT_REM : 0);
+  const reservedRem = actionColumnRem(controls.actions) + (controls.select ? SELECT_REM : 0);
   return weights.map((weight) => {
     const share = weight / total;
     return `calc(${(share * 100).toFixed(4)}cqw - ${(share * reservedRem).toFixed(4)}rem)`;
@@ -453,6 +457,7 @@ export function DataTable<TData extends RowData>({
   recordsLabel,
   actionsLabel,
   rowActions,
+  rowActionsFit,
   collectionId = "data-table",
   collectionTier = "primary",
   layout = "responsive",
@@ -476,6 +481,7 @@ export function DataTable<TData extends RowData>({
   toolbar?: ReactNode;
   filterPanel?: ReactNode;
   rowActions?: (row: TData, index: number) => ReactNode;
+  rowActionsFit?: "menu";
   pending?: boolean;
   error?: TableErrorState | null;
   emptyState: TableEmptyState;
@@ -605,8 +611,9 @@ export function DataTable<TData extends RowData>({
   const select = selection && getRowId ? selection : null;
   const contentColumnWidths = tableColumnWidths(
     visibleColumns.map((column) => column.columnDef.meta?.width),
-    { actions: hasActionColumn, select: Boolean(select) },
+    { actions: hasActionColumn && (rowActionsFit ?? true), select: Boolean(select) },
   );
+  const actionWidth = `${actionColumnRem(rowActionsFit ?? true)}rem`;
   const widthByColumnId = new Map(
     visibleColumns.map((column, index) => [column.id, contentColumnWidths[index]]),
   );
@@ -663,7 +670,9 @@ export function DataTable<TData extends RowData>({
   const usesDefaultSearch = collectionTier === "primary" && (showDefaultSearch ?? !toolbar);
   const activeFilterPanel = filterPanel ?? findFilterBar(toolbar);
   const toolbarShown = usesDefaultSearch || Boolean(toolbar) || showColumnPicker;
-  const cards = layout === "responsive";
+  const cards = layout !== "rows";
+  const tableFrom = "hidden @xl:block";
+  const cardsUntil = "@xl:hidden";
   const resultCountLabel = (
     <span
       className="sr-only"
@@ -710,6 +719,16 @@ export function DataTable<TData extends RowData>({
     />
   );
 
+  if (error && !pending && collectionTier === "primary" && data.length === 0)
+    return (
+      <DataState
+        state="error"
+        scope="page"
+        error={error.cause}
+        onRetry={error.onRetry}
+        testId={collectionId}
+      />
+    );
   const stateOnly = !showSkeleton && Boolean(error || empty);
   return (
     <div
@@ -815,7 +834,7 @@ export function DataTable<TData extends RowData>({
         <div
           className={cn(
             "@container min-h-0 overflow-auto",
-            cards ? "hidden @4xl:block" : "block",
+            cards ? tableFrom : "block",
             stateOnly ? null : "rounded-lg border",
           )}
           data-list-scroller=""
@@ -878,11 +897,13 @@ export function DataTable<TData extends RowData>({
                   })}
                   {hasActionColumn ? (
                     <TableHead
-                      className="w-56 text-right"
-                      style={{ width: "14rem" }}
+                      className="text-right"
+                      style={{ width: actionWidth }}
                       data-slot="row-actions-head"
                     >
-                      {actionsLabel}
+                      <span className={rowActionsFit === "menu" ? "sr-only" : undefined}>
+                        {actionsLabel}
+                      </span>
                     </TableHead>
                   ) : null}
                 </TableRow>
@@ -920,9 +941,7 @@ export function DataTable<TData extends RowData>({
                         />
                       </TableCell>
                     ))}
-                    {hasActionColumn ? (
-                      <TableCell className="w-56" style={{ width: "14rem" }} />
-                    ) : null}
+                    {hasActionColumn ? <TableCell style={{ width: actionWidth }} /> : null}
                   </TableRow>
                 ))
               ) : error || empty ? (
@@ -1004,8 +1023,8 @@ export function DataTable<TData extends RowData>({
                           ))}
                           {hasActionColumn ? (
                             <TableCell
-                              className="w-56 whitespace-nowrap"
-                              style={{ width: "14rem" }}
+                              className="whitespace-nowrap"
+                              style={{ width: actionWidth }}
                               data-slot="row-actions"
                             >
                               <span className="flex max-w-full flex-wrap items-center justify-end gap-1">
@@ -1027,7 +1046,7 @@ export function DataTable<TData extends RowData>({
         </div>
         {cards ? (
           <div
-            className="min-h-0 overflow-y-auto @4xl:hidden"
+            className={cn("min-h-0 overflow-y-auto", cardsUntil)}
             data-list-scroller=""
             data-testid={`${collectionId}-mobile`}
           >

@@ -1,10 +1,10 @@
+import { ErrorNotice } from "@ui/components/proto/ErrorNotice";
 import { useEffect, useRef, useState } from "react";
 import {
   Button,
   ChatCard,
   Checkbox,
   ContextHelp,
-  ErrorNotice,
   Field,
   FieldDescription,
   FieldLabel,
@@ -223,7 +223,12 @@ export function ChatFormCard({
       })}
       {expired && <p className="text-sm text-muted-foreground">{t("chat.decision.expired")}</p>}
       {error && (
-        <ErrorNotice title={t("chat.decision.failed")} body={t("chat.decision.failedBody")} />
+        <ErrorNotice
+          kind="unknown"
+          technical={false}
+          title={t("chat.decision.failed")}
+          body={t("chat.decision.failedBody")}
+        />
       )}
     </ChatCard>
   );

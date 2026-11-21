@@ -66,7 +66,7 @@ When a scheduled workflow run fails several times in a row for the same reason, 
 
 ### Resume a paused schedule
 
-1. Open the workflow. At the top you read “‘…’ was paused automatically” with the number of runs and the time since which no run has started.
+1. Open the workflow. At the top you read “Schedule paused automatically” with the number of failures and the date since which no run has started.
 2. Fix the cause. If it is the approval, the notice offers **Renew approval**. Renew the approval first.
 3. Select **Resume schedule**. You read “Schedule resumed”.
 
@@ -82,7 +82,7 @@ The history shows what became of each scheduled time.
 
 | Entry | Meaning |
 | --- | --- |
-| “Ran on time.” | The run started at the scheduled time. |
+| “On time” | The run started at the scheduled time. |
 | “Started later than planned, because the engine was busy or not running.” | The run started more than 5 minutes after the scheduled time. |
 | “Ran once for several missed times instead of catching up on each.” | Several missed times became one run. |
 | “Skipped: this schedule does not run on weekends.” | The schedule excludes weekends. |

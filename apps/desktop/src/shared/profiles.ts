@@ -22,6 +22,10 @@ export interface Settings {
   launchAtLogin: boolean;
   pauseUntil: number | null;
   quietHours: QuietHours;
+  notifications: boolean;
+  shareDiagnostics: boolean;
+  notificationsAsked: boolean;
+  diagnosticsAsked: boolean;
 }
 
 export interface StoreData {
@@ -39,6 +43,10 @@ export function defaultSettings(): Settings {
     launchAtLogin: false,
     pauseUntil: null,
     quietHours: { ...DEFAULT_QUIET_HOURS },
+    notifications: true,
+    shareDiagnostics: false,
+    notificationsAsked: false,
+    diagnosticsAsked: false,
   };
 }
 
@@ -100,10 +108,16 @@ function parseProfile(raw: unknown): Profile | null {
   };
 }
 
-export function parseSettings(raw: unknown): Settings {
+function asked(value: unknown, earlierInstall: boolean): boolean {
+  return typeof value === "boolean" ? value : earlierInstall;
+}
+
+const ANSWERED = { notificationsAsked: true, diagnosticsAsked: true };
+
+export function parseSettings(raw: unknown, earlierInstall = false): Settings {
   const item = record(raw);
   const defaults = defaultSettings();
-  if (!item) return defaults;
+  if (!item) return { ...defaults, ...(earlierInstall ? ANSWERED : {}) };
   const quiet = record(item.quietHours);
   return {
     locale: item.locale === "de" || item.locale === "en" ? item.locale : "system",
@@ -117,6 +131,10 @@ export function parseSettings(raw: unknown): Settings {
       start: parseClock(quiet?.start) === null ? defaults.quietHours.start : String(quiet?.start),
       end: parseClock(quiet?.end) === null ? defaults.quietHours.end : String(quiet?.end),
     },
+    notifications: item.notifications !== false,
+    shareDiagnostics: item.shareDiagnostics === true,
+    notificationsAsked: asked(item.notificationsAsked, earlierInstall),
+    diagnosticsAsked: asked(item.diagnosticsAsked, earlierInstall),
   };
 }
 
@@ -135,7 +153,7 @@ export function parseStore(raw: unknown): StoreData {
       ? active
       : (profiles[0]?.id ?? null),
     profiles,
-    settings: parseSettings(root.settings),
+    settings: parseSettings(root.settings, profiles.length > 0),
   };
 }
 

@@ -75,6 +75,7 @@ export const WorkflowReviewReceiptSchema = z
         saved: z.boolean(),
         activated: z.boolean(),
         granted: z.boolean(),
+        pair_request_id: z.string().uuid().nullable(),
       })
       .nullable(),
   })

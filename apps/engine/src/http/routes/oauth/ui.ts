@@ -139,6 +139,7 @@ interface SinglePage {
   wide?: boolean;
   footer?: string;
   attributes?: string;
+  styles?: string;
 }
 
 const SURFACE_ATTRIBUTES: Record<PageSurface, string> = {
@@ -162,7 +163,7 @@ export function renderSinglePage(page: SinglePage): string {
   <meta name="mcp-auth-ui-contract" content="${AUTH_UI_DIGEST}">
   <link rel="icon" type="image/svg+xml" href="/cockpit/favicon.svg">
   <title>${BROWSER_TITLE}</title>
-  <style>${STYLES}</style>
+  <style>${STYLES}</style>${page.styles ? `\n  <style>${page.styles}</style>` : ""}
 </head>
 <body><main class="card${page.wide ? " wide" : ""}" data-family-surface="${page.surface}"${SURFACE_ATTRIBUTES[page.surface]}${page.attributes ?? ""}><div class="brand" data-family-slot="product-identity"><img src="/cockpit/favicon.svg" alt="" data-testid="auth-product-icon"><span>${PRODUCT_NAME}</span></div>${page.body}<footer class="foot" data-family-slot="auth-meta"><span>${PRODUCT_NAME} · ${escapeHtml(page.context)}</span>${page.footer ?? ""}</footer></main></body>
 </html>`;

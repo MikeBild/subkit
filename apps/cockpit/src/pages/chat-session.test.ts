@@ -5,7 +5,6 @@ import {
   budgetPill,
   chatHeaderTitle,
   conversationOpenedByFailedSend,
-  costPill,
   messageAuthor,
   nextSessionKey,
   type OptimisticMessage,
@@ -14,7 +13,6 @@ import {
   ownsChatOperation,
   recoverFailedSend,
   shouldRestoreComposer,
-  tokenPill,
   turnFailureCause,
 } from "./chat-session";
 
@@ -259,27 +257,6 @@ describe("header title", () => {
 });
 
 describe("header pills", () => {
-  test("no bare zero: tokens only when there are some", () => {
-    expect(tokenPill(null)).toBeNull();
-    expect(tokenPill({ tokens: 0 })).toBeNull();
-    expect(tokenPill({ tokens: 1234 })).toBe(1234);
-  });
-
-  test("cost only when priced, and a floor when a model had no rate", () => {
-    expect(costPill({ cost: null })).toBeNull();
-    expect(costPill({ cost: { amount: 0, currency: "USD", unpriced_models: [] } })).toBeNull();
-    expect(costPill({ cost: { amount: 0.42, currency: "EUR", unpriced_models: [] } })).toEqual({
-      amount: 0.42,
-      currency: "EUR",
-      floor: false,
-    });
-    expect(costPill({ cost: { amount: 0.42, currency: "EUR", unpriced_models: ["x"] } })).toEqual({
-      amount: 0.42,
-      currency: "EUR",
-      floor: true,
-    });
-  });
-
   test("the month's allowance only when it asks for attention", () => {
     expect(budgetPill("ample")).toBeNull();
     expect(budgetPill(null)).toBeNull();

@@ -16,6 +16,13 @@ describe("data table column allocation", () => {
     ]);
   });
 
+  test("a row menu alone reserves only the room of its one button", () => {
+    expect(tableColumnWidths(["w-[50%]", "w-[50%]"], { actions: "menu" })).toEqual([
+      "calc(50.0000cqw - 2.2500rem)",
+      "calc(50.0000cqw - 2.2500rem)",
+    ]);
+  });
+
   test("normalizes overfull width hints and supports tables without controls", () => {
     expect(
       tableColumnWidths(["w-[70%]", "w-[70%]"], {

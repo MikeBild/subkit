@@ -1,5 +1,5 @@
+import { auditReasonLabel } from "@/lib/audit-model";
 import type { TranslationKey } from "@/lib/i18n";
-import { auditReasonLabel } from "./audit-model";
 
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 type FormatDateTime = (value: string | Date) => string;
@@ -14,6 +14,7 @@ interface AuditTaskEntry {
 interface AuditTaskFact {
   label: string;
   value: string;
+  tech?: boolean;
 }
 
 type DetailKind =
@@ -131,13 +132,19 @@ export function auditTaskFacts(
 ): AuditTaskFact[] {
   const details = entry.details ?? {};
   const facts: AuditTaskFact[] = [];
-  if (entry.task_id) facts.push({ label: t("audit.timeline.task"), value: entry.task_id });
+  if (entry.task_id)
+    facts.push({ tech: true, label: t("audit.timeline.task"), value: entry.task_id });
   if (entry.task_run_id)
-    facts.push({ label: t("audit.timeline.taskRun"), value: entry.task_run_id });
+    facts.push({ tech: true, label: t("audit.timeline.taskRun"), value: entry.task_run_id });
   for (const detail of DETAILS) {
     if (!Object.hasOwn(details, detail.field)) continue;
     const value = shown(detail.kind, details[detail.field] as Detail, t, dateTime);
-    if (value) facts.push({ label: t(detail.label), value });
+    if (value)
+      facts.push({
+        ...(detail.kind === "id" ? { tech: true } : {}),
+        label: t(detail.label),
+        value,
+      });
   }
   return facts;
 }

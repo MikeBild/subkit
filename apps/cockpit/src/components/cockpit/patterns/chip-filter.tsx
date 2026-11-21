@@ -24,7 +24,7 @@ export function visibleChipOptions(
 }
 
 const CHIP =
-  "inline-flex h-7 shrink-0 items-center gap-1 rounded-full border px-3 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:h-9";
+  "inline-flex h-10 shrink-0 items-center gap-1 rounded-full border px-3 text-sm font-medium transition-colors pointer-coarse:h-11";
 
 export function ChipFilter({
   label,
@@ -49,7 +49,11 @@ export function ChipFilter({
   const [expanded, setExpanded] = useState(false);
   if (options.length < 2)
     return loading ? (
-      <div aria-hidden="true" data-slot="chip-filter-reserve" className="h-9 pointer-coarse:h-11" />
+      <div
+        aria-hidden="true"
+        data-slot="chip-filter-reserve"
+        className="h-10 pointer-coarse:h-11"
+      />
     ) : null;
   const { shown, hidden } = visibleChipOptions(options, value, expanded);
   const chip = (option: ChipFilterOption) => {
@@ -93,7 +97,7 @@ export function ChipFilter({
           aria-expanded={expanded}
           onClick={() => setExpanded(!expanded)}
           data-testid={testId ? `${testId}-more` : undefined}
-          className="inline-flex h-7 shrink-0 items-center px-1 text-[13px] font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:h-9"
+          className="inline-flex h-10 shrink-0 items-center px-1 text-sm font-medium text-primary hover:underline pointer-coarse:h-11"
         >
           {expanded ? t("common.lessChips") : t("common.moreCount", { count: hidden })}
         </button>

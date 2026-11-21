@@ -11,7 +11,7 @@ Dieses Kapitel ist für alle, die SubKit aus einem KI-Client wie Claude, ChatGPT
 Du trägst deine Engine dort einmal als Server ein und meldest dich an.
 Danach findet und startet der Client deine Workflows, mit deinen Rechten und mit einem Eintrag im Verlauf.
 
-SubKit ist für Claude Code, Codex, Cursor und andere KI-Clients ein MCP-Server: Jeder freigegebene Workflow ist dort ein Tool, dazu Konnektoren, Wissen und Skills – mit den Rechten des Zugangs, keinem darüber hinaus. Was schreibt, wartet auf ein „Einmal erlauben“ einer Person. Umgekehrt wird ein MCP-Server, den ihr schon nutzt, in SubKit ein Konnektor; welche seiner Tools ohne Rückfrage laufen, legt der Betreiber je Tool fest.
+SubKit ist für Claude Code, Codex, Cursor und andere KI-Clients ein MCP-Server: Jeder freigegebene Workflow ist dort ein Tool, dazu Connectors, Wissen und Skills – mit den Rechten des Zugangs, keinem darüber hinaus. Was schreibt, wartet auf ein „Einmal erlauben“ einer Person. Umgekehrt wird ein MCP-Server, den ihr schon nutzt, in SubKit ein Connector; welche seiner Tools ohne Rückfrage laufen, legt der Betreiber je Tool fest.
 
 ### Was du brauchst
 
@@ -46,7 +46,7 @@ Ein API-Schlüssel dagegen ist ein langlebiger Zugang, der auf deinem Rechner li
 
 Wo du den Server einträgst, hängt vom Client ab:
 
-- **claude.ai:** in den Einstellungen für Konnektoren. Füge einen eigenen Konnektor mit der Adresse hinzu.
+- **claude.ai:** in den Einstellungen für Connectors. Füge einen eigenen Connector mit der Adresse hinzu.
 - **Claude Code:**
 
   ```bash
@@ -54,7 +54,7 @@ Wo du den Server einträgst, hängt vom Client ab:
   ```
 
   Führe danach in Claude Code `/mcp` aus und wähle `sk`, um dich anzumelden.
-- **ChatGPT und Cursor:** in den MCP- oder Konnektor-Einstellungen des Clients.
+- **ChatGPT und Cursor:** in den MCP- oder Connector-Einstellungen des Clients.
 
 Menünamen ändern sich zwischen Client-Versionen. Sieht ein Schritt anders aus, folge der Anleitung deines Clients für entfernte MCP-Server.
 
@@ -83,7 +83,7 @@ codex mcp add sk --url https://<deine-engine>/mcp --bearer-token-env-var SK_API_
 
 Andere Clients schicken bei jeder Anfrage den Header `Authorization: Bearer <dein-schluessel>` mit.
 
-Kann dein Client nur lokale MCP-Server starten, gibt es den Befehl `sk mcp`. Er nutzt dein angemeldetes `sk`-Profil, bietet aber nur fünf Tools: einen Verbindungstest und vier Tools für Unterhaltungen mit SubKit. Workflows, Konnektoren und Wissen erreicht dein Client nur über die Adresse `/mcp` deiner Engine.
+Kann dein Client nur lokale MCP-Server starten, gibt es den Befehl `sk mcp`. Er nutzt dein angemeldetes `sk`-Profil, bietet aber nur fünf Tools: einen Verbindungstest und vier Tools für Unterhaltungen mit SubKit. Workflows, Connectors und Wissen erreicht dein Client nur über die Adresse `/mcp` deiner Engine.
 
 Ein Schlüssel ohne MCP-Scope verbindet im Modus **Lesen**.
 Soll der Client auch bauen dürfen, ergänzt du `mcp:authoring` in `--scopes`, wenn du den Schlüssel mit `sk apikeys create` anlegst.
@@ -118,8 +118,8 @@ Deine Rolle begrenzt trotzdem jeden einzelnen Aufruf. Ein Scope gibt dem Client 
 
 | Auf der Zugriffsseite | Scope | Der Client kann |
 | --- | --- | --- |
-| **Lesen** | `mcp:read` | Workflows, Läufe, Konnektoren, Wissen und Aufgaben lesen, gespeicherte Workflows starten und Aufgaben starten und abbrechen. |
-| **Bearbeiten** | `mcp:authoring` | Zusätzlich Workflows und Konnektoren in einer geführten Unterhaltung bauen und Aufgaben anlegen und ändern. |
+| **Lesen** | `mcp:read` | Workflows, Runs, Connectors, Wissen und Aufgaben lesen, gespeicherte Workflows starten und Aufgaben starten und abbrechen. |
+| **Bearbeiten** | `mcp:authoring` | Zusätzlich Workflows und Connectors in einer geführten Unterhaltung bauen und Aufgaben anlegen und ändern. |
 | **Verwalten** | `mcp:admin` | Zusätzlich im Arbeitsbereich anlegen, ändern und löschen. |
 | **Betriebszähler** | `metrics:read` | Die Betriebszähler lesen, sonst nichts. |
 
@@ -131,16 +131,16 @@ Deine Rolle begrenzt trotzdem jeden einzelnen Aufruf. Ein Scope gibt dem Client 
 
 - **Lesen** läuft sofort. Beispiele: `find_workflow`, `get_execution`, `search_knowledge`.
 - **Ausführen** startet einen gespeicherten Workflow, etwa mit `run_workflow` oder einem `wf_<slug>`-Tool.
-  Ein kurzer Lauf antwortet sofort. Ein langer Lauf antwortet mit einer `execution_id`, die der Client mit `get_execution` verfolgt.
+  Ein kurzer Run antwortet sofort. Ein langer Run antwortet mit einer `execution_id`, die der Client mit `get_execution` verfolgt.
 - **Schreiben** verändert etwas: eine E-Mail senden, Daten ändern, den Arbeitsbereich ändern.
 - **Pakete** bringen die eigenen Ressourcen deines Arbeitsbereichs mit `export_tenant_package`, `preview_package_import` und `apply_package_import` auf eine andere Engine.
   Sie fragen vorher nach einer Bestätigung. Ein Import legt nur Entwürfe und Vorschläge an.
 
 Schreiben braucht immer einen Menschen, und zwar an zwei Stellen:
 
-- **Schreiben in einem Workflow:** Ein Workflow schreibt erst wirklich, wenn eine Person ihn im Cockpit freigegeben hat. Ohne Freigabe ist der Lauf ein Probelauf: Schreibzugriffe werden zurückgehalten, nichts wird gesendet.
+- **Schreiben in einem Workflow:** Ein Workflow schreibt erst wirklich, wenn eine Person ihn im Cockpit freigegeben hat. Ohne Freigabe ist der Run ein Probe-Run: Schreibzugriffe werden zurückgehalten, nichts wird gesendet.
   Eine neue Version braucht keine neue Freigabe, solange sie nicht mehr Systeme, Adressen oder Schreibrechte anfasst als die freigegebene. Greift sie weiter, fragt SubKit erneut und nennt den Unterschied.
-  Im Chat fragt der Modus **Fragen** vor jedem Schreiben, außer es gibt eine Freigabe, die genau diesen Lauf deckt: dieselbe Version, dieselbe Umgebung, noch gültig und mit unveränderter Wirkung. **Nur planen** fragt immer. Ebenso ein Lauf, der Daten aus einem früheren Lauf weitergibt, und eine Unterhaltung, der du gesagt hast, jeden Start zu bestätigen.
+  Im Chat fragt der Modus **Fragen** vor jedem Schreiben, außer es gibt eine Freigabe, die genau diesen Run deckt: dieselbe Version, dieselbe Umgebung, noch gültig und mit unveränderter Wirkung. **Nur planen** fragt immer. Ebenso ein Run, der Daten aus einem früheren Run weitergibt, und eine Unterhaltung, der du gesagt hast, jeden Start zu bestätigen.
 - **Schreibende Tools im Client:** Ein schreibendes Tool hält an und liefert einen Link.
   Öffne ihn, melde dich an, prüfe, was passieren wird, und wähle **Einmal erlauben** oder **Ablehnen**.
   Erst danach kann der Client den Aufruf mit `confirm_tool_call` abschließen.
@@ -154,9 +154,9 @@ Eine Aufgabe ist ein Ziel mit Grenzen, auf das SubKit alleine hinarbeitet. Das K
 | Tool | Was es tut | Stufe |
 | --- | --- | --- |
 | `list_tasks`, `find_task`, `get_task` | Die Aufgaben auflisten, durchsuchen und lesen, die du sehen darfst. | **Lesen** |
-| `get_task_run` | Den Zustand eines Laufs lesen. | **Lesen** |
-| `run_task` | Jetzt einen Lauf starten, als du. Der Aufruf liefert den Lauf und wartet nicht auf das Ergebnis. | **Lesen** |
-| `abort_task_run` | Einen Lauf abbrechen, der läuft, wartet oder schläft. | **Lesen** |
+| `get_task_run` | Den Zustand eines Runs lesen. | **Lesen** |
+| `run_task` | Jetzt einen Run starten, als du. Der Aufruf liefert den Run und wartet nicht auf das Ergebnis. | **Lesen** |
+| `abort_task_run` | Einen Run abbrechen, der läuft, wartet oder schläft. | **Lesen** |
 | `save_task` | Eine Aufgabe anlegen oder ändern. Es speichert die Aufgabe nur und startet nichts. | **Bearbeiten** |
 
 Du siehst deine eigenen Aufgaben. Mit der Rolle Admin siehst du alle. `get_attention` listet auch Aufgaben, die auf dich warten.
@@ -164,16 +164,16 @@ Du siehst deine eigenen Aufgaben. Mit der Rolle Admin siehst du alle. `get_atten
 Was ein Client nicht kann:
 
 - **Die Dauererlaubnis erteilen.** Eine Aufgabe, die alleine starten soll, braucht eine Person, die im Browser im Cockpit angemeldet ist.
-- **Die Rückfragen eines Laufs beantworten.** Ein Lauf arbeitet in einer eigenen Unterhaltung im Cockpit. Jedes Aufgaben-Ergebnis enthält `cockpit_path`, die Adresse der Aufgabe dort.
+- **Die Rückfragen eines Runs beantworten.** Ein Run arbeitet in einer eigenen Unterhaltung im Cockpit. Jedes Aufgaben-Ergebnis enthält `cockpit_path`, die Adresse der Aufgabe dort.
 - **Ein Ergebnis bestätigen oder verwerfen.** Das tut nur ein Mensch, der im Browser im Cockpit angemeldet ist.
 - **Aufgaben ohne Bearbeiten anlegen oder ändern.** Ohne `mcp:authoring` antwortet `save_task` mit `authoring_scope_required`.
 
-Ein Lauf, den ein Client startet, hat dieselben Grenzen wie jeder Lauf: Er nutzt nur, was an die Aufgabe gebunden ist, und alles, was schreibt, fragt vorher einen Menschen, außer eine gültige Freigabe eines gebundenen Workflows deckt es.
+Ein Run, den ein Client startet, hat dieselben Grenzen wie jeder Run: Er nutzt nur, was an die Aufgabe gebunden ist, und alles, was schreibt, fragt vorher einen Menschen, außer eine gültige Freigabe eines gebundenen Workflows deckt es.
 
-### MCP-Server als Konnektor nutzen
+### MCP-Server als Connector nutzen
 
-Der umgekehrte Weg: Ein MCP-Server, den dein Team schon nutzt, wird in SubKit ein Konnektor. Workflows und der Chat rufen dann seine Tools auf.
-Jedes Tool fragt vor dem Lauf nach, es sei denn, der Betreiber hat es einzeln freigeschaltet. Das darf nur, wer den Konnektor ändern darf; eine normale Bearbeitung des Konnektors ändert diese Liste nicht.
+Der umgekehrte Weg: Ein MCP-Server, den dein Team schon nutzt, wird in SubKit ein Connector. Workflows und der Chat rufen dann seine Tools auf.
+Jedes Tool fragt vor dem Run nach, es sei denn, der Betreiber hat es einzeln freigeschaltet. Das darf nur, wer den Connector ändern darf; eine normale Bearbeitung des Connectors ändert diese Liste nicht.
 `sk connectors mcp-inspect <id>` zeigt, welche Tools der Server wirklich anbietet. Verlangt der Server OAuth-Zugangsdaten, folge „OAuth-Zugangsdaten für externe MCP-Server“.
 
 ### Wenn etwas nicht klappt
@@ -189,4 +189,4 @@ Die Engine liefert diese Meldungen auf Englisch; sie stehen hier deshalb wörtli
 | `400` „Unsupported protocol version“ | Der Client spricht eine MCP-Version, die die Engine nicht kennt. Aktualisiere den Client. |
 | `404` „Session not found“ | Die Sitzung ist abgelaufen, etwa nach einem Engine-Neustart. Verbinde den Server im Client neu. |
 | Tools zum Bearbeiten fehlen | Der Zugang hat kein `mcp:authoring`. Melde dich neu an und hake **Bearbeiten** an, oder arbeite mit der sk-CLI. |
-| Neue Tools fehlen nach einem Update | claude.ai behält seine alte Tool-Liste. Entferne den Konnektor und füge ihn neu hinzu. |
+| Neue Tools fehlen nach einem Update | claude.ai behält seine alte Tool-Liste. Entferne den Connector und füge ihn neu hinzu. |

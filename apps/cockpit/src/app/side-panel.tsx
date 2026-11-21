@@ -1,5 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
-import { History, Info, type LucideIcon, MessageSquare, PanelRight, X } from "lucide-react";
+import { ChatBubble } from "@ui/components/proto/ChatBubble";
+import { ErrorNotice } from "@ui/components/proto/ErrorNotice";
+import { EmptyState } from "@ui/components/proto/visual";
+import {
+  History,
+  Info,
+  type LucideIcon,
+  MessageSquare,
+  PanelRightClose,
+  PanelRightOpen,
+  Send,
+  X,
+} from "lucide-react";
 import {
   createContext,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -15,6 +27,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { apiCall } from "@/api/call";
+import type { ConversationsAboutTarget } from "@/api/client";
 import { ConversationsAbout } from "@/components/cockpit/conversations-about";
 import { IconButton } from "@/components/cockpit/icon-button";
 import {
@@ -25,15 +38,20 @@ import {
   Timeline,
   type TimelineGroup,
   type TimelineItem,
+  useErrorNotice,
 } from "@/components/cockpit/patterns";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import { Textarea } from "@/components/ui/textarea";
+import { auditActionLabel } from "@/lib/audit-model";
 import type { TranslationKey } from "@/lib/i18n";
 import { formatDate } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { readStartLayout, startPanelOpen } from "@/lib/start-layout";
 import { cn } from "@/lib/utils";
-import { auditActionLabel } from "@/pages/audit-model";
-import { absolute, auditHref, chatNewHref } from "./links";
+import { absolute, auditHref, conversationHref } from "./links";
+import { navigationItem } from "./navigation";
 import { useSession } from "./session";
+import { useSidePanelChat } from "./side-panel-chat";
 import {
   isSidePanelShortcut,
   keyedSidePanelWidth,
@@ -49,6 +67,7 @@ import {
   type SidePanelTab,
   serializeSidePanelState,
   shownSidePanelTab,
+  sidePanelContextName,
   sidePanelSubject,
   sidePanelTabs,
 } from "./side-panel-model";
@@ -60,20 +79,24 @@ interface SidePanelValue {
   open: boolean;
   details: HTMLElement | null;
   setDetails(node: HTMLElement | null): void;
+  pageTitle: string | null;
   toggle(): void;
   entered: RefObject<boolean>;
   close(): void;
+  showDetails(): void;
   update(patch: Partial<SidePanelState>): void;
 }
 
 const SidePanelContext = createContext<SidePanelValue | null>(null);
 
 function readStored(): SidePanelState {
+  let stored: SidePanelState;
   try {
-    return parseSidePanelState(window.localStorage.getItem(SIDE_PANEL_STORAGE_KEY));
+    stored = parseSidePanelState(window.localStorage.getItem(SIDE_PANEL_STORAGE_KEY));
   } catch {
-    return parseSidePanelState(null);
+    stored = parseSidePanelState(null);
   }
+  return { ...stored, open: startPanelOpen(stored.open, readStartLayout()) };
 }
 
 function writeStored(state: SidePanelState): void {
@@ -120,6 +143,7 @@ export function SidePanelProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<SidePanelState>(readStored);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [details, setDetails] = useState<HTMLElement | null>(null);
+  const [pageTitle, setPageTitle] = useState<string | null>(null);
   const sheet = useNarrow();
   const update = useCallback((patch: Partial<SidePanelState>) => {
     setState((current) => {
@@ -147,6 +171,10 @@ export function SidePanelProvider({ children }: { children: ReactNode }) {
       focusSidePanelToggle();
     }
   }, [sheet, update]);
+  const showDetails = useCallback(() => {
+    if (sheet) setSheetOpen(true);
+    update(sheet ? { tab: "details" } : { open: true, tab: "details" });
+  }, [sheet, update]);
   const toggleRef = useRef(toggle);
   toggleRef.current = toggle;
   useEffect(() => {
@@ -160,10 +188,23 @@ export function SidePanelProvider({ children }: { children: ReactNode }) {
   }, []);
   const open = sheet ? sheetOpen : state.open;
   const value = useMemo(
-    () => ({ state, sheet, sheetOpen, open, details, setDetails, toggle, close, update, entered }),
-    [state, sheet, sheetOpen, open, details, toggle, close, update],
+    () => ({
+      state,
+      sheet,
+      sheetOpen,
+      open,
+      details,
+      setDetails,
+      pageTitle,
+      toggle,
+      close,
+      showDetails,
+      update,
+      entered,
+    }),
+    [state, sheet, sheetOpen, open, details, pageTitle, toggle, close, showDetails, update],
   );
-  const side = useMemo(() => ({ target: details }), [details]);
+  const side = useMemo(() => ({ target: details, reportTitle: setPageTitle }), [details]);
   return (
     <SidePanelContext.Provider value={value}>
       <SideDetailsContext.Provider value={side}>{children}</SideDetailsContext.Provider>
@@ -179,6 +220,7 @@ export function SidePanelToggle({ className }: { className?: string }) {
   return (
     <IconButton
       label={label}
+      size="icon"
       tooltip={`${label} (⌘J)`}
       className={className}
       aria-expanded={panel.open}
@@ -186,13 +228,17 @@ export function SidePanelToggle({ className }: { className?: string }) {
       data-testid="side-panel-toggle"
       onClick={panel.toggle}
     >
-      <PanelRight />
+      {panel.open ? <PanelRightClose /> : <PanelRightOpen />}
     </IconButton>
   );
 }
 
 export function useSidePanelAvailable(): boolean {
   return useContext(SidePanelContext) !== null;
+}
+
+export function useShowSideDetails(): (() => void) | null {
+  return useContext(SidePanelContext)?.showDetails ?? null;
 }
 
 const TAB_ICON: Record<SidePanelTab, LucideIcon> = {
@@ -207,68 +253,142 @@ const TAB_LABEL: Record<SidePanelTab, TranslationKey> = {
   history: "sidePanel.tab.history",
 };
 
-function PanelEmpty({ title, text, testId }: { title: string; text: string; testId: string }) {
-  return (
-    <div
-      className="flex flex-col gap-1 rounded-lg border border-dashed px-4 py-3"
-      data-testid={testId}
-    >
-      <p className="text-sm font-medium">{title}</p>
-      <p className="text-sm text-muted-foreground">{text}</p>
-    </div>
-  );
+function subjectTarget(subject: SidePanelSubject | null): ConversationsAboutTarget | null {
+  if (subject?.type === "workflow") return { workflow_id: subject.id };
+  if (subject?.type === "connector") return { connector_id: subject.id };
+  if (subject?.type === "skill") return { skill_id: subject.id };
+  if (subject?.type === "knowledge_source") return { knowledge_source_id: subject.id };
+  return null;
 }
 
-function PanelChat({ subject }: { subject: SidePanelSubject | null }) {
+function PanelChat({
+  subject,
+  context,
+}: {
+  subject: SidePanelSubject | null;
+  context: string | null;
+}) {
   const { t } = useI18n();
   const { permissions } = useSession();
-  const target =
-    subject?.type === "workflow"
-      ? { workflow_id: subject.id }
-      : subject?.type === "connector"
-        ? { connector_id: subject.id }
-        : subject?.type === "skill"
-          ? { skill_id: subject.id }
-          : subject?.type === "knowledge_source"
-            ? { knowledge_source_id: subject.id }
-            : null;
+  const [text, setText] = useState("");
+  const chat = useSidePanelChat(subject, context);
+  const chatFailure = useErrorNotice({
+    error: chat.error,
+    body: t("sidePanel.chat.failedBody"),
+  });
+  const target = subjectTarget(subject);
   const canAsk = permissions.includes("conversation:write");
+  const end = useRef<HTMLDivElement>(null);
+  const lastLine = chat.lines[chat.lines.length - 1]?.text;
+  useEffect(() => {
+    if (lastLine) end.current?.scrollIntoView({ block: "end" });
+  }, [lastLine]);
+  function submit(): void {
+    if (!text.trim() || chat.sending) return;
+    chat.send(text, () => setText(""));
+  }
   return (
-    <div className="flex flex-col gap-4" data-testid="side-panel-chat">
-      <p className="rounded-lg bg-secondary px-3 py-2 text-xs text-muted-foreground">
-        {t(target ? "sidePanel.chat.context" : "sidePanel.chat.general")}
-      </p>
-      {target ? <ConversationsAbout target={target} /> : null}
+    <div className="flex min-h-0 flex-1 flex-col" data-testid="side-panel-chat">
+      <div
+        className="scrollbar-thin flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-4"
+        aria-live="polite"
+      >
+        <p
+          className="rounded-lg bg-secondary px-3 py-2 text-xs text-muted-foreground"
+          data-testid="side-panel-chat-context"
+        >
+          {context ? t("sidePanel.chat.seeing", { name: context }) : t("sidePanel.chat.general")}
+        </p>
+        {chat.lines.length > 0 ? (
+          <div className="flex flex-col" data-testid="side-panel-chat-transcript">
+            {chat.lines.map((line, index) => (
+              <ChatBubble
+                key={line.id}
+                answer={line.author === "user"}
+                continued={chat.lines[index - 1]?.author === line.author}
+                className="max-w-[85%] whitespace-pre-wrap [overflow-wrap:anywhere]"
+              >
+                {line.text}
+              </ChatBubble>
+            ))}
+            {chat.sending && !chat.lines.some((line) => line.streaming) ? (
+              <p
+                className="mt-3 text-xs text-muted-foreground"
+                role="status"
+                data-testid="side-panel-chat-thinking"
+              >
+                {t("sidePanel.chat.thinking")}
+              </p>
+            ) : null}
+          </div>
+        ) : canAsk ? (
+          <p className="text-sm text-muted-foreground">{t("sidePanel.chat.empty")}</p>
+        ) : null}
+        {chat.error ? (
+          <ErrorNotice
+            {...chatFailure}
+            title={t("sidePanel.chat.failed")}
+            testId="side-panel-chat-error"
+          />
+        ) : null}
+        {chat.waiting ? (
+          <p className="text-sm" data-testid="side-panel-chat-waiting">
+            {t("sidePanel.chat.waiting")}
+          </p>
+        ) : null}
+        {chat.conversationId ? (
+          <Button variant="outline" asChild>
+            <a
+              href={absolute(conversationHref(chat.conversationId))}
+              data-testid="side-panel-chat-continue"
+            >
+              {t("sidePanel.chat.continue")}
+            </a>
+          </Button>
+        ) : target ? (
+          <ConversationsAbout target={target} />
+        ) : null}
+        <div ref={end} />
+      </div>
       {canAsk ? (
-        <Button variant="outline" asChild>
-          <a
-            data-testid="side-panel-chat-ask"
-            href={absolute(
-              chatNewHref(
-                target
-                  ? {
-                      workflowId: target.workflow_id,
-                      connectorId: target.connector_id,
-                      references: subject
-                        ? [
-                            {
-                              type: subject.type as
-                                | "workflow"
-                                | "connector"
-                                | "skill"
-                                | "knowledge_source",
-                              id: subject.id,
-                            },
-                          ]
-                        : [],
-                    }
-                  : {},
-              ),
-            )}
+        <form
+          className="flex shrink-0 items-end gap-2 border-t p-3"
+          data-testid="side-panel-chat-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            submit();
+          }}
+        >
+          <label htmlFor="side-panel-chat-input" className="sr-only">
+            {t("sidePanel.chat.inputLabel")}
+          </label>
+          <Textarea
+            id="side-panel-chat-input"
+            rows={1}
+            value={text}
+            readOnly={chat.sending}
+            placeholder={t("sidePanel.chat.placeholder")}
+            onChange={(event) => setText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                event.preventDefault();
+                submit();
+              }
+            }}
+            className="min-h-10 resize-none"
+            data-testid="side-panel-chat-input"
+          />
+          <IconButton
+            type="submit"
+            variant="default"
+            size="icon"
+            label={t("sidePanel.chat.send")}
+            disabled={!text.trim() || chat.sending}
+            data-testid="side-panel-chat-send"
           >
-            {t("catalog.conversations.ask")}
-          </a>
-        </Button>
+            <Send />
+          </IconButton>
+        </form>
       ) : null}
     </div>
   );
@@ -293,7 +413,8 @@ function PanelHistory({ subject }: { subject: SidePanelSubject | null }) {
   });
   if (!subject || !allowed)
     return (
-      <PanelEmpty
+      <EmptyState
+        icon={History}
         title={t("sidePanel.history.none")}
         text={t(allowed ? "sidePanel.history.noneText" : "sidePanel.history.forbidden")}
         testId="side-panel-history-empty"
@@ -312,7 +433,8 @@ function PanelHistory({ subject }: { subject: SidePanelSubject | null }) {
   const entries = query.data?.items ?? [];
   if (entries.length === 0)
     return (
-      <PanelEmpty
+      <EmptyState
+        icon={History}
         title={t("sidePanel.history.none")}
         text={t("sidePanel.history.noneText")}
         testId="side-panel-history-empty"
@@ -374,6 +496,7 @@ function PanelBody({ pathname, overlay }: { pathname: string; overlay: boolean }
   const tabs = sidePanelTabs(pathname);
   const tab = shownSidePanelTab(panel.state.tab, tabs);
   const subject = sidePanelSubject(pathname);
+  const nav = navigationItem(pathname);
   const width = drag ?? panel.state.width;
 
   function startDrag(event: ReactPointerEvent<HTMLDivElement>): void {
@@ -450,7 +573,7 @@ function PanelBody({ pathname, overlay }: { pathname: string; overlay: boolean }
           />
         </div>
       )}
-      <div className="flex h-12 shrink-0 items-center gap-1 border-b px-3">
+      <div className="flex h-14 shrink-0 items-center gap-1 border-b px-3">
         <div
           role="tablist"
           aria-label={t("sidePanel.label")}
@@ -467,7 +590,7 @@ function PanelBody({ pathname, overlay }: { pathname: string; overlay: boolean }
                 data-testid={`side-panel-tab-${entry}`}
                 onClick={() => panel.update({ tab: entry })}
                 className={cn(
-                  "inline-flex h-8 min-w-0 items-center gap-2 rounded-md px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "inline-flex h-10 min-w-0 items-center gap-2 rounded-control px-3 text-sm",
                   tab === entry
                     ? "bg-secondary font-medium"
                     : "text-muted-foreground hover:bg-secondary/60",
@@ -481,6 +604,7 @@ function PanelBody({ pathname, overlay }: { pathname: string; overlay: boolean }
         </div>
         <IconButton
           label={t("sidePanel.close")}
+          size="icon"
           data-testid="side-panel-close"
           onClick={panel.close}
         >
@@ -488,7 +612,10 @@ function PanelBody({ pathname, overlay }: { pathname: string; overlay: boolean }
         </IconButton>
       </div>
       <div
-        className="scrollbar-thin min-h-0 flex-1 overflow-y-auto p-4"
+        className={cn(
+          "flex min-h-0 flex-1 flex-col",
+          tab !== "chat" && "scrollbar-thin overflow-y-auto p-6",
+        )}
         role="tabpanel"
         aria-label={t(TAB_LABEL[tab])}
         data-slot="side-panel-body"
@@ -496,14 +623,23 @@ function PanelBody({ pathname, overlay }: { pathname: string; overlay: boolean }
         <div className={cn(tab !== "details" && "hidden")} data-testid="side-panel-details">
           <div ref={panel.setDetails} className={SIDE_DETAILS_TARGET} />
           <div className="hidden peer-empty:block">
-            <PanelEmpty
+            <EmptyState
+              icon={Info}
               title={t("sidePanel.details.none")}
               text={t("sidePanel.details.noneText")}
               testId="side-panel-details-empty"
             />
           </div>
         </div>
-        {tab === "chat" ? <PanelChat subject={subject} /> : null}
+        {tab === "chat" ? (
+          <PanelChat
+            subject={subject}
+            context={sidePanelContextName({
+              pageTitle: panel.pageTitle,
+              navLabel: nav ? t(nav.labelKey) : null,
+            })}
+          />
+        ) : null}
         {tab === "history" ? <PanelHistory subject={subject} /> : null}
       </div>
     </aside>

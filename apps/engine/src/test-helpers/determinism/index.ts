@@ -8,7 +8,13 @@ export {
   restoreClock,
   setTestNow,
 } from "./clock.ts";
-export { type EnvHandle, type EnvOverrides, runWithTestEnv, withTestEnv } from "./env.ts";
+export {
+  type EnvHandle,
+  type EnvOverrides,
+  runWithTestEnv,
+  TEST_MASTER_KEY,
+  withTestEnv,
+} from "./env.ts";
 export {
   createDeterministicHexFactory,
   createDeterministicIdFactory,

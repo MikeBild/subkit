@@ -5,9 +5,8 @@ import {
   aiAccessView,
   personalChanges,
   personalRefusal,
-  profileCard,
-  workspaceAiCard,
-  workspaceCard,
+  profileStatus,
+  workspaceAiStatus,
 } from "./settings-personal";
 
 const de = (key: TranslationKey, values?: Record<string, string | number>) =>
@@ -160,43 +159,16 @@ describe("drafts of a hosted workspace's AI access", () => {
   });
 });
 
-describe("the overview cards of the personal areas", () => {
-  test("the AI access reads as provider with a stored key, or waits for the owner", () => {
-    const stored = workspaceAiCard(session(), de);
-    expect(de(stored.sentence.key, stored.sentence.values)).toBe(
-      "Anthropic · Schlüssel hinterlegt",
-    );
-    expect(stored.status).toBeNull();
-    for (const access of [OPERATOR_ACCESS, NO_ACCESS]) {
-      const missing = workspaceAiCard(session("Mira Kessler", access), de);
-      expect(de(missing.sentence.key, missing.sentence.values)).toBe(
-        "Noch kein eigener KI-Zugang eingerichtet.",
-      );
-      expect(missing.status).toBe("waiting");
-    }
-    expect(de("settings.status.waiting")).toBe("Wartet auf dich");
+describe("the marks of the personal areas", () => {
+  test("the AI access waits for the owner until a key is stored", () => {
+    expect(workspaceAiStatus(session())).toBeNull();
+    for (const access of [OPERATOR_ACCESS, NO_ACCESS])
+      expect(workspaceAiStatus(session("Mira Kessler", access))).toBe("waiting");
   });
 
-  test("the profile reads as name, language and appearance", () => {
-    const card = profileCard(session(), { preference: "de", theme: "light" }, de);
-    expect(de(card.sentence.key, card.sentence.values)).toBe(
-      "Mira Kessler · Deutsch · helle Darstellung",
-    );
-    expect(card.status).toBeNull();
-  });
-
-  test("a missing name is the one fact that earns a badge", () => {
-    const card = profileCard(session(null), { preference: "auto", theme: "system" }, de);
-    expect(de(card.sentence.key, card.sentence.values)).toBe(
-      "Sprache wie im Browser · Darstellung wie im System",
-    );
-    expect(card.status).toBe("nameMissing");
-    expect(de("settings.status.nameMissing")).toBe("Name fehlt");
-  });
-
-  test("the workspace reads as name and time zone", () => {
-    const card = workspaceCard(session());
-    expect(de(card.key, card.values)).toBe("Albrecht & Partner · Europe/Berlin");
+  test("a missing name is the one fact that marks the profile", () => {
+    expect(profileStatus(session())).toBeNull();
+    expect(profileStatus(session(null))).toBe("nameMissing");
   });
 });
 

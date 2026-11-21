@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { auditActionLabel } from "@/lib/audit-model";
 import { CATALOGS, type TranslationKey, translate } from "@/lib/i18n";
-import { auditActionLabel } from "./audit-model";
 import { run, task } from "./tasks-fixtures";
 import {
   actionKey,
@@ -96,7 +96,7 @@ describe("run state words", () => {
     expect(stateTone("failed")).toBe("error");
     expect(stateTone("completed")).toBe("ok");
     expect(stateTone("waiting")).toBe("warn");
-    expect(stateTone("result_ready")).toBe("warn");
+    expect(stateTone("result_ready")).toBe("info");
     expect(stateTone("sleeping")).toBe("neutral");
     expect(badgeState("info")).toBe("running");
     expect(badgeState("error")).toBe("error");
@@ -132,9 +132,7 @@ describe("the one recommended action", () => {
     expect(status({ paused_at: "2026-11-01T00:00:00Z" }, { state: "waiting" }).action).toBe(
       "resume",
     );
-    expect(status({}, { state: "failed" }).action).toBe("view");
-    expect(status({}, { state: "failed", failure_code: "turn_failed" }).action).toBe("view");
-    for (const state of ["running", "sleeping", "completed", "aborted"] as const)
+    for (const state of ["running", "sleeping", "completed", "aborted", "failed"] as const)
       expect(status({}, { state }).action).toBeNull();
     expect(status({}, null).action).toBeNull();
     expect(status({ schedule_cron: "0 7 * * *" }, null, true).action).toBeNull();
@@ -142,17 +140,11 @@ describe("the one recommended action", () => {
 
   test("the action words are the agreed ones", () => {
     const words = (locale: "de" | "en") =>
-      (["answer", "review", "allow", "resume", "view"] as const).map((action) =>
+      (["answer", "review", "allow", "resume"] as const).map((action) =>
         translate(locale, actionKey(action)),
       );
-    expect(words("de")).toEqual([
-      "Antworten",
-      "Ergebnis prüfen",
-      "Erlauben",
-      "Fortsetzen",
-      "Ansehen",
-    ]);
-    expect(words("en")).toEqual(["Answer", "Review result", "Allow", "Resume", "View"]);
+    expect(words("de")).toEqual(["Antworten", "Ergebnis prüfen", "Erlauben", "Fortsetzen"]);
+    expect(words("en")).toEqual(["Answer", "Review result", "Allow", "Resume"]);
   });
 
   test("a waiting run says why in one sentence per reason", () => {
@@ -472,9 +464,9 @@ describe("overview, runs and history words", () => {
     expect(failureKey(null)).toBeNull();
     expect(failureKey("deadline_exceeded")).toBe("tasks.failure.deadline_exceeded");
     const failures = Object.keys(CATALOGS.en).filter((key) => key.startsWith("tasks.failure."));
-    expect(failures).toHaveLength(12);
+    expect(failures.filter((key) => key !== "tasks.failure.unknown")).toHaveLength(12);
     expect(translate("de", failureKey("turn_limit_reached") as TranslationKey)).toBe(
-      "Der Lauf hat alle Runden verbraucht, ohne ein Ergebnis zu liefern.",
+      "Der Run hat alle Runden verbraucht, ohne ein Ergebnis zu liefern.",
     );
   });
 });

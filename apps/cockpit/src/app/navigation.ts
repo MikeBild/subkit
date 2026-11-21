@@ -1,18 +1,17 @@
 import {
+  BarChart3,
   BookOpen,
-  Cable,
   ClipboardCheck,
   FileText,
-  Gauge,
-  History,
   Inbox,
   KeyRound,
-  ListChecks,
+  LayoutDashboard,
   type LucideIcon,
   MessageSquare,
+  Plug,
+  ScrollText,
   Settings,
   Sparkles,
-  Users,
   Workflow,
 } from "lucide-react";
 import type { TranslationKey } from "@/lib/i18n";
@@ -24,10 +23,11 @@ export interface NavigationItem {
   anyPermissions?: readonly string[];
   icon: LucideIcon;
   api: readonly string[];
+  place?: "sidebar" | "settings";
 }
 
 interface NavigationGroup {
-  id: "home" | "build" | "knowledge" | "admin";
+  id: "home" | "build" | "knowledge" | "system";
   labelKey?: TranslationKey;
   items: readonly NavigationItem[];
 }
@@ -52,7 +52,7 @@ export const NAVIGATION: readonly NavigationGroup[] = [
         path: "/",
         permission: "stats:read",
         anyPermissions: ATTENTION_READ_PERMISSIONS,
-        icon: ListChecks,
+        icon: LayoutDashboard,
         api: [
           "GET /v1/attention",
           "GET /v1/patch-candidates",
@@ -82,18 +82,18 @@ export const NAVIGATION: readonly NavigationGroup[] = [
         api: ["GET /v1/workflows", "GET /v1/connectors"],
       },
       {
-        labelKey: "nav.connectors",
-        path: "/connectors",
-        permission: "connector:read",
-        icon: Cable,
-        api: ["GET /v1/connectors", "GET /v1/workflows"],
-      },
-      {
         labelKey: "nav.tasks",
         path: "/tasks",
         permission: "task:read",
         icon: ClipboardCheck,
         api: ["GET /v1/tasks"],
+      },
+      {
+        labelKey: "nav.connectors",
+        path: "/connectors",
+        permission: "connector:read",
+        icon: Plug,
+        api: ["GET /v1/connectors", "GET /v1/workflows"],
       },
     ],
   },
@@ -132,30 +132,22 @@ export const NAVIGATION: readonly NavigationGroup[] = [
     ],
   },
   {
-    id: "admin",
-    labelKey: "nav.group.admin",
+    id: "system",
+    labelKey: "nav.group.system",
     items: [
       {
         labelKey: "nav.usage",
         path: "/usage",
         permission: "stats:read",
-        icon: Gauge,
+        icon: BarChart3,
         api: ["GET /v1/stats/executions"],
       },
       {
         labelKey: "nav.audit",
         path: "/audit",
         permission: "audit:read",
-        icon: History,
+        icon: ScrollText,
         api: ["GET /v1/audit-log"],
-      },
-      {
-        labelKey: "nav.people",
-        path: "/people",
-        permission: "identity:read",
-        anyPermissions: ["identity:read", "rbac:read", "settings:read"],
-        icon: Users,
-        api: ["GET /v1/identity/users", "GET /v1/rbac/roles", "GET /v1/apps"],
       },
       {
         labelKey: "nav.apiAccess",
@@ -163,6 +155,7 @@ export const NAVIGATION: readonly NavigationGroup[] = [
         permission: "api_key:read",
         anyPermissions: ["api_key:read", "mcp_oauth_client:read", "connection:read"],
         icon: KeyRound,
+        place: "settings",
         api: ["GET /v1/identity/api-keys", "GET /v1/oauth/clients", "GET /v1/connections"],
       },
       {
@@ -175,6 +168,9 @@ export const NAVIGATION: readonly NavigationGroup[] = [
           "GET /v1/settings/catalog/models",
           "GET /v1/notifications/rules",
           "GET /v1/notifications/channels",
+          "GET /v1/identity/users",
+          "GET /v1/rbac/roles",
+          "GET /v1/apps",
         ],
       },
     ],
@@ -193,17 +189,16 @@ export function visibleNavigation(permissions: readonly string[]): NavigationGro
   })).filter((group) => group.items.length > 0);
 }
 
-export function visiblePrimaryNavigation(permissions: readonly string[]): NavigationGroup[] {
+export function visibleSidebarNavigation(permissions: readonly string[]): NavigationGroup[] {
   return visibleNavigation(permissions)
-    .filter((group) => group.id !== "admin")
-    .map((group) => ({ ...group, items: group.items.filter((item) => item.path !== "/") }))
+    .map((group) => ({ ...group, items: group.items.filter((item) => item.place !== "settings") }))
     .filter((group) => group.items.length > 0);
 }
 
-export function visibleAccountNavigation(
-  permissions: readonly string[],
-): readonly NavigationItem[] {
-  return visibleNavigation(permissions).find((group) => group.id === "admin")?.items ?? [];
+export function navigationVisible(permissions: readonly string[], path: string): boolean {
+  return visibleNavigation(permissions).some((group) =>
+    group.items.some((item) => item.path === path),
+  );
 }
 
 export function navigationItem(pathname: string): NavigationItem | undefined {

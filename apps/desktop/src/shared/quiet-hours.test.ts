@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { inQuietHours, muteReason, parseClock } from "./quiet-hours.ts";
+import { currentMute, inQuietHours, muteReason, parseClock, quietEndsAt } from "./quiet-hours.ts";
 
 const at = (hour: number, minute: number) => new Date(2026, 10, 20, hour, minute, 0, 0);
 
@@ -41,5 +41,30 @@ describe("quiet hours", () => {
     expect(muteReason({ quietHours, pauseUntil: now.getTime() + 1 }, now)).toBe("paused");
     expect(muteReason({ quietHours, pauseUntil: now.getTime() }, now)).toBe("quiet-hours");
     expect(muteReason({ quietHours, pauseUntil: null }, at(12, 0))).toBeNull();
+  });
+
+  test("knows when quiet hours end, across midnight and within a day", () => {
+    const night = { enabled: true, start: "22:00", end: "07:00" };
+    expect(quietEndsAt(night, at(23, 0))).toEqual(new Date(2026, 10, 21, 7, 0, 0, 0));
+    expect(quietEndsAt(night, at(3, 0))).toEqual(new Date(2026, 10, 20, 7, 0, 0, 0));
+    expect(quietEndsAt(night, at(12, 0))).toBeNull();
+    expect(quietEndsAt({ enabled: true, start: "12:00", end: "13:30" }, at(12, 15))).toEqual(
+      new Date(2026, 10, 20, 13, 30, 0, 0),
+    );
+  });
+
+  test("names why and until when banners stay off", () => {
+    const quietHours = { enabled: true, start: "22:00", end: "07:00" };
+    const now = at(23, 0);
+    const pauseUntil = now.getTime() + 60 * 60_000;
+    expect(currentMute({ quietHours, pauseUntil }, now)).toEqual({
+      reason: "paused",
+      until: new Date(pauseUntil),
+    });
+    expect(currentMute({ quietHours, pauseUntil: null }, now)).toEqual({
+      reason: "quiet-hours",
+      until: new Date(2026, 10, 21, 7, 0, 0, 0),
+    });
+    expect(currentMute({ quietHours, pauseUntil: null }, at(12, 0))).toBeNull();
   });
 });

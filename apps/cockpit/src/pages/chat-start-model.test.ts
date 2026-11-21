@@ -1,13 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { type TranslationKey, translate } from "@/lib/i18n";
 import {
+  CHIP_STARTERS,
   type ChatStarter,
   chatStarters,
   MAX_STARTERS,
   MIN_STARTERS,
   retryStarterQuery,
   type StarterSources,
+  starterChips,
   starterGates,
+  startersVisible,
 } from "./chat-start-model";
 
 const de = (key: TranslationKey, values?: Record<string, string | number>) =>
@@ -244,5 +247,31 @@ describe("chat start: what each person's cards may read", () => {
       "connect",
       "run",
     ]);
+  });
+
+  test("the empty chat shows four suggestions as chips and keeps the rest one click away", () => {
+    const starters = chatStarters({ ...FULL, solutions: [] }, de);
+    const folded = starterChips(starters, false);
+    expect(folded.shown.map((starter) => starter.id)).toEqual(
+      starters.slice(0, CHIP_STARTERS).map((starter) => starter.id),
+    );
+    expect(folded.hidden).toBe(starters.length - CHIP_STARTERS);
+    const open = starterChips(starters, true);
+    expect(open.shown).toEqual(starters);
+    expect(open.hidden).toBe(0);
+    expect(starterChips(starters.slice(0, 2), false)).toEqual({
+      shown: starters.slice(0, 2),
+      hidden: 0,
+    });
+  });
+
+  test("the chips stand above the composer only while the chat is empty and nothing is on its way", () => {
+    const empty = { messages: 0, sending: false, optimistic: false, failed: false, seeded: false };
+    expect(startersVisible(empty)).toBe(true);
+    expect(startersVisible({ ...empty, messages: 1 })).toBe(false);
+    expect(startersVisible({ ...empty, sending: true })).toBe(false);
+    expect(startersVisible({ ...empty, optimistic: true })).toBe(false);
+    expect(startersVisible({ ...empty, failed: true })).toBe(false);
+    expect(startersVisible({ ...empty, seeded: true })).toBe(false);
   });
 });

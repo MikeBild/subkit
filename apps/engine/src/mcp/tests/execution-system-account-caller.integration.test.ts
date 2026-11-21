@@ -86,35 +86,19 @@ test("MCP workflow caller comes from the authenticated system account", async ()
   expect(run.authorization_context).toMatchObject({
     source: { kind: "api_key", api_key_id: apiKey.id },
   });
-  const refusals = await suite.http.db
-    .select({
-      actor_type: auditLog.actor_type,
-      actor_id: auditLog.actor_id,
-      result: auditLog.result,
-      reason: auditLog.reason,
-      metadata: auditLog.metadata,
-    })
+  const trail = await suite.http.db
+    .select({ action: auditLog.action })
     .from(auditLog)
     .where(
       and(
         eq(auditLog.tenant_id, suite.http.tenantId),
-        eq(auditLog.action, "execution.boundary_refused"),
         eq(auditLog.resource_type, "execution"),
         eq(auditLog.resource_id, run.id),
       ),
     );
-  expect(refusals).toHaveLength(1);
-  expect(refusals[0]).toMatchObject({
-    actor_type: "system_account",
-    actor_id: key.system_account_id,
-    result: "denied",
-    reason: "execution_authority_unavailable",
-    metadata: {
-      stage: "admission",
-      request_source: "mcp",
-      downgraded_to_preparation: true,
-    },
-  });
+  const actions = trail.map((row) => row.action);
+  expect(actions).not.toContain("execution.boundary_refused");
+  expect(actions).not.toContain("execution.write_held");
 
   const [step] = await suite.http.db
     .select({ output: executionSteps.output_preview })

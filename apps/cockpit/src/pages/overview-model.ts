@@ -124,7 +124,18 @@ const REASON_KEYS = {
   task_grant_required: "overview.reason.task_grant_required",
   task_grant_expiring: "overview.reason.task_grant_expiring",
   task_owner_unavailable: "overview.reason.task_owner_unavailable",
+  pair_approval_requested: "overview.reason.pair_approval_requested",
 } as const satisfies Record<AttentionItem["reason"], TranslationKey>;
+
+export const PAIR_WAITING_KIND = "pair_approval_waiting";
+
+export function isPairWaiting(item: Pick<AttentionItem, "kind">): boolean {
+  return item.kind === PAIR_WAITING_KIND;
+}
+
+export function attentionReason(item: Pick<AttentionItem, "kind" | "reason">): string {
+  return isPairWaiting(item) ? PAIR_WAITING_KIND : item.reason;
+}
 
 const SUBJECT_KEYS = {
   workflow: "overview.subject.workflow",
@@ -293,6 +304,15 @@ export function attentionSentence(
       return { lead: repairSentence(item, subject, t), machine: null, since };
     case "ai_access_missing":
       return { lead: t(reasonKey), machine: null, since };
+    case "pair_approval_requested":
+      if (!isPairWaiting(item)) return { lead: t(reasonKey, { subject }), machine: null, since };
+      return {
+        lead: item.waiting_on?.name
+          ? t("overview.reason.pair_approval_waiting", { subject, name: item.waiting_on.name })
+          : t("overview.reason.pair_approval_waitingAnyone", { subject }),
+        machine: null,
+        since,
+      };
     case "task_grant_required":
       return {
         lead: t(
@@ -420,6 +440,7 @@ export function entryActions(item: AttentionItem): {
   primary: AttentionAction | null;
   secondary: AttentionAction | null;
 } {
+  if (isPairWaiting(item)) return { primary: null, secondary: null };
   return coreEntryActions(item);
 }
 
@@ -614,6 +635,7 @@ const SHORT_REASON_KEYS = {
   task_grant_required: "overview.short.task_grant_required",
   task_grant_expiring: "overview.short.task_grant_expiring",
   task_owner_unavailable: "overview.short.task_owner_unavailable",
+  pair_approval_requested: "overview.short.pair_approval_requested",
 } as const satisfies Partial<Record<AttentionItem["reason"], TranslationKey>>;
 
 const COUNTED_SHORT_REASON_KEYS = {
@@ -654,7 +676,10 @@ const STATE_OF_REASON: Record<AttentionItem["reason"], { state: string; label: T
   task_grant_required: { state: "pending", label: "overview.state.taskAllow" },
   task_grant_expiring: { state: "expiring", label: "overview.state.taskExpiring" },
   task_owner_unavailable: { state: "needs_attention", label: "overview.state.autoPaused" },
+  pair_approval_requested: { state: "pending", label: "ops.pair.waitingSecond" },
 };
+
+const PAIR_WAITING_BADGE = { state: "pending", label: "overview.state.pairWaiting" } as const;
 
 interface AttentionRow {
   name: string;
@@ -675,6 +700,17 @@ export function waitingOnName(
   return item?.waiting_on?.name ?? null;
 }
 
+export function pairWaitingFor(
+  attention: Pick<Attention, "items"> | undefined,
+  subjectId: string | null | undefined,
+): { waitingOn: string | null } | null {
+  if (!attention || !subjectId) return null;
+  const item = attention.items.find(
+    (entry) => isPairWaiting(entry) && entry.subject?.id === subjectId,
+  );
+  return item ? { waitingOn: item.waiting_on?.name ?? null } : null;
+}
+
 export function waitingOnLine(name: string, t: Translate): string {
   return t("overview.waitingOn", { name });
 }
@@ -691,10 +727,12 @@ export function attentionRow(item: AttentionItem, t: Translate): AttentionRow {
           : t("overview.unnamed"));
   const version = item.approval ? ` v${item.approval.version}` : "";
 
-  const badge = (STATE_OF_REASON as Record<string, AttentionRow["badge"]>)[item.reason] ?? {
-    state: "pending",
-    label: "overview.state.decide",
-  };
+  const badge = isPairWaiting(item)
+    ? PAIR_WAITING_BADGE
+    : ((STATE_OF_REASON as Record<string, AttentionRow["badge"]>)[item.reason] ?? {
+        state: "pending",
+        label: "overview.state.decide",
+      });
   const count =
     item.reason === "failing"
       ? (item.counts.failures ?? 1)
@@ -709,9 +747,13 @@ export function attentionRow(item: AttentionItem, t: Translate): AttentionRow {
     item.reason === "execution_authority_required" && item.repair?.step_id
       ? COUNTED_SHORT_REASON_KEYS.version_needs_repair
       : (COUNTED_SHORT_REASON_KEYS as Record<string, PluralKey>)[item.reason];
-  const key = counted
-    ? pluralKey(counted, count)
-    : (SHORT_REASON_KEYS as Record<string, TranslationKey>)[item.reason];
+  const key = isPairWaiting(item)
+    ? item.waiting_on?.name
+      ? "overview.short.pair_approval_waiting"
+      : "overview.short.pair_approval_waitingAnyone"
+    : counted
+      ? pluralKey(counted, count)
+      : (SHORT_REASON_KEYS as Record<string, TranslationKey>)[item.reason];
   const short = key
     ? t(key, { count, step: item.repair?.step_id ?? "" })
     : t("overview.short.other");

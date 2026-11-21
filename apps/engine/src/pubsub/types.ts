@@ -40,6 +40,17 @@ export type ConnectorOauthCallbackFailedPayload = z.infer<
   typeof ConnectorOauthCallbackFailedPayloadSchema
 >;
 
+export const ConnectorSignInOutcomes = ["succeeded", "failed"] as const;
+
+export const ConnectorSignInFinishedPayloadSchema = z.object({
+  connector_id: z.string().uuid(),
+  connector_slug: z.string().min(1).nullable(),
+  outcome: z.enum(ConnectorSignInOutcomes),
+  reason: z.enum(ConnectorOauthCallbackFailedReasons).nullable(),
+});
+
+export type ConnectorSignInFinishedPayload = z.infer<typeof ConnectorSignInFinishedPayloadSchema>;
+
 export const ConnectorAuthFailedPayloadSchema = z.object({
   severity: z.literal("error"),
   workflow_id: z.string().uuid().nullable(),

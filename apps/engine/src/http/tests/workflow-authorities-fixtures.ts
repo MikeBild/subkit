@@ -93,7 +93,13 @@ export async function fixture(baseUrl = "https://example.test/api", repairable =
     suggested_bounds: { valid_from: string; valid_until: string; max_runs: number };
   };
   expect(body.execution_shape).toMatchObject({
-    requests: [{ step_id: "send", retry_policy_max_attempts: 5 }],
+    requests: [
+      {
+        step_id: "send",
+        target: { method: "POST", url: `${baseUrl}/messages` },
+        retry_policy_max_attempts: 5,
+      },
+    ],
     iterations: [],
     run_limit_is_request_limit: false,
   });

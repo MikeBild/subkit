@@ -32,6 +32,7 @@ import {
   TechnicalDetails,
 } from "@/components/cockpit/patterns";
 import { WorkflowScheduleSection } from "@/components/cockpit/workflow-schedule";
+import { roleLabel } from "@/features/admin";
 import { cronWords } from "@/lib/cron-words";
 import { LOCALE_TAGS, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
@@ -52,7 +53,6 @@ import {
   scheduleRowKey,
   verifierName,
 } from "@/lib/workflow-invocation";
-import { roleLabel } from "@/pages/admin-model";
 import { API_KEYS_QUERY, groupApiKeys } from "@/pages/api-access-model";
 
 type Environment = "dev" | "prod";
@@ -466,9 +466,7 @@ function StartAccess({ access }: { access: NonNullable<Invocation["start_access"
       <p
         className={cn(
           "flex items-center gap-1.5 text-sm [&_svg]:size-4",
-          access.caller.allowed
-            ? "text-emerald-700 dark:text-emerald-400"
-            : "text-muted-foreground",
+          access.caller.allowed ? "text-success-ink" : "text-muted-foreground",
         )}
         data-testid="workflow-start-access-caller"
       >

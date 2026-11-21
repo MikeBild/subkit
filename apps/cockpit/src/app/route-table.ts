@@ -1,13 +1,6 @@
 import { peopleHref } from "./links";
 
-export const PAGE_ROUTES = [
-  "/",
-  "/audit",
-  "/usage",
-  "/people",
-  "/api-access",
-  "/settings",
-] as const;
+export const PAGE_ROUTES = ["/", "/audit", "/usage", "/api-access", "/settings"] as const;
 
 export type PageRoute = (typeof PAGE_ROUTES)[number];
 
@@ -43,6 +36,8 @@ export const INTAKE_ROUTES = ["/intake", "/intake/$resourceId"] as const;
 
 export const TASK_ROUTES = ["/tasks", "/tasks/$resourceId"] as const;
 
+export const RUN_ROUTE = "/runs/$runId";
+
 const INSTALLATION_ROUTES = ["/incoming/files"] as const;
 
 const SKILL_CANDIDATE_ROUTES = ["/skills/candidates"] as const;
@@ -68,6 +63,7 @@ export const ALL_ROUTE_PATHS: readonly string[] = [
   ...CHAT_ROUTES,
   ...INTAKE_ROUTES,
   ...TASK_ROUTES,
+  RUN_ROUTE,
   ...INSTALLATION_ROUTES,
   ...SKILL_CANDIDATE_ROUTES,
   ...DOCS_ROUTES,

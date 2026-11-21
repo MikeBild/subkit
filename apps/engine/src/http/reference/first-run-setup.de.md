@@ -23,7 +23,8 @@ Ersetze die E-Mail-Adresse, den Namen und den Schlüssel durch deine Werte.
 `sk init` prüft den Schlüssel mit einem kleinen Testaufruf, bevor es etwas speichert.
 Lehnt der Anbieter ihn ab, stoppt das Setup ohne gespeicherte Daten. Derselbe Token funktioniert beim nächsten Versuch.
 
-Öffne das Cockpit unter `http://localhost:3000/cockpit`.
+Öffne `http://localhost:3000` im Browser. Die Adresse führt direkt ins Cockpit unter `/cockpit`.
+Die Übersicht der Engine mit allen Adressen für Werkzeuge und KI-Clients findest du unter `/engine`.
 Ist kein Anmeldeanbieter eingerichtet, meldest du dich mit einem API-Schlüssel an.
 Danach baust du mit „Dein erster Workflow“ deinen ersten Workflow.
 

@@ -11,7 +11,7 @@ import {
   desktopFacts,
   FEEDBACK_DRAFT_KEY,
   feedbackFailure,
-  feedbackPrefillText,
+  feedbackResponse,
   hasFeedbackDraft,
   mergePrefill,
   newFeedbackDraft,
@@ -203,38 +203,6 @@ describe("diagnostics", () => {
 });
 
 describe("prefill from an error notice", () => {
-  const labels = {
-    error: "Fehler",
-    cause: "Ursache",
-    code: "Code",
-    request: "Anfrage-ID",
-    time: "Zeit",
-  };
-
-  test("lists cause, code, request id and time", () => {
-    expect(
-      feedbackPrefillText(
-        {
-          title: "Seite ließ sich nicht anzeigen",
-          cause: "Zeitüberschreitung",
-          code: "timeout",
-          requestId: "req-1",
-          at: "20.11.2026, 10:00",
-        },
-        labels,
-      ),
-    ).toBe(
-      "Fehler: Seite ließ sich nicht anzeigen\n\nUrsache: Zeitüberschreitung\nCode: timeout\nAnfrage-ID: req-1\nZeit: 20.11.2026, 10:00",
-    );
-  });
-
-  test("leaves out what is unknown", () => {
-    expect(feedbackPrefillText({ title: "X", code: "c", cause: null }, labels)).toBe(
-      "Fehler: X\n\nCode: c",
-    );
-    expect(feedbackPrefillText({ title: "X" }, labels)).toBe("Fehler: X");
-  });
-
   test("adds the prefill to an existing draft once", () => {
     expect(mergePrefill("", "Fehler: X")).toBe("Fehler: X");
     expect(mergePrefill("My note", "Fehler: X")).toBe("My note\n\nFehler: X");
@@ -324,6 +292,7 @@ describe("what the dialog says before sending", () => {
     const de = translate("de", "feedback.notice");
     expect(de).toContain("Eingang deines Arbeitsbereichs");
     expect(de).toContain("Administratoren und Mitglieder");
+    expect(de).not.toContain("Dort sehen ihn alle");
     expect(de).toContain("auch E-Mail-Adressen");
     expect(de).not.toContain("Eingang deines Administrators");
     const en = translate("en", "feedback.notice");
@@ -339,5 +308,27 @@ describe("what the dialog says before sending", () => {
     expect(translate("en", "feedback.attachUncleaned")).toContain(
       "Images and PDFs are sent as they are",
     );
+  });
+});
+
+describe("reports written offline", () => {
+  test("the body carries the request id and the time it was written on the device", () => {
+    const body = buildFeedbackBody({
+      requestId: "r-1",
+      draft: { ...newFeedbackDraft(), text: "Hallo" },
+      diagnostics: null,
+      createdAt: "2026-11-21T10:00:00.000Z",
+    });
+    expect(body.client_request_id).toBe("r-1");
+    expect(body.created_on_device_at).toBe("2026-11-21T10:00:00.000Z");
+  });
+
+  test("a failed send maps to the status the queue classifies, a network error to none", () => {
+    expect(feedbackResponse(new TypeError("Failed to fetch"))).toBeNull();
+    expect(feedbackResponse({ status: 503 })).toEqual({ status: 503 });
+    expect(feedbackResponse({ status: 429, details: { retry_after_seconds: 90 } })).toEqual({
+      status: 429,
+      retry_after_seconds: 90,
+    });
   });
 });

@@ -67,8 +67,8 @@ export const settingsEn = {
   "settings.auth.unknownProtocol": "Unknown protocol",
   "settings.auth.audience": "Token recipient",
   "settings.auth.productId": "App",
-  "settings.auth.managedInApps": "Managed under People & access → Apps",
-  "settings.products.appsView": "Each app with its readiness under People & access → Apps",
+  "settings.auth.managedInApps": "Managed under People → Apps",
+  "settings.products.appsView": "Each app with its readiness under People → Apps",
   "settings.auth.managedElsewhere": "Kept unchanged; this editor does not change this provider.",
   "settings.meta.default": "Default",
   "settings.meta.configuration": "Configuration",
@@ -119,67 +119,29 @@ export const settingsEn = {
   "settings.saveBar.firstGlobal.one":
     "1 change for all workspaces is saved first; the changes for this workspace follow in a second save.",
   "settings.saveBar.firstLabel": "Save these first",
-  "settings.overview.access.apiKey": "API key",
-  "settings.purpose": "How SubKit works for you: AI, sign-in and connections.",
   "settings.usage.note":
     "You change the monthly budget, model prices and currency on the “Usage” page.",
   "settings.level.areas": "Areas",
-  "settings.level.allAreas": "All areas",
   "settings.level.expert": "All settings (for experts)",
-  "settings.level.expertLine": "Every setting with its technical name.",
   "settings.level.areaExpert": "All settings of this area (for experts)",
   "settings.level.simple": "Back to the simple view",
   "settings.all.title": "All settings",
   "settings.all.purpose": "Every setting with its technical name. For experts and administrators.",
   "settings.all.hint": "Most things are easier to change in the areas.",
   "settings.area.ai.title": "AI assistant",
-  "settings.area.ai.purpose":
-    "The AI writes in chat, drafts workflows and summarises results. Here you decide which AI that is.",
   "settings.area.access.title": "Sign-in & access",
-  "settings.area.access.purpose": "Who signs in how, and which apps may use SubKit.",
   "settings.area.connections.title": "Connections",
-  "settings.area.connections.purpose":
-    "How SubKit works with other services, chat programs and file storage.",
   "settings.area.notifications.title": "Notifications",
-  "settings.area.notifications.purpose": "When and how SubKit lets you know.",
   "settings.area.operations.title": "Operations",
   "settings.area.operations.audience": "for administrators",
-  "settings.area.operations.purpose":
-    "The technology behind SubKit. Only change something here if you know what it does.",
   "settings.area.empty": "There is nothing to set here in this installation.",
-  "settings.status.configured": "Set up",
   "settings.status.waiting": "Waiting for you",
-  "settings.status.restart": "Waiting for restart",
-  "settings.overview.ai.none": "No AI provider chosen yet. Chat and drafts only work after that.",
-  "settings.overview.ai.choose": "Choose a provider",
-  "settings.overview.ai.mock": "Runs in test mode: answers are sample texts, no real AI.",
-  "settings.overview.ai.keyMissing": "{provider} is chosen, but the access key is still missing.",
   "settings.overview.ai.noFallback":
     "Uses {provider} with {model}. No replacement if {provider} fails.",
-  "settings.overview.ai.withFallback":
-    "Uses {provider} with {model}. If the service fails, {fallbackProvider} steps in.",
   "settings.overview.ai.defaultModelNoFallback":
     "Uses {provider} with its default model. No replacement if {provider} fails.",
   "settings.overview.ai.defaultModelWithFallback":
     "Uses {provider} with its default model. If the service fails, {fallbackProvider} steps in.",
-  "settings.overview.access.methods": "Sign-in with {methods}.",
-  "settings.overview.access.purpose": "Who signs in how, and which apps may use SubKit.",
-  "settings.overview.connections.chat": "Chat in {platforms}.",
-  "settings.overview.connections.noChat": "No chat in Slack or Teams yet.",
-  "settings.overview.connections.subkitStorage": "Files are kept in SubKit.",
-  "settings.overview.connections.ownStorage": "Files are kept in your own cloud storage.",
-  "settings.overview.notifications.push":
-    "Messages arrive in the cockpit and as a desktop notification.",
-  "settings.overview.notifications.cockpitOnly": "Messages arrive only in the cockpit.",
-  "settings.overview.notifications.quiet": "Quiet time {from}–{to}.",
-  "settings.overview.notifications.noQuiet": "No quiet time.",
-  "settings.overview.operations.default":
-    "Server, database, logs and queue. Usually you do not need to change anything here.",
-  "settings.overview.operations.readOnly": "Only administrators can change something here.",
-  "settings.overview.operations.restart":
-    "{count} changes are saved and take effect only after a restart.",
-  "settings.overview.operations.restart.one":
-    "1 change is saved and takes effect only after a restart.",
   "settings.scope.question": "Who does this apply to?",
   "settings.scope.tenant": "Only this workspace",
   "settings.scope.global": "All workspaces",
@@ -200,7 +162,7 @@ export const settingsEn = {
   "settings.question.access.egress": "Where on the internet may workflows go?",
   "settings.question.access.egressHelp":
     "The restriction prevents data from going to unknown addresses.",
-  "settings.question.access.people": "People and roles are managed under People & access",
+  "settings.question.access.people": "People and roles are managed under People",
   "settings.question.access.api": "API keys are under API access",
   "settings.question.connections.connectors": "How do connections to services behave?",
   "settings.question.connections.connectorsHelp":
@@ -217,9 +179,9 @@ export const settingsEn = {
   "settings.question.notifications.push":
     "Should your computer report when a long run has finished?",
   "settings.question.notifications.threshold": "When does a run count as long?",
-  "settings.question.notifications.quiet": "When should it be quiet?",
+  "settings.question.notifications.quiet": "Quiet hours in the terminal (sk)",
   "settings.question.notifications.quietHelp":
-    "No notifications arrive during this time. Leave empty for no quiet time.",
+    "For sk in the terminal, for the whole workspace. Leave empty for none.",
   "settings.question.notifications.retention": "How long do finished messages stay visible?",
   "settings.question.notifications.rules": "Which messages reach whom?",
   "settings.question.operations.hint": "Many changes here take effect only after a restart.",
@@ -300,7 +262,7 @@ export const settingsDe: Record<keyof typeof settingsEn, string> = {
   "settings.saveFailed": "Einstellungen konnten nicht gespeichert werden",
   "settings.providerLabel": "{provider} · {label}",
   "settings.section.auth": "Authentifizierung",
-  "settings.section.connectors": "Konnektoren",
+  "settings.section.connectors": "Connectors",
   "settings.section.database": "Datenbank",
   "settings.section.egress": "Netzwerkzugriff",
   "settings.section.errors": "Fehlerbehandlung",
@@ -361,8 +323,8 @@ export const settingsDe: Record<keyof typeof settingsEn, string> = {
   "settings.auth.unknownProtocol": "Unbekanntes Protokoll",
   "settings.auth.audience": "Empfänger im Token",
   "settings.auth.productId": "App",
-  "settings.auth.managedInApps": "Verwaltet unter Personen & Rechte → Apps",
-  "settings.products.appsView": "Jede App mit ihrer Bereitschaft unter Personen & Rechte → Apps",
+  "settings.auth.managedInApps": "Verwaltet unter Personen → Apps",
+  "settings.products.appsView": "Jede App mit ihrer Bereitschaft unter Personen → Apps",
   "settings.auth.managedElsewhere":
     "Bleibt unverändert; dieser Editor ändert diesen Provider nicht.",
   "settings.meta.default": "Standard",
@@ -415,14 +377,10 @@ export const settingsDe: Record<keyof typeof settingsEn, string> = {
   "settings.saveBar.firstGlobal.one":
     "Zuerst wird 1 Änderung für alle Arbeitsbereiche gespeichert, die für diesen Arbeitsbereich danach in einem zweiten Schritt.",
   "settings.saveBar.firstLabel": "Erst diese Änderungen speichern",
-  "settings.overview.access.apiKey": "API-Schlüssel",
-  "settings.purpose": "So arbeitet SubKit für dich: KI, Anmeldung und Verbindungen.",
   "settings.usage.note":
     "Monatskontingent, Modellpreise und Währung änderst du auf der Seite „Nutzung“.",
   "settings.level.areas": "Bereiche",
-  "settings.level.allAreas": "Alle Bereiche",
   "settings.level.expert": "Alle Einstellungen (für Fachleute)",
-  "settings.level.expertLine": "Jede Einstellung mit ihrem technischen Namen.",
   "settings.level.areaExpert": "Alle Einstellungen dieses Bereichs (für Fachleute)",
   "settings.level.simple": "Zur einfachen Ansicht",
   "settings.all.title": "Alle Einstellungen",
@@ -430,57 +388,19 @@ export const settingsDe: Record<keyof typeof settingsEn, string> = {
     "Jede Einstellung mit ihrem technischen Namen. Für Fachleute und Administratoren.",
   "settings.all.hint": "Die meisten Dinge änderst du einfacher in den Bereichen.",
   "settings.area.ai.title": "KI-Assistent",
-  "settings.area.ai.purpose":
-    "Die KI schreibt im Chat, entwirft Workflows und fasst Ergebnisse zusammen. Hier legst du fest, welche KI das ist.",
   "settings.area.access.title": "Anmeldung & Zugriff",
-  "settings.area.access.purpose":
-    "Wer sich wie anmeldet und welche Apps auf SubKit zugreifen dürfen.",
   "settings.area.connections.title": "Verbindungen",
-  "settings.area.connections.purpose":
-    "Wie SubKit mit anderen Diensten, Chat-Programmen und Dateispeichern zusammenarbeitet.",
   "settings.area.notifications.title": "Benachrichtigungen",
-  "settings.area.notifications.purpose": "Wann und wie SubKit dir Bescheid gibt.",
   "settings.area.operations.title": "Betrieb",
   "settings.area.operations.audience": "für Administratoren",
-  "settings.area.operations.purpose":
-    "Technik hinter SubKit. Ändere hier nur etwas, wenn du weißt, was es bewirkt.",
   "settings.area.empty": "In dieser Installation gibt es hier nichts einzustellen.",
-  "settings.status.configured": "Eingerichtet",
   "settings.status.waiting": "Wartet auf dich",
-  "settings.status.restart": "Wartet auf Neustart",
-  "settings.overview.ai.none":
-    "Noch kein KI-Anbieter gewählt. Chat und Entwürfe funktionieren erst danach.",
-  "settings.overview.ai.choose": "Anbieter wählen",
-  "settings.overview.ai.mock": "Läuft im Testmodus: Antworten sind Beispieltexte, keine echte KI.",
-  "settings.overview.ai.keyMissing":
-    "{provider} ist gewählt, aber der Zugangsschlüssel fehlt noch.",
   "settings.overview.ai.noFallback":
     "Nutzt {provider} mit {model}. Kein Ersatz, falls {provider} ausfällt.",
-  "settings.overview.ai.withFallback":
-    "Nutzt {provider} mit {model}. Fällt der Dienst aus, springt {fallbackProvider} ein.",
   "settings.overview.ai.defaultModelNoFallback":
     "Nutzt {provider} mit dessen Standardmodell. Kein Ersatz, falls {provider} ausfällt.",
   "settings.overview.ai.defaultModelWithFallback":
     "Nutzt {provider} mit dessen Standardmodell. Fällt der Dienst aus, springt {fallbackProvider} ein.",
-  "settings.overview.access.methods": "Anmeldung mit {methods}.",
-  "settings.overview.access.purpose":
-    "Wer sich wie anmeldet und welche Apps auf SubKit zugreifen dürfen.",
-  "settings.overview.connections.chat": "Chat in {platforms}.",
-  "settings.overview.connections.noChat": "Noch kein Chat in Slack oder Teams.",
-  "settings.overview.connections.subkitStorage": "Dateien liegen in SubKit.",
-  "settings.overview.connections.ownStorage": "Dateien liegen in deinem eigenen Cloud-Speicher.",
-  "settings.overview.notifications.push":
-    "Meldungen kommen ins Cockpit und als Desktop-Mitteilung.",
-  "settings.overview.notifications.cockpitOnly": "Meldungen kommen nur ins Cockpit.",
-  "settings.overview.notifications.quiet": "Ruhezeit {from}–{to} Uhr.",
-  "settings.overview.notifications.noQuiet": "Keine Ruhezeit.",
-  "settings.overview.operations.default":
-    "Server, Datenbank, Protokolle und Warteschlange. Normalerweise musst du hier nichts ändern.",
-  "settings.overview.operations.readOnly": "Nur Administratoren können hier etwas ändern.",
-  "settings.overview.operations.restart":
-    "{count} Änderungen sind gespeichert und werden erst nach einem Neustart aktiv.",
-  "settings.overview.operations.restart.one":
-    "1 Änderung ist gespeichert und wird erst nach einem Neustart aktiv.",
   "settings.scope.question": "Für wen gilt das?",
   "settings.scope.tenant": "Nur für diesen Arbeitsbereich",
   "settings.scope.global": "Für alle Arbeitsbereiche",
@@ -501,11 +421,11 @@ export const settingsDe: Record<keyof typeof settingsEn, string> = {
   "settings.question.access.egress": "Wohin im Internet dürfen Workflows?",
   "settings.question.access.egressHelp":
     "Die Einschränkung verhindert, dass Daten an unbekannte Adressen gehen.",
-  "settings.question.access.people": "Personen und Rollen verwaltest du unter Personen & Rechte",
+  "settings.question.access.people": "Personen und Rollen verwaltest du unter Personen",
   "settings.question.access.api": "API-Schlüssel stehen unter API-Zugang",
   "settings.question.connections.connectors": "Wie verhalten sich Verbindungen zu Diensten?",
   "settings.question.connections.connectorsHelp":
-    "Die einzelnen Dienste verwaltest du unter Konnektoren.",
+    "Die einzelnen Dienste verwaltest du unter Connectors.",
   "settings.question.connections.chat": "In welchem Chat-Programm soll SubKit antworten?",
   "settings.question.connections.chatLine": "Kollegen schreiben SubKit direkt in {platform}.",
   "settings.question.connections.connected": "Verbunden",
@@ -516,11 +436,11 @@ export const settingsDe: Record<keyof typeof settingsEn, string> = {
   "settings.question.connections.storageOwn": "In eigenem Cloud-Speicher",
   "settings.question.connections.storageHelp": "Eigener Speicher braucht Angaben deiner IT.",
   "settings.question.notifications.push":
-    "Soll dein Computer melden, wenn ein langer Lauf fertig ist?",
-  "settings.question.notifications.threshold": "Ab wann gilt ein Lauf als lang?",
-  "settings.question.notifications.quiet": "Wann soll Ruhe sein?",
+    "Soll dein Computer melden, wenn ein langer Run fertig ist?",
+  "settings.question.notifications.threshold": "Ab wann gilt ein Run als lang?",
+  "settings.question.notifications.quiet": "Ruhezeiten im Terminal (sk)",
   "settings.question.notifications.quietHelp":
-    "In dieser Zeit kommen keine Mitteilungen. Leer lassen für keine Ruhezeit.",
+    "Für sk im Terminal, für den ganzen Arbeitsbereich. Leer lassen für keine.",
   "settings.question.notifications.retention": "Wie lange bleiben erledigte Meldungen sichtbar?",
   "settings.question.notifications.rules": "Welche Meldungen gehen an wen?",
   "settings.question.operations.hint":

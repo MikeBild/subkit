@@ -4,7 +4,8 @@ import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { ToolResult } from "../../conversations/tools/index.ts";
 import { HttpError } from "../../http/errors.ts";
 import { conversationLocale } from "../../http/routes/conversations/locale.ts";
-import { personalDefaultEnvironment, RECOMMENDED_SETUP } from "../../identity/setup-preferences.ts";
+import { chooseEnvironment } from "../../identity/core/default-environment.ts";
+import { personalDefaultEnvironment } from "../../identity/setup-preferences.ts";
 import {
   countTasks,
   createTask,
@@ -350,10 +351,10 @@ export const createTaskOperation = defineOperation<TaskCreateRequest, Task>({
     const principal = taskPrincipal(scope);
     if (isRejection(principal)) return principal;
     try {
-      const environment =
-        input.environment ??
-        (await personalDefaultEnvironment(scope.db, scope.tenant_id, principal)) ??
-        RECOMMENDED_SETUP.default_environment;
+      const environment = chooseEnvironment({
+        requested: input.environment,
+        personal: await personalDefaultEnvironment(scope.db, scope.tenant_id, principal),
+      });
       return await createTask(
         {
           tenant_id: scope.tenant_id,

@@ -209,6 +209,7 @@ test("writes compared only with an unapproved running version still need the wri
     carryOver: false,
   });
   expect(model.requiresWriteCheck).toBe(true);
+  expect(model.messages.approve).toBe("authority.review.approveWrites");
   expect(model.comparison?.approved).toBe(false);
 });
 
@@ -292,6 +293,15 @@ test("approving a new or widened write needs the write check", () => {
       carryOver: false,
     }).requiresWriteCheck,
   ).toBe(false);
+  expect(
+    authorityReviewModel({
+      preview: readOnly,
+      connectorNames: names,
+      automation: quiet,
+      activation: true,
+      carryOver: false,
+    }).messages.approve,
+  ).toBe("authority.review.approve");
   const steady = preview(writing.manifest.effects, {
     boundary_growth: [],
     effect_changes: writing.effect_changes?.map((entry) => ({
@@ -397,12 +407,12 @@ test("the activate-only help names a pausing schedule only when a trigger exists
     expect(authorityReviewModel({ ...base, automation }).messages.activateOnlyHelp).toBe(
       "authority.review.help.activateOnlyHeld",
     );
-  expect(translate("de", "authority.review.help.activateOnly")).toBe("Aktiviert ohne Läufe.");
+  expect(translate("de", "authority.review.help.activateOnly")).toBe("Aktiviert ohne Runs.");
   expect(translate("en", "authority.review.help.activateOnly")).toBe(
     "Activates without allowing runs.",
   );
   expect(translate("de", "authority.review.help.activateOnlyHeld")).toBe(
-    "Schaltet ein, ohne Läufe zu erlauben; der Zeitplan ist angehalten.",
+    "Schaltet ein, ohne Runs zu erlauben; der Zeitplan ist angehalten.",
   );
   expect(translate("en", "authority.review.help.activateOnlyHeld")).toBe(
     "Switches on without allowing runs; the schedule is on hold.",

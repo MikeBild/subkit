@@ -392,11 +392,11 @@ export const settingsHelpDe: Record<keyof typeof settingsHelpEn, string> = {
   "settings.help.notifications.inbox.retention_days":
     "Wie lange eine erledigte Postfach-Aufgabe aufbewahrt wird, bevor sie gelöscht wird.",
   "settings.help.notifications.push.enabled":
-    "Schickt eine Desktop-Mitteilung, wenn ein langer Lauf in sk fertig ist.",
+    "Schickt eine Desktop-Mitteilung, wenn ein langer Run in sk fertig ist.",
   "settings.help.notifications.push.quietHoursEnd": "Ende der Ruhezeit, als HH:MM.",
   "settings.help.notifications.push.quietHoursStart":
     "Beginn der Ruhezeit, als HH:MM. Leer: keine Ruhezeit.",
-  "settings.help.notifications.push.thresholdSec": "Nur Läufe, die länger dauern, melden sich.",
+  "settings.help.notifications.push.thresholdSec": "Nur Runs, die länger dauern, melden sich.",
   "settings.help.operations.seed_skills_at_boot":
     "Frischt beim Start die mitgelieferten Skills für jeden Arbeitsbereich auf.",
   "settings.help.operations.update_check_enabled":
@@ -416,9 +416,9 @@ export const settingsHelpDe: Record<keyof typeof settingsHelpEn, string> = {
   "settings.help.platform.slack.signing_secret":
     "Prüft, dass eingehende Slack-Anfragen wirklich von Slack stammen. Wird beim Start gelesen: wirkt nach einem Neustart.",
   "settings.help.queue.concurrency":
-    "Wie viele Läufe eine Engine-Instanz gleichzeitig ausführt. Mehr heißt mehr Durchsatz und mehr Speicher; wirkt nach einem Neustart.",
+    "Wie viele Runs eine Engine-Instanz gleichzeitig ausführt. Mehr heißt mehr Durchsatz und mehr Speicher; wirkt nach einem Neustart.",
   "settings.help.repl.permissionMode":
-    "Wie sk vor einer Aktion nachfragt: „ask“ vor jedem Schreiben, außer es gibt eine Freigabe, die genau diesen Lauf deckt, „auto“ wenn es darauf ankommt, „plan“ plant nur, „yolo“ hebt die Bestätigung für zerstörende Aktionen auf.",
+    "Wie sk vor einer Aktion nachfragt: „ask“ vor jedem Schreiben, außer es gibt eine Freigabe, die genau diesen Run deckt, „auto“ wenn es darauf ankommt, „plan“ plant nur, „yolo“ hebt die Bestätigung für zerstörende Aktionen auf.",
   "settings.help.server.port":
     "Der Port, auf dem die Engine lauscht. Wirkt erst nach einem Neustart; alles, was auf den alten Port zeigt, muss mitziehen.",
   "settings.help.server.public_base_url":

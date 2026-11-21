@@ -1,11 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { saveSetting } from "@/api/settings";
 import type { SettingsPatch } from "@/pages/settings-model";
-import {
-  applySettingsPatch,
-  saveSetting,
-  settingsReadQuery,
-  settleSettings,
-} from "@/pages/settings-save";
+import { applySettingsPatch, settingsReadQuery, settleSettings } from "@/pages/settings-save";
 
 const originalFetch = globalThis.fetch;
 const tenant = "5870ae6d-e542-48ca-bbcc-108b5ae73f5f";

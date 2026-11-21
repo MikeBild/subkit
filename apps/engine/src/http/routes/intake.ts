@@ -10,6 +10,7 @@ import {
   patchIntakeItemOperation,
   setIntakeDefaultCategoryOperation,
 } from "../../api/operations/intake.ts";
+import { createIntakeFileItemOperation } from "../../api/operations/intake-files.ts";
 import {
   confirmIntakeProposalOperation,
   createIntakeProposalOperation,
@@ -26,6 +27,7 @@ export function registerIntakeRoutes(app: OpenAPIHono<AppEnv>): void {
   toHonoRoute(app, listIntakeItemsOperation);
   toHonoRoute(app, listIntakeMentionItemsOperation);
   toHonoRoute(app, createIntakeItemOperation);
+  toHonoRoute(app, createIntakeFileItemOperation);
   toHonoRoute(app, getIntakeItemOperation);
   toHonoRoute(app, patchIntakeItemOperation);
   toHonoRoute(app, deleteIntakeItemOperation);

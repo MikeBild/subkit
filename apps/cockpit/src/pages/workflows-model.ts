@@ -1,4 +1,5 @@
 import type { components } from "@cli-core/engine-api/openapi";
+import type { WorkflowSection } from "@/app/links";
 import type { TranslationKey } from "@/lib/i18n";
 
 type EffectiveTrigger = components["schemas"]["EffectiveTrigger"];
@@ -26,4 +27,16 @@ export function triggerLabelKey(trigger: EffectiveTrigger): TranslationKey {
       : "workflows.trigger.webhook";
   }
   return ON_REQUEST;
+}
+
+export function withSection(
+  open: ReadonlySet<WorkflowSection>,
+  section: WorkflowSection,
+  next: boolean,
+): ReadonlySet<WorkflowSection> {
+  if (open.has(section) === next) return open;
+  const copy = new Set(open);
+  if (next) copy.add(section);
+  else copy.delete(section);
+  return copy;
 }

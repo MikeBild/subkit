@@ -60,11 +60,23 @@ export interface SubmitFeedbackParams {
     | undefined;
   readonly screenshot_png_base64?: string | undefined;
   readonly now: Date;
+  readonly created_on_device_at?: Date | undefined;
 }
 
 export interface SubmittedFeedback {
   readonly id: string;
   readonly intake_item_id: string;
+  readonly replayed: boolean;
+}
+
+export const DEVICE_CLOCK_AHEAD_MS = 5 * 60_000;
+export const DEVICE_QUEUE_MAX_AGE_MS = 30 * 24 * 60 * 60_000;
+
+export function capturedOnDevice(device: Date | undefined, now: Date): Date {
+  if (!device || Number.isNaN(device.getTime())) return now;
+  const age = now.getTime() - device.getTime();
+  if (age < -DEVICE_CLOCK_AHEAD_MS || age > DEVICE_QUEUE_MAX_AGE_MS) return now;
+  return device.getTime() > now.getTime() ? now : device;
 }
 
 interface PreparedFile {
@@ -104,7 +116,10 @@ function prepareScreenshot(content_base64: string): PreparedFile {
   return { filename: FEEDBACK_SCREENSHOT_NAME, content_type: "image/png", bytes };
 }
 
-async function existingReport(db: Db, p: SubmitFeedbackParams): Promise<SubmittedFeedback | null> {
+export async function existingReport(
+  db: Db,
+  p: Pick<SubmitFeedbackParams, "tenant_id" | "actor" | "report_id">,
+): Promise<SubmittedFeedback | null> {
   const [row] = await db
     .select({
       id: intakeItems.id,
@@ -119,7 +134,7 @@ async function existingReport(db: Db, p: SubmitFeedbackParams): Promise<Submitte
   if (!row) return null;
   if (row.category !== FEEDBACK_CATEGORY || row.collected_by_id !== p.actor.id)
     throw new FeedbackRefusedError("report_id_taken");
-  return { id: p.report_id, intake_item_id: row.id };
+  return { id: p.report_id, intake_item_id: row.id, replayed: true };
 }
 
 export async function submitFeedback(db: Db, p: SubmitFeedbackParams): Promise<SubmittedFeedback> {
@@ -165,7 +180,7 @@ export async function submitFeedback(db: Db, p: SubmitFeedbackParams): Promise<S
           client_request_id: p.report_id,
           category: FEEDBACK_CATEGORY,
           title: feedbackTitle(p.kind, message.value),
-          captured_at: p.now.toISOString(),
+          captured_at: capturedOnDevice(p.created_on_device_at, p.now).toISOString(),
           body: feedbackBody({
             report_id: p.report_id,
             kind: p.kind,
@@ -195,11 +210,12 @@ export async function submitFeedback(db: Db, p: SubmitFeedbackParams): Promise<S
             screenshot: Boolean(p.screenshot_png_base64),
             file_ids: stored.map((file) => file.id),
             redactions,
+            created_on_device_at: p.created_on_device_at?.toISOString() ?? null,
           },
         },
         tx,
       );
-      return { id: p.report_id, intake_item_id: item.id };
+      return { id: p.report_id, intake_item_id: item.id, replayed: false };
     });
   } catch (error) {
     for (const id of created) await removeStoredFile(db, p.tenant_id, id).catch(() => {});

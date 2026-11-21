@@ -74,8 +74,8 @@ export function SegmentedControl({
       style={wrap ? undefined : edgeFade}
       className={
         wrap
-          ? "grid w-full min-w-0 grid-cols-2 items-stretch gap-0.5 rounded-md bg-muted p-[3px] sm:grid-cols-3"
-          : "min-w-0 max-w-full flex-nowrap gap-0.5 overflow-x-auto rounded-md bg-muted p-[3px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          ? "grid w-full min-w-0 grid-cols-2 items-stretch gap-0.5 rounded-control bg-muted p-1 sm:grid-cols-3"
+          : "h-10 min-w-0 max-w-full flex-nowrap gap-0.5 pointer-coarse:h-11 overflow-x-auto rounded-control bg-muted p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       }
     >
       {options.map((option) => (
@@ -84,10 +84,10 @@ export function SegmentedControl({
           value={option.value}
           data-testid={option.testId}
           className={cn(
-            "rounded-sm border-0 bg-transparent px-2.5 shadow-none text-[13px] font-medium text-muted-foreground hover:bg-transparent hover:text-foreground data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm disabled:cursor-not-allowed",
+            "rounded-sm border-0 bg-transparent px-3 shadow-none text-sm font-medium text-muted-foreground hover:bg-transparent hover:text-foreground disabled:cursor-not-allowed",
             wrap
-              ? "h-auto min-h-[30px] w-full min-w-0 shrink py-1 text-center leading-4 whitespace-normal [overflow-wrap:anywhere] pointer-coarse:min-h-[38px]"
-              : "h-[26px] shrink-0 whitespace-nowrap pointer-coarse:h-[38px]",
+              ? "h-auto min-h-8 w-full min-w-0 shrink py-1 text-center leading-4 whitespace-normal [overflow-wrap:anywhere] pointer-coarse:min-h-[38px]"
+              : "h-8 shrink-0 whitespace-nowrap pointer-coarse:h-9",
           )}
         >
           {option.label}

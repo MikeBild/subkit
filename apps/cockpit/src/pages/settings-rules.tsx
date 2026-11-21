@@ -1,4 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ErrorNotice } from "@ui/components/proto/ErrorNotice";
+import { Panel, Pill } from "@ui/components/proto/Pill";
+import { EmptyState } from "@ui/components/proto/visual";
+import { BookOpenCheck } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
@@ -15,15 +19,14 @@ import {
   Button,
   ConfirmDialog,
   DataState,
-  ErrorNotice,
-  FactList,
+  IconTile,
   SectionHeading,
-  StatusBadge,
 } from "@/components/cockpit/patterns";
+import { namedConnector, RuleFacts, ruleDates, splitRules } from "@/features/rules";
 import { reportFailure } from "@/lib/action-failure";
+import { errorRows } from "@/lib/error-rows";
 import { useI18n } from "@/lib/i18n-context";
 import { ruleName } from "./chat-policy";
-import { namedConnector, ruleDates, ruleFacts, splitRules } from "./settings-rules-model";
 
 export function RuleRow({
   rule,
@@ -47,21 +50,24 @@ export function RuleRow({
   const expired = active && rule.expired;
   return (
     <li
-      className="grid gap-3 rounded-xl border bg-background p-4 sm:p-5"
+      className="grid gap-2.5 py-3"
       data-testid={`settings-rule-${rule.state}`}
       data-rule-state={rule.state}
       data-rule-expired={expired ? "true" : undefined}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="grid min-w-0 gap-1">
-          <SectionHeading className="text-base font-semibold [overflow-wrap:anywhere]">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <IconTile>
+            <BookOpenCheck />
+          </IconTile>
+          <SectionHeading className="min-w-0 text-sm font-semibold [overflow-wrap:anywhere]">
             {name}
           </SectionHeading>
-          <StatusBadge
-            state={expired ? "warn" : active ? "ok" : "neutral"}
-            label={t(expired ? "rules.expired" : active ? "rules.active" : "rules.offered")}
-            testId="settings-rule-state"
-          />
+          <span className="shrink-0" data-testid="settings-rule-state">
+            <Pill tone={expired ? "warning" : active ? "success" : "neutral"}>
+              {t(expired ? "rules.expired" : active ? "rules.active" : "rules.offered")}
+            </Pill>
+          </span>
         </div>
         {active ? (
           <div className="flex flex-wrap gap-2">
@@ -109,25 +115,15 @@ export function RuleRow({
           </div>
         )}
       </div>
-      <FactList
-        items={ruleFacts(rule, t, dateTime).map((fact) => ({
-          label: fact.label,
-          value: <span className="[overflow-wrap:anywhere]">{fact.value}</span>,
-          testId: `settings-rule-${fact.id}`,
-        }))}
-      />
+      <RuleFacts rule={rule} testId="settings-rule" />
       <p className="text-xs text-muted-foreground" data-testid="settings-rule-meta">
         {[
-          active
-            ? t("rules.createdBy", { date: dateTime(dates.created) })
-            : t("rules.offeredAt", { date: dateTime(dates.created) }),
           active
             ? dates.lastUsed
               ? t("rules.lastUsed", { date: dateTime(dates.lastUsed) })
               : t("rules.neverUsed")
-            : null,
+            : t("rules.offeredAt", { date: dateTime(dates.created) }),
           active && rule.use_count > 0 ? tn("rules.useCount", rule.use_count) : null,
-          t("rules.approvals", { count: rule.approvals_count }),
         ]
           .filter(Boolean)
           .join(" · ")}
@@ -180,10 +176,12 @@ export function RulesArea() {
   if (rules.isError)
     return (
       <ErrorNotice
-        title={t("rules.loadFailed")}
-        error={rules.error}
-        remedy={{ label: t("pattern.retry"), onClick: () => void rules.refetch() }}
         testId="settings-rules-load-failed"
+        kind="rulesNotLoaded"
+        title={t("rules.loadFailed")}
+        body={t("setup.loadFailedBody")}
+        primary={{ label: t("pattern.retry"), onClick: () => void rules.refetch() }}
+        rows={errorRows(rules.error, t)}
       />
     );
   if (!rules.data) return <DataState state="loading" testId="settings-rules-loading" />;
@@ -192,29 +190,27 @@ export function RulesArea() {
   );
   const busy = revoke.isPending || decide.isPending || renew.isPending;
   return (
-    <div className="grid gap-5" data-testid="settings-area-rules">
+    <div className="flex flex-col gap-4" data-testid="settings-area-rules">
       {active.length + offered.length === 0 ? (
-        <div
-          className="grid gap-1 rounded-xl border border-dashed p-6 text-center"
-          data-testid="settings-rules-empty"
-        >
-          <p className="text-sm font-medium">{t("rules.empty")}</p>
-          <p className="text-sm text-muted-foreground">{t("rules.emptyText")}</p>
+        <div data-testid="settings-rules-empty">
+          <EmptyState icon={BookOpenCheck} title={t("rules.empty")} text={t("rules.emptyText")} />
         </div>
       ) : (
-        <ul className="grid gap-3" data-testid="settings-rules-list">
-          {[...offered, ...active].map((rule) => (
-            <RuleRow
-              key={rule.id}
-              rule={rule}
-              busy={busy}
-              renewing={renew.isPending && renew.variables?.id === rule.id}
-              onRevoke={setRevoking}
-              onRenew={(target) => renew.mutate(target)}
-              onDecide={(target, accept) => decide.mutate({ rule: target, accept })}
-            />
-          ))}
-        </ul>
+        <Panel className="py-1">
+          <ul className="divide-y" data-testid="settings-rules-list">
+            {[...offered, ...active].map((rule) => (
+              <RuleRow
+                key={rule.id}
+                rule={rule}
+                busy={busy}
+                renewing={renew.isPending && renew.variables?.id === rule.id}
+                onRevoke={setRevoking}
+                onRenew={(target) => renew.mutate(target)}
+                onDecide={(target, accept) => decide.mutate({ rule: target, accept })}
+              />
+            ))}
+          </ul>
+        </Panel>
       )}
       <ConfirmDialog
         open={revoking !== null}

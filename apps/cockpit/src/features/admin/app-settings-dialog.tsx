@@ -14,6 +14,13 @@ import {
 import { useCurrentVersionDag } from "@/components/cockpit/workflow-versions";
 import { useI18n } from "@/lib/i18n-context";
 import {
+  dialogError,
+  environmentLabel,
+  settingValue,
+  useAppSettingsSave,
+  useSettingsSnapshot,
+} from "./apps-data";
+import {
   type AppView,
   definitionGuardBucket,
   EXECUTION_ENVIRONMENTS,
@@ -24,14 +31,7 @@ import {
   productErrors,
   productsFrom,
   withProduct,
-} from "@/pages/apps-model";
-import {
-  dialogError,
-  environmentLabel,
-  settingValue,
-  useAppSettingsSave,
-  useSettingsSnapshot,
-} from "./apps-data";
+} from "./model/apps-model";
 import { ChoiceField } from "./parts";
 
 export function AppSettingsDialog({

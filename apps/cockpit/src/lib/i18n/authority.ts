@@ -1,6 +1,4 @@
 export const authorityEn = {
-  "authority.limit.durationHint":
-    "Approval expires after the selected duration and can be revoked earlier.",
   "authority.namedTitle": "Approve {name} {version}",
   "authority.subject.issues": "Issues",
   "authority.subject.comments": "Comments",
@@ -14,7 +12,6 @@ export const authorityEn = {
   "authority.subject.rows": "Rows",
   "authority.review.tile.read": "Read",
   "authority.review.tile.write": "Write",
-  "authority.review.tile.services": "Services",
   "authority.review.tile.risky": "Delete or unclear",
   "authority.review.readOnly": "Only reads from {scope} at {service}. Changes nothing.",
   "authority.review.writes": "Writes to {service}.",
@@ -37,14 +34,14 @@ export const authorityEn = {
   "authority.review.runtimeValues":
     "Values such as a date or a commit are produced at run time. Approved are target, shape and ceiling.",
   "authority.review.problem": "This version cannot be approved yet.",
-  "authority.review.revocable": "Revocable under Approvals",
   "authority.review.replaces": "Replaces {version}",
-  "authority.review.writeCheck": "I have checked the write access.",
   "authority.review.startRun": "Start a run afterwards",
   "authority.review.startRunNext": "Otherwise the next run follows the schedule: {time}",
   "authority.review.startRunNone":
     "Otherwise nothing runs until a schedule, a webhook or a person starts it.",
   "authority.review.approve": "Approve",
+  "authority.review.approveWrites": "Approve with write access",
+  "authority.review.lead": "You decide what this workflow may do. The approval stays with you.",
   "authority.review.activateOnly": "Apply only",
   "authority.review.adopt": "Apply",
   "authority.adopted": "Applied. The existing approval stays valid.",
@@ -56,8 +53,6 @@ export const authorityEn = {
     "Switches on without allowing runs; the schedule is on hold.",
   "authority.review.help.adopt": "The existing approval stays valid.",
   "authority.review.help.cancel": "Closes without changes.",
-  "authority.limit.thirtyDays": "30 days",
-  "authority.limit.sevenDays": "7 days",
   "authority.content.members.one": "Update 1 fixed content item",
   "authority.content.members.other": "Update {count} fixed content items",
   "authority.content.scope":
@@ -124,6 +119,8 @@ export const authorityEn = {
   "authority.hours": "Valid for (hours)",
   "authority.requestReview": "Request content: {step}",
   "authority.attempts": "Retry-policy maximum attempts per invocation: {count}",
+  "authority.requestTarget": "Target: {method} {url}",
+  "authority.requestTargetOpen": "Target: {method}, the address is set when the run starts",
   "authority.iteration": "Iteration {step} can repeat: {children}",
   "authority.maskedDescription":
     "Credentials are hidden. Expand a request to inspect its contents.",
@@ -140,15 +137,11 @@ export const authorityEn = {
   "authority.environment": "Environment",
   "authority.production": "Production",
   "authority.development": "Test",
-  "authority.decision.words":
-    "Test is for trying things out. Production works with your real data.",
-  "authority.decision.validFor": "Applies to {environment}.",
   "authority.decision.reason.schedule": "The schedule starts it there.",
   "authority.decision.reason.scheduleWhen": "The schedule starts it there, {when}.",
   "authority.decision.reason.inbound_hook": "Calls from outside start it there.",
   "authority.decision.reason.existing_approval": "It already has an approval there.",
   "authority.decision.reason.started_manually": "You start it yourself.",
-  "authority.decision.choice.label": "What should the approval be for?",
   "authority.decision.choice.dev": "Test: for trying it out. You start it yourself.",
   "authority.decision.choice.prod":
     "Production: works with your real data. Needed when a schedule or a call from outside starts it.",
@@ -273,14 +266,7 @@ export const authorityEn = {
     "No webhook call arrived in the last {days} days, so the suggestion is a small starting value.",
   "authority.limit.label": "Validity",
   "authority.limit.untilRevoked": "Until revoked",
-  "authority.limit.untilRevokedMeaning": "Runs are allowed until you revoke the approval.",
-  "authority.limit.thirtyDaysMeaning":
-    "Runs are allowed for 30 days unless you revoke the approval earlier.",
-  "authority.limit.sevenDaysMeaning":
-    "Runs are allowed for 7 days unless you revoke the approval earlier.",
   "authority.limit.limited": "Limit",
-  "authority.limit.untilRevokedHint":
-    "No run limit and no end date. A new version keeps this approval as long as it reaches nothing new. You can revoke it at any time.",
   "authority.limit.limitedHint":
     "Ends after the runs or the hours below, whichever comes first. You can revoke it at any time.",
   "authority.state.exhausted": "Run limit reached",
@@ -424,8 +410,6 @@ export const authorityEn = {
 } as const;
 
 export const authorityDe: Record<keyof typeof authorityEn, string> = {
-  "authority.limit.durationHint":
-    "Die Freigabe endet nach der gewählten Dauer und kann vorher widerrufen werden.",
   "authority.namedTitle": "{name} {version} freigeben",
   "authority.subject.issues": "Issues",
   "authority.subject.comments": "Kommentare",
@@ -439,7 +423,6 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
   "authority.subject.rows": "Zeilen",
   "authority.review.tile.read": "Lesen",
   "authority.review.tile.write": "Schreiben",
-  "authority.review.tile.services": "Dienste",
   "authority.review.tile.risky": "Löschen oder unklar",
   "authority.review.readOnly": "Liest nur aus {scope} bei {service}. Ändert nichts.",
   "authority.review.writes": "Schreibt an {service}.",
@@ -451,8 +434,8 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
   "authority.review.change.removed": "{count} entfernt",
   "authority.review.row.added": "neu",
   "authority.review.row.widened": "erweitert",
-  "authority.review.ceiling": "bis {count} / Lauf",
-  "authority.review.ceilingChange": "{previous} → {count} / Lauf",
+  "authority.review.ceiling": "bis {count} / Run",
+  "authority.review.ceilingChange": "{previous} → {count} / Run",
   "authority.review.details": "Details",
   "authority.review.viaCall": "über Schritt {step}",
   "authority.review.placeholder.enum": "{name}: nur {values}",
@@ -462,27 +445,25 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
   "authority.review.runtimeValues":
     "Werte wie Datum oder Commit entstehen zur Laufzeit. Freigegeben sind Ziel, Form und Obergrenze.",
   "authority.review.problem": "Diese Version lässt sich noch nicht freigeben.",
-  "authority.review.revocable": "Widerrufbar unter Freigaben",
   "authority.review.replaces": "Ersetzt {version}",
-  "authority.review.writeCheck": "Ich habe den Schreibzugriff geprüft.",
-  "authority.review.startRun": "Danach einen Lauf starten",
-  "authority.review.startRunNext": "Sonst nächster Lauf laut Zeitplan: {time}",
+  "authority.review.startRun": "Danach einen Run starten",
+  "authority.review.startRunNext": "Sonst nächster Run laut Zeitplan: {time}",
   "authority.review.startRunNone":
     "Sonst läuft nichts, bis ein Zeitplan, ein Webhook oder eine Person ihn startet.",
   "authority.review.approve": "Freigeben",
+  "authority.review.approveWrites": "Mit Schreibzugriff freigeben",
+  "authority.review.lead": "Du legst fest, was dieser Workflow darf. Die Freigabe bleibt bei dir.",
   "authority.review.activateOnly": "Nur übernehmen",
   "authority.review.adopt": "Übernehmen",
   "authority.adopted": "Übernommen. Die bestehende Freigabe gilt weiter.",
   "authority.adoptFailed": "Die Änderung konnte nicht übernommen werden. Bitte prüfen.",
-  "authority.review.help.approve": "Aktiviert und erlaubt Läufe in diesen Grenzen.",
-  "authority.review.help.approveGrant": "Erlaubt Läufe in diesen Grenzen.",
-  "authority.review.help.activateOnly": "Aktiviert ohne Läufe.",
+  "authority.review.help.approve": "Aktiviert und erlaubt Runs in diesen Grenzen.",
+  "authority.review.help.approveGrant": "Erlaubt Runs in diesen Grenzen.",
+  "authority.review.help.activateOnly": "Aktiviert ohne Runs.",
   "authority.review.help.activateOnlyHeld":
-    "Schaltet ein, ohne Läufe zu erlauben; der Zeitplan ist angehalten.",
+    "Schaltet ein, ohne Runs zu erlauben; der Zeitplan ist angehalten.",
   "authority.review.help.adopt": "Bestehende Freigabe gilt weiter.",
   "authority.review.help.cancel": "Schließt ohne Änderung.",
-  "authority.limit.thirtyDays": "30 Tage",
-  "authority.limit.sevenDays": "7 Tage",
   "authority.content.members.one": "1 festgelegten Inhalt aktualisieren",
   "authority.content.members.other": "{count} festgelegte Inhalte aktualisieren",
   "authority.content.scope":
@@ -492,12 +473,12 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
   "authority.outbox.delivery":
     "Von {from} an die Adresse aus {field} in der Antwort von Schritt {source}; eine Nachricht je {item}, höchstens {bytes} Anfrage-Bytes und {perDay} Nachrichten pro Tag.",
   "authority.outbox.scope":
-    "Erlaubt eine E-Mail je Eintrag der Warteschlange an den Empfänger, den diese Warteschlange im selben Lauf liefert. Wer die Warteschlange füllen kann, bestimmt die Empfänger – gib nur eine Warteschlange frei, der du vertraust. Kein CC/BCC und kein automatischer Neuversand bei unklarem Ergebnis.",
+    "Erlaubt eine E-Mail je Eintrag der Warteschlange an den Empfänger, den diese Warteschlange im selben Run liefert. Wer die Warteschlange füllen kann, bestimmt die Empfänger – gib nur eine Warteschlange frei, der du vertraust. Kein CC/BCC und kein automatischer Neuversand bei unklarem Ergebnis.",
   "authority.transactional.recipients": "Antworten auf signierte Anfragen",
   "authority.transactional.delivery":
     "Von {from} an die Adresse aus {field}; Ereignis {event} aus {eventField}, Anfrage-ID aus {requestField}, höchstens {bytes} Anfrage-Bytes; signierte Quelle {hook}.",
   "authority.transactional.scope":
-    "Erlaubt eine E-Mail je eindeutiger Anfrage an wechselnde Empfänger aus der signierten Eingabe. Kein CC/BCC und kein automatischer Neuversand bei unklarem Ergebnis. Lauf- und Zeitgrenzen gelten weiterhin.",
+    "Erlaubt eine E-Mail je eindeutiger Anfrage an wechselnde Empfänger aus der signierten Eingabe. Kein CC/BCC und kein automatischer Neuversand bei unklarem Ergebnis. Run- und Zeitgrenzen gelten weiterhin.",
   "authority.report.recipients": "Fester Versand",
   "authority.report.delivery": "Von {from} an {to}",
   "authority.report.variable":
@@ -522,7 +503,7 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
   "authority.scope.version.first":
     "Noch läuft keine Version. Mit der Freigabe wird diese übernommen.",
   "authority.suggestion.schedule":
-    "Vorschlag: so viele Läufe, wie der Zeitplan in 30 Tagen startet.",
+    "Vorschlag: so viele Runs, wie der Zeitplan in 30 Tagen startet.",
   "authority.suggestion.hook.one":
     "Vorschlag aus 1 Webhook-Aufruf der letzten {days} Tage, mit Reserve.",
   "authority.suggestion.hook.other":
@@ -532,7 +513,7 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
   "authority.suggestion.hookMinimum.other":
     "Vorschlag: Mindestwert für Webhooks – in den letzten {days} Tagen kamen nur {count} Aufrufe.",
   "authority.adjustPrompt":
-    "Automatische Läufe dieses Ablaufs lassen sich noch nicht freigeben. Ermittle, welche Schritte die Freigabe blockieren, und baue genau diese Schritte so um, dass eine Freigabe sie abdecken kann; Zeitplan und Ziele bleiben, außer ich wünsche es anders. Prüfe die Änderung ohne Live-Wirkungen und speichere sie als Entwurf. Aktiviere nichts und gib nichts frei: Die Freigabe erteilt danach ein Mensch im Dialog. Ist kein zulässiger Umbau möglich, sage klar warum und was stattdessen geht. Fehlt eine fachliche Angabe wie Absender oder Empfänger, stelle eine kurze Frage mit klaren Auswahlmöglichkeiten und einer Empfehlung. Antworte knapp, ohne Code oder Tool-Namen.",
+    "Automatische Runs dieses Ablaufs lassen sich noch nicht freigeben. Ermittle, welche Schritte die Freigabe blockieren, und baue genau diese Schritte so um, dass eine Freigabe sie abdecken kann; Zeitplan und Ziele bleiben, außer ich wünsche es anders. Prüfe die Änderung ohne Live-Wirkungen und speichere sie als Entwurf. Aktiviere nichts und gib nichts frei: Die Freigabe erteilt danach ein Mensch im Dialog. Ist kein zulässiger Umbau möglich, sage klar warum und was stattdessen geht. Fehlt eine fachliche Angabe wie Absender oder Empfänger, stelle eine kurze Frage mit klaren Auswahlmöglichkeiten und einer Empfehlung. Antworte knapp, ohne Code oder Tool-Namen.",
   "authority.incompleteTitle": "Anfragedetails fehlen",
   "authority.incompleteDescription":
     "Erneut prüfen. Fehlen weiterhin Details, den Workflow vor der Freigabe anpassen.",
@@ -543,14 +524,16 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
   "authority.noneActive": "noch keine Version",
   "authority.carryOver.hint":
     "Diese Version erreicht nichts, was die bestehende Freigabe nicht schon abdeckt. Beim Übernehmen gilt die Freigabe weiter; neu freizugeben ist nichts.",
-  "authority.activatedOnly": "Entwurf übernommen. Läufe sind noch nicht freigegeben.",
-  "authority.configuredConnector": "Konfigurierter Konnektor",
+  "authority.activatedOnly": "Entwurf übernommen. Runs sind noch nicht freigegeben.",
+  "authority.configuredConnector": "Konfigurierter Connector",
   "authority.reviewExpired": "Prüfung nicht mehr aktuell",
   "authority.reviewExpiredHint": "Vor der Freigabe erneut prüfen.",
   "authority.grantOpen": "Freigabe prüfen",
   "authority.hours": "Gültig für (Stunden)",
   "authority.requestReview": "Anfrageinhalt: {step}",
   "authority.attempts": "Maximale Versuche laut Retry-Regel je Aufruf: {count}",
+  "authority.requestTarget": "Ziel: {method} {url}",
+  "authority.requestTargetOpen": "Ziel: {method}, die Adresse steht erst beim Start des Runs fest",
   "authority.iteration": "Iteration {step} kann wiederholen: {children}",
   "authority.maskedDescription":
     "Zugangsdaten sind verborgen. Anfrage aufklappen, um ihren Inhalt zu prüfen.",
@@ -559,28 +542,24 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
     "Die Grenzen könnten sich geändert haben, deiner Sitzung könnte die Berechtigung fehlen oder die Antwort könnte verloren gegangen sein. Prüfe den Freigabeverlauf vor einer neuen Freigabe; diese Anfrage wird nicht automatisch wiederholt.",
   "authority.prepare": "Erneut prüfen",
   "authority.granting": "Wird freigegeben…",
-  "authority.connector": "Konnektor",
-  "authority.directRequest": "Direkte Anfrage ohne Konnektor",
-  "authority.usedByRun": "Für diesen Lauf gespeicherte Freigabe",
+  "authority.connector": "Connector",
+  "authority.directRequest": "Direkte Anfrage ohne Connector",
+  "authority.usedByRun": "Für diesen Run gespeicherte Freigabe",
   "authority.noStoredBinding": "Keine Bindung an eine Freigabe gespeichert",
   "authority.version": "Version",
   "authority.environment": "Umgebung",
   "authority.production": "Echtbetrieb",
   "authority.development": "Test",
-  "authority.decision.words":
-    "Test ist zum Ausprobieren. Der Echtbetrieb arbeitet mit deinen echten Daten.",
-  "authority.decision.validFor": "Gilt für den {environment}.",
   "authority.decision.reason.schedule": "Der Zeitplan startet ihn dort.",
   "authority.decision.reason.scheduleWhen": "Der Zeitplan startet ihn dort, {when}.",
   "authority.decision.reason.inbound_hook": "Aufrufe von außen starten ihn dort.",
   "authority.decision.reason.existing_approval": "Dort gibt es schon eine Freigabe.",
   "authority.decision.reason.started_manually": "Du startest ihn selbst.",
-  "authority.decision.choice.label": "Wofür soll die Freigabe gelten?",
   "authority.decision.choice.dev": "Test: zum Ausprobieren. Du startest ihn selbst.",
   "authority.decision.choice.prod":
     "Echtbetrieb: arbeitet mit deinen echten Daten. Nötig, wenn ein Zeitplan oder ein Aufruf von außen ihn startet.",
   "authority.decision.none.title": "Noch nicht möglich",
-  "authority.decision.unnamedConnector": "Ein Konnektor",
+  "authority.decision.unnamedConnector": "Ein Connector",
   "authority.decision.block.connector_missing": "{connector} gibt es im {environment} nicht.",
   "authority.decision.block.connector_without_sign_in":
     "{connector} hat im {environment} keine Anmeldung.",
@@ -597,10 +576,10 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
   "authority.growth.unknown": "Neu: eine nicht einstufbare Wirkung bei {name}",
   "authority.growth.changed": "Geändert: die Verbindung zu {name}",
   "authority.growth.more": "{line} (und {count} weitere)",
-  "authority.runs": "Maximale Läufe",
-  "authority.remaining": "Noch {remaining} von {max} Läufen",
+  "authority.runs": "Maximale Runs",
+  "authority.remaining": "Noch {remaining} von {max} Runs",
   "authority.effects": "Operationen und externe Ziele",
-  "authority.noEffects": "Keine Konnektor-Wirkungen in diesem Manifest.",
+  "authority.noEffects": "Keine Connector-Wirkungen in diesem Manifest.",
   "authority.unboundTarget": "Ziel nicht gebunden",
   "authority.storage.write": "Berichtsdateien speichern",
   "authority.storage.read": "Berichtsdateien lesen",
@@ -613,9 +592,9 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
   "authority.storage.readScope": "Dateien innerhalb dieses Ordners lesen.",
   "authority.storage.delete": "Berichtsdateien endgültig löschen",
   "authority.storage.deleteScope.one":
-    "Dateien in diesem Ordner werden endgültig gelöscht und lassen sich nicht wiederherstellen. Geprüfte Obergrenze: 1 Datei pro Lauf. Jede Löschung wird darauf geprüft, in diesem Ordner zu bleiben; die Anzahl pro Lauf ist eine geprüfte Obergrenze und wird vom System noch nicht mitgezählt.",
+    "Dateien in diesem Ordner werden endgültig gelöscht und lassen sich nicht wiederherstellen. Geprüfte Obergrenze: 1 Datei pro Run. Jede Löschung wird darauf geprüft, in diesem Ordner zu bleiben; die Anzahl pro Run ist eine geprüfte Obergrenze und wird vom System noch nicht mitgezählt.",
   "authority.storage.deleteScope.other":
-    "Dateien in diesem Ordner werden endgültig gelöscht und lassen sich nicht wiederherstellen. Geprüfte Obergrenze: {count} Dateien pro Lauf. Jede Löschung wird darauf geprüft, in diesem Ordner zu bleiben; die Anzahl pro Lauf ist eine geprüfte Obergrenze und wird vom System noch nicht mitgezählt.",
+    "Dateien in diesem Ordner werden endgültig gelöscht und lassen sich nicht wiederherstellen. Geprüfte Obergrenze: {count} Dateien pro Run. Jede Löschung wird darauf geprüft, in diesem Ordner zu bleiben; die Anzahl pro Run ist eine geprüfte Obergrenze und wird vom System noch nicht mitgezählt.",
   "authority.storage.unknown": "Unbekannte Speicher-Aktion",
   "authority.storage.unknownScope":
     "Dieser Dialog kann die Aktion „{operation}“ nicht beschreiben. Bitte nicht freigeben, solange die Aktion nicht geklärt ist.",
@@ -656,9 +635,9 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
   "authority.boundary.declaredDestructive":
     "Der Autor hat diese Anfrage als eine markiert, die Daten entfernt oder unwiderruflich ändert.",
   "authority.boundary.calls.one":
-    "Geprüfte Obergrenze: 1 Anfrage pro Lauf. Diese Zahl ist geprüft, wird vom System aber noch nicht mitgezählt.",
+    "Geprüfte Obergrenze: 1 Anfrage pro Run. Diese Zahl ist geprüft, wird vom System aber noch nicht mitgezählt.",
   "authority.boundary.calls.other":
-    "Geprüfte Obergrenze: {count} Anfragen pro Lauf. Diese Zahl ist geprüft, wird vom System aber noch nicht mitgezählt.",
+    "Geprüfte Obergrenze: {count} Anfragen pro Run. Diese Zahl ist geprüft, wird vom System aber noch nicht mitgezählt.",
   "authority.boundary.contentNotice":
     "Der Inhalt entsteht erst zur Laufzeit. Diese Freigabe begrenzt, wohin die Anfrage geht und wie groß sie ist — nicht, was sie enthält, zum Beispiel welche Einträge sie ändert oder entfernt.",
   "authority.call.title": "Schritt {step} startet den Workflow „{name}“ (Version {version})",
@@ -668,11 +647,11 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
   "authority.issueStep": "Schritt {step}",
   "authority.issueInCall": "Schritt {step}, im Workflow, den {call} startet",
   "authority.issue.missing_binding":
-    "Dieser Schritt ließ sich keinem Konnektor zuordnen, es gibt also kein Ziel zum Freigeben.",
+    "Dieser Schritt ließ sich keinem Connector zuordnen, es gibt also kein Ziel zum Freigeben.",
   "authority.issue.binding_mismatch":
     "Was dieser Schritt deklariert und wozu er sich auflöst, stimmt nicht mehr überein.",
   "authority.issue.environment_mismatch":
-    "Dieser Schritt nutzt einen Konnektor, den es hier nicht gibt.",
+    "Dieser Schritt nutzt einen Connector, den es hier nicht gibt.",
   "authority.issue.dynamic_request":
     "Wohin diese Anfrage geht, entscheidet sich zur Laufzeit und ist durch nichts Prüfbares begrenzt.",
   "authority.issue.unknown_effect":
@@ -698,23 +677,16 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
   "authority.state.revoked": "Widerrufen",
   "authority.state.superseded": "Von neuer Version übernommen",
   "authority.headline.untilRevoked": "bis auf Widerruf",
-  "authority.headline.runs.unlimited": "unbegrenzte Läufe",
+  "authority.headline.runs.unlimited": "unbegrenzte Runs",
   "authority.runsUnlimited": "Unbegrenzt · bisher {count}",
   "authority.suggestion.hookNone":
     "In den letzten {days} Tagen kam kein Webhook-Aufruf; der Vorschlag ist deshalb ein kleiner Startwert.",
   "authority.limit.label": "Gültigkeit",
   "authority.limit.untilRevoked": "Bis auf Widerruf",
-  "authority.limit.untilRevokedMeaning": "Läufe sind erlaubt, bis du die Freigabe widerrufst.",
-  "authority.limit.thirtyDaysMeaning":
-    "Läufe sind 30 Tage lang erlaubt, solange du die Freigabe nicht vorher widerrufst.",
-  "authority.limit.sevenDaysMeaning":
-    "Läufe sind 7 Tage lang erlaubt, solange du die Freigabe nicht vorher widerrufst.",
   "authority.limit.limited": "Begrenzen",
-  "authority.limit.untilRevokedHint":
-    "Ohne Laufgrenze und ohne Ablaufdatum. Eine neue Version behält die Freigabe, solange sie nichts Neues erreicht. Jederzeit widerrufbar.",
   "authority.limit.limitedHint":
-    "Endet nach den Läufen oder Stunden unten – je nachdem, was zuerst eintritt. Jederzeit widerrufbar.",
-  "authority.state.exhausted": "Lauflimit erreicht",
+    "Endet nach den Runs oder Stunden unten – je nachdem, was zuerst eintritt. Jederzeit widerrufbar.",
+  "authority.state.exhausted": "Run-Limit erreicht",
   "authority.state.invalidated": "Grenzen geändert",
   "authority.state.unavailable": "Nicht verfügbar",
   "authority.effect.read": "Lesen",
@@ -760,28 +732,28 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
     "Für diesen Schritt ist noch keine Grenze geprüft — nichts sagt, wohin er darf und wie groß er werden darf.",
   "authority.refusal.stricter_profile_applies":
     "Dieser Schritt ist eine Bericht-E-Mail oder eine Veröffentlichung. Dafür gibt es eine eigene, strengere Prüfung des Empfängers bzw. der veröffentlichten Einträge; eine allgemeine Grenze gehört hier nicht hin.",
-  "authority.trial.title": "Probelauf läuft",
+  "authority.trial.title": "Probe-Run läuft",
   "authority.trial.what":
-    "Dieser Probelauf liest wirklich aus deinen verbundenen Systemen und hält jeden Schreibzugriff zurück, sodass dort nichts geändert wird.",
+    "Dieser Probe-Run liest wirklich aus deinen verbundenen Systemen und hält jeden Schreibzugriff zurück, sodass dort nichts geändert wird.",
   "authority.trial.elapsed": "Läuft seit {seconds} Sekunden.",
   "authority.trial.alreadyRunning":
-    "Für diesen Workflow läuft bereits ein Probelauf — vermutlich in einem anderen Tab. Dieser wartet darauf, statt einen zweiten zu starten.",
+    "Für diesen Workflow läuft bereits ein Probe-Run — vermutlich in einem anderen Tab. Dieser wartet darauf, statt einen zweiten zu starten.",
   "authority.sample.title": "Ein Beispielaufruf von „{slug}“ wird gebraucht",
   "authority.sample.what":
-    "Der Webhook „{slug}“ startet diesen Workflow, und seine abgewiesenen Aufrufe werden nicht aufbewahrt. Der Probelauf braucht einen Aufruf, wie er ankäme — gesendet wird nichts. Im Feld steht der letzte Aufruf, den dieser Workflow erhalten hat, oder eine leere Vorlage: Trage ein, was der Absender wirklich liefert.",
+    "Der Webhook „{slug}“ startet diesen Workflow, und seine abgewiesenen Aufrufe werden nicht aufbewahrt. Der Probe-Run braucht einen Aufruf, wie er ankäme — gesendet wird nichts. Im Feld steht der letzte Aufruf, den dieser Workflow erhalten hat, oder eine leere Vorlage: Trage ein, was der Absender wirklich liefert.",
   "authority.sample.label": "Beispielaufruf (JSON)",
   "authority.sample.invalid": "Das ist kein gültiges JSON.",
   "authority.sample.schema":
     "Das Beispiel passt nicht zur erwarteten Eingabe des Workflows: {detail}",
-  "authority.sample.prepare": "Probelauf mit diesem Aufruf starten",
+  "authority.sample.prepare": "Probe-Run mit diesem Aufruf starten",
   "authority.refusal.report_delivery_unprepared":
-    "Dieser Schritt verschickt einen Bericht per E-Mail, und noch niemand hat ihm dabei zugesehen. Ein Probelauf — der alles zurückhält, was er senden würde — zeigt, wer ihn bekäme, und genau das wird freigegeben.",
+    "Dieser Schritt verschickt einen Bericht per E-Mail, und noch niemand hat ihm dabei zugesehen. Ein Probe-Run — der alles zurückhält, was er senden würde — zeigt, wer ihn bekäme, und genau das wird freigegeben.",
   "authority.refusal.report_delivery_unobserved":
-    "Ein Probelauf hat diesen Schritt erreicht, aber keinen Empfänger festgehalten — es gibt also noch nichts freizugeben. Öffne diesen Lauf und sieh dir den Schritt an: die Adresse wurde vermutlich nie ermittelt.",
+    "Ein Probe-Run hat diesen Schritt erreicht, aber keinen Empfänger festgehalten — es gibt also noch nichts freizugeben. Öffne diesen Run und sieh dir den Schritt an: die Adresse wurde vermutlich nie ermittelt.",
   "authority.refusal.report_delivery_unreachable":
-    "Ein Probelauf ist nie bis zu diesem Schritt gekommen, also hat niemand gesehen, wer die E-Mail bekäme. Ein weiterer Probelauf hilft nicht, wenn der Schritt erst erreicht wird, nachdem etwas gesendet wurde — genau das hält ein Probelauf zurück. Nenne den Empfänger stattdessen am Schritt selbst; was tatsächlich gesendet wird, wird weiterhin jedes Mal dagegen geprüft.",
+    "Ein Probe-Run ist nie bis zu diesem Schritt gekommen, also hat niemand gesehen, wer die E-Mail bekäme. Ein weiterer Probe-Run hilft nicht, wenn der Schritt erst erreicht wird, nachdem etwas gesendet wurde — genau das hält ein Probe-Run zurück. Nenne den Empfänger stattdessen am Schritt selbst; was tatsächlich gesendet wird, wird weiterhin jedes Mal dagegen geprüft.",
   "authority.refusal.target_unresolved":
-    "Das Ziel lässt sich nicht ermitteln: Der Konnektor hat keine Basisadresse und der Pfad ist keine vollständige Adresse.",
+    "Das Ziel lässt sich nicht ermitteln: Der Connector hat keine Basisadresse und der Pfad ist keine vollständige Adresse.",
   "authority.refusal.path_unsupported":
     "Die Adresse ist so zusammengesetzt, dass eine Grenze sie nicht Abschnitt für Abschnitt beschreiben kann.",
   "authority.refusal.partial_segment_placeholder":
@@ -803,7 +775,7 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
   "authority.refusal.variable_in_base_prefix":
     "Ein Platzhalter steht im festen Teil der Adresse. Damit könnte sich das Ziel selbst verschieben.",
   "authority.refusal.enum_value_unroutable":
-    "Einer der erlaubten Werte führt nirgendwohin, das dieser Konnektor erreichen kann.",
+    "Einer der erlaubten Werte führt nirgendwohin, das dieser Connector erreichen kann.",
   "authority.refusal.boundary_invalid":
     "Die Grenze an diesem Schritt ist so, wie sie dasteht, nicht lesbar.",
   "authority.refusal.variables_mismatch":
@@ -814,7 +786,7 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
   "authority.refusal.scope_invalid":
     "Der Ordner an diesem Schritt ist so, wie er dasteht, nicht lesbar.",
   "authority.refusal.unsupported_method":
-    "Dieser Speichervorgang lässt sich für wiederkehrende Läufe noch nicht prüfen.",
+    "Dieser Speichervorgang lässt sich für wiederkehrende Runs noch nicht prüfen.",
   "authority.refusal.delete_with_body":
     "Eine Entfernung, die zugleich Inhalt sendet, lässt sich nicht als Entfernung prüfen.",
   "authority.refusal.runtime_value_outside_key":
@@ -826,10 +798,10 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
   "authority.refusal.content_type_invalid":
     "Der angegebene Inhaltstyp ist so, wie er dasteht, nicht lesbar.",
   "authority.refusal.base_unresolved":
-    "Die Speicheradresse lässt sich aus diesem Konnektor nicht ermitteln.",
+    "Die Speicheradresse lässt sich aus diesem Connector nicht ermitteln.",
   "authority.grantSaved": "Freigabe gespeichert. Der Entscheidungsstatus wurde aktualisiert.",
-  "authority.headline.runs.one": "bis zu {max} Lauf",
-  "authority.headline.runs.other": "bis zu {max} Läufe",
+  "authority.headline.runs.one": "bis zu {max} Run",
+  "authority.headline.runs.other": "bis zu {max} Runs",
   "authority.headline.until": "gültig bis {until}",
   "permission.labelAll": "{resource} · {action} (alle Personen)",
   "permission.actionAll": "{action} (alle Personen)",
@@ -841,7 +813,7 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
   "permission.resource.connections": "Kontoverbindungen",
   "permission.resource.schedules": "Zeitpläne",
   "permission.resource.tasks": "Aufgaben",
-  "permission.resource.taskRuns": "Läufe von Aufgaben",
+  "permission.resource.taskRuns": "Runs von Aufgaben",
   "permission.action.grant": "Dauererlaubnis geben",
   "permission.resource.subscriptions": "Abonnements",
   "permission.action.commit": "Festschreiben",
@@ -854,6 +826,6 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
   "permission.action.restore": "Wiederherstellen",
   "permission.action.resume": "Fortsetzen",
   "authority.refusal.report_delivery_contradicted":
-    "Ein Probelauf hat diesen Schritt erreicht, und die E-Mail, die er verschickt hätte, passt nicht zu dem, was am Schritt angegeben ist: Die Nachricht liegt außerhalb des Berichtsformats oder geht an eine andere Adresse. So angegeben würde jeder Lauf beim Senden abgewiesen. Passe den Schritt oder seine Angabe an, damit beides übereinstimmt.",
+    "Ein Probe-Run hat diesen Schritt erreicht, und die E-Mail, die er verschickt hätte, passt nicht zu dem, was am Schritt angegeben ist: Die Nachricht liegt außerhalb des Berichtsformats oder geht an eine andere Adresse. So angegeben würde jeder Run beim Senden abgewiesen. Passe den Schritt oder seine Angabe an, damit beides übereinstimmt.",
   "authority.inactiveVersion": "Gilt für eine Version, die nicht läuft.",
 };

@@ -10,9 +10,9 @@ import {
   runCostFacts,
   runDurationMs,
   runName,
-  runOverlayFromUrl,
-  runOverlaySearch,
   runsFilterSearch,
+  runsSheetOpen,
+  runsSheetSearch,
   runsSummaryText,
   runsWindowSummaryText,
   runTraceEvidence,
@@ -86,7 +86,7 @@ describe("run authority evidence", () => {
     expect(
       runAuthorityFacts({ execution_authority_id: null, workflow_version_id: "exact-id" }, de),
     ).toEqual([
-      ["Für diesen Lauf gespeicherte Freigabe", "Keine Bindung an eine Freigabe gespeichert"],
+      ["Für diesen Run gespeicherte Freigabe", "Keine Bindung an eine Freigabe gespeichert"],
       ["Version", "exact-id"],
     ]);
   });
@@ -231,60 +231,35 @@ describe("what a run consumed", () => {
   });
 });
 
-describe("the run sheets an address opens", () => {
+describe("the all-runs sheet an address opens", () => {
   const ID = "018f4b4a-6d33-7b3a-9c2d-123456789abc";
 
-  test("reads one run and the list of all runs out of the query", () => {
-    expect(runOverlayFromUrl(`?run=${ID}`)).toEqual({ list: false, runId: ID });
-    expect(runOverlayFromUrl("?runs=all&runs_status=failed")).toEqual({ list: true, runId: null });
-    expect(runOverlayFromUrl(`?runs=all&run=${ID}`)).toEqual({ list: true, runId: ID });
-  });
-
-  test("an address without them opens nothing", () => {
-    expect(runOverlayFromUrl("")).toEqual({ list: false, runId: null });
-    expect(runOverlayFromUrl("?runs=some")).toEqual({ list: false, runId: null });
-    expect(runOverlayFromUrl("?run=a%20b").runId).toBeNull();
-  });
-
-  test("opening and closing keeps the page's own parameters", () => {
-    expect(runOverlaySearch("?review=x", { list: false, runId: ID })).toBe(`?review=x&run=${ID}`);
-    expect(runOverlaySearch(`?review=x&run=${ID}`, { list: false, runId: null })).toBe("?review=x");
-    expect(runOverlaySearch("?runs=all&runs_status=failed", { list: true, runId: ID })).toBe(
-      `?runs=all&runs_status=failed&run=${ID}`,
-    );
+  test("reads the list of all runs out of the query", () => {
+    expect(runsSheetOpen("?runs=all&runs_status=failed")).toBe(true);
+    expect(runsSheetOpen("")).toBe(false);
+    expect(runsSheetOpen("?runs=some")).toBe(false);
   });
 
   test("closing the list drops the narrowing it read", () => {
     expect(
-      runOverlaySearch("?runs=all&runs_status=failed&runs_workflow=w&runs_q=a&tab=x", {
-        list: false,
-        runId: null,
-      }),
+      runsSheetSearch("?runs=all&runs_status=failed&runs_workflow=w&runs_q=a&tab=x", false),
     ).toBe("?tab=x");
   });
 
   test("the catalog's q and status survive opening, filtering and closing the list", () => {
     const host = "?q=foo&status=active";
-    const opened = runOverlaySearch(host, { list: true, runId: null });
+    const opened = runsSheetSearch(host, true);
     expect(opened).toBe("?q=foo&status=active&runs=all");
     const filtered = runsFilterSearch(opened, { status: "failed", source: "api", q: "Bericht" });
-    const run = runOverlaySearch(filtered, { list: true, runId: ID });
-    expect(runOverlaySearch(run, { list: false, runId: null })).toBe(host);
-  });
-
-  test("opening one run over a page keeps that page's q and status", () => {
-    const host = "?q=foo&status=active";
-    const opened = runOverlaySearch(host, { list: false, runId: ID });
-    expect(opened).toBe(`${host}&run=${ID}`);
-    expect(runOverlaySearch(opened, { list: false, runId: null })).toBe(host);
+    expect(runsSheetSearch(filtered, false)).toBe(host);
   });
 
   test("a new chat's workflow and execution survive the list opening and closing over it", () => {
     const host = `?workflow_id=${ID}&execution_id=e1`;
-    const opened = runOverlaySearch(host, { list: true, runId: null });
+    const opened = runsSheetSearch(host, true);
     const filtered = runsFilterSearch(opened, { status: "failed", source: "all", q: "" });
     expect(new URLSearchParams(filtered).get("workflow_id")).toBe(ID);
-    expect(runOverlaySearch(filtered, { list: false, runId: null })).toBe(host);
+    expect(runsSheetSearch(filtered, false)).toBe(host);
   });
 });
 
@@ -355,10 +330,10 @@ describe("the summary line over all runs", () => {
   test("the failed count joins the total once it is read", () => {
     expect(
       runsSummaryText(240, 120, (key, count, values) => translatePlural("de", key, count, values)),
-    ).toBe("240 Läufe · 120 fehlgeschlagen");
+    ).toBe("240 Runs · 120 fehlgeschlagen");
     expect(
       runsSummaryText(1240, 0, (key, count, values) => translatePlural("de", key, count, values)),
-    ).toBe("1.240 Läufe · 0 fehlgeschlagen");
+    ).toBe("1.240 Runs · 0 fehlgeschlagen");
   });
 
   test("a seven-day summary uses the compact localized window wording", () => {
@@ -367,9 +342,9 @@ describe("the summary line over all runs", () => {
       count: number,
       values?: Record<string, string | number>,
     ) => translatePlural("de", key, count, values);
-    expect(runsWindowSummaryText(240, 120, de)).toBe("240 Läufe in 7 Tagen · 120 fehlgeschlagen");
-    expect(runsWindowSummaryText(1, 1, de)).toBe("1 Lauf in 7 Tagen · 1 fehlgeschlagen");
-    expect(runsWindowSummaryText(240, null, de)).toBe("240 Läufe in 7 Tagen");
+    expect(runsWindowSummaryText(240, 120, de)).toBe("240 Runs in 7 Tagen · 120 fehlgeschlagen");
+    expect(runsWindowSummaryText(1, 1, de)).toBe("1 Run in 7 Tagen · 1 fehlgeschlagen");
+    expect(runsWindowSummaryText(240, null, de)).toBe("240 Runs in 7 Tagen");
   });
 });
 
@@ -394,11 +369,11 @@ describe("the workflow header names the latest run with its real outcome", () =>
 
   test("a failed latest run never reads as successful", () => {
     expect(lastRunLine({ status: "failed", started_at: at, created_at: at }, de, "de", now)).toBe(
-      "Letzter Lauf vor 2 Std. fehlgeschlagen",
+      "Letzter Run vor 2 Std. fehlgeschlagen",
     );
     expect(
       lastRunLine({ status: "succeeded", started_at: at, created_at: at }, de, "de", now),
-    ).toBe("Letzter Lauf vor 2 Std. erfolgreich");
+    ).toBe("Letzter Run vor 2 Std. erfolgreich");
     expect(
       lastRunLine(
         { status: "succeeded", held_effects: true, started_at: at, created_at: at },
@@ -406,9 +381,9 @@ describe("the workflow header names the latest run with its real outcome", () =>
         "de",
         now,
       ),
-    ).toBe("Letzter Lauf vor 2 Std. gehalten, nichts geschrieben");
+    ).toBe("Letzter Run vor 2 Std. gehalten, nichts geschrieben");
     expect(lastRunLine({ status: "unknown", started_at: at, created_at: at }, de, "de", now)).toBe(
-      "Letzter Lauf vor 2 Std.",
+      "Letzter Run vor 2 Std.",
     );
     expect(lastRunLine(null, de, "de", now)).toBe("Noch nicht gelaufen");
   });

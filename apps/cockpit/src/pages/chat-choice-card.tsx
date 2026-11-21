@@ -1,6 +1,7 @@
+import { ErrorNotice } from "@ui/components/proto/ErrorNotice";
 import { Check } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Button, ChatCard, ErrorNotice, Spinner } from "@/components/cockpit/patterns";
+import { Button, ChatCard, Spinner } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
 import { cn } from "@/lib/utils";
@@ -89,7 +90,12 @@ export function ChatChoiceCard({
       </div>
       {expired && <p className="text-sm text-muted-foreground">{t("chat.decision.expired")}</p>}
       {error && (
-        <ErrorNotice title={t("chat.decision.failed")} body={t("chat.decision.failedBody")} />
+        <ErrorNotice
+          kind="unknown"
+          technical={false}
+          title={t("chat.decision.failed")}
+          body={t("chat.decision.failedBody")}
+        />
       )}
     </ChatCard>
   );

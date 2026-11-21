@@ -207,22 +207,17 @@ describe("mcp tools/call", () => {
         .where(eq(executions.workflow_id, wf.id));
       expect(rows[0]?.c).toBeGreaterThanOrEqual(1);
 
-      const refusals = await suite.http.db
-        .select()
+      const trail = await suite.http.db
+        .select({ action: auditLog.action, result: auditLog.result, metadata: auditLog.metadata })
         .from(auditLog)
-        .where(
-          and(
-            eq(auditLog.action, "execution.boundary_refused"),
-            eq(auditLog.resource_id, body.execution_id),
-          ),
-        );
-      expect(refusals).toHaveLength(1);
-      expect(refusals[0]?.result).toBe("denied");
-      expect(refusals[0]?.reason).toBe("execution_authority_unavailable");
-      const metadata = refusals[0]?.metadata as Record<string, unknown>;
-      expect(metadata.stage).toBe("admission");
-      expect(metadata.downgraded_to_preparation).toBe(true);
-      expect(metadata.request_source).toBe("mcp");
+        .where(eq(auditLog.resource_id, body.execution_id));
+      expect(trail.map((row) => row.action)).not.toContain("execution.boundary_refused");
+      const held = trail.filter((row) => row.action === "execution.write_held");
+      expect(held).toHaveLength(1);
+      expect(held[0]).toMatchObject({
+        result: "success",
+        metadata: { workflow_id: wf.id, held_steps: [{ step_key: "send", method: "POST" }] },
+      });
     } finally {
       await writeMock.close();
     }

@@ -54,6 +54,8 @@ const executionDetail = (
   created_at: "2026-01-01T00:00:00Z",
   trace_id: null,
   outcome: outcome("held"),
+  result_markdown: null,
+  result_markdown_truncated: false,
   ...overrides,
 });
 

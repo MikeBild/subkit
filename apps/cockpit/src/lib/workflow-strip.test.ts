@@ -142,11 +142,12 @@ describe("workflow status strip (D15, reviewed)", () => {
     expect(workflowStrip(input({ automation: pending, noSteps: true }))).toEqual({
       kind: "empty",
       tone: "info",
-      action: null,
+      action: { kind: "addStep" },
       lower: [],
     });
     expect(workflowStrip(input({ noSteps: true, disabled: true })).kind).toBe("disabled");
     expect(CATALOGS.de[STRIP_STATE_KEYS.empty]).toBe("Noch keine Schritte");
+    expect(CATALOGS.de[stripActionKey({ kind: "addStep" })]).toBe("Schritt anlegen");
   });
 
   test("an unread approval list is a failure with a retry, never a calm state", () => {

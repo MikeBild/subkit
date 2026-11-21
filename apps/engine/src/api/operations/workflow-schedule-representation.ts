@@ -97,7 +97,10 @@ export const ScheduleCreateBody = z
     workflow_id: z.string().uuid(),
     cron: z.string().min(1),
     timezone: z.string().optional(),
-    execution_mode: z.enum(["dev", "prod"]).optional(),
+    execution_mode: z.enum(["dev", "prod"]).optional().openapi({
+      description:
+        "Environment the schedule runs in. Omitted on a new schedule: the creator's setup default, otherwise dev. Omitted on an existing schedule: its environment stays. A prod schedule still needs a prod approval.",
+    }),
     paused: z.boolean().optional(),
     input: ScheduleInputSchema.optional(),
   })

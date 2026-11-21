@@ -1,8 +1,29 @@
 import { attentionHref, chatNewHref, connectorHref, workflowAutomationHref } from "@/app/links";
 import type { TranslationKey } from "@/lib/i18n";
 
+export type RemedyKind =
+  | "review_repair"
+  | "grant"
+  | "sign_in"
+  | "reconnect"
+  | "check_auth"
+  | "retry"
+  | "chat"
+  | "admin";
+
+export const REMEDY_LABEL = {
+  review_repair: "remedy.reviewRepair",
+  grant: "remedy.grant",
+  sign_in: "remedy.reauth",
+  reconnect: "remedy.reconnect",
+  check_auth: "remedy.checkAuth",
+  retry: "remedy.retry",
+  chat: "remedy.chat",
+  admin: "remedy.admin",
+} as const satisfies Record<RemedyKind, TranslationKey>;
+
 export interface Remedy {
-  kind: "review_repair" | "grant" | "reauth" | "check_auth" | "chat";
+  kind: RemedyKind;
   labelKey: TranslationKey;
   href: string;
 }
@@ -26,7 +47,7 @@ export function remedyFor(input: RemedyInput): Remedy | null {
   if (input.patch) {
     return {
       kind: "review_repair",
-      labelKey: "remedy.reviewRepair",
+      labelKey: REMEDY_LABEL.review_repair,
       href: input.workflowId
         ? attentionHref({ review: `workflow:${input.workflowId}` })
         : attentionHref(),
@@ -35,7 +56,7 @@ export function remedyFor(input: RemedyInput): Remedy | null {
   if (input.held && input.workflowId) {
     return {
       kind: "grant",
-      labelKey: "remedy.grant",
+      labelKey: REMEDY_LABEL.grant,
       href: workflowAutomationHref(input.workflowId),
     };
   }
@@ -44,15 +65,19 @@ export function remedyFor(input: RemedyInput): Remedy | null {
       input.authState.state === "expired" || input.authState.state === "credentials_missing";
     const card = input.authState.section === "credentials";
     return {
-      kind: expired ? "reauth" : "check_auth",
-      labelKey: expired ? (card ? "remedy.reconnect" : "remedy.reauth") : "remedy.checkAuth",
+      kind: expired ? "reconnect" : "check_auth",
+      labelKey: expired
+        ? card
+          ? REMEDY_LABEL.reconnect
+          : "remedy.reauth"
+        : REMEDY_LABEL.check_auth,
       href: `${connectorHref(input.authState.connectorId)}${card ? "#connector-credentials" : ""}`,
     };
   }
   if (input.canChat) {
     return {
       kind: "chat",
-      labelKey: "remedy.chat",
+      labelKey: REMEDY_LABEL.chat,
       href: chatNewHref({
         prompt: input.prompt ?? null,
         workflowId: input.workflowId ?? null,

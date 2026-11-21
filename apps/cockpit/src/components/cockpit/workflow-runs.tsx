@@ -14,6 +14,7 @@ import {
   type TimelineGroup,
 } from "@/components/cockpit/patterns";
 import { useOpenRunSheet } from "@/components/cockpit/run-sheet";
+import { DurationBars, durationBars } from "@/features/operations";
 import { causeClassLabel } from "@/lib/cause-class";
 import { LOCALE_TAGS, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
@@ -233,6 +234,7 @@ export function WorkflowRuns({
           testId="workflow-runs-tile-failed"
         />
       </div>
+      <DurationBars data={durationBars(rows)} />
       <div className="flex flex-col gap-4" data-testid="workflow-recent-runs">
         <FilterBar
           selects={[

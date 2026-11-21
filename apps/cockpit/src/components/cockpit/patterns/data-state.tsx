@@ -1,9 +1,10 @@
+import { ErrorNotice, ErrorState } from "@ui/components/proto/ErrorNotice";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
-import { ErrorNotice } from "./error-notice";
+import { useErrorNotice, usePageFailure } from "./use-error-detail";
 
 export type DataStateKind = "loading" | "empty" | "error";
 
@@ -17,8 +18,10 @@ export function DataState({
   error,
   testId,
   className,
+  scope = "section",
 }: {
   state: DataStateKind;
+  scope?: "section" | "page";
   line?: string;
   action?: ReactNode;
   onRetry?: () => void;
@@ -27,6 +30,18 @@ export function DataState({
   className?: string;
 }) {
   const { t } = useI18n();
+  const notice = useErrorNotice({ error });
+  const page = usePageFailure(
+    state === "error" && scope === "page" && onRetry
+      ? {
+          onRetry,
+          error,
+          testId: `${testId ?? "data-state"}-error`,
+          retryTestId: `${testId ?? "data-state"}-retry`,
+        }
+      : null,
+  );
+  if (page) return <ErrorState {...page} heading="h2" />;
   if (state === "loading")
     return (
       <div
@@ -59,14 +74,13 @@ export function DataState({
   if (state === "error")
     return (
       <ErrorNotice
+        {...notice}
         title={line ?? t("error.loadFailed")}
         titleSlot="data-state-line"
-        error={error}
         testId={testId ?? "data-state"}
         className={className}
-      >
-        {shown}
-      </ErrorNotice>
+        actions={shown}
+      />
     );
   return (
     <div

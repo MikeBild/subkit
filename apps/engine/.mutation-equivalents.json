@@ -43,7 +43,7 @@
     },
     {
       "file": "apps/cockpit/src/pages/core/runs-filter.ts",
-      "source_sha256": "461b5c7deb8a3af71ecd14f2c627a01db652d296acd550dbbdb765522e1fdea0",
+      "source_sha256": "1d4a0ee504036911b6a15496d465a24c708cc222eb3889f176d40d95ff690326",
       "location": {
         "end": {
           "column": 7,
@@ -63,7 +63,7 @@
     },
     {
       "file": "apps/cockpit/src/pages/core/runs-filter.ts",
-      "source_sha256": "461b5c7deb8a3af71ecd14f2c627a01db652d296acd550dbbdb765522e1fdea0",
+      "source_sha256": "1d4a0ee504036911b6a15496d465a24c708cc222eb3889f176d40d95ff690326",
       "location": {
         "end": {
           "column": 7,
@@ -83,7 +83,7 @@
     },
     {
       "file": "apps/cockpit/src/pages/core/runs-filter.ts",
-      "source_sha256": "461b5c7deb8a3af71ecd14f2c627a01db652d296acd550dbbdb765522e1fdea0",
+      "source_sha256": "1d4a0ee504036911b6a15496d465a24c708cc222eb3889f176d40d95ff690326",
       "location": {
         "end": {
           "column": 7,
@@ -103,7 +103,7 @@
     },
     {
       "file": "apps/cockpit/src/pages/core/runs-filter.ts",
-      "source_sha256": "461b5c7deb8a3af71ecd14f2c627a01db652d296acd550dbbdb765522e1fdea0",
+      "source_sha256": "1d4a0ee504036911b6a15496d465a24c708cc222eb3889f176d40d95ff690326",
       "location": {
         "end": {
           "column": 7,
@@ -122,27 +122,7 @@
       "independent_review": "Independently reviewed by jsonata_pure_leaf; root traced all five sites and verified that genuine regex anchor mutations are killed by expanded-year and trailing-NUL counterexamples. Missing/default, explicit filters and 200-character query limits are tested. Ignored equivalents are not counted as killed."
     },
     {
-      "file": "apps/cockpit/src/pages/core/runs-filter.ts",
-      "source_sha256": "461b5c7deb8a3af71ecd14f2c627a01db652d296acd550dbbdb765522e1fdea0",
-      "location": {
-        "end": {
-          "column": 7,
-          "line": 130
-        },
-        "start": {
-          "column": 5,
-          "line": 130
-        }
-      },
-      "mutatorName": "StringLiteral",
-      "replacement": "\"Stryker was here!\"",
-      "original": "\"\"",
-      "statusReason": "EQ-RUNS-ABSENT: absent invalid filter sentinel",
-      "reason": "EQ-RUNS-ABSENT: This exact empty fallback is evaluated only for an absent URL parameter. The replacement Stryker was here! is rejected by the same timestamp/UUID/identifier grammar or status/source allowlist as the empty value. Both produce the same null/all public output; present parameter values bypass the fallback. This excludes only the exact replacement at this source-bound location, not other strings or validators.",
-      "independent_review": "Independently reviewed by jsonata_pure_leaf; root traced all five sites and verified that genuine regex anchor mutations are killed by expanded-year and trailing-NUL counterexamples. Missing/default, explicit filters and 200-character query limits are tested. Ignored equivalents are not counted as killed."
-    },
-    {
-      "file": "apps/cockpit/src/pages/core/audit-filter.ts",
+      "file": "apps/cockpit/src/lib/core/audit-filter.ts",
       "source_sha256": "cfbb23cbcb7d6d2011795cc9f18b49e192aba798c944a983e1f5589e8a82ac04",
       "location": {
         "end": {
@@ -162,7 +142,7 @@
       "independent_review": "Independently reviewed by effect_manifest_contracts and root. Public missing-parameter defaults, explicit invalid/valid filters, expanded-year and trailing-NUL timestamp counterexamples cover the surrounding validators. Each directive applies only to its own fallback literal. Exact source/range/replacement/statusReason matching is enforced; ignored equivalents are never counted as killed."
     },
     {
-      "file": "apps/cockpit/src/pages/core/audit-filter.ts",
+      "file": "apps/cockpit/src/lib/core/audit-filter.ts",
       "source_sha256": "cfbb23cbcb7d6d2011795cc9f18b49e192aba798c944a983e1f5589e8a82ac04",
       "location": {
         "end": {
@@ -182,7 +162,7 @@
       "independent_review": "Independently reviewed by effect_manifest_contracts and root. Public missing-parameter defaults, explicit invalid/valid filters, expanded-year and trailing-NUL timestamp counterexamples cover the surrounding validators. Each directive applies only to its own fallback literal. Exact source/range/replacement/statusReason matching is enforced; ignored equivalents are never counted as killed."
     },
     {
-      "file": "apps/cockpit/src/pages/core/audit-filter.ts",
+      "file": "apps/cockpit/src/lib/core/audit-filter.ts",
       "source_sha256": "cfbb23cbcb7d6d2011795cc9f18b49e192aba798c944a983e1f5589e8a82ac04",
       "location": {
         "end": {
@@ -202,7 +182,7 @@
       "independent_review": "Independently reviewed by effect_manifest_contracts and root. Public missing-parameter defaults, explicit invalid/valid filters, expanded-year and trailing-NUL timestamp counterexamples cover the surrounding validators. Each directive applies only to its own fallback literal. Exact source/range/replacement/statusReason matching is enforced; ignored equivalents are never counted as killed."
     },
     {
-      "file": "apps/cockpit/src/pages/core/audit-filter.ts",
+      "file": "apps/cockpit/src/lib/core/audit-filter.ts",
       "source_sha256": "cfbb23cbcb7d6d2011795cc9f18b49e192aba798c944a983e1f5589e8a82ac04",
       "location": {
         "end": {
@@ -222,7 +202,7 @@
       "independent_review": "Independently reviewed by effect_manifest_contracts and root. Public missing-parameter defaults, explicit invalid/valid filters, expanded-year and trailing-NUL timestamp counterexamples cover the surrounding validators. Each directive applies only to its own fallback literal. Exact source/range/replacement/statusReason matching is enforced; ignored equivalents are never counted as killed."
     },
     {
-      "file": "apps/cockpit/src/pages/core/audit-filter.ts",
+      "file": "apps/cockpit/src/lib/core/audit-filter.ts",
       "source_sha256": "cfbb23cbcb7d6d2011795cc9f18b49e192aba798c944a983e1f5589e8a82ac04",
       "location": {
         "end": {

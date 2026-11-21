@@ -84,3 +84,16 @@ export type AutoPauseRemedy = "renew_approval" | "resume";
 export function autoPauseRemedy(pause: { failure_class: string }): AutoPauseRemedy {
   return APPROVAL_FAILURES.has(pause.failure_class) ? "renew_approval" : "resume";
 }
+
+export function autoPauseFacts(
+  schedule: { id: string; cron: string },
+  pause: { failure_class: string; since: string },
+  when: (iso: string) => string,
+): [TranslationKey, string][] {
+  return [
+    ["scheduleAutoPause.fact.schedule", schedule.id],
+    ["scheduleAutoPause.fact.cron", schedule.cron],
+    ["scheduleAutoPause.fact.cause", pause.failure_class],
+    ["scheduleAutoPause.fact.since", when(pause.since)],
+  ];
+}

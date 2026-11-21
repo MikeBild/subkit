@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { translate } from "@/lib/i18n";
 import {
+  autoPauseFacts,
   autoPauseRemedy,
   groupOccurrencesByDay,
   occurrenceCovers,
@@ -77,5 +78,19 @@ describe("schedule occurrences", () => {
       "renew_approval",
     );
     expect(autoPauseRemedy({ failure_class: "timeout" })).toBe("resume");
+  });
+
+  test("the pause card carries its technical facts for copying and reporting", () => {
+    const facts = autoPauseFacts(
+      { id: "sch-1", cron: "30 6 * * 1-5" },
+      { failure_class: "timeout", since: "2026-11-20T14:00:00Z" },
+      (iso) => `at ${iso}`,
+    );
+    expect(facts.map(([key, value]) => [translate("de", key), value])).toEqual([
+      ["Zeitplan-Kennung", "sch-1"],
+      ["Cron-Ausdruck", "30 6 * * 1-5"],
+      ["Fehlerklasse", "timeout"],
+      ["Pausiert seit", "at 2026-11-20T14:00:00Z"],
+    ]);
   });
 });

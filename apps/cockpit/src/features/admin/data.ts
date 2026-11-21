@@ -8,8 +8,8 @@ import { isAppUserEmail } from "@/lib/app-user";
 import type { TranslationKey } from "@/lib/i18n";
 import type { useI18n } from "@/lib/i18n-context";
 import { useInfiniteList } from "@/lib/use-infinite-list";
-import { personRefusal } from "@/pages/admin-model";
-import { personEmailText } from "@/pages/apps-model";
+import { personRefusal } from "./model/admin-model";
+import { personEmailText } from "./model/apps-model";
 
 export type Envelope<T> = { items: T[] };
 

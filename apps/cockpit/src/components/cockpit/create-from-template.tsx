@@ -29,8 +29,12 @@ import { type ServiceIdentity, templateIdentity } from "@/lib/service-icons";
 import { stepKindKey } from "@/lib/workflow-steps";
 import {
   addressedConnectors,
+  type BindingChoice,
+  bindingChoice,
+  bindingConnectorId,
   type ConnectorTemplate,
-  choiceOf,
+  choiceValue,
+  findSolution,
   joinNames,
   missingConnectors,
   NEW_CONNECTOR,
@@ -103,8 +107,12 @@ async function refreshLookups(client: QueryClient): Promise<void> {
   await client.invalidateQueries({ queryKey: ["connectors"] });
 }
 
+function useSolutionPack(active: boolean) {
+  return useQuery({ queryKey: SOLUTIONS_KEY, enabled: active, queryFn: fetchSolutions });
+}
+
 export function useSolutionTemplates(active: boolean) {
-  const pack = useQuery({ queryKey: SOLUTIONS_KEY, enabled: active, queryFn: fetchSolutions });
+  const pack = useSolutionPack(active);
   return {
     entries: pack.data?.recipes ?? [],
     pending: pack.isPending,
@@ -113,17 +121,13 @@ export function useSolutionTemplates(active: boolean) {
   };
 }
 
-type BindingChoice = { connectorId: string | null; address: string | null };
-
 function useBindingService(): (
   binding: SolutionConnector,
   choice?: BindingChoice,
 ) => ServiceIdentity {
   const records = useConnectorRecords();
   return (binding, choice) => {
-    const id = choice
-      ? choice.connectorId
-      : (binding.connector_id ?? binding.candidates[0]?.id ?? null);
+    const id = bindingConnectorId(binding, choice);
     const record = id ? records.find((item) => item.id === id) : undefined;
     return record
       ? connectorService(record)
@@ -213,18 +217,11 @@ export function useSolutionFlow(
   const [addresses, setAddresses] = useState<Record<string, string>>({});
   const [choices, setChoices] = useState<Record<string, string>>({});
   const created = useRef<Record<string, string>>({});
-  const pack = useQuery({ queryKey: SOLUTIONS_KEY, enabled: active, queryFn: fetchSolutions });
+  const pack = useSolutionPack(active);
   const catalog = useQuery({ queryKey: TEMPLATES_KEY, enabled: active, queryFn: fetchTemplates });
   const serviceOf = useBindingService();
-  const bindingChoice = (connector: SolutionConnector): BindingChoice => {
-    const choice = choiceOf(connector, choices);
-    if (choice.kind === "existing") return { connectorId: choice.id, address: null };
-    const template = catalog.data?.items.find((item) => item.slug === connector.template);
-    return {
-      connectorId: null,
-      address: template?.base_url ?? addresses[connector.placeholder] ?? null,
-    };
-  };
+  const choiceFor = (connector: SolutionConnector): BindingChoice =>
+    bindingChoice(connector, choices, catalog.data?.items ?? [], addresses);
   const addressed = (entry: SolutionEntry) =>
     addressedConnectors(entry, catalog.data?.items ?? [], choices);
   const clear = () => {
@@ -235,7 +232,7 @@ export function useSolutionFlow(
   };
   const entries = pack.data?.recipes ?? [];
   const tag = LOCALE_TAGS[locale];
-  const find = (slug: string) => entries.find((entry) => entry.recipe_slug === slug) ?? null;
+  const find = (slug: string) => findSolution(entries, slug);
   const create = useMutation({
     mutationFn: async (slug: string) => {
       const entry = find(slug);
@@ -347,7 +344,7 @@ export function useSolutionFlow(
                           className="flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm"
                         >
                           <ServiceIcon
-                            service={serviceOf(connector, bindingChoice(connector))}
+                            service={serviceOf(connector, choiceFor(connector))}
                             className="size-[18px]"
                           />
                           <span className="min-w-0 flex-1 truncate">
@@ -381,10 +378,7 @@ export function useSolutionFlow(
                   key={`pick-${connector.placeholder}`}
                   id={`create-solution-pick-${connector.placeholder}`}
                   label={t("create.solution.pick", { name: connector.template_name })}
-                  value={(() => {
-                    const choice = choiceOf(connector, choices);
-                    return choice.kind === "existing" ? choice.id : NEW_CONNECTOR;
-                  })()}
+                  value={choiceValue(connector, choices)}
                   onChange={(value) =>
                     setChoices((current) => ({ ...current, [connector.placeholder]: value }))
                   }

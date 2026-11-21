@@ -1,7 +1,0 @@
-# Burndown allowlist for the audit-invariants `zod_at_boundaries` check.
-# Rule: createRoute handler in http/routes/** reading params, query or body without a matching request schema, or a ConversationTool without inputSchema.
-# Format: <path from repo root>  <budget in hits>. A listed file fails once it exceeds its budget;
-# an unlisted file fails at the first hit. Budgets only shrink: fix the file, then run
-# `bun run apps/engine/scripts/audit-invariants.ts --update-baseline` (lowers budgets, drops fixed files).
-# `--accept-new` also admits new offenders; use it only for a reviewed baseline reset.
-

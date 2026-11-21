@@ -38,10 +38,10 @@ describe("removing the expiry of an approval", () => {
     expect(untilRevokedOffer({ ...counted, remaining_runs: 0 }, NOW, true)).toBeNull();
     expect(untilRevokedOffer(counted, NOW, false)).toBeNull();
     expect(render(<UntilRevokedHint days={null} remainingRuns={46} />)).toContain(
-      "Noch 46 Läufe erlaubt, danach startet der Workflow nichts mehr, bis du neu freigibst.",
+      "Noch 46 Runs erlaubt, danach startet der Workflow nichts mehr, bis du neu freigibst.",
     );
     expect(render(<UntilRevokedHint days={null} remainingRuns={1} />)).toContain(
-      "Noch 1 Lauf erlaubt, danach startet der Workflow nichts mehr, bis du neu freigibst.",
+      "Noch 1 Run erlaubt, danach startet der Workflow nichts mehr, bis du neu freigibst.",
     );
     expect(render(<UntilRevokedHint days={null} remainingRuns={46} />, "en")).toContain(
       "46 runs left, after which the workflow starts nothing until you approve again.",
@@ -54,7 +54,7 @@ describe("removing the expiry of an approval", () => {
         subject: "Version v3 · Produktion",
       }),
     ).toBe(
-      "Die Freigabe für „Version v3 · Produktion“ gilt dann bis auf Widerruf, ohne Laufgrenze.",
+      "Die Freigabe für „Version v3 · Produktion“ gilt dann bis auf Widerruf, ohne Run-Grenze.",
     );
     expect(translate("en", "workflowApprovals.untilRevoked.limitLifted")).toBe(
       "The run limit is lifted as well.",
@@ -113,8 +113,8 @@ describe("removing the expiry of an approval", () => {
     };
     const dated = { ...authority, open_ended: false };
     expect(authorityValidity(openEnded, de)).toBe("Gilt bis auf Widerruf");
-    expect(authorityValidity(counted, de)).toBe("Gilt noch für 46 Läufe");
-    expect(authorityValidity({ ...counted, remaining_runs: 1 }, de)).toBe("Gilt noch für 1 Lauf");
+    expect(authorityValidity(counted, de)).toBe("Gilt noch für 46 Runs");
+    expect(authorityValidity({ ...counted, remaining_runs: 1 }, de)).toBe("Gilt noch für 1 Run");
     expect(authorityValidity(counted, en)).toBe("Applies for 46 more runs");
     expect(authorityValidity({ ...counted, remaining_runs: 1 }, en)).toBe("Applies for 1 more run");
     expect(authorityValidity(dated, de)).toBe(
@@ -137,7 +137,7 @@ describe("removing the expiry of an approval", () => {
         locale,
       );
     const counted = { ...authority, valid_until: null, max_runs: 50, remaining_runs: 46 };
-    expect(button(counted, "de")).toContain(">Laufgrenze aufheben<");
+    expect(button(counted, "de")).toContain(">Run-Grenze aufheben<");
     expect(button(counted, "en")).toContain(">Remove run limit<");
     expect(button(counted, "de")).not.toContain("Unbefristet machen");
     expect(button({ ...authority, max_runs: 50, remaining_runs: 46 }, "de")).toContain(
@@ -154,7 +154,7 @@ describe("removing the expiry of an approval", () => {
         t("workflowApprovals.untilRevoked.verbRuns"),
       );
     };
-    expect(title("de")).toBe("Laufgrenze dieser Freigabe aufheben?");
+    expect(title("de")).toBe("Run-Grenze dieser Freigabe aufheben?");
     expect(title("en")).toBe("Remove run limit from this approval?");
   });
 
@@ -186,7 +186,7 @@ describe("removing the expiry of an approval", () => {
       }),
     ).toBe("Was der Workflow darf, bleibt gleich: 2 Lesezugriffe, 1 Schreibzugriff, 1 Dienst.");
     expect(translate("de", "workflowApprovals.untilRevoked.runs")).toBe(
-      "Laufende und geplante Läufe werden nicht unterbrochen.",
+      "Laufende und geplante Runs werden nicht unterbrochen.",
     );
     expect(translate("de", "workflowApprovals.untilRevoked.revocable")).toBe(
       "Du kannst jederzeit widerrufen.",

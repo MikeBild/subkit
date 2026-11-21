@@ -2,12 +2,12 @@ import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { activeApprover } from "../identity/setup-preferences.ts";
 import { can, resourceAccess } from "../rbac/evaluator.ts";
+import { readOwnConversations } from "./attention-conversations.ts";
 import { withExecutionEnvironments } from "./attention-environment.ts";
 import {
   type AttentionReaderOverrides,
   buildTenantFacts,
   type Candidate,
-  readOwnConversations,
   type TenantFacts,
 } from "./attention-readers.ts";
 import { withWaitingOn } from "./attention-waiting-on.ts";
@@ -21,6 +21,7 @@ import {
   needsApproval,
   projectAttentionItems,
 } from "./core/attention.ts";
+import { withPairApprovals, withPendingPairRequests } from "./pair-approval-attention.ts";
 import { withPausedSchedules } from "./schedule-pause-attention.ts";
 import {
   readTaskAttention,
@@ -86,6 +87,7 @@ function tenantFacts(db: Db, tenantId: string, now: Date): Promise<TenantFacts> 
   const value = buildTenantFacts(db, tenantId, now, {})
     .then((facts) => withPausedSchedules(db, tenantId, facts))
     .then((facts) => withExecutionEnvironments(db, tenantId, facts))
+    .then((facts) => withPendingPairRequests(db, tenantId, facts, now))
     .then(
       (facts) => {
         if (Object.values(facts.sources).includes("failed")) cache.delete(tenantId);
@@ -148,6 +150,7 @@ export async function buildAttention(
       ? buildTenantFacts(db, tenantId, now, opts.readers)
           .then((built) => withPausedSchedules(db, tenantId, built))
           .then((built) => withExecutionEnvironments(db, tenantId, built))
+          .then((built) => withPendingPairRequests(db, tenantId, built, now))
       : tenantFacts(db, tenantId, now),
   ]);
   const permitted = (source: AttentionSource) => access.get(source)?.any === true;
@@ -200,9 +203,14 @@ export async function buildAttention(
       ? await activeApprover(db, { tenant_id: tenantId, user_id: principal.id }).catch(() => null)
       : null;
   const projected = projectAttentionItems(items, mayReadHookNames);
-  const projectedItems = await withWaitingOn(db, tenantId, approver, projected).catch(
-    () => projected,
-  );
+  const waited = await withWaitingOn(db, tenantId, approver, projected).catch(() => projected);
+  const projectedItems = await withPairApprovals(
+    db,
+    principal,
+    waited,
+    facts.pair_requests,
+    now,
+  ).catch(() => waited);
 
   return {
     schema_version: ATTENTION_SCHEMA_VERSION,

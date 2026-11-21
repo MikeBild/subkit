@@ -288,7 +288,7 @@ SubKit is in beta. [SubKit Cloud](https://subkit.mikebild.dev/en/documentation/s
 <table>
   <tr>
     <td width="50%" valign="top"><strong>SubKit Cloud</strong><br />SubKit runs for you, and you sign in from the browser. The cloud is a hosted beta by invitation.<br /><br /><a href="https://subkit.mikebild.dev/en/contact/">Ask for an invitation</a></td>
-    <td width="50%" valign="top"><strong>Your own engine</strong><br />SubKit is built to run on your own server: the engine with the Cockpit, a PostgreSQL database and an object store, started with Docker Compose. The self-hosting package follows with the public beta.<br /><br /><a href="https://subkit.mikebild.dev/en/documentation/run-the-engine/">How self-hosting works</a></td>
+    <td width="50%" valign="top"><strong>Your own engine</strong><br />SubKit is built to run on your own server: the engine with the Cockpit, a PostgreSQL database and an object store, started with Docker Compose. Open the engine's address in your browser and you land in the Cockpit. The self-hosting package follows with the public beta.<br /><br /><a href="https://subkit.mikebild.dev/en/documentation/run-the-engine/">How self-hosting works</a></td>
   </tr>
 </table>
 
@@ -314,6 +314,44 @@ The engine lives in `apps/engine`, the CLI in `apps/sk`, the Cockpit in `apps/co
 <p align="center">
   <a href="https://subkit.mikebild.dev/en/documentation/run-the-engine/">Run the engine</a> · <a href="https://subkit.mikebild.dev/en/documentation/first-run-setup/">First-run setup</a> · <a href="https://subkit.mikebild.dev/en/documentation/first-workflow/">Your first workflow</a> · <a href="https://subkit.mikebild.dev/en/documentation/mcp-clients/">Connect AI clients</a>
 </p>
+
+<br />
+
+## Features at a glance
+
+| Feature | Since |
+| --- | --- |
+| Workflows with fixed steps, versions and recorded runs | 1.0.0 |
+| `sk` CLI | 1.0.0 |
+| MCP server for AI clients | 1.0.0 |
+| Slack and Google Chat | 1.0.0 |
+| Knowledge sources and skills | 1.0.0 |
+| Schedules and inbound webhooks | 1.0.0 |
+| Roles, permissions and audit log | 1.0.0 |
+| Allow once for write tools in AI clients | 1.8.1 |
+| Coding-agent briefings | 1.11.0 |
+| MCP servers as connectors | 6.0.0 |
+| Cockpit in the browser | 6.1.1 |
+| Sign-in through your own OIDC provider | 6.22.44 |
+| Approvals bound to environment, validity and effects | 6.45.0 |
+| Usage and costs | 8.4.0 |
+| “Needs you” list | 8.10.0 |
+| Approvals until revoked | 8.16.0 |
+| Ready-made recipes and versioned knowledge sources | 9.5.0 |
+| Web Clipper | 9.9.0 |
+| Inbox with reviewed proposals | 9.10.0 |
+| Your own app: product sign-in and caller budgets | 9.14.0 |
+| SubKit Cloud workspaces | 10.1.4 |
+| Signed-JWT credentials and email replies | 10.1.4 |
+| Cockpit branding | 10.1.4 |
+| Cockpit as an installable app | 10.1.5 |
+| Documentation in the Cockpit, English and German | 10.4.0 |
+| Packages to move resources between engines | 10.18.13 |
+| Tasks | 11.0.0 |
+| SubKit Desktop, setup questions, quiet hours and chat rules | 11.2.0 |
+| Two-person approval (optional, teams with 2+ approvers) | 11.3.0 |
+| File drops from the desktop, notification pause and offline bug reports | 11.3.0 |
+| [All features](https://subkit.mikebild.dev/en/documentation/features/) | – |
 
 <br />
 

@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { openPeopleSection, readablePeopleSections } from "@/features/admin";
+import { attentionFromSearch } from "@/features/connectors";
+import { auditFilterFromUrl } from "@/lib/audit-model";
+import { usageWindowFromUrl } from "@/lib/operations-figures";
 import { STATS_WINDOWS } from "@/lib/stats-window";
-import { openPeopleSection, readablePeopleSections } from "@/pages/admin-model";
 import { openApiAccessSection, readableSections } from "@/pages/api-access-model";
-import { auditFilterFromUrl } from "@/pages/audit-model";
-import { connectorHealthFilterFromUrl } from "@/pages/connectors-model";
-import { usageWindowFromUrl } from "@/pages/operations-figures";
-import { filterFromUrl, runOverlayFromUrl } from "@/pages/runs-model";
+import { filterFromUrl, runsSheetOpen } from "@/pages/runs-model";
 import { settingsLeafFromUrl } from "@/pages/settings-model";
 import {
   API_ACCESS_SECTIONS,
@@ -35,6 +35,9 @@ import {
   WORKFLOW_AUTOMATION_ANCHOR,
   workflowAutomationHref,
   workflowHref,
+  workflowSectionAnchor,
+  workflowSectionFromHash,
+  workflowSectionHref,
   workflowsHref,
 } from "./links";
 
@@ -147,11 +150,10 @@ describe("runs", () => {
     );
   });
 
-  test("all runs and one run open as sheets over Übersicht", () => {
+  test("all runs open as a sheet over Übersicht, one run as its own page", () => {
     expect(runsHref()).toBe("/?runs=all");
-    expect(runHref(ID)).toBe(`/?run=${ID}`);
-    expect(runOverlayFromUrl(query(runsHref()))).toEqual({ list: true, runId: null });
-    expect(runOverlayFromUrl(query(runHref(ID)))).toEqual({ list: false, runId: ID });
+    expect(runHref(ID)).toBe(`/runs/${ID}`);
+    expect(runsSheetOpen(query(runsHref()))).toBe(true);
   });
 
   test("the list narrows with its own keys, never the page's q, status or source", () => {
@@ -241,9 +243,7 @@ describe("audit", () => {
 
 describe("connectors", () => {
   test("the health narrowing the tile sends is the one the list reads", () => {
-    expect(connectorHealthFilterFromUrl(query(connectorsHref({ health: "not_ok" })))).toBe(
-      "not_ok",
-    );
+    expect(attentionFromSearch(query(connectorsHref({ health: "not_ok" })))).toBe("not_ok");
     expect(connectorsHref()).toBe("/connectors");
   });
 });
@@ -343,25 +343,25 @@ describe("the remaining addresses", () => {
   });
 });
 
-describe("Personen & Rechte", () => {
-  test("every section survives the round trip; the people list is the bare address", () => {
+describe("People under Settings", () => {
+  test("every section survives the round trip; the people list is the bare People area", () => {
     for (const section of PEOPLE_SECTIONS) {
       const href = peopleHref(section);
-      expect(href.startsWith("/people")).toBe(true);
+      expect(href.startsWith("/settings?area=people")).toBe(true);
       const read = peopleSectionFromUrl(query(href));
       expect(read ?? "people").toBe(section);
     }
-    expect(peopleHref("roles")).toBe("/people?section=roles");
-    expect(peopleHref("people")).toBe("/people");
-    expect(peopleHref()).toBe("/people");
+    expect(peopleHref("roles")).toBe("/settings?area=people&section=roles");
+    expect(peopleHref("people")).toBe("/settings?area=people");
+    expect(peopleHref()).toBe("/settings?area=people");
   });
 
   test("the people list carries an app filter; other sections drop it", () => {
     const href = peopleHref("people", { app: "shop-app" });
-    expect(href).toBe("/people?app=shop-app");
+    expect(href).toBe("/settings?area=people&app=shop-app");
     expect(peopleAppFromUrl(query(href))).toBe("shop-app");
-    expect(peopleHref(null, { app: "shop-app" })).toBe("/people?app=shop-app");
-    expect(peopleHref("apps", { app: "shop-app" })).toBe("/people?section=apps");
+    expect(peopleHref(null, { app: "shop-app" })).toBe("/settings?area=people&app=shop-app");
+    expect(peopleHref("apps", { app: "shop-app" })).toBe("/settings?area=people&section=apps");
     expect(peopleAppFromUrl("?app=Shop%20App")).toBeNull();
     expect(peopleAppFromUrl("?app=-shop")).toBeNull();
     expect(peopleAppFromUrl("")).toBeNull();
@@ -392,5 +392,23 @@ describe("Personen & Rechte", () => {
     expect(identityOnly).toEqual(["people"]);
     expect(openPeopleSection("roles", identityOnly)).toBe("people");
     expect(openPeopleSection("roles", [])).toBeNull();
+  });
+});
+
+describe("workflow sections", () => {
+  const WF = "018f4b4a-6d33-7b3a-9c2d-123456789abc";
+
+  test("a section address is the workflow page with the section's anchor", () => {
+    expect(workflowSectionHref(WF, "approvals")).toBe(
+      `/workflows/${WF}#workflow-section-approvals`,
+    );
+    expect(workflowSectionAnchor("history")).toBe("workflow-section-history");
+  });
+
+  test("the anchor names the section to open, anything else opens none", () => {
+    expect(workflowSectionFromHash("#workflow-section-build")).toBe("build");
+    expect(workflowSectionFromHash("workflow-section-use")).toBe("use");
+    expect(workflowSectionFromHash("#workflow-automation")).toBeNull();
+    expect(workflowSectionFromHash("")).toBeNull();
   });
 });

@@ -5,7 +5,6 @@ import { apiCall } from "@/api/call";
 import { ApiError } from "@/api/client";
 import { cockpitApiHref } from "@/app/installation-context";
 import { useConnectorNames } from "@/components/cockpit/connector-names";
-import { GrantLimitField } from "@/components/cockpit/grant-limit-field";
 import {
   Button,
   Chip,
@@ -24,7 +23,14 @@ import {
   taskScheduleLine,
 } from "@/components/cockpit/task-grant-model";
 import { TaskGrantBlocked, TaskGrantRows } from "@/components/cockpit/task-grant-rows";
-import { DEFAULT_GRANT_LIMIT, type GrantLimit } from "@/lib/core/authority-decision";
+import {
+  type ApprovalLimits,
+  ApprovalLimitsFields,
+  approvalBounds,
+  approvalLimits,
+  limitsProblem,
+  needsPair,
+} from "@/features/operations";
 import { LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { taskKeys } from "@/lib/task-keys";
@@ -107,7 +113,7 @@ function OutcomeList({ rows }: { rows: readonly GrantOutcomeRow[] }) {
           <Chip
             className={
               row.standing === "asks" || row.standing === "unavailable"
-                ? "text-amber-700 dark:text-amber-400"
+                ? "text-warning-ink"
                 : undefined
             }
           >
@@ -131,7 +137,7 @@ export function GrantTaskAuthority({
   const { t, locale, dateTime } = useI18n();
   const client = useQueryClient();
   const connectorNames = useConnectorNames(open);
-  const [limit, setLimit] = useState<GrantLimit>(DEFAULT_GRANT_LIMIT);
+  const [limits, setLimits] = useState<ApprovalLimits>(() => approvalLimits(null, new Date()));
   const [changed, setChanged] = useState<ChangedCode | null>(null);
   const [outcome, setOutcome] = useState<{
     rows: GrantOutcomeRow[];
@@ -152,11 +158,14 @@ export function GrantTaskAuthority({
   });
   const name = task.data?.name ?? null;
   const grant = useMutation({
-    mutationFn: (reviewed: TaskGrantPreview) =>
-      apiCall("post", "/v1/tasks/{id}/grants", {
+    mutationFn: (reviewed: TaskGrantPreview) => {
+      const bounds = approvalBounds(limits, new Date());
+      if (!bounds.ok) return Promise.reject(new Error(bounds.problem));
+      return apiCall("post", "/v1/tasks/{id}/grants", {
         path: { id: taskId },
-        body: taskGrantInput(reviewed, limit, Date.now()),
-      }),
+        body: taskGrantInput(reviewed, bounds),
+      });
+    },
     onSuccess: (result, reviewed) => {
       void client.invalidateQueries({ queryKey: taskKeys.grantsOf(taskId) });
       for (const queryKey of TASK_GRANT_INVALIDATES) void client.invalidateQueries({ queryKey });
@@ -182,7 +191,7 @@ export function GrantTaskAuthority({
   });
   useEffect(() => {
     if (!open) return;
-    setLimit(DEFAULT_GRANT_LIMIT);
+    setLimits(approvalLimits(null, new Date()));
     setChanged(null);
     setOutcome(null);
     grant.reset();
@@ -220,6 +229,8 @@ export function GrantTaskAuthority({
   const sessionRequired =
     taskGrantSessionRequired(grant.error) || taskGrantSessionRequired(preview.error);
   const busy = grant.isPending || preview.isFetching;
+  const pairRequired = grant.error instanceof ApiError && needsPair(grant.error);
+  const problem = limitsProblem(limits, new Date());
   return (
     <FormDialog
       open={open}
@@ -234,13 +245,15 @@ export function GrantTaskAuthority({
           : undefined
       }
       error={
-        sessionRequired
-          ? t("taskGrant.sessionRequired")
-          : sessionExpired
-            ? t("taskGrant.sessionExpired")
-            : grant.error
-              ? dialogFailure(t("taskGrant.failed"), grant.error)
-              : null
+        pairRequired
+          ? t("pair.required")
+          : sessionRequired
+            ? t("taskGrant.sessionRequired")
+            : sessionExpired
+              ? t("taskGrant.sessionExpired")
+              : grant.error
+                ? dialogFailure(t("taskGrant.failed"), grant.error)
+                : null
       }
       actions={sessionExpired ? <TaskGrantSignIn testId="task-grant-sign-in" /> : undefined}
       {...(reviewed?.grantable && !sessionExpired
@@ -248,7 +261,7 @@ export function GrantTaskAuthority({
             submit: {
               label: t("taskGrant.allow"),
               pending: grant.isPending,
-              disabled: busy,
+              disabled: busy || problem !== null,
               testId: "task-grant-confirm",
             },
             onSubmit: () => grant.mutate(reviewed),
@@ -281,10 +294,11 @@ export function GrantTaskAuthority({
           ) : null}
           <TaskGrantRows rows={rows} mode="review" testId="task-grant-rows" />
           <Field>
-            <GrantLimitField
-              limit={limit}
+            <ApprovalLimitsFields
+              value={limits}
               disabled={busy}
-              onChange={setLimit}
+              problem={problem}
+              onChange={setLimits}
               testId="task-grant-limit"
             />
           </Field>

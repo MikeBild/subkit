@@ -23,20 +23,20 @@ import { queryView } from "@/components/failure-state";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
 import {
-  permissionGroups,
-  permissionLabel,
-  roleChange,
-  roleChangeNotes,
-  roleName,
-} from "@/pages/admin-model";
-import { personEmailText } from "@/pages/apps-model";
-import {
   builtinRoleDescription,
   type Envelope,
   type RoleItem,
   type UserItem,
   useRoleDetail,
 } from "./data";
+import {
+  permissionGroups,
+  permissionLabel,
+  roleChange,
+  roleChangeNotes,
+  roleName,
+} from "./model/admin-model";
+import { personEmailText } from "./model/apps-model";
 
 export function SectionList<T>({
   name,
@@ -89,6 +89,7 @@ export function AdminTable<T extends RowData>({
   onOpen,
   rowLabel,
   rowActions,
+  rowActionsFit,
   toolbar,
   grouping,
   groupingTabs,
@@ -102,6 +103,7 @@ export function AdminTable<T extends RowData>({
   onOpen(row: T): void;
   rowLabel(row: T): string;
   rowActions?: (row: T, index: number) => ReactNode;
+  rowActionsFit?: "menu";
   toolbar?: ReactNode;
   grouping?: { getKey(row: T): string };
   groupingTabs?: ReactNode;
@@ -119,6 +121,7 @@ export function AdminTable<T extends RowData>({
       onOpen={onOpen}
       rowLabel={rowLabel}
       rowActions={rowActions}
+      rowActionsFit={rowActionsFit}
       toolbar={toolbar}
       grouping={grouping}
       groupingTabs={groupingTabs}

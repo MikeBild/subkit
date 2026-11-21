@@ -12,7 +12,7 @@ import {
 import { CHANNELS } from "./channel.ts";
 
 const page = readFileSync(join(import.meta.dir, "..", "connect", "index.html"), "utf8");
-const styles = readFileSync(join(import.meta.dir, "..", "connect", "connect.css"), "utf8");
+const styles = readFileSync(join(import.meta.dir, "..", "connect", "styles.css"), "utf8");
 
 describe("app url", () => {
   test("the page scheme is not a link scheme of any channel", () => {

@@ -3,14 +3,15 @@ import { mkdtempSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { AuditAction } from "../../../audit/types.ts";
 import { verifyLoginState } from "../../../auth/index.ts";
 import {
   type MockOidcHandle,
   startMockOidc,
 } from "../../../auth/providers/tests/fixtures/mock-oidc.ts";
 import { _resetConfigForTests, loadConfig } from "../../../config/loader.ts";
-import { userIdentities, users } from "../../../db/schema/index.ts";
+import { auditLog, userIdentities, users } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { flushDiscoveryCache } from "../../../identity/index.ts";
 import { builtinRoleId } from "../../../rbac/roles.ts";
@@ -218,6 +219,39 @@ describe("POST /v1/identity/sessions — configured provider boundary", () => {
       .where(eq(userIdentities.user_id, json.principal_id));
     expect(identity?.provider_id).toBe("test-identity");
     expect(identity?.subject).toBe("user-1");
+  });
+
+  test("a sign-in from the sk CLI records sk_cli.login, any other client does not", async () => {
+    async function signIn(subject: string, userAgent: string): Promise<string> {
+      const identityToken = await mock.signIdToken({
+        sub: subject,
+        email: `${subject}@example.test`,
+        email_verified: true,
+      });
+      const res = await app.request(ENDPOINT, {
+        method: "POST",
+        headers: { "content-type": "application/json", "user-agent": userAgent },
+        body: JSON.stringify({ provider_id: "test-identity", identity_token: identityToken }),
+      });
+      expect(res.status).toBe(200);
+      return ((await res.json()) as { principal_id: string }).principal_id;
+    }
+    async function cliLogins(principalId: string) {
+      return testDb.db
+        .select()
+        .from(auditLog)
+        .where(
+          and(eq(auditLog.action, AuditAction.SK_CLI_LOGIN), eq(auditLog.actor_id, principalId)),
+        );
+    }
+
+    const cliUser = await signIn("cli-user", "sk-cli/0.0.1");
+    const cliRows = await cliLogins(cliUser);
+    expect(cliRows).toHaveLength(1);
+    expect(cliRows[0]?.metadata).toMatchObject({ user_agent: "sk-cli/0.0.1" });
+
+    const browserUser = await signIn("browser-user", "subkit/0.0.1");
+    expect(await cliLogins(browserUser)).toHaveLength(0);
   });
 
   test("unknown provider id is rejected with 403", async () => {

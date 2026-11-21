@@ -1,21 +1,20 @@
 import { useRouter } from "@tanstack/react-router";
-import { runOverlaySearch } from "@/pages/runs-model";
-
-function here(next: { list: boolean; runId: string | null }): string {
-  const search = runOverlaySearch(window.location.search, next);
-  return `${window.location.pathname}${search}${window.location.hash}`;
-}
+import { absolute, runHref } from "@/app/links";
+import { runsSheetSearch } from "@/pages/runs-model";
 
 export function useOpenRunSheet(): {
   run(runId: string): void;
   all(): void;
-  show(next: { list: boolean; runId: string | null }): void;
+  close(): void;
 } {
   const router = useRouter();
-  const show = (next: { list: boolean; runId: string | null }) => router.history.push(here(next));
+  const sheet = (open: boolean) =>
+    router.history.push(
+      `${window.location.pathname}${runsSheetSearch(window.location.search, open)}${window.location.hash}`,
+    );
   return {
-    run: (runId) => show({ list: false, runId }),
-    all: () => show({ list: true, runId: null }),
-    show,
+    run: (runId) => router.history.push(absolute(runHref(runId))),
+    all: () => sheet(true),
+    close: () => sheet(false),
   };
 }

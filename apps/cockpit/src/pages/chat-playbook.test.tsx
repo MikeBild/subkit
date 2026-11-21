@@ -23,7 +23,7 @@ const evidence: PlaybookEvidence = {
   resource_id: "run",
   observed_at: "2030-01-01T11:00:00Z",
   freshness: "fresh",
-  href: "/cockpit/?run=run",
+  href: "/cockpit/runs/run",
 };
 const action = { label: "Review the destination", owner: null, elicitation_id: "question" };
 const plan: ConversationPlaybook = {
@@ -112,13 +112,13 @@ describe("playbook presentation boundaries", () => {
     const html = render({ ...plan, steps: [{ ...plan.steps[0]!, evidence: [hidden] }] });
     expect(html).toContain("Beleg nicht verfügbar");
     expect(html).not.toContain("Private source title");
-    expect(html).not.toContain("?run=run");
+    expect(html).not.toContain("/runs/run");
     expect(html).not.toContain("Geprüft:");
     expect(playbookEvidenceHref(hidden)).toBeNull();
   });
 
   test("only navigates to local cockpit evidence paths", () => {
-    expect(playbookEvidenceHref(evidence)).toBe("/cockpit/?run=run");
+    expect(playbookEvidenceHref(evidence)).toBe("/cockpit/runs/run");
     for (const href of [
       "javascript:alert(1)",
       "https://outside.example/source",

@@ -37,9 +37,9 @@ export {
   type TableEmptyState,
   type TableErrorState,
 } from "./data-table";
+export { DateField } from "./date-field";
 export { DetailPage, DetailPageLoading, type DetailStrip } from "./detail-page";
 export { REVIEW_DIALOG_FRAME } from "./dialog-frame";
-export { ErrorNotice, errorTechnicalRows, errorTechnicalText } from "./error-notice";
 export { type Fact, FactList } from "./fact-list";
 export { FileDrop } from "./file-drop";
 export {
@@ -50,7 +50,12 @@ export {
   previewKind,
 } from "./file-kinds";
 export { CSV_PREVIEW_ROWS, FilePreview } from "./file-preview";
-export { FilterBar, type FilterSelect, MAX_FILTER_SELECTS } from "./filter-bar";
+export {
+  activeFilterCount,
+  FilterBar,
+  type FilterSelect,
+  MAX_FILTER_SELECTS,
+} from "./filter-bar";
 export { FilterSheet } from "./filter-sheet";
 export {
   type DialogError,
@@ -59,7 +64,7 @@ export {
   dialogWidthClass,
   FormDialog,
 } from "./form-dialog";
-export { type GroupingOption, GroupingTabs } from "./grouping-tabs";
+export { GroupingChoice, type GroupingOption } from "./grouping-choice";
 export { IconTile, type IconTileSize } from "./icon-tile";
 export { KpiTile } from "./kpi-tile";
 export {
@@ -68,9 +73,9 @@ export {
   readListReturn,
   rememberListReturn,
 } from "./list-return";
-export { MarkdownDocument } from "./markdown-document";
 export { MarkdownEditor, type MarkdownEditorMode } from "./markdown-editor";
-export { OnboardingFrame, StartChecklist, type StartStep } from "./onboarding";
+export { type Measure, Measured, measureClass } from "./measure";
+export { OnboardingFrame } from "./onboarding";
 export {
   Page,
   type PageKind,
@@ -81,6 +86,7 @@ export {
 } from "./page";
 export { BackLink, PageHeader } from "./page-header";
 export { type PageTab, PageTabs, searchWithTab, tabFromSearch } from "./page-tabs";
+export { PageTitle } from "./page-title";
 export {
   CollapsibleCard,
   READING_MEASURE,
@@ -90,7 +96,6 @@ export {
   ReadingSkeleton,
 } from "./reading";
 export { RecordSheet, type SheetSize, sheetWidthClass, useSheetDocked } from "./record-sheet";
-export { activeRouteTab, type RouteTab, RouteTabs } from "./route-tabs";
 export { SaveBar } from "./save-bar";
 export { SchemaForm } from "./schema-form";
 export { SearchInput } from "./search-input";
@@ -110,6 +115,7 @@ export {
   SideSection,
   SideStatus,
   useInSidePanel,
+  useReportPageTitle,
   useSideDetailsAvailable,
 } from "./side-details";
 export { Loadable, RowsSkeleton, Skeleton, TileSkeleton } from "./skeleton";
@@ -128,6 +134,13 @@ export type { TableSelection } from "./table-selection";
 export { TemplateCard, type TemplateCardProps, TemplateGrid } from "./template-card";
 export { TextBlock } from "./text-block";
 export { Timeline, type TimelineGroup, type TimelineItem, type TimelineTone } from "./timeline";
-export { TimelineGroupingTabs } from "./timeline-grouping-tabs";
 export { TimezoneSelect } from "./timezone-select";
+export {
+  type ErrorDetail,
+  type ErrorNoticeFacts,
+  type PageFailureProps,
+  useErrorDetail,
+  useErrorNotice,
+  usePageFailure,
+} from "./use-error-detail";
 export { WizardProgress } from "./wizard-progress";

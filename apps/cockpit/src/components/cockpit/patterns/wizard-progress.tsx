@@ -27,7 +27,7 @@ export function WizardProgress({
               index === current
                 ? "font-medium text-foreground"
                 : index < current
-                  ? "text-emerald-700 dark:text-emerald-400"
+                  ? "text-success-ink"
                   : "text-muted-foreground",
             )}
             aria-current={index === current ? "step" : undefined}

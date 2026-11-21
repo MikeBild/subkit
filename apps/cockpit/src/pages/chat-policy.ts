@@ -1,7 +1,12 @@
 import type { components } from "@cli-core/engine-api/openapi";
-import type { TranslationKey } from "@/lib/i18n";
+import type { PluralKey, TranslationKey } from "@/lib/i18n";
 
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
+type TranslatePlural = (
+  key: PluralKey,
+  count: number,
+  values?: Record<string, string | number>,
+) => string;
 
 export type ToolCallPolicy = NonNullable<components["schemas"]["ConversationToolCall"]["policy"]>;
 export type BoundAction = components["schemas"]["BoundAction"];
@@ -120,18 +125,70 @@ export function effectLabel(effect: string, t: Translate): string | null {
     : null;
 }
 
+const REQUEST_TARGET =
+  /^(?:(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+)?(?:https?:\/\/[^/\s]+)?(\/\S*)$/i;
+const VERSION_SEGMENT = /^v\d+(?:\.\d+)*$/i;
+const ID_SEGMENT = /^(?:\d+|[0-9a-f]{8}-[0-9a-f-]{27}|[0-9a-f]{16,}|\{[^}]*\}|:\w+)$/i;
+const ACTION_SEGMENTS = new Set([
+  "send",
+  "create",
+  "update",
+  "delete",
+  "remove",
+  "run",
+  "execute",
+  "search",
+  "list",
+  "get",
+  "post",
+  "batch",
+  "import",
+  "export",
+]);
+
+export function rawRequest(target: string | null): string | null {
+  return target && REQUEST_TARGET.test(target.trim()) ? target.trim() : null;
+}
+
+export function targetLabel(target: string | null): string | null {
+  if (!target?.trim()) return null;
+  const path = REQUEST_TARGET.exec(target.trim())?.[1];
+  if (path === undefined) return target;
+  const segments = path
+    .split(/[?#]/)[0]
+    ?.split("/")
+    .map((segment) => decodeSegment(segment))
+    .filter((segment) => segment && !VERSION_SEGMENT.test(segment) && !ID_SEGMENT.test(segment));
+  if (!segments?.length) return null;
+  const resource =
+    segments.length > 1 && ACTION_SEGMENTS.has((segments.at(-1) ?? "").toLowerCase())
+      ? segments.at(-2)
+      : segments.at(-1);
+  if (!resource) return null;
+  const words = resource.replace(/[-_.]+/g, " ").trim();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : null;
+}
+
+function decodeSegment(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
 export function actionLine(action: ActionScope, t: Translate): string {
   const verb = verbLabel(action.verb, t);
   const recipients = action.recipients.join(", ");
-  if (action.target && recipients)
-    return t("chat.policy.actionTargetTo", { verb, target: action.target, recipients });
+  const target = targetLabel(action.target);
+  if (target && recipients) return t("chat.policy.actionTargetTo", { verb, target, recipients });
   if (recipients) return t("chat.policy.actionTo", { verb, recipients });
-  if (action.target) return t("chat.policy.action", { verb, target: action.target });
+  if (target) return t("chat.policy.action", { verb, target });
   return verb;
 }
 
 export interface PolicyFact {
-  id: "verb" | "target" | "account" | "recipients" | "content";
+  id: "verb" | "target" | "account" | "content";
   label: string;
   value: string;
 }
@@ -143,29 +200,26 @@ export function actionFacts(
     content?: string | null;
   },
   t: Translate,
+  tn: TranslatePlural,
 ): PolicyFact[] {
   const effect = action.effect_class ? effectLabel(action.effect_class, t) : null;
   const verb = verbLabel(action.verb, t);
+  const recipients = action.recipients.join(", ");
+  const target =
+    action.recipients.length > 1
+      ? tn("chat.policy.recipientCount", action.recipients.length, { recipients })
+      : recipients || targetLabel(action.target);
   return [
     {
       id: "verb" as const,
       label: t("chat.policy.field.verb"),
       value: effect ? `${verb} · ${effect}` : verb,
     },
-    ...(action.target
-      ? [{ id: "target" as const, label: t("chat.policy.field.target"), value: action.target }]
+    ...(target
+      ? [{ id: "target" as const, label: t("chat.policy.field.target"), value: target }]
       : []),
     ...(action.account
       ? [{ id: "account" as const, label: t("chat.policy.field.account"), value: action.account }]
-      : []),
-    ...(action.recipients.length > 0
-      ? [
-          {
-            id: "recipients" as const,
-            label: t("chat.policy.field.recipients"),
-            value: action.recipients.join(", "),
-          },
-        ]
       : []),
     ...(action.content_summary && !fullContent(action)
       ? [
@@ -236,9 +290,8 @@ export function ranLine(ran: RanWithoutAsking, t: Translate): string {
 
 export function ruleName(scope: ActionScope, t: Translate): string {
   const verb = verbLabel(scope.verb, t);
-  return scope.target
-    ? t("rules.name", { verb, target: scope.target })
-    : t("rules.nameBare", { verb });
+  const target = targetLabel(scope.target);
+  return target ? t("rules.name", { verb, target }) : t("rules.nameBare", { verb });
 }
 
 export function scopeSentence(scope: ActionScope, t: Translate): string {

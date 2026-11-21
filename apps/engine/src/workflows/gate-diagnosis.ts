@@ -43,6 +43,7 @@ import {
 import { inspectHeldPreviewEvidence } from "./report-delivery-proposal.ts";
 import type { RequestBoundaryRefusal } from "./request-boundary.ts";
 import type { StorageBoundaryRefusal } from "./storage-boundary.ts";
+import { hasNoSteps } from "./stored-definition.ts";
 import {
   type MissingBindingEvidence,
   MissingBindingEvidenceSchema,
@@ -186,6 +187,7 @@ export async function diagnoseWorkflow(
           .limit(1)
       )[0];
   if (!version) return options.version_id ? null : { ...base, diagnoses: [] };
+  if (hasNoSteps(version.dag)) return { ...base, diagnoses: [] };
   if (options.facts) assertHistoryVersion(options.facts, input);
   if (options.facts && !options.preview)
     throw new Error("Batched diagnosis requires its scoped preview");

@@ -41,7 +41,7 @@ describe("scheduler trigger bind/unbind helpers", () => {
     expect(first.status).toBe("created");
     expect(first.row.cron).toBe("0 9 * * *");
     expect(first.row.timezone).toBe("Europe/Berlin");
-    expect(first.row.execution_mode).toBe("prod");
+    expect(first.row.execution_mode).toBe("dev");
 
     const second = await bindFromWorkflow(ctx.engine.testDb.db, {
       tenant_id: ctx.engine.tenantId,

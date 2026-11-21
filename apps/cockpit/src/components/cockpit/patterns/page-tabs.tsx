@@ -1,9 +1,7 @@
 import { useRouter, useRouterState } from "@tanstack/react-router";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { cn } from "@/lib/utils";
 import { Loadable, RowsSkeleton, Skeleton } from "./skeleton";
-import { TAB_INDICATOR, useEdgeFade, useTabIndicator } from "./tab-motion";
 
 export interface PageTab {
   value: string;
@@ -69,11 +67,6 @@ export function PageTabs({
   const [visited, setVisited] = useState<ReadonlySet<string>>(() => new Set([active]));
   if (!visited.has(active)) setVisited(new Set([...visited, active]));
 
-  const list = useRef<HTMLDivElement>(null);
-  const scroller = useRef<HTMLDivElement>(null);
-  const indicator = useTabIndicator(list, '[data-state="active"]', active);
-  const edgeFade = useEdgeFade(scroller);
-
   const choose = (value: string) => {
     const search = searchWithTab(currentSearch(), param, value, fallback);
     router.history.replace(`${window.location.pathname}${search}${window.location.hash}`);
@@ -87,39 +80,20 @@ export function PageTabs({
       data-testid={testId}
       className="pt-2"
     >
-      <div ref={scroller} style={edgeFade} className="scrollbar-none overflow-x-auto">
-        <TabsList
-          ref={list}
-          variant="line"
-          className="relative h-9 w-full min-w-max justify-start gap-6 rounded-none border-b p-0 pointer-coarse:h-11"
-          data-testid={`${testId}-list`}
-        >
-          {tabs.map((tab) => (
-            <TabsTrigger
-              key={tab.value}
-              value={tab.value}
-              className={cn(
-                "h-9 flex-none px-0 text-sm font-medium pointer-coarse:h-11",
-                indicator && "after:hidden",
-              )}
-              data-testid={tab.testId ?? `${testId}-tab-${tab.value}`}
-            >
-              {tab.label}
-              {tab.count !== undefined ? (
-                <span className="text-xs tabular-nums text-muted-foreground">{tab.count}</span>
-              ) : null}
-            </TabsTrigger>
-          ))}
-          {indicator ? (
-            <span
-              aria-hidden="true"
-              data-slot="page-tabs-indicator"
-              className={cn(TAB_INDICATOR, "-bottom-px")}
-              style={indicator}
-            />
-          ) : null}
-        </TabsList>
-      </div>
+      <TabsList data-testid={`${testId}-list`}>
+        {tabs.map((tab) => (
+          <TabsTrigger
+            key={tab.value}
+            value={tab.value}
+            data-testid={tab.testId ?? `${testId}-tab-${tab.value}`}
+          >
+            {tab.label}
+            {tab.count !== undefined ? (
+              <span className="text-xs tabular-nums text-muted-foreground">{tab.count}</span>
+            ) : null}
+          </TabsTrigger>
+        ))}
+      </TabsList>
       {tabs.map((tab) =>
         visited.has(tab.value) ? (
           <TabsContent

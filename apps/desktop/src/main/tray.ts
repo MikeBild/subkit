@@ -1,25 +1,19 @@
 import { join } from "node:path";
 import { app, Menu, type MenuItemConstructorOptions, nativeImage, Tray } from "electron";
-import { t } from "../shared/i18n.ts";
 import {
+  type TrayAction,
   type TrayModel,
   trayImage,
-  trayStatus,
+  trayMenu,
   trayTitle,
   trayTooltip,
 } from "../shared/tray-model.ts";
 
 export type { Connection, TrayModel } from "../shared/tray-model.ts";
 
-export interface TrayActions {
-  open(): void;
-  openAttention(): void;
-  togglePause(): void;
-  toggleLaunchAtLogin(): void;
-  reportProblem(): void;
-  checkUpdates(): void;
-  quit(): void;
-}
+export type TrayActions = Record<TrayAction, () => void> & {
+  dropFiles(paths: string[]): void;
+};
 
 export function trayIcon(assets: string) {
   const { file, template, size } = trayImage(process.platform);
@@ -30,36 +24,17 @@ export function trayIcon(assets: string) {
 }
 
 export function trayTemplate(model: TrayModel, actions: TrayActions): MenuItemConstructorOptions[] {
-  const { locale } = model;
-  const template: MenuItemConstructorOptions[] = [
-    { label: t(locale, "tray.open"), click: actions.open },
-    { label: trayStatus(model), click: actions.openAttention },
-    { type: "separator" },
-    {
-      label: t(locale, model.paused ? "tray.resume" : "tray.pause"),
-      click: actions.togglePause,
-    },
-    {
-      label: t(locale, "tray.launchAtLogin"),
-      type: "checkbox",
-      checked: model.launchAtLogin,
-      enabled: app.isPackaged,
-      click: actions.toggleLaunchAtLogin,
-    },
-  ];
-  if (model.update)
-    template.push({
-      label: model.update.label,
-      enabled: model.update.enabled,
-      click: actions.checkUpdates,
-    });
-  template.push(
-    { type: "separator" },
-    { label: t(locale, "menu.reportProblem"), click: actions.reportProblem },
-    { type: "separator" },
-    { label: t(locale, "tray.quit"), click: actions.quit },
-  );
-  return template;
+  return trayMenu(model).map((item): MenuItemConstructorOptions => {
+    if (item.kind === "separator") return { type: "separator" };
+    return {
+      label: item.label,
+      enabled: item.enabled,
+      ...(item.checked === undefined ? {} : { type: "checkbox" as const, checked: item.checked }),
+      click: actions[item.action],
+      ...(item.sublabel ? { sublabel: item.sublabel } : {}),
+      ...(item.accelerator ? { accelerator: item.accelerator, registerAccelerator: false } : {}),
+    };
+  });
 }
 
 export class TrayController {
@@ -71,6 +46,7 @@ export class TrayController {
   ) {
     this.tray = new Tray(trayIcon(assets));
     if (process.platform !== "darwin") this.tray.on("click", actions.open);
+    this.tray.on("drop-files", (_event, files) => actions.dropFiles(files));
   }
 
   render(model: TrayModel): void {

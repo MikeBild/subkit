@@ -23,7 +23,7 @@ import {
   FieldLabel,
   FilterBar,
   FormDialog,
-  GroupingTabs,
+  GroupingChoice,
   Input,
   Page,
   PageHeader,
@@ -388,7 +388,7 @@ function KeysSection({
           />
         }
         groupingTabs={
-          <GroupingTabs
+          <GroupingChoice
             label={t("common.groupBy")}
             value={groupBy}
             onChange={setGroupBy}
@@ -764,7 +764,7 @@ function ClientsSection({ query }: { query: UseQueryResult<{ items: ConnectedCli
       }
       groupingTabs={
         id === "connected-clients" ? (
-          <GroupingTabs
+          <GroupingChoice
             label={t("common.groupBy")}
             value={groupBy}
             onChange={setGroupBy}

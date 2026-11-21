@@ -1,23 +1,50 @@
 import { describe, expect, test } from "bun:test";
-import { ACCOUNT_TRIGGER, CHAT_COLUMN, triggerOwner } from "./shell-header";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { ACCOUNT_TRIGGER, CHAT_COLUMN, SHELL_BAR, sidebarToggleIcon } from "./shell-header";
 
-describe("triggerOwner", () => {
-  const wide = { mobile: false, chatHeader: false, pageFrames: 1 };
-
-  test("a page header on a wide screen draws the toggle beside its heading", () => {
-    expect(triggerOwner(wide)).toBe("page");
+describe("sidebarToggleIcon", () => {
+  test("a phone opens the navigation with the menu icon", () => {
+    expect(sidebarToggleIcon({ mobile: true, expanded: true })).toBe("menu");
   });
 
-  test("a phone keeps the bar: the navigation opens from it", () => {
-    expect(triggerOwner({ ...wide, mobile: true })).toBe("bar");
+  test("a wide screen shows collapse while open and expand while collapsed", () => {
+    expect(sidebarToggleIcon({ mobile: false, expanded: true })).toBe("collapse");
+    expect(sidebarToggleIcon({ mobile: false, expanded: false })).toBe("expand");
+  });
+});
+
+describe("ShellHeader", () => {
+  const shell = readFileSync(join(import.meta.dir, "shell.tsx"), "utf8");
+  const header = readFileSync(join(import.meta.dir, "shell-header.tsx"), "utf8");
+
+  test("every page gets the one bar: it sits above content and side panel, not per page", () => {
+    expect(shell.match(/<ShellHeader \/>/g)).toHaveLength(1);
+    expect(shell.indexOf("<ShellHeader />")).toBeLessThan(shell.indexOf("<SidePanel pathname"));
+    const pageHeader = readFileSync(
+      join(import.meta.dir, "../components/cockpit/patterns/page-header.tsx"),
+      "utf8",
+    );
+    expect(pageHeader).not.toContain("SidePanelToggle");
+    expect(pageHeader).not.toContain("FeedbackButton");
   });
 
-  test("the chat header lives in the bar", () => {
-    expect(triggerOwner({ ...wide, chatHeader: true })).toBe("bar");
+  test("the bar holds the toggles, the connection pill, the bell and the bug report, in that order", () => {
+    const order = [
+      "<NavigationToggle />",
+      "<LiveIndicator",
+      "<InstallationNotificationControl />",
+      "<FeedbackButton />",
+      "<SidePanelToggle",
+    ].map((part) => header.indexOf(part));
+    expect(order.every((index) => index > 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
 
-  test("a page without a header still gets a toggle, in the bar", () => {
-    expect(triggerOwner({ ...wide, pageFrames: 0 })).toBe("bar");
+  test("the sidebar header and the bar share one 56 px height and bottom line", () => {
+    expect(SHELL_BAR).toContain("h-14");
+    expect(SHELL_BAR).toContain("border-b");
+    expect(shell).toMatch(/<SidebarHeader[\s\S]*?className=\{cn\(SHELL_BAR/);
   });
 });
 

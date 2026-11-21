@@ -71,7 +71,6 @@ export async function admitWorkflowRun(
   );
   assertExecutionPrivacySupported(input.request_source, resolved.def.execution_privacy, principal);
   enforce(decideAdmission(input, { stage: "binding" }));
-  let downgraded_from: { code: string; message: string } | undefined;
   if (input.hold_writes !== true) {
     const {
       hold_writes: _hold,
@@ -93,7 +92,6 @@ export async function admitWorkflowRun(
         message: (error as Error).message,
       });
       if (fallback.kind !== "downgrade") throw error;
-      downgraded_from = fallback.downgraded_from;
     }
   }
   enforce(
@@ -135,7 +133,6 @@ export async function admitWorkflowRun(
           status: existing.status,
           replayed: true,
           hold_writes: true,
-          ...(downgraded_from ? { downgraded_from } : {}),
         };
       }
     }
@@ -170,7 +167,6 @@ export async function admitWorkflowRun(
       status: "queued" as const,
       replayed: false,
       hold_writes: true,
-      ...(downgraded_from ? { downgraded_from } : {}),
     };
   });
 }

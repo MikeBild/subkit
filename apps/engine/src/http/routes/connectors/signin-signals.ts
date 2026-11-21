@@ -6,12 +6,50 @@ import {
   ConnectorOauthCallbackFailedPayloadSchema,
   type ConnectorOauthCallbackFailedReasons,
   ConnectorOauthCallbackPayloadSchema,
+  ConnectorSignInFinishedPayloadSchema,
 } from "../../../pubsub/index.ts";
 
 export type SignInFailedReason = (typeof ConnectorOauthCallbackFailedReasons)[number];
 
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+export async function signalSignInFinished(
+  db: Db,
+  p: {
+    module: string;
+    tenant_id: string;
+    connector_id: string;
+    connector_slug: string | null;
+    reason: SignInFailedReason | null;
+  },
+  outcome: "succeeded" | "failed",
+): Promise<void> {
+  try {
+    const payload = ConnectorSignInFinishedPayloadSchema.parse({
+      connector_id: p.connector_id,
+      connector_slug: p.connector_slug,
+      outcome,
+      reason: outcome === "failed" ? p.reason : null,
+    });
+    await writeEvent(db, {
+      tenant_id: p.tenant_id,
+      channel: "connector.oauth",
+      type: "connector.oauth.signin_finished",
+      payload,
+    });
+  } catch (err) {
+    logger.warn({
+      module: p.module,
+      action: "callback.finished_event_publish_failed",
+      msg: "the sign-in ended but the signin_finished event could not be written; a waiting window will not hear about it",
+      tenant_id: p.tenant_id,
+      connector_id: p.connector_id,
+      outcome,
+      error: errorText(err),
+    });
+  }
 }
 
 export async function signalSignInSucceeded(
@@ -62,6 +100,7 @@ export async function signalSignInSucceeded(
       error: errorText(err),
     });
   }
+  await signalSignInFinished(db, { ...p, reason: null }, "succeeded");
 }
 
 export async function signalSignInFailed(
@@ -89,6 +128,7 @@ export async function signalSignInFailed(
       error: errorText(err),
     });
   }
+  await signalSignInFinished(db, p, "failed");
   if (!p.reason || !p.connector_slug) return;
   try {
     const payload = ConnectorOauthCallbackFailedPayloadSchema.parse({

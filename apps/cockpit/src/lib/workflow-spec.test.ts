@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { auditActionLabel } from "@/pages/audit-model";
+import { auditActionLabel } from "@/lib/audit-model";
 import { translate } from "./i18n";
 import {
   confirmedSpec,

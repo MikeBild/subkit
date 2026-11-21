@@ -1,12 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { ApiError } from "@/api/transport";
 import { CATALOGS } from "@/lib/i18n";
-import {
-  FAILURE_REMEDY_LABEL,
-  type FailureRemedyKind,
-  failureFacts,
-  failureRemedy,
-} from "./failure-remedy";
+import { errorFacts, failureFacts, failureRemedy } from "./failure-remedy";
+import { REMEDY_LABEL, type RemedyKind } from "./remedy";
 
 const remedy = (status: number | null, code: string | null, causeClass: string | null = null) =>
   failureRemedy({ status, code, causeClass });
@@ -104,10 +100,21 @@ describe("failure remedy", () => {
     expect(failureFacts(new Error("boom")).status).toBeNull();
   });
 
+  test("code, status and request ID are read once for remedies and error rows", () => {
+    const error = new ApiError(429, { code: "rate_limited", message: "x" }, "req-7");
+    expect(errorFacts(error)).toEqual({ status: 429, code: "rate_limited", traceId: "req-7" });
+    expect(errorFacts(new TypeError("Failed to fetch"))).toEqual({
+      status: null,
+      code: null,
+      traceId: null,
+    });
+    expect(remedy(null, null, "toString")).toBeNull();
+  });
+
   test("every remedy has a label in both languages", () => {
-    for (const kind of Object.keys(FAILURE_REMEDY_LABEL) as FailureRemedyKind[]) {
-      expect(CATALOGS.de[FAILURE_REMEDY_LABEL[kind]]).toBeTruthy();
-      expect(CATALOGS.en[FAILURE_REMEDY_LABEL[kind]]).toBeTruthy();
+    for (const kind of Object.keys(REMEDY_LABEL) as RemedyKind[]) {
+      expect(CATALOGS.de[REMEDY_LABEL[kind]]).toBeTruthy();
+      expect(CATALOGS.en[REMEDY_LABEL[kind]]).toBeTruthy();
     }
     expect(CATALOGS.de["remedy.retry"]).toBe("Erneut versuchen");
     expect(CATALOGS.de["remedy.admin"]).toBe("Administrator fragen");

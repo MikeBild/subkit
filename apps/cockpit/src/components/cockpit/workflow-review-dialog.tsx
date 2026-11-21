@@ -1,6 +1,5 @@
 import { Check, ChevronRight, Save, X } from "lucide-react";
 import { useId } from "react";
-import { GRANT_LIMIT_MEANINGS, GrantLimitField } from "@/components/cockpit/grant-limit-field";
 import { IconButton } from "@/components/cockpit/icon-button";
 import {
   Button,
@@ -17,8 +16,13 @@ import {
   SectionSubheading,
   Spinner,
 } from "@/components/cockpit/patterns";
-import type { GrantLimit } from "@/lib/core/authority-decision";
+import {
+  type ApprovalLimits,
+  ApprovalLimitsFields,
+  type LimitsProblem,
+} from "@/features/operations";
 import { useI18n } from "@/lib/i18n-context";
+import { type PairReview, pairRequestedLine } from "@/lib/workflow-review";
 import { formatWeeklyWorkflowReviewSchedule } from "@/lib/workflow-review-schedule";
 
 export type WorkflowReviewState =
@@ -54,7 +58,7 @@ export interface WorkflowReviewDisplay {
     cron?: string;
     timezone?: string;
   }>;
-  grant: { limit: GrantLimit } | null;
+  grant: { limits: ApprovalLimits; problem: LimitsProblem | null } | null;
   schedule: { cron: string; timezone: string } | null;
 }
 
@@ -76,7 +80,11 @@ export function WorkflowReviewDialog({
   onComplete,
   onRefresh,
   onCheckResult,
+  pair = null,
+  pairRequested = false,
 }: {
+  pair?: PairReview | null;
+  pairRequested?: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   review: WorkflowReviewDisplay | null;
@@ -88,7 +96,7 @@ export function WorkflowReviewDialog({
   policyBusy: boolean;
   policyAvailable?: boolean;
   onGrantChange: (checked: boolean) => void;
-  onLimitChange: (limit: GrantLimit) => void;
+  onLimitChange: (limits: ApprovalLimits) => void;
   onScheduleChange: (checked: boolean) => void;
   onRememberChange: (checked: boolean) => void;
   onComplete: (saveOnly: boolean) => void;
@@ -161,7 +169,9 @@ export function WorkflowReviewDialog({
           )}
           {state === "completed" && (
             <p className="rounded-lg border border-border bg-muted/40 p-3 text-sm">
-              {t(grantSelected ? "reviewWorkflow.completedGrant" : "reviewWorkflow.savedOnly")}
+              {pairRequested
+                ? pairRequestedLine(pair ?? { waitingOn: null }, t)
+                : t(grantSelected ? "reviewWorkflow.completedGrant" : "reviewWorkflow.savedOnly")}
             </p>
           )}
           {review && (
@@ -208,9 +218,11 @@ export function WorkflowReviewDialog({
                     onChange={(event) => onGrantChange(event.target.checked)}
                   />
                   <FieldContent>
-                    <FieldLabel htmlFor={`${id}-grant`}>{t("reviewWorkflow.grant")}</FieldLabel>
+                    <FieldLabel htmlFor={`${id}-grant`}>
+                      {t(pair ? "reviewWorkflow.grantPair" : "reviewWorkflow.grant")}
+                    </FieldLabel>
                     <FieldDescription className="text-xs">
-                      {t("reviewWorkflow.grantHint")}
+                      {t(pair ? "reviewWorkflow.grantPairHint" : "reviewWorkflow.grantHint")}
                     </FieldDescription>
                   </FieldContent>
                 </Field>
@@ -245,19 +257,13 @@ export function WorkflowReviewDialog({
                       ))}
                     </ul>
                     <Field className="border-t border-border pt-3">
-                      <GrantLimitField
-                        limit={review.grant.limit}
+                      <ApprovalLimitsFields
+                        value={review.grant.limits}
                         disabled={!editable}
-                        readOnly={state === "completed"}
+                        problem={review.grant.problem}
                         onChange={onLimitChange}
                         testId="workflow-review-limit"
                       />
-                      <FieldDescription
-                        className="text-xs"
-                        data-testid="workflow-review-limit-meaning"
-                      >
-                        {t(GRANT_LIMIT_MEANINGS[review.grant.limit])}
-                      </FieldDescription>
                     </Field>
                     <div className="border-t border-border pt-3">
                       <SectionSubheading>{t("reviewWorkflow.triggers")}</SectionSubheading>
@@ -291,7 +297,7 @@ export function WorkflowReviewDialog({
                     </div>
                   </div>
                 )}
-                {review.schedule && (
+                {review.schedule && !pair && (
                   <Field orientation="horizontal" className="gap-3">
                     <input
                       type="checkbox"
@@ -399,7 +405,9 @@ export function WorkflowReviewDialog({
                     : scheduleSelected
                       ? "reviewWorkflow.confirmSchedule"
                       : grantSelected
-                        ? "reviewWorkflow.confirmGrant"
+                        ? pair
+                          ? "reviewWorkflow.confirmPair"
+                          : "reviewWorkflow.confirmGrant"
                         : "reviewWorkflow.confirmSave",
                 )}
               </Button>

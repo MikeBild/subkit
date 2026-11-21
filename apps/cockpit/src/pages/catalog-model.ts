@@ -7,11 +7,9 @@ import type { ListParams } from "@/lib/use-infinite-list";
 
 export interface CatalogQueryState {
   q: string;
-  kind?: "all" | "oauth" | "mcp" | "key";
   status: WorkflowStatusFilter;
   category: string;
   connector: string;
-  health: "not_ok" | null;
   sort: string;
   order: "asc" | "desc";
   group?: string;
@@ -30,14 +28,12 @@ export const CATALOG_WORKFLOW_FILTER_STATUSES = [
 
 export type WorkflowStatusFilter = (typeof CATALOG_WORKFLOW_FILTER_STATUSES)[number] | "all";
 
-export function catalogListParams(resource: string, state: CatalogQueryState): ListParams {
+export function catalogListParams(state: CatalogQueryState): ListParams {
   const params: ListParams = { sort: state.sort, order: state.order };
   if (state.q) params.q = state.q;
-  if (resource === "connectors" && state.kind && state.kind !== "all") params.kind = state.kind;
   if (state.category !== "all") params.category = state.category;
-  if (resource === "workflows" && state.connector) params.connector = state.connector;
-  if (resource === "connectors" && state.health === "not_ok") params.health = "not_ok";
-  if (resource === "workflows" && state.status !== "all") params.operating_status = state.status;
+  if (state.connector) params.connector = state.connector;
+  if (state.status !== "all") params.operating_status = state.status;
   if (state.group === CATALOG_CATEGORY_GROUP) params.group_by = CATALOG_CATEGORY_GROUP;
   return params;
 }
@@ -86,10 +82,11 @@ const CATALOG_ALL_GROUPS = "all";
 
 export const CATALOG_CATEGORY_GROUP = "category";
 
-export const CATALOG_GROUPS = {
-  workflows: [CATALOG_CATEGORY_GROUP, "status", "trigger"],
-  connectors: [CATALOG_CATEGORY_GROUP, "kind", "health"],
-} as const satisfies Record<string, readonly string[]>;
+export const CATALOG_WORKFLOW_GROUPS: readonly string[] = [
+  CATALOG_CATEGORY_GROUP,
+  "status",
+  "trigger",
+];
 
 export function catalogGroupFromSearch(search: string, allowed: readonly string[]): string {
   const group = new URLSearchParams(search).get("group") ?? "";

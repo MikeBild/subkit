@@ -128,13 +128,13 @@ describe("cockpit workflow previews", () => {
       "This sign-in belongs to an app and may only run saved workflows, so a trial run of a draft or a single step is not possible. Save the workflow and run the saved version.",
     );
     expect(translate("de", "workflow.preview.refusal.savedRequired")).toBe(
-      "Diese Anmeldung gehört zu einer App und darf nur gespeicherte Workflows ausführen. Ein Probelauf eines Entwurfs oder eines einzelnen Schritts ist damit nicht möglich. Speichere den Workflow und führe die gespeicherte Version aus.",
+      "Diese Anmeldung gehört zu einer App und darf nur gespeicherte Workflows ausführen. Ein Probe-Run eines Entwurfs oder eines einzelnen Schritts ist damit nicht möglich. Speichere den Workflow und führe die gespeicherte Version aus.",
     );
     expect(translate("en", "workflow.preview.refusal.productCaller")).toBe(
       "This workflow belongs to an app. Only that app's users can run it, and only once it is saved, so a trial run from here is not possible. Save the workflow and start it from the app.",
     );
     expect(translate("de", "workflow.preview.refusal.productCaller")).toBe(
-      "Dieser Workflow gehört zu einer App. Nur Nutzer dieser App können ihn ausführen, und erst, wenn er gespeichert ist. Ein Probelauf von hier aus ist deshalb nicht möglich. Speichere den Workflow und starte ihn über die App.",
+      "Dieser Workflow gehört zu einer App. Nur Nutzer dieser App können ihn ausführen, und erst, wenn er gespeichert ist. Ein Probe-Run von hier aus ist deshalb nicht möglich. Speichere den Workflow und starte ihn über die App.",
     );
   });
 

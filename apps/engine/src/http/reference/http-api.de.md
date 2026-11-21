@@ -8,8 +8,8 @@ audience: public
 ## Die HTTP-API nutzen
 
 Dein Programm, Skript oder Backend soll einen freigegebenen Workflow starten und mit dem Ergebnis weiterarbeiten.
-Dieses Kapitel ist für Entwickler und führt dich vom ersten Schlüssel bis zum gelesenen Lauf.
-Danach weißt du, wie du Läufe startest, auf sie wartest und Fehler sauber behandelst.
+Dieses Kapitel ist für Entwickler und führt dich vom ersten Schlüssel bis zum gelesenen Run.
+Danach weißt du, wie du Runs startest, auf sie wartest und Fehler sauber behandelst.
 
 Alle Beispiele nutzen `curl`, du kannst sie also zuerst im Terminal ausprobieren.
 SubKit Cloud und eine selbst betriebene Engine verhalten sich dabei gleich.
@@ -107,11 +107,11 @@ Ohne `--scopes` bekommt der Schlüssel dieselben Scopes wie dein eigener Zugang.
    }
    ```
 
-2. Kopiere die `id`. Ein Lauf braucht die ID, einen Slug nimmt die Engine nicht an.
+2. Kopiere die `id`. Ein Run braucht die ID, einen Slug nimmt die Engine nicht an.
 
 `q=<text>` durchsucht Name, Slug, Beschreibung und Kategorie.
 
-### Einen Lauf starten
+### Einen Run starten
 
 - Schick die Workflow-ID und die Eingabe an `/v1/executions`:
 
@@ -122,13 +122,13 @@ Ohne `--scopes` bekommt der Schlüssel dieselben Scopes wie dein eigener Zugang.
     -d '{"source":"saved","workflow_id":"<workflow-id>","input":{}}'
   ```
 
-  Der Aufruf wartet auf den Lauf und antwortet mit `200`, `execution_id`, `status`, `output` und `steps`.
+  Der Aufruf wartet auf den Run und antwortet mit `200`, `execution_id`, `status`, `output` und `steps`.
 
 `input` muss zur Eingabe des Workflows passen. `GET /v1/workflows/<workflow-id>/input-schema` zeigt, was er erwartet.
 
-### Einen langen Lauf im Hintergrund starten
+### Einen langen Run im Hintergrund starten
 
-1. Schick den Lauf mit `"async":true`. Optional ergänzt du einen Header `Idempotency-Key`. Mit ihm startet ein versehentlich doppelt gesendeter Aufruf trotzdem nur einen Lauf:
+1. Schick den Run mit `"async":true`. Optional ergänzt du einen Header `Idempotency-Key`. Mit ihm startet ein versehentlich doppelt gesendeter Aufruf trotzdem nur einen Run:
 
    ```bash
    curl -s -X POST "$SK_URL/v1/executions" \
@@ -147,11 +147,11 @@ Ohne `--scopes` bekommt der Schlüssel dieselben Scopes wie dein eigener Zugang.
 2. Kopiere `execution_id` und lies das Ergebnis wie im nächsten Abschnitt beschrieben.
 
 - Der Header `Idempotency-Key` nimmt 1 bis 200 Zeichen.
-- Schickst du denselben Schlüssel noch einmal, startet kein zweiter Lauf. Die Antwort trägt die ID des ersten Laufs und `"idempotent_replay": true`.
+- Schickst du denselben Schlüssel noch einmal, startet kein zweiter Run. Die Antwort trägt die ID des ersten Runs und `"idempotent_replay": true`.
 
 ### Das Ergebnis lesen
 
-1. Lies den Lauf:
+1. Lies den Run:
 
    ```bash
    curl -s "$SK_URL/v1/executions/<execution-id>" \
@@ -171,11 +171,11 @@ Ohne `--scopes` bekommt der Schlüssel dieselben Scopes wie dein eigener Zugang.
 
 | `status` | Bedeutung |
 | --- | --- |
-| `queued`, `running` | Der Lauf arbeitet noch. |
-| `succeeded` | Der Lauf ist fertig. |
-| `failed`, `timed_out`, `aborted` | Der Lauf wurde vorzeitig beendet. |
+| `queued`, `running` | Der Run arbeitet noch. |
+| `succeeded` | Der Run ist fertig. |
+| `failed`, `timed_out`, `aborted` | Der Run wurde vorzeitig beendet. |
 
-`outcome.kind` fasst den Lauf zusammen, zum Beispiel `succeeded`, `failed` oder `held`.
+`outcome.kind` fasst den Run zusammen, zum Beispiel `succeeded`, `failed` oder `held`.
 `sk executions result <execution-id>` zeigt dasselbe Ergebnis im Terminal.
 
 ### Prüfen, ob ein Workflow automatisch laufen kann
@@ -186,7 +186,7 @@ Du bekommst es beim Speichern eines Workflows (`POST /v1/workflows`, `PUT /v1/wo
 
 | `state` | Bedeutung |
 | --- | --- |
-| `eligible` | Eine Person kann wiederkehrende Läufe freigeben. |
+| `eligible` | Eine Person kann wiederkehrende Runs freigeben. |
 | `repair_required` | Keine Freigabe kann die genannten Schritte abdecken, solange sie nicht geändert sind. |
 | `verification_unavailable` | Die Engine konnte die Prüfung nicht durchführen. Versuch es später erneut. |
 
@@ -216,7 +216,7 @@ Listen liefern jeweils eine Seite. `total` zählt alle Treffer.
 | `GET /v1/workflows` | `limit` (bis 200) | `offset`: so viele Einträge überspringen |
 | `GET /v1/executions` | `limit` (bis 200) | `cursor`: der `next_cursor` der vorigen Seite |
 
-Läufe kommen neueste zuerst. Gib `next_cursor` genau so zurück, wie du ihn bekommen hast. Ist er `null`, bist du auf der letzten Seite.
+Runs kommen neueste zuerst. Gib `next_cursor` genau so zurück, wie du ihn bekommen hast. Ist er `null`, bist du auf der letzten Seite.
 
 ```bash
 curl -s "$SK_URL/v1/executions?workflow_id=<workflow-id>&status=failed,timed_out&limit=50" \
@@ -251,12 +251,12 @@ Verzweige in deinem Programm nach `code`, nicht nach `message`. Heb `trace_id` a
 | Status | `code` (Beispiele) | Bedeutung |
 | --- | --- | --- |
 | `200` | | Erledigt. |
-| `202` | | Angenommen. Der Lauf geht im Hintergrund weiter. |
+| `202` | | Angenommen. Der Run geht im Hintergrund weiter. |
 | `400` | `bad_request` | Die Anfrage ist ungültig. `details` nennt die Felder. |
 | `401` | `unauthorized` | Der Schlüssel fehlt, ist falsch, abgelaufen oder widerrufen. Prüfe `Authorization: Bearer <api-key>` oder leg einen neuen Schlüssel an. |
 | `403` | `forbidden` | Dem Schlüssel fehlt ein Scope oder deiner Rolle das Recht. Leg einen Schlüssel mit `workflow:read`, `workflow:run` und `execution:read` an. |
 | `404` | `not_found` | Die ID gibt es in deinem Arbeitsbereich nicht. |
-| `409` | `conflict` | Der aktuelle Zustand erlaubt es nicht. Bei einem Lauf: Es gibt keine aktive Version, oder die Freigabe fehlt oder ist aufgebraucht. |
+| `409` | `conflict` | Der aktuelle Zustand erlaubt es nicht. Bei einem Run: Es gibt keine aktive Version, oder die Freigabe fehlt oder ist aufgebraucht. |
 | `429` | `rate_limit_exceeded`, `rate_limited` | Ein Limit ist erreicht. Warte so lange, wie der Header `Retry-After` sagt. Versuch es dann mit demselben `Idempotency-Key` erneut. |
 | `500` | `internal_error` | Ein Fehler in der Engine. Melde die `trace_id`. |
 
@@ -266,5 +266,5 @@ Verzweige in deinem Programm nach `code`, nicht nach `message`. Heb `trace_id` a
 | --- | --- |
 | `404 Not Found` als reiner Text | Den Pfad gibt es nicht. Prüfe, ob er mit `/v1` beginnt. |
 | `400` mit `request validation failed` | Lies `details`. Oft ist `workflow_id` keine UUID, oder `input` passt nicht zum Eingabeschema. |
-| Der Lauf antwortet mit `"hold_writes": true` | Die Version hat für diese Umgebung keine Freigabe. Nichts wurde geschrieben. Gib sie frei wie in „Dein erster Workflow“ beschrieben. |
+| Der Run antwortet mit `"hold_writes": true` | Die Version hat für diese Umgebung keine Freigabe. Nichts wurde geschrieben. Gib sie frei wie in „Dein erster Workflow“ beschrieben. |
 | Ein anderer Fehlerstatus | Schlag den Status unter „Fehler und Statuscodes“ nach und lies `message` und `details`. |

@@ -436,6 +436,7 @@ export async function applyPackageImport(
           execution_mode: item.payload.execution_mode,
           ...(item.payload.input !== null ? { input: item.payload.input } : {}),
           paused: true,
+          creator: null,
         });
         await auditAwait(
           {

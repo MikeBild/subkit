@@ -36,6 +36,18 @@ check_one() {
   return 0
 }
 
+ATTRIBUTION_RE='^(Claude-Session:|Co-Authored-By:.*[Cc]laude|.*Generated with \[?Claude Code)'
+
+check_body() {
+  local body="$1"
+  local label="$2"
+  if printf '%s\n' "$body" | grep -qE "$ATTRIBUTION_RE"; then
+    echo "✖ ${label}: commit message carries an assistant attribution line; remove it" >&2
+    return 1
+  fi
+  return 0
+}
+
 if [ "$1" = "--range" ]; then
   range="$2"
   log=$(git log --format='%h %s' "$range") || exit $?
@@ -45,13 +57,15 @@ if [ "$1" = "--range" ]; then
     sha="${line%% *}"
     header="${line#* }"
     if ! check_one "$header" "$sha"; then failed=1; fi
+    if ! check_body "$(git log -1 --format='%B' "$sha")" "$sha"; then failed=1; fi
   done <<< "$log"
   exit "$failed"
 fi
 
 if [ "$1" = "--sha" ]; then
   header=$(git log -1 --format='%s' "$2")
-  check_one "$header" "$2"
+  check_one "$header" "$2" || exit 1
+  check_body "$(git log -1 --format='%B' "$2")" "$2"
   exit $?
 fi
 
@@ -59,4 +73,5 @@ msg_file="$1"
 [ -z "$msg_file" ] && exit 0
 [ ! -f "$msg_file" ] && exit 0
 header=$(head -n1 "$msg_file")
-check_one "$header" "(commit-msg)"
+check_one "$header" "(commit-msg)" || exit 1
+check_body "$(grep -v '^#' "$msg_file")" "(commit-msg)"

@@ -115,6 +115,7 @@ test("admission and schedule producers use the cleanup catalog lock before writi
       .returning();
     if (!workflow) throw new Error("missing workflow fixture");
     const schedule = await createSchedule(srv.db, {
+      creator: null,
       tenant_id: srv.tenantId,
       workflow_id: workflow.id,
       cron: "0 0 1 1 *",
@@ -136,6 +137,7 @@ test("admission and schedule producers use the cleanup catalog lock before writi
     ).rejects.toMatchObject({ code: "40001" });
     await expect(
       createSchedule(srv.db, {
+        creator: null,
         tenant_id: srv.tenantId,
         workflow_id: workflow.id,
         cron: "0 1 1 1 *",

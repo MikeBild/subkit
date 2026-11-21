@@ -114,7 +114,7 @@ const MESSAGES = {
   "notify.do.answer": { de: "Antworte, damit es weitergeht.", en: "Answer so it can continue." },
   "notify.do.reauth": { de: "Melde die Verbindung neu an.", en: "Sign the connection in again." },
   "notify.do.renew": { de: "Erneuere die Freigabe.", en: "Renew the approval." },
-  "notify.do.open_runs": { de: "Sieh dir die letzten Läufe an.", en: "Look at the latest runs." },
+  "notify.do.open_runs": { de: "Sieh dir die letzten Runs an.", en: "Look at the latest runs." },
   "notify.do.chat": { de: "Klär es im Chat.", en: "Sort it out in the chat." },
   "notify.do.open": { de: "Öffne den Eintrag in SubKit.", en: "Open the item in SubKit." },
 
@@ -134,6 +134,10 @@ const MESSAGES = {
     de: "Eine neue Version wartet auf deine Freigabe.",
     en: "A new version is waiting for your approval.",
   },
+  "notify.reason.pair_approval_requested": {
+    de: "Die zweite Freigabe fehlt noch.",
+    en: "The second approval is still missing.",
+  },
   "notify.reason.version_needs_repair": {
     de: "Eine Version lässt sich so nicht freigeben und braucht eine Korrektur.",
     en: "A version cannot be approved as it is and needs a fix.",
@@ -147,11 +151,11 @@ const MESSAGES = {
     en: "The schedule was paused after repeated failures.",
   },
   "notify.reason.scheduler_stale": {
-    de: "Geplante Läufe starten gerade nicht.",
+    de: "Geplante Runs starten gerade nicht.",
     en: "Scheduled runs are not starting right now.",
   },
   "notify.reason.failing": {
-    de: "Die letzten Läufe sind gescheitert.",
+    de: "Die letzten Runs sind gescheitert.",
     en: "The latest runs failed.",
   },
   "notify.reason.patch_proposed": {
@@ -163,15 +167,15 @@ const MESSAGES = {
     en: "The connected service asks for a new sign-in.",
   },
   "notify.reason.needs_update": {
-    de: "Der Konnektor braucht eine Aktualisierung.",
+    de: "Der Connector braucht eine Aktualisierung.",
     en: "The connector needs an update.",
   },
   "notify.reason.degraded": {
-    de: "Der Konnektor antwortet nur eingeschränkt.",
+    de: "Der Connector antwortet nur eingeschränkt.",
     en: "The connector answers only in part.",
   },
   "notify.reason.unhealthy": {
-    de: "Der Konnektor antwortet nicht.",
+    de: "Der Connector antwortet nicht.",
     en: "The connector does not answer.",
   },
   "notify.reason.refresh_refused": {
@@ -215,7 +219,7 @@ const MESSAGES = {
     en: "A risk has become critical.",
   },
   "notify.reason.task_run_failed": {
-    de: "Ein Lauf der Aufgabe ist gescheitert.",
+    de: "Ein Run der Aufgabe ist gescheitert.",
     en: "A run of the task failed.",
   },
   "notify.reason.task_result_ready": {
@@ -248,101 +252,262 @@ const MESSAGES = {
   "notify.summary.decide.one": { de: "1 Entscheidung", en: "1 decision" },
   "notify.summary.decide.other": { de: "{count} Entscheidungen", en: "{count} decisions" },
 
-  "connect.title": { de: "Mit SubKit verbinden", en: "Connect to SubKit" },
-  "connect.lead": {
-    de: "Gib die Adresse deines SubKit-Servers ein. Danach meldest du dich in deinem Browser an.",
-    en: "Enter the address of your SubKit server. You then sign in in your browser.",
-  },
-  "connect.address.label": { de: "Server-Adresse", en: "Server address" },
-  "connect.address.hint": {
-    de: "Zum Beispiel subkit.example.com. Lokal geht auch localhost:3000.",
-    en: "For example subkit.example.com. Locally, localhost:3000 works too.",
-  },
-  "connect.check": { de: "Server prüfen", en: "Check server" },
-  "connect.checking": { de: "Server wird geprüft …", en: "Checking server…" },
-  "connect.signIn": { de: "Im Browser anmelden", en: "Sign in in the browser" },
+  "common.back": { de: "Zurück", en: "Back" },
+  "common.next": { de: "Weiter", en: "Next" },
+  "common.step": { de: "Schritt {current} von {total}", en: "Step {current} of {total}" },
+  "common.report": { de: "Fehler melden", en: "Report a problem" },
 
-  "status.compatible": {
-    de: "SubKit {version} gefunden. Du kannst dich anmelden.",
-    en: "Found SubKit {version}. You can sign in.",
+  "welcome.title": { de: "Willkommen bei SubKit Desktop", en: "Welcome to SubKit Desktop" },
+  "welcome.approvals": {
+    de: "Sieh, was deine Freigabe braucht",
+    en: "See what needs your approval",
   },
-  "status.server-too-old": {
-    de: "Dieser Server läuft mit SubKit {version}. Die App braucht mindestens {min}. Bitte deine Administration, den Server zu aktualisieren.",
-    en: "This server runs SubKit {version}. The app needs at least {min}. Ask your administrator to update the server.",
+  "welcome.approvals.detail": {
+    de: "Alles Wichtige auf einen Blick.",
+    en: "Everything important at a glance.",
   },
-  "status.app-too-old": {
-    de: "Der Server verlangt mindestens Version {min} der App, installiert ist {version}. Aktualisiere SubKit Desktop und versuch es erneut.",
-    en: "The server requires at least version {min} of the app and you have {version}. Update SubKit Desktop and try again.",
+  "welcome.chat": { de: "Chatte und entwirf Workflows", en: "Chat and draft workflows" },
+  "welcome.chat.detail": {
+    de: "Von deiner Idee zum festen Ablauf.",
+    en: "From your idea to a routine that runs.",
   },
-  "status.login-unsupported": {
-    de: "Dieser Server bietet die Anmeldung, die diese App braucht, nicht an. Aktualisiere SubKit Desktop oder bitte deine Administration, den Server zu prüfen.",
-    en: "This server doesn’t offer the sign-in this app needs. Update SubKit Desktop or ask your administrator to check the server.",
+  "welcome.tasks": {
+    de: "Lass Aufgaben Schritt für Schritt erledigen",
+    en: "Get tasks done step by step",
   },
-  "status.unreachable": {
-    de: "Der Server ist nicht erreichbar. Prüf die Adresse und deine Internetverbindung.",
-    en: "The server can’t be reached. Check the address and your internet connection.",
+  "welcome.tasks.detail": {
+    de: "SubKit arbeitet an deinem Ziel.",
+    en: "SubKit works toward your goal.",
   },
-  "status.not-subkit": {
-    de: "Unter dieser Adresse antwortet kein SubKit-Server. Prüf die Adresse.",
-    en: "No SubKit server answers at this address. Check the address.",
+  "welcome.control": { de: "Du behältst die Kontrolle", en: "You stay in control" },
+  "welcome.control.detail": {
+    de: "Änderungen brauchen dein Okay.",
+    en: "Changes need your okay.",
   },
-  "status.invalid": {
-    de: "Das ist keine gültige Adresse. Beispiel: subkit.example.com",
-    en: "That’s not a valid address. Example: subkit.example.com",
+  "welcome.start": { de: "Loslegen", en: "Get started" },
+  "welcome.invite": { de: "Einladungslink verwenden", en: "Use an invitation link" },
+  "welcome.invite.label": { de: "Einladungslink", en: "Invitation link" },
+  "welcome.invite.hint": {
+    de: "Füge den Link aus deiner Einladungs-Mail ein.",
+    en: "Paste the link from your invitation email.",
   },
-  "status.empty": { de: "Gib eine Server-Adresse ein.", en: "Enter a server address." },
-  "status.insecure": {
-    de: "Die Adresse muss mit https:// beginnen. Nur localhost darf http:// nutzen.",
-    en: "The address must start with https://. Only localhost may use http://.",
+  "welcome.invite.open": { de: "Einladung öffnen", en: "Open invitation" },
+  "welcome.invite.invalid": {
+    de: "Das ist kein vollständiger Einladungslink. Kopiere den ganzen Link aus der Einladungs-Mail.",
+    en: "This isn’t a complete invitation link. Copy the whole link from the invitation email.",
   },
-  "status.credentials": {
+
+  "invite.valid": { de: "Du bist eingeladen", en: "You’re invited" },
+  "invite.valid.body": {
+    de: "{inviter} hat dich in den Arbeitsbereich „{workspace}“ eingeladen.",
+    en: "{inviter} invited you to the workspace “{workspace}”.",
+  },
+  "invite.valid.anonymous": {
+    de: "Du bist in den Arbeitsbereich „{workspace}“ eingeladen.",
+    en: "You’re invited to the workspace “{workspace}”.",
+  },
+  "invite.meta": {
+    de: "Einladung für {email} · gültig bis {date}",
+    en: "Invitation for {email} · valid until {date}",
+  },
+  "invite.join": { de: "Im Browser beitreten", en: "Join in your browser" },
+  "invite.expired": { de: "Diese Einladung ist abgelaufen", en: "This invitation has expired" },
+  "invite.withdrawn": {
+    de: "Diese Einladung wurde zurückgezogen",
+    en: "This invitation was withdrawn",
+  },
+  "invite.used": {
+    de: "Diese Einladung wurde schon verwendet",
+    en: "This invitation was already used",
+  },
+  "invite.invalid": { de: "Diese Einladung ist ungültig", en: "This invitation isn’t valid" },
+  "invite.busy": { de: "Gerade zu viele Versuche", en: "Too many attempts right now" },
+  "invite.askNew": {
+    de: "Bitte die Person, die dich eingeladen hat, um eine neue Einladung.",
+    en: "Ask the person who invited you for a new invitation.",
+  },
+  "invite.signInInstead": {
+    de: "Geh zurück, verbinde den Server und melde dich an.",
+    en: "Go back, connect the server and sign in.",
+  },
+  "invite.later": {
+    de: "Versuch es in ein paar Minuten erneut.",
+    en: "Try again in a few minutes.",
+  },
+
+  "connect.title": { de: "Server verbinden", en: "Connect server" },
+  "connect.lead": {
+    de: "Gib die Adresse deines SubKit-Servers ein.",
+    en: "Enter the address of your SubKit server.",
+  },
+  "connect.address.label": { de: "Serveradresse", en: "Server address" },
+  "connect.check": { de: "Verbindung prüfen", en: "Check connection" },
+  "connect.checking": { de: "Wird geprüft …", en: "Checking…" },
+  "connect.examples": { de: "Beispiele:", en: "Examples:" },
+  "connect.useExample": { de: "Beispiel verwenden", en: "Use the example" },
+
+  "field.empty": { de: "Gib eine Serveradresse ein.", en: "Enter a server address." },
+  "field.invalid": {
+    de: "Keine gültige Adresse, zum Beispiel {example}",
+    en: "Not a valid address, for example {example}",
+  },
+  "field.insecure": {
+    de: "Nutze https://. Nur localhost darf http:// nutzen.",
+    en: "Use https://. Only localhost may use http://.",
+  },
+  "field.credentials": {
     de: "Die Adresse darf keine Zugangsdaten enthalten.",
     en: "The address must not contain credentials.",
   },
 
-  "login.waiting": {
-    de: "Dein Browser ist geöffnet. Melde dich dort an, dann geht es hier automatisch weiter.",
-    en: "Your browser is open. Sign in there and you’ll continue here automatically.",
+  "slot.ok": { de: "Verbunden", en: "Connected" },
+  "slot.unreachable": { de: "Server nicht erreichbar", en: "Server not reachable" },
+  "slot.unreachable.help": {
+    de: "Unter dieser Adresse kam keine Antwort. Prüf die Adresse und deine Internetverbindung.",
+    en: "No answer came from this address. Check the address and your internet connection.",
   },
-  "login.cancel": { de: "Anmeldung abbrechen", en: "Cancel sign-in" },
-  "login.exchanging": { de: "Anmeldung wird abgeschlossen …", en: "Finishing sign-in…" },
-  "login.cancelled": {
-    de: "Die Anmeldung wurde abgebrochen. Du kannst sie jederzeit neu starten.",
-    en: "Sign-in was cancelled. You can start it again at any time.",
+  "slot.not-subkit": { de: "Kein SubKit-Server", en: "Not a SubKit server" },
+  "slot.not-subkit.help": {
+    de: "Unter dieser Adresse antwortet etwas anderes.",
+    en: "Something else answers at this address.",
   },
-  "login.expired": {
-    de: "Die Anmeldung ist abgelaufen. Starte sie noch einmal.",
-    en: "The sign-in expired. Start it again.",
+  "notice.server-too-old": {
+    de: "Version {version} wird nicht unterstützt",
+    en: "Version {version} isn’t supported",
   },
-  "login.rejected": {
-    de: "Der Server hat die Anmeldung abgelehnt. Starte sie noch einmal.",
-    en: "The server rejected the sign-in. Start it again.",
+  "notice.server-too-old.body": {
+    de: "Diese App braucht {needs} oder neuer. Geändert wurde nichts.",
+    en: "This app needs {needs} or later. Nothing was changed.",
   },
-  "login.outdated": {
-    de: "Diese Version der App ist für diesen Server zu alt. Aktualisiere SubKit Desktop und melde dich dann erneut an.",
-    en: "This version of the app is too old for this server. Update SubKit Desktop, then sign in again.",
+  "notice.ask": { de: "Administrator fragen", en: "Ask an administrator" },
+  "notice.asked": {
+    de: "Nachricht für deinen Administrator kopiert",
+    en: "Message for your administrator copied",
   },
-  "login.unreachable": {
-    de: "Der Server war beim Abschluss der Anmeldung nicht erreichbar. Versuch es noch einmal.",
-    en: "The server couldn’t be reached while finishing the sign-in. Try again.",
+  "notice.ask.text": {
+    de: "Bitte aktualisiere den SubKit-Server {host} von Version {version} auf {needs} oder neuer, damit SubKit Desktop sich verbinden kann.",
+    en: "Please update the SubKit server {host} from version {version} to {needs} or later so SubKit Desktop can connect.",
   },
-  "login.browser-failed": {
-    de: "Der Browser ließ sich nicht öffnen. Versuch es noch einmal.",
-    en: "The browser couldn’t be opened. Try again.",
+  "slot.app-too-old": { de: "App zu alt", en: "App too old" },
+  "slot.app-too-old.help": {
+    de: "Aktualisiere SubKit Desktop.",
+    en: "Update SubKit Desktop.",
+  },
+  "slot.login-unsupported": {
+    de: "Anmeldung nicht unterstützt",
+    en: "Sign-in not supported",
+  },
+  "slot.login-unsupported.help": {
+    de: "Aktualisiere den Server oder SubKit Desktop.",
+    en: "Update the server or SubKit Desktop.",
+  },
+  "chip.version": { de: "Version {version}", en: "Version {version}" },
+
+  "err.retry": { de: "Erneut versuchen", en: "Try again" },
+  "err.tech": { de: "Technische Einzelheit", en: "Technical detail" },
+  "err.copy": { de: "Kopieren", en: "Copy" },
+  "err.copied": { de: "Kopiert", en: "Copied" },
+  "err.code": { de: "Code", en: "Code" },
+  "err.url": { de: "Adresse", en: "Address" },
+  "err.app": { de: "App-Version", en: "App version" },
+  "err.needs": { de: "Benötigt", en: "Needs" },
+
+  "signin.title": { de: "Anmelden im Browser", en: "Sign in with browser" },
+  "signin.body": {
+    de: "Zugangsdaten gibst du nur im Browser ein, nie hier.",
+    en: "You enter credentials only in the browser, never here.",
+  },
+  "signin.open": { de: "Browser öffnen", en: "Open browser" },
+  "signin.waiting": {
+    de: "Warte auf Bestätigung im Browser …",
+    en: "Waiting for confirmation in the browser…",
+  },
+  "signin.exchanging": { de: "Anmeldung wird abgeschlossen …", en: "Finishing sign-in…" },
+  "signin.done": { de: "Angemeldet", en: "Signed in" },
+  "signin.afterJoin": {
+    de: "Schließ zuerst den Beitritt im Browser ab, dann melde dich hier an.",
+    en: "First finish joining in your browser, then sign in here.",
+  },
+  "signin.cancel": { de: "Abbrechen", en: "Cancel" },
+  "signin.doneTitle": { de: "Gerät registriert", en: "Device registered" },
+  "signin.doneLead": {
+    de: "Dieses Gerät ist jetzt registriert. Du kannst es jederzeit in den Einstellungen abmelden.",
+    en: "This device is now registered. You can sign it out at any time in the settings.",
+  },
+  "signin.device": { de: "Gerätename", en: "Device name" },
+  "signin.status": { de: "Status", en: "Status" },
+  "signin.connected": { de: "Verbunden", en: "Connected" },
+  "signin.server": { de: "Server", en: "Server" },
+  "signin.enter": { de: "SubKit öffnen", en: "Open SubKit" },
+  "signin.failed.cancelled": { de: "Anmeldung abgebrochen", en: "Sign-in canceled" },
+  "signin.failed.expired": {
+    de: "Anmeldung abgelaufen, starte sie neu",
+    en: "Sign-in expired, start it again",
+  },
+  "signin.failed.rejected": { de: "Server hat abgelehnt", en: "The server declined" },
+  "signin.failed.outdated": {
+    de: "App zu alt, aktualisiere SubKit Desktop",
+    en: "App too old, update SubKit Desktop",
+  },
+  "signin.failed.unreachable": { de: "Server nicht erreichbar", en: "Server not reachable" },
+  "signin.failed.browser-failed": {
+    de: "Der Browser ließ sich nicht öffnen",
+    en: "The browser couldn’t be opened",
   },
 
-  "notice.expired": {
-    de: "Deine Sitzung ist abgelaufen. Melde dich neu an, deine Einstellungen bleiben erhalten.",
-    en: "Your session expired. Sign in again; your settings are kept.",
+  "relogin.title": { de: "Sitzung abgelaufen", en: "Session expired" },
+  "relogin.body": {
+    de: "Melde dich neu an, deine Einstellungen bleiben.",
+    en: "Sign in again; your settings are kept.",
   },
-  "notice.revoked": {
-    de: "Dieses Gerät wurde in SubKit abgemeldet. Melde dich neu an, um es wieder zu verbinden.",
-    en: "This device was signed out in SubKit. Sign in again to reconnect it.",
+  "relogin.button": { de: "Neu anmelden", en: "Sign in again" },
+  "relogin.other": { de: "Anderen Server verbinden", en: "Connect another server" },
+
+  "firstRun.workspace.title": { de: "Arbeitsbereich", en: "Workspace" },
+  "firstRun.workspace.lead": {
+    de: "Du hast Zugriff auf {count} Arbeitsbereiche. Du kannst später jederzeit wechseln.",
+    en: "You have access to {count} workspaces. You can switch at any time later.",
   },
-  "notice.offline": {
-    de: "SubKit ist gerade nicht erreichbar. Die App versucht es weiter, du kannst es auch selbst erneut versuchen.",
-    en: "SubKit can’t be reached right now. The app keeps trying, and you can retry yourself.",
+  "firstRun.workspace.failed": {
+    de: "Der Wechsel hat nicht geklappt. Versuch es noch einmal.",
+    en: "Switching didn’t work. Try again.",
   },
+  "firstRun.workspace.keep": {
+    de: "Im aktuellen Arbeitsbereich bleiben",
+    en: "Stay in the current workspace",
+  },
+  "firstRun.role.admin": { de: "Administrator", en: "Admin" },
+  "firstRun.role.member": { de: "Mitglied", en: "Member" },
+  "firstRun.role.enduser": { de: "Anwender", en: "User" },
+  "firstRun.notifications.title": { de: "Benachrichtigungen erlauben", en: "Allow notifications" },
+  "firstRun.notifications.body": {
+    de: "SubKit meldet sich, wenn ein Run fertig ist oder etwas deine Freigabe braucht.",
+    en: "SubKit lets you know when a run is done or something needs your approval.",
+  },
+  "firstRun.notifications.allow": { de: "Erlauben", en: "Allow" },
+  "firstRun.later": { de: "Jetzt nicht", en: "Not now" },
+  "firstRun.diagnostics.title": { de: "Diagnosedaten", en: "Diagnostics" },
+  "firstRun.diagnostics.question": {
+    de: "Sollen deine Fehlerberichte Diagnosedaten enthalten?",
+    en: "Should your bug reports include diagnostics?",
+  },
+  "firstRun.diagnostics.body": {
+    de: "Dann hängt SubKit an jeden Fehlerbericht, den du sendest, einen Diagnosebericht an. Geheimnisse, Adressen und Pfade werden vorher entfernt.",
+    en: "Then SubKit attaches a diagnostics report to every bug report you send. Secrets, addresses and paths are removed first.",
+  },
+  "firstRun.diagnostics.share": { de: "Diagnosedaten anhängen", en: "Attach diagnostics" },
+  "perm.test.title": { de: "Benachrichtigungen sind an", en: "Notifications are on" },
+  "perm.test.body": {
+    de: "So meldet sich SubKit, wenn ein Run fertig ist oder etwas deine Freigabe braucht.",
+    en: "This is how SubKit tells you when a run is done or something needs your approval.",
+  },
+  "strip.revoked": { de: "Abgemeldet von {host}", en: "Signed out of {host}" },
+  "strip.revoked.action": { de: "Neu anmelden", en: "Sign in again" },
+  "strip.revoked.body": {
+    de: "Der Server hat dieses Gerät abgemeldet. Melde dich neu an, deine Einstellungen bleiben.",
+    en: "The server signed this device out. Sign in again; your settings are kept.",
+  },
+  "strip.offline": { de: "{host} ist offline", en: "{host} is offline" },
 
   "profiles.title": { de: "Deine Server", en: "Your servers" },
   "profiles.open": { de: "Öffnen", en: "Open" },

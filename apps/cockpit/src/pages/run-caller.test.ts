@@ -130,7 +130,7 @@ describe("who asked for a run", () => {
       german,
     );
     expect(line.who).toBe("Dienstkonto");
-    expect(JSON.stringify(line.why.map(([label]) => label))).toContain("Ursprünglicher Lauf");
+    expect(JSON.stringify(line.why.map(([label]) => label))).toContain("Ursprünglicher Run");
   });
 
   test("a run that recorded no identity names its channel and never a person", () => {

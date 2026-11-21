@@ -78,6 +78,41 @@ describe("cockpit stream notification target", () => {
       );
   });
 
+  test("a finished connector sign-in carries its outcome and a known reason, nothing else", () => {
+    expect(
+      projectCockpitEvent({
+        type: "connector.oauth.signin_finished",
+        payload: {
+          connector_id: CONNECTOR,
+          connector_slug: "gmail",
+          outcome: "failed",
+          reason: "provider_error",
+        },
+      }),
+    ).toEqual({
+      connector_id: CONNECTOR,
+      attention_id: `connector:${CONNECTOR}`,
+      outcome: "failed",
+      reason: "provider_error",
+    });
+    expect(
+      projectCockpitEvent({
+        type: "connector.oauth.signin_finished",
+        payload: { connector_id: CONNECTOR, outcome: "succeeded", reason: "<script>" },
+      }),
+    ).toEqual({
+      connector_id: CONNECTOR,
+      attention_id: `connector:${CONNECTOR}`,
+      outcome: "succeeded",
+    });
+    expect(
+      projectCockpitEvent({
+        type: "connector.oauth.callback_failed",
+        payload: { connector_id: CONNECTOR, outcome: "failed" },
+      }),
+    ).toEqual({ connector_id: CONNECTOR, attention_id: `connector:${CONNECTOR}` });
+  });
+
   test("only the progress of a run leaves the attention list untouched", () => {
     for (const type of [
       "execution.queued",

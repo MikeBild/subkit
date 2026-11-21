@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { errorSentence } from "@/components/cockpit/patterns/error-notice";
 import {
   ENGINE_CLASS_CODES,
   ENGINE_FAILURE_CODES,
@@ -9,6 +8,7 @@ import {
   engineSentence,
   engineSentenceKey,
 } from "@/lib/engine-sentence";
+import { errorSentence } from "@/lib/error-facts";
 import { type TranslationKey, translate } from "@/lib/i18n";
 import { engineSentenceDe, engineSentenceEn } from "@/lib/i18n/engine-sentence";
 import { attentionDetail, attentionSentence } from "@/pages/overview-model";

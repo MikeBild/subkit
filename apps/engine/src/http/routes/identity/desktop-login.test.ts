@@ -10,7 +10,12 @@ import {
 } from "../../../auth/index.ts";
 import * as loader from "../../../config/loader.ts";
 import type { AppEnv } from "../../openapi.ts";
-import { registerDesktopLoginRoutes, renderDesktopLoginConfirm } from "./desktop-login.ts";
+import { registerDesktopLoginRoutes } from "./desktop-login.ts";
+import {
+  renderDesktopAppOutdated,
+  renderDesktopLoginConfirm,
+  renderDesktopLoginExpired,
+} from "./desktop-login-pages.ts";
 
 const ORIGIN = "http://127.0.0.1";
 const VERIFIER = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
@@ -96,7 +101,9 @@ describe("GET /v1/identity/desktop-login/start", () => {
     params.delete("app_version");
     const silent = await app.request(`${ORIGIN}/v1/identity/desktop-login/start?${params}`);
     expect(silent.status).toBe(426);
-    expect(await silent.text()).toContain("did not name its version");
+    const silentHtml = await silent.text();
+    expect(silentHtml).toContain("unknown");
+    expect(silentHtml).toContain("0.1.0 or later");
   });
 
   test("refuses a plain challenge, a foreign redirect target and a missing device", async () => {
@@ -176,6 +183,20 @@ describe("GET /v1/identity/desktop-login/confirm", () => {
     );
     expect(res.status).toBe(400);
     expect(res.headers.get("location")).toBeNull();
+  });
+
+  test("an expired or forged request gets the desktop expiry page under the strict page policy", async () => {
+    const res = await buildApp("198.51.100.22").request(
+      `${ORIGIN}/v1/identity/desktop-login/confirm?request=forged`,
+      { headers: { "accept-language": "de" } },
+    );
+    expect(res.status).toBe(400);
+    expect(res.headers.get("content-security-policy")).toContain("default-src 'none'");
+    const html = await res.text();
+    expect(html).toContain('data-testid="desktop-login-expired"');
+    expect(html).toContain("Anmeldung abgelaufen");
+    expect(html).toContain("SubKit · Desktop");
+    expect(html).not.toContain("<script");
   });
 });
 
@@ -284,34 +305,106 @@ describe("POST /v1/identity/desktop-session", () => {
 });
 
 describe("desktop sign-in confirmation page", () => {
-  test("names the device, the workspace and the signed-in person, escaped", () => {
-    const html = renderDesktopLoginConfirm({
-      deviceLabel: '<img src=x onerror="alert(1)">',
-      tenantName: "Acme & Co",
-      userEmail: "mike@example.test",
-      requestToken: "request-token",
-      csrfToken: "csrf-token",
-      look: { locale: "en", scheme: null },
-    });
-    expect(html).not.toContain("<img src=x");
-    expect(html).toContain("&lt;img src=x");
-    expect(html).toContain("Acme &amp; Co");
-    expect(html).toContain("mike@example.test");
-    expect(html).toContain('action="/v1/identity/desktop-login/confirm"');
-    expect(html).toContain('name="csrf_token" value="csrf-token"');
-    expect(html).not.toContain("subkit://");
-  });
-
-  test("speaks German with the informal address", () => {
-    const html = renderDesktopLoginConfirm({
+  const confirm = (overrides: Partial<Parameters<typeof renderDesktopLoginConfirm>[0]> = {}) =>
+    renderDesktopLoginConfirm({
       deviceLabel: "Laptop",
       tenantName: "Acme",
       userEmail: "mike@example.test",
-      requestToken: "r",
-      csrfToken: "c",
+      requestToken: "request-token",
+      csrfToken: "csrf-token",
+      appVersion: "0.1.0",
+      look: { locale: "en", scheme: null },
+      ...overrides,
+    });
+
+  test("names the device, the workspace and the signed-in person, escaped in text and attributes", () => {
+    const html = confirm({
+      deviceLabel: '<img src=x onerror="alert(1)">',
+      tenantName: 'Acme & "Co"',
+    });
+    expect(html).not.toContain("<img src=x");
+    expect(html).not.toContain('onerror="alert');
+    expect(html).toContain("&lt;img src=x");
+    expect(html).toContain("Acme &amp; &quot;Co&quot;");
+    expect(html).toContain("mike@example.test");
+    expect(html).not.toContain("subkit://");
+    expect(html).not.toContain("<script");
+  });
+
+  test("keeps the form contract: one post target, hidden tokens, deny before approve", () => {
+    const html = confirm();
+    expect(html).toContain(
+      '<form method="POST" action="/v1/identity/desktop-login/confirm" data-testid="desktop-login-confirm">',
+    );
+    expect(html).toContain('<input type="hidden" name="request" value="request-token">');
+    expect(html).toContain('<input type="hidden" name="csrf_token" value="csrf-token">');
+    expect(html.indexOf('value="deny"')).toBeGreaterThan(0);
+    expect(html.indexOf('value="deny"')).toBeLessThan(html.indexOf('value="approve"'));
+    expect(html.split("request-token").length - 1).toBe(1);
+    expect(html.split("csrf-token").length - 1).toBe(1);
+  });
+
+  test("shows each fact once: device and workspace in the graphic, one help line, details collapsed", () => {
+    const html = confirm({ deviceLabel: "Studio Mac", tenantName: "Acme" });
+    expect(html).toContain('data-testid="desktop-login-graphic"');
+    const text = html.replace(/<[^>]+>/g, " ");
+    expect(text.split("Studio Mac").length - 1).toBe(1);
+    expect(text.split("Acme").length - 1).toBe(1);
+    expect(html.match(/<p class="muted">/g)?.length).toBe(1);
+    expect(html).toContain('<details class="dl-details"');
+    expect(html).not.toContain('<details class="dl-details" open');
+  });
+
+  test("speaks German with the informal address", () => {
+    const html = confirm({ look: { locale: "de", scheme: null } });
+    expect(html).toContain("Bei SubKit Desktop anmelden");
+    expect(html).toContain("wenn du die Anmeldung gerade selbst");
+    expect(html).toContain("Arbeitsbereich");
+    expect(html).not.toMatch(/\b(Sie|Ihre?)\b/);
+  });
+
+  test("leaves the shared auth style untouched and adds its own rules separately", () => {
+    const html = confirm({ look: { locale: "en", scheme: "dark" } });
+    expect(html).toContain('<html lang="en" class="dark">');
+    const styles = html.match(/<style>[\s\S]*?<\/style>/g) ?? [];
+    expect(styles).toHaveLength(2);
+    expect(styles[0]).toContain("/*mcp-auth:begin*/");
+    expect(styles[1]).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+  });
+});
+
+describe("desktop sign-in notice pages", () => {
+  test("the update page compares the versions and keeps the browser open as a way out", () => {
+    const html = renderDesktopAppOutdated({
+      appVersion: "0.0.9",
+      minVersion: "0.1.0",
       look: { locale: "de", scheme: null },
     });
-    expect(html).toContain("Bei SubKit Desktop anmelden");
-    expect(html).toContain("wenn du diese Anmeldung gerade selbst");
+    expect(html).toContain('data-testid="desktop-login-outdated"');
+    expect(html).toContain('data-testid="desktop-login-versions"');
+    expect(html).toContain("0.0.9");
+    expect(html).toContain("ab 0.1.0");
+    expect(html).toContain('href="/cockpit"');
+    expect(html).toContain("desktop_app_outdated");
+    expect(html).not.toContain("<script");
+  });
+
+  test("the update page escapes a version the app sent", () => {
+    const html = renderDesktopAppOutdated({
+      appVersion: "<b>9</b>",
+      minVersion: "0.1.0",
+      look: { locale: "en", scheme: null },
+    });
+    expect(html).not.toContain("<b>9</b>");
+    expect(html).toContain("&lt;b&gt;9&lt;/b&gt;");
+  });
+
+  test("the expiry page tells the person to restart in the app, in both languages", () => {
+    expect(renderDesktopLoginExpired({ locale: "en", scheme: null })).toContain(
+      "Start the sign-in again in SubKit Desktop.",
+    );
+    expect(renderDesktopLoginExpired({ locale: "de", scheme: "light" })).toContain(
+      "Starte die Anmeldung in SubKit Desktop neu.",
+    );
   });
 });

@@ -10,11 +10,9 @@ import { cockpitApiHref } from "@/app/installation-context";
 import { absolute, chatNewHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { useConnectorNames, useConnectorServices } from "@/components/cockpit/connector-names";
-import { EnvironmentChip } from "@/components/cockpit/environment-chip";
 import { GrantBoundaryProposals } from "@/components/cockpit/grant-boundary-proposals";
 import { GrantEffectReview } from "@/components/cockpit/grant-effect-review";
 import { GrantEnvironmentDecision } from "@/components/cockpit/grant-environment";
-import { GrantLimitField } from "@/components/cockpit/grant-limit-field";
 import { GrantLoadFailed } from "@/components/cockpit/grant-load-failed";
 import {
   GrantRemedyAction,
@@ -29,7 +27,6 @@ import {
   CodeBlock,
   CollapsibleSection,
   ContextHelp,
-  FactList,
   Field,
   FieldError,
   FieldGroup,
@@ -40,6 +37,17 @@ import {
 } from "@/components/cockpit/patterns";
 import { RunWorkflowDialog } from "@/components/cockpit/run-workflow-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  type ApprovalLimits,
+  ApprovalLimitsFields,
+  approvalBounds,
+  approvalLimits,
+  pairFailure,
+  pairKeys,
+  pairRequestBody,
+  renewalSource,
+  usePairVisibility,
+} from "@/features/operations";
 import { reportFailure } from "@/lib/action-failure";
 import { authorityIssues, authorityProblems } from "@/lib/authority-issues";
 import { proposalStepIds, proposalsModel, readBoundaryProposals } from "@/lib/authority-proposals";
@@ -48,16 +56,14 @@ import { automationQueryKeys, invalidateWorkflowAutomation } from "@/lib/automat
 import { carryOverChoice } from "@/lib/automation-state";
 import { existingGrant, grantScopeWarnings } from "@/lib/grant-context";
 import { reviewedEnvironment } from "@/lib/grant-decision";
+import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { liveTestState } from "@/lib/live-test-result";
 import { type AuthorityPages, withProvisionalAuthority } from "@/lib/optimistic-authorities";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
 import {
   acceptReview,
-  authorityGrantInput,
-  DEFAULT_GRANT_LIMIT,
-  type GrantLimit,
-  grantLimitBounds,
+  authorityGrantInputUntil,
   type WorkflowAuthorityPreview,
 } from "@/lib/workflow-authorities";
 
@@ -133,11 +139,11 @@ export function GrantWorkflowAuthority({
   const connectorServices = useConnectorServices(open);
   const defaultEnvironment = useDefaultEnvironment();
   const [environment, setEnvironment] = useState<"dev" | "prod">(defaultEnvironment);
-  const [limit, setLimit] = useState<GrantLimit>(DEFAULT_GRANT_LIMIT);
+  const [limits, setLimits] = useState<ApprovalLimits>(() => approvalLimits(null, new Date()));
   const [reviewVersionId, setReviewVersionId] = useState(versionId);
-  const [writeChecked, setWriteChecked] = useState(false);
   const [runAfter, setRunAfter] = useState(false);
   const [runRequest, setRunRequest] = useState<number | undefined>(undefined);
+  const pairMode = usePairVisibility(open).hints && !activation;
   function runIfNotStarted(result: unknown) {
     const state =
       result && typeof result === "object" && "live_test" in result
@@ -350,7 +356,6 @@ export function GrantWorkflowAuthority({
     latestReview.current = token;
     setReview(null);
     if (!pinned) setDecision(null);
-    setWriteChecked(false);
     setTrialElsewhere(false);
     setTrialStartedAt(null);
     setTrialAsked(trial);
@@ -384,14 +389,16 @@ export function GrantWorkflowAuthority({
     );
   }
   const expected = { workflowId, versionId: reviewVersionId, environment };
-  const { runs: grantRuns, hours: grantHours } = grantLimitBounds(limit);
-  const input = review
-    ? authorityGrantInput(review, expected, grantRuns, grantHours, Date.now())
-    : null;
+  const bounds = approvalBounds(limits, new Date());
+  const limitsProblem = bounds.ok ? null : bounds.problem;
+  const input =
+    review && bounds.ok
+      ? authorityGrantInputUntil(review, expected, bounds.validUntil, bounds.maxRuns, Date.now())
+      : null;
   const grant = useOptimisticAction({
     queryKey: ["workflow-authorities", workflowId],
     apply: (current: AuthorityPages | undefined) =>
-      review && input
+      review && input && !pairMode
         ? withProvisionalAuthority(current, review, input, new Date().toISOString())
         : current,
     invalidate: [
@@ -406,11 +413,27 @@ export function GrantWorkflowAuthority({
       ["workflows"],
     ],
     errorMessage: () => t("authority.grantFailed"),
-    mutationFn: () => {
+    mutationFn: (): Promise<unknown> => {
       const checked = review
-        ? authorityGrantInput(review, expected, grantRuns, grantHours, Date.now())
+        ? bounds.ok
+          ? authorityGrantInputUntil(
+              review,
+              expected,
+              bounds.validUntil,
+              bounds.maxRuns,
+              Date.now(),
+            )
+          : null
         : null;
       if (!checked) throw new Error("authority_review_incomplete");
+      if (pairMode)
+        return apiCall("post", "/v1/workflows/{id}/pair-approvals", {
+          path: { id: workflowId },
+          body: {
+            ...pairRequestBody(checked),
+            ...(conversationId ? { conversation_id: conversationId } : {}),
+          },
+        });
       return apiCall("post", "/v1/workflows/{id}/execution-authorities", {
         path: { id: workflowId },
         body: {
@@ -424,6 +447,11 @@ export function GrantWorkflowAuthority({
     onSuccess: (result) => {
       onCompleted?.();
       setOpen(false);
+      if (pairMode) {
+        void client.invalidateQueries({ queryKey: pairKeys.list(workflowId) });
+        toast.success(t("ops.pair.requested"));
+        return;
+      }
       if (!showLiveTestResult(result))
         toast.success(t(activation ? "chat.activation.saved" : "authority.grantSaved"));
       if (runAfter) runIfNotStarted(result);
@@ -540,6 +568,13 @@ export function GrantWorkflowAuthority({
   const carriesOver = carryOverChoice(review, Boolean(activation)) === "adopt";
   const boundsVisible = review && !unsupported && !incomplete && !carriesOver;
   const context = useGrantContext(workflowId, open);
+  const seeded = useRef(false);
+  useEffect(() => {
+    if (!open || seeded.current || !context.authorities) return;
+    seeded.current = true;
+    const source = renewalSource(context.authorities, environment);
+    if (source) setLimits(approvalLimits(source, new Date()));
+  }, [open, context.authorities, environment]);
   const existing =
     review && !unsupported && !activation
       ? existingGrant(context.authorities, reviewVersionId, environment, Date.now())
@@ -570,7 +605,8 @@ export function GrantWorkflowAuthority({
   const nextRun = (review?.schedules ?? [])
     .flatMap((schedule) => (schedule.next_run_at ? [schedule.next_run_at] : []))
     .sort()[0];
-  const canRun = session.permissions.includes("workflow:run") && Boolean(review) && !unsupported;
+  const canRun =
+    session.permissions.includes("workflow:run") && Boolean(review) && !unsupported && !pairMode;
   const primaryHint = t(
     carriesOver
       ? "authority.review.help.adopt"
@@ -619,7 +655,8 @@ export function GrantWorkflowAuthority({
     activateOnly.reset();
     setSample(null);
     setRunAfter(false);
-    setLimit(DEFAULT_GRANT_LIMIT);
+    setLimits(approvalLimits(null, new Date()));
+    seeded.current = false;
     const opening = initialEnvironment ?? defaultEnvironment;
     setEnvironment(opening);
     startReview(opening, undefined, undefined, false);
@@ -630,11 +667,14 @@ export function GrantWorkflowAuthority({
     requested.current = openRequest;
     if (!disabled) openDialog(true);
   }, [openRequest]);
-  const failure = actionError
-    ? `${t(sessionExpired ? "authority.sessionExpired" : "authority.grantFailed")} ${t(
-        sessionExpired ? "authority.sessionExpiredHint" : "authority.grantFailedDescription",
-      )}`
-    : null;
+  const pairProblem = pairFailure(grant.error);
+  const failure = pairProblem
+    ? t(`ops.pair.failure.${pairProblem}` as TranslationKey)
+    : actionError
+      ? `${t(sessionExpired ? "authority.sessionExpired" : "authority.grantFailed")} ${t(
+          sessionExpired ? "authority.sessionExpiredHint" : "authority.grantFailedDescription",
+        )}`
+      : null;
   const confirmable = !blocked && !unsupported && !carriesOver;
   return (
     <>
@@ -647,20 +687,22 @@ export function GrantWorkflowAuthority({
         cancelTestId="authority-grant-cancel"
         title={t(title.key, title.values)}
         description={
-          existing ? (
-            t("authority.existing.description")
-          ) : unsupported ? (
-            t("authority.adjustDescription")
-          ) : (
-            <span className="inline-flex flex-wrap items-center gap-2">
-              {blocked ? null : (
-                <EnvironmentChip environment={environment} testId="authority-dialog-environment" />
-              )}
-              {replaced !== null
-                ? t("authority.review.replaces", { version: `v${replaced}` })
-                : null}
+          <span className="flex flex-col gap-0.5">
+            <span>
+              {existing
+                ? t("authority.existing.description")
+                : unsupported
+                  ? t("authority.adjustDescription")
+                  : replaced !== null
+                    ? t("authority.review.replaces", { version: `v${replaced}` })
+                    : t("authority.review.lead")}
             </span>
-          )
+            {versionLabel && review ? (
+              <span data-testid="authority-version-label">
+                {`${t("catalog.version")} ${versionLabel}`}
+              </span>
+            ) : null}
+          </span>
         }
         hint={review && !unsupported ? primaryHint : undefined}
         cancelHint={t("authority.review.help.cancel")}
@@ -694,13 +736,9 @@ export function GrantWorkflowAuthority({
           : confirmable
             ? {
                 submit: {
-                  label: t("authority.review.approve"),
+                  label: t(model?.messages.approve ?? "authority.review.approve"),
                   pending: grant.isPending,
-                  disabled:
-                    busy ||
-                    !input ||
-                    Boolean(grant.error) ||
-                    (Boolean(model?.requiresWriteCheck) && !writeChecked),
+                  disabled: busy || !input || Boolean(grant.error),
                   testId: "authority-grant-confirm",
                   hint: primaryHint,
                 },
@@ -974,53 +1012,15 @@ export function GrantWorkflowAuthority({
           )}
           {boundsVisible && (
             <Field>
-              <GrantLimitField
-                limit={limit}
+              <ApprovalLimitsFields
+                value={limits}
                 disabled={busy}
-                onChange={setLimit}
+                problem={limitsProblem}
+                onChange={setLimits}
                 testId="authority-limit"
               />
-              <p className="text-xs text-muted-foreground" data-testid="authority-revocable">
-                {t("authority.review.revocable")}
-              </p>
             </Field>
           )}
-          {(canRun && (confirmable || carriesOver) && !existing) ||
-          (confirmable && model?.requiresWriteCheck) ? (
-            <div className="flex flex-col gap-3">
-              {canRun && (confirmable || carriesOver) && !existing && (
-                <label className="flex items-start gap-2 text-sm" htmlFor="authority-start-run">
-                  <Checkbox
-                    id="authority-start-run"
-                    checked={runAfter}
-                    disabled={busy}
-                    onCheckedChange={(checked) => setRunAfter(checked === true)}
-                    data-testid="authority-start-run"
-                  />
-                  <span className="flex flex-col">
-                    {t("authority.review.startRun")}
-                    <span className="text-xs text-muted-foreground">
-                      {nextRun
-                        ? t("authority.review.startRunNext", { time: dateTime(nextRun) })
-                        : t("authority.review.startRunNone")}
-                    </span>
-                  </span>
-                </label>
-              )}
-              {confirmable && model?.requiresWriteCheck && (
-                <label className="flex items-start gap-2 text-sm" htmlFor="authority-write-check">
-                  <Checkbox
-                    id="authority-write-check"
-                    checked={writeChecked}
-                    disabled={busy}
-                    onCheckedChange={(checked) => setWriteChecked(checked === true)}
-                    data-testid="authority-write-check"
-                  />
-                  <span>{t("authority.review.writeCheck")}</span>
-                </label>
-              )}
-            </div>
-          ) : null}
         </FieldGroup>
         {prepare.isPending &&
           (trialStartedAt === null ? (
@@ -1111,18 +1111,6 @@ export function GrantWorkflowAuthority({
         )}
         {review && (
           <div className="flex min-w-0 flex-col gap-4" data-testid="authority-grant-review">
-            {versionLabel ? (
-              <FactList
-                testId="authority-boundary-facts"
-                items={[
-                  {
-                    label: t("catalog.version"),
-                    value: versionLabel,
-                    testId: "authority-version-label",
-                  },
-                ]}
-              />
-            ) : null}
             {carriesOver && (
               <p className="text-sm font-medium" data-testid="authority-carry-over">
                 {t("authority.carryOver.hint")}
@@ -1134,14 +1122,31 @@ export function GrantWorkflowAuthority({
               problems={problems}
               loading={false}
               toolPinsCompared={review.tool_pins_compared === true}
-            />
-            {hasRequestDetails ? (
-              <CollapsibleSection
-                label={t("authority.review.details")}
-                count={review.execution_shape.requests.length}
-                testId="authority-effect-requests"
-              >
-                <div className="flex flex-col gap-3">
+              compact
+              beforeDetails={
+                canRun && (confirmable || carriesOver) && !existing ? (
+                  <label className="flex items-start gap-2 text-sm" htmlFor="authority-start-run">
+                    <Checkbox
+                      id="authority-start-run"
+                      checked={runAfter}
+                      disabled={busy}
+                      onCheckedChange={(checked) => setRunAfter(checked === true)}
+                      data-testid="authority-start-run"
+                    />
+                    <span className="flex flex-col">
+                      {t("authority.review.startRun")}
+                      <span className="text-xs text-muted-foreground">
+                        {nextRun
+                          ? t("authority.review.startRunNext", { time: dateTime(nextRun) })
+                          : t("authority.review.startRunNone")}
+                      </span>
+                    </span>
+                  </label>
+                ) : null
+              }
+            >
+              {hasRequestDetails ? (
+                <div className="flex flex-col gap-3" data-testid="authority-effect-requests">
                   {review.execution_shape.iterations.map((iteration) => (
                     <p
                       key={`${iteration.step_id}:${iteration.kind}`}
@@ -1155,6 +1160,17 @@ export function GrantWorkflowAuthority({
                   ))}
                   {review.execution_shape.requests.map((request) => (
                     <div key={request.step_id} className="flex min-w-0 flex-col gap-1">
+                      <p
+                        className="break-all font-mono text-xs"
+                        data-testid="authority-request-target"
+                      >
+                        {request.target.url
+                          ? t("authority.requestTarget", {
+                              method: request.target.method,
+                              url: request.target.url,
+                            })
+                          : t("authority.requestTargetOpen", { method: request.target.method })}
+                      </p>
                       <p className="text-muted-foreground text-xs">
                         {t("authority.attempts", {
                           count: request.retry_policy_max_attempts ?? t("common.unknown"),
@@ -1168,8 +1184,8 @@ export function GrantWorkflowAuthority({
                     </div>
                   ))}
                 </div>
-              </CollapsibleSection>
-            ) : null}
+              ) : null}
+            </GrantEffectReview>
             {!input && boundsVisible && (
               <p className="text-sm" data-testid="authority-review-expired">
                 {t("authority.reviewExpired")} · {t("authority.reviewExpiredHint")}

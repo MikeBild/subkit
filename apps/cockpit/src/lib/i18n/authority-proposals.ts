@@ -59,11 +59,11 @@ export const authorityProposalsDe: Record<keyof typeof authorityProposalsEn, str
   "authorityProposals.action.open": "Grenzen festlegen",
   "authorityProposals.title": "Vorgeschlagene Grenzen",
   "authorityProposals.help":
-    "Eine Grenze legt fest, wohin ein Schritt senden oder speichern darf und wie viel, SubKit liest sie aus früheren Läufen, und gespeichert wird erst, wenn du sie übernimmst.",
+    "Eine Grenze legt fest, wohin ein Schritt senden oder speichern darf und wie viel, SubKit liest sie aus früheren Runs, und gespeichert wird erst, wenn du sie übernimmst.",
   "authorityProposals.summary.one":
-    "SubKit schlägt aus früheren Läufen eine Grenze für 1 Schritt vor, prüfe sie und übernimm sie.",
+    "SubKit schlägt aus früheren Runs eine Grenze für 1 Schritt vor, prüfe sie und übernimm sie.",
   "authorityProposals.summary.other":
-    "SubKit schlägt aus früheren Läufen Grenzen für {count} Schritte vor, prüfe sie und übernimm sie.",
+    "SubKit schlägt aus früheren Runs Grenzen für {count} Schritte vor, prüfe sie und übernimm sie.",
   "authorityProposals.apply": "Grenzen übernehmen",
   "authorityProposals.applying": "Grenzen werden gespeichert …",
   "authorityProposals.creates": "Beim Übernehmen entsteht {version}, die du als Nächstes prüfst.",
@@ -71,12 +71,12 @@ export const authorityProposalsDe: Record<keyof typeof authorityProposalsEn, str
   "authorityProposals.failed":
     "Die Grenzen konnten nicht gespeichert werden, versuche es noch einmal.",
   "authorityProposals.untried.one":
-    "Für 1 Schritt gibt es keinen früheren Lauf, starte deshalb einen Probelauf, der jeden Schreibzugriff zurückhält.",
+    "Für 1 Schritt gibt es keinen früheren Run, starte deshalb einen Probe-Run, der jeden Schreibzugriff zurückhält.",
   "authorityProposals.untried.other":
-    "Für {count} Schritte gibt es keinen früheren Lauf, starte deshalb einen Probelauf, der jeden Schreibzugriff zurückhält.",
-  "authorityProposals.trial.start": "Probelauf starten",
+    "Für {count} Schritte gibt es keinen früheren Run, starte deshalb einen Probe-Run, der jeden Schreibzugriff zurückhält.",
+  "authorityProposals.trial.start": "Probe-Run starten",
   "authorityProposals.trial.what":
-    "Ein Probelauf liest wirklich aus deinen verbundenen Systemen und hält jede Anfrage zurück, die etwas ändern würde, starte ihn, damit SubKit die Grenzen herleiten kann.",
+    "Ein Probe-Run liest wirklich aus deinen verbundenen Systemen und hält jede Anfrage zurück, die etwas ändern würde, starte ihn, damit SubKit die Grenzen herleiten kann.",
   "authorityProposals.remaining.one":
     "1 Schritt braucht eine Änderung, die SubKit nicht herleiten kann, behebe sie im Chat.",
   "authorityProposals.remaining.other":
@@ -84,11 +84,11 @@ export const authorityProposalsDe: Record<keyof typeof authorityProposalsEn, str
   "authorityProposals.evidence.one": "Aus 1 früheren Anfrage hergeleitet.",
   "authorityProposals.evidence.other": "Aus {count} früheren Anfragen hergeleitet.",
   "authorityProposals.reason.no_history":
-    "Für diesen Schritt gibt es keinen früheren Lauf, starte deshalb einen Probelauf.",
+    "Für diesen Schritt gibt es keinen früheren Run, starte deshalb einen Probe-Run.",
   "authorityProposals.reason.body_size_unknown":
-    "Kein früherer Lauf zeigt, wie viel dieser Schritt sendet, starte deshalb einen Probelauf.",
+    "Kein früherer Run zeigt, wie viel dieser Schritt sendet, starte deshalb einen Probe-Run.",
   "authorityProposals.reason.path_not_comparable":
-    "Die Adresse dieses Schritts lässt sich nicht mit seinen früheren Läufen vergleichen, lege seine Grenze deshalb im Chat fest.",
+    "Die Adresse dieses Schritts lässt sich nicht mit seinen früheren Runs vergleichen, lege seine Grenze deshalb im Chat fest.",
   "authorityProposals.reason.values_not_describable":
     "Die Werte dieses Schritts lassen sich weder als kurze Liste noch als bekannte Form angeben, lege seine Grenze deshalb im Chat fest.",
   "authorityProposals.reason.not_supported":
@@ -97,7 +97,7 @@ export const authorityProposalsDe: Record<keyof typeof authorityProposalsEn, str
     "Auch mit einer vorgeschlagenen Grenze würde dieser Schritt abgelehnt, passe ihn deshalb im Chat an.",
   "authorityProposals.technical.sample": "Ziel: {sample}",
   "authorityProposals.reason.sensitive_value":
-    "Dieser Schritt schreibt ein Geheimnis in seine Adresse, verlege es im Chat in die Anmeldung des Konnektors.",
+    "Dieser Schritt schreibt ein Geheimnis in seine Adresse, verlege es im Chat in die Anmeldung des Connectors.",
   "authorityProposals.host": "Adresse: {host}",
   "authorityProposals.rewrite":
     "SubKit verschiebt außerdem die festen Angaben hinter dem Fragezeichen aus der Adresse in eigene Felder, was an der Anfrage nichts ändert.",
@@ -105,11 +105,11 @@ export const authorityProposalsDe: Record<keyof typeof authorityProposalsEn, str
   "authorityProposals.widens.max_bytes":
     "Das erweitert die Größengrenze von {from} auf {to} Bytes.",
   "authorityProposals.evidence.trial.one":
-    "Aus 1 Anfrage eines Probelaufs hergeleitet, die nicht gesendet wurde.",
+    "Aus 1 Anfrage eines Probe-Runs hergeleitet, die nicht gesendet wurde.",
   "authorityProposals.evidence.trial.other":
-    "Aus {count} Anfragen eines Probelaufs hergeleitet, die nicht gesendet wurden.",
+    "Aus {count} Anfragen eines Probe-Runs hergeleitet, die nicht gesendet wurden.",
   "authorityProposals.trial.notStarted":
-    "Der Probelauf ist nicht gestartet, weil es für ihn nichts mehr zu prüfen gibt, behebe die übrigen Schritte im Chat.",
+    "Der Probe-Run ist nicht gestartet, weil es für ihn nichts mehr zu prüfen gibt, behebe die übrigen Schritte im Chat.",
   "authorityProposals.listedValues":
     "Die hier aufgeführten Werte werden im Workflow gespeichert, prüfe sie deshalb, bevor du ihn freigibst.",
 };

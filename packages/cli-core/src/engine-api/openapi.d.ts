@@ -716,6 +716,8 @@ export interface paths {
                     request_source?: string | string[];
                     execution_mode?: "dev" | "prod";
                     group_by?: string | string[];
+                    /** @description zero (default): every bucket of the window is listed, empty ones with zeros. none: only buckets with data. */
+                    fill?: "zero" | "none";
                 };
                 header?: never;
                 path?: never;
@@ -884,6 +886,8 @@ export interface paths {
                     workflow_id?: string;
                     group_by?: string | string[];
                     user_id?: string;
+                    /** @description zero (default): every bucket of the window is listed, empty ones with zeros. none: only buckets with data. */
+                    fill?: "zero" | "none";
                 };
                 header?: never;
                 path?: never;
@@ -3416,8 +3420,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * What this engine hands out
-         * @description An entry point for someone holding only this URL: the artefacts this engine serves from its own binary — Compose file, installer, documentation, API surface, web interface and health. Returns HTML to a browser and Markdown to everything else. When server.root_redirect_to_cockpit is enabled, a browser asking for HTML gets a temporary redirect to /cockpit instead; every other client keeps the Markdown entry point.
+         * Open the Cockpit in a browser, or read what this engine hands out
+         * @description An entry point for someone holding only this URL. A browser navigation (Sec-Fetch-Mode: navigate, or an Accept header that names text/html before text/markdown) gets a non-cacheable temporary redirect to the Cockpit at /cockpit. Every other client gets the index of the artefacts this engine serves from its own binary — Compose file, installer, documentation, API surface, web interface and health — as Markdown, or as HTML when it asks for text/html. With server.root_redirect_to_cockpit set to false, or without a Cockpit bundle in this deployment, a browser gets that HTML index instead. The index stays reachable at /engine.
          */
         get: {
             parameters: {
@@ -3438,13 +3442,53 @@ export interface paths {
                         "text/markdown": string;
                     };
                 };
-                /** @description Temporary redirect to /cockpit for a browser asking for HTML when server.root_redirect_to_cockpit is enabled */
+                /** @description Temporary redirect to the Cockpit for a browser navigation. The target is the same-origin Cockpit path under the base path of server.public_base_url, never taken from the request. */
                 302: {
                     headers: {
-                        location: "/cockpit";
+                        location: string;
                         [name: string]: unknown;
                     };
                     content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What this engine hands out
+         * @description The engine index at a stable address: the same entries as GET /, without the redirect to the Cockpit. Returns HTML to a client asking for text/html and Markdown to everything else.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Entry point (HTML for browsers, Markdown otherwise) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                        "text/markdown": string;
+                    };
                 };
             };
         };
@@ -4610,7 +4654,7 @@ export interface paths {
                 };
             };
         };
-        /** Store the signed-in person's setup choices; fields left out keep their value. Naming a teammate who is not in the workspace prepares an invitation and sends no mail. */
+        /** Store the signed-in person's setup choices; fields left out keep their value. Naming a teammate who is not in the workspace prepares an invitation and sends no mail. Choosing pair as an administrator switches the workspace to two-person workflow approval once two people may approve. */
         put: {
             parameters: {
                 query?: never;
@@ -4669,10 +4713,195 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
+                /** @description pair_same_person — the second person in a pair has to be someone else */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
             };
         };
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity/me/notification-pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read whether the signed-in person has paused notifications */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["NotificationPause"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description person_required — only a person pauses notifications */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        /**
+         * Pause push notifications and desktop banners for the signed-in person
+         * @description Holds back push notifications and desktop banners until the chosen time or until resumed. The Cockpit event stream marks announcements with `delivery: held` and `held_by: pause`. Critical items still notify when the person opted into the critical breakthrough. Attention items and counts are never held. A new pause replaces the current one.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["PauseNotificationsBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["NotificationPause"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description person_required — only a person pauses notifications */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description pause_in_past or pause_too_long — the end lies in the past or more than 30 days ahead */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        /**
+         * Resume notifications for the signed-in person
+         * @description Ends the pause at once. What is still waiting for the person reaches them with the next notification round.
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["NotificationPause"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description person_required — only a person pauses notifications */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;
@@ -5104,6 +5333,96 @@ export interface paths {
                 };
                 /** @description unknown_scope: a requested scope is not a permission name */
                 422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity/users/{id}/invites/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send an invited person a new invitation link, or hand back the link to copy
+         * @description Issues a new invitation link for a person who has not joined yet and tries to deliver it. The previous link stops working. When the engine has no way to send mail the answer is `delivery: copy_link` with the link to hand over; nothing is reported as sent that was not sent.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["SendInviteBody"];
+                };
+            };
+            responses: {
+                /** @description A new invitation exists; see `delivery` */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["InviteDelivery"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Forbidden — administrators only */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description User not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description not_invited — the person has already joined */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description rate_limit_exceeded — at most 5 sends per administrator and 2 per invited person in 10 minutes */
+                429: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -8194,6 +8513,447 @@ export interface paths {
                     };
                 };
                 /** @description Invalid, unavailable or unauthorized authority boundary */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workspace/approval-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read whether one person or two people approve a workflow in this workspace */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApprovalPolicy"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        /**
+         * Switch between one-person and two-person workflow approval
+         * @description Under `pair`, every way that would let one person approve a workflow alone answers 409 `pair_approval_required`: the direct grant, the chat approval card, task permissions and turning an approval into until-revoked. Approvals then go through `/v1/workflows/{id}/pair-approvals`. Switching back to `single` is the only fallback and is audited; pending requests stay open.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["UpdateApprovalPolicyBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApprovalPolicy"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Forbidden — rbac:write is required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description pair_needs_two_approvers — fewer than two people may approve workflows */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workflows/{id}/pair-approvals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the pair approval requests of a workflow, newest first */
+        get: {
+            parameters: {
+                query?: {
+                    state?: "pending" | "approved" | "declined" | "withdrawn" | "expired" | "stale";
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PairApprovalList"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Give the first of two approvals for a reviewed workflow boundary
+         * @description Records the first person's decision on exactly the reviewed boundary: version, effect digest, environment, window and run limit. Nothing may run yet. A different person with workflow:write approves the same request to create the execution authority. The request expires after 72 hours, or earlier when its window would end.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["RequestPairApprovalBody"];
+                };
+            };
+            responses: {
+                /** @description First approval recorded; waiting for a second person */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PairApproval"];
+                    };
+                };
+                /** @description The validity window is not allowed */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description A signed human browser session with workflow:write is required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Workflow version not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description pair_not_required, authority_manifest_changed or authority_effect_unbound */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description pair_start_run_unsupported */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workflows/{id}/pair-approvals/{request_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Give the second approval; the execution authority takes effect now
+         * @description Only a person other than the first approver may approve. The boundary is checked again: when the workflow changed since the first approval the request turns `stale` and nothing is granted.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    request_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Both approved; the execution authority exists */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApprovedPairApproval"];
+                    };
+                };
+                /** @description pair_same_person, or a signed human browser session with workflow:write is required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description pair_request_not_found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description pair_request_closed, pair_request_expired, pair_request_stale or authority_manifest_changed */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workflows/{id}/pair-approvals/{request_id}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decline a pair approval request as the second person */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    request_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PairApproval"];
+                    };
+                };
+                /** @description pair_same_person — the person who asked withdraws instead */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description pair_request_not_found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description pair_request_closed or pair_request_expired */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workflows/{id}/pair-approvals/{request_id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw a pending pair approval request */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    request_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PairApproval"];
+                    };
+                };
+                /** @description pair_not_requester — only the person who asked or an administrator withdraws */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description pair_request_not_found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description pair_request_closed or pair_request_expired */
                 409: {
                     headers: {
                         [name: string]: unknown;
@@ -14632,6 +15392,82 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/intake/items/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Collect a file (PDF, image, CSV, text, Markdown or JSON) into the inbox */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["CreateIntakeFileItem"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["IntakeItem"];
+                    };
+                };
+                /** @description bad_input */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description too_large */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description unsupported_file_type, content_type_mismatch or file_rejected */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/intake/items/{id}": {
         parameters: {
             query?: never;
@@ -18839,6 +19675,241 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content?: never;
+                };
+                /** @description not_found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/chat/composer/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Files waiting in your chat composer, newest first */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ComposerAttachmentList"];
+                    };
+                };
+                /** @description person_required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Put a file into your chat composer, to go with your next message */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ConversationAttachmentUpload"];
+                };
+            };
+            responses: {
+                /** @description Staged */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ComposerAttachment"];
+                    };
+                };
+                /** @description bad_input */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description person_required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description not_found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description composer_full */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description too_large */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/chat/composer/attachments/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Attach the files waiting in your composer to a conversation */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ComposerAttachmentClaim"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ComposerAttachmentClaimResult"];
+                    };
+                };
+                /** @description bad_input */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description person_required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description not_found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/chat/composer/attachments/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Take a file out of your chat composer */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Removed */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description person_required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
                 };
                 /** @description not_found */
                 404: {
@@ -25720,6 +26791,31 @@ export interface components {
             can_approve: boolean | null;
             /** @description The approver permissions the teammate's role lacks; empty when can_approve. */
             missing_permissions: string[];
+        } | {
+            /** @enum {string} */
+            kind: "pair";
+            email: string;
+            /**
+             * Format: uuid
+             * @description The teammate's person, once one exists.
+             */
+            user_id: string | null;
+            /**
+             * @description member: the teammate is in the workspace. pending: an invitation is prepared and not yet accepted. needs_admin: an administrator has to invite this address first.
+             * @enum {string}
+             */
+            invitation: "member" | "pending" | "needs_admin";
+            /** Format: uuid */
+            invite_id: string | null;
+            /** @description Whether the teammate's role may grant what is asked of an approver: conversation:approve, task:grant and workflow:write. false means approval notifications stay with the asking person until an administrator changes the role. null while the teammate is not a person in the workspace yet. */
+            can_approve: boolean | null;
+            /** @description The approver permissions the teammate's role lacks; empty when can_approve. */
+            missing_permissions: string[];
+            /**
+             * @description active: the workspace requires two people for every workflow approval. needs_second_approver: fewer than two people may approve; it starts once the partner has joined with a role that may approve. needs_admin: only an administrator switches the workspace to two-person approval.
+             * @enum {string}
+             */
+            pair: "active" | "needs_second_approver" | "needs_admin";
         };
         /** @description When notifications reach the person. working_hours holds them outside the window and on other weekdays and delivers one summary at the next start; daily_digest delivers one summary at the chosen time. Times are read in the personal time zone and follow its clock changes. The schedule applies to push notifications and to the announcement hint on the Cockpit event stream; the attention list, the shared CLI inbox, chat channels and outbound webhooks are never delayed. */
         SetupNotificationSchedule: {
@@ -25762,6 +26858,35 @@ export interface components {
             kind: "teammate";
             /** Format: email */
             email: string;
+        } | {
+            /** @enum {string} */
+            kind: "pair";
+            /** Format: email */
+            email: string;
+        };
+        NotificationPause: {
+            /** @description Whether push notifications and desktop banners are held back right now. Attention items and counts keep counting either way. */
+            paused: boolean;
+            /**
+             * @description until: the pause ends by itself at `until`. until_resumed: it lasts until resumed.
+             * @enum {string|null}
+             */
+            mode: "until" | "until_resumed" | null;
+            paused_at: string | null;
+            until: string | null;
+        };
+        PauseNotificationsBody: {
+            /** @enum {string} */
+            mode: "for";
+            minutes: number;
+        } | {
+            /** @enum {string} */
+            mode: "until";
+            /** Format: date-time */
+            until: string;
+        } | {
+            /** @enum {string} */
+            mode: "until_resumed";
         };
         Workspace: {
             /** Format: uuid */
@@ -25813,6 +26938,34 @@ export interface components {
             scopes?: string[];
             allowed_workflows?: string[];
             allowed_connectors?: string[];
+            ttl_minutes?: number;
+        };
+        InviteDelivery: {
+            /** @enum {string} */
+            delivery: "sent";
+            /** @enum {string} */
+            channel: "email";
+            /** @description The address the invitation went to, partly masked. */
+            to: string;
+            invite: components["schemas"]["UserInvite"];
+        } | {
+            /** @enum {string} */
+            delivery: "copy_link";
+            /**
+             * @description no_mail_transport: this engine has no way to send mail, so nothing was sent. mail_failed: sending was tried and failed. no_public_url: `server.public_base_url` is not configured, and a mailed link never takes its address from request headers.
+             * @enum {string}
+             */
+            reason: "no_mail_transport" | "mail_failed" | "no_public_url";
+            invite: components["schemas"]["UserInvite"];
+            /** @description Shown once. The link carries it. */
+            plaintext_token: string;
+            /** @description Path of the invitation page with the token as fragment. */
+            link_path: string;
+            /** @description The full link to copy, when the engine knows its public address. */
+            url: string | null;
+        };
+        SendInviteBody: {
+            /** @description How long the new link stays valid. Seven days when omitted. */
             ttl_minutes?: number;
         };
         UserInviteListResponse: {
@@ -26709,6 +27862,11 @@ export interface components {
         AuthorityExecutionShape: {
             requests: {
                 step_id: string;
+                /** @description Where the request goes: its method and the URL origin and path, without credentials or query values. url is null when the target is not a static http(s) address. */
+                target: {
+                    method: string;
+                    url: string | null;
+                };
                 retry_policy_max_attempts: number | null;
                 redacted_request_json: string;
                 request_review_truncated: boolean;
@@ -26771,6 +27929,91 @@ export interface components {
                 connector_id: string | null;
                 connector_name: string | null;
             }[];
+        };
+        ApprovalPolicy: {
+            /**
+             * @description single: one person with workflow:write approves a workflow. pair: two different people both approve the same reviewed boundary before it takes effect.
+             * @enum {string}
+             */
+            workflow_approvals: "single" | "pair";
+            /** @description Active people who hold workflow:write and may take one of the two slots. */
+            eligible_approvers: number;
+            /** @description Whether pair approval can work: at least two eligible people exist. */
+            ready: boolean;
+            changed_at: string | null;
+            changed_by: {
+                /** Format: uuid */
+                user_id: string;
+                name: string;
+            } | null;
+        };
+        UpdateApprovalPolicyBody: {
+            /** @enum {string} */
+            workflow_approvals: "single" | "pair";
+        };
+        PairApproval: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            workflow_id: string;
+            /** Format: uuid */
+            workflow_version_id: string;
+            /** @enum {string} */
+            execution_environment: "dev" | "prod";
+            expected_manifest_digest: string;
+            valid_from: string;
+            valid_until: string | null;
+            max_runs: number | null;
+            /**
+             * @description pending: waits for a second person. approved: both approved and the execution authority exists. declined, withdrawn: closed by a person. expired: nobody approved within 72 hours or before the approval would have ended. stale: the workflow changed or the person who asked can no longer approve.
+             * @enum {string}
+             */
+            state: "pending" | "approved" | "declined" | "withdrawn" | "expired" | "stale";
+            /** @enum {string|null} */
+            stale_reason: "manifest_changed" | "first_approver_unavailable" | null;
+            first_approver: {
+                /** Format: uuid */
+                user_id: string;
+                name: string;
+            };
+            second_approver: {
+                /** Format: uuid */
+                user_id: string;
+                name: string;
+            } | null;
+            created_at: string;
+            expires_at: string;
+            decided_at: string | null;
+            /** Format: uuid */
+            authority_id: string | null;
+            /** @description Whether the caller may take the second slot right now; never true for the first approver. */
+            viewer_can_approve: boolean;
+        };
+        RequestPairApprovalBody: {
+            /** Format: uuid */
+            workflow_version_id: string;
+            expected_manifest_digest: string;
+            /** @enum {string} */
+            execution_environment: "dev" | "prod";
+            /** Format: date-time */
+            valid_from: string;
+            /** Format: date-time */
+            valid_until?: string | null;
+            max_runs?: number | null;
+            activation?: {
+                /** Format: uuid */
+                expected_current_version_id: string | null;
+            };
+            /** Format: uuid */
+            conversation_id?: string;
+            start_run?: boolean;
+        };
+        PairApprovalList: {
+            items: components["schemas"]["PairApproval"][];
+        };
+        ApprovedPairApproval: {
+            pair_approval: components["schemas"]["PairApproval"];
+            authority: components["schemas"]["WorkflowExecutionAuthority"];
         };
         TransactionalMailReceipt: {
             /** Format: uuid */
@@ -27030,43 +28273,10 @@ export interface components {
             digest: string;
             /** Format: uuid */
             current_version_id: string | null;
-            definition: components["schemas"]["WorkflowDefOutput"];
+            definition: components["schemas"]["WorkflowDraftDef"];
             spec: components["schemas"]["WorkflowSpec"] | null;
         };
-        WorkflowDef: {
-            name: string;
-            product_id?: string;
-            /** @enum {string} */
-            required_caller_kind?: "user" | "system_account";
-            /** @enum {string} */
-            execution_privacy?: "sensitive";
-            slug?: string;
-            description?: string;
-            /** @enum {string} */
-            tool_effect?: "read" | "reversible_write" | "irreversible_write";
-            derived_from_skill_id?: string | null;
-            input_schema?: {
-                [key: string]: unknown;
-            };
-            input_schema_sample?: unknown;
-            output_schema?: {
-                [key: string]: unknown;
-            };
-            validation_expression?: string;
-            validation_function?: string;
-            output_transform?: string;
-            output_transform_function?: string;
-            response_filters?: components["schemas"]["ResponseFilter"][];
-            steps: (components["schemas"]["RequestStep"] | components["schemas"]["TransformStep"] | components["schemas"]["CallStep"] | components["schemas"]["WaitStep"] | components["schemas"]["WaitForEventStep"] | components["schemas"]["BranchStep"] | components["schemas"]["ParallelStep"] | components["schemas"]["LoopStep"])[];
-            timeout_ms?: number;
-            max_llm_tokens_per_run?: number;
-            runtime?: components["schemas"]["WorkflowRuntime"];
-            trigger?: components["schemas"]["WorkflowTrigger"];
-            execution_guards?: components["schemas"]["ExecutionGuards"];
-            /** @enum {string} */
-            caller_erasure?: "on_success";
-        };
-        WorkflowDefOutput: {
+        WorkflowDraftDef: {
             name: string;
             product_id?: string;
             /** @enum {string} */
@@ -28253,6 +29463,72 @@ export interface components {
             spec?: components["schemas"]["WorkflowSpec"] & unknown;
             recipe?: components["schemas"]["RecipeOrigin"];
         };
+        WorkflowDef: {
+            name: string;
+            product_id?: string;
+            /** @enum {string} */
+            required_caller_kind?: "user" | "system_account";
+            /** @enum {string} */
+            execution_privacy?: "sensitive";
+            slug?: string;
+            description?: string;
+            /** @enum {string} */
+            tool_effect?: "read" | "reversible_write" | "irreversible_write";
+            derived_from_skill_id?: string | null;
+            input_schema?: {
+                [key: string]: unknown;
+            };
+            input_schema_sample?: unknown;
+            output_schema?: {
+                [key: string]: unknown;
+            };
+            validation_expression?: string;
+            validation_function?: string;
+            output_transform?: string;
+            output_transform_function?: string;
+            response_filters?: components["schemas"]["ResponseFilter"][];
+            steps: (components["schemas"]["RequestStep"] | components["schemas"]["TransformStep"] | components["schemas"]["CallStep"] | components["schemas"]["WaitStep"] | components["schemas"]["WaitForEventStep"] | components["schemas"]["BranchStep"] | components["schemas"]["ParallelStep"] | components["schemas"]["LoopStep"])[];
+            timeout_ms?: number;
+            max_llm_tokens_per_run?: number;
+            runtime?: components["schemas"]["WorkflowRuntime"];
+            trigger?: components["schemas"]["WorkflowTrigger"];
+            execution_guards?: components["schemas"]["ExecutionGuards"];
+            /** @enum {string} */
+            caller_erasure?: "on_success";
+        };
+        WorkflowDefOutput: {
+            name: string;
+            product_id?: string;
+            /** @enum {string} */
+            required_caller_kind?: "user" | "system_account";
+            /** @enum {string} */
+            execution_privacy?: "sensitive";
+            slug?: string;
+            description?: string;
+            /** @enum {string} */
+            tool_effect?: "read" | "reversible_write" | "irreversible_write";
+            derived_from_skill_id?: string | null;
+            input_schema?: {
+                [key: string]: unknown;
+            };
+            input_schema_sample?: unknown;
+            output_schema?: {
+                [key: string]: unknown;
+            };
+            validation_expression?: string;
+            validation_function?: string;
+            output_transform?: string;
+            output_transform_function?: string;
+            response_filters?: components["schemas"]["ResponseFilter"][];
+            steps: (components["schemas"]["RequestStepOutput"] | components["schemas"]["TransformStepOutput"] | components["schemas"]["CallStepOutput"] | components["schemas"]["WaitStepOutput"] | components["schemas"]["WaitForEventStepOutput"] | components["schemas"]["BranchStepOutput"] | components["schemas"]["ParallelStepOutput"] | components["schemas"]["LoopStepOutput"])[];
+            timeout_ms?: number;
+            max_llm_tokens_per_run?: number;
+            runtime?: components["schemas"]["WorkflowRuntime"];
+            trigger?: components["schemas"]["WorkflowTriggerOutput"];
+            execution_guards?: components["schemas"]["ExecutionGuardsOutput"];
+            /** @enum {string} */
+            caller_erasure?: "on_success";
+        };
         /** @description The catalog block this object belongs to. One vocabulary is shared by workflows, connectors, knowledge sources, skills, files and tasks of a tenant; `GET /v1/categories` lists it. */
         CatalogCategory: string;
         /** @description The recipe pack entry this workflow was created from; recorded in the audit trail. */
@@ -28584,7 +29860,10 @@ export interface components {
             workflow_id: string;
             cron: string;
             timezone?: string;
-            /** @enum {string} */
+            /**
+             * @description Environment the schedule runs in. Omitted on a new schedule: the creator's setup default, otherwise dev. Omitted on an existing schedule: its environment stays. A prod schedule still needs a prod approval.
+             * @enum {string}
+             */
             execution_mode?: "dev" | "prod";
             paused?: boolean;
             input?: string | number | boolean | null | unknown[] | {
@@ -28653,6 +29932,11 @@ export interface components {
             execution_id: string | null;
             /** Format: uuid */
             task_run_id: string | null;
+            /**
+             * @description What became of the run this occurrence started: running, succeeded, failed (failed or timed out) or aborted. Null when it started no run or the run is gone.
+             * @enum {string|null}
+             */
+            run_outcome: "running" | "succeeded" | "failed" | "aborted" | null;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -29151,6 +30435,10 @@ export interface components {
             /** @description The unique nonempty trace recorded by successful execution-start audit entries. Null when evidence is absent, expired by retention, or conflicting. This is not inferred from the current request. */
             trace_id: string | null;
             outcome: components["schemas"]["ExecutionOutcome"];
+            /** @description Human-readable run result as Markdown, redacted. Set for a succeeded run whose output_schema marks a string with contentMediaType text/markdown, or whose output has a result_markdown string. Null otherwise and always for sensitive runs. */
+            result_markdown: string | null;
+            /** @description True when result_markdown was cut at 64 KiB of text. */
+            result_markdown_truncated: boolean;
         };
         ExecutionOutcome: {
             /** @enum {string} */
@@ -31499,6 +32787,7 @@ export interface components {
             admitted_target_kind: "knowledge" | "skill" | null;
             /** Format: uuid */
             admitted_target_id: string | null;
+            attachment: (components["schemas"]["IntakeAttachment"] & unknown) | null;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -31526,6 +32815,7 @@ export interface components {
             redactions?: number;
             /** @enum {string} */
             origin: "note";
+            attachment?: components["schemas"]["IntakeAttachment"];
         } | {
             title: string;
             source_author?: string;
@@ -31554,6 +32844,13 @@ export interface components {
             /** Format: uuid */
             workflow_id?: string;
             tags?: string[];
+        };
+        IntakeAttachment: {
+            /** Format: uuid */
+            file_id: string;
+            filename: string;
+            content_type: string;
+            size_bytes: number;
         };
         CreateIntakeItemBody: {
             /** Format: uuid */
@@ -31584,6 +32881,20 @@ export interface components {
             body?: string;
             /** @enum {string} */
             origin?: "capture" | "restored_draft";
+        };
+        CreateIntakeFileItem: {
+            /** Format: uuid */
+            client_request_id: string;
+            category?: components["schemas"]["CatalogCategory"];
+            title?: string;
+            note?: string;
+            /** Format: date-time */
+            captured_at: string;
+            filename: string;
+            /** @description One of: application/pdf, image/png, image/jpeg, image/gif, image/webp, text/csv, text/plain, text/markdown, application/json. */
+            content_type: string;
+            /** @description At most 5242880 bytes once decoded. */
+            content_base64: string;
         };
         IntakeItemDetail: components["schemas"]["IntakeItem"] & {
             evidence: components["schemas"]["IntakeItemEvidence"][];
@@ -31745,13 +33056,20 @@ export interface components {
             id: string;
             /** Format: uuid */
             intake_item_id: string;
+            /** @description true when this id was filed before and nothing new was filed. */
+            replayed: boolean;
         };
         SubmitFeedbackBody: {
             /**
              * Format: uuid
-             * @description Send the same id again to retry a report without filing it twice.
+             * @description Send the same id again to retry a report without filing it twice. A retry of a report that was already filed is answered from the stored report and never counts against the rate limit.
              */
             client_request_id?: string;
+            /**
+             * Format: date-time
+             * @description When the person wrote the report on their device, for a report sent later from an offline queue. Kept as the capture time when it lies within the last 30 days; otherwise the server time counts.
+             */
+            created_on_device_at?: string;
             /** @enum {string} */
             kind: "bug" | "idea" | "other";
             message: string;
@@ -32919,6 +34237,8 @@ export interface components {
                 saved: boolean;
                 activated: boolean;
                 granted: boolean;
+                /** Format: uuid */
+                pair_request_id: string | null;
             } | null;
         };
         SuggestNextFeedbackResponse: {
@@ -32976,6 +34296,27 @@ export interface components {
         };
         ConversationAttachmentList: {
             attachments: components["schemas"]["ConversationAttachment"][];
+        };
+        ComposerAttachmentList: {
+            items: components["schemas"]["ComposerAttachment"][];
+        };
+        ComposerAttachment: {
+            /** Format: uuid */
+            id: string;
+            file: components["schemas"]["ConversationAttachment"];
+            /** Format: date-time */
+            staged_at: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        ComposerAttachmentClaimResult: {
+            attachments: components["schemas"]["ConversationAttachment"][];
+        };
+        ComposerAttachmentClaim: {
+            /** Format: uuid */
+            conversation_id: string;
+            /** @description Staged attachments to take; all staged ones when left out. */
+            ids?: string[];
         };
         File: {
             id: components["schemas"]["FileId"];
@@ -33612,7 +34953,7 @@ export interface components {
                 environment?: "dev" | "prod";
             } | null;
             /** @enum {string} */
-            reason: "awaiting_answer" | "execution_authority_required" | "execution_authority_unavailable" | "version_awaiting_approval" | "version_needs_repair" | "approval_expiring" | "schedule_auto_paused" | "scheduler_stale" | "failing" | "patch_proposed" | "needs_reauth" | "needs_update" | "degraded" | "unhealthy" | "refresh_refused" | "refresh_failed" | "expired_no_refresh" | "secret_unreadable" | "secret_prepared" | "skills_proposed" | "intake_collected" | "budget_critical" | "ai_access_missing" | "risk_critical" | "task_run_failed" | "task_result_ready" | "task_grant_required" | "task_grant_expiring" | "task_owner_unavailable";
+            reason: "awaiting_answer" | "execution_authority_required" | "execution_authority_unavailable" | "version_awaiting_approval" | "version_needs_repair" | "approval_expiring" | "schedule_auto_paused" | "scheduler_stale" | "failing" | "patch_proposed" | "needs_reauth" | "needs_update" | "degraded" | "unhealthy" | "refresh_refused" | "refresh_failed" | "expired_no_refresh" | "secret_unreadable" | "secret_prepared" | "skills_proposed" | "intake_collected" | "budget_critical" | "ai_access_missing" | "risk_critical" | "task_run_failed" | "task_result_ready" | "task_grant_required" | "task_grant_expiring" | "task_owner_unavailable" | "pair_approval_requested";
             /** @description What starts the workflow. Null unless it is held or the item is about its approval. */
             trigger: {
                 /** @enum {string} */
@@ -34378,7 +35719,7 @@ export interface components {
         };
         EmitEventBody: {
             /** @enum {string} */
-            type: "execution.succeeded" | "execution.failed" | "execution.refused" | "workflow.updated" | "connector.oauth.refreshed" | "connector.oauth.callback_succeeded" | "connector.oauth.callback_failed" | "connector.auth_failed" | "connector.health_changed" | "patch.proposed" | "patch.applied" | "apikey.rotated" | "conversation.committed" | "schedule.auto_paused" | "workflow.approval_expiring" | "task.grant_expiring" | "task_run.started" | "task_run.waiting" | "task_run.result_ready" | "task_run.completed" | "task_run.failed";
+            type: "execution.succeeded" | "execution.failed" | "execution.refused" | "workflow.updated" | "connector.oauth.refreshed" | "connector.oauth.callback_succeeded" | "connector.oauth.callback_failed" | "connector.oauth.signin_finished" | "connector.auth_failed" | "connector.health_changed" | "patch.proposed" | "patch.applied" | "apikey.rotated" | "conversation.committed" | "schedule.auto_paused" | "workflow.approval_expiring" | "task.grant_expiring" | "task_run.started" | "task_run.waiting" | "task_run.result_ready" | "task_run.completed" | "task_run.failed";
             payload: {
                 [key: string]: unknown;
             };

@@ -22,6 +22,7 @@ import {
   REQUEST_TIMEOUT_DEFAULT_MS,
 } from "../execution/steps/request.ts";
 import { WORKFLOW_TIMEOUT_DEFAULT_MS } from "../execution/timeouts.ts";
+import { pairApprovalRequired } from "../identity/approval-policy.ts";
 import { invalidateTenantState } from "../operator/index.ts";
 import { emitResourceChange } from "../pubsub/resource-changes.ts";
 import { can } from "../rbac/evaluator.ts";
@@ -413,15 +414,28 @@ export async function grantWorkflowAuthority(
   return result;
 }
 
+export const PAIR_APPROVAL_REQUIRED_MESSAGE =
+  "this workspace needs two people to approve a workflow; start a pair approval with POST /v1/workflows/{id}/pair-approvals";
+
+async function refuseSinglePersonApproval(tx: Executor, tenant_id: string) {
+  if (await pairApprovalRequired(tx, tenant_id))
+    fail("pair_approval_required", PAIR_APPROVAL_REQUIRED_MESSAGE);
+}
+
 export async function grantWorkflowAuthorityLocked(
   tx: Executor,
   proof: HumanSessionProof,
   workflow_id: string,
   input: z.infer<typeof GrantWorkflowAuthoritySchema>,
   principal: ResolvedPrincipal,
-  origin: { task_grant_id?: string; tool_pins?: "compared" | "refuse" } = {},
+  origin: {
+    task_grant_id?: string;
+    tool_pins?: "compared" | "refuse";
+    pair_request_id?: string;
+  } = {},
 ) {
   assertHumanSessionProof(tx, proof, principal);
+  if (!origin.pair_request_id) await refuseSinglePersonApproval(tx, principal.tenant_id);
   const workflow = await lockWorkflowForVersionWrite(tx, principal.tenant_id, workflow_id);
   if (!workflow) fail("workflow_version_unavailable", "workflow version unavailable");
   const [version] = await tx
@@ -829,6 +843,7 @@ export async function makeWorkflowAuthorityUntilRevoked(
   const { db, principal } = context;
   const result = await db.transaction(async (tx) => {
     await lockLiveSession(tx, session);
+    await refuseSinglePersonApproval(tx, principal.tenant_id);
     const workflow = await lockWorkflowForVersionWrite(tx, principal.tenant_id, workflow_id);
     if (!workflow) fail("workflow_version_unavailable", "workflow version unavailable");
     const [previous] = await tx

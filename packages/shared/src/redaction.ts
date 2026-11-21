@@ -400,3 +400,19 @@ const KEY_MATERIAL_PATH_PATTERNS: ReadonlyArray<RegExp> = [
 export function referencesKeyMaterialPath(text: string): boolean {
   return KEY_MATERIAL_PATH_PATTERNS.some((pattern) => pattern.test(text));
 }
+
+export function redactedRequestTarget(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+  let path = url.pathname;
+  try {
+    path = decodeURI(path);
+  } catch {}
+  return `${url.origin}${path}`;
+}

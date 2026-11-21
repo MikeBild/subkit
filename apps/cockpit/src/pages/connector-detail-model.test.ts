@@ -4,20 +4,15 @@ import { resolve } from "node:path";
 import { DEFAULT_REDACTED } from "@shared/redaction.ts";
 import { absolute, connectorHref } from "@/app/links";
 import { CATALOGS, type TranslationKey, translate } from "@/lib/i18n";
-import { auditActionsFromUrl, auditFilterFromUrl, auditResultFromUrl } from "@/pages/audit-model";
 import {
   asInspect,
   asRuntime,
-  authLabel,
-  connectorCallsHref,
   connectorConfiguredRuntime,
   connectorConfiguredTimeout,
   connectorFigures,
   connectorNotice,
   connectorStatsWindow,
   credentialBody,
-  driverLabel,
-  environmentLabel,
   offersConnectionChoice,
   offersKeyReplacement,
   presentAddress,
@@ -25,13 +20,11 @@ import {
   SECRET_MASK,
   SIGNED_IN_PARAM,
   SIGNIN_FAILED_PARAM,
-  signInActionLabel,
   signInFailureKey,
   signInFailureLine,
   signInLine,
   signInReturn,
   toolsWithoutConfirmation,
-  transportLabel,
   withoutSignInReturn,
 } from "./connector-detail-model";
 
@@ -40,42 +33,6 @@ const de = (key: TranslationKey, values?: Record<string, string | number>) =>
     (text, [name, value]) => text.replace(`{${name}}`, String(value)),
     CATALOGS.de[key],
   );
-
-describe("label maps", () => {
-  test("every driver, transport, environment and sign-in the engine names has a German word", () => {
-    expect(driverLabel("http", de)).toBe("Web-API (HTTP)");
-    expect(driverLabel("graphql", de)).toBe("GraphQL-API");
-    expect(driverLabel("mcp", de)).toBe("MCP-Server");
-    expect(driverLabel("postgres", de)).toBe("PostgreSQL-Datenbank");
-    expect(driverLabel("s3", de)).toBe("Objektspeicher (S3)");
-    expect(transportLabel("http", de)).toBe("Streamable HTTP");
-    expect(transportLabel("sse", de)).toBe("Server-Sent Events");
-    expect(transportLabel("stdio", de)).toBe("Lokaler Prozess");
-    expect(environmentLabel("prod", de)).toBe("Echtbetrieb");
-    expect(environmentLabel("dev", de)).toBe("Test");
-    expect(authLabel("none", [], de)).toBe("Ohne Anmeldung");
-    expect(authLabel("query", [], de)).toBe("Schlüssel in der Adresse");
-    expect(authLabel("bearer", [], de)).toBe("Zugriffstoken");
-    expect(authLabel("basic", [], de)).toBe("Benutzername und Passwort");
-    expect(authLabel("oauth2", [], de)).toBe("Anmeldung beim Anbieter (OAuth)");
-    expect(authLabel("oauth2_client", [], de)).toBe("Maschinenzugang (Client-Secret)");
-    expect(authLabel("oauth2_private_key", [], de)).toBe("Maschinenzugang (Schlüsselpaar)");
-    expect(authLabel("aws_sigv4", [], de)).toBe("AWS-Signatur");
-  });
-
-  test("a header key names its header, never its value", () => {
-    expect(authLabel("header", ["X-API-KEY"], de)).toBe("Schlüssel im Header X-API-KEY");
-    expect(authLabel("header", [], de)).toBe("Schlüssel in einem Header");
-  });
-
-  test("a value this build has no word for is the engine's own, named as one — never Unbekannt", () => {
-    expect(driverLabel("grpc", de)).toBe("Andere (grpc)");
-    expect(transportLabel("websocket", de)).toBe("Andere (websocket)");
-    expect(environmentLabel("staging", de)).toBe("Andere (staging)");
-    expect(authLabel("mtls", [], de)).toBe("Andere (mtls)");
-    expect(driverLabel(null, de)).toBe("");
-  });
-});
 
 describe("runtime figures", () => {
   const NOW = new Date("2026-09-30T12:00:00.000Z");
@@ -109,40 +66,6 @@ describe("runtime figures", () => {
     );
     expect(none).toMatchObject({ calls: 0, successRate: null, medianMs: null });
     expect(connectorFigures({ items: [] }, bounds)).toBeNull();
-  });
-
-  test("each count opens the audit log narrowed to the same connector and the same window", () => {
-    const figures = connectorFigures(envelope, bounds);
-    if (!figures) throw new Error("figures expected");
-    const calls = connectorCallsHref("c-1", "http", figures, "all");
-    const failed = connectorCallsHref("c-1", "http", figures, "failed");
-    if (!calls || !failed) throw new Error("links expected");
-    const search = (href: string) => href.slice(href.indexOf("?"));
-    expect(auditFilterFromUrl(search(calls))).toMatchObject({
-      resourceType: "connector",
-      resourceId: "c-1",
-      actions: ["connector.invoked"],
-      tsFrom: figures.from,
-      tsTo: figures.to,
-    });
-    expect(auditResultFromUrl(search(calls))).toBeNull();
-    expect(auditResultFromUrl(search(failed))).toBe("error");
-
-    const mcp = connectorCallsHref("c-2", "mcp", figures, "all");
-    if (!mcp) throw new Error("link expected");
-    expect(auditFilterFromUrl(search(mcp)).resourceType).toBe("mcp_external_tool");
-    expect(auditActionsFromUrl(search(mcp))).toEqual(["mcp_external_tool.invoked"]);
-  });
-
-  test("a counted zero has nothing to open", () => {
-    const quiet = connectorFigures(
-      { totals: { calls: { total: 3, by_outcome: { success: 3 } }, latency_ms: { p50: 5 } } },
-      bounds,
-    );
-    if (!quiet) throw new Error("figures expected");
-    expect(connectorCallsHref("c-1", "http", quiet, "failed")).toBeNull();
-    const idle = { ...quiet, calls: 0 };
-    expect(connectorCallsHref("c-1", "http", idle, "all")).toBeNull();
   });
 
   test("a catch-all body is not a runtime or an inspect answer", () => {
@@ -376,16 +299,6 @@ describe("the sign-in card's one line and one action", () => {
         for (const catalog of [CATALOGS.de, CATALOGS.en])
           expect(catalog[key as TranslationKey]).not.toMatch(/Verbindungstest|Test the connection/);
       }
-  });
-
-  test('a first sign-in is not called "again", in the line or on the button', () => {
-    expect(signInActionLabel("credentials_missing")).toBe("connectorCredentials.signIn");
-    expect(signInActionLabel("expired")).toBe("connectorCredentials.renew");
-    expect(de(signInLine("credentials_missing", "provider") as TranslationKey)).toContain(
-      "„Anmelden“ führt zum Anbieter",
-    );
-    expect(de(signInLine("credentials_missing", "key") as TranslationKey)).toContain("„Anmelden“");
-    expect(signInLine("credentials_missing", null)).toBe("connectors.auth.credentialsMissingHint");
   });
 
   test("a sign-in that works needs no sentence; an unproven one says how to find out", () => {

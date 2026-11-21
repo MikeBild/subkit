@@ -1,6 +1,7 @@
+import type { ReactNode } from "react";
 import { CHAT_COLUMN } from "@/app/shell-header";
 import { PromptInputProvider } from "@/components/ai-elements/prompt-input";
-import { Spinner } from "@/components/cockpit/patterns";
+import { SegmentedControl, Spinner } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
 import {
   addAttachments,
@@ -8,12 +9,16 @@ import {
   attachmentSize,
   type PendingAttachment,
 } from "@/pages/chat-attachments";
+import { modeLabelKey } from "@/pages/chat-mode";
 import type { AuthoringMode } from "@/pages/chat-permission";
 import type { ChatText } from "@/pages/chat-text";
 import type { ChatTurn } from "@/pages/chat-turn";
+import { MODE_ORDER, modeHintKey } from "./bubble-model";
+import { BudgetPill } from "./budget-pill";
 import { ChatComposer } from "./composer";
-import type { AttachmentPreview, ConversationUsage, RestoreComposer } from "./labels";
-import { ModePill, UsagePills } from "./mode";
+import type { AttachmentPreview, RestoreComposer } from "./labels";
+import { useComposerTray } from "./tray";
+import { ComposerTrayNotice } from "./tray-view";
 
 export function ChatComposerArea({
   turn,
@@ -34,8 +39,8 @@ export function ChatComposerArea({
   setAttachments,
   setPreview,
   restoreComposer,
-  usage,
   budget,
+  starters,
 }: {
   turn: ChatTurn;
   activeId: string | null;
@@ -55,14 +60,15 @@ export function ChatComposerArea({
   setAttachments: React.Dispatch<React.SetStateAction<PendingAttachment[]>>;
   setPreview: (preview: AttachmentPreview) => void;
   restoreComposer: React.RefObject<RestoreComposer | null>;
-  usage: ConversationUsage | null | undefined;
   budget: "tightening" | "critical" | null;
+  starters?: ReactNode;
 }) {
   const { t } = useI18n();
   const { anyLive, streamedText, sendPending, sessionKey, cancel, submitTurn } = turn;
+  const tray = useComposerTray(sessionKey);
   return (
     <div
-      className="scrollbar-thin shrink-0 overflow-y-auto px-4 sm:px-6 bg-background/95 pt-3 pb-3 supports-[backdrop-filter]:backdrop-blur [scrollbar-gutter:stable]"
+      className="scrollbar-thin shrink-0 overflow-y-auto px-4 sm:px-8 bg-background/95 pt-3 pb-3 supports-[backdrop-filter]:backdrop-blur [scrollbar-gutter:stable]"
       data-testid="chat-composer-area"
       hidden={conversationFailed}
     >
@@ -71,10 +77,12 @@ export function ChatComposerArea({
           <div
             role="status"
             aria-live="polite"
-            className="mb-2 flex items-center gap-2 text-sm text-muted-foreground"
+            className={
+              anyLive ? "mb-2 flex items-center gap-2 text-sm text-muted-foreground" : "sr-only"
+            }
             data-testid="chat-activity"
           >
-            <Spinner aria-hidden="true" aria-label={undefined} />
+            {anyLive ? <Spinner aria-hidden="true" aria-label={undefined} /> : null}
             <span>
               {t(
                 anyLive
@@ -93,15 +101,15 @@ export function ChatComposerArea({
             </p>
           ) : null}
           {conversationFailed || !pillLabel ? null : (
-            <ModePill
+            <ModeChoice
               mode={pillMode}
               label={pillLabel}
-              editable={!activeId}
               disabled={sendPending}
               onChange={setNewPermissionMode}
             />
           )}
         </div>
+        {starters}
         {composerHint ? (
           <p
             id="chat-composer-hint"
@@ -111,6 +119,11 @@ export function ChatComposerArea({
             {composerHint.text}
           </p>
         ) : null}
+        <ComposerTrayNotice
+          problems={tray.problems}
+          onRemove={(ids) => void tray.remove(ids)}
+          onDismiss={tray.dismiss}
+        />
         <PromptInputProvider key={sessionKey} initialInput={initialInput}>
           <ChatComposer
             disabled={busy || choiceOpen || formOpen}
@@ -138,17 +151,73 @@ export function ChatComposerArea({
               })
             }
             onStop={() => cancel.mutate(activeId ?? "")}
-            onSend={submitTurn}
+            tray={tray.chips}
+            onOpenTray={(chip) =>
+              setPreview({
+                name: chip.name,
+                size: chip.size,
+                fileId: chip.fileId,
+                contentType: chip.contentType,
+              })
+            }
+            onRemoveTray={(id) => void tray.remove([id])}
+            onSend={async (message, references) => {
+              const ids = tray.chips.map((chip) => chip.id);
+              tray.hold(ids);
+              const sent = await submitTurn(message, references, ids);
+              if (!sent) tray.release(ids);
+              return sent;
+            }}
             restoreRef={restoreComposer}
           />
         </PromptInputProvider>
-        <div
-          className="mt-2 flex min-h-6 flex-wrap items-center gap-1.5"
-          data-testid="chat-usage-pills"
-        >
-          <UsagePills usage={usage} budget={budget} />
-        </div>
+        <BudgetPill budget={budget} />
       </div>
+    </div>
+  );
+}
+
+function ModeChoice({
+  mode,
+  label,
+  disabled,
+  onChange,
+}: {
+  mode: AuthoringMode | null;
+  label: string;
+  disabled: boolean;
+  onChange: (mode: AuthoringMode) => void;
+}) {
+  const { t } = useI18n();
+  if (!mode)
+    return (
+      <span className="text-xs text-muted-foreground" data-testid="chat-permission-mode">
+        {t("chat.mode.label")}: {label}
+      </span>
+    );
+  return (
+    <div className="flex w-full flex-wrap items-center gap-3" data-testid="chat-permission">
+      <SegmentedControl
+        label={t("chat.mode.label")}
+        value={mode}
+        disabled={disabled}
+        onValueChange={(next) => {
+          const chosen = MODE_ORDER.find((option) => option === next);
+          if (chosen) onChange(chosen);
+        }}
+        testId="chat-permission-select"
+        options={MODE_ORDER.map((option) => ({
+          value: option,
+          label: t(modeLabelKey(option)),
+          testId: `chat-permission-${option}`,
+        }))}
+      />
+      <p
+        className="min-w-[12rem] flex-1 text-xs text-muted-foreground"
+        data-testid="chat-mode-hint"
+      >
+        {t(modeHintKey(mode))}
+      </p>
     </div>
   );
 }

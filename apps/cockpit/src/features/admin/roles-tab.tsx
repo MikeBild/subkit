@@ -19,7 +19,6 @@ import {
 import { tableColumns } from "@/components/cockpit/table-columns";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
-import { permissionLabel, roleName } from "@/pages/admin-model";
 import {
   builtinRoleDescription,
   type RoleItem,
@@ -27,6 +26,7 @@ import {
   useRoleDetail,
   useRoles,
 } from "./data";
+import { permissionLabel, roleName } from "./model/admin-model";
 import { AdminTable, PermissionList, SectionList } from "./parts";
 
 function RoleSheet({ role, onClose }: { role: RoleItem | null; onClose(): void }) {

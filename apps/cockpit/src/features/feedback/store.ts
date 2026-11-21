@@ -7,6 +7,7 @@ import {
   type FeedbackFailure,
   type FeedbackKind,
   type FeedbackRecentError,
+  hasFeedbackDraft,
   mergePrefill,
   newFeedbackDraft,
   readStoredDraft,
@@ -88,8 +89,19 @@ export function createFeedbackStore(env: StoreEnvironment = BROWSER) {
           });
         const bridge = env.bridge();
         if (bridge && !state.open) {
+          const consent = hasFeedbackDraft(state.draft)
+            ? null
+            : await within(bridge.diagnosticsConsent(), CAPTURE_TIMEOUT_MS, null);
           const png = await within(bridge.captureWindow(), CAPTURE_TIMEOUT_MS, null);
-          set({ ...state, draft: { ...state.draft, screenshot: png, screenshotIncluded: false } });
+          set({
+            ...state,
+            draft: {
+              ...state.draft,
+              screenshot: png,
+              screenshotIncluded: false,
+              ...(consent === null ? {} : { diagnostics: consent }),
+            },
+          });
         }
         set({ ...state, open: true });
       } finally {

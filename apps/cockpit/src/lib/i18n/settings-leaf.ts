@@ -253,7 +253,7 @@ export const settingsLeafDe: Record<keyof typeof settingsLeafEn, string> = {
   "settings.leaf.storage.hosted.retained_rows_per_resource":
     "Aufbewahrte Datensätze pro Hosted-Ressource",
   "settings.leaf.storage.hosted.max_file_bytes": "Maximale Hosted-Dateigröße",
-  "settings.leaf.queue.hosted.execution_concurrency": "Parallele Hosted-Läufe pro Arbeitsbereich",
+  "settings.leaf.queue.hosted.execution_concurrency": "Parallele Hosted-Runs pro Arbeitsbereich",
   "settings.leaf.queue.hosted.chat_concurrency": "Parallele Hosted-Chatschritte pro Arbeitsbereich",
   "settings.leaf.queue.hosted.pending_jobs": "Eingereihte Hosted-Aufträge pro Arbeitsbereich",
   "settings.leaf.llm.model": "Primäres Modell",
@@ -356,7 +356,7 @@ export const settingsLeafDe: Record<keyof typeof settingsLeafEn, string> = {
     "Frühwarnung · Datenbank-Wiederholungen pro Minute",
   "settings.leaf.observability.predictive.memory_cap_fraction": "Frühwarnung · Speicheranteil",
   "settings.leaf.observability.predictive.connector_unhealthy_pct":
-    "Frühwarnung · fehlerhafte Konnektor-Aufrufe (%)",
+    "Frühwarnung · fehlerhafte Connector-Aufrufe (%)",
   "settings.leaf.observability.predictive.llm_fallback_pct":
     "Frühwarnung · Aufrufe beim Ersatzanbieter (%)",
   "settings.leaf.egress.mode": "Modus für ausgehende Verbindungen",
@@ -365,7 +365,7 @@ export const settingsLeafDe: Record<keyof typeof settingsLeafEn, string> = {
   "settings.leaf.mcp.read_only": "MCP · nur lesen",
   "settings.leaf.errors.ring_size": "Aufbewahrte Fehlereinträge",
   "settings.leaf.spec.allow_private_fetch": "Spezifikationen von privaten Hosts laden",
-  "settings.leaf.queue.concurrency": "Parallele Läufe je Replika",
+  "settings.leaf.queue.concurrency": "Parallele Runs je Replika",
   "settings.leaf.queue.abort_poll_interval_ms": "Prüfintervall für Abbrüche (ms)",
   "settings.leaf.queue.crash_recovery_sweep_interval_ms":
     "Absturz-Wiederherstellung · Prüfintervall (ms)",
@@ -401,7 +401,7 @@ export const settingsLeafDe: Record<keyof typeof settingsLeafEn, string> = {
   "settings.leaf.connectors.web_scraper.runtime.respect_robots":
     "Web-Scraper · robots.txt beachten",
   "settings.leaf.connectors.web_scraper.runtime.user_agent": "Web-Scraper · User-Agent",
-  "settings.leaf.connectors.web_scraper.runtime.max_pages": "Web-Scraper · Seiten je Lauf",
+  "settings.leaf.connectors.web_scraper.runtime.max_pages": "Web-Scraper · Seiten je Run",
   "settings.leaf.connectors.web_scraper.runtime.max_chars_readability":
     "Web-Scraper · Eingabegrenze je Seite (Zeichen)",
   "settings.leaf.connectors.web_scraper.runtime.max_chars_markdown":
@@ -421,11 +421,11 @@ export const settingsLeafDe: Record<keyof typeof settingsLeafEn, string> = {
   "settings.leaf.connectors.web_scraper.optimization.scan_cron":
     "Web-Scraper · Zeitplan der Optimierung",
   "settings.leaf.connectors.web_scraper.optimization.sample_size":
-    "Web-Scraper · ausgewertete Läufe",
+    "Web-Scraper · ausgewertete Runs",
   "settings.leaf.connectors.web_scraper.optimization.trivial_markdown_bytes":
     "Web-Scraper · Größe einer trivialen Seite (Bytes)",
   "settings.leaf.connectors.web_scraper.optimization.min_runs_before_proposing":
-    "Web-Scraper · Läufe vor einem Vorschlag",
+    "Web-Scraper · Runs vor einem Vorschlag",
   "settings.leaf.connectors.http.max_response_bytes": "HTTP · Größengrenze je Antwort (Bytes)",
   "settings.leaf.connectors.mcp.per_server_manifest_byte_cap":
     "Externes MCP · Grenze der Werkzeugliste (Bytes)",

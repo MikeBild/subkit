@@ -111,7 +111,7 @@ describe("the page state", () => {
     expect(view.kind).toBe("calm");
     if (view.kind === "calm")
       expect(statusLine(view.status, de, () => "28.09.2026, 13:00")).toBe(
-        "Gesund · nächster geplanter Lauf 28.09.2026, 13:00",
+        "Gesund · nächster geplanter Run 28.09.2026, 13:00",
       );
   });
 
@@ -147,7 +147,7 @@ describe("the page state", () => {
   test("no status line for a reader the engine sends no status", () => {
     expect(statusLine(null, de, String)).toBeNull();
     expect(statusLine({ health_state: "limited", next_run_at: null }, de, String)).toBe(
-      "Eingeschränkt · kein Lauf geplant",
+      "Eingeschränkt · kein Run geplant",
     );
   });
 

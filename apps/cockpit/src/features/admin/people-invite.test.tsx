@@ -82,10 +82,10 @@ describe("an invited person in the list", () => {
     expect(html).not.toContain("Wartet auf dich");
   });
 
-  test("the row menu re-creates the link or withdraws the invitation, with a confirmation", () => {
+  test("the row menu sends the invitation or withdraws it, with a confirmation", () => {
     const source = readFileSync(resolve(import.meta.dir, "people-tab.tsx"), "utf8");
     expect(source).toContain('row.status === "invited"');
-    expect(source).toContain('t("people.invite.again")');
+    expect(source).toContain('t("people.invite.send")');
     expect(source).toContain('t("people.invite.withdraw")');
     expect(source).toContain('testId="people-invite-withdraw-confirm"');
   });

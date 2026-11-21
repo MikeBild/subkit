@@ -65,6 +65,7 @@ describe("schedule binding survives a step-only edit", () => {
     const wfId = created.workflow.id;
 
     const sched = await createSchedule(ctx.db, {
+      creator: null,
       tenant_id,
       workflow_id: wfId,
       cron: "0 19 * * *",

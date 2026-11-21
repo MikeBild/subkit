@@ -20,7 +20,7 @@ Afterwards you have answered the step “How SubKit works for you” and know wh
 
 The step appears once, after your first sign-in to a workspace.
 
-1. Read the question and choose an answer. Below each question, the line “Sets: …” says what the answer does. The recommended answer carries the addition **recommended**.
+1. Read the question and choose an answer. Under **Settings** › **Setup**, the line “Sets: …” says what each answer does. The recommended answer carries the addition **recommended**.
 2. Select **Continue** until all six questions are answered.
 3. Check the summary “This is what I will set up for you”. **Change** corrects a single answer.
 4. Select **Apply these**.
@@ -33,7 +33,7 @@ The step appears once, after your first sign-in to a workspace.
 | --- | --- | --- |
 | “What should SubKit do for you first?” | **File invoices**, **Daily numbers by email**, **Summarize the week**, **List open tickets**, **Watch the pricing page**, **Unlock access after payment** or **Something else** with your own text | The first suggestion in chat and the first item of “First steps”. |
 | “Which services do you use for it?” | Gmail, Google Drive, Google Sheets, Slack, Jira, GitHub, Notion, HubSpot, Stripe or **Other service** | Which connectors “First steps” offers first. |
-| “Who approves what SubKit may do?” | **Me** (recommended) or **Someone else on the team** with an email address | Who gets approval notifications and whether an invitation is prepared. |
+| “Who approves what SubKit may do?” | **Me** (recommended), **Someone else on the team** or **Two of us: one builds, one approves**, each with an email address | Who gets approval notifications, whether an invitation is prepared and, for two of us, whether every workflow approval needs two people. |
 | “How much should SubKit do on its own in chat?” | **Always ask**, **Ask only when unexpected** (recommended) or **Plan only at first** | The chat mode **Ask**, **Automatic** or **Plan only** for new conversations. |
 | “Where should new things run first?” | **Test first** (recommended) or **Straight to production** | The default environment for new workflows and tasks. |
 | “When may SubKit notify you?” | **Right away** (recommended), **Only during my working hours** or **Once a day as a summary** | Notifications and quiet hours. |
@@ -43,6 +43,17 @@ The first two answers only change what the Cockpit suggests to you first. They c
 - **Chat mode.** Every new conversation starts in this mode. In the conversation you can choose another one at any time. “Chat modes and rules” explains what the modes mean.
 - **Default environment.** A new task and the review of a new workflow start in this environment. You still choose the environment of a single workflow or task yourself.
 - **Approvals and notifications.** Both are described in “Notifications and quiet hours”.
+
+### Two of us: one builds, one approves
+
+With this answer, every workflow approval in the workspace needs two different people. The first person approves, the approval waits, and only the approval of a second person who may approve lets the workflow run. Nobody can approve alone, also not in chat or through a task.
+
+- Only an administrator switches this on. If you are not one, you read that an administrator has to switch it on.
+- It needs at least two people who may approve. If the named person has not joined yet, two-person approval starts by itself once they have joined.
+- A waiting approval ends after 72 hours. It also ends when the workflow changes before the second approval.
+- Choosing **Me** later does not switch two-person approval off. Only an administrator switches it off again, and that is recorded in the audit log.
+
+“Reference: pair approval, invitations, offline reports and notification pause” lists the routes and states.
 
 ### Change answers later
 

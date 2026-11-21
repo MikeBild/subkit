@@ -5,16 +5,26 @@ import {
   app,
   type BrowserWindow,
   dialog,
+  globalShortcut,
   type IpcMainInvokeEvent,
   ipcMain,
+  nativeTheme,
   session,
 } from "electron";
+import type { NotificationPauseBody } from "../../../../packages/shared/src/notification-pause.ts";
 import { isConnectUrl } from "../shared/app-url.ts";
 import { type AttentionItem, badgeLabel, toNotifications } from "../shared/attention.ts";
+import {
+  connectorIdFromPage,
+  isConnectorSignIn,
+  signInFinished,
+} from "../shared/browser-sheet-model.ts";
 import { type PendingCapture, reusableCapture } from "../shared/capture.ts";
 import { loginCallback } from "../shared/channel.ts";
 import { parseDeepLink } from "../shared/deep-link.ts";
+import type { DropVia } from "../shared/drop-model.ts";
 import { dictionary, type Locale, resolveLocale, t } from "../shared/i18n.ts";
+import { type InviteCheck, invitePageUrl, parseInviteLink } from "../shared/invite-link.ts";
 import {
   type CheckResult,
   COCKPIT_CHANNELS,
@@ -22,9 +32,37 @@ import {
   type ConnectNotice,
   type ConnectState,
   type ConnectView,
+  type DesktopSettingsView,
+  desktopSettingsPatch,
+  desktopUpdateView,
   type LoginPhase,
   type ProfileSummary,
+  type SignedIn,
 } from "../shared/ipc.ts";
+import {
+  chooseWorkspace,
+  completeStep,
+  LOADING_ONBOARDING,
+  MEMBERSHIPS_PATH,
+  NO_ONBOARDING,
+  type Onboarding,
+  parseMemberships,
+  startOnboarding,
+  TENANT_SESSION_PATH,
+  tenantSessionBody,
+  type WorkspaceOption,
+  workspaceFailed,
+} from "../shared/onboarding.ts";
+import {
+  type Held,
+  heldHint,
+  PAUSE_PATH,
+  type PauseSupport,
+  parsePause,
+  pauseSupportOf,
+  pauseToggle,
+  trayMute,
+} from "../shared/pause-model.ts";
 import {
   activeProfile,
   dropPendingProfiles,
@@ -37,10 +75,24 @@ import {
   signOutProfile,
   upsertProfile,
 } from "../shared/profiles.ts";
-import { muteReason } from "../shared/quiet-hours.ts";
 import { cockpitUrl, isSameOrigin } from "../shared/server-address.ts";
-import type { AuthFailure, DesktopSession, ServiceDescriptor } from "../shared/server-contract.ts";
-import type { MenuUpdateItem } from "../shared/tray-model.ts";
+import {
+  type AuthFailure,
+  type DesktopSession,
+  deviceLabel,
+  type ServiceDescriptor,
+} from "../shared/server-contract.ts";
+import { type TooOldAsk, tooOldAsk } from "../shared/server-too-old.ts";
+import {
+  type ShellTarget,
+  type StatusNotification,
+  shellStatus,
+  statusNotice,
+  statusNotification,
+  updateNotice,
+  updateNotification,
+} from "../shared/status-model.ts";
+import { type MenuUpdateItem, quickCaptureAccelerator } from "../shared/tray-model.ts";
 import { type UpdateState, updateAction, updateMenuLabel } from "../shared/updates.ts";
 import { serveAppFiles } from "./app-protocol.ts";
 import { captureWindow } from "./capture.ts";
@@ -48,12 +100,13 @@ import { CHANNEL } from "./channel.ts";
 import { type DiagnosticsContext, diagnosticsBundle, offerDiagnostics } from "./diagnostics.ts";
 import { ErrorLog } from "./error-log.ts";
 import { AttentionFeed } from "./feed.ts";
-import { confineToAppScheme, hardenSession } from "./hardening.ts";
+import { confineToAppScheme, hardenSession, openExternal } from "./hardening.ts";
 import { LoginController } from "./login.ts";
 import { launchesAtLogin, setLaunchAtLogin } from "./login-item.ts";
 import { applyMenu } from "./menu.ts";
 import { showNotification } from "./notify.ts";
-import { checkServer } from "./server-client.ts";
+import { checkServer, previewInvite } from "./server-client.ts";
+import { SHELL_PARTITION, ShellUi } from "./shell-ui.ts";
 import { ProfileStore } from "./store.ts";
 import { type Connection, TrayController } from "./tray.ts";
 import { UpdateController } from "./updates.ts";
@@ -66,6 +119,7 @@ import {
   reveal,
   setBadge,
 } from "./windows.ts";
+import { WorkspaceApi } from "./workspace-api.ts";
 
 const PAUSE_MS = 60 * 60_000;
 
@@ -89,6 +143,9 @@ export class Shell {
   private loginPhase: LoginPhase = { phase: "idle" };
   private notice: { kind: ConnectNotice; profileId: string } | null = null;
   private view: ConnectView = "connect";
+  private signedIn: SignedIn | null = null;
+  private tooOld: TooOldAsk | null = null;
+  private onboarding: Onboarding = NO_ONBOARDING;
   private pauseTimer: ReturnType<typeof setTimeout> | null = null;
   private quitting = false;
 
@@ -97,6 +154,23 @@ export class Shell {
     onError: (scope, error) => this.errors.record(scope, error),
   });
   private offeredUpdate: string | null = null;
+  private lastUpdate: UpdateState = { phase: "idle" };
+  private workspace: WorkspaceApi | null = null;
+  private shortcut: string | null = null;
+  private readonly shellUi = new ShellUi({
+    locale: () => this.locale(),
+    online: () => this.connection === "online",
+    workspace: () => this.workspaceApi(),
+    cockpitWindow: () => this.cockpit?.window ?? null,
+    openCockpit: (href) => this.open(href),
+    reloadCockpit: () => {
+      const window = this.cockpit?.window;
+      if (window && !window.isDestroyed()) window.webContents.reload();
+    },
+    notify: (content, onClick) => showNotification(content, () => onClick()),
+    openExternal: (url) => openExternal(url),
+    onError: (scope, error) => this.errors.record(scope, error),
+  });
 
   constructor() {
     this.login = new LoginController({
@@ -118,17 +192,27 @@ export class Shell {
     hardenSession(connectSession, null);
     confineToAppScheme(connectSession);
     serveAppFiles(connectSession, PATHS.connectRoot);
+    const shellSession = session.fromPartition(SHELL_PARTITION);
+    hardenSession(shellSession, null);
+    confineToAppScheme(shellSession);
+    serveAppFiles(shellSession, PATHS.shellRoot);
     hardenSession(session.defaultSession, null);
     this.registerIpc();
+    this.shellUi.registerIpc();
     this.tray = new TrayController(PATHS.assets, {
       open: () => this.open(),
-      openAttention: () => this.open("/"),
-      togglePause: () => this.togglePause(),
-      toggleLaunchAtLogin: () => this.setLaunch(!this.store.data.settings.launchAtLogin),
+      needsYou: () => this.open("/"),
+      pause: () => void this.togglePause(),
+      resume: () => void this.togglePause(),
+      launchAtLogin: () => this.setLaunch(!this.store.data.settings.launchAtLogin),
+      update: () => void this.checkUpdates(),
+      quickCapture: () => this.shellUi.openCapture(),
+      settings: () => this.showConnect("settings"),
       reportProblem: () => void this.reportProblem(),
-      checkUpdates: () => void this.checkUpdates(),
       quit: () => this.quit(),
+      dropFiles: (paths) => this.dropFiles(paths, "tray"),
     });
+    nativeTheme.on("updated", () => this.shellUi.refresh());
     this.schedulePauseEnd();
     this.render();
     this.startFeed();
@@ -164,8 +248,19 @@ export class Shell {
     });
   }
 
+  dropFiles(paths: string[], via: DropVia): void {
+    const profile = activeProfile(this.store.data);
+    if (!isSignedIn(profile)) {
+      this.open();
+      return;
+    }
+    void this.shellUi.openDrop(paths, via);
+  }
+
   beforeQuit(): void {
     this.quitting = true;
+    globalShortcut.unregisterAll();
+    this.shellUi.closeAll();
     this.feed?.stop();
     this.store.flush();
   }
@@ -209,8 +304,48 @@ export class Shell {
       .catch((error) => this.errors.record("session.clear", error));
   }
 
+  private pauseSupport: PauseSupport = "unknown";
+  private serverPause: NotificationPauseBody | null = null;
+  private held: Held | null = null;
+
+  private mute() {
+    const { settings } = this.store.data;
+    return trayMute({
+      support: this.pauseSupport,
+      server: this.serverPause,
+      held: this.held,
+      quietHours: settings.quietHours,
+      localPauseUntil: settings.pauseUntil,
+      now: Date.now(),
+    });
+  }
+
   private muted(): boolean {
-    return muteReason(this.store.data.settings, new Date()) !== null;
+    return this.mute() !== null;
+  }
+
+  private async loadPause(): Promise<void> {
+    const api = this.workspaceApi();
+    if (!api) return;
+    try {
+      const { status, json } = await api.send("GET", PAUSE_PATH);
+      this.pauseSupport = pauseSupportOf(status) ?? this.pauseSupport;
+      if (this.pauseSupport === "server") this.serverPause = parsePause(json) ?? this.serverPause;
+    } catch (error) {
+      this.errors.record("pause.read", error);
+    }
+    this.schedulePauseEnd();
+    this.render();
+  }
+
+  private onStreamEvent(name: string, data: string): void {
+    const finished = signInFinished(name, data);
+    if (finished) this.shellUi.signInFinished(finished);
+    const held = heldHint(data, Date.now());
+    if (!held && name !== "hello" && name !== "ping" && !data.includes('"delivery"')) return;
+    const changed = held?.by !== this.held?.by || held?.until !== this.held?.until;
+    this.held = held;
+    if (changed) void this.loadPause();
   }
 
   private profiles(): ProfileSummary[] {
@@ -229,6 +364,7 @@ export class Shell {
     const locale = this.locale();
     return {
       appVersion: app.getVersion(),
+      deviceLabel: deviceLabel(hostname()),
       locale,
       messages: dictionary(locale),
       view: this.view,
@@ -237,9 +373,13 @@ export class Shell {
         locale: settings.locale,
         launchAtLogin: app.isPackaged ? launchesAtLogin() : settings.launchAtLogin,
         quietHours: settings.quietHours,
+        notifications: settings.notifications,
+        shareDiagnostics: settings.shareDiagnostics,
       },
       login: this.loginPhase,
       notice: this.notice,
+      signedIn: this.signedIn,
+      onboarding: this.onboarding,
       update: this.updates.current,
     };
   }
@@ -253,14 +393,16 @@ export class Shell {
   private render(): void {
     const locale = this.locale();
     const { settings } = this.store.data;
-    const paused = settings.pauseUntil !== null && settings.pauseUntil > Date.now();
+    const signedIn = isSignedIn(activeProfile(this.store.data));
+    this.syncShortcut(signedIn);
     this.tray?.render({
       locale,
       count: this.count,
       connection: this.connection,
-      paused,
-      launchAtLogin: settings.launchAtLogin,
+      mute: this.mute(),
       update: this.updateMenuItem(locale),
+      quickCapture: signedIn ? quickCaptureAccelerator(process.platform) : null,
+      launchAtLogin: { checked: settings.launchAtLogin, enabled: app.isPackaged },
     });
     applyMenu(
       { locale, profiles: this.profiles(), update: this.updateMenuItem(locale) },
@@ -281,6 +423,85 @@ export class Shell {
     if (this.connectWindow && !this.connectWindow.isDestroyed()) {
       this.connectWindow.webContents.send(CONNECT_CHANNELS.state, this.connectState());
     }
+    const cockpit = this.cockpit?.window;
+    if (cockpit && !cockpit.isDestroyed()) {
+      cockpit.webContents.send(COCKPIT_CHANNELS.statusChanged, this.cockpitStatus());
+      cockpit.webContents.send(COCKPIT_CHANNELS.desktopSettingsChanged, this.desktopSettings());
+    }
+    this.shellUi.refresh();
+  }
+
+  private desktopSettings(): DesktopSettingsView {
+    const { settings } = this.store.data;
+    return {
+      appVersion: app.getVersion(),
+      launchAtLogin: app.isPackaged ? launchesAtLogin() : settings.launchAtLogin,
+      launchAtLoginAvailable: app.isPackaged,
+      shareDiagnostics: settings.shareDiagnostics,
+      notifications: settings.notifications,
+      update: desktopUpdateView(this.updates.current, app.getVersion(), (key, vars) =>
+        t(this.locale(), key, vars),
+      ),
+    };
+  }
+
+  private changeSettings(input: Record<string, unknown>): void {
+    const merged = parseSettings({ ...this.store.data.settings, ...input });
+    const launch = merged.launchAtLogin !== this.store.data.settings.launchAtLogin;
+    this.store.update((data) => ({
+      ...data,
+      settings: { ...merged, pauseUntil: data.settings.pauseUntil },
+    }));
+    if (launch) this.setLaunch(merged.launchAtLogin);
+    else this.render();
+  }
+
+  private cockpitStatus() {
+    return shellStatus(this.connection, this.updates.current, this.locale(), this.tooOld);
+  }
+
+  private syncShortcut(signedIn: boolean): void {
+    const wanted = signedIn ? quickCaptureAccelerator(process.platform) : null;
+    if (wanted === this.shortcut) return;
+    if (this.shortcut) globalShortcut.unregister(this.shortcut);
+    this.shortcut = null;
+    if (!wanted) return;
+    try {
+      if (globalShortcut.register(wanted, () => this.shellUi.openCapture())) this.shortcut = wanted;
+      else this.errors.record("shortcut", new Error(`${wanted} is taken`));
+    } catch (error) {
+      this.errors.record("shortcut", error);
+    }
+  }
+
+  private workspaceApi(): WorkspaceApi | null {
+    const profile = activeProfile(this.store.data);
+    if (!isSignedIn(profile)) return null;
+    const target = { serverOrigin: profile.serverOrigin, cockpitPath: profile.cockpitPath };
+    if (!this.workspace?.matches(target))
+      this.workspace = new WorkspaceApi(this.sessionFor(profile.serverOrigin), target);
+    return this.workspace;
+  }
+
+  private announce({ notification, target }: StatusNotification): void {
+    if (this.muted() || !this.store.data.settings.notifications) return;
+    showNotification(notification, () => this.openTarget(target));
+  }
+
+  private openTarget(target: ShellTarget): void {
+    if (target === "settings") this.showConnect("settings");
+    else if (target === "connect") this.showConnect("connect");
+    else this.open();
+  }
+
+  private setConnection(next: Connection): void {
+    const notice = statusNotice(this.connection, next);
+    if (next === "online" && this.connection !== "online") {
+      void this.loadPause();
+      void this.checkCompatibility();
+    }
+    this.connection = next;
+    if (notice) this.announce(statusNotification(notice, this.locale()));
   }
 
   private keepAlive(window: BrowserWindow): void {
@@ -292,6 +513,12 @@ export class Shell {
   }
 
   private showConnect(view: ConnectView): void {
+    this.signedIn = null;
+    this.onboarding = NO_ONBOARDING;
+    this.revealConnect(view);
+  }
+
+  private revealConnect(view: ConnectView): void {
     this.view = view;
     if (!this.connectWindow || this.connectWindow.isDestroyed()) {
       const window = createConnectWindow();
@@ -316,7 +543,12 @@ export class Shell {
       return;
     }
     this.sessionFor(profile.serverOrigin);
-    const window = createCockpitWindow(profile);
+    const window = createCockpitWindow(profile, (url) => {
+      if (!isConnectorSignIn(url, profile.serverOrigin)) return false;
+      const page = window.isDestroyed() ? null : window.webContents.getURL();
+      this.shellUi.openSheet(url, connectorIdFromPage(page));
+      return true;
+    });
     this.cockpit = { window, profileId: profile.id };
     this.keepAlive(window);
     window.once("ready-to-show", () => reveal(window));
@@ -363,6 +595,7 @@ export class Shell {
   private startFeed(): void {
     this.feed?.stop();
     this.feed = null;
+    this.tooOld = null;
     const profile = activeProfile(this.store.data);
     if (!isSignedIn(profile)) {
       this.connection =
@@ -384,7 +617,7 @@ export class Shell {
         this.store.update((data) => upsertProfile(data, profile.serverOrigin, patch), false),
       onItems: (items, notify, summary) => this.onItems(id, items, notify, summary),
       onStatus: (status) => {
-        this.connection = status;
+        this.setConnection(status);
         if (
           status === "online" &&
           this.notice?.kind === "offline" &&
@@ -395,6 +628,7 @@ export class Shell {
         this.render();
       },
       onAuthFailure: (failure) => this.onAuthFailure(id, failure),
+      onEvent: (name, data) => this.onStreamEvent(name, data),
       onError: (scope, error) => this.errors.record(scope, error),
     });
     this.feed.start();
@@ -409,7 +643,9 @@ export class Shell {
   ): void {
     this.count = items.length;
     const locale = this.locale();
-    for (const notification of toNotifications(notify, locale, summary)) {
+    for (const notification of this.store.data.settings.notifications
+      ? toNotifications(notify, locale, summary)
+      : []) {
       showNotification(notification, (href) => {
         const profile = findProfile(this.store.data, profileId);
         if (isSignedIn(profile) && this.store.data.activeProfileId === profileId) {
@@ -429,7 +665,7 @@ export class Shell {
     this.feed?.stop();
     this.feed = null;
     this.count = 0;
-    this.connection = failure;
+    this.setConnection(failure);
     this.notice = { kind: failure, profileId };
     if (failure === "revoked") {
       this.store.update((data) => signOutProfile(data, profileId));
@@ -467,11 +703,99 @@ export class Shell {
     this.count = 0;
     this.closeCockpit();
     this.startFeed();
-    this.open();
+    this.signedIn = { profileId: id, origin, serverVersion: descriptor.version };
+    this.onboarding = LOADING_ONBOARDING;
+    this.revealConnect("connect");
+    void this.beginOnboarding().then(() => this.render());
   }
 
-  private togglePause(): void {
-    const paused = (this.store.data.settings.pauseUntil ?? 0) > Date.now();
+  private async beginOnboarding(): Promise<void> {
+    let workspaces: WorkspaceOption[] = [];
+    const api = this.workspaceApi();
+    if (api) {
+      try {
+        const { status, json } = await api.send("GET", MEMBERSHIPS_PATH);
+        if (status >= 200 && status < 300) workspaces = parseMemberships(json);
+      } catch (error) {
+        this.errors.record("onboarding.memberships", error);
+      }
+    }
+    this.onboarding = startOnboarding(workspaces, this.store.data.settings);
+  }
+
+  private async chooseWorkspace(tenantId: string | null): Promise<void> {
+    if (tenantId === null) {
+      this.onboarding = completeStep(this.onboarding, "workspace");
+      this.render();
+      return;
+    }
+    if (!this.onboarding.workspaces.some((workspace) => workspace.tenantId === tenantId)) return;
+    const api = this.workspaceApi();
+    if (!api) return;
+    try {
+      const { status } = await api.send("POST", TENANT_SESSION_PATH, tenantSessionBody(tenantId));
+      this.onboarding =
+        status >= 200 && status < 300
+          ? chooseWorkspace(this.onboarding, tenantId)
+          : workspaceFailed(this.onboarding);
+    } catch (error) {
+      this.errors.record("onboarding.workspace", error);
+      this.onboarding = workspaceFailed(this.onboarding);
+    }
+    this.render();
+  }
+
+  private answerNotifications(allow: boolean): void {
+    this.store.update((data) => ({
+      ...data,
+      settings: { ...data.settings, notifications: allow, notificationsAsked: true },
+    }));
+    if (allow) {
+      const locale = this.locale();
+      showNotification(
+        {
+          id: "notifications-on",
+          title: t(locale, "perm.test.title"),
+          body: t(locale, "perm.test.body"),
+          silent: false,
+          urgency: "normal",
+          href: null,
+        },
+        () => this.open(),
+      );
+    }
+    this.onboarding = completeStep(this.onboarding, "notifications");
+    this.render();
+  }
+
+  private answerDiagnostics(share: boolean): void {
+    this.store.update((data) => ({
+      ...data,
+      settings: { ...data.settings, shareDiagnostics: share, diagnosticsAsked: true },
+    }));
+    this.onboarding = completeStep(this.onboarding, "diagnostics");
+    this.render();
+  }
+
+  private async togglePause(): Promise<void> {
+    const paused = this.mute()?.reason === "paused";
+    const api = this.workspaceApi();
+    if (this.pauseSupport === "server" && api) {
+      const request = pauseToggle(paused);
+      try {
+        const { status, json } =
+          request.method === "PUT"
+            ? await api.send("PUT", PAUSE_PATH, JSON.stringify(request.body))
+            : await api.send("DELETE", PAUSE_PATH);
+        if (status >= 200 && status < 300) this.serverPause = parsePause(json) ?? this.serverPause;
+        else this.errors.record("pause.write", new Error(`pause ${status}`));
+      } catch (error) {
+        this.errors.record("pause.write", error);
+      }
+      this.schedulePauseEnd();
+      this.render();
+      return;
+    }
     this.store.update((data) => ({
       ...data,
       settings: { ...data.settings, pauseUntil: paused ? null : Date.now() + PAUSE_MS },
@@ -483,9 +807,15 @@ export class Shell {
   private schedulePauseEnd(): void {
     if (this.pauseTimer) clearTimeout(this.pauseTimer);
     this.pauseTimer = null;
-    const until = this.store.data.settings.pauseUntil;
-    if (until === null || until <= Date.now()) return;
-    this.pauseTimer = setTimeout(() => this.render(), until - Date.now() + 500);
+    const until = this.mute()?.until?.getTime() ?? null;
+    if (until === null || until <= Date.now() || until - Date.now() > 2 ** 31 - 1) return;
+    this.pauseTimer = setTimeout(
+      () => {
+        this.schedulePauseEnd();
+        this.render();
+      },
+      until - Date.now() + 500,
+    );
   }
 
   private setLaunch(enabled: boolean): void {
@@ -548,6 +878,9 @@ export class Shell {
   }
 
   private onUpdateState(state: UpdateState): void {
+    const version = updateNotice(this.lastUpdate, state);
+    this.lastUpdate = state;
+    if (version) this.announce(updateNotification(version, this.locale()));
     this.render();
     if (state.phase !== "ready" || this.offeredUpdate === state.version) return;
     this.offeredUpdate = state.version;
@@ -562,6 +895,12 @@ export class Shell {
     }
     this.showConnect("settings");
     if (action === "check") await this.updates.check();
+  }
+
+  private async updateFromCockpit(): Promise<void> {
+    const action = updateAction(this.updates.current);
+    if (action === "restart") this.restartForUpdate();
+    else if (action === "check") await this.updates.check();
   }
 
   private restartForUpdate(): void {
@@ -606,6 +945,36 @@ export class Shell {
     this.store.update((data) => removeProfile(data, id));
     this.count = 0;
     this.startFeed();
+  }
+
+  private async checkCompatibility(): Promise<void> {
+    const profile = activeProfile(this.store.data);
+    if (!isSignedIn(profile)) return;
+    const check = await checkServer(
+      profile.serverOrigin,
+      app.getVersion(),
+      loginCallback(CHANNEL.scheme),
+    );
+    if (activeProfile(this.store.data)?.id !== profile.id) return;
+    if (check.result.status === "unreachable") return;
+    this.tooOld = tooOldAsk(check.result);
+    this.render();
+  }
+
+  private async checkInvite(raw: unknown): Promise<InviteCheck> {
+    const link = typeof raw === "string" ? parseInviteLink(raw.slice(0, 2048)) : null;
+    if (!link) return { kind: "link" };
+    const check = await checkServer(link.origin, app.getVersion(), loginCallback(CHANNEL.scheme));
+    if (check.result.status !== "compatible") return { kind: "server", result: check.result };
+    const preview = await previewInvite(link);
+    return preview
+      ? { kind: "preview", preview }
+      : { kind: "server", result: { ...check.result, status: "unreachable" } };
+  }
+
+  private joinInvite(raw: unknown): void {
+    const link = typeof raw === "string" ? parseInviteLink(raw.slice(0, 2048)) : null;
+    if (link) openExternal(invitePageUrl(link));
   }
 
   private async signIn(address: unknown): Promise<CheckResult> {
@@ -661,7 +1030,10 @@ export class Shell {
     handle(CONNECT_CHANNELS.login, (address) => this.signIn(address));
     handle(CONNECT_CHANNELS.cancelLogin, () => this.login.cancel());
     handle(CONNECT_CHANNELS.openProfile, (id) => {
-      if (typeof id === "string") this.activate(id);
+      if (typeof id !== "string") return;
+      this.signedIn = null;
+      this.onboarding = NO_ONBOARDING;
+      this.activate(id);
     });
     handle(CONNECT_CHANNELS.removeProfile, async (id) => {
       if (typeof id === "string") await this.removeServer(id);
@@ -671,22 +1043,39 @@ export class Shell {
       this.render();
     });
     handle(CONNECT_CHANNELS.updateAction, () => this.checkUpdates());
+    handle(CONNECT_CHANNELS.reportProblem, () => this.reportProblem());
+    handle(CONNECT_CHANNELS.chooseWorkspace, (tenantId) =>
+      this.chooseWorkspace(typeof tenantId === "string" && tenantId ? tenantId : null),
+    );
+    handle(CONNECT_CHANNELS.answerNotifications, (allow) =>
+      this.answerNotifications(allow === true),
+    );
+    handle(CONNECT_CHANNELS.answerDiagnostics, (share) => this.answerDiagnostics(share === true));
+    handle(CONNECT_CHANNELS.checkInvite, (link) => this.checkInvite(link));
+    handle(CONNECT_CHANNELS.joinInvite, (link) => this.joinInvite(link));
     handle(CONNECT_CHANNELS.updateSettings, (patch) => {
       if (!patch || typeof patch !== "object") return;
-      const input = patch as Record<string, unknown>;
-      const merged = parseSettings({ ...this.store.data.settings, ...input });
-      const launch = merged.launchAtLogin !== this.store.data.settings.launchAtLogin;
-      this.store.update((data) => ({
-        ...data,
-        settings: { ...merged, pauseUntil: data.settings.pauseUntil },
-      }));
-      if (launch) this.setLaunch(merged.launchAtLogin);
-      else this.render();
+      this.changeSettings(patch as Record<string, unknown>);
     });
+    ipcMain.handle(COCKPIT_CHANNELS.desktopSettings, (event) =>
+      this.fromCockpit(event) ? this.desktopSettings() : null,
+    );
+    ipcMain.handle(COCKPIT_CHANNELS.updateDesktopSettings, (event, patch: unknown) => {
+      if (this.fromCockpit(event)) this.changeSettings({ ...desktopSettingsPatch(patch) });
+    });
+    ipcMain.handle(COCKPIT_CHANNELS.recheckServer, (event) =>
+      this.fromCockpit(event) ? this.checkCompatibility() : undefined,
+    );
+    ipcMain.handle(COCKPIT_CHANNELS.runUpdateAction, (event) =>
+      this.fromCockpit(event) ? this.updateFromCockpit() : undefined,
+    );
     ipcMain.handle(COCKPIT_CHANNELS.diagnostics, (event) => {
       const profile = this.fromCockpit(event);
       return profile ? diagnosticsBundle(this.diagnosticsContext(profile)) : null;
     });
+    ipcMain.handle(COCKPIT_CHANNELS.status, (event) =>
+      this.fromCockpit(event) ? this.cockpitStatus() : null,
+    );
     ipcMain.handle(COCKPIT_CHANNELS.captureWindow, (event) =>
       this.fromCockpit(event) ? this.captureForCockpit() : null,
     );

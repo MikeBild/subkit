@@ -75,7 +75,11 @@ export interface AuthorityReviewModel {
   requiresWriteCheck: boolean;
   blocked: boolean;
   buttons: { primary: "approve" | "adopt"; activateOnly: "footer" | "menu" | null };
-  messages: { activated: TranslationKey; activateOnlyHelp: TranslationKey };
+  messages: {
+    activated: TranslationKey;
+    activateOnlyHelp: TranslationKey;
+    approve: TranslationKey;
+  };
 }
 
 const COLLAPSE_GROUPS_ABOVE = 12;
@@ -258,6 +262,14 @@ export function authorityReviewModel(input: {
   const grows = preview.boundary_growth === undefined || preview.boundary_growth.length > 0;
   const approvedBase =
     preview.boundary_growth !== undefined && preview.effect_changes_base?.approved !== false;
+  const requiresWriteCheck = rows.some(
+    (row) =>
+      row.risk !== "read" &&
+      (!approvedBase ||
+        changes === undefined ||
+        row.change === "added" ||
+        row.change === "widened"),
+  );
   const sentence: ReviewSentence =
     effects.length === 0
       ? { kind: "none" }
@@ -294,14 +306,7 @@ export function authorityReviewModel(input: {
         }
       : null,
     groups,
-    requiresWriteCheck: rows.some(
-      (row) =>
-        row.risk !== "read" &&
-        (!approvedBase ||
-          changes === undefined ||
-          row.change === "added" ||
-          row.change === "widened"),
-    ),
+    requiresWriteCheck,
     blocked:
       (preview.request_refusals?.length ?? 0) +
         (preview.storage_refusals?.length ?? 0) +
@@ -324,6 +329,7 @@ export function authorityReviewModel(input: {
         input.automation.schedule || input.automation.webhook
           ? "authority.review.help.activateOnlyHeld"
           : "authority.review.help.activateOnly",
+      approve: requiresWriteCheck ? "authority.review.approveWrites" : "authority.review.approve",
     },
   };
 }

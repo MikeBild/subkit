@@ -409,3 +409,47 @@ describe("for_each · bounded-parallel iteration preserves order", () => {
     }
   }, 15000);
 });
+
+describe("loop body request · item placeholders", () => {
+  test("each iteration sends its own item id on the wire, never the literal placeholder", async () => {
+    const paths: string[] = [];
+    const mock: MockServer = await createMockServer((req, res) => {
+      paths.push(req.url ?? "");
+      jsonResponse(res, 200, { ok: true });
+    });
+    try {
+      const { workflow_id } = await createWorkflowRow(ctx, {
+        name: "loop-item-path",
+        steps: [
+          {
+            id: "projects",
+            kind: "transform",
+            language: "javascript",
+            expression: 'return [{ id: "proj-a" }, { id: "proj-b" }];',
+          },
+          { id: "each_project", kind: "loop", over: "projects.data", body: ["resources"] },
+          {
+            id: "resources",
+            kind: "request",
+            method: "GET",
+            url: `${mock.baseUrl}/v2/projects/\${item.id}/resources`,
+          },
+        ],
+      });
+      const result = await runExecution({
+        db: ctx.testDb.db,
+        tenant_id: ctx.tenantId,
+        source: { kind: "saved", workflow_id },
+        input: null,
+      });
+      expect(result.status).toBe("succeeded");
+      expect([...paths].sort()).toEqual([
+        "/v2/projects/proj-a/resources",
+        "/v2/projects/proj-b/resources",
+      ]);
+      for (const p of paths) expect(p).not.toContain("%24%7B");
+    } finally {
+      await mock.close();
+    }
+  });
+});

@@ -35,6 +35,7 @@ Use it as SubKit Cloud or run your own engine:
 - "Run the engine": you run SubKit on your own server.
 
 Then build your first workflow with "Your first workflow".
+Every feature, with where it is available, is listed in [SubKit features at a glance](setup.md#subkit-features-at-a-glance).
 
 ![Documentation page with search, the "Getting started" path with steps 1 to 4 and the "Working with SubKit" list](/docs-images/intro-docs.en.webp?v=85684f500db6)
 ## Use SubKit Cloud
@@ -389,7 +390,8 @@ Replace the email address, the name and the key with your own values.
 `sk init` checks the key with one small test call before it saves anything.
 If the provider refuses it, the setup stops and nothing is stored. The same token works for the next try.
 
-Open the Cockpit at `http://localhost:3000/cockpit`.
+Open `http://localhost:3000` in your browser. The address takes you straight to the Cockpit at `/cockpit`.
+The engine index, with every address for tools and AI clients, is at `/engine`.
 If no sign-in provider is configured, sign in with an API key.
 Then build your first workflow with "Your first workflow".
 
@@ -403,7 +405,7 @@ It works the same in SubKit Cloud and on a self-hosted engine.
 
 - A SubKit account in a workspace.
   - Cloud: `https://subkit-cloud.mikebild.dev`
-  - Self-hosted: `https://<your-engine>/cockpit`
+  - Self-hosted: `https://<your-engine>`. In a browser the address opens the Cockpit.
 - Permission to create and run workflows. Ask your administrator if a button is missing.
 - An AI provider. Cloud provides one. A self-hosted engine uses the provider you chose in `sk init`.
 
@@ -2534,7 +2536,7 @@ The task page shows the state of the latest run and one recommended action.
 | **aborted** | You or an admin stopped the run, or the task changed. | Start a new run if you need one. |
 | **failed** | Something broke that the run could not recover from, or the run reached its round limit or its time limit without a result. | Open the run, read the reason, start a new run. After a reached limit: **Start again**. |
 
-The **Overview** tab shows four facts: **Now**, **Waiting for**, **Next check** and **Done when**. Below them are the steps of the plan with their progress.
+The **Overview** tab shows **Next check**, **Usage** and **Done when**; while a run sleeps, **Waiting for** names the reason. What runs now and who it waits for stand in the status line at the top. Below them are the steps of the plan with their progress.
 
 A run waits for you in these cases:
 
@@ -2683,7 +2685,7 @@ Afterwards you have answered the step “How SubKit works for you” and know wh
 
 The step appears once, after your first sign-in to a workspace.
 
-1. Read the question and choose an answer. Below each question, the line “Sets: …” says what the answer does. The recommended answer carries the addition **recommended**.
+1. Read the question and choose an answer. Under **Settings** › **Setup**, the line “Sets: …” says what each answer does. The recommended answer carries the addition **recommended**.
 2. Select **Continue** until all six questions are answered.
 3. Check the summary “This is what I will set up for you”. **Change** corrects a single answer.
 4. Select **Apply these**.
@@ -2696,7 +2698,7 @@ The step appears once, after your first sign-in to a workspace.
 | --- | --- | --- |
 | “What should SubKit do for you first?” | **File invoices**, **Daily numbers by email**, **Summarize the week**, **List open tickets**, **Watch the pricing page**, **Unlock access after payment** or **Something else** with your own text | The first suggestion in chat and the first item of “First steps”. |
 | “Which services do you use for it?” | Gmail, Google Drive, Google Sheets, Slack, Jira, GitHub, Notion, HubSpot, Stripe or **Other service** | Which connectors “First steps” offers first. |
-| “Who approves what SubKit may do?” | **Me** (recommended) or **Someone else on the team** with an email address | Who gets approval notifications and whether an invitation is prepared. |
+| “Who approves what SubKit may do?” | **Me** (recommended), **Someone else on the team** or **Two of us: one builds, one approves**, each with an email address | Who gets approval notifications, whether an invitation is prepared and, for two of us, whether every workflow approval needs two people. |
 | “How much should SubKit do on its own in chat?” | **Always ask**, **Ask only when unexpected** (recommended) or **Plan only at first** | The chat mode **Ask**, **Automatic** or **Plan only** for new conversations. |
 | “Where should new things run first?” | **Test first** (recommended) or **Straight to production** | The default environment for new workflows and tasks. |
 | “When may SubKit notify you?” | **Right away** (recommended), **Only during my working hours** or **Once a day as a summary** | Notifications and quiet hours. |
@@ -2706,6 +2708,17 @@ The first two answers only change what the Cockpit suggests to you first. They c
 - **Chat mode.** Every new conversation starts in this mode. In the conversation you can choose another one at any time. “Chat modes and rules” explains what the modes mean.
 - **Default environment.** A new task and the review of a new workflow start in this environment. You still choose the environment of a single workflow or task yourself.
 - **Approvals and notifications.** Both are described in “Notifications and quiet hours”.
+
+### Two of us: one builds, one approves
+
+With this answer, every workflow approval in the workspace needs two different people. The first person approves, the approval waits, and only the approval of a second person who may approve lets the workflow run. Nobody can approve alone, also not in chat or through a task.
+
+- Only an administrator switches this on. If you are not one, you read that an administrator has to switch it on.
+- It needs at least two people who may approve. If the named person has not joined yet, two-person approval starts by itself once they have joined.
+- A waiting approval ends after 72 hours. It also ends when the workflow changes before the second approval.
+- Choosing **Me** later does not switch two-person approval off. Only an administrator switches it off again, and that is recorded in the audit log.
+
+“Reference: pair approval, invitations, offline reports and notification pause” lists the routes and states.
 
 ### Change answers later
 
@@ -2796,7 +2809,7 @@ When an action runs without a question, the conversation shows a line below it s
 
 ### The question card
 
-When SubKit asks, it shows a card titled **Wants to do this**.
+When SubKit asks, it shows a card titled **Your decision**.
 
 | Field | Meaning |
 | --- | --- |
@@ -2806,7 +2819,7 @@ When SubKit asks, it shows a card titled **Wants to do this**.
 | **Recipients** | Every address, link and handle the action reaches. |
 | **Content** | The full text as it would go out. |
 
-Below the fields the card says why SubKit asks, for example “You did not name this recipient.” Below that it reads: “Applies to exactly this action, once. A different recipient or content needs a new question.”
+Below the fields the card says why SubKit asks, for example “You did not name this recipient.” The last line names the deadline and adds: “A different recipient or content asks again”. **Allow once** applies to exactly this action.
 
 1. Read the fields, above all **Recipients** and **Content**.
 2. Select **Allow once** if exactly this should happen. The action runs once.
@@ -2843,7 +2856,7 @@ When an action runs because of a rule, the conversation reads “…, per your r
 ### View and revoke rules
 
 1. Open **Settings** and, in it, **Rules**.
-2. **Active** lists your rules with scope, date and use, for example “Last used …” and “Approved by hand 2 times before”. **Offered** lists rules you have not decided on yet.
+2. **Active** lists your rules. Chips show connector, recipients, content, validity and today’s use, for example “until …” and “today 3/20”; below them “Last used …”. **Offered** lists rules you have not decided on yet.
 3. Select **Revoke** on a rule and confirm.
 
 After the revocation SubKit asks again before carrying out this action. Anything already sent stays sent.
@@ -3033,6 +3046,15 @@ The times apply in the time zone of the workspace. It is set under **Settings �
 
 If you work in a different time zone than your team, you can store your own. The Cockpit has no field for it yet. It works over the HTTP API with the field `timezone`, see below.
 
+### Pause notifications
+
+Pause notifications for a while, for example during a meeting, without changing your schedule.
+
+1. In SubKit Desktop, open the menu bar icon and select **Pause notifications for 1 hour**. In the Cockpit, open **Settings › Notifications**.
+2. To end the pause early, select **Resume notifications**.
+
+During the pause, SubKit sends no push notifications and shows no desktop banners. The **Needs you** list and its count keep updating. Urgent items still reach you if you switched them on. The pause applies on all your devices at once: the desktop app, the Cockpit and the installed web app read the same state. A pause lasts at most 30 days.
+
 ### Get urgent items despite quiet hours
 
 Two kinds of items count as critical:
@@ -3048,7 +3070,7 @@ If another person on your team approves what SubKit may do, route the notificati
 
 1. Open **Settings › Setup** and select **Change** on **Approvals**.
 2. Answer “Who approves what SubKit may do?” with **Someone else on the team** and enter the **Email address**.
-3. Select **Apply**. Below it you then read “Approval notifications go to …”.
+3. Select **Apply**. The row **Approvals** then shows the person.
 
 What applies then:
 
@@ -3160,7 +3182,7 @@ When a scheduled workflow run fails several times in a row for the same reason, 
 
 ### Resume a paused schedule
 
-1. Open the workflow. At the top you read “‘…’ was paused automatically” with the number of runs and the time since which no run has started.
+1. Open the workflow. At the top you read “Schedule paused automatically” with the number of failures and the date since which no run has started.
 2. Fix the cause. If it is the approval, the notice offers **Renew approval**. Renew the approval first.
 3. Select **Resume schedule**. You read “Schedule resumed”.
 
@@ -3176,7 +3198,7 @@ The history shows what became of each scheduled time.
 
 | Entry | Meaning |
 | --- | --- |
-| “Ran on time.” | The run started at the scheduled time. |
+| “On time” | The run started at the scheduled time. |
 | “Started later than planned, because the engine was busy or not running.” | The run started more than 5 minutes after the scheduled time. |
 | “Ran once for several missed times instead of catching up on each.” | Several missed times became one run. |
 | “Skipped: this schedule does not run on weekends.” | The schedule excludes weekends. |
@@ -3282,9 +3304,9 @@ The table in “Cockpit as an app” shows how it differs from the installed web
 
 ### Connect to a server
 
-1. Start SubKit Desktop. You see “Connect to SubKit”.
-2. Enter the address of your server under **Server address** and select **Check server**.
-3. Read the result. With “Found SubKit …. You can sign in.” everything fits.
+1. Start SubKit Desktop. You see “Connect server”.
+2. Enter the address of your server under **Server address** and select **Check connection**. **Examples** lists the servers the app already knows and `localhost:3000`.
+3. Read the result. With “Connected” and a green connection everything fits, and **Next** leads to the sign-in.
 
 The app checks whether a SubKit server answers at the address and whether the versions fit together: the server has to be new enough for the app, and the app new enough for the server.
 
@@ -3292,13 +3314,13 @@ The app checks whether a SubKit server answers at the address and whether the ve
 
 The sign-in happens in your browser, not in the app. That way you use the sign-in you already know, and the app never sees your password.
 
-1. Select **Sign in in the browser**. Your browser opens, and the app shows “Your browser is open. Sign in there and you’ll continue here automatically.”
+1. In the step “Sign in with browser”, select **Open browser**. Your browser opens, and the app shows “Waiting for confirmation in the browser…”.
 2. Sign in to the Cockpit in the browser if you are not signed in there yet.
 3. Read the page “Sign in to SubKit Desktop”. It names your computer, the workspace and the account, for example “SubKit Desktop on MacBook-Anna is asking to sign in to Brennwerk.” and “Signed in as anna@example.com”.
 4. Select **Sign in**. Continue only if you just started this sign-in yourself in the app on this device.
-5. The browser hands back to the app. The app shows “Finishing sign-in…” and then opens the Cockpit.
+5. The browser hands back to the app. The app shows “Finishing sign-in…” and then “Signed in” with the server, version and device. **Open SubKit** opens the Cockpit.
 
-With **Cancel** on the page in the browser or **Cancel sign-in** in the app, nothing happens: no profile and no device is created.
+With **Cancel** on the page in the browser or **Cancel** in the app, nothing happens: no profile and no device is created.
 The page in the browser is valid for 10 minutes. After that, start the sign-in again in the app.
 
 ### Devices and signing out
@@ -3307,7 +3329,7 @@ Every computer on which you sign in with SubKit Desktop is a device of its own w
 
 - **Sign out** in the **User menu** of the Cockpit ends the session of this device. Your session in the browser and other devices stay signed in.
 - **Remove** in the list **Your servers** deletes the local session and the profile. Nothing changes on the server.
-- **Revoking a device** signs it out from outside, for example after a loss. Within a few seconds the app then shows “This device was signed out in SubKit. Sign in again to reconnect it.”
+- **Revoking a device** signs it out from outside, for example after a loss. Within a few seconds the app then shows “Signed out of …” with **Sign in again**.
 
 You see your devices in the Cockpit under **Settings** › **Your profile** › **Where are you signed in?**. The list shows the installed web app and every desktop device with its kind, name, the day it signed in and its last use. The device you are sitting at carries the mark **This device**.
 
@@ -3469,6 +3491,10 @@ Password and secret fields are hidden in the picture. Anything shown openly in t
 
 When the app is not signed in, **Report a problem…** opens the **Diagnostics** dialog instead, with **Copy diagnostics** and **Save as file…**. The data contains the app version, operating system, server version and the last 10 errors. Add it to your message to the person who runs your server.
 
+### Write a report while offline
+
+If SubKit cannot reach the server, write the report anyway and select **Queue**. SubKit sends it as soon as the connection is back, one report at a time, and keeps the time you wrote it. If you were signed out in the meantime, it waits until you sign in again. Each report is sent only once, even when a send is repeated. A report that could not be sent within 14 days is dropped.
+
 ### Limits
 
 - **Email addresses in your text stay.** That is deliberate: your text is yours and is sent as you wrote it. The server removes only secrets and file paths from it. It removes email addresses from the diagnostic report, from text files and from file names.
@@ -3492,7 +3518,7 @@ When the app is not signed in, **Report a problem…** opens the **Diagnostics**
 
 ### The same over the HTTP API
 
-`POST /v1/feedback` accepts a report. The route only works with a browser session and needs no permission of its own. It answers `201` with the fields `id` and `intake_item_id`.
+`POST /v1/feedback` accepts a report. The route only works with a browser session and needs no permission of its own. It answers `201` with the fields `id`, `intake_item_id` and `replayed`. `replayed` is `true` when the same `client_request_id` was filed before.
 
 Every field, limit and error code is listed in “Reference: desktop app, rules, schedules and problem reports”.
 ## Cockpit branding
@@ -4286,6 +4312,7 @@ Query parameters of both routes: `limit` (default 50, at most 200) and `before` 
 | `reason_code` | Why, see the next table. Empty for a run on time. |
 | `skipped_count` | How many further scheduled times the entry stands for. |
 | `execution_id`, `task_run_id` | The run that belongs to the entry. |
+| `run_outcome` | How that run ended: `running`, `succeeded`, `failed` or `aborted`; `null` without a run. |
 | `created_at`, `updated_at` | When the entry was written and last changed. |
 
 | `reason_code` | `state` | Meaning |
@@ -4369,7 +4396,7 @@ Body of `POST /v1/feedback`:
 | `attachments` | Up to 3 entries with `filename` and `content_base64`, 2 MB each: PNG, JPG, PDF, TXT or JSON. |
 | `screenshot_png_base64` | Optional PNG of at most 4 MB. |
 
-The answer is `201` with `id` and `intake_item_id`. Errors: `409 report_id_taken`, `413 attachment_too_large` or `screenshot_too_large`, `422 attachment_invalid`, `attachment_type`, `attachment_rejected` or `screenshot_invalid`, and `429 rate_limit_exceeded` after 5 reports in 10 minutes per person.
+The answer is `201` with `id`, `intake_item_id` and `replayed`. Errors: `409 report_id_taken`, `413 attachment_too_large` or `screenshot_too_large`, `422 attachment_invalid`, `attachment_type`, `attachment_rejected` or `screenshot_invalid`, and `429 rate_limit_exceeded` after 5 reports in 10 minutes per person.
 
 ### Desktop sign-in and installations
 
@@ -4466,6 +4493,402 @@ An action that ran in chat without a question is written as `tool_policy.confirm
 | `server.desktop_dev_callback` | `true` or `false` | `false` | Also accept `subkit-dev://callback` as a sign-in target, for development builds. |
 
 Both also appear in the generated settings reference. The thresholds for schedules, rules and notices are fixed and have no setting: backoff from 3 failures, pause at 5, history for 90 days, rules for 90 days with 20 runs a day, before an approval ends a notice in the overview 7 days before, with push also on devices, and a notification through channels and rules 3 days before.
+## Reference: pair approval, invitations, offline reports and notification pause
+
+This page lists the routes, fields and audit actions behind four features: two-person workflow approval, sending an invitation, reports that were written offline, and a personal notification pause.
+It is for developers and operators who build on them. The task-oriented chapters are “Set SubKit up for yourself”, “Notifications and quiet hours” and “Report a bug”.
+The complete, machine-readable description of every route is at `/openapi.json` on your engine.
+
+### Routes
+
+| Route | Who may call it | Does |
+| --- | --- | --- |
+| `GET /v1/workspace/approval-policy` | `workflow:read` | Says whether one person or two people approve a workflow, and how many people may approve. |
+| `PUT /v1/workspace/approval-policy` | `rbac:write` | Switches between `single` and `pair`. |
+| `POST /v1/workflows/{id}/pair-approvals` | `workflow:write` in a browser session | Records the first of two approvals. |
+| `GET /v1/workflows/{id}/pair-approvals` | `workflow:read` | Lists the requests of a workflow, newest first. Optional `state`. |
+| `POST /v1/workflows/{id}/pair-approvals/{request_id}/approve` | `workflow:write` in a browser session, not the first approver | Records the second approval. The execution authority exists from now on. |
+| `POST /v1/workflows/{id}/pair-approvals/{request_id}/decline` | `workflow:write` in a browser session, not the first approver | Closes the request as declined. |
+| `POST /v1/workflows/{id}/pair-approvals/{request_id}/withdraw` | The first approver, or someone with `rbac:write`, in a browser session | Closes the request as withdrawn. |
+| `POST /v1/identity/users/{id}/invites/send` | An administrator | Issues a new invitation link for a person who has not joined yet and tries to deliver it. |
+| `GET /v1/identity/me/notification-pause` | A person | Reads your pause. |
+| `PUT /v1/identity/me/notification-pause` | A person | Pauses your notifications. |
+| `DELETE /v1/identity/me/notification-pause` | A person | Resumes your notifications. |
+| `POST /v1/feedback` | A person in a browser session | Takes the new field `created_on_device_at` and answers with `replayed`. |
+
+### Pair approval
+
+Under `pair`, an approval only takes effect when two different people with `workflow:write` have both approved the same reviewed boundary: version, effect digest, environment, window and run limit.
+
+- The first approval creates a request, not an execution authority. Nothing may run.
+- The execution authority is created only with the second approval. The engine checks the boundary again at that moment.
+- One person can never take both places. A second browser session of the same person is the same person.
+- While `pair` applies, every way that would let one person approve alone answers `409 pair_approval_required`. That covers `POST /v1/workflows/{id}/execution-authorities`, standing permissions of tasks and `…/until-revoked`.
+- The approval card in chat saves the workflow and records the first of two approvals instead. The completed review names the request in `result.pair_request_id`. A schedule cannot be added in the same step: `422 pair_schedule_unsupported`.
+- `pair` can only be switched on when at least two active people may approve: `409 pair_needs_two_approvers` with `details.eligible_approvers`. If people leave later, open requests stay open. An administrator switches back to `single` explicitly. There is no silent fallback.
+
+States of a request:
+
+| `state` | Meaning |
+| --- | --- |
+| `pending` | Waits for the second person. |
+| `approved` | Both approved. `authority_id` names the execution authority. |
+| `declined` | The second person declined. |
+| `withdrawn` | The first person or an administrator withdrew the request. |
+| `expired` | Nobody approved within 72 hours, or before the approval would have ended. |
+| `stale` | `stale_reason` is `manifest_changed` (the workflow changed) or `first_approver_unavailable` (the first person can no longer approve). |
+
+Error codes: `pair_same_person` (403), `pair_not_requester` (403), `pair_request_not_found` (404), `pair_not_required`, `pair_request_closed`, `pair_request_expired`, `pair_request_stale`, `authority_manifest_changed` (409) and `pair_start_run_unsupported` (422).
+
+In the setup, `approver: {kind: "pair", email}` names the partner. The answer adds `pair`: `active`, `needs_second_approver` (pair starts once the partner has joined with a role that may approve) or `needs_admin` (an administrator switches it on). Choosing **Me** later does not switch the workspace back.
+
+The attention list shows an open request with the reason `pair_approval_requested` to everyone who may take the second place. The person who asked sees it with `waiting_on` set to the named partner.
+
+### Send an invitation
+
+`POST /v1/identity/users/{id}/invites/send` with an optional `ttl_minutes`. It answers `201`, because a new invitation exists in every case. The previous link stops working.
+
+| `delivery` | Meaning |
+| --- | --- |
+| `sent` | The invitation went out by email. `to` shows the address partly masked. |
+| `copy_link` | Nothing was sent. `reason` says why: `no_mail_transport`, `mail_failed` or `no_public_url`. The answer carries `plaintext_token`, `link_path` and, when the engine knows its address, `url`. Hand the link over yourself. |
+
+The engine has no mail transport yet, so the answer is `copy_link` with `no_mail_transport`. Further errors: `409 not_invited` (the person has already joined) and `429 rate_limit_exceeded` with `retry_after_seconds` (at most 5 sends per administrator and 2 per invited person within 10 minutes).
+
+### Reports from an offline queue
+
+- `client_request_id` makes a report idempotent. The same id files nothing twice; the answer then carries `replayed: true`. A retry of a report that was already filed never counts against the rate limit.
+- `created_on_device_at` is the time the report was written on the device. It is kept as the capture time when it lies within the last 30 days and at most 5 minutes in the future; otherwise the server time counts.
+- The queue lives in the client. Both the Cockpit and SubKit Desktop use the same model: one report at a time, retries after 30 seconds, doubling up to 30 minutes; `429` waits as long as the server says; `401` and `403` wait until you sign in again; `409`, `413` and `422` end the attempt. A report is only ever sent for the server and the person it was written for, and is dropped after 14 days.
+
+### Notification pause
+
+Body of `PUT`: `{"mode": "for", "minutes": 60}`, `{"mode": "until", "until": "…"}` or `{"mode": "until_resumed"}`. The end has to lie in the future and at most 30 days ahead, otherwise `422 pause_in_past` or `422 pause_too_long`. The answer is `{paused, mode, paused_at, until}`. A pause that has ended reads as `paused: false`.
+
+During the pause, push notifications and desktop banners are held back. The attention list and the counters keep counting. If you opted into critical items despite quiet hours, they still reach you. On the Cockpit event stream, announcements carry `delivery: held` (or `critical_only`), `held_by: pause` and, for a pause with an end, `held_until`. Quiet hours show up there with `held_by: schedule`. An open stream picks up a change within 30 seconds.
+
+### Audit actions
+
+| Action | Written when |
+| --- | --- |
+| `workspace.approval_policy_changed` | The workspace switches between `single` and `pair`. `metadata.source` is `policy`, `setup` or `approver_joined`. |
+| `workflow.pair_approval_requested` | The first person approves. |
+| `workflow.pair_approval_approved` | The second person approves. `workflow.authority_granted` follows. |
+| `workflow.pair_approval_declined`, `workflow.pair_approval_withdrawn` | A person closes the request. |
+| `workflow.pair_approval_expired`, `workflow.pair_approval_stale` | The engine closes the request. `reason` names the cause for `stale`. |
+| `user.invite_delivery` | An invitation was sent or handed back as a link. `reason` is the `copy_link` reason. |
+| `user.notifications_paused`, `user.notifications_resumed` | You pause or resume notifications. |
+## Reference: files from the desktop, run results and sign-in signals
+
+This page lists what SubKit added so the desktop app and the Cockpit can show files, results and sign-ins without guessing.
+It is for developers and operators who build on these parts. The complete, machine-readable description of every route is at `/openapi.json` on your engine.
+
+### Routes
+
+| Route | Who may call it | Does |
+| --- | --- | --- |
+| `POST /v1/chat/composer/attachments` | A person with `conversation:write` | Puts a file into your chat composer. It waits there for your next message. |
+| `GET /v1/chat/composer/attachments` | A person with `conversation:read` | Lists the files waiting in your composer, newest first. |
+| `POST /v1/chat/composer/attachments/claim` | A person with `conversation:write` | Attaches the waiting files to a conversation and empties the composer. |
+| `DELETE /v1/chat/composer/attachments/{id}` | A person with `conversation:write` | Takes one file out of your composer. |
+| `POST /v1/intake/items/file` | `intake:write` | Collects a file into the inbox. |
+
+“A person” means a user account, not a system account. A system account gets `403 person_required`.
+
+### Files for your next chat message
+
+The desktop app's drop sheet uses these routes for “Attach in chat”. The Cockpit chat picks the files up when it opens or gets focus.
+
+- The body of `POST` is the same as for a conversation attachment: `{filename, content_type, content_base64}` for a new file, or `{"$file": "<file id>"}` for a file that already exists.
+- The answer is `{id, file, staged_at, expires_at}`. `file` has the same fields as a conversation attachment, including `slug` and `reference`.
+- A file waits for 24 hours. Your composer holds at most 10 files; one more gets `409 composer_full`. Staging the same file again only renews its time.
+- Files are limited to 5 MB and go through the same malware check as every upload.
+- Only you see, take or remove your own waiting files. Someone else's id answers `404`.
+- `claim` takes `{conversation_id, ids?}`. Without `ids` it takes every waiting file. If one of the `ids` is not waiting in your composer, the whole claim is refused with `404` and nothing changes.
+
+### Files in the inbox
+
+`POST /v1/intake/items/file` takes `{client_request_id, captured_at, filename, content_type, content_base64, category?, title?, note?}`.
+
+| Type | `content_type` |
+| --- | --- |
+| PDF | `application/pdf` |
+| Images | `image/png`, `image/jpeg`, `image/gif`, `image/webp` |
+| Text | `text/csv`, `text/plain`, `text/markdown`, `application/json` |
+
+- At most 5 MB.
+- The bytes must match the type: a PNG must start like a PNG, text must be UTF-8, JSON must parse. HTML, SVG, XML and scripts are refused, also when they claim to be text.
+- The file goes through the malware check. A rejected file creates no item.
+- `title` defaults to the filename. The item text is the file's text for CSV, text, Markdown and JSON; for PDFs and images it is one line naming the file.
+- `client_request_id` works as with text items: the same id with the same file returns the same item.
+- Every intake item now carries `attachment`: `null`, or `{file_id, filename, content_type, size_bytes}`. Download the file with `GET /v1/files/{file_id}/content` (`file:read`).
+
+| Answer | Code | Meaning |
+| --- | --- | --- |
+| 413 | `too_large` | Larger than 5 MB. |
+| 422 | `unsupported_file_type` | The type is not in the list. |
+| 422 | `content_type_mismatch` | The content does not match the type. |
+| 422 | `file_rejected` | The malware check rejected the file. |
+| 409 | `conflict` | The `client_request_id` was already used for something else. |
+
+### Markdown result of a run
+
+`GET /v1/executions/{id}` now carries `result_markdown` (text or `null`) and `result_markdown_truncated`. The run detail shows the text as the result of the run.
+
+A workflow provides the result in one of two ways:
+
+1. **Declared:** its `output_schema` marks a text as Markdown with `"contentMediaType": "text/markdown"`, either for the whole output or for one top-level field. If several fields carry the mark, the first one counts.
+2. **By name:** without such a mark, a top-level text field `result_markdown` in the output counts.
+
+```json
+{
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "summary": { "type": "string", "contentMediaType": "text/markdown" }
+    }
+  }
+}
+```
+
+- The output counts after `output_transform`, so a transform can build the text from the last step.
+- Only a succeeded run keeps a result. It is stored once, when the run ends.
+- Secrets are removed before it is stored: tokens, keys and passwords become `***redacted***`, and so do credentials in links. Confidential workflows never keep a result.
+- At most 64 KiB of text is kept. A longer text is cut and `result_markdown_truncated` is `true`.
+
+### Outcome of a scheduled run
+
+Every entry of the schedule history (`GET /v1/workflows/{id}/schedule-occurrences`, `GET /v1/tasks/{id}/schedule-occurrences`) now carries `run_outcome`:
+
+| `run_outcome` | Meaning |
+| --- | --- |
+| `running` | The run has not ended yet. |
+| `succeeded` | The run ended successfully. |
+| `failed` | The run failed or ran out of time. |
+| `aborted` | The run was stopped. |
+| `null` | The entry started no run, or the run is no longer kept. |
+
+`state` keeps describing the timing (on time, late, skipped, held); `run_outcome` says how the run ended.
+
+### Sign-in finished
+
+When a connector sign-in ends, successfully or not, SubKit writes the event `connector.oauth.signin_finished`. This holds for OAuth connectors, MCP connectors and account connections; for an account connection SubKit writes one event per connector that uses it, with `connector_slug` `null`.
+
+| Field | Meaning |
+| --- | --- |
+| `connector_id` | The connector. |
+| `connector_slug` | Its short name, or `null`. |
+| `outcome` | `succeeded` or `failed`. |
+| `reason` | Why it failed: `provider_error`, `missing_code` or `token_exchange_failed`. `null` on success. |
+
+- On the Cockpit stream (`GET /v1/cockpit/events/stream`, with `connector:read`) the event arrives with `connector_id`, `attention_id`, `outcome` and, on failure, `reason`. The desktop app and the Cockpit wait for it instead of guessing from the window focus.
+- Webhook subscriptions can subscribe to it like any other event.
+- A sign-in link that expired or is unknown belongs to no connector and writes no event.
+
+### Full stats series
+
+`GET /v1/stats/executions` and `GET /v1/stats/llm` take `fill`:
+
+- `zero` (default): every bucket of the window is listed, oldest first, also the empty ones with `0`. Without `group_by` the answer always has exactly one group.
+- `none`: only buckets with data, as before. Useful for wide breakdowns such as `group_by=conversation`.
+
+### Audit actions
+
+| Action | Written when |
+| --- | --- |
+| `chat.composer_attachment_staged` | A file was put into a composer. |
+| `chat.composer_attachment_removed` | A file was taken out of a composer. |
+| `chat.composer_attachments_claimed` | Waiting files were attached to a conversation. `file.link_added` follows for each file. |
+| `intake_item.collected` | As before; for a file it carries `attachment_file_id`. |
+## SubKit features at a glance
+
+This page lists every feature of SubKit in one place, grouped by area, so rarely used ones are easy to find again.
+Each line says what you get and links to the chapter that explains it.
+
+### Legend
+
+| Mark | Meaning |
+| --- | --- |
+| **All** | Available in SubKit Cloud and on your own engine. |
+| **Self-hosted** | Only when you run the engine yourself. |
+| **Cloud** | Only in SubKit Cloud. |
+| **Admin** | Only people with the Admin role, or the engine operator, can use or change it. |
+| **Optional** | Off by default. You or an administrator switch it on. |
+
+### Workflows and runs
+
+| Feature | What you get | Where | More |
+| --- | --- | --- | --- |
+| Workflow from a sentence | Describe the task in chat, and the AI drafts a workflow you review and save. | All | [Your first workflow](setup.md#your-first-workflow) |
+| Fixed steps | A workflow runs request, transform, call, wait, wait for event, branch, parallel and loop steps, the same way every time. | All | [Your first workflow](setup.md#your-first-workflow) |
+| Versions | Every change is a new version; the approved version keeps running until a new one is approved. | All | [Your first workflow](setup.md#your-first-workflow) |
+| Test and production | Every run and approval belongs to an environment, and the Cockpit labels which one you are in. | All | [Find your way in the Cockpit](setup.md#find-your-way-in-the-cockpit) |
+| Trial run | Without an approval, a run is a dry run: writes are held back and nothing is sent. | All | [Connect AI clients via MCP](setup.md#connect-ai-clients-via-mcp) |
+| Run result | Every run shows its state, steps, version and why it was allowed, with a link to the audit trail. | All | [Your first workflow](setup.md#your-first-workflow) |
+| Markdown result | A run can hand over a written result in Markdown that the Cockpit shows. | All | [Reference: files from the desktop, run results and sign-in signals](setup.md#reference-files-from-the-desktop-run-results-and-sign-in-signals) |
+| Fix it in chat | When a step fails or blocks an approval, SubKit suggests a fix in chat that you review again. | All | [Your first workflow](setup.md#your-first-workflow) |
+| Automation check | Saving a workflow or schedule tells you whether it can run on its own or which step needs a change. | All | [Use the HTTP API](setup.md#use-the-http-api) |
+| Sandbox data tools | Transform steps calculate, parse and validate data with built-in helpers in an isolated sandbox. | All | [Sandbox data tools](setup.md#sandbox-data-tools) |
+| Packages | Export workflows, connectors, skills, schedules, sources and files and import them into another engine. | All | [Use the sk CLI on your machine](setup.md#use-the-sk-cli-on-your-machine) |
+
+### Approvals and permissions
+
+| Feature | What you get | Where | More |
+| --- | --- | --- | --- |
+| Approve what it may touch | A person approves the environment, the validity and the reads, writes and services before the first real run. | All | [Your first workflow](setup.md#your-first-workflow) |
+| Approval until revoked | An approval can stand until revoked or end at a date or after a number of runs. | All | [Your first workflow](setup.md#your-first-workflow) |
+| Approval follows a new version | A new version needs no new approval as long as it reaches no further; otherwise SubKit names the difference. | All | [Connect AI clients via MCP](setup.md#connect-ai-clients-via-mcp) |
+| Renew before it ends | SubKit reports an approval three days before it ends, and you can renew it. | All | [Keep an eye on schedules](setup.md#keep-an-eye-on-schedules) |
+| Two-person approval (“approve together”) | Every workflow approval needs two different people, for teams that must not let one person approve sensitive workflows alone. Off by default; the setting appears only when at least two people in the workspace may approve, and only administrators change it. | Admin · Optional | [Reference: pair approval, invitations, offline reports and notification pause](setup.md#reference-pair-approval-invitations-offline-reports-and-notification-pause) |
+| Allow once | A write tool called from an AI client pauses until a person selects **Allow once** or **Decline**. | All | [Connect AI clients via MCP](setup.md#connect-ai-clients-via-mcp) |
+| Roles, groups and grants | Roles, permissions and scoped API keys apply the same way to the Cockpit, `sk`, the API and MCP. | Admin | [Execution identity and permission](setup.md#execution-identity-and-permission) |
+| Who started a run | Every run names its caller, and you can trace it across channels. | All | [Execution identity and permission](setup.md#execution-identity-and-permission) |
+
+### Tasks
+
+| Feature | What you get | Where | More |
+| --- | --- | --- | --- |
+| Goal as a task | Hand over a goal with limits; SubKit plans the way, works through it and asks when it needs you. | All | [Hand over a goal as a task](setup.md#hand-over-a-goal-as-a-task) |
+| Standing permission | A task starts on its own only with a standing permission that ends when the task changes. | All | [Hand over a goal as a task](setup.md#hand-over-a-goal-as-a-task) |
+| Follow and step in | Follow a run, answer its questions and confirm or reject its written result. | All | [Hand over a goal as a task](setup.md#hand-over-a-goal-as-a-task) |
+| Task to workflow | Turn a proven task run into a workflow. | All | [Hand over a goal as a task](setup.md#hand-over-a-goal-as-a-task) |
+| Admins step in | Administrators can manage every task and release or decline writes a run holds back. | Admin | [Hand over a goal as a task](setup.md#hand-over-a-goal-as-a-task) |
+
+### Schedules, webhooks and events
+
+| Feature | What you get | Where | More |
+| --- | --- | --- | --- |
+| Schedules | Run a workflow or task at fixed times. | All | [Keep an eye on schedules](setup.md#keep-an-eye-on-schedules) |
+| Failure reasons | A failed or waiting scheduled run says why and what to do. | All | [Keep an eye on schedules](setup.md#keep-an-eye-on-schedules) |
+| Pause after repeated failures | A schedule that fails five times in a row for the same reason pauses and says so once. | All | [Keep an eye on schedules](setup.md#keep-an-eye-on-schedules) |
+| Schedule history | See what became of every scheduled time. | All | [Keep an eye on schedules](setup.md#keep-an-eye-on-schedules) |
+| Stop a run | Stop a run that is still going. | All | [Keep an eye on schedules](setup.md#keep-an-eye-on-schedules) |
+| Inbound webhooks | A webhook from another system starts a workflow. | All | [Execution identity and permission](setup.md#execution-identity-and-permission) |
+| Subscriptions | Programs receive SubKit events through subscriptions and webhooks. | All | [Notifications and quiet hours](setup.md#notifications-and-quiet-hours) |
+
+### Chat and AI assistant
+
+| Feature | What you get | Where | More |
+| --- | --- | --- | --- |
+| Chat in the Cockpit | Draft workflows, ask questions and start approved workflows in conversation. | All | [Your first workflow](setup.md#your-first-workflow) |
+| Chat modes | **Ask**, **Automatic** or **Plan only** decide what SubKit does without asking. | All | [Chat modes and rules](setup.md#chat-modes-and-rules) |
+| Rules | After the second **Allow once** for the same action, save it as a rule for 90 days. | All | [Chat modes and rules](setup.md#chat-modes-and-rules) |
+| Files in chat | Attach files to a message, also from SubKit Desktop. | All | [Reference: files from the desktop, run results and sign-in signals](setup.md#reference-files-from-the-desktop-run-results-and-sign-in-signals) |
+| Slack and Google Chat | Ask questions and start approved workflows where your team works; in SubKit Cloud only after the chat workspace's ownership is verified. | All | [Use SubKit Cloud](setup.md#use-subkit-cloud) |
+| Your own model | Anthropic, OpenAI, Google Gemini, Azure, Amazon Bedrock or Vertex AI with your own key, plus a fallback provider. | All | [Settings](settings.md) |
+| Web search | With an Anthropic model, the assistant can use the model's built-in web search, billed per search to your key; on unless switched off. | All | [Use SubKit Cloud](setup.md#use-subkit-cloud) |
+
+### Knowledge, inbox and skills
+
+| Feature | What you get | Where | More |
+| --- | --- | --- | --- |
+| Inbox | Notes, chat findings, coding-agent findings, files and clipped pages land in one list. | All | [Collect ideas and turn them into knowledge or skills](setup.md#collect-ideas-and-turn-them-into-knowledge-or-skills) |
+| Review and confirm | You decide whether an entry becomes a knowledge source or a skill; nothing is adopted on its own. | All | [Collect ideas and turn them into knowledge or skills](setup.md#collect-ideas-and-turn-them-into-knowledge-or-skills) |
+| Knowledge sources | Your team's notes, runbooks and rules, searchable inside the engine. | All | [Maintain sources, skills and files](setup.md#maintain-sources-skills-and-files) |
+| Skills | Reusable instructions for chat and workflow drafting; proposals wait for your decision. | All | [Maintain sources, skills and files](setup.md#maintain-sources-skills-and-files) |
+| Versions and restore | Compare versions of a source or skill and restore an earlier one. | All | [Maintain sources, skills and files](setup.md#maintain-sources-skills-and-files) |
+| Files | Upload, replace and restore files with their earlier versions. | All | [Maintain sources, skills and files](setup.md#maintain-sources-skills-and-files) |
+| Web Clipper | Save pages, selections and YouTube transcripts from Chrome to your inbox. | All | [Collect web pages with the Web Clipper](setup.md#collect-web-pages-with-the-web-clipper) |
+| Coding-agent briefings | Claude Code, Codex and Hermes get your team's knowledge as a briefing and can collect findings. | All | [Use SubKit from a coding agent](coding-agents.md#use-subkit-from-a-coding-agent) |
+
+### Connectors and integrations
+
+| Feature | What you get | Where | More |
+| --- | --- | --- | --- |
+| Connector catalog | 61 connector templates and 248 ready-made recipes, from GitHub to Stripe. | All | [Connector & recipe catalog](connectors.md) |
+| MCP server as a connector | Workflows and the chat call the tools of an MCP server your team already uses. | All | [Connect AI clients via MCP](setup.md#connect-ai-clients-via-mcp) |
+| External MCP over OAuth | Connect external MCP servers over OAuth without redirecting secrets. | All | [External MCP OAuth credentials](setup.md#external-mcp-oauth-credentials) |
+| Signed-JWT credentials | Connect APIs such as App Store Connect that accept a signed JWT directly. | All | [Direct signed-JWT connector credentials](setup.md#direct-signed-jwt-connector-credentials) |
+| Email replies | Confirm a signed form request with exactly one email to its sender. | All | [Reply by email to a signed request](transactional-email.md#reply-by-email-to-a-signed-request) |
+| Your own app | An app with its own sign-in starts workflows for its users. | Admin | [Onboard an app](setup.md#onboard-an-app) |
+| Product sign-in and budgets | App users call SubKit with the app's token, limited by a daily quota per caller. | Admin | [Product bearer tokens and caller budgets](setup.md#product-bearer-tokens-and-caller-budgets) |
+| Identity binding | Link an app's users to a SubKit account with minimal rights. | Admin | [Product identity binding](setup.md#product-identity-binding) |
+| Supabase data | Use your Supabase project's data in product workflows without exposing keys. | Admin | [Supabase-backed product workflows](setup.md#supabase-backed-product-workflows) |
+| Private network addresses | Connectors reach services such as `localhost` or internal company servers. | Self-hosted | [Use SubKit Cloud](setup.md#use-subkit-cloud) |
+
+### Cockpit, desktop app and installed app
+
+| Feature | What you get | Where | More |
+| --- | --- | --- | --- |
+| Overview and Needs you | See what ran, what failed and what waits for your decision. | All | [What is SubKit?](setup.md#what-is-subkit) |
+| Find your way | Navigation, side panel, error notices with remedies and a Markdown viewer. | All | [Find your way in the Cockpit](setup.md#find-your-way-in-the-cockpit) |
+| Setup in six questions | Your answers set the chat mode, default environment, approver and notifications. | All | [Set SubKit up for yourself](setup.md#set-subkit-up-for-yourself) |
+| English and German | The Cockpit and this documentation come in both languages. | All | [What is SubKit?](setup.md#what-is-subkit) |
+| Branding | Give the Cockpit your company's name, logo and colors. | Admin | [Cockpit branding](setup.md#cockpit-branding) |
+| Cockpit as an app | Install a workspace's Cockpit as its own app on computer and phone, with push and sharing from other apps. | All | [Cockpit as an app](setup.md#cockpit-as-an-app) |
+| SubKit Desktop | Your server's Cockpit as a program for macOS, Windows and Linux, with a menu bar icon, notifications and launch at login. | All | [SubKit Desktop](setup.md#subkit-desktop) |
+| Sign in through the browser | The desktop app signs in through your browser; every computer is a device you can revoke. | All | [SubKit Desktop](setup.md#subkit-desktop) |
+| Several servers | SubKit Desktop keeps one profile per server. | All | [SubKit Desktop](setup.md#subkit-desktop) |
+| Drop files | Drop files on SubKit Desktop to attach them in chat or collect them in the inbox. | All | [Reference: files from the desktop, run results and sign-in signals](setup.md#reference-files-from-the-desktop-run-results-and-sign-in-signals) |
+| Desktop versions and devices | Decide which app version your server accepts and revoke devices. | Admin · Self-hosted | [Operate the desktop sign-in](setup.md#operate-the-desktop-sign-in) |
+| Report a bug | Send a bug report or idea to your workspace's inbox, with a screenshot from SubKit Desktop and an offline queue. | All | [Report a bug](setup.md#report-a-bug) |
+
+### sk CLI, HTTP API and MCP
+
+| Feature | What you get | Where | More |
+| --- | --- | --- | --- |
+| sk CLI | Draft, change and run workflows as files from the terminal, on several engines. | All | [Use the sk CLI on your machine](setup.md#use-the-sk-cli-on-your-machine) |
+| Command reference | Every `sk` command with its arguments. | All | [sk CLI reference](cli.md) |
+| HTTP API | Start workflows from your own code and read their results; described in OpenAPI at `/openapi.json`. | All | [Use the HTTP API](setup.md#use-the-http-api) |
+| MCP server | Every approved workflow is a tool in Claude Code, Codex and other MCP clients, with browser sign-in or an API key. | All | [Connect AI clients via MCP](setup.md#connect-ai-clients-via-mcp) |
+| Tasks from an AI client | Create and follow tasks from an MCP client. | All | [Connect AI clients via MCP](setup.md#connect-ai-clients-via-mcp) |
+
+### Notifications
+
+| Feature | What you get | Where | More |
+| --- | --- | --- | --- |
+| Push notifications | One notification per item that needs you, in the browser, the installed app or SubKit Desktop. | All | [Notifications and quiet hours](setup.md#notifications-and-quiet-hours) |
+| Quiet hours | Decide when SubKit may notify you. | All | [Notifications and quiet hours](setup.md#notifications-and-quiet-hours) |
+| Pause notifications | Hold notifications back for a while or until you resume them. | All | [Notifications and quiet hours](setup.md#notifications-and-quiet-hours) |
+| Urgent despite quiet hours | Let critical items through quiet hours and pauses. | Optional | [Notifications and quiet hours](setup.md#notifications-and-quiet-hours) |
+| Route approvals | Send approval notifications to another person on the team. | All | [Notifications and quiet hours](setup.md#notifications-and-quiet-hours) |
+| Invitations | An administrator issues an invitation link and hands it over. | Admin | [Reference: pair approval, invitations, offline reports and notification pause](setup.md#reference-pair-approval-invitations-offline-reports-and-notification-pause) |
+
+### Usage and costs
+
+| Feature | What you get | Where | More |
+| --- | --- | --- | --- |
+| Usage | AI cost per run, workflow, person and model in a time window you choose. | All | [Keep track of usage and costs](setup.md#keep-track-of-usage-and-costs) |
+| Monthly token budget | Pauses AI authoring when it is used up, while approved workflows keep running. | Admin | [Keep track of usage and costs](setup.md#keep-track-of-usage-and-costs) |
+| Prices | Built-in model prices, overridable per model. | Admin | [Keep track of usage and costs](setup.md#keep-track-of-usage-and-costs) |
+| Export | Export the usage figures. | All | [Keep track of usage and costs](setup.md#keep-track-of-usage-and-costs) |
+| Task costs | See what each task's runs cost. | All | [Hand over a goal as a task](setup.md#hand-over-a-goal-as-a-task) |
+
+### SubKit Cloud and self-hosting
+
+| Feature | What you get | Where | More |
+| --- | --- | --- | --- |
+| SubKit Cloud | SubKit runs for you; you sign in from the browser. Beta by invitation. | Cloud | [Use SubKit Cloud](setup.md#use-subkit-cloud) |
+| Own AI key per workspace | Every cloud workspace brings its own provider and key; the operator's AI access is never used. | Cloud | [Use SubKit Cloud](setup.md#use-subkit-cloud) |
+| Several workspaces | Switch accounts and workspaces, and delete a workspace. | Cloud | [Use SubKit Cloud](setup.md#use-subkit-cloud) |
+| Workspace limits | Request, storage and resource limits set by the operator, with clear messages. | Cloud | [Use SubKit Cloud](setup.md#use-subkit-cloud) |
+| Own engine | Run SubKit with Docker Compose on your own server. | Self-hosted | [Run the engine](setup.md#run-the-engine) |
+| First-run setup | Create the admin account, workspace and AI provider after the first start. | Self-hosted | [First-run setup](setup.md#first-run-setup) |
+| Backup and recovery | Back up the whole installation and restore it with the same image. | Self-hosted | [Run the engine](setup.md#run-the-engine) |
+| Browser crawling | Crawl pages for connector discovery with a derived image. | Self-hosted · Optional | [Run the engine](setup.md#run-the-engine) |
+| Engine operator | One workspace administers the whole engine. | Admin · Self-hosted | [Engine operator](setup.md#engine-operator) |
+| Runtime settings | Every engine setting with description and default, changed in the Cockpit, the API or `sk`. | Admin | [Settings](settings.md) |
+
+### Security and audit
+
+| Feature | What you get | Where | More |
+| --- | --- | --- | --- |
+| Audit trail | Every run, approval and change is recorded with who did it, and each object shows its own history. | All | [Find your way in the Cockpit](setup.md#find-your-way-in-the-cockpit) |
+| Protected keys | Keys and passwords stay on your server, encrypted. | Self-hosted | [Run the engine](setup.md#run-the-engine) |
+| Sign-in sessions | Installed apps keep a session and sign out cleanly. | All | [Installed Cockpit sessions](setup.md#installed-cockpit-sessions) |
+| Redaction | Secrets are removed from clipped pages and bug reports before they are stored. | All | [Report a bug](setup.md#report-a-bug) |
+| License | Open source under the Apache License 2.0. | All | [License](setup.md#license) |
+
+### Coming with local execution in SubKit Desktop
+
+These features are planned for SubKit Desktop and not released yet. Today SubKit Desktop runs nothing on your computer. There are no dates yet.
+
+| Feature | What it will do | Status |
+| --- | --- | --- |
+| Local files | Work with files on your computer. | Coming |
+| Browser | Use a browser on your computer for a task. | Coming |
+| Computer use | Operate other programs on your computer. | Coming |
+| Fully local workspace | Run a workspace entirely on your computer. | Coming |
 
 <!-- Source: coding-agents.md -->
 
@@ -6115,7 +6538,7 @@ Schedule a workflow (a workflow carries at most one schedule; re-create updates 
 - `--workflow` (string, required) — Workflow id
 - `--cron` (string, required) — 5-field cron or "every:<seconds>" (e.g. "0 8 * * *")
 - `--timezone` (string) — IANA timezone (default UTC)
-- `--executionMode` (string, default: prod) — Connector environment: dev or prod (default prod)
+- `--executionMode` (string) — Connector environment: dev or prod (default: your setup default, otherwise dev)
 - `--paused` (default: false) — Create in paused state
 - `--input` (string) — JSON input payload passed to every run
 - `--json` (default: false) — JSON output
@@ -6961,7 +7384,7 @@ HTTP server
 | `server.port` | number | `3000` | global | no | yes | HTTP port to bind (1..65535) |
 | `server.public_base_url` | string | `""` | global | no | no | External-facing URL the engine resolves at. Used by /install, chat link replies, and OAuth2 redirect-URI synthesis. Required for any OAuth2 connector. |
 | `server.restart_supervised` | boolean | `false` | global | no | no | A supervisor (systemd with Restart=on-failure, Docker with a restart policy) starts the engine again after it ends. Enables POST /v1/system/restart (exit code 75). |
-| `server.root_redirect_to_cockpit` | boolean | `false` | global | no | no | Redirect a browser's GET / (Accept: text/html) to /cockpit with a non-cacheable temporary redirect. Other clients keep the Markdown entry point. Disabled by default. |
+| `server.root_redirect_to_cockpit` | boolean | `true` | global | no | no | Send a browser that opens / to the Cockpit at /cockpit. Agents keep the Markdown index. Set false to show browsers the engine index at /; it stays at /engine either way. |
 | `server.trusted_proxy_hops` | number | `0` | global | no | no | Trusted reverse-proxy hops counted from the right of X-Forwarded-For; zero ignores forwarding headers. |
 | `server.trusted_proxy_ips` | array | `[]` | global | no | no | Exact trusted reverse-proxy socket peer IPs. Every configured forwarding hop must match; X-Real-IP is never trusted. |
 

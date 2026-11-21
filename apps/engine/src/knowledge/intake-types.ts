@@ -1,5 +1,6 @@
 import type { Actor } from "../audit/actor.ts";
 import type {
+  IntakeAttachmentFacts,
   IntakeCaptureSnapshot,
   IntakeProposalTarget,
   IntakeSnapshot,
@@ -32,6 +33,7 @@ export interface IntakeItemView {
   collected_by: Actor;
   admitted_target_kind: IntakeTargetKind | null;
   admitted_target_id: string | null;
+  attachment: IntakeAttachmentFacts | null;
   created_at: string;
   updated_at: string;
 }
@@ -88,6 +90,7 @@ export interface CreateIntakeItemParams {
   captured_at: string;
   body: string;
   note?: string | undefined;
+  attachment?: IntakeAttachmentFacts | undefined;
   original_snapshot?:
     | {
         title?: string | undefined;

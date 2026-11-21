@@ -10,6 +10,7 @@ import {
 } from "../../stats/aggregate-audit.ts";
 import { aggregateExecutions, type ExecutionGroupDim } from "../../stats/aggregate-executions.ts";
 import { aggregateQuality } from "../../stats/aggregate-quality.ts";
+import { fillGroups, readBucketSeries } from "../../stats/bucket-fill.ts";
 import { clampToRetentionHorizon, resolveWindow } from "../stats/bucket-window.ts";
 import { EVENT_CLASS_ACTIONS, type EventClass } from "../stats/event-classes.ts";
 import {
@@ -83,12 +84,21 @@ async function executionsReport(db: Db, tenantId: string, query: ExecutionsQuery
     executionMode: query.execution_mode,
     groupBy: allowed<ExecutionGroupDim>(query.group_by, EXEC_DIMS),
   });
+  const groups =
+    query.fill === "none"
+      ? result.groups
+      : fillGroups(result.groups, await readBucketSeries(db, win), (ts) => ({
+          ts,
+          executions: 0,
+          duration_ms: { total: 0, avg: 0, p50: 0, p95: 0, p99: 0, max: 0 },
+        }));
   return {
     bucket: win.bucket,
     tz: win.tz,
     from: win.from.toISOString(),
     to: win.to.toISOString(),
     ...result,
+    groups,
   };
 }
 

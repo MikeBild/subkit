@@ -18,6 +18,7 @@ const FILE_TO_SLUG: Record<string, string> = {
   "owned-tenant.ts": "identity-owned-tenant",
   "cli-session.ts": "identity-cli-session",
   "desktop-login.ts": "identity-desktop-login",
+  "desktop-login-pages.ts": "identity-desktop-login",
   "onboarding.ts": "identity-onboarding",
   "workspace.ts": "identity-workspace",
 };

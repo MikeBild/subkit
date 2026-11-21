@@ -1,4 +1,3 @@
-export { detectChainedWorkflowPatterns } from "./chained-workflow-pattern.ts";
 export {
   type CorrectionKind,
   type CorrectionObservation,

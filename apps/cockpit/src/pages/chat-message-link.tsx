@@ -16,7 +16,7 @@ function ChatMessageLink({ href, children, ...props }: ComponentProps<"a">) {
   return (
     <a
       {...props}
-      className="font-medium text-primary underline underline-offset-4"
+      className="font-medium text-primary underline underline-offset-4 in-data-[side=answer]:text-accent-foreground in-data-[side=answer]:decoration-accent-foreground/70"
       data-testid="message-link"
       href={signIn ? "#chat-account-connection" : href ? contextualHref(href) : href}
       onClick={

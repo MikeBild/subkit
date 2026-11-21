@@ -68,21 +68,30 @@ describe("cockpit-ui family contract", () => {
 
   test("keeps interactive selection surfaces neutral", () => {
     for (const file of [
-      "apps/cockpit/src/components/ui/dropdown-menu.tsx",
-      "apps/cockpit/src/components/ui/select.tsx",
+      "packages/ui/src/components/ui/dropdown-menu.tsx",
+      "packages/ui/src/components/ui/select.tsx",
+      "packages/ui/src/components/ui/toggle.tsx",
+      "packages/ui/src/components/ui/dialog.tsx",
       "apps/cockpit/src/components/ai-elements/prompt-input.tsx",
       "apps/cockpit/src/pages/chat.tsx",
       ...globSync("apps/cockpit/src/features/chat/**/*.tsx", { cwd: root }),
     ]) {
       const source = readFileSync(join(root, file), "utf8");
-      expect(source).not.toMatch(/(?:hover|focus|data-open|aria-expanded):bg-accent/);
+      expect(source).not.toMatch(
+        /(?:hover|focus|data-open|aria-expanded|data-\[state=(?:open|on)\]):bg-accent/,
+      );
     }
   });
 
   test("keeps the local action grammar and spacing contract explicit", () => {
-    const button = readFileSync(join(root, "apps/cockpit/src/components/ui/button.tsx"), "utf8");
-    expect(button).toContain('default: "bg-primary text-primary-foreground hover:bg-primary/90"');
-    expect(button).toContain('link: "text-accent underline-offset-4 hover:underline"');
+    const button = readFileSync(join(root, "packages/ui/src/components/ui/button.tsx"), "utf8");
+    expect(readFileSync(join(root, "apps/cockpit/src/components/ui/button.tsx"), "utf8")).toContain(
+      'from "@ui/components/ui/button"',
+    );
+    expect(button).toContain(
+      'default: "bg-primary text-primary-foreground shadow hover:bg-primary/90"',
+    );
+    expect(button).toContain('link: "text-primary underline-offset-4 hover:underline"');
     expect(button).not.toContain('default: "bg-accent');
 
     for (const file of [
@@ -92,7 +101,7 @@ describe("cockpit-ui family contract", () => {
       "apps/cockpit/src/pages/catalog.tsx",
       "apps/cockpit/src/pages/runs.tsx",
       "apps/cockpit/src/pages/audit.tsx",
-      "apps/cockpit/src/pages/usage.tsx",
+      "apps/cockpit/src/features/usage/breakdown.tsx",
       "apps/cockpit/src/components/cockpit/patterns/page.tsx",
       "apps/cockpit/src/components/cockpit/patterns/page-header.tsx",
       "apps/cockpit/src/components/cockpit/patterns/data-table.tsx",

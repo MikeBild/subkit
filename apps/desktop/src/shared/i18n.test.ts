@@ -4,6 +4,14 @@ import { dictionary, messageKeys, resolveLocale, t } from "./i18n.ts";
 const placeholders = (text: string) => (text.match(/\{\w+\}/g) ?? []).sort();
 
 describe("i18n", () => {
+  test("German keeps the product terms Connector and Run in English", () => {
+    const de = dictionary("de");
+    const offenders = messageKeys().filter((key) =>
+      /Konnektor|\bLauf(?:s|es)?\b|\bLäufe|(?:Probe|Einzel|Test)l(?:a|ä)uf/.test(de[key]),
+    );
+    expect(offenders).toEqual([]);
+  });
+
   test("has German and English text with the same placeholders for every key", () => {
     const de = dictionary("de");
     const en = dictionary("en");

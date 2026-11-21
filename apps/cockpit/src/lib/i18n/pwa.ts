@@ -41,7 +41,7 @@ export const pwaDe: Record<keyof typeof pwaEn, string> = {
   "pwa.notify.step.answer": "Antworte, damit es weitergeht.",
   "pwa.notify.step.reauth": "Melde die Verbindung neu an.",
   "pwa.notify.step.renew": "Erneuere die Freigabe.",
-  "pwa.notify.step.open_runs": "Sieh dir die letzten Läufe an.",
+  "pwa.notify.step.open_runs": "Sieh dir die letzten Runs an.",
   "pwa.notify.step.chat": "Klär es im Chat.",
   "pwa.notify.step.open": "Öffne den Eintrag in SubKit.",
   "pwa.notify.schedulesPaused": "{count} Zeitpläne wurden pausiert",

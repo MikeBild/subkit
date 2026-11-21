@@ -58,8 +58,8 @@ const createCommand = defineCommand({
     timezone: { type: "string", description: "IANA timezone (default UTC)" },
     executionMode: {
       type: "string",
-      description: "Connector environment: dev or prod (default prod)",
-      default: "prod",
+      description:
+        "Connector environment: dev or prod (default: your setup default, otherwise dev)",
     },
     paused: { type: "boolean", description: "Create in paused state", default: false },
     input: { type: "string", description: "JSON input payload passed to every run" },
@@ -68,7 +68,11 @@ const createCommand = defineCommand({
   async run({ args }) {
     return withCommandErrors(
       async () => {
-        if (args.executionMode !== "dev" && args.executionMode !== "prod") {
+        if (
+          args.executionMode !== undefined &&
+          args.executionMode !== "dev" &&
+          args.executionMode !== "prod"
+        ) {
           throw new Error("--execution-mode must be dev or prod");
         }
         const body: ScheduleCreateBody = {

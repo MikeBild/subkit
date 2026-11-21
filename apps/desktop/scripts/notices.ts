@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { copyFile, mkdir, readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { renderRuntimeNotices } from "../../../scripts/runtime-notices.ts";
 import {
   collectNotices,
@@ -14,6 +14,7 @@ import {
   renderFfmpegNotice,
 } from "../src/shared/runtime-licenses.ts";
 import { FONT_FILES, FONT_PACKAGE } from "./fonts.ts";
+import { uiResolve } from "./ui-resolve.ts";
 
 const CREDITS_FILE = "LICENSES.chromium.html";
 const check = process.argv.includes("--check");
@@ -45,10 +46,40 @@ const build = Bun.spawnSync(
 );
 if (build.exitCode !== 0) throw new Error("Could not build the bundle graph for the notices");
 
+const shellGraph = join(work, "shell.json");
+const shell = await Bun.build({
+  entrypoints: [join(app, "src/shell/main.tsx")],
+  target: "browser",
+  format: "iife",
+  plugins: [uiResolve()],
+  define: { "process.env.NODE_ENV": JSON.stringify("production") },
+  metafile: true,
+});
+if (!shell.success || !shell.metafile)
+  throw new Error("Could not build the shell bundle graph for the notices");
+const shellInputs = Object.fromEntries(
+  Object.keys(shell.metafile.inputs).map((input) => [resolve(app, input), {}]),
+);
+await Bun.write(shellGraph, JSON.stringify({ inputs: shellInputs }));
+const connect = await Bun.build({
+  entrypoints: [join(app, "src/connect/main.tsx")],
+  target: "browser",
+  plugins: [uiResolve()],
+  metafile: true,
+});
+if (!connect.success || !connect.metafile)
+  throw new Error("Could not build the bundle graph of the sign-in window for the notices");
+const connectInputs = Object.keys(connect.metafile.inputs).map((input) =>
+  relative(repo, resolve(process.cwd(), input)),
+);
+
 const packages = await supplementNotices(
   await collectNotices(repo, [
     ...(await noticeInputs(graph)),
+    ...(await noticeInputs(shellGraph)),
+    ...connectInputs,
     ...FONT_FILES.map((file) => join("apps/desktop", FONT_PACKAGE, "files", file)),
+    "apps/desktop/node_modules/tailwindcss/preflight.css",
   ]),
   join(repo, "vendor/notices/manifest.json"),
 );

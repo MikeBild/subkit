@@ -1,31 +1,21 @@
 import { useMutation } from "@tanstack/react-query";
+import { FieldError } from "@ui/components/proto/ErrorNotice";
+import { Panel, Pill } from "@ui/components/proto/Pill";
+import { AppWindow, Globe, ListChecks, Mail, Palette, ShieldCheck, UserRound } from "lucide-react";
 import type { ReactNode } from "react";
 import { apiCall } from "@/api/call";
 import { absolute, peopleHref } from "@/app/links";
-import { visibleNavigation } from "@/app/navigation";
 import { useSession, useSessionUpdate } from "@/app/session";
-import {
-  DeviceNotificationSwitch,
-  type NotificationDialogState,
-  useDeviceNotifications,
-} from "@/components/cockpit/installation-dialogs";
-import {
-  Button,
-  FieldError,
-  Input,
-  SegmentedControl,
-  StatusBadge,
-  Switch,
-} from "@/components/cockpit/patterns";
+import { useDeviceNotifications } from "@/components/cockpit/installation-dialogs";
+import { Button, Input, SegmentedControl, Switch } from "@/components/cockpit/patterns";
+import { roleName } from "@/features/admin";
 import { feedbackBridge } from "@/features/feedback/desktop-bridge";
-import { type AppDeviceState, appDeviceState, runsInstalled } from "@/features/pwa/display-mode";
-import { openInstall } from "@/features/pwa/install-store";
+import { type AppDeviceState, appDeviceState, openInstall, runsInstalled } from "@/features/pwa";
 import { reportFailure } from "@/lib/action-failure";
 import { type LocalePreference, useI18n } from "@/lib/i18n-context";
 import { type Theme, useTheme } from "@/lib/theme";
-import { roleName } from "@/pages/admin-model";
-import { DevicesQuestion } from "@/pages/settings-devices";
-import { Question } from "@/pages/settings-guided";
+import { visibleSettingAreas } from "@/pages/settings-areas";
+import { SettingsRow } from "@/pages/settings-row";
 import { NAME_MAX } from "@/pages/welcome-model";
 
 const PREFERENCES: readonly LocalePreference[] = ["auto", "de", "en"];
@@ -37,12 +27,14 @@ export function ProfileArea({
   onName,
   disabled,
   navigate,
+  extra,
 }: {
   name: string;
   nameInvalid: boolean;
   onName(text: string): void;
   disabled: boolean;
   navigate(href: string): void;
+  extra?: ReactNode;
 }) {
   const { t, preference, setPreference } = useI18n();
   const session = useSession();
@@ -64,9 +56,11 @@ export function ProfileArea({
       start_steps: { ...current.start_steps, hidden: !shown },
     }));
   }
-  const people = visibleNavigation(session.permissions)
-    .flatMap((group) => group.items)
-    .some((item) => item.path === "/people");
+  const people = visibleSettingAreas({
+    permissions: session.permissions,
+    isOwner: session.principal.is_owner,
+    origin: session.tenant.origin,
+  }).includes("people");
   return (
     <ProfileQuestions
       name={name}
@@ -88,12 +82,10 @@ export function ProfileArea({
         notifications: device.state.checked,
       })}
       onInstall={openInstall}
-      device={device.state.bell ? device.state : null}
-      onDevice={(checked) => void device.toggle(checked)}
       stepsShown={!session.start_steps.hidden}
       stepsPending={steps.isPending}
       onSteps={(shown) => steps.mutate(!shown)}
-      devices={<DevicesQuestion />}
+      extra={extra}
     />
   );
 }
@@ -113,12 +105,10 @@ export function ProfileQuestions({
   onTheme,
   app,
   onInstall,
-  device,
-  onDevice,
   stepsShown,
   stepsPending,
   onSteps,
-  devices,
+  extra,
 }: {
   name: string;
   nameInvalid: boolean;
@@ -134,179 +124,189 @@ export function ProfileQuestions({
   onTheme(theme: Theme): void;
   app?: AppDeviceState | null;
   onInstall?(): void;
-  device: NotificationDialogState | null;
-  onDevice(checked: boolean): void;
   stepsShown: boolean;
   stepsPending: boolean;
   onSteps(shown: boolean): void;
-  devices?: ReactNode;
+  extra?: ReactNode;
 }) {
   const { t } = useI18n();
   const [beforeLink, afterLink = ""] = t("settings.profile.roleHelp").split("{link}");
+  const roleHelp = (
+    <>
+      {beforeLink}
+      {people ? (
+        <a
+          href={absolute(people)}
+          className="font-medium text-foreground underline underline-offset-2"
+          onClick={(event) => {
+            if (
+              event.button !== 0 ||
+              event.metaKey ||
+              event.ctrlKey ||
+              event.shiftKey ||
+              event.altKey
+            )
+              return;
+            event.preventDefault();
+            navigate(people);
+          }}
+          data-testid="settings-profile-people"
+        >
+          {t("settings.area.people.title")}
+        </a>
+      ) : (
+        t("settings.area.people.title")
+      )}
+      {afterLink}
+    </>
+  );
   return (
-    <div className="grid gap-5" data-testid="settings-area-profile">
-      <Question
-        title={t("settings.profile.name")}
-        help={t("settings.profile.nameHelp")}
-        testId="settings-question-profile-name"
-      >
-        <Input
-          value={name}
-          maxLength={NAME_MAX}
-          autoComplete="name"
-          disabled={disabled}
-          aria-label={t("settings.profile.name")}
-          aria-invalid={nameInvalid || undefined}
-          onChange={(event) => onName(event.target.value)}
-          data-testid="settings-profile-name"
-        />
-        {nameInvalid ? (
-          <FieldError data-testid="settings-profile-name-error">
-            {t("settings.profile.nameError")}
-          </FieldError>
-        ) : null}
-      </Question>
-      <Question
-        title={t("settings.profile.email")}
-        help={t("settings.profile.emailHelp")}
-        testId="settings-question-profile-email"
-      >
-        <p className="text-sm [overflow-wrap:anywhere]" data-testid="settings-profile-email">
-          {email}
-        </p>
-      </Question>
-      <Question
-        title={t("settings.profile.role")}
-        help={
-          <>
-            {beforeLink}
-            {people ? (
-              <a
-                href={absolute(people)}
-                className="font-medium text-foreground underline underline-offset-2"
-                onClick={(event) => {
-                  if (
-                    event.button !== 0 ||
-                    event.metaKey ||
-                    event.ctrlKey ||
-                    event.shiftKey ||
-                    event.altKey
-                  )
-                    return;
-                  event.preventDefault();
-                  navigate(people);
-                }}
-                data-testid="settings-profile-people"
-              >
-                {t("nav.people")}
-              </a>
-            ) : (
-              t("nav.people")
-            )}
-            {afterLink}
-          </>
-        }
-        testId="settings-question-profile-role"
-      >
-        <p className="text-sm" data-testid="settings-profile-role">
-          {roleLabel}
-        </p>
-      </Question>
-      <Question title={t("settings.profile.language")} testId="settings-question-profile-language">
-        <SegmentedControl
-          label={t("settings.profile.language")}
-          value={preference}
-          onValueChange={(next) => {
-            const chosen = PREFERENCES.find((candidate) => candidate === next);
-            if (chosen) onPreference(chosen);
-          }}
-          testId="settings-profile-language"
-          options={[
-            {
-              value: "auto",
-              label: t("account.language.auto"),
-              testId: "settings-profile-language-auto",
-            },
-            {
-              value: "de",
-              label: t("language.native.de"),
-              testId: "settings-profile-language-de",
-            },
-            {
-              value: "en",
-              label: t("language.native.en"),
-              testId: "settings-profile-language-en",
-            },
-          ]}
-        />
-      </Question>
-      <Question title={t("settings.profile.theme")} testId="settings-question-profile-theme">
-        <SegmentedControl
+    <div className="grid gap-4" data-testid="settings-area-profile">
+      <Panel className="divide-y py-1">
+        <SettingsRow
+          icon={Palette}
           label={t("settings.profile.theme")}
-          value={theme}
-          onValueChange={(next) => {
-            const chosen = THEMES.find((candidate) => candidate === next);
-            if (chosen) onTheme(chosen);
-          }}
-          testId="settings-profile-theme"
-          options={THEMES.map((value) => ({
-            value,
-            label: t(`account.theme.${value}`),
-            testId: `settings-profile-theme-${value}`,
-          }))}
-        />
-      </Question>
-      {app ? (
-        <Question title={t("settings.profile.app")} testId="settings-question-profile-app">
-          <div
-            className="flex min-h-8 flex-wrap items-center gap-2"
-            role="status"
-            data-testid="settings-profile-app-state"
-            data-installed={app.installed ? "true" : "false"}
-            data-notifications={app.notifications ? "true" : "false"}
-          >
-            <StatusBadge
-              state={app.installed ? "ok" : "neutral"}
-              label={t(app.installed ? "settings.profile.appInstalled" : "settings.profile.appNot")}
-              testId="settings-profile-app-installed"
-            />
-            <StatusBadge
-              state={app.notifications ? "ok" : "neutral"}
-              label={t(
-                app.notifications
-                  ? "settings.profile.appNotifyOn"
-                  : "settings.profile.appNotifyOff",
-              )}
-              testId="settings-profile-app-notifications"
-            />
-            {app.installable && onInstall ? (
-              <Button
-                variant="outline"
-                size="sm"
-                className="ml-auto"
-                onClick={onInstall}
-                data-testid="settings-profile-app-install"
-              >
-                {t("pwa.install.menu")}
-              </Button>
-            ) : null}
-          </div>
-        </Question>
-      ) : null}
-      {device ? (
-        <Question title={t("settings.profile.device")} testId="settings-question-profile-device">
-          <DeviceNotificationSwitch
-            state={device}
-            onToggle={onDevice}
-            label={t("settings.profile.deviceSwitch")}
-            hint={t("settings.profile.deviceHelp")}
+          testId="settings-question-profile-theme"
+        >
+          <SegmentedControl
+            label={t("settings.profile.theme")}
+            value={theme}
+            onValueChange={(next) => {
+              const chosen = THEMES.find((candidate) => candidate === next);
+              if (chosen) onTheme(chosen);
+            }}
+            testId="settings-profile-theme"
+            options={THEMES.map((value) => ({
+              value,
+              label: t(`account.theme.${value}`),
+              testId: `settings-profile-theme-${value}`,
+            }))}
           />
-        </Question>
-      ) : null}
-      {devices}
-      <Question title={t("settings.profile.steps")} testId="settings-question-profile-steps">
-        <div className="flex items-center justify-between gap-4">
-          <p className="text-sm font-medium">{t("settings.profile.stepsSwitch")}</p>
+        </SettingsRow>
+        <SettingsRow
+          icon={Globe}
+          label={t("settings.profile.language")}
+          testId="settings-question-profile-language"
+        >
+          <SegmentedControl
+            label={t("settings.profile.language")}
+            value={preference}
+            onValueChange={(next) => {
+              const chosen = PREFERENCES.find((candidate) => candidate === next);
+              if (chosen) onPreference(chosen);
+            }}
+            testId="settings-profile-language"
+            options={[
+              {
+                value: "auto",
+                label: t("account.language.auto"),
+                testId: "settings-profile-language-auto",
+              },
+              {
+                value: "de",
+                label: t("language.native.de"),
+                testId: "settings-profile-language-de",
+              },
+              {
+                value: "en",
+                label: t("language.native.en"),
+                testId: "settings-profile-language-en",
+              },
+            ]}
+          />
+        </SettingsRow>
+        <SettingsRow
+          icon={UserRound}
+          label={t("settings.profile.name")}
+          hint={t("settings.profile.nameHelp")}
+          testId="settings-question-profile-name"
+          below={
+            <div className="grid w-full gap-1 sm:w-96">
+              <Input
+                value={name}
+                maxLength={NAME_MAX}
+                autoComplete="name"
+                disabled={disabled}
+                aria-label={t("settings.profile.name")}
+                aria-invalid={nameInvalid || undefined}
+                onChange={(event) => onName(event.target.value)}
+                data-testid="settings-profile-name"
+              />
+              {nameInvalid ? (
+                <FieldError>
+                  <span data-testid="settings-profile-name-error">
+                    {t("settings.profile.nameError")}
+                  </span>
+                </FieldError>
+              ) : null}
+            </div>
+          }
+        />
+        <SettingsRow
+          icon={Mail}
+          label={t("settings.profile.email")}
+          hint={t("settings.profile.emailHelp")}
+          testId="settings-question-profile-email"
+        >
+          <span className="text-sm [overflow-wrap:anywhere]" data-testid="settings-profile-email">
+            {email}
+          </span>
+        </SettingsRow>
+        <SettingsRow
+          icon={ShieldCheck}
+          label={t("settings.profile.role")}
+          hint={roleHelp}
+          testId="settings-question-profile-role"
+        >
+          <span className="text-sm" data-testid="settings-profile-role">
+            {roleLabel}
+          </span>
+        </SettingsRow>
+        {app ? (
+          <SettingsRow
+            icon={AppWindow}
+            label={t("settings.profile.app")}
+            testId="settings-question-profile-app"
+          >
+            <span
+              className="flex flex-wrap items-center gap-2"
+              role="status"
+              data-testid="settings-profile-app-state"
+              data-installed={app.installed ? "true" : "false"}
+              data-notifications={app.notifications ? "true" : "false"}
+            >
+              <span data-testid="settings-profile-app-installed">
+                <Pill tone={app.installed ? "success" : "neutral"}>
+                  {t(app.installed ? "settings.profile.appInstalled" : "settings.profile.appNot")}
+                </Pill>
+              </span>
+              <span data-testid="settings-profile-app-notifications">
+                <Pill tone={app.notifications ? "success" : "neutral"}>
+                  {t(
+                    app.notifications
+                      ? "settings.profile.appNotifyOn"
+                      : "settings.profile.appNotifyOff",
+                  )}
+                </Pill>
+              </span>
+              {app.installable && onInstall ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onInstall}
+                  data-testid="settings-profile-app-install"
+                >
+                  {t("pwa.install.menu")}
+                </Button>
+              ) : null}
+            </span>
+          </SettingsRow>
+        ) : null}
+        <SettingsRow
+          icon={ListChecks}
+          label={t("settings.profile.steps")}
+          testId="settings-question-profile-steps"
+        >
           <Switch
             checked={stepsShown}
             disabled={stepsPending}
@@ -314,8 +314,9 @@ export function ProfileQuestions({
             aria-label={t("settings.profile.stepsSwitch")}
             data-testid="settings-profile-steps"
           />
-        </div>
-      </Question>
+        </SettingsRow>
+        {extra}
+      </Panel>
     </div>
   );
 }

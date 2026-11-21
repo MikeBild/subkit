@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Glob } from "bun";
 
@@ -104,12 +104,18 @@ function hasMarker(lines: string[], index: number, marker: string): boolean {
   return false;
 }
 
-async function listTestFiles(): Promise<string[]> {
+const VENDORED = /(?:^|[\\/])node_modules[\\/]/;
+
+export function isScannedPath(relPath: string): boolean {
+  return !VENDORED.test(relPath);
+}
+
+export async function listTestFiles(root = ROOT): Promise<string[]> {
   const out: string[] = [];
   for (const pattern of TEST_GLOBS) {
     const glob = new Glob(pattern);
-    for await (const f of glob.scan({ cwd: ROOT, absolute: false, onlyFiles: true })) {
-      out.push(f);
+    for await (const f of glob.scan({ cwd: root, absolute: false, onlyFiles: true })) {
+      if (isScannedPath(f)) out.push(f);
     }
   }
   return [...new Set(out)].sort();
@@ -239,38 +245,7 @@ function checkFile(relPath: string): Violation[] {
   return checkSource(relPath, readFileSync(resolve(ROOT, relPath), "utf8"));
 }
 
-const BASELINE_PATH = resolve(ROOT, "scripts/determinism.baseline.json");
-
-function loadBaseline(): Record<string, number> {
-  try {
-    return JSON.parse(readFileSync(BASELINE_PATH, "utf8")) as Record<string, number>;
-  } catch {
-    return {};
-  }
-}
-
-function writeBaseline(counts: Record<string, number>): void {
-  const sorted = Object.fromEntries(
-    Object.entries(counts)
-      .filter(([, n]) => n > 0)
-      .sort(([a], [b]) => a.localeCompare(b)),
-  );
-  writeFileSync(BASELINE_PATH, `${JSON.stringify(sorted, null, 2)}\n`);
-}
-
-function countWarningsByFile(violations: Violation[]): Record<string, number> {
-  const out: Record<string, number> = {};
-  for (const v of violations) {
-    if (v.severity !== "warn") continue;
-    out[v.file] = (out[v.file] ?? 0) + 1;
-  }
-  return out;
-}
-
 async function main(): Promise<number> {
-  const args = new Set(process.argv.slice(2));
-  const updateBaseline = args.has("--update-baseline");
-
   const files = await listTestFiles();
   const all: Violation[] = [];
   for (const f of files) all.push(...checkFile(f));
@@ -291,75 +266,8 @@ async function main(): Promise<number> {
   console.log(`  errors:   ${errors.length}`);
   console.log(`  warnings: ${warnings.length}`);
 
-  const current = countWarningsByFile(all);
-  if (updateBaseline) {
-    writeBaseline(current);
-    console.log(`baseline updated: ${BASELINE_PATH}`);
-    return 0;
-  }
-
-  let baselineRegressions = 0;
-  let aggregateRegression = 0;
-  if (!warnOnly) {
-    const baseline = loadBaseline();
-    const seenFiles = new Set([...Object.keys(baseline), ...Object.keys(current)]);
-    const regressions: string[] = [];
-    const improvements: string[] = [];
-    for (const f of seenFiles) {
-      const before = baseline[f] ?? 0;
-      const after = current[f] ?? 0;
-      if (after > before) {
-        regressions.push(`  ${f}: ${before} → ${after} warning(s)`);
-        baselineRegressions += after - before;
-      } else if (after < before) {
-        improvements.push(`  ${f}: ${before} → ${after} warning(s)`);
-      }
-    }
-
-    const totalCurrent = Object.values(current).reduce((a, b) => a + b, 0);
-    const totalBaseline = Object.values(baseline).reduce((a, b) => a + b, 0);
-    if (totalCurrent > totalBaseline) {
-      aggregateRegression = totalCurrent - totalBaseline;
-    }
-    const aggregateLine = `aggregate: ${totalBaseline} → ${totalCurrent} warning(s) across ${Object.keys(current).length} file(s)`;
-
-    if (improvements.length > 0) {
-      console.log("");
-      console.log("baseline improvements (run with --update-baseline to lock in):");
-      for (const line of improvements) console.log(line);
-      if (totalCurrent < totalBaseline) {
-        console.log(`  ${aggregateLine}`);
-      }
-    }
-    if (regressions.length > 0 || aggregateRegression > 0) {
-      console.log("");
-      console.log("baseline regressions (new warnings vs. tolerated baseline):");
-      for (const line of regressions) console.log(line);
-      if (aggregateRegression > 0) {
-        console.log(`  ${aggregateLine} — aggregate growth blocked`);
-      }
-    }
-
-    const summaryPath = process.env.GITHUB_STEP_SUMMARY;
-    if (summaryPath) {
-      const direction =
-        totalCurrent < totalBaseline ? "↓" : totalCurrent > totalBaseline ? "↑" : "=";
-      const lines = ["## determinism baseline", "", `${direction} ${aggregateLine}`, ""];
-      if (improvements.length > 0) {
-        lines.push("### improvements", "", ...improvements.map((l) => `-${l}`), "");
-      }
-      if (regressions.length > 0) {
-        lines.push("### regressions", "", ...regressions.map((l) => `-${l}`), "");
-      }
-      try {
-        appendFileSync(summaryPath, `${lines.join("\n")}\n`);
-      } catch {}
-    }
-  }
-
   if (!warnOnly && errors.length > 0) return 1;
-  if (!warnOnly && baselineRegressions > 0) return 1;
-  if (!warnOnly && aggregateRegression > 0) return 1;
+  if (!warnOnly && warnings.length > 0) return 1;
   return 0;
 }
 

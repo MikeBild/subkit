@@ -15,6 +15,10 @@ import {
 import { chatSeedFromUrl, chatTargetFromUrl } from "@/app/links";
 import {
   asStreamedDiff,
+  type ClaimedFile,
+  COMPOSER_TRAY_KEY,
+  claimComposerTray,
+  claimedAsPending,
   type RestoreComposer,
   type StreamedDiff,
   selectionFromPath,
@@ -28,6 +32,7 @@ import {
   linkAttachment,
   messageWithAttachments,
   type PendingAttachment,
+  pendingKey,
 } from "./chat-attachments";
 import { applyLiveCall, type LiveCall, reduceLiveCall } from "./chat-live-calls";
 import type { AuthoringMode } from "./chat-permission";
@@ -44,7 +49,11 @@ import {
   userMessageCount,
 } from "./chat-session";
 
-export type ChatOperation = { session: number; startedId: string | null };
+export type ChatOperation = {
+  session: number;
+  startedId: string | null;
+  claimed?: ClaimedFile[];
+};
 
 export type ChatTurn = ReturnType<typeof useChatTurn>;
 
@@ -56,6 +65,7 @@ export function useChatTurn({
   detail,
   messages,
   newPermissionMode,
+  switchedMode = null,
   attachments,
   setAttachments,
   restoreComposer,
@@ -67,6 +77,7 @@ export function useChatTurn({
   detail: UseQueryResult<ConversationDetail, unknown>;
   messages: ConversationDetail["messages"];
   newPermissionMode: AuthoringMode;
+  switchedMode?: AuthoringMode | null;
   attachments: PendingAttachment[];
   setAttachments: React.Dispatch<React.SetStateAction<PendingAttachment[]>>;
   restoreComposer: React.RefObject<RestoreComposer | null>;
@@ -167,6 +178,7 @@ export function useChatTurn({
       references,
       conversationId,
       attachments = [],
+      trayIds = [],
       operation,
     }: {
       message: string;
@@ -174,6 +186,7 @@ export function useChatTurn({
       conversationId: string | null;
       operation: ChatOperation;
       attachments?: readonly PendingAttachment[];
+      trayIds?: readonly string[];
     }) => {
       clearStream();
 
@@ -181,7 +194,7 @@ export function useChatTurn({
       const intakeItemIds = chatSeedFromUrl(window.location.search).intakeItemIds;
       let targetId = conversationId;
       let text = message;
-      if (attachments.length > 0) {
+      if (attachments.length > 0 || trayIds.length > 0) {
         if (!targetId) {
           const opened = await createEmptyConversation({
             target,
@@ -194,6 +207,15 @@ export function useChatTurn({
         const slugs: string[] = [];
         for (const attachment of attachments)
           slugs.push(await linkAttachment(targetId, attachment));
+        if (trayIds.length > 0) {
+          try {
+            const claimed = await claimComposerTray(targetId, trayIds);
+            operation.claimed = claimed;
+            slugs.push(...claimed.map((file) => file.slug));
+          } finally {
+            void queryClient.invalidateQueries({ queryKey: COMPOSER_TRAY_KEY });
+          }
+        }
         text = messageWithAttachments(message, slugs);
       }
       return sendConversationTurn(
@@ -202,6 +224,7 @@ export function useChatTurn({
               conversationId: targetId,
               message: text,
               references,
+              ...(switchedMode ? { permissionMode: switchedMode } : {}),
               pendingElicitation:
                 (await getConversation(targetId)).resume_summary?.pending_approval ?? null,
             }
@@ -285,6 +308,7 @@ export function useChatTurn({
   const submitTurn = async (
     message: string,
     references: ConversationReference[] = [],
+    trayIds: readonly string[] = [],
   ): Promise<boolean> => {
     const operation = beginOperation();
     const pinned = pinSelectionForSend(selection, firstListedId);
@@ -307,6 +331,7 @@ export function useChatTurn({
         references,
         conversationId: targetId,
         attachments: sentAttachments,
+        trayIds,
         operation,
       });
       return true;
@@ -352,7 +377,12 @@ export function useChatTurn({
       if (!ownsOperation(operation)) return false;
       setOptimistic(null);
       restoreComposer.current?.(message, references);
-      setAttachments((current) => addAttachments(sentAttachments, current));
+      setAttachments((current) =>
+        addAttachments(
+          addAttachments(sentAttachments, claimedAsPending(operation.claimed ?? [], pendingKey)),
+          current,
+        ),
+      );
       return false;
     }
   };
@@ -402,10 +432,16 @@ export function useChatTurn({
       };
       return elicitationId
         ? formOutput !== undefined
-          ? respondToChatForm(conversationId, elicitationId, formOutput, onEvent)
+          ? respondToChatForm(conversationId, elicitationId, formOutput, onEvent, switchedMode)
           : choiceValue !== undefined
-            ? respondToChatChoice(conversationId, elicitationId, choiceValue, onEvent)
-            : respondToChatApproval(conversationId, elicitationId, approved === true, onEvent)
+            ? respondToChatChoice(conversationId, elicitationId, choiceValue, onEvent, switchedMode)
+            : respondToChatApproval(
+                conversationId,
+                elicitationId,
+                approved === true,
+                onEvent,
+                switchedMode,
+              )
         : respondToToolCall(conversationId, toolCallId ?? "", approved === true);
     },
     onSuccess: async (_result, variables) => {

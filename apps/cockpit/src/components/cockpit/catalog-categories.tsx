@@ -45,11 +45,21 @@ const WRITE_PERMISSIONS = [
   "file:write",
 ];
 
-export function CatalogCategories({ kind }: { kind: CatalogCategoryKind }) {
+export function CatalogCategories({
+  kind,
+  open: controlled,
+  onOpenChange,
+}: {
+  kind: CatalogCategoryKind;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
   const { t } = useI18n();
   const { permissions } = useSession();
   const client = useQueryClient();
-  const [open, setOpen] = useState(false);
+  const [own, setOwn] = useState(false);
+  const open = controlled ?? own;
+  const setOpen = onOpenChange ?? setOwn;
   const [editing, setEditing] = useState<CategoryUsage | null>(null);
   const [name, setName] = useState("");
   const [purpose, setPurpose] = useState("");
@@ -120,19 +130,21 @@ export function CatalogCategories({ kind }: { kind: CatalogCategoryKind }) {
   });
   return (
     <>
-      <Button
-        variant="link"
-        size="sm"
-        className="h-auto p-0 text-sm"
-        onClick={() => setOpen(true)}
-        data-testid="catalog-categories-open"
-      >
-        {query.data
-          ? t(count === 1 ? "catalogCategories.summary.one" : "catalogCategories.summary.other", {
-              count,
-            })
-          : t("catalogCategories.title")}
-      </Button>
+      {controlled === undefined ? (
+        <Button
+          variant="link"
+          size="sm"
+          className="h-auto p-0 text-sm"
+          onClick={() => setOpen(true)}
+          data-testid="catalog-categories-open"
+        >
+          {query.data
+            ? t(count === 1 ? "catalogCategories.summary.one" : "catalogCategories.summary.other", {
+                count,
+              })
+            : t("catalogCategories.title")}
+        </Button>
+      ) : null}
       <RecordSheet
         open={open}
         onOpenChange={setOpen}

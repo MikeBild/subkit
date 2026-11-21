@@ -67,6 +67,11 @@ isolated(
       expect(route("/workflows/$resourceId")?.options.component).toBeDefined();
       expect(route("/connectors/$resourceId")?.options.component).toBeDefined();
       expect(route("/chat/$conversationId")?.options.component).toBeDefined();
+      expect(route("/intake/$resourceId")?.options.component).toBeDefined();
+      expect(route("/skills/candidates")?.options.component).toBeDefined();
+      expect(route("/incoming/files")?.options.component).toBe(route("/files")?.options.component);
+      expect(route("/usage")?.options.component).toBeDefined();
+      expect(route("/connectors")?.options.component).toBeDefined();
     } finally {
       restore();
     }

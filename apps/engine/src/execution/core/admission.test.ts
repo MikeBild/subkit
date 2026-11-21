@@ -237,10 +237,7 @@ describe("decideAdmission", () => {
       code: "execution_authority_required",
       message: "needs review",
     };
-    expect(decideAdmission(base, refusal)).toEqual({
-      kind: "downgrade",
-      downgraded_from: { code: "execution_authority_required", message: "needs review" },
-    });
+    expect(decideAdmission(base, refusal)).toEqual({ kind: "downgrade" });
     expect(decideAdmission({ ...base, execution_authority_id: AUTH }, refusal).kind).toBe(
       "rejected",
     );

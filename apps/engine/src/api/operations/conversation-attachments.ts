@@ -3,7 +3,7 @@ import { actorType } from "../../audit/actor.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { assertTaskRunWriter } from "../../conversations/public/lifecycle.ts";
-import type { Db } from "../../db/client.ts";
+import type { Db, Executor } from "../../db/client.ts";
 import { recordFilesDedupSeen } from "../../files/dedup-counter.ts";
 import { FileLinkError, linkStoredFile } from "../../files/links.ts";
 import { persistInlineUpload } from "../../files/persist-inline-upload.ts";
@@ -29,12 +29,12 @@ import {
   parseFileIdOrThrow,
 } from "../files-schemas.ts";
 import { toFileWire } from "./files-representation.ts";
-import { defineOperation, plainRejection, type Rejection, reject } from "./index.ts";
+import { defineOperation, isRejection, plainRejection, type Rejection, reject } from "./index.ts";
 
 const IdParam = z.object({ id: z.string().uuid() });
 const SlugParam = z.object({ id: z.string().uuid(), slug: z.string().min(1) });
 
-const UploadBody = z
+export const UploadBody = z
   .union([
     FileRefSchema,
     z.object({
@@ -45,10 +45,10 @@ const UploadBody = z
   ])
   .openapi("ConversationAttachmentUpload");
 
-const AttachmentSchema = z
+export const AttachmentSchema = z
   .object({ ...FileSchema.shape, slug: z.string() })
   .openapi("ConversationAttachment");
-type AttachmentWire = FileWire & { slug: string };
+export type AttachmentWire = FileWire & { slug: string };
 
 const ListResponse = z
   .object({ attachments: z.array(AttachmentSchema) })
@@ -68,7 +68,7 @@ interface SlugInput extends IdInput {
   readonly slug: string;
 }
 
-interface LinkScope {
+export interface LinkScope {
   readonly db: Db;
   readonly tenant_id: string;
   readonly principal: ResolvedPrincipal;
@@ -89,18 +89,19 @@ function linkSlug(row: FileRow): string {
   return row.slug ?? slugifyFilename(row.filename);
 }
 
-function toAttachmentWire(row: FileRow, slug: string): AttachmentWire {
+export function toAttachmentWire(row: FileRow, slug: string): AttachmentWire {
   return { ...toFileWire(row), slug, reference: fileReference(slug) };
 }
 
-async function linkToConversation(
+export async function linkToConversation(
   scope: LinkScope,
   conversation_id: string,
   row: FileRow,
   slug: string,
+  exec: Executor = scope.db,
 ): Promise<Rejection | null> {
   return linkStoredFile(
-    scope.db,
+    exec,
     {
       tenant_id: scope.tenant_id,
       file_id: row.id,
@@ -132,28 +133,27 @@ async function linkExisting(
   conversation_id: string,
   fileRef: string,
 ): Promise<AttachmentWire | Rejection> {
-  const fid_uuid = parseFileIdOrThrow(fileRef);
-  let fileRow: FileRow;
-  try {
-    fileRow = await requireFileForTenant(scope.db, scope.tenant_id, fid_uuid);
-  } catch {
-    return plainRejection(404, "not_found", "file not found");
-  }
-  const slug = linkSlug(fileRow);
-  const refused = await linkToConversation(scope, conversation_id, fileRow, slug);
-  return refused ?? toAttachmentWire(fileRow, slug);
+  const found = await resolveStoredFile(scope, fileRef);
+  if (isRejection(found)) return found;
+  const refused = await linkToConversation(scope, conversation_id, found.row, found.slug);
+  return refused ?? toAttachmentWire(found.row, found.slug);
 }
 
-async function storeInline(
-  scope: LinkScope,
-  conversation_id: string,
-  body: { filename: string; content_type?: string | undefined; content_base64: string },
-): Promise<AttachmentWire | Rejection> {
-  const filename = body.filename;
-  const content_type = body.content_type ?? null;
+export type InlineUpload = {
+  filename: string;
+  content_type?: string | undefined;
+  content_base64: string;
+};
+
+export interface StoredUpload {
+  readonly row: FileRow;
+  readonly slug: string;
+}
+
+export function decodeUpload(content_base64: string): Uint8Array | Rejection {
   let bytes: Uint8Array;
   try {
-    bytes = Uint8Array.from(Buffer.from(body.content_base64, "base64"));
+    bytes = Uint8Array.from(Buffer.from(content_base64, "base64"));
   } catch {
     return plainRejection(400, "bad_input", "invalid base64");
   }
@@ -161,6 +161,19 @@ async function storeInline(
   if (bytes.byteLength > MAX_INLINE_BYTES) {
     return plainRejection(413, "too_large", `attachment exceeds ${MAX_INLINE_BYTES} bytes cap`);
   }
+  return bytes;
+}
+
+export async function storeUpload(
+  scope: LinkScope,
+  body: InlineUpload,
+  source: string,
+  decoded?: Uint8Array,
+): Promise<StoredUpload | Rejection> {
+  const filename = body.filename;
+  const content_type = body.content_type ?? null;
+  const bytes = decoded ?? decodeUpload(body.content_base64);
+  if (!(bytes instanceof Uint8Array)) return bytes;
   const isPackage = await isPackageArchive(bytes);
   const stored = await persistInlineUpload(scope.db, {
     tenant_id: scope.tenant_id,
@@ -175,15 +188,37 @@ async function storeInline(
       ? ((await markStoredPackageArchive(scope.db, scope.tenant_id, stored.row.id)) ?? stored.row)
       : stored.row;
   if (dedup) await recordFilesDedupSeen(scope.db, scope.tenant_id);
-  const slug = linkSlug(row);
-  const refused = await linkToConversation(scope, conversation_id, row, slug);
-  if (refused) return refused;
   await auditConversationAttachmentStored(
     scope.db,
     { principal: scope.principal, request_source: scope.request_source },
     { row, filename, size_bytes: bytes.byteLength, dedup, scan },
+    source,
   );
-  return toAttachmentWire(row, slug);
+  return { row, slug: linkSlug(row) };
+}
+
+export async function resolveStoredFile(
+  scope: LinkScope,
+  fileRef: string,
+): Promise<StoredUpload | Rejection> {
+  const fid_uuid = parseFileIdOrThrow(fileRef);
+  try {
+    const row = await requireFileForTenant(scope.db, scope.tenant_id, fid_uuid);
+    return { row, slug: linkSlug(row) };
+  } catch {
+    return plainRejection(404, "not_found", "file not found");
+  }
+}
+
+async function storeInline(
+  scope: LinkScope,
+  conversation_id: string,
+  body: InlineUpload,
+): Promise<AttachmentWire | Rejection> {
+  const stored = await storeUpload(scope, body, "conversation_attachments");
+  if (isRejection(stored)) return stored;
+  const refused = await linkToConversation(scope, conversation_id, stored.row, stored.slug);
+  return refused ?? toAttachmentWire(stored.row, stored.slug);
 }
 
 function same<T>(result: T): T {

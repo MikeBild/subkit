@@ -46,6 +46,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
+      "@ui": fileURLToPath(new URL("../../packages/ui/src", import.meta.url)),
       "@shared": fileURLToPath(new URL("../../packages/shared/src", import.meta.url)),
       "@cli-core": fileURLToPath(new URL("../../packages/cli-core/src", import.meta.url)),
       "@engine/http/llms": fileURLToPath(new URL("../engine/src/http/llms", import.meta.url)),

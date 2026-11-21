@@ -1,6 +1,15 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { toHonoRoute } from "../../api/operations/hono.ts";
 import {
+  approvePairApprovalOperation,
+  declinePairApprovalOperation,
+  getApprovalPolicyOperation,
+  listPairApprovalsOperation,
+  putApprovalPolicyOperation,
+  requestPairApprovalOperation,
+  withdrawPairApprovalOperation,
+} from "../../api/operations/pair-approvals.ts";
+import {
   getWorkflowAuthorityOperation,
   listWorkflowAuthoritiesOperation,
   previewWorkflowAuthorityOperation,
@@ -38,4 +47,11 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
   toHonoRoute(app, getWorkflowAuthorityOperation);
   toHonoRoute(app, revokeWorkflowAuthorityOperation);
   toHonoRoute(app, makeWorkflowAuthorityUntilRevokedOperation);
+  toHonoRoute(app, getApprovalPolicyOperation);
+  toHonoRoute(app, putApprovalPolicyOperation);
+  toHonoRoute(app, requestPairApprovalOperation);
+  toHonoRoute(app, listPairApprovalsOperation);
+  toHonoRoute(app, approvePairApprovalOperation);
+  toHonoRoute(app, declinePairApprovalOperation);
+  toHonoRoute(app, withdrawPairApprovalOperation);
 }

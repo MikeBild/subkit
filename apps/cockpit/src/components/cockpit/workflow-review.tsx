@@ -3,14 +3,18 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiCall } from "@/api/call";
 import { ApiError } from "@/api/client";
+import { useSetup } from "@/api/setup";
 import {
-  DEFAULT_GRANT_LIMIT,
-  type GrantLimit,
-  grantLimitOf,
-  reviewGrantAction,
-} from "@/lib/core/authority-decision";
+  type ApprovalLimits,
+  approvalLimits,
+  grantLimits,
+  limitedGrant,
+  limitsProblem,
+  usePairVisibility,
+} from "@/features/operations";
 import { useI18n } from "@/lib/i18n-context";
 import {
+  pairReview,
   type ReviewBlockedMessageKey,
   workflowReviewBlockedKey,
   workflowReviewFailure,
@@ -40,9 +44,12 @@ export function WorkflowReview({
 }) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
+  const pairHints = usePairVisibility(open).hints;
+  const setup = useSetup(open);
+  const pair = pairReview(pairHints, setup.data?.approver);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [selectedActions, setSelectedActions] = useState<Actions>(saveActions);
-  const [limit, setLimit] = useState<GrantLimit>(DEFAULT_GRANT_LIMIT);
+  const [limits, setLimits] = useState<ApprovalLimits>(() => approvalLimits(null, new Date()));
   const [state, setState] = useState<WorkflowReviewState>("preparing");
   const [message, setMessage] = useState<string>();
   const [blockedKey, setBlockedKey] = useState<ReviewBlockedMessageKey | null>(null);
@@ -66,7 +73,7 @@ export function WorkflowReview({
     (value: Receipt) => {
       setReceipt(value);
       setSelectedActions(value.actions);
-      if (value.actions.grant) setLimit(grantLimitOf(value.actions.grant));
+      if (value.actions.grant) setLimits(grantLimits(value.actions.grant, new Date()));
       setMessage(undefined);
       if (value.status === "completed") {
         store(null);
@@ -219,7 +226,7 @@ export function WorkflowReview({
   };
   const suggestions = receipt?.suggested_actions;
   const grant = receipt?.actions.grant ?? suggestions?.grant;
-  const grantFor = (next: GrantLimit) => (grant ? reviewGrantAction(grant, next) : null);
+  const grantFor = (next: ApprovalLimits) => (grant ? limitedGrant(grant, next, new Date()) : null);
   const review: WorkflowReviewDisplay | null = receipt
     ? {
         workflow_name: receipt.workflow_name,
@@ -252,8 +259,8 @@ export function WorkflowReview({
           ...trigger,
           id: `${trigger.kind}-${index}`,
         })),
-        grant: grant ? { limit } : null,
-        schedule: receipt.actions.schedule ?? suggestions?.schedule ?? null,
+        grant: grant ? { limits, problem: limitsProblem(limits, new Date()) } : null,
+        schedule: pair ? null : (receipt.actions.schedule ?? suggestions?.schedule ?? null),
       }
     : null;
   return (
@@ -264,6 +271,8 @@ export function WorkflowReview({
         if (!next && state === "completed") void refreshConversation();
       }}
       review={review}
+      pair={pair}
+      pairRequested={Boolean(receipt?.result?.pair_request_id)}
       state={state}
       message={blockedKey ? t(blockedKey) : message}
       grantSelected={
@@ -283,15 +292,17 @@ export function WorkflowReview({
         const actions = {
           ...selectedActions,
           activate: checked,
-          grant: checked ? grantFor(limit) : null,
+          grant: checked ? grantFor(limits) : null,
         };
         setSelectedActions(actions);
         if (!actions.schedule || actions.activate) void prepare(actions);
       }}
       onLimitChange={(next) => {
-        setLimit(next);
+        setLimits(next);
         if (!selectedActions.activate) return;
-        const actions = { ...selectedActions, grant: grantFor(next) };
+        const chosen = grantFor(next);
+        if (!chosen) return;
+        const actions = { ...selectedActions, grant: chosen };
         setSelectedActions(actions);
         void prepare(actions);
       }}

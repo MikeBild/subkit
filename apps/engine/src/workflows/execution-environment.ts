@@ -7,6 +7,7 @@ import {
   workflowsSchedules,
   workflowVersions,
 } from "../db/schema/index.ts";
+import { chooseEnvironment } from "../identity/core/default-environment.ts";
 
 type ExecutionEnvironment = "dev" | "prod";
 
@@ -45,7 +46,7 @@ export async function resolveWorkflowReviewEnvironment(
     : null;
   return bound
     ? { environment: bound, source: "bindings" }
-    : { environment: personal_default ?? "dev", source: "default" };
+    : { environment: chooseEnvironment({ personal: personal_default }), source: "default" };
 }
 
 async function bindingEnvironment(

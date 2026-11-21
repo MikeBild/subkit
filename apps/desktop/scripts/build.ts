@@ -2,6 +2,7 @@ import { cp, mkdir, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { buildSigned, buildUpdates, updateFeedProblem } from "../src/shared/updates.ts";
 import { FONT_FILES, FONT_PACKAGE } from "./fonts.ts";
+import { uiResolve } from "./ui-resolve.ts";
 
 const root = resolve(import.meta.dir, "..");
 const dist = join(root, "dist");
@@ -26,7 +27,8 @@ async function bundle(
     target,
     format,
     external: ["electron"],
-    minify: false,
+    plugins: [uiResolve()],
+    minify: target === "browser" && channel === "production",
     define: {
       SUBKIT_DESKTOP_UPDATES: JSON.stringify(updates),
       SUBKIT_DESKTOP_CHANNEL: JSON.stringify(channel),
@@ -42,19 +44,54 @@ async function bundle(
   await Bun.write(join(dist, outfile), await artifact.text());
 }
 
+async function buildStyles(input: string, output: string): Promise<void> {
+  const run = Bun.spawnSync(
+    [
+      process.execPath,
+      join(root, "node_modules/@tailwindcss/cli/dist/index.mjs"),
+      "--input",
+      input,
+      "--output",
+      output,
+      ...(channel === "production" ? ["--minify"] : []),
+    ],
+    { cwd: root, stdout: "ignore", stderr: "pipe" },
+  );
+  if (run.exitCode !== 0) throw new Error(`Tailwind failed: ${run.stderr.toString()}`);
+}
+
 await rm(dist, { recursive: true, force: true });
 await mkdir(join(dist, "connect"), { recursive: true });
 await bundle("src/main/index.ts", "main.cjs", "node", "cjs");
 await bundle("src/preload/connect.ts", "preload-connect.cjs", "node", "cjs");
 await bundle("src/preload/cockpit.ts", "preload-cockpit.cjs", "node", "cjs");
-await bundle("src/connect/connect.ts", "connect/connect.js", "browser", "iife");
+await bundle("src/connect/main.tsx", "connect/connect.js", "browser", "iife");
 await cp(join(root, "src/connect/index.html"), join(dist, "connect/index.html"));
-await cp(join(root, "src/connect/connect.css"), join(dist, "connect/connect.css"));
+await buildStyles(join(root, "src/connect/styles.css"), join(dist, "connect/connect.css"));
 await cp(join(root, "assets/icon.png"), join(dist, "connect/icon.png"));
 await mkdir(join(dist, "connect/fonts"), { recursive: true });
 for (const file of FONT_FILES) {
   await cp(join(root, FONT_PACKAGE, "files", file), join(dist, "connect/fonts", file));
 }
+await bundle("src/preload/shell.ts", "preload-shell.cjs", "node", "cjs");
+await mkdir(join(dist, "shell/fonts"), { recursive: true });
+await bundle("src/shell/main.tsx", "shell/shell.js", "browser", "iife");
+await cp(join(root, "src/shell/shell.html"), join(dist, "shell/shell.html"));
+for (const file of FONT_FILES) {
+  await cp(join(root, FONT_PACKAGE, "files", file), join(dist, "shell/fonts", file));
+}
+const css = Bun.spawnSync(
+  [
+    join(root, "node_modules/.bin/tailwindcss"),
+    "-i",
+    join(root, "src/shell/shell.css"),
+    "-o",
+    join(dist, "shell/shell.css"),
+    "--minify",
+  ],
+  { cwd: root, stdout: "inherit", stderr: "pipe" },
+);
+if (css.exitCode !== 0) throw new Error(`Tailwind failed: ${css.stderr.toString()}`);
 await mkdir(join(dist, "assets"), { recursive: true });
 for (const file of ["icon.png", "trayTemplate.png", "trayTemplate@2x.png"]) {
   await cp(join(root, "assets", file), join(dist, "assets", file));

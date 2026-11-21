@@ -1,14 +1,5 @@
 export const QUALITY_RUNTIME_WITNESSES = [
   {
-    consumer: "apps/engine/src/conversations/index.ts",
-    test: "apps/engine/src/conversations/index.contract.test.ts",
-    kind: "source-process",
-    rationale:
-      "An isolated Bun subprocess imports the unchanged public conversation index with representative original modules and verifies exported function and schema identities without module mocks.",
-    independent_review:
-      "Conversation facade migration review verifies source import initialization, constructor and schema identity, and the public function surface.",
-  },
-  {
     consumer: "apps/engine/src/embeddings/embedding-worker.ts",
     test: "apps/engine/src/embeddings/tests/worker-entry.test.ts",
     kind: "source-worker",

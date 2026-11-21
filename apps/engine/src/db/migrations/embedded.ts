@@ -31,6 +31,8 @@ import sql0010DesktopLogin from "./0010_desktop_login.sql" with { type: "text" }
 import sql0011SetupAndApprovalRules from "./0011_setup_and_approval_rules.sql" with { type: "text" };
 import sql0012RuleLimitsAndQuietHours from "./0012_rule_limits_and_quiet_hours.sql" with { type: "text" };
 import sql0013RuleExpiryAndGentleAutoPause from "./0013_rule_expiry_and_gentle_auto_pause.sql" with { type: "text" };
+import sql0014KlickdummyGaps from "./0014_klickdummy_gaps.sql" with { type: "text" };
+import sql0015UiGaps from "./0015_ui_gaps.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -69,6 +71,8 @@ const SQL_BY_TAG: Record<string, string> = {
   "0011_setup_and_approval_rules": sql0011SetupAndApprovalRules,
   "0012_rule_limits_and_quiet_hours": sql0012RuleLimitsAndQuietHours,
   "0013_rule_expiry_and_gentle_auto_pause": sql0013RuleExpiryAndGentleAutoPause,
+  "0014_klickdummy_gaps": sql0014KlickdummyGaps,
+  "0015_ui_gaps": sql0015UiGaps,
 };
 
 const journal = journalMeta as unknown as Journal;

@@ -64,19 +64,19 @@ export const engineSentenceDe: Record<keyof typeof engineSentenceEn, string> = {
   "engine.hold.execution_authority_unavailable":
     "Die Freigabe ist abgelaufen, aufgebraucht oder widerrufen, deshalb warten automatische Starts. Erneuere die Freigabe, dann laufen sie wieder. Seit dem Anhalten ist nichts gelaufen.",
   "engine.hold.input_required":
-    "Dem Zeitplan fehlt die Eingabe für ein Pflichtfeld, deshalb warten die geplanten Läufe. Trag die fehlende Eingabe nach, dann laufen sie wieder.",
+    "Dem Zeitplan fehlt die Eingabe für ein Pflichtfeld, deshalb warten die geplanten Runs. Trag die fehlende Eingabe nach, dann laufen sie wieder.",
   "engine.class.auth_failed":
-    "Der verbundene Dienst hat die Anmeldung abgelehnt. Verbinde den Konnektor neu und starte den Lauf noch einmal. Dieser Schritt hat nichts verändert.",
+    "Der verbundene Dienst hat die Anmeldung abgelehnt. Verbinde den Connector neu und starte den Run noch einmal. Dieser Schritt hat nichts verändert.",
   "engine.class.authority_mismatch":
-    "Die Freigabe deckt nicht mehr ab, was dieser Lauf tun würde. Prüfe und erneuere die Freigabe und starte den Lauf noch einmal.",
+    "Die Freigabe deckt nicht mehr ab, was dieser Run tun würde. Prüfe und erneuere die Freigabe und starte den Run noch einmal.",
   "engine.class.connector_missing":
-    "Ein Konnektor, den dieser Lauf braucht, fehlt in dieser Umgebung. Leg ihn an und starte den Lauf noch einmal.",
+    "Ein Connector, den dieser Run braucht, fehlt in dieser Umgebung. Leg ihn an und starte den Run noch einmal.",
   "engine.class.connector_unavailable":
-    "Ein Konnektor, den dieser Lauf braucht, ist ausgeschaltet oder hat keine nutzbaren Zugangsdaten. Verbinde ihn neu oder schalte ihn ein und starte den Lauf noch einmal.",
+    "Ein Connector, den dieser Run braucht, ist ausgeschaltet oder hat keine nutzbaren Zugangsdaten. Verbinde ihn neu oder schalte ihn ein und starte den Run noch einmal.",
   "engine.class.budget_exhausted":
     "Das Token-Kontingent ist aufgebraucht. Erhöhe das Limit oder warte auf den nächsten Monat.",
   "engine.class.rate_limited":
-    "Das Anfragelimit des Dienstes hat diesen Lauf gestoppt. Versuch es noch einmal, sobald das Limit zurückgesetzt ist.",
+    "Das Anfragelimit des Dienstes hat diesen Run gestoppt. Versuch es noch einmal, sobald das Limit zurückgesetzt ist.",
   "engine.class.timeout":
     "Ein Schritt hat länger gebraucht als sein Zeitlimit. Versuch es noch einmal oder erhöhe das Limit.",
   "engine.class.placeholder_unresolved":
@@ -84,17 +84,17 @@ export const engineSentenceDe: Record<keyof typeof engineSentenceEn, string> = {
   "engine.class.schema_mismatch":
     "Der Dienst hat in einer unerwarteten Form geantwortet. Prüfe die Datenauswahl des Schritts gegen die Antwort.",
   "engine.class.incomplete_read":
-    "Der Lauf hat gestoppt, bevor alle Seiten gelesen waren. Sein Ergebnis wäre unvollständig.",
+    "Der Run hat gestoppt, bevor alle Seiten gelesen waren. Sein Ergebnis wäre unvollständig.",
   "engine.class.payload_invalid":
     "Die Nachricht, die ein Schritt gebaut hat, ist fehlerhaft und wurde nicht gesendet. Korrigiere, wie der Schritt sie baut; die Freigabe passt weiterhin.",
   "engine.code.sensitive_execution_failure":
-    "Dieser Lauf arbeitet mit geschützten Daten, deshalb zeigt die Engine die Ursache hier nicht. Die Laufansicht nennt den fehlgeschlagenen Schritt.",
+    "Dieser Run arbeitet mit geschützten Daten, deshalb zeigt die Engine die Ursache hier nicht. Die Run-Ansicht nennt den fehlgeschlagenen Schritt.",
   "engine.code.graphql_pagination_incomplete":
     "Die Seiten einer GraphQL-Abfrage sind unvollständig. Prüfe pageInfo, totalCount, die Cursor und die eingestellten Limits und versuch es noch einmal.",
   "engine.code.graphql_pagination_not_read_only":
     "Blättern per Cursor braucht eine GraphQL-Abfrage, die nur liest. Entferne die Mutationen aus diesem Schritt.",
   "engine.code.data_selector_error":
-    "Die Datenauswahl eines Schritts ist fehlgeschlagen. Prüfe ihren Ausdruck gegen die Form der Konnektor-Antwort und versuch es noch einmal.",
+    "Die Datenauswahl eines Schritts ist fehlgeschlagen. Prüfe ihren Ausdruck gegen die Form der Connector-Antwort und versuch es noch einmal.",
   "engine.code.pagination_limit_reached":
     "Das Blättern hat sein eingestelltes Limit für Seiten, Einträge oder Größe erreicht, bevor der Endpunkt zu Ende war. Erhöhe das Limit oder grenze die Anfrage ein.",
   "engine.code.pagination_link_foreign":
@@ -108,13 +108,13 @@ export const engineSentenceDe: Record<keyof typeof engineSentenceEn, string> = {
   "engine.code.upstream_rate_limited":
     "Das Anfragelimit des Dienstes wird nicht vor der Frist des Schritts oder des Workflows zurückgesetzt. Versuch es noch einmal, sobald das Limit zurückgesetzt ist.",
   "engine.code.graphql_endpoint_invalid":
-    "Die GraphQL-Adresse muss ein fester Pfad auf dem eigenen Host des Konnektors sein, der auf /graphql endet, zum Beispiel /graphql.",
+    "Die GraphQL-Adresse muss ein fester Pfad auf dem eigenen Host des Connectors sein, der auf /graphql endet, zum Beispiel /graphql.",
   "engine.code.graphql_path_required":
-    "Ein GraphQL-Schritt auf einem HTTP-Konnektor braucht einen festen Pfad wie /graphql.",
+    "Ein GraphQL-Schritt auf einem HTTP-Connector braucht einen festen Pfad wie /graphql.",
   "engine.code.pagination_truncated":
     "Das Blättern hat an seinem eingestellten Limit gestoppt, das Ergebnis dieses Schritts ist deshalb unvollständig.",
   "engine.code.skipped_dependency_held":
-    "Dieser Schritt wurde übersprungen, weil ein früherer schreibender Schritt im Probelauf angehalten wurde.",
+    "Dieser Schritt wurde übersprungen, weil ein früherer schreibender Schritt im Probe-Run angehalten wurde.",
   "engine.code.caller_saved_workflow_required":
     "Dieser Aufrufer kann nur eine gespeicherte Workflow-Version ausführen, keinen Entwurf.",
 };

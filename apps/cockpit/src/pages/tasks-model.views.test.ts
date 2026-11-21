@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { translate } from "@/lib/i18n";
 import { latestRun, run, task, usagePeriod } from "./tasks-fixtures";
 import {
+  listNextStart,
+  listStates,
   quotedQuestion,
   startView,
   taskRows,
@@ -45,10 +47,38 @@ describe("what the task pages read from the server's task view", () => {
     expect(line({ grant_live: true, latest_run: open })).toBe("tasks.next.dueRun");
     expect(line({ grant_live: true, latest_run: ended })).toBe("tasks.next.dueSoon");
     expect(line({ grant_live: true, latest_run: null })).toBe("tasks.next.dueSoon");
-    expect(translate("de", "tasks.next.dueRun")).toBe("wartet auf den laufenden Lauf");
+    expect(translate("de", "tasks.next.dueRun")).toBe("wartet auf den laufenden Run");
     expect(translate("en", "tasks.next.dueRun")).toBe("waiting for the current run");
     expect(translate("de", "tasks.next.dueSoon")).toBe("startet gleich");
     expect(translate("en", "tasks.next.dueSoon")).toBe("starts shortly");
+  });
+
+  test("the list shows the next start as a date, else the rhythm", () => {
+    expect(listNextStart(task({ next_start_at: "2026-11-20T07:00:00Z" }), NOW)).toEqual({
+      kind: "at",
+      at: "2026-11-20T07:00:00Z",
+    });
+    expect(listNextStart(task({ next_start_at: null, schedule_cron: "0 7 * * 1" }), NOW)).toEqual({
+      kind: "cron",
+      cron: "0 7 * * 1",
+    });
+    expect(
+      listNextStart(task({ next_start_at: null, schedule_cron: null, schedule_run_at: null }), NOW),
+    ).toEqual({ kind: "manual" });
+  });
+
+  test("the list names the run and the plan: what runs now and whether it comes back", () => {
+    const planned = { schedule_cron: "0 7 * * 1", paused_at: null };
+    expect(listStates(task(planned), { state: "waiting" })).toEqual(["waiting", "scheduled"]);
+    expect(listStates(task(planned), null)).toEqual(["scheduled"]);
+    expect(listStates(task({ ...planned, paused_at: "2026-11-01T00:00:00Z" }), null)).toEqual([
+      "paused",
+    ]);
+    expect(
+      listStates(task({ schedule_cron: null, schedule_run_at: null, paused_at: null }), {
+        state: "completed",
+      }),
+    ).toEqual(["completed", "ready"]);
   });
 
   test("the open question is quoted in one line, clipped when long, absent when empty", () => {

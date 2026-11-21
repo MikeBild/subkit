@@ -59,6 +59,7 @@ const GRANT_ERRORS: Readonly<Record<string, { status: RejectionStatus; code?: st
   task_grant_preview_changed: { status: 409 },
   authority_manifest_changed: { status: 409 },
   authority_revoked: { status: 409 },
+  pair_approval_required: { status: 409 },
 };
 
 const GrantFailures = {

@@ -6,7 +6,7 @@ import { ActionFailureHost } from "./action-failure";
 import { Page } from "./page";
 import { PageHeader } from "./page-header";
 import { type PageTab, PageTabs } from "./page-tabs";
-import { SideDetails, SideSection, SideStatus, useSideDetailsAvailable } from "./side-details";
+import { SideDetails, SideSection, useSideDetailsAvailable } from "./side-details";
 import { Skeleton } from "./skeleton";
 import { StatusStrip } from "./status-strip";
 import { TechnicalDetails } from "./tab-body";
@@ -86,9 +86,6 @@ export function DetailPage({
           <TechnicalDetails testId={`${testId}-technical`}>{technical}</TechnicalDetails>
         ) : null}
       </div>
-      {side && strip ? (
-        <SideStatus tone={strip.tone} line={strip.line} more={strip.more} loading={strip.loading} />
-      ) : null}
       {side && technical ? (
         <SideDetails>
           <SideSection title={t("sidePanel.details.technical")} testId="side-details-technical">

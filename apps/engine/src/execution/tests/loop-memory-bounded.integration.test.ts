@@ -79,6 +79,14 @@ describe("loop memory-bounded: OOM guard", () => {
     expect(result.status).toBe("succeeded");
 
     expect(containsOffloadRef(result.output)).toBe(false);
+    const serializedRun = JSON.stringify(result);
+    expect(serializedRun).not.toContain("$offloaded");
+    expect(serializedRun).not.toContain("_offloaded");
+    const loopPreview = JSON.stringify(
+      result.steps.find((s) => s.step_key === "each")?.output_preview ?? null,
+    );
+    expect(loopPreview).not.toMatch(/s3:\/\/[^…]/);
+    expect(loopPreview).not.toMatch(/fixture:\/\/[0-9a-f]/);
 
     const allStepRows = await ctx.testDb.db
       .select()

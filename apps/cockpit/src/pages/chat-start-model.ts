@@ -29,21 +29,28 @@ export function retryStarterQuery(failures: number, error: unknown): boolean {
 
 export const MIN_STARTERS = 4;
 export const MAX_STARTERS = 10;
+export const CHIP_STARTERS = 4;
 
-export type StarterIcon =
-  | "failing"
-  | "usage"
-  | "solution"
-  | "knowledge"
-  | "catalog"
-  | "capabilities"
-  | "create"
-  | "connect"
-  | "run";
+export function startersVisible(chat: {
+  messages: number;
+  sending: boolean;
+  optimistic: boolean;
+  failed: boolean;
+  seeded: boolean;
+}): boolean {
+  return chat.messages === 0 && !chat.sending && !chat.optimistic && !chat.failed && !chat.seeded;
+}
+
+export function starterChips<Starter>(
+  starters: readonly Starter[],
+  expanded: boolean,
+): { shown: readonly Starter[]; hidden: number } {
+  const shown = expanded ? starters : starters.slice(0, CHIP_STARTERS);
+  return { shown, hidden: starters.length - shown.length };
+}
 
 export interface ChatStarter {
   id: string;
-  icon: StarterIcon;
   title: string;
   line: string;
   prompt: string;
@@ -107,7 +114,6 @@ export function chatStarters(sources: StarterSources, t: Translate): ChatStarter
   if (failing) {
     starters.push({
       id: `failing-${failing.id}`,
-      icon: "failing",
       title: t("chat.starter.failing.title"),
       line:
         failing.failures !== undefined && Number.isInteger(failing.failures) && failing.failures > 0
@@ -124,7 +130,6 @@ export function chatStarters(sources: StarterSources, t: Translate): ChatStarter
   if (sources.usage) {
     starters.push({
       id: "usage",
-      icon: "usage",
       title: t("chat.starter.usage.title"),
       line: t("chat.starter.usage.line"),
       prompt: t("chat.starter.usage.prompt"),
@@ -134,7 +139,6 @@ export function chatStarters(sources: StarterSources, t: Translate): ChatStarter
   if (solution) {
     starters.push({
       id: `solution-${solution.slug}`,
-      icon: "solution",
       title: solution.title,
       line: t("chat.starter.solution.line", { needs: solution.needs }),
       prompt: t("chat.starter.solution.prompt", { title: solution.title, line: solution.line }),
@@ -144,7 +148,6 @@ export function chatStarters(sources: StarterSources, t: Translate): ChatStarter
   if (knowledge) {
     starters.push({
       id: `knowledge-${knowledge.slug}`,
-      icon: "knowledge",
       title: t("chat.starter.knowledge.title"),
       line: t("chat.starter.knowledge.line", { name: knowledge.name }),
       prompt: t("chat.starter.knowledge.prompt", { name: knowledge.name }),
@@ -154,7 +157,6 @@ export function chatStarters(sources: StarterSources, t: Translate): ChatStarter
     const prompt = t("intake.chatPrompt", { collection: sources.intake.category });
     starters.push({
       id: `intake-${sources.intake.category}`,
-      icon: "knowledge",
       title: t("intake.starterTitle", { category: sources.intake.category }),
       line: t("intake.starterDescription"),
       prompt,
@@ -164,7 +166,6 @@ export function chatStarters(sources: StarterSources, t: Translate): ChatStarter
   if (category) {
     starters.push({
       id: `catalog-${category.category}`,
-      icon: "catalog",
       title: t("chat.starter.catalog.title"),
       line: t(
         category.count === 1 ? "chat.starter.catalog.line.one" : "chat.starter.catalog.line.other",
@@ -176,28 +177,24 @@ export function chatStarters(sources: StarterSources, t: Translate): ChatStarter
   const fillers: ChatStarter[] = [
     {
       id: "capabilities",
-      icon: "capabilities",
       title: t("chat.starter.capabilities"),
       line: t("chat.starter.capabilities.line"),
       prompt: t("chat.starter.capabilities"),
     },
     {
       id: "create",
-      icon: "create",
       title: t("chat.starter.create"),
       line: t("create.workflow.chatLine"),
       prompt: t("create.workflow.prompt"),
     },
     {
       id: "connect",
-      icon: "connect",
       title: t("chat.starter.connect"),
       line: t("create.connector.chatLine"),
       prompt: t("create.connector.prompt"),
     },
     {
       id: "run",
-      icon: "run",
       title: t("chat.starter.lastRun"),
       line: t("chat.starter.lastRun.line"),
       prompt: t("chat.starter.lastRun"),

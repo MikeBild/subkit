@@ -4,9 +4,9 @@ import {
   ATTENTION_READ_PERMISSIONS,
   NAVIGATION,
   navigationItem,
-  visibleAccountNavigation,
+  navigationVisible,
   visibleNavigation,
-  visiblePrimaryNavigation,
+  visibleSidebarNavigation,
 } from "./navigation";
 
 const paths = (permissions: string[]) =>
@@ -15,19 +15,24 @@ const paths = (permissions: string[]) =>
     .map((item) => item.path);
 
 describe("cockpit navigation contract", () => {
-  test("the tenant opens Overview, Chat leads the sidebar, and admin links live in the account menu", () => {
+  test("the sidebar starts with Übersicht and Chat and ends with the Betrieb group, like the click-dummy", () => {
     const permissions = ["stats:read", "conversation:read", "workflow:read", "audit:read"];
     expect(
-      visiblePrimaryNavigation(permissions).flatMap((group) =>
-        group.items.map((item) => item.path),
-      ),
-    ).toEqual(["/chat", "/workflows"]);
-    expect(visibleAccountNavigation(permissions).map((item) => item.path)).toEqual([
-      "/usage",
-      "/audit",
-      "/settings",
-    ]);
+      visibleSidebarNavigation(permissions).map((group) => group.items.map((item) => item.path)),
+    ).toEqual([["/", "/chat"], ["/workflows"], ["/usage", "/audit", "/settings"]]);
     expect(navigationItem("/")?.labelKey).toBe("nav.overview");
+  });
+
+  test("Personen is a Settings area and API-Zugang lives in Settings, not in the sidebar", () => {
+    const all = ["identity:read", "api_key:read"];
+    const sidebar = visibleSidebarNavigation(all).flatMap((group) =>
+      group.items.map((item) => item.path),
+    );
+    expect(sidebar).not.toContain("/people");
+    expect(sidebar).not.toContain("/api-access");
+    expect(navigationItem("/people")).toBeUndefined();
+    expect(navigationVisible(all, "/api-access")).toBe(true);
+    expect(navigationVisible(["identity:read"], "/api-access")).toBe(false);
   });
 
   test("does not render entries without their effective permission", () => {
@@ -55,18 +60,18 @@ describe("cockpit navigation contract", () => {
   test("the groups are the decided information architecture, in order", () => {
     expect(NAVIGATION.map((group) => group.items.map((item) => item.path))).toEqual([
       ["/", "/chat"],
-      ["/workflows", "/connectors", "/tasks"],
+      ["/workflows", "/tasks", "/connectors"],
       ["/intake", "/knowledge", "/skills", "/files"],
-      ["/usage", "/audit", "/people", "/api-access", "/settings"],
+      ["/usage", "/audit", "/api-access", "/settings"],
     ]);
     expect(NAVIGATION.map((group) => group.labelKey)).toEqual([
       undefined,
       "nav.group.automation",
       "nav.group.knowledge",
-      "nav.group.admin",
+      "nav.group.system",
     ]);
-    expect(translate("de", "nav.group.admin")).toBe("Verwaltung");
-    expect(translate("en", "nav.group.admin")).toBe("Administration");
+    expect(translate("de", "nav.group.system")).toBe("Betrieb");
+    expect(translate("en", "nav.group.system")).toBe("System");
   });
 
   test("no entry for a page that was a second place for the same facts", () => {
@@ -94,7 +99,7 @@ describe("cockpit navigation contract", () => {
     expect(new Set(icons).size).toBe(icons.length);
   });
 
-  test("Aufgaben follows the connectors, behind its own read, and stays active on a task", () => {
+  test("Aufgaben follows the workflows, behind its own read, and stays active on a task", () => {
     expect(navigationItem("/tasks")?.labelKey).toBe("nav.tasks");
     expect(navigationItem("/tasks/abc")).toBe(navigationItem("/tasks"));
     expect(navigationItem("/tasks")?.permission).toBe("task:read");
@@ -102,10 +107,10 @@ describe("cockpit navigation contract", () => {
     expect(paths(["task:read"])).toEqual(["/tasks", "/settings"]);
     expect(paths(["workflow:read", "connector:read"])).not.toContain("/tasks");
     expect(
-      visiblePrimaryNavigation(["workflow:read", "connector:read", "task:read"]).flatMap((group) =>
+      visibleSidebarNavigation(["workflow:read", "connector:read", "task:read"]).flatMap((group) =>
         group.items.map((item) => item.path),
       ),
-    ).toEqual(["/workflows", "/connectors", "/tasks"]);
+    ).toEqual(["/", "/workflows", "/tasks", "/connectors", "/settings"]);
     expect(translate("de", "nav.tasks")).toBe("Aufgaben");
     expect(translate("en", "nav.tasks")).toBe("Tasks");
   });
@@ -114,7 +119,9 @@ describe("cockpit navigation contract", () => {
     expect(paths([])).toEqual(["/settings"]);
     expect(paths(["settings:read"])).toContain("/settings");
     expect(paths(["workflow:run"])).toContain("/settings");
-    expect(visibleAccountNavigation([]).map((item) => item.path)).toEqual(["/settings"]);
+    expect(
+      visibleSidebarNavigation([]).flatMap((group) => group.items.map((item) => item.path)),
+    ).toEqual(["/settings"]);
   });
 
   test("keeps the API contract next to each route", () => {
@@ -136,11 +143,10 @@ describe("cockpit navigation contract", () => {
     expect(translate("en", "nav.apiAccess")).toBe("API access");
   });
 
-  test("Personen & Rechte is one entry, shown for the directory or the rights alone", () => {
-    expect(paths(["identity:read"])).toContain("/people");
-    expect(paths(["rbac:read"])).toContain("/people");
-    expect(paths(["api_key:read"])).not.toContain("/people");
-    expect(navigationItem("/people")?.labelKey).toBe("nav.people");
+  test("people live under Settings, not as an entry of their own", () => {
+    expect(navigationItem("/people")).toBeUndefined();
+    expect(paths(["identity:read"])).not.toContain("/people");
+    expect(navigationItem("/settings")?.api).toContain("GET /v1/identity/users");
   });
 
   test("uses the same read permissions as the engine routes", () => {

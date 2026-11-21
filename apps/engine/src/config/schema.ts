@@ -217,9 +217,9 @@ const ServerSection = z
       .meta(global()),
     root_redirect_to_cockpit: z
       .boolean()
-      .default(false)
+      .default(true)
       .describe(
-        "Redirect a browser's GET / (Accept: text/html) to /cockpit with a non-cacheable temporary redirect. Other clients keep the Markdown entry point. Disabled by default.",
+        "Send a browser that opens / to the Cockpit at /cockpit. Agents keep the Markdown index. Set false to show browsers the engine index at /; it stays at /engine either way.",
       )
       .meta(global()),
     desktop_min_version: z

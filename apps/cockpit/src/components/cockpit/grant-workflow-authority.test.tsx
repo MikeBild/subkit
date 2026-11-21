@@ -29,6 +29,8 @@ const block = (environment: "dev" | "prod") => ({
   connector_name: `Support ${environment}`,
 });
 
+let previewRequests: unknown[] = [];
+
 function previewFor(environment: "dev" | "prod") {
   return {
     digest: "digest",
@@ -43,7 +45,7 @@ function previewFor(environment: "dev" | "prod") {
     recommended_environment: { environment: null, reason: "none_possible" },
     boundary_growth: [],
     suggested_bounds: { valid_from: "2026-01-01T00:00:00.000Z" },
-    execution_shape: { requests: [], iterations: [] },
+    execution_shape: { requests: previewRequests, iterations: [] },
     manifest: {
       workflow_id: "wf-grant",
       workflow_version_id: "version-1",
@@ -82,6 +84,7 @@ async function openedDialog(props: Record<string, unknown>): Promise<string> {
     navigator: dom.window.navigator,
     HTMLElement: dom.window.HTMLElement,
     HTMLInputElement: dom.window.HTMLInputElement,
+    HTMLFormElement: dom.window.HTMLFormElement,
     Node: dom.window.Node,
     NodeFilter: dom.window.NodeFilter,
     MutationObserver: dom.window.MutationObserver,
@@ -136,6 +139,11 @@ async function openedDialog(props: Record<string, unknown>): Promise<string> {
       for (let round = 0; round < 30; round++)
         await new Promise<void>((resolve) => setImmediate(resolve));
     });
+    await act(async () => {
+      dom.window.document
+        .querySelector<HTMLElement>('[data-testid="authority-effect-details-toggle"]')
+        ?.click();
+    });
     return dom.window.document.body.innerHTML;
   } finally {
     if (root) await act(async () => root?.unmount());
@@ -168,4 +176,28 @@ isolated("without a single-run path the adjust link stays", async () => {
   expect(snapshot).toContain('data-testid="authority-adjust"');
   expect(snapshot).not.toContain('data-testid="authority-grant-confirm"');
   expect(snapshot).not.toContain('data-testid="authority-single-run"');
+});
+
+isolated("each request names its method and target next to its content", async () => {
+  previewRequests = [
+    {
+      step_id: "send",
+      target: { method: "POST", url: "https://api.example.test/v1/messages" },
+      retry_policy_max_attempts: 5,
+      redacted_request_json: "{}",
+      request_review_truncated: false,
+      opaque_payload_omitted: false,
+    },
+    {
+      step_id: "lookup",
+      target: { method: "GET", url: null },
+      retry_policy_max_attempts: 5,
+      redacted_request_json: "{}",
+      request_review_truncated: false,
+      opaque_payload_omitted: false,
+    },
+  ];
+  const snapshot = await openedDialog({});
+  expect(snapshot).toContain("Ziel: POST https://api.example.test/v1/messages");
+  expect(snapshot).toContain("Ziel: GET, die Adresse steht erst beim Start des Runs fest");
 });

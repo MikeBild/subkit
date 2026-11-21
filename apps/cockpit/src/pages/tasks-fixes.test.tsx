@@ -40,10 +40,6 @@ function show(element: ReactElement, client: QueryClient, locale: "de" | "en" = 
 
 const has = (markup: string, testId: string) => markup.includes(`data-testid="${testId}"`);
 const count = (markup: string, needle: string) => markup.split(needle).length - 1;
-const slice = (markup: string, testId: string, length = 700) => {
-  const at = markup.indexOf(`data-testid="${testId}"`);
-  return at < 0 ? "" : markup.slice(at, at + length);
-};
 
 function detail(
   latest: TaskRun | null,
@@ -70,7 +66,7 @@ function detail(
   );
 }
 
-const STRIP_ACTIONS = ["answer", "continue", "usage", "ai_access", "review", "resume", "view"];
+const STRIP_ACTIONS = ["answer", "continue", "usage", "ai_access", "review", "resume"];
 const strip = (markup: string) =>
   STRIP_ACTIONS.filter((action) => has(markup, `task-strip-${action}`));
 
@@ -82,17 +78,17 @@ describe("a run that waits for something the person cannot answer", () => {
     expect(markup).toContain(">Nutzung ansehen</a>");
     expect(markup).toContain('href="/cockpit/usage"');
     expect(markup).toContain(
-      "Der Lauf wartet auf KI-Kontingent und läuft von selbst weiter, sobald wieder Kontingent da ist.",
+      "Der Run wartet auf KI-Kontingent und läuft von selbst weiter, sobald wieder Kontingent da ist.",
     );
-    expect(slice(markup, "task-tile-waiting")).toContain("KI-Kontingent");
-    expect(slice(markup, "task-tile-now")).toContain("wartet auf KI-Kontingent");
+    expect(has(markup, "task-tile-waiting")).toBe(false);
+    expect(has(markup, "task-tile-now")).toBe(false);
     expect(markup).not.toContain("Antworten");
     expect(markup).not.toContain("Wartet auf dich");
     const english = await detail(run({ state: "waiting", waiting_reason: "budget" }), {
       locale: "en",
     });
     expect(english).toContain(">View usage</a>");
-    expect(slice(english, "task-tile-waiting")).toContain("AI allowance");
+    expect(english).toContain("AI allowance");
     const noStats = await detail(run({ state: "waiting", waiting_reason: "budget" }), {
       permissions: ALL.filter((permission) => permission !== "stats:read"),
     });
@@ -104,7 +100,7 @@ describe("a run that waits for something the person cannot answer", () => {
     expect(strip(markup)).toEqual(["ai_access"]);
     expect(markup).toContain('href="/cockpit/settings?area=ai"');
     expect(markup).toContain(">KI-Zugang einrichten</a>");
-    expect(slice(markup, "task-tile-waiting")).toContain("KI-Zugang");
+    expect(markup).toContain("KI-Zugang");
   });
 
   test("a stuck or held run is resumed in its conversation, a question is answered there", async () => {
@@ -113,7 +109,6 @@ describe("a run that waits for something the person cannot answer", () => {
       expect(strip(markup)).toEqual(["continue"]);
       expect(markup).toContain(">Fortsetzen</a>");
       expect(markup).toContain(`/chat/${CONVERSATION_ID}"`);
-      expect(slice(markup, "task-tile-waiting")).toContain("dich");
     }
     for (const reason of ["question", "approval", "question_expired"] as const)
       expect(strip(await detail(run({ state: "waiting", waiting_reason: reason })))).toEqual([
@@ -123,7 +118,7 @@ describe("a run that waits for something the person cannot answer", () => {
 });
 
 describe("the overview at a glance", () => {
-  test("steps are a vertical ordered list with a state per step and no repeated word", async () => {
+  test("steps are a progress bar with a state per step and no repeated word", async () => {
     const markup = await detail(run({ state: "running" }), {
       steps: [
         { id: "confirm-result", label: "Ziel", status: "blocked" },
@@ -135,8 +130,8 @@ describe("the overview at a glance", () => {
     });
     const list = markup.slice(markup.indexOf('data-testid="task-steps"'));
     const steps = list.slice(0, list.indexOf("</ol>"));
-    expect(steps.slice(0, 80)).not.toContain("flex-wrap");
-    expect(markup).toMatch(/<ol class="[^"]*flex-col[^"]*" data-testid="task-steps"/);
+    expect(steps).toContain('aria-label="Schritte"');
+    expect(steps).toContain('aria-current="step"');
     expect([...steps.matchAll(/data-step-mark="([a-z]+)"/g)].map((match) => match[1])).toEqual([
       "done",
       "active",
@@ -146,18 +141,18 @@ describe("the overview at a glance", () => {
     ]);
     expect(steps.lastIndexOf("Ergebnis bestätigen")).toBeGreaterThan(steps.indexOf("Ablegen"));
     expect(steps).not.toContain(">offen<");
-    expect(count(steps, "<svg")).toBe(5);
+    expect(count(steps, "<svg")).toBe(2);
     const idle = await detail(null);
     const plain = idle.slice(idle.indexOf('data-testid="task-steps"'));
     expect(plain.slice(0, plain.indexOf("</ol>"))).not.toContain(">offen<");
   });
 
-  test("the four tiles sit two by two on narrow screens without a fixed height", async () => {
+  test("the tiles sit two by two without a fixed height and never repeat the strip", async () => {
     const markup = await detail(null);
     const tiles = markup.match(/<div class="([^"]*)" data-testid="task-tiles"/)?.[1] ?? "";
     expect(tiles.split(" ")).toContain("grid-cols-2");
-    expect(tiles.split(" ")).toContain("@3xl:grid-cols-4");
-    for (const tile of ["now", "waiting", "next", "usage"]) {
+    for (const tile of ["now", "waiting"]) expect(has(markup, `task-tile-${tile}`)).toBe(false);
+    for (const tile of ["next", "usage"]) {
       const box = markup.match(
         new RegExp(`<div class="([^"]*)" data-slot="kpi-tile" data-testid="task-tile-${tile}"`),
       )?.[1];
@@ -329,6 +324,6 @@ describe("a continuation of the background driver in the conversation", () => {
   test("a message without the marker stays what the person wrote", () => {
     const markup = shown(message({}));
     expect(has(markup, "chat-message-3-continues")).toBe(false);
-    expect(has(markup, "chat-message-3-role")).toBe(true);
+    expect(markup).toContain('data-side="answer"');
   });
 });

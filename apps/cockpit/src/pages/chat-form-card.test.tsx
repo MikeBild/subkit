@@ -43,7 +43,7 @@ test("a password field renders as a masked input with a truthful hint", () => {
   expect(secret).toContain('type="password"');
   expect(secret).toContain('autoComplete="new-password"');
   expect(secret).toContain('value=""');
-  expect(html).toContain("Wird verschlüsselt beim Konnektor gespeichert, nie im Chat angezeigt.");
+  expect(html).toContain("Wird verschlüsselt beim Connector gespeichert, nie im Chat angezeigt.");
   expect(input(html, "form-field-1")).toContain('type="text"');
   expect(html).not.toContain('data-testid="form-field-1-hint"');
 });

@@ -4,6 +4,12 @@ import { AuditAction } from "../../audit/types.ts";
 import { policy } from "../../auth/policy.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { roles, users } from "../../db/schema/index.ts";
+import {
+  ApprovalPolicyError,
+  changeApprovalPolicy,
+  eligiblePairApprovers,
+  readApprovalPolicy,
+} from "../../identity/approval-policy.ts";
 import { createInvitedUser, DuplicateUserError } from "../../identity/provisioning.ts";
 import {
   APPROVER_PERMISSIONS,
@@ -63,31 +69,47 @@ const ApproverInputSchema = z
     z
       .object({ kind: z.literal("teammate"), email: z.string().trim().email().min(3).max(254) })
       .strict(),
+    z
+      .object({ kind: z.literal("pair"), email: z.string().trim().email().min(3).max(254) })
+      .strict()
+      .describe(
+        "Two of us: one builds, one approves. Names the partner and asks for two-person workflow approval in the workspace.",
+      ),
   ])
   .openapi("SetupApproverInput");
+
+const PartnerFields = {
+  email: z.string(),
+  user_id: z.string().uuid().nullable().describe("The teammate's person, once one exists."),
+  invitation: z
+    .enum(["member", "pending", "needs_admin"])
+    .describe(
+      "member: the teammate is in the workspace. pending: an invitation is prepared and not yet accepted. needs_admin: an administrator has to invite this address first.",
+    ),
+  invite_id: z.string().uuid().nullable(),
+  can_approve: z
+    .boolean()
+    .nullable()
+    .describe(
+      "Whether the teammate's role may grant what is asked of an approver: conversation:approve, task:grant and workflow:write. false means approval notifications stay with the asking person until an administrator changes the role. null while the teammate is not a person in the workspace yet.",
+    ),
+  missing_permissions: z
+    .array(z.string())
+    .describe("The approver permissions the teammate's role lacks; empty when can_approve."),
+};
 
 const ApproverSchema = z
   .discriminatedUnion("kind", [
     z.object({ kind: z.literal("self") }),
+    z.object({ kind: z.literal("teammate"), ...PartnerFields }),
     z.object({
-      kind: z.literal("teammate"),
-      email: z.string(),
-      user_id: z.string().uuid().nullable().describe("The teammate's person, once one exists."),
-      invitation: z
-        .enum(["member", "pending", "needs_admin"])
+      kind: z.literal("pair"),
+      ...PartnerFields,
+      pair: z
+        .enum(["active", "needs_second_approver", "needs_admin"])
         .describe(
-          "member: the teammate is in the workspace. pending: an invitation is prepared and not yet accepted. needs_admin: an administrator has to invite this address first.",
+          "active: the workspace requires two people for every workflow approval. needs_second_approver: fewer than two people may approve; it starts once the partner has joined with a role that may approve. needs_admin: only an administrator switches the workspace to two-person approval.",
         ),
-      invite_id: z.string().uuid().nullable(),
-      can_approve: z
-        .boolean()
-        .nullable()
-        .describe(
-          "Whether the teammate's role may grant what is asked of an approver: conversation:approve, task:grant and workflow:write. false means approval notifications stay with the asking person until an administrator changes the role. null while the teammate is not a person in the workspace yet.",
-        ),
-      missing_permissions: z
-        .array(z.string())
-        .describe("The approver permissions the teammate's role lacks; empty when can_approve."),
     }),
   ])
   .openapi("SetupApprover");
@@ -167,10 +189,13 @@ const SetupSchema = z
 
 type SetupInput = z.infer<typeof SetupBody>;
 
+type PairReadiness = "active" | "needs_second_approver" | "needs_admin";
+
 interface SetupResult {
   readonly setup: SetupPreferences;
   readonly teammate_status: string | null;
   readonly missing_permissions: readonly string[] | null;
+  readonly pair?: PairReadiness;
   readonly invitation?: { invite_id: string; plaintext_token: string; expires_at: Date };
 }
 
@@ -215,8 +240,7 @@ async function teammateFacts(
   scope: OperationScope,
   setup: SetupPreferences,
 ): Promise<Pick<SetupResult, "teammate_status" | "missing_permissions">> {
-  if (setup.approver.kind !== "teammate")
-    return { teammate_status: null, missing_permissions: null };
+  if (setup.approver.kind === "self") return { teammate_status: null, missing_permissions: null };
   const teammate = await findTeammateByEmail(scope.db, scope.tenant_id, setup.approver.email);
   return {
     teammate_status: teammate?.status ?? null,
@@ -224,12 +248,42 @@ async function teammateFacts(
   };
 }
 
-function body({ setup, teammate_status, missing_permissions, invitation }: SetupResult) {
+async function pairReadiness(
+  scope: OperationScope,
+  principal: ResolvedPrincipal,
+  setup: SetupPreferences,
+  activate: boolean,
+): Promise<Pick<SetupResult, "pair">> {
+  if (setup.approver.kind !== "pair") return {};
+  const policy = await readApprovalPolicy(scope.db, scope.tenant_id);
+  if (policy.workflow_approvals === "pair") return { pair: "active" };
+  const admin = await principalHolds(scope.db, principal, "rbac:write");
+  if (!admin) return { pair: "needs_admin" };
+  if (activate) {
+    try {
+      await changeApprovalPolicy(scope.db, {
+        tenant_id: scope.tenant_id,
+        next: "pair",
+        actor: { type: "user", id: principal.id },
+        source: "setup",
+      });
+      return { pair: "active" };
+    } catch (error) {
+      if (error instanceof ApprovalPolicyError) return { pair: "needs_second_approver" };
+      throw error;
+    }
+  }
+  const eligible = await eligiblePairApprovers(scope.db, scope.tenant_id);
+  return { pair: eligible.length < 2 ? "needs_second_approver" : "needs_admin" };
+}
+
+function body({ setup, teammate_status, missing_permissions, invitation, pair }: SetupResult) {
   const approver =
     setup.approver.kind === "self"
       ? { kind: "self" as const }
       : {
-          kind: "teammate" as const,
+          kind: setup.approver.kind,
+          ...(setup.approver.kind === "pair" ? { pair: pair ?? ("needs_admin" as const) } : {}),
           email: setup.approver.email,
           user_id: setup.approver.user_id,
           invite_id: setup.approver.invite_id,
@@ -278,7 +332,11 @@ export const getSetupOperation = defineOperation<null, SetupResult>({
       tenant_id: scope.tenant_id,
       user_id: principal.id,
     });
-    return { setup, ...(await teammateFacts(scope, setup)) };
+    return {
+      setup,
+      ...(await teammateFacts(scope, setup)),
+      ...(await pairReadiness(scope, principal, setup, false)),
+    };
   },
   http: {
     method: "get",
@@ -301,19 +359,28 @@ async function prepareApprover(
   input: NonNullable<SetupInput["approver"]>,
 ): Promise<PreparedApprover> {
   if (input.kind === "self") return { approver: { kind: "self" } };
+  const kind = input.kind;
   const email = input.email.trim();
   const existing = await findTeammateByEmail(scope.db, scope.tenant_id, email);
-  if (existing?.id === principal.id) return { approver: { kind: "self" } };
+  if (existing?.id === principal.id) {
+    if (kind === "pair")
+      return reject.unprocessable(
+        "The second person in a pair has to be someone else.",
+        undefined,
+        "pair_same_person",
+      );
+    return { approver: { kind: "self" } };
+  }
   if (existing) {
     return {
-      approver: { kind: "teammate", email: existing.email, user_id: existing.id, invite_id: null },
+      approver: { kind, email: existing.email, user_id: existing.id, invite_id: null },
     };
   }
   const mayInvite =
     policy.adminOnly(principal).allowed &&
     (await principalHolds(scope.db, principal, "identity:write"));
   if (!mayInvite) {
-    return { approver: { kind: "teammate", email, user_id: null, invite_id: null } };
+    return { approver: { kind, email, user_id: null, invite_id: null } };
   }
   try {
     const created = await createInvitedUser(
@@ -329,7 +396,7 @@ async function prepareApprover(
     );
     return {
       approver: {
-        kind: "teammate",
+        kind,
         email: created.user.email,
         user_id: created.user.id,
         invite_id: created.invite.view.id,
@@ -355,7 +422,7 @@ async function prepareApprover(
 export const putSetupOperation = defineOperation<SetupInput, SetupResult>({
   id: "identity.me.setup.put",
   summary:
-    "Store the signed-in person's setup choices; fields left out keep their value. Naming a teammate who is not in the workspace prepares an invitation and sends no mail.",
+    "Store the signed-in person's setup choices; fields left out keep their value. Naming a teammate who is not in the workspace prepares an invitation and sends no mail. Choosing pair as an administrator switches the workspace to two-person workflow approval once two people may approve.",
   permission: null,
   effect: "write",
   audit: AuditAction.USER_SETUP_UPDATED,
@@ -391,6 +458,7 @@ export const putSetupOperation = defineOperation<SetupInput, SetupResult>({
     return {
       setup,
       ...(await teammateFacts(scope, setup)),
+      ...(await pairReadiness(scope, principal, setup, input.approver?.kind === "pair")),
       ...(prepared?.invitation ? { invitation: prepared.invitation } : {}),
     };
   },
@@ -405,6 +473,7 @@ export const putSetupOperation = defineOperation<SetupInput, SetupResult>({
       403: "person_required — only a person has setup choices",
       404: "Not found",
       409: "approver_already_known — the address belongs to a person who cannot be invited again",
+      422: "pair_same_person — the second person in a pair has to be someone else",
     },
     toInput: ({ json }) => json as SetupInput,
     toBody: body,

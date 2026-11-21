@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactElement } from "react";
 import { StandalonePage } from "@/components/cockpit/patterns";
 import { render } from "@/components/cockpit/patterns/test-utils";
-import { InviteName, InviteOpen } from "./invite";
+import { InviteName, InviteOpen, InviteRefused } from "./invite";
 import { WelcomeForm } from "./welcome";
 
 const count = (html: string, pattern: RegExp) => html.match(pattern)?.length ?? 0;
@@ -25,7 +25,7 @@ const pending = {
 };
 
 describe("the standalone frame", () => {
-  test("has one h1 and the wordmark, follows the browser language without a switch, and no shell", () => {
+  test("has one h1, the wordmark, language, theme and the bug report, and no shell", () => {
     const html = render(
       <StandalonePage title="Willkommen bei SubKit" lead="Drei Angaben." testId="page">
         <span data-x="body" />
@@ -33,7 +33,9 @@ describe("the standalone frame", () => {
     );
     expect(count(html, /<h1[\s>]/g)).toBe(1);
     expect(html).toContain(">SubKit<");
-    expect(html).not.toContain("standalone-language");
+    expect(html).toContain('data-testid="standalone-language"');
+    expect(html).toContain('data-testid="standalone-theme"');
+    expect(html).toContain('data-testid="feedback-open"');
     expect(html).toContain("max-w-[480px]");
     expect(html).not.toContain('data-testid="cockpit-sidebar"');
   });
@@ -207,5 +209,51 @@ describe("the last step after joining", () => {
     expect(html).toContain('value="Mira Kessler"');
     expect(html).toContain(">Beitreten<");
     expect(filled(html)).toBe(1);
+  });
+});
+
+describe("a refused invitation", () => {
+  const noop = () => {};
+  const refused = (
+    view: Parameters<typeof InviteRefused>[0]["view"],
+    session: "signed-in" | "signed-out" | "unknown",
+    locale: "de" | "en" = "de",
+  ) =>
+    render(
+      <InviteRefused view={view} session={session} onOtherAddress={noop} onRetry={noop} />,
+      locale,
+    );
+
+  test("signed out, it names what happened and offers sign-in as the only action", () => {
+    const html = refused({ kind: "invalid" }, "signed-out");
+    expect(html).toContain("Dieser Einladungslink ist nicht gültig");
+    expect(html).toContain('data-testid="invite-sign-in"');
+    expect(html).toContain(">Zur Anmeldung<");
+    expect(html).not.toContain('data-testid="invite-back"');
+  });
+
+  test("signed in, it leads back to SubKit and never to sign-in", () => {
+    const html = refused({ kind: "expired" }, "signed-in", "en");
+    expect(html).toContain("This invitation has expired");
+    expect(html).toContain("Ask the person who invited you for a new invitation link.");
+    expect(html).toContain(">Back to SubKit<");
+    expect(html).not.toContain('data-testid="invite-sign-in"');
+  });
+
+  test("while the session is unknown the footer keeps its height without actions", () => {
+    const html = refused({ kind: "expired" }, "unknown");
+    const row = html.slice(html.indexOf('data-slot="standalone-actions"'));
+    expect(html).toContain('class="flex min-h-10 flex-wrap items-center gap-2 border-t pt-6"');
+    expect(row).not.toContain("<button");
+    expect(row).not.toContain("<a ");
+  });
+
+  test("the wrong address offers another sign-in, a failed check offers a retry", () => {
+    const wrong = refused({ kind: "mismatch", retry: true }, "signed-out");
+    expect(wrong).toContain('data-testid="invite-mismatch-retry"');
+    expect(wrong).not.toContain('data-testid="invite-sign-in"');
+    const later = refused({ kind: "unreachable" }, "signed-in");
+    expect(later).toContain('data-testid="invite-retry"');
+    expect(later).toContain('data-testid="invite-back"');
   });
 });

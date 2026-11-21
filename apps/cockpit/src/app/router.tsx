@@ -1,22 +1,28 @@
 import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
 import { NotFoundPage, RouteErrorPage } from "@/components/failure-state";
-import { PeopleAndAccessPage } from "@/pages/admin";
+import { ConnectorsPage } from "@/features/connectors";
+import {
+  FilePage,
+  FilesPage,
+  InboxEntryPage,
+  InboxPage,
+  SkillCandidatesPage,
+  SkillPage,
+  SkillsPage,
+  SourcePage,
+  SourcesPage,
+} from "@/features/knowledge";
+import { UsagePage } from "@/features/usage";
 import { ApiAccessPage } from "@/pages/api-access";
 import { AuditPage } from "@/pages/audit";
 import { CatalogPage } from "@/pages/catalog";
 import { CatalogDetailPage, type DetailResource } from "@/pages/catalog-detail";
 import { ChatPage } from "@/pages/chat";
 import { DocsArticlePage, DocsIndexPage } from "@/pages/docs";
-import { FilePage, FilesPage } from "@/pages/files";
-import { IntakePage } from "@/pages/intake";
-import { IntakeItemPage } from "@/pages/intake-item";
-import { KnowledgeSourcePage, KnowledgeSourcesPage } from "@/pages/knowledge-sources";
 import { OverviewPage } from "@/pages/overview";
+import { RunPage } from "@/pages/run-page";
 import { SettingsPage } from "@/pages/settings";
-import { SkillCandidatesPage } from "@/pages/skill-candidates";
-import { SkillPage, SkillsPage } from "@/pages/skills";
 import { TaskPage, TasksPage } from "@/pages/tasks";
-import { UsagePage } from "@/pages/usage";
 import { cockpitBasePath } from "./installation-context";
 import { absolute } from "./links";
 import {
@@ -43,7 +49,6 @@ const PAGE_COMPONENTS: Record<PageRoute, () => React.ReactElement> = {
   "/": OverviewPage,
   "/audit": AuditPage,
   "/usage": UsagePage,
-  "/people": PeopleAndAccessPage,
   "/api-access": ApiAccessPage,
   "/settings": SettingsPage,
 };
@@ -63,40 +68,28 @@ const redirectRoutes = REDIRECT_ROUTES.map((path) =>
 );
 
 const knowledgeRoutes = [
-  createRoute({
-    getParentRoute: () => rootRoute,
-    path: "/intake",
-    component: () => <IntakePage permissions={useSession().permissions} />,
-  }),
+  createRoute({ getParentRoute: () => rootRoute, path: "/intake", component: InboxPage }),
   createRoute({
     getParentRoute: () => rootRoute,
     path: "/intake/$resourceId",
-    component: () => <IntakeItemPage permissions={useSession().permissions} />,
+    component: InboxEntryPage,
   }),
-  createRoute({
-    getParentRoute: () => rootRoute,
-    path: "/knowledge",
-    component: () => <KnowledgeSourcesPage permissions={useSession().permissions} />,
-  }),
+  createRoute({ getParentRoute: () => rootRoute, path: "/knowledge", component: SourcesPage }),
   createRoute({
     getParentRoute: () => rootRoute,
     path: "/knowledge/$resourceId",
-    component: () => <KnowledgeSourcePage permissions={useSession().permissions} />,
+    component: SourcePage,
   }),
-  createRoute({
-    getParentRoute: () => rootRoute,
-    path: "/skills",
-    component: () => <SkillsPage permissions={useSession().permissions} />,
-  }),
+  createRoute({ getParentRoute: () => rootRoute, path: "/skills", component: SkillsPage }),
   createRoute({
     getParentRoute: () => rootRoute,
     path: "/skills/candidates",
-    component: () => <SkillCandidatesPage permissions={useSession().permissions} />,
+    component: SkillCandidatesPage,
   }),
   createRoute({
     getParentRoute: () => rootRoute,
     path: "/skills/$resourceId",
-    component: () => <SkillPage permissions={useSession().permissions} />,
+    component: SkillPage,
   }),
 ];
 
@@ -127,6 +120,12 @@ const filesRoutes = [
   }),
 ];
 
+const runRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/runs/$runId",
+  component: RunPage,
+});
+
 const docsRoutes = [
   createRoute({ getParentRoute: () => rootRoute, path: "/docs", component: DocsIndexPage }),
   createRoute({ getParentRoute: () => rootRoute, path: "/docs/$slug", component: DocsArticlePage }),
@@ -140,7 +139,8 @@ const catalogRoutes = CATALOG_PAGES.flatMap((resource) => [
     path: `/${resource}`,
     component: () => {
       const session = useSession();
-      return <CatalogPage resource={resource} permissions={session.permissions} />;
+      if (resource === "connectors") return <ConnectorsPage />;
+      return <CatalogPage permissions={session.permissions} />;
     },
   }),
   createRoute({
@@ -162,6 +162,7 @@ const routeTree = rootRoute.addChildren([
   ...taskRoutes,
   ...filesRoutes,
   ...docsRoutes,
+  runRoute,
 ]);
 
 export const router = createRouter({

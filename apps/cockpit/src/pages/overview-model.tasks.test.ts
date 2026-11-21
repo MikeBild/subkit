@@ -99,7 +99,7 @@ const CASES: ReadonlyArray<{
     en: "The task “Rechnungen nachfassen” failed.",
     actionDe: "Ansehen",
     actionEn: "View",
-    shortDe: "Der letzte Lauf ist fehlgeschlagen",
+    shortDe: "Der letzte Run ist fehlgeschlagen",
     badgeDe: "Fehlgeschlagen",
   },
   {

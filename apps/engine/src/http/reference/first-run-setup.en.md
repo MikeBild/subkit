@@ -23,7 +23,8 @@ Replace the email address, the name and the key with your own values.
 `sk init` checks the key with one small test call before it saves anything.
 If the provider refuses it, the setup stops and nothing is stored. The same token works for the next try.
 
-Open the Cockpit at `http://localhost:3000/cockpit`.
+Open `http://localhost:3000` in your browser. The address takes you straight to the Cockpit at `/cockpit`.
+The engine index, with every address for tools and AI clients, is at `/engine`.
 If no sign-in provider is configured, sign in with an API key.
 Then build your first workflow with "Your first workflow".
 

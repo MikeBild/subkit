@@ -231,30 +231,15 @@ describe("runWorkflow", () => {
     );
   });
 
-  test("a downgrade is audited before the run continues", async () => {
+  test("a run held for preparation continues without a refusal row", async () => {
     const { deps, rec } = fakes({
-      admit: (async () =>
-        admitted({
-          downgraded_from: { code: "execution_authority_required", message: "no authority" },
-        })) as unknown as AdmitPort,
+      admit: (async () => admitted({ hold_writes: true })) as unknown as AdmitPort,
     });
     const outcome = await createRunWorkflow(deps).runWorkflow(
       request({ audit_extra: { rerun_of: "e0" } }),
     );
     expect(outcome.kind).toBe("completed");
-    expect(rec.audits).toEqual([
-      {
-        tenant_id: TENANT,
-        reason: "execution_authority_required",
-        message: "no authority",
-        workflow_id: WORKFLOW,
-        execution_id: EXECUTION,
-        request_source: "api",
-        actor_id: "user-1",
-        actor_type: "user",
-        extra: { downgraded_to_preparation: true, rerun_of: "e0" },
-      },
-    ]);
+    expect(rec.audits).toEqual([]);
   });
 
   test("a settled replay returns without dispatch", async () => {

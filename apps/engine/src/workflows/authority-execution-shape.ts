@@ -1,14 +1,24 @@
 import { z } from "@hono/zod-openapi";
+import { redactedRequestTarget } from "@shared/redaction.ts";
 import { requestMaxAttempts } from "../execution/steps/request.ts";
 import { authorityRequestReview } from "./authority-request-review.ts";
 import type { ResolvedEffectBinding } from "./effect-manifest.ts";
-import type { WorkflowDef } from "./types.ts";
+import type { RequestStep, WorkflowDef } from "./types.ts";
 
 export const AuthorityExecutionShapeSchema = z
   .object({
     requests: z.array(
       z.object({
         step_id: z.string(),
+        target: z
+          .object({
+            method: z.string(),
+            url: z.string().nullable(),
+          })
+          .openapi({
+            description:
+              "Where the request goes: its method and the URL origin and path, without credentials or query values. url is null when the target is not a static http(s) address.",
+          }),
         retry_policy_max_attempts: z.number().int().positive().nullable(),
         redacted_request_json: z.string(),
         request_review_truncated: z.boolean(),
@@ -48,12 +58,12 @@ export interface ResolvedCallShape {
   workflow_name: string;
   version: number | null;
   definition: WorkflowDef;
-  bindings: readonly Pick<ResolvedEffectBinding, "step_id" | "driver" | "storage">[];
+  bindings: readonly Pick<ResolvedEffectBinding, "step_id" | "driver" | "storage" | "target">[];
 }
 
 export function authorityExecutionShape(
   definition: WorkflowDef,
-  bindings: readonly Pick<ResolvedEffectBinding, "step_id" | "driver" | "storage">[],
+  bindings: readonly Pick<ResolvedEffectBinding, "step_id" | "driver" | "storage" | "target">[],
   calls: readonly ResolvedCallShape[] = [],
 ): AuthorityExecutionShape {
   const own = shapeOf(definition, bindings);
@@ -81,7 +91,7 @@ export function authorityExecutionShape(
 
 function shapeOf(
   definition: WorkflowDef,
-  bindings: readonly Pick<ResolvedEffectBinding, "step_id" | "driver" | "storage">[],
+  bindings: readonly Pick<ResolvedEffectBinding, "step_id" | "driver" | "storage" | "target">[],
   call_path?: string[],
 ): Pick<AuthorityExecutionShape, "requests" | "iterations"> {
   const storage = new Map(
@@ -90,6 +100,7 @@ function shapeOf(
       .map((binding) => [binding.step_id, binding.storage]),
   );
   const drivers = new Map(bindings.map((binding) => [binding.step_id, binding.driver]));
+  const targets = new Map(bindings.map((binding) => [binding.step_id, binding.target]));
   const path = call_path ? { call_path } : {};
   return {
     requests: definition.steps.flatMap((step) =>
@@ -97,6 +108,10 @@ function shapeOf(
         ? [
             {
               step_id: step.id,
+              target: {
+                method: requestMethod(step, drivers.get(step.id)),
+                url: redactedRequestTarget(targets.get(step.id)),
+              },
               ...authorityRequestReview(step),
               ...(storage.has(step.id)
                 ? {
@@ -124,4 +139,10 @@ function shapeOf(
         : []),
     ]),
   };
+}
+
+function requestMethod(step: RequestStep, driver: ResolvedEffectBinding["driver"] | undefined) {
+  if (driver === "mcp") return "MCP";
+  if (driver === "postgres") return "SQL";
+  return step.method;
 }

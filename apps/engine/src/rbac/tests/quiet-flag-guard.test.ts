@@ -38,6 +38,7 @@ const ALLOWED = new Set<string>([
   "apps/engine/src/mcp/capabilities/resources.ts",
   "apps/engine/src/mcp/capabilities/completion.ts",
   "apps/engine/src/operator/attention.ts",
+  "apps/engine/src/operator/pair-approval-attention.ts",
   "apps/engine/src/api/operations/workflow-authority-review.ts",
   "apps/engine/src/http/routes/workflow-invocation.ts",
   "apps/engine/src/conversations/automation-context.ts",

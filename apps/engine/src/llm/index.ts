@@ -1,8 +1,5 @@
 export * from "./accounting/index.ts";
 export * from "./errors.ts";
-export { runConverseFlow } from "./flows/converse.ts";
-export type { DiscoverArtifact, DiscoverEnvelope } from "./flows/discover.ts";
-export { DiscoverArtifactSchema, runDiscoverFlow } from "./flows/discover.ts";
 export { runExtractFlow } from "./flows/extract.ts";
 export { runGenerateFlow } from "./flows/generate.ts";
 export type { PatchProposal } from "./flows/repair.ts";

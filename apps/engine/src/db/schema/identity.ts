@@ -71,10 +71,22 @@ export const tenants = pgTable(
     deletion_requested_at: timestamp("deletion_requested_at", { withTimezone: true }),
     deletion_scheduled_for: timestamp("deletion_scheduled_for", { withTimezone: true }),
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
+    workflow_approval_policy: text("workflow_approval_policy")
+      .$type<"single" | "pair">()
+      .default("single")
+      .notNull(),
+    workflow_approval_policy_changed_at: timestamp("workflow_approval_policy_changed_at", {
+      withTimezone: true,
+    }),
+    workflow_approval_policy_changed_by: uuid("workflow_approval_policy_changed_by"),
     ...timestamps,
   },
   (t) => [
     uniqueIndex("tenants_slug_key").on(t.slug),
+    check(
+      "tenants_workflow_approval_policy_check",
+      sql`${t.workflow_approval_policy} IN ('single', 'pair')`,
+    ),
     uniqueIndex("tenants_owner_identity_key").on(t.owner_identity_id),
     check(
       "tenants_origin_owner_check",

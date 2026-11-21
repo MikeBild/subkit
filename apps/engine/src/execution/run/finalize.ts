@@ -7,10 +7,16 @@ import { getMetrics, METRIC_NAMES } from "../../observability/metrics.ts";
 import { recordExecutionOutcome } from "../../self-healing/outcome-tracker.ts";
 import { unregisterAbort } from "../abort.ts";
 import { refusedConnectorOf } from "../connector-availability.ts";
-import { executionAuditOutcome, runResultError, sensitiveOutputSchemaCheck } from "../core/run.ts";
+import {
+  executionAuditOutcome,
+  heldWriteSteps,
+  runResultError,
+  sensitiveOutputSchemaCheck,
+} from "../core/run.ts";
 import { settledOutcome } from "../core/status.ts";
 import { rollupConnectorResolutions } from "../engine/connector-rollup.ts";
 import { maybeOffload } from "../offload.ts";
+import { declaredSecretValues, resultMarkdown } from "../result-markdown.ts";
 import {
   sensitiveFailure,
   sensitiveOutputShape,
@@ -135,6 +141,15 @@ export async function finalizeRun(
     result_sha256: offload.sha256,
     output_contract: settled.output_contract,
     ...(execution_privacy === "sensitive" ? { sensitive_result: state.lastOutput ?? null } : {}),
+    ...(execution_privacy !== "sensitive" && finalStatus === "succeeded"
+      ? {
+          result_markdown: resultMarkdown(
+            state.lastOutput,
+            def.output_schema,
+            declaredSecretValues(def.steps, state.scope),
+          ),
+        }
+      : {}),
   });
   if (execution_privacy !== "sensitive" && env.opts.self_healing?.enabled !== false) {
     await recordExecutionOutcome(
@@ -168,6 +183,21 @@ export async function finalizeRun(
     },
     db,
   );
+  const held = heldWriteSteps(state.stepSummaries);
+  if (held.length > 0) {
+    await auditAwait(
+      {
+        tenant_id,
+        ...env.callerActor,
+        action: AuditAction.EXECUTION_WRITE_HELD,
+        resource_type: "execution",
+        resource_id: execution_id,
+        result: "success",
+        metadata: { workflow_id, held_steps: held },
+      },
+      db,
+    );
+  }
 
   unregisterAbort(execution_id);
 

@@ -19,7 +19,7 @@ Der Weg ist immer gleich: **signierte Anfrage → geprüfter Workflow → Freiga
 
 ### Was du brauchst
 
-- Eine Gmail-Verbindung (Konnektor) in deinem Arbeitsbereich.
+- Eine Gmail-Verbindung (Connector) in deinem Arbeitsbereich.
 - Eine signierte Quelle, also dein Formular-Backend, das Anfragen im Format Standard Webhooks schickt. Standard Webhooks ist ein offenes Format für signierte HTTP-Meldungen.
 - Eine Person, die den Workflow freigibt.
 - Einen Betreiber, der den Workflow vor der Aktivierung prüft.
@@ -63,7 +63,7 @@ Du kannst diesen Workflow auch im Cockpit-Chat beschreiben. Der Chat kennt diese
 1. Lege im selben Arbeitsbereich eine aktive Standard-Webhooks-Bindung für den Workflow an. Die Bindung verknüpft die Quelle mit dem Workflow. Nutze genau den geprüften Ereignistyp und ein eigenes Signaturgeheimnis.
 2. Speichere in der Quelle die UUID der Anfrage und die ursprünglichen Daten vor dem Senden.
 3. Sende die UUID im signierten Body und in `webhook-id`.
-4. Lass Version, Absender, Verbindung, signierte Quelle, Feldpfade, Byte-Grenze und Laufgrenzen vom Betreiber prüfen.
+4. Lass Version, Absender, Verbindung, signierte Quelle, Feldpfade, Byte-Grenze und Run-Grenzen vom Betreiber prüfen.
 5. Aktiviere den Workflow und gib ihn frei.
 
 ### Die Antwort testen
@@ -93,7 +93,7 @@ CC, BCC und zusätzliche Empfänger lehnt sie ab.
 Gut zu wissen:
 
 - Ein fehlgeschlagener oder unklarer Versand wird nie automatisch wiederholt. Es gibt kein Wiederholen und kein Zurücksetzen.
-- Jede ursprüngliche Anfrage bekommt höchstens eine Antwort, über Workflow-Versionen und Läufe hinweg.
+- Jede ursprüngliche Anfrage bekommt höchstens eine Antwort, über Workflow-Versionen und Runs hinweg.
 - Eine Signatur bestätigt nur, woher die Anfrage kommt. Erst die Freigabe erlaubt dem Workflow das Senden.
 - Eine wiederholte Übergabe behält dieselben Daten und dieselbe ID und erneuert nur Zeitstempel und Signatur. Geänderter Inhalt unter derselben ID wird abgelehnt.
 
@@ -103,8 +103,8 @@ Manchmal kann die Quelle keinen Webhook schicken, etwa weil ihr Server keine Ver
 Dann legt sie Nachrichten in eine Warteschlange, und ein Workflow mit Zeitplan holt sie mit `outbox_delivery` ab.
 Ein früherer, fester Lese-`GET`-Schritt liefert den nächsten Eintrag. Der Mail-Schritt deklariert `{kind: "gmail_outbox", source_step_id, recipient_field, item_id_field, from, content_type: "text/plain", max_body_bytes, max_per_day}`. Nutze `execution_privacy: sensitive` und `max_retries: 0`.
 
-- Der Empfänger stammt nur aus dieser Antwort der Warteschlange im selben Lauf. Die Engine vergleicht ihn vor dem Senden mit der Nachricht.
-- Jeder Eintrag bekommt höchstens einen Versuch, über Workflow-Versionen und Läufe hinweg. Ein unklares Ergebnis wird nie automatisch erneut gesendet.
+- Der Empfänger stammt nur aus dieser Antwort der Warteschlange im selben Run. Die Engine vergleicht ihn vor dem Senden mit der Nachricht.
+- Jeder Eintrag bekommt höchstens einen Versuch, über Workflow-Versionen und Runs hinweg. Ein unklares Ergebnis wird nie automatisch erneut gesendet.
 - `max_per_day` begrenzt die Nachrichten innerhalb von 24 Stunden.
 - Wer die Warteschlange füllen kann, bestimmt die Empfänger. Gib nur eine Warteschlange frei, der du vertraust; der Freigabedialog nennt sie.
 
@@ -114,7 +114,7 @@ Ein früherer, fester Lese-`GET`-Schritt liefert den nächsten Eintrag. Der Mail
 
 Der Aufruf liefert:
 
-- IDs von Anfrage, Lauf und Schritt
+- IDs von Anfrage, Run und Schritt
 - Status und Zeitstempel
 
 Adresse des Antragstellers und Nachrichteninhalt liefert er nicht.

@@ -29,7 +29,7 @@ const ATTENTION_STEPS = {
     answer: "Antworte, damit es weitergeht.",
     reauth: "Melde die Verbindung neu an.",
     renew: "Erneuere die Freigabe.",
-    open_runs: "Sieh dir die letzten Läufe an.",
+    open_runs: "Sieh dir die letzten Runs an.",
     chat: "Klär es im Chat.",
     open: "Öffne den Eintrag in SubKit.",
   },

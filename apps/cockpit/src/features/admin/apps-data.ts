@@ -1,19 +1,16 @@
-import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiCall } from "@/api/call";
 import { ApiError } from "@/api/client";
 import { useLiveQueryOptions } from "@/app/live-events";
 import type { TranslationKey } from "@/lib/i18n";
+import type { Translate } from "./data";
 import {
   type AppActivationOutcome,
   type AppSettingsChanges,
   appActivationOutcome,
   appSettingsPatch,
-} from "@/pages/apps-model";
-import { settingsSaveFailure } from "@/pages/settings-model";
-import type { Translate } from "./data";
-
-type SettingsSnapshot = components["schemas"]["SettingsListResponse"];
+  type SettingsSnapshot,
+} from "./model/apps-model";
 
 const fetchApps = () => apiCall("get", "/v1/apps", {});
 
@@ -69,7 +66,7 @@ export function useAppSettingsSave() {
 
 export function appSaveError(error: unknown, t: Translate): string {
   if (error instanceof ActivationRefused) return t("apps.save.notActivated");
-  if (settingsSaveFailure(error) === "conflict") return t("apps.save.conflict");
+  if (error instanceof ApiError && error.status === 409) return t("apps.save.conflict");
   return t("apps.save.failed", {
     reason: error instanceof ApiError ? error.message : t("resource.loadFailedDescription"),
   });

@@ -206,7 +206,7 @@ describe("package export result", () => {
     expect(html).toContain("5.0 MB");
     expect(html).toContain('data-testid="settings-packages-export-workflow"');
     expect(html).not.toContain('data-testid="settings-packages-export-file"');
-    expect(html).toContain("Zugangsdaten für 2 Konnektoren neu eingeben");
+    expect(html).toContain("Zugangsdaten für 2 Connectors neu eingeben");
     expect(html).toContain("1 Workflow-Freigabe neu erteilen");
     expect(html).toContain('data-testid="settings-packages-export-download"');
   });
@@ -240,7 +240,7 @@ describe("package import result", () => {
     expect(html).toContain("2 angelegt, 0 aktualisiert, 0 unverändert, 0 Konflikte übersprungen.");
     expect(html).toContain('data-testid="settings-packages-result-failed"');
     expect(html).toContain("Nicht importiert: broken");
-    expect(html).toContain("Zugangsdaten für 1 Konnektor eintragen");
+    expect(html).toContain("Zugangsdaten für 1 Connector eintragen");
     expect(html).toContain("1 Wissensvorschlag im Eingang prüfen");
     expect(html).toContain('href="/connectors"');
     expect(html).toContain('href="/intake/i1?tab=review&amp;proposal=p1"');

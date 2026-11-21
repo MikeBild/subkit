@@ -278,7 +278,7 @@ function BrandingPreview({ draft, saved }: { draft: TenantBrandingUpdate; saved:
                     {t("resource.settings.title")}
                   </span>
                   {kind !== "mobile" ? (
-                    <span className="rounded-md px-2 py-1.5">{t("nav.people")}</span>
+                    <span className="rounded-md px-2 py-1.5">{t("nav.workflows")}</span>
                   ) : null}
                 </div>
                 <p className="mt-auto px-2 text-[10px] text-muted-foreground">

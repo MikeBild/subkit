@@ -47,20 +47,12 @@ async function finishedRunOf(dag: WorkflowDef): Promise<string> {
   return execution_id;
 }
 
-async function downgradedToPreparation(execution_id: string): Promise<boolean> {
+async function auditActions(execution_id: string): Promise<string[]> {
   const rows = await testDb.db
-    .select({ metadata: auditLog.metadata })
+    .select({ action: auditLog.action })
     .from(auditLog)
-    .where(
-      and(
-        eq(auditLog.tenant_id, tenant_id),
-        eq(auditLog.resource_id, execution_id),
-        eq(auditLog.action, AuditAction.EXECUTION_BOUNDARY_REFUSED),
-      ),
-    );
-  return rows.some(
-    (row) => (row.metadata as { downgraded_to_preparation?: boolean })?.downgraded_to_preparation,
-  );
+    .where(and(eq(auditLog.tenant_id, tenant_id), eq(auditLog.resource_id, execution_id)));
+  return rows.map((row) => row.action);
 }
 
 async function rerun(execution_id: string) {
@@ -73,7 +65,9 @@ describe("rerun_execution keeps the HTTP rerun safety rule", () => {
     const result = await rerun(await finishedRunOf(localOnly));
     const data = result.data as { execution_id: string; rerun_safety: { mode: string } };
     expect(data.rerun_safety.mode).toBe("repeat_safe");
-    expect(await downgradedToPreparation(data.execution_id)).toBe(true);
+    expect(await auditActions(data.execution_id)).not.toContain(
+      AuditAction.EXECUTION_BOUNDARY_REFUSED,
+    );
   });
 
   test("a run that may repeat external effects is rerun as a preparation", async () => {
@@ -85,6 +79,8 @@ describe("rerun_execution keeps the HTTP rerun safety rule", () => {
     };
     expect(data.rerun_safety.mode).toBe("prepare_only");
     expect(data.hold_writes).toBe(true);
-    expect(await downgradedToPreparation(data.execution_id)).toBe(false);
+    expect(await auditActions(data.execution_id)).not.toContain(
+      AuditAction.EXECUTION_BOUNDARY_REFUSED,
+    );
   });
 });

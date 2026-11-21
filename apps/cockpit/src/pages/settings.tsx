@@ -25,15 +25,23 @@ import {
 } from "@/components/cockpit/patterns";
 import { PreparedChanges } from "@/components/cockpit/prepared-changes";
 import { LoadFailed, queryView } from "@/components/failure-state";
+import {
+  LaunchAtLoginRow,
+  Notifications,
+  PrivacyPanel,
+  SetupSection,
+  StartLayoutRows,
+  UpdatesPanel,
+  useDesktopSettings,
+} from "@/features/settings";
 import { reportFailure } from "@/lib/action-failure";
 import { useI18n } from "@/lib/i18n-context";
-import { useTheme } from "@/lib/theme";
+import { PeopleArea } from "@/pages/admin";
 import type { BrandingDraftHandle } from "@/pages/branding";
 import { NotificationSettings, useNotificationActions } from "@/pages/notification-settings";
-import { AiArea, providerName } from "@/pages/settings-ai";
+import { AiArea } from "@/pages/settings-ai";
 import { AreaList } from "@/pages/settings-area-list";
 import {
-  areaSentences,
   areaStatus,
   ENGINE_AREA_IDS,
   type EngineAreaId,
@@ -51,13 +59,12 @@ import {
   visibleSettingAreas,
   workspaceAiEditable,
 } from "@/pages/settings-areas";
-import {
-  catalogModelName,
-  type ModelCatalog,
-  modelCatalogQueryKey,
-} from "@/pages/settings-catalog";
+import { modelCatalogQueryKey } from "@/pages/settings-catalog";
+import { DevicesArea } from "@/pages/settings-devices";
 import { useSettingsDrafts } from "@/pages/settings-drafts";
+import { SettingsAreaFrame, UsageNote } from "@/pages/settings-frame";
 import type { GuidedContext } from "@/pages/settings-guided";
+import { HelpArea } from "@/pages/settings-help";
 import {
   changedSettings,
   NO_SETTING_DRAFTS,
@@ -79,22 +86,14 @@ import {
   settingsSaveReason,
   settingsViewFromUrl,
 } from "@/pages/settings-model";
-import {
-  type AreaCard,
-  SettingsAreaFrame,
-  SettingsOverview,
-  settingAreaPurpose,
-  UsageNote,
-} from "@/pages/settings-overview";
 import { PackagesSettings } from "@/pages/settings-packages";
 import {
   type PersonalDrafts,
   PersonalSaveError,
   personalChanges,
   personalRefusal,
-  profileCard,
-  workspaceAiCard,
-  workspaceCard,
+  profileStatus,
+  workspaceAiStatus,
 } from "@/pages/settings-personal";
 import { ProfileArea } from "@/pages/settings-profile";
 import {
@@ -115,7 +114,6 @@ import {
 } from "@/pages/settings-rows";
 import { RulesArea } from "@/pages/settings-rules";
 import { applySettingsPatch, settingsReadQuery, settleSettings } from "@/pages/settings-save";
-import { SetupArea, SetupScheduleNote, usePersonalAreaCards } from "@/pages/settings-setup";
 import { WorkspaceArea } from "@/pages/settings-workspace";
 import { WorkspaceAiArea } from "@/pages/settings-workspace-ai";
 
@@ -169,8 +167,7 @@ function stringItem(items: readonly SettingItem[], path: string): string {
 }
 
 export function SettingsPage() {
-  const { t, preference } = useI18n();
-  const { theme } = useTheme();
+  const { t } = useI18n();
   const session = useSession();
   const sessionUpdate = useSessionUpdate();
   const client = useQueryClient();
@@ -183,10 +180,12 @@ export function SettingsPage() {
   const engine = engineSettingsAccess(access);
   const engineShown = engine !== "none";
   const workspaceAi = workspaceAiEditable(access);
-  const areas = useMemo(() => visibleSettingAreas(access), [access]);
+  const desktop = useDesktopSettings();
+  const onDesktop = desktop !== null;
+  const areas = useMemo(() => visibleSettingAreas(access, onDesktop), [access, onDesktop]);
   const level = useMemo<SettingsLevel>(
-    () => openSettingsLevel(settingsLevelFromUrl(searchStr), access),
-    [searchStr, access],
+    () => openSettingsLevel(settingsLevelFromUrl(searchStr), access, onDesktop),
+    [searchStr, access, onDesktop],
   );
   const canWrite = engine === "write";
   const canReadEngine = engineShown && permissions.includes("settings:read:global");
@@ -432,64 +431,16 @@ export function SettingsPage() {
   const view = engineShown ? queryView(query, () => false) : "ready";
   const engineReady = engineShown && view === "ready";
   const personalArea = level.kind === "area" && isPersonalArea(level.area) ? level.area : null;
-  const profile = profileCard(session, { preference, theme }, t);
-  const workspace = workspaceCard(session);
-  const personalCards = usePersonalAreaCards();
-  const workspaceAiState = workspaceAiCard(session, t);
-  const cards: AreaCard[] = [
-    {
-      id: "profile" as const,
-      sentence: t(profile.sentence.key, profile.sentence.values),
-      status: profile.status,
-    },
-    ...personalCards,
-    { id: "workspace" as const, sentence: t(workspace.key, workspace.values), status: null },
-    ...(workspaceAi
-      ? [
-          {
-            id: "ai" as const,
-            sentence: t(workspaceAiState.sentence.key, workspaceAiState.sentence.values),
-            status: workspaceAiState.status,
-          },
-        ]
-      : []),
-    ...(engineReady
-      ? overviewCards({
-          facts,
-          catalog: catalog.data,
-          canWrite,
-          t,
-          restartAction:
-            restartNow.offer === "restart" ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setRestartNowOpen(true)}
-                data-testid="settings-overview-restart"
-              >
-                <RotateCw data-icon="inline-start" />
-                {t("settings.restartNow.button")}
-              </Button>
-            ) : null,
-        })
-      : engineShown
-        ? []
-        : [
-            {
-              id: "notifications" as const,
-              sentence: t(settingAreaPurpose("notifications")),
-              status: null,
-            },
-          ]),
-  ].filter((card) => areas.includes(card.id));
+  const profileMark = profileStatus(session);
+  const workspaceAiMark = workspaceAi ? workspaceAiStatus(session) : null;
   const drafted = new Set<SettingAreaId>([
     ...changed.map((entry) => settingAreaOf(entry.item.path)),
     ...personalChange.areas,
     ...(branding ? (["workspace"] as const) : []),
   ]);
   const marked = new Set<SettingAreaId>([
-    ...(profile.status ? (["profile"] as const) : []),
-    ...(workspaceAi && workspaceAiState.status ? (["ai"] as const) : []),
+    ...(profileMark ? (["profile"] as const) : []),
+    ...(workspaceAiMark ? (["ai"] as const) : []),
     ...(engineReady
       ? ENGINE_AREA_IDS.filter((area) => {
           const state = areaStatus(area, facts);
@@ -506,8 +457,14 @@ export function SettingsPage() {
       attention={marked}
       onNavigate={navigate}
     >
-      {area === "notifications" ? <SetupScheduleNote /> : null}
-      {children}
+      {area === "notifications" ? (
+        <Notifications
+          terminal={engineShown ? { tenant: session.tenant.id, canWrite } : null}
+          more={children}
+        />
+      ) : (
+        children
+      )}
     </SettingsAreaFrame>
   );
   const all = level.kind === "all";
@@ -518,16 +475,15 @@ export function SettingsPage() {
       purpose={`${t("settings.all.purpose")} ${t("settings.all.hint")}`}
     />
   ) : (
-    <PageHeader
-      title={t("resource.settings.title")}
-      purpose={engineShown ? t("settings.purpose") : undefined}
-    />
+    <PageHeader title={t("resource.settings.title")} />
   );
 
   return (
     <Page kind="settings" scroll="page" testId="admin-settings" header={header}>
       <div className="grid gap-4 pb-20" data-testid="settings-system">
-        {canReadEngine && level.kind !== "area" ? <PreparedChanges canDecide={canWrite} /> : null}
+        {canReadEngine && (level.kind === "all" || !personalArea) ? (
+          <PreparedChanges canDecide={canWrite} />
+        ) : null}
         {personalArea === "profile" ? (
           frame(
             "profile",
@@ -537,10 +493,26 @@ export function SettingsPage() {
               onName={(name) => editPersonal({ name })}
               disabled={save.isPending}
               navigate={navigate}
+              extra={
+                <>
+                  <LaunchAtLoginRow control={desktop} />
+                  <StartLayoutRows />
+                </>
+              }
             />,
           )
         ) : personalArea === "setup" ? (
-          frame("setup", <SetupArea />)
+          frame("setup", <SetupSection />)
+        ) : personalArea === "people" ? (
+          frame("people", <PeopleArea />)
+        ) : personalArea === "devices" ? (
+          frame("devices", <DevicesArea />)
+        ) : personalArea === "updates" && desktop ? (
+          frame("updates", <UpdatesPanel control={desktop} />)
+        ) : personalArea === "privacy" && desktop ? (
+          frame("privacy", <PrivacyPanel control={desktop} />)
+        ) : personalArea === "help" ? (
+          frame("help", <HelpArea />)
         ) : personalArea === "rules" ? (
           frame("rules", <RulesArea />)
         ) : personalArea === "workspace" ? (
@@ -566,25 +538,6 @@ export function SettingsPage() {
               onChange={editPersonal}
             />,
           )
-        ) : level.kind === "overview" ? (
-          <>
-            <SettingsOverview
-              cards={cards}
-              expert={engineReady}
-              usage={engineReady && permissions.includes("stats:read")}
-              onNavigate={navigate}
-            />
-            {view === "loading" ? (
-              <DataState state="loading" testId="settings-loading" />
-            ) : view === "error" ? (
-              <LoadFailed
-                title={t("resource.loadFailed", { resource: t("resource.settings.title") })}
-                onRetry={() => void query.refetch()}
-                error={query.error}
-                testId="settings-load-failed"
-              />
-            ) : null}
-          </>
         ) : !engineShown ? (
           frame("notifications", <NotificationRules />)
         ) : view === "loading" ? (
@@ -623,6 +576,20 @@ export function SettingsPage() {
                 key={`${level.area}-${formKey}`}
                 area={level.area as EngineAreaId}
                 ctx={ctx}
+                restart={
+                  pendingRestart.length > 0 && restartNow.offer === "restart" ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="self-start"
+                      onClick={() => setRestartNowOpen(true)}
+                      data-testid="settings-operations-restart"
+                    >
+                      <RotateCw data-icon="inline-start" />
+                      {t("settings.restartNow.button")}
+                    </Button>
+                  ) : null
+                }
               />
             </>,
           )
@@ -671,42 +638,15 @@ export function SettingsPage() {
   );
 }
 
-export function overviewCards({
-  facts,
-  catalog,
-  canWrite,
-  t,
-  restartAction,
+function GuidedArea({
+  area,
+  ctx,
+  restart,
 }: {
-  facts: {
-    items: readonly SettingItem[];
-    pendingRestart: readonly string[];
-  };
-  catalog: ModelCatalog | undefined;
-  canWrite: boolean;
-  t: ReturnType<typeof useI18n>["t"];
-  restartAction: ReactNode;
-}): AreaCard[] {
-  return ENGINE_AREA_IDS.map((id) => {
-    const sentences = areaSentences(id, {
-      ...facts,
-      canWrite,
-      providerName: (provider) => providerName(provider, t),
-      modelName: (provider, model) =>
-        catalogModelName(catalog, model) ??
-        (model || t("settings.ai.model.default", { provider: providerName(provider, t) })),
-      apiKeyName: t("settings.overview.access.apiKey"),
-    });
-    return {
-      id,
-      sentence: sentences.map((sentence) => t(sentence.key, sentence.values)).join(" "),
-      status: areaStatus(id, facts),
-      action: id === "operations" && facts.pendingRestart.length > 0 ? restartAction : undefined,
-    };
-  });
-}
-
-function GuidedArea({ area, ctx }: { area: EngineAreaId; ctx: GuidedContext }) {
+  area: EngineAreaId;
+  ctx: GuidedContext;
+  restart: ReactNode;
+}) {
   const { t } = useI18n();
   const session = useSession();
   if (area === "ai")
@@ -730,7 +670,12 @@ function GuidedArea({ area, ctx }: { area: EngineAreaId; ctx: GuidedContext }) {
         area="operations"
         ctx={ctx}
         before={
-          <p className="text-sm text-muted-foreground">{t("settings.question.operations.hint")}</p>
+          <>
+            {restart}
+            <p className="text-sm text-muted-foreground">
+              {t("settings.question.operations.hint")}
+            </p>
+          </>
         }
         after={<PackagesSettings />}
       />

@@ -1,5 +1,51 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { de as uiGerman } from "@ui/i18n/de";
+import { en as uiEnglish } from "@ui/i18n/en";
 import { CATALOGS } from "@/lib/i18n";
+
+const ROOT = dirname(dirname(dirname(dirname(dirname(fileURLToPath(import.meta.url))))));
+
+function flatten(value: unknown, path: string, out: Record<string, string>): void {
+  if (typeof value === "string") out[path] = value;
+  else if (typeof value === "function") {
+    const text = (value as (...args: unknown[]) => unknown)(1, 2, "x");
+    if (typeof text === "string") out[path] = text;
+  } else if (value && typeof value === "object")
+    for (const [key, child] of Object.entries(value))
+      flatten(child, path ? `${path}.${key}` : key, out);
+}
+
+const DESKTOP_ENTRY =
+  /"([\w.-]+)":\s*\{\s*de:\s*(["`])((?:\\.|(?!\2)[\s\S])*)\2,\s*en:\s*(["`])((?:\\.|(?!\4)[\s\S])*)\4/g;
+
+function desktopCatalog(file: string, locale: "de" | "en"): Record<string, string> {
+  const source = readFileSync(join(ROOT, file), "utf8");
+  const out: Record<string, string> = {};
+  for (const match of source.matchAll(DESKTOP_ENTRY)) {
+    const text = locale === "de" ? match[3] : match[5];
+    if (match[1] && text !== undefined) out[`${file}:${match[1]}`] = text;
+  }
+  return out;
+}
+
+const DESKTOP_FILES = ["apps/desktop/src/shared/i18n.ts", "apps/desktop/src/shared/shell-i18n.ts"];
+const flat = (dict: unknown) => {
+  const out: Record<string, string> = {};
+  flatten(dict, "ui", out);
+  return out;
+};
+const UI_GERMAN = flat(uiGerman);
+const DESKTOP_GERMAN = Object.assign({}, ...DESKTOP_FILES.map((f) => desktopCatalog(f, "de")));
+const DESKTOP_ENGLISH = Object.assign({}, ...DESKTOP_FILES.map((f) => desktopCatalog(f, "en")));
+const ALL_GERMAN: Record<string, string> = { ...CATALOGS.de, ...UI_GERMAN, ...DESKTOP_GERMAN };
+const ALL_ENGLISH: Record<string, string> = {
+  ...CATALOGS.en,
+  ...flat(uiEnglish),
+  ...DESKTOP_ENGLISH,
+};
 
 const RETIRED_GERMAN = [
   /Reparatur/,
@@ -36,6 +82,19 @@ const STANDING_APPROVAL_VERBS = new Set([
   "workflowStrip.action.grant",
 ]);
 
+const TERM_TOKEN = /[A-Za-zÄÖÜäöüß]*(?:[Ll]auf|[Ll]äuf|[Kk]onnektor)[A-Za-zÄÖÜäöüß]*/g;
+const EVERYDAY_LAUF =
+  /^(?:läuft|laufen|laufend\w*|laufe|gelaufen|abgelaufen\w*|durchläuft|\w*verlauf\w*|\w*ablauf\w*|\w*abläufe\w*|laufzeit\w*|\w*aufruf\w*|laufwerk\w*)$/i;
+
+function englishTermOffenders(catalog: Record<string, string>): string[] {
+  return Object.entries(catalog).flatMap(([key, value]) =>
+    [...value.matchAll(TERM_TOKEN)]
+      .map((match) => match[0])
+      .filter((word) => /onnektor/i.test(word) || !EVERYDAY_LAUF.test(word))
+      .map((word) => `${key}: ${word}`),
+  );
+}
+
 const offenders = (catalog: Record<string, string>, patterns: readonly RegExp[]) =>
   Object.entries(catalog)
     .filter(([, value]) => patterns.some((pattern) => pattern.test(value)))
@@ -43,11 +102,11 @@ const offenders = (catalog: Record<string, string>, patterns: readonly RegExp[])
 
 describe("approval glossary", () => {
   test("German copy uses one word per concept", () => {
-    expect(offenders(CATALOGS.de, RETIRED_GERMAN)).toEqual([]);
+    expect(offenders(ALL_GERMAN, RETIRED_GERMAN)).toEqual([]);
   });
 
   test("English copy uses one word per concept", () => {
-    expect(offenders(CATALOGS.en, RETIRED_ENGLISH)).toEqual([]);
+    expect(offenders(ALL_ENGLISH, RETIRED_ENGLISH)).toEqual([]);
   });
 
   test("Freigeben as a verb is reserved for a standing approval", () => {
@@ -69,8 +128,8 @@ describe("approval glossary", () => {
       expect(CATALOGS.de[key]).not.toContain("Freigabe");
       expect(CATALOGS.en[key]).not.toContain("approval");
     }
-    expect(CATALOGS.de["chat.liveTest.title"]).toBe("Einzellauf");
-    expect(CATALOGS.de["tool.name.dryRunWorkflow"]).toBe("Probelauf eines Workflows");
+    expect(CATALOGS.de["chat.liveTest.title"]).toBe("Einzel-Run");
+    expect(CATALOGS.de["tool.name.dryRunWorkflow"]).toBe("Probe-Run eines Workflows");
     expect(CATALOGS.de["skills.rejected"]).toBe("Vorschlag verworfen: {name}");
     expect(CATALOGS.de["skills.reject"]).toBe("Verwerfen");
     expect(CATALOGS.en["skills.reject"]).toBe("Discard");
@@ -127,11 +186,53 @@ const RETIRED_REDESIGN_GERMAN = [
   /Programmier-Assistent/,
   /Posteingang/,
   /Light logo|Mobile sheet|^Audience$/,
+  /Auf Abruf/,
+  /Nicht freigegeben/,
+  /Freigabe nötig/,
+  /Sitzungsrichtlinie/,
+  /Prüfverfahren unbekannt/,
+  /Weiterer Vorgang/,
 ];
 
 describe("redesign glossary", () => {
   test("German copy keeps one term per concept", () => {
-    expect(offenders(CATALOGS.de, RETIRED_REDESIGN_GERMAN)).toEqual([]);
+    expect(offenders(ALL_GERMAN, RETIRED_REDESIGN_GERMAN)).toEqual([]);
+  });
+
+  test("the shared UI and desktop catalogs are part of the check", () => {
+    expect(UI_GERMAN["ui.err.cases.reauth.body"]).toContain("Connector");
+    expect(Object.keys(UI_GERMAN).length).toBeGreaterThan(50);
+    expect(DESKTOP_GERMAN["apps/desktop/src/shared/i18n.ts:tray.open"]).toBe("SubKit öffnen");
+    expect(DESKTOP_GERMAN["apps/desktop/src/shared/shell-i18n.ts:tray.paused"]).toBe(
+      "Pausiert bis zum Fortsetzen",
+    );
+    expect(DESKTOP_ENGLISH["apps/desktop/src/shared/i18n.ts:tray.open"]).toBe("Open SubKit");
+    expect(Object.keys(DESKTOP_ENGLISH).length).toBe(Object.keys(DESKTOP_GERMAN).length);
+  });
+
+  test("German copy keeps the product terms Connector and Run in English", () => {
+    expect(englishTermOffenders(ALL_GERMAN)).toEqual([]);
+    expect(CATALOGS.de["cn.title"]).toBe(CATALOGS.de["nav.connectors"]);
+    expect(CATALOGS.en["cn.title"]).toBe(CATALOGS.en["nav.connectors"]);
+    expect(CATALOGS.de["nav.connectors"]).toBe("Connectors");
+  });
+
+  test("the term check lets everyday German through", () => {
+    expect(
+      englishTermOffenders({
+        a: "Der Run läuft, im Laufe des Tages, laufend, abgelaufen, gelaufen, Laufwerk",
+        b: "Verlauf, Ablauf, Abläufe, Laufzeit-Geheimnis, Beispielaufruf, Connector-Vorlage",
+      }),
+    ).toEqual([]);
+    expect(
+      englishTermOffenders({
+        a: "Der Lauf",
+        b: "Läufe",
+        c: "Probelauf",
+        d: "Konnektor",
+        e: "Laufergebnis",
+      }),
+    ).toEqual(["a: Lauf", "b: Läufe", "c: Probelauf", "d: Konnektor", "e: Laufergebnis"]);
   });
 
   test("roles show their display names, never their keys", () => {
@@ -155,8 +256,10 @@ describe("redesign glossary", () => {
     expect(CATALOGS.en["workflow.kind.request"]).not.toBe(CATALOGS.en["workflow.kind.call"]);
   });
 
-  test("a run starts on demand and a switched-off object is switched off", () => {
-    expect(CATALOGS.de["workflows.trigger.request"]).toBe("Auf Abruf");
+  test("a run starts by hand and a switched-off object is switched off", () => {
+    expect(CATALOGS.de["workflows.trigger.request"]).toBe("Manuell");
+    expect(CATALOGS.de["workflowStrip.state.unapproved"]).toBe("Braucht Freigabe");
+    expect(CATALOGS.en["workflowStrip.state.unapproved"]).toBe("Needs approval");
     expect(CATALOGS.de["connectorState.off"]).toBe("Ausgeschaltet");
     expect(CATALOGS.de["workflowStrip.state.paused"]).toBe("Pausiert");
     expect(CATALOGS.de["common.technical"]).toBe("Technische Angaben");
@@ -174,7 +277,7 @@ describe("redesign glossary", () => {
     ).toEqual([
       ["Zeitplan", "Schedule"],
       ["Webhook", "Webhook"],
-      ["Auf Abruf", "On demand"],
+      ["Manuell", "Manual"],
     ]);
   });
 

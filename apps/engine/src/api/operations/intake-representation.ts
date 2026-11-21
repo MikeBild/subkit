@@ -1,6 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import { CategorySchema } from "../catalog-metadata.ts";
 import {
+  IntakeAttachmentSchema,
   IntakeItemSnapshotSchema,
   IntakeProposalTargetSchema,
   IntakeTargetKindSchema,
@@ -43,6 +44,9 @@ export const ItemSchema = z
     collected_by: z.object({ kind: z.enum(["user", "system_account"]), id: z.string().uuid() }),
     admitted_target_kind: IntakeTargetKindSchema.nullable(),
     admitted_target_id: z.string().uuid().nullable(),
+    attachment: IntakeAttachmentSchema.nullable().describe(
+      "The file this item was collected from; null for text clips and notes. Download it through the files API.",
+    ),
     created_at: z.string().datetime(),
     updated_at: z.string().datetime(),
   })

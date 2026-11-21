@@ -4,7 +4,7 @@ import { ChoiceCards } from "./choice-card";
 import { DetailPage } from "./detail-page";
 import { IconTile } from "./icon-tile";
 import { MarkdownEditor } from "./markdown-editor";
-import { OnboardingFrame, StartChecklist } from "./onboarding";
+import { OnboardingFrame } from "./onboarding";
 import { PageHeader } from "./page-header";
 import { SchemaForm } from "./schema-form";
 import { StatusStrip } from "./status-strip";
@@ -28,14 +28,14 @@ describe("detail header", () => {
       />,
     );
     expect(html).toContain('data-slot="page-header-grid"');
-    expect(html).toContain("@2xl:grid-cols-[minmax(0,1fr)_auto] @2xl:items-center");
+    expect(html).toContain("@xl:grid-cols-[minmax(0,1fr)_auto] @xl:items-center");
     const row = html.indexOf('data-slot="page-title-row"');
     const actions = html.indexOf('data-slot="page-actions"');
     const purpose = html.indexOf('data-slot="page-purpose"');
     expect(row).toBeLessThan(actions);
     expect(actions).toBeLessThan(purpose);
     expect(html).toContain("order-last");
-    expect(html).toContain("@2xl:col-span-2");
+    expect(html).toContain("@xl:col-span-2");
     expect(html.slice(row, actions)).toContain('data-x="chip"');
     expect(count(html, /<h1/g)).toBe(1);
   });
@@ -133,7 +133,7 @@ describe("timeline", () => {
                 title: "Erfolgreich",
                 meta: "Zeitplan · 13 s",
                 onOpen() {},
-                label: "Lauf von 07:00 öffnen",
+                label: "Run von 07:00 öffnen",
               },
               { id: "r2", tone: "error", time: "06:00", title: "Fehlgeschlagen" },
             ],
@@ -150,7 +150,7 @@ describe("timeline", () => {
     expect(html).toMatch(/<time dateTime="2026-10-22T07:00:00Z"/i);
     expect(html).toMatch(/<time[^>]*class="[^"]*whitespace-nowrap/);
     expect(count(html, /<button/g)).toBe(1);
-    expect(html).toContain('aria-label="Lauf von 07:00 öffnen"');
+    expect(html).toContain('aria-label="Run von 07:00 öffnen"');
     expect(html).not.toContain("Leer");
   });
 });
@@ -238,43 +238,6 @@ describe("onboarding", () => {
       </OnboardingFrame>,
     );
     expect(html.indexOf("wiederkehrende")).toBeLessThan(html.indexOf('data-x="ways"'));
-  });
-
-  test("the checklist counts what is done and points at the next step", async () => {
-    const steps = [
-      { title: "Dienst verbinden", line: "a", href: "/connectors", done: true },
-      { title: "Workflow aus Vorlage", line: "b", href: "/workflows", done: false },
-      { title: "Probelauf starten", line: "c", href: "/workflows", done: false },
-      { title: "Freigeben", line: "d", href: "/workflows", done: false },
-    ];
-    const html = await renderInRouter(
-      <StartChecklist steps={steps} hidden={false} onHide={() => {}} />,
-    );
-    expect(html).toContain("Erste Schritte");
-    expect(html).toContain("1 von 4 erledigt");
-    expect(html).toContain('class="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5"');
-    expect(count(html, /aria-current="step"/g)).toBe(1);
-    expect(html).toContain("Ausblenden");
-    const finished = await renderInRouter(
-      <StartChecklist
-        steps={steps.map((step) => ({ ...step, done: true }))}
-        hidden={false}
-        onHide={() => {}}
-      />,
-    );
-    expect(finished).not.toContain("Erste Schritte");
-  });
-
-  test("the checklist keeps no state of its own: hidden and without steps it renders nothing", async () => {
-    const steps = [{ title: "Dienst verbinden", line: "a", href: "/connectors", done: false }];
-    expect(await renderInRouter(<StartChecklist steps={steps} hidden onHide={() => {}} />)).toBe(
-      "",
-    );
-    expect(
-      await renderInRouter(<StartChecklist steps={[]} hidden={false} onHide={() => {}} />),
-    ).toBe("");
-    const source = await Bun.file(new URL("./onboarding.tsx", import.meta.url)).text();
-    expect(source).not.toMatch(/localStorage|useState/);
   });
 });
 

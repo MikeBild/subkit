@@ -1,4 +1,4 @@
-import type { ConversationDetail, ConversationReference } from "@/api/client";
+import type { ConversationReference } from "@/api/client";
 import { absolute, connectorHref, recordHref, runHref, workflowHref } from "@/app/links";
 import { formatRelativeTime } from "@/lib/i18n";
 import type { useI18n } from "@/lib/i18n-context";
@@ -8,8 +8,6 @@ import { toolLabel, type WorkflowRunKind, workflowRunTitleKey } from "@/lib/tool
 import type { ChatWorkflowRef } from "@/pages/chat-preview-cards";
 
 type Translate = ReturnType<typeof useI18n>["t"];
-
-export type ConversationUsage = ConversationDetail["usage"];
 
 export const NO_SAVED_PREVIEWS: ReadonlyMap<string, ChatWorkflowRef> = new Map();
 

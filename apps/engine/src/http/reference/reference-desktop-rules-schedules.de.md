@@ -45,21 +45,22 @@ Abfrage-Parameter beider Routen: `limit` (Standard 50, höchstens 200) und `befo
 | `workflow_id`, `task_id`, `schedule_id` | Wozu der Eintrag gehört. |
 | `due_at` | Der fällige Termin. |
 | `last_due_at` | Der letzte Termin, für den der Eintrag steht, wenn mehrere zusammengefasst wurden. |
-| `started_at` | Wann der Lauf gestartet ist, falls einer gestartet ist. |
+| `started_at` | Wann der Run gestartet ist, falls einer gestartet ist. |
 | `state` | `ran`, `ran_late`, `skipped` oder `held`. |
-| `reason_code` | Der Grund, siehe die nächste Tabelle. Leer bei einem pünktlichen Lauf. |
+| `reason_code` | Der Grund, siehe die nächste Tabelle. Leer bei einem pünktlichen Run. |
 | `skipped_count` | Für wie viele weitere Termine der Eintrag steht. |
-| `execution_id`, `task_run_id` | Der Lauf, der zum Eintrag gehört. |
+| `execution_id`, `task_run_id` | Der Run, der zum Eintrag gehört. |
+| `run_outcome` | Wie dieser Run endete: `running`, `succeeded`, `failed` oder `aborted`; `null` ohne Run. |
 | `created_at`, `updated_at` | Wann der Eintrag geschrieben und zuletzt geändert wurde. |
 
 | `reason_code` | `state` | Bedeutung |
 | --- | --- | --- |
 | `late_start` | `ran_late` | Mehr als 5 Minuten nach dem Termin gestartet. |
-| `merged_missed` | `ran_late` | Ein Lauf für mehrere verpasste Termine. |
+| `merged_missed` | `ran_late` | Ein Run für mehrere verpasste Termine. |
 | `calendar_weekend` | `skipped` | Der Zeitplan schließt Wochenenden aus. |
 | `calendar_skip_date` | `skipped` | Der Tag ist im Zeitplan ausgenommen. |
 | `failure_backoff` | `skipped` | Wartezeit nach wiederholten Fehlern. |
-| `previous_run_active` | `skipped` | Der vorige Lauf der Aufgabe war noch offen. |
+| `previous_run_active` | `skipped` | Der vorige Run der Aufgabe war noch offen. |
 | `repeated_failures` | `held` | Der Zeitplan hat sich selbst pausiert. |
 | `input_required` | `held` | Dem Zeitplan fehlen Pflichteingaben. |
 | `execution_authority_required` | `held` | Keine Freigabe deckt die aktuelle Version. |
@@ -69,7 +70,7 @@ Abfrage-Parameter beider Routen: `limit` (Standard 50, höchstens 200) und `befo
 
 Einträge bleiben 90 Tage erhalten. Ein Zeitplan-Eintrag aus den Zeitplan-Routen trägt jetzt `auto_pause`: `null` oder `{paused_reason, failure_class, consecutive_failures, since}`, solange der Zeitplan nach wiederholten Fehlern pausiert ist.
 
-Ein Lauf nennt die Ursache eines Fehlers jetzt als `outcome.cause_class` in `GET /v1/executions/{id}` und als `failure.cause_class` in der Liste, auch bei vertraulichen Workflows. Werte sind unter anderem `auth_failed`, `authority_mismatch`, `connector_missing`, `connector_unavailable`, `budget_exhausted`, `rate_limited`, `timeout`, `placeholder_unresolved`, `schema_mismatch`, `incomplete_read` und `payload_invalid`.
+Ein Run nennt die Ursache eines Fehlers jetzt als `outcome.cause_class` in `GET /v1/executions/{id}` und als `failure.cause_class` in der Liste, auch bei vertraulichen Workflows. Werte sind unter anderem `auth_failed`, `authority_mismatch`, `connector_missing`, `connector_unavailable`, `budget_exhausted`, `rate_limited`, `timeout`, `placeholder_unresolved`, `schema_mismatch`, `incomplete_read` und `payload_invalid`.
 
 ### Einrichtung
 
@@ -82,7 +83,7 @@ Ein Lauf nennt die Ursache eines Fehlers jetzt als `outcome.cause_class` in `GET
 | `timezone` | Eine IANA-Zeitzone oder `null` für die Zeitzone des Arbeitsbereichs | Die Zone, in der die Uhrzeiten oben gelesen werden. |
 | `critical_breakthrough` | `true`, `false` | Ob kritische Punkte trotz zurückgehaltenem Push sofort gemeldet werden. Standard `false`. |
 | `first_job` | Text mit höchstens 120 Zeichen oder `null` | Den ersten Vorschlag im Cockpit. |
-| `services` | Bis zu 50 Konnektor-Slugs | Welche Konnektoren das Cockpit zuerst anbietet. |
+| `services` | Bis zu 50 Connector-Slugs | Welche Connectors das Cockpit zuerst anbietet. |
 
 Die Antwort ergänzt `unset` (was von Chat-Modus, Umgebung, Freigaben und Benachrichtigungen noch nicht gewählt ist), `recommended`, `updated_at` und bei einer anderen Person `approver.user_id`, `approver.invitation` mit `member`, `pending` oder `needs_admin`, `approver.can_approve` und `approver.missing_permissions`. `can_approve` ist `true`, wenn die Rolle der Person `conversation:approve`, `task:grant` und `workflow:write` enthält; die Rolle Mitglied enthält alle drei. Bei `false` nennt `missing_permissions` die fehlenden Rechte, und Freigabe-Hinweise bleiben bei der Person, die fragt. Solange es die Person im Arbeitsbereich nicht gibt, ist `can_approve` `null`. Nennt ein Administrator eine unbekannte Adresse, enthält die Antwort genau einmal `invitation` mit `invite_id`, `plaintext_token` und `expires_at`; die Einladung trägt die Rolle Mitglied, und eine E-Mail wird nicht verschickt. Hat jemand ohne das Recht einzuladen eine Adresse genannt (`needs_admin`), verknüpft die Engine die Wahl von selbst, sobald ein Administrator diese Adresse einlädt oder anlegt. `PUT` antwortet mit `409 approver_already_known`, wenn die Adresse schon einer Person gehört, die nicht erneut eingeladen werden kann.
 
@@ -93,7 +94,7 @@ Die Antwort ergänzt `unset` (was von Chat-Modus, Umgebung, Freigaben und Benach
 | `id` | ID der Regel. |
 | `state` | `offered`, `active`, `dismissed` oder `revoked`. Nur Regeln im Zustand `active` gelten. |
 | `tool`, `verb` | Das Tool und die Art der Aktion: `send`, `create`, `update`, `run`, `save` oder `other`. |
-| `connector`, `account` | Der Konnektor, auf den die Regel begrenzt ist. |
+| `connector`, `account` | Der Connector, auf den die Regel begrenzt ist. |
 | `operation`, `target` | Die eine Operation, auf die die Regel begrenzt ist, zum Beispiel `POST /v1/messages/send`. |
 | `recipients` | Die einzigen Empfänger, die die Regel deckt. Leer: Aktionen ohne Empfänger. |
 | `content_class` | `no_content`: nur Aktionen ohne Text. `same_content`: nur genau der Text, der erlaubt wurde. `person_given`: nur Text, den die Person geschrieben oder als Entwurf gesehen hat. |
@@ -133,7 +134,7 @@ Body von `POST /v1/feedback`:
 | `attachments` | Bis zu 3 Einträge mit `filename` und `content_base64`, je 2 MB: PNG, JPG, PDF, TXT oder JSON. |
 | `screenshot_png_base64` | Optionales PNG mit höchstens 4 MB. |
 
-Die Antwort ist `201` mit `id` und `intake_item_id`. Fehler: `409 report_id_taken`, `413 attachment_too_large` oder `screenshot_too_large`, `422 attachment_invalid`, `attachment_type`, `attachment_rejected` oder `screenshot_invalid` und `429 rate_limit_exceeded` nach 5 Berichten in 10 Minuten je Person.
+Die Antwort ist `201` mit `id`, `intake_item_id` und `replayed`. Fehler: `409 report_id_taken`, `413 attachment_too_large` oder `screenshot_too_large`, `422 attachment_invalid`, `attachment_type`, `attachment_rejected` oder `screenshot_invalid` und `429 rate_limit_exceeded` nach 5 Berichten in 10 Minuten je Person.
 
 ### Desktop-Anmeldung und Installationen
 
@@ -197,13 +198,13 @@ Drei Ereignistypen sind neu. Alle drei lassen sich in Abonnements und Webhooks n
 
 - Neuer Grund `schedule_auto_paused`, Klasse `stopped`, mit `counts.consecutive_failures`.
 - Die Gründe `approval_expiring` und `task_grant_expiring` erscheinen jetzt 7 Tage vor dem Ende, und die erste Handlung einer endenden Workflow-Freigabe ist `renew`.
-- `subject.environment` nennt bei Konnektoren `dev` oder `prod`.
+- `subject.environment` nennt bei Connectors `dev` oder `prod`.
 - `waiting_on` mit `user_id` und `name` ist gesetzt, wenn du eine andere Person für Freigaben genannt hast.
 
 Änderungen am Ereignisstrom des Cockpits unter `/v1/cockpit/events/stream`:
 
 - `hello` trägt `heartbeat_ms`.
-- Ereignisse zu einem Konnektor, einem Workflow oder einer Aufgabe tragen `attention_id` mit dem Punkt, um den es geht.
+- Ereignisse zu einem Connector, einem Workflow oder einer Aufgabe tragen `attention_id` mit dem Punkt, um den es geht.
 - `session.ended` mit `status` und `code` ist das letzte Ereignis, wenn die Sitzung einer Installation endet.
 
 ### Audit-Aktionen

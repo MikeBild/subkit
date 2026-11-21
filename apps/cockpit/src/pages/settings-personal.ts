@@ -1,12 +1,9 @@
 import type { Bootstrap } from "@/api/client";
 import type { TranslationKey } from "@/lib/i18n";
-import type { LocalePreference } from "@/lib/locale-store";
-import type { Theme } from "@/lib/theme-store";
 import {
   AI_ACCESS_REFUSAL_KEY,
   aiAccessRefusal,
   isOwnKeyProvider,
-  OWN_KEY_PROVIDER_COPY,
   type OwnKeyProvider,
 } from "@/pages/ai-providers";
 import type { AreaStatus, SettingAreaId } from "@/pages/settings-areas";
@@ -123,68 +120,13 @@ export function personalChanges(session: PersonalSession, drafts: PersonalDrafts
   };
 }
 
-export function workspaceAiCard(
-  session: PersonalSession,
-  t: (key: TranslationKey) => string,
-): {
-  sentence: CardSentence;
-  status: AreaStatus | null;
-} {
+export function workspaceAiStatus(session: PersonalSession): AreaStatus | null {
   const { ai_access: access } = session;
-  if (!access.own_key || !isOwnKeyProvider(access.provider))
-    return {
-      sentence: { key: "settings.overview.workspaceAi.missing", values: {} },
-      status: "waiting",
-    };
-  return {
-    sentence: {
-      key: "settings.overview.workspaceAi.stored",
-      values: { provider: t(OWN_KEY_PROVIDER_COPY[access.provider].name) },
-    },
-    status: null,
-  };
+  return access.own_key && isOwnKeyProvider(access.provider) ? null : "waiting";
 }
 
-interface CardSentence {
-  key: TranslationKey;
-  values: Record<string, string>;
-}
-
-const LANGUAGE_STATE: Record<LocalePreference, TranslationKey> = {
-  auto: "settings.profile.state.language.auto",
-  de: "language.native.de",
-  en: "language.native.en",
-};
-
-const THEME_STATE: Record<Theme, TranslationKey> = {
-  system: "settings.profile.state.theme.system",
-  light: "settings.profile.state.theme.light",
-  dark: "settings.profile.state.theme.dark",
-};
-
-export function profileCard(
-  session: PersonalSession,
-  look: { preference: LocalePreference; theme: Theme },
-  t: (key: TranslationKey) => string,
-): { sentence: CardSentence; status: AreaStatus | null } {
-  const name = session.principal.display_name?.trim() ?? "";
-  const values = {
-    language: t(LANGUAGE_STATE[look.preference]),
-    theme: t(THEME_STATE[look.theme]),
-  };
-  return name
-    ? { sentence: { key: "settings.overview.profile", values: { name, ...values } }, status: null }
-    : { sentence: { key: "settings.overview.profile.noName", values }, status: "nameMissing" };
-}
-
-export function workspaceCard(session: PersonalSession): CardSentence {
-  return {
-    key: "settings.overview.workspace",
-    values: {
-      name: session.tenant.display_name,
-      timezone: session.tenant.timezone.replace(/_/g, " "),
-    },
-  };
+export function profileStatus(session: PersonalSession): AreaStatus | null {
+  return session.principal.display_name?.trim() ? null : "nameMissing";
 }
 
 export class PersonalSaveError extends Error {

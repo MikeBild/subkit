@@ -13,6 +13,7 @@ import {
   parseVerifiedSelfServiceIdentity,
   type VerifiedSelfServiceIdentity,
 } from "./self-service.ts";
+import { linkJoinedApprover } from "./setup-preferences.ts";
 
 export const INVITE_PAGE_PATH = "/cockpit/invite";
 
@@ -112,6 +113,7 @@ export async function claimMembershipInvite(
       .update(users)
       .set({ auth_identity_id: proof.identity_id, status: "active", updated_at: timestamp })
       .where(and(eq(users.id, user.id), eq(users.tenant_id, invite.tenant_id)));
+    await linkJoinedApprover(tx, { tenant_id: invite.tenant_id, id: user.id, email: user.email });
     await tx
       .update(userInvites)
       .set({ redeemed_at: timestamp, updated_at: timestamp })
@@ -232,6 +234,11 @@ export async function acceptVerifiedMembershipInvite(
         .update(users)
         .set({ auth_identity_id: identity.id, status: "active", updated_at: timestamp })
         .where(and(eq(users.id, user.id), eq(users.tenant_id, invite.tenant_id)));
+      await linkJoinedApprover(tx, {
+        tenant_id: invite.tenant_id,
+        id: user.id,
+        email: user.email,
+      });
       await tx
         .update(userInvites)
         .set({ redeemed_at: timestamp, updated_at: timestamp })

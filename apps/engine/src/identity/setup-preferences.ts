@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../audit/index.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Executor } from "../db/client.ts";
@@ -9,6 +9,14 @@ import {
   userSetupPreferences,
   users,
 } from "../db/schema/index.ts";
+import type { StoredPause } from "../notifications/notification-pause.ts";
+import { principalHolds } from "../rbac/evaluator.ts";
+import {
+  ApprovalPolicyError,
+  activePersonPrincipal,
+  changeApprovalPolicy,
+  readApprovalPolicy,
+} from "./approval-policy.ts";
 
 export const RECOMMENDED_SETUP = {
   default_chat_mode: "auto",
@@ -33,7 +41,7 @@ export type SetupEnvironment = "dev" | "prod";
 export type SetupApprover =
   | { kind: "self" }
   | {
-      kind: "teammate";
+      kind: "teammate" | "pair";
       email: string;
       user_id: string | null;
       invite_id: string | null;
@@ -72,7 +80,7 @@ function approverOf(row: UserSetupPreferencesRow | undefined): SetupApprover | n
   if (!row?.approver_kind) return null;
   if (row.approver_kind === "self" || !row.approver_email) return { kind: "self" };
   return {
-    kind: "teammate",
+    kind: row.approver_kind === "pair" ? "pair" : "teammate",
     email: row.approver_email,
     user_id: row.approver_user_id,
     invite_id: row.approver_invite_id,
@@ -173,6 +181,7 @@ export interface PushPreference {
   readonly critical_breakthrough: boolean;
   readonly last_digest_at: Date | null;
   readonly approver_user_id: string | null;
+  readonly pause?: StoredPause | undefined;
 }
 
 export async function readPushPreference(db: Executor, owner: SetupOwner): Promise<PushPreference> {
@@ -197,6 +206,10 @@ export async function readPushPreference(db: Executor, owner: SetupOwner): Promi
     critical_breakthrough: row?.critical_breakthrough ?? false,
     last_digest_at: row?.last_digest_at ?? null,
     approver_user_id: delegated,
+    pause: {
+      paused_at: row?.notifications_paused_at ?? null,
+      paused_until: row?.notifications_paused_until ?? null,
+    },
   };
 }
 
@@ -273,13 +286,16 @@ export async function linkJoinedApprover(
     .where(
       and(
         eq(userSetupPreferences.tenant_id, person.tenant_id),
-        eq(userSetupPreferences.approver_kind, "teammate"),
+        inArray(userSetupPreferences.approver_kind, ["teammate", "pair"]),
         isNull(userSetupPreferences.approver_user_id),
         sql`lower(${userSetupPreferences.approver_email}) = ${person.email.trim().toLowerCase()}`,
         sql`${userSetupPreferences.user_id} <> ${person.id}`,
       ),
     )
-    .returning({ user_id: userSetupPreferences.user_id });
+    .returning({
+      user_id: userSetupPreferences.user_id,
+      kind: userSetupPreferences.approver_kind,
+    });
   for (const row of linked) {
     await auditAwait(
       {
@@ -297,7 +313,42 @@ export async function linkJoinedApprover(
       db,
     );
   }
+  await activatePairOnJoin(db, person);
   return linked.length;
+}
+
+async function activatePairOnJoin(
+  db: Executor,
+  person: { tenant_id: string; id: string },
+): Promise<void> {
+  const owners = await db
+    .select({ user_id: userSetupPreferences.user_id })
+    .from(userSetupPreferences)
+    .where(
+      and(
+        eq(userSetupPreferences.tenant_id, person.tenant_id),
+        eq(userSetupPreferences.approver_kind, "pair"),
+        eq(userSetupPreferences.approver_user_id, person.id),
+      ),
+    );
+  if (owners.length === 0) return;
+  if ((await readApprovalPolicy(db, person.tenant_id)).workflow_approvals === "pair") return;
+  for (const owner of owners) {
+    const principal = await activePersonPrincipal(db, person.tenant_id, owner.user_id);
+    if (!principal || !(await principalHolds(db, principal, "rbac:write"))) continue;
+    try {
+      await changeApprovalPolicy(db, {
+        tenant_id: person.tenant_id,
+        next: "pair",
+        actor: { type: "system", id: null },
+        source: "approver_joined",
+      });
+      return;
+    } catch (error) {
+      if (error instanceof ApprovalPolicyError) return;
+      throw error;
+    }
+  }
 }
 
 function audited(setup: SetupPreferences): Record<string, unknown> {
@@ -305,7 +356,7 @@ function audited(setup: SetupPreferences): Record<string, unknown> {
     default_chat_mode: setup.default_chat_mode,
     default_environment: setup.default_environment,
     approver_kind: setup.approver.kind,
-    approver_user_id: setup.approver.kind === "teammate" ? setup.approver.user_id : null,
+    approver_user_id: setup.approver.kind === "self" ? null : setup.approver.user_id,
     notification_mode: setup.notifications.mode,
     timezone: setup.timezone,
     critical_breakthrough: setup.critical_breakthrough,
@@ -345,9 +396,9 @@ export async function writeSetupPreferences(
       ...(approver !== undefined
         ? {
             approver_kind: approver.kind,
-            approver_email: approver.kind === "teammate" ? approver.email : null,
-            approver_user_id: approver.kind === "teammate" ? approver.user_id : null,
-            approver_invite_id: approver.kind === "teammate" ? approver.invite_id : null,
+            approver_email: approver.kind === "self" ? null : approver.email,
+            approver_user_id: approver.kind === "self" ? null : approver.user_id,
+            approver_invite_id: approver.kind === "self" ? null : approver.invite_id,
           }
         : {}),
       ...(patch.notifications !== undefined

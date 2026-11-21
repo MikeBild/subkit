@@ -86,7 +86,7 @@ describe("cockpit chat resume", () => {
       day,
     );
     expect(line).not.toContain("none");
-    expect(line).toContain("Konnektor");
+    expect(line).toContain("Connector");
   });
 
   test("carries the environment into the sentence when there is one", () => {
@@ -167,7 +167,7 @@ describe("a chat opened for a run", () => {
 
   test("says it investigates that run, with its workflow and date, never that it saved", () => {
     const line = resumeSummaryLine(run, de, day);
-    expect(line).toBe("Du untersuchst den Lauf von „Wachstumsbericht“ vom 2026-09-01.");
+    expect(line).toBe("Du untersuchst den Run von „Wachstumsbericht“ vom 2026-09-01.");
     expect(line).not.toContain("gespeichert");
     expect(resumeSummaryLine(run, en, day)).toBe(
       "You are looking into the run of “Wachstumsbericht” from 2026-09-01.",
@@ -175,13 +175,13 @@ describe("a chat opened for a run", () => {
   });
 
   test("names the stage and the next step for the run", () => {
-    expect(resumeStageLabel("run_focus", de)).toBe("Lauf wird untersucht");
-    expect(resumeNextAction("run_focus", de)).toContain("Lauf");
+    expect(resumeStageLabel("run_focus", de)).toBe("Run wird untersucht");
+    expect(resumeNextAction("run_focus", de)).toContain("Run");
   });
 
   test("a run without a known workflow name still reads as a sentence", () => {
     expect(
       resumeSummaryLine({ ...run, active_target: { kind: "workflow", name: null } }, de, day),
-    ).toBe("Du untersuchst einen Lauf vom 2026-09-01.");
+    ).toBe("Du untersuchst einen Run vom 2026-09-01.");
   });
 });

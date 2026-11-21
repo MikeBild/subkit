@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { Pill } from "@ui/components/proto/Pill";
 import {
   BookOpen,
   ChevronRight,
@@ -10,11 +11,11 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { apiCall } from "@/api/call";
-import { absolute, workflowHref } from "@/app/links";
+import { absolute, workflowHref, workflowSectionHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { useConnectorNames, useConnectorServices } from "@/components/cockpit/connector-names";
 import { GrantEffectReview } from "@/components/cockpit/grant-effect-review";
-import { Chip, RowsSkeleton } from "@/components/cockpit/patterns";
+import { RowsSkeleton } from "@/components/cockpit/patterns";
 import {
   blockedNotice,
   type EffectWord,
@@ -66,7 +67,7 @@ const REASON_KEYS = {
   workflow_not_readable: "taskGrant.reason.workflow_not_readable",
 } as const satisfies Record<TaskGrantBlockReason, TranslationKey>;
 
-const WARN = "text-amber-700 dark:text-amber-400";
+const WARN = "text-warning-ink";
 const ROW = "flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm";
 const VERB = "flex w-24 shrink-0 items-center gap-2 text-muted-foreground";
 const LINK = "underline underline-offset-4";
@@ -88,13 +89,11 @@ function StandingChip({ standing, testId }: { standing: WorkflowStanding; testId
   const { t } = useI18n();
   if (standing === "included") return null;
   return (
-    <Chip
-      testId={testId}
-      data-standing={standing}
-      className={standing === "asks" || standing === "unavailable" ? WARN : undefined}
-    >
-      {t(STANDING_KEYS[standing])}
-    </Chip>
+    <span className="contents" data-testid={testId} data-standing={standing}>
+      <Pill tone={standing === "asks" || standing === "unavailable" ? "warning" : "success"}>
+        {t(STANDING_KEYS[standing])}
+      </Pill>
+    </span>
   );
 }
 
@@ -206,7 +205,7 @@ function WorkflowStandingRow({
       <span className="min-w-0 flex-1 text-muted-foreground">{summary}</span>
       {approval ? (
         <a
-          href={absolute(`${workflowHref(row.workflowId)}?tab=approvals`)}
+          href={absolute(workflowSectionHref(row.workflowId, "approvals"))}
           className={cn(LINK, "text-muted-foreground")}
           data-testid={`task-grant-approval-${index}`}
         >

@@ -12,6 +12,15 @@ const bridge: ConnectBridge = {
   updateSettings: (patch) => ipcRenderer.invoke(CONNECT_CHANNELS.updateSettings, patch),
   showView: (view) => ipcRenderer.invoke(CONNECT_CHANNELS.showView, view),
   updateAction: () => ipcRenderer.invoke(CONNECT_CHANNELS.updateAction),
+  reportProblem: () => ipcRenderer.invoke(CONNECT_CHANNELS.reportProblem),
+  chooseWorkspace: (tenantId) =>
+    ipcRenderer.invoke(CONNECT_CHANNELS.chooseWorkspace, String(tenantId)),
+  answerNotifications: (allow) =>
+    ipcRenderer.invoke(CONNECT_CHANNELS.answerNotifications, allow === true),
+  answerDiagnostics: (share) =>
+    ipcRenderer.invoke(CONNECT_CHANNELS.answerDiagnostics, share === true),
+  checkInvite: (link) => ipcRenderer.invoke(CONNECT_CHANNELS.checkInvite, String(link)),
+  joinInvite: (link) => ipcRenderer.invoke(CONNECT_CHANNELS.joinInvite, String(link)),
   onState: (listener) => {
     ipcRenderer.on(CONNECT_CHANNELS.state, (_event, state: ConnectState) => listener(state));
   },

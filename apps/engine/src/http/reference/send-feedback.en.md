@@ -68,6 +68,10 @@ Password and secret fields are hidden in the picture. Anything shown openly in t
 
 When the app is not signed in, **Report a problem…** opens the **Diagnostics** dialog instead, with **Copy diagnostics** and **Save as file…**. The data contains the app version, operating system, server version and the last 10 errors. Add it to your message to the person who runs your server.
 
+### Write a report while offline
+
+If SubKit cannot reach the server, write the report anyway and select **Queue**. SubKit sends it as soon as the connection is back, one report at a time, and keeps the time you wrote it. If you were signed out in the meantime, it waits until you sign in again. Each report is sent only once, even when a send is repeated. A report that could not be sent within 14 days is dropped.
+
 ### Limits
 
 - **Email addresses in your text stay.** That is deliberate: your text is yours and is sent as you wrote it. The server removes only secrets and file paths from it. It removes email addresses from the diagnostic report, from text files and from file names.
@@ -91,6 +95,6 @@ When the app is not signed in, **Report a problem…** opens the **Diagnostics**
 
 ### The same over the HTTP API
 
-`POST /v1/feedback` accepts a report. The route only works with a browser session and needs no permission of its own. It answers `201` with the fields `id` and `intake_item_id`.
+`POST /v1/feedback` accepts a report. The route only works with a browser session and needs no permission of its own. It answers `201` with the fields `id`, `intake_item_id` and `replayed`. `replayed` is `true` when the same `client_request_id` was filed before.
 
 Every field, limit and error code is listed in “Reference: desktop app, rules, schedules and problem reports”.

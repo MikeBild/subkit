@@ -33,9 +33,9 @@ Den Unterschied zur installierten Web-App zeigt die Tabelle in „Cockpit als Ap
 
 ### Mit einem Server verbinden
 
-1. Starte SubKit Desktop. Du siehst „Mit SubKit verbinden“.
-2. Gib unter **Server-Adresse** die Adresse deines Servers ein und wähle **Server prüfen**.
-3. Lies das Ergebnis. Bei „SubKit … gefunden. Du kannst dich anmelden.“ passt alles.
+1. Starte SubKit Desktop. Du siehst „Server verbinden“.
+2. Gib unter **Serveradresse** die Adresse deines Servers ein und wähle **Verbindung prüfen**. Unter **Beispiele** stehen die Server, die die App schon kennt, und `localhost:3000`.
+3. Lies das Ergebnis. Bei „Verbunden“ mit grüner Verbindung passt alles, und **Weiter** führt zur Anmeldung.
 
 Die App prüft dabei, ob unter der Adresse ein SubKit-Server antwortet und ob die Versionen zusammenpassen: Der Server muss neu genug für die App sein und die App neu genug für den Server.
 
@@ -43,13 +43,13 @@ Die App prüft dabei, ob unter der Adresse ein SubKit-Server antwortet und ob di
 
 Die Anmeldung läuft in deinem Browser, nicht in der App. So nutzt du die Anmeldung, die du schon kennst, und die App sieht dein Passwort nie.
 
-1. Wähle **Im Browser anmelden**. Dein Browser öffnet sich, und die App zeigt „Dein Browser ist geöffnet. Melde dich dort an, dann geht es hier automatisch weiter.“
+1. Wähle im Schritt „Anmelden im Browser“ **Browser öffnen**. Dein Browser öffnet sich, und die App zeigt „Warte auf Bestätigung im Browser …“.
 2. Melde dich im Browser am Cockpit an, falls du es dort noch nicht bist.
 3. Lies die Seite „Bei SubKit Desktop anmelden“. Sie nennt den Namen deines Rechners, den Arbeitsbereich und das Konto, zum Beispiel „SubKit Desktop auf MacBook-Anna möchte sich bei Brennwerk anmelden.“ und „Angemeldet als anna@example.com“.
 4. Wähle **Anmelden**. Fahre nur fort, wenn du diese Anmeldung gerade selbst in der App auf diesem Gerät gestartet hast.
-5. Der Browser gibt an die App zurück. Die App zeigt „Anmeldung wird abgeschlossen …“ und öffnet danach das Cockpit.
+5. Der Browser gibt an die App zurück. Die App zeigt „Anmeldung wird abgeschlossen …“ und danach „Angemeldet“ mit Server, Version und Gerät. **SubKit öffnen** öffnet das Cockpit.
 
-Mit **Abbrechen** auf der Seite im Browser oder **Anmeldung abbrechen** in der App passiert nichts: Es entsteht kein Profil und kein Gerät.
+Mit **Abbrechen** auf der Seite im Browser oder **Abbrechen** in der App passiert nichts: Es entsteht kein Profil und kein Gerät.
 Die Seite im Browser gilt 10 Minuten. Danach startest du die Anmeldung in der App neu.
 
 ### Geräte und Abmelden
@@ -58,7 +58,7 @@ Jeder Rechner, auf dem du dich mit SubKit Desktop anmeldest, ist ein eigenes Ger
 
 - **Abmelden** im **Benutzermenü** des Cockpits beendet die Sitzung dieses Geräts. Deine Sitzung im Browser und andere Geräte bleiben angemeldet.
 - **Entfernen** in der Liste **Deine Server** löscht die lokale Sitzung und das Profil. Auf dem Server ändert sich nichts.
-- **Ein Gerät widerrufen** meldet es von außen ab, zum Beispiel nach einem Verlust. Die App zeigt dann innerhalb weniger Sekunden „Dieses Gerät wurde in SubKit abgemeldet. Melde dich neu an, um es wieder zu verbinden.“
+- **Ein Gerät widerrufen** meldet es von außen ab, zum Beispiel nach einem Verlust. Die App zeigt dann innerhalb weniger Sekunden „Abgemeldet von …“ mit **Neu anmelden**.
 
 Deine Geräte siehst du im Cockpit unter **Einstellungen** › **Dein Profil** › **Wo bist du angemeldet?**. Die Liste zeigt die installierte Web-App und jedes Desktop-Gerät mit Art, Namen, dem Tag der Anmeldung und der letzten Nutzung. Das Gerät, an dem du gerade sitzt, trägt die Marke **Dieses Gerät**.
 

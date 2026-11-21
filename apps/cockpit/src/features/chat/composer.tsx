@@ -29,6 +29,8 @@ import { type ChatText, composerAnswerAccepted } from "@/pages/chat-text";
 import { useMentionCandidates, useSeedMentionReferences } from "@/queries/mention-sources";
 import type { RestoreComposer } from "./labels";
 import { AttachmentChip } from "./parts";
+import type { TrayChip } from "./tray-model";
+import { ComposerTrayChips } from "./tray-view";
 
 export function ChatComposer({
   disabled,
@@ -44,6 +46,9 @@ export function ChatComposer({
   onStop,
   restoreRef,
   answer,
+  tray = [],
+  onOpenTray = () => {},
+  onRemoveTray = () => {},
 }: {
   disabled: boolean;
   locked: boolean;
@@ -58,6 +63,9 @@ export function ChatComposer({
   onStop: () => void;
   restoreRef: MutableRefObject<RestoreComposer | null>;
   answer: ChatText | null;
+  tray?: readonly TrayChip[];
+  onOpenTray?: (chip: TrayChip) => void;
+  onRemoveTray?: (id: string) => void;
 }) {
   const { t } = useI18n();
   const session = useSession();
@@ -149,7 +157,7 @@ export function ChatComposer({
             onSubmit={async ({ text }) => {
               if (seedPending) return;
               const trimmed = text.trim();
-              if (!trimmed && attachments.length === 0) return;
+              if (!trimmed && attachments.length === 0 && tray.length === 0) return;
               if (!composerAnswerAccepted(answer, trimmed)) {
                 setAnswerRejected(true);
                 throw new Error("answer rejected");
@@ -161,7 +169,7 @@ export function ChatComposer({
               if (!(await onSend(trimmed, sent))) throw new Error("request handed back");
             }}
           >
-            {attachments.length > 0 ? (
+            {attachments.length > 0 || tray.length > 0 ? (
               <PromptInputHeader className="p-0" data-testid="chat-attachments">
                 {attachments.map((attachment, index) => (
                   <AttachmentChip
@@ -174,6 +182,7 @@ export function ChatComposer({
                     testId={`chat-attachment-${index}`}
                   />
                 ))}
+                <ComposerTrayChips chips={tray} onOpen={onOpenTray} onRemove={onRemoveTray} />
               </PromptInputHeader>
             ) : null}
             <PromptInputBody>

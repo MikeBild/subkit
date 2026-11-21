@@ -4,6 +4,8 @@ export interface EnvHandle {
   restore(): void;
 }
 
+export const TEST_MASTER_KEY = `${"0".repeat(63)}1`;
+
 export function withTestEnv(overrides: EnvOverrides): EnvHandle {
   const snapshot = new Map<string, string | undefined>();
   for (const key of Object.keys(overrides)) {

@@ -63,12 +63,13 @@ export function ChatContextDock({
       data-presentation="docked"
       aria-labelledby="chat-context-title"
     >
-      <div className="flex h-18 shrink-0 items-center gap-2 border-b px-4">
+      <div className="flex h-18 shrink-0 items-center gap-2 border-b px-4 pt-6 pb-2">
         <SectionHeading id="chat-context-title" className="min-w-0 flex-1 text-sm font-semibold">
           {t(playbook ? "chat.playbook.title" : "chat.context.title")}
         </SectionHeading>
         <IconButton
           label={t("common.close")}
+          size="icon"
           data-testid="chat-context-close"
           onClick={dock.closeContext}
         >

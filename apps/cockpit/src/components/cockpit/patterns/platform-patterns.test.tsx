@@ -202,8 +202,8 @@ describe("DataTable", () => {
     expect(priorityClass("high")).toBeUndefined();
     const html = table();
     expect(html).toContain("hidden @4xl:table-cell");
-    expect(html).toContain("@4xl:block");
-    expect(html).toContain("@4xl:hidden");
+    expect(html).toContain("@xl:block");
+    expect(html).toContain("@xl:hidden");
   });
 
   test("a phone card reads like a row: the name as link, then up to two facts without labels", () => {
@@ -252,7 +252,7 @@ describe("DataTable", () => {
     const html = table({ collectionTier: "embedded", layout: "rows" });
     expect(html).toContain('data-testid="t-desktop"');
     expect(html).not.toContain('data-testid="t-mobile"');
-    expect(html).not.toContain("@4xl:block");
+    expect(html).not.toContain("@xl:block");
     expect(html).not.toContain("data-family-collection-mobile-card");
     expect(html).not.toContain("responsive-cards");
   });
@@ -293,7 +293,7 @@ describe("row motion", () => {
 
 describe("loading shapes", () => {
   test("PageHeader keeps title bar, badge and action placeholders, and an h1", async () => {
-    const html = await renderInRouter(<PageHeader title="Läufe" loading />);
+    const html = await renderInRouter(<PageHeader title="Runs" loading />);
     expect(html).toContain('data-loading-phase="reserve"');
     expect(html).toContain("<h1");
     expect(html.match(/data-slot="skeleton"/g)?.length).toBe(3);

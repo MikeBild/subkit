@@ -1,102 +1,95 @@
-import {
-  createContext,
-  type ReactNode,
-  useCallback,
-  useContext,
-  useLayoutEffect,
-  useMemo,
-  useState,
-} from "react";
-import { SidebarTrigger } from "@/components/ui/sidebar";
+import { Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { IconButton } from "@/components/cockpit/icon-button";
+import { InstallationNotificationControl } from "@/components/cockpit/installation-dialogs";
+import { useSidebar } from "@/components/ui/sidebar";
+import { FeedbackButton } from "@/features/feedback";
 import { useI18n } from "@/lib/i18n-context";
+import { cn } from "@/lib/utils";
+import { useAttentionFresh } from "./attention-seen";
+import { useLiveStatus } from "./live-events";
+import { AttentionDot, LiveIndicator } from "./live-indicator";
+import { useSession } from "./session";
+import { SidePanelToggle } from "./side-panel";
 
 export const CHAT_COLUMN = "w-full min-w-0 max-w-[80rem]";
 
 export const ACCOUNT_TRIGGER =
   "h-auto min-h-12 items-center py-2 group-data-[collapsible=icon]:min-h-0";
 
-type TriggerOwner = "bar" | "page";
+export const SHELL_BAR = "flex h-14 shrink-0 items-center border-b";
 
-export function triggerOwner(input: {
+export const BAR_TOGGLE = "aria-expanded:bg-transparent aria-expanded:hover:bg-secondary";
+
+export type SidebarToggleIcon = "menu" | "collapse" | "expand";
+
+export function sidebarToggleIcon(input: {
   mobile: boolean;
-  chatHeader: boolean;
-  pageFrames: number;
-}): TriggerOwner {
-  if (input.mobile || input.chatHeader || input.pageFrames === 0) return "bar";
-  return "page";
+  expanded: boolean;
+}): SidebarToggleIcon {
+  if (input.mobile) return "menu";
+  return input.expanded ? "collapse" : "expand";
 }
 
-interface ShellHeaderValue {
-  owner: TriggerOwner;
-  slot: HTMLElement | null;
-  claimPageFrame(): () => void;
-  claimChatHeader(): () => void;
-}
-
-const ShellHeaderContext = createContext<ShellHeaderValue>({
-  owner: "bar",
-  slot: null,
-  claimPageFrame: () => () => {},
-  claimChatHeader: () => () => {},
-});
-
-export function useShellHeaderState(): {
-  pageFrames: number;
-  chatHeaders: number;
-  slot: HTMLElement | null;
-  setSlot(node: HTMLElement | null): void;
-  claimPageFrame(): () => void;
-  claimChatHeader(): () => void;
-} {
-  const [pageFrames, setPageFrames] = useState(0);
-  const [chatHeaders, setChatHeaders] = useState(0);
-  const [slot, setSlot] = useState<HTMLElement | null>(null);
-  const claimPageFrame = useCallback(() => {
-    setPageFrames((count) => count + 1);
-    return () => setPageFrames((count) => count - 1);
-  }, []);
-  const claimChatHeader = useCallback(() => {
-    setChatHeaders((count) => count + 1);
-    return () => setChatHeaders((count) => count - 1);
-  }, []);
-  return {
-    pageFrames,
-    chatHeaders,
-    slot,
-    setSlot,
-    claimPageFrame,
-    claimChatHeader,
-  };
-}
-
-export function ShellHeaderProvider({
-  owner,
-  slot,
-  claimPageFrame,
-  claimChatHeader,
-  children,
-}: ShellHeaderValue & { children: ReactNode }) {
-  const value = useMemo(
-    () => ({ owner, slot, claimPageFrame, claimChatHeader }),
-    [owner, slot, claimPageFrame, claimChatHeader],
-  );
-  return <ShellHeaderContext.Provider value={value}>{children}</ShellHeaderContext.Provider>;
-}
-
-export function usePageFrameTrigger(): boolean {
-  const { owner, claimPageFrame } = useContext(ShellHeaderContext);
-  useLayoutEffect(() => claimPageFrame(), [claimPageFrame]);
-  return owner === "page";
-}
+const TOGGLE_ICON = {
+  menu: Menu,
+  collapse: PanelLeftClose,
+  expand: PanelLeftOpen,
+} as const;
 
 export function SidebarToggle({ className }: { className?: string }) {
   const { t } = useI18n();
+  const { isMobile, openMobile, state, toggleSidebar, triggerRef } = useSidebar();
+  const Icon = TOGGLE_ICON[sidebarToggleIcon({ mobile: isMobile, expanded: state === "expanded" })];
+  const label = t("nav.toggle");
   return (
-    <SidebarTrigger
-      className={className}
-      label={t("nav.toggle")}
-      aria-label={t("nav.toggle")}
+    <IconButton
+      label={label}
+      size="icon"
+      tooltip={`${label} (⌘B)`}
+      className={cn(BAR_TOGGLE, className)}
+      aria-expanded={isMobile ? openMobile : state === "expanded"}
+      aria-keyshortcuts="Meta+B Control+B"
+      data-sidebar="trigger"
+      data-slot="sidebar-trigger"
       data-testid="sidebar-trigger"
-    />
+      onClick={(event) => {
+        triggerRef.current = event.currentTarget;
+        toggleSidebar();
+      }}
+    >
+      <Icon />
+    </IconButton>
+  );
+}
+
+function NavigationToggle() {
+  const session = useSession();
+  const fresh = useAttentionFresh(session);
+  const { isMobile } = useSidebar();
+  if (!isMobile || !fresh) return <SidebarToggle className="-ml-3 shrink-0" />;
+  return (
+    <span className="relative -ml-3 inline-flex shrink-0" data-testid="sidebar-trigger-attention">
+      <SidebarToggle className="shrink-0" />
+      <AttentionDot stopped={fresh.stopped} className="top-1.5 right-1.5" />
+    </span>
+  );
+}
+
+export function ShellHeader() {
+  const { status } = useLiveStatus();
+  return (
+    <header
+      className={`${SHELL_BAR} gap-2 px-4 sm:px-8`}
+      data-slot="shell-header"
+      data-testid="cockpit-header"
+    >
+      <NavigationToggle />
+      <LiveIndicator status={status} />
+      <div className="ml-auto flex shrink-0 items-center gap-2" data-slot="shell-header-actions">
+        <InstallationNotificationControl />
+        <FeedbackButton />
+        <SidePanelToggle className={cn(BAR_TOGGLE, "-mr-3 shrink-0")} />
+      </div>
+    </header>
   );
 }

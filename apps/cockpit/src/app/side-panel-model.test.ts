@@ -9,6 +9,7 @@ import {
   SIDE_PANEL_INITIAL,
   serializeSidePanelState,
   shownSidePanelTab,
+  sidePanelContextName,
   sidePanelSubject,
   sidePanelTabs,
   technicalFactsPlace,
@@ -72,5 +73,29 @@ describe("side panel model", () => {
     expect(keyedSidePanelWidth(400, "ArrowRight")).toBe(384);
     expect(keyedSidePanelWidth(400, "Home")).toBe(560);
     expect(keyedSidePanelWidth(400, "Enter")).toBeNull();
+  });
+});
+
+describe("sidePanelContextName", () => {
+  test("names what the page shows: its own title first", () => {
+    expect(
+      sidePanelContextName({ pageTitle: "Lieferavise zusammenfassen", navLabel: "Workflows" }),
+    ).toBe("Lieferavise zusammenfassen");
+  });
+
+  test("falls back to the navigation entry while the page has no title yet", () => {
+    expect(sidePanelContextName({ pageTitle: null, navLabel: "Übersicht" })).toBe("Übersicht");
+    expect(sidePanelContextName({ pageTitle: "  ", navLabel: "Übersicht" })).toBe("Übersicht");
+  });
+
+  test("says nothing when neither is known", () => {
+    expect(sidePanelContextName({ pageTitle: null, navLabel: null })).toBeNull();
+  });
+});
+
+describe("file subjects", () => {
+  test("a file record keeps its fid_ id so the panel can attach it", () => {
+    expect(sidePanelSubject(`/files/fid_${ID}`)).toEqual({ type: "file", id: `fid_${ID}` });
+    expect(sidePanelSubject(`/files/${ID}`)).toBeNull();
   });
 });

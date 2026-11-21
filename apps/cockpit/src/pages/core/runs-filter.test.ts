@@ -4,9 +4,9 @@ import {
   failedStatusesFor,
   filterFromUrl,
   initialRunsFilter,
-  runOverlayFromUrl,
-  runOverlaySearch,
   runsFilterSearch,
+  runsSheetOpen,
+  runsSheetSearch,
 } from "./runs-filter.ts";
 
 const workflow = "ABCDEF01-2345-6789-ABCD-0123456789AB";
@@ -93,24 +93,17 @@ test("blank filters and URL edits preserve unrelated navigation state", () => {
     expect(failedStatusesFor(status)).toBeNull();
 });
 
-test("run overlays validate bounded identifiers and close only their own URL state", () => {
-  expect(runOverlayFromUrl("?runs=all&run=%20a_B.1:2-3%20")).toEqual({
-    list: true,
-    runId: "a_B.1:2-3",
-  });
-  expect(runOverlayFromUrl("?runs=other")).toEqual({ list: false, runId: null });
-  expect(runOverlayFromUrl(`?run=${"a".repeat(128)}`).runId).toBe("a".repeat(128));
-  for (const raw of ["", "a".repeat(129), "a/b", "x!", "!x"]) {
-    expect(runOverlayFromUrl(new URLSearchParams({ run: raw }).toString()).runId).toBeNull();
-  }
-  expect(runOverlaySearch("?keep=1", { list: true, runId: "id" })).toBe("?keep=1&runs=all&run=id");
+test("the runs sheet closes only its own URL state", () => {
+  expect(runsSheetOpen("?runs=all")).toBe(true);
+  expect(runsSheetOpen("?runs=other")).toBe(false);
+  expect(runsSheetSearch("?keep=1", true)).toBe("?keep=1&runs=all");
   expect(
-    runOverlaySearch(
-      "?runs=all&run=id&runs_status=failed&runs_source=cli&runs_q=x&runs_workflow=x&runs_from=x&runs_to=x&keep=1",
-      { list: false, runId: null },
+    runsSheetSearch(
+      "?runs=all&runs_status=failed&runs_source=cli&runs_q=x&runs_workflow=x&runs_from=x&runs_to=x&keep=1",
+      false,
     ),
   ).toBe("?keep=1");
-  expect(runOverlaySearch("?runs=all&run=id", { list: false, runId: null })).toBe("");
+  expect(runsSheetSearch("?runs=all", false)).toBe("");
 });
 
 test("initial date range defaults to a week only without an explicit navigation scope", () => {
@@ -121,7 +114,6 @@ test("initial date range defaults to a week only without an explicit navigation 
     startedTo: "2026-01-08T00:00:00.000Z",
   });
   for (const search of [
-    "?run=",
     "?runs_from=2026-01-01T00:00Z",
     "?runs_to=2026-01-07T00:00Z",
     `?runs_workflow=${workflow}`,

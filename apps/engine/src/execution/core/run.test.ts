@@ -5,6 +5,7 @@ import {
   continuedStepWarning,
   decideStepFailure,
   findHeldDependency,
+  heldWriteSteps,
   skippedAfterFailure,
   stepErrorOf,
   stopsRunOnFailure,
@@ -17,6 +18,44 @@ const idArb = fc.constantFrom("a", "b", "c", "d");
 const edgesArb = fc.array(fc.record({ from: idArb, to: idArb }), { maxLength: 8 });
 const errorArb = fc.option(fc.record({ code: fc.string(), message: fc.string() }), {
   nil: undefined,
+});
+
+describe("heldWriteSteps", () => {
+  const step = {
+    step_index: 0,
+    kind: "request",
+    status: "succeeded" as const,
+    duration_ms: 1,
+    retry_count: 0,
+    error: null,
+    request_meta: null,
+  };
+  test("names only the steps whose write was held", () => {
+    expect(
+      heldWriteSteps([
+        { ...step, step_key: "read" },
+        {
+          ...step,
+          step_key: "send",
+          held: true,
+          held_request: {
+            method: "POST",
+            url: "https://api.test/send",
+            headers_redacted: {},
+            body: null,
+          },
+        },
+        { ...step, step_key: "loop[0]", held: true },
+      ]),
+    ).toEqual([
+      { step_key: "send", method: "POST" },
+      { step_key: "loop[0]", method: null },
+    ]);
+  });
+
+  test("a run that held nothing names no step", () => {
+    expect(heldWriteSteps([{ ...step, step_key: "read" }])).toEqual([]);
+  });
 });
 
 describe("findHeldDependency", () => {

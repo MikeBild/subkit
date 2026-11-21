@@ -15,6 +15,7 @@ import {
 } from "@/components/cockpit/patterns";
 import { RecordTable } from "@/components/cockpit/record-table";
 import { MISSING, tableColumns } from "@/components/cockpit/table-columns";
+import { fetchCurrentVersionDag } from "@/features/admin";
 import { reportFailure } from "@/lib/action-failure";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
@@ -31,7 +32,6 @@ import {
   workflowVersionState,
   workflowVersionView,
 } from "@/lib/workflow-versions";
-import { fetchCurrentVersionDag } from "@/pages/apps-model";
 
 const VERSION_PAGE = 20;
 

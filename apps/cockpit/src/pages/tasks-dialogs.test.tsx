@@ -9,7 +9,7 @@ const label = (document: Document, testId: string) =>
   document.querySelector(`[data-testid="${testId}"]`)?.textContent?.trim() ?? "";
 
 for (const [locale, title, confirm, dismiss] of [
-  ["de", "Lauf von „Wetter Berlin“ abbrechen?", "Lauf abbrechen", "Zurück"],
+  ["de", "Run von „Wetter Berlin“ abbrechen?", "Run abbrechen", "Zurück"],
   ["en", "Stop run of “Wetter Berlin”?", "Stop run", "Back"],
 ] as const)
   isolated(
@@ -64,7 +64,7 @@ isolated("stopping a run without a known task name still has two different butto
       );
     },
     async (stage) => {
-      expect(stage.text("chat-task-run-abort-dialog-title")).toBe("Lauf abbrechen?");
+      expect(stage.text("chat-task-run-abort-dialog-title")).toBe("Run abbrechen?");
       expect(label(stage.document, "chat-task-run-abort-dialog-confirm")).not.toBe(
         label(stage.document, "chat-task-run-abort-dialog-cancel"),
       );

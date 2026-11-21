@@ -94,6 +94,8 @@ export const executions = pgTable(
       connector?: { connector_id: string | null; reason: string };
     } | null>(),
     output_contract: text("output_contract"),
+    result_markdown: text("result_markdown"),
+    result_markdown_truncated: boolean("result_markdown_truncated").notNull().default(false),
     guard_bucket: text("guard_bucket"),
     guard_unit_key: text("guard_unit_key"),
     started_at: timestamp("started_at", { withTimezone: true }),

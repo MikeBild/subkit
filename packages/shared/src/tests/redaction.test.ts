@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   DEFAULT_REDACTED,
   findSecretSpans,
+  redactedRequestTarget,
   redactSecretShapes,
   redactWithMaxDepth,
   referencesKeyMaterialPath,
@@ -474,5 +475,26 @@ describe("redactSecretShapes", () => {
     const out = redactSecretShapes("https://files.example.test/a.pdf?X-Amz-Signature=abc123&x=1");
     expect(out.count).toBe(1);
     expect(out.text).toBe("https://files.example.test/a.pdf?<presign-redacted>");
+  });
+});
+
+describe("redactedRequestTarget", () => {
+  test("keeps origin and path, drops credentials, query and fragment", () => {
+    expect(
+      redactedRequestTarget("https://user:pass@api.example.test:8443/v1/orders?token=abc#top"),
+    ).toBe("https://api.example.test:8443/v1/orders");
+  });
+
+  test("keeps path placeholders readable", () => {
+    expect(redactedRequestTarget("https://api.example.test/v1/items/{id}/notes")).toBe(
+      "https://api.example.test/v1/items/{id}/notes",
+    );
+  });
+
+  test("names no target for a missing, non-http or malformed address", () => {
+    expect(redactedRequestTarget(null)).toBeNull();
+    expect(redactedRequestTarget("")).toBeNull();
+    expect(redactedRequestTarget("postgres://db.example.test/app")).toBeNull();
+    expect(redactedRequestTarget("not a url")).toBeNull();
   });
 });

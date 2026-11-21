@@ -1,0 +1,251 @@
+/* SubKit design-system tokens (Lovable `src/styles.css`).
+ *
+ * The base palette (background, foreground, primary, accent, destructive, warning, success,
+ * border, ring, sidebar …) comes from the app: in the Cockpit it is the cockpit-ui family
+ * contract in apps/cockpit/src/index.css, whose values are the same Tailwind slate/blue/red/
+ * amber/emerald steps Lovable uses. This file adds what the design system needs on top:
+ * one readable "ink" colour per tone, the control and dialog radii, the display size, the
+ * window shadow and the Markdown document typography. Values are Lovable's, unchanged.
+ *
+ * Import it after the app's palette and point Tailwind at the sources:
+ *   @import "<path>/packages/ui/src/styles/tokens.css";
+ *   @source "<path>/packages/ui/src";
+ */
+
+@theme inline {
+  --radius-control: 0.5rem;
+  --radius-dialog: 1rem;
+  --text-display: 2rem;
+  --text-display--line-height: 2.5rem;
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success-ink: var(--success-ink);
+  --color-warning-ink: var(--warning-ink);
+  --color-destructive-ink: var(--destructive-ink);
+  --color-info-ink: var(--info-ink);
+  --shadow-window: var(--shadow-window);
+  --color-segment-selected: var(--segment-selected);
+  --color-segment-selected-foreground: var(--segment-selected-foreground);
+  --color-segment-selected-ring: var(--segment-selected-ring);
+}
+
+:root {
+  --destructive-foreground: oklch(0.984 0.003 247.858);
+  --success-ink: oklch(0.508 0.118 165.612);
+  --warning-ink: oklch(0.555 0.163 48.998);
+  --destructive-ink: oklch(0.505 0.213 27.518);
+  --info-ink: oklch(0.488 0.243 264.376);
+  --shadow-window:
+    0 24px 60px -20px oklch(0.2 0.04 265 / 0.35), 0 2px 6px oklch(0.2 0.04 265 / 0.08);
+  --segment-selected: #ffffff;
+  --segment-selected-foreground: #0f172a;
+  --segment-selected-ring: #64748b;
+}
+
+.dark {
+  --destructive-foreground: oklch(0.129 0.042 264.695);
+  --success-ink: oklch(0.765 0.177 163.223);
+  --warning-ink: oklch(0.828 0.189 84.429);
+  --destructive-ink: oklch(0.704 0.191 22.216);
+  --info-ink: oklch(0.707 0.165 254.624);
+  --shadow-window: 0 24px 60px -20px oklch(0 0 0 / 0.7), 0 2px 6px oklch(0 0 0 / 0.4);
+  --segment-selected: #334155;
+  --segment-selected-foreground: #f8fafc;
+  --segment-selected-ring: #94a3b8;
+}
+
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+@keyframes caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@utility animate-caret {
+  animation: caret-blink 1s step-end infinite;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+/* ---------- MarkdownDocument typography ---------- */
+@layer components {
+  .md-doc {
+    max-width: 65ch;
+    font-size: 14px;
+    line-height: 24px;
+    color: var(--color-foreground);
+    overflow-wrap: anywhere;
+  }
+  .md-doc > * + * {
+    margin-top: 12px;
+  }
+  .md-doc > :first-child {
+    margin-top: 0;
+  }
+  .md-doc h2,
+  .md-doc h3,
+  .md-doc h4,
+  .md-doc h5,
+  .md-doc h6 {
+    font-family: var(--font-heading);
+    font-weight: 600;
+    text-wrap: balance;
+    scroll-margin-top: 16px;
+  }
+  .md-doc h2 {
+    font-size: 20px;
+    line-height: 28px;
+    margin-top: 32px;
+  }
+  .md-doc h3 {
+    font-size: 16px;
+    line-height: 24px;
+    margin-top: 24px;
+  }
+  .md-doc h4,
+  .md-doc h5,
+  .md-doc h6 {
+    font-size: 14px;
+    line-height: 20px;
+    margin-top: 16px;
+  }
+  .md-doc ul {
+    list-style: disc;
+    padding-left: 24px;
+  }
+  .md-doc ol {
+    list-style: decimal;
+    padding-left: 24px;
+  }
+  .md-doc li + li {
+    margin-top: 4px;
+  }
+  .md-doc li > ul,
+  .md-doc li > ol {
+    margin-top: 4px;
+  }
+  .md-doc ul:has(> li > input[type="checkbox"]) {
+    list-style: none;
+    padding-left: 0;
+  }
+  .md-doc li > input[type="checkbox"] {
+    margin-right: 8px;
+    accent-color: var(--color-primary);
+    vertical-align: -2px;
+  }
+  .md-doc strong {
+    font-weight: 600;
+  }
+  .md-doc a {
+    color: var(--color-info-ink);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .md-doc :not(pre) > code {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    background: var(--color-muted);
+    border-radius: 4px;
+    padding: 1px 4px;
+  }
+  .md-doc blockquote {
+    border-left: 2px solid var(--color-accent);
+    padding-left: 16px;
+    color: var(--color-muted-foreground);
+  }
+  .md-doc hr {
+    border-color: var(--color-border);
+    margin: 24px 0;
+  }
+  .md-doc .md-table {
+    overflow-x: auto;
+    border-radius: 8px;
+    box-shadow: inset 0 0 0 1px var(--color-border);
+  }
+  .md-doc table {
+    width: 100%;
+    font-size: 14px;
+    border-collapse: collapse;
+  }
+  .md-doc th {
+    text-align: left;
+    font-weight: 500;
+    font-size: 12px;
+    color: var(--color-muted-foreground);
+    height: 40px;
+  }
+  .md-doc th,
+  .md-doc td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .md-doc th:first-child,
+  .md-doc td:first-child {
+    padding-left: 16px;
+  }
+  .md-doc tr:last-child td {
+    border-bottom: 0;
+  }
+  .md-doc .md-table {
+    max-width: none;
+  }
+  .md-code {
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-muted);
+    overflow: hidden;
+  }
+  .md-compact {
+    font-size: inherit;
+    line-height: 20px;
+  }
+  .md-compact > * + * {
+    margin-top: 8px;
+  }
+  .md-compact h2,
+  .md-compact h3 {
+    font-size: 14px;
+    line-height: 20px;
+    margin-top: 12px;
+  }
+  .hljs-keyword,
+  .hljs-selector-tag,
+  .hljs-built_in,
+  .hljs-literal {
+    color: var(--color-info-ink);
+  }
+  .hljs-string,
+  .hljs-attr + .hljs-string,
+  .hljs-regexp {
+    color: var(--color-success-ink);
+  }
+  .hljs-number,
+  .hljs-symbol,
+  .hljs-bullet {
+    color: var(--color-warning-ink);
+  }
+  .hljs-attr,
+  .hljs-attribute,
+  .hljs-property,
+  .hljs-name,
+  .hljs-tag {
+    color: var(--color-destructive-ink);
+  }
+  .hljs-comment,
+  .hljs-quote,
+  .hljs-meta {
+    color: var(--color-muted-foreground);
+    font-style: italic;
+  }
+  .hljs-title,
+  .hljs-section,
+  .hljs-type {
+    font-weight: 600;
+  }
+}

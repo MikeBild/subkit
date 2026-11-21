@@ -411,3 +411,49 @@ describe("LLM aggregation", () => {
     expect(extractGroup?.totals.calls).toBe(1);
   });
 });
+
+describe("zero-filled buckets", () => {
+  type Bucket = { ts: string; executions?: number; calls?: number };
+  type Body = { groups: Array<{ key: Record<string, string>; buckets: Bucket[] }> };
+
+  test("executions: every hour of the day is listed, empty hours carry zero", async () => {
+    const body = (await (await authedFetch(`/v1/stats/executions?${WIN}`)).json()) as Body;
+    expect(body.groups).toHaveLength(1);
+    const buckets = body.groups[0]!.buckets;
+    expect(buckets).toHaveLength(24);
+    expect(buckets[0]!.ts).toBe("2026-01-15T00:00:00.000Z");
+    expect(buckets[23]!.ts).toBe("2026-01-15T23:00:00.000Z");
+    expect(buckets[0]!.executions).toBe(0);
+    expect(buckets[8]!.executions).toBe(1);
+  });
+
+  test("executions: fill=none keeps only the buckets with data", async () => {
+    const body = (await (
+      await authedFetch(`/v1/stats/executions?${WIN}&fill=none`)
+    ).json()) as Body;
+    expect(body.groups[0]!.buckets).toHaveLength(3);
+  });
+
+  test("executions: a window without runs still yields one all-zero group", async () => {
+    const empty = `bucket=day&from=${encodeURIComponent("2025-03-01T00:00:00.000Z")}&to=${encodeURIComponent("2025-03-08T00:00:00.000Z")}`;
+    const body = (await (await authedFetch(`/v1/stats/executions?${empty}`)).json()) as Body;
+    expect(body.groups).toHaveLength(1);
+    expect(body.groups[0]!.buckets.map((b) => b.executions)).toEqual([0, 0, 0, 0, 0, 0, 0]);
+  });
+
+  test("executions: each group_by group is filled on its own", async () => {
+    const body = (await (
+      await authedFetch(`/v1/stats/executions?${WIN}&group_by=status`)
+    ).json()) as Body;
+    expect(body.groups.length).toBeGreaterThan(1);
+    for (const group of body.groups) expect(group.buckets).toHaveLength(24);
+  });
+
+  test("llm: every hour is listed and the empty ones carry zero calls", async () => {
+    const body = (await (await authedFetch(`/v1/stats/llm?${WIN}`)).json()) as Body;
+    const buckets = body.groups[0]!.buckets;
+    expect(buckets).toHaveLength(24);
+    expect(buckets.reduce((sum, b) => sum + (b.calls ?? 0), 0)).toBe(3);
+    expect(buckets.filter((b) => b.calls === 0).length).toBeGreaterThan(0);
+  });
+});

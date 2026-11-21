@@ -8,7 +8,7 @@ import { AttentionDot } from "@/app/live-indicator";
 import { useSession } from "@/app/session";
 import { IconButton } from "@/components/cockpit/icon-button";
 import { Button, FormDialog, Switch } from "@/components/cockpit/patterns";
-import { currentInstallGuide } from "@/features/pwa/install-guide";
+import { currentInstallGuide } from "@/features/pwa";
 import { reportFailure } from "@/lib/action-failure";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";

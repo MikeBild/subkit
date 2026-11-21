@@ -1,6 +1,7 @@
 import type { DocsBundle } from "@shared/llms-index";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useRouterState } from "@tanstack/react-router";
+import { ErrorNotice } from "@ui/components/proto/ErrorNotice";
 import { ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
 import {
   type ComponentProps,
@@ -16,7 +17,7 @@ import {
 import { routerTarget } from "@/app/links";
 import { useSession } from "@/app/session";
 import { MessageResponse } from "@/components/ai-elements/message";
-import { ErrorNotice } from "@/components/cockpit/patterns";
+import { renderAction, useErrorNotice } from "@/components/cockpit/patterns";
 import { ActionButton } from "@/components/cockpit/patterns/action-button";
 import { CodeBlock } from "@/components/cockpit/patterns/code-block";
 import { FilterBar } from "@/components/cockpit/patterns/filter-bar";
@@ -74,20 +75,23 @@ function useDocsBundle() {
 
 function LoadFailed({ onRetry, error }: { onRetry?: () => void; error?: unknown }) {
   const { t } = useI18n();
+  const notice = useErrorNotice({
+    error: error ?? undefined,
+    body: t("resource.loadFailedDescription"),
+  });
   return (
     <ErrorNotice
+      {...notice}
       title={t("docs.loadFailed")}
-      body={t("resource.loadFailedDescription")}
-      error={error ?? undefined}
-      remedy={
+      actions={
         onRetry
-          ? {
+          ? renderAction({
               label: t("pattern.retry"),
               variant: "primary",
               size: "sm",
               onClick: onRetry,
               testId: "docs-load-retry",
-            }
+            })
           : undefined
       }
       testId="docs-load-failed"
@@ -95,12 +99,27 @@ function LoadFailed({ onRetry, error }: { onRetry?: () => void; error?: unknown 
   );
 }
 
+const ENGINE_INDEX_HREF = "/engine";
+
 function ReleaseLine({ version }: { version: string | null }) {
   const { t } = useI18n();
-  if (!version) return null;
   return (
-    <FamilyAuditLink className="border-t pt-4 text-xs leading-4" data-testid="docs-release">
-      {t("docs.release", { version })}
+    <FamilyAuditLink
+      className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t pt-4 text-xs leading-4"
+      data-testid="docs-release"
+    >
+      {version ? <span>{t("docs.release", { version })}</span> : null}
+      <a
+        href={ENGINE_INDEX_HREF}
+        target="_blank"
+        rel="noreferrer"
+        className="underline underline-offset-4 hover:text-foreground"
+        data-testid="docs-engine-index"
+      >
+        {t("docs.engineIndex")}
+        <ExternalLink aria-hidden="true" className="ml-0.5 inline size-3 align-[-2px]" />
+        <span className="sr-only"> ({t("docs.external")})</span>
+      </a>
     </FamilyAuditLink>
   );
 }

@@ -35,7 +35,7 @@ export function ConversationHead({
   const { t } = useI18n();
   return (
     <div className="py-3 md:pt-6 md:pb-0" data-testid="chat-conversation-head">
-      <div className="flex min-h-8 items-center gap-2">
+      <div className="flex min-h-10 items-center gap-2">
         <span
           className="min-w-0 flex-1 truncate text-sm font-semibold"
           data-testid="chat-title"
@@ -60,6 +60,7 @@ export function ConversationHead({
         </Button>
         <IconButton
           label={t(playbook ? "chat.playbook.title" : "chat.toggleContext")}
+          size="icon"
           ref={contextToggle}
           data-testid="chat-context-toggle"
           aria-expanded={contextOpen}

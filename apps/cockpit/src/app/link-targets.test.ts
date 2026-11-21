@@ -212,7 +212,7 @@ test("scoped installation addresses retain the page contract", () => {
 
 test("the engine names no retired cockpit address", () => {
   const retired =
-    /^\/cockpit\/(runs|connections|notifications|inbox|decisions|operations|system|today)\b/;
+    /^\/cockpit\/(runs(?!\/)|connections|notifications|inbox|decisions|operations|system|today)\b/;
   const named = engineCockpitAddresses()
     .filter((entry) => retired.test(entry.value))
     .map((entry) => `${entry.file}: ${entry.value}`);

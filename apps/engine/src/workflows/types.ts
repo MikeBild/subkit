@@ -1042,6 +1042,12 @@ export const WorkflowDefSchema = _baseWorkflowDefSchema
 
 export type WorkflowDef = z.infer<typeof WorkflowDefSchema>;
 
+export const WorkflowDraftDefSchema = _baseWorkflowDefSchema
+  .extend({ steps: z.array(StepSchema).max(WORKFLOW_MAX_STEPS) })
+  .openapi("WorkflowDraftDef");
+
+export type WorkflowDraftDef = z.infer<typeof WorkflowDraftDefSchema>;
+
 export const WORKFLOW_DEF_FIELD_KEYS = Object.keys(_baseWorkflowDefSchema.shape) as Array<
   keyof WorkflowDef
 >;

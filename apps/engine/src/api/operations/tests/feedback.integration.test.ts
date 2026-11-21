@@ -14,6 +14,7 @@ import {
   type HttpTestServer,
 } from "../../../http/tests/setup.ts";
 import { getObjectStore } from "../../../storage/object-store.ts";
+import { setTestNow } from "../../../test-helpers/determinism/clock.ts";
 import { pinAdmissionClock } from "../../../test-helpers/pinned-admission-clock.ts";
 import { emptyRoleId } from "../../../test-helpers/roles.ts";
 import { resetFeedbackRateLimiter } from "../feedback.ts";
@@ -98,7 +99,7 @@ describe("POST /v1/feedback", () => {
       screenshot_png_base64: b64(PNG),
     });
     expect(res.status).toBe(201);
-    expect(Object.keys(res.body).sort()).toEqual(["id", "intake_item_id"]);
+    expect(Object.keys(res.body).sort()).toEqual(["id", "intake_item_id", "replayed"]);
 
     const item = await itemOf(res.body.intake_item_id);
     expect(item.category).toBe("feedback");
@@ -169,7 +170,8 @@ describe("POST /v1/feedback", () => {
     const second = await post(body);
     expect(first.status).toBe(201);
     expect(second.status).toBe(201);
-    expect(second.body).toEqual(first.body);
+    expect(second.body).toEqual({ ...first.body, replayed: true });
+    expect(first.body.replayed).toBe(false);
     expect(first.body.id).toBe(body.client_request_id);
     const rows = await ctx.db
       .select()
@@ -236,6 +238,52 @@ describe("POST /v1/feedback", () => {
       { authorization: `Bearer ${ctx.apiKey}`, "content-type": "application/json" },
     );
     expect(key.status).toBe(403);
+  });
+
+  test("a report written offline keeps the time it was written on the device", async () => {
+    const serverNow = Date.parse("2040-03-01T12:00:00.000Z");
+    setTestNow(() => serverNow);
+    try {
+      const written = "2040-03-01T10:00:00.000Z";
+      const queued = await post({
+        client_request_id: "5e5e5e5e-5e5e-4e5e-8e5e-5e5e5e5e5e5e",
+        created_on_device_at: written,
+        kind: "bug",
+        message: "Written on the train",
+      });
+      expect(queued.status).toBe(201);
+      const item = await itemOf(queued.body.intake_item_id);
+      expect(new Date(item.original_snapshot.captured_at).toISOString()).toBe(written);
+
+      const ancient = await post({
+        created_on_device_at: "2001-01-01T00:00:00Z",
+        kind: "bug",
+        message: "A device with a broken clock",
+      });
+      const stored = await itemOf(ancient.body.intake_item_id);
+      expect(new Date(stored.original_snapshot.captured_at).getTime()).toBe(serverNow);
+    } finally {
+      setTestNow(null);
+    }
+  });
+
+  test("a queued retry of a filed report is answered even when the limit is used up", async () => {
+    const clock = pinAdmissionClock(new Date("2040-02-01T12:00:10.000Z"));
+    try {
+      resetFeedbackRateLimiter(createFeedbackRateLimiter({ max: 1, windowMs: 60_000 }));
+      const body = {
+        client_request_id: "6f6f6f6f-6f6f-4f6f-8f6f-6f6f6f6f6f6f",
+        kind: "other",
+        message: "sent once, retried by the queue",
+      };
+      expect((await post(body)).status).toBe(201);
+      expect((await post({ kind: "other", message: "another one" })).status).toBe(429);
+      const retry = await post(body);
+      expect(retry.status).toBe(201);
+      expect(retry.body.replayed).toBe(true);
+    } finally {
+      clock.restore();
+    }
   });
 
   test("limits reports per person", async () => {

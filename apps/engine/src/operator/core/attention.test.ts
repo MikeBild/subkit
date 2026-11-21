@@ -77,6 +77,7 @@ test("attention schema publishes its stable sources, reasons, and subject kinds"
     "task_grant_required",
     "task_grant_expiring",
     "task_owner_unavailable",
+    "pair_approval_requested",
   ]);
   expect(ATTENTION_SUBJECT_KINDS).toEqual([
     "workflow",

@@ -8,6 +8,8 @@ import { latestRun, run, task } from "./tasks-fixtures";
 import { historyLabelKey, historyTitle } from "./tasks-history";
 import {
   actionKey,
+  failureReason,
+  failureRemedies,
   formPlan,
   matchesFilter,
   stateWords,
@@ -17,7 +19,7 @@ import {
   taskRows,
   taskStatus,
 } from "./tasks-model";
-import { stepLines, stepMarkKey, stepResults } from "./tasks-steps";
+import { stepGraphState, stepLines, stepMarkKey, stepResults } from "./tasks-steps";
 import {
   limitEndedLine,
   RUN_LIMIT_CODES,
@@ -236,6 +238,15 @@ describe("steps on the overview", () => {
       expect(de(stepMarkKey(mark))).not.toBe("");
   });
 
+  test("the progress bar fills done steps, rings the current one and a step waiting for you", () => {
+    expect((["done", "active", "waiting", "open"] as const).map(stepGraphState)).toEqual([
+      "done",
+      "active",
+      "active",
+      "pending",
+    ]);
+  });
+
   test("the delivered results of assessment steps are what the review shows", () => {
     expect(
       stepResults([
@@ -269,48 +280,44 @@ describe("a run that ended at one of its limits", () => {
       grantLive: null,
     });
 
-  test("every limit the engine ends a run at has its own sentence and offers a new start, never to continue", () => {
+  test("every limit the engine ends a run at has its own reason, and the strip offers no button", () => {
     const known = (API.components.schemas.TaskRun?.properties.failure_code?.enum ?? []).filter(
       (value): value is string => typeof value === "string",
     );
     for (const code of RUN_LIMIT_CODES) expect(known).toContain(code);
     const table = RUN_LIMIT_CODES.map((code) => {
       const status = ended(code);
-      return [
-        code,
-        status.kind,
-        status.tone,
-        de(status.line),
-        en(status.line),
-        de(actionKey(status.action as "restart")),
-        en(actionKey(status.action as "restart")),
-      ];
+      const reason = failureReason({ state: "failed", failure_code: code }) ?? "tasks.strip.failed";
+      return [code, status.kind, status.tone, status.action, de(reason), en(reason)];
     });
     expect(table).toEqual([
       [
         "turn_limit_reached",
         "failed",
         "error",
-        "Der Lauf hat sein Rundenlimit erreicht und wurde beendet.",
+        null,
+        "Der Run hat sein Rundenlimit erreicht und wurde beendet.",
         "The run reached its round limit and has ended.",
-        "Neu starten",
-        "Start again",
       ],
       [
         "deadline_exceeded",
         "failed",
         "error",
-        "Der Lauf hat seine Frist erreicht und wurde beendet.",
+        null,
+        "Der Run hat seine Frist erreicht und wurde beendet.",
         "The run reached its time limit and has ended.",
-        "Neu starten",
-        "Start again",
       ],
     ]);
   });
 
-  test("another failure keeps its line and action, and a limit code on a run that did not fail means nothing", () => {
-    expect(ended("turn_failed")).toMatchObject({ line: "tasks.strip.failed", action: "view" });
-    expect(ended(null)).toMatchObject({ line: "tasks.strip.failed", action: "view" });
+  test("another failure names its own reason, and a limit code on a run that did not fail means nothing", () => {
+    expect(ended("turn_failed")).toMatchObject({ line: "tasks.strip.failed", action: null });
+    expect(ended(null)).toMatchObject({ line: "tasks.strip.failed", action: null });
+    expect(failureReason({ state: "failed", failure_code: "turn_failed" })).toBe(
+      "tasks.failure.turn_failed",
+    );
+    expect(failureReason({ state: "failed", failure_code: null })).toBe("tasks.failure.unknown");
+    expect(failureReason({ state: "completed", failure_code: "turn_failed" })).toBeNull();
     expect(limitEndedLine({ state: "failed", failure_code: "turn_limit_reached" })).toBe(
       "tasks.strip.limit.turns",
     );
@@ -318,7 +325,26 @@ describe("a run that ended at one of its limits", () => {
     expect(limitEndedLine({ state: "failed", failure_code: "toString" })).toBeNull();
     expect(limitEndedLine({ state: "failed" })).toBeNull();
     expect(limitEndedLine(null)).toBeNull();
-    expect(ended("turn_limit_reached", "waiting").action).not.toBe("restart");
+    expect(failureReason({ state: "waiting", failure_code: "turn_limit_reached" })).toBeNull();
+  });
+});
+
+describe("failed task remedies", () => {
+  test("retry restarts in place and the chat opens through the router, never a full page load", () => {
+    expect(
+      failureRemedies({
+        conversationId: "c1",
+        permissions: ["conversation:read"],
+        startBlocked: false,
+      }),
+    ).toEqual({ retry: true, chat: "/chat/c1" });
+    expect(failureRemedies({ conversationId: "c1", permissions: [], startBlocked: true })).toEqual({
+      retry: false,
+      chat: null,
+    });
+    const source = readFileSync(resolve(import.meta.dir, "tasks-detail.tsx"), "utf8");
+    expect(source).not.toContain("window.location");
+    expect(source).toContain("navigate({ to: chatTarget })");
   });
 });
 
@@ -343,15 +369,15 @@ describe("history on the task page", () => {
       ] as const
     ).map((entry) => historyTitle(entry, de));
     expect(titles).toEqual([
-      "Lauf gestartet",
-      "Lauf wartet · Rückfrage",
-      "Lauf wartet · KI-Kontingent",
-      "Lauf wartet · KI-Zugang",
-      "Lauf schläft · Nächste Prüfung geplant",
-      "Lauf fortgesetzt",
-      "Lauf fehlgeschlagen · Die Frist ist abgelaufen",
-      "Lauf fehlgeschlagen · Das Rundenlimit ist erreicht",
-      "Lauf wartet",
+      "Run gestartet",
+      "Run wartet · Rückfrage",
+      "Run wartet · KI-Kontingent",
+      "Run wartet · KI-Zugang",
+      "Run schläft · Nächste Prüfung geplant",
+      "Run fortgesetzt",
+      "Run fehlgeschlagen · Die Frist ist abgelaufen",
+      "Run fehlgeschlagen · Das Rundenlimit ist erreicht",
+      "Run wartet",
       de("audit.action.taskCreated"),
       "Weiteres Ereignis",
     ]);

@@ -1,5 +1,4 @@
 import type { components } from "@cli-core/engine-api/openapi";
-import { type GrantLimit, grantLimitBounds } from "@/lib/core/authority-decision";
 import { cronWords } from "@/lib/cron-words";
 import type { TranslationKey } from "@/lib/i18n";
 
@@ -224,22 +223,18 @@ export function taskScheduleLine(
   return t("taskGrant.schedule.manual");
 }
 
-const HOUR_MS = 3_600_000;
-
 export function taskGrantInput(
   preview: TaskGrantPreview,
-  limit: GrantLimit,
-  now: number,
+  bounds: { validUntil: string | null; maxRuns: number | null },
 ): TaskGrantInput {
-  const { hours } = grantLimitBounds(limit);
   const digests: Record<string, string> = {};
   for (const workflow of previewWorkflows(preview))
     if (workflow.effect_manifest_digest && workflowStanding(workflow, new Set()) === "included")
       digests[workflow.workflow_id] = workflow.effect_manifest_digest;
   return {
     expected_fingerprint: preview.fingerprint,
-    valid_until: hours === null ? null : new Date(now + Number(hours) * HOUR_MS).toISOString(),
-    max_runs: null,
+    valid_until: bounds.validUntil,
+    max_runs: bounds.maxRuns,
     expected_workflow_digests: digests,
   };
 }

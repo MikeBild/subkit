@@ -87,13 +87,16 @@ const SUBJECT_ROUTES: Record<string, SidePanelSubjectType> = {
   files: "file",
 };
 
+const FILE_ID = /^fid_[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 const RECORD_ID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
 export function sidePanelSubject(pathname: string): SidePanelSubject | null {
   const [resource, id, ...rest] = pathname.split("/").filter(Boolean);
   if (!resource || !id || rest.length > 0) return null;
   const type = SUBJECT_ROUTES[resource];
-  if (!type || !RECORD_ID.test(id)) return null;
+  if (!type) return null;
+  const valid = type === "file" ? FILE_ID.test(id) : RECORD_ID.test(id);
+  if (!valid) return null;
   return { type, id };
 }
 
@@ -131,4 +134,14 @@ export function technicalFactsPlace(input: {
 }): TechnicalFactsPlace {
   if (!input.sidePanel) return "inline";
   return input.presentation === "modal" ? "inline" : "details";
+}
+
+export function sidePanelContextName(input: {
+  pageTitle: string | null;
+  navLabel: string | null;
+}): string | null {
+  const page = input.pageTitle?.trim();
+  if (page) return page;
+  const nav = input.navLabel?.trim();
+  return nav ? nav : null;
 }

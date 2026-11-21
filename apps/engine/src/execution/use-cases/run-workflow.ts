@@ -379,22 +379,6 @@ export function createRunWorkflow(deps: RunWorkflowDeps) {
     } catch (error) {
       return refuse(req, error, "admission");
     }
-    if ("downgraded_from" in admitted && admitted.downgraded_from) {
-      await auditRefusal(
-        {
-          tenant_id: req.principal.tenant_id,
-          reason: admitted.downgraded_from.code,
-          message: admitted.downgraded_from.message,
-          workflow_id: req.workflow_id,
-          execution_id: admitted.execution_id,
-          request_source: req.request_source,
-          actor_id: req.principal.id,
-          actor_type: actorType(req.principal),
-          extra: { downgraded_to_preparation: true, ...req.audit_extra },
-        },
-        db,
-      );
-    }
     if (returnsReplay(admitted, req.replayed_queued ?? "dispatch"))
       return { kind: "replayed", admitted };
     const dispatch = req.dispatch;

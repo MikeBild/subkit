@@ -240,7 +240,7 @@ describe("the chat's review card", () => {
       expect(CATALOGS.de[key]).toStartWith("Öffne die Prüfung");
       expect(CATALOGS.de[key]).not.toContain("unten");
     }
-    expect(CATALOGS.de["chat.automationCard.review.hint.schedule"]).toContain("geplante Läufe");
+    expect(CATALOGS.de["chat.automationCard.review.hint.schedule"]).toContain("geplante Runs");
     expect(CATALOGS.de["chat.automationCard.review.hint.hook"]).toContain(
       "eingehende Webhook-Aufrufe",
     );

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
-import { reloadIntoUpdate, useWaitingUpdate } from "@/features/pwa/worker-update";
+import { reloadIntoUpdate, useWaitingUpdate } from "@/features/pwa";
 import { useI18n } from "@/lib/i18n-context";
 import { useLiveStatus } from "./live-events";
 import { useSession } from "./session";

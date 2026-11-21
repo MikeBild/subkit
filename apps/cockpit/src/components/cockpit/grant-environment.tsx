@@ -4,8 +4,11 @@ import {
   approvalRemedy,
   type EnvironmentBlock,
 } from "@shared/approval-choice.ts";
+import { Label } from "@ui/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@ui/components/ui/radio-group";
+import type { ReactNode } from "react";
 import { absolute } from "@/app/links";
-import { Button, Field, FieldLabel, SegmentedControl } from "@/components/cockpit/patterns";
+import { Button } from "@/components/cockpit/patterns";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cronWords } from "@/lib/cron-words";
 import { approvalRemedyLink, BLOCK_SENTENCE_KEYS } from "@/lib/grant-decision";
@@ -51,12 +54,18 @@ export function GrantEnvironmentDecision({
 }) {
   const choice = approvalChoice(preview, environment);
   if (choice.kind === "none") return <GrantEnvironmentBlocked choice={choice} />;
-  if (choice.kind === "choice")
-    return <GrantEnvironmentChoice environment={environment} busy={busy} onSelect={onSelect} />;
-  return <GrantEnvironmentSingle choice={choice} preview={preview} />;
+  return (
+    <GrantEnvironmentChoice
+      environment={choice.kind === "single" ? choice.environment : environment}
+      fixed={choice.kind === "single"}
+      busy={busy}
+      onSelect={onSelect}
+      note={choice.kind === "single" ? <SingleReason choice={choice} preview={preview} /> : null}
+    />
+  );
 }
 
-function GrantEnvironmentSingle({
+function SingleReason({
   choice,
   preview,
 }: {
@@ -64,7 +73,6 @@ function GrantEnvironmentSingle({
   preview: WorkflowAuthorityPreview;
 }) {
   const { t, locale } = useI18n();
-  const word = useEnvironmentWord();
   const sentences = useBlockSentences();
   const { environment, reason } = choice;
   const schedules = preview.schedules.map((schedule) =>
@@ -83,53 +91,63 @@ function GrantEnvironmentSingle({
           ? t("authority.decision.reason.scheduleWhen", { when: schedules[0] ?? "" })
           : t("authority.decision.reason.schedule")
         : t(`authority.decision.reason.${reason}`);
-  return (
-    <div className="flex flex-col gap-1 text-sm" data-testid="authority-decision">
-      <p data-testid="authority-decision-single">
-        {t("authority.decision.validFor", { environment: word(environment) })} {why}
-      </p>
-      <p className="text-xs text-muted-foreground">{t("authority.decision.words")}</p>
-    </div>
-  );
+  return <span data-testid="authority-decision-single">{why}</span>;
 }
 
 function GrantEnvironmentChoice({
   environment,
+  fixed,
   busy,
+  note,
   onSelect,
 }: {
   environment: ReviewEnvironment;
+  fixed: boolean;
   busy: boolean;
+  note: ReactNode;
   onSelect(environment: ReviewEnvironment): void;
 }) {
   const { t } = useI18n();
   return (
-    <Field data-testid="authority-decision">
-      <FieldLabel>{t("authority.decision.choice.label")}</FieldLabel>
-      <SegmentedControl
-        label={t("authority.decision.choice.label")}
+    <fieldset data-testid="authority-decision">
+      <legend className="mb-2 text-sm font-medium">{t("authority.environment")}</legend>
+      <RadioGroup
         value={environment}
+        disabled={busy}
         onValueChange={(value) => {
-          if (busy || (value !== "dev" && value !== "prod") || value === environment) return;
+          if (busy || fixed || (value !== "dev" && value !== "prod") || value === environment)
+            return;
           onSelect(value);
         }}
-        testId="authority-environment"
-        options={[
-          { value: "dev", label: t("authority.development"), testId: "authority-environment-dev" },
-          {
-            value: "prod",
-            label: t("authority.production"),
-            testId: "authority-environment-prod",
-          },
-        ]}
-      />
-      <p className="text-xs text-muted-foreground" data-testid="authority-choice-dev">
-        {t("authority.decision.choice.dev")}
+        className="flex gap-4"
+        data-testid="authority-environment"
+      >
+        {(["dev", "prod"] as const).map((entry) => (
+          <div key={entry} className="flex items-center gap-2">
+            <RadioGroupItem
+              id={`authority-environment-${entry}`}
+              value={entry}
+              disabled={fixed && entry !== environment}
+              data-testid={`authority-environment-${entry}`}
+            />
+            <Label htmlFor={`authority-environment-${entry}`}>
+              {t(entry === "prod" ? "authority.production" : "authority.development")}
+            </Label>
+          </div>
+        ))}
+      </RadioGroup>
+      <p
+        className="mt-2 text-xs text-muted-foreground"
+        data-testid={`authority-choice-${environment}`}
+      >
+        {note ??
+          t(
+            environment === "prod"
+              ? "authority.decision.choice.prod"
+              : "authority.decision.choice.dev",
+          )}
       </p>
-      <p className="text-xs text-muted-foreground" data-testid="authority-choice-prod">
-        {t("authority.decision.choice.prod")}
-      </p>
-    </Field>
+    </fieldset>
   );
 }
 

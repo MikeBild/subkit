@@ -1,5 +1,12 @@
 import { net, type Session } from "electron";
 import { type AttentionItem, parseAttention } from "../shared/attention.ts";
+import {
+  INVITE_PREVIEW_PATH,
+  type InviteLink,
+  type InvitePreview,
+  invitePreviewBody,
+  parseInvitePreview,
+} from "../shared/invite-link.ts";
 import type { CheckResult } from "../shared/ipc.ts";
 import { normalizeServerAddress } from "../shared/server-address.ts";
 import {
@@ -82,6 +89,28 @@ export async function checkServer(
       minServerVersion: MIN_SERVER_VERSION,
     },
   };
+}
+
+export async function previewInvite(link: InviteLink): Promise<InvitePreview | null> {
+  try {
+    const response = await net.fetch(`${link.origin}${INVITE_PREVIEW_PATH}`, {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/json" },
+      body: invitePreviewBody(link),
+      credentials: "omit",
+      redirect: "error",
+      cache: "no-store",
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    if (response.status >= 500) return null;
+    return parseInvitePreview(
+      response.status,
+      await response.json().catch(() => null),
+      link.origin,
+    );
+  } catch {
+    return null;
+  }
 }
 
 export type ExchangeResult =

@@ -29,6 +29,21 @@ import {
 
 setupConnectorOauth();
 
+async function signInFinished(): Promise<Record<string, unknown>[]> {
+  const rows = await server.db
+    .select()
+    .from(events)
+    .where(
+      and(
+        eq(events.tenant_id, server.tenantId),
+        eq(events.channel, "connector.oauth"),
+        eq(events.type, "connector.oauth.signin_finished"),
+      ),
+    )
+    .orderBy(events.id);
+  return rows.map((row) => row.payload as Record<string, unknown>);
+}
+
 describe("GET /v1/oauth/callback", () => {
   test("happy path persists the credential and deletes the state row", async () => {
     const state = "state-happy-path-1";
@@ -93,6 +108,9 @@ describe("GET /v1/oauth/callback", () => {
     expect(payload.source).toBe("oauth_callback");
     expect(typeof payload.connector_slug).toBe("string");
     expect(typeof payload.has_refresh_token).toBe("boolean");
+    expect(await signInFinished()).toEqual([
+      expect.objectContaining({ connector_id: connectorId, outcome: "succeeded", reason: null }),
+    ]);
   });
 
   test("a stored credential clears the sign-in flag and resets the breaker, each audited", async () => {
@@ -379,6 +397,13 @@ describe("GET /v1/oauth/callback", () => {
     expect(body).not.toContain("call this number");
     expect(body).toContain("Nothing was stored.");
     expect(await getStateRow(state)).toBeNull();
+    expect((await signInFinished()).at(-1)).toEqual(
+      expect.objectContaining({
+        connector_id: connectorId,
+        outcome: "failed",
+        reason: "provider_error",
+      }),
+    );
   });
 
   test("an error value that is not an error code is not put on the page", async () => {

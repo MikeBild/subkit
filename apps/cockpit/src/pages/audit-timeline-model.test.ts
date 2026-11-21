@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
+  auditAccessSubject,
+  auditActorDisplay,
+  auditExecutionSubject,
   auditIdentityOptions,
   auditInitiatingSource,
+  auditNameBook,
+  auditObjectDisplay,
   auditRecordedAccess,
   groupLoadedAudit,
   localDateTimeInput,
@@ -229,5 +234,75 @@ describe("auditIdentityOptions", () => {
       { kind: "user", id: "u-3", label: "u-3" },
       { kind: "system_account", id: "s-1", label: "Nightly bot" },
     ]);
+  });
+});
+
+describe("audit entries show names, never raw ids", () => {
+  const identities = [
+    { kind: "user" as const, id: "u-1", label: "Ada Lovelace" },
+    { kind: "user" as const, id: "u-3", label: "u-3" },
+  ];
+  const type = (kind: string) => `type:${kind}`;
+  test("the actor is the person's name, else only the kind of actor", () => {
+    expect(auditActorDisplay({ actor_type: "user", actor_id: "u-1" }, identities, type, "?")).toBe(
+      "Ada Lovelace",
+    );
+    expect(auditActorDisplay({ actor_type: "user", actor_id: "u-3" }, identities, type, "?")).toBe(
+      "type:user",
+    );
+    expect(
+      auditActorDisplay({ actor_type: "user", actor_id: "03b88b7c-9da1" }, [], type, "?"),
+    ).toBe("type:user");
+    expect(auditActorDisplay({ actor_type: "" as "user", actor_id: null }, [], type, "?")).toBe(
+      "?",
+    );
+  });
+  test("the object is its name, else only its kind", () => {
+    expect(
+      auditObjectDisplay({ resource_type: "file", resource_name: " Vertrag.pdf " }, type),
+    ).toBe("Vertrag.pdf");
+    expect(auditObjectDisplay({ resource_type: "api_key", resource_name: null }, type)).toBe(
+      "type:api_key",
+    );
+  });
+});
+
+describe("audit group headings name the key, the client or the workflow, never an id", () => {
+  const book = auditNameBook({
+    apiKeys: [
+      { id: "k-1", name: "Deploy key" },
+      { id: "k-2", name: " " },
+    ],
+    oauthClients: [{ client_id: "c-1", client_name: "Claude Desktop" }],
+    workflows: [
+      { id: "w-1", name: "Rechnungen ablegen" },
+      { id: "w-2", name: null, slug: "invoice-filing" },
+    ],
+  });
+  test("an access is the key's label, the client's name, else the person", () => {
+    expect(auditAccessSubject({ api_key_id: "k-1", oauth_client_id: null }, book, "Lena")).toBe(
+      "Deploy key",
+    );
+    expect(auditAccessSubject({ api_key_id: "k-2", oauth_client_id: null }, book, "Lena")).toBe(
+      "Lena",
+    );
+    expect(auditAccessSubject({ api_key_id: null, oauth_client_id: "c-1" }, book, "Lena")).toBe(
+      "Claude Desktop",
+    );
+    expect(auditAccessSubject({ api_key_id: null, oauth_client_id: null }, book, "Lena")).toBe(
+      "Lena",
+    );
+  });
+  test("a run is its workflow's name, else the recorded workflow name, else nothing", () => {
+    const run = { resource_type: "execution", resource_name: null };
+    expect(auditExecutionSubject({ ...run, workflow_id: "w-1" }, book)).toBe("Rechnungen ablegen");
+    expect(auditExecutionSubject({ ...run, workflow_id: "w-2" }, book)).toBe("invoice-filing");
+    expect(
+      auditExecutionSubject(
+        { workflow_id: "w-9", resource_type: "workflow", resource_name: "Alt" },
+        book,
+      ),
+    ).toBe("Alt");
+    expect(auditExecutionSubject({ ...run, workflow_id: null }, book)).toBeNull();
   });
 });

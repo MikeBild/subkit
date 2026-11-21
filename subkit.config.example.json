@@ -15,7 +15,7 @@
     "trusted_proxy_ips": [],
     "port": 3000,
     "public_base_url": "",
-    "root_redirect_to_cockpit": false,
+    "root_redirect_to_cockpit": true,
     "desktop_min_version": "0.1.0",
     "desktop_dev_callback": false,
     "restart_supervised": false

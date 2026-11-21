@@ -2,13 +2,11 @@ import { useRouter } from "@tanstack/react-router";
 import { ChevronLeft } from "lucide-react";
 import type { ReactNode } from "react";
 import { absolute } from "@/app/links";
-import { usePageFrameTrigger } from "@/app/shell-header";
-import { SidePanelToggle, useSidePanelAvailable } from "@/app/side-panel";
-import { FeedbackButton } from "@/features/feedback/feedback-entry";
 import { useArrived, useLoadingPhase } from "@/lib/use-loading-phase";
 import { cn } from "@/lib/utils";
 import { type ActionSpec, renderAction } from "./action-button";
 import { listReturnHref, readListReturn } from "./list-return";
+import { useReportPageTitle } from "./side-details";
 import { Skeleton } from "./skeleton";
 
 export function PageHeader({
@@ -40,8 +38,7 @@ export function PageHeader({
   testId?: string;
   rhythm?: "compact" | "reading";
 }) {
-  const pageOwned = usePageFrameTrigger();
-  const panelToggle = useSidePanelAvailable() && pageOwned;
+  useReportPageTitle(title);
   const phase = useLoadingPhase(Boolean(loading));
   const arrived = useArrived(phase);
   const actions = secondary || menu || action;
@@ -76,7 +73,7 @@ export function PageHeader({
       {loadingRow ? (
         <div
           className={cn(
-            "flex min-h-9 flex-wrap items-center gap-x-2 gap-y-1",
+            "flex min-h-10 flex-wrap items-center gap-x-2 gap-y-1",
             phase === "reserve" ? "[&>[data-slot=skeleton]]:invisible" : "sk-fade-in",
           )}
           data-testid="page-title-row"
@@ -85,7 +82,7 @@ export function PageHeader({
           {title ? <h1 className="sr-only">{title}</h1> : null}
           <Skeleton className="h-7 w-56 max-w-[60%]" />
           <Skeleton className="h-5 w-16 rounded-full" />
-          <Skeleton className="h-9 w-full sm:ml-auto sm:w-28" />
+          <Skeleton className="h-10 w-full sm:ml-auto sm:w-28" />
           {loadingPurpose ? (
             <span
               className={cn(
@@ -101,13 +98,13 @@ export function PageHeader({
       ) : (
         <div
           className={cn(
-            "grid gap-x-4 gap-y-1 @2xl:grid-cols-[minmax(0,1fr)_auto] @2xl:items-center",
+            "grid gap-x-4 gap-y-1 @xl:grid-cols-[minmax(0,1fr)_auto] @xl:items-center",
             arrived && "sk-fade-in",
           )}
           data-slot="page-header-grid"
         >
           <div
-            className="flex min-h-9 min-w-0 flex-wrap items-center gap-2"
+            className="flex min-h-10 min-w-0 flex-wrap items-center gap-2"
             data-testid="page-title-row"
             data-slot="page-title-row"
           >
@@ -119,23 +116,17 @@ export function PageHeader({
             </h1>
             {badge}
           </div>
-          {actions || panelToggle ? (
+          {actions ? (
             <div
               data-slot="page-actions"
-              className="order-last mt-2 flex min-h-8 w-full flex-wrap items-center gap-2 @2xl:order-none @2xl:mt-0 @2xl:w-auto @2xl:flex-nowrap @2xl:justify-end max-sm:[&>*:not([data-size^=icon])]:flex-1"
+              className={cn(
+                "order-last mt-2 flex min-h-10 w-full flex-wrap items-center gap-2 max-sm:[&>*:not([data-size^=icon])]:flex-1",
+                "@xl:order-none @xl:mt-0 @xl:w-auto @xl:flex-nowrap @xl:justify-end",
+              )}
             >
               {secondary}
               {renderAction(action)}
               {menu}
-              {panelToggle ? (
-                <>
-                  <FeedbackButton
-                    className="shrink-0 @max-2xl:ml-auto"
-                    labelClassName="@max-3xl:sr-only"
-                  />
-                  <SidePanelToggle className="shrink-0" />
-                </>
-              ) : null}
             </div>
           ) : null}
           {purpose ? (
@@ -143,7 +134,8 @@ export function PageHeader({
               data-slot="page-purpose"
               data-purpose-lines={purposeLines}
               className={cn(
-                "max-w-3xl text-sm text-muted-foreground @2xl:col-span-2",
+                "max-w-3xl text-sm text-muted-foreground",
+                "@xl:col-span-2",
                 purposeLines === 2 && "line-clamp-2 min-h-10",
               )}
             >
@@ -157,7 +149,7 @@ export function PageHeader({
 }
 
 const BACK_CLASS =
-  "relative inline-flex w-fit items-center gap-0.5 rounded-sm text-sm text-muted-foreground underline-offset-4 pointer-coarse:after:absolute pointer-coarse:after:-inset-x-2 pointer-coarse:after:-inset-y-3 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "relative inline-flex w-fit items-center gap-0.5 rounded-sm text-sm text-muted-foreground underline-offset-4 pointer-coarse:after:absolute pointer-coarse:after:-inset-x-2 pointer-coarse:after:-inset-y-3 hover:text-foreground hover:underline";
 
 export function BackLink({ to, label }: { to: string; label: string }) {
   const router = useRouter();

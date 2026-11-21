@@ -61,7 +61,7 @@ Jeder Hinweis hat eine passende Aktion:
 
 | Hinweis | Aktion |
 | --- | --- |
-| Ein Workflow kostet je Lauf mindestens 1,5-mal so viel wie im Zeitraum davor. | **Kosten ansehen** |
+| Ein Workflow kostet je Run mindestens 1,5-mal so viel wie im Zeitraum davor. | **Kosten ansehen** |
 | Für ein Modell ist kein Preis hinterlegt. | **Modell ansehen** |
 | Für mehrere Modelle ist kein Preis hinterlegt. | **Modelle ansehen** |
 | Das Monatskontingent ist voraussichtlich vor Monatsende aufgebraucht. | **Kontingent anpassen** |
@@ -76,10 +76,10 @@ Die Balken sind nach Herkunft gestapelt:
 
 - **Chat**: Antworten in Unterhaltungen.
 - **Workflows entwerfen**: Workflows im Chat erstellen und korrigieren.
-- **Zusammenfassungen**: Kurzfassungen von Läufen und Inhalten.
+- **Zusammenfassungen**: Kurzfassungen von Runs und Inhalten.
 - **Prüfungen**: KI prüft Entwürfe und Ergebnisse.
 - **Wissen & Dateien**: Quellen und Dateien lesen und beschreiben.
-- **Workflow-Läufe**: Schritte „KI fragen“ in Läufen.
+- **Workflow-Runs**: Schritte „KI fragen“ in Runs.
 - **Sonstiges**: alles, was keiner Herkunft zuzuordnen ist.
 
 Mit **Als Tabelle** siehst du dieselben Werte als Tabelle mit einer Spalte **Summe**. **Als Diagramm** schaltet zurück.
@@ -90,24 +90,24 @@ Fehlen Preise, zeigt das Diagramm die Token-Menge statt der Kosten.
 
 Unter **Aufschlüsseln nach** wählst du **Workflow**, **Person**, **Modell**, **Unterhaltung** oder **Aufgabe**.
 Jede Zeile zeigt **Kosten**, **KI-Aufrufe**, **Anteil** und **Trend**.
-Je nach Tab kommt eine Spalte dazu: **Läufe** bei Workflow, **Fehlerquote** bei Modell, **Zuletzt** bei Unterhaltung.
+Je nach Tab kommt eine Spalte dazu: **Runs** bei Workflow, **Fehlerquote** bei Modell, **Zuletzt** bei Unterhaltung.
 
 Die letzte Zeile sammelt, was keiner Zeile zuzuordnen ist:
 
 - **Ohne Workflow (Chat, Entwerfen, Wissen …)**
 - **Ohne Person (automatisch)**: Zeitpläne, Webhooks und Hintergrundarbeit wie das Katalogisieren
 - **Weitere** bei Modellen
-- **Ohne Unterhaltung (Läufe, Wissen, Prüfungen …)**
+- **Ohne Unterhaltung (Runs, Wissen, Prüfungen …)**
 
 So ergeben alle Zeilen zusammen die Summe oben.
 
-**Aufgabe** zeigt, was jede Aufgabe gekostet hat: die KI-Aufrufe ihrer Läufe, auch die Runden, in denen du selbst in einen Lauf geschrieben hast. Zwei Dinge stehen nicht in der Zeile einer Aufgabe. KI-Aufrufe in den Workflow-Läufen, die eine Aufgabe gestartet hat, zählen beim Workflow, unter **Workflow**. Und wurde die Unterhaltung eines Laufs gelöscht, lassen sich seine Aufrufe der Aufgabe nicht mehr zuordnen. Wie du eine Aufgabe günstig hältst, steht im Kapitel „Ein Ziel als Aufgabe übergeben“.
+**Aufgabe** zeigt, was jede Aufgabe gekostet hat: die KI-Aufrufe ihrer Runs, auch die Runden, in denen du selbst in einen Run geschrieben hast. Zwei Dinge stehen nicht in der Zeile einer Aufgabe. KI-Aufrufe in den Workflow-Runs, die eine Aufgabe gestartet hat, zählen beim Workflow, unter **Workflow**. Und wurde die Unterhaltung eines Runs gelöscht, lassen sich seine Aufrufe der Aufgabe nicht mehr zuordnen. Wie du eine Aufgabe günstig hältst, steht im Kapitel „Ein Ziel als Aufgabe übergeben“.
 
 ### Details öffnen
 
 Klick auf eine Zeile, um ihre Details seitlich zu öffnen:
 
-- **Workflow**: **Kosten je Lauf**, **KI-Aufrufe je Lauf**, **Teuerste Läufe** und **Genutzte Modelle**. Mit **Workflow öffnen** springst du zum Workflow.
+- **Workflow**: **Kosten je Run**, **KI-Aufrufe je Run**, **Teuerste Runs** und **Genutzte Modelle**. Mit **Workflow öffnen** springst du zum Workflow.
 - **Person**: **Woher die Nutzung kommt**, dazu ihre **Workflows** und **Unterhaltungen**.
 - **Modell**: **Anteil aus Cache**, **Fehlerquote**, **Preis je 1 Mio. Token** und **Antwortzeit (typisch)**.
 - **Unterhaltung**: Kosten und KI-Aufrufe. Mit **Unterhaltung öffnen** springst du in den Chat.
@@ -137,7 +137,7 @@ Was beim Verbrauch passiert:
 - Ab 75 % erscheint ein Hinweis.
 - Ab 100 % pausieren Chat, das Entwerfen von Workflows und Korrekturen bis zum Monatsersten.
 - Freigegebene Workflows laufen weiter. Was schon im Betrieb ist, bleibt also nicht stehen.
-- Ein Lauf einer Aufgabe wartet. Er schlägt nicht fehl und arbeitet von selbst weiter, sobald wieder Kontingent frei ist.
+- Ein Run einer Aufgabe wartet. Er schlägt nicht fehl und arbeitet von selbst weiter, sobald wieder Kontingent frei ist.
 - Anfragen, die SubKit wegen des Kontingents abweist, zählen nicht zum Verbrauch.
 
 Ohne Kontingent sind KI-Aufrufe unbegrenzt.

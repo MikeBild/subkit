@@ -23,7 +23,7 @@ describe("authority headline", () => {
         now,
         zone,
       ),
-    ).toBe("Echtbetrieb · gültig bis 28.09., 18:00 MESZ · bis zu 24 Läufe");
+    ).toBe("Echtbetrieb · gültig bis 28.09., 18:00 MESZ · bis zu 24 Runs");
   });
 
   test("an approval until revoked says so instead of a date and a count", () => {
@@ -35,7 +35,7 @@ describe("authority headline", () => {
         now,
         zone,
       ),
-    ).toBe("Echtbetrieb · bis auf Widerruf · unbegrenzte Läufe");
+    ).toBe("Echtbetrieb · bis auf Widerruf · unbegrenzte Runs");
   });
 
   test("names the year when the end is not this year", () => {
@@ -48,7 +48,7 @@ describe("authority headline", () => {
         now,
         zone,
       ),
-    ).toBe("Echtbetrieb · gültig bis 05.01.2027, 12:00 MEZ · bis zu 2 Läufe");
+    ).toBe("Echtbetrieb · gültig bis 05.01.2027, 12:00 MEZ · bis zu 2 Runs");
   });
 
   test("one run is singular", () => {
@@ -60,7 +60,7 @@ describe("authority headline", () => {
         now,
         zone,
       ),
-    ).toBe("Test · gültig bis 28.09., 18:00 MESZ · bis zu 1 Lauf");
+    ).toBe("Test · gültig bis 28.09., 18:00 MESZ · bis zu 1 Run");
     expect(
       authorityHeadline(
         { execution_environment: "dev", valid_until: until, max_runs: 1 },
@@ -81,7 +81,7 @@ describe("authority headline", () => {
         now,
         zone,
       ),
-    ).toBe("Echtbetrieb · bis zu 3 Läufe");
+    ).toBe("Echtbetrieb · bis zu 3 Runs");
   });
 });
 

@@ -2,11 +2,14 @@ import { and, asc, eq, isNull } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { resolveActor } from "../audit/recorders/types.ts";
 import { AuditAction, type AuditActorType } from "../audit/types.ts";
+import type { ResolvedPrincipal } from "../auth/types.ts";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import type { Db, Executor } from "../db/client.ts";
 import type { ListResult } from "../db/list-result.ts";
 import { workflows, workflowsSchedules, workflowVersions } from "../db/schema/index.ts";
 import { validateAgainstJsonSchema } from "../execution/engine/envelope.ts";
+import { chooseEnvironment } from "../identity/core/default-environment.ts";
+import { personalDefaultEnvironment } from "../identity/setup-preferences.ts";
 import { emitResourceChange } from "../pubsub/resource-changes.ts";
 import { normalizeWorkflowRunInput } from "../workflows/run-input.ts";
 import type { ScheduleTrigger } from "../workflows/types.ts";
@@ -43,6 +46,8 @@ export interface ScheduleRow {
   updated_at: Date;
 }
 
+export type ScheduleCreator = Pick<ResolvedPrincipal, "kind" | "id" | "tenant_id">;
+
 interface CreateScheduleInput {
   tenant_id: string;
   workflow_id: string;
@@ -51,6 +56,7 @@ interface CreateScheduleInput {
   execution_mode?: "dev" | "prod";
   input?: unknown;
   paused?: boolean;
+  creator: ScheduleCreator | null;
 }
 
 type CreateScheduleOutcome = {
@@ -162,7 +168,11 @@ export async function createScheduleLocked(
     );
   }
   const existing = await db
-    .select({ id: workflowsSchedules.id, input: workflowsSchedules.input })
+    .select({
+      id: workflowsSchedules.id,
+      input: workflowsSchedules.input,
+      execution_mode: workflowsSchedules.execution_mode,
+    })
     .from(workflowsSchedules)
     .where(
       and(
@@ -171,7 +181,9 @@ export async function createScheduleLocked(
       ),
     )
     .limit(1);
-  const prior = existing[0] as { id: string; input: unknown } | undefined;
+  const prior = existing[0] as
+    | { id: string; input: unknown; execution_mode: "dev" | "prod" }
+    | undefined;
   const scheduleInput = input.input === undefined ? (prior?.input ?? null) : input.input;
   const input_error = await validateScheduleInput(
     db,
@@ -192,7 +204,10 @@ export async function createScheduleLocked(
         paused_failure_class: null,
         paused_failure_count: null,
         failures_reset_at: new Date(),
-        execution_mode: input.execution_mode ?? "prod",
+        execution_mode: chooseEnvironment({
+          requested: input.execution_mode,
+          current: prior.execution_mode,
+        }),
         input: scheduleInput as never,
         input_error: null,
         updated_at: new Date(),
@@ -212,7 +227,10 @@ export async function createScheduleLocked(
       cron: input.cron,
       timezone: input.timezone ?? "UTC",
       paused: input.paused ?? false,
-      execution_mode: input.execution_mode ?? "prod",
+      execution_mode: chooseEnvironment({
+        requested: input.execution_mode,
+        personal: await personalDefaultEnvironment(db, input.tenant_id, input.creator),
+      }),
       input: scheduleInput as never,
       input_error: null,
     })
@@ -369,7 +387,6 @@ export async function bindFromWorkflow(
     skip_dates: input.trigger.skip_dates ?? [],
   };
   const tz = input.trigger.tz;
-  const executionMode = input.trigger.execution_mode ?? "prod";
 
   const existingRows = await db
     .select()
@@ -382,6 +399,19 @@ export async function bindFromWorkflow(
     )
     .limit(1);
   const prior = existingRows[0] as ScheduleRow | undefined;
+  const executionMode = chooseEnvironment({
+    requested: input.trigger.execution_mode,
+    current: prior?.execution_mode,
+    personal: prior
+      ? null
+      : await personalDefaultEnvironment(
+          db,
+          input.tenant_id,
+          input.actor_type === "user" && input.actor_id
+            ? { kind: "user", id: input.actor_id, tenant_id: input.tenant_id }
+            : null,
+        ),
+  });
 
   if (prior) {
     const sameCron = prior.cron === input.trigger.cron;

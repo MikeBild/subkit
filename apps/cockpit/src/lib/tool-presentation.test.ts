@@ -51,7 +51,7 @@ describe("toolLabel", () => {
       list_tasks: ["Aufgaben aufgelistet", "Listed tasks"],
       find_task: ["Aufgabe gesucht", "Searched for a task"],
       get_task: ["Aufgabe gelesen", "Read a task"],
-      get_task_run: ["Lauf einer Aufgabe gelesen", "Read a task run"],
+      get_task_run: ["Run einer Aufgabe gelesen", "Read a task run"],
     };
     for (const [tool, [german, english]] of Object.entries(reads)) {
       const label = toolLabel(tool);
@@ -63,7 +63,7 @@ describe("toolLabel", () => {
     }
     const actions = {
       run_task: ["Aufgabe gestartet", "Started a task"],
-      abort_task_run: ["Lauf einer Aufgabe abgebrochen", "Stopped a task run"],
+      abort_task_run: ["Run einer Aufgabe abgebrochen", "Stopped a task run"],
       save_task: ["Aufgabe gespeichert", "Saved a task"],
       schedule_task_check: ["Nächste Prüfung festgelegt", "Set the next check"],
     };
@@ -298,12 +298,12 @@ describe("what a workflow call really was", () => {
       const key = workflowRunTitleKey(label, false, kind);
       return key ? translate("de", key, { name: "finding-triage" }) : null;
     };
-    expect(title(generic, "trial")).toBe("Probelauf ohne Wirkung");
-    expect(title(generic, "refused")).toBe("Lauf abgelehnt");
+    expect(title(generic, "trial")).toBe("Probe-Run ohne Wirkung");
+    expect(title(generic, "refused")).toBe("Run abgelehnt");
     expect(title(generic, "live")).toBe("Workflow ausgeführt");
     expect(title(generic, "read")).toBe("Informationen abgerufen");
-    expect(title(named, "trial")).toBe("Probelauf von „finding-triage“ ohne Wirkung");
-    expect(title(named, "refused")).toBe("Lauf von „finding-triage“ abgelehnt");
+    expect(title(named, "trial")).toBe("Probe-Run von „finding-triage“ ohne Wirkung");
+    expect(title(named, "refused")).toBe("Run von „finding-triage“ abgelehnt");
     expect(title(named, "live")).toBe("Workflow „finding-triage“ ausgeführt");
     expect(title(named, "read")).toBe("„finding-triage“ angesehen");
     expect(title(generic, null)).toBe("Workflow ausgeführt");

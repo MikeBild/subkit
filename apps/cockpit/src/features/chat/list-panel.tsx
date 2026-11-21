@@ -20,17 +20,17 @@ export function ChatListPanel({
   return (
     <aside
       className={cn(
-        "min-h-0 shrink-0 px-4",
+        "min-h-0 shrink-0 px-4 sm:px-8",
         horizontal
           ? "flex w-66 flex-col items-stretch border-r"
           : "grid grid-cols-[minmax(0,1fr)_auto] items-center border-b",
       )}
       data-testid="chat-list-panel"
     >
-      <div className={cn(horizontal && "-mx-4 h-18 border-b px-2")}>
+      <div className={cn(horizontal && "-mx-4 h-18 border-b px-4 sm:-mx-8 sm:px-8")}>
         <PageHeader testId="chat-header" title={t("nav.chat")} />
       </div>
-      <div className={cn(horizontal && "-mx-2 pt-2")}>
+      <div className={cn(horizontal && "pt-2")}>
         <Button
           variant="default"
           onClick={onNew}

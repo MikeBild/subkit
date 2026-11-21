@@ -65,17 +65,30 @@ export function CollapsibleSection({
   label,
   count,
   defaultOpen = false,
+  open,
+  onOpenChange,
+  id,
   testId,
   children,
 }: {
   label: string;
   count?: number;
   defaultOpen?: boolean;
+  open?: boolean;
+  onOpenChange?(open: boolean): void;
+  id?: string;
   testId?: string;
   children: ReactNode;
 }) {
   return (
-    <Collapsible defaultOpen={defaultOpen} data-slot="collapsible-section" data-testid={testId}>
+    <Collapsible
+      defaultOpen={defaultOpen}
+      {...(open === undefined ? {} : { open })}
+      {...(onOpenChange ? { onOpenChange } : {})}
+      id={id}
+      data-slot="collapsible-section"
+      data-testid={testId}
+    >
       <h2 className="text-sm font-medium" data-slot="section-label">
         <CollapsibleTrigger
           className="group/section -ml-2 inline-flex h-8 items-center gap-1.5 rounded-md px-2 transition-colors duration-(--sk-dur-fast) hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"

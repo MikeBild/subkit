@@ -15,7 +15,7 @@ import {
   rebindPushSubscriptionBinding,
   savePushSubscription,
 } from "@/api/cockpit-installations";
-import { announceLaunch } from "@/features/pwa/launch";
+import { announceLaunch } from "@/features/pwa";
 import {
   browserPushRegistration,
   clearInstallationInput,

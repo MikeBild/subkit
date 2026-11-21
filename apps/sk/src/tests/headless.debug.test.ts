@@ -3,6 +3,7 @@ import fs, { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runHeadless } from "../headless.ts";
+import { listSessionMetadata } from "../sessions.ts";
 
 let tmpDir: string;
 let logPath: string;
@@ -224,6 +225,35 @@ describe("runHeadless debug tracing", () => {
     expect(stdout.join("")).toContain('"session_id": "conv-existing"');
     expect(stdout.join("")).toContain('"content": "remembered"');
     expect(cancelled).toBe(true);
+  });
+
+  test("a new conversation is saved to the session cache for its engine and tenant", async () => {
+    process.env.SK_HOME = tmpDir;
+    globalThis.fetch = (async () =>
+      createSseResponse("first turn")) as unknown as typeof globalThis.fetch;
+    const result = await runHeadless({
+      profile: {
+        name: "default",
+        engine_url: "http://engine.local",
+        api_key: "test-key",
+        active_tenant_id: "tenant-1",
+      },
+      prompt: "first turn",
+      output: "text",
+      cwd: tmpDir,
+      noMemory: true,
+      stdout: { write: () => undefined },
+      stderr: { write: () => undefined },
+    });
+    expect(result.exitCode).toBe(0);
+    const cached = listSessionMetadata({
+      engine_url: "http://engine.local",
+      tenant_id: "tenant-1",
+    });
+    expect(cached.map((s) => s.conversation_id)).toEqual(["conv-1"]);
+    expect(
+      listSessionMetadata({ engine_url: "http://other.local", tenant_id: "tenant-1" }),
+    ).toEqual([]);
   });
 
   test("resolves connector slug bindings before creating a conversation", async () => {

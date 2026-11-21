@@ -92,7 +92,7 @@ test("a connector that adds query parameters is named in plain words and by key,
     }),
   ];
   const de = render("de", effects);
-  expect(de).toContain("Der Konnektor hängt an jede Anfrage dieses Schritts eigene");
+  expect(de).toContain("Der Connector hängt an jede Anfrage dieses Schritts eigene");
   expect(de).toContain("die Parameter format, api_key");
   expect(de).not.toContain("s3cr3t");
   const en = render("en", effects);
@@ -160,7 +160,7 @@ test("a tool call shows the stated effect, the tool's own claim as a hint, and t
   expect(de).toContain(
     "Der Server führt dieses Tool als nur lesend, was SubKit nicht prüfen kann.",
   );
-  expect(de).toContain("hält der nächste Lauf an");
+  expect(de).toContain("hält der nächste Run an");
   expect(de).not.toContain("gib ihn nur frei, wenn du das Tool kennst.");
   expect(de).toContain("tools/call:search https://tools.example.test/mcp · search");
   expect(de).toContain("0123456789ab");

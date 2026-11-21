@@ -37,7 +37,7 @@ const run: ChatSensitiveTestRun = {
 
 test("the German card shows status, step counts, reads and the check without contents", () => {
   const html = render(run, "de");
-  expect(html).toContain("Probelauf erfolgreich");
+  expect(html).toContain("Probe-Run erfolgreich");
   expect(html).toContain("Inhalte bleiben verborgen");
   expect(html).toContain("2 ok · 0 fehlgeschlagen · 1 zurückgehalten");
   expect(html).toContain("120 Einträge, abgeschnitten");
@@ -68,7 +68,7 @@ test("a saved successful test run offers the Cockpit check in German and English
 
 test("the Cockpit check opens this test run, and an older card offers it no more", () => {
   expect(render({ ...run, executionId: "run-7" }, "de", savedRef)).toContain(
-    'href="/cockpit?run=run-7"',
+    'href="/cockpit/runs/run-7"',
   );
   expect(render(run, "de", savedRef, false)).not.toContain("t-verify");
 });

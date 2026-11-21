@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { type Locale, translate, translatePlural } from "@/lib/i18n";
 import { I18nContext, type I18nValue } from "@/lib/i18n-context";
 import type { ChatApproval } from "./chat-approval";
@@ -16,13 +17,15 @@ function render(approval: ChatApproval, locale: Locale): string {
   } as I18nValue;
   return renderToStaticMarkup(
     <I18nContext.Provider value={value}>
-      <ChatApprovalCard
-        approval={approval}
-        busy={false}
-        error={false}
-        onDecision={() => {}}
-        testId="approval"
-      />
+      <TooltipProvider>
+        <ChatApprovalCard
+          approval={approval}
+          busy={false}
+          error={false}
+          onDecision={() => {}}
+          testId="approval"
+        />
+      </TooltipProvider>
     </I18nContext.Provider>,
   );
 }
@@ -151,13 +154,16 @@ test("a bound action shows exactly what would run, why it asks and that it count
     },
   };
   const de = render(bound, "de");
-  for (const part of ["verb", "target", "account", "recipients", "content"])
+  for (const part of ["verb", "target", "account", "content"])
     expect(de).toContain(`data-testid="approval-binding-${part}"`);
-  expect(de).toContain("bob@firma.de");
+  expect(de).toMatch(/data-testid="approval-binding-target">bob@firma\.de</);
+  expect(de).not.toContain("POST /v1/messages/send");
+  expect(de).toContain('data-testid="approval-request-technical-toggle"');
+  expect(de).not.toContain("approval-request-technical-report");
   expect(de).toContain("Du hast diesen Empfänger nicht genannt.");
-  expect(de).toContain(
-    "Gilt genau für diese Aktion, einmal. Ein anderer Empfänger oder Inhalt braucht eine neue Frage.",
-  );
+  expect(de).toContain("Anderer Empfänger oder Inhalt fragt neu");
+  expect(de).not.toContain("Möchte das ausführen");
+  expect(de).not.toMatch(/<p class="[^"]*">Gmail aufrufen: POST/);
   expect(de).toContain("Einmal erlauben");
   expect(de).toContain("Ablehnen");
   const quoted = render(
@@ -199,7 +205,7 @@ test("a drafted text is shown in full, scrollable, with the reason and what was 
   expect(de).toContain("Vollständiger Text");
   expect(de).toContain("Viele Grüße</pre>");
   expect(de).toContain("overflow-auto");
-  expect(de).toContain("Vollständig, 1.585 Zeichen. Scrolle im Kasten, um alles zu lesen.");
+  expect(de).not.toContain("1.585 Zeichen");
   expect(de).not.toContain('data-testid="approval-binding-content"');
   expect(de).toContain(
     "Der Text stammt nicht von dir und du hast ihn noch nicht als Entwurf gesehen. Lies ihn, bevor er rausgeht.",
@@ -207,7 +213,7 @@ test("a drafted text is shown in full, scrollable, with the reason and what was 
   expect(de).toContain("Wortlaut der Engine: adds the link https://example.com/q3");
   const en = render(drafted, "en");
   expect(en).toContain("Full text");
-  expect(en).toContain("Complete, 1,585 characters. Scroll inside the box to read all of it.");
+  expect(en).not.toContain("Scroll inside the box");
   const short = render(
     {
       ...drafted,
@@ -218,8 +224,7 @@ test("a drafted text is shown in full, scrollable, with the reason and what was 
     },
     "de",
   );
-  expect(short).toContain("Vollständig, 13 Zeichen.");
-  expect(short).not.toContain("Scrolle im Kasten");
+  expect(short).toContain("Kurz und gut.");
   const capped = render(
     {
       ...drafted,

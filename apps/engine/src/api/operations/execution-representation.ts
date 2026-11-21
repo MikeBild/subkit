@@ -85,6 +85,15 @@ export const ExecDetailSchema = ExecSchema.extend({
       "The unique nonempty trace recorded by successful execution-start audit entries. Null when evidence is absent, expired by retention, or conflicting. This is not inferred from the current request.",
     ),
   outcome: ExecutionOutcomeSchema,
+  result_markdown: z
+    .string()
+    .nullable()
+    .describe(
+      "Human-readable run result as Markdown, redacted. Set for a succeeded run whose output_schema marks a string with contentMediaType text/markdown, or whose output has a result_markdown string. Null otherwise and always for sensitive runs.",
+    ),
+  result_markdown_truncated: z
+    .boolean()
+    .describe("True when result_markdown was cut at 64 KiB of text."),
 }).openapi("ExecutionDetail");
 
 const ExecListItemSchema = ExecSchema.extend({
@@ -159,6 +168,13 @@ export function serializeExec(
     started_at: row.started_at ? row.started_at.toISOString() : null,
     finished_at: row.finished_at ? row.finished_at.toISOString() : null,
     created_at: row.created_at.toISOString(),
+  };
+}
+
+export function serializeResultMarkdown(row: typeof executions.$inferSelect) {
+  return {
+    result_markdown: row.result_markdown ?? null,
+    result_markdown_truncated: row.result_markdown_truncated ?? false,
   };
 }
 

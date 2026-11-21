@@ -2,9 +2,9 @@ import { useState } from "react";
 import { type CockpitColumn, RowName } from "@/components/cockpit/patterns";
 import { MISSING, tableColumns } from "@/components/cockpit/table-columns";
 import { useI18n } from "@/lib/i18n-context";
-import { type AppSummary, appFailingSummary, appReadiness } from "@/pages/apps-model";
 import { AppSheet, ReadinessBadge } from "./app-sheet";
 import { environmentLabel, useApps } from "./apps-data";
+import { type AppSummary, appFailingSummary, appReadiness } from "./model/apps-model";
 import { AdminTable, SectionList } from "./parts";
 
 export function AppsTab() {

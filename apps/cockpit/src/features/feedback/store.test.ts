@@ -3,7 +3,12 @@ import { feedbackBridgeOf, within } from "./desktop-bridge";
 import { FEEDBACK_DRAFT_KEY } from "./model";
 import { createFeedbackStore } from "./store";
 
-function environment(bridge: { captureWindow(): Promise<string | null> } | null = null) {
+function environment(
+  bridge: {
+    captureWindow(): Promise<string | null>;
+    diagnosticsConsent?(): Promise<boolean | null>;
+  } | null = null,
+) {
   const values = new Map<string, string>();
   let next = 0;
   const storage = {
@@ -21,6 +26,7 @@ function environment(bridge: { captureWindow(): Promise<string | null> } | null 
               screenshot: { masksSecretFields: false, masksVisibleText: false },
               diagnostics: async () => null,
               onFeedbackRequested: () => () => {},
+              diagnosticsConsent: async () => null,
               ...bridge,
             }
           : null,
@@ -30,6 +36,24 @@ function environment(bridge: { captureWindow(): Promise<string | null> } | null 
 }
 
 describe("feedback store", () => {
+  test("on the desktop a fresh report follows the diagnostics consent, a started one keeps its choice", async () => {
+    const off = createFeedbackStore(
+      environment({ captureWindow: async () => null, diagnosticsConsent: async () => false }).env,
+    );
+    await off.open();
+    expect(off.get().draft.diagnostics).toBe(false);
+    const on = createFeedbackStore(
+      environment({ captureWindow: async () => null, diagnosticsConsent: async () => true }).env,
+    );
+    on.update({ text: "Broken", diagnostics: false });
+    on.close();
+    await on.open();
+    expect(on.get().draft.diagnostics).toBe(false);
+    const web = createFeedbackStore(environment().env);
+    await web.open();
+    expect(web.get().draft.diagnostics).toBe(true);
+  });
+
   test("opens without a screenshot in a plain browser", async () => {
     const store = createFeedbackStore(environment().env);
     await store.open();

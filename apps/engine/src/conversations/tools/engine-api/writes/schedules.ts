@@ -82,6 +82,7 @@ export const createScheduleTool: ConversationTool = {
         ...(args.execution_mode !== undefined ? { execution_mode: args.execution_mode } : {}),
         ...(args.input !== undefined ? { input: args.input } : {}),
         ...(args.paused !== undefined ? { paused: args.paused } : {}),
+        creator: ctx.principal ?? null,
       });
       await ctx.engineClient.audit_write({
         resource_type: "schedule",

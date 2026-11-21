@@ -1,15 +1,13 @@
+import { ChatBubble } from "@ui/components/proto/ChatBubble";
+import { BubbleSkeleton, FadeIn, useHeldPhase } from "@ui/components/proto/Skeleton";
 import { Fragment } from "react";
 import type { ConversationDetail } from "@/api/client";
 import { CHAT_COLUMN } from "@/app/shell-header";
 import { MessageResponse } from "@/components/ai-elements/message";
 import { DiffCard } from "@/components/cockpit/diff-card";
 import {
-  Bubble,
-  BubbleContent,
   CodeBlock,
   DataState,
-  Message,
-  MessageContent,
   MessageScroller,
   MessageScrollerButton,
   MessageScrollerContent,
@@ -22,9 +20,9 @@ import { elapsedMs } from "@/pages/chat-live-calls";
 import type { ChatLookups } from "@/pages/chat-lookups";
 import type { ChatQuestions } from "@/pages/chat-questions";
 import { optimisticUiMessage } from "@/pages/chat-session";
-import { ChatStart } from "@/pages/chat-start";
 import type { ChatTurn } from "@/pages/chat-turn";
-import { actionLabel, NO_LIVE_REVIEWS } from "./labels";
+import { answerPhase, bubbleContinues, bubbleSide, previousSides } from "./bubble-model";
+import { actionLabel, NO_LIVE_REVIEWS, textFromPart } from "./labels";
 import { ChatMessage } from "./message";
 import { FollowSubmittedTurn } from "./parts";
 
@@ -38,7 +36,6 @@ export function ChatTranscript({
   conversationMissing,
   onRetryLoad,
   startEmpty,
-  fillComposer,
   showOptimistic,
   busy,
   decisionErrorFor,
@@ -56,7 +53,6 @@ export function ChatTranscript({
   conversationMissing: boolean;
   onRetryLoad: () => void;
   startEmpty: boolean;
-  fillComposer: (prompt: string) => void;
   showOptimistic: boolean;
   busy: boolean;
   decisionErrorFor: (id: string | undefined) => boolean;
@@ -92,12 +88,24 @@ export function ChatTranscript({
     latestPreviewCallId,
     savedPreviews,
   } = lookups;
+  const spoken = messages.map((message) => ({
+    role: message.role,
+    spoke: message.parts.some((part) => Boolean(textFromPart(part)?.trim())),
+  }));
+  const above = previousSides(spoken);
+  const answer = answerPhase({ sendPending, streamedText, liveCalls: liveCalls.length });
+  const lastRole = messages.at(-1)?.role;
+  const streamContinues =
+    !showOptimistic &&
+    lastRole !== undefined &&
+    bubbleSide(lastRole) === "subkit" &&
+    spoken.at(-1)?.spoke === true;
   return (
     <MessageScrollerProvider key={sessionKey} autoScroll>
       <FollowSubmittedTurn submittedAt={Math.max(send.submittedAt, decide.submittedAt)} />
       <MessageScroller className="h-0 min-h-0 flex-1" data-testid="chat-transcript">
         <MessageScrollerViewport
-          className="px-4 py-6 sm:px-6"
+          className="px-4 py-6 sm:px-8"
           style={{ scrollbarGutter: "stable" }}
         >
           <MessageScrollerContent className={CHAT_COLUMN}>
@@ -110,11 +118,9 @@ export function ChatTranscript({
               />
             ) : messages.length === 0 && !sendPending && !showOptimistic ? (
               <div className="flex flex-1 py-6" data-testid="chat-empty">
-                {startEmpty ? (
-                  <p className="text-sm text-muted-foreground">{t("chat.empty.title")}</p>
-                ) : (
-                  <ChatStart onPick={fillComposer} />
-                )}
+                <p className="text-sm text-muted-foreground">
+                  {t(startEmpty ? "chat.empty.title" : "chat.start.label")}
+                </p>
               </div>
             ) : (
               messages.map((message, index) => (
@@ -124,6 +130,7 @@ export function ChatTranscript({
                       conversationId={activeId ?? undefined}
                       message={message}
                       messageIndex={index}
+                      continued={bubbleContinues(above[index] ?? null, bubbleSide(message.role))}
                       pendingApprovalId={
                         pendingDecision?.toolCallId ??
                         pendingChoice?.toolCallId ??
@@ -273,17 +280,17 @@ export function ChatTranscript({
                 </div>
               </MessageScrollerItem>
             )}
-            {streamedText && (
-              <MessageScrollerItem>
-                <Message align="start">
-                  <MessageContent>
-                    <Bubble variant="ghost">
-                      <BubbleContent>
-                        <MessageResponse>{streamedText}</MessageResponse>
-                      </BubbleContent>
-                    </Bubble>
-                  </MessageContent>
-                </Message>
+            {answer !== "none" && (
+              <MessageScrollerItem data-testid="chat-answer">
+                <ChatBubble continued={streamContinues}>
+                  <AnswerBody text={streamedText} waiting={answer === "waiting"} />
+                  {answer === "streaming" ? (
+                    <span
+                      aria-hidden="true"
+                      className="ml-1 inline-block h-4 w-1.5 animate-caret bg-foreground align-middle"
+                    />
+                  ) : null}
+                </ChatBubble>
               </MessageScrollerItem>
             )}
             {playbookPlacement.atEnd ? playbookSummary : null}
@@ -293,9 +300,21 @@ export function ChatTranscript({
         <MessageScrollerButton
           direction="end"
           label={t("chat.scrollBottom")}
+          className="inset-s-auto! end-6! translate-x-0! rtl:translate-x-0!"
           data-testid="chat-scroll-bottom"
         />
       </MessageScroller>
     </MessageScrollerProvider>
+  );
+}
+
+function AnswerBody({ text, waiting }: { text: string; waiting: boolean }) {
+  const phase = useHeldPhase(waiting);
+  if (phase === "blank") return <div aria-hidden="true" className="h-[68px] w-64" />;
+  if (phase === "skeleton") return <BubbleSkeleton />;
+  return (
+    <FadeIn>
+      <MessageResponse>{text}</MessageResponse>
+    </FadeIn>
   );
 }

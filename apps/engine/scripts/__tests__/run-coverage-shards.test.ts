@@ -1,13 +1,7 @@
 import { expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, relative } from "node:path";
-import { mutationTestInputs } from "../audit/mutation-inputs.ts";
-import { digestWaveFiles } from "../audit/mutation-wave.ts";
-import {
-  measureDistributedBehaviorDurations,
-  selectDistributedCoverageBehaviorProof,
-} from "../distributed-quality.ts";
+import { join } from "node:path";
 import {
   collectCoverageShardUnion,
   coverageBehaviorProofDescriptor,
@@ -22,72 +16,6 @@ test("coverage distributed coordinator, shard executor, and collector APIs are e
   expect(executeCoverageBehaviorGroups).toBeInstanceOf(Function);
   expect(executeCoverageWave).toBeInstanceOf(Function);
   expect(collectCoverageShardUnion).toBeInstanceOf(Function);
-});
-
-test("behavior duration measurements remain scoped to each shard proof", () => {
-  const root = mkdtempSync(join(tmpdir(), "distributed-quality-duration-"));
-  const manifest = (name: string, startedAt: string, finishedAt: string) => {
-    writeFileSync(join(root, name), JSON.stringify({ startedAt, finishedAt }));
-    return name;
-  };
-  const proof = (name: string, terminal: Array<{ test: string; manifest_path: string }>) => {
-    const path = join(root, name);
-    writeFileSync(path, JSON.stringify({ terminal }));
-    return path;
-  };
-  try {
-    const first = manifest("first.json", "2026-01-01T00:00:00.000Z", "2026-01-01T00:00:00.010Z");
-    const second = manifest("second.json", "2026-01-01T00:00:00.000Z", "2026-01-01T00:00:00.025Z");
-    expect(
-      measureDistributedBehaviorDurations({
-        repo: root,
-        proofs: new Map([
-          ["first", proof("first-proof.json", [{ test: "shared.test.ts", manifest_path: first }])],
-          [
-            "second",
-            proof("second-proof.json", [{ test: "shared.test.ts", manifest_path: second }]),
-          ],
-        ]),
-      }),
-    ).toEqual(
-      new Map([
-        ["first", new Map([["shared.test.ts", 10]])],
-        ["second", new Map([["shared.test.ts", 25]])],
-      ]),
-    );
-    expect(() =>
-      measureDistributedBehaviorDurations({
-        repo: root,
-        proofs: new Map([
-          [
-            "first",
-            proof("inconsistent-proof.json", [
-              { test: "shared.test.ts", manifest_path: first },
-              { test: "shared.test.ts", manifest_path: second },
-            ]),
-          ],
-        ]),
-      }),
-    ).toThrow("Behavior test duration disagrees");
-    const invalid = manifest(
-      "invalid.json",
-      "2026-01-01T00:00:00.025Z",
-      "2026-01-01T00:00:00.000Z",
-    );
-    expect(() =>
-      measureDistributedBehaviorDurations({
-        repo: root,
-        proofs: new Map([
-          [
-            "invalid",
-            proof("invalid-proof.json", [{ test: "invalid.test.ts", manifest_path: invalid }]),
-          ],
-        ]),
-      }),
-    ).toThrow("Behavior terminal manifest has invalid duration");
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
 });
 
 test("coverage shard evidence paths are confined to the repository", () => {
@@ -123,113 +51,6 @@ test("coverage collector rejects a missing shard artifact before reading native 
     ).toThrow("missing shard root");
   } finally {
     rmSync(outputRoot, { recursive: true, force: true });
-    rmSync(fixture.root, { recursive: true, force: true });
-  }
-});
-
-test("distributed selector uses the coordinator's behavior-only proof for a mixed shard", async () => {
-  const fixture = frozenWaveFixture();
-  try {
-    const [direct, behavior, mocked] = fixture.tests;
-    const targets = fixture.targets;
-    writeFileSync(
-      join(fixture.root, mocked!),
-      `${readFileSync(join(fixture.root, mocked!), "utf8")}\n// mock.module(\n`,
-    );
-    const directTargetPath = join(fixture.root, direct!);
-    const additionalImports = [targets[1]!, targets[2]!]
-      .map((target, index) => {
-        const module = relative(dirname(directTargetPath), join(fixture.root, target))
-          .replace(/\.ts$/, "")
-          .replace(/^([^./])/, "./$1");
-        return `import { fixture as extra${index} } from "${module}"; void extra${index};`;
-      })
-      .join("\n");
-    writeFileSync(
-      directTargetPath,
-      `${readFileSync(directTargetPath, "utf8")}\n${additionalImports}\n`,
-    );
-    fixture.wave.shards[0]!.tests = fixture.wave.shards[0]!.tests.map((test) => {
-      if (test.path === direct) return { ...test, covers_targets: targets.slice(0, 3) };
-      if (test.path === behavior) return { ...test, kind: "reverse_import" };
-      if (test.path === mocked) return { ...test, kind: "direct" };
-      return test;
-    });
-    fixture.wave.test_freeze_sha256 = digestWaveFiles(fixture.root, fixture.tests);
-    fixture.wave.source_freeze_sha256 = digestWaveFiles(
-      fixture.root,
-      mutationTestInputs(fixture.root),
-    );
-    writeFileSync(fixture.manifestPath, JSON.stringify(fixture.wave));
-    const shard = fixture.wave.shards[0]!;
-    const descriptor = coverageBehaviorProofDescriptor({
-      shard,
-      usesModuleMock: (path) => path === mocked,
-    });
-    expect(descriptor.tests).toEqual([behavior, mocked].sort());
-    const root = join(
-      fixture.root,
-      "reports/coverage/shards",
-      fixture.wave.wave_id,
-      "run",
-      "behavior",
-    );
-    mkdirSync(root, { recursive: true });
-    const proofPath = join(root, descriptor.filename);
-    const produced = await executeCoverageBehaviorGroups({
-      repo: fixture.root,
-      manifestPath: fixture.manifestPath,
-      runId: "run",
-      artifactRoot: root,
-    });
-    expect(produced.get(shard.id)).toBe(proofPath);
-    const proofBytes = readFileSync(proofPath, "utf8");
-    await expect(
-      executeCoverageWave({
-        repo: fixture.root,
-        manifestPath: fixture.manifestPath,
-        timeoutMs: 1,
-        runId: "run",
-        outputRoot: dirname(root),
-        behaviorReceipts: produced,
-        shardIds: ["missing"],
-      }),
-    ).rejects.toThrow("unknown or empty shard selection");
-    expect(readFileSync(proofPath, "utf8")).toBe(proofBytes);
-    expect(
-      selectDistributedCoverageBehaviorProof({
-        repo: fixture.root,
-        manifestPath: fixture.manifestPath,
-        waveId: fixture.wave.wave_id,
-        coverageRunId: "run",
-        shardId: shard.id,
-      }),
-    ).toBe(proofPath);
-    writeFileSync(proofPath, JSON.stringify({ wave_id: fixture.wave.wave_id, tests: [direct] }));
-    expect(() =>
-      selectDistributedCoverageBehaviorProof({
-        repo: fixture.root,
-        manifestPath: fixture.manifestPath,
-        waveId: fixture.wave.wave_id,
-        coverageRunId: "run",
-        shardId: shard.id,
-      }),
-    ).toThrow("absent or misrouted");
-    unlinkSync(proofPath);
-    writeFileSync(
-      join(root, "foreign-proof.json"),
-      JSON.stringify({ wave_id: fixture.wave.wave_id, tests: descriptor.tests }),
-    );
-    expect(() =>
-      selectDistributedCoverageBehaviorProof({
-        repo: fixture.root,
-        manifestPath: fixture.manifestPath,
-        waveId: fixture.wave.wave_id,
-        coverageRunId: "run",
-        shardId: shard.id,
-      }),
-    ).toThrow("absent or misrouted");
-  } finally {
     rmSync(fixture.root, { recursive: true, force: true });
   }
 });

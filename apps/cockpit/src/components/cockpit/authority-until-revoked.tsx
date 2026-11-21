@@ -45,10 +45,7 @@ export function UntilRevokedHint({
 }) {
   const { tn } = useI18n();
   return (
-    <p
-      className="text-sm text-amber-700 dark:text-amber-400"
-      data-testid="authority-until-revoked-hint"
-    >
+    <p className="text-sm text-warning-ink" data-testid="authority-until-revoked-hint">
       {days === null
         ? tn("workflowApprovals.untilRevoked.hintRuns", remainingRuns ?? 0)
         : tn("workflowApprovals.untilRevoked.hint", days)}
@@ -61,7 +58,7 @@ export function UntilRevokedDone() {
   return (
     <p
       role="status"
-      className="text-sm text-emerald-700 dark:text-emerald-400"
+      className="text-sm text-success-ink"
       data-testid="authority-until-revoked-done"
     >
       {t("workflowApprovals.untilRevoked.done")}

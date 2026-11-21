@@ -93,7 +93,7 @@ describe("the sentence on the confirmation card", () => {
   test("starting a task names it and says where the run happens", () => {
     const start = action({ tool: "run_task", taskId: TASK, name: "Wochenzahlen" });
     expect(taskActionLine(start, de)).toBe(
-      "Jetzt einen Lauf für die Aufgabe „Wochenzahlen“ in einer eigenen Unterhaltung starten.",
+      "Jetzt einen Run für die Aufgabe „Wochenzahlen“ in einer eigenen Unterhaltung starten.",
     );
     expect(taskActionLine(start, en)).toBe(
       "Start a run of the task “Wochenzahlen” now, in its own conversation.",
@@ -103,7 +103,7 @@ describe("the sentence on the confirmation card", () => {
   test("stopping a run says that it is final", () => {
     const stop = action({ tool: "abort_task_run", taskRunId: RUN, name: "Wochenzahlen" });
     expect(taskActionLine(stop, de)).toBe(
-      "Den aktuellen Lauf für die Aufgabe „Wochenzahlen“ endgültig abbrechen.",
+      "Den aktuellen Run für die Aufgabe „Wochenzahlen“ endgültig abbrechen.",
     );
     expect(taskActionLine(stop, en)).toBe(
       "Stop the current run of the task “Wochenzahlen” for good.",
@@ -134,7 +134,7 @@ describe("the sentence on the confirmation card", () => {
 
   test("without a name the task is still pointed at; a nameless new task has no own sentence", () => {
     expect(taskActionLine(action({ tool: "run_task", taskId: TASK }), de)).toBe(
-      "Jetzt einen Lauf für diese Aufgabe in einer eigenen Unterhaltung starten.",
+      "Jetzt einen Run für diese Aufgabe in einer eigenen Unterhaltung starten.",
     );
     expect(taskActionLine(action({ tool: "abort_task_run" }), en)).toBe(
       "Stop the current run of this task for good.",
@@ -155,7 +155,7 @@ describe("the card in the conversation", () => {
     if (!approval?.taskAction) throw new Error("no task action");
     const named = { ...approval, taskAction: withTaskName(approval.taskAction, "Wochenzahlen") };
     expect(approvalLine(named, de, same)).toBe(
-      "Jetzt einen Lauf für die Aufgabe „Wochenzahlen“ in einer eigenen Unterhaltung starten.",
+      "Jetzt einen Run für die Aufgabe „Wochenzahlen“ in einer eigenen Unterhaltung starten.",
     );
     expect(approvalLine(named, de, same)).not.toContain("Policy requires");
   });
@@ -189,7 +189,7 @@ describe("the card in the conversation", () => {
         null,
       );
     expect(approvalLine(pending("abort_task_run"), de, same)).toBe(
-      "Den aktuellen Lauf für diese Aufgabe endgültig abbrechen.",
+      "Den aktuellen Run für diese Aufgabe endgültig abbrechen.",
     );
     expect(approvalLine(pending("save_task"), de, same)).toBe(de("chat.decision.gatedAction"));
     expect("taskAction" in pending("delete_workflow")).toBe(false);

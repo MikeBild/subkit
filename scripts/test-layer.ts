@@ -1,9 +1,16 @@
 #!/usr/bin/env bun
 
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { type RunOutcome, runPool, summarize } from "../apps/engine/scripts/audit/import-graph.ts";
 import { loadTestLayers, readRepoText } from "../apps/engine/scripts/audit/test-layer-source.ts";
-import { isLayer, LAYERS, planRuns, RUNNERS } from "../apps/engine/scripts/audit/test-layers.ts";
+import {
+  isLayer,
+  LAYERS,
+  planRuns,
+  RUNNERS,
+  runSite,
+} from "../apps/engine/scripts/audit/test-layers.ts";
 
 const REPO = path.resolve(import.meta.dir, "..");
 const argv = process.argv.slice(2);
@@ -37,10 +44,13 @@ async function run(label: string, targets: readonly string[]): Promise<RunOutcom
   const env: Record<string, string | undefined> = { ...process.env, NODE_ENV: "test" };
   env.LLM_PROVIDER ??= "mock";
   if (runner.skipDocker) env.SKIP_DOCKER = "1";
-  const child = Bun.spawn(
-    ["bun", "test", "--timeout", String(runner.timeoutMs), ...targets.map((t) => `./${t}`)],
-    { cwd: REPO, env, stdout: "inherit", stderr: "inherit" },
-  );
+  const site = runSite(targets, (root) => existsSync(path.join(REPO, root, "bunfig.toml")));
+  const child = Bun.spawn(["bun", "test", "--timeout", String(runner.timeoutMs), ...site.targets], {
+    cwd: path.join(REPO, site.cwd),
+    env,
+    stdout: "inherit",
+    stderr: "inherit",
+  });
   const exitCode = await child.exited;
   process.stdout.write(`[test-layer] ${exitCode === 0 ? "PASS" : "FAIL"} ${label}\n`);
   return { file: label, exitCode, output: "" };

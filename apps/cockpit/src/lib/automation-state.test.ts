@@ -64,7 +64,7 @@ describe("automationState — one state, by precedence", () => {
     expect(state.primaryAction).toEqual({ kind: "view" });
     expect(state.secondaryAction).toBeNull();
     expect(CATALOGS.de["automation.fact.untilRevoked"]).toBe("bis auf Widerruf");
-    expect(CATALOGS.de["automation.fact.runsSoFar.other"]).toBe("{count} Läufe bisher");
+    expect(CATALOGS.de["automation.fact.runsSoFar.other"]).toBe("{count} Runs bisher");
   });
 
   test("grant: something starts it and no approval covers it", () => {

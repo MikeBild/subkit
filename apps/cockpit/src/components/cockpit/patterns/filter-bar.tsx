@@ -1,5 +1,6 @@
 import { SlidersHorizontal } from "lucide-react";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
+import { buttonVariants } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -9,6 +10,7 @@ import {
 } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useI18n } from "@/lib/i18n-context";
+import { cn } from "@/lib/utils";
 import { SearchInput } from "./search-input";
 
 export interface FilterSelect {
@@ -17,6 +19,13 @@ export interface FilterSelect {
   label: string;
   options: readonly { value: string; label: string }[];
   testId?: string;
+  defaultValue?: string;
+}
+
+export function activeFilterCount(selects: readonly FilterSelect[]): number {
+  return selects.filter(
+    (select) => select.defaultValue !== undefined && select.value !== select.defaultValue,
+  ).length;
 }
 
 export const MAX_FILTER_SELECTS = 4;
@@ -31,7 +40,7 @@ function FilterField({ select }: { select: FilterSelect }) {
       <span>{select.label}</span>
       <Select value={select.value} onValueChange={select.onChange}>
         <SelectTrigger
-          className="h-9 w-full text-sm"
+          className="w-full text-sm"
           aria-label={select.label}
           data-testid={select.testId}
         >
@@ -77,6 +86,7 @@ export function FilterBar({
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const filters = selects;
+  const active = activeFilterCount(selects);
   const keyOf = (select: FilterSelect) => select.testId ?? select.label;
   const committed = filters.map((select) => `${keyOf(select)}=${select.value}`).join("\u0000");
   useEffect(() => {
@@ -143,7 +153,7 @@ export function FilterBar({
               <button
                 type="button"
                 onClick={applyFilters}
-                className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground pointer-coarse:h-11"
+                className={cn(buttonVariants(), "pointer-coarse:h-11")}
                 data-testid="filter-bar-panel-apply"
               >
                 {t("common.applyFilters")}
@@ -174,11 +184,19 @@ export function FilterBar({
             onClick={openFilters}
             aria-haspopup="dialog"
             aria-expanded={open}
-            className="inline-flex h-9 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-accent pointer-coarse:h-11"
+            className={cn(buttonVariants({ variant: "outline" }), "pointer-coarse:h-11")}
             data-testid="filter-bar-open"
           >
             <SlidersHorizontal className="size-4" />
             {t("common.filters")}
+            {active > 0 ? (
+              <span
+                className="rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground tabular-nums"
+                data-testid="filter-bar-active"
+              >
+                {active}
+              </span>
+            ) : null}
           </button>
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetContent
@@ -223,7 +241,7 @@ export function FilterBar({
                   type="button"
                   data-testid="filter-bar-apply"
                   onClick={applyFilters}
-                  className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground pointer-coarse:h-11"
+                  className={cn(buttonVariants(), "pointer-coarse:h-11")}
                 >
                   {t("common.applyFilters")}
                 </button>

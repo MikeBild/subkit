@@ -39,25 +39,30 @@ export const feedbackEn = {
   "feedback.diag.errors": "Last 10 errors",
   "feedback.diag.noErrors": "No errors",
   "feedback.attachUncleaned":
-    "Images and PDFs are sent as they are; they cannot be cleaned. Look at them before you send.",
+    "Images and PDFs are sent as they are and cannot be cleaned. Look at them first.",
   "feedback.notice":
-    "Sent to your SubKit server and stored in the Inbox of your workspace. Everyone who may read the Inbox sees it: administrators and members. Your text is sent as you wrote it, including email addresses; only secrets and file paths are removed. Check text and files for private information.",
+    "Lands in the Inbox of your workspace, visible to administrators and members. Your text is sent as written, including email addresses. Check text and files for private information.",
   "feedback.discard": "Discard draft",
   "feedback.send": "Send feedback",
   "feedback.sending": "Sending…",
   "feedback.thanks": "Thanks for your feedback",
+  "feedback.queued": "Saved. It is sent as soon as SubKit can be reached",
+  "feedback.waiting.one": "1 report is waiting to be sent",
+  "feedback.waiting.other": "{count} reports are waiting to be sent",
   "feedback.failed.title": "Feedback not sent",
+  "feedback.unsent.title": "Not sent",
+  "feedback.unsent.reason.conflict": "Report ID already taken",
+  "feedback.unsent.reason.refused": "Attachment refused",
+  "feedback.unsent.reason.too_large": "Attachment too large",
+  "feedback.unsent.reason.expired": "Older than 14 days",
+  "feedback.unsent.resend": "Send again",
+  "feedback.unsent.discard": "Discard",
   "feedback.failed.generic":
     "Your draft is saved and was not discarded. You can try again right away.",
   "feedback.failed.rateLimited":
     "You sent several reports in a short time. Your draft is saved; try again in a few minutes.",
   "feedback.failed.attachment":
     "The server did not accept an attached file. Your draft is saved; remove the file and try again.",
-  "feedback.prefill.error": "Error",
-  "feedback.prefill.cause": "Cause",
-  "feedback.prefill.code": "Code",
-  "feedback.prefill.request": "Request ID",
-  "feedback.prefill.time": "Time",
   "audit.action.feedbackSubmitted": "Feedback sent",
 } as const;
 
@@ -103,24 +108,29 @@ export const feedbackDe: Record<keyof typeof feedbackEn, string> = {
   "feedback.diag.errors": "Letzte 10 Fehlermeldungen",
   "feedback.diag.noErrors": "Keine Fehlermeldungen",
   "feedback.attachUncleaned":
-    "Bilder und PDFs werden unverändert gesendet; sie lassen sich nicht bereinigen. Sieh sie dir an, bevor du sendest.",
+    "Bilder und PDFs werden unverändert gesendet und lassen sich nicht bereinigen. Sieh sie dir vorher an.",
   "feedback.notice":
-    "Wird an deinen SubKit-Server geschickt und landet im Eingang deines Arbeitsbereichs. Dort sehen ihn alle, die den Eingang lesen dürfen: Administratoren und Mitglieder. Dein Text wird gesendet, wie du ihn schreibst, auch E-Mail-Adressen; nur Geheimnisse und Dateipfade werden entfernt. Prüfe Text und Dateien auf private Angaben.",
+    "Landet im Eingang deines Arbeitsbereichs, sichtbar für Administratoren und Mitglieder. Dein Text geht so raus, wie du ihn schreibst, auch E-Mail-Adressen. Prüfe Text und Dateien auf private Angaben.",
   "feedback.discard": "Entwurf verwerfen",
   "feedback.send": "Feedback senden",
   "feedback.sending": "Wird gesendet …",
   "feedback.thanks": "Danke für dein Feedback!",
+  "feedback.queued": "Gespeichert. Die Meldung geht raus, sobald SubKit erreichbar ist",
+  "feedback.waiting.one": "1 Meldung wartet auf den Versand",
+  "feedback.waiting.other": "{count} Meldungen warten auf den Versand",
   "feedback.failed.title": "Feedback nicht gesendet",
+  "feedback.unsent.title": "Nicht gesendet",
+  "feedback.unsent.reason.conflict": "Meldungs-ID schon vergeben",
+  "feedback.unsent.reason.refused": "Anhang abgelehnt",
+  "feedback.unsent.reason.too_large": "Anhang zu groß",
+  "feedback.unsent.reason.expired": "Älter als 14 Tage",
+  "feedback.unsent.resend": "Erneut senden",
+  "feedback.unsent.discard": "Verwerfen",
   "feedback.failed.generic":
     "Dein Entwurf ist gespeichert und wurde nicht verworfen. Du kannst es gleich noch einmal versuchen.",
   "feedback.failed.rateLimited":
     "Du hast in kurzer Zeit mehrere Meldungen gesendet. Dein Entwurf ist gespeichert; versuche es in ein paar Minuten noch einmal.",
   "feedback.failed.attachment":
     "Der Server hat eine angehängte Datei nicht angenommen. Dein Entwurf ist gespeichert; entferne die Datei und versuche es noch einmal.",
-  "feedback.prefill.error": "Fehler",
-  "feedback.prefill.cause": "Ursache",
-  "feedback.prefill.code": "Code",
-  "feedback.prefill.request": "Anfrage-ID",
-  "feedback.prefill.time": "Zeit",
   "audit.action.feedbackSubmitted": "Feedback gesendet",
 };

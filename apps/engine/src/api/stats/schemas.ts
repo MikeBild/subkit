@@ -1,5 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { PRICE_SOURCES } from "../../llm/index.ts";
+import { BUCKET_FILLS } from "../../stats/bucket-fill.ts";
 import { BUCKET_UNITS } from "../../stats/bucket-units.ts";
 
 const CsvOrArray = z
@@ -57,6 +58,13 @@ const TokenAggSchema = z
 
 const GroupKey = z.record(z.string(), z.string());
 
+const FillParam = z
+  .enum(BUCKET_FILLS)
+  .optional()
+  .describe(
+    "zero (default): every bucket of the window is listed, empty ones with zeros. none: only buckets with data.",
+  );
+
 const EnvelopeBase = {
   bucket: z.enum(BUCKET_UNITS),
   tz: z.string(),
@@ -71,6 +79,7 @@ export const ExecutionsStatsQuery = BucketWindowQuery.extend({
   request_source: CsvOrArray,
   execution_mode: z.enum(["dev", "prod"]).optional(),
   group_by: CsvOrArray,
+  fill: FillParam,
 }).openapi("StatsExecutionsQuery");
 
 const ExecutionsBucket = z.object({
@@ -176,6 +185,7 @@ export const LlmStatsQuery = BucketWindowQuery.extend({
   workflow_id: z.string().uuid().optional(),
   group_by: CsvOrArray,
   user_id: z.string().uuid().optional(),
+  fill: FillParam,
 }).openapi("StatsLlmQuery");
 
 const LlmPartCost = z

@@ -8,6 +8,7 @@ export interface FeedbackBridge {
   diagnostics(): Promise<unknown>;
   captureWindow(): Promise<string | null>;
   onFeedbackRequested(listener: () => void): () => void;
+  diagnosticsConsent(): Promise<boolean | null>;
 }
 
 function screenshotCapability(candidate: unknown): ScreenshotCapability {
@@ -30,7 +31,7 @@ export function feedbackBridgeOf(candidate: unknown): FeedbackBridge | null {
   const bridge = candidate as Record<string, unknown>;
   const version = bridge.protocolVersion;
   if (typeof version !== "number" || version < FEEDBACK_BRIDGE_VERSION) return null;
-  const { diagnostics, captureWindow, onFeedbackRequested } = bridge;
+  const { diagnostics, captureWindow, onFeedbackRequested, desktopSettings } = bridge;
   if (typeof diagnostics !== "function" || typeof captureWindow !== "function") return null;
   return {
     screenshot: screenshotCapability(bridge.capabilities),
@@ -38,6 +39,15 @@ export function feedbackBridgeOf(candidate: unknown): FeedbackBridge | null {
     captureWindow: async () => {
       const png: unknown = await captureWindow.call(bridge);
       return typeof png === "string" && /^[A-Za-z0-9+/]+={0,2}$/.test(png) ? png : null;
+    },
+    diagnosticsConsent: async () => {
+      if (typeof desktopSettings !== "function") return null;
+      const settings: unknown = await desktopSettings.call(bridge);
+      const consent =
+        settings && typeof settings === "object"
+          ? (settings as { shareDiagnostics?: unknown }).shareDiagnostics
+          : undefined;
+      return typeof consent === "boolean" ? consent : null;
     },
     onFeedbackRequested: (listener) => {
       if (typeof onFeedbackRequested !== "function") return () => {};

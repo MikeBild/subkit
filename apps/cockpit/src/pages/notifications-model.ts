@@ -62,6 +62,7 @@ export const EVENT_KEYS: Readonly<Record<string, TranslationKey>> = {
   "connector.oauth.refreshed": "notifications.event.connector.oauth.refreshed",
   "connector.oauth.callback_succeeded": "notifications.event.connector.oauth.callback_succeeded",
   "connector.oauth.callback_failed": "notifications.event.connector.oauth.callback_failed",
+  "connector.oauth.signin_finished": "notifications.event.connector.oauth.signin_finished",
   "connector.auth_failed": "notifications.event.connector.auth_failed",
   "connector.health_changed": "notifications.event.connector.health_changed",
   "patch.proposed": "notifications.event.patch.proposed",

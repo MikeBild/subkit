@@ -1,6 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { Check, Circle, CircleDot, CircleHelp } from "lucide-react";
+import { ErrorNotice } from "@ui/components/proto/ErrorNotice";
+import { ProgressRing, StepGraph } from "@ui/components/proto/visual";
+import { CircleHelp, ListChecks, type LucideIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ApiError } from "@/api/client";
@@ -21,8 +23,10 @@ import {
   DetailPage,
   DetailPageLoading,
   FactList,
+  IconTile,
   KpiTile,
   type PageTab,
+  SectionHeading,
   TabBody,
   Timeline,
 } from "@/components/cockpit/patterns";
@@ -31,17 +35,20 @@ import { MISSING } from "@/components/cockpit/table-columns";
 import { TaskPermissions } from "@/components/cockpit/task-permissions";
 import { WaitingOnApprover } from "@/components/cockpit/waiting-on";
 import { ForbiddenState, LoadFailed, queryView } from "@/components/failure-state";
+import { workSteps } from "@/features/tasks";
+import { type UsageFormat, useUsageFormat } from "@/features/usage";
 import { reportFailure } from "@/lib/action-failure";
 import { cronWords } from "@/lib/cron-words";
 import { LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { useSearchParamState } from "@/lib/use-search-param-state";
 import { cn } from "@/lib/utils";
-import { runNowStep } from "@/pages/chat-task-run";
 import { TaskFormDialog } from "@/pages/tasks-form";
 import { historyTitle } from "@/pages/tasks-history";
 import {
   actionKey,
+  failureReason,
+  failureRemedies,
   hasSchedule,
   historyTone,
   isOpenRun,
@@ -50,7 +57,6 @@ import {
   type StartView,
   startErrorKey,
   startView,
-  stateWords,
   TASKS_PATH,
   type Task,
   type TaskLatestRun,
@@ -77,28 +83,22 @@ import {
   useTaskRuns,
   useTaskUsage,
 } from "@/pages/tasks-queries";
+import { TaskReviewSection } from "@/pages/tasks-review";
 import { TaskReviewDialog, TaskRunSheet, TaskRunsTab } from "@/pages/tasks-runs";
-import { type StepMark, stepLines, stepMarkKey, stepResults } from "@/pages/tasks-steps";
+import {
+  type StepMark,
+  stepGraphState,
+  stepLines,
+  stepMarkKey,
+  stepResults,
+} from "@/pages/tasks-steps";
 import { StopRunDialog } from "@/pages/tasks-stop-dialog";
 import { waitingForKey } from "@/pages/tasks-waiting";
-import { type UsageFormat, useUsageFormat } from "@/pages/usage-format";
 
 type Translate = ReturnType<typeof useI18n>["t"];
 type Playbook = NonNullable<ReturnType<typeof useRunPlaybook>["data"]>;
 
-const STEP_ICONS: Record<StepMark, typeof Check> = {
-  done: Check,
-  active: CircleDot,
-  waiting: CircleHelp,
-  open: Circle,
-};
-
-const STEP_TONES: Record<StepMark, string> = {
-  done: "text-emerald-700 dark:text-emerald-400",
-  active: "text-foreground",
-  waiting: "text-amber-700 dark:text-amber-400",
-  open: "text-muted-foreground",
-};
+const STEP_ICONS: Partial<Record<StepMark, LucideIcon>> = { waiting: CircleHelp };
 
 function StepProgress({
   task,
@@ -112,34 +112,34 @@ function StepProgress({
   const { t } = useI18n();
   const lines = stepLines(task.plan, playbook?.steps ?? null, state);
   return (
-    <ol className="flex min-w-0 flex-col gap-2" data-testid="task-steps">
-      {lines.map((line) => {
-        const Icon = STEP_ICONS[line.mark];
-        return (
-          <li
-            key={line.id}
-            className="flex min-w-0 items-start gap-2 text-sm"
-            data-step-mark={line.mark}
-          >
-            <Icon
-              aria-hidden="true"
-              className={cn("mt-0.5 size-4 shrink-0", STEP_TONES[line.mark])}
-            />
-            <span
-              className={cn(
-                "min-w-0 [overflow-wrap:anywhere]",
-                line.mark === "active" && "font-medium",
-              )}
-            >
-              {line.label ?? t("tasks.step.confirm")}
-            </span>
-            {line.mark === "open" ? null : (
-              <span className="sr-only">{t(stepMarkKey(line.mark))}</span>
-            )}
-          </li>
-        );
-      })}
-    </ol>
+    <section className="flex flex-col gap-3" aria-labelledby="task-steps-title">
+      <div className="flex items-center gap-3">
+        <IconTile size="sm">
+          <ListChecks aria-hidden="true" />
+        </IconTile>
+        <SectionHeading id="task-steps-title" className="font-semibold">
+          {t("tasks.overview.steps")}
+        </SectionHeading>
+      </div>
+      <div className="rounded-xl border p-4" data-testid="task-steps">
+        <StepGraph
+          label={t("tasks.overview.steps")}
+          steps={lines.map((line) => ({
+            label: line.label ?? t("tasks.step.confirm"),
+            state: stepGraphState(line.mark),
+            ...(STEP_ICONS[line.mark] ? { icon: STEP_ICONS[line.mark] } : {}),
+            sub:
+              line.mark === "open" ? (
+                <span data-step-mark={line.mark} />
+              ) : (
+                <span className="sr-only" data-step-mark={line.mark}>
+                  {t(stepMarkKey(line.mark))}
+                </span>
+              ),
+          }))}
+        />
+      </div>
+    </section>
   );
 }
 
@@ -245,27 +245,21 @@ function OverviewTab({
   task,
   run,
   sleepReason,
+  turnsUsed,
   playbook,
   start,
 }: {
   task: Task;
   run: TaskLatestRun | null;
   sleepReason: string | null;
+  turnsUsed: number | null;
   playbook: Playbook | null;
   start: StartView;
 }) {
   const { t, dateTime } = useI18n();
   const live = run && (isOpenRun(run) || run.state === "result_ready") ? run : null;
-  const now = live
-    ? (runNowStep(playbook, live.state, t, live.waiting_reason) ??
-      stateWords(live.state, live, { t, time: dateTime }))
-    : t("tasks.overview.now.idle");
-  const waitsFor = waitingForKey(live);
-  const waitingFor = waitsFor
-    ? t(waitsFor)
-    : live?.state === "sleeping" && sleepReason
-      ? sleepReason
-      : t("tasks.overview.waiting.nobody");
+  const sleeping = live?.state === "sleeping" && sleepReason ? sleepReason : null;
+  const steps = workSteps(run ? turnsUsed : null, task.max_turns);
   const nextCheck =
     live?.state === "sleeping" && live.next_check_at
       ? dateTime(live.next_check_at)
@@ -274,14 +268,18 @@ function OverviewTab({
         : t(start.kind === "due" ? start.line : "tasks.overview.next.none");
   return (
     <TabBody testId="task-overview" summary={task.goal}>
-      <div className="grid grid-cols-2 gap-3 @3xl:grid-cols-4" data-testid="task-tiles">
-        <KpiTile dense label={t("tasks.overview.now")} note={now} testId="task-tile-now" />
-        <KpiTile
-          dense
-          label={t("tasks.overview.waitingFor")}
-          note={waitingFor}
-          testId="task-tile-waiting"
-        />
+      <div
+        className={cn("grid grid-cols-2 gap-3", sleeping ? "@3xl:grid-cols-3" : null)}
+        data-testid="task-tiles"
+      >
+        {sleeping ? (
+          <KpiTile
+            dense
+            label={t("tasks.overview.waitingFor")}
+            note={sleeping}
+            testId="task-tile-waiting"
+          />
+        ) : null}
         <KpiTile
           dense
           label={t("tasks.overview.nextCheck")}
@@ -298,12 +296,30 @@ function OverviewTab({
             value: <span className="[overflow-wrap:anywhere]">{task.done_when}</span>,
             testId: "task-done-when",
           },
-          {
-            label: t("tasks.overview.steps"),
-            value: <StepProgress task={task} playbook={playbook} state={run?.state ?? null} />,
-          },
         ]}
       />
+      <StepProgress task={task} playbook={playbook} state={run?.state ?? null} />
+      {steps ? (
+        <div
+          className="flex items-center gap-4 border-t pt-4 text-sm"
+          data-testid="task-work-steps"
+        >
+          <ProgressRing
+            value={steps.used}
+            total={steps.total}
+            label={t("tasks.overview.workSteps", {
+              used: String(steps.used),
+              total: String(steps.total),
+            })}
+          />
+          <p className="font-mono">
+            {t("tasks.overview.workSteps", {
+              used: String(steps.used),
+              total: String(steps.total),
+            })}
+          </p>
+        </div>
+      ) : null}
     </TabBody>
   );
 }
@@ -387,13 +403,10 @@ function stripAction(
   t: Translate,
   act: {
     review(): void;
+    reviewInline: boolean;
     allow(): void;
     resume(): void;
-    view(): void;
-    start(): void;
     resuming: boolean;
-    starting: boolean;
-    startBlocked: boolean;
   },
 ): ActionSpec | undefined {
   if (!status.action) return undefined;
@@ -420,22 +433,16 @@ function stripAction(
         }
       : undefined;
   if (status.action === "review")
-    return permissions.includes("task:run")
+    return permissions.includes("task:run") && !act.reviewInline
       ? { label, variant: "primary", onClick: act.review, testId }
       : undefined;
   if (status.action === "allow")
     return permissions.includes("task:grant")
       ? { label, variant: "primary", onClick: act.allow, testId }
       : undefined;
-  if (status.action === "restart")
-    return act.startBlocked
-      ? undefined
-      : { label, variant: "primary", onClick: act.start, pending: act.starting, testId };
-  if (status.action === "resume")
-    return permissions.includes("task:resume")
-      ? { label, variant: "primary", onClick: act.resume, pending: act.resuming, testId }
-      : undefined;
-  return run ? { label, onClick: act.view, testId } : undefined;
+  return permissions.includes("task:resume")
+    ? { label, variant: "primary", onClick: act.resume, pending: act.resuming, testId }
+    : undefined;
 }
 
 export function TaskDetail({
@@ -526,6 +533,7 @@ export function TaskDetail({
     onError: failed,
   });
 
+  const reviewInline = latest?.state === "result_ready" && permissions.includes("task:run");
   const startBlocked = !permissions.includes("task:run")
     ? t("tasks.start.unavailable.permission")
     : task.paused_at
@@ -584,6 +592,7 @@ export function TaskDetail({
           task={task}
           run={latest}
           sleepReason={latestRecord?.sleep_reason ?? null}
+          turnsUsed={latestRecord?.turns_used ?? null}
           playbook={playbook.data ?? null}
           start={nextUp}
         />
@@ -639,20 +648,50 @@ export function TaskDetail({
   ];
 
   const more =
-    status.kind === "sleeping" && latest?.next_check_at ? (
-      dateTime(latest.next_check_at)
-    ) : status.kind === "scheduled" ? (
-      rhythmWords(task, t, LOCALE_TAGS[locale], dateTime)
-    ) : status.action === "restart" &&
-      latest?.conversation_id &&
-      permissions.includes("conversation:read") ? (
-      <a
-        className="underline underline-offset-4"
-        href={absolute(conversationHref(latest.conversation_id))}
-        data-testid="task-strip-conversation"
-      >
-        {t("tasks.run.open")}
-      </a>
+    status.kind === "sleeping" && latest?.next_check_at
+      ? dateTime(latest.next_check_at)
+      : status.kind === "scheduled"
+        ? rhythmWords(task, t, LOCALE_TAGS[locale], dateTime)
+        : undefined;
+  const reason = failureReason(
+    latest ? { state: latest.state, failure_code: latestRecord?.failure_code ?? null } : null,
+  );
+  const remedies = failureRemedies({
+    conversationId: latest?.conversation_id,
+    permissions,
+    startBlocked: Boolean(startBlocked),
+  });
+  const chatTarget = remedies.chat;
+  const failure =
+    reason && latest ? (
+      <ErrorNotice
+        kind="taskFailed"
+        testId="task-failed"
+        body={t(reason)}
+        primary={
+          !remedies.retry
+            ? undefined
+            : {
+                label: t("pattern.retry"),
+                onClick: () => start.mutate(),
+                testId: "task-failed-retry",
+              }
+        }
+        secondary={
+          chatTarget
+            ? {
+                label: t("remedy.chat"),
+                onClick: () => void navigate({ to: chatTarget }),
+                testId: "task-failed-chat",
+              }
+            : undefined
+        }
+        rows={[
+          [t("tasks.run.technical.id"), latest.id],
+          [t("tasks.run.technical.failureCode"), latestRecord?.failure_code ?? MISSING],
+          [t("tasks.run.fact.ended"), latest.ended_at ? dateTime(latest.ended_at) : MISSING],
+        ]}
+      />
     ) : undefined;
 
   return (
@@ -699,15 +738,24 @@ export function TaskDetail({
         ),
         action: stripAction(status, latest, permissions, t, {
           review: () => setReviewing(true),
+          reviewInline,
           allow: () => setGranting(true),
           resume: () => resume.mutate(),
-          view: () => setShownRun(latest ? latest.id : ""),
-          start: () => start.mutate(),
           resuming: resume.isPending,
-          starting: start.isPending,
-          startBlocked: Boolean(startBlocked),
         }),
       }}
+      notice={
+        reviewInline && latest ? (
+          <TaskReviewSection
+            task={task}
+            run={latest}
+            results={stepResults(playbook.data?.steps)}
+            canOpen={permissions.includes("conversation:read")}
+          />
+        ) : (
+          failure
+        )
+      }
       technical={<TaskTechnicalFacts task={task} />}
       tabs={tabs}
     >

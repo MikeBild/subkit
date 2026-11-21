@@ -111,6 +111,15 @@ export const IntakeProposalTargetSchema = z
   ])
   .openapi("IntakeProposalTarget");
 
+export const IntakeAttachmentSchema = z
+  .object({
+    file_id: z.string().uuid(),
+    filename: z.string(),
+    content_type: z.string(),
+    size_bytes: z.number().int().nonnegative(),
+  })
+  .openapi("IntakeAttachment");
+
 const SnapshotFields = {
   title: z.string(),
   source_author: z.string().optional(),
@@ -130,6 +139,7 @@ export const IntakeItemSnapshotSchema = z
     z.object({
       ...SnapshotFields,
       origin: z.literal("note"),
+      attachment: IntakeAttachmentSchema.optional(),
     }),
     z.object({
       ...SnapshotFields,

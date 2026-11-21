@@ -1,9 +1,9 @@
 import type { components } from "@cli-core/engine-api/openapi";
 import { type ActorDirectory, actorDirectoryName } from "@/app/actor-directory-model";
 import type { ApiAccessSection } from "@/app/links";
+import { permissionLabel } from "@/features/admin";
 import type { TranslationKey } from "@/lib/i18n";
 import type { CatalogLabel } from "@/lib/machine-label";
-import { permissionLabel } from "@/pages/admin-model";
 
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 

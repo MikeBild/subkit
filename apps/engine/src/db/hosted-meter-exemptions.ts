@@ -45,8 +45,12 @@ export const HOSTED_METER_EXEMPTIONS: Readonly<Record<string, string>> = {
   tool_approval_rules: personalPermissionState,
   user_setup_preferences: personalPermissionState,
   task_runs: taskState,
+  chat_composer_attachments:
+    "Per-person staging pointer without content (ids, a bounded slug and an expiry): the staged bytes are metered in files, and the row must stay writable so a person at the limit can still clear the tray.",
   conversation_turns:
     "Turn scheduling state without content (one active turn per conversation); the conversation content is metered in conversations and conversation_messages.",
+  workflow_authority_pair_requests:
+    "Pending pair approval of one workflow version: the proposed grant is bounded to 4 KB by a check constraint and becomes metered in workflow_execution_authorities once approved, and the row must stay writable so a tenant at its limit can still decline, withdraw or let a request expire.",
   transactional_mail_receipts:
     "Delivery outcome receipt without content: must stay writable to record whether an already sent mail was delivered, so a retry never sends it twice.",
 };

@@ -65,7 +65,7 @@ describe("a hosted workspace without its own AI key", () => {
 describe("the sentence", () => {
   test("a conversation named by its whole first request is shortened only on screen", () => {
     const request =
-      "Bitte prüfe den fehlgeschlagenen Lauf des wöchentlichen Wachstumsberichts und schlage eine Reparatur vor, die den Versand nicht stoppt";
+      "Bitte prüfe den fehlgeschlagenen Run des wöchentlichen Wachstumsberichts und schlage eine Reparatur vor, die den Versand nicht stoppt";
     const waiting = item({
       kind: "conversation",
       subject: { kind: "conversation", id: W, name: request },
@@ -465,7 +465,7 @@ describe("the sentence", () => {
     });
     expect(attentionRow(item({ reason: "degraded" }), en).reason).toBe("Limited");
     expect(de("operations.cause.degraded", { name: "A" })).toBe(
-      "Konnektor A antwortet wiederholt mit Fehlern",
+      "Connector A antwortet wiederholt mit Fehlern",
     );
   });
 

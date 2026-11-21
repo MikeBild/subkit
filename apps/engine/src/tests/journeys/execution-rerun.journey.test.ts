@@ -1,0 +1,219 @@
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { and, eq } from "drizzle-orm";
+import { auditLog } from "../../db/schema/index.ts";
+import {
+  createJourneyCtx,
+  JOURNEY_HOOK_TIMEOUT,
+  type JourneyCtx,
+  journeyFetch,
+  seedWorkflow,
+} from "./setup.ts";
+
+let ctx: JourneyCtx;
+let workflowId = "";
+let versionId = "";
+let originalId = "";
+
+beforeAll(async () => {
+  ctx = await createJourneyCtx("execution-rerun");
+  const wf = await seedWorkflow(ctx, {
+    slug: "rerun-wf",
+    name: "Rerun Wf",
+    steps: [
+      { kind: "transform", id: "echo", language: "javascript", expression: "return input.input;" },
+    ],
+  });
+  workflowId = wf.id;
+  versionId = wf.version_id;
+
+  const run = await journeyFetch(ctx, "/v1/executions", {
+    method: "POST",
+    body: JSON.stringify({
+      source: "saved",
+      workflow_id: workflowId,
+      input: { greeting: "original" },
+    }),
+  });
+  expect(run.status).toBe(200);
+  const body = (await run.json()) as { execution_id: string };
+  originalId = body.execution_id;
+}, JOURNEY_HOOK_TIMEOUT);
+
+afterAll(async () => {
+  if (ctx?.cleanup) await ctx.cleanup();
+}, JOURNEY_HOOK_TIMEOUT);
+
+describe("execution rerun with lineage", () => {
+  let rerunId = "";
+
+  test(
+    "AC1+AC2: rerun reuses the original input and links the lineage",
+    async () => {
+      const res = await journeyFetch(ctx, `/v1/executions/${originalId}/rerun`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        execution_id: string;
+        status: string;
+        output: unknown;
+      };
+      rerunId = body.execution_id;
+      expect(body.status).toBe("succeeded");
+      expect(body.output).toMatchObject({ greeting: "original" });
+
+      const detail = await journeyFetch(ctx, `/v1/executions/${rerunId}`);
+      const row = (await detail.json()) as {
+        parent_execution_id: string | null;
+        source_ref: Record<string, unknown> | null;
+        input: unknown;
+      };
+      expect(row.parent_execution_id).toBe(originalId);
+      expect(row.source_ref).toMatchObject({ rerun_of: originalId });
+      expect(row.input).toMatchObject({ greeting: "original" });
+
+      const lineage = await journeyFetch(
+        ctx,
+        `/v1/executions?parent_execution_id=${encodeURIComponent(originalId)}`,
+      );
+      const list = (await lineage.json()) as { items: Array<{ id: string }> };
+      expect(list.items.some((e) => e.id === rerunId)).toBe(true);
+    },
+    JOURNEY_HOOK_TIMEOUT,
+  );
+
+  test(
+    "AC3: rerun pins the original workflow version after a new version lands",
+    async () => {
+      const { workflows, workflowVersions } = await import("../../db/schema/index.ts");
+      const { eq } = await import("drizzle-orm");
+      const [v2] = await ctx.db
+        .insert(workflowVersions)
+        .values({
+          tenant_id: ctx.tenantId,
+          workflow_id: workflowId,
+          version: 2,
+          dag: {
+            name: "Rerun Wf",
+            slug: "rerun-wf",
+            steps: [
+              {
+                kind: "transform",
+                id: "echo",
+                language: "javascript",
+                expression: `return "v2";`,
+              },
+            ],
+          },
+        })
+        .returning();
+      if (!v2) throw new Error("failed to insert v2");
+      await ctx.db
+        .update(workflows)
+        .set({ current_version_id: v2.id })
+        .where(eq(workflows.id, workflowId));
+
+      const res = await journeyFetch(ctx, `/v1/executions/${originalId}/rerun`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { execution_id: string; output: unknown };
+      expect(body.output).toMatchObject({ greeting: "original" });
+
+      const detail = await journeyFetch(ctx, `/v1/executions/${body.execution_id}`);
+      const row = (await detail.json()) as { workflow_version_id: string | null };
+      expect(row.workflow_version_id).toBe(versionId);
+    },
+    JOURNEY_HOOK_TIMEOUT,
+  );
+
+  test(
+    "AC4: body.input overrides the original",
+    async () => {
+      const res = await journeyFetch(ctx, `/v1/executions/${originalId}/rerun`, {
+        method: "POST",
+        body: JSON.stringify({ input: { greeting: "override" } }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { output: unknown };
+      expect(body.output).toMatchObject({ greeting: "override" });
+    },
+    JOURNEY_HOOK_TIMEOUT,
+  );
+
+  test(
+    "AC5: draft-source execution yields 409 + hint",
+    async () => {
+      const draftRun = await journeyFetch(ctx, "/v1/executions", {
+        method: "POST",
+        body: JSON.stringify({
+          source: "draft",
+          definition: {
+            name: "Inline Draft",
+            slug: "inline-draft",
+            steps: [
+              { kind: "transform", id: "t", language: "javascript", expression: `return "x";` },
+            ],
+          },
+        }),
+      });
+      expect(draftRun.status).toBe(200);
+      const draftBody = (await draftRun.json()) as { execution_id: string };
+
+      const res = await journeyFetch(ctx, `/v1/executions/${draftBody.execution_id}/rerun`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      expect(res.status).toBe(409);
+      const err = (await res.json()) as { code: string; hint?: string };
+      expect(err.code).toBe("conflict");
+      expect(err.hint ?? "").toContain("re-POST");
+    },
+    JOURNEY_HOOK_TIMEOUT,
+  );
+
+  test(
+    "AC7: a rerun refused at admission is written down with its lineage",
+    async () => {
+      const key = "rerun-audited:2026-09-25";
+      const first = await journeyFetch(ctx, `/v1/executions/${originalId}/rerun`, {
+        method: "POST",
+        body: JSON.stringify({ idempotency_key: key, input: { greeting: "keyed" } }),
+      });
+      expect(first.status).toBe(200);
+      const res = await journeyFetch(ctx, `/v1/executions/${originalId}/rerun`, {
+        method: "POST",
+        body: JSON.stringify({ idempotency_key: key, input: { greeting: "changed" } }),
+      });
+      expect(res.status).toBe(409);
+      expect(((await res.json()) as { code: string }).code).toBe("execution_boundary_mismatch");
+
+      const rows = await ctx.db
+        .select()
+        .from(auditLog)
+        .where(
+          and(
+            eq(auditLog.tenant_id, ctx.tenantId),
+            eq(auditLog.action, "execution.boundary_refused"),
+            eq(auditLog.resource_id, workflowId),
+          ),
+        );
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.result).toBe("denied");
+      expect(rows[0]?.reason).toBe("execution_boundary_mismatch");
+      expect((rows[0]?.metadata as Record<string, unknown> | undefined)?.rerun_of).toBe(originalId);
+    },
+    JOURNEY_HOOK_TIMEOUT,
+  );
+
+  test("AC6: unknown id yields 404", async () => {
+    const res = await journeyFetch(
+      ctx,
+      "/v1/executions/00000000-0000-0000-0000-000000000000/rerun",
+      { method: "POST", body: JSON.stringify({}) },
+    );
+    expect(res.status).toBe(404);
+  });
+});

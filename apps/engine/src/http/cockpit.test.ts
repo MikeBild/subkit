@@ -328,10 +328,10 @@ describe("cockpit browser boundary", () => {
     expect(accepted.status).toBe(302);
     expect(accepted.headers.get("location")).toStartWith("/v1/identity/login/start?login_state=");
 
-    const overlay = await app.request(
-      `http://subkit.test/v1/identity/cockpit-login?return_to=${encodeURIComponent("/cockpit?run=abc")}`,
+    const runPage = await app.request(
+      `http://subkit.test/v1/identity/cockpit-login?return_to=${encodeURIComponent("/cockpit/runs/abc")}`,
     );
-    expect(overlay.status).toBe(302);
+    expect(runPage.status).toBe(302);
   });
 });
 

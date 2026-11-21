@@ -81,7 +81,7 @@ describe("task list", () => {
     expect(markup).toContain("2 warten auf dich");
     expect(markup).toContain("2 geplant");
     expect(count(markup, 'data-testid="tasks-new"')).toBe(1);
-    expect(has(markup, "tasks-summary-help")).toBe(true);
+    expect(markup).toContain('data-slot="page-purpose"');
     for (const index of [0, 1, 2, 3]) expect(has(markup, `tasks-row-link-${index}`)).toBe(true);
     expect(markup).toContain(`/tasks/${TASK_ID}"`);
     for (const words of [
@@ -201,19 +201,20 @@ describe("task detail", () => {
     );
   }
   const strip = (markup: string) =>
-    ["answer", "review", "allow", "resume", "view"].filter((action) =>
-      has(markup, `task-strip-${action}`),
-    );
+    ["answer", "review", "allow", "resume"].filter((action) => has(markup, `task-strip-${action}`));
 
   test("the status strip carries exactly the one action of each state", async () => {
     const waiting = await detail({}, run({ state: "waiting", waiting_reason: "question" }));
     expect(strip(waiting)).toEqual(["answer"]);
     expect(waiting).toContain(`/chat/${CONVERSATION_ID}"`);
-    expect(waiting).toContain("Der Lauf wartet auf deine Antwort.");
-    expect(strip(await detail({}, run({ state: "result_ready" })))).toEqual(["review"]);
-    expect(strip(await detail({}, run({ state: "failed", failure_code: "turn_failed" })))).toEqual([
-      "view",
-    ]);
+    expect(waiting).toContain("Der Run wartet auf deine Antwort.");
+    const ready = await detail({}, run({ state: "result_ready" }));
+    expect(strip(ready)).toEqual([]);
+    expect(ready).toContain('data-testid="task-review-section"');
+    expect(ready).toContain('data-testid="task-review-section-accept"');
+    expect(strip(await detail({}, run({ state: "failed", failure_code: "turn_failed" })))).toEqual(
+      [],
+    );
     expect(
       strip(
         await detail({ paused_at: "2026-11-01T00:00:00Z", paused_reason: "owner_request" }, null),
@@ -228,26 +229,31 @@ describe("task detail", () => {
     expect(strip(await detail({}, null))).toEqual([]);
   });
 
-  test("a run ended at its round limit offers a new start and its conversation, never to continue", async () => {
+  test("a failed run shows the error card with its reason, a retry and the chat, never to continue", async () => {
     const ended = run({ state: "failed", failure_code: "turn_limit_reached" });
     const markup = await detail({}, ended);
-    expect([...strip(markup), ...(has(markup, "task-strip-restart") ? ["restart"] : [])]).toEqual([
-      "restart",
-    ]);
-    expect(markup).toContain("Der Lauf hat sein Rundenlimit erreicht und wurde beendet.");
-    expect(count(markup, ">Neu starten<")).toBe(1);
+    expect(strip(markup)).toEqual([]);
+    expect(count(markup, 'data-slot="status-strip-action"')).toBe(0);
+    expect(has(markup, "task-failed")).toBe(true);
+    expect(markup).toContain("Aufgabe fehlgeschlagen");
+    expect(markup).toContain("Der Run hat sein Rundenlimit erreicht und wurde beendet.");
+    expect(has(markup, "task-failed-retry")).toBe(true);
+    expect(count(markup, ">Erneut versuchen<")).toBe(1);
+    expect(has(markup, "task-failed-chat")).toBe(true);
     expect(markup).not.toContain(">Fortsetzen<");
-    expect(has(markup, "task-strip-conversation")).toBe(true);
-    expect(markup).toContain(`/chat/${CONVERSATION_ID}"`);
     const english = await detail({}, ended, { locale: "en" });
     expect(english).toContain("The run reached its round limit and has ended.");
-    expect(count(english, ">Start again<")).toBe(1);
     expect(
       has(
         await detail({}, ended, { permissions: without("conversation:read") }),
-        "task-strip-conversation",
+        "task-failed-chat",
       ),
     ).toBe(false);
+    expect(
+      has(await detail({}, ended, { permissions: without("task:run") }), "task-failed-retry"),
+    ).toBe(false);
+    const unknown = await detail({}, run({ state: "failed", failure_code: null }));
+    expect(unknown).toContain("Der Run kam nicht zu Ende.");
   });
 
   test("every action exists once: start in the header, the rest in the menu or the strip", async () => {
@@ -279,7 +285,7 @@ describe("task detail", () => {
     );
     expect(order.every((position) => position >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
-    for (const label of ["Überblick", "Läufe", "Zeitplan", "Darf", "Verlauf"])
+    for (const label of ["Überblick", "Runs", "Zeitplan", "Darf", "Verlauf"])
       expect(markup).toContain(label);
     const reader = await detail({}, null, { permissions: ["task:read"] });
     expect(has(reader, "detail-tasks-tabs-tab-runs")).toBe(false);
@@ -287,7 +293,7 @@ describe("task detail", () => {
     expect(has(reader, "task-menu")).toBe(false);
   });
 
-  test("the overview is plain: goal, three tiles, done-when and steps, technical data collapsed", async () => {
+  test("the overview is plain: goal, tiles, done-when and steps, technical data collapsed", async () => {
     const markup = await detail(
       {},
       run({
@@ -297,10 +303,10 @@ describe("task detail", () => {
       }),
     );
     expect(markup).toContain("Fasst offene Rechnungen nach, bis sie bezahlt sind.");
-    for (const tile of ["now", "waiting", "next", "usage"])
+    for (const tile of ["waiting", "next", "usage"])
       expect(has(markup, `task-tile-${tile}`)).toBe(true);
+    expect(has(markup, "task-tile-now")).toBe(false);
     for (const words of [
-      "Jetzt",
       "Wartet auf",
       "Zahlungseingang",
       "Nächste Prüfung",
@@ -320,13 +326,13 @@ describe("task detail", () => {
     const waiting = run({ state: "waiting", waiting_reason: "question" });
     const asked = await detail({}, waiting, { question: "Darf ich Lena die Erinnerung schicken?" });
     expect(asked).toContain("Wartet auf dich: „Darf ich Lena die Erinnerung schicken?“");
-    expect(asked).not.toContain("Der Lauf wartet auf deine Antwort.");
+    expect(asked).not.toContain("Der Run wartet auf deine Antwort.");
     expect(strip(asked)).toEqual(["answer"]);
     expect(
       await detail({}, waiting, { question: "May I send Lena the reminder?", locale: "en" }),
     ).toContain("Waiting for you: “May I send Lena the reminder?”");
     expect(await detail({}, waiting, { question: null })).toContain(
-      "Der Lauf wartet auf deine Antwort.",
+      "Der Run wartet auf deine Antwort.",
     );
   });
 
@@ -358,7 +364,7 @@ describe("task detail", () => {
       },
     });
     expect(priced).toContain("Verbrauch");
-    expect(priced).toContain("Letzter Lauf: 0,42");
+    expect(priced).toContain("Letzter Run: 0,42");
     expect(priced).toContain("Dieser Monat: mind. 3,50");
     expect(has(priced, "task-usage-help")).toBe(true);
     const gaps = await detail({}, null, {
@@ -367,7 +373,7 @@ describe("task detail", () => {
         current_month: { ...month, cost: null },
       },
     });
-    expect(gaps).toContain("Letzter Lauf: nicht mehr zuordenbar");
+    expect(gaps).toContain("Letzter Run: nicht mehr zuordenbar");
     expect(gaps).toContain("Dieser Monat: 12.500 Token");
     const idle = await detail({}, null, {
       usage: {
@@ -448,18 +454,18 @@ describe("task runs tab", () => {
       run({ state: "completed", ended_at: "2026-11-19T09:45:00.000Z", trigger: "cron" }),
       run({ id: "r-2", state: "failed", failure_code: "deadline_exceeded" }),
     ]);
-    expect(markup).toContain("2 Läufe");
+    expect(markup).toContain("2 Runs");
     for (const words of ["erledigt", "fehlgeschlagen", "nach Zeitplan", "von Hand"])
       expect(markup).toContain(words);
     expect(has(markup, "task-runs-row-0")).toBe(true);
-    expect(markup).toContain("Lauf vom 2026-11-19T09:00:00.000Z öffnen");
+    expect(markup).toContain("Run vom 2026-11-19T09:00:00.000Z öffnen");
   });
 
   test("has an empty, a loading and an error state", async () => {
-    expect(await tab([])).toContain("Noch kein Lauf.");
+    expect(await tab([])).toContain("Noch kein Run.");
     expect(has(await tab([], { pending: true }), "task-runs-skeleton-row-0")).toBe(true);
     const failed = await tab([], { failed: true });
-    expect(failed).toContain("Die Läufe konnten nicht geladen werden.");
+    expect(failed).toContain("Die Runs konnten nicht geladen werden.");
     expect(failed).toContain(translate("de", "session.retry"));
   });
 });

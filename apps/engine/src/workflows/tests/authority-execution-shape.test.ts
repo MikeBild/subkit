@@ -15,9 +15,9 @@ test("review uses runtime retry defaults and honors zero and explicit retries", 
     ],
   });
   const result = authorityExecutionShape(definition, [
-    { step_id: "default", driver: "http" },
-    { step_id: "once", driver: "graphql" },
-    { step_id: "six", driver: "mcp" },
+    { step_id: "default", driver: "http", target: null },
+    { step_id: "once", driver: "graphql", target: null },
+    { step_id: "six", driver: "mcp", target: null },
   ]);
   expect(result.requests).toMatchObject([
     { step_id: "default", retry_policy_max_attempts: 5 },
@@ -43,7 +43,9 @@ test("review identifies nested loops and inline iteration without executing sele
       },
     ],
   });
-  const result = authorityExecutionShape(definition, [{ step_id: "send", driver: "http" }]);
+  const result = authorityExecutionShape(definition, [
+    { step_id: "send", driver: "http", target: null },
+  ]);
   expect(result.iterations).toEqual([
     { step_id: "outer", kind: "loop", body_step_ids: ["inner"] },
     { step_id: "inner", kind: "loop", body_step_ids: ["send"] },
@@ -57,9 +59,44 @@ test("review does not invent a retry policy for an unresolved or different drive
     name: "Unknown",
     steps: [{ id: "request", kind: "request", method: "GET", url: "https://example.test" }],
   });
-  for (const bindings of [[], [{ step_id: "request", driver: "s3" as const }]]) {
+  for (const bindings of [[], [{ step_id: "request", driver: "s3" as const, target: null }]]) {
     expect(
       authorityExecutionShape(definition, bindings).requests[0]?.retry_policy_max_attempts,
     ).toBeNull();
   }
+});
+
+test("review names each request's method and its target without query values", () => {
+  const definition = WorkflowDefSchema.parse({
+    name: "Targets",
+    steps: [
+      {
+        id: "send",
+        kind: "request",
+        method: "POST",
+        url: "https://api.example.test/v1/orders?api_key=secret",
+      },
+      { id: "item", kind: "request", method: "GET", url: "https://api.example.test/v1/items" },
+      { id: "tool", kind: "request", method: "GET", url: "https://mcp.example.test/mcp" },
+      { id: "local", kind: "request", method: "GET", url: "https://example.test" },
+    ],
+  });
+  const result = authorityExecutionShape(definition, [
+    {
+      step_id: "send",
+      driver: "http",
+      target: "https://user:pass@api.example.test/v1/orders?api_key=secret#frag",
+    },
+    { step_id: "item", driver: "http", target: "https://api.example.test/v1/items/{id}" },
+    { step_id: "tool", driver: "mcp", target: "https://mcp.example.test/mcp#create_issue" },
+    { step_id: "local", driver: "http", target: null },
+  ]);
+  expect(result.requests.map((request) => request.target)).toEqual([
+    { method: "POST", url: "https://api.example.test/v1/orders" },
+    { method: "GET", url: "https://api.example.test/v1/items/{id}" },
+    { method: "MCP", url: "https://mcp.example.test/mcp" },
+    { method: "GET", url: null },
+  ]);
+  expect(JSON.stringify(result.requests.map((request) => request.target))).not.toContain("secret");
+  expect(AuthorityExecutionShapeSchema.parse(result)).toEqual(result);
 });

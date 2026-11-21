@@ -88,7 +88,7 @@ Beim Abmelden im Cockpit meldet SubKit dich auch bei Upraft Auth ab.
 
 ### Arbeitsbereich wechseln
 
-Ein Arbeitsbereich enthält deine Workflows, Konnektoren, dein Wissen, deine Skills und Läufe.
+Ein Arbeitsbereich enthält deine Workflows, Connectors, dein Wissen, deine Skills und Runs.
 Wer in einem Arbeitsbereich arbeitet, sieht keinen anderen Arbeitsbereich.
 
 1. Wähle im Cockpit **Arbeitsbereich wechseln**.
@@ -166,15 +166,15 @@ Einige Einstellungen verwaltet aber der Betreiber, nicht du.
   Der KI-Zugang des Betreibers wird für deinen Arbeitsbereich nie verwendet.
 - **Die eingebaute Websuche läuft über deinen Schlüssel.** Mit einem Anthropic-Modell kann der Assistent die eingebaute Websuche des Modells nutzen.
   Anthropic rechnet jede Suche mit dir ab. Der Betreiber kann das für alle Arbeitsbereiche abschalten.
-- **Nur öffentliche Adressen.** Konnektoren erreichen nur Dienste im öffentlichen Internet.
+- **Nur öffentliche Adressen.** Connectors erreichen nur Dienste im öffentlichen Internet.
   Adressen in einem privaten Netz, etwa `localhost` oder ein interner Firmenserver, sind gesperrt.
 - **Slack und Google Chat sind gesperrt.** Chat-Arbeitsbereiche auf diesen Plattformen bleiben gesperrt,
   bis bestätigt ist, wem der Arbeitsbereich gehört. Nutze stattdessen den Chat im Cockpit.
 - **API-Schlüssel nur für Werkzeuge.** API-Schlüssel funktionieren weiter für die sk-CLI, den Web Clipper,
   die HTTP-API (Bearer) und MCP-Clients mit Schlüssel. Die Browser-Anmeldung mit einem API-Schlüssel
   gibt es nur bei selbst betriebenen Installationen ohne Anmeldeanbieter.
-- **Export als Paket.** Du kannst deine eigenen Workflows, Konnektoren, Skills, Zeitpläne, Quellen und Dateien als Paket exportieren und in eine andere Engine importieren.
-  Zugangsdaten, Freigaben und der Laufverlauf sind nicht enthalten. Siehe „Die sk-CLI auf deinem Rechner verwenden“.
+- **Export als Paket.** Du kannst deine eigenen Workflows, Connectors, Skills, Zeitpläne, Quellen und Dateien als Paket exportieren und in eine andere Engine importieren.
+  Zugangsdaten, Freigaben und der Run-Verlauf sind nicht enthalten. Siehe „Die sk-CLI auf deinem Rechner verwenden“.
 
 ### Limits und ihre Meldungen
 
@@ -186,7 +186,7 @@ Erreichst du eines, zeigt SubKit eine Meldung. Die meisten dieser Meldungen ersc
 | "Too many requests. Try again shortly." | Zu viele Anfragen in kurzer Zeit. Warte kurz und versuche es erneut. |
 | "The monthly request allowance is exhausted." | Das Anfragekontingent des Monats ist aufgebraucht. Warte auf den nächsten Monat oder wende dich an den Betreiber. |
 | "The workspace storage allowance for files and saved content is exhausted. Retained content remains charged until physical cleanup succeeds." | Der Speicher ist voll. Lösche Dateien und gespeicherte Inhalte, die du nicht mehr brauchst, oder wende dich an den Betreiber. |
-| "The workspace resource limit is exhausted. Ask the engine operator to review retained resources." | Zu viele Ressourcen. Lösche Workflows oder Konnektoren, die du nicht mehr brauchst, oder wende dich an den Betreiber. |
+| "The workspace resource limit is exhausted. Ask the engine operator to review retained resources." | Zu viele Ressourcen. Lösche Workflows oder Connectors, die du nicht mehr brauchst, oder wende dich an den Betreiber. |
 | "Für diesen Arbeitsbereich ist noch kein KI-Zugang eingerichtet. Trag unter Einstellungen → KI-Assistent deinen Anbieter und deinen API-Schlüssel ein." (im Chat) | Dein Arbeitsbereich hat keinen eigenen API-Schlüssel. Hinterlege Anbieter und Schlüssel unter **Einstellungen** > **KI-Assistent**. |
 
 ### Wenn etwas nicht klappt

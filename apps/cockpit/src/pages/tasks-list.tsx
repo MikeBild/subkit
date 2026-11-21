@@ -1,4 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
+import { listPageFailure } from "@ui/lib/errors";
 import { BarChart3, ClipboardCheck, Receipt, Tags } from "lucide-react";
 import { useMemo, useState } from "react";
 import { taskHref } from "@/app/links";
@@ -31,9 +32,9 @@ import {
   badgeState,
   displayState,
   isTaskFilter,
+  listNextStart,
+  listStates,
   matchesFilter,
-  rhythm,
-  startView,
   stateTone,
   stateWords,
   summaryParts,
@@ -109,8 +110,16 @@ export function TasksPage({ permissions }: { permissions: readonly string[] }) {
             <IconTile size="sm" outline>
               <ClipboardCheck aria-hidden="true" />
             </IconTile>
-            <span className="min-w-0 truncate">
-              <RowName>{row.task.name}</RowName>
+            <span className="grid min-w-0">
+              <span className="min-w-0 truncate">
+                <RowName>{row.task.name}</RowName>
+              </span>
+              <span
+                className="min-w-0 truncate text-xs text-muted-foreground"
+                data-testid={`task-goal-${row.task.id}`}
+              >
+                {row.task.goal}
+              </span>
             </span>
           </span>
         ),
@@ -120,30 +129,32 @@ export function TasksPage({ permissions }: { permissions: readonly string[] }) {
         "state",
         (row) => displayState(row.task, row.run),
         t("tasks.column.state"),
-        (row) => {
-          const state = displayState(row.task, row.run);
-          return (
-            <StatusBadge
-              state={badgeState(stateTone(state))}
-              label={stateWords(state, row.run, { t, time: dateTime })}
-            />
-          );
-        },
-        { width: "w-[26%]" },
+        (row) => (
+          <span className="flex flex-wrap gap-1">
+            {listStates(row.task, row.run).map((state) => (
+              <StatusBadge
+                key={state}
+                state={badgeState(stateTone(state))}
+                label={stateWords(state, row.run, { t, time: dateTime })}
+              />
+            ))}
+          </span>
+        ),
+        { width: "w-[30%]" },
       ),
       column.custom(
         "next",
-        (row) => row.task.schedule_cron ?? row.task.schedule_run_at,
+        (row) => row.task.next_start_at ?? row.task.schedule_cron ?? row.task.schedule_run_at,
         t("tasks.column.next"),
         (row) => {
-          const start = startView(row.task, now);
-          if (start.kind === "due") return t(start.line);
-          const value = rhythm(row.task);
-          if (value.kind === "cron") return cronWords(value.cron, t, LOCALE_TAGS[locale]);
-          if (value.kind === "once") return t("tasks.next.once", { date: dateTime(value.at) });
-          return t(value.kind === "done" ? "tasks.next.done" : "tasks.next.manual");
+          const next = listNextStart(row.task, now);
+          if (next.kind === "at") return dateTime(next.at);
+          if (next.kind === "due") return t(next.line);
+          if (next.kind === "cron") return cronWords(next.cron, t, LOCALE_TAGS[locale]);
+          if (next.kind === "once") return t("tasks.next.once", { date: dateTime(next.at) });
+          return t(next.kind === "done" ? "tasks.next.done" : "tasks.next.manual");
         },
-        { width: "w-[28%]", priority: "low" },
+        { width: "w-[24%]" },
       ),
     ];
   }, [t, dateTime, locale, now]);
@@ -178,9 +189,17 @@ export function TasksPage({ permissions }: { permissions: readonly string[] }) {
       surface="collection"
       scroll="content"
       testId="tasks-page"
+      failure={listPageFailure({
+        failed,
+        loaded: list.data !== undefined,
+        onRetry: () => void list.refetch(),
+        error: list.error ?? list.failureReason,
+        collectionId: "tasks",
+      })}
       header={
         <PageHeader
           title={title}
+          purpose={empty ? undefined : t("tasks.lead")}
           action={
             canWrite ? (
               <Button onClick={() => open()} data-testid="tasks-new">
@@ -214,8 +233,6 @@ export function TasksPage({ permissions }: { permissions: readonly string[] }) {
                 parts={summaryParts(taskCounts(all)).map((part) => tn(part.key, part.count))}
               />
             }
-            help={t("tasks.summary.help")}
-            helpLabel={title}
             testId="tasks-summary"
           />
           <DataTable

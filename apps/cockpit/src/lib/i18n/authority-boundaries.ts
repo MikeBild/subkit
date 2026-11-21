@@ -77,17 +77,17 @@ export const authorityBoundariesEn = {
 
 export const authorityBoundariesDe: Record<keyof typeof authorityBoundariesEn, string> = {
   "authority.boundary.connectorAdds":
-    "Der Konnektor hängt an jede Anfrage dieses Schritts eigene Anmelde- oder feste Parameter an.",
+    "Der Connector hängt an jede Anfrage dieses Schritts eigene Anmelde- oder feste Parameter an.",
   "authority.boundary.connectorQuery.one":
-    "Der Konnektor hängt an jede Anfrage den Parameter {names} an, dessen Wert vom Konnektor kommt und hier nicht angezeigt wird.",
+    "Der Connector hängt an jede Anfrage den Parameter {names} an, dessen Wert vom Connector kommt und hier nicht angezeigt wird.",
   "authority.boundary.connectorQuery.other":
-    "Der Konnektor hängt an jede Anfrage die Parameter {names} an, deren Werte vom Konnektor kommen und hier nicht angezeigt werden.",
+    "Der Connector hängt an jede Anfrage die Parameter {names} an, deren Werte vom Connector kommen und hier nicht angezeigt werden.",
   "authority.refusal.connector_query_conflict":
-    "Der Konnektor hängt einen Parameter an, den dieser Schritt auch selbst setzt, also entferne ihn am Schritt oder benenne ihn dort um.",
+    "Der Connector hängt einen Parameter an, den dieser Schritt auch selbst setzt, also entferne ihn am Schritt oder benenne ihn dort um.",
   "authority.refusal.connector_query_unresolved":
-    "SubKit kann nicht erkennen, welche Parameter der Konnektor an diese Anfrage anhängt, also prüfe seine Zugangsdaten und starte die Prüfung erneut.",
+    "SubKit kann nicht erkennen, welche Parameter der Connector an diese Anfrage anhängt, also prüfe seine Zugangsdaten und starte die Prüfung erneut.",
   "authority.refusal.connector_query_needs_boundary":
-    "Der Konnektor hängt eigene Parameter an diesen Lesezugriff an, deshalb braucht der Schritt vor der Freigabe eine Grenze, die sie nennt.",
+    "Der Connector hängt eigene Parameter an diesen Lesezugriff an, deshalb braucht der Schritt vor der Freigabe eine Grenze, die sie nennt.",
   "authority.boundary.bodyPagingNote.one":
     "Dieser Schritt liest 1 Seite, und im gesendeten Inhalt dürfen sich nur die Felder zum Blättern ändern.",
   "authority.boundary.bodyPagingNote.other":
@@ -113,13 +113,13 @@ export const authorityBoundariesDe: Record<keyof typeof authorityBoundariesEn, s
   "authority.mcp.statedReadUnconfirmed":
     "Der Workflow gibt an, dass dieser Aufruf nur liest, aber das Tool ist nicht als nur lesend geführt, also gib ihn nur frei, wenn du das Tool kennst.",
   "authority.mcp.pinned":
-    "Beschreibt der Server dieses Tool später anders, hält der nächste Lauf an und bittet dich um eine neue Prüfung.",
+    "Beschreibt der Server dieses Tool später anders, hält der nächste Run an und bittet dich um eine neue Prüfung.",
   "authority.mcp.fixedArguments":
     "Alles, was der Aufruf an das Tool übergibt, steht fest, außer den hier genannten Werten.",
   "authority.mcp.noVariables": "Alles, was der Aufruf an das Tool übergibt, steht fest.",
   "authority.mcp.descriptor": "Vor jedem Aufruf geprüfte Tool-Beschreibung: {digest}",
   "authority.refusal.mcp_not_a_tool_call":
-    "Dieser Schritt liest eine Ressource oder einen Prompt, und nur ein Tool-Aufruf kann eine Grenze bekommen und für wiederholte Läufe freigegeben werden.",
+    "Dieser Schritt liest eine Ressource oder einen Prompt, und nur ein Tool-Aufruf kann eine Grenze bekommen und für wiederholte Runs freigegeben werden.",
   "authority.refusal.mcp_no_boundary":
     "Dieser Tool-Aufruf hat noch keine Grenze, also bitte den Assistenten, am Schritt eine festzulegen.",
   "authority.refusal.mcp_boundary_invalid":
@@ -127,7 +127,7 @@ export const authorityBoundariesDe: Record<keyof typeof authorityBoundariesEn, s
   "authority.refusal.mcp_tool_not_literal":
     "Eine Grenze braucht genau einen festen Tool-Namen, und dieser Schritt wählt das Tool erst, während der Workflow läuft.",
   "authority.refusal.mcp_server_unresolved":
-    "Der Konnektor hat keine brauchbare Server-Adresse, also hat der Tool-Aufruf kein festes Ziel.",
+    "Der Connector hat keine brauchbare Server-Adresse, also hat der Tool-Aufruf kein festes Ziel.",
   "authority.refusal.mcp_runtime_value_outside_arguments":
     "Nur Argumentwerte dürfen variieren, und dieser Schritt legt einen anderen Wert erst fest, während der Workflow läuft.",
   "authority.refusal.mcp_argument_placeholder_unsupported":
@@ -141,7 +141,7 @@ export const authorityBoundariesDe: Record<keyof typeof authorityBoundariesEn, s
   "authority.refusal.mcp_tool_changed":
     "Der Server beschreibt dieses Tool anders, als der Schritt es festhält, also bitte den Assistenten, den Schritt zu aktualisieren, und prüfe erneut.",
   "authority.refusal.mcp_tool_unavailable":
-    "SubKit konnte dieses Tool gerade nicht auf dem Server finden, also prüfe den Konnektor und starte die Prüfung erneut.",
+    "SubKit konnte dieses Tool gerade nicht auf dem Server finden, also prüfe den Connector und starte die Prüfung erneut.",
   "authority.mcp.recordedReadOnly":
     "Der Schritt hält dieses Tool als nur lesend fest, und SubKit hat das für dich nicht mit dem Server verglichen.",
   "authority.mcp.recordedDestructive":

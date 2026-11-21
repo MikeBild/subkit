@@ -39,16 +39,13 @@ import {
   type SharedRateLimiter,
   type WindowLimit,
 } from "../../rate-limits/persistent.ts";
-import { escapeHtml, parseFormBody } from "../oauth/shared.ts";
+import { parseFormBody } from "../oauth/shared.ts";
+import { authHtmlResponse, resolvePageLook } from "../oauth/ui.ts";
 import {
-  authHtmlResponse,
-  type PageLook,
-  pageActions,
-  pageHead,
-  renderErrorPage,
-  renderSinglePage,
-  resolvePageLook,
-} from "../oauth/ui.ts";
+  renderDesktopAppOutdated,
+  renderDesktopLoginConfirm,
+  renderDesktopLoginExpired,
+} from "./desktop-login-pages.ts";
 
 function loginLimiter(name: string, limits: WindowLimit): SharedRateLimiter {
   return createSharedRateLimiter({
@@ -197,35 +194,7 @@ function confirmPath(requestToken: string): string {
 }
 
 function expiredResponse(c: Context<AppEnv>): Response {
-  return authHtmlResponse(
-    renderErrorPage("state_expired", "/cockpit", resolvePageLook(c.req.raw.headers)),
-    400,
-  );
-}
-
-export function renderDesktopAppOutdated(opts: {
-  appVersion: string | undefined;
-  minVersion: string;
-  look: PageLook;
-}): string {
-  const de = opts.look.locale === "de";
-  const min = `<span class="strong">${escapeHtml(opts.minVersion)}</span>`;
-  const line = opts.appVersion
-    ? de
-      ? `Auf diesem Gerät läuft Version ${escapeHtml(opts.appVersion)}. Dieser Arbeitsbereich nimmt Anmeldungen erst ab Version ${min} an.`
-      : `This device runs version ${escapeHtml(opts.appVersion)}. This workspace accepts sign-ins from version ${min} on.`
-    : de
-      ? `Die App hat keine Version genannt. Dieser Arbeitsbereich nimmt Anmeldungen erst ab Version ${min} an.`
-      : `The app did not name its version. This workspace accepts sign-ins from version ${min} on.`;
-  const next = de
-    ? "Aktualisiere SubKit Desktop und melde dich danach erneut an. Im Browser kannst du solange weiterarbeiten."
-    : "Update SubKit Desktop, then sign in again. Until then you can keep working in the browser.";
-  return renderSinglePage({
-    look: opts.look,
-    surface: "auth",
-    context: "Desktop",
-    body: `<div class="stack" role="alert" data-testid="desktop-login-outdated">${pageHead({ title: de ? "SubKit Desktop ist zu alt" : "SubKit Desktop is out of date", slot: "auth-heading", lineHtml: line })}<p class="muted">${next}</p></div>`,
-  });
+  return authHtmlResponse(renderDesktopLoginExpired(resolvePageLook(c.req.raw.headers)), 400);
 }
 
 function outdatedResponse(c: Context<AppEnv>, appVersion: string | undefined): Response {
@@ -248,33 +217,6 @@ function callbackRedirect(target: string): Response {
   return new Response(null, {
     status: 303,
     headers: { location: target, "cache-control": "no-store", "referrer-policy": "no-referrer" },
-  });
-}
-
-export function renderDesktopLoginConfirm(opts: {
-  deviceLabel: string;
-  tenantName: string;
-  userEmail: string;
-  requestToken: string;
-  csrfToken: string;
-  look: PageLook;
-}): string {
-  const de = opts.look.locale === "de";
-  const device = `<span class="strong">${escapeHtml(opts.deviceLabel)}</span>`;
-  const tenant = `<span class="strong">${escapeHtml(opts.tenantName)}</span>`;
-  const asks = de
-    ? `SubKit Desktop auf ${device} möchte sich bei ${tenant} anmelden.`
-    : `SubKit Desktop on ${device} is asking to sign in to ${tenant}.`;
-  const signedIn = de ? "Angemeldet als" : "Signed in as";
-  const caution = de
-    ? "Fahre nur fort, wenn du diese Anmeldung gerade selbst in der App auf diesem Gerät gestartet hast."
-    : "Continue only if you just started this sign-in yourself in the app on this device.";
-  const hidden = `<input type="hidden" name="request" value="${escapeHtml(opts.requestToken)}"><input type="hidden" name="csrf_token" value="${escapeHtml(opts.csrfToken)}">`;
-  return renderSinglePage({
-    look: opts.look,
-    surface: "auth",
-    context: "Desktop",
-    body: `${pageHead({ title: de ? "Bei SubKit Desktop anmelden" : "Sign in to SubKit Desktop", slot: "auth-heading", lineHtml: asks })}<p class="muted">${signedIn} ${escapeHtml(opts.userEmail)}</p><p class="muted">${caution}</p><form method="POST" action="${DESKTOP_LOGIN_CONFIRM_PATH}" data-testid="desktop-login-confirm">${hidden}${pageActions(`<button name="decision" value="deny" class="button outline">${de ? "Abbrechen" : "Cancel"}</button><button name="decision" value="approve" class="button primary">${de ? "Anmelden" : "Sign in"}</button>`)}</form>`,
   });
 }
 
@@ -368,6 +310,7 @@ export function registerDesktopLoginRoutes(app: OpenAPIHono<AppEnv>): void {
         tenantName: identity.tenant_display_name,
         userEmail: identity.email,
         requestToken,
+        appVersion: request.app_version,
         csrfToken: await signDesktopLoginConfirmation(session.session_id, requestToken),
         look: resolvePageLook(c.req.raw.headers),
       }),

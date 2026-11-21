@@ -7,17 +7,17 @@ audience: operator
 ---
 ## OAuth-Zugangsdaten für externe MCP-Server
 
-Manche externen MCP-Server verlangen eine OAuth-Anmeldung, bevor SubKit ihre Tools nutzen darf. Du brauchst dieses Kapitel, wenn du einen solchen Server als Konnektor einrichtest oder ältere gespeicherte Anmeldungen weiterverwenden willst. Danach ist jede Anmeldung an einen festen Autorisierungsserver gebunden, und Client-Secrets gehen nur dorthin.
+Manche externen MCP-Server verlangen eine OAuth-Anmeldung, bevor SubKit ihre Tools nutzen darf. Du brauchst dieses Kapitel, wenn du einen solchen Server als Connector einrichtest oder ältere gespeicherte Anmeldungen weiterverwenden willst. Danach ist jede Anmeldung an einen festen Autorisierungsserver gebunden, und Client-Secrets gehen nur dorthin.
 
 OAuth ist das übliche Verfahren, mit dem ein Dienst einem anderen Zugriff gewährt. Der Autorisierungsserver stellt dafür die Tokens aus.
 
 ### Anmeldung mit Client-Zugangsdaten
 
-Für Konnektoren mit `oauth2_client_credentials` oder `oauth2_private_key_jwt` trägst du vor dem Verbinden die vertrauenswürdige Adresse des Autorisierungsservers als `config.mcp.auth.issuer` ein. Ohne diese Bindung verwendet SubKit die Zugangsdaten nicht. Die Discovery, das automatische Nachschlagen der Server-Adressen, kann ein Client-Secret oder eine signierte Assertion dann nicht an einen anderen Autorisierungsserver umleiten.
+Für Connectors mit `oauth2_client_credentials` oder `oauth2_private_key_jwt` trägst du vor dem Verbinden die vertrauenswürdige Adresse des Autorisierungsservers als `config.mcp.auth.issuer` ein. Ohne diese Bindung verwendet SubKit die Zugangsdaten nicht. Die Discovery, das automatische Nachschlagen der Server-Adressen, kann ein Client-Secret oder eine signierte Assertion dann nicht an einen anderen Autorisierungsserver umleiten.
 
 ### Interaktive Anmeldung
 
-Bei interaktivem MCP-OAuth speichert SubKit den Aussteller des Autorisierungsservers zusammen mit den verschlüsselten Client-Daten und Tokens. Ältere gespeicherte Zugangsdaten ohne Aussteller verwendet SubKit nicht weiter. Bei Anbietern mit dynamischer Client-Registrierung startest du über das OAuth-Setup des Konnektors eine neue Anmeldung.
+Bei interaktivem MCP-OAuth speichert SubKit den Aussteller des Autorisierungsservers zusammen mit den verschlüsselten Client-Daten und Tokens. Ältere gespeicherte Zugangsdaten ohne Aussteller verwendet SubKit nicht weiter. Bei Anbietern mit dynamischer Client-Registrierung startest du über das OAuth-Setup des Connectors eine neue Anmeldung.
 
 ### Ältere Zugangsdaten ohne dynamische Registrierung
 

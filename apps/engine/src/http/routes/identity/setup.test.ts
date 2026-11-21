@@ -4,13 +4,14 @@ import { AuditAction } from "../../../audit/types.ts";
 import {
   auditLog,
   conversations,
+  tenants,
   transactionalMailReceipts,
   userInvites,
   users,
 } from "../../../db/schema/index.ts";
 import { createInvitedUser } from "../../../identity/provisioning.ts";
 import { issueApiKey } from "../../../identity/service.ts";
-import { activeApprover } from "../../../identity/setup-preferences.ts";
+import { activeApprover, linkJoinedApprover } from "../../../identity/setup-preferences.ts";
 import { builtinRoleId } from "../../../rbac/roles.ts";
 import { ctx, login, setupBrowserMemberships } from "../../tests/memberships-fixtures.ts";
 
@@ -372,6 +373,66 @@ describe("setup choices of the signed-in person", () => {
         (entry) => (entry.metadata as { source?: string } | null)?.source === "approver_joined",
       ),
     ).toBe(true);
+  });
+
+  test("two of us: an administrator names a partner, pair starts once the partner joins", async () => {
+    const owner = await login("setup-pair");
+    const tenant_id = owner.payload.tenant_id;
+    const chosen = await putSetup(headers(owner), {
+      approver: { kind: "pair", email: "partner@example.test" },
+    });
+    expect(chosen.status).toBe(200);
+    expect(chosen.body.approver).toMatchObject({
+      kind: "pair",
+      email: "partner@example.test",
+      invitation: "pending",
+      pair: "needs_second_approver",
+    });
+    expect(chosen.body.invitation).toBeDefined();
+    const [tenant] = await ctx.db
+      .select({ policy: tenants.workflow_approval_policy })
+      .from(tenants)
+      .where(eq(tenants.id, tenant_id));
+    expect(tenant?.policy).toBe("single");
+
+    const partner = await memberOf(tenant_id, "partner");
+    await ctx.db.update(users).set({ status: "active" }).where(eq(users.id, partner.id));
+    await linkJoinedApprover(ctx.db, { tenant_id, id: partner.id, email: partner.email });
+
+    const joined = await getSetup(headers(owner));
+    expect(joined.body.approver).toMatchObject({
+      kind: "pair",
+      user_id: partner.id,
+      pair: "active",
+    });
+    const [changed] = await ctx.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, tenant_id),
+          eq(auditLog.action, AuditAction.WORKSPACE_APPROVAL_POLICY_CHANGED),
+        ),
+      );
+    expect(changed?.metadata).toMatchObject({ source: "approver_joined" });
+
+    const back = await putSetup(headers(owner), { approver: { kind: "self" } });
+    expect(back.body.approver).toEqual({ kind: "self" });
+    const [still] = await ctx.db
+      .select({ policy: tenants.workflow_approval_policy })
+      .from(tenants)
+      .where(eq(tenants.id, tenant_id));
+    expect(still?.policy).toBe("pair");
+  });
+
+  test("a member who chooses pair is told an administrator has to switch it on", async () => {
+    const owner = await login("setup-pair-member");
+    const { auth } = await memberKey(owner.payload.tenant_id, "pair-member");
+    const chosen = await putSetup(auth, {
+      approver: { kind: "pair", email: "setup-pair-member@example.test" },
+    });
+    expect(chosen.status).toBe(200);
+    expect(chosen.body.approver).toMatchObject({ kind: "pair", pair: "needs_admin" });
   });
 
   test("a new conversation starts in the stored mode unless the client names one", async () => {

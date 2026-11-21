@@ -236,8 +236,6 @@ describe("recipe-coverage gate (A1)", () => {
     "loop",
   ] as const;
 
-  const KNOWN_UNCOVERED = new Set<string>([]);
-
   function collectStepKinds(steps: unknown): Set<string> {
     const used = new Set<string>();
     const walk = (xs: unknown): void => {
@@ -256,7 +254,7 @@ describe("recipe-coverage gate (A1)", () => {
     return used;
   }
 
-  test("every StepSchema discriminant is either covered by a recipe or listed in KNOWN_UNCOVERED", () => {
+  test("every StepSchema discriminant is covered by a recipe", () => {
     const used = new Set<string>();
     for (const t of loadBuiltinTemplates()) {
       for (const r of t.recipes) {
@@ -265,25 +263,9 @@ describe("recipe-coverage gate (A1)", () => {
     }
     const missing: string[] = [];
     for (const kind of DECLARED_STEP_KINDS) {
-      if (used.has(kind)) continue;
-      if (KNOWN_UNCOVERED.has(kind)) continue;
-      missing.push(kind);
+      if (!used.has(kind)) missing.push(kind);
     }
     expect(missing).toEqual([]);
-  });
-
-  test("KNOWN_UNCOVERED entries are not silently shadowed by a now-covered recipe", () => {
-    const used = new Set<string>();
-    for (const t of loadBuiltinTemplates()) {
-      for (const r of t.recipes) {
-        for (const k of collectStepKinds(r.workflow.steps)) used.add(k);
-      }
-    }
-    const stale: string[] = [];
-    for (const kind of KNOWN_UNCOVERED) {
-      if (used.has(kind)) stale.push(kind);
-    }
-    expect(stale).toEqual([]);
   });
 
   test("DECLARED_STEP_KINDS matches the actual StepSchema discriminator", () => {

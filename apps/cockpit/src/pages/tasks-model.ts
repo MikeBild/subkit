@@ -1,7 +1,8 @@
 import type { components } from "@cli-core/engine-api/openapi";
+import { conversationHref } from "@/app/links";
+import { auditActionLabel } from "@/lib/audit-model";
 import type { TranslationKey } from "@/lib/i18n";
 import { UNCATEGORIZED } from "@/lib/workflow-category";
-import { auditActionLabel } from "@/pages/audit-model";
 import {
   limitEndedLine,
   type WaitingAction,
@@ -59,7 +60,7 @@ const STATE_TONES: Record<TaskDisplayState, TaskTone> = {
   running: "info",
   waiting: "warn",
   sleeping: "neutral",
-  result_ready: "warn",
+  result_ready: "info",
   completed: "ok",
   aborted: "neutral",
   failed: "error",
@@ -168,7 +169,7 @@ export function usageExcludesWorkflowCalls(usage: TaskUsage): boolean {
   );
 }
 
-export type TaskAction = WaitingAction | "review" | "allow" | "resume" | "view" | "restart";
+export type TaskAction = WaitingAction | "review" | "allow" | "resume";
 
 export type TaskStatusKind =
   | "paused"
@@ -198,8 +199,6 @@ const ACTION_KEYS: Record<TaskAction, TranslationKey> = {
   review: "tasks.action.review",
   allow: "tasks.action.allow",
   resume: "tasks.action.resume",
-  view: "tasks.action.view",
-  restart: "tasks.action.restart",
 };
 
 export function actionKey(action: TaskAction): TranslationKey {
@@ -237,16 +236,12 @@ export function taskStatus(input: {
   if (run?.state === "result_ready")
     return {
       kind: "result_ready",
-      tone: "warn",
+      tone: "info",
       line: "tasks.strip.result_ready",
       action: "review",
     };
-  if (run?.state === "failed") {
-    const limit = limitEndedLine(run);
-    return limit
-      ? { kind: "failed", tone: "error", line: limit, action: "restart" }
-      : { kind: "failed", tone: "error", line: "tasks.strip.failed", action: "view" };
-  }
+  if (run?.state === "failed")
+    return { kind: "failed", tone: "error", line: "tasks.strip.failed", action: null };
   if (run?.state === "running")
     return { kind: "running", tone: "info", line: "tasks.strip.running", action: null };
   if (run?.state === "sleeping")
@@ -589,6 +584,42 @@ export function rhythm(
   return { kind: "manual" };
 }
 
+export type ListNextStart = Exclude<StartView, { kind: "none" }> | RhythmWords;
+
+export function listNextStart(
+  task: Pick<
+    TaskView,
+    | "paused_at"
+    | "next_start_at"
+    | "grant_live"
+    | "latest_run"
+    | "schedule_cron"
+    | "schedule_run_at"
+    | "last_claimed_at"
+  >,
+  now: number,
+): ListNextStart {
+  const start = startView(task, now);
+  return start.kind === "none" ? rhythm(task) : start;
+}
+
+export type PlanState = Extract<TaskDisplayState, "paused" | "scheduled" | "ready">;
+
+export function planState(
+  task: Pick<Task, "paused_at" | "schedule_cron" | "schedule_run_at" | "last_claimed_at">,
+): PlanState {
+  if (task.paused_at) return "paused";
+  return hasSchedule(task) ? "scheduled" : "ready";
+}
+
+export function listStates(
+  task: Pick<Task, "paused_at" | "schedule_cron" | "schedule_run_at" | "last_claimed_at">,
+  run: Pick<TaskRun, "state"> | null,
+): TaskDisplayState[] {
+  const plan = planState(task);
+  return run ? [run.state, plan] : [plan];
+}
+
 export const DEADLINE_CHOICES = [60, 240, 1440, 10080] as const;
 export const EFFORT_CHOICES = [10, 20, 50, 100] as const;
 
@@ -879,6 +910,27 @@ const FAILURE_KEYS: Record<NonNullable<TaskRun["failure_code"]>, TranslationKey>
 
 export function failureKey(code: TaskRun["failure_code"]): TranslationKey | null {
   return code ? FAILURE_KEYS[code] : null;
+}
+
+export function failureRemedies(input: {
+  conversationId: string | null | undefined;
+  permissions: readonly string[];
+  startBlocked: boolean;
+}): { retry: boolean; chat: string | null } {
+  return {
+    retry: !input.startBlocked,
+    chat:
+      input.conversationId && input.permissions.includes("conversation:read")
+        ? conversationHref(input.conversationId)
+        : null,
+  };
+}
+
+export function failureReason(
+  run: { state: string; failure_code?: TaskRun["failure_code"] } | null | undefined,
+): TranslationKey | null {
+  if (run?.state !== "failed") return null;
+  return limitEndedLine(run) ?? failureKey(run.failure_code ?? null) ?? "tasks.failure.unknown";
 }
 
 export function historyKey(action: string): TranslationKey {

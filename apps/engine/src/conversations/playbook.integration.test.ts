@@ -94,7 +94,7 @@ describe("persisted playbook evidence and lifecycle", () => {
       ]),
     });
     expect(view?.steps[0]?.evidence.map(({ id, label, href }) => ({ id, label, href }))).toEqual([
-      { id: evidenceId, label: "Ausführung gelesen", href: `/cockpit/?run=${run.id}` },
+      { id: evidenceId, label: "Ausführung gelesen", href: `/cockpit/runs/${run.id}` },
     ]);
     expect(view?.steps[0]?.status).toBe("verified");
   });

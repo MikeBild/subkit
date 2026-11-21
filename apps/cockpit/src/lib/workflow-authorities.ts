@@ -7,12 +7,11 @@ import {
 } from "@/lib/core/authority-view";
 import { LOCALE_TAGS, type Locale, type TranslationKey } from "@/lib/i18n";
 
-export type { AuthorityReviewIdentity, GrantLimit } from "@/lib/core/authority-decision";
+export type { AuthorityReviewIdentity } from "@/lib/core/authority-decision";
 export {
   acceptReview,
   authorityGrantInput,
-  DEFAULT_GRANT_LIMIT,
-  grantLimitBounds,
+  authorityGrantInputUntil,
   untilRevokedOffer,
 } from "@/lib/core/authority-decision";
 

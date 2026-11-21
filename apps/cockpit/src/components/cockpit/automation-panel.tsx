@@ -17,7 +17,7 @@ import { ApprovalExpiryNote } from "@/components/cockpit/approval-expiry-note";
 import { useConnectorRecords } from "@/components/cockpit/connector-names";
 import { GrantWorkflowAuthority } from "@/components/cockpit/grant-workflow-authority";
 import { OPENS_APPROVAL } from "@/components/cockpit/opens-approval";
-import { type ActionSpec, SideStatus, StatusStrip } from "@/components/cockpit/patterns";
+import { type ActionSpec, StatusStrip } from "@/components/cockpit/patterns";
 import { useOpenRunSheet } from "@/components/cockpit/run-sheet";
 import { WaitingOnApprover } from "@/components/cockpit/waiting-on";
 import {
@@ -39,13 +39,10 @@ import {
   automationState,
   recommendedAutomationEnvironment,
 } from "@/lib/automation-state";
-import { causeClassLabel } from "@/lib/cause-class";
-import { connectorAuthState } from "@/lib/connector-auth-state";
 import { grantOpeningNotice, hookStartedOnly, OPENING_NOTICE_KEYS } from "@/lib/grant-context";
 import { useI18n } from "@/lib/i18n-context";
 import { reviewTarget } from "@/lib/review-target";
 import { liveRunEnvironment, type RunEnvironment } from "@/lib/run-availability";
-import { statusLabel } from "@/lib/status-label";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
 import {
   STRIP_STATE_KEYS,
@@ -61,8 +58,22 @@ import {
   lastRunLine,
   latestFailedRun,
 } from "@/pages/runs-model";
-
-const catalogText = (label: { text: string }) => label.text;
+import {
+  authorityItems,
+  automationHeadline,
+  automationNow,
+  automationSettled,
+  hasPreparedDraft,
+  openRepair,
+  stripHelp,
+  stripLine,
+  unansweredChecks,
+  verifiedStatus,
+  waitingConnectorFor,
+  weekStart,
+  workflowSchedules,
+  workflowVersions,
+} from "./automation-panel-model";
 
 const REFRESH_MS = AUTOMATION_REFRESH_MS;
 
@@ -126,42 +137,32 @@ export function useWorkflowAutomation(
     refetchInterval: REFRESH_MS,
     retry: false,
   });
-  const prepared =
-    typeof workflow.draft_version_id === "string" &&
-    workflow.draft_version_id !== workflow.current_version_id;
+  const prepared = hasPreparedDraft(workflow);
   const draft = useQuery({
     queryKey: ["workflow-draft-version", workflowId, workflow.draft_version_id],
     enabled: prepared,
     queryFn: () => apiCall("get", "/v1/workflows/{id}/draft", { path: { id: workflowId } }),
   });
 
-  const now = Math.max(
-    tick,
+  const now = automationNow(tick, [
     authorities.dataUpdatedAt,
     schedules.dataUpdatedAt,
     status.dataUpdatedAt,
-  );
-  const items = useMemo(() => {
-    const pages = authorities.data?.pages;
-    if (!pages || pages.some((page) => !Array.isArray(page?.items))) return null;
-    return pages.flatMap((page) => page.items);
-  }, [authorities.data]);
+  ]);
+  const items = useMemo(() => authorityItems(authorities.data?.pages), [authorities.data]);
   const ownSchedules = useMemo(
-    () =>
-      Array.isArray(schedules.data?.schedules)
-        ? schedules.data.schedules.filter((entry) => entry.workflow_id === workflowId)
-        : null,
+    () => workflowSchedules(schedules.data?.schedules, workflowId),
     [schedules.data, workflowId],
   );
-  const verified =
-    Array.isArray(status.data?.schedules) && Array.isArray(status.data?.inbound_hooks)
-      ? status.data
-      : null;
-  const settled =
-    !authorities.isPending &&
-    !schedules.isPending &&
-    (!mayReadStatus || !status.isPending) &&
-    (!prepared || !draft.isPending);
+  const verified = verifiedStatus(status.data);
+  const settled = automationSettled({
+    authoritiesPending: authorities.isPending,
+    schedulesPending: schedules.isPending,
+    statusPending: status.isPending,
+    draftPending: draft.isPending,
+    mayReadStatus,
+    prepared,
+  });
   const inputs = {
     workflow,
     draft: draft.data ?? null,
@@ -197,14 +198,15 @@ export function useWorkflowAutomation(
     enabled: environment !== null && mayDiagnose,
   });
   const ready = settled && environment !== null && (!mayDiagnose || !diagnosis.isPending);
-  const unanswered = {
-    status: mayReadStatus && !status.isPending && verified === null,
-    diagnosis:
-      mayDiagnose &&
-      environment !== null &&
-      !diagnosis.isPending &&
-      !Array.isArray(diagnosis.data?.diagnoses),
-  };
+  const unanswered = unansweredChecks({
+    mayReadStatus,
+    statusPending: status.isPending,
+    statusVerified: verified !== null,
+    mayDiagnose,
+    environmentKnown: environment !== null,
+    diagnosisPending: diagnosis.isPending,
+    diagnoses: diagnosis.data?.diagnoses,
+  });
   const decided = ready
     ? automationState({
         ...inputs,
@@ -220,11 +222,7 @@ export function useWorkflowAutomation(
     if (approvalOutOfSight && !isFetchingNextPage) void fetchNextPage();
   }, [approvalOutOfSight, isFetchingNextPage, fetchNextPage]);
 
-  const versions = new Map<string, number>();
-  if (workflow.current_version_id && typeof workflow.current_version === "number")
-    versions.set(workflow.current_version_id, workflow.current_version);
-  if (draft.data?.version_id && typeof draft.data.version === "number")
-    versions.set(draft.data.version_id, draft.data.version);
+  const versions = workflowVersions(workflow, draft.data);
 
   const refresh = () => void invalidateWorkflowAutomation(client, workflowId);
   const resume = useMutation({
@@ -269,78 +267,8 @@ export function useWorkflowAutomation(
 
 type Execution = components["schemas"]["Execution"];
 
-function useEnvironmentWord() {
-  const { t } = useI18n();
-  return (environment: "dev" | "prod") =>
-    t(environment === "prod" ? "authority.production" : "authority.development");
-}
-
-function useHeadline(state: AutomationState | null): string | null {
-  const { t, dateTime } = useI18n();
-  const environmentWord = useEnvironmentWord();
-  if (!state) return null;
-  const version = state.facts.version === null ? null : `v${state.facts.version}`;
-  const versionFact = version ? t("automation.fact.version", { version }) : null;
-  switch (state.state) {
-    case "approved":
-      return [
-        versionFact,
-        environmentWord(state.environment),
-        state.facts.untilRevoked
-          ? t("automation.fact.untilRevoked")
-          : state.facts.validUntil
-            ? t("automation.fact.until", { until: dateTime(state.facts.validUntil) })
-            : null,
-        state.facts.runsLeft !== null && state.facts.runsMax !== null
-          ? t("automation.fact.runs", { left: state.facts.runsLeft, max: state.facts.runsMax })
-          : state.facts.runsSoFar !== null
-            ? t(
-                state.facts.runsSoFar === 1
-                  ? "automation.fact.runsSoFar.one"
-                  : "automation.fact.runsSoFar.other",
-                { count: state.facts.runsSoFar },
-              )
-            : null,
-      ]
-        .filter(Boolean)
-        .join(" · ");
-    case "grant":
-      return version
-        ? t("automation.headline.grant", {
-            version,
-            environment: environmentWord(state.environment),
-          })
-        : t("automation.headline.grantUnnamed");
-    case "repair":
-      return state.facts.blockedStep
-        ? t("automation.headline.repair", { step: state.facts.blockedStep })
-        : t("automation.headline.repairUnnamed");
-    case "apply": {
-      const active = version ?? t("authority.noneActive");
-      return state.facts.preparedVersion === null
-        ? t("automation.headline.applyUnnamed", { active })
-        : t("automation.headline.apply", {
-            prepared: `v${state.facts.preparedVersion}`,
-            active,
-          });
-    }
-    case "invalid":
-      return t("automation.headline.invalid");
-    case "paused":
-      return state.primaryAction === null
-        ? t("automation.hookOff")
-        : t("automation.headline.paused");
-    case "unknown":
-      return t("automation.headline.unknown");
-    case "manual":
-      return state.facts.inactive
-        ? t("automation.headline.inactive")
-        : [versionFact, t("automation.headline.manual")].filter(Boolean).join(" · ");
-  }
-}
-
 function useRunHealth(workflowId: string, health: string | null, permissions: readonly string[]) {
-  const [weekFrom] = useState(() => new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString());
+  const [weekFrom] = useState(() => weekStart(Date.now()));
   const weekFailures = useQuery({
     queryKey: ["workflow-week-failures", workflowId, weekFrom],
     enabled: permissions.includes("execution:read"),
@@ -370,46 +298,15 @@ function useRunHealth(workflowId: string, health: string | null, permissions: re
   const failed = latestFailedRun((runs.data?.items ?? []).filter(isExecutionRecord));
   return {
     failedRun: failed,
-    repair: patch.data?.items.find((item) => item.reviewable && item.review_digest) ?? null,
+    repair: openRepair(patch.data?.items),
     noRecentFailures: !weekFailures.error && weekFailures.data?.total === 0,
-  };
-}
-
-function useFailingLine(): (
-  failure: { cause_class?: string | null; step_key?: string | null } | null,
-  health: string,
-) => string {
-  const { t } = useI18n();
-  return (failure, health) => {
-    const cause = failure?.cause_class && failure.cause_class !== "ok" ? failure.cause_class : null;
-    if (!cause) return t("detail.cause.noRun", { state: statusLabel(t, health) });
-    const words = catalogText(causeClassLabel(cause, t));
-    return failure?.step_key
-      ? t("detail.cause.atStep", { step: failure.step_key, cause: words })
-      : t("detail.cause.class", { cause: words });
   };
 }
 
 export function useWaitingConnector(
   steps: readonly { connectorId: string | null; connector: string | null }[],
 ): WaitingConnector | null {
-  const records = useConnectorRecords();
-  for (const step of steps) {
-    const record = records.find(
-      (item) =>
-        (step.connectorId !== null && item.id === step.connectorId) ||
-        (step.connector !== null && item.slug === step.connector),
-    );
-    if (!record) continue;
-    const state = connectorAuthState(record);
-    if (state === "expired" || state === "credentials_missing")
-      return {
-        id: record.id,
-        name: record.display_name,
-        state: state === "expired" ? "expired" : "missing",
-      };
-  }
-  return null;
+  return waitingConnectorFor(steps, useConnectorRecords());
 }
 
 export function WorkflowStatus({
@@ -424,6 +321,7 @@ export function WorkflowStatus({
   noSteps = false,
   autoPaused = false,
   onOffersApproval,
+  onAddStep,
 }: {
   automation: WorkflowAutomation;
   workflow: AutomationWorkflow;
@@ -440,15 +338,13 @@ export function WorkflowStatus({
   noSteps?: boolean;
   autoPaused?: boolean;
   onOffersApproval?: (offers: boolean) => void;
+  onAddStep?: () => void;
 }) {
-  const { t, locale } = useI18n();
-  const environmentWord = useEnvironmentWord();
+  const { t, locale, dateTime } = useI18n();
   const { state } = automation;
   const navigate = useNavigate();
   const sheets = useOpenRunSheet();
   const runHealth = useRunHealth(automation.workflowId, health, permissions);
-  const failingLine = useFailingLine();
-  const headline = useHeadline(state);
   const enable = useOptimisticAction({
     queryKey: ["catalog-detail", "workflows", automation.workflowId],
     mutationFn: () =>
@@ -503,95 +399,37 @@ export function WorkflowStatus({
           mayRun: automation.canRun,
         })
       : null;
-  const version = (value: number | null | undefined) =>
-    value === null || value === undefined ? t("authority.noneActive") : `v${value}`;
   const repair = runHealth.repair ? patchDecision(runHealth.repair, "") : null;
   const repairFixer =
     repair?.detail.kind === "patch" ? fixerKey(repair.detail.evidence.fixer) : null;
   const repairDescription = repairFixer ? t(repairFixer) : repair?.summary;
   const blocked = Math.max(1, automation.diagnosis?.diagnoses.length ?? 0);
   const noticed = autoPaused && strip.kind === "paused";
-  const line = ((): string | null => {
-    switch (strip.kind) {
-      case "loading":
-        return null;
-      case "empty":
-        return t("workflowStrip.line.empty");
-      case "failed":
-        return t("authority.loadFailed");
-      case "disabled":
-        return t("workflowStrip.line.disabled");
-      case "paused":
-        if (noticed) return null;
-        return state?.primaryAction === null
-          ? t("automation.hookOff")
-          : t("workflowStrip.line.paused");
-      case "stopped":
-        return t("workflowStrip.line.stopped", {
-          environment: environmentWord(state?.environment ?? "prod"),
-        });
-      case "repair":
-        return t(
-          blocked === 1 ? "workflowStrip.line.blocked.one" : "workflowStrip.line.blocked.other",
-          { count: blocked },
-        );
-      case "unapproved":
-        return state?.state === "grant"
-          ? t("workflowStrip.line.neverApproved", { version: version(state.facts.version) })
-          : t("workflowStrip.line.unapproved");
-      case "grant":
-        return t("workflowStrip.line.grant", {
-          version: version(state?.facts.version),
-          environment: environmentWord(state?.environment ?? "prod"),
-        });
-      case "apply":
-        return t("workflowStrip.line.apply", {
-          prepared: version(state?.facts.preparedVersion),
-          active: version(state?.facts.version),
-        });
-      case "connector":
-        return waitingConnector
-          ? t(
-              waitingConnector.state === "deleted"
-                ? "workflowStrip.line.connectorDeleted"
-                : waitingConnector.state === "expired"
-                  ? "workflowStrip.line.connectorExpired"
-                  : "workflowStrip.line.connectorMissing",
-              { name: waitingConnector.name },
-            )
-          : null;
-      case "failing":
-        return failingLine(runHealth.failedRun?.failure ?? null, health ?? "failing");
-      case "repairPrepared":
-        return repairDescription ?? t("workflowStrip.headline.repairPrepared");
-      case "approved":
-      case "manual":
-        return [
-          lastRunLine(lastRun, t, locale),
-          runHealth.noRecentFailures ? t("workflowStrip.line.noRecentFailures") : null,
-        ]
-          .filter(Boolean)
-          .join(" · ");
-      default:
-        return headline;
-    }
-  })();
-  const help = [
-    ...(strip.lower.length > 0
-      ? [
-          t("workflowStrip.also", {
-            states: strip.lower.map((kind) => t(STRIP_STATE_KEYS[kind])).join(", "),
-          }),
-        ]
-      : []),
-    ...(notice && !adoptable ? [t(OPENING_NOTICE_KEYS[notice])] : []),
-    ...(adoptable ? [t("authority.review.help.adopt")] : []),
-    ...(!automation.canWrite &&
-    strip.action === null &&
-    (strip.tone === "warn" || strip.tone === "error")
-      ? [t("automation.noRight")]
-      : []),
-  ];
+  const line = stripLine(
+    {
+      strip,
+      state,
+      noticed,
+      blocked,
+      waitingConnector,
+      failure: runHealth.failedRun?.failure ?? null,
+      health,
+      repairDescription,
+      lastRun: lastRunLine(lastRun, t, locale),
+      noRecentFailures: runHealth.noRecentFailures,
+      headline: automationHeadline(state, t, dateTime),
+    },
+    t,
+  );
+  const help = stripHelp(
+    {
+      strip,
+      notice: notice ? OPENING_NOTICE_KEYS[notice] : null,
+      adoptable,
+      canWrite: automation.canWrite,
+    },
+    t,
+  );
   const action = ((): ActionSpec | null => {
     const a = strip.action;
     if (!a || noticed) return null;
@@ -635,6 +473,15 @@ export function WorkflowStatus({
         return { ...base, onClick: () => void navigate({ to: connectorHref(a.connectorId) }) };
       case "cause":
         return { ...base, onClick: () => sheets.run(a.runId) };
+      case "addStep":
+        return onAddStep
+          ? {
+              ...base,
+              variant: "primary",
+              onClick: onAddStep,
+              testId: "workflow-automation-add-step",
+            }
+          : null;
       case "review":
         return {
           ...base,
@@ -650,60 +497,57 @@ export function WorkflowStatus({
       <div
         ref={anchor}
         id={WORKFLOW_AUTOMATION_ANCHOR}
-        className="scroll-mt-4"
+        className="scroll-mt-4 empty:hidden"
         data-family-slot="workflow-automation"
         data-testid="workflow-automation"
         data-state={automation.failed ? "failed" : (state?.state ?? "loading")}
         data-strip={strip.kind}
       >
-        <StatusStrip
-          tone={strip.tone}
-          loading={strip.kind === "loading"}
-          testId="workflow-status-strip"
-          line={
-            <>
-              <span className="font-medium" data-testid="workflow-automation-state">
-                {t(STRIP_STATE_KEYS[strip.kind])}
-              </span>
-              {line ? (
-                <>
-                  {" · "}
-                  <span data-testid="workflow-automation-headline">{line}</span>
-                </>
-              ) : null}
-              {strip.lower.length > 0 ? (
-                <span data-testid="workflow-strip-more">
-                  {t("workflowStrip.line.more", { count: strip.lower.length })}
+        {noticed ? null : (
+          <StatusStrip
+            tone={strip.tone}
+            loading={strip.kind === "loading"}
+            testId="workflow-status-strip"
+            line={
+              <>
+                <span className="font-medium" data-testid="workflow-automation-state">
+                  {t(STRIP_STATE_KEYS[strip.kind])}
                 </span>
-              ) : null}
-            </>
-          }
-          help={help.length > 0 ? help.join(" ") : undefined}
-          aside={
-            <>
-              <WaitingOnApprover
-                subjectId={automation.workflowId}
-                permissions={permissions}
-                testId="workflow-strip-waiting-on"
-              />
-              {state?.state === "approved" && !disabled ? (
-                <ApprovalExpiryNote
-                  validUntil={state.facts.untilRevoked ? null : state.facts.validUntil}
-                  environment={state.environment}
-                  onRenew={automation.canWrite && target ? automation.openGrant : undefined}
-                  testId="workflow-expiry-strip"
+                {line ? (
+                  <>
+                    {" · "}
+                    <span data-testid="workflow-automation-headline">{line}</span>
+                  </>
+                ) : null}
+                {strip.lower.length > 0 ? (
+                  <span data-testid="workflow-strip-more">
+                    {t("workflowStrip.line.more", { count: strip.lower.length })}
+                  </span>
+                ) : null}
+              </>
+            }
+            help={help.length > 0 ? help.join(" ") : undefined}
+            aside={
+              <>
+                <WaitingOnApprover
+                  subjectId={automation.workflowId}
+                  permissions={permissions}
+                  testId="workflow-strip-waiting-on"
                 />
-              ) : null}
-            </>
-          }
-          action={action ?? undefined}
-        />
+                {state?.state === "approved" && !disabled ? (
+                  <ApprovalExpiryNote
+                    validUntil={state.facts.untilRevoked ? null : state.facts.validUntil}
+                    environment={state.environment}
+                    onRenew={automation.canWrite && target ? automation.openGrant : undefined}
+                    testId="workflow-expiry-strip"
+                  />
+                ) : null}
+              </>
+            }
+            action={action ?? undefined}
+          />
+        )}
       </div>
-      <SideStatus
-        tone={strip.tone}
-        loading={strip.kind === "loading"}
-        line={[t(STRIP_STATE_KEYS[strip.kind]), line].filter(Boolean).join(" · ")}
-      />
       {state && !invalid && !disabled ? (
         <WorkflowGateDiagnosis
           workflowId={automation.workflowId}

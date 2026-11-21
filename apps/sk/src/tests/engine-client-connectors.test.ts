@@ -52,6 +52,22 @@ describe("EngineClient connector methods follow the contract", () => {
     ]);
   });
 
+  test("ingestConnectorDocs posts the source to the connector's ingest route", async () => {
+    const { client, seen } = fakeEngine({ ingested_count: 1 });
+    const out = await client.ingestConnectorDocs(CONNECTOR_ID, {
+      source_type: "openapi",
+      url: "http://docs.test/openapi.json",
+    });
+    expect(out).toMatchObject({ ingested_count: 1 });
+    expect(seen).toEqual([
+      {
+        method: "POST",
+        url: `http://engine.test/v1/connectors/${CONNECTOR_ID}/docs/ingest`,
+        body: { source_type: "openapi", url: "http://docs.test/openapi.json" },
+      },
+    ]);
+  });
+
   test("createConnectorFromTemplate sends an empty ConnectorFromTemplateBody by default", async () => {
     const { client, seen } = fakeEngine({});
     await client.createConnectorFromTemplate("stripe");

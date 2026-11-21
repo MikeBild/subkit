@@ -20,6 +20,7 @@
     "types": ["vite/client", "bun-types"],
     "paths": {
       "@/*": ["./src/*"],
+      "@ui/*": ["../../packages/ui/src/*"],
       "@shared/*": ["../../packages/shared/src/*"],
       "@cli-core/*": ["../../packages/cli-core/src/*"],
       "@engine/http/llms/*": ["../../apps/engine/src/http/llms/*"]

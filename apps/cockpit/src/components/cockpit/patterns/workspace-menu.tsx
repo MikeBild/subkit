@@ -23,7 +23,6 @@ export function WorkspaceMenu({
   tenantId,
   tenantName,
   wordmark,
-  attention,
   changing,
   changingTenantId,
   loading,
@@ -40,7 +39,6 @@ export function WorkspaceMenu({
   tenantId: string;
   tenantName: string;
   wordmark?: ReactNode;
-  attention?: ReactNode;
   changing: boolean;
   changingTenantId: string | undefined;
   loading: boolean;
@@ -60,7 +58,7 @@ export function WorkspaceMenu({
     <SidebarMenu>
       <SidebarMenuItem
         data-testid="cockpit-wordmark"
-        className="flex min-w-0 items-center gap-1 group-data-[collapsible=icon]:flex-col"
+        className="flex min-w-0 items-center gap-1 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-start"
         onClick={(event) => {
           if (
             isMobile &&
@@ -72,7 +70,7 @@ export function WorkspaceMenu({
         <SidebarMenuButton
           asChild
           size="lg"
-          className="relative min-w-0 flex-1"
+          className="relative min-w-0 flex-1 group-data-[collapsible=icon]:flex-none"
           tooltip={tenantName}
         >
           <Link to="/" data-testid="cockpit-home-link" aria-label={tenantName}>
@@ -98,7 +96,6 @@ export function WorkspaceMenu({
               </>
             )}
             {pending ? <Loader2 className="size-3 animate-spin" /> : null}
-            {attention}
           </Link>
         </SidebarMenuButton>
         <DropdownMenu open={open} onOpenChange={onOpenChange}>
@@ -106,7 +103,7 @@ export function WorkspaceMenu({
             <SidebarMenuButton
               aria-label={t("workspace.switch")}
               aria-busy={changing}
-              className="size-8 shrink-0 justify-center pointer-coarse:w-11 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+              className="size-8 shrink-0 justify-center px-0 pointer-coarse:w-11 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               <ChevronsUpDown className="size-4 text-muted-foreground" />
             </SidebarMenuButton>

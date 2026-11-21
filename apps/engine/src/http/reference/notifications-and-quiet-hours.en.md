@@ -61,6 +61,15 @@ The times apply in the time zone of the workspace. It is set under **Settings �
 
 If you work in a different time zone than your team, you can store your own. The Cockpit has no field for it yet. It works over the HTTP API with the field `timezone`, see below.
 
+### Pause notifications
+
+Pause notifications for a while, for example during a meeting, without changing your schedule.
+
+1. In SubKit Desktop, open the menu bar icon and select **Pause notifications for 1 hour**. In the Cockpit, open **Settings › Notifications**.
+2. To end the pause early, select **Resume notifications**.
+
+During the pause, SubKit sends no push notifications and shows no desktop banners. The **Needs you** list and its count keep updating. Urgent items still reach you if you switched them on. The pause applies on all your devices at once: the desktop app, the Cockpit and the installed web app read the same state. A pause lasts at most 30 days.
+
 ### Get urgent items despite quiet hours
 
 Two kinds of items count as critical:
@@ -76,7 +85,7 @@ If another person on your team approves what SubKit may do, route the notificati
 
 1. Open **Settings › Setup** and select **Change** on **Approvals**.
 2. Answer “Who approves what SubKit may do?” with **Someone else on the team** and enter the **Email address**.
-3. Select **Apply**. Below it you then read “Approval notifications go to …”.
+3. Select **Apply**. The row **Approvals** then shows the person.
 
 What applies then:
 

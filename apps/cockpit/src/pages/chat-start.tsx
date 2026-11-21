@@ -1,16 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import {
-  Activity,
-  BookOpen,
-  Gauge,
-  History,
-  LayoutTemplate,
-  Plug,
-  Sparkles,
-  SquarePen,
-  Workflow,
-} from "lucide-react";
-import type { ReactNode } from "react";
+import { useState } from "react";
 import { apiCall } from "@/api/call";
 import { useSetup } from "@/api/setup";
 import { useSession } from "@/app/session";
@@ -21,33 +10,28 @@ import {
   solutionNeeds,
   solutionText,
 } from "@/components/cockpit/create-template-model";
-import { ChoiceCards } from "@/components/cockpit/patterns";
+import { chipClass } from "@/components/cockpit/patterns";
+import { firstJobStarter } from "@/features/setup";
 import { LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { cn } from "@/lib/utils";
 import { useWorkflowCategories } from "@/queries/mention-sources";
 import {
   chatStarters,
   MAX_STARTERS,
   retryStarterQuery,
-  type StarterIcon,
+  starterChips,
   starterGates,
 } from "./chat-start-model";
-import { firstJobStarter } from "./setup-model";
 
-const ICONS: Record<StarterIcon, ReactNode> = {
-  failing: <Activity />,
-  usage: <Gauge />,
-  solution: <LayoutTemplate />,
-  knowledge: <BookOpen />,
-  catalog: <Workflow />,
-  capabilities: <Sparkles />,
-  create: <SquarePen />,
-  connect: <Plug />,
-  run: <History />,
-};
+const CHIP = cn(
+  chipClass("sm"),
+  "h-auto min-h-10 px-3 py-2 text-left hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+);
 
 export function ChatStart({ onPick }: { onPick(prompt: string): void }) {
   const { t, locale } = useI18n();
+  const [expanded, setExpanded] = useState(false);
   const permissions = useSession().permissions;
   const gates = starterGates(permissions);
   const setup = useSetup().data;
@@ -106,20 +90,34 @@ export function ChatStart({ onPick }: { onPick(prompt: string): void }) {
     t,
   );
   const firstJob = firstJobStarter(setup, t);
-  const shown = firstJob ? [firstJob, ...starters].slice(0, MAX_STARTERS) : starters;
+  const all = firstJob ? [firstJob, ...starters].slice(0, MAX_STARTERS) : starters;
+  const chips = starterChips(all, expanded);
   return (
-    <div className="grid w-full content-start gap-3" data-testid="chat-starters">
-      <p className="text-sm text-muted-foreground">{t("chat.start.label")}</p>
-      <ChoiceCards
-        compact
-        items={shown.map((starter) => ({
-          icon: ICONS[starter.icon],
-          title: starter.title,
-          line: starter.line,
-          onSelect: () => onPick(starter.prompt),
-          testId: `chat-starter-${starter.id}`,
-        }))}
-      />
-    </div>
+    <fieldset className="mb-2 flex flex-wrap gap-2" data-testid="chat-starters">
+      <legend className="sr-only">{t("chat.start.chips")}</legend>
+      {chips.shown.map((starter) => (
+        <button
+          key={starter.id}
+          type="button"
+          className={CHIP}
+          title={starter.line}
+          onClick={() => onPick(starter.prompt)}
+          data-testid={`chat-starter-${starter.id}`}
+        >
+          {starter.title}
+        </button>
+      ))}
+      {chips.hidden > 0 ? (
+        <button
+          type="button"
+          className={cn(CHIP, "text-muted-foreground")}
+          aria-expanded={false}
+          onClick={() => setExpanded(true)}
+          data-testid="chat-starters-more"
+        >
+          {t("chat.start.more", { count: chips.hidden })}
+        </button>
+      ) : null}
+    </fieldset>
   );
 }

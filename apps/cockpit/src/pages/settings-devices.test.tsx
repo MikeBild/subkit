@@ -80,7 +80,8 @@ describe("devices of the signed-in person", () => {
     expect(html).toMatch(/data-kind="desktop"[^>]*data-current="true"/);
     expect(html).toContain("Dieses Gerät");
     expect(html).toContain("Miras MacBook");
-    expect(html).toContain("angemeldet seit");
+    expect(html).toContain("seit ");
+    expect(html).toContain('<span class="sr-only">Desktop-App: </span>');
     expect(html).toContain("zuletzt genutzt");
     expect(html.match(/zuletzt genutzt/g)).toHaveLength(2);
     expect(html).toContain('data-testid="settings-device-revoke-0"');

@@ -13,6 +13,7 @@ import {
   llmBucketKey,
   llmGroupKey,
 } from "../../stats/aggregate-llm.ts";
+import { fillGroups, readBucketSeries } from "../../stats/bucket-fill.ts";
 import { effectiveModelRate, readLlmCostByKey, readLlmWindowCost } from "../../stats/llm-cost.ts";
 import { readConversationLabels } from "../../stats/llm-labels.ts";
 import { resolveWindow } from "../stats/bucket-window.ts";
@@ -129,8 +130,18 @@ async function llmReport(db: Db, principal: ResolvedPrincipal, query: LlmQuery) 
     ? aggregated.groups.map((group) => group.key.conversation ?? "").filter(Boolean)
     : [];
   const labels = await conversationLabelsFor(db, principal, conversationIds);
+  const filled =
+    query.fill === "none"
+      ? aggregated.groups
+      : fillGroups(aggregated.groups, await readBucketSeries(db, win), (ts) => ({
+          ts,
+          calls: 0,
+          tokens: { prompt: 0, completion: 0, cache_read: 0, cache_creation: 0, total: 0 },
+          latency_ms: { total: 0, avg: 0, p50: 0, p95: 0, p99: 0, max: 0 },
+          result: {},
+        }));
 
-  const groups = aggregated.groups.map((group) => {
+  const groups = filled.map((group) => {
     const groupKey = llmGroupKey(groupBy, group.key);
     const groupCost = keyed.groups.get(groupKey);
     const model = group.key.model;

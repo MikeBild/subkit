@@ -89,7 +89,13 @@ function snapshot(p: CreateIntakeItemParams, redactions = 0): IntakeCollectedSna
   const title = source?.title ?? p.title;
   const redacted = redactions > 0 ? { redactions } : {};
   return sourceUrl === undefined
-    ? { title, ...described, origin: "note", ...redacted }
+    ? {
+        title,
+        ...described,
+        origin: "note",
+        ...redacted,
+        ...(p.attachment ? { attachment: p.attachment } : {}),
+      }
     : {
         title,
         source_url: sourceUrl,
@@ -221,6 +227,7 @@ export async function createIntakeItem(
         title: clean.title,
         body: clean.body,
         note: clean.note ?? "",
+        attachment_file_id: p.attachment?.file_id ?? null,
         collected_by_type: p.actor.kind,
         collected_by_id: p.actor.id,
       })
@@ -258,6 +265,7 @@ export async function createIntakeItem(
         origin: row.original_snapshot.origin,
         source_url: row.original_snapshot.source_url ?? null,
         redactions: row.original_snapshot.redactions ?? 0,
+        ...(p.attachment ? { attachment_file_id: p.attachment.file_id } : {}),
       },
     );
     return intakeItemView(row);

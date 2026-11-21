@@ -1,11 +1,18 @@
-import { and, desc, eq, lt, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import {
+  executions,
   type ScheduleOccurrenceRow,
   type ScheduleOccurrenceState,
   scheduleOccurrences,
+  taskRuns,
 } from "../db/schema/index.ts";
 import { errorFields, logger } from "../logging/logger.ts";
+import {
+  type OccurrenceRunOutcome,
+  type OccurrenceRunRef,
+  occurrenceRunOutcomes,
+} from "./occurrence-outcome.ts";
 import { classifyRun, type DueWindow, planOccurrenceWrite } from "./occurrence-window.ts";
 
 export const SCHEDULE_OCCURRENCE_SKIP_CAP = 100_000;
@@ -155,6 +162,33 @@ export async function listScheduleOccurrences(
     )
     .orderBy(desc(scheduleOccurrences.due_at), desc(scheduleOccurrences.created_at))
     .limit(limit);
+}
+
+export async function readOccurrenceRunOutcomes(
+  db: Db,
+  tenant_id: string,
+  rows: readonly OccurrenceRunRef[],
+): Promise<Map<string, OccurrenceRunOutcome | null>> {
+  const executionIds = rows.flatMap((row) => (row.execution_id ? [row.execution_id] : []));
+  const taskRunIds = rows.flatMap((row) => (row.task_run_id ? [row.task_run_id] : []));
+  const [executionRows, taskRunRows] = await Promise.all([
+    executionIds.length === 0
+      ? []
+      : db
+          .select({ id: executions.id, status: executions.status })
+          .from(executions)
+          .where(and(eq(executions.tenant_id, tenant_id), inArray(executions.id, executionIds))),
+    taskRunIds.length === 0
+      ? []
+      : db
+          .select({ id: taskRuns.id, state: taskRuns.state })
+          .from(taskRuns)
+          .where(and(eq(taskRuns.tenant_id, tenant_id), inArray(taskRuns.id, taskRunIds))),
+  ]);
+  return occurrenceRunOutcomes(rows, {
+    executions: new Map(executionRows.map((row) => [row.id, row.status])),
+    task_runs: new Map(taskRunRows.map((row) => [row.id, row.state])),
+  });
 }
 
 export async function runScheduleOccurrenceRetention(now: Date, db: Db): Promise<number> {

@@ -9,7 +9,7 @@ audience: public
 
 Dieses Kapitel ist für alle, die lieber im Terminal oder in Skripten arbeiten als im Cockpit.
 Du installierst die Kommandozeile `sk`, meldest dich an und hältst sie aktuell.
-Danach legst du Workflows, Konnektoren und Wissen als Dateien an und startest Läufe aus dem Terminal.
+Danach legst du Workflows, Connectors und Wissen als Dateien an und startest Runs aus dem Terminal.
 
 Die Kommandozeile `sk` bekommst du direkt von deiner Engine. Mit ihr entwirfst, änderst und startest du Workflows als Dateien; `sk agent init` trägt SubKit in Claude Code und Codex ein.
 Ein npm-Paket gibt es nicht.
@@ -104,7 +104,7 @@ Ein lokaler Build oder ein privates Repository genügt nicht.
 
 ### Den Arbeitsbereich auf eine andere Engine umziehen
 
-Ein Paket bringt deine eigenen Workflows, Konnektoren, Konnektor-Vorlagen, Skills, Zeitpläne, Quellen und ihre Dateien auf eine andere Engine.
+Ein Paket bringt deine eigenen Workflows, Connectors, Connector-Vorlagen, Skills, Zeitpläne, Quellen und ihre Dateien auf eine andere Engine.
 Zugangsdaten, Freigaben, Rollen, Kategorien, Einstellungen und der Verlauf bleiben zurück.
 Um eine ganze selbst betriebene Installation zu kopieren, machst du stattdessen ein Backup wie in „Die Engine betreiben“ beschrieben.
 
@@ -124,7 +124,7 @@ Die Zugangsdaten nach dem Import hinterlegt jemand mit `credential:write`, in de
    sk packages export --out workspace.zip --profile a
    ```
 
-   `--category <kategorien>` exportiert nur einen Bereich, zum Beispiel `--category devops,cloud`. Was der Bereich braucht, kommt mit: Konnektoren, Konnektor-Vorlagen, Sub-Workflows und Zeitpläne.
+   `--category <kategorien>` exportiert nur einen Bereich, zum Beispiel `--category devops,cloud`. Was der Bereich braucht, kommt mit: Connectors, Connector-Vorlagen, Sub-Workflows und Zeitpläne.
    `--only <arten>` exportiert nur einige Arten. `--json` gibt das Ergebnis als JSON aus.
 3. Importiere in Engine B:
 
@@ -135,22 +135,22 @@ Die Zugangsdaten nach dem Import hinterlegt jemand mit `credential:write`, in de
    `sk` zeigt zuerst den Plan: Jeder Eintrag ist `create`, `update`, `unchanged` oder `conflict`. Bestätige ihn oder gib `--yes` mit.
    Hat sich Engine B nach dem Plan geändert, bricht der Import ab und ändert nichts. Starte ihn dann erneut.
 4. Schließe auf Engine B ab. Bis dahin läuft und schreibt nichts:
-   - Hinterlege die Zugangsdaten jedes Konnektors. Das Paket enthält keine.
+   - Hinterlege die Zugangsdaten jedes Connectors. Das Paket enthält keine.
    - Aktiviere die Skills. Sie kommen als Entwürfe an.
    - Bestätige das Wissen in der Prüfung im Cockpit. Es kommt als Vorschlag an und wird nie automatisch übernommen.
    - Prüfe die Workflows und erteile ihre Freigaben. Sie kommen als inaktive Entwürfe an.
    - Setze die Zeitpläne fort. Sie kommen pausiert an.
-   - Starte einen Testlauf.
+   - Starte einen Test-Run.
 
 Importierst du dasselbe Paket erneut, ist jeder Eintrag `unchanged`.
 Einen Eintrag, den du auf Engine B geändert hast, zeigt der Import als `conflict` und überschreibt ihn nie.
 `sk packages installs` listet frühere Importe.
 
-Im Cockpit findest du dasselbe im „…“-Menü von Workflows, Konnektoren, Skills, Quellen und Dateien: „Als Paket exportieren…“ und „Paket importieren…“. Ist eine Kategorie gefiltert, ist sie im Export schon ausgewählt.
+Im Cockpit findest du dasselbe im „…“-Menü von Workflows, Connectors, Skills, Quellen und Dateien: „Als Paket exportieren…“ und „Paket importieren…“. Ist eine Kategorie gefiltert, ist sie im Export schon ausgewählt.
 Im Chat hängst du ein Paket bis 5 MB an und bittest darum, es einzuspielen. Der Chat zeigt den Plan und fragt vor dem Einspielen nach, außer die Unterhaltung läuft ohne Rückfragen. Größere Pakete bis 256 MB importierst du über das Menü.
 
-Du kannst Bereich für Bereich umziehen: ein Paket je Kategorie, jeweils mit Vorschau, Einrichtung und Testlauf.
-Ein Konnektor, den ein früheres Paket schon mitgebracht hat, bleibt `unchanged`, auch wenn du auf Engine B schon seine Zugangsdaten hinterlegt hast.
+Du kannst Bereich für Bereich umziehen: ein Paket je Kategorie, jeweils mit Vorschau, Einrichtung und Test-Run.
+Ein Connector, den ein früheres Paket schon mitgebracht hat, bleibt `unchanged`, auch wenn du auf Engine B schon seine Zugangsdaten hinterlegt hast.
 
 ### Wenn etwas nicht klappt
 

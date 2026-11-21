@@ -1,32 +1,5 @@
 import { type CSSProperties, type RefObject, useLayoutEffect, useState } from "react";
 
-export function useTabIndicator(
-  list: RefObject<HTMLElement | null>,
-  activeSelector: string,
-  active: string,
-): CSSProperties | null {
-  const [style, setStyle] = useState<CSSProperties | null>(null);
-  useLayoutEffect(() => {
-    const element = list.current;
-    if (!element) return;
-    const measure = () => {
-      const tab = element.querySelector<HTMLElement>(activeSelector);
-      if (!tab) {
-        setStyle(null);
-        return;
-      }
-      setStyle({ width: tab.offsetWidth, transform: `translateX(${tab.offsetLeft}px)` });
-    };
-    measure();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    for (const child of element.children) observer.observe(child);
-    return () => observer.disconnect();
-  }, [list, activeSelector, active]);
-  return style;
-}
-
 export function useEdgeFade(scroller: RefObject<HTMLElement | null>): CSSProperties | undefined {
   const [edges, setEdges] = useState({ start: false, end: false });
   useLayoutEffect(() => {
@@ -54,6 +27,3 @@ export function useEdgeFade(scroller: RefObject<HTMLElement | null>): CSSPropert
   })`;
   return { maskImage: mask, WebkitMaskImage: mask };
 }
-
-export const TAB_INDICATOR =
-  "pointer-events-none absolute bottom-0 left-0 h-0.5 bg-foreground transition-[transform,width] duration-(--sk-dur-base) ease-(--sk-ease-standard)";

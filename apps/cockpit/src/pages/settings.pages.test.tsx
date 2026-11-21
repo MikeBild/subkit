@@ -6,7 +6,6 @@ import {
   AuthProvidersEditor,
   authProvidersFromDraft,
   moveAuthProvider,
-  overviewCards,
   removeAuthProvider,
   replaceAuthProvider,
   SettingsFilterToggle,
@@ -14,6 +13,7 @@ import {
   SettingsSaveBar,
 } from "@/pages/settings";
 import { AiArea } from "@/pages/settings-ai";
+import { SettingsAreaFrame, UsageNote } from "@/pages/settings-frame";
 import type { GuidedContext } from "@/pages/settings-guided";
 import {
   changedSettings,
@@ -22,8 +22,7 @@ import {
   settingDraftTexts,
   settingsPatches,
 } from "@/pages/settings-model";
-import { SettingsAreaFrame, SettingsOverview } from "@/pages/settings-overview";
-import { de, render, visibleMarkup } from "./settings-fixtures.tsx";
+import { render, visibleMarkup } from "./settings-fixtures.tsx";
 
 describe("the page's frame", () => {
   test("the filter offers Alle and Geändert", () => {
@@ -251,32 +250,6 @@ describe("the guided settings pages", () => {
   });
   const filled = (html: string) => html.match(/<button[^>]*data-variant="default"/g)?.length ?? 0;
 
-  test("the overview is a list of area cards with one sentence each, read-only without a save bar", () => {
-    const cards = overviewCards({
-      facts: { items, pendingRestart: [] },
-      catalog,
-      canWrite: false,
-      t: de,
-      restartAction: null,
-    });
-    const html = render(
-      <>
-        <SettingsReadOnlyNotice canWrite={false} ask />
-        <SettingsOverview cards={cards} expert usage onNavigate={() => {}} />
-      </>,
-    );
-    expect(html).toContain(
-      "Du darfst ansehen, nicht ändern. Für Änderungen frag einen Administrator.",
-    );
-    expect(html).toContain("Nutzt OpenAI mit GPT-4.1 mini. Kein Ersatz, falls OpenAI ausfällt.");
-    expect(html).toContain("Nur Administratoren können hier etwas ändern.");
-    expect(html).toContain('data-testid="settings-area-status-configured"');
-    expect(html).toContain("Alle Einstellungen (für Fachleute)");
-    expect(html).not.toContain('data-testid="settings-change-bar"');
-    expect(html).not.toMatch(/role="tablist"/);
-    expect(filled(html)).toBe(0);
-  });
-
   test("the assistant page asks in plain words and keeps technical keys out", () => {
     const html = render(<AiArea ctx={ctx()} />);
     expect(html).toContain("Welchen KI-Anbieter nutzt du?");
@@ -385,25 +358,6 @@ describe("the guided settings pages", () => {
     expect(source).toContain("drafts={draftState.drafts.global}");
   });
 
-  test("the overview describes what applies to the signed-in workspace", () => {
-    const source = readFileSync(resolve(import.meta.dir, "settings.tsx"), "utf8");
-    expect(source).toContain("const effectiveItems = tenantItems ?? globalItems;");
-    expect(source).toMatch(/const facts = \{\n\s+items: effectiveItems,/);
-    const workspace = items.map((entry) =>
-      entry.path === "llm.provider"
-        ? { ...entry, value: "anthropic", meta: { ...entry.meta, source: "tenant" } }
-        : entry,
-    );
-    const cards = overviewCards({
-      facts: { items: workspace, pendingRestart: [] },
-      catalog,
-      canWrite: true,
-      t: de,
-      restartAction: null,
-    });
-    expect(cards.find((card) => card.id === "ai")?.sentence).toContain("Nutzt Anthropic");
-  });
-
   test("a save keeps its drafts until the reloaded settings and usage are in", () => {
     const source = readFileSync(resolve(import.meta.dir, "settings.tsx"), "utf8");
     const reloaded = source.indexOf("await Promise.all([");
@@ -413,7 +367,7 @@ describe("the guided settings pages", () => {
     expect(source).toContain("settleSettings(");
   });
 
-  test("below 720px the area list hides and the way back to all areas shows", () => {
+  test("the area list is a column from 760px and a select below, never a sideways row", () => {
     const html = render(
       <SettingsAreaFrame
         area="ai"
@@ -426,32 +380,19 @@ describe("the guided settings pages", () => {
         <AiArea ctx={ctx()} />
       </SettingsAreaFrame>,
     );
-    expect(html).toMatch(
-      /class="hidden [^"]*@min-\[720px\]\/settings:block[^"]*" data-testid="settings-area-nav"/,
+    expect(html).toContain(
+      'class="hidden shrink-0 flex-col gap-4 @min-[760px]/settings:flex @min-[760px]/settings:w-56" data-testid="settings-area-nav"',
     );
-    expect(html).toContain('data-testid="settings-all-areas"');
-    expect(html).toContain("Alle Bereiche");
-    expect(html).toContain("@container/settings");
-    expect(html).not.toMatch(/overflow-x-(auto|scroll)[^"]*" data-testid="settings-area-frame"/);
+    expect(html).toContain(
+      'class="@min-[760px]/settings:hidden" data-testid="settings-area-select"',
+    );
+    const areaNav = html.slice(0, html.indexOf('data-testid="settings-area-ai"'));
+    expect(areaNav).not.toContain("overflow-x-auto");
+    expect(html).not.toContain('data-testid="settings-all-areas"');
+    expect(html).toContain('data-testid="settings-area-nav-expert"');
+    expect(html).toContain(">KI-Assistent<");
     const ai = render(<AiArea ctx={ctx()} />);
     expect(ai).toMatch(/class="grid gap-3 sm:grid-cols-2" data-testid="settings-ai-providers"/);
-    const overview = render(
-      <SettingsOverview
-        cards={overviewCards({
-          facts: { items, pendingRestart: [] },
-          catalog,
-          canWrite: true,
-          t: de,
-          restartAction: null,
-        })}
-        expert
-        usage={false}
-        onNavigate={() => {}}
-      />,
-    );
-    expect(overview).not.toContain('data-testid="settings-area-nav"');
-    expect(overview).not.toContain('data-testid="settings-usage-note"');
-    expect(overview).toContain("grid-cols-[auto_minmax(0,1fr)_auto]");
   });
 
   test("rows read the drafts as typed, so an opened key field stays open", () => {
@@ -460,26 +401,11 @@ describe("the guided settings pages", () => {
     expect(source).not.toMatch(/drafts: (pending|pendingDrafts)\b/);
   });
 
-  test("budget, prices and currency have no area of their own; the overview points to the usage page", () => {
-    const cards = overviewCards({
-      facts: { items, pendingRestart: [] },
-      catalog,
-      canWrite: true,
-      t: de,
-      restartAction: null,
-    });
-    expect(cards.map((card) => card.id)).toEqual([
-      "ai",
-      "access",
-      "connections",
-      "notifications",
-      "operations",
-    ]);
-    const html = render(<SettingsOverview cards={cards} expert usage onNavigate={() => {}} />);
+  test("budget, prices and currency have no area of their own; a note points to the usage page", () => {
+    const html = render(<UsageNote />);
     expect(html).toContain(
       "Monatskontingent, Modellpreise und Währung änderst du auf der Seite „Nutzung“.",
     );
     expect(html).toContain('href="/cockpit/usage" class=');
-    expect(html).not.toContain("settings-area-card-costs");
   });
 });

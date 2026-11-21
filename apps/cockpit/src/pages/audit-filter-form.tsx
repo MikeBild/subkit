@@ -2,12 +2,12 @@ import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { apiCall } from "@/api/call";
-import { Button, SectionHeading } from "@/components/cockpit/patterns";
+import { Button, DateField, SectionHeading } from "@/components/cockpit/patterns";
+import { auditResourceLabel, auditResultLabel } from "@/lib/audit-model";
 import { useI18n } from "@/lib/i18n-context";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { ACCESS_TYPES, type FilterState, SOURCES } from "./audit-filter-state";
 import { ACCESS_KEYS, SOURCE_KEYS } from "./audit-labels";
-import { auditResourceLabel, auditResultLabel } from "./audit-model";
 import {
   type IdentityOption,
   utcChoicesForLocalInput,
@@ -126,12 +126,13 @@ export function FocusFields({
       ) : null}
       <div className={compact ? "grid gap-3 min-[420px]:grid-cols-2" : "space-y-3"}>
         <Field label={`${t("audit.timeline.from")} · ${zone}`}>
-          <input
-            type="datetime-local"
-            className={inputClass}
+          <DateField
+            withTime
             value={draft.from}
-            onChange={(event) => set("from", event.target.value)}
-            data-testid={`${testPrefix}-from`}
+            onChange={(next) => set("from", next)}
+            label={t("audit.timeline.from")}
+            className="w-full"
+            testId={`${testPrefix}-from`}
           />
         </Field>
         {fromChoices.length > 1 && (
@@ -151,12 +152,13 @@ export function FocusFields({
           </Field>
         )}
         <Field label={`${t("audit.timeline.to")} · ${zone}`}>
-          <input
-            type="datetime-local"
-            className={inputClass}
+          <DateField
+            withTime
             value={draft.to}
-            onChange={(event) => set("to", event.target.value)}
-            data-testid={`${testPrefix}-to`}
+            onChange={(next) => set("to", next)}
+            label={t("audit.timeline.to")}
+            className="w-full"
+            testId={`${testPrefix}-to`}
           />
         </Field>
         {toChoices.length > 1 && (

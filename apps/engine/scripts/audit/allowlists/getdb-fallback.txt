@@ -1,7 +1,0 @@
-# Burndown allowlist for the audit-invariants `no_getdb_fallback` check.
-# Rule: `?? getDb()` in a service.ts, connectors/egress-guard.ts or engine-client/index.ts; pass the executor explicitly.
-# Format: <path from repo root>  <budget in fallbacks>. A listed file fails once it exceeds its budget;
-# an unlisted file fails at the first hit. Budgets only shrink: fix the file, then run
-# `bun run apps/engine/scripts/audit-invariants.ts --update-baseline` (lowers budgets, drops fixed files).
-# `--accept-new` also admits new offenders; use it only for a reviewed baseline reset.
-

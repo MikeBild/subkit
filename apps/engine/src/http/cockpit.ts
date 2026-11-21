@@ -21,7 +21,7 @@ import {
   wantsHtmlPage,
 } from "./routes/oauth/ui.ts";
 
-const COCKPIT_PREFIX = "/cockpit";
+export const COCKPIT_PREFIX = "/cockpit";
 const COCKPIT_DIR = fileURLToPath(new URL("../../../../assets/cockpit", import.meta.url));
 const IMMUTABLE = "public, max-age=31536000, immutable";
 const NEVER = "no-cache";
@@ -171,6 +171,10 @@ const bundledCockpitAsset = cockpitAssetReader(bundledCockpitFile);
 
 export function cachedCockpitAsset(relativePath: string): Asset | null {
   return bundledCockpitAsset(relativePath);
+}
+
+export function cockpitBundleAvailable(): boolean {
+  return bundledCockpitAsset("index.html") !== null;
 }
 
 function bundledCockpitAssetPaths(): string[] {

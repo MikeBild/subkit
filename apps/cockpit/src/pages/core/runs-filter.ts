@@ -122,43 +122,24 @@ export function failedStatusesFor(status: string): string | null {
   return FAILED_RUN_STATUSES.has(status) ? status : null;
 }
 
-export function runOverlayFromUrl(search: string): { list: boolean; runId: string | null } {
-  const params = new URLSearchParams(search);
-  const raw =
-    params.get("run")?.trim() ??
-    // Stryker disable next-line StringLiteral: EQ-RUNS-ABSENT: absent invalid filter sentinel
-    "";
-  return {
-    list: params.get("runs") === "all",
-    runId: raw && raw.length <= 128 && /^[\w.:-]+$/.test(raw) ? raw : null,
-  };
+export function runsSheetOpen(search: string): boolean {
+  return new URLSearchParams(search).get("runs") === "all";
 }
 
-export function runOverlaySearch(
-  search: string,
-  next: { list: boolean; runId: string | null },
-): string {
+export function runsSheetSearch(search: string, open: boolean): string {
   const params = new URLSearchParams(search);
-  if (next.list) params.set("runs", "all");
+  if (open) params.set("runs", "all");
   else {
     params.delete("runs");
     for (const key of RUNS_FILTER_KEYS) params.delete(key);
   }
-  if (next.runId) params.set("run", next.runId);
-  else params.delete("run");
   const query = params.toString();
   return query ? `?${query}` : "";
 }
 
 export function initialRunsFilter(search: string, now: number): RunsFilter {
   const filter = filterFromUrl(search);
-  if (
-    filter.startedFrom ||
-    filter.startedTo ||
-    filter.workflowId ||
-    new URLSearchParams(search).has("run")
-  )
-    return filter;
+  if (filter.startedFrom || filter.startedTo || filter.workflowId) return filter;
   return {
     ...filter,
     startedFrom: new Date(now - 7 * 86_400_000).toISOString(),

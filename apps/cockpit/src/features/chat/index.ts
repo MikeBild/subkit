@@ -1,6 +1,13 @@
 import { absolute, chatNewHref, conversationHref } from "@/app/links";
 import type { ConversationSelection } from "@/pages/chat-selection";
 
+export {
+  answerPhase,
+  bubbleSide,
+  previousSides,
+  shownMode,
+  switchedOrDefault,
+} from "./bubble-model";
 export { ChatComposer } from "./composer";
 export { ChatComposerArea } from "./composer-area";
 export { ChatContextContent } from "./context-content";
@@ -20,11 +27,20 @@ export {
 } from "./labels";
 export { ChatListPanel } from "./list-panel";
 export { ChatMessage } from "./message";
-export { ModePill, UsagePills } from "./mode";
 export { AttachmentPreviewSheet, FollowSubmittedTurn, ReadingColumn } from "./parts";
 export { QuestionDock } from "./question-dock";
 export { TaskRunLine, useRunOfConversation } from "./task-run-line";
 export { ChatTranscript } from "./transcript";
+export { COMPOSER_TRAY_KEY, type ComposerTray, claimComposerTray, useComposerTray } from "./tray";
+export {
+  type ClaimedFile,
+  claimedAsPending,
+  type TrayChip,
+  type TrayItem,
+  type TrayProblem,
+  trayChips,
+} from "./tray-model";
+export { ComposerTrayChips, ComposerTrayNotice } from "./tray-view";
 
 export function selectionFromPath(initialPrompt: string): ConversationSelection {
   if (initialPrompt || window.location.pathname.endsWith("/chat/new")) return { kind: "new" };

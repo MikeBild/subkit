@@ -36,7 +36,7 @@ export const taskRunEn = {
 export const taskRunDe: Record<keyof typeof taskRunEn, string> = {
   "chat.taskRun.unnamed": "Aufgabe",
   "chat.taskRun.continues": "SubKit arbeitet weiter",
-  "chat.taskRun.runOf": "Lauf vom {date}",
+  "chat.taskRun.runOf": "Run vom {date}",
   "chat.taskRun.state.running": RUN_STATE_WORDS_DE.running,
   "chat.taskRun.state.waiting": RUN_STATE_WORDS_DE.waiting,
   "chat.taskRun.state.sleeping": RUN_STATE_WORDS_DE.sleeping,
@@ -47,9 +47,9 @@ export const taskRunDe: Record<keyof typeof taskRunEn, string> = {
   "chat.taskRun.now": "Jetzt: {step}",
   "chat.taskRun.nextCheck": "Nächste Prüfung {time}",
   "chat.taskRun.abort": "Abbrechen",
-  "chat.taskRun.abort.object": "Lauf",
-  "chat.taskRun.abort.failed": "Der Lauf ließ sich nicht abbrechen, versuch es erneut.",
-  "chat.taskRun.unavailable": "Dieser Lauf lässt sich gerade nicht laden.",
+  "chat.taskRun.abort.object": "Run",
+  "chat.taskRun.abort.failed": "Der Run ließ sich nicht abbrechen, versuch es erneut.",
+  "chat.taskRun.unavailable": "Dieser Run lässt sich gerade nicht laden.",
   "chat.taskRun.scope": "Nachrichten bleiben innerhalb dessen, was die Aufgabe erlaubt.",
   "chat.taskRun.decidedByOthers":
     "Nur die Besitzerin der Aufgabe oder ein Administrator kann diese Freigabe erteilen.",
@@ -59,8 +59,8 @@ export const taskRunDe: Record<keyof typeof taskRunEn, string> = {
   "chat.taskRun.summary.working": "Die Schritte vor der Ergebnisprüfung laufen noch.",
   "chat.taskAction.task.named": "die Aufgabe „{name}“",
   "chat.taskAction.task.unnamed": "diese Aufgabe",
-  "chat.taskAction.run": "Jetzt einen Lauf für {task} in einer eigenen Unterhaltung starten.",
-  "chat.taskAction.abort": "Den aktuellen Lauf für {task} endgültig abbrechen.",
+  "chat.taskAction.run": "Jetzt einen Run für {task} in einer eigenen Unterhaltung starten.",
+  "chat.taskAction.abort": "Den aktuellen Run für {task} endgültig abbrechen.",
   "chat.taskAction.update": "Die Änderungen für {task} speichern.",
   "chat.taskAction.create":
     "Die neue Aufgabe „{name}“ speichern, die nur läuft, wenn jemand sie startet.",

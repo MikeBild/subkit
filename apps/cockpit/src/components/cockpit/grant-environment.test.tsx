@@ -50,18 +50,25 @@ const onlyTest = preview(
   { environment: "dev", reason: "only_possible" },
 );
 
+const checked = (html: string, environment: "dev" | "prod") =>
+  new RegExp(
+    `data-state="checked"[^>]*data-testid="authority-environment-${environment}"|data-testid="authority-environment-${environment}"[^>]*data-state="checked"`,
+  ).test(html);
+const disabled = (html: string, environment: "dev" | "prod") =>
+  new RegExp(`disabled=""[^>]*data-testid="authority-environment-${environment}"`).test(html);
+
 describe("one possible environment", () => {
-  test("shows a sentence and no selector", () => {
+  test("shows both options, fixes the possible one and says why", () => {
     const html = show(onlyTest);
-    expect(html).toContain("Gilt für den Test. SubKit Support Admin gibt es im Echtbetrieb nicht.");
-    expect(html).toContain(
-      "Test ist zum Ausprobieren. Der Echtbetrieb arbeitet mit deinen echten Daten.",
-    );
-    expect(html).not.toContain("authority-environment");
+    expect(html).toContain("Umgebung");
+    expect(checked(html, "dev")).toBe(true);
+    expect(disabled(html, "prod")).toBe(true);
+    expect(disabled(html, "dev")).toBe(false);
+    expect(html).toContain("SubKit Support Admin gibt es im Echtbetrieb nicht.");
     expect(html).not.toContain("löst sich auf");
-    expect(show(onlyTest, "en")).toContain(
-      "Applies to Test. SubKit Support Admin does not exist in Production.",
-    );
+    const en = show(onlyTest, "en");
+    expect(en).toContain("Environment");
+    expect(en).toContain("SubKit Support Admin does not exist in Production.");
   });
 
   test("names the sign-in problem of the other environment", () => {
@@ -80,16 +87,15 @@ describe("one possible environment", () => {
         { cron: "0 7 * * *", timezone: "Europe/Berlin", next_run_at: null },
       ]),
     );
-    expect(html).toContain(
-      "Gilt für den Echtbetrieb. Der Zeitplan startet ihn dort, täglich um 07:00.",
-    );
-    expect(html).not.toContain("authority-environment");
+    expect(html).toContain("Der Zeitplan startet ihn dort, täglich um 07:00.");
+    expect(checked(html, "prod")).toBe(true);
+    expect(disabled(html, "dev")).toBe(true);
   });
 
   test.each([
-    ["inbound_hook", "Gilt für den Echtbetrieb. Aufrufe von außen starten ihn dort."],
-    ["existing_approval", "Gilt für den Echtbetrieb. Dort gibt es schon eine Freigabe."],
-    ["schedule", "Gilt für den Echtbetrieb. Der Zeitplan startet ihn dort."],
+    ["inbound_hook", "Aufrufe von außen starten ihn dort."],
+    ["existing_approval", "Dort gibt es schon eine Freigabe."],
+    ["schedule", "Der Zeitplan startet ihn dort."],
   ] as const)("%s", (reason, sentence) => {
     const html = show(
       preview({ dev: open, prod: open }, { environment: "prod", reason }),
@@ -97,7 +103,8 @@ describe("one possible environment", () => {
       "prod",
     );
     expect(html).toContain(sentence);
-    expect(html).not.toContain("authority-environment");
+    expect(checked(html, "prod")).toBe(true);
+    expect(disabled(html, "dev")).toBe(true);
   });
 });
 
@@ -111,18 +118,20 @@ describe("two possible environments", () => {
     const html = show(both);
     expect(html).toContain('data-testid="authority-environment-dev"');
     expect(html).toContain('data-testid="authority-environment-prod"');
-    expect(html).toContain("Wofür soll die Freigabe gelten?");
+    expect(html).toContain("Umgebung");
+    expect(disabled(html, "dev") || disabled(html, "prod")).toBe(false);
     expect(html).toContain("Test: zum Ausprobieren. Du startest ihn selbst.");
-    expect(html).toContain("Echtbetrieb: arbeitet mit deinen echten Daten.");
-    expect(show(both, "en")).toContain("What should the approval be for?");
+    expect(html).not.toContain("Echtbetrieb: arbeitet mit deinen echten Daten.");
+    expect(show(both, "de", "prod")).toContain("Echtbetrieb: arbeitet mit deinen echten Daten.");
+    expect(show(both, "en")).toContain("Environment");
   });
 
   test("preselects the environment it is given", () => {
     expect(show(both, "de", "dev")).toMatch(
-      /data-state="on"[^>]*data-testid="authority-environment-dev"|data-testid="authority-environment-dev"[^>]*data-state="on"/,
+      /data-state="checked"[^>]*data-testid="authority-environment-dev"|data-testid="authority-environment-dev"[^>]*data-state="checked"/,
     );
     expect(show(both, "de", "prod")).toMatch(
-      /data-state="on"[^>]*data-testid="authority-environment-prod"|data-testid="authority-environment-prod"[^>]*data-state="on"/,
+      /data-state="checked"[^>]*data-testid="authority-environment-prod"|data-testid="authority-environment-prod"[^>]*data-state="checked"/,
     );
   });
 });
@@ -142,7 +151,7 @@ describe("no possible environment", () => {
     expect(html).toContain("SubKit Support Admin gibt es im Echtbetrieb nicht.");
     expect(html).not.toContain("authority-environment");
     expect(html.match(/authority-decision-remedy/g)?.length).toBe(1);
-    expect(html).toContain("Konnektor öffnen");
+    expect(html).toContain("Connector öffnen");
     expect(html).toContain("/connectors/11111111-1111-4111-8111-111111111111");
   });
 

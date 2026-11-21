@@ -148,6 +148,11 @@ describe("request step", () => {
   });
 
   test("setup failure (placeholder_unresolved) records request_meta.unresolved_placeholders", async () => {
+    const wirePaths: string[] = [];
+    mock.setHandler((req, res) => {
+      wirePaths.push(req.url ?? "");
+      jsonResponse(res, 200, { ok: true, value: 42 });
+    });
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "one-shot-bad-placeholder",
       steps: [
@@ -175,6 +180,7 @@ describe("request step", () => {
     expect(row?.status).toBe("failed");
     const errorObj = row?.error as { code?: string } | null;
     expect(errorObj?.code).toBe("placeholder_unresolved");
+    expect(wirePaths).toEqual([]);
   });
 
   // biome-ignore lint/suspicious/noTemplateCurlyInString: literal ${...} placeholder is the fixture under test.

@@ -63,6 +63,29 @@ describe("branch step replayed from a fixture", () => {
     expect(live.output).toEqual({ picked: "then" });
   });
 
+  test("a live false predicate runs the else arm and marks the then arm skipped", async () => {
+    const live = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: {
+        kind: "draft",
+        definition: {
+          ...DRAFT,
+          steps: DRAFT.steps.map((s) =>
+            s.id === "probe" ? { ...s, expression: "return { flag: false };" } : s,
+          ),
+        },
+      },
+      input: null,
+    });
+    expect(live.status).toBe("succeeded");
+    const taken = live.steps.find((s) => s.step_key === "taken");
+    expect(taken?.status).toBe("skipped");
+    expect((taken?.error as { code?: string } | null | undefined)?.code).toBe("skipped");
+    expect(statusOf(live, "untaken")).toBe("succeeded");
+    expect(live.output).toEqual({ picked: "else" });
+  });
+
   test("a replayed branch fixture still steers control flow: the recorded arm's sibling stays skipped", async () => {
     const replayed = await runExecution({
       db: ctx.testDb.db,

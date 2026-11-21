@@ -56,10 +56,10 @@ export function statusTone(state: string): BadgeTone {
 }
 
 const TONE_CLASS: Record<BadgeTone, string> = {
-  ok: "text-emerald-700 dark:text-emerald-400",
-  warn: "text-amber-700 dark:text-amber-400",
-  error: "text-destructive",
-  neutral: "text-muted-foreground",
+  ok: "border-success/40 bg-success/10 text-success-ink",
+  warn: "border-warning/50 bg-warning/10 text-warning-ink",
+  error: "border-destructive/40 bg-destructive/10 text-destructive-ink",
+  neutral: "border-border bg-secondary text-muted-foreground",
 };
 
 export function StatusBadge({
@@ -85,7 +85,7 @@ export function StatusBadge({
       data-tone={tone}
       aria-label={text}
       className={cn(
-        "min-w-0 max-w-full",
+        "h-6 min-w-0 max-w-full gap-1.5 px-2",
         wrap && "h-auto whitespace-normal text-left",
         TONE_CLASS[tone],
       )}

@@ -34,6 +34,7 @@ export interface FeedHooks {
   onItems(items: AttentionItem[], notify: AttentionItem[], summary: boolean): void;
   onStatus(status: StreamStatus): void;
   onAuthFailure(failure: AuthFailure): void;
+  onEvent(name: string, data: string): void;
   onError(scope: string, error: unknown): void;
 }
 
@@ -116,6 +117,7 @@ export class AttentionFeed {
   private onEvent(event: SseEvent): void {
     if (event.id) this.hooks.saveProgress({ lastEventId: event.id });
     this.delivery = rememberDelivery(this.delivery, event.event, event.data, Date.now());
+    this.hooks.onEvent(event.event, event.data);
     const reaction = streamReaction(event.event);
     if (reaction === "ignore" || reaction === "shutdown") return;
     if (reaction === "sync") {

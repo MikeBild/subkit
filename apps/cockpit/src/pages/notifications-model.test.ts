@@ -79,10 +79,10 @@ describe("rules", () => {
     expect(SEEDED_EVENT_PATTERN.split(",").length).toBeGreaterThan(1);
     const labels = eventPatternLabels(SEEDED_RULE.event_pattern, de);
     expect(labels.map((label) => label.text)).toEqual([
-      "Fehlgeschlagene Läufe",
-      "Anmeldung beim Konnektor fehlgeschlagen",
+      "Fehlgeschlagene Runs",
+      "Anmeldung beim Connector fehlgeschlagen",
       "Anmeldung abgelehnt",
-      "Konnektor-Zustand geändert",
+      "Connector-Zustand geändert",
       "Korrektur vorgeschlagen",
       "Aufgabe wartet auf dich",
       "Ergebnis einer Aufgabe liegt vor",
@@ -109,7 +109,7 @@ describe("rules", () => {
 
   test("a run refused before it started is named as such", () => {
     expect(eventPatternLabels("execution.refused", de)).toEqual([
-      { text: "Vor dem Start abgelehnte Läufe", machine: false },
+      { text: "Vor dem Start abgelehnte Runs", machine: false },
     ]);
     expect(eventPatternLabels("execution.refused", (key) => translate("en", key))).toEqual([
       { text: "Runs refused before start", machine: false },

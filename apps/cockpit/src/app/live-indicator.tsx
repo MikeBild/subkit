@@ -1,14 +1,14 @@
-import type { ReactNode } from "react";
+import { Pill, type Tone } from "@ui/components/proto/Pill";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
 import type { LiveStatus } from "./live-events";
 
-const LIVE_DOT: Record<LiveStatus, string> = {
-  live: "bg-success",
-  connecting: "bg-muted-foreground/40",
-  reconnecting: "bg-warning animate-pulse motion-reduce:animate-none",
-  offline: "bg-muted-foreground/40",
+export const LIVE_TONE: Record<LiveStatus, Tone> = {
+  live: "success",
+  connecting: "neutral",
+  reconnecting: "warning",
+  offline: "warning",
 };
 
 export const LIVE_LABEL = {
@@ -27,12 +27,13 @@ export function LiveIndicator({ status }: { status: LiveStatus }) {
       title={label}
       data-testid="cockpit-live-indicator"
       data-live-status={status}
-      className="flex h-4 min-w-0 items-center gap-1.5 px-2 text-xs leading-4 text-muted-foreground group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
+      className="inline-flex min-w-0"
     >
-      <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", LIVE_DOT[status])} />
-      <span className="truncate group-data-[collapsible=icon]:sr-only" data-slot="live-word">
-        {label}
-      </span>
+      <Pill tone={LIVE_TONE[status]} className="min-w-0">
+        <span className="truncate" data-slot="live-word">
+          {label}
+        </span>
+      </Pill>
     </span>
   );
 }
@@ -49,22 +50,5 @@ export function AttentionDot({ stopped, className }: { stopped: boolean; classNa
         className,
       )}
     />
-  );
-}
-
-export function LiveStatusRow({ status, actions }: { status: LiveStatus; actions?: ReactNode }) {
-  return (
-    <div
-      className="flex min-h-8 items-center justify-between gap-2 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-1"
-      data-slot="footer-status"
-    >
-      <LiveIndicator status={status} />
-      <div
-        className="flex shrink-0 items-center gap-1 group-data-[collapsible=icon]:flex-col"
-        data-slot="footer-status-actions"
-      >
-        {actions}
-      </div>
-    </div>
   );
 }

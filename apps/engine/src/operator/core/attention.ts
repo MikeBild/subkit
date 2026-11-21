@@ -64,6 +64,7 @@ export const ATTENTION_REASONS = [
   "task_grant_required",
   "task_grant_expiring",
   "task_owner_unavailable",
+  "pair_approval_requested",
 ] as const;
 export type AttentionReason = (typeof ATTENTION_REASONS)[number];
 

@@ -47,10 +47,10 @@ function FindingRow({
             className={cn(
               "mt-0.5 size-4 shrink-0",
               state === "handed"
-                ? "text-emerald-700 dark:text-emerald-400"
+                ? "text-success-ink"
                 : state === "kept"
                   ? "text-muted-foreground"
-                  : "text-amber-700 dark:text-amber-400",
+                  : "text-warning-ink",
             )}
           />
           <span

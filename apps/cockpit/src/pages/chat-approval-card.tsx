@@ -1,6 +1,9 @@
+import { ErrorNotice } from "@ui/components/proto/ErrorNotice";
+import { ToolApprovalCard } from "@ui/components/proto/ToolApprovalCard";
+import { Clock, KeyRound, Wrench } from "lucide-react";
 import { useEffect, useState } from "react";
 import { contextualHref } from "@/app/installation-context";
-import { Button, ChatCard, ContextHelp, ErrorNotice, Spinner } from "@/components/cockpit/patterns";
+import { Button, ContextHelp } from "@/components/cockpit/patterns";
 import { formatBytes } from "@/components/cockpit/patterns/file-kinds";
 import { WorkflowReview } from "@/components/cockpit/workflow-review";
 import { ApprovalBinding } from "@/features/chat/policy";
@@ -8,6 +11,7 @@ import { formatDateTime, LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
 import { approvalLine, type ChatApproval } from "./chat-approval";
+import { actionFacts } from "./chat-policy";
 
 export function ChatApprovalCard({
   approval,
@@ -24,7 +28,7 @@ export function ChatApprovalCard({
   testId: string;
   conversationId?: string;
 }) {
-  const { t, locale } = useI18n();
+  const { t, tn, locale } = useI18n();
   const [reviewOpen, setReviewOpen] = useState(false);
   const reviewable = approval.savesInactiveWorkflow && Boolean(conversationId);
   const deadline = Date.parse(approval.expiresAt);
@@ -51,35 +55,59 @@ export function ChatApprovalCard({
         size: formatBytes(approval.transferBytes, LOCALE_TAGS[locale]),
       })}`
     : effect;
+  const binding = approval.binding;
+  const rows = binding
+    ? actionFacts(binding.action, t, tn).map(
+        (fact) =>
+          [fact.label, fact.value, `${testId}-binding-${fact.id}`] as [string, string, string],
+      )
+    : [];
   const details = approval.description ?? (approval.singleRun ? approval.question : null);
+  const pending = !approval.decidedByOthers && !expired && !busy;
   return (
     <>
-      <ChatCard
+      <ToolApprovalCard
         testId={testId}
+        icon={approval.oauth ? KeyRound : Wrench}
         title={
-          <span className="flex items-center gap-1">
+          <>
             {title}
             {details ? (
               <ContextHelp label={t("chat.decision.details")} testId={`${testId}-details`}>
                 {readable(details)}
               </ContextHelp>
             ) : null}
-          </span>
+          </>
         }
-        line={line}
-        secondary={
-          approval.decidedByOthers ? null : (
-            <Button
-              variant="outline"
-              disabled={busy || expired}
-              onClick={() => onDecision(approval.id, false)}
-              data-testid={`${testId}-decline`}
-            >
-              {t("chat.approval.decline")}
-            </Button>
-          )
+        rows={rows}
+        quote={binding?.because ?? undefined}
+        busy={busy}
+        approveDisabled={expired || (approval.oauth === "complete" && !approval.authorizationUrl)}
+        declineDisabled={expired}
+        showPending={pending}
+        onDecision={(allow) =>
+          allow && reviewable ? setReviewOpen(true) : onDecision(approval.id, allow)
         }
-        action={
+        labels={{
+          approve: t(
+            busy
+              ? "chat.decision.processing"
+              : approval.oauth
+                ? approval.oauth === "start"
+                  ? "chat.oauth.start"
+                  : "chat.oauth.check"
+                : approval.singleRun
+                  ? "chat.singleRun.confirm"
+                  : approval.savesInactiveWorkflow
+                    ? reviewable
+                      ? "reviewWorkflow.open"
+                      : "chat.decision.save"
+                    : "chat.approval.approve",
+          ),
+          decline: t("chat.approval.decline"),
+          pending: t("chat.decision.pending"),
+        }}
+        actions={
           approval.decidedByOthers ? (
             <p
               className="text-sm text-muted-foreground"
@@ -87,35 +115,31 @@ export function ChatApprovalCard({
             >
               {t("chat.taskRun.decidedByOthers")}
             </p>
-          ) : (
-            <Button
-              disabled={
-                busy || expired || (approval.oauth === "complete" && !approval.authorizationUrl)
-              }
-              onClick={() => (reviewable ? setReviewOpen(true) : onDecision(approval.id, true))}
-              data-testid={`${testId}-approve`}
-            >
-              {busy && <Spinner aria-hidden="true" aria-label={undefined} />}
-              {t(
-                busy
-                  ? "chat.decision.processing"
-                  : approval.oauth
-                    ? approval.oauth === "start"
-                      ? "chat.oauth.start"
-                      : "chat.oauth.check"
-                    : approval.singleRun
-                      ? "chat.singleRun.confirm"
-                      : approval.savesInactiveWorkflow
-                        ? reviewable
-                          ? "reviewWorkflow.open"
-                          : "chat.decision.save"
-                        : "chat.approval.approve",
-              )}
-            </Button>
-          )
+          ) : undefined
+        }
+        footnote={
+          <>
+            <Clock aria-hidden="true" className="size-3.5 shrink-0" />
+            <span aria-live="polite" data-testid={`${testId}-deadline`}>
+              {expired
+                ? t("chat.decision.expired")
+                : `${t("chat.decision.validUntil")} ${formatDateTime(locale, approval.expiresAt)}`}
+            </span>
+            {binding && !expired ? (
+              <>
+                <span aria-hidden="true">·</span>
+                <span data-testid={`${testId}-scope-note`}>{t("chat.policy.scopeNote")}</span>
+              </>
+            ) : null}
+          </>
         }
       >
-        {approval.binding ? <ApprovalBinding binding={approval.binding} testId={testId} /> : null}
+        {binding ? null : (
+          <p className="text-sm [overflow-wrap:anywhere]" data-testid={`${testId}-line`}>
+            {line}
+          </p>
+        )}
+        {binding ? <ApprovalBinding binding={binding} testId={testId} /> : null}
         {approval.authorizationUrl && !expired && (
           <Button asChild variant="outline" className="w-fit">
             <a
@@ -129,7 +153,10 @@ export function ChatApprovalCard({
           </Button>
         )}
         {approval.subjects && approval.subjects.length > 0 && (
-          <ul className="list-disc space-y-0.5 pl-5 text-sm" data-testid={`${testId}-subjects`}>
+          <ul
+            className="flex list-disc flex-col gap-0.5 pl-5 text-sm"
+            data-testid={`${testId}-subjects`}
+          >
             {approval.subjects.map((subject) => (
               <li key={subject}>{readable(subject)}</li>
             ))}
@@ -142,23 +169,16 @@ export function ChatApprovalCard({
             })}
           </p>
         )}
-        <p
-          className="text-xs text-muted-foreground"
-          aria-live="polite"
-          data-testid={`${testId}-deadline`}
-        >
-          {expired
-            ? t("chat.decision.expired")
-            : `${t("chat.decision.validUntil")} ${formatDateTime(locale, approval.expiresAt)}`}
-        </p>
         {error && (
           <ErrorNotice
+            kind="unknown"
+            technical={false}
             title={t("chat.decision.failed")}
             body={t("chat.decision.failedBody")}
             testId={`${testId}-error`}
           />
         )}
-      </ChatCard>
+      </ToolApprovalCard>
       {reviewable && conversationId && (
         <WorkflowReview
           key={`${conversationId}:${approval.id}`}

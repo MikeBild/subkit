@@ -81,6 +81,19 @@ export function stepMarkKey(mark: StepMark): TranslationKey {
   return MARK_KEYS[mark];
 }
 
+export type StepGraphState = "done" | "active" | "pending";
+
+const GRAPH_STATES: Record<StepMark, StepGraphState> = {
+  done: "done",
+  active: "active",
+  waiting: "active",
+  open: "pending",
+};
+
+export function stepGraphState(mark: StepMark): StepGraphState {
+  return GRAPH_STATES[mark];
+}
+
 export interface StepResult {
   id: string;
   label: string;

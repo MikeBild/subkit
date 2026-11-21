@@ -183,6 +183,48 @@ export function choiceOf(
   return defaultChoice(connector);
 }
 
+export function choiceValue(
+  connector: SolutionConnector,
+  choices: Readonly<Record<string, string>>,
+): string {
+  const choice = choiceOf(connector, choices);
+  return choice.kind === "existing" ? choice.id : NEW_CONNECTOR;
+}
+
+export interface BindingChoice {
+  connectorId: string | null;
+  address: string | null;
+}
+
+export function bindingChoice(
+  connector: SolutionConnector,
+  choices: Readonly<Record<string, string>>,
+  templates: readonly Pick<ConnectorTemplate, "slug" | "base_url">[],
+  addresses: Readonly<Record<string, string>>,
+): BindingChoice {
+  const choice = choiceOf(connector, choices);
+  if (choice.kind === "existing") return { connectorId: choice.id, address: null };
+  const template = templates.find((item) => item.slug === connector.template);
+  return {
+    connectorId: null,
+    address: template?.base_url ?? addresses[connector.placeholder] ?? null,
+  };
+}
+
+export function bindingConnectorId(
+  binding: SolutionConnector,
+  choice?: BindingChoice,
+): string | null {
+  return choice ? choice.connectorId : (binding.connector_id ?? binding.candidates[0]?.id ?? null);
+}
+
+export function findSolution(
+  entries: readonly SolutionEntry[],
+  slug: string,
+): SolutionEntry | null {
+  return entries.find((entry) => entry.recipe_slug === slug) ?? null;
+}
+
 interface SolutionPlan {
   slug: string;
   name: string;

@@ -11,7 +11,9 @@ import {
   workflowReviewReceipts,
   workflows,
 } from "../db/schema/index.ts";
+import { pairApprovalRequired } from "../identity/approval-policy.ts";
 import { personalDefaultEnvironment } from "../identity/setup-preferences.ts";
+import { invalidateTenantState } from "../operator/index.ts";
 import { can } from "../rbac/evaluator.ts";
 import { createScheduleLocked } from "../scheduler/repo.ts";
 import { inboundHookDeliveryRate } from "../scheduler/workflow-automation-view.ts";
@@ -21,10 +23,12 @@ import { RECEIPT_PURGE_BATCH, receiptsToPurge } from "../workflows/core/review-r
 import { readDatabaseNow } from "../workflows/database-clock.ts";
 import {
   activateWorkflowDraftLocked,
+  GrantWorkflowAuthoritySchema,
   grantWorkflowAuthority,
   lockLiveSession,
   previewWorkflowAuthority,
 } from "../workflows/execution-authorities.ts";
+import { requestPairApprovalLocked } from "../workflows/pair-approvals.ts";
 import {
   resolveWorkflowReviewManifest,
   workflowReviewBoundaryDigest,
@@ -51,7 +55,12 @@ const REVIEW_ERROR_STATUS: Record<string, number> = {
   workflow_review_forbidden: 403,
   workflow_review_not_found: 404,
   workflow_review_stale: 409,
+  pair_approval_required: 409,
+  authority_manifest_changed: 409,
   workflow_review_expired: 410,
+  pair_schedule_unsupported: 422,
+  authority_window_invalid: 422,
+  authority_effect_unbound: 422,
   workflow_not_ready: 422,
   preview_failed: 422,
   no_prior_approval: 422,
@@ -76,6 +85,13 @@ export class WorkflowReviewError extends Error {
 
 function fail(code: string, message: string): never {
   throw new WorkflowReviewError(code, message);
+}
+
+function asReviewError(error: unknown): never {
+  const code = (error as { code?: unknown } | null)?.code;
+  if (!(error instanceof WorkflowReviewError) && typeof code === "string")
+    fail(code, (error as Error).message);
+  throw error;
 }
 
 function toolPinRefusal(error: unknown): never {
@@ -125,6 +141,7 @@ function receiptView(row: typeof workflowReviewReceipts.$inferSelect): WorkflowR
             saved: true,
             activated: row.authority_id !== null,
             granted: row.authority_id !== null,
+            pair_request_id: typeof s.pair_request_id === "string" ? s.pair_request_id : null,
           }
         : null,
   });
@@ -501,7 +518,7 @@ export async function finalizeWorkflowReview(
         fail("authority_permission_denied", "workflow:write permission is required");
       if (receipt.snapshot_digest !== input.expected_snapshot_digest)
         fail("workflow_review_stale", "the review changed; prepare it again");
-      if (receipt.status === "completed") return receiptView(receipt);
+      if (receipt.status === "completed") return { view: receiptView(receipt), pair: false };
       const clock = await tx.execute<{ now: Date }>(sql`SELECT clock_timestamp() AS now`);
       const clockValue = clock.rows[0]?.now;
       const now = clockValue ? new Date(clockValue) : null;
@@ -621,7 +638,40 @@ export async function finalizeWorkflowReview(
       );
       if (workflowReviewBoundaryDigest(manifest.manifest) !== snapshot.manifest_digest)
         fail("workflow_review_stale", "the saved effects differ from the reviewed effects");
-      if (!input.save_only && actions.grant) {
+      let pair_request_id: string | null = null;
+      const pair =
+        !input.save_only && actions.grant ? await pairApprovalRequired(tx, p.tenant_id) : false;
+      if (pair && actions.schedule)
+        fail(
+          "pair_schedule_unsupported",
+          "a schedule waits until both people approved; add it after the second approval",
+        );
+      if (pair && actions.grant) {
+        const requested = await requestPairApprovalLocked(
+          tx,
+          workflow_id,
+          GrantWorkflowAuthoritySchema.parse({
+            workflow_version_id,
+            expected_manifest_digest: manifest.digest,
+            execution_environment: actions.grant.environment,
+            valid_from: actions.grant.valid_from,
+            ...(actions.grant.valid_until !== undefined
+              ? { valid_until: actions.grant.valid_until }
+              : {}),
+            ...(actions.grant.max_runs !== undefined ? { max_runs: actions.grant.max_runs } : {}),
+            ...(actions.activate
+              ? {
+                  activation: {
+                    expected_current_version_id: snapshot.expected_current_version_id ?? null,
+                  },
+                }
+              : {}),
+            conversation_id: p.conversation_id,
+          }),
+          p.principal,
+        ).catch(asReviewError);
+        pair_request_id = requested.id;
+      } else if (!input.save_only && actions.grant) {
         const granted = await grantWorkflowAuthority(
           workflow_id,
           {
@@ -672,7 +722,8 @@ export async function finalizeWorkflowReview(
           timezone: actions.schedule.timezone,
           ...(actions.schedule.input !== undefined ? { input: actions.schedule.input } : {}),
           ...(actions.schedule.paused !== undefined ? { paused: actions.schedule.paused } : {}),
-          execution_mode: actions.grant?.environment ?? "prod",
+          ...(actions.grant ? { execution_mode: actions.grant.environment } : {}),
+          creator: p.principal,
         });
         schedule_id = schedule.row.id;
       }
@@ -682,6 +733,7 @@ export async function finalizeWorkflowReview(
           workflow_id,
           authority_id,
           schedule_id,
+          ...(pair_request_id ? { snapshot: { ...snapshot, pair_request_id } } : {}),
           status: "completed",
           completed_at: now,
           updated_at: now,
@@ -707,7 +759,12 @@ export async function finalizeWorkflowReview(
           .set({
             output: {
               ok: true,
-              data: { workflow_id, workflow_version_id, review_receipt_id: receipt.id },
+              data: {
+                workflow_id,
+                workflow_version_id,
+                review_receipt_id: receipt.id,
+                ...(pair_request_id ? { pair_request_id } : {}),
+              },
             },
             outcome: "ok",
           })
@@ -724,7 +781,11 @@ export async function finalizeWorkflowReview(
         .where(
           and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)),
         );
-      return receiptView(completed);
+      return { view: receiptView(completed), pair: pair_request_id !== null };
+    })
+    .then(({ view, pair }) => {
+      if (pair) invalidateTenantState(p.tenant_id);
+      return view;
     })
     .catch(toolPinRefusal);
 }

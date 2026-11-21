@@ -131,11 +131,18 @@ describe("/v1/identity/api-keys", () => {
       body: JSON.stringify({ overlap_minutes: 1 }),
     });
     expect(rotateRes.status).toBe(200);
+    const newKeyHeaders = {
+      authorization: `Bearer ${((await rotateRes.json()) as { new: { plaintext_key: string } }).new.plaintext_key}`,
+    };
 
     const insideRes = await fetch(`${ctx.baseUrl}/v1/identity/api-keys`, {
       headers: oldKeyHeaders,
     });
     expect(insideRes.status).toBe(200);
+    const newInsideRes = await fetch(`${ctx.baseUrl}/v1/identity/api-keys`, {
+      headers: newKeyHeaders,
+    });
+    expect(newInsideRes.status).toBe(200);
 
     await ctx.db
       .update(apiKeys)
@@ -146,5 +153,9 @@ describe("/v1/identity/api-keys", () => {
       headers: oldKeyHeaders,
     });
     expect(afterRes.status).toBe(401);
+    const newAfterRes = await fetch(`${ctx.baseUrl}/v1/identity/api-keys`, {
+      headers: newKeyHeaders,
+    });
+    expect(newAfterRes.status).toBe(200);
   });
 });

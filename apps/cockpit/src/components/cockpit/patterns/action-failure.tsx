@@ -1,3 +1,4 @@
+import { ErrorNotice } from "@ui/components/proto/ErrorNotice";
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   absolute,
@@ -19,16 +20,17 @@ import {
   subscribeFailure,
 } from "@/lib/action-failure";
 import {
-  FAILURE_REMEDY_LABEL,
   type FailureFacts,
   type FailureRemedyKind,
   failureFacts,
   failureRemedy,
 } from "@/lib/failure-remedy";
 import { useI18n } from "@/lib/i18n-context";
+import { REMEDY_LABEL } from "@/lib/remedy";
 import { cn } from "@/lib/utils";
 import type { ActionSpec } from "./action-button";
-import { ErrorNotice } from "./error-notice";
+import { renderAction } from "./action-button";
+import { useErrorNotice } from "./use-error-detail";
 
 export function failureRemedyHref(
   kind: Exclude<FailureRemedyKind, "retry">,
@@ -74,11 +76,11 @@ export function failureRemedyAction(
   };
   if (kind === "retry")
     return input.retry
-      ? { ...base, label: t(FAILURE_REMEDY_LABEL.retry), onClick: input.retry }
+      ? { ...base, label: t(REMEDY_LABEL.retry), onClick: input.retry }
       : undefined;
   return {
     ...base,
-    label: t(FAILURE_REMEDY_LABEL[kind]),
+    label: t(REMEDY_LABEL[kind]),
     href: failureRemedyHref(
       kind,
       facts,
@@ -136,6 +138,7 @@ export function ActionFailureHost({
   const failure = host !== null && snapshot.host === host ? snapshot.failure : null;
   const shown = failure?.id ?? null;
   const remedy = hostRemedy(failure, t);
+  const notice = useErrorNotice({ error: failure?.error, body: failure?.body });
   useEffect(() => {
     if (shown !== null) node.current?.scrollIntoView?.({ block: "nearest" });
   }, [shown]);
@@ -150,21 +153,23 @@ export function ActionFailureHost({
     >
       <ErrorNotice
         key={failure.id}
+        {...notice}
         testId="action-failure"
         title={failure.title}
-        body={failure.body}
-        error={failure.error}
-        remedy={remedy}
-        secondary={
-          <Button
-            type="button"
-            variant={remedy ? "ghost" : "outline"}
-            size="sm"
-            data-testid="action-failure-dismiss"
-            onClick={clearFailure}
-          >
-            {t("common.close")}
-          </Button>
+        actions={
+          <>
+            {remedy ? renderAction(remedy) : null}
+
+            <Button
+              type="button"
+              variant={remedy ? "ghost" : "outline"}
+              size="sm"
+              data-testid="action-failure-dismiss"
+              onClick={clearFailure}
+            >
+              {t("common.close")}
+            </Button>
+          </>
         }
       />
     </div>

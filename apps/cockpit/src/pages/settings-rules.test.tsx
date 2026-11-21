@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ApprovalRule } from "@/api/approval-rules";
 import { render } from "@/components/cockpit/patterns/test-utils";
-import { type TranslationKey, translate } from "@/lib/i18n";
-import { RuleRow } from "./settings-rules";
 import {
   contentClassLine,
   namedConnector,
@@ -10,7 +8,9 @@ import {
   ruleValidity,
   todayLine,
   validityLine,
-} from "./settings-rules-model";
+} from "@/features/rules";
+import { type TranslationKey, translate } from "@/lib/i18n";
+import { RuleRow } from "./settings-rules";
 
 const de = (key: TranslationKey, values?: Record<string, string | number>) =>
   translate("de", key, values);
@@ -64,16 +64,21 @@ describe("what a rule covers", () => {
     expect(namedConnector({ ...rule, connector: "gmail" }, () => null).connector).toBe("gmail");
   });
 
-  test("scope, validity and today's use each have a fact of their own", () => {
-    expect(ruleFacts(named, de, date).map((fact) => [fact.id, fact.value])).toEqual([
-      ["verb", "Senden"],
-      ["connector", "Gmail"],
-      ["operation", "POST /v1/messages/send"],
-      ["recipients", "anna@firma.de"],
-      ["content", "Nur Text, den du selbst geschrieben oder im Chat als Entwurf gesehen hast"],
-      ["validity", "Gilt bis 2027-01-31"],
-      ["today", "Heute 3 von 20 genutzt"],
+  test("scope, validity and today's use each have a fact of their own, never the name again", () => {
+    expect(ruleFacts(named, de, date).map((fact) => [fact.id, fact.value, fact.short])).toEqual([
+      ["connector", "Gmail", "Gmail"],
+      ["recipients", "anna@firma.de", "anna@firma.de"],
+      [
+        "content",
+        "Nur Text, den du selbst geschrieben oder im Chat als Entwurf gesehen hast",
+        "nur dein Text",
+      ],
+      ["validity", "Gilt bis 2027-01-31", "bis 2027-01-31"],
+      ["today", "Heute 3 von 20 genutzt", "heute 3/20"],
     ]);
+    expect(
+      ruleFacts({ ...named, operation: "POST /v1/other" }, de, date).map((fact) => fact.id),
+    ).toContain("operation");
     expect(ruleFacts(named, en, date).map((fact) => fact.value)).toContain("3 of 20 used today");
   });
 
@@ -121,8 +126,8 @@ describe("the rule row", () => {
     const html = row(named);
     expect(html).toContain('data-testid="settings-rule-renew"');
     expect(html).toContain('data-testid="settings-rule-revoke"');
-    expect(html).toContain('aria-label="Regel „Senden: POST /v1/messages/send“ verlängern"');
-    expect(html).toContain('aria-label="Regel „Senden: POST /v1/messages/send“ widerrufen"');
+    expect(html).toContain('aria-label="Regel „Senden: Messages“ verlängern"');
+    expect(html).toContain('aria-label="Regel „Senden: Messages“ widerrufen"');
     expect(html).toContain("Heute 3 von 20 genutzt");
     expect(html).toContain("Zuletzt genutzt 2026-11-19T08:00:00.000Z");
     expect(html).not.toContain("4f0c2f6e");
@@ -131,7 +136,8 @@ describe("the rule row", () => {
   test("an expired rule is marked and still renewable", () => {
     const html = row({ ...named, expired: true }, "en");
     expect(html).toContain('data-rule-expired="true"');
-    expect(html).toContain('aria-label="Expired"');
+    expect(html).toMatch(/data-testid="settings-rule-state"><span class="[^"]*warning[^"]*">/);
+    expect(html).toContain("Expired");
     expect(html).toContain('data-testid="settings-rule-renew"');
   });
 

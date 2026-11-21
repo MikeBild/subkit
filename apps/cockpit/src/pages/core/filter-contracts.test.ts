@@ -6,15 +6,15 @@ import {
   auditLinkParams,
   auditResultFromUrl,
   initialAuditFilter,
-} from "./audit-filter";
+} from "@/lib/core/audit-filter";
 import {
   executionsQuery,
   failedStatusesFor,
   filterFromUrl,
   initialRunsFilter,
-  runOverlayFromUrl,
-  runOverlaySearch,
   runsFilterSearch,
+  runsSheetOpen,
+  runsSheetSearch,
 } from "./runs-filter";
 
 describe("pure filter contracts", () => {
@@ -25,9 +25,9 @@ describe("pure filter contracts", () => {
         fc.constantFrom("all", "api", "cli", "scheduler", "ui"),
         fc.string({ maxLength: 40 }),
         (status, source, q) => {
-          const search = runsFilterSearch("?tab=history", { status, source, q });
+          const search = runsFilterSearch("?tab=schedule", { status, source, q });
           const parsed = filterFromUrl(search);
-          expect(new URLSearchParams(search).get("tab")).toBe("history");
+          expect(new URLSearchParams(search).get("tab")).toBe("schedule");
           expect(parsed).toMatchObject({ status, source, q: q.trim().slice(0, 200) });
         },
       ),
@@ -36,12 +36,9 @@ describe("pure filter contracts", () => {
   });
 
   test("overlay close removes only its owned run keys", () => {
-    const opened = runOverlaySearch("?tab=history&runs_status=failed", {
-      list: true,
-      runId: "run:1",
-    });
-    expect(runOverlayFromUrl(opened)).toEqual({ list: true, runId: "run:1" });
-    expect(runOverlaySearch(opened, { list: false, runId: null })).toBe("?tab=history");
+    const opened = runsSheetSearch("?tab=schedule&runs_status=failed", true);
+    expect(runsSheetOpen(opened)).toBe(true);
+    expect(runsSheetSearch(opened, false)).toBe("?tab=schedule");
   });
 
   test("linked audit filters normalize malformed data and retain valid time bounds", () => {

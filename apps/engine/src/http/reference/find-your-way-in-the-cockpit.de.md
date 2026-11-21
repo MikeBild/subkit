@@ -38,9 +38,9 @@ Das Cockpit merkt sich in diesem Browser, ob die Seitenleiste offen ist, wie bre
 Gut zu wissen:
 
 - Technische Angaben stehen im Reiter **Details** und nicht mehr auf der Seite. So bleibt die Seite bei dem, was du entscheiden musst.
-- Öffnest du einen Lauf neben einer Seite, zeigt **Details** den Status und die Angaben dieses Laufs.
+- Öffnest du einen Run neben einer Seite, zeigt **Details** den Status und die Angaben dieses Runs.
 - Für **Verlauf** brauchst du `audit:read`. Ohne das Recht liest du „Deine Rolle umfasst das Audit-Log nicht.“
-- Ist nichts geöffnet, steht dort „Hier gibt es keine Details“. Öffne einen Workflow, eine Aufgabe oder einen Konnektor.
+- Ist nichts geöffnet, steht dort „Hier gibt es keine Details“. Öffne einen Workflow, eine Aufgabe oder einen Connector.
 
 ### Einen Fehlerhinweis lesen
 
@@ -64,7 +64,7 @@ Kann eine Liste oder eine Seite nicht geladen werden, bietet sie **Erneut versuc
 SubKit trennt zwei Umgebungen: **Test** und **Echtbetrieb**. Ein Kennzeichen mit einem dieser beiden Wörter steht überall dort, wo die Umgebung über die Wirkung entscheidet:
 
 - an den Punkten unter **Braucht dich** in der **Übersicht**,
-- an den Konnektoren eines Workflows und im Katalog der Konnektoren,
+- an den Connectors eines Workflows und im Katalog der Connectors,
 - im Freigabe-Dialog und am Hinweis auf eine endende Freigabe,
 - in den technischen Angaben einer Aufgabe.
 

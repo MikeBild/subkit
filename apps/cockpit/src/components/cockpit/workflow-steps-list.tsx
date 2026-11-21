@@ -592,7 +592,7 @@ export function WorkflowFlow({
               {t("workflowFlow.result")}
             </span>
             <span className={FLOW_TITLE}>
-              <Flag aria-hidden="true" className="text-emerald-600 dark:text-emerald-400" />
+              <Flag aria-hidden="true" className="text-success-ink" />
               {result}
             </span>
           </div>

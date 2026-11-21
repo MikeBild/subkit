@@ -61,7 +61,7 @@ describe("schedules HTTP write surface", () => {
     };
     expect(row.cron).toBe("0 8 * * *");
     expect(row.workflow_slug).toContain("sched-upsert");
-    expect(row.execution_mode).toBe("prod");
+    expect(row.execution_mode).toBe("dev");
     expect(row.input).toEqual(objectInput);
     expect(row.upsert_status).toBe("created");
 

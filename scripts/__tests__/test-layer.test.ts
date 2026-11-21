@@ -8,6 +8,7 @@ import {
   MODULE_MOCK,
   planRuns,
   RUNNERS,
+  runSite,
 } from "../../apps/engine/scripts/audit/test-layers.ts";
 
 const REPO = path.resolve(import.meta.dir, "..", "..");
@@ -108,5 +109,24 @@ describe("run plan", () => {
     const grouped = plan.groups.flatMap((group) => group.files);
     expect(grouped.filter((file) => MODULE_MOCK.test(read(file) ?? ""))).toEqual([]);
     expect([...grouped, ...plan.solo].sort()).toEqual([...unit].sort());
+  });
+});
+
+describe("run site on the repository", () => {
+  const ownConfig = (root: string) => existsSync(path.join(REPO, root, "bunfig.toml"));
+
+  test("desktop unit files run from apps/desktop so its own preload and React copy apply", () => {
+    const desktop = loadTestLayers(REPO).unit.filter((file) => file.startsWith("apps/desktop/"));
+    expect(desktop.length).toBeGreaterThan(0);
+    const site = runSite(desktop, ownConfig);
+    expect(site.cwd).toBe("apps/desktop");
+    expect(site.targets.every((target) => existsSync(path.join(REPO, site.cwd, target)))).toBe(
+      true,
+    );
+  });
+
+  test("engine unit files keep running from the repo root with its preloads", () => {
+    const engine = loadTestLayers(REPO).unit.filter((file) => file.startsWith("apps/engine/"));
+    expect(runSite(engine, ownConfig).cwd).toBe(".");
   });
 });

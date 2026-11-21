@@ -43,6 +43,8 @@ export function intakeItemView(row: typeof intakeItems.$inferSelect): IntakeItem
     collected_by: intakeActor(row.collected_by_type, row.collected_by_id),
     admitted_target_kind: row.admitted_target_kind,
     admitted_target_id: row.admitted_target_id,
+    attachment:
+      row.original_snapshot.origin === "note" ? (row.original_snapshot.attachment ?? null) : null,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
   };

@@ -430,6 +430,31 @@ describe("parseHar", () => {
     const count = ep!.expected_statuses.filter((s) => s === 200).length;
     expect(count).toBe(1);
   });
+
+  it("infers request_schema from a JSON postData body", () => {
+    const har = JSON.stringify({
+      log: {
+        entries: [
+          {
+            request: {
+              method: "POST",
+              url: "https://api.example.com/v1/charges",
+              headers: [],
+              postData: {
+                mimeType: "application/json",
+                text: JSON.stringify({ amount: 1000, currency: "usd" }),
+              },
+            },
+            response: { status: 200 },
+          },
+        ],
+      },
+    });
+    const [ep] = parseHar(har);
+    const props = (ep!.request_schema as { properties?: Record<string, unknown> }).properties;
+    expect(props).toHaveProperty("amount");
+    expect(props).toHaveProperty("currency");
+  });
 });
 
 const SDL = `type Query {

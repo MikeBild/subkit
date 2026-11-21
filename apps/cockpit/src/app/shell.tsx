@@ -1,32 +1,27 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import {
-  BookText,
+  BookOpen,
   Bug,
   ChevronsUpDown,
-  History,
-  Languages,
+  Globe,
+  KeyRound,
   Loader2,
   LogOut,
-  type LucideIcon,
-  Monitor,
-  Moon,
   Palette,
-  Sun,
-  UserRound,
+  Settings as SettingsIcon,
+  Sparkles,
 } from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { logout } from "@/api/client";
 import { installationId } from "@/app/installation-context";
+import { PauseMenu } from "@/app/pause-menu";
 import {
   BrandingAppearance,
   BrandingAttribution,
   BrandingWordmark,
 } from "@/components/cockpit/branding";
-import {
-  InstallationFollowupPrompt,
-  InstallationNotificationControl,
-} from "@/components/cockpit/installation-dialogs";
+import { InstallationFollowupPrompt } from "@/components/cockpit/installation-dialogs";
 import { InstallationImportDialog } from "@/components/cockpit/installation-import-dialog";
 import { ActionFailureHost } from "@/components/cockpit/patterns";
 import { ResponsiveWorkspace } from "@/components/cockpit/patterns/responsive-workspace";
@@ -63,60 +58,43 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/sonner";
-import {
-  FeedbackButton,
-  FeedbackHost,
-  FeedbackIconButton,
-  openFeedback,
-} from "@/features/feedback";
-import { releaseOnSignOut } from "@/features/pwa/device-state";
-import { PwaRuntime } from "@/features/pwa/pwa-runtime";
+import { FeedbackHost, openFeedback } from "@/features/feedback";
+import { PwaRuntime, releaseOnSignOut } from "@/features/pwa";
 import { clearFailure, reportFailure } from "@/lib/action-failure";
 import type { TranslationKey } from "@/lib/i18n";
 import { type LocalePreference, useI18n } from "@/lib/i18n-context";
+import { readStartLayout } from "@/lib/start-layout";
 import { type Theme, useTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
+import { attentionEntries } from "@/pages/overview-model";
 import { RunOverlays } from "@/pages/runs";
+import { visibleSettingAreas } from "@/pages/settings-areas";
+import { accountMenuFallbacks } from "./account-menu-model";
+import { inboxCount } from "./attention-model";
 import { AttentionNotice } from "./attention-notice";
-import { useAttentionFresh } from "./attention-seen";
-import { InstallMenuItem } from "./install-menu-item";
+import { DesktopStatusBanner } from "./desktop-status";
 import { cockpitBasePath } from "./installation-context";
-import { LiveEventsProvider, useLiveStatus } from "./live-events";
-import { AttentionDot, LiveStatusRow } from "./live-indicator";
-import {
-  type NavigationItem,
-  navigationItem,
-  visibleAccountNavigation,
-  visiblePrimaryNavigation,
-} from "./navigation";
+import { LiveEventsProvider } from "./live-events";
+import { useNavShortcuts } from "./nav-shortcuts";
+import { navShortcutAria, navShortcutLabel } from "./nav-shortcuts-model";
+import { type NavigationItem, navigationItem, visibleSidebarNavigation } from "./navigation";
 import { pageOf, useRouteEntrance } from "./route-entrance";
 import { useSession } from "./session";
-import {
-  ACCOUNT_TRIGGER,
-  CHAT_COLUMN,
-  ShellHeaderProvider,
-  SidebarToggle,
-  triggerOwner,
-  useShellHeaderState,
-} from "./shell-header";
-import { SidePanel, SidePanelProvider, SidePanelToggle } from "./side-panel";
+import { ACCOUNT_TRIGGER, SHELL_BAR, ShellHeader } from "./shell-header";
+import { SidePanel, SidePanelProvider } from "./side-panel";
 import { useAttention } from "./use-attention";
 import { VersionNotice } from "./version-notice";
 
-const THEMES: {
-  value: Theme;
-  label: TranslationKey;
-  icon: LucideIcon;
-}[] = [
-  { value: "system", label: "account.theme.system", icon: Monitor },
-  { value: "light", label: "account.theme.light", icon: Sun },
-  { value: "dark", label: "account.theme.dark", icon: Moon },
+const THEMES: { value: Theme; label: TranslationKey }[] = [
+  { value: "system", label: "account.theme.system" },
+  { value: "light", label: "account.theme.light" },
+  { value: "dark", label: "account.theme.dark" },
 ];
 
 const LANGUAGES: { value: LocalePreference; label: TranslationKey }[] = [
   { value: "auto", label: "account.language.auto" },
-  { value: "en", label: "account.language.en" },
   { value: "de", label: "account.language.de" },
+  { value: "en", label: "account.language.en" },
 ];
 
 function initials(value: string): string {
@@ -140,24 +118,38 @@ function localizedRole(role: string, t: ReturnType<typeof useI18n>["t"]): string
 function PrimaryNavigationLink({
   item,
   label,
+  shortcut,
+  keys,
   active,
 }: {
   item: NavigationItem;
   label: string;
+  shortcut: string | null;
+  keys: string | null;
   active: boolean;
 }) {
-  const { isMobile, setOpenMobile } = useSidebar();
+  const { isMobile, setOpenMobile, state } = useSidebar();
+  const hint = shortcut ? `${label} (${shortcut})` : label;
   return (
-    <SidebarMenuButton asChild tooltip={label} isActive={active}>
+    <SidebarMenuButton
+      asChild
+      tooltip={hint}
+      isActive={active}
+      className={item.path === "/" || item.path === "/intake" ? "relative" : undefined}
+    >
       <Link
         to={item.path}
         data-testid={item.path === "/" ? "nav-overview" : `nav-${item.path.slice(1)}`}
+        aria-keyshortcuts={keys ?? undefined}
+        title={shortcut && state === "expanded" && !isMobile ? hint : undefined}
         onClick={() => {
           if (isMobile) setOpenMobile(false);
         }}
       >
         <item.icon data-icon="inline-start" />
         <span>{label}</span>
+        {item.path === "/" ? <AttentionCounter /> : null}
+        {item.path === "/intake" ? <InboxCounter /> : null}
       </Link>
     </SidebarMenuButton>
   );
@@ -169,7 +161,10 @@ export function AppShell() {
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
-  const groups = visiblePrimaryNavigation(session.permissions);
+  const groups = visibleSidebarNavigation(session.permissions);
+  const paths = groups.flatMap((group) => group.items.map((item) => item.path));
+  const shortcuts = useNavShortcuts(paths);
+  const [startLayout] = useState(readStartLayout);
   const active = navigationItem(pathname);
   const brandName =
     installationId() || session.branding?.configured ? session.tenant.display_name : t("app.name");
@@ -178,6 +173,7 @@ export function AppShell() {
     <LiveEventsProvider>
       <BrandingAppearance />
       <SidebarProvider
+        defaultOpen={!startLayout.leftCollapsed}
         data-testid="cockpit-shell"
         data-cockpit-ui
         className="h-full min-h-0 overflow-clip"
@@ -194,16 +190,18 @@ export function AppShell() {
           data-testid="cockpit-sidebar"
           data-cockpit-ui="product-sidebar"
         >
-          <SidebarHeader data-testid="cockpit-sidebar-header">
+          <SidebarHeader
+            data-testid="cockpit-sidebar-header"
+            className={cn(SHELL_BAR, "justify-center border-sidebar-border py-0")}
+          >
             {!installationId() ? (
-              <WorkspaceSwitcher attention={<AttentionCounter />} />
+              <WorkspaceSwitcher />
             ) : (
               <SidebarMenu>
                 <SidebarMenuItem data-testid="cockpit-wordmark">
-                  <SidebarMenuButton asChild size="lg" className="relative" tooltip={brandName}>
+                  <SidebarMenuButton asChild size="lg" tooltip={brandName}>
                     <Link to="/" data-testid="cockpit-home-link">
                       <BrandingWordmark />
-                      <AttentionCounter />
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -214,11 +212,15 @@ export function AppShell() {
           <SidebarContent
             data-testid="cockpit-navigation"
             key={pathname}
-            className="group-data-[collapsible=icon]:overflow-y-auto"
+            className="shrink-0 overflow-visible pt-2 group-data-[collapsible=icon]:overflow-visible"
           >
             <nav aria-label={t("nav.label")}>
               {groups.map((group) => (
-                <SidebarGroup key={group.id} data-testid={`nav-group-${group.id}`}>
+                <SidebarGroup
+                  key={group.id}
+                  className="px-2 py-0"
+                  data-testid={`nav-group-${group.id}`}
+                >
                   {group.labelKey && (
                     <SidebarGroupLabel className="overflow-hidden group-data-[collapsible=icon]:mx-2 group-data-[collapsible=icon]:my-2 group-data-[collapsible=icon]:h-px group-data-[collapsible=icon]:bg-sidebar-border group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:text-transparent group-data-[collapsible=icon]:opacity-100">
                       {t(group.labelKey)}
@@ -228,11 +230,17 @@ export function AppShell() {
                     <SidebarMenu>
                       {group.items.map((item) => {
                         const label = t(item.labelKey);
+                        const index = paths.indexOf(item.path);
+                        const shortcut = shortcuts.appWindow
+                          ? navShortcutLabel(index, shortcuts.mac)
+                          : null;
                         return (
                           <SidebarMenuItem key={item.path}>
                             <PrimaryNavigationLink
                               item={item}
                               label={label}
+                              shortcut={shortcut}
+                              keys={shortcut ? navShortcutAria(index) : null}
                               active={active === item}
                             />
                           </SidebarMenuItem>
@@ -247,20 +255,8 @@ export function AppShell() {
 
           <SidebarFooter
             data-testid="cockpit-sidebar-footer"
-            className={cn(
-              "gap-2",
-              session.branding?.configured && "border-t border-sidebar-border",
-            )}
+            className="gap-1 border-t border-sidebar-border"
           >
-            <ShellLiveStatusRow
-              actions={
-                <>
-                  <InstallationNotificationControl />
-                  <FeedbackIconButton />
-                  <DesktopSidebarToggle />
-                </>
-              }
-            />
             <InstallationFollowupPrompt tenantName={session.tenant.display_name} />
             <SidebarMenu>
               <SidebarMenuItem>
@@ -277,15 +273,21 @@ export function AppShell() {
         </Sidebar>
 
         <SidePanelProvider>
-          <SidebarInset className="min-h-0 min-w-0 overflow-clip" data-testid="cockpit-content">
-            <ShellContent />
-          </SidebarInset>
-          <SidePanel pathname={pathname} />
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-slot="shell-column">
+            <ShellHeader />
+            <DesktopStatusBanner />
+            <div className="flex min-h-0 min-w-0 flex-1" data-slot="shell-body">
+              <SidebarInset className="min-h-0 min-w-0 overflow-clip" data-testid="cockpit-content">
+                <ShellContent />
+              </SidebarInset>
+              <SidePanel pathname={pathname} />
+            </div>
+          </div>
         </SidePanelProvider>
         <Toaster richColors position="bottom-right" />
         <InstallationImportDialog />
         <VersionNotice />
-        <FeedbackHost />
+        <RoutedFeedbackHost />
         <AttentionNotice />
         <PwaRuntime />
       </SidebarProvider>
@@ -293,62 +295,30 @@ export function AppShell() {
   );
 }
 
+function RoutedFeedbackHost() {
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const search = useRouterState({ select: (state) => state.location.searchStr });
+  return <FeedbackHost pathname={pathname} search={search} />;
+}
+
 function ShellContent() {
-  const { isMobile } = useSidebar();
   const page = useRouterState({
     select: (state) => pageOf(state.location.pathname),
   });
   const content = useRef<HTMLDivElement>(null);
   useRouteEntrance(content, page);
-  const header = useShellHeaderState();
-  const chat = header.chatHeaders > 0;
-  const owner = triggerOwner({
-    mobile: isMobile,
-    chatHeader: chat,
-    pageFrames: header.pageFrames,
-  });
   return (
-    <ShellHeaderProvider
-      owner={owner}
-      slot={header.slot}
-      claimPageFrame={header.claimPageFrame}
-      claimChatHeader={header.claimChatHeader}
-    >
-      {owner === "bar" &&
-        (chat ? (
-          <header
-            className="scrollbar-thin shrink-0 overflow-hidden border-b px-4 py-2 sm:px-6 [scrollbar-gutter:stable]"
-            data-testid="cockpit-header"
-            data-cockpit-header="chat"
-          >
-            <div className={cn("flex min-h-8 items-start gap-2", CHAT_COLUMN)}>
-              <MobileAttentionToggle className="-ml-1 shrink-0" mobile={isMobile} />
-              <div ref={header.setSlot} className="min-w-0 flex-1" />
-              <SidePanelToggle className="-mr-1 shrink-0" />
-            </div>
-          </header>
-        ) : (
-          <header
-            className="flex h-12 shrink-0 items-center gap-3 border-b px-4 sm:px-6"
-            data-testid="cockpit-header"
-          >
-            <MobileAttentionToggle className="-ml-1" mobile={isMobile} />
-            <FeedbackButton className="ml-auto" />
-            <SidePanelToggle className="-mr-1" />
-          </header>
-        ))}
-      <ResponsiveWorkspace>
-        <div
-          ref={content}
-          className="flex min-h-0 min-w-0 flex-1 flex-col overflow-clip"
-          data-testid="page-content"
-        >
-          <ActionFailureBase page={page} />
-          <Outlet />
-        </div>
-        <RunOverlays />
-      </ResponsiveWorkspace>
-    </ShellHeaderProvider>
+    <ResponsiveWorkspace>
+      <div
+        ref={content}
+        className="flex min-h-0 min-w-0 flex-1 flex-col overflow-clip"
+        data-testid="page-content"
+      >
+        <ActionFailureBase page={page} />
+        <Outlet />
+      </div>
+      <RunOverlays />
+    </ResponsiveWorkspace>
   );
 }
 
@@ -364,7 +334,7 @@ function ActionFailureBase({ page }: { page: string }) {
       }),
     [client],
   );
-  return <ActionFailureHost level="base" className="shrink-0 px-4 pt-3 sm:px-6" />;
+  return <ActionFailureHost level="base" className="shrink-0 px-4 pt-3 sm:px-8" />;
 }
 
 function CloseNavigationOnRoute({ pathname }: { pathname: string }) {
@@ -375,20 +345,25 @@ function CloseNavigationOnRoute({ pathname }: { pathname: string }) {
   return null;
 }
 
-function DesktopSidebarToggle() {
-  const { isMobile } = useSidebar();
-  return isMobile ? null : <SidebarToggle className="shrink-0" />;
-}
-
-function MobileAttentionToggle({ className, mobile }: { className: string; mobile: boolean }) {
+function InboxCounter() {
   const session = useSession();
-  const fresh = useAttentionFresh(session);
-  if (!mobile || !fresh) return <SidebarToggle className={className} />;
+  const { query, hidden } = useAttention(session.permissions);
+  const count = inboxCount(attentionEntries(query.data?.items ?? [], hidden));
+  if (count === 0) return null;
   return (
-    <span className="relative inline-flex shrink-0" data-testid="sidebar-trigger-attention">
-      <SidebarToggle className={className} />
-      <AttentionDot stopped={fresh.stopped} className="top-1.5 right-1.5" />
-    </span>
+    <>
+      <span
+        className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-secondary px-2 font-mono text-xs tabular-nums group-data-[collapsible=icon]:hidden"
+        data-testid="nav-intake-count"
+      >
+        {count}
+      </span>
+      <span
+        aria-hidden="true"
+        data-testid="nav-intake-dot"
+        className="pointer-events-none absolute top-1 right-1 hidden size-2 rounded-full bg-accent ring-2 ring-sidebar group-data-[collapsible=icon]:block"
+      />
+    </>
   );
 }
 
@@ -400,7 +375,7 @@ function AttentionCounter() {
     <>
       <span
         className={cn(
-          "ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-sidebar-accent px-1.5 text-[11px] font-medium tabular-nums group-data-[collapsible=icon]:hidden",
+          "ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-secondary px-2 font-mono text-xs tabular-nums group-data-[collapsible=icon]:hidden",
           badge.stopped && "text-destructive",
         )}
         data-testid="nav-overview-count"
@@ -413,16 +388,11 @@ function AttentionCounter() {
         data-testid="nav-overview-dot"
         className={cn(
           "pointer-events-none absolute top-1 right-1 hidden size-2 rounded-full ring-2 ring-sidebar group-data-[collapsible=icon]:block",
-          badge.stopped ? "bg-destructive" : "bg-amber-500",
+          badge.stopped ? "bg-destructive" : "bg-accent",
         )}
       />
     </>
   );
-}
-
-function ShellLiveStatusRow({ actions }: { actions: ReactNode }) {
-  const { status } = useLiveStatus();
-  return <LiveStatusRow status={status} actions={actions} />;
 }
 
 function AccountMenu() {
@@ -438,18 +408,21 @@ function AccountMenu() {
     session.principal.role_name ||
     t("common.member");
   const role = localizedRole(session.principal.role_name || "member", t);
-  const accountNavigation = visibleAccountNavigation(session.permissions);
+  const fallbacks = accountMenuFallbacks({
+    permissions: session.permissions,
+    settingAreas: visibleSettingAreas({
+      permissions: session.permissions,
+      isOwner: session.principal.is_owner,
+      origin: session.tenant.origin,
+    }),
+  });
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
-  const current = pathname;
-  const active = navigationItem(current);
-  const docsActive = current === "/docs" || current.startsWith("/docs/");
-  const profileActive = useRouterState({
-    select: (state) =>
-      state.location.pathname === "/settings" &&
-      new URLSearchParams(state.location.searchStr).get("area") === "profile",
-  });
+  const under = (path: string) => pathname === path || pathname.startsWith(`${path}/`);
+  const closeOnPhone = () => {
+    if (isMobile) setOpenMobile(false);
+  };
 
   async function signOut(): Promise<void> {
     setSigningOut(true);
@@ -464,6 +437,28 @@ function AccountMenu() {
       setSigningOut(false);
     }
   }
+
+  const languages = (
+    <DropdownMenuRadioGroup
+      value={preference}
+      onValueChange={(value) => setPreference(value as LocalePreference)}
+    >
+      {LANGUAGES.map(({ value, label }) => (
+        <DropdownMenuRadioItem key={value} value={value} data-testid={`account-language-${value}`}>
+          {t(label)}
+        </DropdownMenuRadioItem>
+      ))}
+    </DropdownMenuRadioGroup>
+  );
+  const themes = (
+    <DropdownMenuRadioGroup value={theme} onValueChange={(value) => setTheme(value as Theme)}>
+      {THEMES.map(({ value, label }) => (
+        <DropdownMenuRadioItem key={value} value={value} data-testid={`account-theme-${value}`}>
+          {t(label)}
+        </DropdownMenuRadioItem>
+      ))}
+    </DropdownMenuRadioGroup>
+  );
 
   return (
     <>
@@ -492,7 +487,7 @@ function AccountMenu() {
             </span>
             <ChevronsUpDown
               data-icon="inline-end"
-              className="ml-auto shrink-0 group-data-[collapsible=icon]:hidden"
+              className="ml-auto shrink-0 text-muted-foreground group-data-[collapsible=icon]:hidden"
             />
           </SidebarMenuButton>
         </DropdownMenuTrigger>
@@ -500,58 +495,36 @@ function AccountMenu() {
         <DropdownMenuContent
           side={isMobile ? "top" : "right"}
           align="end"
-          className="w-64 max-h-[min(80dvh,640px)] overflow-y-auto"
+          sideOffset={8}
+          collisionPadding={8}
+          className="w-64"
           data-testid="account-menu"
         >
-          <DropdownMenuLabel data-testid="account-summary">
+          <DropdownMenuLabel className="font-normal" data-testid="account-summary">
             <span className="block text-sm font-medium whitespace-normal text-foreground [overflow-wrap:anywhere]">
               {identity}
             </span>
-            <span className="block truncate font-normal">{session.tenant.display_name}</span>
+            <span className="block truncate text-xs text-muted-foreground">
+              {session.tenant.display_name}
+            </span>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
 
-          {accountNavigation.map((item) => (
-            <DropdownMenuItem
-              key={item.path}
-              asChild
-              className={active === item ? "bg-accent text-accent-foreground" : undefined}
-              data-testid={`account-nav-${item.path.slice(1)}`}
-            >
-              <Link
-                to={item.path}
-                data-testid={`account-link-${item.path.slice(1)}`}
-                aria-current={active === item ? "page" : undefined}
-                onClick={() => {
-                  if (isMobile) setOpenMobile(false);
-                }}
-              >
-                <item.icon data-icon="inline-start" />
-                {t(item.labelKey)}
-              </Link>
-            </DropdownMenuItem>
-          ))}
-          {accountNavigation.length > 0 ? <DropdownMenuSeparator /> : null}
-
           <DropdownMenuItem
             asChild
-            className={docsActive ? "bg-accent text-accent-foreground" : undefined}
-            data-testid="account-nav-docs"
+            className={under("/settings") ? "bg-accent text-accent-foreground" : undefined}
+            data-testid="account-nav-settings"
           >
             <Link
-              to="/docs"
-              data-testid="account-link-docs"
-              aria-current={docsActive ? "page" : undefined}
-              onClick={() => {
-                if (isMobile) setOpenMobile(false);
-              }}
+              to="/settings"
+              data-testid="account-link-settings"
+              aria-current={under("/settings") ? "page" : undefined}
+              onClick={closeOnPhone}
             >
-              <BookText data-icon="inline-start" />
-              {t("docs.menu")}
+              <SettingsIcon data-icon="inline-start" />
+              {t("nav.settings")}
             </Link>
           </DropdownMenuItem>
-
-          <InstallMenuItem />
 
           <DropdownMenuItem onSelect={() => openFeedback()} data-testid="account-feedback">
             <Bug data-icon="inline-start" />
@@ -559,90 +532,100 @@ function AccountMenu() {
           </DropdownMenuItem>
 
           <DropdownMenuItem
-            onSelect={() => setReleaseNotesOpen(true)}
-            data-testid="account-release-notes"
-          >
-            <History data-icon="inline-start" />
-            {t("releaseNotes.menu")}
-          </DropdownMenuItem>
-
-          <DropdownMenuItem
             asChild
-            className={profileActive ? "bg-accent text-accent-foreground" : undefined}
-            data-testid="account-profile-menu"
+            className={under("/docs") ? "bg-accent text-accent-foreground" : undefined}
+            data-testid="account-nav-docs"
           >
             <Link
-              to="/settings"
-              search={{ area: "profile" }}
-              data-testid="account-link-profile"
-              aria-current={profileActive ? "page" : undefined}
-              onClick={() => {
-                if (isMobile) setOpenMobile(false);
-              }}
+              to="/docs"
+              data-testid="account-link-docs"
+              aria-current={under("/docs") ? "page" : undefined}
+              onClick={closeOnPhone}
             >
-              <UserRound data-icon="inline-start" />
-              <span className="grid min-w-0">
-                <span>{t("account.profile")}</span>
-                <span
-                  className="truncate text-xs font-normal text-muted-foreground"
-                  data-testid="account-profile-summary"
-                >
-                  {identity} · {role}
-                </span>
-              </span>
+              <BookOpen data-icon="inline-start" />
+              {t("docs.menu")}
             </Link>
           </DropdownMenuItem>
 
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger data-testid="account-language-menu">
-              <Languages data-icon="inline-start" />
-              {t("account.language")}
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent data-testid="account-language-content">
-              <DropdownMenuRadioGroup
-                value={preference}
-                onValueChange={(value) => setPreference(value as LocalePreference)}
-              >
-                {LANGUAGES.map(({ value, label }) => (
-                  <DropdownMenuRadioItem
-                    key={value}
-                    value={value}
-                    data-testid={`account-language-${value}`}
-                  >
-                    {t(label)}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
+          <DropdownMenuItem
+            onSelect={() => setReleaseNotesOpen(true)}
+            data-testid="account-release-notes"
+          >
+            <Sparkles data-icon="inline-start" />
+            {t("releaseNotes.menu")}
+          </DropdownMenuItem>
 
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger data-testid="account-theme-menu">
-              <Palette data-icon="inline-start" />
-              {t("account.theme")}
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent data-testid="account-theme-content">
-              <DropdownMenuRadioGroup
-                value={theme}
-                onValueChange={(value) => setTheme(value as Theme)}
+          {fallbacks.apiAccess ? (
+            <DropdownMenuItem
+              asChild
+              className={under("/api-access") ? "bg-accent text-accent-foreground" : undefined}
+              data-testid="account-nav-api-access"
+            >
+              <Link
+                to="/api-access"
+                data-testid="account-link-api-access"
+                aria-current={under("/api-access") ? "page" : undefined}
+                onClick={closeOnPhone}
               >
-                {THEMES.map(({ value, label, icon: Icon }) => (
-                  <DropdownMenuRadioItem
-                    key={value}
-                    value={value}
-                    data-testid={`account-theme-${value}`}
-                  >
-                    <Icon data-icon="inline-start" />
-                    {t(label)}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
+                <KeyRound data-icon="inline-start" />
+                {t("nav.apiAccess")}
+              </Link>
+            </DropdownMenuItem>
+          ) : null}
+          {fallbacks.pause ? <PauseMenu /> : null}
+
+          <DropdownMenuSeparator />
+          {isMobile ? (
+            <>
+              <DropdownMenuLabel
+                className="text-xs font-medium text-muted-foreground"
+                data-testid="account-language-menu"
+              >
+                {t("account.language")}
+              </DropdownMenuLabel>
+              {languages}
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel
+                className="text-xs font-medium text-muted-foreground"
+                data-testid="account-theme-menu"
+              >
+                {t("account.theme")}
+              </DropdownMenuLabel>
+              {themes}
+            </>
+          ) : (
+            <>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger data-testid="account-language-menu">
+                  <Globe data-icon="inline-start" />
+                  {t("account.language")}
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent
+                  collisionPadding={8}
+                  className="w-48"
+                  data-testid="account-language-content"
+                >
+                  {languages}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger data-testid="account-theme-menu">
+                  <Palette data-icon="inline-start" />
+                  {t("account.theme")}
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent
+                  collisionPadding={8}
+                  className="w-48"
+                  data-testid="account-theme-content"
+                >
+                  {themes}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            </>
+          )}
 
           <DropdownMenuSeparator />
           <DropdownMenuItem
-            variant="destructive"
             disabled={signingOut}
             data-testid="account-sign-out"
             onSelect={() => void signOut()}

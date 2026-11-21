@@ -186,6 +186,7 @@ type SendConversationTurnInput = {
       conversationId: string;
       target?: never;
       pendingElicitation?: { id: string; tool_name: string } | null;
+      permissionMode?: "auto" | "ask" | "plan";
     }
   | {
       conversationId?: null;
@@ -207,11 +208,12 @@ export async function sendConversationTurn(
         input.pendingElicitation.id,
         input.message,
         onEvent,
+        input.permissionMode,
       );
     }
     return streamConversation(
       `${path}/messages`,
-      { message: input.message, ...withReferences(input.references) },
+      { ...appendBody(input.message, input.permissionMode), ...withReferences(input.references) },
       onEvent,
     );
   }
@@ -240,15 +242,32 @@ export function cancelConversation(id: string): Promise<unknown> {
   return apiCall("post", "/v1/conversations/{id}/cancel", { path: { id } });
 }
 
+type ChatMode = "auto" | "ask" | "plan";
+
+export function appendBody(
+  message: string,
+  permissionMode?: ChatMode | null,
+): { message: string; permission_mode?: ChatMode } {
+  return permissionMode ? { message, permission_mode: permissionMode } : { message };
+}
+
+export function respondBody<Output>(
+  output: Output,
+  permissionMode?: ChatMode | null,
+): { output: Output; permission_mode?: ChatMode } {
+  return permissionMode ? { output, permission_mode: permissionMode } : { output };
+}
+
 export function respondToChatChoice(
   conversationId: string,
   elicitationId: string,
   value: string,
   onEvent?: (event: ConversationStreamEvent) => void,
+  permissionMode?: ChatMode | null,
 ): Promise<ConversationRun> {
   return streamConversation(
     `/v1/conversations/${encodeURIComponent(conversationId)}/elicitations/${encodeURIComponent(elicitationId)}/respond`,
-    { output: { value } },
+    respondBody({ value }, permissionMode),
     onEvent,
   );
 }
@@ -258,10 +277,11 @@ function respondToChatText(
   elicitationId: string,
   value: string,
   onEvent?: (event: ConversationStreamEvent) => void,
+  permissionMode?: ChatMode | null,
 ): Promise<ConversationRun> {
   return streamConversation(
     `/v1/conversations/${encodeURIComponent(conversationId)}/elicitations/${encodeURIComponent(elicitationId)}/respond`,
-    { output: { value } },
+    respondBody({ value }, permissionMode),
     onEvent,
   );
 }
@@ -271,10 +291,11 @@ export function respondToChatApproval(
   elicitationId: string,
   confirmed: boolean,
   onEvent?: (event: ConversationStreamEvent) => void,
+  permissionMode?: ChatMode | null,
 ): Promise<ConversationRun> {
   return streamConversation(
     `/v1/conversations/${encodeURIComponent(conversationId)}/elicitations/${encodeURIComponent(elicitationId)}/respond`,
-    { output: { confirmed } },
+    respondBody({ confirmed }, permissionMode),
     onEvent,
   );
 }
@@ -301,10 +322,11 @@ export function respondToChatForm(
   elicitationId: string,
   output: Record<string, unknown>,
   onEvent?: (event: ConversationStreamEvent) => void,
+  permissionMode?: ChatMode | null,
 ): Promise<ConversationRun> {
   return streamConversation(
     `/v1/conversations/${encodeURIComponent(conversationId)}/elicitations/${encodeURIComponent(elicitationId)}/respond`,
-    { output },
+    respondBody(output, permissionMode),
     onEvent,
   );
 }

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import type ts from "typescript";
 import {
@@ -264,7 +264,10 @@ export function evaluateRatchet(repo: string, ratchet: Ratchet, cache: SourceCac
     return {
       id: ratchet.id,
       status: "PASS",
-      message: `${budgets.size} allowlisted in ${where}, none new or grown${staleNote}`,
+      message:
+        budgets.size === 0
+          ? "no offenders, no allowlist"
+          : `${budgets.size} allowlisted in ${where}, none new or grown${staleNote}`,
     };
   }
   const lines = [
@@ -287,11 +290,11 @@ export function writeRatchetBaseline(
   acceptNew: boolean,
 ): number {
   const path = allowlistPath(repo, ratchet);
-  const budgets = shrinkBudgets(
-    readBudgets(repo, ratchet),
-    ratchet.measure(cache),
-    acceptNew || !existsSync(path),
-  );
+  const budgets = shrinkBudgets(readBudgets(repo, ratchet), ratchet.measure(cache), acceptNew);
+  if (budgets.size === 0) {
+    rmSync(path, { force: true });
+    return 0;
+  }
   const header = [
     `Burndown allowlist for the audit-invariants \`${ratchet.id}\` check.`,
     `Rule: ${ratchet.rule}.`,

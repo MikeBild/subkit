@@ -61,41 +61,26 @@ export function authorityGrantInput(
   };
 }
 
-export type GrantLimit = "until_revoked" | "7d" | "30d";
-
-export const DEFAULT_GRANT_LIMIT: GrantLimit = "until_revoked";
-
-export function grantLimitBounds(limit: GrantLimit): { runs: null; hours: string | null } {
-  return { runs: null, hours: limit === "7d" ? "168" : limit === "30d" ? "720" : null };
+export function authorityGrantInputUntil(
+  preview: WorkflowAuthorityPreview,
+  expected: AuthorityReviewIdentity,
+  validUntil: string | null,
+  maxRuns: number | null,
+  now: number,
+) {
+  const base = authorityGrantInput(preview, expected, null, null, now);
+  if (!base) return null;
+  if (maxRuns !== null && (!Number.isInteger(maxRuns) || maxRuns < 1 || maxRuns > 10_000))
+    return null;
+  if (validUntil !== null) {
+    const until = Date.parse(validUntil);
+    if (!Number.isFinite(until) || until <= now || until <= Date.parse(base.valid_from))
+      return null;
+  }
+  return { ...base, valid_until: validUntil, max_runs: maxRuns };
 }
 
-const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
-
-type ReviewGrant = {
-  environment: "dev" | "prod";
-  valid_from: string;
-  valid_until?: string | null;
-  max_runs?: number | null;
-};
-
-export function reviewGrantAction(suggested: ReviewGrant, limit: GrantLimit) {
-  const { runs, hours } = grantLimitBounds(limit);
-  const from = Date.parse(suggested.valid_from);
-  if (!Number.isFinite(from)) return null;
-  return {
-    environment: suggested.environment,
-    valid_from: suggested.valid_from,
-    valid_until: hours === null ? null : new Date(from + Number(hours) * HOUR_MS).toISOString(),
-    max_runs: runs,
-  };
-}
-
-export function grantLimitOf(grant: Pick<ReviewGrant, "valid_from" | "valid_until">): GrantLimit {
-  if (grant.valid_until == null) return "until_revoked";
-  const hours = (Date.parse(grant.valid_until) - Date.parse(grant.valid_from)) / HOUR_MS;
-  return hours <= Number(grantLimitBounds("7d").hours) ? "7d" : "30d";
-}
 
 export function untilRevokedOffer(
   authority: WorkflowAuthority,

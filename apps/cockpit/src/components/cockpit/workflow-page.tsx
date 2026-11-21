@@ -1,8 +1,8 @@
 import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { ChevronRight } from "lucide-react";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { apiCall } from "@/api/call";
 import { useActorDirectory } from "@/app/actor-directory";
@@ -10,9 +10,15 @@ import {
   absolute,
   chatNewHref,
   connectorHref,
+  runHref,
   WORKFLOW_RUN_ANCHOR,
-  workflowHref,
+  type WorkflowSection,
+  workflowSectionAnchor,
+  workflowSectionFromHash,
+  workflowSectionHref,
 } from "@/app/links";
+import { useSession } from "@/app/session";
+import { useShowSideDetails } from "@/app/side-panel";
 import {
   useWaitingConnector,
   useWorkflowAutomation,
@@ -35,6 +41,7 @@ import { MetadataDialog } from "@/components/cockpit/metadata-dialog";
 import {
   ActionMenu,
   type ActionMenuItem,
+  Button,
   CodeBlock,
   CollapsibleSection,
   ConfirmDialog,
@@ -43,9 +50,12 @@ import {
   type Fact,
   FactList,
   type PageTab,
+  SideDetails,
+  SideSection,
   STATUS_DOT,
   statusTone,
   TabBody,
+  useSideDetailsAvailable,
 } from "@/components/cockpit/patterns";
 import { RunWorkflowDialog } from "@/components/cockpit/run-workflow-dialog";
 import {
@@ -72,22 +82,43 @@ import {
   WorkflowTestRun,
 } from "@/components/cockpit/workflow-steps-list";
 import { useCurrentVersionDag, WorkflowVersions } from "@/components/cockpit/workflow-versions";
+import { definitionProductId } from "@/features/admin";
+import {
+  CurrentApprovalBody,
+  CurrentApprovalPanel,
+  currentApproval,
+  durationBars,
+  isLiveRun,
+  openPairs,
+  PairApprovalCard,
+  PairLinkNotice,
+  pairFailure,
+  pairLinkId,
+  pairLinkTarget,
+  runTone,
+  shownPair,
+  stepRows,
+  usePairApprovals,
+  WorkflowHistoryPanel,
+  WorkflowStepGraph,
+  WorkflowStepsPanel,
+} from "@/features/operations";
 import { reportFailure } from "@/lib/action-failure";
 import { cronWords } from "@/lib/cron-words";
-import { LOCALE_TAGS } from "@/lib/i18n";
+import { formatDate, LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import type { ServiceIdentity } from "@/lib/service-icons";
+import { statusLabel } from "@/lib/status-label";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
 import { cn } from "@/lib/utils";
 import { resultPhrase, type TriggerKind, triggerKindOf } from "@/lib/workflow-flow";
 import { workflowPreviewDefinition } from "@/lib/workflow-preview";
 import { removalConsequenceKeys } from "@/lib/workflow-removal";
-import { definitionKind, type StepKindSource } from "@/lib/workflow-steps";
+import { definitionKind, type StepKindSource, stepWrites } from "@/lib/workflow-steps";
 import { deletedConnectorReference } from "@/lib/workflow-strip";
 import { workflowVersionAuthor } from "@/lib/workflow-versions";
-import { definitionProductId } from "@/pages/apps-model";
 import { formatRunDuration, runDisplayState, runDurationMs } from "@/pages/runs-model";
-import { triggerLabelKey } from "@/pages/workflows-model";
+import { triggerLabelKey, withSection } from "@/pages/workflows-model";
 
 type RecordValue = Record<string, unknown>;
 type EffectiveTrigger = components["schemas"]["EffectiveTrigger"];
@@ -197,7 +228,7 @@ function LastRunLine({
   const when = run.started_at ?? run.created_at;
   return (
     <a
-      href={absolute(`${workflowHref(workflowId)}?tab=history`)}
+      href={absolute(workflowSectionHref(workflowId, "history"))}
       className="flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       data-testid="workflow-last-run"
     >
@@ -254,7 +285,7 @@ export function WorkflowPage({
   title: string;
   permissions: readonly string[];
 }) {
-  const { t, tn } = useI18n();
+  const { t, tn, dateTime, locale } = useI18n();
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState<"disable" | "delete" | null>(null);
   const [offersApproval, setOffersApproval] = useState(false);
@@ -323,6 +354,76 @@ export function WorkflowPage({
   const waitingConnector =
     deletedConnectorReference(record.connector_references) ?? waitingForCredentials;
   const technical = useTechnicalFacts(record);
+  const session = useSession();
+  const directory = useActorDirectory(true);
+  const sideAvailable = useSideDetailsAvailable();
+  const canReadRuns = permissions.includes("execution:read");
+  const rows = stepRows(
+    steps.views.map((view) => {
+      const connector = stepConnector(view.definition, connectorRecords);
+      const raw = view.definition.raw;
+      const name = typeof raw.name === "string" && raw.name ? raw.name : null;
+      return {
+        id: view.definition.id,
+        kind: view.definition.kind,
+        name,
+        connector: connector?.name ?? null,
+        target: view.definition.essence.kind === "request" ? view.definition.essence.target : null,
+        writes: stepWrites(view.definition),
+        lastStatus: view.lastRun?.status ?? null,
+      };
+    }),
+  );
+  const authorityList = useQuery({
+    queryKey: ["workflow-authorities", id, "newest"],
+    queryFn: () =>
+      apiCall("get", "/v1/workflows/{id}/execution-authorities", {
+        path: { id },
+        query: { limit: 20 },
+      }),
+  });
+  const approval = currentApproval(authorityList.data?.items ?? null);
+  const pairs = usePairApprovals(id, permissions.includes("workflow:read"));
+  const search = useRouterState({ select: (router) => router.location.searchStr });
+  const [actedOn, setActedOn] = useState<string | null>(null);
+  const linkedId = pairLinkId(search);
+  const pairLink = pairLinkTarget(
+    linkedId,
+    pairs.loading || pairs.failed ? null : pairs.items,
+    automation.now,
+    actedOn,
+  );
+  const openPair = shownPair(pairLink, openPairs(pairs.items, automation.now)[0] ?? null);
+  const hash = useRouterState({ select: (router) => router.location.hash });
+  const requested = workflowSectionFromHash(hash);
+  const [sections, setSections] = useState<ReadonlySet<WorkflowSection>>(
+    () => new Set(requested ? [requested] : []),
+  );
+  const reveal = useCallback((section: WorkflowSection) => {
+    setSections((open) => withSection(open, section, true));
+    requestAnimationFrame(() =>
+      document
+        .getElementById(workflowSectionAnchor(section))
+        ?.scrollIntoView({ block: "start", behavior: "smooth" }),
+    );
+  }, []);
+  useEffect(() => {
+    if (requested) reveal(requested);
+  }, [requested, reveal]);
+  const showDetails = useShowSideDetails();
+  const revealed = useRef<string | null>(null);
+  const revealId = pairLink.kind === "none" ? null : linkedId;
+  useEffect(() => {
+    if (!revealId || revealed.current === revealId) return;
+    revealed.current = revealId;
+    showDetails?.();
+  }, [revealId, showDetails]);
+  const recent = useQuery({
+    queryKey: ["workflow", id, "recent-runs"],
+    enabled: canReadRuns,
+    queryFn: () => apiCall("get", "/v1/executions", { query: { workflow_id: id, limit: 12 } }),
+  });
+  const recentRuns = recent.data?.items ?? [];
   const flowTrigger = useFlowTrigger(record);
   const result = resultPhrase(record.output_schema);
   const lifecycle = useOptimisticAction({
@@ -513,145 +614,283 @@ export function WorkflowPage({
     canRun && Boolean(previewDefinition) && previewDefinition?.execution_privacy !== "sensitive";
   const category = recordCategory(record);
 
+  const approvalBody = (
+    <CurrentApprovalBody
+      rows={
+        approval
+          ? [
+              {
+                label: t("ops.wf.environment"),
+                value: t(
+                  approval.environment === "prod"
+                    ? "authority.production"
+                    : "authority.development",
+                ),
+              },
+              {
+                label: t("authority.limit.label"),
+                value: approval.validUntil
+                  ? t("ops.run.validUntil", { date: formatDate(locale, approval.validUntil) })
+                  : t("authority.limit.untilRevoked"),
+              },
+              {
+                label: t("ops.wf.approvedBy"),
+                value: workflowVersionAuthor(
+                  { kind: "user", id: approval.createdBy },
+                  directory,
+                  t,
+                ),
+              },
+              { label: t("ops.run.approvedAt"), value: dateTime(approval.createdAt) },
+            ]
+          : null
+      }
+      used={
+        approval
+          ? approval.maxRuns === null
+            ? tn("ops.wf.runsUsedOpen", approval.used)
+            : t("ops.wf.runsUsed", { used: approval.used, max: approval.maxRuns })
+          : null
+      }
+    >
+      <PairLinkNotice target={pairLink} />
+      {openPair ? (
+        <PairApprovalCard
+          key={openPair.id}
+          pair={openPair}
+          viewerId={session.principal.id}
+          now={automation.now}
+          pending={pairs.pending}
+          failure={pairFailure(pairs.error)}
+          linked={pairLink.kind === "open" && pairLink.pair.id === openPair.id}
+          onAction={(action) => {
+            setActedOn(openPair.id);
+            pairs.act(openPair.id, action);
+          }}
+        />
+      ) : null}
+      <a
+        href={absolute(workflowSectionHref(id, "approvals"))}
+        className="text-sm font-medium underline underline-offset-4"
+        data-testid="workflow-approval-manage"
+      >
+        {t("ops.wf.manage")}
+      </a>
+    </CurrentApprovalBody>
+  );
+
+  const sectionProps = (section: WorkflowSection, label: string) => ({
+    label,
+    id: workflowSectionAnchor(section),
+    open: sections.has(section),
+    onOpenChange: (next: boolean) => setSections((open) => withSection(open, section, next)),
+    testId: `workflow-section-${section}`,
+  });
+
   const tabs: PageTab[] = [
     {
       value: "overview",
       label: t("workflowPage.tab.overview"),
       content: (
-        <TabBody
-          testId="workflow-overview"
-          summary={
-            <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-              <span className="min-w-0 flex-1" data-testid="workflow-build-summary">
-                {overviewSummary}
-              </span>
-              {canRun && previewDefinition && (build.saved || editor.dirty) ? (
-                <WorkflowTestRun
-                  steps={steps}
-                  definition={workflowPreviewDefinition(
-                    previewDefinition,
-                    editor.steps as RecordValue[],
-                  )}
-                />
-              ) : null}
-            </div>
-          }
-          more={
-            <>
-              <WorkflowVersions
-                workflowId={id}
-                workflowName={title}
-                ids={versionIds}
-                access={{
-                  canRestore: permissions.includes("workflow:restore"),
-                  archived: disabled,
-                }}
-                onRestored={automation.refresh}
+        <div className="flex flex-col gap-8" data-testid="workflow-overview">
+          <div className="@container">
+            <div className="grid gap-4 @xl:grid-cols-2">
+              <WorkflowStepsPanel
+                rows={rows}
+                action={
+                  canWrite && !legacy ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => reveal("build")}
+                      data-testid="workflow-steps-edit"
+                    >
+                      {t("ops.wf.editSteps")}
+                    </Button>
+                  ) : undefined
+                }
               />
-              {permissions.includes("skill:read") ? (
-                <WorkflowDraftingContext
-                  workflowId={id}
-                  activeVersionId={versionId}
-                  activeSteps={activeStepKinds}
+              <div className="flex flex-col gap-4">
+                {sideAvailable ? null : <CurrentApprovalPanel>{approvalBody}</CurrentApprovalPanel>}
+                {canReadRuns ? (
+                  <WorkflowHistoryPanel
+                    durations={durationBars(recentRuns)}
+                    more={
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => reveal("history")}
+                        data-testid="workflow-history-all"
+                      >
+                        {t("runs.all")}
+                      </Button>
+                    }
+                    runs={recentRuns.map((run) => ({
+                      id: run.id,
+                      tone: runTone(run.status),
+                      pulse: isLiveRun(run.status),
+                      label: statusLabel(t, run.status),
+                      time: dateTime(run.started_at ?? run.created_at),
+                      href: absolute(runHref(run.id)),
+                    }))}
+                  />
+                ) : null}
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-col gap-4">
+            <CollapsibleSection {...sectionProps("build", t("ops.wf.tab.build"))}>
+              <TabBody
+                testId="workflow-build"
+                summary={
+                  <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                    <span className="min-w-0 flex-1" data-testid="workflow-build-summary">
+                      {overviewSummary}
+                    </span>
+                    {canRun && previewDefinition && (build.saved || editor.dirty) ? (
+                      <WorkflowTestRun
+                        steps={steps}
+                        definition={workflowPreviewDefinition(
+                          previewDefinition,
+                          editor.steps as RecordValue[],
+                        )}
+                      />
+                    ) : null}
+                  </div>
+                }
+                more={
+                  <>
+                    {build.definition ? (
+                      <CollapsibleSection
+                        label={t("workflowFlow.definition")}
+                        testId="workflow-definition-section"
+                      >
+                        <CodeBlock
+                          label={t("workflowFlow.definition")}
+                          code={JSON.stringify(build.definition, null, 2)}
+                          lang="json"
+                          testId="workflow-technical-definition"
+                        />
+                      </CollapsibleSection>
+                    ) : null}
+                    <WorkflowVersions
+                      workflowId={id}
+                      workflowName={title}
+                      ids={versionIds}
+                      access={{
+                        canRestore: permissions.includes("workflow:restore"),
+                        archived: disabled,
+                      }}
+                      onRestored={automation.refresh}
+                    />
+                    {permissions.includes("skill:read") ? (
+                      <WorkflowDraftingContext
+                        workflowId={id}
+                        activeVersionId={versionId}
+                        activeSteps={activeStepKinds}
+                      />
+                    ) : null}
+                  </>
+                }
+              >
+                {permissions.includes("workflow:read") ? (
+                  <WorkflowSpecCard
+                    workflowId={id}
+                    draftVersionId={draftVersionId}
+                    canWrite={canWrite}
+                  />
+                ) : null}
+                <WorkflowTestResult steps={steps} visible={build.saved || editor.dirty} />
+                <WorkflowFlow
+                  key={`${id}:${build.versionId ?? "none"}`}
+                  steps={steps}
+                  trigger={flowTrigger}
+                  result={t(result.key, result.values)}
+                  workflowName={title}
+                  canRun={canPreview}
+                  {...(canWrite && !legacy ? { editor } : {})}
                 />
-              ) : null}
-            </>
-          }
-        >
-          {permissions.includes("workflow:read") ? (
-            <WorkflowSpecCard workflowId={id} draftVersionId={draftVersionId} canWrite={canWrite} />
-          ) : null}
-          <WorkflowTestResult steps={steps} visible={build.saved || editor.dirty} />
-          <WorkflowFlow
-            key={`${id}:${build.versionId ?? "none"}`}
-            steps={steps}
-            trigger={flowTrigger}
-            result={t(result.key, result.values)}
-            workflowName={title}
-            canRun={canPreview}
-            {...(canWrite && !legacy ? { editor } : {})}
-          />
-          {canWrite ? <StepSaveBar workflowId={id} record={record} draft={editor} /> : null}
-          {permissions.includes("execution:read") ? (
-            <LastRunLine
-              workflowId={id}
-              run={steps.lastRun}
-              emptyAction={
-                <RunWorkflowDialog
-                  {...runProps}
-                  quiet
-                  triggerLabel={t("workflow.testRun")}
-                  triggerTestId="workflow-last-run-start"
-                />
-              }
-            />
-          ) : null}
-        </TabBody>
-      ),
-    },
-    {
-      value: "use",
-      label: t("workflowPage.tab.use"),
-      content: (
-        <TabBody
-          testId="workflow-use"
-          summary={useSummary ?? undefined}
-          more={
-            <>
-              <CollapsibleSection label={t("workflowPage.io")} testId="workflow-io-section">
-                <WorkflowInputOutput
+                {canWrite ? <StepSaveBar workflowId={id} record={record} draft={editor} /> : null}
+                {permissions.includes("execution:read") ? (
+                  <LastRunLine
+                    workflowId={id}
+                    run={steps.lastRun}
+                    emptyAction={
+                      <RunWorkflowDialog
+                        {...runProps}
+                        quiet
+                        triggerLabel={t("workflow.testRun")}
+                        triggerTestId="workflow-last-run-start"
+                      />
+                    }
+                  />
+                ) : null}
+              </TabBody>
+            </CollapsibleSection>
+            <CollapsibleSection {...sectionProps("use", t("workflowPage.tab.use"))}>
+              <TabBody
+                testId="workflow-use"
+                summary={useSummary ?? undefined}
+                more={
+                  <>
+                    <CollapsibleSection label={t("workflowPage.io")} testId="workflow-io-section">
+                      <WorkflowInputOutput
+                        workflowId={id}
+                        byWebhook={effectiveTrigger === "webhook" || webhooksActive > 0}
+                        draftDefinition={versionId ? null : build.definition}
+                      />
+                    </CollapsibleSection>
+                    {permissions.includes("conversation:read") ? (
+                      <ConversationsAbout target={{ workflow_id: id }} />
+                    ) : null}
+                  </>
+                }
+              >
+                <WorkflowInvocation
                   workflowId={id}
-                  byWebhook={effectiveTrigger === "webhook" || webhooksActive > 0}
-                  draftDefinition={versionId ? null : build.definition}
+                  workflowName={title}
+                  canWrite={canWrite}
+                  canChat={canChat}
+                  approvedEnvironment={state?.state === "approved" ? state.environment : null}
+                />
+              </TabBody>
+            </CollapsibleSection>
+            {canReadRuns ? (
+              <CollapsibleSection {...sectionProps("history", t("runs.all"))}>
+                <WorkflowRuns
+                  workflowId={id}
+                  emptyAction={
+                    <RunWorkflowDialog
+                      {...runProps}
+                      quiet
+                      triggerLabel={t("workflowRuns.runNow")}
+                      triggerTestId="workflow-runs-run"
+                    />
+                  }
                 />
               </CollapsibleSection>
-              {permissions.includes("conversation:read") ? (
-                <ConversationsAbout target={{ workflow_id: id }} />
-              ) : null}
-            </>
-          }
-        >
-          <WorkflowInvocation
-            workflowId={id}
-            workflowName={title}
-            canWrite={canWrite}
-            canChat={canChat}
-            approvedEnvironment={state?.state === "approved" ? state.environment : null}
-          />
-        </TabBody>
+            ) : null}
+            <CollapsibleSection {...sectionProps("approvals", t("workflowPage.tab.approvals"))}>
+              <WorkflowApprovals automation={automation} offersApproval={offersApproval} />
+            </CollapsibleSection>
+          </div>
+        </div>
       ),
     },
     ...(permissions.includes("execution:read")
       ? [
           {
-            value: "history",
-            label: t("workflowPage.tab.history"),
+            value: "schedule",
+            label: t("workflowPage.tab.schedule"),
             content: (
-              <WorkflowRuns
-                workflowId={id}
-                emptyAction={
-                  <RunWorkflowDialog
-                    {...runProps}
-                    quiet
-                    triggerLabel={t("workflowRuns.runNow")}
-                    triggerTestId="workflow-runs-run"
-                  />
-                }
+              <ScheduleHistory
+                subject={{ kind: "workflow", id }}
+                scheduled={effectiveTrigger === "schedule"}
               />
             ),
           },
-          {
-            value: "schedule",
-            label: t("workflowPage.tab.schedule"),
-            content: <ScheduleHistory subject={{ kind: "workflow", id }} />,
-          },
         ]
       : []),
-    {
-      value: "approvals",
-      label: t("workflowPage.tab.approvals"),
-      content: <WorkflowApprovals automation={automation} offersApproval={offersApproval} />,
-    },
   ];
 
   return (
@@ -663,23 +902,12 @@ export function WorkflowPage({
       purpose={<CatalogPurpose record={record} />}
       menu={menu.length > 0 ? <ActionMenu items={menu} testId="workflow-menu" /> : undefined}
       action={<RunWorkflowDialog {...runProps} openOnAnchor={WORKFLOW_RUN_ANCHOR} />}
-      technical={
-        <>
-          <FactList items={technical} testId="workflow-technical-facts" />
-          {build.definition ? (
-            <CodeBlock
-              label={t("workflowFlow.definition")}
-              code={JSON.stringify(build.definition, null, 2)}
-              lang="json"
-              testId="workflow-technical-definition"
-            />
-          ) : null}
-        </>
-      }
+      technical={<FactList items={technical} testId="workflow-technical-facts" />}
       tabs={tabs}
+      notice={<WorkflowStepGraph rows={rows} />}
       status={
         <>
-          <ScheduleAutoPauseNotice workflowId={id} workflowName={title} canWrite={canWrite} />
+          <ScheduleAutoPauseNotice workflowId={id} canWrite={canWrite} />
           <WorkflowStatus
             automation={automation}
             workflow={workflow}
@@ -697,10 +925,18 @@ export function WorkflowPage({
             permissions={permissions}
             noSteps={noSteps}
             onOffersApproval={setOffersApproval}
+            onAddStep={canWrite && !legacy ? () => reveal("build") : undefined}
           />
         </>
       }
     >
+      {sideAvailable ? (
+        <SideDetails>
+          <SideSection first title={t("ops.wf.current")} testId="side-workflow-approval">
+            {approvalBody}
+          </SideSection>
+        </SideDetails>
+      ) : null}
       {canWrite ? (
         <MetadataDialog id={id} record={record} open={editing} onOpenChange={setEditing} />
       ) : null}

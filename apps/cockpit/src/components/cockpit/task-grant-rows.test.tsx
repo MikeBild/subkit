@@ -60,7 +60,7 @@ describe("the rows of what a task may use", () => {
         testId="rows"
       />,
     );
-    expect(text(markup)).toContain("Diese Aufgabe nutzt weder Workflows noch Konnektoren.");
+    expect(text(markup)).toContain("Diese Aufgabe nutzt weder Workflows noch Connectors.");
     expect(markup).not.toContain("<ul");
   });
 
@@ -81,8 +81,8 @@ describe("the rows of what a task may use", () => {
       ],
     });
     const markup = shown(<TaskGrantRows rows={rows(granted)} mode="standing" live testId="rows" />);
-    expect(markup).toContain(`/cockpit/workflows/${WF_REPORT}?tab=approvals`);
-    expect(text(markup)).toContain("Workflow-Freigabe bis 2026-12-01T00:00:00.000Z · noch 5 Läufe");
+    expect(markup).toContain(`/cockpit/workflows/${WF_REPORT}#workflow-section-approvals`);
+    expect(text(markup)).toContain("Workflow-Freigabe bis 2026-12-01T00:00:00.000Z · noch 5 Runs");
     expect(markup).toMatch(/data-testid="task-grant-standing-4"[^>]*data-standing="co_granted"/);
     expect(text(markup)).toContain("mit erlaubt");
     expect(markup).toMatch(/data-testid="task-grant-standing-2"[^>]*data-standing="asks"/);
@@ -123,7 +123,7 @@ describe("the notice about workflows that cannot be allowed permanently", () => 
 
   test("is one sentence that names the workflow and says it asks on every run", () => {
     expect(text(notice())).toContain(
-      "„Angebot erstellen“ lässt sich nicht dauerhaft erlauben und fragt deshalb bei jedem Lauf.",
+      "„Angebot erstellen“ lässt sich nicht dauerhaft erlauben und fragt deshalb bei jedem Run.",
     );
     expect(text(notice(preview(), true, "en"))).toContain(
       "“Angebot erstellen” cannot be allowed permanently, so it asks on every run.",
@@ -136,7 +136,7 @@ describe("the notice about workflows that cannot be allowed permanently", () => 
     expect(markup).toContain('data-testid="blocked-why-toggle"');
     expect(text(markup)).toContain("Warum?");
     expect(text(markup)).toContain(
-      "Dieser Workflow lässt sich noch nicht für wiederholte Läufe freigeben, prüfe ihn auf seiner Seite.",
+      "Dieser Workflow lässt sich noch nicht für wiederholte Runs freigeben, prüfe ihn auf seiner Seite.",
     );
     expect(markup).toContain(`/cockpit/workflows/${WF_QUOTE}"`);
     expect(notice(preview(), false)).not.toContain('data-testid="blocked-open-0"');
@@ -157,12 +157,12 @@ describe("the notice about workflows that cannot be allowed permanently", () => 
     const markup = text(notice(preview({ workflows: [workflow({ blocked_reason })] })));
     expect(markup).toContain("„Zahlungsabgleich“ ist für diese Aufgabe nicht verfügbar.");
     expect(markup).toContain(sentence);
-    expect(markup).not.toContain("fragt deshalb bei jedem Lauf");
+    expect(markup).not.toContain("fragt deshalb bei jedem Run");
   });
 
   test("a workflow the person may not approve asks every time and says whom to ask", () => {
     const markup = text(notice(preview({ workflows: [workflow({ may_grant: false })] })));
-    expect(markup).toContain("fragt deshalb bei jedem Lauf");
+    expect(markup).toContain("fragt deshalb bei jedem Run");
     expect(markup).toContain(
       "Dir fehlt das Recht, diesen Workflow freizugeben, bitte eine Person darum, die es hat.",
     );

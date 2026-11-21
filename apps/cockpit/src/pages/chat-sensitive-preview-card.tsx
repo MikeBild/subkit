@@ -59,10 +59,7 @@ function CheckItem({ ok, children, testId }: { ok: boolean; children: string; te
     <li className="flex min-w-0 items-start gap-2" data-testid={testId} data-ok={ok}>
       <Icon
         aria-hidden="true"
-        className={cn(
-          "mt-0.5 size-4 shrink-0",
-          ok ? "text-emerald-700 dark:text-emerald-400" : "text-amber-700 dark:text-amber-400",
-        )}
+        className={cn("mt-0.5 size-4 shrink-0", ok ? "text-success-ink" : "text-warning-ink")}
       />
       <span className="min-w-0 break-words">{children}</span>
     </li>

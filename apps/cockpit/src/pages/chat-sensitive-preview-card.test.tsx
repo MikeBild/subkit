@@ -41,7 +41,7 @@ test("the primary action opens the run dialog on the workflow page and the @ ref
   expect(html).toContain("Im Cockpit selbst prüfen");
   expect(tag(html, "p-workflow")).toContain('href="/cockpit/workflows/wf-1"');
   expect(html).toContain("@upraft-auth-notify");
-  expect(html).not.toContain("Ohne Lauf speichern");
+  expect(html).not.toContain("Ohne Run speichern");
   expect(html).toContain("Inhalte prüfst nur du, mit echten Daten im Cockpit.");
 });
 

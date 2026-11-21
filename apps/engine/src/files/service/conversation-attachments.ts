@@ -65,6 +65,7 @@ export async function auditConversationAttachmentStored(
   db: Db,
   actor: FileActor,
   stored: StoredConversationAttachment,
+  source = "conversation_attachments",
 ): Promise<void> {
   const { row, scan } = stored;
   await auditAwait(
@@ -82,7 +83,7 @@ export async function auditConversationAttachmentStored(
         sha256_prefix: row.sha256 ? row.sha256.slice(0, 16) : undefined,
         dedup: stored.dedup,
         request_source: actor.request_source,
-        source: "conversation_attachments",
+        source,
       }),
     },
     db,

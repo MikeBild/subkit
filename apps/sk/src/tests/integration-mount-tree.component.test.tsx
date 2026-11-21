@@ -1,16 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { type ThemeName, ThemeProvider, useThemeControl } from "@chat-ui/index.ts";
 import { Box, Text } from "ink";
 import { useEffect, useState } from "react";
-import {
-  ErrorPanel,
-  ResizeBoundary,
-  SlashSuggest,
-  type ThemeName,
-  ThemeProvider,
-  ToastQueue,
-  useThemeControl,
-  useToast,
-} from "../shell/index.ts";
+import { SlashSuggest } from "../repl/slash/SlashSuggest.tsx";
+import { ErrorPanel } from "../shell/ErrorPanel.tsx";
+import { ResizeBoundary } from "../shell/ResizeBoundary.tsx";
+import { ToastQueue, useToast } from "../shell/ToastQueue.tsx";
 import { flush, renderInk } from "./helpers/ink.tsx";
 
 function App({

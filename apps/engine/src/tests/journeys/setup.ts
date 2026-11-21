@@ -28,6 +28,7 @@ import {
   type IdFactory,
   type SeededRandom,
   seedFromEnv,
+  TEST_MASTER_KEY,
   withTestEnv,
 } from "../../test-helpers/determinism/index.ts";
 import { __resetAll as resetCircuitBreakers } from "../../webhooks/outbound/circuit-breaker.ts";
@@ -86,6 +87,7 @@ export async function createJourneyCtx(
 ): Promise<JourneyCtx> {
   const envHandle: EnvHandle = withTestEnv({
     LLM_PROVIDER: "mock",
+    MASTER_KEY: TEST_MASTER_KEY,
     ...opts.envOverrides,
   });
   resetMockProvider();

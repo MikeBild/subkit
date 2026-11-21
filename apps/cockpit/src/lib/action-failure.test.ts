@@ -14,9 +14,9 @@ describe("action failure", () => {
   test("keeps the latest failure with its cause until it is cleared", () => {
     const cause = new Error("boom");
     reportFailure("Speichern fehlgeschlagen", cause);
-    reportFailure("Start fehlgeschlagen", cause, { body: "Der Lauf wurde nicht gestartet." });
+    reportFailure("Start fehlgeschlagen", cause, { body: "Der Run wurde nicht gestartet." });
     expect(failureSnapshot().failure?.title).toBe("Start fehlgeschlagen");
-    expect(failureSnapshot().failure?.body).toBe("Der Lauf wurde nicht gestartet.");
+    expect(failureSnapshot().failure?.body).toBe("Der Run wurde nicht gestartet.");
     expect(failureSnapshot().failure?.error).toBe(cause);
     clearFailure();
     expect(failureSnapshot().failure).toBeNull();

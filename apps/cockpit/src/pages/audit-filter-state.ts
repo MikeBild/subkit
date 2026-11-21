@@ -3,7 +3,7 @@ import {
   auditCorrelationFromUrl,
   initialAuditFilter,
   normalizedAuditScope,
-} from "./audit-model";
+} from "@/lib/audit-model";
 import { localDateTimeInput, utcChoiceForInstant } from "./audit-timeline-model";
 
 export type Source =

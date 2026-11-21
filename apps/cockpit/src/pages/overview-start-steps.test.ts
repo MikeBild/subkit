@@ -44,7 +44,7 @@ describe("the first steps on the overview", () => {
       "/connectors",
       "/chat/new",
       "/workflows",
-      "/people",
+      "/settings?area=people",
       "/api-access?section=clients",
     ]);
     expect(steps.map((step) => translate("de", step.title))).toEqual([

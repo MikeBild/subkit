@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { loadBuiltinTemplates, ProbeDiagnosticsSchema, ReadOperationSchema } from "./templates.ts";
 
 const templates = loadBuiltinTemplates();
 
-describe("connector-template catalog — Layer-3 vendor-drift sweep", () => {
+describe("connector-template catalog — verified_at", () => {
   test("schema accepts both null and an ISO timestamp for verified_at", async () => {
     const { ConnectorTemplateSchema } = await import("./templates.ts");
     const valid = templates[0]!;
@@ -20,46 +19,6 @@ describe("connector-template catalog — Layer-3 vendor-drift sweep", () => {
       verified_at: "not-a-date",
     });
     expect(withGarbage.success).toBe(false);
-  });
-
-  test("warns (does NOT fail) when verified_at is null or older than 90 days", () => {
-    const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
-    const now = getTestNow();
-    const stale: { slug: string; verified_at: string | null; reason: string }[] = [];
-    for (const t of templates) {
-      if (t.verified_at === null) {
-        stale.push({ slug: t.slug, verified_at: null, reason: "never swept" });
-        continue;
-      }
-      const verifiedMs = new Date(t.verified_at).getTime();
-      if (Number.isNaN(verifiedMs)) {
-        stale.push({ slug: t.slug, verified_at: t.verified_at, reason: "unparseable" });
-        continue;
-      }
-      const ageMs = now - verifiedMs;
-      if (ageMs > NINETY_DAYS_MS) {
-        const ageDays = Math.floor(ageMs / (24 * 60 * 60 * 1000));
-        stale.push({
-          slug: t.slug,
-          verified_at: t.verified_at,
-          reason: `${ageDays}d old (>90d)`,
-        });
-      }
-    }
-    if (stale.length > 0) {
-      const lines = stale.map(
-        (s) => `  - ${s.slug} (verified_at=${s.verified_at ?? "null"}, ${s.reason})`,
-      );
-      // eslint-disable-next-line no-console
-      console.warn(
-        [
-          `[connector-templates] vendor-drift sweep stale on ${stale.length}/${templates.length} templates.`,
-          `Run the Layer-3 vendor-drift sweep (RUN_TEMPLATE_AUDIT=1 bun scripts/template-vendor-sweep.ts) to refresh verified_at.`,
-          ...lines,
-        ].join("\n"),
-      );
-    }
-    expect(true).toBe(true);
   });
 });
 

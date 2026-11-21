@@ -59,6 +59,11 @@ export function readStoredDefinition(dag: unknown): StoredDefinition {
   };
 }
 
+export function hasNoSteps(dag: unknown): boolean {
+  const steps = (dag as { steps?: unknown } | null)?.steps;
+  return Array.isArray(steps) && steps.length === 0;
+}
+
 export function describeVersionIssues(issues: VersionIssue[]): string {
   const first = issues[0];
   const where = first

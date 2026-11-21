@@ -33,6 +33,7 @@ import {
   ExecListResponse,
   StepListResponse,
   serializeExec,
+  serializeResultMarkdown,
   serializeStep,
 } from "./execution-representation.ts";
 import { defineOperation, isRejection, reject } from "./index.ts";
@@ -277,6 +278,7 @@ export const getExecutionOperation = defineOperation<ExecutionGetInput, Executio
       ...serializeExec(row, workflow_name),
       outcome,
       trace_id,
+      ...serializeResultMarkdown(row),
     }),
   },
   tool: {
@@ -305,6 +307,7 @@ export const getExecutionOperation = defineOperation<ExecutionGetInput, Executio
             started_at: e.started_at,
             finished_at: e.finished_at,
             created_at: e.created_at,
+            ...serializeResultMarkdown(e),
           },
           outcome: executionOutcome,
         },

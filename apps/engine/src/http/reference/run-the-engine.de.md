@@ -72,12 +72,12 @@ Für Zugriff von außen brauchst du HTTPS und eine Zugriffskontrolle. Gib Datenb
 Für eine Wiederherstellung brauchst du Datenbank, Objektspeicherdaten, `.env`, die passende Compose-Datei und die Image-Identität zusammen.
 Teste die Wiederherstellung in einer separaten Installation, bevor du dich auf ein Backup verlässt oder ein Upgrade machst. Die Schritte stehen unter „Backup und Wiederherstellung“.
 
-### Browser-Crawling für die Konnektor-Discovery
+### Browser-Crawling für die Connector-Discovery
 
 Das mitgelieferte Image enthält keinen Browser und kein Node.js.
-Die Konnektor-Discovery sucht die Dokumentation eines Dienstes deshalb über HTTP: OpenAPI, GraphQL, Swagger UI, `llms.txt` und HTML-Seiten.
+Die Connector-Discovery sucht die Dokumentation eines Dienstes deshalb über HTTP: OpenAPI, GraphQL, Swagger UI, `llms.txt` und HTML-Seiten.
 Findet keiner dieser Wege die Dokumentation, nennt das Ergebnis den fehlenden Baustein: „browser discovery is not available“.
-Braucht die Dokumentation JavaScript zum Anzeigen, stelle eine erreichbare OpenAPI-Spezifikation bereit oder trage die Endpunkte des Konnektors selbst ein.
+Braucht die Dokumentation JavaScript zum Anzeigen, stelle eine erreichbare OpenAPI-Spezifikation bereit oder trage die Endpunkte des Connectors selbst ein.
 
 Browser-Crawling läuft nur, wenn beide Bedingungen gelten:
 
@@ -87,7 +87,7 @@ Browser-Crawling läuft nur, wenn beide Bedingungen gelten:
 - Der Schutz für ausgehende Verbindungen ist nicht strikt. Der Container startet mit
   `NODE_ENV=production` und damit strikt; er lehnt Browser-Discovery ab. Die Einstellung
   `egress.mode: permissive` erlaubt zusätzlich private und Loopback-Adressen für alle
-  Konnektoren. Wähle sie nur hinter einer Netzgrenze, die du geprüft hast.
+  Connectors. Wähle sie nur hinter einer Netzgrenze, die du geprüft hast.
 
 Ein abgeleitetes Image pflegst du selbst: Halte Playwright und den Browser aktuell, scanne
 es und liefere die Browser-Lizenzen mit. Dieser Weg ist nicht Teil der Release-Prüfungen.
@@ -95,7 +95,7 @@ es und liefere die Browser-Lizenzen mit. Dieser Weg ist nicht Teil der Release-P
 ### Backup und Wiederherstellung
 
 Ein Backup kopiert die ganze Installation und stellt sie mit demselben Image wieder her.
-Um nur die eigenen Workflows, Konnektoren, Skills und das Wissen eines Arbeitsbereichs auf eine andere Engine zu bringen, exportiere stattdessen ein Paket wie in „Die sk-CLI auf deinem Rechner verwenden“ beschrieben.
+Um nur die eigenen Workflows, Connectors, Skills und das Wissen eines Arbeitsbereichs auf eine andere Engine zu bringen, exportiere stattdessen ein Paket wie in „Die sk-CLI auf deinem Rechner verwenden“ beschrieben.
 
 Plane für ein konsistentes Backup ein Wartungsfenster ein.
 Die Schritte gelten für die mitgelieferte PostgreSQL und den mitgelieferten Objektspeicher; externe Dienste brauchen ein eigenes Verfahren.
@@ -125,7 +125,7 @@ Wähle das gesicherte Engine-Image mit `SUBKIT_IMAGE` und setze freie Loopback-P
 Verbinde die Testinstallation nicht mit externen Diensten, die Daten schreiben.
 
 Mit dem Start der Engine startet auch ihr Zeitplaner. Lege deshalb vor dem Start eine `docker-compose.override.yml` mit dieser Netzwerktrennung ins Wiederherstellungsverzeichnis.
-Lass sie aktiv, bis du wiederhergestellte Zeitpläne, Trigger und Konnektor-Rechte geprüft hast. Löse über dieses Projekt keine echten externen Wirkungen aus.
+Lass sie aktiv, bis du wiederhergestellte Zeitpläne, Trigger und Connector-Rechte geprüft hast. Löse über dieses Projekt keine echten externen Wirkungen aus.
 
 ```yaml
 networks:

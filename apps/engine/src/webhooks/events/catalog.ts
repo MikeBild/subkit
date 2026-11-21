@@ -7,6 +7,7 @@ import {
   ConnectorHealthChangedPayloadSchema,
   ConnectorOauthCallbackFailedPayloadSchema,
   ConnectorOauthCallbackPayloadSchema,
+  ConnectorSignInFinishedPayloadSchema,
 } from "../../pubsub/index.ts";
 import {
   ScheduleAutoPausedPayloadSchema,
@@ -281,6 +282,18 @@ export const EVENT_CATALOG = {
       reason: "provider_error",
     },
     actionable: ACTIONABLE,
+    resource: pointsAt("connector", "connector_id"),
+  },
+  "connector.oauth.signin_finished": {
+    name: "connector.oauth.signin_finished",
+    schema: ConnectorSignInFinishedPayloadSchema,
+    example: {
+      connector_id: "00000000-0000-4000-8000-000000000003",
+      connector_slug: "google-gmail",
+      outcome: "succeeded",
+      reason: null,
+    },
+    actionable: NOT_ACTIONABLE,
     resource: pointsAt("connector", "connector_id"),
   },
   "connector.auth_failed": {

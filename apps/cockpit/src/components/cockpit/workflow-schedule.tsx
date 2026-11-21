@@ -97,7 +97,6 @@ function ScheduleDialog({
               workflow_id: workflowId,
               cron,
               timezone: zone,
-              execution_mode: "prod",
               ...(input === undefined ? {} : { input }),
             },
           }),

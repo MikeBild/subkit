@@ -59,9 +59,17 @@ export interface IntakeSessionSnapshot extends IntakeSnapshotFields {
   tags?: string[] | undefined;
 }
 
+export interface IntakeAttachmentFacts {
+  file_id: string;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+}
+
 export interface IntakeNoteSnapshot extends IntakeSnapshotFields {
   origin: "note";
   source_url?: undefined;
+  attachment?: IntakeAttachmentFacts | undefined;
 }
 
 export type IntakeCollectedSnapshot = IntakeCaptureSnapshot | IntakeNoteSnapshot;
@@ -133,6 +141,7 @@ export const intakeItems = subkit.table(
     collected_by_id: uuid("collected_by_id").notNull(),
     admitted_target_kind: text("admitted_target_kind").$type<IntakeTargetKind>(),
     admitted_target_id: uuid("admitted_target_id"),
+    attachment_file_id: uuid("attachment_file_id"),
     ...timestamps,
   },
   (t) => [

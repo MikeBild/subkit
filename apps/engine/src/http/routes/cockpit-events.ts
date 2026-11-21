@@ -11,7 +11,7 @@ import {
 import {
   personalDelivery,
   type StreamDeliveryHint,
-  streamDeliveryHint,
+  streamDeliveryState,
 } from "../../notifications/index.ts";
 import { invalidateTenantState } from "../../operator/index.ts";
 import { can, hasBuiltinAdminRole } from "../../rbac/index.ts";
@@ -37,11 +37,18 @@ async function cockpitStreamPermissions(
 const HEARTBEAT_MS = 25_000;
 const DELIVERY_HINT_MS = 30_000;
 
+export type StreamViewerHint = StreamDeliveryHint | Readonly<Record<string, string>>;
+
+function hintFields(hint: StreamViewerHint): Record<string, string> {
+  if (hint === null) return {};
+  return typeof hint === "string" ? { delivery: hint } : { ...hint };
+}
+
 export function streamDeliveryReader(
-  read: (at: Date) => Promise<StreamDeliveryHint>,
+  read: (at: Date) => Promise<StreamViewerHint>,
   clock: () => number = Date.now,
-): () => Promise<StreamDeliveryHint> {
-  let cached: { until: number; value: Promise<StreamDeliveryHint> } | null = null;
+): () => Promise<StreamViewerHint> {
+  let cached: { until: number; value: Promise<StreamViewerHint> } | null = null;
   return () => {
     const at = clock();
     if (!cached || cached.until <= at)
@@ -52,19 +59,17 @@ export function streamDeliveryReader(
 
 export async function projectForViewer(
   row: { type: string; payload: unknown },
-  hint: () => Promise<StreamDeliveryHint>,
+  hint: () => Promise<StreamViewerHint>,
 ): Promise<Record<string, string>> {
   const projected = projectCockpitEvent(row);
   if (!cockpitEventTouchesAttention(row.type)) return projected;
-  const delivery = await hint();
-  return delivery ? { ...projected, delivery } : projected;
+  return { ...projected, ...hintFields(await hint()) };
 }
 
 export async function viewerDeliveryState(
-  hint: () => Promise<StreamDeliveryHint>,
+  hint: () => Promise<StreamViewerHint>,
 ): Promise<Record<string, string>> {
-  const delivery = await hint();
-  return delivery ? { delivery } : {};
+  return hintFields(await hint());
 }
 
 export function registerCockpitEventRoutes(app: OpenAPIHono<AppEnv>): void {
@@ -78,7 +83,7 @@ export function registerCockpitEventRoutes(app: OpenAPIHono<AppEnv>): void {
     });
     const hint = streamDeliveryReader(async (at) =>
       principal.kind === "user"
-        ? streamDeliveryHint(
+        ? streamDeliveryState(
             await personalDelivery(db, { tenant_id: tenantId, user_id: principal.id }, at),
           )
         : null,

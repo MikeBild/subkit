@@ -32,6 +32,14 @@ export function normalizeServerAddress(input: string): AddressResult {
   return { ok: true, origin: url.origin };
 }
 
+export function hostOf(origin: string): string {
+  try {
+    return new URL(origin).host || origin;
+  } catch {
+    return origin.replace(/^[a-z]+:\/\//i, "").replace(/\/+$/, "");
+  }
+}
+
 function parse(raw: string): URL | null {
   try {
     return new URL(raw);

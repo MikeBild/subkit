@@ -16,13 +16,13 @@ export function EnvironmentChip({
 }) {
   const { t } = useI18n();
   return (
-    <Chip className="rounded-full py-0 leading-4" data-environment={environment} testId={testId}>
+    <Chip data-environment={environment} testId={testId}>
       <span
         aria-hidden="true"
         className={
           environment === "prod"
-            ? "size-1.5 rounded-full bg-emerald-500"
-            : "size-1.5 rounded-full bg-amber-500"
+            ? "size-2 rounded-full bg-emerald-500"
+            : "size-2 rounded-full bg-muted-foreground/60"
         }
       />
       {t(environment === "prod" ? "environmentChip.prod" : "environmentChip.dev")}

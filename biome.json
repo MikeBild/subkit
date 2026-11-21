@@ -101,6 +101,24 @@
   },
   "overrides": [
     {
+      "includes": ["packages/ui/src/components/**"],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "noRedundantRoles": "off",
+            "noSvgWithoutTitle": "off",
+            "useAriaPropsSupportedByRole": "off",
+            "useFocusableInteractive": "off",
+            "useKeyWithClickEvents": "off",
+            "useSemanticElements": "off"
+          },
+          "suspicious": {
+            "noDocumentCookie": "off"
+          }
+        }
+      }
+    },
+    {
       "includes": ["apps/cockpit/src/components/ui/**"],
       "linter": {
         "rules": {

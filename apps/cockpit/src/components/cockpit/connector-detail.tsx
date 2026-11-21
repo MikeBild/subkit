@@ -29,6 +29,7 @@ import {
 import { ServiceIcon } from "@/components/cockpit/service-icon";
 import { MISSING } from "@/components/cockpit/table-columns";
 import { reportFailure } from "@/lib/action-failure";
+import { authLabel, driverLabel, environmentLabel, transportLabel } from "@/lib/connector-labels";
 import { humanize } from "@/lib/effect-label";
 import { formatRelativeTime, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
@@ -40,17 +41,13 @@ import type { InputField } from "@/lib/workflow-inputs";
 import { catalogOperatingStatus, OPERATING_STATUS_KEYS } from "@/pages/catalog-model";
 import {
   asRuntime,
-  authLabel,
   connectorConfiguredRuntime,
   docKindLabel,
   documentationLinks,
-  driverLabel,
-  environmentLabel,
   type McpInspect,
   mcpTransport,
   presentAddress,
   toolsWithoutConfirmation,
-  transportLabel,
 } from "@/pages/connector-detail-model";
 import { triggerLabelKey } from "@/pages/workflows-model";
 import { askingTools, toolTitle } from "./connector-view-model";

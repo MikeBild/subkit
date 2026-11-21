@@ -275,7 +275,7 @@ function resourceHref(resource: PlaybookResource): string {
     case "workflow":
       return `/cockpit/workflows/${resource.id}`;
     case "execution":
-      return `/cockpit/?run=${resource.id}`;
+      return `/cockpit/runs/${resource.id}`;
     case "knowledge":
       return `/cockpit/knowledge/${resource.id}`;
     case "file":
@@ -559,7 +559,7 @@ export async function resolvePlaybookEvidence(
       resource_id: executionId,
       observed_at: call.created_at.toISOString(),
       freshness: fresh ? "fresh" : "stale",
-      href: `/cockpit/?run=${executionId}`,
+      href: `/cockpit/runs/${executionId}`,
     },
   };
 }

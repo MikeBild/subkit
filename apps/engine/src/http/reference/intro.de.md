@@ -12,11 +12,11 @@ SubKit übernimmt wiederkehrende Geschäftsaufgaben, die mehrere Systeme berühr
 Es ist für Teams gedacht, die solche Routine verlässlich laufen lassen wollen, ohne dafür Software zu entwickeln.
 Du beschreibst die Aufgabe in eigenen Worten, die KI entwirft daraus einen Workflow, und eine Person prüft ihn und gibt frei, was er berühren darf.
 Danach läuft er in festen Schritten, nur mit den freigegebenen Rechten.
-Jeder Lauf wird aufgezeichnet.
+Jeder Run wird aufgezeichnet.
 
 Du arbeitest im Cockpit im Browser, als installierte App oder im Programm SubKit Desktop, mit der Kommandozeile `sk` oder aus KI-Clients wie Claude Code über MCP; der Web Clipper sammelt dazu Webseiten in deinem Eingang.
 
-![Übersicht mit Kennzahlen zu Läufen, Erfolgsquote, Konnektorzustand und Kosten, der Liste „Braucht dich“ mit offenen Entscheidungen und den letzten fehlgeschlagenen Läufen](images/intro-overview.de.webp)
+![Übersicht mit Kennzahlen zu Runs, Erfolgsquote, Connector-Zustand und Kosten, der Liste „Braucht dich“ mit offenen Entscheidungen und den letzten fehlgeschlagenen Runs](images/intro-overview.de.webp)
 
 Die **Übersicht** zeigt dir auf einen Blick, was gelaufen ist, was gescheitert ist und was auf deine Entscheidung wartet.
 Wie du Kosten und Kontingent verfolgst, steht in „Nutzung und Kosten im Blick“.
@@ -27,5 +27,6 @@ Nutze SubKit Cloud oder betreibe deine eigene Engine:
 - „Die Engine betreiben“: Du betreibst SubKit auf deinem eigenen Server.
 
 Danach baust du mit „Dein erster Workflow“ deinen ersten Workflow.
+Jede Funktion mit ihrer Verfügbarkeit findest du unter [SubKit-Funktionen im Überblick](setup.md#subkit-funktionen-im-überblick).
 
 ![Dokumentationsseite mit Suche, dem Pfad „Erste Schritte“ mit den Schritten 1 bis 4 und der Liste „Mit SubKit arbeiten“](images/intro-docs.de.webp)

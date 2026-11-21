@@ -27,6 +27,7 @@ enter `localhost:3000` in the connect screen. A server without the desktop login
 | `bun run notices` | Write `dist/THIRD_PARTY_NOTICES.txt` for the bundled packages, the runtime and its FFmpeg library; needs the Electron distribution |
 | `bun run notices:check` | The same checks without writing; the gate runs it |
 | `bun run verify:feed <dir> <version>` | Compare the update feed files in a folder with the artifacts next to them |
+| `bun run preview:shell <dir> [prefix]` | After a build: screenshots of quick capture, drop sheet and browser sheet in every state, de/en, light/dark |
 | `bun run tray-icon` | Render the menu bar template image from the Cockpit mark (needs `rsvg-convert`) |
 | `bun run package` | Production build, notices, then `electron-builder` for the current platform |
 | `bun run package:dir` | The same, unpacked into `release/` without installers |
@@ -44,6 +45,8 @@ src/shared/    pure logic with unit tests, no Electron import
 src/main/      main process
 src/preload/   bridges: window.subkitConnect (connect screen), window.subkitDesktop (Cockpit)
 src/connect/   connect and settings screen, German and English
+src/shell/     the shell's own small windows in React with packages/ui: quick capture,
+               drop sheet, browser sheet
 scripts/       build.ts, notices.ts, fonts.ts, tray-icon.ts
 ```
 
@@ -118,7 +121,7 @@ The shell needs a server from version 11.2.0 on, the first release with the desk
 
 ## Cockpit bridge
 
-The Cockpit sees `window.subkitDesktop` (protocol version 3) and nothing else of the shell.
+The Cockpit sees `window.subkitDesktop` (protocol version 4) and nothing else of the shell.
 Only the main frame of the signed-in server origin may call it.
 
 - `diagnostics()` answers the local diagnostics bundle: app, runtime, operating system, server
@@ -137,8 +140,39 @@ Only the main frame of the signed-in server origin may call it.
 - `onFeedbackRequested(listener)` lets the page open its feedback dialog when the person picks
   “Report a problem” in a menu. The shell takes the picture first, so the dialog is not in it,
   and loads `feedback_path` only when the page does not listen.
+- `status()` and `onStatus(listener)` answer the connection banner (`offline`, `expired`,
+  `revoked` with tone, title and body in the shell's language, or `null`) and a pending update
+  (`{version, ready}`), so the Cockpit can show them with its `ErrorNotice`.
 - `sessionEnded()` and `setLocale()` tell the shell that the session ended or the language
   changed.
+
+## Tray, notifications and the shell windows
+
+The tray follows the click-dummy: open, “Needs you” with the count (also the menu bar title and
+the Dock badge), pause or resume notifications with the time they come back (“Paused until
+15:05”, or “Quiet hours until 07:00” while quiet hours hold banners back), launch at login,
+updates, quick note, settings, report a problem, quit. `src/shared/tray-model.ts` builds the menu as data.
+
+Native notifications open their entry: attention items their Cockpit address, a quick note the
+inbox item, a session end the sign-in window, an update the update settings. The shell announces
+offline (after being online), back online, session expired, device signed out and an available
+update once each (`src/shared/status-model.ts`); a pause or quiet hours hold them back like every
+other banner.
+
+The shell's own windows are one React page, `subkit-app://shell/shell.html#<view>`, built from
+`src/shell`: the click-dummy's QuickCapture, DropSheet and BrowserSheet copied with their markup,
+fed by `use-shell.tsx` instead of the dummy store, with the design system in `packages/ui`. The
+windows are transparent: quick capture sits at the top of the display, the two sheets lie on the
+app window as its overlay.
+
+| View | Opens on | Does |
+| --- | --- | --- |
+| `capture` | ⌥ Space (Ctrl+Alt+Space on Windows and Linux) or the tray | `POST /v1/intake/items` as a note |
+| `drop` | files dropped on the Dock icon, the menu bar icon or opened with SubKit | file: `POST /v1/files/inline` (5 MB); source: `POST /v1/knowledge-sources` (50 MB); inbox: text files as notes (1 MB); chat: not available yet |
+| `sheet` | the Cockpit sends the window to an OAuth authorization address whose `redirect_uri` is this server's `/v1/oauth/callback` | opens it in the system browser, shows host and path with the lock, and reloads the Cockpit when the person comes back |
+
+The writes use the installation's cookie session and the CSRF token from
+`/v1/cockpit/bootstrap`, like the Cockpit (`src/main/workspace-api.ts`).
 
 ## Security
 
@@ -181,6 +215,10 @@ system does not know it, and it is the same in both channels.
   developer tools of a development run excepted), the
   preload exposes `window.subkitConnect` only on the connect page, and the main process
   accepts its calls only from that page.
+
+The shell windows get the same treatment in their own session (`shell` partition), served
+from `dist/shell` only; the preload exposes `window.subkitShell` only on `shell.html`, and the
+main process accepts its calls only from the shell window that sent them.
 
 Add a page by putting its files into `dist/connect` in `scripts/build.ts`; a new file type
 needs an entry in `src/shared/app-files.ts`.

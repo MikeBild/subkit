@@ -45,7 +45,7 @@ Codex:
 codex mcp add sk --url https://<deine-engine>/mcp --bearer-token-env-var SK_API_KEY
 ```
 
-Ein Schlüssel ohne `mcp:authoring` lässt den Agenten lesen und Workflows starten, aber nichts bauen. Soll er Workflows und Konnektoren entwerfen, legst du den Schlüssel mit `sk apikeys create --scopes …,mcp:authoring` an.
+Ein Schlüssel ohne `mcp:authoring` lässt den Agenten lesen und Workflows starten, aber nichts bauen. Soll er Workflows und Connectors entwerfen, legst du den Schlüssel mit `sk apikeys create --scopes …,mcp:authoring` an.
 Ohne Schlüssel anmelden: siehe „KI-Clients per MCP anbinden“.
 
 ### Briefings in einem Repository einrichten

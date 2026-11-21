@@ -12,6 +12,7 @@ import {
   personalScheduleApplies,
   type StreamDeliveryHint,
   streamDeliveryHint,
+  streamDeliveryState,
 } from "./personal-schedule.ts";
 
 const at = (iso: string) => new Date(iso);
@@ -95,6 +96,45 @@ describe("the delivery verdict of one person", () => {
   });
 });
 
+describe("a personal pause on top of the schedule", () => {
+  const inside = at("2026-11-20T10:00:00Z");
+  const pausedHour = { paused_at: inside, paused_until: at("2026-11-20T11:00:00Z") };
+
+  test("a pause holds inside working hours and names itself as the reason", () => {
+    const paused = deliveryOf(preference({ pause: pausedHour }), inside);
+    expect(paused).toMatchObject({ held: true, held_by: "pause", digest: false });
+    expect(paused.next_delivery?.toISOString()).toBe("2026-11-20T11:00:00.000Z");
+    expect(deliverableNow(paused, [failing, stoppedLive])).toEqual([]);
+    expect(streamDeliveryState(paused)).toEqual({
+      delivery: "held",
+      held_by: "pause",
+      held_until: "2026-11-20T11:00:00.000Z",
+    });
+  });
+
+  test("the critical breakthrough still reaches a paused person", () => {
+    const paused = deliveryOf(
+      preference({ pause: pausedHour, critical_breakthrough: true }),
+      inside,
+    );
+    expect(deliverableNow(paused, [failing, stoppedLive, stoppedTest])).toEqual([stoppedLive]);
+    expect(streamDeliveryState(paused)).toMatchObject({ delivery: "critical_only" });
+  });
+
+  test("a pause until resumed has no end, an elapsed pause hands back to the schedule", () => {
+    const open = deliveryOf(
+      preference({ pause: { paused_at: inside, paused_until: null } }),
+      at("2026-12-01T10:00:00Z"),
+    );
+    expect(streamDeliveryState(open)).toEqual({ delivery: "held", held_by: "pause" });
+    const over = deliveryOf(preference({ pause: pausedHour }), at("2026-11-20T11:00:00Z"));
+    expect(over).toMatchObject({ held: false, held_by: null });
+    expect(streamDeliveryState(over)).toBeNull();
+    const weekend = deliveryOf(preference({ pause: pausedHour }), at("2026-11-21T10:00:00Z"));
+    expect(weekend).toMatchObject({ held: true, held_by: "schedule" });
+  });
+});
+
 describe("the announcement hint on the Cockpit event stream", () => {
   const hintOf = (value: StreamDeliveryHint) => async () => value;
   const connector = "c0ffee00-0000-4000-8000-000000000001";
@@ -133,6 +173,13 @@ describe("the announcement hint on the Cockpit event stream", () => {
       delivery: "critical_only",
     });
     expect(await viewerDeliveryState(hintOf(null))).toEqual({});
+    expect(
+      await viewerDeliveryState(async () => ({
+        delivery: "held",
+        held_by: "pause",
+        held_until: "2026-11-20T11:00:00.000Z",
+      })),
+    ).toEqual({ delivery: "held", held_by: "pause", held_until: "2026-11-20T11:00:00.000Z" });
   });
 
   test("the verdict is read again after half a minute and a failed read hides nothing", async () => {

@@ -17,7 +17,6 @@ import {
   FieldLabel,
   FilterBar,
   FormDialog,
-  GroupingTabs,
   Input,
   StatusBadge,
 } from "@/components/cockpit/patterns";
@@ -25,12 +24,14 @@ import { tableColumns } from "@/components/cockpit/table-columns";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
 import { statusLabel } from "@/lib/status-label";
-import { isPersonRole, PERSON_ROLES, type PersonRole, roleName } from "@/pages/admin-model";
-import { personApps, personEmailText, personNameText } from "@/pages/apps-model";
-import { inviteLink, joinCommand } from "@/pages/invite-model";
 import { presentRoles, refusalToast, type UserItem, usePeopleList, useRoles } from "./data";
+import { isPersonRole, PERSON_ROLES, type PersonRole, roleName } from "./model/admin-model";
+import { personApps, personEmailText, personNameText } from "./model/apps-model";
+import { inviteLink, joinCommand } from "./model/invite-model";
+import type { IssuedInvite } from "./model/invite-send-model";
 import { AdminTable, ChoiceField, SectionList } from "./parts";
 import { PersonSheet } from "./person-sheet";
+import { useInviteSend } from "./use-invite-send";
 
 export function PeopleTab({ action }: { action: ReactNode }) {
   const { t, tn, dateTime } = useI18n();
@@ -38,19 +39,8 @@ export function PeopleTab({ action }: { action: ReactNode }) {
   const client = useQueryClient();
   const router = useRouter();
   const canInvite = session.permissions.includes("identity:write");
-  const [link, setLink] = useState<IssuedInvite | null>(null);
   const [withdrawing, setWithdrawing] = useState<UserItem | null>(null);
-  const reissue = useMutation({
-    mutationFn: (user: UserItem) =>
-      apiCall("post", "/v1/identity/users/{id}/invites", { path: { id: user.id }, body: {} }),
-    onSuccess: (result, user) =>
-      setLink({
-        email: personEmailText(user, t),
-        token: result.plaintext_token,
-        expiresAt: result.expires_at,
-      }),
-    onError: (error) => refusalToast(error, t),
-  });
+  const invite = useInviteSend();
   const withdraw = useMutation({
     mutationFn: (user: UserItem) =>
       apiCall("delete", "/v1/identity/users/{id}", { path: { id: user.id } }),
@@ -119,14 +109,18 @@ export function PeopleTab({ action }: { action: ReactNode }) {
             ) : null}
           </span>
         ),
-        { width: "w-[44%]" },
+        { width: "w-[40%]" },
       ),
       column.custom(
         "role",
         (row) => row.role,
         t("people.role"),
         (row, index) => (
-          <span className="block truncate" data-testid={`people-role-badge-${index}`}>
+          <span
+            className="block truncate"
+            title={row.role ? roleName(row.role, roleItems, t).text : undefined}
+            data-testid={`people-role-badge-${index}`}
+          >
             {row.role ? <LabelText label={roleName(row.role, roleItems, t)} /> : null}
           </span>
         ),
@@ -137,7 +131,7 @@ export function PeopleTab({ action }: { action: ReactNode }) {
         (row) => row.status,
         t("resource.field.status"),
         (row) => <StatusBadge state={row.status} />,
-        { width: "w-[28%]" },
+        { width: "w-[32%]" },
       ),
     ];
   }, [t, dateTime, roleItems]);
@@ -171,20 +165,6 @@ export function PeopleTab({ action }: { action: ReactNode }) {
           collectionId="people-list"
           columns={columns}
           data={shown}
-          groupingTabs={
-            <GroupingTabs
-              label={t("common.groupBy")}
-              value={groupMode}
-              onChange={setGroupMode}
-              options={[
-                { value: "all", label: t("common.all") },
-                { value: "role", label: t("people.role") },
-                { value: "status", label: t("resource.field.status") },
-              ]}
-              testId="people-grouping"
-              note={groupMode === "all" ? undefined : t("common.loadedOnly")}
-            />
-          }
           grouping={
             groupMode === "all"
               ? undefined
@@ -197,6 +177,7 @@ export function PeopleTab({ action }: { action: ReactNode }) {
           }
           infinite={people.infinite}
           onOpen={(row) => setOpenedId(row.id)}
+          rowActionsFit="menu"
           rowActions={
             canInvite
               ? (row, index) =>
@@ -211,10 +192,10 @@ export function PeopleTab({ action }: { action: ReactNode }) {
                       testId={`people-row-menu-${index}`}
                       items={[
                         {
-                          label: t("people.invite.again"),
-                          onSelect: () => reissue.mutate(row),
-                          disabled: reissue.isPending,
-                          testId: `people-invite-again-${index}`,
+                          label: t("people.invite.send"),
+                          onSelect: () => invite.send(row.id, personEmailText(row, t)),
+                          disabled: invite.pending,
+                          testId: `people-invite-send-${index}`,
                         },
                         {
                           label: t("people.invite.withdraw"),
@@ -240,48 +221,73 @@ export function PeopleTab({ action }: { action: ReactNode }) {
             chooseApp("all");
           }}
           toolbar={
-            <FilterBar
-              search={{
-                value: search,
-                onChange: setSearch,
-                placeholder: t("people.search"),
-                testId: "people-search",
-              }}
-              selects={[
-                {
-                  value: roleFilter,
-                  onChange: setRoleFilter,
-                  label: t("people.role"),
-                  testId: "people-role-filter",
-                  options: [
-                    { value: "all", label: t("people.allRoles") },
-                    ...roleOptions.map((name) => ({
-                      value: name,
-                      label: roleName(name, roleItems, t).text,
-                    })),
-                  ],
-                },
-                ...(appOptions.length > 0
-                  ? [
-                      {
-                        value: appFilter ?? "all",
-                        onChange: chooseApp,
-                        label: t("people.app"),
-                        testId: "people-app-filter",
-                        options: [
-                          { value: "all", label: t("people.allApps") },
-                          ...appOptions.map((app) => ({ value: app, label: app })),
-                        ],
-                      },
-                    ]
-                  : []),
-              ]}
-            />
+            <>
+              <FilterBar
+                search={{
+                  value: search,
+                  onChange: setSearch,
+                  placeholder: t("people.search"),
+                  testId: "people-search",
+                }}
+                reset={{
+                  label: t("catalog.clearFilters"),
+                  onClick: () => {
+                    setRoleFilter("all");
+                    setGroupMode("all");
+                    chooseApp("all");
+                  },
+                }}
+                selects={[
+                  {
+                    value: roleFilter,
+                    defaultValue: "all",
+                    onChange: setRoleFilter,
+                    label: t("people.role"),
+                    testId: "people-role-filter",
+                    options: [
+                      { value: "all", label: t("people.allRoles") },
+                      ...roleOptions.map((name) => ({
+                        value: name,
+                        label: roleName(name, roleItems, t).text,
+                      })),
+                    ],
+                  },
+                  ...(appOptions.length > 0
+                    ? [
+                        {
+                          value: appFilter ?? "all",
+                          defaultValue: "all",
+                          onChange: chooseApp,
+                          label: t("people.app"),
+                          testId: "people-app-filter",
+                          options: [
+                            { value: "all", label: t("people.allApps") },
+                            ...appOptions.map((app) => ({ value: app, label: app })),
+                          ],
+                        },
+                      ]
+                    : []),
+                  {
+                    value: groupMode,
+                    defaultValue: "all",
+                    onChange: setGroupMode,
+                    label: t("common.groupBy"),
+                    testId: "people-grouping",
+                    options: [
+                      { value: "all", label: t("common.all") },
+                      { value: "role", label: t("people.role") },
+                      { value: "status", label: t("resource.field.status") },
+                    ],
+                  },
+                ]}
+              />
+              {action ? <span className="ms-auto">{action}</span> : null}
+            </>
           }
         />
       </SectionList>
       <PersonSheet user={opened} roles={roleItems} onClose={() => setOpenedId(null)} />
-      <InviteLinkDialog invite={link} onClose={() => setLink(null)} />
+      <InviteLinkDialog invite={invite.link} onClose={invite.closeLink} />
       <ConfirmDialog
         open={withdrawing !== null}
         onOpenChange={(open) => !open && setWithdrawing(null)}
@@ -301,12 +307,6 @@ export function PeopleTab({ action }: { action: ReactNode }) {
   );
 }
 
-export interface IssuedInvite {
-  email: string;
-  token: string;
-  expiresAt: string;
-}
-
 export function InviteLinkBody({
   invite,
   origin,
@@ -320,10 +320,10 @@ export function InviteLinkBody({
   return (
     <>
       <p className="text-sm" data-testid="people-invite-link-body">
-        {t("people.invite.link.body", { email: invite.email })}
+        {t(invite.note ?? "people.invite.link.body", { email: invite.email })}
       </p>
       <CopyField
-        value={inviteLink(origin, invite.token)}
+        value={invite.url ?? inviteLink(origin, invite.token)}
         label={t("people.invite.link.title")}
         testId="people-invite-link"
       />
@@ -343,7 +343,13 @@ export function InviteLinkBody({
   );
 }
 
-function InviteLinkDialog({ invite, onClose }: { invite: IssuedInvite | null; onClose(): void }) {
+export function InviteLinkDialog({
+  invite,
+  onClose,
+}: {
+  invite: IssuedInvite | null;
+  onClose(): void;
+}) {
   const { t } = useI18n();
   const session = useSession();
   return (

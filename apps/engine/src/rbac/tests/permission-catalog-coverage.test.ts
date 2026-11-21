@@ -56,13 +56,11 @@ describe("RBAC permission catalog coverage", () => {
   });
 
   test("no `requirePermission(...)` site uses a non-literal first argument", async () => {
-    const DYNAMIC_ALLOW: ReadonlySet<string> = new Set<string>();
     const glob = new Glob("apps/engine/src/http/routes/**/*.ts");
     const callRe = /requirePermission\(/;
     const literalRe = /requirePermission\(\s*["']/;
     const offenders: Array<{ file: string; line: number; snippet: string }> = [];
     for await (const file of glob.scan({ cwd: ROOT, absolute: false, onlyFiles: true })) {
-      if (DYNAMIC_ALLOW.has(file)) continue;
       const src = readFileSync(resolve(ROOT, file), "utf8");
       const lines = src.split("\n");
       let inBlockComment = false;
@@ -86,7 +84,7 @@ describe("RBAC permission catalog coverage", () => {
     if (offenders.length > 0) {
       const out = offenders.map((o) => `  ${o.file}:${o.line}: ${o.snippet}`).join("\n");
       throw new Error(
-        `requirePermission(...) called with a non-literal slug — the literal-string catalog gate cannot verify it:\n${out}\n\nUse a literal slug, or add the file to DYNAMIC_ALLOW with a comment.`,
+        `requirePermission(...) called with a non-literal slug — the literal-string catalog gate cannot verify it:\n${out}\n\nUse a literal slug.`,
       );
     }
   });

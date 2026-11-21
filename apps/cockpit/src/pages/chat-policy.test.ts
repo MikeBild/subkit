@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { type TranslationKey, translate } from "@/lib/i18n";
+import { ruleDates, splitRules } from "@/features/rules";
+import { type PluralKey, type TranslationKey, translate, translatePlural } from "@/lib/i18n";
 import { newChatMode, personalModeSuffixKey } from "./chat-default-mode";
 import {
   ASK_REASON_KEYS,
@@ -14,18 +15,23 @@ import {
   livePolicy,
   ranLine,
   ranWithoutAsking,
+  rawRequest,
   refusedApprovalReply,
   ruleName,
   scopeSentence,
   type ToolCallPolicy,
+  targetLabel,
   typedDecision,
 } from "./chat-policy";
-import { ruleDates, splitRules } from "./settings-rules-model";
 
 const de = (key: TranslationKey, values?: Record<string, string | number>) =>
   translate("de", key, values);
 const en = (key: TranslationKey, values?: Record<string, string | number>) =>
   translate("en", key, values);
+const deN = (key: PluralKey, count: number, values?: Record<string, string | number>) =>
+  translatePlural("de", key, count, values);
+const enN = (key: PluralKey, count: number, values?: Record<string, string | number>) =>
+  translatePlural("en", key, count, values);
 
 const action = {
   verb: "send" as const,
@@ -85,18 +91,28 @@ describe("why an action asked", () => {
 
 describe("the bound action", () => {
   test("the card names verb, target, account, recipients and content", () => {
-    expect(actionFacts(action, de).map((fact) => [fact.label, fact.value])).toEqual([
+    expect(actionFacts(action, de, deN).map((fact) => [fact.label, fact.value])).toEqual([
       ["Aktion", "Senden"],
-      ["Ziel", "POST /v1/messages/send"],
+      ["Ziel", "anna@firma.de"],
       ["Konto", "Gmail"],
-      ["Empfänger", "anna@firma.de"],
       ["Inhalt", "Betreff: Wochenzahlen"],
     ]);
-    expect(actionFacts({ ...action, effect_class: "payment" }, de)[0]?.value).toBe(
+    expect(
+      actionFacts({ ...action, recipients: [] }, de, deN).find((fact) => fact.id === "target")
+        ?.value,
+    ).toBe("Messages");
+    const team = { ...action, recipients: ["anna@firma.de", "bob@firma.de"] };
+    expect(actionFacts(team, de, deN).find((fact) => fact.id === "target")?.value).toBe(
+      "anna@firma.de, bob@firma.de (2 Personen)",
+    );
+    expect(actionFacts(team, en, enN).find((fact) => fact.id === "target")?.value).toBe(
+      "anna@firma.de, bob@firma.de (2 people)",
+    );
+    expect(actionFacts({ ...action, effect_class: "payment" }, de, deN)[0]?.value).toBe(
       "Senden · Zahlung",
     );
     expect(
-      actionFacts({ verb: "run", target: null, account: null, recipients: [] }, en).map(
+      actionFacts({ verb: "run", target: null, account: null, recipients: [] }, en, enN).map(
         (fact) => fact.id,
       ),
     ).toEqual(["verb"]);
@@ -139,7 +155,7 @@ describe("the bound action", () => {
     expect(fullContent(drafted)).toEqual({ text: drafted.content, capped: false, long: false });
     expect(fullContent({ content: "Zeile\n".repeat(12) })?.long).toBe(true);
     expect(fullContent({ content: "a".repeat(601) })?.long).toBe(true);
-    expect(actionFacts(drafted, de).map((fact) => fact.id)).not.toContain("content");
+    expect(actionFacts(drafted, de, deN).map((fact) => fact.id)).not.toContain("content");
     expect(fullContent({ ...action, content: null })).toBeNull();
     expect(fullContent({ content: "   " })).toBeNull();
   });
@@ -158,13 +174,11 @@ describe("the bound action", () => {
   test("an action that ran without asking says what ran and why", () => {
     const ran = ranWithoutAsking(policy);
     expect(ran && ranLine(ran, de)).toBe(
-      "Senden: POST /v1/messages/send an anna@firma.de, weil du es verlangt hast",
+      "Senden: Messages an anna@firma.de, weil du es verlangt hast",
     );
     expect(ran?.quote).toBe("Schick bitte eine Mail an anna@firma.de");
     const byRule = ranWithoutAsking({ ...policy, rule: "standing_rule", because: null });
-    expect(byRule && ranLine(byRule, en)).toBe(
-      "Send: POST /v1/messages/send to anna@firma.de, per your rule",
-    );
+    expect(byRule && ranLine(byRule, en)).toBe("Send: Messages to anna@firma.de, per your rule");
     expect(ranWithoutAsking({ ...policy, ran_without_asking: false })).toBeNull();
     expect(ranWithoutAsking(null)).toBeNull();
     expect(actionLine({ verb: "save", target: null, account: null, recipients: [] }, de)).toBe(
@@ -172,14 +186,29 @@ describe("the bound action", () => {
     );
   });
 
-  test("a rule is named by its verb and target and shows its whole scope", () => {
-    expect(ruleName(action, de)).toBe("Senden: POST /v1/messages/send");
-    expect(scopeSentence(action, de)).toBe(
-      "Senden: POST /v1/messages/send über Gmail an anna@firma.de",
-    );
+  test("a rule is named by its verb and readable target and shows its whole scope", () => {
+    expect(ruleName(action, de)).toBe("Senden: Messages");
+    expect(scopeSentence(action, de)).toBe("Senden: Messages über Gmail an anna@firma.de");
     expect(
       scopeSentence({ verb: "create", target: "POST /echo", account: null, recipients: [] }, en),
-    ).toBe("Create: POST /echo without a recipient");
+    ).toBe("Create: Echo without a recipient");
+    expect(ruleName({ ...action, target: "Kalender Team" }, de)).toBe("Senden: Kalender Team");
+    expect(ruleName({ ...action, target: "POST /v1/" }, de)).toBe("Senden");
+  });
+
+  test("a raw request target reads as its resource and stays available as the request", () => {
+    expect(targetLabel("POST /v1/messages/send")).toBe("Messages");
+    expect(targetLabel("PATCH https://api.example/v1/reports/42")).toBe("Reports");
+    expect(
+      targetLabel("GET /repos/{owner}/{repo}/pull_requests/0f8fad5b-d9cb-469f-a165-70867728950e"),
+    ).toBe("Pull requests");
+    expect(targetLabel("DELETE /v2/calendar-events/123?force=true")).toBe("Calendar events");
+    expect(targetLabel("Team-Kalender")).toBe("Team-Kalender");
+    expect(targetLabel(null)).toBeNull();
+    expect(rawRequest("POST /v1/messages/send")).toBe("POST /v1/messages/send");
+    expect(rawRequest("https://api.example/v1/reports")).toBe("https://api.example/v1/reports");
+    expect(rawRequest("Team-Kalender")).toBeNull();
+    expect(rawRequest(null)).toBeNull();
   });
 });
 

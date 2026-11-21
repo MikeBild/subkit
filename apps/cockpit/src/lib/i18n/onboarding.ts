@@ -70,6 +70,7 @@ export const onboardingEn = {
   "invite.expired.title": "This invitation has expired",
   "invite.gone.body": "Ask the person who invited you for a new invitation link.",
   "invite.redeemed.signIn": "Go to sign-in",
+  "invite.back": "Back to SubKit",
   "invite.invalid.title": "This invitation link isn’t valid",
   "invite.invalid.body": "Check that the link is complete, or ask for a new one.",
   "invite.cli.title": "You redeem this invitation with the command line",
@@ -91,7 +92,15 @@ export const onboardingEn = {
   "people.invite.link.meta":
     "Valid until {time}. The link works only once and only for this address.",
   "people.invite.link.cli": "Join with the command line",
-  "people.invite.again": "Create link again",
+  "people.invite.send": "Send invitation",
+  "people.invite.sent": "Invitation sent to {to}",
+  "people.invite.wait": "Too many invitations right now. Try again in {minutes} min.",
+  "people.invite.note.no_mail_transport":
+    "No mail delivery set up – copy the link and pass it on to {email}.",
+  "people.invite.note.mail_failed":
+    "The email to {email} did not go out – copy the link and pass it on yourself.",
+  "people.invite.note.no_public_url":
+    "Without a public address SubKit mails no link – copy the link and pass it on to {email}.",
   "people.invite.withdraw": "Withdraw invitation",
   "people.invite.withdrawVerb": "Withdraw",
   "people.invite.withdrawObject": "the invitation for {email}",
@@ -185,6 +194,7 @@ export const onboardingDe: Record<keyof typeof onboardingEn, string> = {
   "invite.expired.title": "Diese Einladung ist abgelaufen",
   "invite.gone.body": "Bitte die Person, die dich eingeladen hat, um einen neuen Einladungslink.",
   "invite.redeemed.signIn": "Zur Anmeldung",
+  "invite.back": "Zurück zu SubKit",
   "invite.invalid.title": "Dieser Einladungslink ist nicht gültig",
   "invite.invalid.body": "Prüfe, ob der Link vollständig ist, oder bitte um einen neuen.",
   "invite.cli.title": "Diese Einladung löst du mit der Kommandozeile ein",
@@ -207,7 +217,15 @@ export const onboardingDe: Record<keyof typeof onboardingEn, string> = {
   "people.invite.link.meta":
     "Gültig bis {time}. Der Link funktioniert nur einmal und nur für diese Adresse.",
   "people.invite.link.cli": "Mit der Kommandozeile beitreten",
-  "people.invite.again": "Link erneut erzeugen",
+  "people.invite.send": "Einladung senden",
+  "people.invite.sent": "Einladung an {to} gesendet",
+  "people.invite.wait": "Gerade zu viele Einladungen. Versuch es in {minutes} Min. wieder.",
+  "people.invite.note.no_mail_transport":
+    "Kein Mailversand eingerichtet – Link kopieren und an {email} weitergeben.",
+  "people.invite.note.mail_failed":
+    "Die E-Mail an {email} ging nicht raus – Link kopieren und selbst weitergeben.",
+  "people.invite.note.no_public_url":
+    "Ohne öffentliche Adresse verschickt SubKit keinen Link per E-Mail – Link kopieren und an {email} weitergeben.",
   "people.invite.withdraw": "Einladung zurückziehen",
   "people.invite.withdrawVerb": "Zurückziehen",
   "people.invite.withdrawObject": "Die Einladung für {email}",

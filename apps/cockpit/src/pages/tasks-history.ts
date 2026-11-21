@@ -1,5 +1,5 @@
+import { auditReasonLabel } from "@/lib/audit-model";
 import type { TranslationKey } from "@/lib/i18n";
-import { auditReasonLabel } from "./audit-model";
 import { historyKey } from "./tasks-model";
 import { waitingReasonKey } from "./tasks-waiting";
 

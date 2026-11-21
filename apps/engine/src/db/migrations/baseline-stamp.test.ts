@@ -71,6 +71,8 @@ describe("baseline over the squashed migration chain", () => {
       "0011_setup_and_approval_rules",
       "0012_rule_limits_and_quiet_hours",
       "0013_rule_expiry_and_gentle_auto_pause",
+      "0014_klickdummy_gaps",
+      "0015_ui_gaps",
     ]);
     expect(baseline.idx).toBe(0);
   });

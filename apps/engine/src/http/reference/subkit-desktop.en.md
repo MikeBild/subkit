@@ -33,9 +33,9 @@ The table in “Cockpit as an app” shows how it differs from the installed web
 
 ### Connect to a server
 
-1. Start SubKit Desktop. You see “Connect to SubKit”.
-2. Enter the address of your server under **Server address** and select **Check server**.
-3. Read the result. With “Found SubKit …. You can sign in.” everything fits.
+1. Start SubKit Desktop. You see “Connect server”.
+2. Enter the address of your server under **Server address** and select **Check connection**. **Examples** lists the servers the app already knows and `localhost:3000`.
+3. Read the result. With “Connected” and a green connection everything fits, and **Next** leads to the sign-in.
 
 The app checks whether a SubKit server answers at the address and whether the versions fit together: the server has to be new enough for the app, and the app new enough for the server.
 
@@ -43,13 +43,13 @@ The app checks whether a SubKit server answers at the address and whether the ve
 
 The sign-in happens in your browser, not in the app. That way you use the sign-in you already know, and the app never sees your password.
 
-1. Select **Sign in in the browser**. Your browser opens, and the app shows “Your browser is open. Sign in there and you’ll continue here automatically.”
+1. In the step “Sign in with browser”, select **Open browser**. Your browser opens, and the app shows “Waiting for confirmation in the browser…”.
 2. Sign in to the Cockpit in the browser if you are not signed in there yet.
 3. Read the page “Sign in to SubKit Desktop”. It names your computer, the workspace and the account, for example “SubKit Desktop on MacBook-Anna is asking to sign in to Brennwerk.” and “Signed in as anna@example.com”.
 4. Select **Sign in**. Continue only if you just started this sign-in yourself in the app on this device.
-5. The browser hands back to the app. The app shows “Finishing sign-in…” and then opens the Cockpit.
+5. The browser hands back to the app. The app shows “Finishing sign-in…” and then “Signed in” with the server, version and device. **Open SubKit** opens the Cockpit.
 
-With **Cancel** on the page in the browser or **Cancel sign-in** in the app, nothing happens: no profile and no device is created.
+With **Cancel** on the page in the browser or **Cancel** in the app, nothing happens: no profile and no device is created.
 The page in the browser is valid for 10 minutes. After that, start the sign-in again in the app.
 
 ### Devices and signing out
@@ -58,7 +58,7 @@ Every computer on which you sign in with SubKit Desktop is a device of its own w
 
 - **Sign out** in the **User menu** of the Cockpit ends the session of this device. Your session in the browser and other devices stay signed in.
 - **Remove** in the list **Your servers** deletes the local session and the profile. Nothing changes on the server.
-- **Revoking a device** signs it out from outside, for example after a loss. Within a few seconds the app then shows “This device was signed out in SubKit. Sign in again to reconnect it.”
+- **Revoking a device** signs it out from outside, for example after a loss. Within a few seconds the app then shows “Signed out of …” with **Sign in again**.
 
 You see your devices in the Cockpit under **Settings** › **Your profile** › **Where are you signed in?**. The list shows the installed web app and every desktop device with its kind, name, the day it signed in and its last use. The device you are sitting at carries the mark **This device**.
 

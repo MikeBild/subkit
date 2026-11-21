@@ -1,4 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ErrorNotice, TechDetail } from "@ui/components/proto/ErrorNotice";
+import { BookOpenCheck, CircleCheck, MessageCircleQuestion, Quote } from "lucide-react";
 import { useState } from "react";
 import {
   APPROVAL_RULES_KEY,
@@ -9,25 +11,33 @@ import {
 import { ApiError, getConversation } from "@/api/client";
 import { absolute, settingsHref } from "@/app/links";
 import { useConnectorNames } from "@/components/cockpit/connector-names";
-import { Button, ErrorNotice, FactList, TextBlock } from "@/components/cockpit/patterns";
+import { IconButton } from "@/components/cockpit/icon-button";
+import {
+  Button,
+  ContextHelp,
+  IconTile,
+  renderAction,
+  TextBlock,
+  useErrorNotice,
+} from "@/components/cockpit/patterns";
+import { namedConnector, RuleFacts } from "@/features/rules";
 import { useI18n } from "@/lib/i18n-context";
 import {
   type ApprovalBinding as ApprovalBindingModel,
-  actionFacts,
+  actionLine,
   askReasonKey,
   fullContent,
   LIVE_POLICY_KEY,
   namedAccount,
   type RuleOffer,
-  ranLine,
   ranWithoutAsking,
+  rawRequest,
   refusedApprovalReply,
-  scopeSentence,
+  ruleName,
   type ToolCallPolicy,
   typedDecision,
 } from "@/pages/chat-policy";
 import type { ChatTurn } from "@/pages/chat-turn";
-import { contentClassLine, todayLine, validityLine } from "@/pages/settings-rules-model";
 
 function useToolCall(conversationId: string | undefined, toolCallId: string) {
   const detail = useQuery({
@@ -51,19 +61,13 @@ export function ApprovalBinding({
   binding: ApprovalBindingModel;
   testId: string;
 }) {
-  const { t, tn } = useI18n();
-  const reason = askReasonKey(binding.askReason);
+  const { t } = useI18n();
+  const reason = binding.because ? null : askReasonKey(binding.askReason);
   const content = fullContent(binding.action);
+  const request = rawRequest(binding.action.target);
+  if (!content && !reason && !request) return null;
   return (
     <div className="grid gap-3" data-testid={`${testId}-binding`}>
-      <p className="text-sm font-medium">{t("chat.policy.wants")}</p>
-      <FactList
-        items={actionFacts(binding.action, t).map((fact) => ({
-          label: fact.label,
-          value: <span className="[overflow-wrap:anywhere]">{fact.value}</span>,
-          testId: `${testId}-binding-${fact.id}`,
-        }))}
-      />
       {content ? (
         <TextBlock
           label={t("chat.policy.fullContent")}
@@ -72,44 +76,41 @@ export function ApprovalBinding({
           note={
             content.capped
               ? t("chat.policy.contentCapped", { count: content.text.length })
-              : [
-                  tn("chat.policy.contentLength", content.text.length),
-                  content.long ? t("chat.policy.contentScroll") : null,
-                ]
-                  .filter(Boolean)
-                  .join(" ")
+              : undefined
           }
           testId={`${testId}-content`}
         />
       ) : null}
-      {binding.because ? (
-        <p className="text-sm" data-testid={`${testId}-because`}>
-          {t("chat.policy.because", { quote: binding.because })}
-        </p>
-      ) : reason ? (
-        <div className="grid gap-0.5">
-          <p className="text-sm" data-testid={`${testId}-ask-reason`}>
-            {t(reason)}
-          </p>
+      {reason ? (
+        <p className="flex items-start gap-2 text-sm">
+          <MessageCircleQuestion
+            aria-hidden="true"
+            className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+          />
+          <span data-testid={`${testId}-ask-reason`}>{t(reason)}</span>
           {binding.askDetail ? (
-            <p
-              className="text-xs text-muted-foreground [overflow-wrap:anywhere]"
-              data-testid={`${testId}-ask-detail`}
-            >
+            <ContextHelp label={t("chat.decision.details")} testId={`${testId}-ask-detail`}>
               {t("common.engineWording", { text: binding.askDetail })}
-            </p>
+            </ContextHelp>
           ) : null}
-        </div>
+        </p>
       ) : null}
-      <p className="text-xs text-muted-foreground" data-testid={`${testId}-scope-note`}>
-        {t("chat.policy.scopeNote")}
-      </p>
+      {request ? (
+        <TechDetail
+          kind="approval_request"
+          rows={[[t("chat.policy.field.request"), request]]}
+          report={false}
+          testId={`${testId}-request`}
+        />
+      ) : null}
     </div>
   );
 }
 
 function RuleOfferCard({ offer, testId }: { offer: RuleOffer; testId: string }) {
-  const { t, dateTime } = useI18n();
+  const { t } = useI18n();
+  const names = useConnectorNames();
+  const nameFor = (id: string) => names.get(id);
   const client = useQueryClient();
   const rules = useQuery({
     queryKey: APPROVAL_RULES_KEY,
@@ -123,6 +124,7 @@ function RuleOfferCard({ offer, testId }: { offer: RuleOffer; testId: string }) 
     onSettled: () => client.invalidateQueries({ queryKey: APPROVAL_RULES_KEY }),
   });
   const offered = rules.data?.find((rule) => rule.id === offer.rule_id && rule.state === "offered");
+  const decideFailure = useErrorNotice({ error: decide.error });
   if (decide.isSuccess)
     return (
       <p className="text-xs text-muted-foreground" data-testid={`${testId}-decided`}>
@@ -131,31 +133,29 @@ function RuleOfferCard({ offer, testId }: { offer: RuleOffer; testId: string }) 
     );
   if (!offered) return null;
   return (
-    <div
-      className="grid gap-2 rounded-lg border bg-muted/40 px-3 py-2.5 text-sm"
-      data-testid={testId}
-    >
-      <p className="font-medium">{t("rules.prompt")}</p>
-      <p className="text-muted-foreground" data-testid={`${testId}-scope`}>
-        <span className="font-medium text-foreground">{t("rules.scope")}:</span>{" "}
-        <span className="[overflow-wrap:anywhere]">{scopeSentence(offer, t)}</span>
+    <div className="grid gap-2.5 rounded-xl border p-4 text-sm" data-testid={testId}>
+      <div className="flex items-center gap-3">
+        <IconTile size="sm">
+          <BookOpenCheck />
+        </IconTile>
+        <p className="font-semibold">{t("rules.prompt")}</p>
+      </div>
+      <p data-testid={`${testId}-scope`}>
+        <span className="text-muted-foreground">{t("rules.scope")}: </span>
+        <span className="[overflow-wrap:anywhere]">{ruleName(offer, t)}</span>
       </p>
-      <ul className="grid gap-0.5 text-muted-foreground" data-testid={`${testId}-limits`}>
-        <li data-testid={`${testId}-content`}>{contentClassLine(offered.content_class, t)}</li>
-        <li data-testid={`${testId}-validity`}>{validityLine(offered, t, dateTime)}</li>
-        <li data-testid={`${testId}-daily`}>{todayLine(offered, t)}</li>
-      </ul>
+      <RuleFacts rule={namedConnector(offered, nameFor)} testId={testId} />
       {decide.isError ? (
         <ErrorNotice
+          {...decideFailure}
           title={t("rules.decideFailed")}
-          error={decide.error}
-          remedy={{
+          actions={renderAction({
             label: t("pattern.retry"),
             variant: "primary",
             size: "sm",
             onClick: () => decide.mutate(decide.variables ?? false),
             testId: `${testId}-error-retry`,
-          }}
+          })}
           testId={`${testId}-error`}
         />
       ) : null}
@@ -212,21 +212,28 @@ export function ToolPolicyNote({
           aria-live="polite"
           data-testid={testId}
         >
-          <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+            <CircleCheck aria-hidden="true" className="size-3.5 shrink-0 text-success-ink" />
             <span className="[overflow-wrap:anywhere]" data-testid={`${testId}-line`}>
-              {ranLine(ran, t)}
+              <span className="text-foreground">{actionLine(ran.action, t)}</span>
+              {" · "}
+              {t(
+                ran.rule === "standing_rule"
+                  ? "chat.policy.becauseRule"
+                  : "chat.policy.becauseAsked",
+              )}
             </span>
             {ran.quote ? (
-              <Button
-                variant="link"
-                size="sm"
-                className="h-auto px-0 text-xs"
+              <IconButton
+                variant="ghost"
+                size="icon-xs"
+                label={t("chat.policy.showQuote")}
                 aria-expanded={quoteShown}
                 onClick={() => setQuoteShown((shown) => !shown)}
                 data-testid={`${testId}-quote-toggle`}
               >
-                {t("chat.policy.showQuote")}
-              </Button>
+                <Quote />
+              </IconButton>
             ) : ran.rule === "standing_rule" ? (
               <Button asChild variant="link" size="sm" className="h-auto px-0 text-xs">
                 <a
@@ -239,7 +246,10 @@ export function ToolPolicyNote({
             ) : null}
           </p>
           {ran.quote && quoteShown ? (
-            <p className="text-foreground" data-testid={`${testId}-quote`}>
+            <p
+              className="flex items-start gap-1.5 pl-5 text-foreground"
+              data-testid={`${testId}-quote`}
+            >
               {t("chat.policy.because", { quote: ran.quote })}
             </p>
           ) : null}
@@ -263,43 +273,47 @@ export function RefusedReply({ turn, busy }: { turn: ChatTurn; busy: boolean }) 
   if (meant)
     return (
       <ErrorNotice
-        tone="warn"
+        kind="unknown"
+        technical={false}
+        tone="warning"
         testId="chat-reply-refused"
         title={t("chat.policy.meant", {
           choice: t(meant === "approve" ? "chat.approval.approve" : "chat.approval.decline"),
         })}
         body={t("chat.policy.meantBody")}
-        remedy={
-          <Button
-            size="sm"
-            disabled={busy}
-            onClick={() => decide(meant === "approve")}
-            data-testid={`chat-reply-meant-${meant}`}
-            data-meant={meant}
-          >
-            {t(meant === "approve" ? "chat.approval.approve" : "chat.approval.decline")}
-          </Button>
-        }
-        secondary={
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={busy}
-            onClick={() => send.reset()}
-            data-testid="chat-reply-meant-dismiss"
-          >
-            {t("chat.policy.meantNo")}
-          </Button>
+        actions={
+          <>
+            <Button
+              size="sm"
+              disabled={busy}
+              onClick={() => decide(meant === "approve")}
+              data-testid={`chat-reply-meant-${meant}`}
+              data-meant={meant}
+            >
+              {t(meant === "approve" ? "chat.approval.approve" : "chat.approval.decline")}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={busy}
+              onClick={() => send.reset()}
+              data-testid="chat-reply-meant-dismiss"
+            >
+              {t("chat.policy.meantNo")}
+            </Button>
+          </>
         }
       />
     );
   return (
     <ErrorNotice
-      tone="warn"
+      kind="unknown"
+      technical={false}
+      tone="warning"
       testId="chat-reply-refused"
       title={t("chat.policy.changeRefused")}
       body={t("chat.policy.changeRefusedBody")}
-      remedy={
+      actions={
         <Button
           variant="outline"
           size="sm"

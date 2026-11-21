@@ -14,7 +14,6 @@ test("the run list defaults to a real seven-day window and preserves explicit hi
     startedFrom: "2026-01-01T00:00:00.000Z",
     startedTo: "2026-01-08T00:00:00.000Z",
   });
-  expect(initialRunsFilter("?run=record", now).startedFrom).toBeNull();
   expect(initialRunsFilter("?runs_from=2025-01-01T00%3A00%3A00.000Z", now).startedFrom).toBe(
     "2025-01-01T00:00:00.000Z",
   );

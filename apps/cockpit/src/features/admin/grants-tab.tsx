@@ -23,14 +23,6 @@ import { reportFailure } from "@/lib/action-failure";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
 import {
-  type GrantResourceType,
-  grantStatus,
-  isGrantResourceType,
-  permissionLabel,
-  resourceTypeLabel,
-} from "@/pages/admin-model";
-import { personEmailText } from "@/pages/apps-model";
-import {
   type GrantItem,
   type RecordItem,
   refusalToast,
@@ -38,6 +30,14 @@ import {
   useGroups,
   usePeople,
 } from "./data";
+import {
+  type GrantResourceType,
+  grantStatus,
+  isGrantResourceType,
+  permissionLabel,
+  resourceTypeLabel,
+} from "./model/admin-model";
+import { personEmailText } from "./model/apps-model";
 import { AdminTable, ChoiceField, SectionList } from "./parts";
 
 function useGrantNames(enabled = true) {

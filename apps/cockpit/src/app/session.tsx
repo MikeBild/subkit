@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useContext, useEffect, useMemo, useState } from "react";
 import {
   ApiError,
   type Bootstrap,
@@ -19,8 +19,7 @@ import { useI18n } from "@/lib/i18n-context";
 import { installationId } from "./installation-context";
 import { InstallationProvider } from "./installation-provider";
 import { loginHref } from "./login-href";
-
-const SessionContext = createContext<Bootstrap | null>(null);
+import { SessionContext } from "./session-context";
 
 const BOOTSTRAP_KEY = ["bootstrap"] as const;
 
@@ -140,7 +139,7 @@ export function SessionSkeleton({ label }: { label: string }) {
       </div>
       <div className="flex min-w-0 flex-1 flex-col" data-skeleton="content">
         <div className="h-12 shrink-0 border-b md:hidden" />
-        <div className="flex w-full max-w-[1280px] flex-col gap-6 px-4 py-6 sm:px-6">
+        <div className="flex w-full max-w-[1280px] flex-col gap-6 px-4 py-6 sm:px-8">
           <Skeleton className="h-8 w-48" />
           <div className="flex flex-col gap-1">
             {Array.from({ length: SKELETON_ROWS }, (_, index) => (

@@ -29,7 +29,8 @@ export type StripAction =
   | { kind: "recheck" }
   | { kind: "connector"; connectorId: string }
   | { kind: "cause"; runId: string }
-  | { kind: "review" };
+  | { kind: "review" }
+  | { kind: "addStep" };
 
 type StripTone = "ok" | "info" | "warn" | "error";
 
@@ -89,7 +90,12 @@ export function workflowStrip(input: StripInput): WorkflowStrip {
   if (input.failed)
     return { kind: "failed", tone: TONES.failed, action: { kind: "retry" }, lower: [] };
   if (input.noSteps && !input.disabled)
-    return { kind: "empty", tone: TONES.empty, action: null, lower: [] };
+    return {
+      kind: "empty",
+      tone: TONES.empty,
+      action: rights.write ? { kind: "addStep" } : null,
+      lower: [],
+    };
   if (!automation && !input.disabled)
     return { kind: "loading", tone: TONES.loading, action: null, lower: [] };
 

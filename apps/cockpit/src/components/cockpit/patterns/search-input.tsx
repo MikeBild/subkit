@@ -18,7 +18,7 @@ export function SearchInput({
   className?: string;
 }) {
   return (
-    <InputGroup data-slot="search-input" className={cn("h-9 w-full", className)}>
+    <InputGroup data-slot="search-input" className={cn("w-full", className)}>
       <InputGroupAddon>
         <Search />
       </InputGroupAddon>

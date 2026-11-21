@@ -26,6 +26,86 @@ export function auditIdentityOptions(
   ];
 }
 
+export function auditActorDisplay(
+  entry: Pick<TimelineEntry, "actor_type" | "actor_id">,
+  identities: readonly IdentityOption[],
+  typeLabel: (actorType: string) => string,
+  missing: string,
+): string {
+  const id = entry.actor_id?.trim();
+  const known = id ? identities.find((identity) => identity.id === id) : undefined;
+  if (known && known.label !== known.id) return known.label;
+  const kind = entry.actor_type?.trim();
+  return kind ? typeLabel(kind) : missing;
+}
+
+export function auditObjectDisplay(
+  entry: Pick<TimelineEntry, "resource_type" | "resource_name">,
+  typeLabel: (resourceType: string) => string,
+): string {
+  return entry.resource_name?.trim() || typeLabel(entry.resource_type);
+}
+
+export interface AuditNameBook {
+  apiKeys: ReadonlyMap<string, string>;
+  oauthClients: ReadonlyMap<string, string>;
+  workflows: ReadonlyMap<string, string>;
+}
+
+export function auditNameBook(lists: {
+  apiKeys?: readonly { id: string; name?: string | null }[];
+  oauthClients?: readonly { client_id: string; client_name?: string | null }[];
+  workflows?: readonly { id: string; name?: string | null; slug?: string | null }[];
+}): AuditNameBook {
+  const named = <T>(
+    items: readonly T[] | undefined,
+    id: (item: T) => string,
+    name: (item: T) => string | null | undefined,
+  ) =>
+    new Map(
+      (items ?? []).flatMap((item) => {
+        const text = name(item)?.trim();
+        return text ? [[id(item), text] as const] : [];
+      }),
+    );
+  return {
+    apiKeys: named(
+      lists.apiKeys,
+      (k) => k.id,
+      (k) => k.name,
+    ),
+    oauthClients: named(
+      lists.oauthClients,
+      (c) => c.client_id,
+      (c) => c.client_name,
+    ),
+    workflows: named(
+      lists.workflows,
+      (w) => w.id,
+      (w) => w.name || w.slug,
+    ),
+  };
+}
+
+export function auditAccessSubject(
+  entry: Pick<TimelineEntry, "api_key_id" | "oauth_client_id">,
+  book: AuditNameBook,
+  actorName: string,
+): string {
+  if (entry.api_key_id) return book.apiKeys.get(entry.api_key_id) ?? actorName;
+  if (entry.oauth_client_id) return book.oauthClients.get(entry.oauth_client_id) ?? actorName;
+  return actorName;
+}
+
+export function auditExecutionSubject(
+  entry: Pick<TimelineEntry, "workflow_id" | "resource_type" | "resource_name">,
+  book: AuditNameBook,
+): string | null {
+  const known = entry.workflow_id ? book.workflows.get(entry.workflow_id) : undefined;
+  if (known) return known;
+  return entry.resource_type === "workflow" ? entry.resource_name?.trim() || null : null;
+}
+
 export type AuditGroup =
   | "day"
   | "actor"

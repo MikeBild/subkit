@@ -2,6 +2,7 @@ import type { OpenAPIHono } from "@hono/zod-openapi";
 import { createRoute, z } from "@hono/zod-openapi";
 import type { Context } from "hono";
 import { getConfig, isConfigLoaded } from "../../config/loader.ts";
+import { COCKPIT_PREFIX, cockpitBundleAvailable } from "../cockpit.ts";
 import type { AppEnv } from "../openapi.ts";
 import { OPENAPI_INFO } from "../openapi.ts";
 import { resolveOrigin } from "./llms-txt.ts";
@@ -29,7 +30,8 @@ const ENTRIES: ReadonlyArray<Entry> = [
   },
   { path: "/openapi.json", what: "The full API surface" },
   { path: "/docs", what: "That API surface as a browsable reference" },
-  { path: "/cockpit", what: "The web interface" },
+  { path: "/cockpit", what: "The web interface; a browser that opens / lands here" },
+  { path: "/engine", what: "This index as a page, at an address that does not redirect" },
   { path: "/health", what: "Liveness" },
   { path: "/ready", what: "Readiness, with its checks" },
   { path: "/bot", what: "What the web scraper is and how to stop it" },
@@ -58,7 +60,8 @@ Everything below is served by this engine out of its own binary.
 ${rows}
 
 Start with /llms.txt if you are a model, /cockpit if you are a person, and
-/docker-compose.yml if you want to run one of these yourself.
+/docker-compose.yml if you want to run one of these yourself. A browser that
+opens / goes straight to /cockpit; /engine shows this index to a browser.
 `;
 }
 
@@ -95,47 +98,111 @@ ${rows}
 `;
 }
 
+export const ENGINE_INDEX_PATH = "/engine";
+const VARY = "Accept, Sec-Fetch-Mode";
+const INDEX_CACHE = "public, max-age=300";
+
+const indexResponse = {
+  description: "Entry point (HTML for browsers, Markdown otherwise)",
+  content: {
+    "text/html": { schema: z.string() },
+    "text/markdown": { schema: z.string() },
+  },
+} as const;
+
 const route = createRoute({
   method: "get",
   path: "/",
   tags: ["docs"],
-  summary: "What this engine hands out",
+  summary: "Open the Cockpit in a browser, or read what this engine hands out",
   description:
-    "An entry point for someone holding only this URL: the artefacts this engine serves from its own binary — Compose file, installer, documentation, API surface, web interface and health. Returns HTML to a browser and Markdown to everything else. When server.root_redirect_to_cockpit is enabled, a browser asking for HTML gets a temporary redirect to /cockpit instead; every other client keeps the Markdown entry point.",
+    "An entry point for someone holding only this URL. A browser navigation (Sec-Fetch-Mode: navigate, or an Accept header that names text/html before text/markdown) gets a non-cacheable temporary redirect to the Cockpit at /cockpit. Every other client gets the index of the artefacts this engine serves from its own binary — Compose file, installer, documentation, API surface, web interface and health — as Markdown, or as HTML when it asks for text/html. With server.root_redirect_to_cockpit set to false, or without a Cockpit bundle in this deployment, a browser gets that HTML index instead. The index stays reachable at /engine.",
   responses: {
     302: {
       description:
-        "Temporary redirect to /cockpit for a browser asking for HTML when server.root_redirect_to_cockpit is enabled",
-      headers: z.object({ location: z.literal("/cockpit") }),
+        "Temporary redirect to the Cockpit for a browser navigation. The target is the same-origin Cockpit path under the base path of server.public_base_url, never taken from the request.",
+      headers: z.object({ location: z.string() }),
     },
-    200: {
-      description: "Entry point (HTML for browsers, Markdown otherwise)",
-      content: {
-        "text/html": { schema: z.string() },
-        "text/markdown": { schema: z.string() },
-      },
-    },
+    200: indexResponse,
   },
+});
+
+const engineIndexRoute = createRoute({
+  method: "get",
+  path: ENGINE_INDEX_PATH,
+  tags: ["docs"],
+  summary: "What this engine hands out",
+  description:
+    "The engine index at a stable address: the same entries as GET /, without the redirect to the Cockpit. Returns HTML to a client asking for text/html and Markdown to everything else.",
+  responses: { 200: indexResponse },
 });
 
 function wantsHtml(c: Context<AppEnv>): boolean {
   return (c.req.header("accept") ?? "").includes("text/html");
 }
 
-export function registerRootRoute(app: OpenAPIHono<AppEnv>): void {
-  app.openapi(route, (c) => {
-    if (wantsHtml(c) && isConfigLoaded() && getConfig().server.root_redirect_to_cockpit) {
-      c.header("cache-control", "no-store");
-      return c.redirect("/cockpit", 302);
+export function isBrowserNavigation(
+  accept: string | undefined,
+  fetchMode: string | undefined,
+): boolean {
+  const types = (accept ?? "")
+    .toLowerCase()
+    .split(",")
+    .map((part) => part.split(";")[0]?.trim() ?? "");
+  const html = types.indexOf("text/html");
+  const markdown = types.indexOf("text/markdown");
+  if (markdown >= 0 && (html < 0 || markdown < html)) return false;
+  return html >= 0 || fetchMode?.toLowerCase() === "navigate";
+}
+
+export function cockpitLocation(publicBaseUrl: string): string {
+  let basePath = "";
+  if (publicBaseUrl) {
+    try {
+      basePath = new URL(publicBaseUrl).pathname.replace(/\/+$/, "");
+    } catch {
+      basePath = "";
     }
-    const origin = resolveOrigin(c);
-    return wantsHtml(c)
-      ? c.html(renderHtml(origin), 200, { "cache-control": "public, max-age=300" })
-      : c.text(renderMarkdown(origin), 200, {
-          "content-type": "text/markdown; charset=utf-8",
-          "cache-control": "public, max-age=300",
-        });
+  }
+  return `${basePath}${COCKPIT_PREFIX}`;
+}
+
+function cockpitRedirectTarget(): string | null {
+  if (!isConfigLoaded()) return null;
+  const server = getConfig().server;
+  if (!server.root_redirect_to_cockpit) return null;
+  return cockpitLocation(server.public_base_url ?? "");
+}
+
+function renderIndex(c: Context<AppEnv>) {
+  const origin = resolveOrigin(c);
+  return wantsHtml(c)
+    ? c.html(renderHtml(origin), 200, { "cache-control": INDEX_CACHE, vary: VARY })
+    : c.text(renderMarkdown(origin), 200, {
+        "content-type": "text/markdown; charset=utf-8",
+        "cache-control": INDEX_CACHE,
+        vary: VARY,
+      });
+}
+
+export interface RootRouteOptions {
+  cockpitAvailable?: () => boolean;
+}
+
+export function registerRootRoute(app: OpenAPIHono<AppEnv>, options: RootRouteOptions = {}): void {
+  const cockpitAvailable = options.cockpitAvailable ?? cockpitBundleAvailable;
+  app.openapi(route, (c) => {
+    if (isBrowserNavigation(c.req.header("accept"), c.req.header("sec-fetch-mode"))) {
+      const target = cockpitRedirectTarget();
+      if (target && cockpitAvailable()) {
+        c.header("cache-control", "no-store");
+        c.header("vary", VARY);
+        return c.redirect(target, 302);
+      }
+    }
+    return renderIndex(c);
   });
+  app.openapi(engineIndexRoute, (c) => renderIndex(c));
 }
 
 export const ROOT_ENTRY_PATHS: ReadonlyArray<string> = ENTRIES.map((e) => e.path);

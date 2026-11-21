@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ReactNode } from "react";
 import { useState } from "react";
 import {
   getCurrentCockpitInstallation,
@@ -16,7 +15,7 @@ import { InstallationDialog } from "./installation-dialogs";
 import { ConfirmDialog } from "./patterns";
 import { WorkspaceMenu } from "./patterns/workspace-menu";
 
-export function WorkspaceSwitcher({ attention }: { attention?: ReactNode }) {
+export function WorkspaceSwitcher() {
   const session = useSession();
   const { t } = useI18n();
   const client = useQueryClient();
@@ -60,7 +59,6 @@ export function WorkspaceSwitcher({ attention }: { attention?: ReactNode }) {
         tenantId={session.tenant.id}
         tenantName={session.tenant.display_name}
         wordmark={<BrandingWordmark />}
-        attention={attention}
         changing={change.isPending}
         changingTenantId={change.variables}
         loading={session.identity_memberships && query.isPending}

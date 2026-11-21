@@ -10,6 +10,7 @@ import {
   PAGE_ROUTES,
   RECOVERY_ROUTE,
   REDIRECT_ROUTES,
+  RUN_ROUTE,
   STANDALONE_ROUTES,
   TASK_ROUTES,
   WELCOME_ROUTE,
@@ -91,9 +92,15 @@ describe("cockpit route table", () => {
   test("a row opens the record's own page, files and intake items included", () => {
     const source = readFileSync(new URL("./router.tsx", import.meta.url), "utf8");
     expect(source).toMatch(/path: "\/files\/\$resourceId",\s*component: FilePage/);
-    expect(source).toMatch(/path: "\/intake\/\$resourceId",\s*component: \(\) => <IntakeItemPage/);
-    for (const page of ["catalog", "knowledge-sources", "skills", "files", "intake"]) {
-      const code = readFileSync(new URL(`../pages/${page}.tsx`, import.meta.url), "utf8");
+    expect(source).toMatch(/path: "\/intake\/\$resourceId",\s*component: InboxEntryPage/);
+    for (const page of [
+      "pages/catalog",
+      "features/knowledge/sources",
+      "features/knowledge/skills",
+      "features/knowledge/files",
+      "features/knowledge/inbox",
+    ]) {
+      const code = readFileSync(new URL(`../${page}.tsx`, import.meta.url), "utf8");
       expect(code, `${page} still previews rows in a sheet`).not.toMatch(
         /search: \{ item:|\?item=|RecordOpenLink/,
       );
@@ -112,6 +119,13 @@ describe("cockpit route table", () => {
     expect(list).not.toMatch(/RecordSheet|\?item=/);
   });
 
+  test("gives one run its own page", () => {
+    expect(ALL_ROUTE_PATHS).toContain(RUN_ROUTE);
+    const source = readFileSync(new URL("./router.tsx", import.meta.url), "utf8");
+    expect(RUN_ROUTE).toBe("/runs/$runId");
+    expect(source).toMatch(/path: "\/runs\/\$runId",\s*component: RunPage/);
+  });
+
   test("names the routes no menu links to, which is why they are here", () => {
     const linked = new Set(NAVIGATION.flatMap((group) => group.items).map((item) => item.path));
     for (const path of ["/chat/new", "/chat/$conversationId", "/docs", "/docs/$slug"]) {
@@ -120,26 +134,19 @@ describe("cockpit route table", () => {
     }
   });
 
-  test("sends the old Zugriff address to the roles of Personen & Rechte", () => {
+  test("sends the old Zugriff address to the roles under Settings › People", () => {
     expect(REDIRECT_ROUTES).toContain("/access");
     expect(PAGE_ROUTES as readonly string[]).not.toContain("/access");
     expect(ALL_ROUTE_PATHS).toContain("/access");
     const landed = movedTarget("");
-    expect(landed).toBe("/people?section=roles");
+    expect(landed).toBe("/settings?area=people&section=roles");
     expect(peopleSectionFromUrl(landed.slice(landed.indexOf("?")))).toBe("roles");
-    expect(movedTarget("?section=permissions")).toBe("/people?section=roles");
-    expect(movedTarget("?q=admin")).toBe("/people?section=roles&q=admin");
+    expect(movedTarget("?section=permissions")).toBe("/settings?area=people&section=roles");
+    expect(movedTarget("?q=admin")).toBe("/settings?area=people&section=roles&q=admin");
   });
 
-  test("old run, connection and notification addresses are gone, not redirected", () => {
-    for (const gone of [
-      "/runs",
-      "/runs/$resourceId",
-      "/connections",
-      "/notifications",
-      "/decisions",
-      "/operations",
-    ]) {
+  test("old run list, connection and notification addresses are gone, not redirected", () => {
+    for (const gone of ["/runs", "/connections", "/notifications", "/decisions", "/operations"]) {
       expect(ALL_ROUTE_PATHS).not.toContain(gone);
     }
   });
@@ -157,6 +164,22 @@ describe("cockpit route table", () => {
     expect(source).not.toContain("DecisionsPage");
     expect(source).not.toContain("OperationsPage");
     expect(source).not.toMatch(/\bAccessPage\b/);
+  });
+
+  test("knowledge, connectors and usage have one screen each, with no full-function switch", () => {
+    const source = readFileSync(new URL("./router.tsx", import.meta.url), "utf8");
+    expect(source).toMatch(/\} from "@\/features\/knowledge";/);
+    expect(source).toContain('import { ConnectorsPage } from "@/features/connectors";');
+    expect(source).toContain('import { UsagePage } from "@/features/usage";');
+    expect(source).toContain('"/usage": UsagePage,');
+    expect(source).not.toMatch(/knowledge-routes|classic-view|isClassicView|usage-route/);
+    expect(source).not.toMatch(/@\/pages\/(files|intake|knowledge-sources|skills|usage)"/);
+  });
+
+  test("the installed app's file handler still opens the files screen", () => {
+    const source = readFileSync(new URL("./router.tsx", import.meta.url), "utf8");
+    expect(ALL_ROUTE_PATHS).toContain("/incoming/files");
+    expect(source).toMatch(/path: "\/incoming\/files",\s*component: FilesPage/);
   });
 
   test("keeps every parameterised path out of the mapped page list", () => {

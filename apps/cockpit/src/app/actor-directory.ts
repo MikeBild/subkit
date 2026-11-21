@@ -3,8 +3,8 @@ import { useMemo } from "react";
 import { apiRequest } from "@/api/client";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useSession } from "@/app/session";
+import { canReadDirectory } from "@/lib/audit-model";
 import { useI18n } from "@/lib/i18n-context";
-import { canReadDirectory } from "@/pages/audit-model";
 import {
   type Accounts,
   type ActorDirectory,

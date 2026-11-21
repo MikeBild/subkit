@@ -56,8 +56,8 @@ describe("nameIdentifiers", () => {
   });
 
   test("a name without a place to go is still a name, not a phrase", () => {
-    const out = nameIdentifiers(`Lauf ${ID}.`, () => ({ label: "Monatsreport" }), HIDDEN);
-    expect(out).toBe("Lauf Monatsreport.");
+    const out = nameIdentifiers(`Run ${ID}.`, () => ({ label: "Monatsreport" }), HIDDEN);
+    expect(out).toBe("Run Monatsreport.");
   });
 
   test("an identifier nobody can name keeps the phrase", () => {

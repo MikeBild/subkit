@@ -36,7 +36,6 @@ import { InboundHookReviewCard } from "@/components/cockpit/inbound-hook-review-
 import {
   ActionButton,
   ActionMenu,
-  type CockpitColumn,
   DataState,
   Page,
   PageHeader,
@@ -44,42 +43,51 @@ import {
   RowsSkeleton,
   Section,
   SegmentedControl,
-  StartChecklist,
-  StatusBadge,
   SummaryLine,
   SummaryParts,
+  TileSkeleton,
 } from "@/components/cockpit/patterns";
-import { RecordTable } from "@/components/cockpit/record-table";
 import { useOpenRunSheet } from "@/components/cockpit/run-sheet";
 import { ScheduleReviewCard } from "@/components/cockpit/schedule-review-card";
-import { tableColumns } from "@/components/cockpit/table-columns";
 import { WaitingOnLine } from "@/components/cockpit/waiting-on";
 import { ForbiddenState } from "@/components/failure-state";
+import { FirstSteps } from "@/features/first-steps";
+import {
+  isLiveRun,
+  NeedRow,
+  NeedsAllClear,
+  OverviewKpis,
+  RunRow,
+  runTone,
+} from "@/features/operations";
+import { personalStartSteps } from "@/features/setup";
 import { reportFailure } from "@/lib/action-failure";
-import { causeClassLabel } from "@/lib/cause-class";
 import { connectorSignIn, signInFailure } from "@/lib/connector-sign-in";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { EngineWording } from "@/lib/machine-label";
-import type { DecisionItem } from "./decisions-model";
 import {
-  OperationsBar,
-  RepairRequiredHint,
-  useOperationsFigures,
-  useRepairRequiredCount,
-} from "./operations-bar";
-import {
+  type OperatingFigureId,
   STATS_WINDOWS,
   type StatsWindow,
   type WindowBounds,
   windowBounds,
-} from "./operations-figures";
+} from "@/lib/operations-figures";
+import { statusLabel } from "@/lib/status-label";
+import type { DecisionItem } from "./decisions-model";
+import {
+  kpiCards,
+  RepairRequiredHint,
+  useOperationsFigures,
+  useRepairRequiredCount,
+} from "./operations-bar";
 import {
   type AttentionAction,
   type AttentionItem,
   actionLabelKey,
   attentionDetail,
   attentionEnvironment,
+  attentionReason,
   attentionRow,
   attentionSentence,
   attentionTarget,
@@ -97,7 +105,6 @@ import {
 } from "./overview-model";
 import { startSteps } from "./overview-start-steps";
 import { isExecutionRecord, latestFailedRun, runName } from "./runs-model";
-import { personalStartSteps } from "./setup-model";
 
 type ExecutionListItem = components["schemas"]["ExecutionListItem"];
 
@@ -249,6 +256,7 @@ function CompletingVerb({
 function NeedsYou({
   items,
   emptyLine,
+  allClear,
   pending,
   error,
   permissions,
@@ -256,104 +264,99 @@ function NeedsYou({
 }: {
   items: AttentionItem[];
   emptyLine: string;
+  allClear: boolean;
   pending: boolean;
   error: { line: string; onRetry(): void } | null;
   permissions: readonly string[];
   onReview: (id: string) => void;
 }) {
-  const { t, dateTime } = useI18n();
-  const navigate = useNavigate();
+  const { t } = useI18n();
   const now = useMemo(() => Date.now(), []);
-  const columns = useMemo<CockpitColumn<AttentionItem>[]>(() => {
-    const column = tableColumns<AttentionItem>({ t, dateTime });
-    return [
-      column.custom(
-        "name",
-        (item) => attentionRow(item, t).name,
-        t("overview.column.entry"),
-        (item, index) => (
-          <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1 font-medium">
-            {attentionRow(item, t).name}
-            <AttentionEnvironment item={item} index={index} />
-          </span>
-        ),
-        { width: "w-[28%]" },
-      ),
-      column.custom(
-        "reason",
-        (item) => item.reason,
-        t("overview.column.reason"),
-        (item, index) => {
-          const row = attentionRow(item, t);
-          return (
-            <span className="grid gap-0.5">
-              <span className="text-muted-foreground" data-testid={`attention-item-${index}-text`}>
-                {row.reason}
-                {row.machine ? (
-                  <code className="ml-1 font-mono text-xs" data-machine-value="true">
-                    {row.machine}
-                  </code>
-                ) : null}
-              </span>
-              {item.waiting_on?.name ? (
-                <WaitingOnLine
-                  name={item.waiting_on.name}
-                  testId={`attention-item-${index}-waiting-on`}
-                />
-              ) : null}
-            </span>
-          );
-        },
-        { width: "w-[30%]" },
-      ),
-      column.custom(
-        "state",
-        (item) => item.reason,
-        t("resource.field.status"),
-        (item) => {
-          const { badge } = attentionRow(item, t);
-          return <StatusBadge state={badge.state} label={t(badge.label)} wrap />;
-        },
-        { width: "w-[26%]" },
-      ),
-      column.custom(
-        "since",
-        (item) => item.since,
-        t("overview.column.when"),
-        (item) => sinceLabel(item.since, now, t) ?? "—",
-        { width: "w-[16%]" },
-      ),
-    ];
-  }, [t, dateTime, now]);
+  if (pending) return <RowsSkeleton count={3} testId="attention-list-loading" />;
+  if (error)
+    return (
+      <DataState state="error" line={error.line} onRetry={error.onRetry} testId="attention-error" />
+    );
+  if (items.length === 0)
+    return allClear ? (
+      <NeedsAllClear />
+    ) : (
+      <DataState state="empty" line={emptyLine} testId="attention-empty" />
+    );
   return (
-    <div data-testid="attention-list" data-family-slot="attention-list">
-      <RecordTable
-        columns={columns}
-        data={items}
-        collectionId="attention"
-        emptyLine={emptyLine}
-        pending={pending}
-        error={error}
-        getRowId={(item) => item.id}
-        onOpen={(item) => {
-          const href = subjectHref(item);
-          if (href) void navigate({ to: href });
-          else onReview(item.id);
-        }}
-        rowHref={(item) => subjectHref(item)}
-        rowLabel={(item) => sentenceLabel(item, t, now)}
-        rowActions={(item, index) => (
-          <span data-action-scope="attention" data-attention-id={item.id}>
-            <CompletingVerb
-              item={item}
-              index={index}
-              permissions={permissions}
-              onReview={onReview}
-            />
-          </span>
-        )}
-      />
-    </div>
+    <ul
+      className="flex flex-col gap-2"
+      data-testid="attention-list"
+      data-family-slot="attention-list"
+    >
+      {items.map((item, index) => {
+        const row = attentionRow(item, t);
+        const href = subjectHref(item);
+        const since = sinceLabel(item.since, now, t);
+        return (
+          <NeedRow
+            key={item.id}
+            reason={attentionReason(item)}
+            state={t(row.badge.label)}
+            testId={`attention-item-${index}`}
+            title={
+              <>
+                {href ? (
+                  <a
+                    href={absolute(href)}
+                    className="underline-offset-4 hover:underline"
+                    aria-label={sentenceLabel(item, t, now)}
+                    data-testid={`attention-item-${index}-open`}
+                  >
+                    {row.name}
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    className="text-left underline-offset-4 hover:underline"
+                    onClick={() => onReview(item.id)}
+                    aria-label={sentenceLabel(item, t, now)}
+                    data-testid={`attention-item-${index}-open`}
+                  >
+                    {row.name}
+                  </button>
+                )}
+                <AttentionEnvironment item={item} index={index} />
+              </>
+            }
+            hint={
+              <>
+                <span data-testid={`attention-item-${index}-text`}>
+                  {row.reason}
+                  {row.machine ? (
+                    <code className="ml-1 font-mono text-xs" data-machine-value="true">
+                      {row.machine}
+                    </code>
+                  ) : null}
+                  {since ? ` · ${since}` : null}
+                </span>
+                {item.waiting_on?.name ? (
+                  <WaitingOnLine
+                    name={item.waiting_on.name}
+                    testId={`attention-item-${index}-waiting-on`}
+                  />
+                ) : null}
+              </>
+            }
+            action={
+              <span data-action-scope="attention" data-attention-id={item.id}>
+                <CompletingVerb
+                  item={item}
+                  index={index}
+                  permissions={permissions}
+                  onReview={onReview}
+                />
+              </span>
+            }
+          />
+        );
+      })}
+    </ul>
   );
 }
 
@@ -378,7 +381,7 @@ function StartSteps() {
     },
   });
   return (
-    <StartChecklist
+    <FirstSteps
       steps={personalStartSteps(
         startSteps(session).map((step) => ({
           id: step.id,
@@ -407,78 +410,52 @@ function sentenceLabel(
   return `${lead}${since ? ` — ${since}` : ""}.`;
 }
 
-function LastFailures() {
+const RECENT_RUNS = 5;
+
+function RecentRuns() {
   const { t, dateTime } = useI18n();
   const sheets = useOpenRunSheet();
   const query = useQuery({
-    queryKey: ["runs", "overview-failures"],
-    queryFn: () => apiCall("get", "/v1/executions", { query: { status: "failed", limit: 3 } }),
+    queryKey: ["runs", "overview-recent"],
+    queryFn: () => apiCall("get", "/v1/executions", { query: { limit: RECENT_RUNS } }),
   });
   const rows = (query.data?.items ?? []).filter((item): item is ExecutionListItem =>
     isExecutionRecord(item),
   );
-  const columns = useMemo<CockpitColumn<ExecutionListItem>[]>(() => {
-    const column = tableColumns<ExecutionListItem>({ t, dateTime });
-    return [
-      column.custom(
-        "run",
-        (run) => run.id,
-        t("overview.column.run"),
-        (run) => <span className="font-medium">{runName(run, t)}</span>,
-        { width: "w-[40%]" },
-      ),
-      column.custom(
-        "cause",
-        (run) => run.failure?.cause_class ?? null,
-        t("overview.column.cause"),
-        (run) =>
-          [
-            run.failure?.step_key,
-            run.failure?.cause_class && run.failure.cause_class !== "ok"
-              ? causeClassLabel(run.failure.cause_class, t).text
-              : null,
-          ]
-            .filter(Boolean)
-            .join(" · ") || "—",
-        { width: "w-[35%]" },
-      ),
-      column.date(
-        "started_at",
-        (run) => run.started_at ?? run.created_at,
-        t("runs.column.started"),
-        {
-          width: "w-[25%]",
-        },
-      ),
-    ];
-  }, [t, dateTime]);
-  return (
-    <div data-testid="overview-failures">
-      <RecordTable
-        columns={columns}
-        data={rows}
-        collectionId="overview-failures"
-        emptyLine={t("overview.noFailures")}
-        pending={query.isPending}
-        error={
-          query.error
-            ? {
-                line: t("runs.detail.loadFailed"),
-                cause: query.error,
-                onRetry: () => void query.refetch(),
-              }
-            : null
-        }
-        getRowId={(run) => run.id}
-        onOpen={(run) => sheets.run(run.id)}
-        rowHref={(run) => runHref(run.id)}
+  if (query.isPending) return <RowsSkeleton count={RECENT_RUNS} testId="overview-recent-loading" />;
+  if (query.error)
+    return (
+      <DataState
+        state="error"
+        line={t("runs.detail.loadFailed")}
+        error={query.error}
+        onRetry={() => void query.refetch()}
+        testId="overview-recent-error"
       />
-    </div>
+    );
+  if (rows.length === 0)
+    return <DataState state="empty" line={t("ops.recent.empty")} testId="overview-recent-empty" />;
+  return (
+    <ul className="divide-y rounded-xl border" data-testid="overview-recent">
+      {rows.map((run) => (
+        <RunRow
+          key={run.id}
+          tone={runTone(run.status)}
+          pulse={isLiveRun(run.status)}
+          name={runName(run, t)}
+          outcome={statusLabel(t, run.status)}
+          time={dateTime(run.started_at ?? run.created_at)}
+          href={absolute(runHref(run.id))}
+          onOpen={() => sheets.run(run.id)}
+          testId={`overview-recent-${run.id}`}
+        />
+      ))}
+    </ul>
   );
 }
 
 export function OverviewPage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const session = useSession();
   const attention = useAttention(session.permissions);
   const sheets = useOpenRunSheet();
@@ -626,15 +603,32 @@ export function OverviewPage() {
             }
           />
           {operations.allowed ? (
-            <OperationsBar
-              figures={operations.figures.filter((figure) =>
-                (KPI_IDS as readonly string[]).includes(figure.id),
-              )}
-              ids={KPI_IDS}
-              window={bounds.window}
-              pending={operations.pending}
-              onRetry={operations.retry}
-            />
+            operations.pending ? (
+              <div className="@container">
+                <div className="grid grid-cols-2 gap-4 @3xl:grid-cols-4">
+                  {KPI_IDS.map((id) => (
+                    <TileSkeleton key={id} />
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <OverviewKpis
+                cards={kpiCards(
+                  operations.figures.filter((figure) =>
+                    (KPI_IDS as readonly string[]).includes(figure.id),
+                  ),
+                  operations.visuals,
+                  t,
+                  locale,
+                  bounds.window,
+                ).map((card) => ({
+                  ...card,
+                  href: card.href ? absolute(card.href) : null,
+                  link: card.link ? { ...card.link, href: absolute(card.link.href) } : null,
+                }))}
+                onRetry={(id) => operations.retry(id as OperatingFigureId)}
+              />
+            )
           ) : null}
         </div>
         {unread.length > 0 ? (
@@ -656,6 +650,7 @@ export function OverviewPage() {
               <NeedsYou
                 items={items}
                 emptyLine={t(unread.length > 0 ? "overview.count.noneRead" : "overview.count.none")}
+                allClear={unread.length === 0}
                 pending={attention.query.isPending}
                 error={
                   attention.query.isError
@@ -673,8 +668,8 @@ export function OverviewPage() {
         </div>
         {canRuns && !attention.query.isPending ? (
           <div data-action-scope="list">
-            <Section label={t("overview.lastFailures")} testId="overview-failures-section">
-              <LastFailures />
+            <Section label={t("ops.recent.title")} testId="overview-recent-section">
+              <RecentRuns />
             </Section>
           </div>
         ) : null}

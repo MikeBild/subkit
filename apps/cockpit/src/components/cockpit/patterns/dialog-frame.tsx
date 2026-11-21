@@ -2,9 +2,10 @@ import { ChevronLeft, XIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { IconButton } from "@/components/cockpit/icon-button";
 
-export type DialogSize = "default" | "wide";
+export type DialogSize = "default" | "wide" | "document";
 
 export function dialogWidthClass(size: DialogSize): string {
+  if (size === "document") return "max-w-[960px]";
   return size === "wide" ? "sm:max-w-xl" : "sm:max-w-lg";
 }
 
@@ -64,7 +65,7 @@ export function DialogBack({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="-ml-1 mb-1 flex min-h-8 w-fit items-center gap-0.5 rounded-sm text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      className="-ml-1 mb-1 flex min-h-8 w-fit items-center gap-0.5 rounded-sm text-sm text-muted-foreground hover:text-foreground"
       data-slot="dialog-back"
       data-testid={testId}
     >

@@ -51,7 +51,7 @@ When an action runs without a question, the conversation shows a line below it s
 
 ### The question card
 
-When SubKit asks, it shows a card titled **Wants to do this**.
+When SubKit asks, it shows a card titled **Your decision**.
 
 | Field | Meaning |
 | --- | --- |
@@ -61,7 +61,7 @@ When SubKit asks, it shows a card titled **Wants to do this**.
 | **Recipients** | Every address, link and handle the action reaches. |
 | **Content** | The full text as it would go out. |
 
-Below the fields the card says why SubKit asks, for example “You did not name this recipient.” Below that it reads: “Applies to exactly this action, once. A different recipient or content needs a new question.”
+Below the fields the card says why SubKit asks, for example “You did not name this recipient.” The last line names the deadline and adds: “A different recipient or content asks again”. **Allow once** applies to exactly this action.
 
 1. Read the fields, above all **Recipients** and **Content**.
 2. Select **Allow once** if exactly this should happen. The action runs once.
@@ -98,7 +98,7 @@ When an action runs because of a rule, the conversation reads “…, per your r
 ### View and revoke rules
 
 1. Open **Settings** and, in it, **Rules**.
-2. **Active** lists your rules with scope, date and use, for example “Last used …” and “Approved by hand 2 times before”. **Offered** lists rules you have not decided on yet.
+2. **Active** lists your rules. Chips show connector, recipients, content, validity and today’s use, for example “until …” and “today 3/20”; below them “Last used …”. **Offered** lists rules you have not decided on yet.
 3. Select **Revoke** on a rule and confirm.
 
 After the revocation SubKit asks again before carrying out this action. Anything already sent stays sent.

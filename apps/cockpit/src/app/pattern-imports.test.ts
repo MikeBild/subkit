@@ -4,10 +4,11 @@ import { join, relative } from "node:path";
 
 const SRC = join(import.meta.dir, "..");
 
-type Rule = "ui-import" | "heading" | "pre" | "dl" | "sheet-content" | "max-w";
+type Rule = "ui-import" | "ui-direct" | "heading" | "pre" | "dl" | "sheet-content" | "max-w";
 
 const RULES: Record<Rule, RegExp> = {
   "ui-import": /from\s+["']@\/components\/ui\//,
+  "ui-direct": /from\s+["']@ui\/components\/ui\//,
   heading: /<h[123][\s>]/,
   pre: /<pre[\s>]/,
   dl: /<dl[\s>]/,
@@ -46,6 +47,7 @@ function violations(): Record<string, Rule[]> {
 }
 
 const ALLOWED: Record<string, readonly Rule[]> = {
+  "features/feedback/feedback-dialog.tsx": ["max-w"],
   "components/cockpit/automation-grant.tsx": ["ui-import"],
   "components/cockpit/decision-card.tsx": ["ui-import", "heading", "max-w"],
   "components/cockpit/diff-card.tsx": ["ui-import", "pre"],
@@ -59,27 +61,50 @@ const ALLOWED: Record<string, readonly Rule[]> = {
   "components/cockpit/table-columns.tsx": ["ui-import", "max-w"],
 };
 
-const CEILING = 16;
+const DIRECT_UI_DEBT: readonly string[] = [
+  "components/cockpit/grant-environment.tsx",
+  "features/knowledge/files.tsx",
+  "features/knowledge/inbox.tsx",
+  "features/knowledge/shell.tsx",
+  "features/knowledge/skills.tsx",
+  "features/knowledge/sources.tsx",
+  "features/operations/approval-limits.tsx",
+  "features/usage/usage-page.tsx",
+];
+
+const CEILING = 12;
+const DIRECT_UI_CEILING = 8;
+
+function listed(file: string, rule: Rule): boolean {
+  if (rule === "ui-direct") return DIRECT_UI_DEBT.includes(file);
+  return ALLOWED[file]?.includes(rule) ?? false;
+}
 
 describe("pages compose the pattern set", () => {
   test("no file breaks a rule it is not listed for", () => {
     const found = violations();
     const unlisted = Object.entries(found).flatMap(([file, rules]) =>
-      rules.filter((rule) => !ALLOWED[file]?.includes(rule)).map((rule) => `${file}: ${rule}`),
+      rules.filter((rule) => !listed(file, rule)).map((rule) => `${file}: ${rule}`),
     );
     expect(unlisted, "use the pattern from components/cockpit/patterns instead").toEqual([]);
   });
 
   test("every listed violation still exists — a fixed file leaves the list", () => {
     const found = violations();
-    const stale = Object.entries(ALLOWED).flatMap(([file, rules]) =>
-      rules.filter((rule) => !found[file]?.includes(rule)).map((rule) => `${file}: ${rule}`),
-    );
-    expect(stale, "remove these entries from ALLOWED").toEqual([]);
+    const stale = [
+      ...Object.entries(ALLOWED).flatMap(([file, rules]) =>
+        rules.filter((rule) => !found[file]?.includes(rule)).map((rule) => `${file}: ${rule}`),
+      ),
+      ...DIRECT_UI_DEBT.filter((file) => !found[file]?.includes("ui-direct")).map(
+        (file) => `${file}: ui-direct`,
+      ),
+    ];
+    expect(stale, "remove these entries from ALLOWED or DIRECT_UI_DEBT").toEqual([]);
   });
 
-  test("the list only shrinks", () => {
+  test("the lists only shrink", () => {
     expect(Object.keys(ALLOWED).length).toBeLessThanOrEqual(CEILING);
+    expect(DIRECT_UI_DEBT.length).toBeLessThanOrEqual(DIRECT_UI_CEILING);
   });
 
   test("the rules reach the files they are meant for", () => {

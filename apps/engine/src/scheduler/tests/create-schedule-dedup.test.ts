@@ -26,12 +26,14 @@ afterAll(async () => {
 
 test("repeated create_schedule for one workflow keeps a single, updated row", async () => {
   const first = await createSchedule(testDb.db, {
+    creator: null,
     tenant_id,
     workflow_id,
     cron: "1 3 * * *",
     input: { note: "first" },
   });
   const second = await createSchedule(testDb.db, {
+    creator: null,
     tenant_id,
     workflow_id,
     cron: "15 3 * * *",

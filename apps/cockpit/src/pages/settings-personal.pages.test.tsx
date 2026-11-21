@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { SettingsAreaFrame, SettingsOverview } from "@/pages/settings-overview";
+import { SettingsAreaFrame } from "@/pages/settings-frame";
 import { ProfileQuestions } from "@/pages/settings-profile";
 import { WorkspaceQuestions } from "@/pages/settings-workspace";
 import { render } from "./settings-fixtures.tsx";
@@ -18,14 +18,12 @@ function profile(overrides: Partial<Parameters<typeof ProfileQuestions>[0]> = {}
       disabled={false}
       email="mira@example.com"
       roleLabel="Administrator"
-      peopleHref="/people"
+      peopleHref="/settings?area=people"
       navigate={() => {}}
       preference="auto"
       onPreference={() => {}}
       theme="system"
       onTheme={() => {}}
-      device={{ bell: true, checked: false, disabled: false, note: "hint" }}
-      onDevice={() => {}}
       stepsShown
       stepsPending={false}
       onSteps={() => {}}
@@ -34,91 +32,64 @@ function profile(overrides: Partial<Parameters<typeof ProfileQuestions>[0]> = {}
   );
 }
 
-describe("the overview for a hosted owner", () => {
-  const html = render(
-    <SettingsOverview
-      cards={[
-        { id: "profile", sentence: "Mira Kessler · Deutsch · helle Darstellung", status: null },
-        { id: "workspace", sentence: "Albrecht & Partner · Europe/Berlin", status: null },
-        { id: "notifications", sentence: "Wer wann benachrichtigt wird.", status: null },
-      ]}
-      expert={false}
-      usage={false}
-      onNavigate={() => {}}
-    />,
-  );
-
-  test("lists profile, workspace and notifications, each with one sentence", () => {
-    expect(html).toContain("Dein Profil");
-    expect(html).toContain("Mira Kessler · Deutsch · helle Darstellung");
-    expect(html).toContain("Albrecht &amp; Partner · Europe/Berlin");
-    expect(html.indexOf("settings-area-card-profile")).toBeLessThan(
-      html.indexOf("settings-area-card-workspace"),
+describe("the fixed area list for a hosted owner", () => {
+  const frame = (drafted: string[] = [], attention: string[] = []) =>
+    render(
+      <SettingsAreaFrame
+        area="profile"
+        areas={["profile", "setup", "notifications", "rules", "workspace", "help"]}
+        expert={false}
+        drafted={new Set(drafted as never[])}
+        attention={new Set(attention as never[])}
+        onNavigate={() => {}}
+      >
+        <span data-x="body" />
+      </SettingsAreaFrame>,
     );
-    expect(html).toContain('href="/cockpit/settings?area=profile"');
+
+  test("lists every area it may open in the click-dummy's order and opens general", () => {
+    const html = frame();
+    expect(html).toContain('aria-current="page"');
+    expect(html).toMatch(/aria-current="page"[^>]*data-testid="settings-area-nav-profile"/);
+    expect(html).toContain(">Allgemein<");
+    expect(html.indexOf("settings-area-nav-profile")).toBeLessThan(
+      html.indexOf("settings-area-nav-help"),
+    );
     expect(html).toContain('href="/cockpit/settings?area=workspace"');
+    for (const area of ["ai", "access", "connections", "operations"])
+      expect(html).not.toContain(`settings-area-nav-${area}"`);
   });
 
-  test("shows no engine area, no expert list, no read-only wall and no badge without a fact", () => {
-    for (const area of ["ai", "access", "connections", "operations"])
-      expect(html).not.toContain(`settings-area-card-${area}`);
+  test("shows no expert list, no way back to an overview and no purpose line", () => {
+    const html = frame();
     expect(html).not.toContain("Alle Einstellungen (für Fachleute)");
-    expect(html).not.toContain("Du darfst ansehen, nicht ändern.");
-    expect(html).not.toContain("settings-area-status-");
+    expect(html).not.toContain("settings-all-areas");
+    expect(html).not.toContain("Nur für dich.");
     expect(filled(html)).toBe(0);
   });
 
-  test("a missing name is a badge in the neutral vocabulary, a word with a dot", () => {
-    const missing = render(
-      <SettingsOverview
-        cards={[{ id: "profile", sentence: "Deutsch · helle Darstellung", status: "nameMissing" }]}
-        expert={false}
-        usage={false}
-        onNavigate={() => {}}
-      />,
-    );
-    expect(missing).toContain('data-testid="settings-area-status-nameMissing"');
-    expect(missing).toMatch(/data-tone="neutral"[^>]*aria-label="Name fehlt"/);
-    expect(missing).toContain("Name fehlt");
-  });
-
-  test("the area list offers only what the person may open", () => {
-    const frame = render(
-      <SettingsAreaFrame
-        area="profile"
-        areas={["profile", "workspace"]}
-        expert={false}
-        drafted={new Set(["profile"])}
-        attention={new Set()}
-        onNavigate={() => {}}
-      >
-        <span />
-      </SettingsAreaFrame>,
-    );
-    expect(frame).toContain('data-testid="settings-area-nav-profile"');
-    expect(frame).toContain('data-testid="settings-area-nav-workspace"');
-    expect(frame).not.toContain('data-testid="settings-area-nav-operations"');
-    expect(frame).not.toContain('data-testid="settings-area-nav-expert"');
-    expect(frame).toContain('data-testid="settings-area-nav-mark-profile"');
-    expect(frame).toContain("Dein Name, deine Sprache und die Darstellung. Nur für dich.");
+  test("a draft or a waiting area carries a mark in the list", () => {
+    const html = frame(["profile"], ["workspace"]);
+    expect(html).toContain('data-testid="settings-area-nav-mark-profile"');
+    expect(html).toContain('data-testid="settings-area-nav-mark-workspace"');
+    expect(html).toContain("Wartet auf dich");
   });
 });
 
 describe("Dein Profil", () => {
-  test("asks seven questions as headings, in everyday words", () => {
+  test("asks six questions as row labels, appearance first as in the click-dummy", () => {
     const html = profile();
     const questions = [
+      "Hell oder dunkel?",
+      "In welcher Sprache möchtest du SubKit nutzen?",
       "Wie heißt du?",
       "Mit welcher Adresse bist du angemeldet?",
       "Welche Rolle hast du hier?",
-      "In welcher Sprache möchtest du SubKit nutzen?",
-      "Hell oder dunkel?",
-      "Möchtest du auf diesem Gerät benachrichtigt werden?",
       "Sollen die ersten Schritte auf der Übersicht stehen?",
     ];
     let at = -1;
     for (const question of questions) {
-      const next = html.indexOf(`>${question}</h2>`);
+      const next = html.indexOf(`>${question}</label>`);
       expect(next, question).toBeGreaterThan(at);
       at = next;
     }
@@ -126,7 +97,6 @@ describe("Dein Profil", () => {
     expect(html).toContain(
       "Die Adresse kommt von deiner Anmeldung und lässt sich hier nicht ändern.",
     );
-    expect(html).toContain("Gilt nur für diesen Browser.");
     expect(html).toContain(">Automatisch<");
     expect(html).toContain(">Deutsch<");
     expect(html).toContain(">English<");
@@ -141,18 +111,18 @@ describe("Dein Profil", () => {
     expect(html).not.toContain('data-slot="save-bar"');
   });
 
-  test("the role links to Personen & Rechte only for who may open it", () => {
+  test("the role links to People only for who may open it", () => {
     expect(profile()).toMatch(
-      /Rollen vergibt ein Administrator unter <a href="\/cockpit\/people"[^>]*>Personen &amp; Rechte<\/a>\./,
+      /Rollen vergibt ein Administrator unter <a href="\/cockpit\/settings\?area=people"[^>]*>Personen<\/a>\./,
     );
     const plain = profile({ peopleHref: null });
-    expect(plain).toContain("Rollen vergibt ein Administrator unter Personen &amp; Rechte.");
+    expect(plain).toContain("Rollen vergibt ein Administrator unter Personen.");
     expect(plain).not.toContain('data-testid="settings-profile-people"');
   });
 
-  test("leaves the device question out where the browser cannot notify", () => {
-    const html = profile({ device: null });
-    expect(html).not.toContain("Möchtest du auf diesem Gerät benachrichtigt werden?");
+  test("asks for device notifications under Notifications, not here", () => {
+    const html = profile();
+    expect(html).not.toContain("Auf diesem Gerät benachrichtigen");
     expect(html).toContain("Sollen die ersten Schritte auf der Übersicht stehen?");
   });
 

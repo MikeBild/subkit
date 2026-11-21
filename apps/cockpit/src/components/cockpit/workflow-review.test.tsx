@@ -122,21 +122,29 @@ async function mounted(respond: (call: FetchCall) => Promise<Response> | Respons
       review: {
         workflow_slug: string;
         reviewed_version_label: string;
-        grant: { limit: string } | null;
+        grant: { limits: { validity: string; maxRuns: number | null } } | null;
       } | null;
       remember: boolean;
       policyBusy: boolean;
       onComplete: (saveOnly: boolean) => void;
       onCheckResult: () => void;
       onGrantChange: (checked: boolean) => void;
-      onLimitChange: (limit: "until_revoked" | "7d" | "30d") => void;
+      onLimitChange: (limits: {
+        validity: "revoked" | "date";
+        until: string;
+        maxRuns: number | null;
+      }) => void;
       onRememberChange: (checked: boolean) => void;
     }) => (
       <div
         data-testid="workflow-review"
         data-state={props.state}
         data-digest={props.review?.reviewed_version_label ?? ""}
-        data-limit={props.review?.grant?.limit ?? ""}
+        data-limit={
+          props.review?.grant
+            ? `${props.review.grant.limits.validity}:${props.review.grant.limits.maxRuns ?? ""}`
+            : ""
+        }
         data-remember={String(props.remember)}
         data-policy-busy={String(props.policyBusy)}
       >
@@ -154,7 +162,11 @@ async function mounted(respond: (call: FetchCall) => Promise<Response> | Respons
         />
         <button type="button" data-testid="check-result" onClick={props.onCheckResult} />
         <button type="button" data-testid="grant" onClick={() => props.onGrantChange(true)} />
-        <button type="button" data-testid="limit-7d" onClick={() => props.onLimitChange("7d")} />
+        <button
+          type="button"
+          data-testid="limit-date"
+          onClick={() => props.onLimitChange({ validity: "date", until: "2099-12-31", maxRuns: 5 })}
+        />
         <button type="button" data-testid="remember" onClick={() => props.onRememberChange(true)} />
       </div>
     ),
@@ -470,7 +482,7 @@ isolated("a receipt cannot cross a conversation or pending-decision boundary", a
 });
 
 isolated(
-  "granting from the card asks for an approval until revoked unless a duration is chosen",
+  "granting from the card asks for an approval until revoked unless an end date or run limit is chosen",
   async () => {
     const suggested = {
       environment: "prod",
@@ -506,7 +518,7 @@ isolated(
         .querySelector('[data-testid="workflow-review"]')
         ?.getAttribute("data-limit");
     try {
-      expect(limit()).toBe("until_revoked");
+      expect(limit()).toBe("revoked:");
       await click("grant");
       expect(prepared.at(-1)).toMatchObject({
         activate: true,
@@ -517,18 +529,18 @@ isolated(
           max_runs: null,
         },
       });
-      expect(limit()).toBe("until_revoked");
-      await click("limit-7d");
+      expect(limit()).toBe("revoked:");
+      await click("limit-date");
       expect(prepared.at(-1)).toMatchObject({
         activate: true,
         grant: {
           environment: "prod",
           valid_from: suggested.valid_from,
-          valid_until: "2026-11-26T09:00:00.000Z",
-          max_runs: null,
+          valid_until: new Date(2099, 11, 31, 23, 59, 59).toISOString(),
+          max_runs: 5,
         },
       });
-      expect(limit()).toBe("7d");
+      expect(limit()).toBe("date:5");
       expect(prepared).toHaveLength(3);
     } finally {
       await view.close();

@@ -1,6 +1,9 @@
 import { expect, test } from "bun:test";
 import { ApiError } from "@/api/client";
+import { type TranslationKey, translate } from "@/lib/i18n";
 import {
+  pairRequestedLine,
+  pairReview,
   workflowReviewBlockedKey,
   workflowReviewFailure,
   workflowReviewStorageKey,
@@ -41,4 +44,22 @@ test("a changed or expired receipt requires another review", () => {
 test("recovery is scoped to the conversation and its pending decision", () => {
   expect(workflowReviewStorageKey("a", "first")).not.toBe(workflowReviewStorageKey("b", "first"));
   expect(workflowReviewStorageKey("a", "first")).not.toBe(workflowReviewStorageKey("a", "second"));
+});
+
+test("under pair approval the chat review requests an approval and names who it waits for", () => {
+  const de = (key: TranslationKey, values?: Record<string, string>) => translate("de", key, values);
+  expect(pairReview(false, { kind: "self" })).toBeNull();
+  expect(pairReview(false, { kind: "pair", email: "anna@example.com" })).toBeNull();
+  const named = pairReview(true, { kind: "pair", email: "anna@example.com" });
+  expect(named).toEqual({ waitingOn: "anna@example.com" });
+  expect(named && pairRequestedLine(named, de)).toBe(
+    "Freigabe angefragt · wartet auf anna@example.com",
+  );
+  const anyone = pairReview(true, { kind: "self" });
+  expect(anyone && pairRequestedLine(anyone, de)).toBe(
+    "Freigabe angefragt · wartet auf eine zweite Person",
+  );
+  expect(
+    workflowReviewBlockedKey(new ApiError(422, { code: "pair_schedule_unsupported" }, null)),
+  ).toBe("reviewWorkflow.blocked.pair_schedule_unsupported");
 });

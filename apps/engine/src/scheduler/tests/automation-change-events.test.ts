@@ -49,7 +49,12 @@ async function newestId(): Promise<number> {
 
 test("a schedule's create, edit, release and delete each announce themselves", async () => {
   const before = await newestId();
-  const created = await createSchedule(testDb.db, { tenant_id, workflow_id, cron: "0 3 * * *" });
+  const created = await createSchedule(testDb.db, {
+    creator: null,
+    tenant_id,
+    workflow_id,
+    cron: "0 3 * * *",
+  });
   const schedule_id = created.row.id;
   await updateSchedule(testDb.db, tenant_id, schedule_id, { paused: true });
   await updateSchedule(testDb.db, tenant_id, schedule_id, { paused: false });

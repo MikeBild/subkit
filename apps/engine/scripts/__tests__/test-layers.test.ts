@@ -11,6 +11,8 @@ import {
   layerByPath,
   partition,
   RUNNERS,
+  rootOf,
+  runSite,
 } from "../audit/test-layers.ts";
 
 const sourceOf = (
@@ -143,5 +145,34 @@ describe("RUNNERS and groupByRoot", () => {
       { root: "packages/shared", files: ["packages/shared/src/d.test.ts"] },
       { root: "scripts", files: ["scripts/__tests__/a.test.ts"] },
     ]);
+  });
+});
+
+describe("runSite", () => {
+  const ownConfig = (root: string) => root === "apps/desktop";
+
+  test("a root with its own test config runs from that root with relative targets", () => {
+    expect(
+      runSite(["apps/desktop/src/a.test.tsx", "apps/desktop/scripts/b.test.ts"], ownConfig),
+    ).toEqual({ cwd: "apps/desktop", targets: ["./src/a.test.tsx", "./scripts/b.test.ts"] });
+  });
+
+  test("a root without its own test config runs from the repo root", () => {
+    expect(runSite(["apps/engine/src/c.test.ts"], ownConfig)).toEqual({
+      cwd: ".",
+      targets: ["./apps/engine/src/c.test.ts"],
+    });
+  });
+
+  test("top-level folders and mixed roots run from the repo root", () => {
+    expect(runSite(["scripts/d.test.ts"], () => true).cwd).toBe(".");
+    expect(
+      runSite(["apps/desktop/src/a.test.tsx", "apps/engine/src/c.test.ts"], ownConfig).cwd,
+    ).toBe(".");
+  });
+
+  test("rootOf names the app or package folder", () => {
+    expect(rootOf("apps/desktop/src/a.test.tsx")).toBe("apps/desktop");
+    expect(rootOf("scripts/__tests__/a.test.ts")).toBe("scripts");
   });
 });

@@ -154,23 +154,6 @@ export function chatHeaderTitle(input: {
   return input.loaded ? { kind: "untitled" } : { kind: "loading" };
 }
 
-export function tokenPill(usage: { tokens: number } | null | undefined): number | null {
-  return usage && usage.tokens > 0 ? usage.tokens : null;
-}
-
-export function costPill(
-  usage:
-    | { cost: { amount: number; currency: string; unpriced_models: string[] } | null }
-    | null
-    | undefined,
-): { amount: number; currency: string; floor: boolean } | null {
-  const cost = usage?.cost;
-  if (!cost) return null;
-  const floor = cost.unpriced_models.length > 0;
-  if (cost.amount <= 0 && !floor) return null;
-  return { amount: cost.amount, currency: cost.currency, floor };
-}
-
 export function budgetPill(
   state: "ample" | "tightening" | "critical" | null | undefined,
 ): "tightening" | "critical" | null {

@@ -224,30 +224,6 @@ export function buildFeedbackDiagnostics(input: {
   };
 }
 
-export interface FeedbackPrefillFacts {
-  title: string;
-  cause?: string | null;
-  code?: string | null;
-  requestId?: string | null;
-  at?: string | null;
-}
-
-export function feedbackPrefillText(
-  facts: FeedbackPrefillFacts,
-  labels: { error: string; cause: string; code: string; request: string; time: string },
-): string {
-  const lines: [string, string | null | undefined][] = [
-    [labels.cause, facts.cause],
-    [labels.code, facts.code],
-    [labels.request, facts.requestId],
-    [labels.time, facts.at],
-  ];
-  const details = lines
-    .filter((line): line is [string, string] => Boolean(line[1]?.trim()))
-    .map(([label, value]) => `${label}: ${value.trim()}`);
-  return [`${labels.error}: ${facts.title.trim()}`, "", ...details].join("\n").trimEnd();
-}
-
 export function mergePrefill(current: string, prefill: string): string {
   if (!prefill.trim() || current.includes(prefill)) return current;
   return current.trim() ? `${current.trimEnd()}\n\n${prefill}` : prefill;
@@ -257,10 +233,12 @@ export function buildFeedbackBody(input: {
   requestId: string;
   draft: FeedbackDraft;
   diagnostics: FeedbackDiagnostics | null;
+  createdAt?: string;
 }): FeedbackBody {
   const { draft } = input;
   return {
     client_request_id: input.requestId,
+    ...(input.createdAt ? { created_on_device_at: input.createdAt } : {}),
     kind: draft.kind,
     message: draft.text.trim().slice(0, FEEDBACK_MAX_MESSAGE),
     ...(draft.diagnostics && input.diagnostics ? { diagnostics: input.diagnostics } : {}),
@@ -302,4 +280,19 @@ export function appendClientError(
   if (last && last.code === entry.code && Date.parse(entry.at) - Date.parse(last.at) < 1000)
     return [...log];
   return [...log, entry].slice(-FEEDBACK_MAX_ERRORS);
+}
+
+export function needsUncleanedWarning(files: readonly Pick<FeedbackFile, "name">[]): boolean {
+  return files.some((file) => /\.(png|jpe?g|pdf)$/i.test(file.name));
+}
+
+export function feedbackResponse(
+  error: unknown,
+): { status: number; retry_after_seconds?: number } | null {
+  const fields = record(error);
+  if (typeof fields.status !== "number") return null;
+  const seconds = record(fields.details).retry_after_seconds;
+  return typeof seconds === "number"
+    ? { status: fields.status, retry_after_seconds: seconds }
+    : { status: fields.status };
 }

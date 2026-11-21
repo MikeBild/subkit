@@ -61,7 +61,7 @@ isolated(
         expect(stage.text("task-permissions-summary")).toContain(
           "Die Dauererlaubnis gilt bis 2026-12-31T00:00:00.000Z.",
         );
-        expect(stage.text("task-permissions-summary")).toContain("noch 6 Läufe");
+        expect(stage.text("task-permissions-summary")).toContain("noch 6 Runs");
         expect(buttons(stage.document, "task-permissions")).toEqual([
           "task-permissions-revoke",
           "task-permissions-technical-toggle",
@@ -71,7 +71,7 @@ isolated(
           stage.document
             .querySelector('[data-testid="task-grant-approval-3"]')
             ?.getAttribute("href"),
-        ).toBe(`/cockpit/workflows/${WF_REPORT}?tab=approvals`);
+        ).toBe(`/cockpit/workflows/${WF_REPORT}#workflow-section-approvals`);
         await stage.click("task-permissions-revoke");
         expect(stage.text("task-permissions-revoke-dialog-title")).toBe(
           "Dauererlaubnis für „Rechnungen nachfassen“ widerrufen?",

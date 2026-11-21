@@ -1,3 +1,4 @@
+import { UiProvider } from "@ui/lib/ui-context";
 import { type ReactNode, useMemo, useSyncExternalStore } from "react";
 import { formatDateTime, translate, translatePlural } from "@/lib/i18n";
 import { I18nContext, type I18nValue } from "@/lib/i18n-context";
@@ -47,5 +48,11 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     }),
     [snapshot],
   );
-  return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
+  return (
+    <I18nContext.Provider value={value}>
+      <UiProvider lang={snapshot.locale === "en" ? "en" : "de"} fmt={value.dateTime}>
+        {children}
+      </UiProvider>
+    </I18nContext.Provider>
+  );
 }

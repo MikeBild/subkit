@@ -42,6 +42,12 @@ function main(): void {
     else pendingLink = link;
   };
 
+  const droppedOnDock: string[] = [];
+  app.on("open-file", (event, path) => {
+    event.preventDefault();
+    if (shell) shell.dropFiles([path], "dock");
+    else droppedOnDock.push(path);
+  });
   app.on("open-url", (event, url) => {
     event.preventDefault();
     deliver(url);
@@ -63,6 +69,7 @@ function main(): void {
     shell = new Shell();
     shell.start(pendingLink, launchedHidden());
     pendingLink = null;
+    if (droppedOnDock.length) shell.dropFiles(droppedOnDock.splice(0), "dock");
   });
 }
 

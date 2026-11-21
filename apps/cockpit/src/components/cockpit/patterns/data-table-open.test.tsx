@@ -58,10 +58,10 @@ test("only available records expose row navigation on desktop and mobile", () =>
   );
   const document = new JSDOM(html).window.document;
   expect(document.querySelector('[data-testid="availability-desktop"]')?.className).toContain(
-    "@4xl:block",
+    "@xl:block",
   );
   expect(document.querySelector('[data-testid="availability-mobile"]')?.className).toContain(
-    "@4xl:hidden",
+    "@xl:hidden",
   );
   expect(document.querySelector('[data-slot="row-actions"] span')?.className).toContain(
     "flex-wrap",

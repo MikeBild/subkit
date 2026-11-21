@@ -46,7 +46,7 @@ describe("the run line above a run conversation", () => {
     const html = render();
     expect(html).toContain('href="/cockpit/tasks/t1"');
     expect(html).toContain("Rechnungen nachfassen");
-    expect(html).toContain("Lauf vom 19.11.");
+    expect(html).toContain("Run vom 19.11.");
     expect(html).toContain("läuft");
     expect(html).toContain("Jetzt: Erinnerungen vorbereiten");
     expect(html).toContain("Nächste Prüfung 14:30");
@@ -73,13 +73,13 @@ describe("the run line above a run conversation", () => {
     const html = render({ pending: true, line: null, date: null, onAbort: null });
     expect(html).toContain('data-slot="skeleton"');
     expect(html).not.toContain("chat-task-run-facts");
-    expect(html).not.toContain("Lauf vom");
+    expect(html).not.toContain("Run vom");
     expect(count(html, "<button")).toBe(0);
   });
 
   test("a run that cannot be loaded says so in one sentence and offers one retry", () => {
     const html = render({ unavailable: true, line: null, date: null, onAbort: null });
-    expect(html).toContain("Dieser Lauf lässt sich gerade nicht laden.");
+    expect(html).toContain("Dieser Run lässt sich gerade nicht laden.");
     expect(count(html, "<button")).toBe(1);
     expect(html).toContain('data-testid="chat-task-run-retry"');
     expect(render({ unavailable: true, line: null, onAbort: () => {} }, "en")).toContain(

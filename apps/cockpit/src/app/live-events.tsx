@@ -57,6 +57,14 @@ function parseJson(data: string): unknown {
   }
 }
 
+type FrameListener = (event: string, data: string) => void;
+const frameListeners = new Set<FrameListener>();
+
+export function subscribeLiveFrames(listener: FrameListener): () => void {
+  frameListeners.add(listener);
+  return () => frameListeners.delete(listener);
+}
+
 export function LiveEventsProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [status, setStatus] = useState<LiveStatus>("connecting");
@@ -119,6 +127,7 @@ export function LiveEventsProvider({ children }: { children: ReactNode }) {
           }
           if (kind === "ping") return;
           if (frame.id) lastEventId.current = frame.id;
+          for (const listener of frameListeners) listener(frame.event, frame.data);
           schedule(keysForEvent(frame.event));
         },
       })

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { triggerLabelKey } from "@/pages/workflows-model";
+import type { WorkflowSection } from "@/app/links";
+import { triggerLabelKey, withSection } from "@/pages/workflows-model";
 
 describe("workflow trigger words", () => {
   test("a request trigger reads as on request", () => {
@@ -43,5 +44,16 @@ describe("workflow trigger words", () => {
     expect(schedule).toBe("workflows.trigger.scheduleUnbound");
     expect(webhook).toBe("workflows.trigger.webhookUnbound");
     expect(schedule).not.toBe("workflows.trigger.schedule");
+  });
+});
+
+describe("workflow sections", () => {
+  test("opening and closing a section keeps the others as they are", () => {
+    const none: ReadonlySet<WorkflowSection> = new Set();
+    const build = withSection(none, "build", true);
+    expect([...build]).toEqual(["build"]);
+    expect([...withSection(build, "history", true)]).toEqual(["build", "history"]);
+    expect([...withSection(build, "build", false)]).toEqual([]);
+    expect(withSection(build, "build", true)).toBe(build);
   });
 });

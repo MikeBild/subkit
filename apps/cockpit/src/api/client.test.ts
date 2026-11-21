@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import {
+  appendBody,
   logout,
+  respondBody,
   respondToChatApproval,
   respondToChatChoice,
   respondToChatForm,
@@ -347,5 +349,21 @@ describe("logout", () => {
 
     await expect(logout()).rejects.toMatchObject({ status: 403 });
     expect(attempts).toBe(1);
+  });
+});
+
+describe("chat mode on a turn", () => {
+  test("a message carries the mode only when you switched it", () => {
+    expect(appendBody("Hallo", "ask")).toEqual({ message: "Hallo", permission_mode: "ask" });
+    expect(appendBody("Hallo")).toEqual({ message: "Hallo" });
+    expect(appendBody("Hallo", null)).toEqual({ message: "Hallo" });
+  });
+
+  test("an answer to a question carries the switched mode too", () => {
+    expect(respondBody({ value: "ja" }, "plan")).toEqual({
+      output: { value: "ja" },
+      permission_mode: "plan",
+    });
+    expect(respondBody({ confirmed: true })).toEqual({ output: { confirmed: true } });
   });
 });

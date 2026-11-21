@@ -44,6 +44,7 @@ export const taskGrantEn = {
     "You cannot see this workflow, so ask someone with access to approve it.",
   "taskGrant.openWorkflow": "Open workflow",
   "taskGrant.allow": "Allow",
+  "pair.required": "A second person has to confirm this.",
   "taskGrant.allowing": "Allowing…",
   "taskGrant.changed.task": "The task has changed in the meantime, so review the details again.",
   "taskGrant.changed.workflow":
@@ -89,27 +90,27 @@ export const taskGrantDe: Record<keyof typeof taskGrantEn, string> = {
   "taskGrant.schedule.own": "Sie startet nach eigenem Rhythmus und darf dabei:",
   "taskGrant.schedule.manual": "Du startest sie von Hand, und sie darf dabei:",
   "taskGrant.list": "Was diese Aufgabe nutzt",
-  "taskGrant.nothingBound": "Diese Aufgabe nutzt weder Workflows noch Konnektoren.",
+  "taskGrant.nothingBound": "Diese Aufgabe nutzt weder Workflows noch Connectors.",
   "taskGrant.verb.read": "liest",
   "taskGrant.verb.write": "schreibt",
   "taskGrant.verb.use": "nutzt",
   "taskGrant.verb.start": "startet",
   "taskGrant.webSearch": "Websuche",
-  "taskGrant.connector.unnamed": "Konnektor ohne Zugriff",
+  "taskGrant.connector.unnamed": "Connector ohne Zugriff",
   "taskGrant.workflow.unnamed": "Unbekannter Workflow",
   "taskGrant.effect.read": "liest {name}",
   "taskGrant.effect.write": "schreibt {name}",
   "taskGrant.effect.delete": "löscht in {name}",
   "taskGrant.effect.unknown": "Wirkung unklar bei {name}",
-  "taskGrant.effect.none": "nutzt keinen Konnektor",
+  "taskGrant.effect.none": "nutzt keinen Connector",
   "taskGrant.standing.covered": "schon erlaubt",
   "taskGrant.standing.coGranted": "mit erlaubt",
   "taskGrant.standing.asks": "fragt jedes Mal",
   "taskGrant.standing.unavailable": "nicht verfügbar",
   "taskGrant.blocked.asks.one":
-    "{name} lässt sich nicht dauerhaft erlauben und fragt deshalb bei jedem Lauf.",
+    "{name} lässt sich nicht dauerhaft erlauben und fragt deshalb bei jedem Run.",
   "taskGrant.blocked.asks.other":
-    "{count} Workflows lassen sich nicht dauerhaft erlauben und fragen deshalb bei jedem Lauf.",
+    "{count} Workflows lassen sich nicht dauerhaft erlauben und fragen deshalb bei jedem Run.",
   "taskGrant.blocked.unavailable.one": "{name} ist für diese Aufgabe nicht verfügbar.",
   "taskGrant.blocked.unavailable.other":
     "{count} Workflows sind für diese Aufgabe nicht verfügbar.",
@@ -122,13 +123,14 @@ export const taskGrantDe: Record<keyof typeof taskGrantEn, string> = {
   "taskGrant.reason.workflow_sensitive":
     "Dieser Workflow ist vertraulich und lässt sich deshalb aus keiner Aufgabe starten.",
   "taskGrant.reason.workflow_not_repeatable":
-    "Dieser Workflow lässt sich noch nicht für wiederholte Läufe freigeben, prüfe ihn auf seiner Seite.",
+    "Dieser Workflow lässt sich noch nicht für wiederholte Runs freigeben, prüfe ihn auf seiner Seite.",
   "taskGrant.reason.workflow_permission_missing":
     "Dir fehlt das Recht, diesen Workflow freizugeben, bitte eine Person darum, die es hat.",
   "taskGrant.reason.workflow_not_readable":
     "Du darfst diesen Workflow nicht sehen, bitte eine Person mit Zugriff um die Freigabe.",
   "taskGrant.openWorkflow": "Workflow öffnen",
   "taskGrant.allow": "Erlauben",
+  "pair.required": "Eine zweite Person muss das bestätigen.",
   "taskGrant.allowing": "Wird erlaubt …",
   "taskGrant.changed.task": "Die Aufgabe wurde inzwischen geändert, prüfe die Angaben noch einmal.",
   "taskGrant.changed.workflow":
@@ -149,8 +151,8 @@ export const taskGrantDe: Record<keyof typeof taskGrantEn, string> = {
   "taskPermissions.summary.until": "Die Dauererlaubnis gilt bis {date}.",
   "taskPermissions.summary.expired": "Die Dauererlaubnis ist am {date} abgelaufen.",
   "taskPermissions.summary.exhausted": "Die Dauererlaubnis ist aufgebraucht.",
-  "taskPermissions.remaining.one": "noch 1 Lauf",
-  "taskPermissions.remaining.other": "noch {count} Läufe",
+  "taskPermissions.remaining.one": "noch 1 Run",
+  "taskPermissions.remaining.other": "noch {count} Runs",
   "taskPermissions.revoke": "Widerrufen",
   "taskPermissions.revokeObject": "Dauererlaubnis für „{name}“",
   "taskPermissions.revokeObjectUnnamed": "Dauererlaubnis",

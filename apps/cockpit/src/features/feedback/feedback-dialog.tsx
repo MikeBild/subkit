@@ -1,7 +1,9 @@
+import { classifyOutcome, type OfflineIdentity } from "@shared/offline-queue.ts";
 import { useQueryClient } from "@tanstack/react-query";
-import { useRouterState } from "@tanstack/react-router";
-import { ChevronDown, Paperclip, X } from "lucide-react";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { ErrorNotice, FieldError } from "@ui/components/proto/ErrorNotice";
+import { useUi } from "@ui/lib/ui-context";
+import { ChevronDown, Paperclip, Send, X } from "lucide-react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { submitFeedback } from "@/api/feedback";
 import { useLiveStatus } from "@/app/live-events";
@@ -10,18 +12,20 @@ import { IconButton } from "@/components/cockpit/icon-button";
 import {
   Button,
   Checkbox,
-  Chip,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
   FactList,
-  FormDialog,
-  Label,
-  SegmentedControl,
   Textarea,
 } from "@/components/cockpit/patterns";
-import { LoadFailed } from "@/components/failure-state";
-import { runsInstalled } from "@/features/pwa/display-mode";
+import { runsInstalled } from "@/features/pwa";
+import { errorRows } from "@/lib/error-rows";
 import { useI18n } from "@/lib/i18n-context";
 import { writeSearchParam } from "@/lib/use-search-param-state";
 import { feedbackBridge, within } from "./desktop-bridge";
+import type { FailedReport } from "./failed-model";
+import { FailedReports } from "./failed-reports";
 import {
   type AttachmentProblem,
   attachmentProblem,
@@ -38,9 +42,12 @@ import {
   type FeedbackFile,
   type FeedbackKind,
   feedbackFailure,
+  feedbackResponse,
   hasFeedbackDraft,
+  needsUncleanedWarning,
   screenshotHint,
 } from "./model";
+import { feedbackQueue } from "./queue";
 import { feedbackStore, openFeedback, useFeedbackState } from "./store";
 
 const DIAGNOSTICS_TIMEOUT_MS = 3000;
@@ -61,11 +68,10 @@ function readFile(file: File): Promise<string> {
   });
 }
 
-function useDiagnostics(): () => Promise<FeedbackDiagnostics> {
+function useDiagnostics(route: string): () => Promise<FeedbackDiagnostics> {
   const session = useSession();
   const { status, serverVersion } = useLiveStatus();
   const { t } = useI18n();
-  const route = useRouterState({ select: (state) => state.location.pathname });
   const removed = t("feedback.removed");
   return useCallback(async () => {
     const bridge = feedbackBridge();
@@ -127,17 +133,28 @@ function DiagnosticsPreview({ diagnostics }: { diagnostics: FeedbackDiagnostics 
   );
 }
 
-function FeedbackDialog() {
-  const { t } = useI18n();
+function FeedbackDialog({
+  identity,
+  waiting,
+  unsent,
+  route,
+}: {
+  identity: OfflineIdentity;
+  waiting: number;
+  unsent: UnsentReports;
+  route: string;
+}) {
+  const { t, tn } = useI18n();
+  const { now } = useUi();
   const store = feedbackStore();
   const { open, draft, status, failure, requestId } = useFeedbackState();
-  const collect = useDiagnostics();
+  const collect = useDiagnostics(route);
   const [preview, setPreview] = useState(false);
+  const [lastError, setLastError] = useState<unknown>(null);
   const [problem, setProblem] = useState<FileProblem | null>(null);
   const [diagnostics, setDiagnostics] = useState<FeedbackDiagnostics | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const checkboxId = useId();
-  const screenshotId = useId();
   const sending = status === "sending";
 
   useEffect(() => {
@@ -180,74 +197,81 @@ function FeedbackDialog() {
   async function send(): Promise<void> {
     if (sending || !draft.text.trim()) return;
     store.sending();
-    try {
-      const current = draft.diagnostics ? await collect() : null;
-      await submitFeedback(buildFeedbackBody({ requestId, draft, diagnostics: current }));
+    const done = (message: string) => {
       store.discard();
       setProblem(null);
       setPreview(false);
-      toast.success(t("feedback.thanks"));
+      toast.success(message);
+    };
+    let body: ReturnType<typeof buildFeedbackBody> | null = null;
+    try {
+      const current = draft.diagnostics ? await collect() : null;
+      body = buildFeedbackBody({
+        requestId,
+        draft,
+        diagnostics: current,
+        createdAt: new Date(now()).toISOString(),
+      });
+      await submitFeedback(body);
+      done(t("feedback.thanks"));
     } catch (error) {
+      const transient = classifyOutcome(feedbackResponse(error)).kind === "retry";
+      if (body && transient && (await feedbackQueue().add(identity, requestId, body))) {
+        done(t("feedback.queued"));
+        return;
+      }
+      setLastError(error);
       store.failed(feedbackFailure(error));
     }
   }
 
+  const screenshotShown = draft.screenshot !== null && draft.screenshotIncluded;
   return (
-    <FormDialog
+    <Dialog
       open={open}
       onOpenChange={(next) => {
         if (!next) store.close();
       }}
-      title={t("feedback.title")}
-      size="wide"
-      testId="feedback"
-      cancel={false}
-      actions={
-        hasFeedbackDraft(draft) ? (
-          <Button
-            type="button"
-            variant="ghost"
-            disabled={sending}
-            onClick={() => {
-              store.discard();
-              setProblem(null);
-            }}
-            data-testid="feedback-discard"
-          >
-            {t("feedback.discard")}
-          </Button>
-        ) : null
-      }
-      submit={{
-        label: sending ? t("feedback.sending") : t("feedback.send"),
-        pending: sending,
-        disabled: !draft.text.trim(),
-      }}
-      onSubmit={send}
     >
-      <SegmentedControl
-        label={t("feedback.kind")}
-        testId="feedback-kind"
-        disabled={sending}
-        value={draft.kind}
-        onValueChange={(kind) => store.update({ kind: kind as FeedbackKind })}
-        options={FEEDBACK_KINDS.map((kind) => ({
-          value: kind,
-          label: t(`feedback.kind.${kind}`),
-          testId: `feedback-kind-${kind}`,
-        }))}
-      />
-      <Textarea
-        className="min-h-36"
-        aria-label={t(`feedback.placeholder.${draft.kind}`)}
-        placeholder={t(`feedback.placeholder.${draft.kind}`)}
-        value={draft.text}
-        maxLength={FEEDBACK_MAX_MESSAGE}
-        disabled={sending}
-        onChange={(event) => store.update({ text: event.target.value })}
-        data-testid="feedback-message"
-      />
-      <div className="flex flex-col gap-1.5">
+      <DialogContent
+        closeLabel={t("common.close")}
+        className="max-h-[90dvh] overflow-y-auto sm:max-w-[720px]"
+        data-testid="feedback"
+      >
+        <div className="flex flex-col gap-2">
+          <DialogTitle>{t("feedback.title")}</DialogTitle>
+          <DialogDescription className="sr-only">{t("feedback.notice")}</DialogDescription>
+        </div>
+        <fieldset
+          className="flex min-w-0 gap-1 border-0 p-0"
+          aria-label={t("feedback.kind")}
+          data-testid="feedback-kind"
+        >
+          {FEEDBACK_KINDS.map((kind) => (
+            <Button
+              key={kind}
+              type="button"
+              size="sm"
+              variant={kind === draft.kind ? "secondary" : "ghost"}
+              aria-pressed={kind === draft.kind}
+              disabled={sending}
+              onClick={() => store.update({ kind: kind as FeedbackKind })}
+              data-testid={`feedback-kind-${kind}`}
+            >
+              {t(`feedback.kind.${kind}`)}
+            </Button>
+          ))}
+        </fieldset>
+        <Textarea
+          className="min-h-36"
+          aria-label={t(`feedback.placeholder.${draft.kind}`)}
+          placeholder={t(`feedback.placeholder.${draft.kind}`)}
+          value={draft.text}
+          maxLength={FEEDBACK_MAX_MESSAGE}
+          disabled={sending}
+          onChange={(event) => store.update({ text: event.target.value })}
+          data-testid="feedback-message"
+        />
         <div className="flex flex-wrap items-center gap-2">
           <input
             ref={fileInput}
@@ -268,111 +292,208 @@ function FeedbackDialog() {
             onClick={() => fileInput.current?.click()}
             data-testid="feedback-attach"
           >
-            <Paperclip aria-hidden="true" />
+            <Paperclip className="size-4" aria-hidden="true" />
             {t("feedback.attach")}
           </Button>
           {draft.files.map((file, index) => (
-            <Chip key={file.id} className="min-w-0 shrink" testId={`feedback-file-${index}`}>
+            <span
+              key={file.id}
+              className="inline-flex max-w-full items-center gap-1 rounded-md border px-2 text-xs"
+              data-testid={`feedback-file-${index}`}
+            >
               <span className="truncate">{file.name}</span>
               <IconButton
                 type="button"
                 size="icon-xs"
-                label={t("feedback.remove", { name: file.name })}
                 disabled={sending}
+                label={t("feedback.remove", { name: file.name })}
                 onClick={() =>
                   store.update({ files: draft.files.filter((item) => item.id !== file.id) })
                 }
                 data-testid={`feedback-file-remove-${index}`}
               >
-                <X />
+                <X className="size-3" />
               </IconButton>
-            </Chip>
+            </span>
           ))}
+          {screenshotShown ? (
+            <span
+              className="inline-flex items-center gap-1 rounded-md border px-2 text-xs"
+              title={t(`feedback.screenshot.hint.${screenshotHint(store.screenshotCapability())}`)}
+              data-testid="feedback-screenshot-block"
+            >
+              {t("feedback.screenshot")}
+              <IconButton
+                type="button"
+                size="icon-xs"
+                disabled={sending}
+                label={t("feedback.remove", { name: t("feedback.screenshot") })}
+                onClick={() => store.update({ screenshotIncluded: false })}
+                data-testid="feedback-screenshot"
+              >
+                <X className="size-3" />
+              </IconButton>
+            </span>
+          ) : null}
         </div>
-        <p className="text-xs text-muted-foreground" data-testid="feedback-attach-uncleaned">
-          {t("feedback.attachUncleaned")}
-        </p>
         {problem ? (
-          <p role="alert" className="text-sm text-destructive" data-testid="feedback-attach-error">
-            {t(`feedback.problem.${problem}`)}
+          <FieldError testId="feedback-attach-error">{t(`feedback.problem.${problem}`)}</FieldError>
+        ) : null}
+        {needsUncleanedWarning(draft.files) ? (
+          <p className="text-xs text-muted-foreground" data-testid="feedback-attach-uncleaned">
+            {t("feedback.attachUncleaned")}
           </p>
         ) : null}
-      </div>
-      {draft.screenshot ? (
-        <div className="flex flex-col gap-2" data-testid="feedback-screenshot-block">
+        <div>
           <div className="flex flex-wrap items-center gap-2">
             <Checkbox
-              id={screenshotId}
-              checked={draft.screenshotIncluded}
+              id={checkboxId}
+              checked={draft.diagnostics}
               disabled={sending}
-              onCheckedChange={(checked) => store.update({ screenshotIncluded: checked === true })}
-              data-testid="feedback-screenshot"
+              onCheckedChange={(checked) => store.update({ diagnostics: checked === true })}
+              data-testid="feedback-diagnostics"
             />
-            <Label htmlFor={screenshotId} className="text-sm font-normal">
-              {t("feedback.screenshot.attach")}
-            </Label>
+            <label htmlFor={checkboxId} className="text-sm">
+              {t("feedback.diagnostics")}
+            </label>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              aria-expanded={preview}
+              onClick={() => setPreview(!preview)}
+              data-testid="feedback-diagnostics-view"
+            >
+              {t("feedback.view")}
+              <ChevronDown className="size-3" aria-hidden="true" />
+            </Button>
           </div>
-          <img
-            src={`data:image/png;base64,${draft.screenshot}`}
-            alt={t("feedback.screenshot")}
-            className="max-h-40 w-fit rounded-md border"
-            data-testid="feedback-screenshot-preview"
-          />
-          <p className="text-xs text-muted-foreground" data-testid="feedback-screenshot-hint">
-            {t(`feedback.screenshot.hint.${screenshotHint(store.screenshotCapability())}`)}
+          {preview ? <DiagnosticsPreview diagnostics={diagnostics} /> : null}
+          <p className="mt-2 text-xs text-muted-foreground" data-testid="feedback-redact">
+            {t("feedback.redact")}
           </p>
         </div>
-      ) : null}
-      <div className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <Checkbox
-            id={checkboxId}
-            checked={draft.diagnostics}
-            disabled={sending}
-            onCheckedChange={(checked) => store.update({ diagnostics: checked === true })}
-            data-testid="feedback-diagnostics"
+        <p
+          className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm"
+          data-testid="feedback-notice"
+        >
+          {t("feedback.notice")}
+        </p>
+        {waiting > 0 ? (
+          <p className="text-xs text-muted-foreground" data-testid="feedback-waiting">
+            {tn("feedback.waiting", waiting)}
+          </p>
+        ) : null}
+        <FailedReports
+          reports={unsent.reports}
+          busy={unsent.busy}
+          onResend={unsent.resend}
+          onDiscard={unsent.discard}
+        />
+        {status === "failed" ? (
+          <ErrorNotice
+            testId="feedback-failed"
+            kind="feedbackFailed"
+            title={t("feedback.failed.title")}
+            body={t(`feedback.failed.${failure ?? "generic"}`)}
+            primary={{ label: t("pattern.retry"), onClick: () => void send() }}
+            rows={errorRows(lastError, t)}
           />
-          <Label htmlFor={checkboxId} className="text-sm font-normal">
-            {t("feedback.diagnostics")}
-          </Label>
+        ) : null}
+        <div className="flex flex-wrap justify-end gap-2">
+          {hasFeedbackDraft(draft) ? (
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={sending}
+              onClick={() => {
+                store.discard();
+                setProblem(null);
+              }}
+              data-testid="feedback-discard"
+            >
+              {t("feedback.discard")}
+            </Button>
+          ) : null}
           <Button
             type="button"
-            size="sm"
-            variant="ghost"
-            aria-expanded={preview}
-            onClick={() => setPreview(!preview)}
-            data-testid="feedback-diagnostics-view"
+            disabled={!draft.text.trim() || sending}
+            onClick={() => void send()}
+            data-testid="feedback-submit"
           >
-            {t("feedback.view")}
-            <ChevronDown aria-hidden="true" className={preview ? "rotate-180" : undefined} />
+            <Send className="size-4" aria-hidden="true" />
+            {sending
+              ? t("feedback.sending")
+              : status === "failed"
+                ? t("pattern.retry")
+                : t("feedback.send")}
           </Button>
         </div>
-        {preview ? <DiagnosticsPreview diagnostics={diagnostics} /> : null}
-        <p className="text-xs text-muted-foreground" data-testid="feedback-redact">
-          {t("feedback.redact")}
-        </p>
-      </div>
-      <p
-        className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm"
-        data-testid="feedback-notice"
-      >
-        {t("feedback.notice")}
-      </p>
-      {status === "failed" ? (
-        <LoadFailed
-          title={t("feedback.failed.title")}
-          description={t(`feedback.failed.${failure ?? "generic"}`)}
-          onRetry={() => void send()}
-          testId="feedback-failed"
-        />
-      ) : null}
-    </FormDialog>
+      </DialogContent>
+    </Dialog>
   );
 }
 
-export function FeedbackHost() {
+interface UnsentReports {
+  reports: readonly FailedReport[];
+  busy: boolean;
+  resend(id: string): void;
+  discard(id: string): void;
+}
+
+function useQueuedFeedback(): {
+  identity: OfflineIdentity;
+  waiting: number;
+  unsent: UnsentReports;
+} {
+  const session = useSession();
+  const user_id = session.principal.id;
+  const identity = useMemo(() => ({ server: window.location.origin, user_id }), [user_id]);
+  const [waiting, setWaiting] = useState(0);
+  const [reports, setReports] = useState<readonly FailedReport[]>([]);
+  const [busy, setBusy] = useState(false);
+  const unsent = useMemo<UnsentReports>(() => {
+    const settle = (work: Promise<void>) => {
+      setBusy(true);
+      void work.finally(() => setBusy(false));
+    };
+    return {
+      reports,
+      busy,
+      resend: (id) => settle(feedbackQueue().resend(identity, id, crypto.randomUUID())),
+      discard: (id) => settle(feedbackQueue().discard(identity, id)),
+    };
+  }, [identity, reports, busy]);
+  useEffect(() => {
+    const queue = feedbackQueue();
+    let live = true;
+    const refresh = () => {
+      void queue.waiting(identity).then((count) => {
+        if (live) setWaiting(count);
+      });
+      void queue.failed(identity).then((next) => {
+        if (live) setReports(next);
+      });
+    };
+    const flush = () => void queue.flush(identity);
+    const off = queue.subscribe(refresh);
+    void queue.signedIn(identity).then(flush);
+    refresh();
+    window.addEventListener("online", flush);
+    window.addEventListener("focus", flush);
+    return () => {
+      live = false;
+      off();
+      window.removeEventListener("online", flush);
+      window.removeEventListener("focus", flush);
+    };
+  }, [identity]);
+  return { identity, waiting, unsent };
+}
+
+export function FeedbackHost({ pathname, search }: { pathname: string; search: string }) {
   const client = useQueryClient();
-  const search = useRouterState({ select: (state) => state.location.searchStr });
+  const queued = useQueuedFeedback();
 
   useEffect(() => {
     const store = feedbackStore();
@@ -406,5 +527,12 @@ export function FeedbackHost() {
 
   useEffect(() => feedbackStore().onRequested(() => openFeedback()), []);
 
-  return <FeedbackDialog />;
+  return (
+    <FeedbackDialog
+      identity={queued.identity}
+      waiting={queued.waiting}
+      unsent={queued.unsent}
+      route={pathname}
+    />
+  );
 }

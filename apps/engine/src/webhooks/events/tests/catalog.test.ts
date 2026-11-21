@@ -22,6 +22,7 @@ describe("events catalog", () => {
       "connector.oauth.refreshed",
       "connector.oauth.callback_succeeded",
       "connector.oauth.callback_failed",
+      "connector.oauth.signin_finished",
       "connector.auth_failed",
       "connector.health_changed",
       "patch.proposed",
@@ -65,6 +66,34 @@ describe("events catalog", () => {
       reason: "the provider said access_denied for state=abc123",
     });
     expect(res.ok).toBe(false);
+  });
+
+  test("validateEventPayload accepts both endings of connector.oauth.signin_finished", () => {
+    const connector_id = "33333333-3333-4333-8333-333333333333";
+    expect(
+      validateEventPayload("connector.oauth.signin_finished", {
+        connector_id,
+        connector_slug: "google-gmail",
+        outcome: "succeeded",
+        reason: null,
+      }).ok,
+    ).toBe(true);
+    expect(
+      validateEventPayload("connector.oauth.signin_finished", {
+        connector_id,
+        connector_slug: null,
+        outcome: "failed",
+        reason: "token_exchange_failed",
+      }).ok,
+    ).toBe(true);
+    expect(
+      validateEventPayload("connector.oauth.signin_finished", {
+        connector_id,
+        connector_slug: "google-gmail",
+        outcome: "half_done",
+        reason: null,
+      }).ok,
+    ).toBe(false);
   });
 
   test("isKnownEventType", () => {

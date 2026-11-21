@@ -42,11 +42,15 @@ isolated(
       expect(stage.text("task-grant-rows")).toContain("startet Zahlungsabgleich");
       expect(
         stage.document
-          .querySelector('[data-testid="task-grant-limit-until-revoked"]')
+          .querySelector('[data-testid="task-grant-limit-revoked"]')
           ?.getAttribute("data-state"),
-      ).toBe("on");
+      ).toBe("checked");
+      expect(
+        stage.document.querySelector<HTMLInputElement>('[data-testid="task-grant-limit-runs"]')
+          ?.value,
+      ).toBe("");
       expect(stage.text("task-grant-blocked-sentence")).toBe(
-        "„Angebot erstellen“ lässt sich nicht dauerhaft erlauben und fragt deshalb bei jedem Lauf.",
+        "„Angebot erstellen“ lässt sich nicht dauerhaft erlauben und fragt deshalb bei jedem Run.",
       );
       expect(stage.document.querySelectorAll('[data-testid="task-grant-blocked"]').length).toBe(1);
       const footer = [...stage.document.querySelectorAll("[data-slot=dialog-footer] button")].map(
@@ -98,7 +102,7 @@ isolated(
       },
       () => dialog((open) => closed.push(open)),
       async (stage) => {
-        await stage.click("task-grant-limit-seven-days");
+        await stage.click("task-grant-limit-date");
         await stage.click("task-grant-confirm");
         const [sent] = posts(stage.calls, `/v1/tasks/${TASK_ID}/grants`);
         expect(sent?.body).toMatchObject({
@@ -110,7 +114,9 @@ isolated(
           (sent?.body as { valid_until?: string } | undefined)?.valid_until ?? "",
         );
         // allow-wall-clock: the dialog derives the limit from the browser's real clock
-        expect(Math.abs(until - Date.now() - 7 * 86_400_000)).toBeLessThan(60_000);
+        const days = (until - Date.now()) / 86_400_000;
+        expect(days).toBeGreaterThan(30);
+        expect(days).toBeLessThan(31);
         expect(closed).toEqual([false]);
         expect(stage.toasts).toEqual([
           "success:„Rechnungen nachfassen“ darf jetzt alleine arbeiten.",
@@ -206,7 +212,7 @@ isolated(
         expect(stage.text("task-grant-outcome-0")).toBe("Zahlungsabgleich fragt jedes Mal");
         expect(stage.text("task-grant-outcome-1")).toBe("Wochenbericht schon erlaubt");
         expect(stage.text("task-grant-blocked-sentence")).toBe(
-          "„Zahlungsabgleich“ lässt sich nicht dauerhaft erlauben und fragt deshalb bei jedem Lauf.",
+          "„Zahlungsabgleich“ lässt sich nicht dauerhaft erlauben und fragt deshalb bei jedem Run.",
         );
         expect(stage.has("task-grant-confirm")).toBe(false);
         expect(stage.text("task-grant-close")).toBe("Schließen");

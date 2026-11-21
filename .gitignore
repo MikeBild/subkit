@@ -30,8 +30,6 @@ engine-docker*.log
 
 apps/engine/assets/embeddings/
 
-apps/engine/src/connectors/template-audit-report.json
-
 /claude-key.txt
 /openai-key.txt
 /gh-key.txt

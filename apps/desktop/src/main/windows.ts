@@ -1,8 +1,9 @@
 import { join } from "node:path";
-import { app, BrowserWindow, nativeImage } from "electron";
+import { app, BrowserWindow, nativeImage, nativeTheme, screen } from "electron";
 import { CONNECT_URL, isConnectUrl } from "../shared/app-url.ts";
 import type { Profile } from "../shared/profiles.ts";
 import { decideNavigation } from "../shared/server-address.ts";
+import { COCKPIT_WINDOW, initialWindowSize, windowBackground } from "../shared/window-frame.ts";
 import { guardWebContents, securePreferences } from "./hardening.ts";
 
 export const CONNECT_PARTITION = "connect";
@@ -12,7 +13,9 @@ const DIST = join(app.getAppPath(), "dist");
 export const PATHS = {
   connectPreload: join(DIST, "preload-connect.cjs"),
   cockpitPreload: join(DIST, "preload-cockpit.cjs"),
+  shellPreload: join(DIST, "preload-shell.cjs"),
   connectRoot: join(DIST, "connect"),
+  shellRoot: join(DIST, "shell"),
   assets: join(DIST, "assets"),
   icon: join(DIST, "assets", "icon.png"),
 };
@@ -40,18 +43,24 @@ export function createConnectWindow(): BrowserWindow {
   return window;
 }
 
-export function createCockpitWindow(profile: Profile): BrowserWindow {
+export function createCockpitWindow(
+  profile: Profile,
+  intercept: (url: string) => boolean = () => false,
+): BrowserWindow {
   const window = new BrowserWindow({
-    width: 1360,
-    height: 900,
-    minWidth: 880,
-    minHeight: 600,
+    ...initialWindowSize(screen.getPrimaryDisplay().workAreaSize),
+    minWidth: COCKPIT_WINDOW.minWidth,
+    minHeight: COCKPIT_WINDOW.minHeight,
     show: false,
     title: app.name,
     icon: PATHS.icon,
+    backgroundColor: windowBackground(nativeTheme.shouldUseDarkColors),
     webPreferences: securePreferences(PATHS.cockpitPreload, partitionFor(profile.id)),
   });
-  guardWebContents(window.webContents, (url) => decideNavigation(url, profile.serverOrigin));
+  guardWebContents(window.webContents, (url) => {
+    const decision = decideNavigation(url, profile.serverOrigin);
+    return decision === "external" && intercept(url) ? "deny" : decision;
+  });
   return window;
 }
 

@@ -18,6 +18,18 @@ import {
 } from "@/components/cockpit/patterns";
 import { reportFailure } from "@/lib/action-failure";
 import { useI18n } from "@/lib/i18n-context";
+import { AppSettingsDialog } from "./app-settings-dialog";
+import { AppSignInDialog } from "./app-sign-in-dialog";
+import {
+  appKey,
+  appSaveError,
+  environmentLabel,
+  fetchApp,
+  settingValue,
+  useAppSettingsSave,
+  useSettingsSnapshot,
+} from "./apps-data";
+import { type Envelope, refusalToast, type UserItem, usePeopleList } from "./data";
 import {
   APP_READINESS_LABEL,
   type AppSignIn,
@@ -34,19 +46,7 @@ import {
   PROVIDERS_PATH,
   personNameText,
   withProduct,
-} from "@/pages/apps-model";
-import { AppSettingsDialog } from "./app-settings-dialog";
-import { AppSignInDialog } from "./app-sign-in-dialog";
-import {
-  appKey,
-  appSaveError,
-  environmentLabel,
-  fetchApp,
-  settingValue,
-  useAppSettingsSave,
-  useSettingsSnapshot,
-} from "./apps-data";
-import { type Envelope, refusalToast, type UserItem, usePeopleList } from "./data";
+} from "./model/apps-model";
 
 export function ReadinessBadge({
   app,

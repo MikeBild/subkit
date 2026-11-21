@@ -14,10 +14,11 @@ import {
 import { router } from "@/app/router";
 import { SessionGate } from "@/app/session";
 import { SetupGate } from "@/app/setup-gate";
+import { CockpitUiProvider } from "@/app/ui-provider";
 import { I18nProvider } from "@/components/i18n-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { guardDeviceState } from "@/features/pwa/device-state";
+import { guardDeviceState } from "@/features/pwa";
 import { offerFailureRetry } from "@/lib/action-failure";
 import { IdentityRecoveryPage } from "@/pages/identity-recovery";
 import { InvitePage } from "@/pages/invite";
@@ -57,22 +58,24 @@ if (!root) throw new Error("Cockpit root element is missing");
 createRoot(root).render(
   <StrictMode>
     <I18nProvider>
-      <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
-          {StandalonePage ? (
-            <>
-              <StandalonePage />
-              <Toaster richColors position="bottom-right" />
-            </>
-          ) : (
-            <SessionGate>
-              <SetupGate>
-                <RouterProvider router={router} />
-              </SetupGate>
-            </SessionGate>
-          )}
-        </TooltipProvider>
-      </QueryClientProvider>
+      <CockpitUiProvider>
+        <QueryClientProvider client={queryClient}>
+          <TooltipProvider>
+            {StandalonePage ? (
+              <>
+                <StandalonePage />
+                <Toaster richColors position="bottom-right" />
+              </>
+            ) : (
+              <SessionGate>
+                <SetupGate>
+                  <RouterProvider router={router} />
+                </SetupGate>
+              </SessionGate>
+            )}
+          </TooltipProvider>
+        </QueryClientProvider>
+      </CockpitUiProvider>
     </I18nProvider>
   </StrictMode>,
 );

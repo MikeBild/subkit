@@ -71,11 +71,11 @@ isolated(
     );
 
     expect(concrete).toContain(
-      "Aktionen und Ziele dieses Workflows für unbeaufsichtigte Läufe nicht geprüft",
+      "Aktionen und Ziele dieses Workflows für unbeaufsichtigte Runs nicht geprüft",
     );
     expect(unavailable).toContain("Freigabe fehlt, abgelaufen, widerrufen oder aufgebraucht ist");
     expect(unavailable).not.toContain(
-      "Aktionen und Ziele dieses Workflows für unbeaufsichtigte Läufe nicht geprüft",
+      "Aktionen und Ziele dieses Workflows für unbeaufsichtigte Runs nicht geprüft",
     );
   },
 );

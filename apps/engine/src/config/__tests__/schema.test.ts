@@ -3,16 +3,16 @@ import { ConfigSchema } from "../schema.ts";
 import { dottedPath, findLeafByPath, listConfigLeaves } from "../walk.ts";
 
 describe("ConfigSchema", () => {
-  test("Cockpit root redirection is an opt-in global boolean", () => {
+  test("Cockpit root redirection is an opt-out global boolean", () => {
     const defaults = ConfigSchema.parse({ database: { url: "postgres://x" } });
-    expect(defaults.server.root_redirect_to_cockpit).toBe(false);
+    expect(defaults.server.root_redirect_to_cockpit).toBe(true);
     expect(findLeafByPath("server.root_redirect_to_cockpit")?.meta.scope).toBe("global");
     expect(
       ConfigSchema.parse({
         database: { url: "postgres://x" },
-        server: { root_redirect_to_cockpit: true },
+        server: { root_redirect_to_cockpit: false },
       }).server.root_redirect_to_cockpit,
-    ).toBe(true);
+    ).toBe(false);
     expect(
       ConfigSchema.safeParse({
         database: { url: "postgres://x" },

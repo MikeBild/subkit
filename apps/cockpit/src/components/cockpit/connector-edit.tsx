@@ -37,10 +37,11 @@ import {
   FormDialog,
 } from "@/components/cockpit/patterns";
 import { reportFailure } from "@/lib/action-failure";
+import { authLabel } from "@/lib/connector-labels";
 import { connectorSignIn, signInFailure } from "@/lib/connector-sign-in";
 import { useI18n } from "@/lib/i18n-context";
 import { humanizeCategory } from "@/lib/workflow-category";
-import { authLabel, offersKeyReplacement } from "@/pages/connector-detail-model";
+import { offersKeyReplacement } from "@/pages/connector-detail-model";
 
 const NEW_CATEGORY = "__new__";
 

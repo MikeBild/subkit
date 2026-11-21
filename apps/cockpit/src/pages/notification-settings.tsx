@@ -18,7 +18,7 @@ import {
   FieldLabel,
   FilterBar,
   FormDialog,
-  GroupingTabs,
+  GroupingChoice,
   Input,
   RecordSheet,
   Section,
@@ -372,7 +372,7 @@ export function NotificationSettings({
             />
           }
           groupingTabs={
-            <GroupingTabs
+            <GroupingChoice
               label={t("common.groupBy")}
               value={ruleGroup}
               onChange={setRuleGroup}
@@ -421,7 +421,7 @@ export function NotificationSettings({
             />
           }
           groupingTabs={
-            <GroupingTabs
+            <GroupingChoice
               label={t("common.groupBy")}
               value={channelGroup}
               onChange={setChannelGroup}

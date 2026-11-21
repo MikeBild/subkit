@@ -88,14 +88,32 @@ export function partition(
   return out;
 }
 
+export function rootOf(file: string): string {
+  const parts = file.split("/");
+  return parts[0] === "apps" || parts[0] === "packages"
+    ? parts.slice(0, 2).join("/")
+    : (parts[0] as string);
+}
+
+export interface RunSite {
+  cwd: string;
+  targets: string[];
+}
+
+export function runSite(files: readonly string[], ownConfig: (root: string) => boolean): RunSite {
+  const roots = new Set(files.map(rootOf));
+  const [root] = roots;
+  if (roots.size === 1 && root && root.includes("/") && ownConfig(root)) {
+    const prefix = `${root}/`;
+    return { cwd: root, targets: files.map((file) => `./${file.slice(prefix.length)}`) };
+  }
+  return { cwd: ".", targets: files.map((file) => `./${file}`) };
+}
+
 export function groupByRoot(files: readonly string[]): Array<{ root: string; files: string[] }> {
   const groups = new Map<string, string[]>();
   for (const file of files) {
-    const parts = file.split("/");
-    const root =
-      parts[0] === "apps" || parts[0] === "packages"
-        ? parts.slice(0, 2).join("/")
-        : (parts[0] as string);
+    const root = rootOf(file);
     const list = groups.get(root) ?? [];
     list.push(file);
     groups.set(root, list);

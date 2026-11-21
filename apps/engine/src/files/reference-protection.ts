@@ -1,11 +1,13 @@
 import { type SQL, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import {
+  chatComposerAttachments,
   conversationElicitations,
   conversationMessages,
   conversations,
   conversationToolCalls,
   executions,
+  intakeItems,
   workflows,
   workflowsSchedules,
   workflowVersions,
@@ -46,7 +48,13 @@ function documents(tenants: SQL): SQL {
     SELECT q.tenant_id, ${lowered(sql`q.input`)} || ' ' || ${lowered(sql`q.output`)}
       FROM ${conversationElicitations} q
       JOIN ${conversations} c ON c.id=q.conversation_id AND c.tenant_id=q.tenant_id
-      WHERE q.tenant_id IN (${tenants})`;
+      WHERE q.tenant_id IN (${tenants})
+    UNION ALL
+    SELECT a.tenant_id, a.file_id::text FROM ${chatComposerAttachments} a
+      WHERE a.tenant_id IN (${tenants}) AND a.expires_at > now()
+    UNION ALL
+    SELECT i.tenant_id, i.attachment_file_id::text FROM ${intakeItems} i
+      WHERE i.tenant_id IN (${tenants}) AND i.attachment_file_id IS NOT NULL`;
 }
 
 export async function findRetainedFileReferences(

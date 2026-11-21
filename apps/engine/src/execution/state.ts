@@ -31,6 +31,7 @@ import {
   outcomeTransition,
   transitionSources,
 } from "./core/status.ts";
+import type { ResultMarkdown } from "./result-markdown.ts";
 import {
   isSensitivePayload,
   protectExecutionPayload,
@@ -315,6 +316,7 @@ interface TerminalizeExecutionParams {
   result_storage_uri?: string | null;
   result_sha256?: string | null;
   sensitive_result?: unknown;
+  result_markdown?: ResultMarkdown | null;
 }
 
 interface TerminalizedExecutionRow {
@@ -348,6 +350,12 @@ export async function terminalizeExecutionRow(
       ...(params.sensitive_result !== undefined
         ? { sensitive_result: params.sensitive_result }
         : {}),
+      ...(params.result_markdown
+        ? {
+            result_markdown: params.result_markdown.markdown,
+            result_markdown_truncated: params.result_markdown.truncated,
+          }
+        : {}),
     })
     .where(
       and(
@@ -372,6 +380,7 @@ interface FinalizeExecutionDetails {
   result_sha256?: string | null;
   output_contract?: OutputContractVerdict;
   sensitive_result?: unknown;
+  result_markdown?: ResultMarkdown | null;
 }
 
 export function finalizeExecution(
@@ -423,6 +432,9 @@ async function applyFinalization(
       output_contract,
       result_storage_uri,
       result_sha256,
+      ...(isSensitivePayload(persisted?.input) || !details.result_markdown
+        ? {}
+        : { result_markdown: details.result_markdown }),
       ...(isSensitivePayload(persisted?.input) && sensitive_result !== undefined
         ? {
             sensitive_result: protectExecutionPayload(

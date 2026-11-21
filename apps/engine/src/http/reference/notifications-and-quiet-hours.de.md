@@ -22,7 +22,7 @@ SubKit meldet nur, was eine Person braucht: Etwas wurde angehalten, etwas schlä
 | SubKit Desktop | Eine Benachrichtigung des Betriebssystems und die Zahl am Symbol. | Nach den Ruhezeiten, die du in der App einstellst. |
 | Abonnements, Webhooks und der `sk`-Eingang | Ereignisse für Programme und für das Terminal. | Nie. |
 
-Eine Benachrichtigung sagt, was passiert ist und was zu tun ist. Namen von Workflows oder Konnektoren, Inhalte und Freigabe-Schaltflächen stehen im Browser-Push nie darin.
+Eine Benachrichtigung sagt, was passiert ist und was zu tun ist. Namen von Workflows oder Connectors, Inhalte und Freigabe-Schaltflächen stehen im Browser-Push nie darin.
 
 ### Benachrichtigungen auf einem Gerät einschalten
 
@@ -61,6 +61,15 @@ Die Uhrzeiten gelten in der Zeitzone des Arbeitsbereichs. Sie steht unter **Eins
 
 Arbeitest du in einer anderen Zeitzone als dein Team, kannst du eine eigene hinterlegen. Dafür gibt es im Cockpit noch kein Feld. Es geht über die HTTP-API mit dem Feld `timezone`, siehe unten.
 
+### Benachrichtigungen pausieren
+
+Pausiere Benachrichtigungen eine Zeit lang, etwa während eines Termins, ohne deinen Zeitplan zu ändern.
+
+1. Öffne in SubKit Desktop das Symbol in der Menüleiste und wähle **Benachrichtigungen 1 Stunde pausieren**. Im Cockpit öffnest du **Einstellungen › Benachrichtigungen**.
+2. Willst du die Pause früher beenden, wähle **Benachrichtigungen fortsetzen**.
+
+Während der Pause schickt SubKit keine Push-Benachrichtigungen und zeigt keine Desktop-Banner. Die Liste **Braucht dich** und ihre Zahl laufen weiter. Dringendes erreicht dich trotzdem, wenn du es eingeschaltet hast. Die Pause gilt auf allen deinen Geräten zugleich: Desktop-App, Cockpit und installierte Web-App lesen denselben Stand. Eine Pause dauert höchstens 30 Tage.
+
 ### Dringendes trotz Ruhezeit bekommen
 
 Zwei Arten von Punkten gelten als kritisch:
@@ -76,7 +85,7 @@ Gibt in deinem Team eine andere Person frei, was SubKit tun darf, leitest du die
 
 1. Öffne **Einstellungen › Einrichtung** und wähle bei **Freigaben** **Ändern**.
 2. Beantworte „Wer gibt frei, was SubKit tun darf?“ mit **Jemand anderes im Team** und gib die **E-Mail-Adresse** ein.
-3. Wähle **Übernehmen**. Darunter steht danach „Freigabe-Hinweise gehen an …“.
+3. Wähle **Übernehmen**. Die Zeile **Freigaben** zeigt danach die Person.
 
 Was dann gilt:
 

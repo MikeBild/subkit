@@ -131,11 +131,27 @@ export function cockpitEventTouchesAttention(type: string): boolean {
   return !ATTENTION_NEUTRAL_EVENT.test(type);
 }
 
+const SIGN_IN_FINISHED = "connector.oauth.signin_finished";
+const SIGN_IN_OUTCOMES = new Set(["succeeded", "failed"]);
+const SIGN_IN_REASONS = new Set(["provider_error", "missing_code", "token_exchange_failed"]);
+
+function projectSignInOutcome(payload: unknown): Record<string, string> {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return {};
+  const { outcome, reason } = payload as Record<string, unknown>;
+  if (typeof outcome !== "string" || !SIGN_IN_OUTCOMES.has(outcome)) return {};
+  return typeof reason === "string" && SIGN_IN_REASONS.has(reason)
+    ? { outcome, reason }
+    : { outcome };
+}
+
 export function projectCockpitEvent(row: {
   type: string;
   payload: unknown;
 }): Record<string, string> {
-  const out = projectCockpitPayload(row.payload);
+  const out = {
+    ...projectCockpitPayload(row.payload),
+    ...(row.type === SIGN_IN_FINISHED ? projectSignInOutcome(row.payload) : {}),
+  };
   const target = cockpitAttentionSubject(row.type);
   const subjectId = target ? out[target.key] : undefined;
   if (target && subjectId) out.attention_id = `${target.subject}:${subjectId}`;

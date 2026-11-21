@@ -141,9 +141,9 @@ export const diagnosisDe: Record<keyof typeof diagnosisEn, string> = {
   "cause.schema_mismatch": "Antwort in unerwarteter Form",
   "cause.timeout": "Zeitüberschreitung",
   "cause.aborted": "Abgebrochen",
-  "cause.connector_missing": "Konnektor fehlt",
+  "cause.connector_missing": "Connector fehlt",
   "cause.budget_exhausted": "Token-Budget erschöpft",
-  "cause.connector_unavailable": "Konnektor nicht verfügbar",
+  "cause.connector_unavailable": "Connector nicht verfügbar",
   "cause.refused_before_start": "Vor dem Start abgelehnt",
   "cause.authority_mismatch": "Freigabe passt nicht mehr",
   "cause.payload_invalid": "Nachricht fehlerhaft",
@@ -155,11 +155,11 @@ export const diagnosisDe: Record<keyof typeof diagnosisEn, string> = {
   "remedy.reviewRepair": "Korrektur prüfen",
   "remedy.reauth": "Neu anmelden",
   "remedy.chat": "Im Chat beheben",
-  "remedy.chatPrompt": "Warum ist dieser Lauf fehlgeschlagen, und wie behebe ich das?",
+  "remedy.chatPrompt": "Warum ist dieser Run fehlgeschlagen, und wie behebe ich das?",
   "remedy.checkAuth": "Anmeldung prüfen",
   "remedy.reconnect": "Neu anmelden",
   "remedy.grant": "Freigabe prüfen",
-  "remedy.openRun": "Lauf untersuchen",
+  "remedy.openRun": "Run untersuchen",
   "remedy.retry": "Erneut versuchen",
   "remedy.failurePrompt":
     "Das ist fehlgeschlagen: „{failure}“ (Code {code}). Woran lag es, und wie behebe ich das?",
@@ -194,13 +194,13 @@ export const diagnosisDe: Record<keyof typeof diagnosisEn, string> = {
   "diagnosis.code.execution_authority_changed":
     "Die Freigabe passt nicht mehr zu dem, was dieser Schritt sendet.",
   "diagnosis.code.connector_unavailable":
-    "Der Konnektor dieses Schritts ist in dieser Umgebung nicht verfügbar.",
+    "Der Connector dieses Schritts ist in dieser Umgebung nicht verfügbar.",
   "diagnosis.remedy.patch": "Dafür gibt es eine festgelegte Korrektur.",
   "diagnosis.remedy.declare":
-    "Gib Absender und Empfänger am Schritt selbst an, so wie ein Lauf sie beobachtet hat.",
+    "Gib Absender und Empfänger am Schritt selbst an, so wie ein Run sie beobachtet hat.",
   "diagnosis.remedy.prepare":
-    "Ein Probelauf — der alles zurückhält, was er senden würde — zeigt, was dieser Schritt sendet, damit es freigegeben werden kann.",
-  "diagnosis.remedy.reconnect": "Verbinde den Konnektor in dieser Umgebung erneut.",
+    "Ein Probe-Run — der alles zurückhält, was er senden würde — zeigt, was dieser Schritt sendet, damit es freigegeben werden kann.",
+  "diagnosis.remedy.reconnect": "Verbinde den Connector in dieser Umgebung erneut.",
   "diagnosis.appliesToEnvironment": "Gilt für den {environment}.",
   "diagnosis.remedy.author": "Das muss im Workflow selbst geändert werden.",
   "diagnosis.repair": "Automatisch korrigieren",
@@ -212,12 +212,12 @@ export const diagnosisDe: Record<keyof typeof diagnosisEn, string> = {
   "diagnosis.draftOnly":
     "Das betrifft den Entwurf. Eine Korrektur lässt sich vorschlagen, sobald er übernommen ist.",
   "diagnosis.prepare": "Vorbereitung erneut ausführen",
-  "diagnosis.prepared": "Probelauf abgeschlossen — die Diagnose ist aktuell.",
-  "diagnosis.prepareInFlight": "Für diesen Workflow läuft bereits ein Probelauf.",
+  "diagnosis.prepared": "Probe-Run abgeschlossen — die Diagnose ist aktuell.",
+  "diagnosis.prepareInFlight": "Für diesen Workflow läuft bereits ein Probe-Run.",
   "diagnosis.prepareNeedsSample":
-    "Dieser Workflow startet per Webhook, und der Probelauf braucht einen Beispielaufruf. Öffne dazu die Freigabe.",
-  "diagnosis.prepareNotRun": "Der Probelauf wurde nicht gestartet.",
-  "diagnosis.prepareFailed": "Der Probelauf konnte nicht gestartet werden.",
+    "Dieser Workflow startet per Webhook, und der Probe-Run braucht einen Beispielaufruf. Öffne dazu die Freigabe.",
+  "diagnosis.prepareNotRun": "Der Probe-Run wurde nicht gestartet.",
+  "diagnosis.prepareFailed": "Der Probe-Run konnte nicht gestartet werden.",
   "diagnosis.openApproval": "Freigabe öffnen",
   "diagnosis.chatPrompt": "Die Freigabe weist Schritt „{step}“ ab. Wie behebe ich das?",
   "diagnosis.loadFailed": "Warum die Freigabe diesen Workflow aufhält, ließ sich nicht laden.",
@@ -233,7 +233,7 @@ export const diagnosisDe: Record<keyof typeof diagnosisEn, string> = {
   "solution.webhookSlack.title": "Webhook meldet in Slack",
   "solution.webhookSlack.line":
     "Prüft eingehende Ereignisse und meldet Wichtiges in einen Slack-Kanal.",
-  "solution.weeklyDigest.title": "Wochen-Digest der Läufe",
+  "solution.weeklyDigest.title": "Wochen-Digest der Runs",
   "solution.weeklyDigest.line":
-    "Fasst freitags Läufe und Fehlschläge der Woche zusammen und schickt sie per Mail.",
+    "Fasst freitags Runs und Fehlschläge der Woche zusammen und schickt sie per Mail.",
 };

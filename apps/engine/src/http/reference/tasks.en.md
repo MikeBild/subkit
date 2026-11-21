@@ -156,7 +156,7 @@ The task page shows the state of the latest run and one recommended action.
 | **aborted** | You or an admin stopped the run, or the task changed. | Start a new run if you need one. |
 | **failed** | Something broke that the run could not recover from, or the run reached its round limit or its time limit without a result. | Open the run, read the reason, start a new run. After a reached limit: **Start again**. |
 
-The **Overview** tab shows four facts: **Now**, **Waiting for**, **Next check** and **Done when**. Below them are the steps of the plan with their progress.
+The **Overview** tab shows **Next check**, **Usage** and **Done when**; while a run sleeps, **Waiting for** names the reason. What runs now and who it waits for stand in the status line at the top. Below them are the steps of the plan with their progress.
 
 A run waits for you in these cases:
 

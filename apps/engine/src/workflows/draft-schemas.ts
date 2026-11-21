@@ -1,6 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { CategorySchema } from "../api/catalog-metadata.ts";
-import { WorkflowDefSchema } from "./types.ts";
+import { WorkflowDefSchema, WorkflowDraftDefSchema } from "./types.ts";
 
 const SpecText = z.string().trim().min(1).max(2000);
 const SpecName = z.string().trim().min(1).max(200);
@@ -72,7 +72,7 @@ export const WorkflowDraftSchema = z
     version: z.number().int().positive(),
     digest: z.string().regex(/^[0-9a-f]{64}$/),
     current_version_id: z.string().uuid().nullable(),
-    definition: WorkflowDefSchema,
+    definition: WorkflowDraftDefSchema,
     spec: z.union([WorkflowSpecSchema, z.null()]),
   })
   .openapi("WorkflowDraft");

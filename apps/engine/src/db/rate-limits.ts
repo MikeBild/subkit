@@ -27,7 +27,8 @@ export function rateLimitBucketKey(
     | "tenant_month"
     | "admission"
     | "desktop_login"
-    | "feedback",
+    | "feedback"
+    | "invite_send",
   identity: string,
 ): string {
   if (!secret) throw new Error("rate_limit_key_unavailable");

@@ -5,9 +5,6 @@ import { listConnections } from "../credentials/connections/index.ts";
 import type { Db } from "../db/client.ts";
 import {
   connectors,
-  conversationElicitations,
-  conversationHidden,
-  conversations,
   intakeItems,
   skillCandidates,
   webhooksInbound,
@@ -41,6 +38,7 @@ import {
 } from "./health-digest.ts";
 import { cockpitRunsHref } from "./operating-figures.ts";
 import { getOperationalOverview, type HealthState } from "./operational-overview.ts";
+import type { PendingPairRequest } from "./pair-approval-attention.ts";
 import { type ProviderOutage, readProviderOutage } from "./provider-outage.ts";
 import { computeRiskSignals, type RiskSignal } from "./risk-signals.ts";
 
@@ -75,6 +73,7 @@ export interface TenantFacts {
   sources: Partial<Record<AttentionSource, "answered" | "failed">>;
   candidates: Candidate[];
   status: { health_state: HealthState; next_run_at: string | null } | null;
+  pair_requests?: readonly PendingPairRequest[];
 }
 
 export type TenantReader = (db: Db, tenantId: string, now: Date) => Promise<Candidate[]>;
@@ -911,89 +910,4 @@ export async function buildTenantFacts(
   });
 
   return { sources, candidates, status };
-}
-
-export async function readOwnConversations(
-  db: Db,
-  principal: ResolvedPrincipal,
-): Promise<Candidate[]> {
-  const rows = await db
-    .select({
-      id: conversations.id,
-      title: conversations.title,
-      updated_at: conversations.updated_at,
-    })
-    .from(conversations)
-    .where(
-      and(
-        eq(conversations.tenant_id, principal.tenant_id),
-        eq(conversations.owner_id, principal.id),
-        eq(conversations.status, "awaiting_input"),
-        notExists(
-          db
-            .select({ one: sql`1` })
-            .from(conversationHidden)
-            .where(
-              and(
-                eq(conversationHidden.tenant_id, principal.tenant_id),
-                eq(conversationHidden.conversation_id, conversations.id),
-                eq(conversationHidden.user_id, principal.id),
-              ),
-            ),
-        ),
-      ),
-    )
-    .orderBy(asc(conversations.updated_at));
-  if (rows.length === 0) return [];
-  const pending = await db
-    .select({
-      conversation_id: conversationElicitations.conversation_id,
-      created_at: conversationElicitations.created_at,
-      expires_at: conversationElicitations.expires_at,
-    })
-    .from(conversationElicitations)
-    .where(
-      and(
-        eq(conversationElicitations.tenant_id, principal.tenant_id),
-        inArray(
-          conversationElicitations.conversation_id,
-          rows.map((row) => row.id),
-        ),
-        eq(conversationElicitations.status, "pending"),
-      ),
-    );
-  const byConversation = new Map<string, { created_at: Date; expires_at: Date }>();
-  for (const row of pending) {
-    const prior = byConversation.get(row.conversation_id);
-    if (!prior || row.created_at > prior.created_at) byConversation.set(row.conversation_id, row);
-  }
-  return rows.map((row) => {
-    const question = byConversation.get(row.id);
-    return {
-      source: "conversations",
-      resource: { type: "conversation", id: row.id },
-      item: {
-        id: `conversation:${row.id}`,
-        class: "stopped",
-        severity: "urgent",
-        kind: "conversation",
-        subject: { kind: "conversation", id: row.id, name: row.title },
-        reason: "awaiting_answer",
-        trigger: null,
-        cause_class: null,
-        counts: {},
-        since: (question?.created_at ?? row.updated_at).toISOString(),
-        deadline: question?.expires_at.toISOString() ?? null,
-        detail: null,
-        actions: [
-          {
-            verb: "answer",
-            href: attentionHref.conversation(row.id),
-            primary: true,
-            permission: "conversation:write",
-          },
-        ],
-      },
-    };
-  });
 }

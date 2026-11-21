@@ -5,6 +5,7 @@ import {
   isValidElement,
   type ReactNode,
   useContext,
+  useEffect,
 } from "react";
 import { createPortal } from "react-dom";
 import { useI18n } from "@/lib/i18n-context";
@@ -14,6 +15,7 @@ import { STATUS_DOT, type StatusTone } from "./status-strip";
 
 export interface SideDetailsValue {
   target: HTMLElement | null;
+  reportTitle?: (title: string | null) => void;
 }
 
 export const SideDetailsContext = createContext<SideDetailsValue | null>(null);
@@ -37,6 +39,16 @@ export function useSideDetailsAvailable(): boolean {
 
 export function useInSidePanel(): boolean {
   return useContext(InSidePanelContext);
+}
+
+export function useReportPageTitle(title: string): void {
+  const report = useContext(SideDetailsContext)?.reportTitle;
+  const inside = useContext(InSidePanelContext);
+  useEffect(() => {
+    if (!report || inside || !title) return;
+    report(title);
+    return () => report(null);
+  }, [report, inside, title]);
 }
 
 export function SideDetails({ children }: { children: ReactNode }) {

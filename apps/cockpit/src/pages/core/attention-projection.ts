@@ -90,7 +90,9 @@ export function attentionBadge(
   hidden: HiddenEntries = NO_HIDDEN,
 ): { count: number; stopped: boolean } | null {
   if (!attention) return null;
-  const items = attentionEntries(attention.items, hidden);
+  const items = attentionEntries(attention.items, hidden).filter(
+    (item) => item.kind !== "pair_approval_waiting",
+  );
   return items.length
     ? { count: items.length, stopped: items.some((item) => item.class === "stopped") }
     : null;

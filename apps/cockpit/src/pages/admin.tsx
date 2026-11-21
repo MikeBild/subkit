@@ -2,7 +2,7 @@ import { useRouterState } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { type PeopleSection, peopleSectionFromUrl } from "@/app/links";
 import { useSession } from "@/app/session";
-import { Button, Page, PageHeader, PageTabs } from "@/components/cockpit/patterns";
+import { Button, PageTabs } from "@/components/cockpit/patterns";
 import { ForbiddenState } from "@/components/failure-state";
 import {
   AppsTab,
@@ -11,16 +11,17 @@ import {
   GrantsTab,
   GroupsTab,
   InvitePersonDialog,
+  openPeopleSection,
   PeopleTab,
   RolesTab,
+  readablePeopleSections,
   SECTION_ACTION,
   SECTION_LABEL,
   usePeopleSectionViews,
 } from "@/features/admin";
 import { useI18n } from "@/lib/i18n-context";
-import { openPeopleSection, readablePeopleSections } from "@/pages/admin-model";
 
-export function PeopleAndAccessPage() {
+export function PeopleArea() {
   const { t } = useI18n();
   const session = useSession();
   const can = (permission: string) => session.permissions.includes(permission);
@@ -48,7 +49,8 @@ export function PeopleAndAccessPage() {
       </Button>
     );
   };
-  const headerAction = section && views[section] === "ready" ? actionFor(section) : null;
+  const headerAction =
+    section && section !== "people" && views[section] === "ready" ? actionFor(section) : null;
   const content = (value: PeopleSection) => {
     const action = actionFor(value);
     if (value === "people") return <PeopleTab action={action} />;
@@ -58,12 +60,8 @@ export function PeopleAndAccessPage() {
     return <GrantsTab action={action} />;
   };
   return (
-    <Page
-      kind="list"
-      scroll="page"
-      testId="admin-people"
-      header={<PageHeader title={t("resource.people.title")} action={headerAction} />}
-    >
+    <div className="flex flex-col gap-4" data-testid="admin-people">
+      {headerAction ? <div className="flex justify-end">{headerAction}</div> : null}
       {section === null ? (
         <ForbiddenState />
       ) : (
@@ -91,6 +89,6 @@ export function PeopleAndAccessPage() {
         open={creating === "grants"}
         onOpenChange={(open) => !open && setCreating(null)}
       />
-    </Page>
+    </div>
   );
 }

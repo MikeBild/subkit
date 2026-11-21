@@ -3,8 +3,12 @@ import { type TranslationKey, translate } from "@/lib/i18n";
 import { stepKindKey } from "@/lib/workflow-steps";
 import {
   addressedConnectors,
+  bindingChoice,
+  bindingConnectorId,
   type ConnectorTemplate,
   choiceOf,
+  choiceValue,
+  findSolution,
   freeSlug,
   joinNames,
   missingConnectors,
@@ -290,6 +294,38 @@ describe("solution templates: list, detail, create", () => {
       takenSlugs: new Set(),
     });
     expect(plan.create.map((c) => c.template)).toEqual(["google-analytics", "google-gmail"]);
+  });
+
+  test("a binding shows the chosen connector or the address a new one will get", () => {
+    const bound = report(true);
+    const open = report(false);
+    const [ga, gmail] = open.connectors;
+    const [boundGa] = bound.connectors;
+    if (!ga || !gmail || !boundGa) throw new Error("bindings missing");
+    const templates = [{ slug: "google-gmail", base_url: "https://gmail.googleapis.com" }];
+    expect(bindingChoice(boundGa, {}, templates, {})).toEqual({
+      connectorId: BOUND_GA,
+      address: null,
+    });
+    expect(bindingChoice(gmail, {}, templates, { [GMAIL]: "ignored" })).toEqual({
+      connectorId: null,
+      address: "https://gmail.googleapis.com",
+    });
+    expect(bindingChoice(ga, {}, templates, { [GA]: "https://ga.example" })).toEqual({
+      connectorId: null,
+      address: "https://ga.example",
+    });
+    expect(choiceValue(boundGa, {})).toBe(BOUND_GA);
+    expect(choiceValue(boundGa, { [GA]: NEW_CONNECTOR })).toBe(NEW_CONNECTOR);
+    expect(bindingConnectorId(boundGa)).toBe(BOUND_GA);
+    expect(bindingConnectorId(boundGa, { connectorId: null, address: null })).toBeNull();
+    expect(bindingConnectorId(ga)).toBeNull();
+  });
+
+  test("a solution is found by its recipe slug", () => {
+    const entry = report(false);
+    expect(findSolution([entry], "daily-analytics-report")).toBe(entry);
+    expect(findSolution([entry], "missing")).toBeNull();
   });
 
   test("only a new connector whose template has no address asks for one", () => {

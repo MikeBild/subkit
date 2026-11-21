@@ -90,7 +90,7 @@ export type AdmissionFacts =
 export type AdmissionDecision =
   | { kind: "admitted" }
   | { kind: "replay" }
-  | { kind: "downgrade"; downgraded_from: { code: string; message: string } }
+  | { kind: "downgrade" }
   | { kind: "rejected"; code: string; message: string };
 
 export const DOWNGRADABLE_AUTHORITY_CODES: ReadonlySet<string> = new Set([
@@ -144,7 +144,7 @@ export function decideAdmission(
         request.expected_workflow_version_id ||
         !DOWNGRADABLE_AUTHORITY_CODES.has(code)
         ? rejected(code, facts.message)
-        : { kind: "downgrade", downgraded_from: { code, message: facts.message } };
+        : { kind: "downgrade" };
     }
     case "input":
       return facts.verdict.valid

@@ -1,5 +1,6 @@
 import type { Executor } from "../db/client.ts";
 import { type PushPreference, readPushPreference } from "../identity/setup-preferences.ts";
+import { pauseActive } from "./notification-pause.ts";
 import { type CriticalCandidate, decidePush, isCriticalPush } from "./quiet-hours.ts";
 
 export const PERSONAL_SCHEDULE_CHANNELS = {
@@ -18,6 +19,7 @@ export function personalScheduleApplies(channel: NotificationChannelKind): boole
 
 export interface PersonalDelivery {
   readonly held: boolean;
+  readonly held_by: "pause" | "schedule" | null;
   readonly digest: boolean;
   readonly next_delivery: Date | null;
   readonly critical_breakthrough: boolean;
@@ -25,6 +27,15 @@ export interface PersonalDelivery {
 }
 
 export function deliveryOf(preference: PushPreference, at: Date): PersonalDelivery {
+  if (preference.pause && pauseActive(preference.pause, at))
+    return {
+      held: true,
+      held_by: "pause",
+      digest: false,
+      next_delivery: preference.pause.paused_until,
+      critical_breakthrough: preference.critical_breakthrough,
+      preference,
+    };
   const decision = decidePush({
     schedule: preference.schedule,
     timezone: preference.timezone,
@@ -34,6 +45,7 @@ export function deliveryOf(preference: PushPreference, at: Date): PersonalDelive
   return decision.deliver === "held"
     ? {
         held: true,
+        held_by: "schedule",
         digest: false,
         next_delivery: decision.next_delivery,
         critical_breakthrough: preference.critical_breakthrough,
@@ -41,6 +53,7 @@ export function deliveryOf(preference: PushPreference, at: Date): PersonalDelive
       }
     : {
         held: false,
+        held_by: null,
         digest: decision.digest,
         next_delivery: null,
         critical_breakthrough: preference.critical_breakthrough,
@@ -71,4 +84,16 @@ export function streamDeliveryHint(
 ): StreamDeliveryHint {
   if (!delivery.held) return null;
   return delivery.critical_breakthrough ? "critical_only" : "held";
+}
+
+export function streamDeliveryState(
+  delivery: Pick<PersonalDelivery, "held" | "held_by" | "critical_breakthrough" | "next_delivery">,
+): Record<string, string> | null {
+  const hint = streamDeliveryHint(delivery);
+  if (!hint) return null;
+  return {
+    delivery: hint,
+    held_by: delivery.held_by ?? "schedule",
+    ...(delivery.next_delivery ? { held_until: delivery.next_delivery.toISOString() } : {}),
+  };
 }

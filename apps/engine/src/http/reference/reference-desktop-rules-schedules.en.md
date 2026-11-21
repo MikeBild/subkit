@@ -50,6 +50,7 @@ Query parameters of both routes: `limit` (default 50, at most 200) and `before` 
 | `reason_code` | Why, see the next table. Empty for a run on time. |
 | `skipped_count` | How many further scheduled times the entry stands for. |
 | `execution_id`, `task_run_id` | The run that belongs to the entry. |
+| `run_outcome` | How that run ended: `running`, `succeeded`, `failed` or `aborted`; `null` without a run. |
 | `created_at`, `updated_at` | When the entry was written and last changed. |
 
 | `reason_code` | `state` | Meaning |
@@ -133,7 +134,7 @@ Body of `POST /v1/feedback`:
 | `attachments` | Up to 3 entries with `filename` and `content_base64`, 2 MB each: PNG, JPG, PDF, TXT or JSON. |
 | `screenshot_png_base64` | Optional PNG of at most 4 MB. |
 
-The answer is `201` with `id` and `intake_item_id`. Errors: `409 report_id_taken`, `413 attachment_too_large` or `screenshot_too_large`, `422 attachment_invalid`, `attachment_type`, `attachment_rejected` or `screenshot_invalid`, and `429 rate_limit_exceeded` after 5 reports in 10 minutes per person.
+The answer is `201` with `id`, `intake_item_id` and `replayed`. Errors: `409 report_id_taken`, `413 attachment_too_large` or `screenshot_too_large`, `422 attachment_invalid`, `attachment_type`, `attachment_rejected` or `screenshot_invalid`, and `429 rate_limit_exceeded` after 5 reports in 10 minutes per person.
 
 ### Desktop sign-in and installations
 

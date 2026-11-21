@@ -27,5 +27,6 @@ Use it as SubKit Cloud or run your own engine:
 - "Run the engine": you run SubKit on your own server.
 
 Then build your first workflow with "Your first workflow".
+Every feature, with where it is available, is listed in [SubKit features at a glance](setup.md#subkit-features-at-a-glance).
 
 ![Documentation page with search, the "Getting started" path with steps 1 to 4 and the "Working with SubKit" list](images/intro-docs.en.webp)

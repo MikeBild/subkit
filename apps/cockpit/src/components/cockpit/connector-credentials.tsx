@@ -1,5 +1,6 @@
 import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ErrorNotice } from "@ui/components/proto/ErrorNotice";
 import { ShieldCheck, ShieldExclamationPoint, UserCircle } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
@@ -12,12 +13,13 @@ import {
   DataState,
   type DialogError,
   dialogFailure,
-  ErrorNotice,
   FactList,
   RecordSheet,
+  renderAction,
   SectionHeading,
   StatusBadge,
   TechnicalDetails,
+  useErrorNotice,
 } from "@/components/cockpit/patterns";
 import { reportFailure } from "@/lib/action-failure";
 import { type ConnectorAuthState, needsRenewal } from "@/lib/connector-auth-state";
@@ -75,6 +77,10 @@ function CredentialSheet({
   const [typedHeader, setHeader] = useState<string | null>(null);
   const [chosen, setChosen] = useState("");
   const [error, setError] = useState<DialogError>(null);
+  const failure = useErrorNotice({
+    error: error && typeof error !== "string" ? error.cause : undefined,
+    tone: typeof error === "string" ? "warn" : "error",
+  });
   const header = typedHeader ?? headerNames[0] ?? "";
   const connections = useConnections(open && choosesConnection);
   const items = connections.data?.items ?? [];
@@ -177,19 +183,18 @@ function CredentialSheet({
         ) : null}
         {error ? (
           <ErrorNotice
+            {...failure}
             title={typeof error === "string" ? error : error.text}
-            error={typeof error === "string" ? undefined : error.cause}
-            tone={typeof error === "string" ? "warn" : "error"}
-            remedy={
+            actions={
               typeof error === "string"
                 ? undefined
-                : {
+                : renderAction({
                     label: t("pattern.retry"),
                     variant: "primary",
                     size: "sm",
                     onClick: submit,
                     testId: "connector-credential-error-retry",
-                  }
+                  })
             }
             testId="connector-credential-error"
           />

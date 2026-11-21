@@ -414,7 +414,7 @@ describe("docs model", () => {
 describe("imageFor", () => {
   test("finds the image metadata for a rendered src in the reader's locale", () => {
     const en = content("Guide", "![Run](/docs-images/guide-run.en.webp?v=a)");
-    const de = content("Anleitung", "![Lauf](/docs-images/guide-run.de.webp?v=b)");
+    const de = content("Anleitung", "![Run](/docs-images/guide-run.de.webp?v=b)");
     const page = {
       slug: "guide",
       llms_path: null,
@@ -429,13 +429,13 @@ describe("imageFor", () => {
         },
         de: {
           ...de,
-          images: [{ src: "/docs-images/guide-run.de.webp?v=b", alt: "Lauf", width: 10 }],
+          images: [{ src: "/docs-images/guide-run.de.webp?v=b", alt: "Run", width: 10 }],
         },
       },
     } as DocsBundle["pages"][number];
     expect(imageFor(page, "de", "/docs-images/guide-run.de.webp?v=b")).toEqual({
       src: "/docs-images/guide-run.de.webp?v=b",
-      alt: "Lauf",
+      alt: "Run",
       width: 10,
     });
     expect(imageFor(page, "en", "/docs-images/guide-run.en.webp?v=a")?.build).toBe("1.2.3");

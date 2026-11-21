@@ -33,7 +33,7 @@ export interface DiffCardProps {
 const LINE_STYLE: Record<DiffLine["type"], string> = {
   context: "text-muted-foreground",
   removed: "bg-destructive/10 text-destructive",
-  added: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+  added: "bg-emerald-500/10 text-success-ink",
 };
 
 const LINE_PREFIX: Record<DiffLine["type"], string> = {
@@ -246,7 +246,7 @@ export function DiffCard({
               <p
                 className={cn(
                   "flex items-center gap-2 text-sm",
-                  dryRun.ok ? "text-emerald-700 dark:text-emerald-400" : "text-destructive",
+                  dryRun.ok ? "text-success-ink" : "text-destructive",
                 )}
               >
                 {dryRun.ok ? (

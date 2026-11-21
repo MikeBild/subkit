@@ -28,14 +28,6 @@ import {
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
 import {
-  assignableRoles,
-  isPersonRole,
-  membershipNames,
-  PERSON_ROLES,
-  roleName,
-} from "@/pages/admin-model";
-import { personApps, personEmailText, personNameText } from "@/pages/apps-model";
-import {
   builtinRoleDescription,
   personEmailFact,
   type RoleItem,
@@ -45,6 +37,14 @@ import {
   useRoleDetail,
   withCurrentRole,
 } from "./data";
+import {
+  assignableRoles,
+  isPersonRole,
+  membershipNames,
+  PERSON_ROLES,
+  roleName,
+} from "./model/admin-model";
+import { personApps, personEmailText, personNameText } from "./model/apps-model";
 import { PermissionGroups, RoleChangeConsequence } from "./parts";
 
 export function PersonSheet({

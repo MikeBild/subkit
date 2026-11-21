@@ -1,13 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ErrorNotice } from "@ui/components/proto/ErrorNotice";
 import { toast } from "sonner";
 import { apiCall } from "@/api/call";
 import { absolute, workflowAutomationHref } from "@/app/links";
-import { ActionButton, Button, ErrorNotice } from "@/components/cockpit/patterns";
+import { ActionButton, Button, useErrorNotice } from "@/components/cockpit/patterns";
 import { invalidateWorkflowAutomation } from "@/lib/automation-queries";
 import { causeClassLabel } from "@/lib/cause-class";
 import { formatDate } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
-import { autoPauseRemedy } from "@/lib/schedule-occurrences";
+import { autoPauseFacts, autoPauseRemedy } from "@/lib/schedule-occurrences";
 
 export function workflowSchedulesQuery(workflowId: string) {
   return {
@@ -18,14 +19,12 @@ export function workflowSchedulesQuery(workflowId: string) {
 
 export function ScheduleAutoPauseNotice({
   workflowId,
-  workflowName,
   canWrite,
 }: {
   workflowId: string;
-  workflowName: string;
   canWrite: boolean;
 }) {
-  const { t, locale } = useI18n();
+  const { t, locale, dateTime } = useI18n();
   const client = useQueryClient();
   const query = useQuery(workflowSchedulesQuery(workflowId));
   const schedule = query.data?.schedules.find((entry) => entry.auto_pause) ?? null;
@@ -43,6 +42,7 @@ export function ScheduleAutoPauseNotice({
     },
   });
   const pause = schedule?.auto_pause;
+  const notice = useErrorNotice({ error: resume.error ?? undefined });
   if (!schedule || !pause) return null;
   const remedy = autoPauseRemedy(pause);
   const cause = causeClassLabel(pause.failure_class, t);
@@ -59,8 +59,15 @@ export function ScheduleAutoPauseNotice({
   ) : null;
   return (
     <ErrorNotice
+      {...notice}
+      kind={resume.error ? notice.kind : "autoPaused"}
+      technical
+      rows={
+        notice.rows ??
+        autoPauseFacts(schedule, pause, dateTime).map(([key, value]) => [t(key), value])
+      }
       testId="schedule-auto-pause"
-      title={t("scheduleAutoPause.title", { workflow: workflowName })}
+      title={t("scheduleAutoPause.title")}
       body={
         <>
           {t("scheduleAutoPause.body", {
@@ -80,22 +87,25 @@ export function ScheduleAutoPauseNotice({
         </>
       }
       meta={cause.machine ? undefined : cause.text}
-      remedy={
-        remedy === "renew_approval" ? (
-          <Button size="sm" asChild>
-            <a
-              href={absolute(workflowAutomationHref(workflowId))}
-              data-testid="schedule-auto-pause-renew"
-            >
-              {t("scheduleAutoPause.renew")}
-            </a>
-          </Button>
-        ) : (
-          resumeButton
-        )
+      actions={
+        remedy === "renew_approval" || resumeButton ? (
+          <>
+            {remedy === "renew_approval" ? (
+              <Button size="sm" asChild>
+                <a
+                  href={absolute(workflowAutomationHref(workflowId))}
+                  data-testid="schedule-auto-pause-renew"
+                >
+                  {t("scheduleAutoPause.renew")}
+                </a>
+              </Button>
+            ) : (
+              resumeButton
+            )}
+            {remedy === "renew_approval" ? resumeButton : null}
+          </>
+        ) : undefined
       }
-      secondary={remedy === "renew_approval" ? resumeButton : undefined}
-      error={resume.error ?? undefined}
     />
   );
 }

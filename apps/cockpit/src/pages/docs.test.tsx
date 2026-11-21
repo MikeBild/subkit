@@ -138,6 +138,9 @@ describe("docs pages", () => {
     for (const page of DOCS.pages)
       expect(count(html, `href="/docs/${page.slug}"`), page.slug).toBe(1);
     expect(count(html, "Stand: SubKit 1.2.3")).toBe(1);
+    expect(html).toMatch(
+      /<a href="\/engine" target="_blank" rel="noreferrer"[^>]*data-testid="docs-engine-index"[^>]*>Übersicht der Engine/,
+    );
   });
 
   test("the hosting choice is one learning step with both options side by side", async () => {

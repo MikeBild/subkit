@@ -15,10 +15,12 @@ import { diagnosisDe, diagnosisEn } from "./i18n/diagnosis";
 import { engineSentenceDe, engineSentenceEn } from "./i18n/engine-sentence";
 import { feedbackDe, feedbackEn } from "./i18n/feedback";
 import { intakeDe, intakeEn } from "./i18n/intake";
+import { knDe, knEn } from "./i18n/kn";
 import { knowledgeDe, knowledgeEn } from "./i18n/knowledge";
 import { notificationsDe, notificationsEn } from "./i18n/notifications";
 import { onboardingDe, onboardingEn } from "./i18n/onboarding";
 import { operationsDe, operationsEn } from "./i18n/operations";
+import { operationsScreensDe, operationsScreensEn } from "./i18n/operations-screens";
 import { overviewDe, overviewEn } from "./i18n/overview";
 import { pwaDe, pwaEn } from "./i18n/pwa";
 import { resourceDe, resourceEn } from "./i18n/resource";
@@ -66,10 +68,12 @@ const EN = {
   ...feedbackEn,
   ...engineSentenceEn,
   ...intakeEn,
+  ...knEn,
   ...knowledgeEn,
   ...notificationsEn,
   ...onboardingEn,
   ...operationsEn,
+  ...operationsScreensEn,
   ...overviewEn,
   ...pwaEn,
   ...resourceEn,
@@ -112,10 +116,12 @@ const DE: Record<TranslationKey, string> = {
   ...feedbackDe,
   ...engineSentenceDe,
   ...intakeDe,
+  ...knDe,
   ...knowledgeDe,
   ...notificationsDe,
   ...onboardingDe,
   ...operationsDe,
+  ...operationsScreensDe,
   ...overviewDe,
   ...pwaDe,
   ...resourceDe,

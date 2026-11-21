@@ -10,22 +10,9 @@ import {
 } from "@/api/decisions";
 import { useI18n } from "@/lib/i18n-context";
 import type { NameIndex } from "@/lib/name-index";
-import {
-  buildNameIndex,
-  EMPTY_NAME_INDEX,
-  type NamedEntity,
-  skillTargetName,
-} from "@/lib/name-index";
-import { driftKindKey, fixerKey, proposalKindKey } from "@/pages/decisions-context";
-import {
-  type DecidableItem,
-  decisionKey,
-  isDecidable,
-  patchChangeKind,
-  patchDecision,
-  patchTitle,
-  skillDecision,
-} from "@/pages/decisions-model";
+import { buildNameIndex, EMPTY_NAME_INDEX, type NamedEntity } from "@/lib/name-index";
+import { heldForWorkflow, reviewDecisionItems } from "@/pages/core/review-decisions";
+import type { DecidableItem } from "@/pages/decisions-model";
 import { type ReviewAccess, type ReviewTarget, reviewAccess } from "@/pages/overview-model";
 import { useLiveQueryOptions } from "./live-events";
 
@@ -103,31 +90,16 @@ export function useReviewDecisions(
       return {
         patches: patches.items,
         skills: [],
-        held: held.filter((schedule) => schedule.workflow_id === target.workflowId),
+        held: heldForWorkflow(held, target.workflowId),
         heldHooks,
       };
     },
   });
-  const items = [
-    ...(query.data?.patches ?? []).map((candidate) => {
-      const kinds = patchChangeKind(candidate);
-      const changeKey =
-        fixerKey(kinds.fixer) ??
-        proposalKindKey(kinds.proposalKind) ??
-        driftKindKey(kinds.driftKind);
-      const title = patchTitle({
-        workflow: candidate.workflow_name ?? null,
-        change: changeKey ? t(changeKey) : null,
-      });
-      return patchDecision(candidate, t(title.key, title.params));
-    }),
-    ...(query.data?.skills ?? []).map((candidate) =>
-      skillDecision(candidate, skillTargetName(names, candidate)),
-    ),
-  ];
-  const decisions = [...new Map(items.map((item) => [decisionKey(item), item])).values()].filter(
-    isDecidable,
-  ) as DecidableItem[];
+  const decisions = reviewDecisionItems(
+    { patches: query.data?.patches ?? [], skills: query.data?.skills ?? [] },
+    names,
+    t,
+  );
   return {
     access,
     isPending: access === "readable" && query.isPending,

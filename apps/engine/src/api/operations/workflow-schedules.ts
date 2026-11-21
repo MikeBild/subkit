@@ -164,6 +164,7 @@ export const createScheduleOperation = defineOperation<ScheduleCreate, ScheduleU
         ...(body.execution_mode !== undefined ? { execution_mode: body.execution_mode } : {}),
         ...(body.paused !== undefined ? { paused: body.paused } : {}),
         ...(body.input !== undefined ? { input: body.input } : {}),
+        creator: principal,
       });
     } catch (err) {
       return scheduleRejection(err);

@@ -8,11 +8,12 @@ import {
   entrySnapshot,
   type HiddenEntries,
   NO_HIDDEN,
+  pairWaitingFor,
   settleHidden,
   waitingOnName,
 } from "@/pages/overview-model";
+import { canReadAttention, withHidden, withoutHidden } from "./attention-model";
 import { useLiveQueryOptions } from "./live-events";
-import { ATTENTION_READ_PERMISSIONS } from "./navigation";
 
 let hidden: HiddenEntries = NO_HIDDEN;
 const listeners = new Set<() => void>();
@@ -24,14 +25,11 @@ function publish(next: HiddenEntries): void {
 }
 
 export function hideAttentionEntry(item: AttentionItem): void {
-  publish(new Map([...hidden, [item.id, entrySnapshot(item)]]));
+  publish(withHidden(hidden, item.id, entrySnapshot(item)));
 }
 
 export function restoreAttentionEntry(id: string): void {
-  if (!hidden.has(id)) return;
-  const next = new Map(hidden);
-  next.delete(id);
-  publish(next);
+  publish(withoutHidden(hidden, id));
 }
 
 function subscribe(listener: () => void): () => void {
@@ -45,10 +43,6 @@ function useHiddenAttention(): HiddenEntries {
     () => hidden,
     () => hidden,
   );
-}
-
-function canReadAttention(permissions: readonly string[]): boolean {
-  return ATTENTION_READ_PERMISSIONS.some((permission) => permissions.includes(permission));
 }
 
 export function useAttention(permissions: readonly string[]) {
@@ -80,4 +74,12 @@ export function useWaitingOn(
 ): string | null {
   const attention = useAttention(permissions);
   return waitingOnName(attention.query.data, subjectId);
+}
+
+export function usePairWaiting(
+  subjectId: string | null | undefined,
+  permissions: readonly string[],
+): { waitingOn: string | null } | null {
+  const attention = useAttention(permissions);
+  return pairWaitingFor(attention.query.data, subjectId);
 }

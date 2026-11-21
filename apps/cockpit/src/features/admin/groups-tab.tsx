@@ -13,9 +13,9 @@ import {
 import { tableColumns } from "@/components/cockpit/table-columns";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
-import { assignableRoles, roleName } from "@/pages/admin-model";
-import { personEmailText } from "@/pages/apps-model";
 import { type GroupItem, refusalToast, useGroups, usePeople, useRoles } from "./data";
+import { assignableRoles, roleName } from "./model/admin-model";
+import { personEmailText } from "./model/apps-model";
 import { AdminTable, ChoiceField, SectionList } from "./parts";
 
 function GroupSheet({ group, onClose }: { group: GroupItem | null; onClose(): void }) {

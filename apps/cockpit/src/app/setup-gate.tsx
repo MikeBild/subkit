@@ -1,15 +1,15 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useSetup } from "@/api/setup";
 import { Toaster } from "@/components/ui/sonner";
-import { useI18n } from "@/lib/i18n-context";
-import { SetupStep } from "@/pages/setup";
 import {
+  About,
   postponeSetup,
   type SetupGateView,
   setupGateView,
   setupOffered,
   setupPostponed,
-} from "@/pages/setup-model";
+} from "@/features/setup";
+import { useI18n } from "@/lib/i18n-context";
 import { useSession } from "./session";
 
 export function SetupGate({ children }: { children: ReactNode }) {
@@ -36,7 +36,7 @@ export function SetupGate({ children }: { children: ReactNode }) {
   if (shown === "open" && setup.data)
     return (
       <>
-        <SetupStep
+        <About
           setup={setup.data}
           onDone={() => setState("passed")}
           onLater={() => {

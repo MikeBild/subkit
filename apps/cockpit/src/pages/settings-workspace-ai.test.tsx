@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import type { Bootstrap } from "@/api/client";
-import { SettingsOverview } from "@/pages/settings-overview";
 import { aiAccessView, type PersonalDrafts } from "@/pages/settings-personal";
 import { WorkspaceAiQuestions } from "@/pages/settings-workspace-ai";
 import { render } from "./settings-fixtures.tsx";
@@ -134,43 +133,5 @@ describe("KI-Assistent in a hosted workspace", () => {
     expect(en).toContain(">Stored<");
     expect(en).toContain(">Replace<");
     expect(en).toContain("We check the key when you save.");
-  });
-});
-
-describe("the overview card of a hosted workspace's AI access", () => {
-  test("a stored key is one sentence without a badge", () => {
-    const html = render(
-      <SettingsOverview
-        cards={[{ id: "ai", sentence: "Anthropic · Schlüssel hinterlegt", status: null }]}
-        expert={false}
-        usage={false}
-        onNavigate={() => {}}
-      />,
-    );
-    expect(html).toContain("KI-Assistent");
-    expect(html).toContain("Anthropic · Schlüssel hinterlegt");
-    expect(html).toContain('href="/cockpit/settings?area=ai"');
-    expect(html).not.toContain("settings-area-status-");
-  });
-
-  test("a missing key waits for the owner", () => {
-    const html = render(
-      <SettingsOverview
-        cards={[
-          {
-            id: "ai",
-            sentence: "Noch kein eigener KI-Zugang eingerichtet.",
-            status: "waiting",
-          },
-        ]}
-        expert={false}
-        usage={false}
-        onNavigate={() => {}}
-      />,
-    );
-    expect(html).toContain("Noch kein eigener KI-Zugang eingerichtet.");
-    expect(html).toContain('data-testid="settings-area-status-waiting"');
-    expect(html).toContain("Wartet auf dich");
-    expect(filled(html)).toBe(0);
   });
 });

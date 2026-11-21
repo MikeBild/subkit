@@ -2,9 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { ALL_ROUTE_PATHS } from "@/app/route-table";
-import { LOCALES, type TranslationKey, translate } from "@/lib/i18n";
-import { ACCESS_TYPES } from "./audit-filter-state";
-import { accessLabel } from "./audit-labels";
 import {
   AUDIT_AREAS,
   auditActionLabel,
@@ -15,8 +12,11 @@ import {
   auditResourcePermission,
   auditScopeParams,
   auditSearchActions,
-} from "./audit-model";
-import { entry } from "./audit-model-fixtures.ts";
+} from "@/lib/audit-model";
+import { entry } from "@/lib/audit-model-fixtures";
+import { LOCALES, type TranslationKey, translate } from "@/lib/i18n";
+import { ACCESS_TYPES } from "./audit-filter-state";
+import { accessLabel } from "./audit-labels";
 import { auditDuration, auditTaskFacts } from "./audit-task";
 
 const ENGINE = resolve(import.meta.dir, "../../../engine/src");
@@ -127,7 +127,7 @@ describe("what the engine can record about tasks has a word in both languages", 
   test("the three resource types and the access type are named", () => {
     expect(auditResourceLabel("task", de)).toEqual({ text: "Aufgabe", machine: false });
     expect(auditResourceLabel("task_run", de)).toEqual({
-      text: "Lauf einer Aufgabe",
+      text: "Run einer Aufgabe",
       machine: false,
     });
     expect(auditResourceLabel("task_grant", de)).toEqual({
@@ -136,9 +136,9 @@ describe("what the engine can record about tasks has a word in both languages", 
     });
     expect(auditResourceLabel("task_grant", t("en")).text).toBe("Standing permission");
     expect(ACCESS_TYPES).toContain("task_run");
-    expect(accessLabel("task_run", de)).toBe("Lauf einer Aufgabe");
+    expect(accessLabel("task_run", de)).toBe("Run einer Aufgabe");
     expect(accessLabel("task_run", t("en"))).toBe("Task run");
-    expect(de("runs.caller.method.task_run")).toBe("Lauf einer Aufgabe");
+    expect(de("runs.caller.method.task_run")).toBe("Run einer Aufgabe");
   });
 });
 
@@ -154,17 +154,17 @@ describe("a start without a question", () => {
   test("says that an approval covers the run and names it", () => {
     const label = auditActionLabel(skipped.action);
     expect(label.kind === "named" ? de(label.key) : null).toBe(
-      "Start ohne Rückfrage, weil eine Freigabe den Lauf deckt",
+      "Start ohne Rückfrage, weil eine Freigabe den Run deckt",
     );
     expect(label.kind === "named" ? translate("en", label.key) : null).toBe(
       "Started without asking because an approval covers the run",
     );
     expect(auditReasonLabel(skipped.reason, de)).toEqual({
-      text: "Eine Freigabe deckt den Lauf",
+      text: "Eine Freigabe deckt den Run",
       machine: false,
     });
     expect(auditTaskFacts(skipped, de, dateTime)).toEqual([
-      { label: "Deckende Freigabe", value: TASK },
+      { tech: true, label: "Deckende Freigabe", value: TASK },
     ]);
     expect(auditSearchActions("ohne rückfrage", de)).toEqual(["tool_policy.confirmation_skipped"]);
   });
@@ -191,8 +191,8 @@ describe("the facts of a task entry", () => {
       },
     });
     expect(auditTaskFacts(failed, de, dateTime)).toEqual([
-      { label: "Aufgaben-ID", value: TASK },
-      { label: "Lauf-ID der Aufgabe", value: UUID },
+      { tech: true, label: "Aufgaben-ID", value: TASK },
+      { tech: true, label: "Run-ID der Aufgabe", value: UUID },
       { label: "Zustand davor", value: "läuft" },
       { label: "Ursache", value: "Die Frist ist abgelaufen" },
       { label: "Arbeitsschritte", value: "7" },
@@ -219,8 +219,8 @@ describe("the facts of a task entry", () => {
     ).toEqual([
       { label: "Läuft im", value: "Echtbetrieb" },
       { label: "Gültig bis", value: "Bis auf Widerruf" },
-      { label: "Erlaubte Läufe", value: "Unbegrenzt" },
-      { label: "ID der Dauererlaubnis", value: UUID },
+      { label: "Erlaubte Runs", value: "Unbegrenzt" },
+      { tech: true, label: "ID der Dauererlaubnis", value: UUID },
     ]);
     expect(
       facts({
@@ -234,8 +234,8 @@ describe("the facts of a task entry", () => {
       { label: "Begründung", value: "Dauererlaubnis aufgebraucht" },
       { label: "Läuft im", value: "Test" },
       { label: "Gültig bis", value: "<2026-12-01T00:00:00.000Z>" },
-      { label: "Erlaubte Läufe", value: "5" },
-      { label: "Genutzte Läufe", value: "2" },
+      { label: "Erlaubte Runs", value: "5" },
+      { label: "Genutzte Runs", value: "2" },
     ]);
   });
 
@@ -249,7 +249,7 @@ describe("the facts of a task entry", () => {
     ).toEqual([
       { label: "Start", value: "Nach Zeitplan" },
       { label: "Zustand", value: "zurückgehalten" },
-      { label: "Begründung", value: "Vorheriger Lauf noch offen" },
+      { label: "Begründung", value: "Vorheriger Run noch offen" },
     ]);
     expect(
       auditTaskFacts(

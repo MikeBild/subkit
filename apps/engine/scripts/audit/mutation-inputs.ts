@@ -77,13 +77,7 @@ export function mutationClosureFiles(repo: string): string[] {
 }
 const RUNNER_INPUTS = [
   "apps/engine/scripts/__tests__/native-exact-ignored-mutants.test.ts",
-  "apps/engine/scripts/audit/distributed-quality-artifacts.ts",
-  "apps/engine/scripts/audit/distributed-quality-budget.ts",
   "apps/engine/scripts/audit/distributed-quality-ticket.ts",
-  "apps/engine/scripts/audit/quality-hermetic-launcher.ts",
-  "apps/engine/scripts/distributed-quality.ts",
-  "apps/engine/scripts/prepare-distributed-quality-ticket.ts",
-  "apps/engine/scripts/validate-distributed-quality-executor.ts",
   "apps/engine/.quality-shard-policy.json",
   "apps/engine/scripts/audit/quality-shard-policy.ts",
   "apps/engine/scripts/audit/quality-runtime-witness-policy.ts",

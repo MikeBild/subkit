@@ -54,8 +54,6 @@ const EXCLUDED_ROUTES = new Set<string>([
   "POST /v1/extract",
 ]);
 
-const KNOWN_UNDOCUMENTED_ROUTES: string[] = [];
-
 const COCKPIT_WEB_SURFACE = new Set<string>([
   "GET /cockpit/sw.js",
   "HEAD /cockpit/sw.js",
@@ -187,11 +185,8 @@ describe("openapi route coverage", () => {
 
     expect(
       missing,
-      `Undocumented-route set changed. A NEW entry means a route shipped without its ` +
-        `@hono/zod-openapi createRoute() registration (add the registration — do not grow ` +
-        `KNOWN_UNDOCUMENTED_ROUTES). A MISSING entry means a route got documented — remove it ` +
-        `from KNOWN_UNDOCUMENTED_ROUTES so the ratchet tightens.`,
-    ).toEqual(KNOWN_UNDOCUMENTED_ROUTES);
+      "a route shipped without its @hono/zod-openapi createRoute() registration; add the registration",
+    ).toEqual([]);
   });
 
   test("normalizes only scoped API facade aliases", () => {

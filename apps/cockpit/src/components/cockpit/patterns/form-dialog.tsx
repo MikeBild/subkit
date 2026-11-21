@@ -1,3 +1,4 @@
+import { ErrorNotice } from "@ui/components/proto/ErrorNotice";
 import { type ReactNode, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
+import { renderAction } from "./action-button";
 import { ActionFailureHost, failureRemedyAction } from "./action-failure";
 import {
   DIALOG_BODY,
@@ -28,7 +30,7 @@ import {
   dialogWidthClass,
   FILLED_DESTRUCTIVE,
 } from "./dialog-frame";
-import { ErrorNotice } from "./error-notice";
+import { useErrorNotice } from "./use-error-detail";
 
 export {
   type DialogError,
@@ -98,6 +100,7 @@ export function FormDialog({
   wasOpen.current = open;
   const errorText = dialogErrorText(error);
   const cause = dialogErrorCause(error, failure);
+  const notice = useErrorNotice({ error: cause ?? undefined, tone: cause ? "error" : "warn" });
   const [shownHint, setShownHint] = useState<string | null>(null);
   const pointHint = (target: EventTarget) =>
     setShownHint(
@@ -172,11 +175,10 @@ export function FormDialog({
           {errorText ? (
             <div className={DIALOG_NOTICE}>
               <ErrorNotice
+                {...notice}
                 title={errorText}
-                error={cause ?? undefined}
-                tone={cause ? "error" : "warn"}
                 testId={`${testId}-error`}
-                remedy={
+                actions={renderAction(
                   cause
                     ? failureRemedyAction(
                         {
@@ -189,8 +191,8 @@ export function FormDialog({
                         },
                         t,
                       )
-                    : undefined
-                }
+                    : undefined,
+                )}
               />
             </div>
           ) : null}

@@ -86,7 +86,7 @@
     "rationale": "Pure cores take time, ids and randomness as parameters, so every line is reachable from a plain example or property test."
   },
   "files": {
-    "apps/cockpit/src/pages/knowledge-source-request.ts": {
+    "apps/cockpit/src/lib/knowledge-source-request.ts": {
       "line_min": 100,
       "function_min": 100,
       "rationale": "Pure URL-source request mapping; its named URL-contract test is intentionally distinct from the extracted helper filename.",

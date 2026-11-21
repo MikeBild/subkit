@@ -9,7 +9,7 @@ import {
   type CockpitColumn,
   DataTable,
   FilterBar,
-  GroupingTabs,
+  GroupingChoice,
   StatusBadge,
   SummaryLine,
 } from "@/components/cockpit/patterns";
@@ -244,7 +244,7 @@ export function RunsList({ onShowRun }: { onShowRun(id: string): void }) {
           columns={columns}
           data={rows}
           groupingTabs={
-            <GroupingTabs
+            <GroupingChoice
               label={t("common.groupBy")}
               value={groupMode}
               onChange={setGroupMode}

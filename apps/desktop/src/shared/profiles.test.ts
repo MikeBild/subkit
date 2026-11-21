@@ -116,9 +116,28 @@ describe("profile store", () => {
       launchAtLogin: false,
       pauseUntil: null,
       quietHours: { enabled: true, start: "22:00", end: "06:30" },
+      notifications: true,
+      shareDiagnostics: false,
+      notificationsAsked: true,
+      diagnosticsAsked: true,
     });
     expect(JSON.stringify(parsed)).not.toContain("secret");
     expect(JSON.stringify(parsed)).not.toContain("sk_live");
+  });
+
+  test("a new install asks once, diagnostics stay off until someone agrees", () => {
+    const fresh = parseStore({ profiles: [], settings: {} });
+    expect(fresh.settings).toMatchObject({
+      shareDiagnostics: false,
+      notifications: true,
+      notificationsAsked: false,
+      diagnosticsAsked: false,
+    });
+    const answered = parseStore({
+      profiles: [],
+      settings: { notificationsAsked: true, diagnosticsAsked: true, shareDiagnostics: true },
+    });
+    expect(answered.settings).toMatchObject({ shareDiagnostics: true, diagnosticsAsked: true });
   });
 
   test("starts empty from a missing or broken file", () => {

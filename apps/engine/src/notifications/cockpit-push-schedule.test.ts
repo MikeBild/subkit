@@ -191,6 +191,7 @@ describe("the person's notification schedule decides when a push goes out", () =
       mode: "working_hours" as const,
       from: clock(-60),
       to: clock(60),
+      days: EVERY_DAY,
     };
     await prefer(local, { schedule, timezone: "UTC" });
     await prefer(remote, { schedule });

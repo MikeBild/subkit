@@ -1,10 +1,10 @@
 import type { components } from "@cli-core/engine-api/openapi";
-import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
+import { IconTile } from "@ui/components/proto/visual";
+import { listPageFailure } from "@ui/lib/errors";
 import { Bot, Workflow } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { apiCall } from "@/api/call";
 import { absolute, chatNewHref, recordHref, runsHref } from "@/app/links";
 import { CatalogSummary, useCatalogCreatedBy } from "@/components/cockpit/catalog-categories";
 import {
@@ -15,10 +15,7 @@ import {
 import { CatalogNameCell } from "@/components/cockpit/catalog-metadata";
 import { recordCategory } from "@/components/cockpit/catalog-metadata-model";
 import { CATALOG_CREATED_BY_FILTER } from "@/components/cockpit/catalog-origin-model";
-import { connectorService } from "@/components/cockpit/connector-names";
-import { ConnectorOnboarding } from "@/components/cockpit/connector-onboarding";
 import { CreateAction } from "@/components/cockpit/create-choice";
-import { isConnectorEnvironment } from "@/components/cockpit/environment-chip";
 import { usePackageActions } from "@/components/cockpit/package-dialogs";
 import {
   ActionMenu,
@@ -27,20 +24,18 @@ import {
   DataTable,
   FilterBar,
   type FilterSelect,
-  GroupingTabs,
-  IconTile,
+  GroupingChoice,
   Page,
   PageHeader,
   StatusBadge,
 } from "@/components/cockpit/patterns";
-import { ServiceIcon } from "@/components/cockpit/service-icon";
-import { MISSING, tableColumns } from "@/components/cockpit/table-columns";
+import { tableColumns } from "@/components/cockpit/table-columns";
 import { WorkflowOnboarding } from "@/components/cockpit/workflow-onboarding";
 import { TRIGGER_ICONS } from "@/components/cockpit/workflow-steps-list";
 import { ForbiddenState } from "@/components/failure-state";
-import { CONNECTOR_STRIP_KEYS, connectorRecordStrip } from "@/lib/connector-strip";
+import { WorkflowStatusPill } from "@/features/operations";
 import { cronWords } from "@/lib/cron-words";
-import { LOCALE_TAGS, type Locale, pluralKey, type TranslationKey } from "@/lib/i18n";
+import { LOCALE_TAGS, type Locale, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
@@ -49,8 +44,8 @@ import { humanizeCategory } from "@/lib/workflow-category";
 import { triggerKindOf } from "@/lib/workflow-flow";
 import {
   CATALOG_CATEGORY_GROUP,
-  CATALOG_GROUPS,
   CATALOG_WORKFLOW_FILTER_STATUSES,
+  CATALOG_WORKFLOW_GROUPS,
   catalogGroupFromSearch,
   catalogListParams,
   catalogOperatingStatus,
@@ -58,25 +53,16 @@ import {
   type WorkflowStatusFilter,
   workflowNeedsAttention,
 } from "@/pages/catalog-model";
-import { driverLabel } from "@/pages/connector-detail-model";
-import {
-  type ConnectorHealthFilter,
-  connectorHealthFilterFromUrl,
-  workflowsByConnector,
-} from "@/pages/connectors-model";
 import { triggerLabelKey } from "@/pages/workflows-model";
 
-type CatalogResource = "workflows" | "connectors";
 type CatalogRow = Record<string, unknown>;
 type WorkflowListItem = components["schemas"]["WorkflowListItem"];
 
 interface CatalogState {
-  kind: "all" | "oauth" | "mcp" | "key";
   q: string;
   status: WorkflowStatusFilter;
   category: string;
   connector: string;
-  health: ConnectorHealthFilter | null;
   sort: string;
   order: "asc" | "desc";
   group: string;
@@ -91,122 +77,68 @@ interface CatalogListPage extends CursorPage<CatalogRow> {
   categories?: CategoryCount[];
 }
 
-interface CatalogConfig {
-  endpoint: string;
-  permission: string;
-  titleKey: TranslationKey;
-  emptyKey: TranslationKey;
-  summaryKeys: { one: TranslationKey; other: TranslationKey };
-  actionKey?: TranslationKey;
-  defaultSort: string;
-  statuses: readonly WorkflowStatusFilter[];
-  groups: readonly string[];
-}
-
-const CONFIG: Record<CatalogResource, CatalogConfig> = {
-  workflows: {
-    endpoint: "/v1/workflows",
-    permission: "workflow:read",
-    titleKey: "resource.workflows.title",
-    emptyKey: "resource.workflows.empty",
-    summaryKeys: {
-      one: "resource.workflows.summary.one",
-      other: "resource.workflows.summary.other",
-    },
-    actionKey: "resource.workflows.action",
-    defaultSort: "updated_at",
-    statuses: CATALOG_WORKFLOW_FILTER_STATUSES,
-    groups: CATALOG_GROUPS.workflows,
-  },
-  connectors: {
-    endpoint: "/v1/connectors",
-    permission: "connector:read",
-    titleKey: "resource.connectors.title",
-    emptyKey: "resource.connectors.empty",
-    summaryKeys: {
-      one: "resource.connectors.summary.one",
-      other: "resource.connectors.summary.other",
-    },
-    actionKey: "resource.connectors.action",
-    defaultSort: "updated_at",
-    statuses: [],
-    groups: CATALOG_GROUPS.connectors,
-  },
-};
-
 export function catalogCountLine(
   t: (key: TranslationKey, values?: Record<string, string | number>) => string,
-  resource: CatalogResource,
   count: number,
 ): string {
-  const keys = CONFIG[resource].summaryKeys;
-  return t(count === 1 ? keys.one : keys.other, { count });
+  return t(count === 1 ? "resource.workflows.summary.one" : "resource.workflows.summary.other", {
+    count,
+  });
 }
 
-const PAGE_SIZE = 25;
-const RELATION_INDEX_LIMIT = 200;
+const DEFAULT_SORT = "updated_at";
 
-function parseState(config: CatalogConfig): CatalogState {
+const PAGE_SIZE = 25;
+
+function parseState(): CatalogState {
   const params = new URLSearchParams(window.location.search);
   const order = params.get("order");
   return {
     q: params.get("q") ?? "",
-    kind:
-      config.endpoint === "/v1/connectors" &&
-      ["oauth", "mcp", "key"].includes(params.get("kind") ?? "")
-        ? (params.get("kind") as "oauth" | "mcp" | "key")
-        : "all",
-    status: config.statuses.includes(params.get("operating_status") as WorkflowStatusFilter)
+    status: (CATALOG_WORKFLOW_FILTER_STATUSES as readonly string[]).includes(
+      params.get("operating_status") ?? "",
+    )
       ? (params.get("operating_status") as WorkflowStatusFilter)
       : "all",
     category: params.get("category") ?? "all",
     connector: params.get("connector") ?? "",
-    health:
-      config.endpoint === "/v1/connectors"
-        ? connectorHealthFilterFromUrl(window.location.search)
-        : null,
-    sort: params.get("sort") ?? config.defaultSort,
+    sort: params.get("sort") ?? DEFAULT_SORT,
     order: order === "asc" ? "asc" : "desc",
-    group: catalogGroupFromSearch(window.location.search, config.groups),
+    group: catalogGroupFromSearch(window.location.search, CATALOG_WORKFLOW_GROUPS),
   };
 }
 
-function useCatalogState(config: CatalogConfig) {
-  const [state, setStateValue] = useState<CatalogState>(() => parseState(config));
+function useCatalogState() {
+  const [state, setStateValue] = useState<CatalogState>(() => parseState());
   const stateRef = useRef(state);
   useEffect(() => {
     const onPopState = () => {
-      const next = parseState(config);
+      const next = parseState();
       stateRef.current = next;
       setStateValue(next);
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
-  }, [config]);
-  const setState = useCallback(
-    (patch: Partial<CatalogState>) => {
-      const next = { ...stateRef.current, ...patch };
-      stateRef.current = next;
-      const params = new URLSearchParams();
-      if (next.q) params.set("q", next.q);
-      if (next.kind !== "all") params.set("kind", next.kind);
-      if (next.status !== "all") params.set("operating_status", next.status);
-      if (next.category !== "all") params.set("category", next.category);
-      if (next.connector) params.set("connector", next.connector);
-      if (next.health) params.set("health", next.health);
-      if (next.sort !== config.defaultSort) params.set("sort", next.sort);
-      if (next.order !== "desc") params.set("order", next.order);
-      if (next.group !== CATALOG_CATEGORY_GROUP) params.set("group", next.group);
-      const origin = new URLSearchParams(window.location.search).get("origin");
-      if (origin) params.set("origin", origin);
-      const suffix = params.size > 0 ? `?${params}` : "";
-      const href = `${window.location.pathname}${suffix}`;
-      if (href !== `${window.location.pathname}${window.location.search}`)
-        window.history.pushState({}, "", href);
-      setStateValue(next);
-    },
-    [config.defaultSort],
-  );
+  }, []);
+  const setState = useCallback((patch: Partial<CatalogState>) => {
+    const next = { ...stateRef.current, ...patch };
+    stateRef.current = next;
+    const params = new URLSearchParams();
+    if (next.q) params.set("q", next.q);
+    if (next.status !== "all") params.set("operating_status", next.status);
+    if (next.category !== "all") params.set("category", next.category);
+    if (next.connector) params.set("connector", next.connector);
+    if (next.sort !== DEFAULT_SORT) params.set("sort", next.sort);
+    if (next.order !== "desc") params.set("order", next.order);
+    if (next.group !== CATALOG_CATEGORY_GROUP) params.set("group", next.group);
+    const origin = new URLSearchParams(window.location.search).get("origin");
+    if (origin) params.set("origin", origin);
+    const suffix = params.size > 0 ? `?${params}` : "";
+    const href = `${window.location.pathname}${suffix}`;
+    if (href !== `${window.location.pathname}${window.location.search}`)
+      window.history.pushState({}, "", href);
+    setStateValue(next);
+  }, []);
   return [state, setState] as const;
 }
 
@@ -237,153 +169,75 @@ function HealthMark({ row, index }: { row: CatalogRow; index: number }) {
 }
 
 function catalogColumns(
-  resource: CatalogResource,
   t: ReturnType<typeof useI18n>["t"],
   dateTime: ReturnType<typeof useI18n>["dateTime"],
-  relations: {
-    workflowsByConnectorSlug: ReadonlyMap<string, { id: string; name: string }[]>;
-    canReadWorkflows: boolean;
-    locale: Locale;
-    hideCategory: boolean;
-  },
+  relations: { locale: Locale; hideCategory: boolean },
 ): CockpitColumn<CatalogRow>[] {
   const column = tableColumns<CatalogRow>({ t, dateTime });
-
-  if (resource === "workflows") {
-    return [
-      column.custom(
-        "name",
-        (row) => row.name,
-        t("common.name"),
-        (row) => (
-          <CatalogNameCell
-            name={stringField(row, "name") ?? ""}
-            record={row}
-            hideCategory={relations.hideCategory}
-            icon={
-              <IconTile>
-                <Workflow />
-              </IconTile>
-            }
-          />
-        ),
-        { sortable: true, width: "w-[38%]" },
-      ),
-      column.custom(
-        "trigger",
-        (row) => row.effective_trigger,
-        t("catalog.trigger"),
-        (row) => {
-          const trigger = row.effective_trigger as WorkflowListItem["effective_trigger"];
-          const schedule = row.schedule as WorkflowListItem["schedule"];
-          const label = t(triggerLabelKey(trigger));
-          const Icon = TRIGGER_ICONS[triggerKindOf(trigger)];
-          return (
-            <span className="inline-flex items-center gap-1.5">
-              <Icon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-              {trigger.kind === "schedule" && schedule?.cron
-                ? `${label} · ${cronWords(schedule.cron, t, LOCALE_TAGS[relations.locale])}`
-                : label}
-            </span>
-          );
-        },
-        { width: "w-[18%]" },
-      ),
-      column.custom(
-        "operating_status",
-        (row) => row.operating_status,
-        t("catalog.status"),
-        (row, index) => {
-          const status = catalogOperatingStatus(row.operating_status);
-          return (
-            <span className="flex min-w-0 flex-col items-start gap-1">
-              <StatusBadge state={status} label={t(OPERATING_STATUS_KEYS[status])} />
-              <HealthMark row={row} index={index} />
-            </span>
-          );
-        },
-        { width: "w-[26%]", interactive: true },
-      ),
-      column.date("last_executed_at", (row) => row.last_executed_at, t("catalog.lastRun"), {
-        width: "w-[18%]",
-      }),
-    ];
-  }
-
   return [
     column.custom(
       "name",
-      (row) => row.display_name,
+      (row) => row.name,
       t("common.name"),
       (row) => (
         <CatalogNameCell
-          name={stringField(row, "display_name") ?? ""}
+          name={stringField(row, "name") ?? ""}
           record={row}
           hideCategory={relations.hideCategory}
-          environment={isConnectorEnvironment(row.environment) ? row.environment : null}
-          icon={
-            <ServiceIcon
-              tile="md"
-              service={connectorService({
-                slug: stringField(row, "slug") ?? "",
-                display_name: stringField(row, "display_name") ?? "",
-                driver: stringField(row, "driver"),
-                template_slug: stringField(row, "template_slug"),
-                base_url: stringField(row, "base_url"),
-              })}
-            />
-          }
+          icon={<IconTile icon={Workflow} size="md" />}
         />
       ),
-      { sortable: true, width: "w-[34%]" },
+      { sortable: true, width: "w-[38%]" },
     ),
     column.custom(
-      "driver",
-      (row) => row.driver,
-      t("catalog.kind"),
-      (row) => {
-        const kind =
-          row.driver === "mcp"
-            ? t("catalog.kind.mcp")
-            : driverLabel(stringField(row, "driver"), t) || MISSING;
-        if (row.driver === "mcp")
-          return typeof row.tools_count === "number"
-            ? `${kind} · ${t(row.tools_count === 1 ? "connectorDetail.tools.count.one" : "connectorDetail.tools.count.other", { count: row.tools_count })}`
-            : kind;
-        const slug = stringField(row, "slug");
-        if (!relations.canReadWorkflows || !slug) return kind;
-        const users = relations.workflowsByConnectorSlug.get(slug)?.length ?? 0;
-        return `${kind} · ${t(pluralKey("connectors.usedByCount", users), { count: users })}`;
-      },
-      { width: "w-[30%]" },
-    ),
-    column.custom(
-      "health",
-      (row) => row.health_state,
+      "operating_status",
+      (row) => row.operating_status,
       t("catalog.status"),
-      (row) => {
-        const strip = connectorRecordStrip(row);
-        return <StatusBadge state={strip.tone} label={t(CONNECTOR_STRIP_KEYS[strip.kind])} />;
+      (row, index) => {
+        const status = catalogOperatingStatus(row.operating_status);
+        return (
+          <span className="flex min-w-0 flex-col items-start gap-1">
+            <WorkflowStatusPill
+              status={status}
+              label={t(OPERATING_STATUS_KEYS[status])}
+              testId={`workflow-status-${index}`}
+            />
+            <HealthMark row={row} index={index} />
+          </span>
+        );
       },
-      { width: "w-[18%]" },
+      { width: "w-[22%]", interactive: true },
     ),
-    column.date("last_tested_at", (row) => row.last_tested_at, t("catalog.tested"), {
+    column.custom(
+      "trigger",
+      (row) => row.effective_trigger,
+      t("catalog.trigger"),
+      (row) => {
+        const trigger = row.effective_trigger as WorkflowListItem["effective_trigger"];
+        const schedule = row.schedule as WorkflowListItem["schedule"];
+        const label = t(triggerLabelKey(trigger));
+        const Icon = TRIGGER_ICONS[triggerKindOf(trigger)];
+        return (
+          <span className="inline-flex items-center gap-1.5">
+            <Icon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+            {trigger.kind === "schedule" && schedule?.cron
+              ? `${label} · ${cronWords(schedule.cron, t, LOCALE_TAGS[relations.locale])}`
+              : label}
+          </span>
+        );
+      },
+      { width: "w-[22%]" },
+    ),
+    column.date("last_executed_at", (row) => row.last_executed_at, t("catalog.lastRun"), {
       width: "w-[18%]",
     }),
   ];
 }
 
-export function CatalogPage({
-  resource,
-  permissions,
-}: {
-  resource: CatalogResource;
-  permissions: readonly string[];
-}) {
+export function CatalogPage({ permissions }: { permissions: readonly string[] }) {
   const { t, dateTime, locale } = useI18n();
-  const config = CONFIG[resource];
   const navigate = useNavigate();
-  const [state, setState] = useCatalogState(config);
+  const [state, setState] = useCatalogState();
   const [search, setSearch] = useState(state.q);
   const groupMode = state.group;
   const setGroupMode = useCallback((group: string) => setState({ group }), [setState]);
@@ -395,56 +249,31 @@ export function CatalogPage({
   }, [debouncedSearch, setState, state.q]);
 
   const params = useMemo(
-    () => ({ ...catalogListParams(resource, state), description_source: origin.descriptionSource }),
-    [resource, state, origin.descriptionSource],
+    () => ({ ...catalogListParams(state), description_source: origin.descriptionSource }),
+    [state, origin.descriptionSource],
   );
-  const list = useInfiniteList<CatalogRow, CatalogListPage>(config.endpoint, params, {
+  const list = useInfiniteList<CatalogRow, CatalogListPage>("/v1/workflows", params, {
     limit: PAGE_SIZE,
-    enabled: permissions.includes(config.permission),
-    queryKey: ["catalog", resource, params],
+    enabled: permissions.includes("workflow:read"),
+    queryKey: ["catalog", "workflows", params],
   });
   const query = list.query;
 
-  const canReadWorkflows = permissions.includes("workflow:read");
-  const workflowIndex = useQuery({
-    queryKey: ["catalog-workflow-index"],
-    enabled: resource === "connectors" && canReadWorkflows,
-    queryFn: () => apiCall("get", "/v1/workflows", { query: { limit: RELATION_INDEX_LIMIT } }),
-  });
-  const workflowsByConnectorSlug = useMemo(
-    () =>
-      workflowsByConnector(
-        (workflowIndex.data?.items ?? []).map((item) => ({
-          id: item.id,
-          name: item.name,
-          connectors: item.connectors,
-        })),
-      ),
-    [workflowIndex.data],
-  );
-
   const columns = useMemo(
     () =>
-      catalogColumns(resource, t, dateTime, {
-        workflowsByConnectorSlug,
-        canReadWorkflows,
+      catalogColumns(t, dateTime, {
         locale,
         hideCategory: groupMode === CATALOG_CATEGORY_GROUP,
       }),
-    [resource, t, dateTime, workflowsByConnectorSlug, canReadWorkflows, locale, groupMode],
+    [t, dateTime, locale, groupMode],
   );
   const sorting: SortingState = [{ id: state.sort, desc: state.order === "desc" }];
   const rows = list.items;
   const total = list.total ?? rows.length;
   const categories = useMemo(() => list.first?.categories ?? [], [list.first]);
-  const title = t(config.titleKey);
+  const title = t("resource.workflows.title");
   const narrowed =
-    Boolean(state.q) ||
-    state.status !== "all" ||
-    Boolean(state.connector) ||
-    state.health !== null ||
-    state.kind !== "all" ||
-    origin.active;
+    Boolean(state.q) || state.status !== "all" || Boolean(state.connector) || origin.active;
   const grouping =
     groupMode === "all"
       ? undefined
@@ -453,32 +282,19 @@ export function CatalogPage({
             getCategory: (row) => recordCategory(row),
             otherLabel: t("catalog.categoryOther"),
             ...(narrowed ? {} : { counts: categoryCounts(categories) }),
-            needsAttention:
-              resource === "workflows"
-                ? workflowNeedsAttention
-                : (row) => connectorRecordStrip(row).tone !== "ok",
+            needsAttention: workflowNeedsAttention,
           })
         : {
-            getKey: (row: CatalogRow) => {
-              if (resource === "workflows") {
-                if (groupMode === "trigger")
-                  return t(
-                    triggerLabelKey(row.effective_trigger as WorkflowListItem["effective_trigger"]),
-                  );
-                return t(OPERATING_STATUS_KEYS[catalogOperatingStatus(row.operating_status)]);
-              }
-              if (groupMode === "kind")
-                return driverLabel(stringField(row, "driver"), t) || MISSING;
-              return t(CONNECTOR_STRIP_KEYS[connectorRecordStrip(row).kind]);
-            },
+            getKey: (row: CatalogRow) =>
+              groupMode === "trigger"
+                ? t(triggerLabelKey(row.effective_trigger as WorkflowListItem["effective_trigger"]))
+                : t(OPERATING_STATUS_KEYS[catalogOperatingStatus(row.operating_status)]),
           };
   const hasActiveFilters =
     Boolean(state.q) ||
     state.status !== "all" ||
     state.category !== "all" ||
     Boolean(state.connector) ||
-    state.health !== null ||
-    state.kind !== "all" ||
     origin.active;
 
   const showsZeroStateAction =
@@ -487,10 +303,7 @@ export function CatalogPage({
     !query.isPending &&
     !query.error &&
     !query.failureReason;
-  const onboardsConnectors =
-    resource === "connectors" && showsZeroStateAction && permissions.includes("connector:write");
-
-  const onboarding = resource === "workflows" && showsZeroStateAction;
+  const onboarding = showsZeroStateAction;
 
   const resetFilters = useCallback(() => {
     setSearch("");
@@ -500,22 +313,20 @@ export function CatalogPage({
       status: "all",
       category: "all",
       connector: "",
-      health: null,
-      kind: "all",
     });
   }, [setState, origin.setValue]);
   const packages = usePackageActions({
     permissions,
-    kind: resource === "workflows" ? "workflow" : "connector",
+    kind: "workflow",
     category: state.category === "all" ? undefined : state.category,
   });
 
-  if (!permissions.includes(config.permission)) {
+  if (!permissions.includes("workflow:read")) {
     return (
       <Page
         kind="list"
         surface="collection"
-        testId={`catalog-${resource}`}
+        testId="catalog-workflows"
         scroll="page"
         header={<PageHeader title={title} />}
       >
@@ -525,19 +336,6 @@ export function CatalogPage({
   }
 
   const selects: FilterSelect[] = [];
-  if (resource === "connectors")
-    selects.push({
-      value: state.kind,
-      onChange: (kind) => setState({ kind: kind as CatalogState["kind"] }),
-      label: t("catalog.kind"),
-      testId: "catalog-kind-filter",
-      options: [
-        { value: "all", label: t("catalog.kindAll") },
-        { value: "oauth", label: t("catalog.kind.oauth") },
-        { value: "mcp", label: t("catalog.kind.mcp") },
-        { value: "key", label: t("catalog.kind.key") },
-      ],
-    });
   if (categories.length > 0)
     selects.push({
       value: state.category,
@@ -552,51 +350,60 @@ export function CatalogPage({
         })),
       ],
     });
-  if (resource === "workflows")
-    selects.push({
-      value: state.status,
-      onChange: (status) => setState({ status: status as WorkflowStatusFilter }),
-      label: t("catalog.filterStatus"),
-      testId: "catalog-status-filter",
-      options: [
-        { value: "all", label: t("catalog.allStatuses") },
-        ...config.statuses.map((status) => ({
-          value: status,
-          label: t(OPERATING_STATUS_KEYS[catalogOperatingStatus(status)]),
-        })),
-      ],
-    });
+  selects.push({
+    value: state.status,
+    onChange: (status) => setState({ status: status as WorkflowStatusFilter }),
+    label: t("catalog.filterStatus"),
+    testId: "catalog-status-filter",
+    options: [
+      { value: "all", label: t("catalog.allStatuses") },
+      ...CATALOG_WORKFLOW_FILTER_STATUSES.map((status) => ({
+        value: status,
+        label: t(OPERATING_STATUS_KEYS[catalogOperatingStatus(status)]),
+      })),
+    ],
+  });
   selects.push(origin.select);
 
   const primaryAction = (testId: string) =>
-    (resource === "workflows" && permissions.includes("workflow:write")) ||
-    (resource === "connectors" && permissions.includes("connector:write")) ? (
+    permissions.includes("workflow:write") ? (
       <CreateAction
-        kind={resource === "workflows" ? "workflow" : "connector"}
+        kind="workflow"
         canChat={permissions.includes("conversation:write")}
         size={testId === "catalog-empty-action" ? "sm" : "default"}
         testId={testId}
       />
-    ) : config.actionKey ? (
+    ) : (
       <Button asChild size={testId === "catalog-empty-action" ? "sm" : "default"}>
-        <a href={absolute(chatNewHref({ prompt: t(config.actionKey) }))} data-testid={testId}>
+        <a
+          href={absolute(chatNewHref({ prompt: t("resource.workflows.action") }))}
+          data-testid={testId}
+        >
           <Bot data-icon="inline-start" />
-          {t(config.actionKey)}
+          {t("resource.workflows.action")}
         </a>
       </Button>
-    ) : undefined;
+    );
 
   return (
     <Page
       kind="list"
       surface="collection"
-      testId={`catalog-${resource}`}
+      testId="catalog-workflows"
       scroll="content"
+      failure={listPageFailure({
+        failed: Boolean(query.error || query.failureReason),
+        loaded: query.data !== undefined,
+        onRetry: () => void query.refetch(),
+        error: query.error ?? query.failureReason,
+        collectionId: "data-table",
+      })}
       header={
         <PageHeader
           title={title}
+          purpose={t("catalog.lead")}
           action={
-            showsZeroStateAction && !onboarding && !onboardsConnectors
+            showsZeroStateAction && !onboarding
               ? undefined
               : primaryAction("catalog-primary-action")
           }
@@ -604,7 +411,7 @@ export function CatalogPage({
             packages.items.length > 0 ? (
               <ActionMenu
                 alwaysMenu
-                testId={`catalog-${resource}-page-actions`}
+                testId="catalog-workflows-page-actions"
                 items={packages.items}
               />
             ) : undefined
@@ -617,15 +424,13 @@ export function CatalogPage({
           canWrite={permissions.includes("workflow:write")}
           canChat={permissions.includes("conversation:write")}
         />
-      ) : onboardsConnectors ? (
-        <ConnectorOnboarding canChat={permissions.includes("conversation:write")} />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col gap-3">
           {query.isPending || rows.length > 0 || hasActiveFilters ? (
             <CatalogSummary
               loading={query.isPending}
-              text={catalogCountLine(t, resource, total)}
-              kind={resource === "workflows" ? "workflow" : "connector"}
+              text={catalogCountLine(t, total)}
+              kind="workflow"
               testId="catalog-summary"
             />
           ) : null}
@@ -634,26 +439,17 @@ export function CatalogPage({
             data={rows}
             groupingTabs={
               <>
-                <GroupingTabs
+                <GroupingChoice
                   label={t("common.groupBy")}
                   value={groupMode}
                   onChange={setGroupMode}
-                  options={
-                    resource === "workflows"
-                      ? [
-                          { value: "all", label: t("common.all") },
-                          { value: CATALOG_CATEGORY_GROUP, label: t("resource.field.category") },
-                          { value: "status", label: t("catalog.status") },
-                          { value: "trigger", label: t("catalog.trigger") },
-                        ]
-                      : [
-                          { value: "all", label: t("common.all") },
-                          { value: CATALOG_CATEGORY_GROUP, label: t("resource.field.category") },
-                          { value: "kind", label: t("catalog.kind") },
-                          { value: "health", label: t("catalog.status") },
-                        ]
-                  }
-                  testId={`catalog-${resource}-grouping`}
+                  options={[
+                    { value: "all", label: t("common.all") },
+                    { value: CATALOG_CATEGORY_GROUP, label: t("resource.field.category") },
+                    { value: "status", label: t("catalog.status") },
+                    { value: "trigger", label: t("catalog.trigger") },
+                  ]}
+                  testId="catalog-workflows-grouping"
                   note={
                     groupMode === "all" || groupMode === CATALOG_CATEGORY_GROUP
                       ? undefined
@@ -681,8 +477,6 @@ export function CatalogPage({
                   selects={selects}
                   onApply={(changes) => {
                     const patch: Partial<CatalogState> = {};
-                    if (changes["catalog-kind-filter"])
-                      patch.kind = changes["catalog-kind-filter"] as CatalogState["kind"];
                     if (changes["catalog-category-filter"])
                       patch.category = changes["catalog-category-filter"];
                     if (changes["catalog-status-filter"])
@@ -694,16 +488,6 @@ export function CatalogPage({
                   reset={{ label: t("catalog.clearFilters"), onClick: resetFilters }}
                 />
                 {origin.chip}
-                {resource === "connectors" && state.health === "not_ok" ? (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    data-testid="catalog-health-filter"
-                    onClick={() => setState({ health: null })}
-                  >
-                    {t("catalog.healthNotOkFilter")}
-                  </Button>
-                ) : null}
                 {hasActiveFilters && (
                   <Button
                     variant="ghost"
@@ -729,7 +513,7 @@ export function CatalogPage({
             }
             emptyState={{
               zero: {
-                title: t(config.emptyKey),
+                title: t("resource.workflows.empty"),
                 action: primaryAction("catalog-empty-action"),
               },
               filtered: {
@@ -751,9 +535,10 @@ export function CatalogPage({
             }}
             getRowId={(row) => (typeof row.id === "string" ? row.id : "")}
             onOpen={(row) => {
-              if (typeof row.id === "string") void navigate({ to: recordHref(resource, row.id) });
+              if (typeof row.id === "string")
+                void navigate({ to: recordHref("workflows", row.id) });
             }}
-            rowHref={(row) => (typeof row.id === "string" ? recordHref(resource, row.id) : null)}
+            rowHref={(row) => (typeof row.id === "string" ? recordHref("workflows", row.id) : null)}
             total={total}
             infinite={list.infinite}
             columnsLabel={t("catalog.columns")}
@@ -771,5 +556,3 @@ export function CatalogPage({
 function categoryLabel(category: string, t: ReturnType<typeof useI18n>["t"]): string {
   return humanizeCategory(category, t("catalog.categoryOther"));
 }
-
-export const CATALOG_RESOURCES = new Set<string>(Object.keys(CONFIG));

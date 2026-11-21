@@ -1,7 +1,7 @@
 ---
 slug: schedules-failures-and-history
 title: Zeitpläne im Blick behalten
-summary: Lies, warum ein geplanter Lauf gescheitert ist oder wartet, und bring ihn wieder zum Laufen.
+summary: Lies, warum ein geplanter Run gescheitert ist oder wartet, und bring ihn wieder zum Laufen.
 section: work
 order: 17
 audience: public
@@ -9,7 +9,7 @@ audience: public
 ## Zeitpläne im Blick behalten
 
 Dieses Kapitel ist für alle, deren Workflows oder Aufgaben nach Zeitplan laufen.
-Danach kannst du lesen, warum ein Lauf gescheitert ist, warum ein Zeitplan wartet oder pausiert wurde und was jeder fällige Termin ergeben hat.
+Danach kannst du lesen, warum ein Run gescheitert ist, warum ein Zeitplan wartet oder pausiert wurde und was jeder fällige Termin ergeben hat.
 Du weißt dann auch, wie du einen Zeitplan fortsetzt und eine Freigabe erneuerst, bevor sie endet.
 
 ### Was du brauchst
@@ -18,55 +18,55 @@ Du weißt dann auch, wie du einen Zeitplan fortsetzt und eine Freigabe erneuerst
 - Zum Lesen des Verlaufs: `execution:read` für Workflows, `task:read` für Aufgaben.
 - Zum Fortsetzen eines Zeitplans: `workflow:write`.
 
-### Lesen, warum ein Lauf gescheitert ist
+### Lesen, warum ein Run gescheitert ist
 
-Ein gescheiterter Lauf zeigt einen Hinweis mit drei Teilen: was passiert ist, eine empfohlene Handlung und die zugeklappten **Technischen Angaben**.
+Ein gescheiterter Run zeigt einen Hinweis mit drei Teilen: was passiert ist, eine empfohlene Handlung und die zugeklappten **Technischen Angaben**.
 
-1. Öffne den Lauf über **Läufe** oder über die Liste **Braucht dich** in der **Übersicht**.
+1. Öffne den Run über **Runs** oder über die Liste **Braucht dich** in der **Übersicht**.
 2. Lies die Ursache und wähle die empfohlene Handlung.
 
 | Ursache | Empfohlene Handlung |
 | --- | --- |
-| **Anmeldung abgelehnt** | **Neu anmelden**: Verbinde den Konnektor neu. |
+| **Anmeldung abgelehnt** | **Neu anmelden**: Verbinde den Connector neu. |
 | **Freigabe passt nicht mehr**, **Vor dem Start abgelehnt** | **Freigabe prüfen**: Prüfe und erneuere die Freigabe. |
-| **Zeitüberschreitung**, **Abgebrochen**, **Konnektor nicht verfügbar**, **Abrufgrenze des Anbieters erreicht**, **Nicht vollständig gelesen**, **Fehler im Fremdsystem** | **Erneut versuchen** |
+| **Zeitüberschreitung**, **Abgebrochen**, **Connector nicht verfügbar**, **Abrufgrenze des Anbieters erreicht**, **Nicht vollständig gelesen**, **Fehler im Fremdsystem** | **Erneut versuchen** |
 | **Token-Budget erschöpft** | **Administrator fragen** |
-| **Konnektor fehlt**, **Platzhalter nicht auflösbar**, **Antwort in unerwarteter Form**, **Nachricht fehlerhaft**, **Nicht eingeordnet** | **Im Chat beheben**: Der Chat öffnet sich mit der Frage nach Ursache und Lösung. |
+| **Connector fehlt**, **Platzhalter nicht auflösbar**, **Antwort in unerwarteter Form**, **Nachricht fehlerhaft**, **Nicht eingeordnet** | **Im Chat beheben**: Der Chat öffnet sich mit der Frage nach Ursache und Lösung. |
 
-Für vertrauliche Workflows (`execution_privacy: sensitive`) speichert SubKit keine Fehlerdetails. Seit dieser Version behält ein solcher Lauf trotzdem seine Ursache und einen festen Satz, der sagt, was zu tun ist. Beispiel: „The connected service rejected the sign-in. Reconnect the connector, then run again. Nothing was changed by this step.“ Erkennt SubKit keine Ursache, bleibt es bei „Sensitive execution failed.“ Diese Sätze schreibt die Engine auf Englisch. Das Cockpit sagt sie in deiner Sprache, wo es die Ursache, den Grund eines Anhaltens oder den Fehlercode kennt: in der Übersicht bei angehaltenen und scheiternden Workflows, bei einem abgelehnten erneuten Start und in Fehlerhinweisen. Das Beispiel oben liest du dort als „Der verbundene Dienst hat die Anmeldung abgelehnt. Verbinde den Konnektor neu und starte den Lauf noch einmal. Dieser Schritt hat nichts verändert.“ In den technischen Angaben eines Laufs, über die HTTP-API und in `sk` steht weiter der englische Satz der Engine. Auch SubKit Desktop benachrichtigt in deiner Sprache.
+Für vertrauliche Workflows (`execution_privacy: sensitive`) speichert SubKit keine Fehlerdetails. Seit dieser Version behält ein solcher Run trotzdem seine Ursache und einen festen Satz, der sagt, was zu tun ist. Beispiel: „The connected service rejected the sign-in. Reconnect the connector, then run again. Nothing was changed by this step.“ Erkennt SubKit keine Ursache, bleibt es bei „Sensitive execution failed.“ Diese Sätze schreibt die Engine auf Englisch. Das Cockpit sagt sie in deiner Sprache, wo es die Ursache, den Grund eines Anhaltens oder den Fehlercode kennt: in der Übersicht bei angehaltenen und scheiternden Workflows, bei einem abgelehnten erneuten Start und in Fehlerhinweisen. Das Beispiel oben liest du dort als „Der verbundene Dienst hat die Anmeldung abgelehnt. Verbinde den Connector neu und starte den Run noch einmal. Dieser Schritt hat nichts verändert.“ In den technischen Angaben eines Runs, über die HTTP-API und in `sk` steht weiter der englische Satz der Engine. Auch SubKit Desktop benachrichtigt in deiner Sprache.
 
 ### Warum ein Zeitplan wartet
 
-Ein gehaltener Zeitplan startet keinen Lauf, verliert aber nichts. Sobald du den Grund behebst, läuft er weiter. Der Grund steht am Workflow, in der **Übersicht** und im **Zeitplan-Verlauf**.
+Ein gehaltener Zeitplan startet keinen Run, verliert aber nichts. Sobald du den Grund behebst, läuft er weiter. Der Grund steht am Workflow, in der **Übersicht** und im **Zeitplan-Verlauf**.
 
 | Was du liest | Was du tust |
 | --- | --- |
 | „Angehalten: Für diese Version fehlt die Freigabe. Erteile sie, dann läuft der Zeitplan weiter.“ | Öffne den Workflow, prüfe ihn und erteile die Freigabe. |
 | „Angehalten: Die Freigabe gilt nicht mehr. Erneuere sie, dann läuft der Zeitplan weiter.“ | Die Freigabe ist abgelaufen, aufgebraucht oder widerrufen. Erneuere sie. |
-| „Angehalten: Dem Lauf fehlen Eingaben. Ergänze sie im Zeitplan.“ | Trage im Zeitplan die fehlende Eingabe ein. |
+| „Angehalten: Dem Run fehlen Eingaben. Ergänze sie im Zeitplan.“ | Trage im Zeitplan die fehlende Eingabe ein. |
 | „Angehalten: Der Aufgabe fehlt die Dauererlaubnis. Erteile sie, dann läuft der Zeitplan weiter.“ | Öffne die Aufgabe und wähle **Erlauben**. |
 | „Angehalten: Die Dauererlaubnis ist abgelaufen. Erneuere sie, dann läuft der Zeitplan weiter.“ | Öffne die Aufgabe und wähle **Erlauben**. |
 
 ### Was nach wiederholten Fehlern passiert
 
-Scheitert ein geplanter Workflow-Lauf mehrmals in Folge an derselben Ursache, bremst SubKit den Zeitplan und pausiert ihn dann.
+Scheitert ein geplanter Workflow-Run mehrmals in Folge an derselben Ursache, bremst SubKit den Zeitplan und pausiert ihn dann.
 
 | Fehler in Folge | Was SubKit tut |
 | --- | --- |
 | 1 und 2 | Nichts. Der nächste Termin läuft wie geplant. |
-| 3 | Wartet 2 Minuten nach dem letzten Fehler, bevor der nächste Lauf startet. |
+| 3 | Wartet 2 Minuten nach dem letzten Fehler, bevor der nächste Run startet. |
 | 4 | Wartet 6 Minuten nach dem letzten Fehler. |
-| 5 | Pausiert den Zeitplan. Kein Lauf startet mehr, bis du ihn fortsetzt. |
+| 5 | Pausiert den Zeitplan. Kein Run startet mehr, bis du ihn fortsetzt. |
 
-- Als Fehler zählt ein geplanter Lauf, der fehlgeschlagen ist oder seine Zeit überschritten hat. Ein Lauf von Hand zählt nicht.
-- Ein erfolgreicher Lauf, ein gestoppter Lauf oder ein Fehler mit anderer Ursache beendet die Folge.
+- Als Fehler zählt ein geplanter Run, der fehlgeschlagen ist oder seine Zeit überschritten hat. Ein Run von Hand zählt nicht.
+- Ein erfolgreicher Run, ein gestoppter Run oder ein Fehler mit anderer Ursache beendet die Folge.
 - Termine, die in eine Wartezeit fallen, stehen im Verlauf als „Übersprungen: Nach wiederholten Fehlern wartet der Zeitplan länger bis zum nächsten Versuch.“
 - Die Pause meldet SubKit genau einmal: als Punkt „Nach wiederholten Fehlern pausiert“ unter **Braucht dich**, als Push und als Ereignis `schedule.auto_paused`.
 - Das gilt für Zeitpläne von Workflows. Zeitpläne von Aufgaben werden nicht gebremst und nicht automatisch pausiert.
 
 ### Einen pausierten Zeitplan fortsetzen
 
-1. Öffne den Workflow. Oben steht „‚…‘ wurde automatisch pausiert“ mit der Zahl der Läufe und dem Zeitpunkt, seit dem kein Lauf gestartet ist.
+1. Öffne den Workflow. Oben steht „Zeitplan automatisch pausiert“ mit der Zahl der Fehlschläge und dem Datum, seit dem kein Run gestartet ist.
 2. Behebe die Ursache. Liegt es an der Freigabe, bietet der Hinweis **Freigabe erneuern** an. Erneuere zuerst die Freigabe.
 3. Wähle **Zeitplan fortsetzen**. Du liest „Zeitplan fortgesetzt“.
 
@@ -78,16 +78,16 @@ Der Verlauf zeigt für jeden fälligen Termin, was daraus wurde.
 
 1. Öffne den Workflow oder die Aufgabe und wähle den Reiter **Zeitplan**.
 2. Lies unter **Zeitplan-Verlauf** die Einträge, die neuesten zuerst. **Ältere anzeigen** lädt weitere.
-3. Wähle bei einem Eintrag **Lauf öffnen**, um den zugehörigen Lauf zu sehen.
+3. Wähle bei einem Eintrag **Run öffnen**, um den zugehörigen Run zu sehen.
 
 | Eintrag | Bedeutung |
 | --- | --- |
-| „Pünktlich gelaufen.“ | Der Lauf ist zum Termin gestartet. |
-| „Später gestartet als geplant, weil die Engine beschäftigt war oder nicht lief.“ | Der Lauf ist mehr als 5 Minuten nach dem Termin gestartet. |
-| „Einmal für mehrere verpasste Termine gelaufen, statt jeden nachzuholen.“ | Aus mehreren verpassten Terminen wurde ein Lauf. |
+| „Pünktlich“ | Der Run ist zum Termin gestartet. |
+| „Später gestartet als geplant, weil die Engine beschäftigt war oder nicht lief.“ | Der Run ist mehr als 5 Minuten nach dem Termin gestartet. |
+| „Einmal für mehrere verpasste Termine gelaufen, statt jeden nachzuholen.“ | Aus mehreren verpassten Terminen wurde ein Run. |
 | „Übersprungen: Am Wochenende läuft dieser Zeitplan nicht.“ | Der Zeitplan schließt Wochenenden aus. |
 | „Übersprungen: Dieser Tag ist im Zeitplan ausgenommen.“ | Der Tag steht in den Ausnahmen des Zeitplans. |
-| „Übersprungen: Der vorherige Lauf war noch nicht fertig.“ | Eine Aufgabe hat immer nur einen offenen Lauf. |
+| „Übersprungen: Der vorherige Run war noch nicht fertig.“ | Eine Aufgabe hat immer nur einen offenen Run. |
 | „Nicht gestartet: Der Zeitplan hat sich selbst pausiert, weil sich derselbe Fehler wiederholt hat.“ | Setz den Zeitplan fort, wie oben beschrieben. |
 | „Angehalten: …“ | Der Zeitplan wartet auf dich. Die Gründe stehen in „Warum ein Zeitplan wartet“. |
 
@@ -95,7 +95,7 @@ Gut zu wissen:
 
 - Wiederholt sich derselbe Grund, fasst SubKit die Termine in einem Eintrag zusammen. „Steht für 12 Termine“ nennt die Zahl.
 - Der Verlauf reicht 90 Tage zurück. Ältere Einträge löscht SubKit.
-- Ein Zeitplan, der häufiger als einmal pro Minute läuft, schreibt für pünktliche Läufe keinen Eintrag.
+- Ein Zeitplan, der häufiger als einmal pro Minute läuft, schreibt für pünktliche Runs keinen Eintrag.
 
 ### Eine Freigabe erneuern, bevor sie endet
 
@@ -105,7 +105,7 @@ Eine Freigabe eines Workflows und die Dauererlaubnis einer Aufgabe können ein E
 | --- | --- |
 | 7 Tage vorher: Hinweis | Am Workflow oder an der Aufgabe erscheint ein Hinweis wie „Die Freigabe läuft in 5 Tagen ab“ mit **Erneuern**. Unter **Braucht dich** erscheint ein Punkt, und mit eingeschaltetem Push bekommst du den Hinweis auch auf deine Geräte. |
 | 3 Tage vorher: Benachrichtigung | SubKit sendet einmal das Ereignis `workflow.approval_expiring` oder `task.grant_expiring` an Abonnements, Webhooks und den `sk`-Eingang. |
-| Weniger als ein Zehntel der Läufe übrig | Bei einer Freigabe mit Laufgrenze erscheint der Punkt unter **Braucht dich** ebenfalls. |
+| Weniger als ein Zehntel der Runs übrig | Bei einer Freigabe mit Run-Grenze erscheint der Punkt unter **Braucht dich** ebenfalls. |
 
 1. Wähle **Erneuern** im Hinweis oder am Punkt unter **Braucht dich**.
 2. Beim Workflow öffnet sich der Freigabe-Dialog, bei der Aufgabe der Dialog der Dauererlaubnis. Prüfe, was aufgelistet ist, und wähle die neue Gültigkeit.
@@ -115,12 +115,12 @@ Eine Freigabe eines Workflows und die Dauererlaubnis einer Aufgabe können ein E
 
 Das Ereignis kommt nur, wenn das Ende etwas ändern würde: Der Workflow hat einen aktiven Zeitplan in dieser Umgebung oder im Echtbetrieb einen aktiven eingehenden Webhook, und keine länger laufende Freigabe deckt dieselbe Version. Bei einer Aufgabe muss ein Zeitplan oder ein noch offener einmaliger Start anstehen.
 
-### Einen laufenden Lauf stoppen
+### Einen laufenden Run stoppen
 
-1. Öffne den laufenden Lauf.
-2. Wähle **Diesen Lauf stoppen** und bestätige mit **Lauf stoppen**.
+1. Öffne den laufenden Run.
+2. Wähle **Diesen Run stoppen** und bestätige mit **Run stoppen**.
 
-Der Lauf endet sofort. Der Zeitplan bleibt aktiv. Schritte, die ein Fremdsystem schon erreicht haben, können ausgeführt sein.
+Der Run endet sofort. Der Zeitplan bleibt aktiv. Schritte, die ein Fremdsystem schon erreicht haben, können ausgeführt sein.
 
 ### Grenzen
 
@@ -135,7 +135,7 @@ Der Lauf endet sofort. Der Zeitplan bleibt aktiv. Schritte, die ein Fremdsystem 
 | Was du siehst | Was du tust |
 | --- | --- |
 | „Der Zeitplan konnte nicht fortgesetzt werden und bleibt pausiert.“ | Prüfe, ob du `workflow:write` hast, und versuch es erneut. |
-| Der Zeitplan pausiert kurz nach dem Fortsetzen wieder | Die Ursache besteht noch. Öffne den letzten Lauf, lies die Ursache und behebe sie zuerst. |
+| Der Zeitplan pausiert kurz nach dem Fortsetzen wieder | Die Ursache besteht noch. Öffne den letzten Run, lies die Ursache und behebe sie zuerst. |
 | „Der Zeitplan-Verlauf konnte nicht geladen werden“ | Wähle **Erneut versuchen**. |
 | „Bisher war noch kein Termin fällig.“ | Der Zeitplan ist neu oder pausiert. Einträge entstehen erst, wenn ein Termin fällig war. |
 | Der Reiter **Zeitplan** fehlt am Workflow | Dir fehlt `execution:read`. Bitte einen Administrator darum. |
@@ -158,6 +158,6 @@ sk schedules resume <schedule-id>
 | `GET /v1/workflows/{id}/schedule-occurrences` | Liest den Verlauf eines Workflows, neueste zuerst. Braucht `workflow:read`. |
 | `GET /v1/tasks/{id}/schedule-occurrences` | Liest den Verlauf einer Aufgabe. Braucht `task:read`, und du musst die Aufgabe sehen dürfen. |
 | `PUT /v1/schedules/{id}` mit `{"paused": false}` | Setzt einen Zeitplan fort. Braucht `workflow:write`. |
-| `POST /v1/executions/{id}/cancel` | Stoppt einen laufenden Lauf. |
+| `POST /v1/executions/{id}/cancel` | Stoppt einen laufenden Run. |
 
 Die Felder der Antworten, die Ereignisse und die Gründe stehen in „Referenz: Desktop-App, Regeln, Zeitpläne und Fehlerberichte“.

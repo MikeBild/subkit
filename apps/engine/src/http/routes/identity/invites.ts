@@ -1,6 +1,7 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { toHonoRoute } from "../../../api/operations/hono.ts";
+import { sendInviteOperation } from "../../../api/operations/identity-invite-send.ts";
 import { InviteRedeemedSchema } from "../../../api/operations/identity-representation.ts";
 import {
   createInviteOperation,
@@ -185,6 +186,7 @@ const redeemInviteRoute = createRoute({
 
 export function registerInviteRoutes(app: OpenAPIHono<AppEnv>): void {
   toHonoRoute(app, createInviteOperation);
+  toHonoRoute(app, sendInviteOperation);
   toHonoRoute(app, listInvitesOperation);
   toHonoRoute(app, revokeInviteOperation);
 

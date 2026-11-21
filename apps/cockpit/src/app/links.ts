@@ -84,7 +84,7 @@ export function runsHref(
 }
 
 export function runHref(id: string): string {
-  return withQuery("/", { run: id });
+  return `/runs/${encodeURIComponent(id)}`;
 }
 
 export function workflowHref(id: string): string {
@@ -95,6 +95,23 @@ export const WORKFLOW_AUTOMATION_ANCHOR = "workflow-automation";
 
 export function workflowAutomationHref(id: string): string {
   return `${workflowHref(id)}#${WORKFLOW_AUTOMATION_ANCHOR}`;
+}
+
+export const WORKFLOW_SECTIONS = ["build", "use", "history", "approvals"] as const;
+
+export type WorkflowSection = (typeof WORKFLOW_SECTIONS)[number];
+
+export function workflowSectionAnchor(section: WorkflowSection): string {
+  return `workflow-section-${section}`;
+}
+
+export function workflowSectionHref(id: string, section: WorkflowSection): string {
+  return `${workflowHref(id)}#${workflowSectionAnchor(section)}`;
+}
+
+export function workflowSectionFromHash(hash: string): WorkflowSection | null {
+  const anchor = hash.replace(/^#/, "");
+  return WORKFLOW_SECTIONS.find((section) => workflowSectionAnchor(section) === anchor) ?? null;
 }
 
 export const WORKFLOW_RUN_ANCHOR = "workflow-run";
@@ -113,10 +130,6 @@ export function connectorHref(id: string): string {
 
 export function connectorsHref(filter: { health?: "not_ok" | null } = {}): string {
   return withQuery("/connectors", { health: filter.health });
-}
-
-export function skillCandidatesHref(): string {
-  return "/skills/candidates";
 }
 
 export function recordHref(resource: RecordResource, id: string): string {
@@ -316,7 +329,8 @@ export function peopleHref(
   section?: PeopleSection | null,
   filter: { app?: string | null } = {},
 ): string {
-  return withQuery("/people", {
+  return withQuery("/settings", {
+    area: "people",
     section: section === "people" ? null : section,
     [PEOPLE_APP_PARAM]: section === "people" || !section ? filter.app : null,
   });

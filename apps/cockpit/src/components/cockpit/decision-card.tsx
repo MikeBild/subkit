@@ -14,6 +14,7 @@ import { absolute, runHref } from "@/app/links";
 import { ChangeSummary } from "@/components/cockpit/change-summary";
 import { DiffCard } from "@/components/cockpit/diff-card";
 import { ActionMenu, type ActionMenuItem, DataState } from "@/components/cockpit/patterns";
+import { SkillProposalSheet } from "@/components/cockpit/skill-proposal-sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -45,7 +46,6 @@ import {
   decisionKey,
   ORIGIN_LABEL,
 } from "@/pages/decisions-model";
-import { SkillProposalSheet } from "@/pages/skill-proposal-sheet";
 
 const KIND_LABEL: Record<DecidableKind, TranslationKey> = {
   patch: "decisions.kind.patch",

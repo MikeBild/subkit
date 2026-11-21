@@ -12,8 +12,8 @@ import {
 } from "@/components/cockpit/form-field";
 import {
   CollapsibleSection,
+  DateField,
   FormDialog,
-  Input,
   Label,
   TimezoneSelect,
 } from "@/components/cockpit/patterns";
@@ -108,14 +108,12 @@ export function TaskScheduleFields({
       {value.option === "once" ? (
         <div className="flex min-w-0 flex-col gap-1.5" data-slot="form-field">
           <Label htmlFor="task-schedule-run-at">{t("tasks.schedule.runAt")}</Label>
-          <Input
+          <DateField
             id="task-schedule-run-at"
-            type="datetime-local"
-            name="task-schedule-run-at"
-            autoComplete="off"
+            withTime
             value={value.runAt}
-            onChange={(event) => onChange({ ...value, runAt: event.target.value })}
-            data-testid="task-schedule-run-at"
+            onChange={(runAt) => onChange({ ...value, runAt })}
+            testId="task-schedule-run-at"
           />
         </div>
       ) : null}

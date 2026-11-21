@@ -20,7 +20,6 @@ export const accessEn = {
   "access.noMemberships": "No groups",
   "access.membershipUnknown": "Group membership is not available.",
   "account.menu": "User menu",
-  "account.profile": "Profile",
   "account.language": "Language",
   "account.language.auto": "Automatic",
   "account.language.en": "English",
@@ -288,7 +287,6 @@ export const accessDe: Record<keyof typeof accessEn, string> = {
   "access.noMemberships": "Keine Gruppen",
   "access.membershipUnknown": "Gruppenmitgliedschaft ist nicht verfügbar.",
   "account.menu": "Benutzermenü",
-  "account.profile": "Profil",
   "account.language": "Sprache",
   "account.language.auto": "Automatisch",
   "account.language.en": "Englisch",
@@ -337,9 +335,9 @@ export const accessDe: Record<keyof typeof accessEn, string> = {
   "people.role": "Rolle",
   "people.deactivate": "Deaktivieren",
   "people.deactivateConnections.one":
-    "Die Person kann sich nicht mehr anmelden; aktive Zugriffe und 1 verbundene App enden sofort. Workflows und Zeitpläne bleiben aktiv. Geplante Läufe starten weiterhin automatisch, wenn Freigaben und Konnektoren sie erlauben.",
+    "Die Person kann sich nicht mehr anmelden; aktive Zugriffe und 1 verbundene App enden sofort. Workflows und Zeitpläne bleiben aktiv. Geplante Runs starten weiterhin automatisch, wenn Freigaben und Connectors sie erlauben.",
   "people.deactivateConnections.other":
-    "Die Person kann sich nicht mehr anmelden; aktive Zugriffe und {count} verbundene Apps enden sofort. Workflows und Zeitpläne bleiben aktiv. Geplante Läufe starten weiterhin automatisch, wenn Freigaben und Konnektoren sie erlauben.",
+    "Die Person kann sich nicht mehr anmelden; aktive Zugriffe und {count} verbundene Apps enden sofort. Workflows und Zeitpläne bleiben aktiv. Geplante Runs starten weiterhin automatisch, wenn Freigaben und Connectors sie erlauben.",
   "people.roleUpdated": "Rolle aktualisiert",
   "people.deactivated": "Person deaktiviert",
   "secret.once": "Dieser Wert wird nur einmal angezeigt. Kopieren und sicher speichern.",
@@ -454,7 +452,7 @@ export const accessDe: Record<keyof typeof accessEn, string> = {
   "access.roleDescription.portalTokenUser":
     "Stellt die eingeschränkte Rolle für Portal-Zugriffstoken bereit.",
   "scope.global": "Arbeitsbereich",
-  "scope.connector": "Konnektor",
+  "scope.connector": "Connector",
   "scope.workflow": "Workflow",
   "people.summary": "{count} Personen",
   "people.summary.one": "1 Person",
@@ -485,7 +483,7 @@ export const accessDe: Record<keyof typeof accessEn, string> = {
   "people.roleUpdateFailed": "Die Rolle konnte nicht geändert werden.",
   "people.createSubmit": "Einladung erstellen",
   "people.deactivateConsequence":
-    "Die Person kann sich nicht mehr anmelden; aktive Zugriffe enden sofort. Workflows und Zeitpläne bleiben aktiv. Geplante Läufe starten weiterhin automatisch, wenn Freigaben und Konnektoren sie erlauben.",
+    "Die Person kann sich nicht mehr anmelden; aktive Zugriffe enden sofort. Workflows und Zeitpläne bleiben aktiv. Geplante Runs starten weiterhin automatisch, wenn Freigaben und Connectors sie erlauben.",
   "access.kind": "Art",
   "access.custom": "Eigene",
   "access.members": "Mitglieder",
@@ -500,7 +498,7 @@ export const accessDe: Record<keyof typeof accessEn, string> = {
   "people.sheet.none": "Diese Rolle gewährt keine Rechte.",
   "people.sheet.unreadable": "Die Rechte der Rolle sind mit deinem Zugang nicht lesbar.",
   "people.sheet.grantsNote":
-    "Zugriffe auf einzelne Workflows oder Konnektoren kommen hinzu; sie stehen unter",
+    "Zugriffe auf einzelne Workflows oder Connectors kommen hinzu; sie stehen unter",
   "access.systemAccount": "Systemkonto",
   "access.grantRecord": "Eintrag",
   "access.chooseRecord": "Eintrag auswählen",

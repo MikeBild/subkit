@@ -60,6 +60,7 @@ describe("P13/P14 dialog anatomy", () => {
   test("two widths, 512px and 576px", () => {
     expect(dialogWidthClass("default")).toBe("sm:max-w-lg");
     expect(dialogWidthClass("wide")).toBe("sm:max-w-xl");
+    expect(dialogWidthClass("document")).toBe("max-w-[960px]");
   });
 
   test("under 640px a dialog is a full-width sheet from the bottom edge", () => {

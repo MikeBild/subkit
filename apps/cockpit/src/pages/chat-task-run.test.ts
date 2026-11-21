@@ -377,7 +377,7 @@ describe("the line above the conversation", () => {
   test("the run date follows the language", () => {
     expect(runDateLabel("de", "2026-11-19T08:00:00Z", "UTC")).toBe("19.11.");
     expect(runDateLabel("en", "2026-11-19T08:00:00Z", "UTC")).toBe("Nov 19");
-    expect(de("chat.taskRun.runOf", { date: "19.11." })).toBe("Lauf vom 19.11.");
+    expect(de("chat.taskRun.runOf", { date: "19.11." })).toBe("Run vom 19.11.");
     expect(runDateLabel("de", "never")).toBeNull();
   });
 });

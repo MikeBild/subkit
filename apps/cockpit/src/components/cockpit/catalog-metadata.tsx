@@ -5,15 +5,9 @@ import { toast } from "sonner";
 import { apiCall } from "@/api/call";
 import { type ConnectorEnvironment, EnvironmentChip } from "@/components/cockpit/environment-chip";
 import { SelectField, TextAreaField, TextField } from "@/components/cockpit/form-field";
-import {
-  type ActionMenuItem,
-  Chip,
-  type FilterSelect,
-  FormDialog,
-} from "@/components/cockpit/patterns";
+import { type ActionMenuItem, Chip, FormDialog } from "@/components/cockpit/patterns";
 import { reportFailure } from "@/lib/action-failure";
 import { useI18n } from "@/lib/i18n-context";
-import { useSearchParamState } from "@/lib/use-search-param-state";
 import { humanizeCategory, UNCATEGORIZED } from "@/lib/workflow-category";
 import { type CatalogMetadataBody, patchCatalogMetadata } from "./catalog-metadata-api";
 import {
@@ -331,61 +325,11 @@ function CatalogNameText({
       <span className="truncate font-medium">{name}</span>
       <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
         {category !== UNCATEGORIZED && !hideCategory ? (
-          <Chip className="py-0 leading-4">
-            {humanizeCategory(category, t("catalog.categoryOther"))}
-          </Chip>
+          <Chip>{humanizeCategory(category, t("catalog.categoryOther"))}</Chip>
         ) : null}
         {environment ? <EnvironmentChip environment={environment} /> : null}
         <span className="truncate">{description || t("catalogMeta.empty")}</span>
       </span>
     </span>
   );
-}
-
-export function useCategoryFilter(kind: CatalogKind): {
-  category: string | undefined;
-  select: FilterSelect | null;
-  value: string;
-  setValue(value: string): void;
-  usage: CategoryCount[];
-  loading: boolean;
-} {
-  const { t } = useI18n();
-  const [value, setValue] = useSearchParamState("category", "all");
-  const vocabulary = useQuery({
-    queryKey: ["catalog-categories"],
-    queryFn: () => apiCall("get", "/v1/categories", {}),
-  });
-  const options = (vocabulary.data?.categories ?? [])
-    .map((entry) => ({ category: entry.category, count: entry.counts?.[kind] ?? 0 }))
-    .filter((entry) => entry.count > 0);
-  if (options.length === 0)
-    return {
-      category: undefined,
-      select: null,
-      value,
-      setValue,
-      usage: options,
-      loading: vocabulary.isPending,
-    };
-  return {
-    category: value === "all" ? undefined : value,
-    value,
-    setValue,
-    usage: options,
-    loading: false,
-    select: {
-      value,
-      onChange: setValue,
-      label: t("catalog.block"),
-      testId: "catalog-category-filter",
-      options: [
-        { value: "all", label: t("catalog.allCategories") },
-        ...options.map((entry) => ({
-          value: entry.category,
-          label: `${humanizeCategory(entry.category, t("catalog.categoryOther"))} (${entry.count})`,
-        })),
-      ],
-    },
-  };
 }

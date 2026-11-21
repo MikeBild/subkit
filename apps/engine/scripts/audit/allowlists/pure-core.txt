@@ -1,7 +1,0 @@
-# Burndown allowlist for the audit-invariants `pure_core` check.
-# Rule: a canonical pure target or runtime helper reaching db/, llm/, audit/, queue/, filesystem/network/process I/O, unresolved require/dynamic imports, clock or entropy.
-# Format: <path from repo root>  <budget in hits>. A listed file fails once it exceeds its budget;
-# an unlisted file fails at the first hit. Budgets only shrink: fix the file, then run
-# `bun run apps/engine/scripts/audit-invariants.ts --update-baseline` (lowers budgets, drops fixed files).
-# `--accept-new` also admits new offenders; use it only for a reviewed baseline reset.
-

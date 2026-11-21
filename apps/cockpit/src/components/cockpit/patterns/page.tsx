@@ -1,8 +1,11 @@
+import { ErrorState } from "@ui/components/proto/ErrorNotice";
+import type { PageFailureSpec } from "@ui/lib/errors";
 import type { ReactNode } from "react";
 import { FAMILY_UI_VERSION } from "@/components/family-ui";
 import { cn } from "@/lib/utils";
 import { ActionFailureHost } from "./action-failure";
 import { ColumnToggleScope } from "./column-toggle-claim";
+import { usePageFailure } from "./use-error-detail";
 
 export type PageKind = "list" | "detail" | "settings" | "workspace";
 
@@ -20,8 +23,10 @@ export function pageColumn(kind: PageKind): string {
   return kind === "settings" ? "w-full max-w-[1440px]" : "w-full max-w-[1280px]";
 }
 
+const PAGE_GUTTER = "px-4 sm:px-8";
+
 export function pageGutter(kind: PageKind): string {
-  return kind === "workspace" ? "" : "px-4 sm:px-6";
+  return kind === "workspace" ? "" : PAGE_GUTTER;
 }
 
 export function Page({
@@ -32,6 +37,7 @@ export function Page({
   header,
   toolbar,
   failureHost = true,
+  failure = null,
   children,
 }: {
   kind: PageKind;
@@ -41,10 +47,12 @@ export function Page({
   header: ReactNode;
   toolbar?: ReactNode;
   failureHost?: boolean;
+  failure?: PageFailureSpec | null;
   children: ReactNode;
 }) {
   const column = pageColumn(kind);
   const pad = pageGutter(kind);
+  const failed = usePageFailure(failure);
   return (
     <ColumnToggleScope>
       <main
@@ -53,45 +61,54 @@ export function Page({
         data-family-surface={surface}
         data-family-contract-version={FAMILY_UI_VERSION}
         data-page-kind={kind}
+        data-page-failed={failure ? "true" : undefined}
       >
-        {header ? (
-          <div className={cn("shrink-0", pad)}>
-            <div className={column}>{header}</div>
-          </div>
-        ) : null}
-        {toolbar ? (
-          <div className={cn("shrink-0 pb-3", pad)}>
-            <div
-              data-family-slot="filters"
-              className={cn("flex flex-wrap items-center gap-2", column)}
-            >
-              {toolbar}
-            </div>
-          </div>
-        ) : null}
-        {failureHost ? (
-          <div className={cn("shrink-0 empty:hidden", pad)} data-slot="page-failure">
-            <ActionFailureHost level="page" className={cn("pb-3", column)} />
-          </div>
-        ) : null}
-        {scroll === "content" ? (
-          <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-clip", pad)}>
-            <div
-              data-family-slot="content"
-              className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-clip", column)}
-            >
-              {children}
-            </div>
+        {failure ? (
+          <div className={cn("min-h-0 flex-1 overflow-y-auto", PAGE_GUTTER)} data-slot="page-error">
+            {failed ? <ErrorState {...failed} heading="h1" /> : null}
           </div>
         ) : (
-          <div
-            data-family-slot="scroll-region"
-            className={cn("min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto pb-6", pad)}
-          >
-            <div data-family-slot="content" className={column}>
-              {children}
-            </div>
-          </div>
+          <>
+            {header ? (
+              <div className={cn("shrink-0", PAGE_GUTTER)}>
+                <div className={column}>{header}</div>
+              </div>
+            ) : null}
+            {toolbar ? (
+              <div className={cn("shrink-0 pb-3", pad)}>
+                <div
+                  data-family-slot="filters"
+                  className={cn("flex flex-wrap items-center gap-2", column)}
+                >
+                  {toolbar}
+                </div>
+              </div>
+            ) : null}
+            {failureHost ? (
+              <div className={cn("shrink-0 empty:hidden", pad)} data-slot="page-failure">
+                <ActionFailureHost level="page" className={cn("pb-3", column)} />
+              </div>
+            ) : null}
+            {scroll === "content" ? (
+              <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-clip", pad)}>
+                <div
+                  data-family-slot="content"
+                  className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-clip", column)}
+                >
+                  {children}
+                </div>
+              </div>
+            ) : (
+              <div
+                data-family-slot="scroll-region"
+                className={cn("min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto pb-6", pad)}
+              >
+                <div data-family-slot="content" className={column}>
+                  {children}
+                </div>
+              </div>
+            )}
+          </>
         )}
       </main>
     </ColumnToggleScope>

@@ -1,6 +1,16 @@
-import type { TranslationKey } from "@/lib/i18n";
+import type { CauseClass } from "@/lib/cause-class";
+import type { RemedyKind } from "@/lib/remedy";
 
-export type FailureRemedyKind = "retry" | "sign_in" | "reconnect" | "grant" | "chat" | "admin";
+export type FailureRemedyKind = Extract<
+  RemedyKind,
+  "retry" | "sign_in" | "reconnect" | "grant" | "chat" | "admin"
+>;
+
+export interface ErrorFacts {
+  status: number | null;
+  code: string | null;
+  traceId: string | null;
+}
 
 export interface FailureFacts {
   status: number | null;
@@ -10,16 +20,7 @@ export interface FailureFacts {
   connectorId: string | null;
 }
 
-export const FAILURE_REMEDY_LABEL = {
-  retry: "remedy.retry",
-  sign_in: "remedy.reauth",
-  reconnect: "remedy.reconnect",
-  grant: "remedy.grant",
-  chat: "remedy.chat",
-  admin: "remedy.admin",
-} as const satisfies Record<FailureRemedyKind, TranslationKey>;
-
-const BY_CAUSE: Record<string, FailureRemedyKind | null> = {
+const BY_CAUSE: Record<CauseClass, FailureRemedyKind | null> = {
   ok: null,
   auth_failed: "reconnect",
   authority_mismatch: "grant",
@@ -109,8 +110,9 @@ function byStatus(status: number | null): FailureRemedyKind | null {
 export function failureRemedy(
   facts: Pick<FailureFacts, "status" | "code" | "causeClass">,
 ): FailureRemedyKind | null {
-  if (facts.causeClass && facts.causeClass in BY_CAUSE) return BY_CAUSE[facts.causeClass] ?? null;
-  if (facts.code && facts.code in BY_CODE) return BY_CODE[facts.code] ?? null;
+  if (facts.causeClass && Object.hasOwn(BY_CAUSE, facts.causeClass))
+    return BY_CAUSE[facts.causeClass as CauseClass];
+  if (facts.code && Object.hasOwn(BY_CODE, facts.code)) return BY_CODE[facts.code] ?? null;
   return byStatus(facts.status);
 }
 
@@ -118,20 +120,27 @@ function text(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value : null;
 }
 
-export function failureFacts(error: unknown): FailureFacts {
-  if (typeof error !== "object" || error === null)
-    return { status: null, code: null, causeClass: null, workflowId: null, connectorId: null };
-  const record = error as {
-    status?: unknown;
-    code?: unknown;
-    name?: unknown;
-    details?: Record<string, unknown> | null;
+function fields(error: unknown): Record<string, unknown> {
+  return typeof error === "object" && error !== null ? (error as Record<string, unknown>) : {};
+}
+
+export function errorFacts(error: unknown): ErrorFacts {
+  const record = fields(error);
+  return {
+    status: typeof record.status === "number" ? record.status : null,
+    code: text(record.code),
+    traceId: text(record.traceId),
   };
-  const details = record.details ?? {};
+}
+
+export function failureFacts(error: unknown): FailureFacts {
+  const { status, code } = errorFacts(error);
+  const record = fields(error);
+  const details = fields(record.details);
   const network = record.name === "TypeError" || record.name === "TimeoutError";
   return {
-    status: typeof record.status === "number" ? record.status : network ? 0 : null,
-    code: text(record.code),
+    status: status ?? (network ? 0 : null),
+    code,
     causeClass: text(details.cause_class),
     workflowId: text(details.workflow_id),
     connectorId: text(details.connector_id),

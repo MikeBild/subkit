@@ -20,6 +20,7 @@ import {
 } from "@/components/cockpit/patterns";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { dialogError, settingValue, useAppSettingsSave, useSettingsSnapshot } from "./apps-data";
 import {
   type AppView,
   appBearerProvider,
@@ -32,8 +33,7 @@ import {
   signInErrors,
   signInProvider,
   withProvider,
-} from "@/pages/apps-model";
-import { dialogError, settingValue, useAppSettingsSave, useSettingsSnapshot } from "./apps-data";
+} from "./model/apps-model";
 
 export function AppSignInDialog({
   app,

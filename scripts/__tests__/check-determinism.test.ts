@@ -1,5 +1,13 @@
-import { describe, expect, test } from "bun:test";
-import { checkSource, propertySeedViolations } from "../check-determinism.ts";
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import {
+  checkSource,
+  isScannedPath,
+  listTestFiles,
+  propertySeedViolations,
+} from "../check-determinism.ts";
 
 const FILE = "apps/engine/src/x/core.test.ts";
 const rules = (src: string) => checkSource(FILE, src).map((v) => `${v.line}:${v.rule}`);
@@ -98,5 +106,34 @@ describe("existing rules stay line-based", () => {
       "test.only('x', () => {});",
     ].join("\n");
     expect(rules(src)).toEqual(["2:no-random-uuid-in-tests", "4:no-only-in-tests"]);
+  });
+});
+
+describe("scan scope", () => {
+  let root: string | null = null;
+
+  afterEach(() => {
+    if (root) rmSync(root, { recursive: true, force: true });
+    root = null;
+  });
+
+  test("skips every node_modules folder", () => {
+    expect(isScannedPath("apps/desktop/node_modules/zod/src/v4/core.test.ts")).toBe(false);
+    expect(isScannedPath("packages/ui/node_modules/x/src/a.test.tsx")).toBe(false);
+    expect(isScannedPath("apps/desktop/src/shell/views.test.tsx")).toBe(true);
+  });
+
+  test("lists app tests but not tests vendored under an app's node_modules", async () => {
+    root = mkdtempSync(join(tmpdir(), "check-determinism-"));
+    const files = [
+      "apps/desktop/src/shell/views.test.tsx",
+      "apps/desktop/node_modules/zod/src/v4/core.test.ts",
+      "apps/engine/src/node_modules/inner/src/a.test.ts",
+    ];
+    for (const file of files) {
+      mkdirSync(dirname(join(root, file)), { recursive: true });
+      writeFileSync(join(root, file), "");
+    }
+    expect(await listTestFiles(root)).toEqual(["apps/desktop/src/shell/views.test.tsx"]);
   });
 });

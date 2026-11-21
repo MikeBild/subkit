@@ -1,4 +1,3 @@
-import type { TranslationKey } from "@/lib/i18n";
 import {
   type SettingItem,
   type SettingsView,
@@ -7,7 +6,17 @@ import {
   settingsViewFromUrl,
 } from "@/pages/settings-model";
 
-export const PERSONAL_AREA_IDS = ["profile", "setup", "rules", "workspace"] as const;
+export const PERSONAL_AREA_IDS = [
+  "profile",
+  "setup",
+  "people",
+  "devices",
+  "updates",
+  "privacy",
+  "rules",
+  "workspace",
+  "help",
+] as const;
 export type PersonalAreaId = (typeof PERSONAL_AREA_IDS)[number];
 
 export const ENGINE_AREA_IDS = [
@@ -19,7 +28,22 @@ export const ENGINE_AREA_IDS = [
 ] as const;
 export type EngineAreaId = (typeof ENGINE_AREA_IDS)[number];
 
-export const SETTING_AREA_IDS = [...PERSONAL_AREA_IDS, ...ENGINE_AREA_IDS] as const;
+export const SETTING_AREA_IDS = [
+  "profile",
+  "setup",
+  "people",
+  "notifications",
+  "devices",
+  "updates",
+  "privacy",
+  "rules",
+  "workspace",
+  "ai",
+  "access",
+  "connections",
+  "operations",
+  "help",
+] as const satisfies readonly (PersonalAreaId | EngineAreaId)[];
 export type SettingAreaId = (typeof SETTING_AREA_IDS)[number];
 
 export function isPersonalArea(area: SettingAreaId): area is PersonalAreaId {
@@ -61,12 +85,15 @@ export function settingAreaOf(path: string): EngineAreaId {
 }
 
 export type SettingsLevel =
-  | { kind: "overview" }
   | { kind: "area"; area: SettingAreaId }
   | { kind: "all"; view: SettingsView };
 
+export const FIRST_SETTINGS_LEVEL: SettingsLevel = { kind: "area", area: "profile" };
+
 export function settingsLevelFromUrl(search: string): SettingsLevel {
   const params = new URLSearchParams(search);
+  const area = params.get("area");
+  if (isSettingArea(area)) return { kind: "area", area };
   const view = settingsViewFromUrl(search);
   if (
     view.leaf ||
@@ -75,10 +102,8 @@ export function settingsLevelFromUrl(search: string): SettingsLevel {
     params.get("view") === "all"
   )
     return { kind: "all", view };
-  const area = params.get("area");
-  if (isSettingArea(area)) return { kind: "area", area };
   if (params.get("tab") === "notifications") return { kind: "area", area: "notifications" };
-  return { kind: "overview" };
+  return FIRST_SETTINGS_LEVEL;
 }
 
 export interface SettingsAccess {
@@ -108,10 +133,22 @@ export function workspaceAiEditable(access: SettingsAccess): boolean {
   );
 }
 
-export function visibleSettingAreas(access: SettingsAccess): SettingAreaId[] {
+export function visibleSettingAreas(access: SettingsAccess, desktop = false): SettingAreaId[] {
   const engine = engineSettingsAccess(access) !== "none";
   return SETTING_AREA_IDS.filter((area) => {
-    if (area === "profile" || area === "setup" || area === "rules") return true;
+    if (area === "updates" || area === "privacy") return desktop;
+    if (
+      area === "profile" ||
+      area === "setup" ||
+      area === "rules" ||
+      area === "devices" ||
+      area === "help"
+    )
+      return true;
+    if (area === "people")
+      return ["identity:read", "rbac:read", "settings:read"].some((permission) =>
+        access.permissions.includes(permission),
+      );
     if (area === "workspace") return administersWorkspace(access);
     if (area === "ai") return engine || workspaceAiEditable(access);
     if (area === "notifications") return engine || access.permissions.includes("notification:read");
@@ -119,11 +156,14 @@ export function visibleSettingAreas(access: SettingsAccess): SettingAreaId[] {
   });
 }
 
-export function openSettingsLevel(level: SettingsLevel, access: SettingsAccess): SettingsLevel {
+export function openSettingsLevel(
+  level: SettingsLevel,
+  access: SettingsAccess,
+  desktop = false,
+): SettingsLevel {
   if (level.kind === "all")
-    return engineSettingsAccess(access) === "none" ? { kind: "overview" } : level;
-  if (level.kind === "area" && !visibleSettingAreas(access).includes(level.area))
-    return { kind: "overview" };
+    return engineSettingsAccess(access) === "none" ? FIRST_SETTINGS_LEVEL : level;
+  if (!visibleSettingAreas(access, desktop).includes(level.area)) return FIRST_SETTINGS_LEVEL;
   return level;
 }
 
@@ -207,18 +247,6 @@ export function areaStatus(area: EngineAreaId, facts: AreaFacts): AreaStatus | n
   return null;
 }
 
-interface AreaSentence {
-  key: TranslationKey;
-  values?: Record<string, string | number>;
-}
-
-interface AreaSentenceFacts extends AreaFacts {
-  canWrite: boolean;
-  providerName(provider: string): string;
-  modelName(provider: string, model: string): string;
-  apiKeyName: string;
-}
-
 const CHAT_PLATFORMS: readonly { id: string; secret: string; name: string }[] = [
   { id: "slack", secret: "platform.slack.signing_secret", name: "Slack" },
   { id: "googlechat", secret: "platform.googlechat.private_key", name: "Google Chat" },
@@ -233,111 +261,6 @@ export function connectedChatPlatforms(items: readonly SettingItem[]) {
 
 export function ownObjectStore(items: readonly SettingItem[]): boolean {
   return stringValue(items, "storage.object_store.bucket").length > 0;
-}
-
-export function authMethodNames(items: readonly SettingItem[], apiKeyName: string): string[] {
-  const providers = itemValue(items, "auth.providers");
-  if (!Array.isArray(providers)) return [];
-  const names = providers
-    .map((provider) => {
-      if (!provider || typeof provider !== "object") return "";
-      if (provider.protocol === "api_key") return apiKeyName;
-      return typeof provider.label === "string" ? provider.label : "";
-    })
-    .filter((label) => label.length > 0);
-  return [...new Set(names)];
-}
-
-export function areaSentences(area: EngineAreaId, facts: AreaSentenceFacts): AreaSentence[] {
-  const { items } = facts;
-  if (area === "ai") {
-    const provider = stringValue(items, "llm.provider");
-    if (!provider) return [{ key: "settings.overview.ai.none" }];
-    if (provider === "mock") return [{ key: "settings.overview.ai.mock" }];
-    const providerName = facts.providerName(provider);
-    if (providerKeyState(items, provider, true) === "missing")
-      return [{ key: "settings.overview.ai.keyMissing", values: { provider: providerName } }];
-    const chosenModel = stringValue(items, "llm.model");
-    const model = facts.modelName(provider, chosenModel);
-    const fallback = stringValue(items, "llm.fallback_provider");
-    if (fallback) {
-      const fallbackProvider = facts.providerName(fallback);
-      return chosenModel
-        ? [
-            {
-              key: "settings.overview.ai.withFallback",
-              values: { provider: providerName, model, fallbackProvider },
-            },
-          ]
-        : [
-            {
-              key: "settings.overview.ai.defaultModelWithFallback",
-              values: { provider: providerName, fallbackProvider },
-            },
-          ];
-    }
-    return chosenModel
-      ? [{ key: "settings.overview.ai.noFallback", values: { provider: providerName, model } }]
-      : [
-          {
-            key: "settings.overview.ai.defaultModelNoFallback",
-            values: { provider: providerName },
-          },
-        ];
-  }
-  if (area === "access") {
-    const methods = authMethodNames(items, facts.apiKeyName);
-    return [
-      methods.length > 0
-        ? { key: "settings.overview.access.methods", values: { methods: methods.join(", ") } }
-        : { key: "settings.overview.access.purpose" },
-    ];
-  }
-  if (area === "connections") {
-    const platforms = connectedChatPlatforms(items).filter((platform) => platform.connected);
-    return [
-      platforms.length > 0
-        ? {
-            key: "settings.overview.connections.chat",
-            values: { platforms: platforms.map((platform) => platform.name).join(", ") },
-          }
-        : { key: "settings.overview.connections.noChat" },
-      {
-        key: ownObjectStore(items)
-          ? "settings.overview.connections.ownStorage"
-          : "settings.overview.connections.subkitStorage",
-      },
-    ];
-  }
-  if (area === "notifications") {
-    const push = itemValue(items, "notifications.push.enabled") === true;
-    const from = stringValue(items, "notifications.push.quietHoursStart");
-    const to = stringValue(items, "notifications.push.quietHoursEnd");
-    return [
-      {
-        key: push
-          ? "settings.overview.notifications.push"
-          : "settings.overview.notifications.cockpitOnly",
-      },
-      from && to
-        ? { key: "settings.overview.notifications.quiet", values: { from, to } }
-        : { key: "settings.overview.notifications.noQuiet" },
-    ];
-  }
-  const restart = facts.pendingRestart.length;
-  if (restart > 0)
-    return [
-      restart === 1
-        ? { key: "settings.overview.operations.restart.one" }
-        : { key: "settings.overview.operations.restart", values: { count: restart } },
-    ];
-  return [
-    {
-      key: facts.canWrite
-        ? "settings.overview.operations.default"
-        : "settings.overview.operations.readOnly",
-    },
-  ];
 }
 
 export function settingsGuidedErrors(

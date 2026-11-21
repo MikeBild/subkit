@@ -96,7 +96,7 @@ describe("the fix for a blocked connector", () => {
       canChat: true,
     });
     expect(remedy).toEqual({
-      kind: "reauth",
+      kind: "reconnect",
       labelKey: "remedy.reconnect",
       href: `${connectorHref(GMAIL)}#connector-credentials`,
     });

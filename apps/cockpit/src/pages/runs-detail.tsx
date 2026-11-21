@@ -1,5 +1,7 @@
 import type { components } from "@cli-core/engine-api/openapi";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "@tanstack/react-router";
+import { ErrorNotice } from "@ui/components/proto/ErrorNotice";
 import { Check, ChevronRight, Minus, X } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -15,7 +17,6 @@ import { connectorService, useConnectorRecords } from "@/components/cockpit/conn
 import {
   ActionButton,
   CodeBlock,
-  CollapsibleSection,
   DataState,
   type Fact,
   FactList,
@@ -37,6 +38,15 @@ import {
 import { RefusalReasonLine } from "@/components/cockpit/refusal-reason";
 import { MISSING } from "@/components/cockpit/table-columns";
 import { useCurrentVersionDag } from "@/components/cockpit/workflow-versions";
+import {
+  RunResultDocument,
+  RunStepGraph,
+  RunWhy,
+  runFailureKind,
+  runFailureRows,
+  runGraphSteps,
+  runResultMarkdown,
+} from "@/features/operations";
 import { reportFailure } from "@/lib/action-failure";
 import { connectorAuthState } from "@/lib/connector-auth-state";
 import { pluralKey, type TranslationKey } from "@/lib/i18n";
@@ -143,8 +153,13 @@ function isLive(status: string): boolean {
   return status === "running" || status === "queued";
 }
 
-export function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
+function Layer({ page, children }: { page: boolean; children: ReactNode }) {
+  return page ? children : <SideOverlayLayer>{children}</SideOverlayLayer>;
+}
+
+export function RunDetail({ run, page = false }: { run: Execution; page?: boolean }) {
   const { t, dateTime, locale } = useI18n();
+  const router = useRouter();
   const session = useSession();
   const directory = useActorDirectory(true);
   const [openStep, setOpenStep] = useState<number | null>(null);
@@ -152,7 +167,7 @@ export function RunDetail({ run }: { run: Execution; onShowRun(id: string): void
   const side =
     technicalFactsPlace({
       sidePanel: useSideDetailsAvailable(),
-      presentation: docked ? "docked" : "modal",
+      presentation: page ? "page" : docked ? "docked" : "modal",
     }) === "details";
   const detail = useQuery({
     queryKey: ["run", run.id],
@@ -298,8 +313,8 @@ export function RunDetail({ run }: { run: Execution; onShowRun(id: string): void
   const step = openStep === null ? null : (stepItems[openStep] ?? null);
   return (
     <div className="flex min-w-0 flex-col gap-6" data-testid="run-detail-body">
-      {side ? (
-        <SideOverlayLayer>
+      {side && !page ? (
+        <Layer page={page}>
           <SideStatus
             testId="side-run-status"
             tone={
@@ -316,42 +331,54 @@ export function RunDetail({ run }: { run: Execution; onShowRun(id: string): void
               .filter(Boolean)
               .join(" · ")}
           />
-        </SideOverlayLayer>
+        </Layer>
       ) : null}
       {(failed || held) && sentence ? (
-        <div data-testid="run-detail-cause">
-          <StatusStrip
-            tone={held ? "warn" : verdict.tone === "critical" ? "error" : "warn"}
-            line={
-              <>
-                {held ? null : (
-                  <>
-                    <span className="font-medium">{verdict.label}</span>
-                    {" · "}
-                  </>
-                )}
-                <span data-testid="run-detail-outcome">
-                  <OutcomeText sentence={sentence} />
-                </span>
-                <RefusalReasonLine
-                  reason={outcome?.refusal_reason}
-                  testId="run-detail-refusal-reason"
-                  className="block text-xs text-muted-foreground"
-                />
-              </>
-            }
-            help={stepGuidance(failing) ?? undefined}
-            action={
-              remedy
-                ? {
-                    label: t(remedy.labelKey),
-                    href: absolute(remedy.href),
-                    testId: "run-detail-cause-remedy",
-                  }
-                : undefined
-            }
-          />
-        </div>
+        <ErrorNotice
+          testId="run-detail-cause"
+          kind={runFailureKind(outcome?.cause_class ?? null, current.status)}
+          tone={held || verdict.tone !== "critical" ? "warning" : "danger"}
+          title={held ? t("workflow.preview.held") : verdict.label}
+          body={
+            <span className="flex flex-col gap-1">
+              <span data-testid="run-detail-outcome">
+                <OutcomeText sentence={sentence} />
+              </span>
+              <RefusalReasonLine
+                reason={outcome?.refusal_reason}
+                testId="run-detail-refusal-reason"
+                className="block text-xs"
+              />
+              {stepGuidance(failing) ? (
+                <span className="text-xs">{stepGuidance(failing)}</span>
+              ) : null}
+            </span>
+          }
+          primary={
+            remedy
+              ? {
+                  label: t(remedy.labelKey),
+                  onClick: () => router.history.push(absolute(remedy.href)),
+                  testId: "run-detail-cause-remedy",
+                }
+              : undefined
+          }
+          rows={runFailureRows(
+            {
+              runId: current.id,
+              stepKey: failing?.step_key ?? null,
+              cause: outcome?.cause_class ?? null,
+              finishedAt: current.finished_at ?? null,
+            },
+            {
+              runId: t("runs.detail.runId"),
+              step: t("workflowFlow.sheet.key"),
+              code: t("error.code"),
+              finished: t("runs.detail.finished"),
+            },
+            dateTime,
+          )}
+        />
       ) : isLive(current.status) ? (
         <StatusStrip
           tone="info"
@@ -427,6 +454,25 @@ export function RunDetail({ run }: { run: Execution; onShowRun(id: string): void
         <RowsSkeleton count={2} testId="run-detail-loading" />
       ) : (
         <>
+          {page ? (
+            <RunStepGraph
+              steps={runGraphSteps(
+                stepItems,
+                (outcome as { planned_steps?: number | null } | null)?.planned_steps ?? null,
+                current.status === "succeeded",
+              )}
+              testId="run-detail-graph"
+            />
+          ) : null}
+          <RunResultDocument
+            result={runResultMarkdown(detail.data)}
+            empty={
+              page
+                ? t(isLive(current.status) ? "ops.run.resultPending" : "ops.run.resultNone")
+                : undefined
+            }
+            testId="run-detail-result"
+          />
           <Section label={t("runs.detail.steps")} testId="run-detail-steps">
             <RunStepChain
               steps={stepItems}
@@ -444,74 +490,97 @@ export function RunDetail({ run }: { run: Execution; onShowRun(id: string): void
             ) : null}
           </Section>
           <div className="flex flex-col gap-6">
-            <CollapsibleSection label={t("runs.caller.why")} testId="run-detail-why">
-              <FactList
-                items={caller.why
-                  .map(([label, value, full]) => ({
-                    label,
+            <RunWhy
+              testId="run-detail-why"
+              rows={caller.why
+                .map(([label, value, full]) => ({
+                  label,
+                  value:
+                    label === t("authority.usedByRun") &&
+                    current.execution_authority_id &&
+                    current.workflow_id &&
+                    canReadWorkflows ? (
+                      <a
+                        href={absolute(`${workflowHref(current.workflow_id)}#workflow-automation`)}
+                        title={current.execution_authority_id}
+                        data-testid="run-detail-authority-workflow"
+                      >
+                        {value}
+                      </a>
+                    ) : full ? (
+                      <span title={full}>{value}</span>
+                    ) : (
+                      value
+                    ),
+                }))
+                .concat([
+                  {
+                    label: t("runs.permission.label"),
+                    value: permissionEvidence
+                      ? `${t(`runs.permission.${permissionEvidence.basis}`)} · ${t(`runs.permission.${permissionEvidence.phase}`, { when: dateTime(permissionEvidence.checkedAt) })}`
+                      : t("runs.caller.unknown"),
+                  },
+                  ...(current.execution_authority_id
+                    ? [
+                        {
+                          label: t("runs.permission.authorizedBy"),
+                          value:
+                            actorDirectoryName(
+                              directory,
+                              "user",
+                              executionAuthority.data?.created_by ?? null,
+                            ) ??
+                            actorDirectoryName(
+                              directory,
+                              "system_account",
+                              executionAuthority.data?.created_by ?? null,
+                            ) ??
+                            t("runs.permission.authorizedByUnknown"),
+                        },
+                      ]
+                    : []),
+                  ...(executionAuthority.data
+                    ? [
+                        {
+                          label: t("ops.run.approvedAt"),
+                          value: dateTime(executionAuthority.data.created_at),
+                        },
+                      ]
+                    : []),
+                  {
+                    label: t("authority.environment"),
                     value:
-                      label === t("authority.usedByRun") &&
-                      current.execution_authority_id &&
-                      current.workflow_id &&
-                      canReadWorkflows ? (
-                        <a
-                          href={absolute(
-                            `${workflowHref(current.workflow_id)}#workflow-automation`,
-                          )}
-                          title={current.execution_authority_id}
-                          data-testid="run-detail-authority-workflow"
-                        >
-                          {value}
-                        </a>
-                      ) : full ? (
-                        <span title={full}>{value}</span>
-                      ) : (
-                        value
-                      ),
-                  }))
-                  .concat([
-                    {
-                      label: t("runs.permission.label"),
-                      value: permissionEvidence
-                        ? `${t(`runs.permission.${permissionEvidence.basis}`)} · ${t(`runs.permission.${permissionEvidence.phase}`, { when: dateTime(permissionEvidence.checkedAt) })}`
-                        : t("runs.caller.unknown"),
-                    },
-                    ...(current.execution_authority_id
-                      ? [
-                          {
-                            label: t("runs.permission.authorizedBy"),
-                            value:
-                              actorDirectoryName(
-                                directory,
-                                "user",
-                                executionAuthority.data?.created_by ?? null,
-                              ) ??
-                              actorDirectoryName(
-                                directory,
-                                "system_account",
-                                executionAuthority.data?.created_by ?? null,
-                              ) ??
-                              t("runs.permission.authorizedByUnknown"),
-                          },
-                        ]
-                      : []),
-                    {
-                      label: t("authority.environment"),
-                      value:
-                        (current as Execution & { execution_environment?: string })
-                          .execution_environment === "prod"
-                          ? t("authority.production")
-                          : (current as Execution & { execution_environment?: string })
-                                .execution_environment === "dev"
-                            ? t("authority.development")
-                            : MISSING,
-                    },
-                  ])}
-                testId="run-detail-why-facts"
-              />
-            </CollapsibleSection>
+                      (current as Execution & { execution_environment?: string })
+                        .execution_environment === "prod"
+                        ? t("authority.production")
+                        : (current as Execution & { execution_environment?: string })
+                              .execution_environment === "dev"
+                          ? t("authority.development")
+                          : MISSING,
+                  },
+                  ...(executionAuthority.data
+                    ? [
+                        {
+                          label: t("authority.limit.label"),
+                          value: executionAuthority.data.valid_until
+                            ? t("ops.run.validUntil", {
+                                date: dateTime(executionAuthority.data.valid_until),
+                              })
+                            : t("authority.limit.untilRevoked"),
+                        },
+                        {
+                          label: t("authority.runs"),
+                          value:
+                            executionAuthority.data.max_runs === null
+                              ? t("ops.approval.noLimit")
+                              : String(executionAuthority.data.max_runs),
+                        },
+                      ]
+                    : []),
+                ])}
+            />
             {side ? (
-              <SideOverlayLayer>
+              <Layer page={page}>
                 <SideDetails>
                   <SideSection title={t("sidePanel.details.technical")} testId="side-run-technical">
                     <FactList items={facts} testId="run-detail-facts" />
@@ -541,7 +610,7 @@ export function RunDetail({ run }: { run: Execution; onShowRun(id: string): void
                     ) : null}
                   </SideSection>
                 </SideDetails>
-              </SideOverlayLayer>
+              </Layer>
             ) : (
               <TechnicalDetails testId="run-detail-technical">
                 <FactList items={facts} testId="run-detail-facts" />
@@ -576,9 +645,9 @@ export function RunDetail({ run }: { run: Execution; onShowRun(id: string): void
 }
 
 const STEP_MARK: Record<"ok" | "warn" | "error" | "neutral", string> = {
-  ok: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
-  warn: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
-  error: "bg-destructive/10 text-destructive",
+  ok: "bg-success/10 text-success-ink",
+  warn: "bg-warning/10 text-warning-ink",
+  error: "bg-destructive/10 text-destructive-ink",
   neutral: "bg-muted text-muted-foreground",
 };
 
