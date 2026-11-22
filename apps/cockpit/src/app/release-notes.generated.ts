@@ -5,7 +5,7 @@ export type ReleaseNotes = { version: string; notes: string[]; highlights: Highl
 export type PendingNotes = { version: string | null; notes: string[]; highlights: Highlights | null };
 
 export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: PendingNotes } = {
-  "source": "3543625074a2f6a76da7412a5f28afd7eb723d08",
+  "source": "cd16d5fbf0dd308f15add3b343e33925fca7a79e",
   "releases": [
     {
       "version": "v1.0.0",
@@ -2280,13 +2280,39 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
           "Gehärtet gegen 50 Befunde der Code-Analyse: sicherere Dateizugriffe, Release-Builds nur aus geprüften Commits und strengere Eingabeprüfung."
         ]
       }
+    },
+    {
+      "version": "v12.1.1",
+      "notes": [
+        "security hardening, bounded coverage memory"
+      ],
+      "highlights": {
+        "en": [
+          "SubKit Desktop runs on Macs with Apple Silicon (macOS 13 or later) and on Windows x64, with a menu bar or tray icon that shows what needs you, a quick note and a drop sheet for files. Create a workspace or join one from an invitation right in the app, and download it from the latest release.",
+          "SubKit works on your Mac: with files in folders you allow, on websites in a browser of its own and, through computer use, in apps you allow. The live view shows every step with a redacted screenshot, and ⌘⇧⎋ stops it at any time.",
+          "Your request decides what runs without a question; with “Always ask first” every step that writes asks you. In chat, a typed yes, no or option answers an open question, and a task shows the chat message it came from.",
+          "The vault keeps API keys, logins and connector credentials in one place, encrypted. The AI never sees a value, and every use is in the audit trail.",
+          "One monthly AI budget in US dollars, $50 for a new workspace. At 100%, chat, tasks and model steps pause; workflows without a model step keep running.",
+          "Run a workspace entirely on your Mac with your own AI key or a local model server, and move it to a server later.",
+          "A workspace language for texts that go to no particular person, and a bug report you can send before you sign in.",
+          "Hardened against 50 code-scanning findings: safer file access, release builds only from verified commits, and stricter input handling."
+        ],
+        "de": [
+          "SubKit Desktop läuft auf Macs mit Apple Silicon (ab macOS 13) und unter Windows x64, mit einem Symbol in der Menüleiste oder im Infobereich, das zeigt, was dich braucht, einer Schnellnotiz und einer Ablage für Dateien. Einen Arbeitsbereich legst du direkt in der App an oder trittst ihm per Einladung bei; die App lädst du aus dem neuesten Release herunter.",
+          "SubKit arbeitet auf deinem Mac: mit Dateien in Ordnern, die du erlaubst, auf Websites in einem eigenen Browser und per Computer-Use in Apps, die du erlaubst. Die Live-Ansicht zeigt jeden Schritt mit einem geschwärzten Bildschirmfoto, und ⌘⇧⎋ stoppt es jederzeit.",
+          "Dein Auftrag entscheidet, was ohne Frage läuft; mit „Immer vorher fragen“ fragt dich jeder schreibende Schritt vorher. Im Chat beantwortet ein getipptes Ja, Nein oder eine Option die offene Frage, und eine Aufgabe zeigt die Chat-Nachricht, aus der sie stammt.",
+          "Der Tresor bewahrt API-Keys, Logins und Connector-Zugänge verschlüsselt an einem Ort auf. Die KI sieht nie einen Wert, und jede Nutzung steht im Audit-Trail.",
+          "Ein monatliches KI-Budget in US-Dollar, 50 $ für einen neuen Arbeitsbereich. Bei 100 % pausieren Chat, Aufgaben und Modellschritte; Workflows ohne Modellschritt laufen weiter.",
+          "Betreib einen Arbeitsbereich komplett auf deinem Mac, mit deinem eigenen KI-Key oder einem lokalen Modell-Server, und zieh ihn später auf einen Server um.",
+          "Eine Sprache des Arbeitsbereichs für Texte, die an keine bestimmte Person gehen, und ein Fehlerbericht, den du schon vor der Anmeldung senden kannst.",
+          "Gehärtet gegen 50 Befunde der Code-Analyse: sicherere Dateizugriffe, Release-Builds nur aus geprüften Commits und strengere Eingabeprüfung."
+        ]
+      }
     }
   ],
   "unpublished": {
     "version": null,
-    "notes": [
-      "security hardening, bounded coverage memory"
-    ],
+    "notes": [],
     "highlights": null
   }
 };
