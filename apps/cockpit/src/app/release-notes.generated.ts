@@ -1,7 +1,7 @@
 export type ReleaseNotes = { version: string; notes: string[] };
 
 export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: string[] } = {
-  "source": "df7da806a54c43a39cd14df895b3fd82e9b75b27",
+  "source": "fccc3131f2a63739c1f688ce75a8fa070d691468",
   "releases": [
     {
       "version": "v1.0.0",
@@ -1314,7 +1314,7 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
     {
       "version": "v9.10.0",
       "notes": [
-        "änderungen sicher speichern, live-tests verfolgen und kosten einordnen"
+        "save changes safely, follow live tests, put costs in context"
       ]
     },
     {
@@ -1686,7 +1686,7 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
     {
       "version": "v10.20.2",
       "notes": [
-        "show the size of a diagnostic transfer on the confirmation card"
+        "show the diagnostic transfer size on the confirm card"
       ]
     },
     {
@@ -1728,20 +1728,20 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
     {
       "version": "v10.20.13",
       "notes": [
-        "preserve workflow authoring intent during connector preparation",
-        "knowledge chunks preserve Unicode characters within byte limits",
-        "cancelled connector requests no longer leak rejected operations",
+        "keep authoring intent during connector preparation",
+        "knowledge chunks preserve unicode within byte limits",
+        "cancelled connector requests no longer leak operations",
         "Escape closes the settings editor before the settings dialog",
-        "writes wait briefly for a busy tenant catalog instead of failing at once",
-        "a typed slash command with its Enter in one chunk runs at once and docker tests pass",
-        "built-in role names are reserved in the database and duplicate role names answer 409",
-        "reserved role names, tenant-scoped role lookup, safe S3 range reads and clear refusals",
+        "writes wait briefly for a busy catalog",
+        "a slash command with its enter in one chunk runs at once",
+        "reserve built-in role names, duplicates answer 409",
+        "reserved role names, scoped role lookup, safe S3 reads",
         "draft test runs behave like the saved workflow",
-        "unreadable template imports answer 422 and chat runs need dev connectors",
+        "unreadable imports answer 422, chat runs need dev connectors",
         "settings readers see pending secret approvals",
-        "clearing a category or description works and API-key templates store their key",
-        "sk subscription deliveries, onboarding credentials and resumed approvals work",
-        "sk commands, cockpit and settings send and show what the engine API defines"
+        "clearing a category works, API-key templates store keys",
+        "subscription deliveries, credentials and approvals work",
+        "sk, cockpit and settings follow the engine API"
       ]
     },
     {
@@ -1753,7 +1753,7 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
     {
       "version": "v10.20.15",
       "notes": [
-        "a workflow review with a far expiry stays ready instead of expiring at once"
+        "a review with a far expiry stays ready"
       ]
     },
     {
@@ -1763,28 +1763,28 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
     {
       "version": "v10.21.0",
       "notes": [
-        "an approval given right after the question waits for the asking turn instead of failing",
-        "a welcome page sets up new workspaces with an own AI key, people join by invitation link",
-        "conversation writes wait out a busy workspace quota instead of answering 409"
+        "an immediate approval waits for the asking turn",
+        "a welcome page sets up workspaces, join by invitation",
+        "conversation writes wait out a busy workspace quota"
       ]
     },
     {
       "version": "v10.22.0",
       "notes": [
-        "cloud workspaces run AI on their own key only; budget and prices live on Usage",
-        "cancelling, stopping or parking a turn waits for a busy workspace instead of failing"
+        "cloud workspaces use their own AI key, budget on usage",
+        "cancel, stop or park waits for a busy workspace"
       ]
     },
     {
       "version": "v10.23.0",
       "notes": [
-        "invitation sign-in works in the browser; removed people can be invited again"
+        "invitation sign-in works, removed people can rejoin"
       ]
     },
     {
       "version": "v10.24.0",
       "notes": [
-        "the sign-in page says \"Sign in with work account\" when there is one sign-in service"
+        "one sign-in service reads \"sign in with work account\""
       ]
     },
     {
@@ -1794,25 +1794,25 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
     {
       "version": "v11.0.0",
       "notes": [
-        "tasks work towards a goal on their own, and workflow approvals ask less often"
+        "tasks work toward a goal, approvals ask less often"
       ]
     },
     {
       "version": "v11.1.0",
       "notes": [
-        "task runs hand over a written result, stop when stuck, admins release held writes"
+        "task runs hand over a result and stop when stuck"
       ]
     },
     {
       "version": "v11.2.0",
       "notes": [
-        "a desktop app signs in through your browser, setup turns answers into settings",
-        "a new task allows 10 rounds per run unless you set another limit"
+        "desktop signs in through the browser, setup makes settings",
+        "a new task allows 10 rounds per run by default"
       ]
     }
   ],
   "unpublished": [
     "local desktop runs, vault, usd budget",
-    "cockpit and desktop follow the new design, one control set, journeys cover the core"
+    "cockpit and desktop follow the new design"
   ]
 };
