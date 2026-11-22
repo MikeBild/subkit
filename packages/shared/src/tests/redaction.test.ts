@@ -2,10 +2,15 @@ import { describe, expect, test } from "bun:test";
 import {
   DEFAULT_REDACTED,
   findSecretSpans,
+  isPhoneNumber,
+  PHONE_NUMBER,
+  redactDiagnosticText,
   redactedRequestTarget,
   redactSecretShapes,
   redactWithMaxDepth,
   referencesKeyMaterialPath,
+  SCHEMELESS_LINK,
+  schemelessLinkParts,
   scrubSecrets,
   scrubString,
   scrubStringsDeep,
@@ -502,5 +507,65 @@ describe("redactedRequestTarget", () => {
     expect(redactedRequestTarget("")).toBeNull();
     expect(redactedRequestTarget("postgres://db.example.test/app")).toBeNull();
     expect(redactedRequestTarget("not a url")).toBeNull();
+  });
+});
+
+describe("isPhoneNumber", () => {
+  test("accepts a match with 7 to 15 digits", () => {
+    expect(isPhoneNumber("+49 30 1234567")).toBe(true);
+    expect(isPhoneNumber("030 123 45")).toBe(true);
+  });
+
+  test("rejects a match with too few or too many digits", () => {
+    expect(isPhoneNumber("(0)12-34")).toBe(false);
+    expect(isPhoneNumber("+1 234 567 890 123 456")).toBe(false);
+  });
+
+  test("filters the PHONE_NUMBER candidates by digit count", () => {
+    const found = "call +49 30 1234567 today".match(PHONE_NUMBER) ?? [];
+    expect(found.filter(isPhoneNumber)).toEqual(["+49 30 1234567"]);
+  });
+});
+
+describe("schemelessLinkParts", () => {
+  test("splits host and detail, dropping userinfo", () => {
+    expect(schemelessLinkParts("user:pw@app.example.com/reset?token=abc")).toEqual({
+      host: "app.example.com",
+      detail: "/reset?token=abc",
+    });
+  });
+
+  test("returns the whole match as host when there is no path, query or fragment", () => {
+    expect(schemelessLinkParts("app.example.com")).toEqual({ host: "app.example.com", detail: "" });
+  });
+
+  test("handles the matches SCHEMELESS_LINK yields", () => {
+    const [match] = "see docs.example.com/guide#top for more".match(SCHEMELESS_LINK) ?? [];
+    expect(schemelessLinkParts(match as string)).toEqual({
+      host: "docs.example.com",
+      detail: "/guide#top",
+    });
+  });
+});
+
+describe("redactDiagnosticText — schemeless links", () => {
+  test("masks the detail of a link without a scheme and keeps its host", () => {
+    expect(redactDiagnosticText("open app.example.com/reset/abc123 now")).toBe(
+      `open app.example.com/${DEFAULT_REDACTED} now`,
+    );
+  });
+
+  test("keeps a bare trailing slash as just the host", () => {
+    expect(redactDiagnosticText("open app.example.com/ now", { mask: "[x]" })).toBe(
+      "open app.example.com now",
+    );
+  });
+});
+
+describe("redactDiagnosticText — phone numbers", () => {
+  test("masks a phone number and keeps a short digit run", () => {
+    expect(redactDiagnosticText("call +49 30 1234567 or (0)12-34")).toBe(
+      `call ${DEFAULT_REDACTED} or (0)12-34`,
+    );
   });
 });

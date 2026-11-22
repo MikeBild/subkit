@@ -11,6 +11,7 @@ import {
 import * as loader from "../../../config/loader.ts";
 import { testEnv } from "../../../test-helpers/determinism/env.ts";
 import type { AppEnv } from "../../openapi.ts";
+import { renderSinglePage } from "../oauth/ui.ts";
 import { registerDesktopLoginRoutes } from "./desktop-login.ts";
 import {
   renderDesktopAppOutdated,
@@ -369,7 +370,14 @@ describe("desktop sign-in confirmation page", () => {
     expect(html).toContain('<html lang="en" class="dark">');
     const styles = html.match(/<style>[\s\S]*?<\/style>/g) ?? [];
     expect(styles).toHaveLength(2);
-    expect(styles[0]).toContain("/*mcp-auth:begin*/");
+    const shared = renderSinglePage({
+      look: { locale: "en", scheme: "dark" },
+      surface: "auth",
+      body: "",
+      context: "",
+    }).match(/<style>[\s\S]*?<\/style>/g);
+    expect(shared).toHaveLength(1);
+    expect(styles[0]).toBe(shared?.[0] as string);
     expect(styles[1]).not.toMatch(/#[0-9a-f]{3,8}\b/i);
   });
 });
