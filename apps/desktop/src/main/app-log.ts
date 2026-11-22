@@ -1,12 +1,4 @@
-import {
-  appendFileSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  statSync,
-} from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, renameSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
@@ -72,7 +64,6 @@ export class AppLog {
     const texts: string[] = [];
     for (let index = 1; index >= 0; index--) {
       const path = join(folder, rotatedName(index));
-      if (!existsSync(path)) continue;
       try {
         texts.push(readFileSync(path, "utf8"));
       } catch {}
@@ -98,16 +89,36 @@ export class AppLog {
     const line = `${text}\n`;
     try {
       const path = join(folder, LOG_FILE);
-      const size = existsSync(path) ? statSync(path).size : 0;
+      const size = fileSize(path);
       for (const step of rotationPlan(size, Buffer.byteLength(line), this.limits)) {
         const from = join(folder, step.from);
-        if (!existsSync(from)) continue;
         if (step.to === null) rmSync(from, { force: true });
-        else renameSync(from, join(folder, step.to));
+        else renameIfPresent(from, join(folder, step.to));
       }
       appendFileSync(path, line, { mode: 0o600 });
     } catch {}
   }
+}
+
+function fileSize(path: string): number {
+  try {
+    return statSync(path).size;
+  } catch (error) {
+    if (isMissing(error)) return 0;
+    throw error;
+  }
+}
+
+function renameIfPresent(from: string, to: string): void {
+  try {
+    renameSync(from, to);
+  } catch (error) {
+    if (!isMissing(error)) throw error;
+  }
+}
+
+function isMissing(error: unknown): boolean {
+  return (error as NodeJS.ErrnoException | null)?.code === "ENOENT";
 }
 
 export const appLog = new AppLog();

@@ -2,7 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:subkit:health-readiness:v1",
   "title": "SubKit health and readiness documents",
-  "oneOf": [{ "$ref": "#/$defs/health" }, { "$ref": "#/$defs/ready" }],
+  "oneOf": [
+    {
+      "$ref": "#/$defs/health"
+    },
+    {
+      "$ref": "#/$defs/ready"
+    }
+  ],
   "$defs": {
     "service": {
       "const": "subkit"
@@ -15,27 +22,54 @@
       "additionalProperties": false,
       "required": ["status", "service", "version"],
       "properties": {
-        "status": { "const": "ok" },
-        "service": { "$ref": "#/$defs/service" },
-        "version": { "type": "string", "minLength": 1 }
+        "status": {
+          "const": "ok"
+        },
+        "service": {
+          "$ref": "#/$defs/service"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "ready": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["status", "service", "version", "checks"],
+      "required": ["status", "service", "version", "checks", "failing"],
       "properties": {
-        "status": { "enum": ["ready", "not_ready"] },
-        "service": { "$ref": "#/$defs/service" },
-        "version": { "type": "string", "minLength": 1 },
+        "status": {
+          "enum": ["ready", "not_ready"]
+        },
+        "service": {
+          "$ref": "#/$defs/service"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
         "checks": {
           "type": "object",
-          "required": ["lifecycle", "database"],
+          "required": ["lifecycle", "database", "schema"],
           "properties": {
-            "lifecycle": { "$ref": "#/$defs/checkState" },
-            "database": { "$ref": "#/$defs/checkState" }
+            "lifecycle": {
+              "$ref": "#/$defs/checkState"
+            },
+            "database": {
+              "$ref": "#/$defs/checkState"
+            },
+            "schema": {
+              "enum": ["pass", "drift"]
+            }
           },
           "additionalProperties": false
+        },
+        "failing": {
+          "type": "array",
+          "items": {
+            "enum": ["lifecycle", "database"]
+          }
         }
       }
     }
