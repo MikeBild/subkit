@@ -5,7 +5,13 @@ import { join } from "node:path";
 const REPO = join(import.meta.dir, "..", "..");
 const WORKFLOW = readFileSync(join(REPO, ".github/workflows/release.yml"), "utf8");
 const workflow = Bun.YAML.parse(WORKFLOW) as {
-  jobs: { release: { steps: Array<{ name?: string; run?: string }> } };
+  jobs: {
+    release: { steps: Array<{ name?: string; run?: string }> };
+    docs: {
+      needs: string;
+      steps: Array<{ name?: string; run?: string; env?: Record<string, string> }>;
+    };
+  };
 };
 const steps = workflow.jobs.release.steps;
 
@@ -18,8 +24,8 @@ function stepIndex(name: string): number {
 describe("release manifest workflow", () => {
   test("a tag publishes the image to Docker Hub and nothing else deploys it", () => {
     expect(WORKFLOW).not.toContain("subkit-deploy");
-    expect(WORKFLOW).not.toContain("/dispatches");
     expect(WORKFLOW).not.toContain("SUBKIT_DEPLOY_DISPATCH_TOKEN");
+    expect(WORKFLOW.match(/\/dispatches/g)).toHaveLength(1);
     expect(stepIndex("Require mandatory local release gate")).toBeGreaterThan(-1);
     const immutable = stepIndex("Push immutable version images");
     const latest = stepIndex("Push latest image aliases after release verification");
@@ -34,6 +40,21 @@ describe("release manifest workflow", () => {
     expect(immutableRun).not.toContain('"$image:latest"');
     expect(latestRun).toContain('docker tag subkit:release "$image:latest"');
     expect(latestRun).toContain('docker push "$image:latest"');
+  });
+
+  test("asks the website to rebuild its docs only once SubKit Cloud serves the release", () => {
+    const docs = workflow.jobs.docs;
+    expect(docs.needs).toBe("release");
+    const [wait, dispatch] = docs.steps;
+    expect(wait?.run).toContain("$CLOUD_URL/health");
+    expect(wait?.run).toContain('[ "$served" = "$version" ]');
+    expect(dispatch?.run).toContain(
+      "https://api.github.com/repos/MikeBild/subkit-website/dispatches",
+    );
+    expect(dispatch?.run).toContain('event_type:"docs-updated"');
+    expect(dispatch?.env?.WEBSITE_DISPATCH_TOKEN).toContain(
+      "secrets.SUBKIT_WEBSITE_DISPATCH_TOKEN",
+    );
   });
 
   test("signs complete assets, verifies the downloadable draft, then publishes latest last", () => {

@@ -48,9 +48,10 @@ export const onboardingEn = {
   "welcome.submit": "Get started",
   "welcome.submitting": "Checking key …",
   "welcome.unavailable": "New workspaces can’t be created right now. Try again later.",
-  "welcome.expired.title": "Your sign-in has expired",
-  "welcome.expired.body": "Sign in again, then you can continue here.",
-  "welcome.expired.action": "Sign in again",
+  "welcome.expired.title": "Sign in to continue",
+  "welcome.expired.body":
+    "This is where you set up your workspace. No account yet? You create one when you sign in.",
+  "welcome.expired.action": "Sign in",
   "invite.open.title": "You’re invited",
   "invite.open.body": "{inviter} invited you to the workspace “{workspace}”.",
   "invite.open.bodyAnonymous": "You were invited to the workspace “{workspace}”.",
@@ -172,9 +173,10 @@ export const onboardingDe: Record<keyof typeof onboardingEn, string> = {
   "welcome.submitting": "Schlüssel wird geprüft …",
   "welcome.unavailable":
     "Gerade können keine neuen Arbeitsbereiche angelegt werden. Versuch es später noch einmal.",
-  "welcome.expired.title": "Deine Anmeldung ist abgelaufen",
-  "welcome.expired.body": "Melde dich neu an, dann geht es hier weiter.",
-  "welcome.expired.action": "Neu anmelden",
+  "welcome.expired.title": "Melde dich an, um weiterzumachen",
+  "welcome.expired.body":
+    "Hier richtest du deinen Arbeitsbereich ein. Noch kein Konto? Beim Anmelden legst du eins an.",
+  "welcome.expired.action": "Anmelden",
   "invite.open.title": "Du bist eingeladen",
   "invite.open.body": "{inviter} hat dich in den Arbeitsbereich „{workspace}“ eingeladen.",
   "invite.open.bodyAnonymous": "Du wurdest in den Arbeitsbereich „{workspace}“ eingeladen.",

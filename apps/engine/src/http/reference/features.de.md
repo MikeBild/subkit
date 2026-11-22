@@ -189,7 +189,7 @@ Diese Funktionen brauchen SubKit Desktop auf einem Mac mit Apple Silicon; unter 
 
 | Funktion | Was du bekommst | Gilt | Mehr |
 | --- | --- | --- | --- |
-| SubKit Cloud | SubKit läuft für dich, du meldest dich im Browser an. Beta auf Einladung. | Cloud | [SubKit Cloud nutzen](setup.md#subkit-cloud-nutzen) |
+| SubKit Cloud | SubKit läuft für dich, du meldest dich im Browser an. Preview mit offener Registrierung. | Cloud | [SubKit Cloud nutzen](setup.md#subkit-cloud-nutzen) |
 | Eigener KI-Key pro Arbeitsbereich | Jeder Cloud-Arbeitsbereich bringt eigenen Provider und Key mit; der KI-Zugang des Betreibers wird nie genutzt. | Cloud | [SubKit Cloud nutzen](setup.md#subkit-cloud-nutzen) |
 | Mehrere Arbeitsbereiche | Du wechselst Konten und Arbeitsbereiche und löschst einen Arbeitsbereich. | Cloud | [SubKit Cloud nutzen](setup.md#subkit-cloud-nutzen) |
 | Grenzen des Arbeitsbereichs | Grenzen für Anfragen, Speicher und Ressourcen, vom Betreiber gesetzt, mit klaren Meldungen. | Cloud | [SubKit Cloud nutzen](setup.md#subkit-cloud-nutzen) |

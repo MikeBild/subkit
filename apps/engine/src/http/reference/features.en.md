@@ -189,7 +189,7 @@ These features need SubKit Desktop on a Mac with Apple Silicon; Windows does not
 
 | Feature | What you get | Where | More |
 | --- | --- | --- | --- |
-| SubKit Cloud | SubKit runs for you; you sign in from the browser. Beta by invitation. | Cloud | [Use SubKit Cloud](setup.md#use-subkit-cloud) |
+| SubKit Cloud | SubKit runs for you; you sign in from the browser. Preview with open sign-up. | Cloud | [Use SubKit Cloud](setup.md#use-subkit-cloud) |
 | Own AI key per workspace | Every cloud workspace brings its own provider and key; the operator's AI access is never used. | Cloud | [Use SubKit Cloud](setup.md#use-subkit-cloud) |
 | Several workspaces | Switch accounts and workspaces, and delete a workspace. | Cloud | [Use SubKit Cloud](setup.md#use-subkit-cloud) |
 | Workspace limits | Request, storage and resource limits set by the operator, with clear messages. | Cloud | [Use SubKit Cloud](setup.md#use-subkit-cloud) |

@@ -8,16 +8,16 @@ audience: public
 ---
 ## SubKit Cloud nutzen
 
-> Cloud (Hosted Beta, auf Einladung)
+> Cloud (Preview, offene Registrierung)
 
 Mit SubKit Cloud läuft SubKit für dich. Du installierst nichts und betreibst keine eigene Engine.
 Du meldest dich im Browser an und arbeitest im Cockpit deines Arbeitsbereichs.
 
 ### Kurz und knapp
 
-1. Bitte über das [Kontaktformular](https://subkit.mikebild.dev/kontakt/) um eine Einladung.
-2. Öffne `https://subkit-cloud.mikebild.dev` und wähle **Mit Firmenkonto anmelden**.
-3. Melde dich bei Upraft Auth mit der E-Mail-Adresse deiner Einladung an.
+1. Öffne `https://subkit-cloud.mikebild.dev` und wähle **Mit Firmenkonto anmelden**.
+2. Wähle bei Upraft Auth **Konto anlegen**, gib deine E-Mail-Adresse und ein Passwort ein und bestätige deine Adresse mit dem Link aus der E-Mail.
+3. Melde dich mit deinem neuen Konto an.
 4. Gib deinen Namen, einen Namen für deinen Arbeitsbereich und deine Zeitzone an.
 5. Wähle deinen KI-Anbieter, gib deinen API-Schlüssel ein und wähle **Loslegen**.
 6. Bau deinen ersten Workflow mit dem Kapitel „Dein erster Workflow“.
@@ -26,7 +26,7 @@ Hat dich jemand in einen bestehenden Arbeitsbereich eingeladen? Dann öffne stat
 
 ### Was du brauchst
 
-- Ein Konto bei Upraft Auth, dem Anmeldedienst der Plattform, auf der SubKit Cloud läuft. Während der Beta vergibt der Betreiber diese Konten auf Einladung.
+- Ein Konto bei Upraft Auth, dem Anmeldedienst der Plattform, auf der SubKit Cloud läuft. Du legst es bei der ersten Anmeldung selbst an.
 - Einen Einladungslink zu einem bestehenden Arbeitsbereich oder einen API-Schlüssel deines KI-Anbieters, um einen eigenen Arbeitsbereich anzulegen.
 - Die Adresse `https://subkit-cloud.mikebild.dev`. Die Adresse führt dich direkt ins Cockpit.
 
@@ -49,12 +49,14 @@ Funktioniert er nicht mehr, bitte die Person, die dich eingeladen hat, um einen 
 
 #### Einen eigenen Arbeitsbereich anlegen
 
-Hast du ein Konto, aber noch keinen Arbeitsbereich, zeigt SubKit nach der ersten Anmeldung eine Willkommensseite.
+Hast du noch kein Konto, legst du es bei Upraft Auth an. Nach der ersten Anmeldung zeigt SubKit eine Willkommensseite.
 
-1. Melde dich an, wie unter „Anmelden“ beschrieben.
-2. Gib deinen Namen, einen Namen für deinen Arbeitsbereich und deine Zeitzone an.
-3. Wähle deinen KI-Anbieter und gib deinen API-Schlüssel ein, wie unter „Dein KI-Zugang“ beschrieben.
-4. Wähle **Loslegen**.
+1. Öffne `https://subkit-cloud.mikebild.dev` und wähle **Mit Firmenkonto anmelden**.
+2. Wähle **Konto anlegen**, gib deinen Namen, deine E-Mail-Adresse und ein Passwort mit mindestens 12 Zeichen ein und wähle **Konto anlegen**.
+3. Öffne den Link aus der E-Mail, um deine Adresse zu bestätigen, und melde dich dann an.
+4. Gib auf der Willkommensseite deinen Namen, einen Namen für deinen Arbeitsbereich und deine Zeitzone an.
+5. Wähle deinen KI-Anbieter und gib deinen API-Schlüssel ein, wie unter „Dein KI-Zugang“ beschrieben.
+6. Wähle **Loslegen**.
 
 ### Anmelden
 

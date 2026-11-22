@@ -8,16 +8,16 @@ audience: public
 ---
 ## Use SubKit Cloud
 
-> Cloud (hosted beta, by invitation)
+> Cloud (Preview, open sign-up)
 
 With SubKit Cloud, SubKit runs for you. You install nothing and operate no engine of your own.
 You sign in from the browser and work in the Cockpit of your workspace.
 
 ### In short
 
-1. Ask for an invitation through the [contact form](https://subkit.mikebild.dev/en/contact/).
-2. Open `https://subkit-cloud.mikebild.dev` and select **Sign in with work account**.
-3. Sign in at Upraft Auth with the email address of your invitation.
+1. Open `https://subkit-cloud.mikebild.dev` and select **Sign in with work account**.
+2. At Upraft Auth, select **Create an account**, enter your email address and a password, and confirm your address with the link in the email.
+3. Sign in with your new account.
 4. Enter your name, a name for your workspace and your time zone.
 5. Choose your AI provider, enter your API key and select **Get started**.
 6. Build your first workflow with “Your first workflow”.
@@ -26,7 +26,7 @@ Invited to an existing workspace? Open the invitation link instead, as described
 
 ### What you need
 
-- An account at Upraft Auth, the sign-in service of the platform SubKit Cloud runs on. During the beta, the operator gives out these accounts by invitation.
+- An account at Upraft Auth, the sign-in service of the platform SubKit Cloud runs on. You create it yourself when you first sign in.
 - An invitation link to an existing workspace, or an API key from your AI provider to start a workspace of your own.
 - The address `https://subkit-cloud.mikebild.dev`. It takes you straight to the Cockpit.
 
@@ -49,12 +49,14 @@ If it no longer works, ask the person who invited you for a new one.
 
 #### Start your own workspace
 
-If you have an account but no workspace yet, SubKit shows a welcome page after your first sign-in.
+If you have no account yet, create one at Upraft Auth. After your first sign-in, SubKit shows a welcome page.
 
-1. Sign in as described in “Sign in”.
-2. Enter your name, a name for your workspace and your time zone.
-3. Choose your AI provider and enter your API key, as described in “Your AI access”.
-4. Select **Get started**.
+1. Open `https://subkit-cloud.mikebild.dev` and select **Sign in with work account**.
+2. Select **Create an account**, enter your name, email address and a password with at least 12 characters, and select **Create account**.
+3. Open the link in the email to confirm your address, then sign in.
+4. On the welcome page, enter your name, a name for your workspace and your time zone.
+5. Choose your AI provider and enter your API key, as described in “Your AI access”.
+6. Select **Get started**.
 
 ### Sign in
 

@@ -12,6 +12,7 @@
   <a href="https://subkit.mikebild.dev/en/"><strong>Website</strong></a> ·
   <a href="https://subkit.mikebild.dev/en/documentation/"><strong>Documentation</strong></a> ·
   <a href="https://subkit.mikebild.dev/en/use-cases/"><strong>Use cases</strong></a> ·
+  <a href="#sign-up-for-subkit-cloud"><strong>Sign up</strong></a> ·
   <a href="#run-subkit"><strong>Run SubKit</strong></a> ·
   <a href="#subkit-desktop"><strong>Desktop app</strong></a>
 </p>
@@ -37,7 +38,7 @@
   <img alt="Works with MCP clients" src="https://img.shields.io/badge/MCP-server_and_client-1E4FD6?style=flat-square&labelColor=141414" />
   <img alt="Interface languages: English and German" src="https://img.shields.io/badge/languages-EN_·_DE-1E4FD6?style=flat-square&labelColor=141414" />
   <img alt="Desktop app: macOS 13 or later on Apple Silicon, Windows x64" src="https://img.shields.io/badge/desktop-macOS_13+_·_Apple_Silicon_·_Windows_x64-1E4FD6?style=flat-square&labelColor=141414" />
-  <img alt="Status: SubKit Cloud is a beta by invitation" src="https://img.shields.io/badge/cloud-beta_by_invitation-1E4FD6?style=flat-square&labelColor=141414" />
+  <a href="https://subkit-cloud.mikebild.dev"><img alt="Status: SubKit Cloud is in Preview with self-service sign-up" src="https://img.shields.io/badge/cloud-preview_·_self--service_sign--up-1E4FD6?style=flat-square&labelColor=141414" /></a>
 </p>
 
 <br />
@@ -353,7 +354,7 @@ No. Design, approve and run workflows in the Cockpit. If you prefer files and re
 <summary><strong>Is it ready for my team?</strong></summary>
 <br />
 
-SubKit is in beta. [SubKit Cloud](https://subkit.mikebild.dev/en/documentation/subkit-cloud/) is by invitation. Everything else, from the Compose file to SubKit Desktop, is in the [latest release](https://github.com/MikeBild/subkit/releases/latest). The Web Clipper works in Chrome only.
+SubKit is in Preview. [Sign up for SubKit Cloud](#sign-up-for-subkit-cloud) yourself, no invitation needed. Everything for self-hosting, from the Compose file to SubKit Desktop, is in the [latest release](https://github.com/MikeBild/subkit/releases/latest). The Web Clipper works in Chrome only.
 
 </details>
 
@@ -370,7 +371,7 @@ SubKit is in beta. [SubKit Cloud](https://subkit.mikebild.dev/en/documentation/s
 
 <table>
   <tr>
-    <td width="50%" valign="top"><strong>SubKit Cloud</strong><br />SubKit runs for you. Sign in from the browser. Hosted beta, by invitation.<br /><br /><a href="https://subkit.mikebild.dev/en/contact/">Ask for an invitation</a></td>
+    <td width="50%" valign="top"><strong>SubKit Cloud</strong><br />SubKit runs for you. Create an account and set up your workspace in the browser. Preview, open to everyone.<br /><br /><a href="https://subkit-cloud.mikebild.dev">Sign up for SubKit Cloud</a> · <a href="https://subkit.mikebild.dev/en/documentation/subkit-cloud/">How SubKit Cloud works</a></td>
     <td width="50%" valign="top"><strong>Your own engine</strong><br />Engine with Cockpit, PostgreSQL and an object store, started with Docker Compose.<br /><br /><a href="https://github.com/MikeBild/subkit/releases/latest/download/docker-compose.yml">Download <code>docker-compose.yml</code></a> · <a href="https://subkit.mikebild.dev/en/documentation/run-the-engine/">How self-hosting works</a></td>
   </tr>
   <tr>
@@ -378,6 +379,14 @@ SubKit is in beta. [SubKit Cloud](https://subkit.mikebild.dev/en/documentation/s
     <td width="50%" valign="top"><strong>Fully local workspace</strong><br />A whole workspace on your computer, with backups and your own AI key or local model. No server needed.<br /><sub>Inside SubKit Desktop</sub><br /><br /><a href="https://subkit.mikebild.dev/en/documentation/subkit-desktop/">Set up a local workspace</a></td>
   </tr>
 </table>
+
+<a name="sign-up-for-subkit-cloud"></a>
+
+**Sign up for SubKit Cloud** in three steps:
+
+1. Open [subkit-cloud.mikebild.dev](https://subkit-cloud.mikebild.dev) and select **Sign in with work account**.
+2. Select **Create an account** and confirm your email address with the link you receive.
+3. Sign in, name your workspace and add the API key of your AI provider.
 
 <p align="center">Then connect your tools: <code>subkit</code> in the terminal,<br />Claude Code, Codex and other AI clients over MCP.</p>
 
