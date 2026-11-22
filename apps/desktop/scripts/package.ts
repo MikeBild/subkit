@@ -83,11 +83,38 @@ function stageSteps(platform: PlatformCapabilities): PackageStep[] {
 
 const ENGINE_TARGET = { "darwin-arm64": "darwin-arm64", "win32-x64": "windows-x64" } as const;
 
+export function macSigningArgs(
+  builder: readonly string[],
+  env: Readonly<Record<string, string | undefined>>,
+  hasDeveloperId: () => boolean,
+): string[] {
+  if (env.CSC_LINK || env.CSC_NAME) return [];
+  if (builder.some((arg) => arg.startsWith("-c.mac.identity="))) return [];
+  if (env.CSC_IDENTITY_AUTO_DISCOVERY !== "false" && hasDeveloperId()) return [];
+  return ["-c.mac.identity=-", "-c.mac.hardenedRuntime=false"];
+}
+
+function keychainHasDeveloperId(): boolean {
+  if (process.platform !== "darwin") return false;
+  const result = spawnSync("security", ["find-identity", "-v", "-p", "codesigning"], {
+    encoding: "utf8",
+  });
+  return result.status === 0 && result.stdout.includes('"Developer ID Application: ');
+}
+
+export function macAppPath(options: PackageOptions): string {
+  return options.dev ? "release-dev/mac-arm64/SubKit Dev.app" : "release/mac-arm64/SubKit.app";
+}
+
 export function packageSteps(
   options: PackageOptions,
   host: { platform: string; arch: string } = process,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+  hasDeveloperId: () => boolean = keychainHasDeveloperId,
 ): PackageStep[] {
-  const stage = options.prebuilt ? [] : stageSteps(packagePlatform(options, host));
+  const platform = packagePlatform(options, host);
+  const mac = platform.platform === "darwin-arm64";
+  const stage = options.prebuilt ? [] : stageSteps(platform);
   return [
     ...stage,
     { argv: ["bun", "scripts/build.ts", ...(options.dev ? [] : ["--production"])], cwd: "app" },
@@ -100,9 +127,13 @@ export function packageSteps(
         options.dev ? "electron-builder.dev.yml" : "electron-builder.yml",
         ...(options.dev || options.dir ? ["--dir"] : []),
         ...options.builder,
+        ...(mac ? macSigningArgs(options.builder, env, hasDeveloperId) : []),
       ],
       cwd: "app",
     },
+    ...(mac && host.platform === "darwin"
+      ? [{ argv: ["bun", "scripts/verify-mac-app.ts", macAppPath(options)], cwd: "app" } as const]
+      : []),
   ];
 }
 

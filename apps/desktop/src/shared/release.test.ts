@@ -1,7 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { packagePlatform, packageSteps, parsePackageArgs } from "../../scripts/package.ts";
+import {
+  macAppPath,
+  macSigningArgs,
+  packagePlatform,
+  packageSteps,
+  parsePackageArgs,
+} from "../../scripts/package.ts";
+import { launchProblem } from "../../scripts/verify-mac-app.ts";
 import { updateFeedProblem } from "./updates.ts";
 import { compareVersions } from "./version.ts";
 
@@ -125,8 +132,11 @@ describe("local-mode engine bundle", () => {
   });
 
   test("one package command stages, builds and hands the rest to the builder", () => {
+    const signed = { CSC_LINK: "certificate" };
     const run = (args: string[], host = MAC) =>
-      packageSteps(parsePackageArgs(args), host).map((step) => step.argv.join(" "));
+      packageSteps(parsePackageArgs(args), host, signed, () => false).map((step) =>
+        step.argv.join(" "),
+      );
     expect(run([])).toEqual([
       "bun scripts/fetch-agent-desktop.ts",
       "bun scripts/fetch-agent-browser.ts",
@@ -135,17 +145,51 @@ describe("local-mode engine bundle", () => {
       "bun scripts/build.ts --production",
       "bun scripts/notices.ts",
       "bunx electron-builder --config electron-builder.yml",
+      "bun scripts/verify-mac-app.ts release/mac-arm64/SubKit.app",
     ]);
     expect(run(["--prebuilt", "--mac", "--publish", "never"])).toEqual([
       "bun scripts/build.ts --production",
       "bun scripts/notices.ts",
       "bunx electron-builder --config electron-builder.yml --mac --publish never",
+      "bun scripts/verify-mac-app.ts release/mac-arm64/SubKit.app",
     ]);
-    expect(run(["--dev"]).slice(-3)).toEqual([
+    expect(run(["--dev"]).slice(-4)).toEqual([
       "bun scripts/build.ts",
       "bun scripts/notices.ts",
       "bunx electron-builder --config electron-builder.dev.yml --dir",
+      "bun scripts/verify-mac-app.ts release-dev/mac-arm64/SubKit Dev.app",
     ]);
+  });
+
+  test("an unsigned macOS package is signed ad hoc as the last step of the builder, then launched", () => {
+    const unsigned = packageSteps(
+      parsePackageArgs(["--prebuilt", "--mac", "--dir"]),
+      MAC,
+      { CSC_IDENTITY_AUTO_DISCOVERY: "false" },
+      () => true,
+    ).map((step) => step.argv.join(" "));
+    expect(unsigned.slice(-2)).toEqual([
+      "bunx electron-builder --config electron-builder.yml --dir --mac -c.mac.identity=- -c.mac.hardenedRuntime=false",
+      "bun scripts/verify-mac-app.ts release/mac-arm64/SubKit.app",
+    ]);
+    const none = () => false;
+    const developerId = () => true;
+    expect(macSigningArgs([], {}, none)).toEqual([
+      "-c.mac.identity=-",
+      "-c.mac.hardenedRuntime=false",
+    ]);
+    expect(macSigningArgs([], {}, developerId)).toEqual([]);
+    expect(macSigningArgs([], { CSC_LINK: "certificate" }, none)).toEqual([]);
+    expect(macSigningArgs([], { CSC_NAME: "Developer ID" }, none)).toEqual([]);
+    expect(macSigningArgs(["-c.mac.identity=Someone"], {}, none)).toEqual([]);
+    expect(macAppPath(parsePackageArgs(["--dev"]))).toBe("release-dev/mac-arm64/SubKit Dev.app");
+  });
+
+  test("the launch smoke test fails on a crash, not on a clean start", () => {
+    expect(launchProblem({ alive: true, code: null, signal: null })).toBeNull();
+    expect(launchProblem({ alive: false, code: 0, signal: null })).toBeNull();
+    expect(launchProblem({ alive: false, code: null, signal: "SIGKILL" })).toContain("SIGKILL");
+    expect(launchProblem({ alive: false, code: 134, signal: null })).toContain("134");
   });
 
   test("the Windows package stages no local bundle, because Windows offers no local feature", () => {
@@ -424,6 +468,31 @@ describe("desktop release workflow", () => {
       const dry = step.if?.includes("dry_run == 'true'") ?? false;
       expect(step.env?.SUBKIT_DESKTOP_UPDATES).toBe(dry ? "0" : "1");
     }
+  });
+
+  test("the macOS app is verified and launched after packaging, signed or not", () => {
+    const launch = jobs.macos?.steps.find(
+      (step) => step.name === "Verify the signature and launch the app",
+    );
+    expect(launch?.if).toBeUndefined();
+    expect(launch?.run).toContain("codesign --verify --deep --strict --verbose=2");
+    expect(launch?.run).toContain('"$app/Contents/MacOS/SubKit" "--user-data-dir=$profile"');
+    const names = jobs.macos?.steps.map((step) => step.name ?? "") ?? [];
+    expect(names.indexOf("Verify the signature and launch the app")).toBeGreaterThan(
+      names.indexOf("Build unsigned dry run"),
+    );
+    const dry = steps.find(
+      (step) => step.name === "Build unsigned dry run" && step.run?.includes("--mac"),
+    );
+    expect(dry?.run).toContain("-c.mac.identity=- -c.mac.hardenedRuntime=false");
+  });
+
+  test("a busy DMG mount is retried before it is detached by force", () => {
+    const verify = jobs.macos?.steps.find(
+      (step) => step.name === "Verify signature, Gatekeeper and notarization ticket",
+    );
+    expect(verify?.run).toContain('if hdiutil detach "$mount"; then detached=true; break; fi');
+    expect(verify?.run).toContain('[ "$detached" = true ] || hdiutil detach -force "$mount"');
   });
 
   test("every package build keeps the workspace dependencies out of the app", () => {

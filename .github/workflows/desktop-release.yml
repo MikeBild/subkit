@@ -370,7 +370,7 @@ jobs:
           SUBKIT_DESKTOP_UPDATES: "0"
         run: |
           set -euo pipefail
-          bun run package --prebuilt --mac --publish never -c.mac.notarize=false -c.npmRebuild=true "-c.beforeBuild=$RUNNER_TEMP/before-build.cjs"
+          bun run package --prebuilt --mac --publish never -c.mac.notarize=false -c.npmRebuild=true "-c.beforeBuild=$RUNNER_TEMP/before-build.cjs" -c.mac.identity=- -c.mac.hardenedRuntime=false
 
       - name: Check that the app carries the engine and PostgreSQL for local mode
         working-directory: apps/desktop
@@ -388,6 +388,28 @@ jobs:
           grep -Eq "^agent-desktop [0-9.]+ \(Apache-2.0\)$" "$resources/THIRD_PARTY_NOTICES.txt"
           "$resources/local/postgres/bin/postgres" --version
           "$resources/local/postgres/bin/initdb" --version
+
+      - name: Verify the signature and launch the app
+        working-directory: apps/desktop
+        run: |
+          set -euo pipefail
+          app=release/mac-arm64/SubKit.app
+          codesign --verify --deep --strict --verbose=2 "$app"
+          profile=$(mktemp -d)
+          "$app/Contents/MacOS/SubKit" "--user-data-dir=$profile" > "$RUNNER_TEMP/launch.log" 2>&1 &
+          pid=$!
+          for _ in $(seq 1 10); do
+            kill -0 "$pid" 2>/dev/null || break
+            sleep 1
+          done
+          if kill -0 "$pid" 2>/dev/null; then
+            kill "$pid"
+            wait "$pid" || true
+          else
+            status=0
+            wait "$pid" || status=$?
+            [ "$status" -eq 0 ] || { cat "$RUNNER_TEMP/launch.log" >&2; echo "::error::$app exited with $status on launch" >&2; exit 1; }
+          fi
 
       - name: Verify signature, Gatekeeper and notarization ticket
         if: ${{ needs.resolve.outputs.dry_run != 'true' }}
@@ -439,7 +461,12 @@ jobs:
             mount=$(mktemp -d)
             hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mount"
             verify_app "$mount/SubKit.app"
-            hdiutil detach "$mount"
+            detached=false
+            for _ in 1 2 3 4 5; do
+              if hdiutil detach "$mount"; then detached=true; break; fi
+              sleep 3
+            done
+            [ "$detached" = true ] || hdiutil detach -force "$mount"
           done
 
       - name: Stage artifacts
