@@ -101,7 +101,7 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
   not_available_on_surface:
     "this tool exists in the catalog but cannot be invoked from the current surface — for draft_write tools (save_workflow_draft, dry_run_workflow), the operator must drive the call from a chat conversation, not a headless MCP session",
   principal_required:
-    "this tool requires an authenticated principal on the ToolContext — re-issue the call from the HTTP / MCP / sk-cli surface so the auth resolution threads through, instead of invoking the tool directly in-process",
+    "this tool requires an authenticated principal on the ToolContext — re-issue the call from the HTTP / MCP / subkit-cli surface so the auth resolution threads through, instead of invoking the tool directly in-process",
   wrong_reauth_flow:
     "this connector does NOT use a browser authorization-code flow — it is Cognito USER_PASSWORD_AUTH or a client-credentials (M2M) grant, which have no sign-in page. Do not call authenticate_oauth. Call request_connector_reauth instead: it re-collects the credential (email + password, or the M2M secret) in chat and rotates it in place",
   transform_authoring_requires_inspect:

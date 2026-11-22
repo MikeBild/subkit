@@ -192,9 +192,13 @@ export async function changeEvents(tenant_id: string, type: string) {
 }
 
 export async function ownedTask(w: Workspace, input = taskInput()): Promise<Task> {
-  return await createTask({ tenant_id: w.tenant_id, principal: w.owner, input }, ctx.db, {
-    now: () => NOW,
-  });
+  return await createTask(
+    { locale: "de", tenant_id: w.tenant_id, principal: w.owner, input },
+    ctx.db,
+    {
+      now: () => NOW,
+    },
+  );
 }
 
 export async function started(

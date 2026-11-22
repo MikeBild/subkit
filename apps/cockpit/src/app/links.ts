@@ -152,6 +152,14 @@ export function conversationHref(id: string): string {
   return record("chat", id);
 }
 
+export function chatMessageAnchor(messageId: string): string {
+  return `message-${messageId}`;
+}
+
+export function conversationMessageHref(id: string, messageId: string): string {
+  return `${conversationHref(id)}#${encodeURIComponent(chatMessageAnchor(messageId))}`;
+}
+
 export function docsHref(slug?: string | null, anchor?: string | null): string {
   const path = slug ? record("docs", slug) : "/docs";
   return anchor ? `${path}#${encodeURIComponent(anchor)}` : path;

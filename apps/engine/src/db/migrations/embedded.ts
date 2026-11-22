@@ -18,6 +18,10 @@
 
 import { createHash } from "node:crypto";
 import sql0000BaselineV2 from "./0000_baseline_v2.sql" with { type: "text" };
+import sql0001WorkspaceLanguage from "./0001_workspace_language.sql" with { type: "text" };
+import sql0002ConnectionStartOwner from "./0002_connection_start_owner.sql" with { type: "text" };
+import sql0003TaskSourceMessage from "./0003_task_source_message.sql" with { type: "text" };
+import sql0004IntakeAnonymousCollector from "./0004_intake_anonymous_collector.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -43,6 +47,10 @@ export interface EmbeddedMigration {
 
 const SQL_BY_TAG: Record<string, string> = {
   "0000_baseline_v2": sql0000BaselineV2,
+  "0001_workspace_language": sql0001WorkspaceLanguage,
+  "0002_connection_start_owner": sql0002ConnectionStartOwner,
+  "0003_task_source_message": sql0003TaskSourceMessage,
+  "0004_intake_anonymous_collector": sql0004IntakeAnonymousCollector,
 };
 
 const journal = journalMeta as unknown as Journal;

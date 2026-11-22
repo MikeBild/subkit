@@ -227,7 +227,7 @@ class RecordingGoogleFallback {
 }
 
 const FALLBACK_TEXT =
-  "This space isn't connected to sk yet. Ask an admin to install the sk app here to start using it.";
+  "This space isn't connected to subkit yet. Ask an admin to install the subkit app here to start using it.";
 
 let googleFallback: RecordingGoogleFallback;
 

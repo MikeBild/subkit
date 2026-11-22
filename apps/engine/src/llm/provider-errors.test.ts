@@ -1,13 +1,55 @@
 import { describe, expect, it } from "bun:test";
+import { APICallError, RetryError } from "ai";
 import { LlmProviderError } from "./errors.ts";
 import {
   buildProviderErrorDetails,
   classifyProviderError,
   isFallbackEligible,
   shouldFallBack,
+  toLlmProviderError,
 } from "./provider-errors.ts";
 
+function providerCallError(statusCode: number, message: string): APICallError {
+  return new APICallError({
+    message,
+    url: "https://provider.example.com/v1/messages",
+    requestBodyValues: {},
+    statusCode,
+    isRetryable: false,
+  });
+}
+
 describe("provider-errors", () => {
+  it("a 401 or 403 during a run means the key was rejected, whatever the text says", () => {
+    for (const status of [401, 403]) {
+      for (const message of [
+        "invalid x-api-key",
+        "insufficient_quota: check your plan and billing details",
+        "rate limit reached for requests",
+        "Service temporarily unavailable",
+      ]) {
+        const err = providerCallError(status, message);
+        expect(classifyProviderError(err)).toBe("key_rejected");
+        expect(isFallbackEligible(err)).toBe(false);
+        expect(toLlmProviderError(err).kind).toBe("key_rejected");
+      }
+    }
+  });
+
+  it("a rejected key wrapped by the SDK retry is still recognized by its status", () => {
+    const err = new RetryError({
+      message: "Failed after 3 attempts",
+      reason: "maxRetriesExceeded",
+      errors: [providerCallError(401, "Unauthorized")],
+    });
+    expect(classifyProviderError(err)).toBe("key_rejected");
+  });
+
+  it("a key-like word without a 401 or 403 is not a rejected key", () => {
+    expect(classifyProviderError({ message: "invalid api key" })).toBe("other");
+    expect(classifyProviderError(providerCallError(400, "Unauthorized model"))).toBe("other");
+  });
+
   it("classifies provider usage-limit wording as quota_exhausted", () => {
     expect(
       classifyProviderError({

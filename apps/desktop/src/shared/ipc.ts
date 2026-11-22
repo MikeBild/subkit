@@ -13,6 +13,7 @@ import type { PermissionKey } from "./local/permission-model.ts";
 import type { PermissionView } from "./local/permission-port.ts";
 import type { DataFolderRefusal } from "./local/supervisor-model.ts";
 import type { Onboarding } from "./onboarding.ts";
+import type { PlatformCapabilities } from "./platform-capabilities.ts";
 import type { QuietHours } from "./quiet-hours.ts";
 import type { AddressProblem } from "./server-address.ts";
 import type { AuthFailure, ExchangeFailure } from "./server-contract.ts";
@@ -193,6 +194,7 @@ export interface ConnectState {
   update: UpdateState;
   permissions: PermissionView;
   local: LocalView;
+  platform: PlatformCapabilities;
 }
 
 export interface SettingsPatch {
@@ -251,7 +253,7 @@ export interface ConnectBridge {
   answerNotifications(allow: boolean): Promise<void>;
   answerDiagnostics(share: boolean): Promise<void>;
   checkInvite(link: string): Promise<InviteCheck>;
-  joinInvite(link: string): Promise<void>;
+  joinInvite(link: string): Promise<CheckResult | null>;
   onState(listener: (state: ConnectState) => void): void;
 }
 

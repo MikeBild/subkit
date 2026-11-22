@@ -29,7 +29,7 @@ let configDir: string;
 beforeAll(async () => {
   testEnv.MASTER_KEY = "44".repeat(32);
   tdb = await createTestDb("runtime-config-lease-wait");
-  configDir = mkdtempSync(join(tmpdir(), "sk-lease-wait-"));
+  configDir = mkdtempSync(join(tmpdir(), "subkit-lease-wait-"));
   _resetConfigForTests();
   await loadConfig({
     env: { DATABASE_URL: tdb.url, NODE_ENV: "test" },

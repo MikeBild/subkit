@@ -38,6 +38,24 @@ export function useTasks(q: string, enabled: boolean) {
   });
 }
 
+export function useConversationTasks(conversationId: string | null, enabled: boolean) {
+  const live = useLiveQueryOptions();
+  return useQuery({
+    queryKey: taskKeys.fromConversation(conversationId ?? ""),
+    queryFn: () =>
+      apiCall("get", "/v1/tasks", {
+        query: {
+          source_conversation_id: conversationId ?? undefined,
+          sort: "created_at",
+          order: "asc",
+          limit: TASK_LIST_PAGE,
+        },
+      }),
+    enabled: enabled && Boolean(conversationId),
+    ...live,
+  });
+}
+
 export function useTask(id: string, enabled: boolean) {
   const live = useLiveQueryOptions();
   return useQuery({

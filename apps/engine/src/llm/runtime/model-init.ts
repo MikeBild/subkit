@@ -251,7 +251,7 @@ export function missingModelError(provider: DirectProviderKind): ProviderMisconf
   const setting = PROVIDER_MODEL_SETTING[provider];
   return new ProviderMisconfiguredError(
     provider,
-    `no model or deployment is configured. Set llm.model or ${setting} in the Cockpit, settings API, or with \`sk settings configure\`.`,
+    `no model or deployment is configured. Set llm.model or ${setting} in the Cockpit, settings API, or with \`subkit settings configure\`.`,
     setting,
   );
 }
@@ -280,7 +280,7 @@ function requireEnv(name: string, provider: ProviderKind, tenantId?: string): st
   if (!value) {
     throw new ProviderMisconfiguredError(
       provider,
-      `${name} is not set. Configure it in the Cockpit, settings API, or with \`sk settings configure\`.`,
+      `${name} is not set. Configure it in the Cockpit, settings API, or with \`subkit settings configure\`.`,
       name,
     );
   }

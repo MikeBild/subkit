@@ -81,7 +81,7 @@ describe("vendorRecipeScanner", () => {
   it("ignores stdio entries (no url to validate)", () => {
     const text = block({
       mcpServers: {
-        subkit: { command: "sk", args: ["mcp"] },
+        subkit: { command: "subkit", args: ["mcp"] },
       },
     });
     expect(vendorRecipeScanner.scan(text, ctx)).toEqual([]);

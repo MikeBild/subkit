@@ -13,7 +13,7 @@ let configDir: string;
 
 beforeAll(async () => {
   testDb = await createTestDb("source_boot");
-  configDir = mkdtempSync(join(tmpdir(), "sk-source-boot-"));
+  configDir = mkdtempSync(join(tmpdir(), "subkit-source-boot-"));
 }, 120_000);
 
 afterAll(async () => {

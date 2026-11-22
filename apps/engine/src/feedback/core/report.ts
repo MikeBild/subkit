@@ -57,8 +57,11 @@ export function feedbackBody(input: {
   diagnostics: FeedbackDiagnostics | null;
   files: readonly StoredFeedbackFile[];
   redactions: number;
+  contact_email?: string | null;
 }): string {
   const sections = [input.message.trim()];
+  if (input.contact_email)
+    sections.push(["## Contact", `- Email: ${input.contact_email}`].join("\n"));
   sections.push(
     [
       "## Report",

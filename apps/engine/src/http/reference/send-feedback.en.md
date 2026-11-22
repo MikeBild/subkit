@@ -66,7 +66,10 @@ In SubKit Desktop the dialog also offers a **Window screenshot**. The browser an
 
 Password and secret fields are hidden in the picture. Anything shown openly in the window, such as a newly created API key, stays visible.
 
-When the app is not signed in, **Report a problem…** opens the **Diagnostics** dialog instead, with **Copy diagnostics** and **Save as file…**. The data contains the app version, operating system, server version and the last 10 errors. Add it to your message to the person who runs your server.
+When the app is not signed in, **Report a problem…** opens the **Diagnostics** dialog instead. The data contains the app version, operating system, server version and the last 10 errors.
+
+- If your server takes reports without sign-in, the dialog offers **Send to server**. The app then sends the diagnostics with its device ID, and you read “Thanks, your report arrived.”
+- Otherwise, for example on an older server, it offers **Copy diagnostics** and **Save as file…** only. Add the data to your message to the person who runs your server.
 
 ### Write a report while offline
 
@@ -80,7 +83,7 @@ If SubKit cannot reach the server, write the report anyway and select **Queue**.
 - **The title of the item is English.** It starts with “Bug report:”, “Idea:” or “Feedback:”, followed by the first line of your text.
 - **Two different markers.** In the German diagnostic report the Cockpit writes `[entfernt]`, the server `[removed]`, `[email]` and `[path]`.
 - **Five reports in ten minutes.** After that the dialog asks you to wait a few minutes.
-- **Only from the Cockpit.** No report can be sent with an API key or from the `sk` command line.
+- **No API key.** No report can be sent with an API key or from the `subkit` command line.
 
 ### If something does not work
 
@@ -98,3 +101,18 @@ If SubKit cannot reach the server, write the report anyway and select **Queue**.
 `POST /v1/feedback` accepts a report. The route only works with a browser session and needs no permission of its own. It answers `201` with the fields `id`, `intake_item_id` and `replayed`. `replayed` is `true` when the same `client_request_id` was filed before.
 
 Every field, limit and error code is listed in “Reference: desktop app, rules, schedules and problem reports”.
+
+### Without signing in
+
+On the sign-in page, **Report a problem** opens a short form: what happened, an email address for follow-up questions (optional) and a screenshot (optional, PNG or JPG of at most 2 MB). **Send report** files it without signing in.
+
+Behind the form and the button in SubKit Desktop is `POST /v1/feedback/anonymous`. The route needs no session and no key and takes the same fields, plus `device_id` from SubKit Desktop and an optional `contact_email`.
+
+- **Where it goes:** to the **Inbox** of the operator workspace, in the category `feedback`. The item names `anonymous` as its collector. Without an operator workspace the server answers `503 feedback_unavailable`.
+- **What is removed:** the same as for a report from the Cockpit.
+- **How many:** 3 reports in 10 minutes per address, 3 per desktop device and 60 for the whole server. After that the server answers `429` with `Retry-After`.
+- **How large:** at most 6 MB for the whole request. The limits for each file stay the same, so a larger request is refused with `413`.
+- **From another site:** a browser request from another site is refused with `403 csrf_rejected`.
+- **Retry:** a repeated `client_request_id` returns the stored report, but still counts against the limits.
+
+The service descriptor names the route as `clients.desktop.anonymous_feedback_path`.

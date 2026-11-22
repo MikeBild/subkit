@@ -31,7 +31,7 @@ function baseParams(meta: SubkitLlmTelemetryMetadata): AccountParams {
 }
 
 beforeAll(async () => {
-  directory = mkdtempSync(join(tmpdir(), "sk-cfg-account-test-"));
+  directory = mkdtempSync(join(tmpdir(), "subkit-cfg-account-test-"));
   await loadConfig({
     env: { DATABASE_URL: "postgres://placeholder/unit-test", NODE_ENV: "test" },
     configPathOverride: join(directory, "subkit.config.json"),

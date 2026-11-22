@@ -245,7 +245,7 @@ describe("hosted registration is completed on the welcome page", () => {
         client_name: "Onboarding fixture",
         grant_types: ["authorization_code", "refresh_token"],
         token_endpoint_auth_method: "none",
-        scope: "sk:login mcp:read",
+        scope: "subkit:login mcp:read",
       }),
     });
     expect(registration.status).toBe(201);
@@ -256,7 +256,7 @@ describe("hosted registration is completed on the welcome page", () => {
       response_type: "code",
       code_challenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
       code_challenge_method: "S256",
-      scope: "sk:login",
+      scope: "subkit:login",
       resource: `${ctx.baseUrl}/v1/identity/cli-session`,
       state: "cli-state",
     })}`;

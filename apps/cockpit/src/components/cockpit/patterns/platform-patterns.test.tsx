@@ -62,13 +62,13 @@ describe("DataTable", () => {
       ),
       groupingTabs: <span>Gruppierung</span>,
     });
-    expect(html).toContain('data-family-slot="list-filter-panel"');
+    expect(html).toContain('data-sk-slot="list-filter-panel"');
     expect(html).toContain("min-[1600px]:grid-cols-[280px_minmax(0,1fr)]");
     expect(html).toContain("min-[1600px]:pl-4");
     expect(html).toContain('data-slot="filter-panel"');
     expect(html).toContain('data-slot="filter-bar"');
     expect(html).toContain("Gruppierung");
-    expect(html.indexOf('data-family-slot="list-filter-panel"')).toBeLessThan(
+    expect(html.indexOf('data-sk-slot="list-filter-panel"')).toBeLessThan(
       html.indexOf("Gruppierung"),
     );
   });
@@ -91,7 +91,7 @@ describe("DataTable", () => {
         </>
       ),
     });
-    expect(html).toContain('data-family-slot="list-filter-panel"');
+    expect(html).toContain('data-sk-slot="list-filter-panel"');
     expect(html).toContain('data-slot="filter-panel"');
     expect(html).toContain("Weitere Aktion");
   });
@@ -157,20 +157,20 @@ describe("DataTable", () => {
 
   test("grouping tabs keep one spacing step above the table, empty states and cards", () => {
     const grouped = table({ groupingTabs: <span>Group choices</span> });
-    expect(grouped).toContain('<div class="shrink-0 pb-3" data-family-slot="list-grouping">');
-    const slot = grouped.indexOf('data-family-slot="list-grouping"');
+    expect(grouped).toContain('<div class="shrink-0 pb-3" data-sk-slot="list-grouping">');
+    const slot = grouped.indexOf('data-sk-slot="list-grouping"');
     expect(slot).toBeLessThan(grouped.indexOf("Group choices"));
     expect(grouped.indexOf("Group choices")).toBeLessThan(
       grouped.indexOf('data-testid="t-desktop"'),
     );
     const empty = table({ data: [], groupingTabs: <span>Group choices</span> });
-    expect(empty.indexOf('data-family-slot="list-grouping"')).toBeLessThan(empty.indexOf(">none<"));
-    expect(table()).not.toContain('data-family-slot="list-grouping"');
+    expect(empty.indexOf('data-sk-slot="list-grouping"')).toBeLessThan(empty.indexOf(">none<"));
+    expect(table()).not.toContain('data-sk-slot="list-grouping"');
   });
 
   test("has no pager and no visible record count", () => {
     const html = table();
-    expect(html).not.toContain('data-family-slot="pagination"');
+    expect(html).not.toContain('data-sk-slot="pagination"');
     expect(html).not.toContain("–");
     expect(html).toContain('data-testid="t-count"');
     expect(html).toContain("Ergebnisse: 2");
@@ -235,9 +235,9 @@ describe("DataTable", () => {
       />,
     );
     const card = html.slice(html.lastIndexOf("<div", html.indexOf('data-testid="r-mobile-row-0"')));
-    expect(card).toContain('data-family-slot="card-title"');
+    expect(card).toContain('data-sk-slot="card-title"');
     expect(card).toContain('data-testid="r-mobile-row-link-0"');
-    expect(card.match(/data-family-slot="card-fact"/g)).toHaveLength(2);
+    expect(card.match(/data-sk-slot="card-fact"/g)).toHaveLength(2);
     expect(card).toContain("Web API");
     expect(card).toContain("Started today");
     expect(card).not.toContain("12 KB");
@@ -252,15 +252,15 @@ describe("DataTable", () => {
     expect(html).toContain('data-testid="t-desktop"');
     expect(html).not.toContain('data-testid="t-mobile"');
     expect(html).not.toContain("@xl:block");
-    expect(html).not.toContain("data-family-collection-mobile-card");
+    expect(html).not.toContain("data-sk-collection-mobile-card");
     expect(html).not.toContain("responsive-cards");
   });
 
   test("a list without search, toolbar or column picker draws no toolbar strip, only the count", () => {
     const embedded = table({ collectionTier: "embedded" });
-    expect(embedded).not.toContain('data-family-slot="list-toolbar"');
+    expect(embedded).not.toContain('data-sk-slot="list-toolbar"');
     expect(embedded).toContain('data-testid="t-count"');
-    expect(table()).toContain('data-family-slot="list-toolbar"');
+    expect(table()).toContain('data-sk-slot="list-toolbar"');
   });
 });
 

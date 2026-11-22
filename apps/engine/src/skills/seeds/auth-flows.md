@@ -13,7 +13,7 @@ version: 3
 
 # Auth Flows
 
-sk supports a fixed catalog of first-class auth modes on the
+subkit supports a fixed catalog of first-class auth modes on the
 connector itself plus the **multi-step pattern** for everything else
 (any "exchange creds for a token first, then call the API" recipe).
 
@@ -100,7 +100,7 @@ it pre-fills the endpoint, headers, `grant_type`, and
 
 ## `aws_sigv4` — generic AWS request signing
 
-For AWS services without a first-class sk driver (AppSync IAM,
+For AWS services without a first-class subkit driver (AppSync IAM,
 DynamoDB, API Gateway IAM, EventBridge, SES, SNS, SQS, ...), use
 `auth_type: "aws_sigv4"`. The driver signs each outbound request with
 the connector's AWS credentials right before dispatch. No token caching
@@ -127,7 +127,7 @@ Built-in templates: `appsync-iam` (GraphQL), `aws-apigw-iam` (REST).
 
 ## The multi-step pattern (everything else)
 
-When the upstream needs a custom dance sk doesn't speak natively
+When the upstream needs a custom dance subkit doesn't speak natively
 (SAML-to-JWT exchanges or nonstandard bearer token endpoints), author it as **two workflow steps**: one to mint the
 token, one to use it. This is the standard pattern for every auth
 flow.

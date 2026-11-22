@@ -117,7 +117,7 @@ export function PreparedChanges({ canDecide }: { canDecide: boolean }) {
   const busy = approve.isPending || reject.isPending;
 
   return (
-    <div data-testid="prepared-changes" data-family-slot="waiting">
+    <div data-testid="prepared-changes" data-sk-slot="waiting">
       <Section
         label={t("prepared.title")}
         aside={

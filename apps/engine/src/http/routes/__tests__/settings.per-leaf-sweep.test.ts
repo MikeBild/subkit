@@ -46,7 +46,7 @@ function attachStdoutCapture(buf: CapturedLog[]): () => void {
 }
 
 beforeAll(async () => {
-  cfgDir = mkdtempSync(join(tmpdir(), "sk-cfg-sweep-"));
+  cfgDir = mkdtempSync(join(tmpdir(), "subkit-cfg-sweep-"));
   _resetConfigForTests();
   await loadConfig({
     env: { DATABASE_URL: "postgres://placeholder/sweep", NODE_ENV: "test" },

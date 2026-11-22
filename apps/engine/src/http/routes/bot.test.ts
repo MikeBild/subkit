@@ -36,7 +36,7 @@ describe("GET /bot", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/markdown");
     const body = await res.text();
-    expect(body).toContain("User-agent: sk-web-scraper");
+    expect(body).toContain("User-agent: subkit-web-scraper");
     expect(body).toContain("Disallow: /");
     expect(body).toContain("engine.example.test");
   });
@@ -44,6 +44,6 @@ describe("GET /bot", () => {
   test("answers a browser with HTML", async () => {
     const res = await get({ accept: "text/html" });
     expect(res.headers.get("content-type")).toContain("text/html");
-    expect(await res.text()).toContain("<h1>sk-web-scraper</h1>");
+    expect(await res.text()).toContain("<h1>subkit-web-scraper</h1>");
   });
 });

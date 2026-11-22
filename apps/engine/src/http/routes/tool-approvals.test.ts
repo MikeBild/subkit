@@ -28,7 +28,7 @@ describe("GET /v1/tool-approvals/decide?grant=…", () => {
       expect(response.status).toBe(200);
       expect(html).toContain(`<html lang="${locale}">`);
       expect(html).toContain('data-approval-product="subkit"');
-      expect(html).toContain("mcp-auth-ui-contract");
+      expect(html).toContain("<style>");
       expect(html).toContain("10");
       expect(html).toContain("UTC");
       expect(html).toContain(locale === "de" ? "Bindung" : "Binding");
@@ -105,7 +105,7 @@ describe("GET /v1/tool-approvals/decide?grant=…", () => {
 
     expect(html).not.toContain(SECRET_ARG_VALUE);
     expectPortalActors(html, "en");
-    expect(html).toContain('<h1 data-family-slot="auth-heading">Allow this action once?</h1>');
+    expect(html).toContain('<h1 data-sk-slot="auth-heading">Allow this action once?</h1>');
     expect(html).not.toContain("Allow POST to");
     const german = await fetch(approval_url, {
       headers: { cookie: browserCookie, "accept-language": "de" },
@@ -114,7 +114,7 @@ describe("GET /v1/tool-approvals/decide?grant=…", () => {
     expect(german.status).toBe(200);
     expectPortalActors(germanHtml, "de");
     expect(germanHtml).toContain(
-      '<h1 data-family-slot="auth-heading">Diese Aktion einmal erlauben?</h1>',
+      '<h1 data-sk-slot="auth-heading">Diese Aktion einmal erlauben?</h1>',
     );
     expect(germanHtml).not.toContain("POST an ledger.example.test");
 
@@ -156,8 +156,8 @@ describe("GET /v1/tool-approvals/decide?grant=…", () => {
       expectPortalActors(html, locale);
       expect(html).toContain(
         locale === "de"
-          ? '<h1 data-family-slot="auth-heading">POST an https://bound-ledger.example.test/entries einmal erlauben?</h1>'
-          : '<h1 data-family-slot="auth-heading">Allow POST to https://bound-ledger.example.test/entries once?</h1>',
+          ? '<h1 data-sk-slot="auth-heading">POST an https://bound-ledger.example.test/entries einmal erlauben?</h1>'
+          : '<h1 data-sk-slot="auth-heading">Allow POST to https://bound-ledger.example.test/entries once?</h1>',
       );
       expect(html).toContain("bound-ledger.example.test/entries");
       expect(html).not.toContain("caller-text");

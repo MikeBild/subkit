@@ -129,10 +129,3 @@ dmg:
       y: 190
       type: link
       path: /Applications
-linux:
-  icon: assets/icon.png
-  category: Office
-  executableName: subkit-desktop
-  target:
-    - AppImage
-    - deb

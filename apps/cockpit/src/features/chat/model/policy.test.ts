@@ -15,12 +15,10 @@ import {
   ranLine,
   ranWithoutAsking,
   rawRequest,
-  refusedApprovalReply,
   ruleName,
   scopeSentence,
   type ToolCallPolicy,
   targetLabel,
-  typedDecision,
 } from "./policy";
 
 const de = (key: TranslationKey, values?: Record<string, string | number>) =>
@@ -214,36 +212,6 @@ describe("the bound action", () => {
     expect(rawRequest("https://api.example/v1/reports")).toBe("https://api.example/v1/reports");
     expect(rawRequest("Team-Kalender")).toBeNull();
     expect(rawRequest(null)).toBeNull();
-  });
-});
-
-describe("a reply while a card is open", () => {
-  test("only a refused reply to an approval card offers to decline and rephrase", () => {
-    const blocked = (tool_name: string) => ({
-      code: "pending_elicitation_blocked",
-      details: { pending_elicitation: { id: "e1", tool_name } },
-    });
-    expect(refusedApprovalReply(blocked("ask_user_confirm"))).toBe("e1");
-    expect(refusedApprovalReply(blocked("ask_user_text"))).toBeNull();
-    expect(refusedApprovalReply({ code: "provider_timeout", details: null })).toBeNull();
-    expect(de("chat.policy.declineAndRephrase")).toBe("Ablehnen und neu formulieren");
-  });
-});
-
-describe("a typed yes or no while an approval card is open", () => {
-  test("is recognised as what was meant and never as a decision", () => {
-    for (const text of ["ja", "Ja!", " OK ", "yes.", "Einmal erlauben", "mach das"])
-      expect(typedDecision(text)).toBe("approve");
-    for (const text of ["nein", "Nein.", "no", "nö", "Ablehnen", "lieber nicht"])
-      expect(typedDecision(text)).toBe("decline");
-    for (const text of ["", null, "ja, aber an eine andere Adresse", "jein", "sende an Anna"])
-      expect(typedDecision(text)).toBeNull();
-    expect(de("chat.policy.meant", { choice: de("chat.approval.approve") })).toBe(
-      "Meintest du: Einmal erlauben?",
-    );
-    expect(de("chat.policy.meant", { choice: de("chat.approval.decline") })).toBe(
-      "Meintest du: Ablehnen?",
-    );
   });
 });
 

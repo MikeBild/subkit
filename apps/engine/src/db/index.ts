@@ -226,7 +226,7 @@ export type {
 export { notificationChannels } from "./schema/notifications.ts";
 export type { TenantBootstrapPayload } from "./seed.ts";
 export { printIssuedKey, seedAtBoot, seedTenantBootstrap } from "./seed.ts";
-export type { SharedRateLimiter, WindowLimit } from "./shared-rate-limit.ts";
+export type { RateLimitVerdict, SharedRateLimiter, WindowLimit } from "./shared-rate-limit.ts";
 export { createSharedRateLimiter } from "./shared-rate-limit.ts";
 export type { TaskRunConversationFilter } from "./task-run-conversations.ts";
 export {

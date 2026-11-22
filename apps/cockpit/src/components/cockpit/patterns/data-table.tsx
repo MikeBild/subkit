@@ -670,8 +670,8 @@ export function DataTable<TData extends RowData>({
     <span
       className="sr-only"
       aria-live="polite"
-      data-family-slot="collection-meta"
-      data-family-result-count
+      data-sk-slot="collection-meta"
+      data-sk-result-count
       data-testid={`${collectionId}-count`}
     >
       {showSkeleton ? "" : `${recordsLabel ?? t("platform.results")}: ${resultCount}`}
@@ -732,24 +732,24 @@ export function DataTable<TData extends RowData>({
           "min-[1600px]:grid min-[1600px]:grid-cols-[280px_minmax(0,1fr)] min-[1600px]:grid-rows-[minmax(0,1fr)] min-[1920px]:grid-cols-[320px_minmax(0,1fr)]",
       )}
       data-testid={`${collectionId}`}
-      data-family-slot="list-surface"
-      data-family-list-kind="table"
-      data-family-collection-id={collectionId}
-      data-family-collection-tier={collectionTier}
-      data-family-collection-capability={
+      data-sk-slot="list-surface"
+      data-sk-list-kind="table"
+      data-sk-collection-id={collectionId}
+      data-sk-collection-tier={collectionTier}
+      data-sk-collection-capability={
         collectionTier === "primary"
           ? "search relevant-filters sort column-visibility result-count pagination url-state responsive-cards loading-state empty-state error-state"
           : cards
             ? "sort responsive-cards loading-state empty-state error-state"
             : "sort loading-state empty-state error-state"
       }
-      data-family-state={pending ? "loading" : error ? "error" : empty ? "empty" : "ready"}
+      data-sk-state={pending ? "loading" : error ? "error" : empty ? "empty" : "ready"}
       aria-busy={pending ? true : undefined}
     >
       {activeFilterPanel ? (
         <aside
           className="hidden min-h-0 overflow-y-auto border-r bg-muted/10 min-[1600px]:block min-[1600px]:h-full"
-          data-family-slot="list-filter-panel"
+          data-sk-slot="list-filter-panel"
           aria-label={t("common.filters")}
         >
           <FilterBarLayoutContext.Provider value={{ presentation: "panel" }}>
@@ -764,7 +764,7 @@ export function DataTable<TData extends RowData>({
         )}
       >
         {toolbarShown ? (
-          <div className="flex flex-wrap items-center gap-2 pb-2" data-family-slot="list-toolbar">
+          <div className="flex flex-wrap items-center gap-2 pb-2" data-sk-slot="list-toolbar">
             {usesDefaultSearch && (
               <SearchInput
                 id={searchInputId}
@@ -815,12 +815,12 @@ export function DataTable<TData extends RowData>({
           resultCountLabel
         )}
         {groupingTabs ? (
-          <div className="shrink-0 pb-3" data-family-slot="list-grouping">
+          <div className="shrink-0 pb-3" data-sk-slot="list-grouping">
             {groupingTabs}
           </div>
         ) : null}
         {select?.bar ? (
-          <div className="shrink-0 pb-2" data-family-slot="list-bulk-bar">
+          <div className="shrink-0 pb-2" data-sk-slot="list-bulk-bar">
             {select.bar}
           </div>
         ) : null}
@@ -903,8 +903,8 @@ export function DataTable<TData extends RowData>({
               ))}
             </TableHeader>
             <TableBody
-              data-family-slot={showSkeleton ? "data-state" : undefined}
-              data-family-state={showSkeleton ? "loading" : undefined}
+              data-sk-slot={showSkeleton ? "data-state" : undefined}
+              data-sk-state={showSkeleton ? "loading" : undefined}
               data-loading-phase={showSkeleton ? phase : undefined}
               aria-busy={showSkeleton ? true : undefined}
               className={arrivedContent ? "sk-fade-in" : undefined}
@@ -963,8 +963,8 @@ export function DataTable<TData extends RowData>({
                       ) : null}
                       {groupCollapsed(row.original) ? null : (
                         <TableRow
-                          data-family-slot={leaving ? undefined : "list-row"}
-                          data-family-collection-row={leaving ? undefined : "true"}
+                          data-sk-slot={leaving ? undefined : "list-row"}
+                          data-sk-collection-row={leaving ? undefined : "true"}
                           aria-hidden={leaving ? true : undefined}
                           className={cn(
                             "h-11",
@@ -1046,8 +1046,8 @@ export function DataTable<TData extends RowData>({
             {showSkeleton ? (
               <div
                 className={cn("grid divide-y", phase === "reserve" ? "invisible" : "sk-fade-in")}
-                data-family-slot="data-state"
-                data-family-state="loading"
+                data-sk-slot="data-state"
+                data-sk-state="loading"
                 aria-busy="true"
               >
                 {Array.from({ length: skeletonRows }, (_, cardIndex) => (
@@ -1116,9 +1116,9 @@ export function DataTable<TData extends RowData>({
                           }
                           aria-hidden={leaving ? true : undefined}
                           data-testid={leaving ? undefined : `${collectionId}-mobile-row-${index}`}
-                          data-family-slot={leaving ? undefined : "list-row"}
-                          data-family-collection-row={leaving ? undefined : "true"}
-                          data-family-collection-mobile-card="true"
+                          data-sk-slot={leaving ? undefined : "list-row"}
+                          data-sk-collection-row={leaving ? undefined : "true"}
+                          data-sk-collection-mobile-card="true"
                           data-action-scope="row"
                         >
                           {title ? (
@@ -1127,7 +1127,7 @@ export function DataTable<TData extends RowData>({
                                 "col-start-1 min-w-0 break-words font-medium",
                                 select && "flex items-start gap-2.5",
                               )}
-                              data-family-slot="card-title"
+                              data-sk-slot="card-title"
                             >
                               {select ? (
                                 <span className="flex h-5 shrink-0 items-center">
@@ -1155,7 +1155,7 @@ export function DataTable<TData extends RowData>({
                             <span
                               key={cell.id}
                               className="col-start-1 min-w-0 break-words text-[13px] leading-5 text-muted-foreground"
-                              data-family-slot="card-fact"
+                              data-sk-slot="card-fact"
                             >
                               {cell.column.columnDef.meta?.cardLabel &&
                               typeof cell.column.columnDef.header === "string"

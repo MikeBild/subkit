@@ -6,7 +6,7 @@ import { getHealthState } from "../health-state.ts";
 import type { AppEnv } from "../openapi.ts";
 import { OPENAPI_INFO } from "../openapi.ts";
 
-const HealthResponse = z
+export const HealthResponse = z
   .object({
     status: z.literal("ok"),
     service: z.literal("subkit"),
@@ -36,7 +36,7 @@ const route = createRoute({
   },
 });
 
-const ReadyResponse = z
+export const ReadyResponse = z
   .object({
     status: z.enum(["ready", "not_ready"]),
     service: z.literal("subkit"),

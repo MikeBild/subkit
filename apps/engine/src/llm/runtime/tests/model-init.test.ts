@@ -135,7 +135,7 @@ describe("initializeModel", () => {
 
   it("pins chat completions for an OpenAI-compatible custom base URL", async () => {
     testEnv.LLM_PROVIDER = "openai";
-    testEnv.OPENAI_API_KEY = "sk-compat-test";
+    testEnv.OPENAI_API_KEY = "subkit-compat-test";
     testEnv.OPENAI_MODEL = "qwen-3-32b";
     testEnv.OPENAI_BASE_URL = "https://llm.internal.example/v1";
     const r = await initializeModel();
@@ -189,7 +189,7 @@ describe("initializeModel", () => {
   });
 
   it("uses tenant-effective provider selection and credentials", async () => {
-    configDir = mkdtempSync(join(tmpdir(), "sk-model-init-tenant-"));
+    configDir = mkdtempSync(join(tmpdir(), "subkit-model-init-tenant-"));
     await loadConfig({
       env: { DATABASE_URL: "postgres://x", NODE_ENV: "test" },
       configPathOverride: join(configDir, "subkit.config.json"),
@@ -209,7 +209,7 @@ describe("initializeModel", () => {
   });
 
   it("native web search follows the tenant-effective setting", async () => {
-    configDir = mkdtempSync(join(tmpdir(), "sk-model-search-policy-"));
+    configDir = mkdtempSync(join(tmpdir(), "subkit-model-search-policy-"));
     await loadConfig({
       env: { DATABASE_URL: "postgres://x", NODE_ENV: "test" },
       configPathOverride: join(configDir, "subkit.config.json"),
@@ -225,7 +225,7 @@ describe("initializeModel", () => {
   });
 
   it("builds web search with tenant credentials without borrowing another tenant's key", async () => {
-    configDir = mkdtempSync(join(tmpdir(), "sk-web-search-tenant-"));
+    configDir = mkdtempSync(join(tmpdir(), "subkit-web-search-tenant-"));
     await loadConfig({
       env: { DATABASE_URL: "postgres://x", NODE_ENV: "test" },
       configPathOverride: join(configDir, "subkit.config.json"),
@@ -247,7 +247,7 @@ describe("initializeModel", () => {
   it("does not fall back to legacy env vars after config has explicitly cleared a leaf", async () => {
     testEnv.LLM_PROVIDER = "anthropic";
     testEnv.ANTHROPIC_API_KEY = "env-ant-key";
-    configDir = mkdtempSync(join(tmpdir(), "sk-model-init-cleared-"));
+    configDir = mkdtempSync(join(tmpdir(), "subkit-model-init-cleared-"));
     await loadConfig({
       env: {
         DATABASE_URL: "postgres://x",

@@ -135,7 +135,7 @@ describe("GET /", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/markdown");
     const body = await res.text();
-    expect(body).toContain("# sk");
+    expect(body).toContain("# subkit");
     expect(body).toMatch(/\(https?:\/\/[^)]+\/llms\.txt\)/);
   });
 
@@ -151,7 +151,7 @@ describe("GET /", () => {
     expect(body).toContain('<html lang="en">');
     expect(body).toContain("<title>SubKit — ");
     expect(body).toContain("<h1>SubKit</h1>");
-    expect(body).not.toMatch(/<title>(sk|subkit)\b/);
+    expect(body).not.toMatch(/<title>(subkit|subkit)\b/);
   });
 
   test("both renderings list the same entries", async () => {
@@ -209,11 +209,11 @@ describe("the self-description set", () => {
       "[Use SubKit from a coding agent](http://127.0.0.1/llms/coding-agents.md)",
     );
     const page = await (await get("/llms/coding-agents.md")).text();
-    expect(page).toContain("sk agent init --domains <category>");
+    expect(page).toContain("subkit agent init --domains <category>");
     expect(page).toContain("`--domains <category>[,<category>]`");
-    expect(page).toContain("In the repository, run `sk status`.");
-    expect(page).toContain("Run `sk agent briefing --json`.");
-    expect(page).toContain("Without `.sk/agent.json`, the hooks match the folder name");
+    expect(page).toContain("In the repository, run `subkit status`.");
+    expect(page).toContain("Run `subkit agent briefing --json`.");
+    expect(page).toContain("Without `.subkit/agent.json`, the hooks match the folder name");
     expect(page).toContain("check that the SubKit hooks are active");
     expect(page).toContain("Trust new or changed SubKit hooks.");
     expect(page).toContain("`/hooks` in Codex shows the SubKit hooks as disabled");

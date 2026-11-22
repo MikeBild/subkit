@@ -15,7 +15,7 @@ describe("Audit details", () => {
         api_key_id: "key-a",
         credential_origin: null,
         origin_source: "api",
-        user_agent: "sk-cli/1.0",
+        user_agent: "subkit-cli/1.0",
       } as TimelineEntry),
     ).toBe(true);
     expect(
@@ -33,7 +33,7 @@ describe("Audit details", () => {
         api_key_id: "key-a",
         credential_origin: null,
         origin_source: "mcp",
-        user_agent: "sk-cli/1.0",
+        user_agent: "subkit-cli/1.0",
       } as TimelineEntry),
     ).toBe(false);
     expect(translate("de", "audit.timeline.clientApplication.unverifiedApiKey")).toContain(

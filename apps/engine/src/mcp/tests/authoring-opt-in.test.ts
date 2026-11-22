@@ -39,7 +39,7 @@ describe("a credential without authoring", () => {
 
     expect(result.isError).toBe(true);
     const text = (result.content ?? []).map((c) => c.text ?? "").join(" ");
-    expect(text).toContain("sk");
+    expect(text).toContain("subkit");
     expect(text).toContain(MCP_AUTHORING_SCOPE);
     await client.close();
   }, 60_000);
@@ -69,7 +69,7 @@ describe("the connect instructions match what the credential can do", () => {
     const instructions = client.getInstructions() ?? "";
 
     expect(instructions).not.toContain("Start with `conversation_start`");
-    expect(instructions).toContain("sk workflows --help");
+    expect(instructions).toContain("subkit workflows --help");
     expect(instructions).toContain("find_workflow");
     await client.close();
   }, 60_000);

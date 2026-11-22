@@ -20,7 +20,7 @@ import { StepFooter } from "@ui/molecules/step-footer";
 import { Tabs, TabsList, TabsTrigger } from "@ui/molecules/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@ui/molecules/toggle-group";
 import { ConfirmDialog } from "@ui/organisms/confirm-dialog";
-import { AppWindow, Cpu, Folder, Globe, ShieldCheck, Trash2 } from "lucide-react";
+import { AppWindow, Cpu, Folder, Globe, Laptop, ShieldCheck, Trash2 } from "lucide-react";
 import { useState } from "react";
 import {
   type AllowanceRow,
@@ -39,7 +39,35 @@ import type { Command } from "../../domain/index.ts";
 const ROW_ICON = { folder: Folder, website: Globe, app: AppWindow } as const;
 const TAB_ICON = { folders: Folder, websites: Globe, apps: AppWindow, keepOut: ShieldCheck };
 
-export function LocalCapabilities({ device, signedIn }: { device: string; signedIn: boolean }) {
+export function LocalCapabilities({
+  device,
+  signedIn,
+  supported,
+}: {
+  device: string;
+  signedIn: boolean;
+  supported: boolean;
+}) {
+  if (!supported) return <MacOnlyCapabilities />;
+  return <SupportedCapabilities device={device} signedIn={signedIn} />;
+}
+
+function MacOnlyCapabilities() {
+  const { t } = useSignIn();
+  return (
+    <div className="flex flex-col gap-4" data-testid="local-capabilities-mac-only">
+      <h1 className="text-2xl font-semibold">{t("local.title")}</h1>
+      <EmptyState
+        icon={Laptop}
+        title={t("local.macOnly.title")}
+        text={t("local.macOnly.body")}
+        testId="local-mac-only"
+      />
+    </div>
+  );
+}
+
+function SupportedCapabilities({ device, signedIn }: { device: string; signedIn: boolean }) {
   const { t, dispatch } = useSignIn();
   const local = useLocalCapabilities();
   const { state } = local;

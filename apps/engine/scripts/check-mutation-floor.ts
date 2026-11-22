@@ -52,8 +52,8 @@ if (threshold === null || thresholdErrors.length > 0) {
   );
   process.exit(1);
 }
-const reportPath = join(REPO, readReportPath(config, "reports/mutation/mutation.json"));
-const receiptPath = join(REPO, "reports/mutation/provenance.json");
+const reportPath = join(REPO, readReportPath(config, ".reports/mutation/mutation.json"));
+const receiptPath = join(REPO, ".reports/mutation/provenance.json");
 const equivalentsPath = join(REPO, "apps/engine/.mutation-equivalents.json");
 let report: unknown;
 try {
@@ -96,7 +96,7 @@ if (runConfigErrors.length > 0) {
 const candidates = [
   "apps/cockpit/src",
   "apps/engine/src",
-  "apps/sk/src",
+  "apps/subkit/src",
   "packages/shared/src",
   "packages/cli-core/src",
 ].flatMap((root) =>

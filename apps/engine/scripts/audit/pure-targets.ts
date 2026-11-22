@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import ts from "typescript";
 import { isCorePath } from "./rules.ts";
 
-export type PureTargetKind = "engine_core" | "cockpit" | "engine_explicit" | "sk" | "shared";
+export type PureTargetKind = "engine_core" | "cockpit" | "engine_explicit" | "subkit" | "shared";
 export type PureTargetRuntimeKind = "runtime" | "type_only";
 
 export interface PureTargetEntry {
@@ -80,7 +80,7 @@ function subsystemFor(path: string): string {
   if (path.startsWith("apps/engine/src/"))
     return path.slice("apps/engine/src/".length).split("/")[0]!;
   if (path.startsWith("apps/cockpit/src/")) return "cockpit";
-  if (path.startsWith("apps/sk/src/")) return "sk";
+  if (path.startsWith("apps/subkit/src/")) return "subkit";
   if (path.startsWith("packages/shared/src/")) return "shared";
   if (path.startsWith("packages/cli-core/src/")) return "cli-core";
   return "unknown";
@@ -114,8 +114,8 @@ const EXPLICIT_PURE_TARGETS: readonly ExplicitPureTarget[] = [
   { path: "packages/cli-core/src/message-parts.ts", target_kind: "shared" },
   { path: "packages/cli-core/src/turn-event-model.ts", target_kind: "shared" },
   { path: "packages/cli-core/src/errors-facts.ts", target_kind: "shared" },
-  { path: "apps/sk/src/commands/workflow-save-model.ts", target_kind: "sk" },
-  { path: "apps/sk/src/commands/connector-save-model.ts", target_kind: "sk" },
+  { path: "apps/subkit/src/commands/workflow-save-model.ts", target_kind: "subkit" },
+  { path: "apps/subkit/src/commands/connector-save-model.ts", target_kind: "subkit" },
   { path: "apps/cockpit/src/lib/core/identifier.ts", target_kind: "cockpit" },
   {
     path: "apps/cockpit/src/features/grants/model/automation-presentation.ts",
@@ -131,8 +131,8 @@ const EXPLICIT_PURE_TARGETS: readonly ExplicitPureTarget[] = [
     target_kind: "cockpit",
   },
   { path: "apps/engine/src/workflows/draft-projection.ts", target_kind: "engine_explicit" },
-  { path: "apps/sk/src/domain/agent/agent-file.ts", target_kind: "sk" },
-  { path: "apps/sk/src/commands/workflow-file-model.ts", target_kind: "sk" },
+  { path: "apps/subkit/src/domain/agent/agent-file.ts", target_kind: "subkit" },
+  { path: "apps/subkit/src/commands/workflow-file-model.ts", target_kind: "subkit" },
   { path: "packages/cli-core/src/errors-classification.ts", target_kind: "shared" },
   { path: "packages/cli-core/src/format-render.ts", target_kind: "shared" },
   { path: "packages/shared/src/approval-choice.ts", target_kind: "shared" },

@@ -15,7 +15,7 @@ export interface ArtifactFacts {
   size: number;
 }
 
-export const RELEASE_FEEDS = ["latest-mac.yml", "latest.yml", "latest-linux.yml"] as const;
+export const RELEASE_FEEDS = ["latest-mac.yml", "latest.yml"] as const;
 
 function record(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)

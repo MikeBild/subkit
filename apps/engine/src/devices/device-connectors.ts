@@ -1,18 +1,15 @@
+import type { WorkspaceLanguage } from "@shared/workspace-language.ts";
 import { and, eq, inArray, isNull, like } from "drizzle-orm";
 import { createConnector } from "../connectors/service.ts";
 import type { Executor } from "../db/client.ts";
 import { connectors, deviceRunners } from "../db/schema/index.ts";
 import { emitResourceChange } from "../pubsub/resource-changes.ts";
-import {
-  type DeviceConnectorLocale,
-  deviceConnectorSpecs,
-  missingDeviceConnectors,
-} from "./core/device-connectors.ts";
+import { deviceConnectorSpecs, missingDeviceConnectors } from "./core/device-connectors.ts";
 
 export async function ensureDeviceConnectors(
   db: Executor,
   device: { tenant_id: string; device_id: string },
-  locale: DeviceConnectorLocale,
+  locale: WorkspaceLanguage,
 ): Promise<number> {
   const [runner] = await db
     .select({

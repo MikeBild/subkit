@@ -62,7 +62,7 @@ function inspectFencedBlock(body: string): { kind: string; cmd: string } | null 
   for (const segment of segments) {
     const head = segment.split(/\s+/)[0]?.toLowerCase();
     if (!head) continue;
-    if (head === "sk" || head === "subkit") continue;
+    if (head === "subkit") continue;
     if (head === "curl" && /\/install(?:$|[\s/?])/.test(segment)) continue;
     if (head === "curl") return { kind: "chat_first.curl_in_chat", cmd: segment.slice(0, 200) };
     if (SHELL_HEAD_TOKENS.has(head)) {

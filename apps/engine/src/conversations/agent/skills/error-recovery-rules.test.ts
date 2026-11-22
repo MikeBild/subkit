@@ -7,10 +7,10 @@ describe("error-recovery skill body — hard-rule pins", () => {
     expect(errorRecoveryAndRbac).toMatch(/never suggest "Contact support"/i);
   });
 
-  test("forbids hallucinated CLI commands (sk diagnose / sk health / sk repair)", () => {
-    expect(errorRecoveryAndRbac).toMatch(/sk diagnose/);
-    expect(errorRecoveryAndRbac).toMatch(/sk health/);
-    expect(errorRecoveryAndRbac).toMatch(/sk repair/);
+  test("forbids hallucinated CLI commands (subkit diagnose / subkit health / subkit repair)", () => {
+    expect(errorRecoveryAndRbac).toMatch(/subkit diagnose/);
+    expect(errorRecoveryAndRbac).toMatch(/subkit health/);
+    expect(errorRecoveryAndRbac).toMatch(/subkit repair/);
   });
 
   test("references real recovery levers (docker logs subkit-engine-1, restart the engine container)", () => {
@@ -47,9 +47,9 @@ describe("error-recovery skill body — hard-rule pins", () => {
     expect(errorRecoveryAndRbac).toMatch(/Abandon and start over/);
   });
 
-  test("does NOT recommend 'sk status' as a real command (pinned out)", () => {
-    if (errorRecoveryAndRbac.includes("sk status")) {
-      expect(errorRecoveryAndRbac).toMatch(/sk status[`\s]+does NOT exist/);
+  test("does NOT recommend 'subkit status' as a real command (pinned out)", () => {
+    if (errorRecoveryAndRbac.includes("subkit status")) {
+      expect(errorRecoveryAndRbac).toMatch(/subkit status[`\s]+does NOT exist/);
     }
   });
 });

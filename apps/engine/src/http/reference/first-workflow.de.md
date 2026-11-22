@@ -17,7 +17,7 @@ Das funktioniert in SubKit Cloud und auf einer selbst betriebenen Engine gleich.
   - Cloud: `https://subkit-cloud.mikebild.dev`
   - Selbst betrieben: `https://<deine-engine>`. Die Adresse öffnet im Browser das Cockpit.
 - Das Recht, Workflows anzulegen und zu starten. Fehlt ein Button, bitte eine Administratorin oder einen Administrator darum.
-- Einen KI-Anbieter. Die Cloud stellt ihn bereit. Eine selbst betriebene Engine nutzt den Anbieter, den du bei `sk init` gewählt hast.
+- Einen KI-Anbieter. Die Cloud stellt ihn bereit. Eine selbst betriebene Engine nutzt den Anbieter, den du bei `subkit init` gewählt hast.
 
 ### Anmelden
 
@@ -134,15 +134,15 @@ Du siehst **Run gestartet**. Ist der Button nicht verfügbar, nennt der Hinweis 
 
 ### Dasselbe im Terminal
 
-Mit der Kommandozeile `sk` legst du Workflows mit `sk workflows create` an, änderst sie mit `sk workflows update` und planst sie mit `sk schedules create` ein.
+Mit der Kommandozeile `subkit` legst du Workflows mit `subkit workflows create` an, änderst sie mit `subkit workflows update` und planst sie mit `subkit schedules create` ein.
 Braucht ein Schritt einen Umbau vor der Freigabe, melden diese Befehle `automation: repair required`.
 Runs prüfst du so:
 
 ```bash
-sk executions list --limit 5
-sk executions steps <run-id>
-sk executions result <run-id>
+subkit executions list --limit 5
+subkit executions steps <run-id>
+subkit executions result <run-id>
 ```
 
-`sk workflows run <workflow-slug> --follow` startet einen weiteren Run und zeigt seine Schritte live.
-Mehr steht in „Die sk-CLI auf deinem Rechner verwenden“.
+`subkit workflows run <workflow-slug> --follow` startet einen weiteren Run und zeigt seine Schritte live.
+Mehr steht in „Die subkit-CLI auf deinem Rechner verwenden“.

@@ -19,7 +19,7 @@ let ctx: TestDb;
 let directory: string;
 
 beforeAll(async () => {
-  directory = mkdtempSync(join(tmpdir(), "sk-cfg-repair-acct-"));
+  directory = mkdtempSync(join(tmpdir(), "subkit-cfg-repair-acct-"));
   await loadConfig({
     env: { DATABASE_URL: "postgres://placeholder/unit-test", NODE_ENV: "test" },
     configPathOverride: join(directory, "subkit.config.json"),

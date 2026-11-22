@@ -24,14 +24,17 @@ function typeLine(text: string): ExpectStep[] {
   ];
 }
 
-describe("sk interactive REPL briefing", () => {
+describe("subkit interactive REPL briefing", () => {
   test.skipIf(SKIP_PTY)(
     "injects the folder briefing as conversation memory in a real PTY session",
     async () => {
       const cwd = mkdtempSync(path.join(tmpdir(), "billing-"));
       const debugFile = path.join(cwd, "debug.log");
-      mkdirSync(path.join(cwd, ".sk"), { recursive: true });
-      writeFileSync(path.join(cwd, ".sk", "agent.json"), JSON.stringify({ domains: ["subkit"] }));
+      mkdirSync(path.join(cwd, ".subkit"), { recursive: true });
+      writeFileSync(
+        path.join(cwd, ".subkit", "agent.json"),
+        JSON.stringify({ domains: ["subkit"] }),
+      );
       try {
         const result = await runPtyScenario(
           [
@@ -49,7 +52,7 @@ describe("sk interactive REPL briefing", () => {
             persona: env.personas.admin,
             engineUrl: env.baseUrl,
             cwd,
-            env: { SK_DEBUG: "1", SK_DEBUG_FILE: debugFile },
+            env: { SUBKIT_DEBUG: "1", SUBKIT_DEBUG_FILE: debugFile },
           },
         );
         expect(result.exitCode).toBe(0);

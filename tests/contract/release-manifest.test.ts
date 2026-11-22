@@ -61,12 +61,13 @@ describe("release manifest workflow", () => {
     const extractStep = steps[extract]?.run ?? "";
     for (const asset of [
       "engine_linux_x64",
-      "sk_darwin_arm64",
-      "sk_darwin_x64",
-      "sk_linux_arm64",
-      "sk_linux_x64",
-      "sk_windows_x64.exe",
+      "subkit-darwin-arm64",
+      "subkit-linux-arm64",
+      "subkit-linux-x64",
+      "subkit-windows-x64.exe",
       "docker-compose.yml",
+      "subkit.config.example.json",
+      "install.sh",
       "subkit-clipper.zip",
       "LICENSE",
       "THIRD_PARTY_NOTICES.txt",
@@ -75,10 +76,10 @@ describe("release manifest workflow", () => {
     }
     const checksumsStep = steps[checksums]?.run ?? "";
     expect(checksumsStep).toContain(
-      "sha256sum engine_* sk_* docker-compose.yml subkit-clipper.zip LICENSE THIRD_PARTY_NOTICES.txt quality-evidence.tar.gz quality-evidence.json > SHA256SUMS",
+      "sha256sum engine_* subkit-darwin-arm64 subkit-linux-arm64 subkit-linux-x64 subkit-windows-x64.exe docker-compose.yml subkit.config.example.json install.sh subkit-clipper.zip LICENSE THIRD_PARTY_NOTICES.txt quality-evidence.tar.gz quality-evidence.json > SHA256SUMS",
     );
     expect(steps[draft]?.run ?? "").toContain(
-      "assets/docker-compose.yml assets/subkit-clipper.zip assets/LICENSE assets/THIRD_PARTY_NOTICES.txt",
+      "assets/docker-compose.yml assets/subkit.config.example.json assets/install.sh assets/subkit-clipper.zip assets/LICENSE assets/THIRD_PARTY_NOTICES.txt",
     );
     expect(steps[draft]?.run ?? "").toContain(
       "assets/quality-evidence.tar.gz assets/quality-evidence.json",
@@ -93,5 +94,35 @@ describe("release manifest workflow", () => {
     expect(downloaded).toContain("release-quality-evidence.ts verify");
     expect(steps[publish]?.run ?? "").toContain('gh release edit "$TAG" --draft=false');
     expect(steps[latest]?.run ?? "").toContain('"$image:latest"');
+  });
+});
+
+describe("stable download links", () => {
+  const latest = "https://github.com/MikeBild/subkit/releases/latest/download";
+  const desktop = readFileSync(join(REPO, ".github/workflows/desktop-release.yml"), "utf8");
+  const read = (path: string) => readFileSync(join(REPO, path), "utf8");
+  const docs = (chapter: string) => [
+    `apps/engine/src/http/reference/${chapter}.en.md`,
+    `apps/engine/src/http/reference/${chapter}.de.md`,
+  ];
+  const links: [asset: string, files: string[]][] = [
+    ["subkit-desktop-mac-arm64.dmg", ["README.md", ...docs("subkit-desktop")]],
+    ["docker-compose.yml", ["README.md", ...docs("run-the-engine")]],
+    ["subkit.config.example.json", docs("run-the-engine")],
+    ["install.sh", docs("use-the-subkit-cli-on-your-machine")],
+    ["subkit-clipper.zip", docs("web-clipper")],
+  ];
+
+  test("every guide links the latest release asset of the same name", () => {
+    for (const [asset, files] of links)
+      for (const file of files) expect(read(file)).toContain(`${latest}/${asset}`);
+  });
+
+  test("every linked asset is published with that name in each release", () => {
+    const draft = steps[stepIndex("Create GitHub release draft")]?.run ?? "";
+    for (const [asset] of links) {
+      if (asset.startsWith("subkit-desktop-")) expect(desktop).toContain('sed "s/-$VERSION-/-/"');
+      else expect(draft).toContain(`assets/${asset}`);
+    }
   });
 });

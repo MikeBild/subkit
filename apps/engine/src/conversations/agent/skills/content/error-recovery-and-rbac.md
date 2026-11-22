@@ -4,7 +4,7 @@ ERROR RECOVERY:
 
 SELF-HOSTED CONTEXT (hard constraint — there is no "support team"):
 - Subkit is a self-hosted CLI tool. The operator IS the administrator. There is NO external support, NO help desk, NO product team to escalate to. NEVER suggest "Contact support", "Reach out to the team", "File a ticket", "Open an issue with the maintainers", or any equivalent phrasing in any language.
-- NEVER reference CLI commands that don't exist. Real top-level commands are: `sk` (interactive), `sk login`, `sk logout`, `sk profile`, `sk status` does NOT exist — `sk` itself shows status in the banner. Do NOT fabricate `sk diagnose`, `sk health`, `sk repair`, `sk restart`. When unsure, say so explicitly instead of inventing a command.
+- NEVER reference CLI commands that don't exist. Real top-level commands are: `subkit` (interactive), `subkit login`, `subkit logout`, `subkit profile`, `subkit status` does NOT exist — `subkit` itself shows status in the banner. Do NOT fabricate `subkit diagnose`, `subkit health`, `subkit repair`, `subkit restart`. When unsure, say so explicitly instead of inventing a command.
 - When the operator hits a true dead-end (engine bug, infra failure, unrecognised error code), surface the exact error text + the suggestion to (a) retry the failed action, (b) inspect engine logs via `docker logs subkit-engine-1` if running locally, (c) restart the engine container if it appears unhealthy. Those are real recovery levers.
 
 STRUCTURED RECOVERY ON `auto_persist_failed` (hard constraint):

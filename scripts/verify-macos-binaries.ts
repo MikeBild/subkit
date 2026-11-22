@@ -182,14 +182,14 @@ export function inspectMacosBinary(input: Uint8Array, expectedArch: MacosArch): 
 }
 
 export function expectedArchFromName(path: string): MacosArch {
-  const match = /_darwin_(arm64|x64)$/.exec(basename(path));
-  if (!match) throw new Error(`${path}: expected a name ending in _darwin_arm64 or _darwin_x64`);
+  const match = /-darwin-(arm64|x64)$/.exec(basename(path));
+  if (!match) throw new Error(`${path}: expected a name ending in -darwin-arm64 or -darwin-x64`);
   return match[1] as MacosArch;
 }
 
 function main(paths: string[]): number {
   if (paths.length === 0) {
-    console.error("usage: bun scripts/verify-macos-binaries.ts <sk_darwin_arm64> <sk_darwin_x64>");
+    console.error("usage: bun scripts/verify-macos-binaries.ts <subkit-darwin-arm64>...");
     return 2;
   }
   let failed = 0;

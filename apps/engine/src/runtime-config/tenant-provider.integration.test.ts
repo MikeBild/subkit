@@ -23,7 +23,7 @@ import {
 test("persisted tenant provider secrets survive runtime installation and rotation", async () => {
   await runWithTestEnv({ MASTER_KEY: "11".repeat(32) }, async () => {
     const db = await createTestDb("tenant-provider");
-    const directory = mkdtempSync(join(tmpdir(), "sk-tenant-provider-"));
+    const directory = mkdtempSync(join(tmpdir(), "subkit-tenant-provider-"));
     try {
       _resetConfigForTests();
       await loadConfig({

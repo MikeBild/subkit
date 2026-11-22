@@ -16,7 +16,7 @@ export async function ensureConfigLoaded(): Promise<void> {
     getConfig();
     return;
   } catch {}
-  const dir = mkdtempSync(join(tmpdir(), "sk-cfg-dry-run-transform-"));
+  const dir = mkdtempSync(join(tmpdir(), "subkit-cfg-dry-run-transform-"));
   await loadConfig({
     env: {
       DATABASE_URL: "postgres://placeholder/dry-run-transform",

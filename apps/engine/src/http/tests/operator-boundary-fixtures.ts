@@ -110,7 +110,7 @@ export function setupOperatorBoundary(): void {
     previousMasterKey = testEnv.MASTER_KEY;
     testEnv.MASTER_KEY = "44".repeat(32);
     testEnv.NODE_ENV = "test";
-    configDir = mkdtempSync(join(tmpdir(), "sk-operator-boundary-"));
+    configDir = mkdtempSync(join(tmpdir(), "subkit-operator-boundary-"));
     _resetConfigForTests();
     await loadConfig({
       env: { DATABASE_URL: "postgres://placeholder/operator-boundary", NODE_ENV: "test" },

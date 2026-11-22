@@ -46,7 +46,7 @@ const base = {
   incremental: false,
   thresholds: { high: 100, low: 100, break: 100 },
   reporters: ["clear-text", "json"],
-  jsonReporter: { fileName: "reports/mutation/mutation.json" },
+  jsonReporter: { fileName: ".reports/mutation/mutation.json" },
 };
 function input() {
   const config = buildMutationShardConfig({
@@ -195,14 +195,14 @@ describe("mutation shard union", () => {
   });
   test("rejects partial or noncanonical parent validation ticket bindings", () => {
     for (const binding of [
-      { parent_validation_ticket_path: "reports/mutation-ticket.json" },
+      { parent_validation_ticket_path: ".reports/mutation-ticket.json" },
       { parent_validation_ticket_sha256: token },
       {
         parent_validation_ticket_path: "../mutation-validation-ticket.json",
         parent_validation_ticket_sha256: token,
       },
       {
-        parent_validation_ticket_path: "reports/mutation-ticket.json",
+        parent_validation_ticket_path: ".reports/mutation-ticket.json",
         parent_validation_ticket_sha256: "bad",
       },
     ]) {

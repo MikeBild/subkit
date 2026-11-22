@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { getEventListeners } from "node:events";
 import type { DeviceStopReport } from "@shared/device/protocol.ts";
 import { abortableWait, createStopReporter } from "./stop-report.ts";
 
@@ -65,5 +66,11 @@ describe("abortableWait", () => {
     const waiting = abortableWait(60_000, controller.signal);
     controller.abort();
     expect(await waiting).toBeUndefined();
+  });
+
+  test("frees the abort listener of every wait that runs out", async () => {
+    const controller = new AbortController();
+    for (let wait = 0; wait < 50; wait += 1) await abortableWait(0, controller.signal);
+    expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
   });
 });

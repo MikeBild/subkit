@@ -51,7 +51,7 @@ beforeAll(async () => {
     .returning();
   if (!ordinary) throw new Error("ordinary tenant fixture missing");
   ordinaryTenant = ordinary.id;
-  configDir = mkdtempSync(join(tmpdir(), "sk-hosted-runtime-policy-"));
+  configDir = mkdtempSync(join(tmpdir(), "subkit-hosted-runtime-policy-"));
   _resetConfigForTests();
   await loadConfig({
     env: { DATABASE_URL: tdb.url, NODE_ENV: "test" },

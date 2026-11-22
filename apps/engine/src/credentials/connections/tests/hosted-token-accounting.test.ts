@@ -71,7 +71,6 @@ test("connection token histories charge all retained ciphertext and erase exact 
     const state = `synthetic-state-${i}`;
     await fixture.db.insert(outboundConnectionStarts).values({
       tenant_id: tenantId,
-      user_id: owned.membership.user_id,
       actor_type: "user",
       actor_id: owned.membership.user_id,
       owner_user_id: owned.membership.user_id,

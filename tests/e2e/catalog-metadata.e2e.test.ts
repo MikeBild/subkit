@@ -8,12 +8,12 @@ const secret = ["ghp", "_", "E".repeat(36)].join("");
 
 let env: E2EEnv;
 beforeAll(async () => {
-  process.env.SK_MCP_MODE = "admin";
+  process.env.SUBKIT_MCP_MODE = "admin";
   env = await boot("catalog-metadata", { llm: "mock" });
 }, 90_000);
 afterAll(async () => {
   await shutdown(env);
-  delete process.env.SK_MCP_MODE;
+  delete process.env.SUBKIT_MCP_MODE;
 }, 30_000);
 
 class Mcp {
@@ -96,7 +96,7 @@ async function seedWorkflow(slug: string): Promise<Workflow> {
 }
 
 describe("one description and category, the same on every surface", () => {
-  test("a person sets it through sk and HTTP, MCP and the tool catalog all read it back", async () => {
+  test("a person sets it through subkit and HTTP, MCP and the tool catalog all read it back", async () => {
     const slug = uniqueSuffix("invoice-digest");
     const created = await seedWorkflow(slug);
     expect(created.category).toBe("other");
@@ -114,7 +114,7 @@ describe("one description and category, the same on every surface", () => {
       ],
       { env, persona: "admin" },
     );
-    expectSuccess(patched, "sk workflows patch");
+    expectSuccess(patched, "subkit workflows patch");
 
     const got = await apiClient(env).get<Workflow>(`/v1/workflows/${created.id}`);
     expect(got.body.description).toBe("Mails the monthly invoice digest to finance.");
@@ -179,10 +179,10 @@ describe("one description and category, the same on every surface", () => {
           persona: "admin",
         },
       );
-      expectSuccess(res, `sk ${kind} patch`);
+      expectSuccess(res, `subkit ${kind} patch`);
     }
     const vocabulary = await cli(["categories", "list", "--json"], { env, persona: "admin" });
-    expectSuccess(vocabulary, "sk categories list");
+    expectSuccess(vocabulary, "subkit categories list");
     const rows = JSON.parse(vocabulary.stdout) as Array<Record<string, unknown>>;
     const billing = rows.find((r) => r.category === "billing");
     expect(billing).toMatchObject({ connector: 1, knowledge_source: 1, skill: 1, file: 1 });
@@ -193,7 +193,7 @@ describe("one description and category, the same on every surface", () => {
       env,
       persona: "admin",
     });
-    expectSuccess(renamed, "sk categories rename");
+    expectSuccess(renamed, "subkit categories rename");
     const result = JSON.parse(renamed.stdout) as { total: number; moved: Record<string, number> };
     expect(result.moved.workflow).toBe(1);
     expect(result.total).toBe(5);

@@ -138,7 +138,7 @@ export const settingsHelpEn = {
   "settings.help.notifications.inbox.retention_days":
     "How long a finished inbox task is kept before it is deleted.",
   "settings.help.notifications.push.enabled":
-    "Sends a desktop notification when a long run in sk finishes.",
+    "Sends a desktop notification when a long run in subkit finishes.",
   "settings.help.notifications.push.quietHoursEnd": "End of the quiet hours, as HH:MM.",
   "settings.help.notifications.push.quietHoursStart":
     "Start of the quiet hours, as HH:MM. Empty: no quiet hours.",
@@ -304,7 +304,7 @@ export const settingsHelpDe: Record<keyof typeof settingsHelpEn, string> = {
   "settings.help.notifications.inbox.retention_days":
     "Wie lange eine erledigte Postfach-Aufgabe aufbewahrt wird, bevor sie gelöscht wird.",
   "settings.help.notifications.push.enabled":
-    "Schickt eine Desktop-Mitteilung, wenn ein langer Run in sk fertig ist.",
+    "Schickt eine Desktop-Mitteilung, wenn ein langer Run in subkit fertig ist.",
   "settings.help.notifications.push.quietHoursEnd": "Ende der Ruhezeit, als HH:MM.",
   "settings.help.notifications.push.quietHoursStart":
     "Beginn der Ruhezeit, als HH:MM. Leer: keine Ruhezeit.",

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   messageText,
+  panelConversationId,
   panelLines,
   panelReference,
   panelSubjectKey,
@@ -73,5 +74,91 @@ describe("panelLines", () => {
     expect(
       panelLines({ messages: [message("1", "user", "Neu")], sent: "Neu", streamed: "" }),
     ).toHaveLength(1);
+  });
+});
+
+describe("panelConversationId", () => {
+  const RUN_CONVERSATION = "018f4b4a-6d33-7b3a-9c2d-00000000c0de";
+  const OWN = "018f4b4a-6d33-7b3a-9c2d-0000000000aa";
+  const OWNER = "018f4b4a-6d33-7b3a-9c2d-0000000000b1";
+  const OTHER = "018f4b4a-6d33-7b3a-9c2d-0000000000b2";
+  const task = { type: "task", id: ID } as const;
+  const ran = { conversationId: RUN_CONVERSATION, ownerId: OWNER };
+  const owner = { id: OWNER, admin: false };
+
+  test("the task's owner gets the conversation of its latest run attached", () => {
+    expect(panelConversationId({ subject: task, thread: null, task: ran, viewer: owner })).toBe(
+      RUN_CONVERSATION,
+    );
+  });
+
+  test("an administrator gets it attached as well", () => {
+    expect(
+      panelConversationId({
+        subject: task,
+        thread: null,
+        task: ran,
+        viewer: { id: OTHER, admin: true },
+      }),
+    ).toBe(RUN_CONVERSATION);
+  });
+
+  test("another member keeps a new conversation, since only owner and admin may continue a run", () => {
+    expect(
+      panelConversationId({
+        subject: task,
+        thread: null,
+        task: ran,
+        viewer: { id: OTHER, admin: false },
+      }),
+    ).toBeNull();
+    expect(
+      panelConversationId({
+        subject: task,
+        thread: null,
+        task: { conversationId: RUN_CONVERSATION, ownerId: null },
+        viewer: { id: null, admin: false },
+      }),
+    ).toBeNull();
+  });
+
+  test("a task without a run, or not loaded yet, starts a new conversation", () => {
+    expect(
+      panelConversationId({
+        subject: task,
+        thread: null,
+        task: { conversationId: null, ownerId: OWNER },
+        viewer: owner,
+      }),
+    ).toBeNull();
+    expect(
+      panelConversationId({ subject: task, thread: null, task: null, viewer: owner }),
+    ).toBeNull();
+  });
+
+  test("other subjects never pick up a run conversation", () => {
+    expect(
+      panelConversationId({
+        subject: { type: "workflow", id: ID },
+        thread: null,
+        task: ran,
+        viewer: owner,
+      }),
+    ).toBeNull();
+    expect(
+      panelConversationId({ subject: null, thread: null, task: ran, viewer: owner }),
+    ).toBeNull();
+  });
+
+  test("a thread the panel already holds wins", () => {
+    expect(panelConversationId({ subject: task, thread: OWN, task: ran, viewer: owner })).toBe(OWN);
+    expect(
+      panelConversationId({
+        subject: { type: "skill", id: ID },
+        thread: OWN,
+        task: null,
+        viewer: { id: OTHER, admin: false },
+      }),
+    ).toBe(OWN);
   });
 });

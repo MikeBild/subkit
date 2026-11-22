@@ -43,7 +43,7 @@ import {
   useErrorNotice,
 } from "@/components/cockpit/patterns";
 import { auditActionLabel } from "@/features/audit/model";
-import { ConversationsAbout } from "@/features/chat";
+import { ConversationsAbout, TaskRunLine } from "@/features/chat";
 import type { TranslationKey } from "@/lib/i18n";
 import { formatDate } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
@@ -289,6 +289,18 @@ function PanelChat({
   }
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="side-panel-chat">
+      {chat.run?.taskRunId && chat.conversationId ? (
+        <div className="shrink-0 border-b px-6 py-2">
+          <TaskRunLine
+            key={chat.run.taskRunId}
+            marker={chat.run}
+            conversationId={chat.conversationId}
+            playbook={chat.playbook}
+            permissions={permissions}
+            refreshedAt={chat.refreshedAt}
+          />
+        </div>
+      ) : null}
       <div
         className="scrollbar-thin flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-4"
         aria-live="polite"
@@ -299,6 +311,11 @@ function PanelChat({
         >
           {context ? t("sidePanel.chat.seeing", { name: context }) : t("sidePanel.chat.general")}
         </p>
+        {chat.run ? (
+          <p className="text-xs text-muted-foreground" data-testid="side-panel-chat-run-scope">
+            {t("chat.taskRun.scope")}
+          </p>
+        ) : null}
         {chat.lines.length > 0 ? (
           <div className="flex flex-col" data-testid="side-panel-chat-transcript">
             {chat.lines.map((line, index) => (

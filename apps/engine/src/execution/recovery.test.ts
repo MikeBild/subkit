@@ -110,6 +110,67 @@ describe("recoverCrashedExecutions", () => {
     expect(row?.status).toBe("timed_out");
   });
 
+  test("a write step that was running at the crash is named so the person checks the target", async () => {
+    const { workflow_id, version_id } = await createWorkflowRow(ctx, {
+      name: "crash-recovery-write-started",
+      slug: "crash-recovery-write-started",
+      timeout_ms: 1_000,
+      steps: [
+        {
+          id: "create_invoice",
+          kind: "request",
+          connector_id: "00000000-0000-4000-8000-0000000000aa",
+          method: "POST",
+          path: "/invoices",
+        },
+      ],
+    });
+    const stuckId = await insertRunningExecution(workflow_id, version_id, 5_000);
+    const [step] = await ctx.testDb.db
+      .insert(executionSteps)
+      .values({
+        tenant_id: ctx.tenantId,
+        execution_id: stuckId,
+        step_key: "create_invoice",
+        step_index: 0,
+        kind: "request",
+        status: "running",
+        started_at: new Date(TEST_NOW_MS - 3_000),
+      })
+      .returning({ id: executionSteps.id });
+    if (!step) throw new Error("step insert failed");
+
+    await recoverCrashedExecutions(ctx.testDb.db, { now: new Date(TEST_NOW_MS) });
+
+    const row = (
+      await ctx.testDb.db.select().from(executions).where(eq(executions.id, stuckId))
+    )[0];
+    expect(row?.status).toBe("failed");
+    expect(row?.failure?.error_code).toBe("engine_stopped_during_write");
+    expect(row?.failure?.step_id).toBe("create_invoice");
+    expect(row?.failure?.error_message).toContain("create_invoice");
+    const recoveredStep = (
+      await ctx.testDb.db.select().from(executionSteps).where(eq(executionSteps.id, step.id))
+    )[0];
+    const stepError = recoveredStep?.error as { code?: string; guidance?: string } | null;
+    expect(stepError?.code).toBe("engine_stopped_during_write");
+    expect(stepError?.guidance).toContain("before you run it again");
+    if (!row) throw new Error("execution row missing");
+    const outcome = await loadExecutionOutcome(ctx.tenantId, row, ctx.testDb.db);
+    expect(outcome.error_code).toBe("engine_stopped_during_write");
+    expect(outcome.cause_class).toBe("aborted");
+    const [audit] = await ctx.testDb.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(eq(auditLog.action, "execution.crash_recovered"), eq(auditLog.resource_id, stuckId)),
+      );
+    expect(audit?.reason).toBe("engine_stopped_during_write");
+    expect((audit?.metadata as Record<string, unknown> | undefined)?.interrupted_writes).toEqual([
+      "create_invoice",
+    ]);
+  });
+
   test("promotes a running execution past timeout_ms × 1.5", async () => {
     const { workflow_id, version_id } = await createWorkflowRow(ctx, {
       name: "crash-recovery-wf-1",

@@ -18,7 +18,7 @@ import { readOpenPatchDecisions } from "../self-healing/open-decisions.ts";
 import { LEARNING_PATTERN_KINDS } from "../skill-candidates/types.ts";
 import { previewWorkflowAuthority } from "../workflows/execution-authorities.ts";
 import { diagnoseWorkflow, type GateDiagnosis } from "../workflows/gate-diagnosis.ts";
-import { readAiAccess } from "./ai-access-attention.ts";
+import { AI_SETTINGS_HREF, readAiAccess } from "./ai-access-attention.ts";
 import { type ApprovalFact, readApprovalFacts } from "./approval-readers.ts";
 import type {
   AttentionAction,
@@ -746,11 +746,12 @@ const readBudget: TenantReader = async (db, tenantId, now) =>
   spendCandidates(await readSpend(tenantId, db, now));
 
 function providerOutageItem(outage: ProviderOutage): Candidate {
+  const keyRejected = outage.kind === "llm_key_rejected";
   return {
     source: "risk",
     item: {
       id: `risk:${outage.kind}`,
-      class: outage.kind === "llm_provider_quota" ? "stopped" : "failing",
+      class: outage.kind === "llm_provider_unavailable" ? "failing" : "stopped",
       severity: "critical",
       kind: outage.kind,
       subject: null,
@@ -762,7 +763,19 @@ function providerOutageItem(outage: ProviderOutage): Candidate {
       deadline: null,
       detail: outage.last_error?.slice(0, 300) ?? null,
       actions: [
-        { verb: "open", href: attentionHref.settings, primary: true, permission: "settings:read" },
+        keyRejected
+          ? {
+              verb: "open",
+              href: AI_SETTINGS_HREF,
+              primary: true,
+              permission: "identity:write",
+            }
+          : {
+              verb: "open",
+              href: attentionHref.settings,
+              primary: true,
+              permission: "settings:read",
+            },
       ],
     },
   };

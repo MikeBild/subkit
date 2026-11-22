@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { CLI_ASSETS, RELEASE_NOTICES } from "@cli-core/release/assets.ts";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { readEnv } from "../../env.ts";
 import { logger } from "../../logging/index.ts";
@@ -10,7 +11,7 @@ const SUMS_FILENAME = "SHA256SUMS";
 const SIGNATURE_FILENAME = "SHA256SUMS.sig";
 
 const POINTER_BODY =
-  "binary not bundled in this engine image — pull the engine-with-cli variant or fetch from https://github.com/MikeBild/subkit/releases\n";
+  "subkit CLI not bundled in this engine image — use the application-complete image or https://github.com/MikeBild/subkit/releases/latest\n";
 
 interface BundleManifest {
   sums: Map<string, string>;
@@ -49,25 +50,14 @@ async function loadManifest(dir: string): Promise<BundleManifest | "absent"> {
   return manifest;
 }
 
-interface ParsedAsset {
-  kind: "sk";
-  platform: "darwin" | "linux" | "windows";
-  arch: "arm64" | "x64";
+const SERVED_FILES: ReadonlySet<string> = new Set([...CLI_ASSETS, ...RELEASE_NOTICES]);
+
+function isServedFile(asset: string): boolean {
+  return SERVED_FILES.has(asset);
 }
 
-function parseAsset(asset: string): ParsedAsset | null {
-  const match = asset.match(/^(sk)-(darwin|linux|windows)-(arm64|x64)$/);
-  if (!match) return null;
-  const kind = match[1] as ParsedAsset["kind"];
-  const platform = match[2] as ParsedAsset["platform"];
-  const arch = match[3] as ParsedAsset["arch"];
-  if (platform === "windows" && arch === "arm64") return null;
-  return { kind, platform, arch };
-}
-
-function diskFilename(parsed: ParsedAsset): string {
-  const ext = parsed.platform === "windows" ? ".exe" : "";
-  return `sk_${parsed.platform}_${parsed.arch}${ext}`;
+export async function binariesBundled(): Promise<boolean> {
+  return (await loadManifest(getBinariesDir())) !== "absent";
 }
 
 const AssetParam = z.object({
@@ -76,19 +66,18 @@ const AssetParam = z.object({
     .min(1)
     .openapi({
       param: { name: "asset", in: "path" },
-      example: "sk-darwin-arm64",
-      description:
-        "Asset slug or LICENSE / THIRD_PARTY_NOTICES.txt. Binary grammar: `sk-(darwin|linux|windows)-(arm64|x64)`. windows-arm64 is not built.",
+      example: "subkit-darwin-arm64",
+      description: `Release file name, as on the GitHub release: ${[...CLI_ASSETS, ...RELEASE_NOTICES].join(", ")}.`,
     }),
 });
 
 const sumsRoute = createRoute({
   method: "get",
-  path: "/install/sha256sums",
+  path: "/install/SHA256SUMS",
   tags: ["install"],
-  summary: "Bundled SHA256SUMS for the binaries shipped in this image",
+  summary: "Bundled SHA256SUMS for the CLI binaries shipped in this image",
   description:
-    "Returns the verbatim SHA256SUMS file for the `sk` binary bundled in this engine image. 404 when the slim image is in use; clients should fall back to https://github.com/MikeBild/subkit/releases for the matching tag.",
+    "Returns the verbatim SHA256SUMS file for the `subkit` CLI binaries bundled in this engine image, so /install works like a release download directory. 404 when the slim image is in use; clients then use the GitHub release of the same version.",
   responses: {
     200: {
       description: "SHA256SUMS text",
@@ -103,11 +92,11 @@ const sumsRoute = createRoute({
 
 const signatureRoute = createRoute({
   method: "get",
-  path: "/install/sha256sums.sig",
+  path: "/install/SHA256SUMS.sig",
   tags: ["install"],
   summary: "Release signature of the bundled SHA256SUMS",
   description:
-    "Returns the Ed25519 release signature over /install/sha256sums, so `sk update` verifies an engine-served binary exactly like a GitHub release asset. 404 when the bundle or its signature is absent.",
+    "Returns the Ed25519 release signature over /install/SHA256SUMS, so `subkit update --match-engine` verifies an engine-served binary exactly like a GitHub release asset. 404 when the bundle or its signature is absent.",
   responses: {
     200: {
       description: "Detached Ed25519 signature",
@@ -126,9 +115,9 @@ const assetRoute = createRoute({
   method: "get",
   path: "/install/{asset}",
   tags: ["install"],
-  summary: "Bundled sk binary or license notice",
+  summary: "Bundled subkit CLI binary or license notice",
   description:
-    "Streams the sk CLI binary or its LICENSE/THIRD_PARTY_NOTICES.txt bundled in the engine-with-cli image variant. Returns 404 with a pointer body when the bundle is absent, the asset name is malformed, or the requested platform/arch is not built. Verifies bytes via the `x-subkit-sha256` response header.",
+    "Streams a `subkit` CLI binary or its LICENSE/THIRD_PARTY_NOTICES.txt bundled in the application-complete image, under the same file names as the GitHub release. Returns 404 with a pointer body when the bundle is absent or the file is not part of it. Verifies bytes via the `x-subkit-sha256` response header.",
   request: { params: AssetParam },
   responses: {
     200: {
@@ -179,9 +168,7 @@ export function registerInstallBinaryRoute(app: OpenAPIHono<AppEnv>): void {
 
   app.openapi(assetRoute, async (c) => {
     const { asset } = c.req.valid("param");
-    const parsed = parseAsset(asset);
-    const notice = asset === "LICENSE" || asset === "THIRD_PARTY_NOTICES.txt";
-    if (!parsed && !notice) {
+    if (!isServedFile(asset)) {
       return c.text(POINTER_BODY, 404, POINTER_HEADERS);
     }
     const dir = getBinariesDir();
@@ -189,7 +176,7 @@ export function registerInstallBinaryRoute(app: OpenAPIHono<AppEnv>): void {
     if (manifest === "absent") {
       return c.text(POINTER_BODY, 404, POINTER_HEADERS);
     }
-    const filename = parsed ? diskFilename(parsed) : asset;
+    const filename = asset;
     const sha = manifest.sums.get(filename);
     if (!sha) {
       return c.text(POINTER_BODY, 404, POINTER_HEADERS);
@@ -221,7 +208,6 @@ export function registerInstallBinaryRoute(app: OpenAPIHono<AppEnv>): void {
 
 export const _internal = {
   clearCache: () => manifestCache.clear(),
-  parseAsset,
-  diskFilename,
+  isServedFile,
   loadManifest,
 };

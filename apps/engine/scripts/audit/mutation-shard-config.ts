@@ -47,7 +47,7 @@ export function buildMutationShardConfig(input: {
     input.shard.targets.some((path) => !isCanonicalRepoPath(path) || /[*?[\]{}!]/.test(path))
   )
     throw new Error("Mutation shard requires unique literal target paths");
-  const artifactRoot = `reports/mutation/runs/${input.waveId}/${input.runId}/${input.shard.id}`;
+  const artifactRoot = `.reports/mutation/runs/${input.waveId}/${input.runId}/${input.shard.id}`;
   return {
     ...(input.base as Record<string, unknown>),
     testRunner: "command",

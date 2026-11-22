@@ -89,6 +89,8 @@ export interface Copy {
   intro: string;
   languageField: string;
   settingsTitle: string;
+  updateAvailable: string;
+  updateDownload: string;
 }
 
 export const copy: Record<"de" | "en", Copy> = {
@@ -198,6 +200,9 @@ export const copy: Record<"de" | "en", Copy> = {
       "Dein API-Schlüssel bleibt nur bis zum Schließen des Browsers in dieser Erweiterung und wird nicht auf dem Gerät gespeichert.",
     languageField: "Sprache",
     settingsTitle: "SubKit Clipper – Einstellungen",
+    updateAvailable:
+      "Update verfügbar: Version {version}. Entpacke sie in den Ordner der Erweiterung und lade die Erweiterung neu.",
+    updateDownload: "Herunterladen",
   },
   en: {
     title: "Collect in SubKit",
@@ -302,6 +307,9 @@ export const copy: Record<"de" | "en", Copy> = {
       "Your API key stays in this extension only until the browser closes and is never written to this device.",
     languageField: "Language",
     settingsTitle: "SubKit Clipper settings",
+    updateAvailable:
+      "Update available: version {version}. Unpack it into the extension folder and reload the extension.",
+    updateDownload: "Download",
   },
 } as const;
 
@@ -335,6 +343,10 @@ export function showHelpLink(link: HTMLAnchorElement | null, engineUrl: string |
   const url = helpUrl(engineUrl);
   link.hidden = !url;
   link.href = url || "about:blank";
+}
+
+export function updateNoticeText(values: Copy, version: string): string {
+  return values.updateAvailable.replace("{version}", version);
 }
 
 export function offersHelp(values: Copy, message: string): boolean {

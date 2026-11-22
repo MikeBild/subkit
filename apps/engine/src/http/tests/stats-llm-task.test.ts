@@ -43,6 +43,7 @@ async function seedTaskWithUsage(owner: string, name: string, trace: string, tok
   const [task] = await srv.db
     .insert(tasks)
     .values({
+      locale: "de",
       tenant_id: srv.tenantId,
       name,
       owner_id: owner,

@@ -8,9 +8,7 @@ import {
   connectors,
   outboundConnectionStarts,
   outboundConnections,
-  systemAccounts,
   tenants,
-  users,
   vaultItems,
 } from "../../db/schema/index.ts";
 import { withTenantWork } from "../../execution/index.ts";
@@ -68,25 +66,6 @@ export function secretNames(tenantId: string, name: string): { access: string; r
     access: `connection.${tenantId}.${name}.access_token`,
     refresh: `connection.${tenantId}.${name}.refresh_token`,
   };
-}
-
-async function legacyOwnerForStart(
-  db: Executor,
-  start: Pick<typeof outboundConnectionStarts.$inferSelect, "tenant_id" | "user_id">,
-): Promise<string | null> {
-  if (!start.user_id) return null;
-  const [systemAccount] = await db
-    .select({ id: systemAccounts.id })
-    .from(systemAccounts)
-    .where(and(eq(systemAccounts.tenant_id, start.tenant_id), eq(systemAccounts.id, start.user_id)))
-    .limit(1);
-  if (systemAccount) return null;
-  const [user] = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(and(eq(users.tenant_id, start.tenant_id), eq(users.id, start.user_id)))
-    .limit(1);
-  return user?.id ?? null;
 }
 
 function assertName(name: string): void {
@@ -161,7 +140,6 @@ export async function startConnection(
 
   await db.insert(outboundConnectionStarts).values({
     tenant_id: input.tenant_id,
-    user_id: input.actor.kind === "user" ? input.actor.id : null,
     actor_type: input.actor.kind,
     actor_id: input.actor.id,
     owner_user_id: input.owner_user_id,
@@ -366,9 +344,7 @@ export async function completeConnection(
       : [];
     if (start.connection_id && !existing)
       throw new ConnectionError("not_found", "connection was removed during authorization");
-    const ownerUserId = existing
-      ? existing.created_by
-      : (start.owner_user_id ?? (await legacyOwnerForStart(tx, start)));
+    const ownerUserId = existing ? existing.created_by : start.owner_user_id;
     const versions = await storeTokens(tx, {
       tenant_id: start.tenant_id,
       name: start.name,

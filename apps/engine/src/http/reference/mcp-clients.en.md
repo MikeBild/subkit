@@ -38,7 +38,7 @@ An API key, by contrast, is long-lived access that sits on your machine.
 
 ### Connect with browser sign-in
 
-1. In your client, add a remote MCP server with the address `https://<your-engine>/mcp` and name it `sk`.
+1. In your client, add a remote MCP server with the address `https://<your-engine>/mcp` and name it `subkit`.
 2. In the browser window the client opens, sign in the same way as in the Cockpit.
 3. On the page **Allow access**, check which client wants access to which workspace.
 4. Check the boxes for what the client may do. **Read** is always on.
@@ -50,10 +50,10 @@ Where you add the server depends on the client:
 - **Claude Code:**
 
   ```bash
-  claude mcp add --transport http --scope user sk https://<your-engine>/mcp
+  claude mcp add --transport http --scope user subkit https://<your-engine>/mcp
   ```
 
-  Then run `/mcp` in Claude Code and select `sk` to sign in.
+  Then run `/mcp` in Claude Code and select `subkit` to sign in.
 - **ChatGPT and Cursor:** the client's MCP or connector settings.
 
 Menu names change between client versions. If a step looks different, follow your client's guide for remote MCP servers.
@@ -64,7 +64,7 @@ Menu names change between client versions. If a step looks different, follow you
 2. Store the key in an environment variable, not in a file you share:
 
    ```bash
-   export SK_API_KEY=<your-key>
+   export SUBKIT_API_KEY=<your-key>
    ```
 
 3. Register the server in your client with the matching command.
@@ -72,21 +72,21 @@ Menu names change between client versions. If a step looks different, follow you
 Claude Code:
 
 ```bash
-claude mcp add --transport http --scope user sk https://<your-engine>/mcp --header "Authorization: Bearer ${SK_API_KEY}"
+claude mcp add --transport http --scope user subkit https://<your-engine>/mcp --header "Authorization: Bearer ${SUBKIT_API_KEY}"
 ```
 
 Codex:
 
 ```bash
-codex mcp add sk --url https://<your-engine>/mcp --bearer-token-env-var SK_API_KEY
+codex mcp add subkit --url https://<your-engine>/mcp --bearer-token-env-var SUBKIT_API_KEY
 ```
 
 Other clients send the header `Authorization: Bearer <your-key>` with every request.
 
-If your client can only start local MCP servers, there is the command `sk mcp`. It uses your signed-in `sk` profile but offers only five tools: a connection check and four tools for conversations with SubKit. Your client reaches workflows, connectors and knowledge only through your engine's `/mcp` address.
+If your client can only start local MCP servers, there is the command `subkit mcp`. It uses your signed-in `subkit` profile but offers only five tools: a connection check and four tools for conversations with SubKit. Your client reaches workflows, connectors and knowledge only through your engine's `/mcp` address.
 
 A key without an MCP scope connects in **Read** mode.
-If the client should also build, add `mcp:authoring` to `--scopes` when you create the key with `sk apikeys create`.
+If the client should also build, add `mcp:authoring` to `--scopes` when you create the key with `subkit apikeys create`.
 
 ### Check the connection
 
@@ -174,7 +174,7 @@ A run that a client starts has the same limits as every run: it uses only what i
 
 The other direction: an MCP server your team already uses becomes a connector in SubKit. Workflows and the chat then call its tools.
 Each tool asks before it runs, unless the operator has enabled it individually. Only someone allowed to change the connector can do that; a normal edit of the connector does not change this list.
-`sk connectors mcp-inspect <id>` shows which tools the server actually offers. If the server needs OAuth client credentials, follow "External MCP OAuth credentials".
+`subkit connectors mcp-inspect <id>` shows which tools the server actually offers. If the server needs OAuth client credentials, follow "External MCP OAuth credentials".
 
 ### If something does not work
 
@@ -188,5 +188,5 @@ The engine returns these messages in English; they are quoted verbatim here.
 | `403` `product_caller_forbidden` | The token belongs to an app user and has no MCP access. Use a person's sign-in or key. |
 | `400` "Unsupported protocol version" | The client speaks an MCP version the engine does not know. Update the client. |
 | `404` "Session not found" | The session expired, for example after an engine restart. Reconnect the server in the client. |
-| Authoring tools are missing | The access has no `mcp:authoring`. Sign in again and check **Authoring**, or author with the sk CLI. |
+| Authoring tools are missing | The access has no `mcp:authoring`. Sign in again and check **Authoring**, or author with the subkit CLI. |
 | New tools are missing after an update | claude.ai keeps its old tool list. Remove the connector and add it again. |

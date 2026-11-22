@@ -1,4 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { dialog } from "electron";
+import { anonymousReportBody, anonymousReportOutcome } from "../shared/anonymous-report.ts";
 import { t } from "../shared/i18n.ts";
 import type { CheckResult } from "../shared/ipc.ts";
 import { completeStep } from "../shared/onboarding.ts";
@@ -13,9 +15,10 @@ import {
 } from "../shared/profiles.ts";
 import type { DesktopSession, ServiceDescriptor } from "../shared/server-contract.ts";
 import * as model from "../shared/shell-session.ts";
-import { type DiagnosticsContext, offerDiagnostics } from "./diagnostics.ts";
+import { type DiagnosticsContext, offerDiagnostics, type SendDiagnostics } from "./diagnostics.ts";
 import { enterWorkspace, loadOnboarding } from "./onboarding-flow.ts";
-import { checkAddress } from "./server-checks.ts";
+import { checkAddress, inviteLinkOf } from "./server-checks.ts";
+import { sendAnonymousReport } from "./server-client.ts";
 import type { ShellCore } from "./shell-core.ts";
 
 export class ProfileFlow {
@@ -37,6 +40,16 @@ export class ProfileFlow {
     const { origin } = check.result;
     if (check.result.status === "compatible" && check.descriptor && origin)
       await this.core.login.start(origin, check.descriptor);
+    return check.result;
+  }
+
+  async joinInvite(raw: unknown): Promise<CheckResult | null> {
+    const link = inviteLinkOf(raw);
+    if (!link) return null;
+    const check = await checkAddress(link.origin);
+    const { origin } = check.result;
+    if (check.result.status === "compatible" && check.descriptor && origin)
+      await this.core.login.start(origin, check.descriptor, link);
     return check.result;
   }
 
@@ -130,8 +143,27 @@ export class ProfileFlow {
       if (!delivered) core.openCockpit(profile, profile.feedbackPath);
       return;
     }
-    await offerDiagnostics(core.windows.all()[0] ?? null, this.diagnosticsContext(profile)).catch(
-      (error) => core.record("diagnostics", error),
-    );
+    const send = profile ? await this.anonymousSender(profile).catch(() => null) : null;
+    await offerDiagnostics(
+      core.windows.all()[0] ?? null,
+      this.diagnosticsContext(profile),
+      send,
+    ).catch((error) => core.record("diagnostics", error));
+  }
+
+  private async anonymousSender(profile: Profile): Promise<SendDiagnostics | null> {
+    const check = await checkAddress(profile.serverOrigin);
+    const path = check.descriptor?.desktop?.anonymousFeedbackPath;
+    if (!path) return null;
+    const locale = this.core.locale();
+    const reportId = randomUUID();
+    return async (bundle) =>
+      anonymousReportOutcome(
+        await sendAnonymousReport(
+          profile.serverOrigin,
+          path,
+          anonymousReportBody({ bundle, deviceId: profile.deviceId, locale, reportId }),
+        ),
+      );
   }
 }

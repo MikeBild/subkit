@@ -1,7 +1,7 @@
 ---
 slug: sk-ref-status
-name: sk Platform Reference — Status & Capabilities
-description: How an LLM or client reads sk's runtime self-inspection — engine status, health, identity, effective permissions, operator health digest, and token/LLM usage — via REST and MCP tools.
+name: subkit Platform Reference — Status & Capabilities
+description: How an LLM or client reads subkit's runtime self-inspection — engine status, health, identity, effective permissions, operator health digest, and token/LLM usage — via REST and MCP tools.
 tags: [sk-platform-reference, status, health, identity, permissions, observability, ai-budget]
 scope: global
 version: 1
@@ -9,7 +9,7 @@ version: 1
 
 # Status & Capabilities
 
-Runtime self-inspection lets a client answer "what is sk's state, who am I, what may I do, and how much have I spent?" without guessing. Two surfaces expose the same underlying reads:
+Runtime self-inspection lets a client answer "what is subkit's state, who am I, what may I do, and how much have I spent?" without guessing. Two surfaces expose the same underlying reads:
 
 - REST: `GET /v1/status`, `GET /health`, `GET /ready`, `GET /v1/identity/whoami`, `GET /v1/identity/permissions`, `GET /v1/operator/health-digest`, `GET /v1/diagnostics/version`.
 - MCP tools (underscore names): `get_engine_status`, `whoami`, `get_ai_budget`, `get_llm_usage`.
@@ -18,7 +18,7 @@ Every read is tenant-scoped. Self-introspection (`/v1/status`, `whoami`, `/v1/id
 
 ## GET /v1/status — composite snapshot
 
-One round-trip aggregate that powers the sk CLI header so it does not fan out to `/connectors` + `/skills` + `/usage`. Auth required (bearer). Reachable by any authenticated principal.
+One round-trip aggregate that powers the subkit CLI header so it does not fan out to `/connectors` + `/skills` + `/usage`. Auth required (bearer). Reachable by any authenticated principal.
 
 Fields:
 - `user` — `{ id, email (nullable), kind: "user" | "system_account" }`. The authenticated principal.
@@ -87,7 +87,7 @@ How to read: `level` is the authoritative answer to "may I read/write this conne
 
 ## GET /v1/operator/health-digest — operational posture
 
-Deterministic, LLM-free, tenant-scoped digest of failed runs and pending self-healing fixes over a recent window. Gated by `stats:read` (same family as `/v1/stats/*`). The sk REPL fetches it at startup and renders the first assistant turn ("I noticed N issues… walk through fixes?"). Query param: `window_hours` (positive int, max 720).
+Deterministic, LLM-free, tenant-scoped digest of failed runs and pending self-healing fixes over a recent window. Gated by `stats:read` (same family as `/v1/stats/*`). The subkit REPL fetches it at startup and renders the first assistant turn ("I noticed N issues… walk through fixes?"). Query param: `window_hours` (positive int, max 720).
 
 Response:
 - `generated_at`, `window_hours`, `headline`, `all_clear` (boolean), `rendered` (a pre-formatted string).

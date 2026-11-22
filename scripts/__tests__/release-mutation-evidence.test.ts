@@ -8,7 +8,7 @@ import {
 
 const commit = "a".repeat(40);
 const tree = "b".repeat(40);
-const unionPath = "reports/mutation/runs/release-1/run-1/union.json";
+const unionPath = ".reports/mutation/runs/release-1/run-1/union.json";
 const union = (summary: Record<string, unknown> = {}, score = 100): string =>
   JSON.stringify({
     wave_id: "release-1",
@@ -88,7 +88,7 @@ test("the check rejects evidence of another commit, a changed union and edited c
 
 test("the receipt path is derived from a full commit id only", () => {
   expect(releaseMutationReceiptPath("/repo", commit)).toBe(
-    `/repo/reports/mutation/release/${commit}.json`,
+    `/repo/.reports/mutation/release/${commit}.json`,
   );
   expect(() => releaseMutationReceiptPath("/repo", "HEAD")).toThrow("malformed");
 });

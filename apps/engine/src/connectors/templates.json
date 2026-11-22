@@ -15193,7 +15193,7 @@
       {
         "slug": "daily-charges-digest",
         "title": "Daily charges digest (08:00 Europe/Berlin, business days only)",
-        "description": "Pull yesterday's charges every business day at 08:00 Europe/Berlin and summarise total volume + count by currency. Skips weekends and the dates listed in `skip_dates` (German bank holidays seeded for 2026). Wired through the schedule trigger so the workflow wakes itself up — no external cron, no `sk run` loop.",
+        "description": "Pull yesterday's charges every business day at 08:00 Europe/Berlin and summarise total volume + count by currency. Skips weekends and the dates listed in `skip_dates` (German bank holidays seeded for 2026). Wired through the schedule trigger so the workflow wakes itself up — no external cron, no `subkit run` loop.",
         "intent_keywords": [
           "daily charges digest",
           "scheduled charges report",
@@ -16788,7 +16788,7 @@
     "description": "Fetch public web pages and convert to markdown / extract structured data. Default-on robots.txt enforcement and SSRF guards. No JavaScript rendering, no CSS-selector engineering.",
     "category": "productivity",
     "tags": ["scrape", "html", "markdown", "readability", "sitemap", "structured-data"],
-    "setup_instructions": "Zero config. The connector ships with sensible defaults (robots.txt respected, 1000-page crawl cap, 100K-char extract cap, friendly User-Agent). Tunables live under sk settings set connectors.web_scraper.*",
+    "setup_instructions": "Zero config. The connector ships with sensible defaults (robots.txt respected, 1000-page crawl cap, 100K-char extract cap, friendly User-Agent). Tunables live under subkit settings set connectors.web_scraper.*",
     "auth_options": [],
     "url_pattern": null,
     "keywords": ["scrape", "fetch", "crawl", "markdown", "readability", "sitemap", "robots"],
@@ -17105,7 +17105,7 @@
         "estimated_setup_minutes": 5,
         "prerequisites": [],
         "sample_input": {
-          "text": "Hello from sk 👋"
+          "text": "Hello from subkit 👋"
         },
         "expected_output_preview": null,
         "required_connectors": [],

@@ -8,6 +8,7 @@ import { z } from "zod";
 import { COMPUTER_OFF, ComputerSnapshotSchema } from "./computer-allowances.ts";
 import { FilesSnapshotSchema } from "./files-allowances.ts";
 import { LiveWireSchema } from "./live-progress.ts";
+import { RunnerProblemSchema } from "./runner-problems.ts";
 
 export const RUNNER_SERVICE_NAME = "SubKit Runner";
 export const RUNNER_ENV_ALLOWLIST = ["PATH", "TMPDIR", "LANG"] as const;
@@ -126,6 +127,8 @@ export const RunnerToMainSchema = z.discriminatedUnion("type", [
     .strict(),
   z.object({ type: z.literal("idle_query"), request_id: z.string().min(1) }).strict(),
   z.object({ type: z.literal("live"), event: LiveWireSchema }).strict(),
+  z.object({ type: z.literal("busy"), command_id: z.string().min(1), busy: z.boolean() }).strict(),
+  z.object({ type: z.literal("problem"), problem: RunnerProblemSchema }).strict(),
 ]);
 export type RunnerToMain = z.infer<typeof RunnerToMainSchema>;
 export type RunnerState = (typeof RUNNER_STATES)[number];

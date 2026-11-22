@@ -111,7 +111,7 @@ export async function ackInbox(
   await auditAwait(
     {
       ...auditedBy(actor),
-      action: AuditAction.SK_CLI_INBOX_ACKED,
+      action: AuditAction.SUBKIT_CLI_INBOX_ACKED,
       resource_type: "cli_notification_inbox",
       resource_id: String(upToCursor),
       result: "success",

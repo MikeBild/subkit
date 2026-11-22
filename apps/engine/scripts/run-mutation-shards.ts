@@ -16,6 +16,7 @@ import {
 } from "./audit/mutation-floor.ts";
 import { assertNoMutationInfrastructureSentinel } from "./audit/mutation-infrastructure-sentinel.ts";
 import { mutationClosureFiles, mutationTestInputs } from "./audit/mutation-inputs.ts";
+import { pruneMutationReports } from "./audit/mutation-retention.ts";
 import {
   createMutationRuntimeSnapshot,
   sealMutationRuntimeSnapshot,
@@ -150,7 +151,7 @@ export function prepareMutationShardExecution(options: {
   const prepared = loadMutationWave(options.repo, options.manifestPath);
   const root =
     options.root ??
-    join(options.repo, "reports/mutation/runs", prepared.wave.wave_id, options.runId);
+    join(options.repo, ".reports/mutation/runs", prepared.wave.wave_id, options.runId);
   mkdirSync(root, { recursive: true });
   ensurePersistentStrykerTempParent(options.repo);
   const copiedManifestPath = join(root, "wave.json");
@@ -600,8 +601,9 @@ export async function executeMutationWave(options: {
       );
     }
   }
+  let unionPath: string;
   try {
-    return publishMutationShardUnion({ prepared, shards: results });
+    unionPath = publishMutationShardUnion({ prepared, shards: results });
   } catch (error) {
     writeFileSync(
       join(prepared.root, "failed.json"),
@@ -610,6 +612,15 @@ export async function executeMutationWave(options: {
     );
     throw error;
   }
+  try {
+    pruneMutationReports(join(options.repo, ".reports"), {
+      keep: [{ wave: loaded.wave.wave_id, run: runId }],
+      apply: true,
+    });
+  } catch (error) {
+    console.warn(`mutation report retention skipped: ${(error as Error).message}`);
+  }
+  return unionPath;
 }
 
 export function parseMutationExecutorArgs(args: readonly string[]): {

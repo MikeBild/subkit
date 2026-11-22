@@ -246,7 +246,7 @@ Three advanced PUT/GET affordances:
 
 ## See also
 
-- `sk-concepts.md` — envelope fields.
+- `subkit-concepts.md` — envelope fields.
 - `http-connectors.md` — if your object store exposes presigned URLs, you can
   use the `http` driver for cross-cutting reads.
 - `error-recovery.md` — `s3_error` and `step_timeout` handling.

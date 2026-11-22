@@ -1,4 +1,8 @@
 import {
+  ENGINE_DESKTOP_TARGET_NAMES,
+  selectEngineDesktopTargets,
+} from "./engine-desktop-targets.ts";
+import {
   DEFER_MUTATION_FLAG,
   type MutationEvidence,
   parseMutationDeferral,
@@ -89,7 +93,7 @@ export const ENGINE_ENTRIES = [
   "apps/engine/src/index.ts",
   "apps/engine/src/embeddings/embedding-worker.ts",
 ] as const;
-export const SK_ENTRIES = ["apps/sk/src/index.ts"] as const;
+export const SUBKIT_ENTRIES = ["apps/subkit/src/index.ts"] as const;
 
 export function signOnMacos(ctx: Context, file: string): Step[] {
   return ctx.platform === "darwin"
@@ -206,13 +210,13 @@ function buildEngine(ctx: Context, args: Args): Step[] {
 }
 
 function buildSk(ctx: Context, args: Args): Step[] {
-  const outfile = args.options.get("--outfile") ?? "dist/sk";
+  const outfile = args.options.get("--outfile") ?? "dist/subkit";
   return [
     ...(args.flags.has("--skip-deps") ? [] : buildClipper(false)),
     step(
-      "compile sk",
+      "compile subkit",
       compileCommand({
-        entries: SK_ENTRIES,
+        entries: SUBKIT_ENTRIES,
         version: ctx.version,
         outfile,
         metafile: args.options.get("--metafile"),
@@ -223,10 +227,13 @@ function buildSk(ctx: Context, args: Args): Step[] {
 }
 
 function buildDesktopEngine(args: Args): Step[] {
+  const name = args.options.get("--target");
+  if (!selectEngineDesktopTargets(name).ok) return [];
+  const target = name === undefined ? [] : ["--target", name];
   return [
     ...(args.flags.has("--skip-deps") ? [] : buildAssets()),
-    bun("compile desktop engines", "scripts/build-engine-desktop.ts"),
-    bun("desktop engine notices", "scripts/engine-desktop-notices.ts"),
+    bun("compile desktop engines", "scripts/build-engine-desktop.ts", ...target),
+    bun("desktop engine notices", "scripts/engine-desktop-notices.ts", ...target),
   ];
 }
 
@@ -234,7 +241,10 @@ function testLayer(layer: string): Step {
   return bun(`test ${layer}`, "scripts/test-layer.ts", layer);
 }
 
-const SK_SMOKES = ["./tests/e2e/sk-binary-settings.smoke.ts", "./tests/e2e/sk-overhaul.smoke.ts"];
+const SUBKIT_SMOKES = [
+  "./tests/e2e/subkit-binary-settings.smoke.ts",
+  "./tests/e2e/subkit-overhaul.smoke.ts",
+];
 
 function flake(): Step[] {
   return [1, 2, 3, 4, 5].map((seed) => ({
@@ -408,7 +418,7 @@ export const GATE: readonly Check[] = [
   },
   {
     id: "e2e",
-    summary: "end-to-end tests against the built sk",
+    summary: "end-to-end tests against the built subkit",
     profiles: [F],
     steps: (ctx) => e2e(ctx),
   },
@@ -438,7 +448,7 @@ export const GATE: readonly Check[] = [
   },
   {
     id: "build",
-    summary: "sk and engine binaries",
+    summary: "subkit and engine binaries",
     profiles: [P],
     steps: (ctx) => [...buildSk(ctx, parseArgs([])), ...buildEngine(ctx, parseArgs([]))],
   },
@@ -479,7 +489,7 @@ function e2e(ctx: Context): Step[] {
   return [
     ...buildSk(ctx, parseArgs([])),
     testLayer("e2e"),
-    step("test sk smoke", ["bun", "test", ...SK_SMOKES]),
+    step("test subkit smoke", ["bun", "test", ...SUBKIT_SMOKES]),
   ];
 }
 
@@ -550,6 +560,7 @@ const list = (values: readonly string[]): string => values.join("|");
 
 const PRUNE: Readonly<Record<string, string>> = {
   coverage: "scripts/prune-coverage-runs.ts",
+  mutation: "scripts/prune-mutation-runs.ts",
   runs: "scripts/prune-verification-runs.ts",
 };
 
@@ -585,16 +596,16 @@ export const CONCERNS: Readonly<Record<string, Concern>> = {
         "engine binary [--skip-deps] [--target <bun target>] [--outfile <f>] [--metafile <f>]",
       plan: (ctx, args) => buildEngine(ctx, args),
     },
-    sk: {
-      summary: "sk binary [--skip-deps] [--outfile <f>] [--metafile <f>]",
+    subkit: {
+      summary: "subkit binary [--skip-deps] [--outfile <f>] [--metafile <f>]",
       plan: (ctx, args) => buildSk(ctx, args),
     },
     "desktop-engine": {
-      summary: "engines for the desktop app and their notices [--skip-deps]",
+      summary: `engines for the desktop app and their notices [--skip-deps] [--target ${ENGINE_DESKTOP_TARGET_NAMES}]`,
       plan: (_ctx, args) => buildDesktopEngine(args),
     },
     all: {
-      summary: "engine and sk",
+      summary: "engine and subkit",
       plan: (ctx) => [
         ...buildEngine(ctx, parseArgs([])),
         ...buildSk(ctx, parseArgs(["--skip-deps"])),
@@ -606,7 +617,10 @@ export const CONCERNS: Readonly<Record<string, Concern>> = {
     integration: { summary: "integration layer", plan: () => [testLayer("integration")] },
     regression: { summary: "regression layer", plan: () => [testLayer("regression")] },
     journey: { summary: "journey layer", plan: () => [testLayer("journey")] },
-    e2e: { summary: "build sk, then the e2e layer and the sk smokes", plan: (ctx) => e2e(ctx) },
+    e2e: {
+      summary: "build subkit, then the e2e layer and the subkit smokes",
+      plan: (ctx) => e2e(ctx),
+    },
     docker: {
       summary: "docker tests against a fresh image",
       plan: () => [bun("test docker", "scripts/test-docker-isolated.ts")],
@@ -657,7 +671,7 @@ export const CONCERNS: Readonly<Record<string, Concern>> = {
             ],
     },
     prune: {
-      summary: "prune <coverage|runs> [--apply], a preview by default",
+      summary: "prune <coverage|mutation|runs> [--apply], a preview by default",
       word: true,
       plan: (_ctx, args, word) => {
         const file = PRUNE[word];
@@ -782,7 +796,7 @@ export const CONCERNS: Readonly<Record<string, Concern>> = {
           "docker",
           "compose",
           "-f",
-          "docker-compose.test.yml",
+          "docker/docker-compose.test.yml",
           "up",
           "-d",
           "--build",
@@ -797,7 +811,7 @@ export const CONCERNS: Readonly<Record<string, Concern>> = {
           "docker",
           "compose",
           "-f",
-          "docker-compose.test.yml",
+          "docker/docker-compose.test.yml",
           "down",
           "-v",
         ]),

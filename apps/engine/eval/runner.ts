@@ -1,5 +1,14 @@
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { describeGate, type GateFinding, gateBlocks, gateStatus, recordProofs } from "./gate.ts";
+import {
+  liveFingerprints,
+  offlineFingerprints,
+  provenOn,
+  readGate,
+  writeGate,
+} from "./gate-store.ts";
+import { LIVE_SCENARIOS } from "./live-report.ts";
 import { invokeJudge, shouldInvokeJudge } from "./llm-judge.ts";
 
 type ValidatorFn = (fixture: FixtureRecord) => Promise<ValidationResult> | ValidationResult;
@@ -182,14 +191,45 @@ const OUT_DIR = join(EVAL_DIR, "out");
 const BASELINES_DIR = join(EVAL_DIR, "baselines");
 const PASS_RATE_DRIFT_PCT_MAX = 10;
 
-function loadFixtures(): FixtureRecord[] {
+function loadFixtures(): Array<{ record: FixtureRecord; raw: unknown }> {
   const files = readdirSync(FIXTURES_DIR).filter((f) => f.endsWith(".json"));
   return files.map((f) => {
-    const raw = readFileSync(join(FIXTURES_DIR, f), "utf8");
-    const rec = JSON.parse(raw) as FixtureRecord;
-    if (!rec.name) rec.name = f.replace(/\.json$/, "");
-    return rec;
+    const raw = JSON.parse(readFileSync(join(FIXTURES_DIR, f), "utf8")) as unknown;
+    const record = structuredClone(raw) as FixtureRecord;
+    if (!record.name) record.name = f.replace(/\.json$/, "");
+    return { record, raw };
   });
+}
+
+function checkGate(
+  passed: ReadonlySet<string>,
+  writeProofs: boolean,
+  offline: Record<string, string>,
+): boolean {
+  let gate = readGate();
+  if (writeProofs) {
+    gate = recordProofs(gate, "offline", offline, passed, provenOn(new Date()));
+    writeGate(gate);
+  }
+  const findings: GateFinding[] = [
+    { kind: "offline", status: gateStatus(gate.offline, offline) },
+    { kind: "live", status: gateStatus(gate.live, liveFingerprints(LIVE_SCENARIOS)) },
+  ];
+  for (const { kind, status } of findings) {
+    if (status.unproven.length > 0) {
+      console.log(
+        `Gate: ${status.unproven.length} ${kind} case(s) without a proven run: ${status.unproven.join(", ")}`,
+      );
+    }
+  }
+  const lines = describeGate(findings);
+  if (findings.some((f) => gateBlocks(f.status))) {
+    console.error("\nFAIL: the eval gate is stale:");
+    for (const line of lines) console.error(`  ${line}`);
+    return false;
+  }
+  console.log("Gate: every proven case is current.");
+  return true;
 }
 
 async function loadValidator(name: string): Promise<ValidatorFn | undefined> {
@@ -351,7 +391,9 @@ async function main(): Promise<void> {
   try {
     require("node:fs").mkdirSync(OUT_DIR, { recursive: true });
   } catch {}
-  const fixtures = loadFixtures();
+  const loaded = loadFixtures();
+  const fixtures = loaded.map((f) => f.record);
+  const offline = offlineFingerprints(loaded.map((f) => ({ name: f.record.name, raw: f.raw })));
   const items: RunReport["items"] = [];
   let passed = 0;
   let failed = 0;
@@ -443,7 +485,9 @@ async function main(): Promise<void> {
       console.log("\nBaseline drift: within gate.");
     }
   }
-  process.exit(failed === 0 ? 0 : 1);
+  const passedNames = new Set(items.filter((i) => i.pass).map((i) => i.name));
+  const gateCurrent = checkGate(passedNames, process.argv.includes("--write-baseline"), offline);
+  process.exit(failed === 0 && gateCurrent ? 0 : 1);
 }
 
 if (import.meta.main) {

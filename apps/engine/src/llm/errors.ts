@@ -54,6 +54,7 @@ export class LlmProviderError extends LlmError {
     | "quota_exhausted"
     | "overloaded"
     | "context_length_exceeded"
+    | "key_rejected"
     | "other";
   constructor(kind: LlmProviderError["kind"], message: string, details?: Record<string, unknown>) {
     super("llm_provider_error", message, details);

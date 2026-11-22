@@ -38,7 +38,7 @@ export function validateMutationValidationTicketEvidence(input: {
   ticketSha256: string;
   ticketText: string;
 }): void {
-  const expectedRoot = join("reports", "mutation", "runs", input.wave.wave_id, input.runId);
+  const expectedRoot = join(".reports", "mutation", "runs", input.wave.wave_id, input.runId);
   const expectedTicket = join(expectedRoot, "mutation-validation-ticket.json");
   if (
     input.mutationRoot !== expectedRoot ||

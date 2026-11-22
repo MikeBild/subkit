@@ -60,8 +60,8 @@ export function probeModel(provider: DirectProviderKind, requested?: string): st
 
 function missingSetting(provider: DirectProviderKind, setting: string | null): string {
   return setting
-    ? `${provider} needs ${setting} in the engine environment before the first start; set it and run sk init again`
-    : `${provider} is not fully configured in the engine environment; set its settings and run sk init again`;
+    ? `${provider} needs ${setting} in the engine environment before the first start; set it and run subkit init again`
+    : `${provider} is not fully configured in the engine environment; set its settings and run subkit init again`;
 }
 
 function statusOf(err: unknown): number | null {
@@ -121,7 +121,7 @@ export async function probeLlmAccess(
       ok: false,
       model: null,
       code: "misconfigured",
-      reason: `${provider} needs a model before the first start; pass it with sk init --llm-model <${provider === "azure" ? "deployment name" : "model id"}>`,
+      reason: `${provider} needs a model before the first start; pass it with subkit init --llm-model <${provider === "azure" ? "deployment name" : "model id"}>`,
     };
   }
   const timeoutMs = deps.timeoutMs ?? LLM_PROBE_TIMEOUT_MS;

@@ -55,9 +55,9 @@ const compose = [
   "-p",
   instance.project,
   "-f",
-  resolve(ROOT, "docker-compose.test.yml"),
+  resolve(ROOT, "docker/docker-compose.test.yml"),
   "-f",
-  resolve(ROOT, "docker-compose.demo.yml"),
+  resolve(ROOT, "docker/docker-compose.demo.yml"),
 ];
 const dockerEnv = {
   ...process.env,

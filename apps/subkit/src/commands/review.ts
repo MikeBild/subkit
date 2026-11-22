@@ -1,0 +1,136 @@
+import { printJson } from "@cli-core/format";
+import { defineCommand } from "citty";
+import pc from "picocolors";
+import { resolveProfile } from "../config.ts";
+import { EngineClient } from "../engine-client.ts";
+
+interface ReviewRow {
+  kind: "patch_candidate" | "skill_candidate" | "failed_execution";
+  id: string;
+  summary: string;
+  status?: string | undefined;
+  created_at?: string | undefined;
+  action?: string | undefined;
+}
+
+function str(v: unknown): string | undefined {
+  return typeof v === "string" && v.length > 0 ? v : undefined;
+}
+
+const reviewCommand = defineCommand({
+  meta: {
+    name: "review",
+    description:
+      "Aggregated approval digest: pending patch candidates, proposed skill candidates, and recent failed executions.",
+  },
+  args: {
+    limit: {
+      type: "string",
+      description: "Max rows per section",
+      default: "10",
+    },
+    json: { type: "boolean", description: "JSON output", default: false },
+  },
+  async run({ args }) {
+    const { engine_url, api_key, active_tenant_id } = resolveProfile();
+    const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
+    const limit = Number(args.limit) || 10;
+    const jsonMode = Boolean(args.json);
+
+    const notes: string[] = [];
+
+    async function safeList<T>(label: string, fn: () => Promise<{ items: T[] }>): Promise<T[]> {
+      try {
+        const { items } = await fn();
+        return Array.isArray(items) ? items : [];
+      } catch (err) {
+        notes.push(`${label}: ${err instanceof Error ? err.message : String(err)}`);
+        return [];
+      }
+    }
+
+    const [patchItems, skillItems, failedItems] = await Promise.all([
+      safeList("patch-candidates", () => client.listPatchCandidates({ limit, reviewable: "true" })),
+      safeList("skill-candidates", () => client.listSkillCandidates({ limit, status: "proposed" })),
+      safeList("executions", () => client.listExecutions({ limit, status: "failed" })),
+    ]);
+
+    const patchRows: ReviewRow[] = patchItems.map((it) => {
+      const id = str(it.id) ?? "(unknown)";
+      return {
+        kind: "patch_candidate" as const,
+        id,
+        summary: str(it.workflow_id) ?? "(patch candidate)",
+        status: str(it.status),
+        created_at: str(it.created_at),
+        action: `subkit patch-candidates approve ${id}`,
+      };
+    });
+
+    const skillRows: ReviewRow[] = skillItems.map((it) => {
+      const id = str(it.id) ?? "(unknown)";
+      return {
+        kind: "skill_candidate" as const,
+        id,
+        summary: str(it.title) ?? "(skill candidate)",
+        status: str(it.status),
+        created_at: str(it.created_at),
+        action: `subkit skill-candidates approve ${id}`,
+      };
+    });
+
+    const failedRows: ReviewRow[] = failedItems.map((it) => {
+      const id = str(it.id) ?? "(unknown)";
+      return {
+        kind: "failed_execution" as const,
+        id,
+        summary: str(it.workflow_id) ?? "(execution)",
+        status: str(it.status) ?? "failed",
+        created_at: str(it.started_at) ?? str(it.created_at),
+        action: `subkit executions get ${id}`,
+      };
+    });
+
+    if (jsonMode) {
+      printJson({
+        patch_candidates: patchRows,
+        skill_candidates: skillRows,
+        failed_executions: failedRows,
+        total: patchRows.length + skillRows.length + failedRows.length,
+        ...(notes.length > 0 ? { notes } : {}),
+      });
+      return;
+    }
+
+    const total = patchRows.length + skillRows.length + failedRows.length;
+    if (total === 0) {
+      process.stdout.write(`${pc.green("Nothing needs your attention.")} Inbox zero.\n`);
+      for (const n of notes) process.stderr.write(`${pc.dim("note:")} ${n}\n`);
+      return;
+    }
+
+    process.stdout.write(
+      `${pc.bold("Needs your attention")} — ${total} item${total === 1 ? "" : "s"}\n`,
+    );
+
+    function section(title: string, rows: ReviewRow[], actionVerb: string): void {
+      if (rows.length === 0) return;
+      process.stdout.write(`\n${pc.cyan(title)} (${rows.length})\n`);
+      for (const r of rows) {
+        const when = r.created_at ? ` ${pc.dim(r.created_at)}` : "";
+        process.stdout.write(`  ${pc.bold(r.id)}  ${r.summary}${when}\n`);
+        if (r.action) {
+          process.stdout.write(`    ${pc.dim(`${actionVerb}:`)} ${r.action}\n`);
+        }
+      }
+    }
+
+    section("Pending patch candidates", patchRows, "approve");
+    section("Proposed skill candidates", skillRows, "approve");
+    section("Recent failed executions", failedRows, "inspect");
+
+    for (const n of notes) process.stderr.write(`\n${pc.dim("note:")} ${n}\n`);
+  },
+});
+
+export { reviewCommand };

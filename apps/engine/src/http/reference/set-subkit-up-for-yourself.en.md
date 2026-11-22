@@ -95,8 +95,8 @@ The overview of **Settings** shows your choice in one line, for example “Test 
 `PUT /v1/identity/me/setup` stores answers. Fields you leave out keep their value.
 
 ```bash
-curl -s -X PUT "$SK_URL/v1/identity/me/setup" \
-  -H "Authorization: Bearer $SK_KEY" \
+curl -s -X PUT "$SUBKIT_URL/v1/identity/me/setup" \
+  -H "Authorization: Bearer $SUBKIT_KEY" \
   -H "Content-Type: application/json" \
   -d '{"ask_before_writing":true,"default_environment":"dev"}'
 ```

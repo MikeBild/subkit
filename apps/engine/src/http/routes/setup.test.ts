@@ -48,7 +48,7 @@ async function startServer(
 }
 
 beforeAll(async () => {
-  configDirectory = mkdtempSync(join(tmpdir(), "sk-http-setup-"));
+  configDirectory = mkdtempSync(join(tmpdir(), "subkit-http-setup-"));
   await loadConfig({
     env: { DATABASE_URL: "postgres://localhost/x", NODE_ENV: "test" },
     configPathOverride: join(configDirectory, "subkit.config.json"),

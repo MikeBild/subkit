@@ -22,7 +22,7 @@ describe("deep-surface E2E", () => {
     expectSuccess(r, "login");
   });
 
-  test("sk -p --output stream-json emits typed events in order", async () => {
+  test("subkit -p --output stream-json emits typed events in order", async () => {
     const r = await cli(["--p", "hello world", "--output", "stream-json"], {
       env,
       persona: "admin",

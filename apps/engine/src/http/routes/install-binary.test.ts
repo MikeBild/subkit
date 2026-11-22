@@ -58,48 +58,32 @@ afterEach(async () => {
   _internal.clearCache();
 });
 
-describe("parseAsset", () => {
-  test("accepts every shipping platform-arch combo for sk", () => {
-    const valid = [
-      "sk-darwin-arm64",
-      "sk-darwin-x64",
-      "sk-linux-arm64",
-      "sk-linux-x64",
-      "sk-windows-x64",
-    ];
-    for (const asset of valid) {
-      expect(_internal.parseAsset(asset)).not.toBeNull();
+describe("isServedFile", () => {
+  test("serves exactly the release file names of the CLI and its notices", () => {
+    for (const asset of [
+      "subkit-darwin-arm64",
+      "subkit-linux-arm64",
+      "subkit-linux-x64",
+      "subkit-windows-x64.exe",
+      "LICENSE",
+      "THIRD_PARTY_NOTICES.txt",
+    ]) {
+      expect(_internal.isServedFile(asset)).toBe(true);
     }
   });
 
-  test("rejects windows-arm64 (not produced by the release matrix)", () => {
-    expect(_internal.parseAsset("sk-windows-arm64")).toBeNull();
-  });
-
-  test("rejects unknown kinds, platforms, archs, and malformed slugs", () => {
-    const invalid = [
-      "engine-linux-x64",
-      "sk-windows-aarch64",
-      "sk_darwin_arm64",
-      "sk-darwin",
-      "sk--arm64",
+  test("refuses unbuilt targets, other binaries and malformed names", () => {
+    for (const asset of [
+      "subkit-darwin-x64",
+      "subkit-windows-arm64.exe",
+      "subkit-windows-x64",
+      "engine_linux_x64",
+      "SHA256SUMS.next",
       "",
       "..%2Fetc%2Fpasswd",
-    ];
-    for (const asset of invalid) {
-      expect(_internal.parseAsset(asset)).toBeNull();
+    ]) {
+      expect(_internal.isServedFile(asset)).toBe(false);
     }
-  });
-});
-
-describe("diskFilename", () => {
-  test("maps sk → sk_, appends .exe on windows", () => {
-    expect(_internal.diskFilename({ kind: "sk", platform: "darwin", arch: "arm64" })).toBe(
-      "sk_darwin_arm64",
-    );
-    expect(_internal.diskFilename({ kind: "sk", platform: "windows", arch: "x64" })).toBe(
-      "sk_windows_x64.exe",
-    );
   });
 });
 
@@ -122,18 +106,18 @@ describe("GET /install/{asset} — bundled image", () => {
     });
   }
 
-  test("streams sk binary with sha header + correct length", async () => {
+  test("streams the subkit binary with sha header + correct length", async () => {
     const bytes = new Uint8Array([0x7f, 0x45, 0x4c, 0x46, 0x02, 0x01, 0x01]);
-    const fixture = await mkBundle({ sk_linux_x64: bytes });
+    const fixture = await mkBundle({ "subkit-linux-x64": bytes });
     activeDir = fixture.dir;
     testEnv.SUBKIT_BINARIES_DIR = fixture.dir;
     _internal.clearCache();
 
-    const res = await buildApp().request("/install/sk-linux-x64");
+    const res = await buildApp().request("/install/subkit-linux-x64");
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("application/octet-stream");
     expect(res.headers.get("content-length")).toBe(String(bytes.byteLength));
-    expect(res.headers.get("content-disposition")).toBe('attachment; filename="sk_linux_x64"');
+    expect(res.headers.get("content-disposition")).toBe('attachment; filename="subkit-linux-x64"');
     const expectedSha = createHash("sha256").update(bytes).digest("hex");
     expect(res.headers.get("x-subkit-sha256")).toBe(expectedSha);
 
@@ -145,12 +129,12 @@ describe("GET /install/{asset} — bundled image", () => {
 
   test("HEAD request returns the same headers as GET (install-script probe contract)", async () => {
     const bytes = new Uint8Array([0xde, 0xad, 0xbe, 0xef]);
-    const fixture = await mkBundle({ sk_linux_x64: bytes });
+    const fixture = await mkBundle({ "subkit-linux-x64": bytes });
     activeDir = fixture.dir;
     testEnv.SUBKIT_BINARIES_DIR = fixture.dir;
     _internal.clearCache();
 
-    const res = await buildApp().request("/install/sk-linux-x64", { method: "HEAD" });
+    const res = await buildApp().request("/install/subkit-linux-x64", { method: "HEAD" });
     expect(res.status).toBe(200);
     expect(res.headers.get("x-subkit-sha256")).toBe(
       createHash("sha256").update(bytes).digest("hex"),
@@ -160,38 +144,38 @@ describe("GET /install/{asset} — bundled image", () => {
 
   test("appends .exe on disk for windows targets but not in the URL", async () => {
     const bytes = new TextEncoder().encode("MZ-header-stub");
-    const fixture = await mkBundle({ "sk_windows_x64.exe": bytes });
+    const fixture = await mkBundle({ "subkit-windows-x64.exe": bytes });
     activeDir = fixture.dir;
     testEnv.SUBKIT_BINARIES_DIR = fixture.dir;
     _internal.clearCache();
 
-    const res = await buildApp().request("/install/sk-windows-x64");
+    const res = await buildApp().request("/install/subkit-windows-x64.exe");
     expect(res.status).toBe(200);
     expect(res.headers.get("content-disposition")).toBe(
-      'attachment; filename="sk_windows_x64.exe"',
+      'attachment; filename="subkit-windows-x64.exe"',
     );
   });
 });
 
 describe("GET /install/{asset} — 404 paths (pointer body, install-script fallback contract)", () => {
   test("malformed asset slug → 404 with pointer body", async () => {
-    const fixture = await mkBundle({ sk_linux_x64: new Uint8Array([1, 2, 3]) });
+    const fixture = await mkBundle({ "subkit-linux-x64": new Uint8Array([1, 2, 3]) });
     activeDir = fixture.dir;
     testEnv.SUBKIT_BINARIES_DIR = fixture.dir;
     _internal.clearCache();
 
-    const res = await buildApp().request("/install/sk_linux_x64");
+    const res = await buildApp().request("/install/subkit_linux_x64");
     expect(res.status).toBe(404);
     expect(await res.text()).toContain("github.com/MikeBild/subkit/releases");
   });
 
   test("unbuilt platform combo (windows-arm64) → 404", async () => {
-    const fixture = await mkBundle({ sk_linux_x64: new Uint8Array([1, 2, 3]) });
+    const fixture = await mkBundle({ "subkit-linux-x64": new Uint8Array([1, 2, 3]) });
     activeDir = fixture.dir;
     testEnv.SUBKIT_BINARIES_DIR = fixture.dir;
     _internal.clearCache();
 
-    const res = await buildApp().request("/install/sk-windows-arm64");
+    const res = await buildApp().request("/install/subkit-windows-arm64.exe");
     expect(res.status).toBe(404);
   });
 
@@ -202,39 +186,39 @@ describe("GET /install/{asset} — 404 paths (pointer body, install-script fallb
     _internal.clearCache();
 
     const app = buildApp();
-    const res = await app.request("/install/sk-linux-x64");
+    const res = await app.request("/install/subkit-linux-x64");
     expect(res.status).toBe(404);
-    expect(await res.text()).toContain("engine-with-cli");
+    expect(await res.text()).toContain("application-complete image");
   });
 
   test("bundle has SHA256SUMS but is missing the requested binary → 404", async () => {
     const dir = await fs.mkdtemp(path.join(tmpdir(), "subkit-partial-bundle-"));
     activeDir = dir;
     const bytes = new Uint8Array([0x7f, 0x45, 0x4c, 0x46]);
-    await fs.writeFile(path.join(dir, "sk_linux_x64"), bytes);
+    await fs.writeFile(path.join(dir, "subkit-linux-x64"), bytes);
     const sha = createHash("sha256").update(bytes).digest("hex");
-    await fs.writeFile(path.join(dir, "SHA256SUMS"), `${sha}  sk_linux_x64\n`);
+    await fs.writeFile(path.join(dir, "SHA256SUMS"), `${sha}  subkit-linux-x64\n`);
     testEnv.SUBKIT_BINARIES_DIR = dir;
     _internal.clearCache();
 
-    const res = await buildApp().request("/install/sk-darwin-arm64");
+    const res = await buildApp().request("/install/subkit-darwin-arm64");
     expect(res.status).toBe(404);
   });
 });
 
-describe("GET /install/sha256sums", () => {
+describe("GET /install/SHA256SUMS", () => {
   test("returns the bundled SHA256SUMS verbatim with text/plain content-type", async () => {
     const bytes = new Uint8Array([1, 2, 3]);
-    const fixture = await mkBundle({ sk_linux_x64: bytes });
+    const fixture = await mkBundle({ "subkit-linux-x64": bytes });
     activeDir = fixture.dir;
     testEnv.SUBKIT_BINARIES_DIR = fixture.dir;
     _internal.clearCache();
 
-    const res = await buildApp().request("/install/sha256sums");
+    const res = await buildApp().request("/install/SHA256SUMS");
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toMatch(/^text\/plain; charset=utf-?8$/i);
     const body = await res.text();
-    expect(body).toContain("sk_linux_x64");
+    expect(body).toContain("subkit-linux-x64");
     const expectedSha = createHash("sha256").update(bytes).digest("hex");
     expect(body).toContain(expectedSha);
   });
@@ -245,7 +229,7 @@ describe("GET /install/sha256sums", () => {
     testEnv.SUBKIT_BINARIES_DIR = dir;
     _internal.clearCache();
 
-    const res = await buildApp().request("/install/sha256sums");
+    const res = await buildApp().request("/install/SHA256SUMS");
     expect(res.status).toBe(404);
     expect(await res.text()).toContain("github.com/MikeBild/subkit/releases");
   });
@@ -253,7 +237,7 @@ describe("GET /install/sha256sums", () => {
 
 describe("manifest cache", () => {
   test("re-uses parsed SHA256SUMS across requests for the same dir", async () => {
-    const fixture = await mkBundle({ sk_linux_x64: new Uint8Array([1, 2, 3]) });
+    const fixture = await mkBundle({ "subkit-linux-x64": new Uint8Array([1, 2, 3]) });
     activeDir = fixture.dir;
     testEnv.SUBKIT_BINARIES_DIR = fixture.dir;
     _internal.clearCache();
@@ -264,7 +248,7 @@ describe("manifest cache", () => {
   });
 
   test("clearCache forces a fresh parse", async () => {
-    const fixture = await mkBundle({ sk_linux_x64: new Uint8Array([1, 2, 3]) });
+    const fixture = await mkBundle({ "subkit-linux-x64": new Uint8Array([1, 2, 3]) });
     activeDir = fixture.dir;
     testEnv.SUBKIT_BINARIES_DIR = fixture.dir;
     _internal.clearCache();
@@ -282,30 +266,30 @@ describe("manifest cache", () => {
     _internal.clearCache();
     const app = buildApp();
 
-    const miss = await app.request("/install/sk-linux-x64");
+    const miss = await app.request("/install/subkit-linux-x64");
     expect(miss.status).toBe(404);
 
     const bytes = new Uint8Array([0x7f, 0x45, 0x4c, 0x46]);
-    await fs.writeFile(path.join(dir, "sk_linux_x64"), bytes);
+    await fs.writeFile(path.join(dir, "subkit-linux-x64"), bytes);
     const sha = createHash("sha256").update(bytes).digest("hex");
-    await fs.writeFile(path.join(dir, "SHA256SUMS"), `${sha}  sk_linux_x64\n`);
+    await fs.writeFile(path.join(dir, "SHA256SUMS"), `${sha}  subkit-linux-x64\n`);
 
-    const hit = await app.request("/install/sk-linux-x64");
+    const hit = await app.request("/install/subkit-linux-x64");
     expect(hit.status).toBe(200);
     expect(hit.headers.get("x-subkit-sha256")).toBe(sha);
   });
 });
 
-describe("GET /install/sha256sums.sig", () => {
+describe("GET /install/SHA256SUMS.sig", () => {
   test("serves the release signature beside the bundled sums, and 404 without it", async () => {
-    const bundle = await mkBundle({ sk_darwin_arm64: new Uint8Array([1, 2, 3]) });
+    const bundle = await mkBundle({ "subkit-darwin-arm64": new Uint8Array([1, 2, 3]) });
     activeDir = bundle.dir;
     testEnv.SUBKIT_BINARIES_DIR = bundle.dir;
-    const missing = await buildApp().request("/install/sha256sums.sig");
+    const missing = await buildApp().request("/install/SHA256SUMS.sig");
     expect(missing.status).toBe(404);
     const signature = new Uint8Array(64).fill(7);
     await fs.writeFile(path.join(bundle.dir, "SHA256SUMS.sig"), signature);
-    const served = await buildApp().request("/install/sha256sums.sig");
+    const served = await buildApp().request("/install/SHA256SUMS.sig");
     expect(served.status).toBe(200);
     expect(new Uint8Array(await served.arrayBuffer())).toEqual(signature);
   });

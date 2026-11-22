@@ -49,7 +49,7 @@ A task costs AI calls for every round of work. A workflow only costs them in its
 
 Everything else is prefilled and collapsed: the schedule, the limits, web search, and whether the task works in **Test** or **Live**.
 
-In the chat you get there faster. Describe the goal, work through it once and ask SubKit to save it as a task. SubKit shows what it will save and waits for your confirmation. The task takes its steps from the plan of that conversation.
+In the chat you get there faster. Describe the goal, work through it once and ask SubKit to save it as a task. SubKit shows what it will save and waits for your confirmation. The task takes its steps from the plan of that conversation. It stays bound to the message that asked for it: the chat shows the task under that message, and **Asked for in** on the task’s **Overview** tab leads back to it.
 
 Good to know:
 
@@ -89,7 +89,7 @@ The standing permission lets a task start on its own. It applies to exactly this
 3. Under **Validity**, choose how long: **Until revoked**, **30 days** or **7 days**.
 4. Confirm with **Allow**.
 
-Only a person signed in to the Cockpit in the browser can allow this. It does not work with an API key, in the `sk` command line or from an AI client.
+Only a person signed in to the Cockpit in the browser can allow this. It does not work with an API key, in the `subkit` command line or from an AI client.
 
 What it covers:
 
@@ -184,7 +184,7 @@ When all steps are done, the state reads **result ready** and you get a notice. 
 3. Select **Looks good** to confirm. The state changes to **done**.
 4. Or select **Needs more work**. The run is told that the result is not enough yet and keeps working. Write into its conversation what is missing. It does not present the same result again unchanged.
 
-Only a person confirms or sends back a result, signed in to the Cockpit in the browser. It does not work with an API key, in the `sk` command line or from an AI client, and SubKit cannot confirm its own work.
+Only a person confirms or sends back a result, signed in to the Cockpit in the browser. It does not work with an API key, in the `subkit` command line or from an AI client, and SubKit cannot confirm its own work.
 
 A result you have not confirmed does not stop the schedule. The next run of a daily task starts tomorrow even if yesterday’s result is still open. **Needs more work** is only possible while no newer run is open and the task has not been changed or paused since.
 
@@ -241,7 +241,7 @@ How to keep the cost low:
 - **Notices:** on the **Overview**, a task appears when a run waits for your answer, a result is ready, a run failed, or the standing permission is missing or about to end. With push notifications switched on, you also get a neutral push.
 - **Webhooks:** the events `task_run.started`, `task_run.waiting`, `task_run.result_ready`, `task_run.completed` and `task_run.failed` are available for subscriptions.
 
-The `sk` inbox of a new workspace also receives `task_run.waiting`, `task_run.result_ready` and `task_run.failed`. A workspace that already existed keeps the inbox rule it has stored. To get the task events there, add them to that rule with `sk notifications rules`.
+The `subkit` inbox of a new workspace also receives `task_run.waiting`, `task_run.result_ready` and `task_run.failed`. A workspace that already existed keeps the inbox rule it has stored. To get the task events there, add them to that rule with `subkit notifications rules`.
 
 ### What SubKit does not enforce
 
@@ -271,22 +271,22 @@ The `sk` inbox of a new workspace also receives `task_run.waiting`, `task_run.re
 
 ### The same in the terminal and from AI clients
 
-With the `sk` command line:
+With the `subkit` command line:
 
 ```bash
-sk tasks list
-sk tasks get <task-id>
-sk tasks create --file task.json
-sk tasks update <task-id> --cron "0 7 * * *" --timezone Europe/Berlin
-sk tasks run <task-id>
-sk tasks runs <task-id>
-sk tasks pause <task-id>
-sk tasks resume <task-id>
-sk tasks abort <run-id>
-sk tasks delete <task-id>
+subkit tasks list
+subkit tasks get <task-id>
+subkit tasks create --file task.json
+subkit tasks update <task-id> --cron "0 7 * * *" --timezone Europe/Berlin
+subkit tasks run <task-id>
+subkit tasks runs <task-id>
+subkit tasks pause <task-id>
+subkit tasks resume <task-id>
+subkit tasks abort <run-id>
+subkit tasks delete <task-id>
 ```
 
-`sk tasks update <task-id> --run-at <time>` sets a single start. When a run waits for a person, `sk` prints the address of the task in the Cockpit. The standing permission cannot be given in `sk`, and a result cannot be confirmed or sent back there; `sk tasks get` shows whether a standing permission applies.
+`subkit tasks update <task-id> --run-at <time>` sets a single start. When a run waits for a person, `subkit` prints the address of the task in the Cockpit. The standing permission cannot be given in `subkit`, and a result cannot be confirmed or sent back there; `subkit tasks get` shows whether a standing permission applies.
 
 AI clients connected over MCP can find, read, start and stop tasks. Creating and changing a task needs the **Authoring** level. Questions of a run are answered and results are confirmed in the Cockpit. More in “Connect AI clients via MCP”.
 

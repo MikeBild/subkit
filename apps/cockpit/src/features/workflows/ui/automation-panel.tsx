@@ -500,7 +500,7 @@ export function WorkflowStatus({
         ref={anchor}
         id={WORKFLOW_AUTOMATION_ANCHOR}
         className="scroll-mt-4 empty:hidden"
-        data-family-slot="workflow-automation"
+        data-sk-slot="workflow-automation"
         data-testid="workflow-automation"
         data-state={automation.failed ? "failed" : (state?.state ?? "loading")}
         data-strip={strip.kind}

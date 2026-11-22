@@ -42,7 +42,7 @@ beforeAll(async () => {
   tdb = await createTestDb("runtime_tenant_activation");
   await seedTenant(tdb.db, { id: tenantA, slug: "activation-a", display_name: "Activation A" });
   await seedTenant(tdb.db, { id: tenantB, slug: "activation-b", display_name: "Activation B" });
-  configDir = mkdtempSync(join(tmpdir(), "sk-runtime-tenant-activation-"));
+  configDir = mkdtempSync(join(tmpdir(), "subkit-runtime-tenant-activation-"));
   _resetConfigForTests();
   await loadConfig({
     env: { DATABASE_URL: tdb.url, NODE_ENV: "test" },
@@ -118,7 +118,7 @@ describe("tenant-restricted saves and activations", () => {
     });
     const engineWide = await createSecretVersion(tdb.db, {
       name: "settings.llm.api_key",
-      value: "sk-engine",
+      value: "subkit-engine",
       created_by: null,
     });
     const references = [

@@ -109,7 +109,7 @@ describe("discoverConnectorEndpoints — fallback chain", () => {
     }
     expect(caught?.code).toBe("all_strategies_failed");
     expect(caught?.message).toContain(`strategy_skipped: ${PLAYWRIGHT_UNAVAILABLE_MESSAGE}`);
-    expect(PLAYWRIGHT_UNAVAILABLE_MESSAGE).toContain("SK_PLAYWRIGHT_ENTRY");
+    expect(PLAYWRIGHT_UNAVAILABLE_MESSAGE).toContain("SUBKIT_PLAYWRIGHT_ENTRY");
   });
 
   test("throws all_strategies_failed when every strategy fails", async () => {

@@ -155,13 +155,13 @@ describe("GET /v1/settings/{path}", () => {
     expect(akBody.value).toBe("***");
     expect(akBody.meta.sensitive).toBe(true);
 
-    const sk = await authedFetch("/v1/settings/storage.object_store.secret_access_key");
-    const skBody = (await sk.json()) as {
+    const secret = await authedFetch("/v1/settings/storage.object_store.secret_access_key");
+    const secretBody = (await secret.json()) as {
       value: unknown;
       meta: { sensitive: boolean };
     };
-    expect(skBody.value).toBe("***");
-    expect(skBody.meta.sensitive).toBe(true);
+    expect(secretBody.value).toBe("***");
+    expect(secretBody.meta.sensitive).toBe(true);
 
     const listRes = await authedFetch("/v1/settings");
     const list = (await listRes.json()) as {
@@ -172,9 +172,9 @@ describe("GET /v1/settings/{path}", () => {
       }>;
     };
     const akEntry = list.items.find((i) => i.path === "storage.object_store.access_key_id");
-    const skEntry = list.items.find((i) => i.path === "storage.object_store.secret_access_key");
+    const secretEntry = list.items.find((i) => i.path === "storage.object_store.secret_access_key");
     expect(akEntry!.value).toBe("***");
-    expect(skEntry!.value).toBe("***");
+    expect(secretEntry!.value).toBe("***");
     const blob = JSON.stringify(list);
     expect(blob).not.toContain("actual-access-key");
     expect(blob).not.toContain("actual-secret-key");

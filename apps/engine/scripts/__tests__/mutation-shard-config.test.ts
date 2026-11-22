@@ -9,7 +9,7 @@ const input = {
     incremental: false,
     thresholds: { high: 100, low: 100, break: 100 },
     concurrency: 8,
-    ignorePatterns: ["/reports", "/.artifacts", "/.stryker-tmp*"],
+    ignorePatterns: ["/.reports", "/.artifacts", "/.stryker-tmp*"],
   },
   waveId: "baseline",
   runId: "run-1",
@@ -36,7 +36,7 @@ describe("isolated mutation shard configuration", () => {
       mutate: input.shard.targets,
       ignorePatterns: input.base.ignorePatterns,
       tempDirName: ".stryker-tmp",
-      jsonReporter: { fileName: "reports/mutation/runs/baseline/run-1/cli/mutation.json" },
+      jsonReporter: { fileName: ".reports/mutation/runs/baseline/run-1/cli/mutation.json" },
     });
     expect(input).toEqual(before);
     const second = buildMutationShardConfig({ ...input, runId: "run-2" });

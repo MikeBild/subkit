@@ -19,7 +19,7 @@ SubKit Cloud und eine selbst betriebene Engine verhalten sich dabei gleich.
 - Die Adresse deiner Engine.
   - Cloud: `https://subkit-cloud.mikebild.dev` (ohne `/cockpit`)
   - Selbst betrieben: `https://<deine-engine>`
-- Einen API-Schlüssel mit den Scopes `workflow:read`, `workflow:run` und `execution:read`. Ein Scope ist ein einzelnes Recht, das der Schlüssel mitbringt. Leg den Schlüssel mit der sk-CLI an, wie unten gezeigt, oder im Cockpit unter **API-Zugang**. Für die CLI meldest du dich an wie in „Die sk-CLI auf deinem Rechner verwenden“ beschrieben.
+- Einen API-Schlüssel mit den Scopes `workflow:read`, `workflow:run` und `execution:read`. Ein Scope ist ein einzelnes Recht, das der Schlüssel mitbringt. Leg den Schlüssel mit der subkit-CLI an, wie unten gezeigt, oder im Cockpit unter **API-Zugang**. Für die CLI meldest du dich an wie in „Die subkit-CLI auf deinem Rechner verwenden“ beschrieben.
 - Einen Workflow, der aktiv und freigegeben ist. Siehe „Dein erster Workflow“.
 - `curl` in deinem Terminal.
 
@@ -30,13 +30,13 @@ SubKit Cloud und eine selbst betriebene Engine verhalten sich dabei gleich.
 1. Setze die Adresse als Variable:
 
    ```bash
-   export SK_URL=https://<deine-engine>
+   export SUBKIT_URL=https://<deine-engine>
    ```
 
 2. Rufe `/health` auf:
 
    ```bash
-   curl -s "$SK_URL/health"
+   curl -s "$SUBKIT_URL/health"
    ```
 
    ```json
@@ -48,21 +48,21 @@ SubKit Cloud und eine selbst betriebene Engine verhalten sich dabei gleich.
 1. Leg einen Schlüssel mit genau den Rechten an, die dieses Kapitel braucht:
 
    ```bash
-   sk apikeys create --name http-api-test --scopes workflow:read,workflow:run,execution:read
+   subkit apikeys create --name http-api-test --scopes workflow:read,workflow:run,execution:read
    ```
 
 2. Kopiere `plaintext_key` aus der JSON-Antwort. Er wird nur einmal angezeigt, bewahre ihn in einem Passwortmanager auf.
 3. Leg den Schlüssel in eine Variable:
 
    ```bash
-   export SK_KEY=<api-key>
+   export SUBKIT_KEY=<api-key>
    ```
 
 4. Frag die Engine, wer du bist:
 
    ```bash
-   curl -s "$SK_URL/v1/identity/whoami" \
-     -H "Authorization: Bearer $SK_KEY"
+   curl -s "$SUBKIT_URL/v1/identity/whoami" \
+     -H "Authorization: Bearer $SUBKIT_KEY"
    ```
 
    Die Antwort nennt dein Konto, deinen Arbeitsbereich und die Scopes des Schlüssels (gekürzt). Der Arbeitsbereich ist der abgetrennte Bereich deines Teams in der Engine:
@@ -78,15 +78,15 @@ SubKit Cloud und eine selbst betriebene Engine verhalten sich dabei gleich.
    ```
 
 Ohne `--scopes` bekommt der Schlüssel dieselben Scopes wie dein eigener Zugang.
-`sk apikeys revoke <key-id>` widerruft den Schlüssel.
+`subkit apikeys revoke <key-id>` widerruft den Schlüssel.
 
 ### Deine Workflows auflisten
 
 1. Rufe die aktiven Workflows ab:
 
    ```bash
-   curl -s "$SK_URL/v1/workflows?status=active&limit=20" \
-     -H "Authorization: Bearer $SK_KEY"
+   curl -s "$SUBKIT_URL/v1/workflows?status=active&limit=20" \
+     -H "Authorization: Bearer $SUBKIT_KEY"
    ```
 
    Jeder Eintrag in `items` trägt unter anderem `id`, `slug`, `name`, `lifecycle` und `operating_status`. Im Beispiel heißt der Workflow „Tagesbericht“ (gekürzt):
@@ -116,8 +116,8 @@ Ohne `--scopes` bekommt der Schlüssel dieselben Scopes wie dein eigener Zugang.
 - Schick die Workflow-ID und die Eingabe an `/v1/executions`:
 
   ```bash
-  curl -s -X POST "$SK_URL/v1/executions" \
-    -H "Authorization: Bearer $SK_KEY" \
+  curl -s -X POST "$SUBKIT_URL/v1/executions" \
+    -H "Authorization: Bearer $SUBKIT_KEY" \
     -H "Content-Type: application/json" \
     -d '{"source":"saved","workflow_id":"<workflow-id>","input":{}}'
   ```
@@ -131,8 +131,8 @@ Ohne `--scopes` bekommt der Schlüssel dieselben Scopes wie dein eigener Zugang.
 1. Schick den Run mit `"async":true`. Optional ergänzt du einen Header `Idempotency-Key`. Mit ihm startet ein versehentlich doppelt gesendeter Aufruf trotzdem nur einen Run:
 
    ```bash
-   curl -s -X POST "$SK_URL/v1/executions" \
-     -H "Authorization: Bearer $SK_KEY" \
+   curl -s -X POST "$SUBKIT_URL/v1/executions" \
+     -H "Authorization: Bearer $SUBKIT_KEY" \
      -H "Content-Type: application/json" \
      -H "Idempotency-Key: tagesbericht-<datum>" \
      -d '{"source":"saved","workflow_id":"<workflow-id>","input":{},"async":true}'
@@ -154,8 +154,8 @@ Ohne `--scopes` bekommt der Schlüssel dieselben Scopes wie dein eigener Zugang.
 1. Lies den Run:
 
    ```bash
-   curl -s "$SK_URL/v1/executions/<execution-id>" \
-     -H "Authorization: Bearer $SK_KEY"
+   curl -s "$SUBKIT_URL/v1/executions/<execution-id>" \
+     -H "Authorization: Bearer $SUBKIT_KEY"
    ```
 
 2. Prüfe `status`.
@@ -163,8 +163,8 @@ Ohne `--scopes` bekommt der Schlüssel dieselben Scopes wie dein eigener Zugang.
 4. Lies die Ausgabe jedes Schritts:
 
    ```bash
-   curl -s "$SK_URL/v1/executions/<execution-id>/steps" \
-     -H "Authorization: Bearer $SK_KEY"
+   curl -s "$SUBKIT_URL/v1/executions/<execution-id>/steps" \
+     -H "Authorization: Bearer $SUBKIT_KEY"
    ```
 
    Jeder Eintrag hat `step_key`, `status` und eine Vorschau in `output_preview` oder `result_preview`. Der letzte Schritt enthält meist das Ergebnis des Workflows.
@@ -176,7 +176,7 @@ Ohne `--scopes` bekommt der Schlüssel dieselben Scopes wie dein eigener Zugang.
 | `failed`, `timed_out`, `aborted` | Der Run wurde vorzeitig beendet. |
 
 `outcome.kind` fasst den Run zusammen, zum Beispiel `succeeded`, `failed` oder `held`.
-`sk executions result <execution-id>` zeigt dasselbe Ergebnis im Terminal.
+`subkit executions result <execution-id>` zeigt dasselbe Ergebnis im Terminal.
 
 ### Prüfen, ob ein Workflow automatisch laufen kann
 
@@ -194,7 +194,7 @@ Jeder Eintrag in `issues` nennt `step_id` und `code`. `repair_guidance` sagt, wi
 
 ### Ein Paket exportieren und importieren
 
-Ein Paket bringt die eigenen Ressourcen deines Arbeitsbereichs auf eine andere Engine. Die Schritte nach dem Import stehen in „Die sk-CLI auf deinem Rechner verwenden“.
+Ein Paket bringt die eigenen Ressourcen deines Arbeitsbereichs auf eine andere Engine. Die Schritte nach dem Import stehen in „Die subkit-CLI auf deinem Rechner verwenden“.
 Der Export braucht `package:export`, der Import `package:import`.
 
 | Route | Macht |
@@ -219,8 +219,8 @@ Listen liefern jeweils eine Seite. `total` zählt alle Treffer.
 Runs kommen neueste zuerst. Gib `next_cursor` genau so zurück, wie du ihn bekommen hast. Ist er `null`, bist du auf der letzten Seite.
 
 ```bash
-curl -s "$SK_URL/v1/executions?workflow_id=<workflow-id>&status=failed,timed_out&limit=50" \
-  -H "Authorization: Bearer $SK_KEY"
+curl -s "$SUBKIT_URL/v1/executions?workflow_id=<workflow-id>&status=failed,timed_out&limit=50" \
+  -H "Authorization: Bearer $SUBKIT_KEY"
 ```
 
 `status` nimmt mehrere Werte, durch Kommas getrennt.

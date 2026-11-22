@@ -38,7 +38,7 @@ export const cannotHelpTool: ConversationTool = {
     "Calling this tool ends the turn — the user sees your `reason` and (if given) `suggest_alternative`. Do not also emit text claiming you have done the thing.",
     "`missing_capability` is read by operators as a backlog of capability gaps. Use a stable slug shape: `tool.<name>`, `vendor_recipe.<client>`, `manifest.<name>.empty`, `surface.<name>.unsupported`.",
     "Do NOT call this for errors that have a typed error code (those go through error-recovery). cannot_help is for structural absences: a tool that does not exist, a verified recipe we have not authored, a piece of context the user must supply.",
-    "Keep `suggest_alternative` inside chat. Do not route the user to `sk` commands or raw HTTP calls for actions that belong on the conversation surface.",
+    "Keep `suggest_alternative` inside chat. Do not route the user to `subkit` commands or raw HTTP calls for actions that belong on the conversation surface.",
   ],
   example_input: {
     reason:

@@ -269,10 +269,10 @@ describe("connector draft tools", () => {
       {
         tenant_id: toolCtx.base.tenant_id,
         input: {
-          name: "contentkit-admin",
+          name: "editorial-admin",
           driver: "http",
           environment: "prod",
-          base_url: "https://contentkit-api.example.dev",
+          base_url: "https://editorial-api.example.dev",
           auth_type: "bearer",
           config: {},
         },
@@ -282,16 +282,16 @@ describe("connector draft tools", () => {
     );
 
     const reused = await startConnectorFromDescriptionTool.execute(toolCtx.base, {
-      name: "contentkit-radar-prod",
-      base_url: "https://contentkit-api.example.dev",
+      name: "editorial-radar-prod",
+      base_url: "https://editorial-api.example.dev",
       environment: "prod",
       auth_type: "bearer",
     });
     expect((reused.data as { reused_existing?: boolean }).reused_existing).toBe(true);
 
     const started = await startConnectorFromDescriptionTool.execute(toolCtx.base, {
-      name: "contentkit-radar-prod",
-      base_url: "https://contentkit-api.example.dev",
+      name: "editorial-radar-prod",
+      base_url: "https://editorial-api.example.dev",
       environment: "prod",
       auth_type: "bearer",
       force_new: true,
@@ -302,8 +302,8 @@ describe("connector draft tools", () => {
     const inspected = await inspectConnectorDraftTool.execute(toolCtx.base, {});
     const draftConnector = (inspected.data as { connector: { name: string; slug: string } })
       .connector;
-    expect(draftConnector.name).toBe("contentkit-radar-prod");
-    expect(draftConnector.slug).toBe("contentkit-radar-prod");
+    expect(draftConnector.name).toBe("editorial-radar-prod");
+    expect(draftConnector.slug).toBe("editorial-radar-prod");
 
     const { rows: saved } = await listConnectors(
       toolCtx.base.tenant_id,
@@ -312,7 +312,7 @@ describe("connector draft tools", () => {
     );
     expect(saved).toHaveLength(1);
     expect(saved[0]?.id).toBe(admin.id);
-    expect(saved[0]?.slug).toBe("contentkit-admin");
+    expect(saved[0]?.slug).toBe("editorial-admin");
   });
 
   test("URL match still wins when LLM mis-guesses auth_type as aws_sigv4", async () => {

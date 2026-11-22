@@ -20,7 +20,7 @@ SubKit meldet nur, was eine Person braucht: Etwas wurde angehalten, etwas schlä
 | Liste **Braucht dich** in der **Übersicht** | Jeden offenen Punkt mit Ursache und Handlung. | Nie. Die Liste ist immer aktuell. |
 | Push im Browser oder in der installierten Web-App | Je Punkt eine Benachrichtigung. Ein Klick öffnet den Punkt. | Ja, nach deiner Wahl in **Einrichtung**. |
 | SubKit Desktop | Eine Benachrichtigung des Betriebssystems und die Zahl am Symbol. | Nach den Ruhezeiten, die du in der App einstellst. |
-| Abonnements, Webhooks und der `sk`-Eingang | Ereignisse für Programme und für das Terminal. | Nie. |
+| Abonnements, Webhooks und der `subkit`-Eingang | Ereignisse für Programme und für das Terminal. | Nie. |
 
 Eine Benachrichtigung sagt, was passiert ist und was zu tun ist. Namen von Workflows oder Connectors, Inhalte und Freigabe-Schaltflächen stehen im Browser-Push nie darin.
 
@@ -130,8 +130,8 @@ Was du unter der Auswahl liest:
 `GET /v1/identity/me/setup` liest deine Wahl, `PUT /v1/identity/me/setup` ändert sie. Felder, die du weglässt, behalten ihren Wert.
 
 ```bash
-curl -s -X PUT "$SK_URL/v1/identity/me/setup" \
-  -H "Authorization: Bearer $SK_KEY" \
+curl -s -X PUT "$SUBKIT_URL/v1/identity/me/setup" \
+  -H "Authorization: Bearer $SUBKIT_KEY" \
   -H "Content-Type: application/json" \
   -d '{"notifications":{"mode":"working_hours","from":"08:00","to":"18:00","days":[1,2,3,4,5]},"timezone":"Europe/Berlin","critical_breakthrough":true}'
 ```

@@ -28,7 +28,7 @@ export interface OperationScope {
   ensurePermission?(permission: string, resource?: { type: string; id: string }): Promise<void>;
 }
 
-export type RejectionStatus = 400 | 401 | 403 | 404 | 409 | 410 | 413 | 422 | 429 | 502;
+export type RejectionStatus = 400 | 401 | 403 | 404 | 409 | 410 | 413 | 422 | 429 | 502 | 503;
 
 const REJECTION: unique symbol = Symbol("operation.rejection");
 

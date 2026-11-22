@@ -1,8 +1,8 @@
 /* Design-system tokens (Lovable `src/styles.css`).
  *
  * The base palette (background, foreground, primary, accent, destructive, warning, success,
- * border, ring, sidebar …) comes from the app: in the Cockpit it is the cockpit-ui family
- * contract in apps/cockpit/src/index.css, whose values are the same Tailwind slate/blue/red/
+ * border, ring, sidebar …) comes from packages/ui/contract/cockpit-ui.css, copied into
+ * apps/cockpit/src/index.css; its values are the same Tailwind slate/blue/red/
  * amber/emerald steps Lovable uses. This file adds what the design system needs on top:
  * one readable "ink" colour per tone, the control and dialog radii, the display size, the
  * window shadow and the Markdown document typography. Values are Lovable's, unchanged.

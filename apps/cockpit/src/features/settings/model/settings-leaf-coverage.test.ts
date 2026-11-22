@@ -17,7 +17,7 @@ const LEAVES = listConfigLeaves();
 const ALL_PATHS = LEAVES.map((leaf) => leaf.path.join("."));
 const PATHS = ALL_PATHS.filter(shownInCockpit);
 const SK = readFileSync(
-  resolve(import.meta.dir, "../../../../../sk/src/commands/settings.ts"),
+  resolve(import.meta.dir, "../../../../../subkit/src/commands/settings.ts"),
   "utf8",
 );
 
@@ -27,7 +27,7 @@ describe("the engine's settings", () => {
     expect(PATHS.length).toBeGreaterThan(100);
   });
 
-  test("no setting is lost: what the Cockpit leaves out, sk reads and writes by its path", () => {
+  test("no setting is lost: what the Cockpit leaves out, subkit reads and writes by its path", () => {
     expect(ALL_PATHS.length - PATHS.length).toBeGreaterThan(60);
     expect(SK).toContain("client.getSetting(args.path as string");
     expect(SK).toContain("client.setSetting(args.path as string");

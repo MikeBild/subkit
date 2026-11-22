@@ -10,7 +10,7 @@ import { checkLlmAccess } from "./workspace-ai-access.ts";
 let configDir: string | null = null;
 
 async function operatorConfig(llm: Record<string, unknown>): Promise<void> {
-  configDir = mkdtempSync(join(tmpdir(), "sk-workspace-ai-access-"));
+  configDir = mkdtempSync(join(tmpdir(), "subkit-workspace-ai-access-"));
   const file = join(configDir, "subkit.config.json");
   writeFileSync(file, JSON.stringify({ llm }));
   _resetConfigForTests();

@@ -87,10 +87,10 @@ Gut zu wissen:
 
 ### Dasselbe im Terminal
 
-Dateien ersetzt du auch mit der Kommandozeile `sk`. Wie du sie einrichtest, steht im Kapitel „Die sk-CLI auf deinem Rechner verwenden“.
+Dateien ersetzt du auch mit der Kommandozeile `subkit`. Wie du sie einrichtest, steht im Kapitel „Die subkit-CLI auf deinem Rechner verwenden“.
 
 ```bash
-sk files replace <file-id> <path>
-sk files versions <file-id>
-sk files restore <file-id> <version>
+subkit files replace <file-id> <path>
+subkit files versions <file-id>
+subkit files restore <file-id> <version>
 ```

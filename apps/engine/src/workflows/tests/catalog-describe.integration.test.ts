@@ -540,14 +540,14 @@ describe("one connector in two environments", () => {
   }
 
   test("the younger one takes the category of the oldest, whatever the model proposes", async () => {
-    const older = await seedConnector("prod", "wikikit", "2026-01-01T00:00:00Z");
+    const older = await seedConnector("prod", "knowledge", "2026-01-01T00:00:00Z");
     const younger = await seedConnector("dev", "other", "2026-02-01T00:00:00Z");
     answer = () => ({ description: "Family API.", category: "mikebild-dev" });
     mockModel();
     await describeOne({ tenant_id, kind: "connector", id: younger }, ctx.db);
-    expect(prompts.at(-1)).toContain("category (fixed): wikikit");
+    expect(prompts.at(-1)).toContain("category (fixed): knowledge");
     const [row] = await ctx.db.select().from(connectors).where(eq(connectors.id, younger));
-    expect(row?.category).toBe("wikikit");
+    expect(row?.category).toBe("knowledge");
     await describeOne({ tenant_id, kind: "connector", id: older }, ctx.db);
     expect(prompts.at(-1)).not.toContain("category (fixed)");
   });

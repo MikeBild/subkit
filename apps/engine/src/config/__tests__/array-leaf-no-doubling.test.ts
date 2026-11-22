@@ -11,7 +11,7 @@ let cfgPath: string;
 const ENV = { DATABASE_URL: "postgres://x:y@127.0.0.1:5432/z", NODE_ENV: "test" };
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), "sk-cfg-doubling-"));
+  dir = mkdtempSync(join(tmpdir(), "subkit-cfg-doubling-"));
   cfgPath = join(dir, "subkit.config.json");
   _resetConfigForTests();
 });

@@ -1,3 +1,9 @@
+import {
+  DEFAULT_WORKSPACE_LANGUAGE,
+  firstLanguage,
+  languageOf,
+  type WorkspaceLanguage,
+} from "@shared/workspace-language.ts";
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../audit/index.ts";
 import type { Executor } from "../db/client.ts";
@@ -122,6 +128,7 @@ export async function updateWorkspaceSettings(
     tenant_id: string;
     display_name?: string;
     timezone?: string;
+    language?: WorkspaceLanguage;
     actor_type: "user" | "system_account";
     actor_id: string;
   },
@@ -138,12 +145,14 @@ export async function updateWorkspaceSettings(
     const nameChanged =
       input.display_name !== undefined && input.display_name !== before.display_name;
     const timezoneChanged = input.timezone !== undefined && input.timezone !== before.timezone;
-    if (!nameChanged && !timezoneChanged) return before;
+    const languageChanged = input.language !== undefined && input.language !== before.language;
+    if (!nameChanged && !timezoneChanged && !languageChanged) return before;
     const [row] = await tx
       .update(tenants)
       .set({
         ...(nameChanged ? { display_name: input.display_name } : {}),
         ...(timezoneChanged ? { timezone: input.timezone } : {}),
+        ...(languageChanged ? { language: input.language } : {}),
         updated_at: new Date(now()),
       })
       .where(eq(tenants.id, input.tenant_id))
@@ -158,13 +167,37 @@ export async function updateWorkspaceSettings(
         resource_type: "tenant",
         resource_id: row.id,
         result: "success",
-        before: { display_name: before.display_name, timezone: before.timezone },
-        after: { display_name: row.display_name, timezone: row.timezone },
+        before: {
+          display_name: before.display_name,
+          timezone: before.timezone,
+          language: before.language,
+        },
+        after: { display_name: row.display_name, timezone: row.timezone, language: row.language },
       },
       tx,
     );
     return row;
   });
+}
+
+export async function workspaceLanguage(
+  tenant_id: string,
+  db: Executor,
+): Promise<WorkspaceLanguage> {
+  const [row] = await db
+    .select({ language: tenants.language })
+    .from(tenants)
+    .where(eq(tenants.id, tenant_id))
+    .limit(1);
+  return row?.language ?? DEFAULT_WORKSPACE_LANGUAGE;
+}
+
+export async function languageFor(
+  tenant_id: string,
+  db: Executor,
+  person: unknown,
+): Promise<WorkspaceLanguage> {
+  return languageOf(person) ?? firstLanguage([await workspaceLanguage(tenant_id, db)]);
 }
 
 export interface StartSteps {

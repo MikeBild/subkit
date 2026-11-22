@@ -10,7 +10,7 @@
 @custom-variant dark (&:is(.dark *));
 
 /* shadcn's components read raw variables — `--background`, `--card`, `--sidebar`
-   and so on. This block gives them shadcn's NAMES with the family's VALUES, so
+   and so on. This block gives them shadcn's NAMES with SubKit's VALUES, so
    a component pasted from the registry works unmodified and still looks like it
    belongs here.
 
@@ -19,13 +19,10 @@
    other fails the build, which is the only reason two copies of anything are
    tolerable.
 
-   Everything between the cockpit-ui sentinels is family law: byte-identical
-   with the sibling cockpits' and with contract/cockpit-ui.css. The family
-   products stay separate — separate servers, separate binaries, not a line of
-   shared runtime — and share a palette by copy, which is only a contract
-   because a test compares the bytes. Editing it here is not a local decision;
-   see contract/RITUAL.md. A declaration this product needs and the family does
-   not belongs outside the sentinels, with the `--sk-` prefix. */
+   Everything between the cockpit-ui sentinels is copied from
+   packages/ui/contract/cockpit-ui.css; the token-sync test keeps the copies equal.
+   A declaration only the Cockpit needs belongs outside the sentinels, with the
+   `--sk-` prefix. */
 /* cockpit-ui:begin tokens-light */
 :root {
   --background: #ffffff;
@@ -106,12 +103,9 @@
 /* cockpit-ui:end tokens-dark */
 
 /* Tailwind utilities over the values above. `--color-surface` has no shadcn
-   counterpart and is the family's own, so it is mapped here alongside them. */
+   counterpart and is SubKit's own, so it is mapped here alongside them. */
 @theme inline {
-  /* Product-owned type stack. `--font-sans` is contract BY VALUE (CUI-TYPE-1),
-     not by bytes: one product's formatter wraps this declaration onto two lines
-     and another's does not, and a contract a formatter can break is a contract
-     nobody keeps. `--font-mono` is this product's own — an operations console
+  /* The Cockpit's type stack (CUI-TYPE-1). `--font-mono` serves an operations console that
      renders identifiers, hashes, capability refs and external_refs that a
      proportional face makes harder to compare. Deliberately outside the
      sentinels. */

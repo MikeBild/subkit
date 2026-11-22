@@ -1,7 +1,7 @@
 ---
 slug: sk-ref-chat
-name: sk Platform Reference — External Chat
-description: How sk ingests Slack and Google Chat messages — signature verify, normalization to ChatEvent, the async dispatch pipeline, and the identity/workspace model that maps a platform user to an sk user.
+name: subkit Platform Reference — External Chat
+description: How subkit ingests Slack and Google Chat messages — signature verify, normalization to ChatEvent, the async dispatch pipeline, and the identity/workspace model that maps a platform user to a subkit user.
 tags: [sk-platform-reference, chat, slack, google-chat, ingestion, identity]
 scope: global
 version: 1
@@ -9,13 +9,13 @@ version: 1
 
 # External Chat — Overview
 
-sk runs governed conversations and workflows from inside team chat. A message in Slack or Google Chat becomes an authenticated, audited turn against the sk conversation pipeline — the same pipeline the MCP and HTTP surfaces drive.
+subkit runs governed conversations and workflows from inside team chat. A message in Slack or Google Chat becomes an authenticated, audited turn against the subkit conversation pipeline — the same pipeline the MCP and HTTP surfaces drive.
 
 Supported inbound platforms: `slack` and `google_chat`. Each installed workspace is a `chat_workspaces` row. There is also an outbound-only `sk_cli` pseudo-platform (local notification sink) that never ingests inbound traffic.
 
 Microsoft Teams is NOT supported yet. The `chat_platform` enum keeps a `teams` value, but no Teams adapter exists: `POST /v1/chat/workspaces` with `platform: "teams"` is refused with `400` (`platform_unsupported`, "teams chat spaces are not supported yet") and a denied `chat.workspace.installed` audit row, and `POST /v1/chat/teams/messages` answers `503 {error:"adapter_not_registered"}`. Do not offer Teams setup.
 
-Email is NOT a supported chat channel. There is no email ingestion route, no email adapter, and no email platform value. Do not claim sk receives chat over email.
+Email is NOT a supported chat channel. There is no email ingestion route, no email adapter, and no email platform value. Do not claim subkit receives chat over email.
 
 Pipeline shape (every platform): inbound HTTP route → `adapter.verify()` → `adapter.receive()` normalizes to a `ChatEvent` → enqueue a `chat.event` pg-boss job → return `200 {ok:true}` fast → async worker runs the dispatcher → conversation turn → reply posted back into the thread.
 
@@ -43,7 +43,7 @@ Per-route handler steps:
 
 # Slack url_verification Handshake
 
-When an operator configures an Events API request URL, Slack first POSTs `{type:"url_verification", challenge:"<str>"}`. sk must echo the challenge before any workspace is installed (chicken-and-egg: the operator can't install a workspace until app setup completes, and app setup requires a verified URL).
+When an operator configures an Events API request URL, Slack first POSTs `{type:"url_verification", challenge:"<str>"}`. subkit must echo the challenge before any workspace is installed (chicken-and-egg: the operator can't install a workspace until app setup completes, and app setup requires a verified URL).
 
 Behavior: the route peeks the raw body (cap 8 KB — the legitimate handshake is ~100 bytes), and if `platform === "slack"` and the parsed body has `type === "url_verification"` with a string `challenge`, it returns `200 {challenge:"<str>"}`. This short-circuit runs BEFORE the adapter-not-registered check, so a fresh engine answers the challenge with no install present. The handshake carries no exploitable payload; real events route past the peek into `verify()`.
 
@@ -64,7 +64,7 @@ Outbound auth is separate from inbound verify: Google uses a signed service-acco
 - `platform`: `"slack" | "google_chat"`
 - `workspace_id`: platform-native workspace/team id (string)
 - `channel_id`, optional `thread_id`
-- `user_id`: platform-native sender id (NOT yet an sk user)
+- `user_id`: platform-native sender id (NOT yet a subkit user)
 - `kind`: `"mention" | "slash_command" | "interaction"`
 - `text?`, `command?` (`ChatCommand`), `interaction?` (`ChatInteractionAction` with `action_id`, `value`, `form_values`)
 - `event_key?`: platform-native event id for replay dedup — Slack `event_id` (Events API), `view.id` (`view_submission`), `trigger_id` (`block_actions`), or a hash of `command+text+ts` (slash)
@@ -77,7 +77,7 @@ The `chat.event` queue job is `{event: ChatEvent}`, schema-validated at the work
 Platforms expect a fast HTTP ack, so real work happens out-of-band. The route enqueues `chat.event`; the queue handler calls `handleChatEvent(deps, event)`. Dispatcher steps:
 
 1. Look up `chat_workspaces` by `(platform, workspace_id)` → tenant. No row → `workspace_not_found` (event dropped).
-2. Resolve `chat_identities` by `(platform, workspace_id, platform_user_id)` → sk `user_id`. Explicit link required (see Identity Model). Unknown sender or tenant mismatch → deny.
+2. Resolve `chat_identities` by `(platform, workspace_id, platform_user_id)` → subkit `user_id`. Explicit link required (see Identity Model). Unknown sender or tenant mismatch → deny.
 3. Resolve / create a `chat_sessions` row (thread → `conversation_id`).
 4. Route by event:
    - mention / `chat <prompt>` → `createConversation` or `appendUserMessage` + `runConversationTurn`
@@ -88,7 +88,7 @@ Platforms expect a fast HTTP ack, so real work happens out-of-band. The route en
 5. On `awaiting_input`, render the elicitation natively if the adapter declares `capabilities.interactive.includes(kind)`, else fall back to a legacy Approve/Reject card.
 6. On completion, post the assistant reply back into the originating thread.
 
-The turn runs under a synthetic chat principal resolved from the linked sk user (`resolveChatPrincipal`), so RBAC (workflow runs, conversation tools, credential access) is gated on that user's real role/group/grant ladder — not elevated.
+The turn runs under a synthetic chat principal resolved from the linked subkit user (`resolveChatPrincipal`), so RBAC (workflow runs, conversation tools, credential access) is gated on that user's real role/group/grant ladder — not elevated.
 
 # Identity Model — chat_workspaces & chat_identities
 
@@ -96,9 +96,9 @@ The turn runs under a synthetic chat principal resolved from the linked sk user 
 - Columns: `tenant_id`, `platform`, `workspace_id` (native), `default_channel`, and the bot token as AES-256-GCM ciphertext (`bot_ciphertext` / `bot_iv` / `bot_auth_tag`, keyed by `MASTER_KEY`).
 - Uniqueness: per-tenant `(tenant_id, platform, workspace_id)` AND a GLOBAL `(platform, workspace_id)` unique index. The global index is the tenant-isolation guarantee: a real-world workspace (Slack `team_id` etc.) belongs to exactly ONE tenant, so pre-tenant lookups keyed on `(platform, workspace_id)` resolve deterministically.
 
-`chat_identities` maps a platform user to an sk user:
-- Columns: `tenant_id`, `user_id` (sk user FK), `platform`, `workspace_id`, `platform_user_id`, `linked_at`.
-- Unique on `(platform, workspace_id, platform_user_id)` (global) — a given platform user links to one sk user.
+`chat_identities` maps a platform user to a subkit user:
+- Columns: `tenant_id`, `user_id` (subkit user FK), `platform`, `workspace_id`, `platform_user_id`, `linked_at`.
+- Unique on `(platform, workspace_id, platform_user_id)` (global) — a given platform user links to one subkit user.
 
 No implicit elevation. There is NO auto-link-to-admin: a chat user who can message the bot is NOT silently made tenant admin. An explicit link must exist. Links are created two ways:
 - Installer: bound at install via `POST /v1/chat/workspaces` with `installer_platform_user_id`.
@@ -113,7 +113,7 @@ If the dispatcher finds no `chat_identities` row for the sender, or a row whose 
 - A durable `chat.message.denied` audit row is written (`reason`: `identity_not_linked` or `identity_tenant_mismatch`), with `platform`, `workspace_id`, `platform_user_id`, `kind` metadata.
 - No conversation turn runs.
 
-A successful, linked message writes a `chat.message.received` audit row (actor = the sk user). A `/subkit run` denied by RBAC writes a `policy.denied` row against the workflow.
+A successful, linked message writes a `chat.message.received` audit row (actor = the subkit user). A `/subkit run` denied by RBAC writes a `policy.denied` row against the workflow.
 
 # Replay Dedup
 
@@ -128,7 +128,7 @@ These are OpenAPI/Zod routes (governed, RBAC-gated), distinct from the platform 
 | `POST /v1/chat/workspaces` | Install a workspace; encrypts the bot token; binds the installer's platform user via `installer_platform_user_id` |
 | `GET /v1/chat/workspaces` | List installed workspaces |
 | `DELETE /v1/chat/workspaces/{id}` | Remove a workspace (also unregisters the in-memory adapter) |
-| `POST /v1/chat/identities` | Link a platform user (`platform`, `workspace_id`, `platform_user_id`) to an sk `user_id` |
+| `POST /v1/chat/identities` | Link a platform user (`platform`, `workspace_id`, `platform_user_id`) to a subkit `user_id` |
 | `GET /v1/chat/identities` | List links |
 | `DELETE /v1/chat/identities/{id}` | Unlink |
 

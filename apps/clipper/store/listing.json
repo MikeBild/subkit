@@ -1,0 +1,43 @@
+{
+  "name": "SubKit Clipper",
+  "category": "Productivity",
+  "language": ["en", "de"],
+  "summary": {
+    "en": "Collect pages and ideas in SubKit, review them in chat, and confirm what becomes knowledge or a skill.",
+    "de": "Sammle Seiten und Ideen in SubKit, prüf sie im Chat und bestätige, was Wissen oder ein Skill wird."
+  },
+  "description": {
+    "en": "The SubKit Clipper saves the page you are reading, a selection or a YouTube transcript as Markdown to the inbox of your own SubKit engine.\n\nNothing becomes knowledge on its own: you review each item in chat, and a person confirms what becomes knowledge or a skill.\n\nYou need a SubKit engine and an API key with the Web Clipper preset. The extension talks only to the engine address you enter and, for a transcript, to YouTube.",
+    "de": "Der SubKit Clipper speichert die Seite, die du gerade liest, eine markierte Stelle oder ein YouTube-Transkript als Markdown in der Inbox deiner eigenen SubKit-Engine.\n\nNichts wird von selbst zu Wissen: Du prüfst jeden Eintrag im Chat, und eine Person bestätigt, was Wissen oder ein Skill wird.\n\nDu brauchst eine SubKit-Engine und einen API-Schlüssel mit der Vorlage „Web Clipper“. Die Erweiterung spricht nur mit der Engine-Adresse, die du einträgst, und für ein Transkript mit YouTube."
+  },
+  "single_purpose": {
+    "en": "Save web pages, selections and video transcripts to the inbox of the user's own SubKit engine for review.",
+    "de": "Webseiten, markierte Stellen und Video-Transkripte zur Prüfung in der Inbox der eigenen SubKit-Engine speichern."
+  },
+  "permissions": {
+    "activeTab": {
+      "en": "Reads the page the user chose to clip, only after a click, the context menu or the shortcut.",
+      "de": "Liest die Seite, die die Person sammeln will, erst nach einem Klick, dem Kontextmenü oder dem Tastenkürzel."
+    },
+    "scripting": {
+      "en": "Runs the capture script in that tab to turn the article or the selection into Markdown.",
+      "de": "Führt das Erfassungsskript in diesem Tab aus, um Artikel oder Auswahl in Markdown umzuwandeln."
+    },
+    "contextMenus": {
+      "en": "Adds “Save page to SubKit” and “Save selection to SubKit” to the right-click menu.",
+      "de": "Ergänzt „Seite in SubKit sichern“ und „Auswahl in SubKit sichern“ im Kontextmenü."
+    },
+    "storage": {
+      "en": "Keeps the engine address, the language and unsent drafts; the API key stays in session storage.",
+      "de": "Behält Engine-Adresse, Sprache und nicht gesendete Entwürfe; der API-Schlüssel bleibt im Sitzungsspeicher."
+    },
+    "optional_host_permissions": {
+      "en": "Requested at runtime for the one engine address the user enters, so the extension can send clips there.",
+      "de": "Wird zur Laufzeit nur für die eine Engine-Adresse angefragt, die die Person einträgt, damit Clips dorthin gehen."
+    }
+  },
+  "data_usage": {
+    "en": "Clipped content goes only to the user's own SubKit engine. No data is sold, shared with third parties or used for advertising.",
+    "de": "Gesammelte Inhalte gehen nur an die eigene SubKit-Engine. Keine Daten werden verkauft, an Dritte weitergegeben oder für Werbung genutzt."
+  }
+}

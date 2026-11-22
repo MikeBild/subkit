@@ -1,12 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { packageSteps, parsePackageArgs } from "../../scripts/package.ts";
+import { packagePlatform, packageSteps, parsePackageArgs } from "../../scripts/package.ts";
 import { updateFeedProblem } from "./updates.ts";
 import { compareVersions } from "./version.ts";
 
 const app = join(import.meta.dir, "..", "..");
 const repo = join(app, "..", "..");
+const MAC = { platform: "darwin", arch: "arm64" };
+const WINDOWS = { platform: "win32", arch: "x64" };
 
 function read(path: string): string {
   return readFileSync(path, "utf8");
@@ -115,8 +117,6 @@ describe("local-mode engine bundle", () => {
     ).scripts;
     const packaging = read(join(app, "scripts/package.ts"));
     expect(scripts.package).toBe("bun run scripts/package.ts");
-    expect(packaging).toContain('"build", "desktop-engine"');
-    expect(packaging).toContain('"scripts/fetch-postgres.ts", "--target", "darwin-arm64"');
     for (const text of [JSON.stringify(scripts), packaging]) {
       expect(text).not.toContain("LOCAL_ENGINE");
       expect(text).not.toContain("local-engine.yml");
@@ -124,12 +124,12 @@ describe("local-mode engine bundle", () => {
   });
 
   test("one package command stages, builds and hands the rest to the builder", () => {
-    const run = (args: string[]) =>
-      packageSteps(parsePackageArgs(args)).map((step) => step.argv.join(" "));
+    const run = (args: string[], host = MAC) =>
+      packageSteps(parsePackageArgs(args), host).map((step) => step.argv.join(" "));
     expect(run([])).toEqual([
       "bun scripts/fetch-agent-desktop.ts",
       "bun scripts/fetch-agent-browser.ts",
-      "bun run build desktop-engine",
+      "bun run build desktop-engine --target darwin-arm64",
       "bun scripts/fetch-postgres.ts --target darwin-arm64",
       "bun scripts/build.ts --production",
       "bun scripts/notices.ts",
@@ -145,6 +145,21 @@ describe("local-mode engine bundle", () => {
       "bun scripts/notices.ts",
       "bunx electron-builder --config electron-builder.dev.yml --dir",
     ]);
+  });
+
+  test("the Windows package stages no local bundle, because Windows offers no local feature", () => {
+    const run = (args: string[], host: { platform: string; arch: string }) =>
+      packageSteps(parsePackageArgs(args), host).map((step) => step.argv.join(" "));
+    const windows = [
+      "bun scripts/build.ts --production",
+      "bun scripts/notices.ts",
+      "bunx electron-builder --config electron-builder.yml --win",
+    ];
+    expect(run(["--win"], WINDOWS)).toEqual(windows);
+    expect(run(["--win"], MAC)).toEqual(windows);
+    expect(run([], WINDOWS)).toEqual(windows.map((step) => step.replace(" --win", "")));
+    expect(packagePlatform(parsePackageArgs(["--mac"]), WINDOWS).platform).toBe("darwin-arm64");
+    expect(packagePlatform(parsePackageArgs([]), WINDOWS).platform).toBe("win32-x64");
   });
 
   test("the engine runs with the JIT entitlement and nothing more", () => {
@@ -172,78 +187,128 @@ describe("desktop release workflow", () => {
     for (const action of actions) expect(action).toMatch(/^[\w.-]+\/[\w.-]+@[0-9a-f]{40}$/);
   });
 
+  test("adds a versionless copy of each installer for the latest download link", () => {
+    const collect = jobs.publish?.steps.find(
+      (step) => step.name === "Collect the artifacts of this run",
+    );
+    const script = collect?.run ?? "";
+    expect(script).toContain(
+      'for installer in "$assets/subkit-desktop-$VERSION-mac-arm64.dmg" "$assets/subkit-desktop-$VERSION-win-x64.exe"; do',
+    );
+    expect(script).toContain('sed "s/-$VERSION-/-/"');
+    expect(script).toContain('test -f "$assets/subkit-desktop-mac-arm64.dmg"');
+    expect(script.indexOf("sed ")).toBeLessThan(script.indexOf("ASSETS_DIR="));
+  });
+
   test("adds to the existing release and never creates or replaces one", () => {
     expect(scripts).toContain('gh release upload "$TAG"');
     expect(scripts).not.toContain("gh release create");
     expect(scripts).not.toContain("--clobber");
     expect(scripts).not.toContain("electron-builder");
     expect(scripts).not.toMatch(/bun run package(?![^\n]*--publish never)[^\n]*--(mac|win|linux)/);
-    expect(scripts.match(/--publish never/g)?.length).toBe(7);
+    expect(scripts.match(/--publish never/g)?.length).toBe(5);
   });
 
-  test("publishes after the macOS build, never in a dry run, and waits for the other platforms", () => {
-    expect(jobs.publish?.needs).toEqual(["preflight", "macos", "windows", "linux"]);
-    expect(jobs.publish?.if).toContain("!cancelled()");
-    expect(jobs.publish?.if).toContain("needs.preflight.outputs.dry_run != 'true'");
-    expect(jobs.publish?.if).toContain("needs.macos.result == 'success'");
-    for (const name of ["windows", "linux"]) {
-      expect(jobs.publish?.if).not.toContain(`needs.${name}.`);
-      expect(jobs[name]?.["continue-on-error"]).toBeUndefined();
-    }
-    expect(jobs.linux?.needs).toBe("preflight");
-    expect(jobs.windows?.needs).toBe("preflight");
-    expect(jobs.macos?.needs).toEqual(["preflight", "engine"]);
-  });
-
-  test("missing Windows signing values warn but never stop the macOS release", () => {
-    const preflight = jobs.preflight?.steps ?? [];
-    const script = preflight.find((step) => step.name === "Require signing secrets")?.run ?? "";
-    const required = /required="([^"]+)"/.exec(script)?.[1]?.split(" ") ?? [];
-    expect(required).toEqual([
-      "CSC_LINK",
-      "CSC_KEY_PASSWORD",
-      "APPLE_API_KEY",
-      "APPLE_API_KEY_ID",
-      "APPLE_API_ISSUER",
-      "RELEASE_SIGNING_KEY",
+  test("builds two platforms, each from its own engine job, and no Linux", () => {
+    expect(Object.keys(jobs)).toEqual([
+      "preflight",
+      "engine-darwin",
+      "engine-windows",
+      "macos",
+      "windows",
+      "publish",
     ]);
-    expect(script).not.toMatch(/required="\$required/);
-    expect(script).toMatch(/for name in \$windows; do[\s\S]*::warning::/);
-    expect(script.split("for name in $windows")[1]).not.toContain("exit 1");
+    expect(jobs["engine-darwin"]?.needs).toBe("preflight");
+    expect(jobs["engine-windows"]?.needs).toBe("preflight");
+    expect(jobs.macos?.needs).toEqual(["preflight", "engine-darwin"]);
+    expect(jobs.windows?.needs).toEqual(["preflight", "engine-windows"]);
+    expect(jobs.publish?.needs).toEqual(["preflight", "macos", "windows"]);
+    expect(workflowText).not.toMatch(/linux|AppImage|latest-linux/i);
   });
 
-  test("a failed Windows or Linux build leaves only its own files out of the release", () => {
-    const publish = jobs.publish?.steps ?? [];
-    const collect = publish.find((step) => step.name === "Collect the artifacts of this run");
+  test("each platform is independent: no job of one platform waits for the other", () => {
+    const needs = (name: string) => [jobs[name]?.needs ?? []].flat();
+    for (const name of ["engine-darwin", "macos"])
+      expect(needs(name).filter((need) => need.includes("windows"))).toEqual([]);
+    for (const name of ["engine-windows", "windows"])
+      expect(needs(name).filter((need) => need.includes("darwin") || need === "macos")).toEqual([]);
+    for (const name of Object.keys(jobs)) expect(jobs[name]?.["continue-on-error"]).toBeUndefined();
+    expect(jobs["engine-darwin"]?.if).toContain("needs.preflight.outputs.macos == 'true'");
+    expect(jobs["engine-windows"]?.if).toContain("needs.preflight.outputs.windows == 'true'");
+  });
+
+  test("publishes what built, never in a dry run", () => {
+    const condition = jobs.publish?.if ?? "";
+    expect(condition).toContain("!cancelled()");
+    expect(condition).toContain("needs.preflight.outputs.dry_run != 'true'");
+    expect(condition).toContain(
+      "(needs.macos.result == 'success' || needs.windows.result == 'success')",
+    );
+    const collect = (jobs.publish?.steps ?? []).find(
+      (step) => step.name === "Collect the artifacts of this run",
+    );
     const script = collect?.run ?? "";
-    expect(script).toContain('names="desktop-macos"');
-    expect(script).toContain('feeds="latest-mac.yml"');
     expect(script).toMatch(
-      /if \[ "\$WINDOWS_RESULT" = "success" \]; then\s+names="\$names desktop-windows"\s+feeds="\$feeds latest\.yml"/,
+      /if \[ "\$MACOS_RESULT" = "success" \]; then\s+names="\$names desktop-macos"\s+feeds="\$feeds latest-mac\.yml"\s+else\s+echo "::warning::/,
     );
     expect(script).toMatch(
-      /if \[ "\$LINUX_RESULT" = "success" \]; then\s+names="\$names desktop-linux"\s+feeds="\$feeds latest-linux\.yml"/,
+      /if \[ "\$WINDOWS_RESULT" = "success" \]; then\s+names="\$names desktop-windows"\s+feeds="\$feeds latest\.yml"\s+else\s+echo "::warning::/,
     );
     expect(script).toContain('echo "FEEDS=$feeds" >> "$GITHUB_ENV"');
-    const verifies = publish
+    const verifies = (jobs.publish?.steps ?? [])
       .map((step) => step.run ?? "")
       .filter((run) => run.includes("verify-feed.ts"));
     expect(verifies).toHaveLength(2);
     for (const run of verifies) expect(run).toMatch(/verify-feed\.ts "\$\w+" "\$VERSION" \$FEEDS/);
   });
 
+  test("missing signing values of one platform skip and flag only that platform", () => {
+    const preflight = jobs.preflight?.steps ?? [];
+    const step = preflight.find(
+      (candidate) => candidate.name === "Choose the platforms whose signing values are set",
+    );
+    const script = step?.run ?? "";
+    expect(step?.if).toContain("dry_run != 'true'");
+    expect(script).toContain(
+      "macos=$(missing_of CSC_LINK CSC_KEY_PASSWORD APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER)",
+    );
+    expect(script).toContain("windows=$(missing_of WIN_CSC_LINK WIN_CSC_KEY_PASSWORD)");
+    expect(script).toMatch(/::warning::the macOS signing values[\s\S]*macos=false/);
+    expect(script).toMatch(/::warning::the Windows signing values[\s\S]*windows=false/);
+    expect(script).toContain("release=$(missing_of RELEASE_SIGNING_KEY)");
+    const outputs = (jobs.preflight as { outputs?: Record<string, string> }).outputs ?? {};
+    expect(outputs.macos).toContain("steps.platforms.outputs.macos || 'true'");
+    expect(outputs.windows).toContain("steps.platforms.outputs.windows || 'true'");
+  });
+
+  test("builds each engine for its own target and starts the Windows engine on Windows", () => {
+    const build = (name: string) =>
+      (jobs[name]?.steps ?? [])
+        .map((step) => step.run ?? "")
+        .filter((run) => run.includes("bun run build desktop-engine"));
+    expect(build("engine-darwin")).toEqual([
+      expect.stringContaining("bun run build desktop-engine --target darwin-arm64"),
+    ]);
+    expect(build("engine-windows")).toEqual([
+      expect.stringContaining("bun run build desktop-engine --target windows-x64"),
+    ]);
+    const start = (jobs.windows?.steps ?? []).find(
+      (step) => step.name === "Start the Windows engine on Windows",
+    );
+    expect(start?.run).toContain("--name engine-desktop-win");
+    expect(start?.run).toContain('"$engine" --smoke');
+  });
+
   test("always builds the local-mode engine and packages macOS with the one builder config", () => {
-    expect(jobs.engine?.needs).toBe("preflight");
-    expect(jobs.engine?.if).toBeUndefined();
     expect(workflowText).not.toMatch(/local_engine|LOCAL_ENGINE|BUILDER_CONFIG|local-engine\.yml/);
-    const staging = steps.filter((step) => step.run?.includes("--name engine-desktop-"));
+    const staging = steps.filter((step) => step.run?.includes("--name engine-desktop-mac"));
     expect(staging.length).toBe(1);
     expect(staging[0]?.if).toBeUndefined();
   });
 
   test("signs the macOS engine with the app entitlements, notarizes it and starts it", () => {
-    const engine = jobs.engine?.steps.map((step) => step.run ?? "").join("\n") ?? "";
-    expect(engine).toContain("bun run build desktop-engine");
+    const engine = jobs["engine-darwin"]?.steps.map((step) => step.run ?? "").join("\n") ?? "";
+    expect(engine).toContain("bun run build desktop-engine --target darwin-arm64");
     expect(engine).toContain(
       'sh scripts/codesign-macos.sh dist/engine-desktop/mac/arm64/engine "$identity" apps/desktop/assets/entitlements.mac.plist',
     );
@@ -311,7 +376,7 @@ describe("desktop release workflow", () => {
 
   test("a dry run builds without updates, a release build requires them", () => {
     const builds = steps.filter((step) => step.run?.includes("bun run package --prebuilt"));
-    expect(builds.length).toBe(7);
+    expect(builds.length).toBe(5);
     for (const step of builds) {
       const dry = step.if?.includes("dry_run == 'true'") ?? false;
       expect(step.env?.SUBKIT_DESKTOP_UPDATES).toBe(dry ? "0" : "1");

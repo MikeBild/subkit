@@ -69,7 +69,7 @@ export async function listExecutionDeviceSteps(
       command_id: command.id,
       step_id: command.step_id,
       kind: command.kind,
-      state: stepViewState(command.state),
+      state: stepViewState(command.state, command.effect),
       target: owner ? (targets[index] ?? "") : null,
       screenshot: viewer && hasScreenshot(command.kind, command.state, command.result !== null),
     };

@@ -8,13 +8,13 @@ import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 let suite: McpTestSuite;
 
 beforeAll(async () => {
-  testEnv.SK_MCP_MODE = "authoring";
+  testEnv.SUBKIT_MCP_MODE = "authoring";
   suite = await startMcpTestSuite("refused-before-approval");
 });
 
 afterAll(async () => {
   await suite?.cleanup();
-  delete testEnv.SK_MCP_MODE;
+  delete testEnv.SUBKIT_MCP_MODE;
 });
 
 function body(result: Awaited<ReturnType<Client["callTool"]>>) {

@@ -165,7 +165,7 @@ beforeAll(async () => {
   previousMasterKey = testEnv.MASTER_KEY;
   testEnv.MASTER_KEY = "66".repeat(32);
   testEnv.NODE_ENV = "test";
-  configDir = mkdtempSync(join(tmpdir(), "sk-runtime-golden-"));
+  configDir = mkdtempSync(join(tmpdir(), "subkit-runtime-golden-"));
   _resetConfigForTests();
   await loadConfig({
     env: { DATABASE_URL: "postgres://placeholder/runtime-golden", NODE_ENV: "test" },

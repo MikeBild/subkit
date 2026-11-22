@@ -113,7 +113,7 @@ async function getDetail(conversationId: string): Promise<{
   };
 }
 
-describe("saved workflow reruns stay on the sk conversation surface", () => {
+describe("saved workflow reruns stay on the subkit conversation surface", () => {
   test("run + rerun keeps the saved workflow bound and avoids cannot_help fallbacks", async () => {
     const workflowId = await seedWorkflow();
     const conversationId = await createConversation(workflowId);
@@ -138,7 +138,7 @@ describe("saved workflow reruns stay on the sk conversation surface", () => {
       assistant_text: string;
     }>(firstRun);
     expect(firstRunBody.status).toBe("completed");
-    expect(firstRunBody.assistant_text).not.toContain("sk workflow run");
+    expect(firstRunBody.assistant_text).not.toContain("subkit workflow run");
     expect(firstRunBody.assistant_text).not.toContain("http://");
 
     const afterFirstRun = await getDetail(conversationId);
@@ -180,7 +180,7 @@ describe("saved workflow reruns stay on the sk conversation surface", () => {
       assistant_text: string;
     }>(secondRun);
     expect(secondRunBody.status).toBe("completed");
-    expect(secondRunBody.assistant_text).not.toContain("sk workflow run");
+    expect(secondRunBody.assistant_text).not.toContain("subkit workflow run");
     expect(secondRunBody.assistant_text).not.toContain("http://");
 
     const finalDetail = await getDetail(conversationId);

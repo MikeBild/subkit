@@ -116,9 +116,6 @@ describe("package portability tools", () => {
     expect(formatPackagePlanTitle("finance.subkit-package.zip", plan, "de")).toBe(
       "finance.subkit-package.zip · 3 neu · 2 unverändert · 1 Konflikt · danach 2 Zugangsdaten, 1 Freigabe",
     );
-    expect(formatPackagePlanTitle("finance.subkit-package.zip", plan, undefined)).toContain(
-      "3 neu",
-    );
     const empty = {
       ...plan,
       requires: [],

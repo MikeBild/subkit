@@ -33,7 +33,7 @@ A failed run shows a notice with three parts: what happened, one recommended act
 | **AI budget reached** | **Ask an administrator**: an administrator raises the budget under **Settings** › **Usage** or continues this month without a limit. |
 | **Connector missing**, **Unresolved placeholder**, **Answer in an unexpected shape**, **Message malformed**, **Not classified** | **Fix it in the chat**: the chat opens with the question about cause and fix. |
 
-For confidential workflows (`execution_privacy: sensitive`) SubKit stores no failure details. From this version on, such a run still keeps its cause and one fixed sentence that says what to do. Example: “The connected service rejected the sign-in. Reconnect the connector, then run again. Nothing was changed by this step.” When SubKit recognizes no cause, it stays at “Sensitive execution failed.” The engine writes these sentences in English. The Cockpit says them in your language where it knows the cause, the reason for a hold or the failure code: on the overview for held and failing workflows, for a refused rerun and in error notices. In the technical details of a run, over the HTTP API and in `sk` the engine’s English sentence remains. SubKit Desktop notifies in your language too.
+For confidential workflows (`execution_privacy: sensitive`) SubKit stores no failure details. From this version on, such a run still keeps its cause and one fixed sentence that says what to do. Example: “The connected service rejected the sign-in. Reconnect the connector, then run again. Nothing was changed by this step.” When SubKit recognizes no cause, it stays at “Sensitive execution failed.” The engine writes these sentences in English. The Cockpit says them in your language where it knows the cause, the reason for a hold or the failure code: on the overview for held and failing workflows, for a refused rerun and in error notices. In the technical details of a run, over the HTTP API and in `subkit` the engine’s English sentence remains. SubKit Desktop notifies in your language too.
 
 ### Why a schedule waits
 
@@ -104,7 +104,7 @@ A workflow approval and the standing permission of a task can have an end date. 
 | When | What happens |
 | --- | --- |
 | 7 days before: notice | A notice such as “The approval ends in 5 days” with **Renew** appears on the workflow or the task. An item appears under **Needs you**, and with push switched on the notice also reaches your devices. |
-| 3 days before: notification | SubKit sends the event `workflow.approval_expiring` or `task.grant_expiring` once to subscriptions, webhooks and the `sk` inbox. |
+| 3 days before: notification | SubKit sends the event `workflow.approval_expiring` or `task.grant_expiring` once to subscriptions, webhooks and the `subkit` inbox. |
 | Fewer than a tenth of the runs left | For an approval with a run limit, the item under **Needs you** appears as well. |
 
 1. Select **Renew** in the notice or on the item under **Needs you**.
@@ -128,7 +128,7 @@ The run ends right away. The schedule stays active. Steps that already reached a
 - **Missing input pauses nothing.** A schedule that lacks input is held and shows up on the **Overview**, but does not count as a failure.
 - **The cause of the pause is coarse for confidential workflows.** For them SubKit counts all failures without a recognized cause as the same cause.
 - **Some reasons for tasks have no text of their own.** When the standing permission is used up, no longer fits the changed task, the owner is missing, the AI provider is missing or the task is paused, the history only reads “Held until you act.” The task page shows the exact reason.
-- **The `sk` inbox of existing workspaces does not get the new events by itself.** Add them to the stored rule with `sk notifications rules`.
+- **The `subkit` inbox of existing workspaces does not get the new events by itself.** Add them to the stored rule with `subkit notifications rules`.
 
 ### If something does not work
 
@@ -143,15 +143,15 @@ The run ends right away. The schedule stays active. Steps that already reached a
 
 ### The same in the terminal and over the HTTP API
 
-With the `sk` command line:
+With the `subkit` command line:
 
 ```bash
-sk schedules list
-sk schedules pause <schedule-id>
-sk schedules resume <schedule-id>
+subkit schedules list
+subkit schedules pause <schedule-id>
+subkit schedules resume <schedule-id>
 ```
 
-`sk schedules resume` also resumes an automatically paused schedule and counts failures afresh. There is no `sk` command for the history.
+`subkit schedules resume` also resumes an automatically paused schedule and counts failures afresh. There is no `subkit` command for the history.
 
 | Route | Does |
 | --- | --- |

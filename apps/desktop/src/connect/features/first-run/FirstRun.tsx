@@ -81,6 +81,14 @@ export function Welcome() {
         {t("welcome.start")}
       </Button>
       <Button
+        data-testid="welcome-create"
+        variant="outline"
+        className="mt-2 w-full"
+        onClick={() => dispatch({ type: "CreateWorkspace" })}
+      >
+        {t("welcome.create")}
+      </Button>
+      <Button
         data-testid="welcome-invite"
         variant="link"
         className="mt-1"

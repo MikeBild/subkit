@@ -96,6 +96,8 @@ const task = {
   fingerprint: FINGERPRINT,
   revision: 1,
   lifecycle: "active",
+  source_conversation_id: null,
+  source_message_id: null,
   created_at: AT,
   updated_at: AT,
 };
@@ -355,6 +357,7 @@ describe("task input and view", () => {
       { ...task, environment: "staging" },
       { ...task, owner_id: "someone" },
       { ...task, created_at: "yesterday" },
+      { ...task, source_message_id: "message" },
     ])
       expect(accepts(TaskSchema, invalid)).toBe(false);
   });

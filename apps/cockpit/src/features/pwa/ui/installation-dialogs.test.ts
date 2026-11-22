@@ -144,12 +144,12 @@ describe("notification dialog states", () => {
 });
 
 describe("what the install dialog says about the desktop app", () => {
-  test("it promises no download: the web app works today, the desktop app comes with the public release", () => {
+  test("it points at the latest release for the desktop app without a link of its own", () => {
     const de = translate("de", "installation.desktopLater");
-    expect(de).toContain("als Web-App; das funktioniert schon jetzt");
-    expect(de).toContain("mit der öffentlichen Version von SubKit verfügbar");
+    expect(de).toContain("als Web-App");
+    expect(de).toContain("SubKit Desktop für Mac und Windows findest du im neuesten Release");
     const en = translate("en", "installation.desktopLater");
-    expect(en).toContain("available with the public release of SubKit");
+    expect(en).toContain("SubKit Desktop for Mac and Windows is in the latest release");
     for (const text of [de, en]) expect(text).not.toMatch(/https?:|download|herunterladen/i);
   });
 

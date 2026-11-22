@@ -374,6 +374,7 @@ describe("erasing a product caller", () => {
     const own = (user_id: string) =>
       createTask(
         {
+          locale: "de",
           tenant_id: tenant.id,
           principal: {
             provider: "session",

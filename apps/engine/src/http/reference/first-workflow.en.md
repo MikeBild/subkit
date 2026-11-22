@@ -17,7 +17,7 @@ It works the same in SubKit Cloud and on a self-hosted engine.
   - Cloud: `https://subkit-cloud.mikebild.dev`
   - Self-hosted: `https://<your-engine>`. In a browser the address opens the Cockpit.
 - Permission to create and run workflows. Ask your administrator if a button is missing.
-- An AI provider. Cloud provides one. A self-hosted engine uses the provider you chose in `sk init`.
+- An AI provider. Cloud provides one. A self-hosted engine uses the provider you chose in `subkit init`.
 
 ### Sign in
 
@@ -134,15 +134,15 @@ You see **Run started**. If the button is unavailable, the hint says why, for ex
 
 ### The same in the terminal
 
-With the `sk` command line you create workflows with `sk workflows create`, change them with `sk workflows update` and schedule them with `sk schedules create`.
+With the `subkit` command line you create workflows with `subkit workflows create`, change them with `subkit workflows update` and schedule them with `subkit schedules create`.
 If a step needs a change before approval, these commands report `automation: repair required`.
 Check runs like this:
 
 ```bash
-sk executions list --limit 5
-sk executions steps <run-id>
-sk executions result <run-id>
+subkit executions list --limit 5
+subkit executions steps <run-id>
+subkit executions result <run-id>
 ```
 
-`sk workflows run <workflow-slug> --follow` starts another run and streams its steps.
-For more, see "Use the sk CLI on your machine".
+`subkit workflows run <workflow-slug> --follow` starts another run and streams its steps.
+For more, see "Use the subkit CLI on your machine".

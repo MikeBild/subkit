@@ -70,16 +70,16 @@ describe("connector templates (HTTP)", () => {
   }, 30_000);
 });
 
-describe("sk connectors CLI read surface", () => {
-  test("sk connectors list surfaces a seeded connector", async () => {
+describe("subkit connectors CLI read surface", () => {
+  test("subkit connectors list surfaces a seeded connector", async () => {
     const { slug } = await seedConnector(env, { name: "CLI Visible" });
     const result = await cli(["connectors", "list"], { env, persona: "admin" });
-    expectSuccess(result, "sk connectors list");
+    expectSuccess(result, "subkit connectors list");
     expect(result.stdout).toContain(slug);
   }, 60_000);
 });
 
-describe("sk connectors declarative authoring", () => {
+describe("subkit connectors declarative authoring", () => {
   test("validate rejects a bad definition and reports the field", async () => {
     const file = writeTempFile(
       env.personas.admin,
@@ -103,7 +103,7 @@ describe("sk connectors declarative authoring", () => {
       }),
     );
     const result = await cli(["connectors", "validate", file], { env, persona: "admin" });
-    expectSuccess(result, "sk connectors validate");
+    expectSuccess(result, "subkit connectors validate");
   }, 60_000);
 
   test("probe --file reaches the upstream without creating anything", async () => {
@@ -144,7 +144,7 @@ describe("sk connectors declarative authoring", () => {
       env,
       persona: "admin",
     });
-    expectSuccess(result, "sk connectors create --file");
+    expectSuccess(result, "subkit connectors create --file");
 
     const listed = await cli(["connectors", "list"], { env, persona: "admin" });
     expect(listed.stdout).toContain("declarative-create");
@@ -181,19 +181,19 @@ describe("sk connectors declarative authoring", () => {
   }, 90_000);
 });
 
-describe("sk connectors driver-dispatched verbs", () => {
+describe("subkit connectors driver-dispatched verbs", () => {
   test("disable then enable round-trips, and the bit is readable back", async () => {
     const { id } = await seedConnector(env, { name: "Switchable", base_url: env.baseUrl });
 
     const disabled = await cli(["connectors", "disable", id], { env, persona: "admin" });
-    expectSuccess(disabled, "sk connectors disable");
+    expectSuccess(disabled, "subkit connectors disable");
     expect(JSON.parse(disabled.stdout).enabled).toBe(false);
 
     const afterDisable = await cli(["connectors", "get", id], { env, persona: "admin" });
     expect(JSON.parse(afterDisable.stdout).enabled).toBe(false);
 
     const enabled = await cli(["connectors", "enable", id], { env, persona: "admin" });
-    expectSuccess(enabled, "sk connectors enable");
+    expectSuccess(enabled, "subkit connectors enable");
     expect(JSON.parse(enabled.stdout).enabled).toBe(true);
   }, 90_000);
 
@@ -224,7 +224,7 @@ describe("sk connectors driver-dispatched verbs", () => {
       env,
       persona: "admin",
     });
-    expectSuccess(patched, "sk connectors patch --file");
+    expectSuccess(patched, "subkit connectors patch --file");
     expect(`${patched.stdout}${patched.stderr}`).toContain("Update connector Scoped OAuth");
 
     const after = await cli(["connectors", "get", id], { env, persona: "admin" });

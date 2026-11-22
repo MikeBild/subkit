@@ -19,7 +19,7 @@ import { OFFLOAD_TEST_BUCKET, useMemoryOffloadStorage } from "./offload-storage.
 const configDirs: string[] = [];
 
 async function loadThrowawayConfig(): Promise<void> {
-  const dir = mkdtempSync(join(tmpdir(), "sk-offload-storage-"));
+  const dir = mkdtempSync(join(tmpdir(), "subkit-offload-storage-"));
   configDirs.push(dir);
   _resetConfigForTests();
   await loadConfig({

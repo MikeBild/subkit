@@ -95,7 +95,7 @@ describe("product bearer authentication over HTTP", () => {
 
   test("a product principal gets no tenant status or CLI bootstrap", async () => {
     const token = await liveToken(nextUuid());
-    for (const path of ["/v1/status", "/v1/sk/bootstrap"]) {
+    for (const path of ["/v1/status", "/v1/subkit/bootstrap"]) {
       const res = await call(path, token);
       expect(res.status).toBe(404);
       const body = JSON.stringify(await res.json());
@@ -103,7 +103,7 @@ describe("product bearer authentication over HTTP", () => {
       expect(body).not.toContain("connectors_count");
     }
     expect((await call("/v1/status", ctx.apiKey)).status).toBe(200);
-    expect((await call("/v1/sk/bootstrap", ctx.apiKey)).status).toBe(200);
+    expect((await call("/v1/subkit/bootstrap", ctx.apiKey)).status).toBe(200);
   });
 
   test("a product principal is refused on the MCP endpoint before any tool runs", async () => {

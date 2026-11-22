@@ -7,6 +7,7 @@ import {
   LOCAL_UNAVAILABLE,
 } from "../../shared/ipc.ts";
 import { NO_ONBOARDING } from "../../shared/onboarding.ts";
+import { platformCapabilities } from "../../shared/platform-capabilities.ts";
 import { createSignInStore } from "./sign-in-store.ts";
 
 const ORIGIN = "https://subkit.example.com";
@@ -37,6 +38,7 @@ function main(patch: Partial<ConnectState> = {}): ConnectState {
       lost: [],
     },
     local: LOCAL_UNAVAILABLE,
+    platform: platformCapabilities("darwin", "arm64"),
     ...patch,
   };
 }
@@ -107,7 +109,10 @@ function stubBridge(
       calls.push(["checkInvite", link]);
       return Promise.resolve({ kind: "link" });
     },
-    joinInvite: record("joinInvite") as ConnectBridge["joinInvite"],
+    joinInvite: (link) => {
+      calls.push(["joinInvite", link]);
+      return answers.login?.() ?? Promise.resolve(compatible);
+    },
     onState: (listener) => {
       push = listener;
     },

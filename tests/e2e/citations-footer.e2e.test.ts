@@ -72,7 +72,7 @@ async function seedConversation(): Promise<string> {
   return conversation.id;
 }
 
-describe("citations footer over `sk -p --output text`", () => {
+describe("citations footer over `subkit -p --output text`", () => {
   test("a search_knowledge-grounded answer renders a Sources: footer naming the source", async () => {
     const token = `zphcite${label().replace(/[^a-z0-9]/g, "")}`;
     const sourceName = `Deploy Runbook ${label()}`;
@@ -87,7 +87,7 @@ describe("citations footer over `sk -p --output text`", () => {
       ["--r", conversationId, "--p", `What do you know about ${token}?`, "--output", "text"],
       { env, persona: "admin", timeout: 60_000 },
     );
-    expectSuccess(result, "sk --p (grounded question)");
+    expectSuccess(result, "subkit --p (grounded question)");
     expect(result.stdout).toContain("Sources:");
     expect(result.stdout).toContain(sourceName);
   }, 60_000);
@@ -99,7 +99,7 @@ describe("citations footer over `sk -p --output text`", () => {
       ["--r", conversationId, "--p", "just say hi, no lookups needed", "--output", "text"],
       { env, persona: "admin", timeout: 60_000 },
     );
-    expectSuccess(result, "sk --p (ungrounded question)");
+    expectSuccess(result, "subkit --p (ungrounded question)");
     expect(result.stdout).not.toContain("Sources:");
   }, 60_000);
 });

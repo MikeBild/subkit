@@ -82,7 +82,11 @@ function Window() {
           {screen.kind === "settings" && <Settings />}
           {screen.kind === "permissions" && <PermissionSetup />}
           {screen.kind === "local-capabilities" && (
-            <LocalCapabilities device={screen.device} signedIn={screen.signedIn} />
+            <LocalCapabilities
+              device={screen.device}
+              signedIn={screen.signedIn}
+              supported={screen.supported}
+            />
           )}
         </OnboardingFrame>
       </TooltipProvider>

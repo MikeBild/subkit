@@ -104,7 +104,7 @@ export function lifecycleInputHashes(
 ): Record<string, string> {
   const entries = [
     ["source", ["scripts/start-cockpit-demo.ts", "scripts/lib/cockpit-demo-lifecycle-harness.ts"]],
-    ["compose", ["docker-compose.test.yml", "docker-compose.demo.yml"]],
+    ["compose", ["docker/docker-compose.test.yml", "docker/docker-compose.demo.yml"]],
     ["config", ["subkit.config.example.json", "package.json"]],
     ["fixtures", ["scripts/lib/cockpit-demo-seed.ts"]],
   ] as const;

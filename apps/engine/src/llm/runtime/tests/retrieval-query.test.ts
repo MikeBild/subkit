@@ -4,7 +4,7 @@ import { buildQuery } from "../context-assembler.ts";
 
 const goal = "Send overdue invoice reminders every Monday";
 const generationPrompt = [
-  "Generate ONE complete sk workflow definition that satisfies the goal below.",
+  "Generate ONE complete subkit workflow definition that satisfies the goal below.",
   "x".repeat(600),
   goal,
 ].join("\n");

@@ -27,7 +27,7 @@ let configDir: string;
 beforeAll(async () => {
   testEnv.MASTER_KEY = RUNNING_KEY;
   tdb = await createTestDb("preflight-vault-ops");
-  configDir = mkdtempSync(join(tmpdir(), "sk-preflight-vault-"));
+  configDir = mkdtempSync(join(tmpdir(), "subkit-preflight-vault-"));
   _resetConfigForTests();
   await loadConfig({
     env: { DATABASE_URL: tdb.url, NODE_ENV: "test" },

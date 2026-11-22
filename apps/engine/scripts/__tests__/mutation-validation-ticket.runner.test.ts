@@ -20,7 +20,7 @@ function context() {
   owned.push(f.root);
   const prepared = loadMutationWave(f.root, f.manifestPath);
   const runId = "run-caller-test";
-  const parentRunRoot = join(f.root, "reports/mutation/runs", f.wave.wave_id, runId);
+  const parentRunRoot = join(f.root, ".reports/mutation/runs", f.wave.wave_id, runId);
   mkdirSync(parentRunRoot, { recursive: true });
   const copiedManifestPath = join(parentRunRoot, "wave.json");
   writeFileSync(copiedManifestPath, prepared.manifestText);

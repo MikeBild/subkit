@@ -95,7 +95,7 @@
     "packages/shared/src/approval-choice.ts": {
       "line_min": 100,
       "function_min": 100,
-      "rationale": "Pure approval-choice mapping shared by engine, sk and cockpit; first Stryker target.",
+      "rationale": "Pure approval-choice mapping shared by engine, subkit and cockpit; first Stryker target.",
       "observed": {
         "line": 100,
         "function": null

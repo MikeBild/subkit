@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { conversations, taskRuns, tasks } from "../../db/schema/index.ts";
 import { ConflictError, ForbiddenError, NotFoundError } from "../../http/errors.ts";
 import {
@@ -133,7 +133,7 @@ describe("tasks/service run control", () => {
     expect(restart).toBeInstanceOf(NotFoundError);
   });
 
-  test("a start that cannot finish leaves a failed run and a closed conversation", async () => {
+  test("a start whose plan cannot be built leaves a failed run and no conversation", async () => {
     const w = await workspace();
     const task = await ownedTask(w);
     await ctx.db
@@ -157,10 +157,18 @@ describe("tasks/service run control", () => {
       failure_code: "start_failed",
       ended_at: NOW.toISOString(),
     });
-    expect(run?.conversation_id).not.toBeNull();
-    expect((await conversationRow(w.tenant_id, run?.conversation_id ?? "")).status).toBe(
-      "abandoned",
-    );
+    expect(run?.conversation_id).toBeNull();
+    expect(
+      await ctx.db
+        .select({ id: conversations.id })
+        .from(conversations)
+        .where(
+          and(
+            eq(conversations.tenant_id, w.tenant_id),
+            sql`${conversations.draft} -> 'session' -> 'task_run' ->> 'task_run_id' = ${run?.id ?? ""}`,
+          ),
+        ),
+    ).toEqual([]);
     expect(
       (await auditRows(w.tenant_id, run?.id ?? "")).map((entry) => [entry.action, entry.result]),
     ).toEqual([
@@ -271,7 +279,7 @@ describe("tasks/service run control", () => {
     });
   });
 
-  test("the sweep fails starts that never got a conversation", async () => {
+  test("the sweep fails starts that never got a conversation and closes the one left behind", async () => {
     const w = await workspace();
     const other = await workspace();
     const { deps } = recordingDeps();
@@ -295,6 +303,12 @@ describe("tasks/service run control", () => {
     expect(await state(w.tenant_id, stalled.id)).toBe("failed");
     expect(await state(w.tenant_id, healthy.id)).toBe("running");
     expect(await state(other.tenant_id, foreign.id)).toBe("running");
+    expect((await conversationRow(w.tenant_id, stalled.conversation_id ?? "")).status).toBe(
+      "abandoned",
+    );
+    expect((await conversationRow(w.tenant_id, healthy.conversation_id ?? "")).status).toBe(
+      "active",
+    );
     expect((await auditRows(w.tenant_id, stalled.id)).at(-1)).toMatchObject({
       action: "task_run.failed",
       actor_type: "system",

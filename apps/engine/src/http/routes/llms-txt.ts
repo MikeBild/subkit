@@ -16,6 +16,7 @@ import {
 import { currentDeploymentMode } from "../../config/deployment-mode.ts";
 import { getConfig } from "../../config/loader.ts";
 import { DESKTOP_MIN_VERSION_DEFAULT } from "../../config/schema.ts";
+import { ANONYMOUS_FEEDBACK_PATH } from "../../feedback/index.ts";
 import { LOCAL_UNAVAILABLE_CAPABILITIES } from "../../identity/index.ts";
 import docsJson from "../llms/docs.json" with { type: "text" };
 import llmsFullTxt from "../llms/llms-full.txt" with { type: "text" };
@@ -101,7 +102,7 @@ const indexRoute = createRoute({
   tags: ["docs"],
   summary: "llms-txt index of what this engine describes about itself",
   description:
-    "A robots.txt-style index (https://llmstxt.org): setup, the sk CLI, runtime settings and the connector catalog, each generated from the engine's code. Links drill down to /llms/{path}; /llms-full.txt carries all pages in one fetch.",
+    "A robots.txt-style index (https://llmstxt.org): setup, the subkit CLI, runtime settings and the connector catalog, each generated from the engine's code. Links drill down to /llms/{path}; /llms-full.txt carries all pages in one fetch.",
   responses: {
     200: {
       description: "llms-txt index",
@@ -160,7 +161,7 @@ const docsJsonRoute = createRoute({
   tags: ["docs"],
   summary: "Every documentation chapter in English and German, in one fetch",
   description:
-    "The documentation bundle this binary embeds: the reading sections with their English and German titles and descriptions, and each chapter with its audience, section, order within the section, headings, images, a sha256 and the Markdown body per locale. The engine version travels in the service descriptor and the x-sk-docs-version header, never in the body.",
+    "The documentation bundle this binary embeds: the reading sections with their English and German titles and descriptions, and each chapter with its audience, section, order within the section, headings, images, a sha256 and the Markdown body per locale. The engine version travels in the service descriptor and the x-subkit-docs-version header, never in the body.",
   responses: {
     200: {
       description: "Documentation bundle",
@@ -185,7 +186,10 @@ export function registerLlmsTxtRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(fullRoute, (c) => c.text(llmsFullTxt, 200, RESPONSE_HEADERS));
   app.openAPIRegistry.registerPath(docsJsonRoute);
   app.get(docsJsonRoute.path, (c) =>
-    c.body(docsJsonText, 200, { ...DOCS_JSON_HEADERS, "x-sk-docs-version": OPENAPI_INFO.version }),
+    c.body(docsJsonText, 200, {
+      ...DOCS_JSON_HEADERS,
+      "x-subkit-docs-version": OPENAPI_INFO.version,
+    }),
   );
   app.openapi(descriptorRoute, (c) => {
     const origin = resolveOrigin(c);
@@ -228,6 +232,7 @@ export function registerLlmsTxtRoutes(app: OpenAPIHono<AppEnv>): void {
             code_challenge_methods: ["S256"],
           },
           feedback_path: DESKTOP_FEEDBACK_PATH,
+          anonymous_feedback_path: ANONYMOUS_FEEDBACK_PATH,
         },
       },
       ...localDeploymentFields(),

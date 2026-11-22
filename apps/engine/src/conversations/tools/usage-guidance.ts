@@ -116,8 +116,8 @@ export function buildWorkflowUsageFromParts(p: WorkflowUsageParts): ResourceUsag
   const access: UsageAccessEntry[] = [
     {
       via: "cli",
-      label: "sk CLI",
-      command: `sk workflows run ${workflow.slug}${inputHint}`,
+      label: "subkit CLI",
+      command: `subkit workflows run ${workflow.slug}${inputHint}`,
     },
     {
       via: "mcp",
@@ -246,9 +246,9 @@ export function buildConnectorUsage(connector: {
     access: [
       {
         via: "cli",
-        label: "sk CLI",
-        command: `sk connectors get ${connector.id}`,
-        detail: `probe health with: sk connectors probe ${connector.id}`,
+        label: "subkit CLI",
+        command: `subkit connectors get ${connector.id}`,
+        detail: `probe health with: subkit connectors probe ${connector.id}`,
       },
       {
         via: "chat",
@@ -289,8 +289,8 @@ export function buildKnowledgeSourceUsage(view: {
       },
       {
         via: "cli",
-        label: "sk CLI",
-        command: `sk knowledge-sources search "<query>"`,
+        label: "subkit CLI",
+        command: `subkit knowledge-sources search "<query>"`,
       },
     ],
     follow_up: "Try a search against it?",

@@ -5,7 +5,7 @@ import { Lock, RouteOff, TriangleExclamationPoint } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
 import { absolute } from "@/app/links";
 import { useErrorNotice } from "@/components/cockpit/patterns/use-error-detail";
-import { FAMILY_UI_VERSION, FamilyFailureState } from "@/components/family-ui";
+import { FailurePanel } from "@/components/ui-states";
 import { useI18n } from "@/lib/i18n-context";
 
 type QueryView = "loading" | "error" | "empty" | "ready";
@@ -68,8 +68,7 @@ export function LoginRedirect({ href, label }: { href: string; label: string }) 
   return (
     <main
       className="grid min-h-full place-items-center bg-background"
-      data-family-surface="auth"
-      data-family-contract-version={FAMILY_UI_VERSION}
+      data-sk-surface="auth"
       data-testid="session-redirect"
       role="status"
       aria-label={label}
@@ -82,7 +81,7 @@ export function LoginRedirect({ href, label }: { href: string; label: string }) 
 export function ForbiddenState({ className }: { className?: string }) {
   const { t } = useI18n();
   return (
-    <FamilyFailureState
+    <FailurePanel
       kind="forbidden"
       title={t("resource.permission.title")}
       description={t("resource.permission.description")}
@@ -96,15 +95,15 @@ export function ForbiddenState({ className }: { className?: string }) {
 export function NotFoundPage() {
   const { t } = useI18n();
   return (
-    <FamilyFailureState
+    <FailurePanel
       kind="not-found"
-      title={t("familyFailure.notFound.title")}
-      description={t("familyFailure.notFound.description")}
+      title={t("failure.notFound.title")}
+      description={t("failure.notFound.description")}
       icon={<RouteOff className="size-5" />}
       primaryAction={
         <Button asChild data-testid="not-found-home-action">
           <a href={absolute("/")} data-testid="not-found-home">
-            {t("familyFailure.overview")}
+            {t("failure.overview")}
           </a>
         </Button>
       }
@@ -115,20 +114,20 @@ export function NotFoundPage() {
 export function RouteErrorPage({ reset }: ErrorComponentProps) {
   const { t } = useI18n();
   return (
-    <FamilyFailureState
+    <FailurePanel
       kind="fatal-error"
-      title={t("familyFailure.fatal.title")}
-      description={t("familyFailure.fatal.description")}
+      title={t("failure.fatal.title")}
+      description={t("failure.fatal.description")}
       icon={<TriangleExclamationPoint className="size-5" />}
       primaryAction={
         <Button type="button" onClick={reset} data-testid="fatal-error-retry">
-          {t("familyFailure.retry")}
+          {t("failure.retry")}
         </Button>
       }
       secondaryAction={
         <Button variant="outline" asChild data-testid="fatal-error-home-action">
           <a href={absolute("/")} data-testid="fatal-error-home">
-            {t("familyFailure.overview")}
+            {t("failure.overview")}
           </a>
         </Button>
       }
@@ -139,15 +138,15 @@ export function RouteErrorPage({ reset }: ErrorComponentProps) {
 export function BootstrapErrorPage({ onRetry }: { onRetry: () => void }) {
   const { t } = useI18n();
   return (
-    <FamilyFailureState
+    <FailurePanel
       kind="fatal-error"
       standalone
-      title={t("familyFailure.unreachable.title")}
-      description={t("familyFailure.bootstrap.description")}
+      title={t("failure.unreachable.title")}
+      description={t("failure.bootstrap.description")}
       icon={<TriangleExclamationPoint className="size-5" />}
       primaryAction={
         <Button type="button" onClick={onRetry} data-testid="session-retry">
-          {t("familyFailure.retry")}
+          {t("failure.retry")}
         </Button>
       }
     />
@@ -157,15 +156,15 @@ export function BootstrapErrorPage({ onRetry }: { onRetry: () => void }) {
 export function SessionExpiredPage({ href }: { href: string }) {
   const { t } = useI18n();
   return (
-    <FamilyFailureState
+    <FailurePanel
       kind="fatal-error"
       standalone
-      title={t("familyFailure.expired.title")}
-      description={t("familyFailure.expired.description")}
+      title={t("failure.expired.title")}
+      description={t("failure.expired.description")}
       icon={<Lock className="size-5" />}
       primaryAction={
         <Button asChild data-testid="session-expired-sign-in">
-          <a href={href}>{t("familyFailure.expired.signIn")}</a>
+          <a href={href}>{t("failure.expired.signIn")}</a>
         </Button>
       }
     />

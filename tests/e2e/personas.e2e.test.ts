@@ -73,13 +73,13 @@ describe("admin persona", () => {
     expect(out).toContain("true");
   });
 
-  test("can use sk headless mode", async () => {
+  test("can use subkit headless mode", async () => {
     const result = await cli(["--p", "hello from admin", "--output", "json"], {
       env,
       persona: "admin",
       timeout: 60_000,
     });
-    expectSuccess(result, "admin sk --p");
+    expectSuccess(result, "admin subkit --p");
     const data = JSON.parse(result.stdout) as { status: string };
     expect(data.status).toBe("completed");
   });
@@ -97,13 +97,13 @@ describe("member persona", () => {
     expect(result.stdout).toContain("ok");
   });
 
-  test("can use sk headless mode", async () => {
+  test("can use subkit headless mode", async () => {
     const result = await cli(["--p", "hello from member", "--output", "json"], {
       env,
       persona: "member",
       timeout: 60_000,
     });
-    expectSuccess(result, "member sk --p");
+    expectSuccess(result, "member subkit --p");
     const data = JSON.parse(result.stdout) as { status: string };
     expect(data.status).toBe("completed");
   });
@@ -126,13 +126,13 @@ describe("enduser persona", () => {
     expect(result.stdout).toContain("ok");
   });
 
-  test("can use sk headless mode (scoped to own conversations)", async () => {
+  test("can use subkit headless mode (scoped to own conversations)", async () => {
     const result = await cli(["--p", "hello from enduser", "--output", "json"], {
       env,
       persona: "enduser",
       timeout: 60_000,
     });
-    expectSuccess(result, "enduser sk --p");
+    expectSuccess(result, "enduser subkit --p");
     const data = JSON.parse(result.stdout) as { status: string };
     expect(data.status).toBe("completed");
   });

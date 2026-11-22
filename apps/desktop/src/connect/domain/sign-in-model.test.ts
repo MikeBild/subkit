@@ -8,6 +8,7 @@ import {
   type ProfileSummary,
 } from "../../shared/ipc.ts";
 import { NO_ONBOARDING } from "../../shared/onboarding.ts";
+import { platformCapabilities } from "../../shared/platform-capabilities.ts";
 import { INITIAL_FLOW } from "./screens-model.ts";
 import {
   type Command,
@@ -70,6 +71,7 @@ function main(patch: Partial<ConnectState> = {}): ConnectState {
       lost: [],
     },
     local: LOCAL_UNAVAILABLE,
+    platform: platformCapabilities("darwin", "arm64"),
     ...patch,
   };
 }
@@ -300,6 +302,7 @@ describe("sign-in model: settings", () => {
       kind: "local-capabilities",
       device: "MacBook-Anna",
       signedIn: false,
+      supported: true,
     });
     expect(viewOf(shown)?.frame.settingsOpen).toBe(true);
     expect(run(shown, { type: "GoBack" }).effects).toEqual([

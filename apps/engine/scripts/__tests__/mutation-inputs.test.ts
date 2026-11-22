@@ -35,7 +35,7 @@ describe("mutation runtime provenance inputs", () => {
       expect.arrayContaining([
         "apps/engine/src/workflows/stored-spec.ts",
         "apps/engine/src/tests/setup-deterministic-env.ts",
-        "apps/sk/src/tests/setup-isolated-home.ts",
+        "apps/subkit/src/tests/setup-isolated-home.ts",
         "apps/engine/src/workflows/draft-projection.test.ts",
         "apps/engine/src/workflows/tests/fixtures/br-test-603.json",
         "apps/engine/.mutation-equivalents.json",

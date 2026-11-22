@@ -2,12 +2,14 @@ import { describe, expect, test } from "bun:test";
 import {
   LEDGER_RETENTION_MS,
   ledgerForm,
+  markDelivered,
   parseLedger,
   prune,
   recall,
   recallEntry,
   remember,
   replayVerdict,
+  undeliveredIds,
 } from "./runner-ledger.ts";
 import { command } from "./runner-queue.fixture.ts";
 
@@ -19,6 +21,15 @@ describe("runner ledger", () => {
     const ledger = remember([], "a", done, NOW);
     expect(recall(ledger, "a")).toEqual(done);
     expect(recall(ledger, "b")).toBeNull();
+  });
+
+  test("a new result waits for delivery until the server acknowledged it", () => {
+    const ledger = remember(remember([], "a", done, NOW), "b", done, NOW + 1);
+    expect(undeliveredIds(ledger)).toEqual(["a", "b"]);
+    const acked = markDelivered(ledger, "a");
+    expect(undeliveredIds(acked)).toEqual(["b"]);
+    expect(recall(acked, "a")).toEqual(done);
+    expect(parseLedger(JSON.parse(JSON.stringify(acked)))).toEqual(acked);
   });
 
   test("keeps the first result of a command", () => {
@@ -66,6 +77,7 @@ describe("runner ledger", () => {
       },
       replay: read,
       finished_at: NOW,
+      undelivered: true,
     });
     expect(parseLedger(JSON.parse(JSON.stringify(ledger)))).toEqual(ledger);
   });

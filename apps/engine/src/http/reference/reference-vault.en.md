@@ -36,7 +36,7 @@ SubKit Desktop creates device items itself, for example the key the device uses 
 
 ### Use an item in a workflow
 
-Write the handle into a header of a request step that has a connector:
+Write the handle into a header, a query value or the body of a request step that has a connector:
 
 ```json
 {
@@ -46,6 +46,7 @@ Write the handle into a header of a request step that has a connector:
   "method": "GET",
   "path": "/contacts",
   "headers": { "authorization": "Bearer ${secret.crm-token}" },
+  "query": { "account": "${secret.crm-account}" },
   "boundary": { "variables": {}, "max_body_bytes": 0, "max_calls": 1 }
 }
 ```
@@ -61,22 +62,23 @@ These rules always apply:
 - **The approval names the items.** It shows “Uses from the vault: crm-token, …” and binds the names, never the values. A new version that uses another item needs a new approval. Fewer items carry the approval forward.
 - **Approved runs only.** In drafts, test runs and held steps the handle stays unresolved (`secret_withheld`) and nothing is sent.
 - **Own connector only.** A step that carries a vault value may only go to its connector's origin. Any other address stops with `credential_boundary_violation` before anything is sent.
-- **Headers only.** In the path, query, URL or body a handle stays unresolved or makes the step unapprovable.
+- **Headers, query and body only.** In the path, the URL, a GraphQL query or an MCP call a handle is never resolved; in the path or URL the step stops before anything is sent.
+- **The same rules everywhere.** A handle in the query or body is resolved, redacted and approved exactly like one in a header. A query value may hold fixed text around a handle but no other placeholder; the approval checks that the key is sent, not its value, so a rotation needs no new approval.
 - **A missing item fails the step** with `placeholder_unresolved`, and nothing is sent.
 
 ### What the AI and the records see
 
-The AI, chat, MCP and the sk CLI get the name, kind, scope, environment, version and last use, never the value.
+The AI, chat, MCP and the subkit CLI get the name, kind, scope, environment, version and last use, never the value.
 A run's result, error message, log and audit trail do not contain the value. SubKit replaces it, also URL- or JSON-encoded, with `***redacted***`.
 
 ### Rotation
 
-**Replace value** in the vault or `sk vault rotate` stores a new value and raises the version. The next run uses it. The workflow's approval stays valid, because it binds the handle, not the value.
+**Replace value** in the vault or `subkit vault rotate` stores a new value and raises the version. The next run uses it. The workflow's approval stays valid, because it binds the handle, not the value.
 You rotate the engine's master key (`MASTER_KEY`) with the rewrap maintenance, as before.
 
 ### Reveal and activity
 
-**Reveal** shows you the value for a short time, and `sk vault reveal <id> --yes` prints it in the terminal. Every reveal is in the audit trail.
+**Reveal** shows you the value for a short time, and `subkit vault reveal <id> --yes` prints it in the terminal. Every reveal is in the audit trail.
 An item's activity shows when it was created, used, revealed, rotated or deleted. A use names its run and step.
 
 ### Permissions
@@ -91,10 +93,10 @@ An item's activity shows when it was created, used, revealed, rotated or deleted
 
 You always manage your own “Only me” items, even without these permissions.
 
-### In the Cockpit, with sk and over MCP
+### In the Cockpit, with subkit and over MCP
 
 - **Cockpit:** Settings › Vault.
-- **sk:** `sk vault list`, `show`, `add`, `rotate`, `reveal`, `refresh`, `rm`, `attach` and `connector`. `add` and `rotate` read the value from stdin or a hidden prompt, never from arguments.
+- **subkit:** `subkit vault list`, `show`, `add`, `rotate`, `reveal`, `refresh`, `rm`, `attach` and `connector`. `add` and `rotate` read the value from stdin or a hidden prompt, never from arguments.
 - **MCP:** `list_vault_items` and `get_vault_item` return metadata only.
 - **HTTP:** `/v1/vault`, see the HTTP API.
 

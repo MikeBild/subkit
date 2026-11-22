@@ -965,7 +965,7 @@ export function UsageBreakdown({
         <p className="text-sm text-muted-foreground">{t("usage.tech.access")}</p>
         <CodeBlock
           label={t("usage.tech.query")}
-          code={`sk stats llm --bucket ${unit} --from ${bounds.from} --to ${bounds.to} --tz ${timeZone} --group-by ${BREAKDOWN_AXIS[by]}\n\nGET ${llmStatsEndpoint(bounds, BREAKDOWN_AXIS[by])}`}
+          code={`subkit stats llm --bucket ${unit} --from ${bounds.from} --to ${bounds.to} --tz ${timeZone} --group-by ${BREAKDOWN_AXIS[by]}\n\nGET ${llmStatsEndpoint(bounds, BREAKDOWN_AXIS[by])}`}
         />
       </div>
     </CollapsibleSection>

@@ -123,7 +123,7 @@ export function planTurnRouting(args: {
       intent: "surface_help",
       confidence: "medium",
       action:
-        "Orient the user around the next concrete job in sk: resume work, create a connector, build a workflow, inspect tenant state, or ask about API/MCP/chat surfaces.",
+        "Orient the user around the next concrete job in subkit: resume work, create a connector, build a workflow, inspect tenant state, or ask about API/MCP/chat surfaces.",
       question: "Which job should we do next?",
       required_grounding: ["get_engine_status", "list_workflows", "list_connectors"],
       notes: ["Prefer capability-grounded suggestions over generic onboarding prose."],
@@ -165,7 +165,7 @@ export function planTurnRouting(args: {
       intent: "surface_help",
       confidence: "high",
       action:
-        "Explain MCP using Subkit's actual transports: Streamable HTTP on `/mcp`, plus the stdio proxy via `sk mcp`. Do not mention the deprecated SSE MCP transport.",
+        "Explain MCP using Subkit's actual transports: Streamable HTTP on `/mcp`, plus the stdio proxy via `subkit mcp`. Do not mention the deprecated SSE MCP transport.",
       question: null,
       required_grounding: [],
       notes: [
@@ -248,7 +248,7 @@ export function planTurnRouting(args: {
       intent: "surface_help",
       confidence: "high",
       action:
-        "Ground the answer in real tenant state first, then suggest the next concrete job in sk: resume, create a connector, build a workflow, inspect existing resources, or ask about API/MCP/chat surfaces.",
+        "Ground the answer in real tenant state first, then suggest the next concrete job in subkit: resume, create a connector, build a workflow, inspect existing resources, or ask about API/MCP/chat surfaces.",
       question: null,
       required_grounding: [
         "get_engine_status",
@@ -327,7 +327,7 @@ export function planTurnRouting(args: {
       intent: "tenant_read",
       confidence: "high",
       action:
-        "Ground the answer in the caller's actual identity or role information. Keep the summary compact and capability-focused; mention `/permissions` in sk when it is the fastest built-in path.",
+        "Ground the answer in the caller's actual identity or role information. Keep the summary compact and capability-focused; mention `/permissions` in subkit when it is the fastest built-in path.",
       question: null,
       required_grounding: ["whoami", "list_roles", "get_role"],
       notes: ["Do not claim broad access without grounding it in a role or permission check."],
@@ -458,7 +458,7 @@ export function planTurnRouting(args: {
     intent: "product_help",
     confidence: "medium",
     action:
-      "Answer with confirmed Subkit product behavior, grounded in actual tools or docs. Prefer a short, operational answer plus the next concrete step in sk.",
+      "Answer with confirmed Subkit product behavior, grounded in actual tools or docs. Prefer a short, operational answer plus the next concrete step in subkit.",
     question: null,
     required_grounding: [],
     notes: ["Do not default to generic onboarding when the user is asking about product behavior."],

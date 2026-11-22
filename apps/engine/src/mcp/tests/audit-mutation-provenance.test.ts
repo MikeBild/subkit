@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { runCommand } from "citty";
 import { eq } from "drizzle-orm";
-import { knowledgeSourcesCommand } from "../../../../sk/src/commands/knowledge-sources.ts";
+import { knowledgeSourcesCommand } from "../../../../subkit/src/commands/knowledge-sources.ts";
 import { MCP_ADMIN_SCOPE } from "../../auth/scopes.ts";
 import { files } from "../../db/schema/index.ts";
 import { removeStoredFile } from "../../files/remove-stored-file.ts";
@@ -118,7 +118,7 @@ async function readCreated(source: Source): Promise<AuditRow> {
   return row;
 }
 
-test("browser session, HTTP, sk over HTTP, and MCP mutations retain audit provenance", async () => {
+test("browser session, HTTP, subkit over HTTP, and MCP mutations retain audit provenance", async () => {
   const cockpitHeaders = await browserSessionHeaders(suite.http, suite.http.userId);
   const cockpit = await postInline("Audit cockpit source", {
     ...cockpitHeaders,
@@ -136,7 +136,7 @@ test("browser session, HTTP, sk over HTTP, and MCP mutations retain audit proven
   try {
     await runWithTestEnv(
       {
-        SK_PROFILE: basename(fixtureDir),
+        SUBKIT_PROFILE: basename(fixtureDir),
         SUBKIT_ENGINE_URL: suite.http.baseUrl,
         SUBKIT_API_KEY: suite.http.apiKey,
         SUBKIT_TENANT: suite.http.tenantId,

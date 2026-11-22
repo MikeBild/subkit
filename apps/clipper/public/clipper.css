@@ -604,3 +604,24 @@ details[open] summary {
       color 120ms ease;
   }
 }
+
+.update-notice {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--muted);
+  color: var(--foreground);
+  font-size: 12px;
+  line-height: 17px;
+  overflow-wrap: anywhere;
+}
+
+.update-notice[hidden] {
+  display: none;
+}
+
+.update-notice a {
+  color: var(--accent);
+  font-weight: 600;
+}

@@ -4,7 +4,7 @@ export const DESCRIPTOR_PATH = "/.well-known/service-descriptor.json";
 export const EVENTS_STREAM_PATH = "/v1/cockpit/events/stream";
 export const ATTENTION_PATH = "/v1/attention";
 export const DEFAULT_COCKPIT_PATH = "/cockpit";
-export const MIN_SERVER_VERSION = "12.0.0";
+export const MIN_SERVER_VERSION = "12.1.0";
 export const LOGIN_CALLBACK = "subkit://callback";
 export const CODE_CHALLENGE_METHOD = "S256";
 export const DEVICE_LABEL_MAX = 64;
@@ -25,6 +25,7 @@ export interface DesktopClientInfo {
   loginSupported: boolean;
   callbacks: string[];
   feedbackPath: string | null;
+  anonymousFeedbackPath: string | null;
 }
 
 export interface ServiceDescriptor {
@@ -59,6 +60,7 @@ export function parseDescriptor(json: unknown): ServiceDescriptor | null {
   const login = record(desktop.login);
   const methods = login?.code_challenge_methods;
   const feedback = safeServerPath(desktop.feedback_path, "");
+  const anonymousFeedback = safeServerPath(desktop.anonymous_feedback_path, "");
   return {
     version: root.version.trim(),
     desktop: {
@@ -72,6 +74,7 @@ export function parseDescriptor(json: unknown): ServiceDescriptor | null {
         (Array.isArray(methods) && methods.includes(CODE_CHALLENGE_METHOD)),
       callbacks: loginCallbacks(login),
       feedbackPath: feedback || null,
+      anonymousFeedbackPath: anonymousFeedback || null,
     },
   };
 }

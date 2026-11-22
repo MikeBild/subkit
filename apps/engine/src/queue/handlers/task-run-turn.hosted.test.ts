@@ -36,7 +36,7 @@ beforeAll(async () => {
     .insert(tenants)
     .values({ slug: "task-run-operator", display_name: "Operator", is_operator: true });
   boss = await createBoss({ connectionString: tdb.url });
-  dir = mkdtempSync(join(tmpdir(), "sk-task-run-hosted-"));
+  dir = mkdtempSync(join(tmpdir(), "subkit-task-run-hosted-"));
   _resetConfigForTests();
   await loadConfig({
     env: { DATABASE_URL: tdb.url, NODE_ENV: "test" },
@@ -77,7 +77,7 @@ async function hostedOwner(subject: string): Promise<ResolvedPrincipal> {
 
 async function startRun(owner: ResolvedPrincipal, name: string): Promise<TaskRunTurnJob> {
   const task = await createTask(
-    { tenant_id: owner.tenant_id, principal: owner, input: taskInput({ name }) },
+    { locale: "de", tenant_id: owner.tenant_id, principal: owner, input: taskInput({ name }) },
     tdb.db,
   );
   const started = await startTaskRun(

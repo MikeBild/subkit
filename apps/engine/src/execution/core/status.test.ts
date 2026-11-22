@@ -7,6 +7,7 @@ import {
   type ExecutionOutcome,
   type ExecutionStatus,
   failureStatusOf,
+  interruptedWriteNotice,
   isTerminalExecutionStatus,
   NON_TERMINAL_EXECUTION_STATUSES,
   outcomeTransition,
@@ -393,5 +394,27 @@ describe("settledOutcome", () => {
       }),
       FC,
     );
+  });
+});
+
+describe("interruptedWriteNotice", () => {
+  test("says nothing when no write was running", () => {
+    expect(interruptedWriteNotice([])).toBeNull();
+  });
+
+  test("names the write step and asks to check the target", () => {
+    expect(interruptedWriteNotice(["create_invoice"])).toEqual({
+      code: "engine_stopped_during_write",
+      step_id: "create_invoice",
+      message:
+        "The engine stopped while step “create_invoice” was sending a change. It may have reached the target.",
+      guidance: "Check in the target system whether the change arrived before you run it again.",
+    });
+  });
+
+  test("names every write step and points at the first", () => {
+    const notice = interruptedWriteNotice(["a", "b"]);
+    expect(notice?.step_id).toBe("a");
+    expect(notice?.message).toContain("steps “a”, “b” were sending");
   });
 });

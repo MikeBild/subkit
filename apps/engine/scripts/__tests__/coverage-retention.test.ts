@@ -10,7 +10,10 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pruneExpiredCoverageRawRuns } from "../audit/coverage-retention.ts";
+import {
+  pruneExpiredCoverageRawRuns,
+  pruneSupersededCoverageRuns,
+} from "../audit/coverage-retention.ts";
 
 const roots: string[] = [];
 const root = () => {
@@ -35,7 +38,7 @@ afterEach(() => {
 
 describe("coverage raw retention", () => {
   test("a checkout without coverage reports needs no cleanup", () => {
-    const coverage = join(root(), "reports", "coverage");
+    const coverage = join(root(), ".reports", "coverage");
     expect(pruneExpiredCoverageRawRuns(coverage)).toEqual([]);
     expect(pruneExpiredCoverageRawRuns(coverage, { apply: true })).toEqual([]);
     expect(existsSync(coverage)).toBe(false);
@@ -159,5 +162,40 @@ describe("coverage raw retention", () => {
     expect(() =>
       readFileSync(join(coverage, "raw", "runs", "contended-run", "lease.json")),
     ).toThrow();
+  });
+});
+
+describe("superseded coverage runs", () => {
+  const published = (coverage: string, runId: string) =>
+    mkdirSync(join(coverage, "runs", runId), { recursive: true });
+
+  test("previews then removes every published run except the latest", () => {
+    const coverage = root();
+    published(coverage, "older-run-123");
+    published(coverage, "latest-run-123");
+    published(coverage, "leased-run-123");
+    mkdirSync(join(coverage, "raw", "runs", "leased-run-123"), { recursive: true });
+    mkdirSync(join(coverage, "runs", ".staging-next-run"), { recursive: true });
+    writeFileSync(join(coverage, "runs", "notes.txt"), "keep\n");
+    writeFileSync(join(coverage, "latest.json"), JSON.stringify({ run_id: "latest-run-123" }));
+    expect(pruneSupersededCoverageRuns(coverage)).toEqual([
+      { runId: "latest-run-123", action: "skip", reason: "latest published run" },
+      { runId: "leased-run-123", action: "skip", reason: "raw run still leased" },
+      { runId: "notes.txt", action: "skip", reason: "not a published run directory" },
+      { runId: "older-run-123", action: "delete", reason: "superseded published run" },
+    ]);
+    expect(existsSync(join(coverage, "runs", "older-run-123"))).toBe(true);
+    pruneSupersededCoverageRuns(coverage, { apply: true });
+    expect(existsSync(join(coverage, "runs", "older-run-123"))).toBe(false);
+    expect(existsSync(join(coverage, "runs", "latest-run-123"))).toBe(true);
+    expect(existsSync(join(coverage, "runs", ".staging-next-run"))).toBe(true);
+    expect(existsSync(join(coverage, "runs", "notes.txt"))).toBe(true);
+  });
+
+  test("without a latest pointer nothing is pruned", () => {
+    const coverage = root();
+    published(coverage, "older-run-123");
+    expect(pruneSupersededCoverageRuns(coverage, { apply: true })).toEqual([]);
+    expect(existsSync(join(coverage, "runs", "older-run-123"))).toBe(true);
   });
 });

@@ -38,7 +38,7 @@ async function unusedPort(): Promise<number> {
 async function install(): Promise<void> {
   const command = Bun.spawn(
     [
-      join(root, "dist/sk"),
+      join(root, "dist/subkit"),
       "clipper",
       "install",
       "--dir",
@@ -130,7 +130,7 @@ try {
   assert.equal(response.headers.get("x-subkit-sha256"), manifest.sha256);
   assert.deepEqual(archive, await readFile(join(root, "assets/clipper/clipper.zip")));
   process.stdout.write(
-    "Compiled sk installs and updates from a temporary directory; compiled engine serves the identical embedded archive.\n",
+    "Compiled subkit installs and updates from a temporary directory; compiled engine serves the identical embedded archive.\n",
   );
 } finally {
   if (engine && engine.exitCode === null) {

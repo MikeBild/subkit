@@ -1306,7 +1306,7 @@ const ReplSection = z
       .meta(tenant()),
   })
   .prefault({})
-  .describe("sk REPL session preferences");
+  .describe("subkit REPL session preferences");
 
 const QuietHoursStringSchema = z
   .string()
@@ -1353,7 +1353,7 @@ const NotificationsSection = z
       .prefault({}),
   })
   .prefault({})
-  .describe("sk REPL notification preferences");
+  .describe("subkit REPL notification preferences");
 
 const UiSection = z
   .object({
@@ -1372,7 +1372,7 @@ const UiSection = z
         format: z
           .enum(["session-id", "tenant-session", "model-tenant-session"])
           .default("session-id")
-          .describe("Window-title format used by the sk REPL.")
+          .describe("Window-title format used by the subkit REPL.")
           .meta(tenant()),
       })
       .prefault({}),
@@ -1400,7 +1400,7 @@ const WebScraperRuntime = z
       .string()
       .default("")
       .describe(
-        "User-Agent header on every fetch; passed to robots-parser matching. Empty means sk-web-scraper/<version> (+<server.public_base_url>/bot), or the project URL when no public base URL is set.",
+        "User-Agent header on every fetch; passed to robots-parser matching. Empty means subkit-web-scraper/<version> (+<server.public_base_url>/bot), or the project URL when no public base URL is set.",
       )
       .meta(tenant()),
     max_pages: z

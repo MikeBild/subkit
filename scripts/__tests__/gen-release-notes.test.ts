@@ -5,6 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   generateReleaseHistory,
+  knownHighlights,
+  mergeHighlights,
+  pendingVersion,
   releaseHistoryFromRanges,
   releaseNotesFromSubjects,
   renderReleaseHistory,
@@ -51,16 +54,55 @@ describe("release notes generator", () => {
           { version: "v1.2.3", subjects: ["feat(user): add changes"] },
           { version: "v1.2.2", subjects: ["fix: technical change"] },
         ],
-        unpublished: ["fix(user): make costs clearer"],
+        unpublished: { version: null, subjects: ["fix(user): make costs clearer"] },
+        highlights: {},
       }),
     ).toEqual({
       source: "abc123",
       releases: [
-        { version: "v1.2.3", notes: ["add changes"] },
-        { version: "v1.2.2", notes: [] },
+        { version: "v1.2.3", notes: ["add changes"], highlights: null },
+        { version: "v1.2.2", notes: [], highlights: null },
       ],
-      unpublished: ["make costs clearer"],
+      unpublished: { version: null, notes: ["make costs clearer"], highlights: null },
     });
+  });
+
+  test("attaches reviewed highlights in both languages to released and pending versions", () => {
+    const both = { de: ["Neu"], en: ["New"] };
+    const history = releaseHistoryFromRanges({
+      source: "abc123",
+      releases: [
+        { version: "v1.2.2", subjects: ["feat(user): add changes"] },
+        { version: "v1.2.3", subjects: [] },
+      ],
+      unpublished: { version: "1.3.0", subjects: ["feat(user): next"] },
+      highlights: { "1.2.2": both, "1.2.3": { de: ["Nur deutsch"] }, "1.3.0": both },
+    });
+    expect(history.releases.map((r) => r.highlights)).toEqual([both, null]);
+    expect(history.unpublished).toEqual({ version: "1.3.0", notes: ["next"], highlights: both });
+  });
+
+  test("keeps the highlights it generated before, later sources win", () => {
+    const both = { de: ["Neu"], en: ["New"] };
+    const known = knownHighlights({
+      source: "abc123",
+      releases: [
+        { version: "v1.2.2", notes: [], highlights: both },
+        { version: "v1.2.3", notes: [], highlights: null },
+      ],
+      unpublished: { version: "1.3.0", notes: [], highlights: both },
+    });
+    expect(known).toEqual({ "1.2.2": both, "1.3.0": both });
+    const fresh = { de: ["Frisch"], en: ["Fresh"] };
+    expect(mergeHighlights(known, null, { "1.3.0": fresh })).toEqual({
+      "1.2.2": both,
+      "1.3.0": fresh,
+    });
+  });
+
+  test("the package version is pending only while its tag does not exist", () => {
+    expect(pendingVersion("1.3.0", ["v1.2.3"])).toBe("1.3.0");
+    expect(pendingVersion("1.2.3", ["v1.2.2", "v1.2.3"])).toBeNull();
   });
 
   test("pins the git range before a generated artifact commit", () => {
@@ -68,16 +110,24 @@ describe("release notes generator", () => {
     const output = join(repo, "release-notes.generated.ts");
     try {
       git(repo, "init");
+      writeFileSync(join(repo, "package.json"), '{"version":"1.1.0"}\n');
+      git(repo, "add", "package.json");
       commit(repo, "chore: establish history");
       commit(repo, "feat(user): Erste Kurznotiz");
       git(repo, "tag", "v1.0.0");
       commit(repo, "fix(user): Lokale Änderungen behalten");
       const source = git(repo, "rev-parse", "HEAD");
-      const history = generateReleaseHistory(repo, source);
+      const history = generateReleaseHistory(repo, source, {
+        "1.1.0": { de: ["Neu"], en: ["New"] },
+      });
       expect(history).toEqual({
         source,
-        releases: [{ version: "v1.0.0", notes: ["Erste Kurznotiz"] }],
-        unpublished: ["Lokale Änderungen behalten"],
+        releases: [{ version: "v1.0.0", notes: ["Erste Kurznotiz"], highlights: null }],
+        unpublished: {
+          version: "1.1.0",
+          notes: ["Lokale Änderungen behalten"],
+          highlights: { de: ["Neu"], en: ["New"] },
+        },
       });
       writeFileSync(output, renderReleaseHistory(history));
       commit(repo, "chore: generated release notes");
@@ -92,6 +142,7 @@ describe("release notes generator", () => {
           "--output",
           output,
           "--check",
+          "--offline",
         ],
         { cwd: join(import.meta.dir, "../.."), encoding: "utf8" },
       );

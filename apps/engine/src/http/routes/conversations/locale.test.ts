@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { conversationLocale } from "./locale.ts";
+import { conversationLocale, requestLanguage } from "./locale.ts";
 
 describe("conversation locale", () => {
   test("uses an explicit Cockpit preference before the browser language", () => {
@@ -15,5 +15,13 @@ describe("conversation locale", () => {
     expect(conversationLocale(undefined, "de;q=0, en-US;q=0.7")).toBe("en");
     expect(conversationLocale(undefined, "en;q=0, de;q=0")).toBe("en");
     expect(conversationLocale(undefined, undefined)).toBe("en");
+  });
+
+  test("a request without a known language says so instead of guessing", () => {
+    expect(requestLanguage(undefined, undefined)).toBeNull();
+    expect(requestLanguage("sk_locale=fr", "fr-FR")).toBeNull();
+    expect(requestLanguage(undefined, "en;q=0, de;q=0")).toBeNull();
+    expect(requestLanguage("sk_locale=de", undefined)).toBe("de");
+    expect(requestLanguage(undefined, "en-GB")).toBe("en");
   });
 });

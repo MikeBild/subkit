@@ -49,7 +49,7 @@ beforeAll(async () => {
   operatorTenantId = operator.id;
   boss = await createBoss({ connectionString: tdb.url });
   await boss.createQueue(QUEUE);
-  dir = mkdtempSync(join(tmpdir(), "sk-hosted-work-"));
+  dir = mkdtempSync(join(tmpdir(), "subkit-hosted-work-"));
   _resetConfigForTests();
   await loadConfig({
     env: { DATABASE_URL: tdb.url, NODE_ENV: "test" },

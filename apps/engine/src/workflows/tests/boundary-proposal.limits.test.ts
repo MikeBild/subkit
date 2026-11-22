@@ -107,6 +107,23 @@ test("a placeholder that is a whole query value becomes a query variable with th
   });
 });
 
+test("a vault handle in the query is proposed as a reviewed key, never as a variable", async () => {
+  await fixtures.record([
+    { step: "read_news", url: "https://api.example.test/v1/news?lang=en&limit=10&account=***" },
+    { step: "read_news", url: "https://api.example.test/v1/news?lang=de&limit=10&account=***" },
+  ]);
+  const { proposals, unproposable } = await propose([
+    { ...localized, query: { ...localized.query, account: "${secret.crm-token}" } },
+  ]);
+  expect(unproposable).toEqual([]);
+  expect(proposals[0]?.boundary?.variables).toEqual({ "input.lang": { enum: ["de", "en"] } });
+  expect(proposals[0]?.request?.query).toEqual({
+    fixed: { limit: "10" },
+    variable: [{ key: "lang", var: "input.lang" }],
+    vault: ["account"],
+  });
+});
+
 test("a query value that mixes text with a placeholder is named with the compiler's own reason", async () => {
   await fixtures.record([{ step: "read_news", url: "https://api.example.test/v1/news?lang=en" }]);
   const { proposals, unproposable } = await propose([

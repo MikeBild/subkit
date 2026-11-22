@@ -46,7 +46,7 @@ const COPY: Record<AuthLocale, Copy> = {
     receivedTitle: "Credential received",
     received: (name) => `The credentials for “${name}” are ready for the connection test.`,
     switchedOff: "The connector is switched off and stays off until someone switches it on.",
-    switchOnCommand: "sk connectors enable",
+    switchOnCommand: "subkit connectors enable",
     partial: (scopes) =>
       `The provider did not grant every permission that was asked for. Missing: ${scopes}.`,
     next: {
@@ -105,7 +105,7 @@ const COPY: Record<AuthLocale, Copy> = {
     receivedTitle: "Zugangsdaten erhalten",
     received: (name) => `Die Zugangsdaten für „${name}“ liegen für den Verbindungstest bereit.`,
     switchedOff: "Der Konnektor ist abgeschaltet und bleibt es, bis ihn jemand einschaltet.",
-    switchOnCommand: "sk connectors enable",
+    switchOnCommand: "subkit connectors enable",
     partial: (scopes) =>
       `Der Anbieter hat nicht alle angefragten Berechtigungen erteilt. Es fehlen: ${scopes}.`,
     next: {

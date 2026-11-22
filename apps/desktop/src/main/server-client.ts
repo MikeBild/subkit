@@ -1,4 +1,5 @@
 import { net, type Session } from "electron";
+import type { AnonymousReportBody } from "../shared/anonymous-report.ts";
 import { type AttentionItem, parseAttention } from "../shared/attention.ts";
 import {
   INVITE_PREVIEW_PATH,
@@ -89,6 +90,27 @@ export async function checkServer(
       minServerVersion: MIN_SERVER_VERSION,
     },
   };
+}
+
+export async function sendAnonymousReport(
+  origin: string,
+  path: string,
+  body: AnonymousReportBody,
+): Promise<number | null> {
+  try {
+    const response = await net.fetch(`${origin}${path}`, {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify(body),
+      credentials: "omit",
+      redirect: "error",
+      cache: "no-store",
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    return response.status;
+  } catch {
+    return null;
+  }
 }
 
 export async function previewInvite(link: InviteLink): Promise<InvitePreview | null> {

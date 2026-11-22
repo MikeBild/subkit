@@ -291,6 +291,6 @@ export function paletteFor(name: ThemeName | undefined): ThemeTokens {
 }
 
 export function shouldForceNoColor(env: NodeJS.ProcessEnv = process.env): boolean {
-  if (env.SK_PLAIN === "1" || env.SK_PLAIN === "true") return true;
+  if (env.SUBKIT_PLAIN === "1" || env.SUBKIT_PLAIN === "true") return true;
   return env.NO_COLOR != null && env.NO_COLOR !== "";
 }

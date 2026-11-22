@@ -8,6 +8,11 @@ import {
 } from "../../identity/workspace-settings.ts";
 import { principalHolds } from "../../rbac/evaluator.ts";
 import { isIanaTimeZone } from "../../workflows/types.ts";
+import {
+  type UpdateWorkspaceBody,
+  UpdateWorkspaceBodySchema,
+  WorkspaceSchema,
+} from "../workspace-schemas.ts";
 import { defineOperation, reject } from "./index.ts";
 
 const TAGS = ["identity"] as const;
@@ -84,29 +89,12 @@ export const updateOwnProfileOperation = defineOperation<OwnProfileInput, OwnPro
   },
 });
 
-const WorkspaceBody = z
-  .object({
-    display_name: z.string().trim().min(1).max(120).optional(),
-    timezone: z.string().min(1).max(64).optional().describe("IANA time zone, e.g. Europe/Berlin"),
-  })
-  .strict()
-  .openapi("UpdateWorkspaceBody");
-
-const WorkspaceSchema = z
-  .object({
-    id: z.string().uuid(),
-    display_name: z.string(),
-    timezone: z.string(),
-    origin: z.enum(["self_hosted", "self_service"]),
-  })
-  .openapi("Workspace");
-
-type WorkspaceInput = z.infer<typeof WorkspaceBody>;
+type WorkspaceInput = UpdateWorkspaceBody;
 type WorkspaceRow = NonNullable<Awaited<ReturnType<typeof updateWorkspaceSettings>>>;
 
 export const updateWorkspaceOperation = defineOperation<WorkspaceInput, WorkspaceRow>({
   id: "identity.workspace.update",
-  summary: "Rename the current workspace or change its time zone",
+  summary: "Rename the current workspace or change its time zone or language",
   permission: null,
   effect: "write",
   audit: AuditAction.TENANT_UPDATED,
@@ -135,6 +123,7 @@ export const updateWorkspaceOperation = defineOperation<WorkspaceInput, Workspac
         tenant_id: scope.tenant_id,
         ...(body.display_name !== undefined ? { display_name: body.display_name } : {}),
         ...(body.timezone !== undefined ? { timezone: body.timezone } : {}),
+        ...(body.language !== undefined ? { language: body.language } : {}),
         actor_type: principal.kind,
         actor_id: principal.id,
       },
@@ -147,7 +136,7 @@ export const updateWorkspaceOperation = defineOperation<WorkspaceInput, Workspac
     method: "patch",
     path: "/v1/identity/workspace",
     tags: TAGS,
-    body: WorkspaceBody,
+    body: UpdateWorkspaceBodySchema,
     response: WorkspaceSchema,
     errors: {
       401: UNAUTHORIZED,
@@ -160,6 +149,7 @@ export const updateWorkspaceOperation = defineOperation<WorkspaceInput, Workspac
       id: row.id,
       display_name: row.display_name,
       timezone: row.timezone,
+      language: row.language,
       origin: row.origin,
     }),
   },

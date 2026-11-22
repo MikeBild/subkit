@@ -279,13 +279,13 @@ export function registerIdentitySessionsRoute(app: OpenAPIHono<AppEnv>): void {
     );
 
     const userAgent = c.req.header("user-agent") ?? "";
-    if (userAgent.startsWith("sk-cli/")) {
+    if (userAgent.startsWith("subkit-cli/")) {
       await auditAwait(
         {
           tenant_id: principal.tenant_id,
           actor_type: "user",
           actor_id: principal.id,
-          action: AuditAction.SK_CLI_LOGIN,
+          action: AuditAction.SUBKIT_CLI_LOGIN,
           resource_type: "user",
           resource_id: principal.id,
           result: "success",

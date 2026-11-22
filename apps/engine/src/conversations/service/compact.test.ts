@@ -39,7 +39,7 @@ async function ensureConfigLoaded(): Promise<void> {
     getConfig();
     return;
   } catch {}
-  const dir = mkdtempSync(join(tmpdir(), "sk-cfg-compact-"));
+  const dir = mkdtempSync(join(tmpdir(), "subkit-cfg-compact-"));
   await loadConfig({
     env: {
       DATABASE_URL: "postgres://placeholder/compact",

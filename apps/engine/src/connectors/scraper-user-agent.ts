@@ -11,5 +11,5 @@ export function scraperUserAgent(tenantId?: string, connectorOverride?: unknown)
   if (configured.length > 0) return configured;
   const base = (getConfig().server.public_base_url ?? "").trim().replace(/\/+$/, "");
   const contact = base ? `${base}/bot` : SCRAPER_PROJECT_URL;
-  return `sk-web-scraper/${VERSION} (+${contact})`;
+  return `subkit-web-scraper/${VERSION} (+${contact})`;
 }

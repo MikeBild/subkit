@@ -1,0 +1,225 @@
+{
+  "offline": {
+    "ai-sdk-structured-outcome": {
+      "hash": "97f9ab4c6bd9e1dab6de9aed53c24bd9bde29e08840d95d4b18e344f6a7a7140",
+      "proven_at": "2026-11-22"
+    },
+    "authoring-abort-needs-reground-retry": {
+      "hash": "5b370c6cca6220df002f92bbf7cfa9b2f7b7a0ba129ff6883a874c3d4efcef82",
+      "proven_at": "2026-11-22"
+    },
+    "authoring-connector-choice-github-prod-default": {
+      "hash": "9a97786021a8be64cdfa94422cdd06316e62b283e9852507d3d68aa4c5f8267a",
+      "proven_at": "2026-11-22"
+    },
+    "authoring-connector-choice-prod-default": {
+      "hash": "eb2d03cdfc6b5820286581a91f121ea4bdd79301ce04341a0f66d92c05fc3252",
+      "proven_at": "2026-11-22"
+    },
+    "authoring-docs-scoped-to-draft-connectors": {
+      "hash": "32f6bc37f7a7a74378bf96c07f6ce2b0ed4f2b4350882f8a1d57a1695a79ef35",
+      "proven_at": "2026-11-22"
+    },
+    "authoring-for-each-js-pipeline": {
+      "hash": "176750dd192127dd223b60a7a60758fc170fb9f72d45e88fda2b2fc57f63466c",
+      "proven_at": "2026-11-22"
+    },
+    "authoring-guessed-scope-step-rejected": {
+      "hash": "fdde6c5785b8d8378e7e90c8a7e4b390e7ef87155d8186e806fcc13f69a7f8f6",
+      "proven_at": "2026-11-22"
+    },
+    "authoring-guidance-reachable": {
+      "hash": "5969af387ae8f9ef7a28c1ee92db92f976753f90fad3230404cd3bab50e8f1a6",
+      "proven_at": "2026-11-22"
+    },
+    "authoring-hold-writes-preview": {
+      "hash": "4bdc5ddf4c7cd046ff0961e9c154c0dbdc53d627cd28ce8a69ca9b0decbd9acd",
+      "proven_at": "2026-11-22"
+    },
+    "authoring-jsonata-unknown-function-rejected": {
+      "hash": "ca27193f0cf646b001e8e5472c3376b95597e4d773ba23de6680856261721a97",
+      "proven_at": "2026-11-22"
+    },
+    "authoring-judge-breaker": {
+      "hash": "b8f8d76a41d21396fcf5f5a082a7edff697359de16a4cf94c25e23c3f524b6ba",
+      "proven_at": "2026-11-22"
+    },
+    "authoring-judge-gate": {
+      "hash": "c948bd5a60e27c9fab1243da8c1ed85c18d0a0de970956233c542cd1331119c6",
+      "proven_at": "2026-11-22"
+    },
+    "authoring-judge-sees-final-output": {
+      "hash": "0546e7bd18db376fa6bd60b45fcf997ab49503e048f9642bf837c069b04b7d52",
+      "proven_at": "2026-11-22"
+    },
+    "authoring-one-shot-pipeline": {
+      "hash": "24468ead7fad70734dedacf39ce88eecf2c1493a4204c5328eb20a283abffc02",
+      "proven_at": "2026-11-22"
+    },
+    "authoring-output-transform-function-preview": {
+      "hash": "49094404f59823fbc69a6e37b12f4c7167ac8efe9551b29cb9fc28529d0a2e46",
+      "proven_at": "2026-11-22"
+    },
+    "authoring-patch-failed-op-nearest-path": {
+      "hash": "33639e54cd1f245695a3ec953347a8c09b139903a834fba09adbe1480154b161",
+      "proven_at": "2026-11-22"
+    },
+    "authoring-patch-readiness-order": {
+      "hash": "f9316c155231dc0b74e5ea5f8b165b87b8231bd78737ca72d854e9ffcf23cb7b",
+      "proven_at": "2026-11-22"
+    },
+    "authoring-placeholder-destination-rejected": {
+      "hash": "daa717c2d2bdd134c2d88266cea61d8e4abf7bcb80657f818b26657e0a5f0871",
+      "proven_at": "2026-11-22"
+    },
+    "authoring-preview-auto-repair": {
+      "hash": "14055e196c7347d94e8ddefa554f84f505858fb75807fffa4f50945cf69e6a0c",
+      "proven_at": "2026-11-22"
+    },
+    "authoring-prompt-size-per-step": {
+      "hash": "e6b2e4dfa627c07314f82c3b82e95fe7251bd9f55614de37938415ac8bd0db75",
+      "proven_at": "2026-11-22"
+    },
+    "authoring-question-bundle-single-prompt": {
+      "hash": "14b2eb630ef2095665fad49fc12ec261cafb349c36b8c7d74602ff32462441b4",
+      "proven_at": "2026-11-22"
+    },
+    "authoring-repair-roundtrip": {
+      "hash": "7d1c08131cd2e69af85737d26d6deba26222c8c29fe8f7e9057463e725a04651",
+      "proven_at": "2026-11-22"
+    },
+    "authoring-reply-to-contradiction-blocked": {
+      "hash": "8f192c5fd15b4907f30beeae4f93efb59d2f53e412fa1d03f144b5d639810f1a",
+      "proven_at": "2026-11-22"
+    },
+    "authoring-sensitive-schema-only-preview": {
+      "hash": "9b41c10928d9dc9575db77145c8c539f63de777fe7d070ef2b9cc908ab93ffba",
+      "proven_at": "2026-11-22"
+    },
+    "authoring-transform-locale-free-identifier-blocked": {
+      "hash": "b31de16e81b0f0568f79227b5f37747de6c267a12650b93ff8a178e4e41c7e03",
+      "proven_at": "2026-11-22"
+    },
+    "cache-block-split": {
+      "hash": "1fa651140a07e9bb41997e399597eff25ef1f129551c064af63f7a832ace78e4",
+      "proven_at": "2026-11-22"
+    },
+    "cache-stability": {
+      "hash": "78b105a094a41413bd10417ebf5eebe4bc366123e05945994d44179cd892ab3a",
+      "proven_at": "2026-11-22"
+    },
+    "cascade-picks-openapi": {
+      "hash": "1b92c78baae5a79430ec6db13a80dd4c774e855292dbca619ec62f7a0b2244fd",
+      "proven_at": "2026-11-22"
+    },
+    "convo-auto-save-follow-up-uses-state-tool": {
+      "hash": "51590d71f6963c136801a0dfc816c983979a610956e33b6c014d1fbea26d3681",
+      "proven_at": "2026-11-22"
+    },
+    "convo-device-tool-cover": {
+      "hash": "544f063256537748056c355c74b184c8da736524a51294f142b75e37c3316f4e",
+      "proven_at": "2026-11-22"
+    },
+    "convo-direct-slug-for-uuid-masked": {
+      "hash": "597250d10233aa2ca5f82c6a928e5141a8f7384491c5ba523bee8a15b07db7c4",
+      "proven_at": "2026-11-22"
+    },
+    "convo-history-questions-stay-grounded": {
+      "hash": "f8b411a652f9016319f196c01c913c762899df06e3e77e9236463c14a8588a81",
+      "proven_at": "2026-11-22"
+    },
+    "convo-new-workflow-intent-detaches-target": {
+      "hash": "c4bf194c92afd0da020e094250a7dda51810f76291c58d83a00143397838cb71",
+      "proven_at": "2026-11-22"
+    },
+    "convo-new-workflow-reaches-preview-and-save": {
+      "hash": "942be79c25a6040e8f87d86a39202d9210e2c6f885491a4ea7fc50f7b04b85c3",
+      "proven_at": "2026-11-22"
+    },
+    "convo-placeholder-parse": {
+      "hash": "9b008e58ff82d96e172978d2beffc0b319c5337dc9fe218c86d0ddb4657c97b1",
+      "proven_at": "2026-11-22"
+    },
+    "convo-preparation-is-included": {
+      "hash": "f78178fb2801987acc0b385048207d275604ced892921bc59cc2e67d5de08a2d",
+      "proven_at": "2026-11-22"
+    },
+    "convo-raw-result-shape-navigation": {
+      "hash": "3bed23122fb95a9c9661cf767a9da56de94dd3e078a102466f01601d547f948d",
+      "proven_at": "2026-11-22"
+    },
+    "convo-repair-allows-recommit-on-persisted": {
+      "hash": "eaef43e2ce30202a1a228fbb20b10a3ef8e15fbd70c36bf9c56e05e1fad9de18",
+      "proven_at": "2026-11-22"
+    },
+    "convo-sample-to-schema": {
+      "hash": "3aff5435bfb1db5414e72bdf4b7d1ccd5d2ecd9f9f75e9635ae4110b0565822d",
+      "proven_at": "2026-11-22"
+    },
+    "convo-schedule-surface-contract": {
+      "hash": "769029703ab0918221306c476d83b1f922c3006df321e065e23681008b13b301",
+      "proven_at": "2026-11-22"
+    },
+    "convo-trust-check-asks-only-when-needed": {
+      "hash": "5e36e26f0db70e92ea549f3dd0de6b6864d522989f90c49fae1048f28437121a",
+      "proven_at": "2026-11-22"
+    },
+    "convo-trust-check-job-cover": {
+      "hash": "cd36bb0c3c51dcf6cd6e32819da493a5acac4c5562365b5e88c4d05d1291e6e5",
+      "proven_at": "2026-11-22"
+    },
+    "convo-workflow-rerun-stays-chat-native": {
+      "hash": "c27c6e3da326feb7ab48916a7db950f7cb8f340256b8a08e23528ebe5dbc2fb4",
+      "proven_at": "2026-11-22"
+    },
+    "estate-replay-consistency": {
+      "hash": "91e752b44a1f270b8c9a31ecfa3d66a6690afd9555445db204213f556f09cc1a",
+      "proven_at": "2026-11-22"
+    },
+    "flow-env-override-routes-model": {
+      "hash": "2db5a54c028c7fa8ac8f0289793c62976a94fe151d262951120d937b22eda86f",
+      "proven_at": "2026-11-22"
+    },
+    "knowledge-retrieval-blogde-golden": {
+      "hash": "17bc149d105d7224d954b10d817417d2ac52e8cb7070098f64010eb271f1808e",
+      "proven_at": "2026-11-22"
+    },
+    "provider-error-classifier": {
+      "hash": "37cc35aeda734ad68c589324a2d2638ec270072fa4e47dc28b17023127f31e66",
+      "proven_at": "2026-11-22"
+    },
+    "quirk-token-budget": {
+      "hash": "ae4f2e1a0884f0072d5d08dfbec89c4495ac3da37d6d75ac9528e9623c91fb66",
+      "proven_at": "2026-11-22"
+    },
+    "recipe-budgeted-llm-openai-structured-extraction": {
+      "hash": "1b2d494e9af34e6db5aaef83e98168c28122c9b87230ffead8aac411787f8cc0",
+      "proven_at": "2026-11-22"
+    },
+    "recipe-discovery": {
+      "hash": "37b9884b8913f3538ed426f543d0400fa1c9da6c196139483b32c2e03fa81c3d",
+      "proven_at": "2026-11-22"
+    },
+    "recipe-schedule-trigger-stripe-daily-digest": {
+      "hash": "9de8d39ce5821ab571b1cbbcc47af44e102d965e397f2ce4c955481160820454",
+      "proven_at": "2026-11-22"
+    },
+    "recipe-webhook-trigger-stripe-charge-failed": {
+      "hash": "f96cab1001ded3556208d81fdaa8e2b57e8955b84dd162b006c25b40cbe20653",
+      "proven_at": "2026-11-22"
+    },
+    "schema-flow-shape": {
+      "hash": "947bb3d689f18cdde8ed033df2d6ec9fc94b06e917f2da69e06a0fc9d0869470",
+      "proven_at": "2026-11-22"
+    },
+    "schema-normalizer-basic": {
+      "hash": "e4d85d2620587625abbdcb5d68901459a680153e39be0f76e9e78d5c2b07a4d9",
+      "proven_at": "2026-11-22"
+    },
+    "search-docs-ranking": {
+      "hash": "58fdc57480e9c71190a8a4328296b6fbdb5ddc336ec13ccd21afbd222fcf8dcb",
+      "proven_at": "2026-11-22"
+    }
+  },
+  "live": {}
+}

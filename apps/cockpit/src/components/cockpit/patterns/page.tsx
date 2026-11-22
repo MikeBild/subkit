@@ -2,7 +2,6 @@ import type { PageFailureSpec } from "@ui/lib/errors";
 import { cn } from "@ui/lib/utils";
 import { ErrorState } from "@ui/molecules/error-notice";
 import type { ReactNode } from "react";
-import { FAMILY_UI_VERSION } from "@/components/family-ui";
 import { ActionFailureHost } from "./action-failure";
 import { ColumnToggleScope } from "./column-toggle-claim";
 import { usePageFailure } from "./use-error-detail";
@@ -58,8 +57,7 @@ export function Page({
       <main
         className="flex min-h-0 min-w-0 flex-1 flex-col"
         data-testid={testId}
-        data-family-surface={surface}
-        data-family-contract-version={FAMILY_UI_VERSION}
+        data-sk-surface={surface}
         data-page-kind={kind}
         data-page-failed={failure ? "true" : undefined}
       >
@@ -77,7 +75,7 @@ export function Page({
             {toolbar ? (
               <div className={cn("shrink-0 pb-3", pad)}>
                 <div
-                  data-family-slot="filters"
+                  data-sk-slot="filters"
                   className={cn("flex flex-wrap items-center gap-2", column)}
                 >
                   {toolbar}
@@ -92,7 +90,7 @@ export function Page({
             {scroll === "content" ? (
               <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-clip", pad)}>
                 <div
-                  data-family-slot="content"
+                  data-sk-slot="content"
                   className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-clip", column)}
                 >
                   {children}
@@ -100,10 +98,10 @@ export function Page({
               </div>
             ) : (
               <div
-                data-family-slot="scroll-region"
+                data-sk-slot="scroll-region"
                 className={cn("min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto pb-6", pad)}
               >
-                <div data-family-slot="content" className={column}>
+                <div data-sk-slot="content" className={column}>
                   {children}
                 </div>
               </div>

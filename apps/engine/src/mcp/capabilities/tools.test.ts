@@ -9,7 +9,7 @@ setupMcpTools();
 
 describe("MCP tools/list — wf_<slug> catalog (T22)", () => {
   test("an advertised unprefixed conversation tool reaches its handler in authoring mode", async () => {
-    await runWithTestEnv({ SK_MCP_MODE: "authoring" }, async () => {
+    await runWithTestEnv({ SUBKIT_MCP_MODE: "authoring" }, async () => {
       const client = await connect();
       try {
         const listed = await client.listTools();

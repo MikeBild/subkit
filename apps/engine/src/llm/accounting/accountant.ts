@@ -27,7 +27,7 @@ export interface AccountParams {
   model: string;
   usage: SubkitLlmUsage;
   latency_ms: number;
-  result: "success" | "quota_exhausted" | "context_too_large" | "error";
+  result: "success" | "quota_exhausted" | "context_too_large" | "key_rejected" | "error";
   error?: string;
   estimated_prompt_tokens?: number;
   user_id?: string | null;

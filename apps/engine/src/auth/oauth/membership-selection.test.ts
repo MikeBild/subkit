@@ -88,7 +88,7 @@ beforeAll(async () => {
       client_name: "Membership fixture",
       grant_types: ["authorization_code", "refresh_token"],
       token_endpoint_auth_method: "none",
-      scope: "sk:login mcp:read",
+      scope: "subkit:login mcp:read",
     }),
   });
   expect(registration.status).toBe(201);
@@ -121,7 +121,7 @@ async function authorize(cookie: string, tenantId: string, mcp = false) {
       response_type: "code",
       code_challenge: CODE_CHALLENGE,
       code_challenge_method: "S256",
-      scope: mcp ? "mcp:read" : "sk:login",
+      scope: mcp ? "mcp:read" : "subkit:login",
       resource: mcp ? "https://test.example.com/mcp" : resource,
       state: "membership-state",
       tenant_id: tenantId,
@@ -142,7 +142,7 @@ async function approve(cookie: string, html: string, mcp = false) {
       redirect_uri: redirectUri,
       resource: mcp ? "https://test.example.com/mcp" : resource,
       state: "membership-state",
-      scope: mcp ? "mcp:read" : "sk:login",
+      scope: mcp ? "mcp:read" : "subkit:login",
       decision: "approve",
       tenant_id: ctx.tenantId,
     }),

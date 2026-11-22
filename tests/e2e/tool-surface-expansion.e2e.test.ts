@@ -18,7 +18,7 @@ describe("tool surface expansion", () => {
     expect(r.exitCode).toBe(0);
   });
 
-  test("sk --p list my workflows — engine status + tool_call row lands", async () => {
+  test("subkit --p list my workflows — engine status + tool_call row lands", async () => {
     const r = await cli(
       ["--p", "list my workflows, connectors, and engine status", "--output", "json"],
       { env, persona: "admin", timeout: 60_000 },

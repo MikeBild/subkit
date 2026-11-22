@@ -21,7 +21,7 @@ Hosts and IDs in the examples are placeholders (`example.test`, `<...>`).
 
 ### What you need
 
-- The `sk` CLI, signed in to your engine. In SubKit Cloud the engine address is `https://subkit-cloud.mikebild.dev`, without `/cockpit`.
+- The `subkit` CLI, signed in to your engine. In SubKit Cloud the engine address is `https://subkit-cloud.mikebild.dev`, without `/cockpit`.
 - A real access token of a test account of the app.
 - Access to the services the workflows call, such as your AI model's API.
 
@@ -44,20 +44,20 @@ If not every person with a token should become a user, narrow `required_claims` 
 
 ### 2. Set the runtime configuration
 
-The runtime configuration is your engine's settings, which you read and write with `sk settings`.
+The runtime configuration is your engine's settings, which you read and write with `subkit settings`.
 `auth.providers` and `products` are each replaced as a whole.
 So read each value first and write it back with your addition.
 
 1. Read the current sign-in providers.
 
 ```bash
-sk settings get auth.providers --json
+subkit settings get auth.providers --json
 ```
 
 2. Add your provider entry and write the whole list back. Keep every existing entry, or it is lost.
 
 ```bash
-sk settings set auth.providers '[
+subkit settings set auth.providers '[
   {"protocol":"api_key","id":"api-key","label":"SubKit API key"},
   {"protocol":"oidc_bearer","id":"<provider-id>","label":"<app> account",
    "issuer_url":"https://idp.example.test","audience":"<audience>","algorithms":["ES256"],
@@ -70,19 +70,19 @@ sk settings set auth.providers '[
 3. Read the current products.
 
 ```bash
-sk settings get products --json
+subkit settings get products --json
 ```
 
 4. Add your product entry and write the whole value back.
 
 ```bash
-sk settings set products '{"<product-id>":{"execution_environment":"prod",
+subkit settings set products '{"<product-id>":{"execution_environment":"prod",
   "assistant_workflow_id":"<assistant-workflow-id>","budget_bucket":"<bucket>"}}'
 ```
 
 `tenant_slug` names the workspace, the separate area in the engine where SubKit creates the app's users.
 `assistant_workflow_id` is the ID you choose for the guarded workflow in step 4.
-Once steps 3 to 5 are done, `sk apps show <product-id>` shows what the values add up to.
+Once steps 3 to 5 are done, `subkit apps show <product-id>` shows what the values add up to.
 
 ### 3. Create the connectors
 
@@ -94,12 +94,12 @@ That is usually the AI model's API and, if the app deletes accounts, the identit
 3. Store the credentials.
 
 ```bash
-sk connectors create --file connector-model.json --skip-checks
-printf '%s' "$MODEL_API_KEY" | sk vault attach <model-connector-id> --mode bearer
-printf 'Authorization=Bearer %s\napikey=%s\n' "$IDP_ADMIN_KEY" "$IDP_ADMIN_KEY" | sk vault attach <idp-admin-connector-id> --mode header
+subkit connectors create --file connector-model.json --skip-checks
+printf '%s' "$MODEL_API_KEY" | subkit vault attach <model-connector-id> --mode bearer
+printf 'Authorization=Bearer %s\napikey=%s\n' "$IDP_ADMIN_KEY" "$IDP_ADMIN_KEY" | subkit vault attach <idp-admin-connector-id> --mode header
 ```
 
-- `--skip-checks` is needed because the credentials are still missing when the connector is created. `sk vault attach` checks them afterwards.
+- `--skip-checks` is needed because the credentials are still missing when the connector is created. `subkit vault attach` checks them afterwards.
 - `bearer` sends `Authorization: Bearer <token>`. `header` sends the named headers (comma-separated `Name=Value`).
 - Credentials come from your shell or secret store, never from a file, the app or this repository.
 - If you replace credentials with several headers in the Cockpit, fill all header fields. If you leave all of them empty, the old values stay.
@@ -110,7 +110,7 @@ So that SubKit can check the credentials, give the connector a probe. That is a 
 "config": {"probe_endpoint": {"method": "GET", "path": "/admin/users?per_page=1", "expected_status": [200, 200]}}
 ```
 
-Then run `sk connectors test <id>`.
+Then run `subkit connectors test <id>`.
 If the probe answers 401 or 403, the connector counts as signed out. Its workflows are then blocked.
 
 ### 4. Create the workflows
@@ -120,8 +120,8 @@ Create them with fixed IDs so the app can hard-code them.
 Only an administrator may choose a workflow `id` (an unused UUID).
 
 ```bash
-sk workflows create --file workflows/assistant.json
-sk workflows create --file workflows/delete-account.json
+subkit workflows create --file workflows/assistant.json
+subkit workflows create --file workflows/delete-account.json
 ```
 
 Each product workflow sets:
@@ -163,7 +163,7 @@ A new version needs no new approval as long as it touches no more systems, addre
 Check readiness first. Every check should read `ok`. A failing check prints its next action.
 
 ```bash
-sk apps show <product-id>
+subkit apps show <product-id>
 ```
 
 Then call the engine with a real token:
@@ -183,7 +183,7 @@ curl -s -X POST $BASE/v1/executions -H "Authorization: Bearer $TOKEN" -H 'conten
 Expected:
 
 - `$BAD_TOKEN`, a wrong audience, a missing required claim or an expired token answers `401 invalid bearer token`.
-- `sk executions` and the run record show who called and which approval applied.
+- `subkit executions` and the run record show who called and which approval applied.
 
 ### Renew a connector's credentials
 
@@ -191,9 +191,9 @@ Credentials in connectors can expire, and admin keys get rotated regularly.
 Record the name, connector, owner and expiry date of all credentials in the app's repository, never the value.
 Renew them before they expire.
 
-1. Store the new value with `sk vault attach`.
-2. Check it with `sk connectors test <connector-id>`.
-3. Remove the old one with `sk vault rm <vault-item-id>`.
+1. Store the new value with `subkit vault attach`.
+2. Check it with `subkit connectors test <connector-id>`.
+3. Remove the old one with `subkit vault rm <vault-item-id>`.
 
 The Cockpit and `GET /v1/health` show failing connectors.
 
@@ -201,7 +201,7 @@ The Cockpit and `GET /v1/health` show failing connectors.
 
 1. Revoke the workflow approval on the **Approvals** tab. The app then gets 403 and nothing runs.
 2. Restore the `auth.providers` and `products` values you read in step 2.
-3. Restore a workflow version with `sk workflows history <id>` and `sk workflows restore <id>`.
+3. Restore a workflow version with `subkit workflows history <id>` and `subkit workflows restore <id>`.
 
 Without the provider entry, the app's tokens are no longer accepted. Existing caller records stay until the deletion workflow erases them.
 
@@ -218,13 +218,13 @@ It removes SubKit's own data about one person for one app:
 
 A new sign-in at the provider creates a new, empty app user.
 
-1. Find the user ID with `sk apps show <product-id>`.
-2. Run `sk apps erase-user <product-id> <user-id>` and confirm.
+1. Find the user ID with `subkit apps show <product-id>`.
+2. Run `subkit apps erase-user <product-id> <user-id>` and confirm.
 
 ```bash
-sk apps show <product-id>                          # lists the user ids of the app
-sk apps erase-user <product-id> <user-id>          # asks for confirmation
-sk apps erase-user <product-id> <user-id> --yes    # non-interactive; --json prints the result
+subkit apps show <product-id>                          # lists the user ids of the app
+subkit apps erase-user <product-id> <user-id>          # asks for confirmation
+subkit apps erase-user <product-id> <user-id> --yes    # non-interactive; --json prints the result
 ```
 
 Good to know:
@@ -255,10 +255,10 @@ The app itself stores nothing.
 You change it through `auth.providers`, `products` and the workflows (steps 2 to 5).
 
 ```bash
-sk apps list                      # app, environment, users, budget today, readiness
-sk apps show <product-id>         # settings, sign-in, workflows, users, budget today, readiness
-sk apps show <product-id> --json
-sk users list --app <product-id>  # users who signed in to that app
+subkit apps list                      # app, environment, users, budget today, readiness
+subkit apps show <product-id>         # settings, sign-in, workflows, users, budget today, readiness
+subkit apps show <product-id> --json
+subkit users list --app <product-id>  # users who signed in to that app
 ```
 
 In the Cockpit, open **People & access** > **Apps** and select an app. Over HTTP, use `GET /v1/apps` and `GET /v1/apps/{id}`. Both need `settings:read`.
@@ -280,8 +280,8 @@ Budget today shows the units used and reserved today, the refusals since local m
 
 | Setting | Where it lives |
 | --- | --- |
-| Provider entry, `products` entry, connectors and their credentials | Runtime configuration per deployment, set with `sk` |
-| Workflow definitions and their fixed IDs | The app's own repository, created with `sk workflows create` |
+| Provider entry, `products` entry, connectors and their credentials | Runtime configuration per deployment, set with `subkit` |
+| Workflow definitions and their fixed IDs | The app's own repository, created with `subkit workflows create` |
 | Workflow approvals | A person, per workflow and environment, in the Cockpit |
 | Credential expiry records | The app's own repository (metadata only) |
 
@@ -292,9 +292,9 @@ Every change to a sign-in provider or a `products` entry lands in the audit log.
 | What you see | What to do |
 | --- | --- |
 | `401 invalid bearer token` | The token was refused. Check `issuer_url`, `audience` and `required_claims` against a real token, and whether it has expired. |
-| `403` on a product run, or `ok: false` at `GET /v1/health` | The approval from step 5 or credentials are missing. Check `sk apps show <product-id>`. |
-| `429 rate_limited` | The daily limit is used up. `sk apps show` tells when the day resets. |
+| `403` on a product run, or `ok: false` at `GET /v1/health` | The approval from step 5 or credentials are missing. Check `subkit apps show <product-id>`. |
+| `429 rate_limited` | The daily limit is used up. `subkit apps show` tells when the day resets. |
 | `409 turn_busy` | Another call of the same turn is still running. Wait, or resend the first call with its `idempotency_key` and the engine returns that call's result again. A different key keeps getting 409 until the first call has finished. |
-| `credential_unverified` and `PROBE_AUTH_UNVERIFIED`, or "Connected · sign-in not verified" in the Cockpit | The connector has no probe, and `GET /` gave no clear answer. Set a probe path with an authenticated read (step 3) and check with `sk connectors test <id>`. |
-| A connector counts as signed out | Its probe answered 401 or 403. Store the credentials again (step 3) and check with `sk connectors test <id>`. |
+| `credential_unverified` and `PROBE_AUTH_UNVERIFIED`, or "Connected · sign-in not verified" in the Cockpit | The connector has no probe, and `GET /` gave no clear answer. Set a probe path with an authenticated read (step 3) and check with `subkit connectors test <id>`. |
+| A connector counts as signed out | Its probe answered 401 or 403. Store the credentials again (step 3) and check with `subkit connectors test <id>`. |
 | `409` when erasing an app user | The person has sign-in links to another app or to SubKit itself and is not erased. |

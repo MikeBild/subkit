@@ -32,7 +32,7 @@ engine --set-operator-tenant <slug>
 Every other workspace keeps its own settings. `GET /v1/settings` returns your tenant's view: only settings that support a per-tenant overlay, each with its effective value. A change applies to your workspace only when you name it explicitly:
 
 ```bash
-sk settings set llm.model '"<model>"' --tenant <your-tenant-id>
+subkit settings set llm.model '"<model>"' --tenant <your-tenant-id>
 ```
 
 In the Cockpit, workspaces outside the operator currently see settings read-only. Use the CLI command above to make changes.

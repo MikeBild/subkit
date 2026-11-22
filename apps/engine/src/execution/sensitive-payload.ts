@@ -95,6 +95,8 @@ const safeFailureCodes = new Set([
   "caller_kind_mismatch",
   "aborted",
   "timed_out",
+  "engine_stopped_during_write",
+  "mcp_timeout_during_write",
   "sandbox_memory",
   "sandbox_interrupt",
   "sandbox_timeout",
@@ -113,6 +115,10 @@ const safeFailureCodes = new Set([
 ]);
 
 const SAFE_FAILURE_MESSAGES: Readonly<Record<string, string>> = {
+  mcp_timeout_during_write:
+    "A tool did not answer in time while it was sending a change. It may have reached the target; check there before you run it again.",
+  engine_stopped_during_write:
+    "The engine stopped while a step was sending a change. It may have reached the target; check there before you run it again.",
   graphql_pagination_incomplete:
     "GraphQL pages are incomplete. Check pageInfo, totalCount, cursor continuity and configured limits before retrying.",
   graphql_pagination_not_read_only:

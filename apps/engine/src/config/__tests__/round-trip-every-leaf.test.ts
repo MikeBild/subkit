@@ -19,7 +19,7 @@ let dir: string;
 let cfgPath: string;
 
 beforeEach(async () => {
-  dir = mkdtempSync(join(tmpdir(), "sk-cfg-rt-"));
+  dir = mkdtempSync(join(tmpdir(), "subkit-cfg-rt-"));
   cfgPath = join(dir, "subkit.config.json");
   _resetConfigForTests();
   await loadConfig({

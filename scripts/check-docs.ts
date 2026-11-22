@@ -10,7 +10,7 @@ import {
   loadChapters,
   servedImageFile,
   webpInfo,
-} from "./docs-source.ts";
+} from "./lib/docs-source.ts";
 
 export interface DocsPaths {
   referenceDir: string;
@@ -66,6 +66,7 @@ const PUBLIC_PRODUCT_HOSTS = [
   "subkit.mikebild.dev",
   "subkit-cloud.mikebild.dev",
   "learn.chatgpt.com",
+  "chromewebstore.google.com",
 ];
 
 const ALLOWED_LOOPBACK = new Set(["127.0.0.1", "::1"]);

@@ -10,7 +10,7 @@ import {
   grantScheduleAuthority,
   type ScheduleAuthorityPreview,
   scheduledRunAuthorities,
-  skDocker,
+  subkitDocker,
 } from "./_harness.ts";
 
 let env: DockerEnv;
@@ -50,18 +50,32 @@ describe("in-container reconciler", () => {
       `/v1/workflows/${wf.body.id}`,
     );
     const versionId = detail.body.current_version_id;
+    const bound = await dockerApi<{ schedules: Array<{ execution_mode: "dev" | "prod" }> }>(
+      env,
+      "GET",
+      `/v1/schedules?workflow_id=${wf.body.id}`,
+    );
+    expect(bound.status).toBe(200);
+    expect(bound.body.schedules.map((s) => s.execution_mode)).toEqual(["dev"]);
+    const environment = "dev";
     const preview = await dockerApi<
       ScheduleAuthorityPreview & { eligible_for_repeated_runs: boolean }
     >(
       env,
       "GET",
-      `/v1/workflows/${wf.body.id}/versions/${versionId}/authority-preview?environment=prod`,
+      `/v1/workflows/${wf.body.id}/versions/${versionId}/authority-preview?environment=${environment}`,
     );
     expect(preview.status).toBe(200);
     expect(preview.body.eligible_for_repeated_runs).toBe(true);
-    const authorityId = await grantScheduleAuthority(env, wf.body.id, versionId, preview.body);
+    const authorityId = await grantScheduleAuthority(
+      env,
+      wf.body.id,
+      versionId,
+      preview.body,
+      environment,
+    );
 
-    const schedules = await skDocker(env, ["schedules", "list"]);
+    const schedules = await subkitDocker(env, ["schedules", "list"]);
     expect(schedules.exitCode).toBe(0);
 
     const fired = await pollUntil(

@@ -7,14 +7,20 @@ const signin: Screen = {
   origin: "https://subkit.example.com",
   host: "subkit.example.com",
   signin: { phase: "ready" },
-  joining: false,
+  hint: null,
 };
 
 describe("step model", () => {
-  test("both ways in have the same fixed length and share every step after the first", () => {
-    expect(PATH_STEPS.server).toHaveLength(6);
-    expect(PATH_STEPS.invite).toHaveLength(6);
-    expect([...PATH_STEPS.server.slice(1)]).toEqual([...PATH_STEPS.invite.slice(1)] as never);
+  test("every way in has the same fixed length and shares every step after the first", () => {
+    for (const steps of Object.values(PATH_STEPS)) {
+      expect(steps).toHaveLength(6);
+      expect([...steps.slice(1)]).toEqual([...PATH_STEPS.server.slice(1)] as never);
+    }
+  });
+
+  test("creating a workspace walks the same steps as connecting a server", () => {
+    expect([...PATH_STEPS.create]).toEqual([...PATH_STEPS.server]);
+    expect(stepIndex(signin, "create")).toBe(1);
   });
 
   test("a screen keeps its place whatever came before it", () => {

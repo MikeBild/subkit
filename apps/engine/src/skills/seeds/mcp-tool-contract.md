@@ -2,7 +2,7 @@
 slug: mcp-tool-contract
 scope: global
 title: MCP Callable Contract
-description: Reference for sk's MCP callable surface — callable names, local human approvals and single-use replay, version-bound workflow authorities, synthesized input schemas, warnings, and remote MCP connectors. Consult this before driving sk from any MCP client.
+description: Reference for subkit's MCP callable surface — callable names, local human approvals and single-use replay, version-bound workflow authorities, synthesized input schemas, warnings, and remote MCP connectors. Consult this before driving subkit from any MCP client.
 activates_when: [{"kind":"baseline"},{"kind":"intent_keyword","word":"mcp tool"},{"kind":"intent_keyword","word":"mcp tools"},{"kind":"intent_keyword","word":"tenant delete"},{"kind":"intent_keyword","word":"confirm_required"},{"kind":"intent_keyword","word":"sk_confirm"},{"kind":"intent_keyword","word":"ask_user_confirm"},{"kind":"intent_keyword","word":"unresolved_identifier"},{"kind":"intent_keyword","word":"warnings"},{"kind":"intent_keyword","word":"input schema"},{"kind":"intent_keyword","word":"wf_"},{"kind":"intent_keyword","word":"tenant_"},{"kind":"intent_keyword","word":"conversation_"}]
 side_effects: read
 idempotency: none
@@ -11,14 +11,14 @@ tags: [mcp, contract]
 version: 9
 ---
 
-# sk MCP callable contract
+# subkit MCP callable contract
 
-sk exposes three families of callable entries over MCP. Calling them correctly saves round-trips and avoids duplicate confirmations.
+subkit exposes three families of callable entries over MCP. Calling them correctly saves round-trips and avoids duplicate confirmations.
 
 ## Callable families
 
 - **Bare snake_case names** — the operator surface. Reads (`list_workflows`, `get_connector`, …) and writes (`delete_workflow`, `revoke_api_key`, …). Use these for CRUD. Names never carry a `tenant_` prefix and never contain dots.
-- **`wf_<slug>`** — run a specific workflow. Arguments match the workflow's declared `input_schema`; when absent, sk synthesises one from the DAG's `${input.X}` placeholders and jsonata `$input.X` references.
+- **`wf_<slug>`** — run a specific workflow. Arguments match the workflow's declared `input_schema`; when absent, subkit synthesises one from the DAG's `${input.X}` placeholders and jsonata `$input.X` references.
 - **`conversation_*`** — multi-turn authoring sessions (`conversation_start`, `conversation_append`, `conversation_respond_elicitation`). Use these when the operator is **designing** a workflow or connector. Do NOT start a conversation for routine CRUD — the bare CRUD names are the cheap path.
 
 There is no fourth family. In particular, the tools of a remote MCP server the tenant registered are **not** on this surface — see below.
@@ -29,7 +29,7 @@ The FULL authoring catalog is advertised — `tools/list` publishes every tool t
 
 ## Reading `_meta.subkit` on every callable entry
 
-Every sk callable entry ships a `_meta.subkit` envelope:
+Every subkit callable entry ships a `_meta.subkit` envelope:
 
 ```json
 { "category": "tenant_write", "confirm_required": true, "destructive": true }
@@ -58,15 +58,15 @@ Saved `wf_<slug>` execution is separate: a matching, unexpired local Execution A
 
 ## Remote MCP servers the tenant registered
 
-sk is an MCP client as well as an MCP server, and the two directions do not meet in this catalog.
+subkit is an MCP client as well as an MCP server, and the two directions do not meet in this catalog.
 
-- A remote MCP server sk calls is a **connector with `driver: "mcp"`** — endpoint in `base_url`, transport and auth shape in `config.mcp`, secret in the ordinary credential row. Manage it with the connector entries (`list_connectors`, `get_connector`, `update_connector`, `delete_connector`) and check it with `test_connector`, which handshakes and reports the tool count. There is no `mcp-servers` tool family and no `mcp_server:manage` permission; both were removed with the separate registry.
+- A remote MCP server subkit calls is a **connector with `driver: "mcp"`** — endpoint in `base_url`, transport and auth shape in `config.mcp`, secret in the ordinary credential row. Manage it with the connector entries (`list_connectors`, `get_connector`, `update_connector`, `delete_connector`) and check it with `test_connector`, which handshakes and reports the tool count. There is no `mcp-servers` tool family and no `mcp_server:manage` permission; both were removed with the separate registry.
 - Its remote tools are minted into the **chat palette** as `mcp_<connector_slug>__<remote_tool>`, alongside read-only `list_resources` / `list_resource_templates` / `read_resource` / `list_prompts` / `get_prompt` adapters for the capabilities the server declared (a server's own tool of the same name wins over an adapter). A workflow reaches the same remote through a `request` step carrying an `mcp` block. Neither address is callable from this MCP surface — do not name an `mcp_…` tool to a caller here, and do not tell them to "call it over MCP".
 - Treat remote `tools/call` as an external effect requiring local authority, whatever the server's `readOnlyHint` claims. Neither a third-party hint nor an author's `side_effects: "read"` label is permission to bypass preparation's write hold.
 
 ## `warnings[]` on workflow runs
 
-When a jsonata transform references an identifier that isn't in scope, sk returns the partial output next to a `warnings` array:
+When a jsonata transform references an identifier that isn't in scope, subkit returns the partial output next to a `warnings` array:
 
 ```json
 {
@@ -90,7 +90,7 @@ When a jsonata transform references an identifier that isn't in scope, sk return
 
 ## Synthesised `inputSchema` for `wf_<slug>`
 
-When a workflow does not declare `input_schema`, sk scans the DAG:
+When a workflow does not declare `input_schema`, subkit scans the DAG:
 
 - `${input.foo}` placeholders in request URL / path / headers / query / body strings.
 - Jsonata `$input.foo` or bare `input.foo` references inside transforms and branch conditions.

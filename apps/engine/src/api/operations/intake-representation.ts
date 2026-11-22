@@ -41,7 +41,14 @@ export const ItemSchema = z
     note: z.string(),
     state: ItemStateSchema,
     version: z.number().int().positive(),
-    collected_by: z.object({ kind: z.enum(["user", "system_account"]), id: z.string().uuid() }),
+    collected_by: z
+      .discriminatedUnion("kind", [
+        z.object({ kind: z.enum(["user", "system_account"]), id: z.string().uuid() }),
+        z.object({ kind: z.literal("anonymous"), id: z.null() }),
+      ])
+      .describe(
+        "Who collected the item. `anonymous` is a report sent without signing in, from the sign-in page or the desktop app.",
+      ),
     admitted_target_kind: IntakeTargetKindSchema.nullable(),
     admitted_target_id: z.string().uuid().nullable(),
     attachment: IntakeAttachmentSchema.nullable().describe(

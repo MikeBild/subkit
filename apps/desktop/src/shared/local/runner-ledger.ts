@@ -15,6 +15,7 @@ const LedgerEntrySchema = z
     result: DeviceResultSchema,
     finished_at: z.number().int().nonnegative(),
     replay: DeviceCommandSchema.optional(),
+    undelivered: z.literal(true).optional(),
   })
   .strict();
 
@@ -83,6 +84,18 @@ export function remember(
   if (recall(ledger, commandId)) return prune(ledger, now);
   return [
     ...prune(ledger, now),
-    { command_id: commandId, ...ledgerForm(command, result), finished_at: now },
+    { command_id: commandId, ...ledgerForm(command, result), finished_at: now, undelivered: true },
   ];
+}
+
+export function markDelivered(ledger: Ledger, commandId: string): Ledger {
+  return ledger.map((entry) => {
+    if (entry.command_id !== commandId || !entry.undelivered) return entry;
+    const { undelivered: _, ...delivered } = entry;
+    return delivered;
+  });
+}
+
+export function undeliveredIds(ledger: Ledger): string[] {
+  return ledger.filter((entry) => entry.undelivered).map((entry) => entry.command_id);
 }

@@ -28,11 +28,11 @@ RUN bun run build assets
 
 ARG ENGINE_VERSION
 RUN bun run build engine --skip-deps --outfile /out/engine --metafile /out/engine.json && \
-    bun run build sk --skip-deps --outfile /out/sk --metafile /out/sk.json
+    bun run build subkit --skip-deps --outfile /out/subkit --metafile /out/subkit.json
 
 RUN NODE_ENV=production bunx vite build --config apps/cockpit/vite.config.ts \
       --sourcemap --outDir /out/notice-cockpit && \
-    bun scripts/third-party-notices.ts /out/engine.json /out/sk.json \
+    bun scripts/third-party-notices.ts /out/engine.json /out/subkit.json \
       /out/notice-cockpit/assets/*.map > /out/THIRD_PARTY_NOTICES.txt
 
 FROM builder AS generated-cli
@@ -59,13 +59,13 @@ RUN set -eux; \
       --shell /usr/sbin/nologin subkit
 
 COPY --from=builder /out/engine /usr/local/bin/engine.bin
-COPY --from=builder /out/sk /usr/local/bin/sk.bin
+COPY --from=builder /out/subkit /usr/local/bin/subkit.bin
 COPY --from=builder /out/BUILD_CONTEXT_MANIFEST.txt /usr/local/share/subkit/BUILD_CONTEXT_MANIFEST.txt
 COPY --from=builder /out/BUILD_CONTEXT_DIGEST /usr/local/share/subkit/BUILD_CONTEXT_DIGEST
 COPY --from=cli-binaries /out/binaries /usr/local/share/subkit/binaries
 COPY LICENSE /usr/local/share/subkit/LICENSE
 COPY --from=builder /out/THIRD_PARTY_NOTICES.txt /usr/local/share/subkit/THIRD_PARTY_NOTICES.txt
-COPY deploy/docker/SOURCE_OFFER.txt /usr/local/share/subkit/SOURCE_OFFER.txt
+COPY docker/SOURCE_OFFER.txt /usr/local/share/subkit/SOURCE_OFFER.txt
 RUN set -eu; \
     out=/usr/local/share/subkit/BASE_IMAGE_INVENTORY.txt; \
     { \
@@ -77,8 +77,8 @@ RUN set -eu; \
           done | LC_ALL=C sort; \
     } > "$out"; \
     test -s "$out"
-COPY deploy/docker/subkit-wrap.sh /usr/local/bin/subkit-wrap.sh
-COPY deploy/docker/entrypoint.sh /usr/local/bin/subkit-entrypoint.sh
+COPY docker/subkit-wrap.sh /usr/local/bin/subkit-wrap.sh
+COPY docker/entrypoint.sh /usr/local/bin/subkit-entrypoint.sh
 RUN cp /usr/local/share/subkit/LICENSE /usr/local/share/subkit/binaries/LICENSE \
     && cp /usr/local/share/subkit/THIRD_PARTY_NOTICES.txt /usr/local/share/subkit/binaries/THIRD_PARTY_NOTICES.txt \
     && cd /usr/local/share/subkit/binaries \
@@ -86,10 +86,10 @@ RUN cp /usr/local/share/subkit/LICENSE /usr/local/share/subkit/binaries/LICENSE 
     && sha256sum LICENSE THIRD_PARTY_NOTICES.txt >> SHA256SUMS.next \
     && mv SHA256SUMS.next SHA256SUMS
 
-RUN chmod 755 /usr/local/bin/engine.bin /usr/local/bin/sk.bin \
+RUN chmod 755 /usr/local/bin/engine.bin /usr/local/bin/subkit.bin \
         /usr/local/bin/subkit-wrap.sh /usr/local/bin/subkit-entrypoint.sh \
     && ln -s /usr/local/bin/subkit-wrap.sh /usr/local/bin/engine \
-    && ln -s /usr/local/bin/subkit-wrap.sh /usr/local/bin/sk \
+    && ln -s /usr/local/bin/subkit-wrap.sh /usr/local/bin/subkit \
     && mkdir -p /tmp/subkit-home /tmp/subkit-state \
     && chown -R subkit:subkit /tmp/subkit-home /tmp/subkit-state
 

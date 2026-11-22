@@ -1,10 +1,12 @@
 import { z } from "@hono/zod-openapi";
+import type { WorkspaceLanguage } from "@shared/workspace-language.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { ToolResult } from "../../conversations/tools/index.ts";
 import { HttpError } from "../../http/errors.ts";
-import { conversationLocale } from "../../http/routes/conversations/locale.ts";
+import { requestLanguage } from "../../http/routes/conversations/locale.ts";
 import { chooseEnvironment } from "../../identity/core/default-environment.ts";
+import { workspaceLanguage } from "../../identity/index.ts";
 import { personalDefaultEnvironment } from "../../identity/setup-preferences.ts";
 import {
   countTasks,
@@ -21,6 +23,7 @@ import {
   TaskLifecycleSchema,
   TaskRunSchema,
   TaskSchema,
+  type TaskSource,
   type TaskUpdateInput,
   TaskUpdateInputSchema,
   updateTask,
@@ -85,15 +88,15 @@ export function taskPrincipal(scope: OperationScope): ResolvedPrincipal | Reject
   return scope.principal ?? reject.unauthorized();
 }
 
-function taskLocale(scope: OperationScope): "de" | "en" | undefined {
+function taskLocale(scope: OperationScope): WorkspaceLanguage | undefined {
   if (scope.locale) return scope.locale;
   const headers = scope.request?.headers;
-  return headers
-    ? conversationLocale(
-        headers.get("cookie") ?? undefined,
-        headers.get("accept-language") ?? undefined,
-      )
-    : undefined;
+  return (
+    requestLanguage(
+      headers?.get("cookie") ?? undefined,
+      headers?.get("accept-language") ?? undefined,
+    ) ?? undefined
+  );
 }
 
 export function taskToolFailure(outcome: Rejection): ToolResult {
@@ -116,6 +119,11 @@ const TaskListQuery = z
   .object({
     lifecycle: TaskLifecycleSchema.optional(),
     owner_id: z.string().uuid().optional(),
+    source_conversation_id: z
+      .string()
+      .uuid()
+      .optional()
+      .describe("Only tasks created from a message of this conversation."),
     category: CategoryFilterSchema.optional(),
     q: z.string().min(1).max(200).optional(),
     sort: z.enum(["name", "updated_at", "created_at"]).optional(),
@@ -163,6 +171,7 @@ function listInputFromQuery(q: ListQuery): TaskListInput {
   return {
     ...(q.lifecycle ? { lifecycle: q.lifecycle } : {}),
     ...(q.owner_id ? { owner_id: q.owner_id } : {}),
+    ...(q.source_conversation_id ? { source_conversation_id: q.source_conversation_id } : {}),
     ...(q.category ? { category: q.category } : {}),
     ...(q.q ? { q: q.q } : {}),
     ...(q.sort ? { sort: q.sort } : {}),
@@ -341,7 +350,9 @@ export const getTaskOperation = defineOperation<TaskIdInput, TaskView>({
   },
 });
 
-export const createTaskOperation = defineOperation<TaskCreateRequest, Task>({
+export type TaskCreateOperationInput = TaskCreateRequest & { readonly source?: TaskSource | null };
+
+export const createTaskOperation = defineOperation<TaskCreateOperationInput, Task>({
   id: "task.create",
   summary: "Create a task owned by the calling person",
   permission: "task:write",
@@ -351,16 +362,18 @@ export const createTaskOperation = defineOperation<TaskCreateRequest, Task>({
     const principal = taskPrincipal(scope);
     if (isRejection(principal)) return principal;
     try {
+      const { source, ...request } = input;
       const environment = chooseEnvironment({
-        requested: input.environment,
+        requested: request.environment,
         personal: await personalDefaultEnvironment(scope.db, scope.tenant_id, principal),
       });
       return await createTask(
         {
           tenant_id: scope.tenant_id,
           principal,
-          input: { ...input, environment },
-          locale: taskLocale(scope),
+          input: { ...request, environment },
+          locale: taskLocale(scope) ?? (await workspaceLanguage(scope.tenant_id, scope.db)),
+          source: source ?? null,
         },
         scope.db,
       );

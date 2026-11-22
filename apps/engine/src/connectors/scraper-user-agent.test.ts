@@ -30,11 +30,13 @@ afterEach(async () => {
 describe("scraperUserAgent", () => {
   test("links the engine's public /bot page when a public base URL is set", async () => {
     await setConfigKey("server.public_base_url", "https://engine.example.test/", { force: true });
-    expect(scraperUserAgent()).toBe(`sk-web-scraper/${VERSION} (+https://engine.example.test/bot)`);
+    expect(scraperUserAgent()).toBe(
+      `subkit-web-scraper/${VERSION} (+https://engine.example.test/bot)`,
+    );
   });
 
   test("falls back to the project URL without a public base URL", () => {
-    expect(scraperUserAgent()).toBe(`sk-web-scraper/${VERSION} (+${SCRAPER_PROJECT_URL})`);
+    expect(scraperUserAgent()).toBe(`subkit-web-scraper/${VERSION} (+${SCRAPER_PROJECT_URL})`);
   });
 
   test("a configured value and a connector override win in that order", async () => {

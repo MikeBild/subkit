@@ -73,6 +73,7 @@ export type SubkitProviderErrorKind =
   | "context_length_exceeded"
   | "network_5xx"
   | "timeout"
+  | "key_rejected"
   | "other";
 
 export interface SubkitLlm {

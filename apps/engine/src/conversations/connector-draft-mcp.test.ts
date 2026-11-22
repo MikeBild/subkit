@@ -48,7 +48,7 @@ describe("MCP connector draft validation", () => {
         driver: "mcp",
         environment: "prod",
         auth_type: "bearer",
-        base_url: "https://contentkit.example.test/mcp",
+        base_url: "https://editorial.example.test/mcp",
         config: { mcp: { transport: "http", auth: { kind: "bearer" } } },
       },
       [],

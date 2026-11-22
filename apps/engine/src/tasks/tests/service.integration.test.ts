@@ -43,7 +43,7 @@ describe("tasks/service definitions", () => {
     const w = await workspace();
     const input = taskInput({ description: "Every Monday", category: "reports" });
     const task = await createTask(
-      { tenant_id: w.tenant_id, principal: w.owner, input },
+      { locale: "de", tenant_id: w.tenant_id, principal: w.owner, input },
       ctx.db,
       deps,
     );
@@ -83,7 +83,7 @@ describe("tasks/service definitions", () => {
   test("a task without description keeps human sources so it is never auto-described", async () => {
     const w = await workspace();
     const task = await createTask(
-      { tenant_id: w.tenant_id, principal: w.owner, input: taskInput() },
+      { locale: "de", tenant_id: w.tenant_id, principal: w.owner, input: taskInput() },
       ctx.db,
       deps,
     );
@@ -102,7 +102,7 @@ describe("tasks/service definitions", () => {
   test("create refuses a schedule under fifteen minutes and a plan without room", async () => {
     const w = await workspace();
     const create = (input: ReturnType<typeof taskInput>) =>
-      createTask({ tenant_id: w.tenant_id, principal: w.owner, input }, ctx.db, deps);
+      createTask({ locale: "de", tenant_id: w.tenant_id, principal: w.owner, input }, ctx.db, deps);
     const frequent = await create(taskInput({ schedule_cron: "*/5 * * * *" })).catch((e) => e);
     expect(frequent).toBeInstanceOf(BadRequestError);
     expect(frequent.details).toEqual({ code: "cron_too_frequent" });
@@ -122,7 +122,7 @@ describe("tasks/service definitions", () => {
   test("update bumps the revision and changes the fingerprint only with the content", async () => {
     const w = await workspace();
     const scope = { tenant_id: w.tenant_id, principal: w.owner };
-    const created = await createTask({ ...scope, input: taskInput() }, ctx.db, deps);
+    const created = await createTask({ locale: "de", ...scope, input: taskInput() }, ctx.db, deps);
     const renamed = await updateTask(
       {
         ...scope,
@@ -171,7 +171,7 @@ describe("tasks/service definitions", () => {
   test("delete archives the task, audits it and hides it", async () => {
     const w = await workspace();
     const scope = { tenant_id: w.tenant_id, principal: w.owner };
-    const task = await createTask({ ...scope, input: taskInput() }, ctx.db, deps);
+    const task = await createTask({ locale: "de", ...scope, input: taskInput() }, ctx.db, deps);
     await deleteTask({ ...scope, task_id: task.id }, ctx.db, deps);
     expect(revoked(task.id)).toEqual([["task_archived", w.owner.id]]);
     expect(await getTask({ ...scope, task_id: task.id }, ctx.db)).toBeNull();
@@ -194,12 +194,17 @@ describe("tasks/service definitions", () => {
     const w = await workspace();
     const other = await workspace();
     const mine = await createTask(
-      { tenant_id: w.tenant_id, principal: w.owner, input: taskInput() },
+      { locale: "de", tenant_id: w.tenant_id, principal: w.owner, input: taskInput() },
       ctx.db,
       deps,
     );
     const theirs = await createTask(
-      { tenant_id: w.tenant_id, principal: w.member, input: taskInput({ name: "Other" }) },
+      {
+        locale: "de",
+        tenant_id: w.tenant_id,
+        principal: w.member,
+        input: taskInput({ name: "Other" }),
+      },
       ctx.db,
       deps,
     );
@@ -259,12 +264,13 @@ describe("tasks/service definitions", () => {
     const w = await workspace();
     const admin = { tenant_id: w.tenant_id, principal: w.admin };
     await createTask(
-      { ...admin, principal: w.owner, input: taskInput({ category: "reports" }) },
+      { locale: "de", ...admin, principal: w.owner, input: taskInput({ category: "reports" }) },
       ctx.db,
       deps,
     );
     await createTask(
       {
+        locale: "de",
         ...admin,
         principal: w.member,
         input: taskInput({ name: "Invoice 100%", goal: "Chase invoices" }),
@@ -288,7 +294,7 @@ describe("tasks/service definitions", () => {
   test("pause and resume record who did it and why", async () => {
     const w = await workspace();
     const scope = { tenant_id: w.tenant_id, principal: w.owner };
-    const task = await createTask({ ...scope, input: taskInput() }, ctx.db, deps);
+    const task = await createTask({ locale: "de", ...scope, input: taskInput() }, ctx.db, deps);
     const paused = await pauseTask({ ...scope, task_id: task.id }, ctx.db, deps);
     expect(paused).toMatchObject({
       paused_at: NOW.toISOString(),
@@ -328,15 +334,19 @@ describe("tasks/service definitions", () => {
   test("removing the owner pauses all their tasks until a person resumes them", async () => {
     const w = await workspace();
     const scope = { tenant_id: w.tenant_id, principal: w.owner };
-    const open = await createTask({ ...scope, input: taskInput() }, ctx.db, deps);
+    const open = await createTask({ locale: "de", ...scope, input: taskInput() }, ctx.db, deps);
     const paused = await createTask(
-      { ...scope, input: taskInput({ name: "Paused" }) },
+      { locale: "de", ...scope, input: taskInput({ name: "Paused" }) },
       ctx.db,
       deps,
     );
-    const gone = await createTask({ ...scope, input: taskInput({ name: "Gone" }) }, ctx.db, deps);
+    const gone = await createTask(
+      { locale: "de", ...scope, input: taskInput({ name: "Gone" }) },
+      ctx.db,
+      deps,
+    );
     const foreign = await createTask(
-      { ...scope, principal: w.member, input: taskInput() },
+      { locale: "de", ...scope, principal: w.member, input: taskInput() },
       ctx.db,
       deps,
     );
@@ -377,7 +387,7 @@ describe("tasks/service definitions", () => {
     const foreign = { ...w.owner, tenant_id: (await workspace()).tenant_id };
     for (const principal of [machine, foreign]) {
       const refused = await createTask(
-        { tenant_id: w.tenant_id, principal, input: taskInput() },
+        { locale: "de", tenant_id: w.tenant_id, principal, input: taskInput() },
         ctx.db,
         deps,
       ).catch((e) => e);
@@ -389,7 +399,7 @@ describe("tasks/service definitions", () => {
   test("a missing principal is never treated as the system", async () => {
     const w = await workspace();
     const task = await createTask(
-      { tenant_id: w.tenant_id, principal: w.owner, input: taskInput() },
+      { locale: "de", tenant_id: w.tenant_id, principal: w.owner, input: taskInput() },
       ctx.db,
       deps,
     );
@@ -411,13 +421,13 @@ describe("tasks/service definitions", () => {
     const scope = { tenant_id: w.tenant_id, principal: w.owner };
     const later = new Date(NOW.getTime() + 3_600_000).toISOString();
     const past = await createTask(
-      { ...scope, input: taskInput({ schedule_run_at: NOW.toISOString() }) },
+      { locale: "de", ...scope, input: taskInput({ schedule_run_at: NOW.toISOString() }) },
       ctx.db,
       deps,
     ).catch((e) => e);
     expect(past.details).toEqual({ code: "run_at_past" });
     const task = await createTask(
-      { ...scope, input: taskInput({ schedule_run_at: later }) },
+      { locale: "de", ...scope, input: taskInput({ schedule_run_at: later }) },
       ctx.db,
       deps,
     );
@@ -478,7 +488,7 @@ describe("tasks/service definitions", () => {
   test("update and delete record name and lifecycle before and after", async () => {
     const w = await workspace();
     const scope = { tenant_id: w.tenant_id, principal: w.owner };
-    const task = await createTask({ ...scope, input: taskInput() }, ctx.db, deps);
+    const task = await createTask({ locale: "de", ...scope, input: taskInput() }, ctx.db, deps);
     await updateTask(
       {
         ...scope,

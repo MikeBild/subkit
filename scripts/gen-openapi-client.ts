@@ -15,7 +15,7 @@ const typesPath = resolve(outDir, "openapi.d.ts");
 async function run(): Promise<void> {
   await mkdir(outDir, { recursive: true });
 
-  const cfgDir = mkdtempSync(join(tmpdir(), "sk-openapi-gen-"));
+  const cfgDir = mkdtempSync(join(tmpdir(), "subkit-openapi-gen-"));
   await loadConfig({
     env: { DATABASE_URL: "postgres://placeholder/openapi-gen", NODE_ENV: "test" },
     configPathOverride: join(cfgDir, "subkit.config.json"),

@@ -3,6 +3,7 @@ import { z } from "@hono/zod-openapi";
 import { actorOf } from "../../audit/actor.ts";
 import { AuditAction } from "../../audit/types.ts";
 import {
+  ANONYMOUS_FEEDBACK_PATH,
   base64Ceiling,
   createFeedbackRateLimiter,
   existingReport,
@@ -19,6 +20,7 @@ import {
 } from "../../feedback/index.ts";
 import { requireSignedInPerson } from "../../http/middleware/auth.ts";
 import { now } from "../../utils/clock.ts";
+import { ErrorSchema } from "../common-schemas.ts";
 import { defineOperation, type Rejection, reject } from "./index.ts";
 
 export const FEEDBACK_PATH = "/v1/feedback";
@@ -93,6 +95,25 @@ export const SubmitFeedbackSchema = z
   })
   .openapi("SubmitFeedbackBody");
 
+export const AnonymousFeedbackSchema = SubmitFeedbackSchema.extend({
+  contact_email: z
+    .string()
+    .trim()
+    .email()
+    .max(254)
+    .optional()
+    .describe("An address the operator may answer to. It is stored as written."),
+  device_id: z
+    .string()
+    .uuid()
+    .optional()
+    .describe(
+      "The device id of SubKit Desktop. The app sends it so its reports count against the device as well as the address.",
+    ),
+}).openapi("AnonymousFeedbackBody");
+
+export type AnonymousFeedbackInput = z.infer<typeof AnonymousFeedbackSchema>;
+
 export const SubmittedFeedbackSchema = z
   .object({
     id: z.string().uuid(),
@@ -100,6 +121,29 @@ export const SubmittedFeedbackSchema = z
     replayed: z.boolean().describe("true when this id was filed before and nothing new was filed."),
   })
   .openapi("SubmittedFeedback");
+
+const errorResponse = (description: string) => ({
+  description,
+  content: { "application/json": { schema: ErrorSchema } },
+});
+
+export const ANONYMOUS_FEEDBACK_SUMMARY = "Send a bug report or feedback without signing in";
+
+export const ANONYMOUS_FEEDBACK_DESCRIPTION =
+  "For the sign-in page and SubKit Desktop before sign-in. The report is cleaned the same way as a signed-in report and filed in the intake of the operator workspace under the category `feedback`, marked as `anonymous`. Each address may send 3 reports in 10 minutes, each desktop device (`device_id`) 3 as well, and the whole server 60. The whole request may hold at most 6 MB; the limits for each file stay the same.";
+
+export const ANONYMOUS_FEEDBACK_RESPONSES = {
+  201: {
+    description: "Filed",
+    content: { "application/json": { schema: SubmittedFeedbackSchema } },
+  },
+  403: errorResponse("Sent from another site"),
+  409: errorResponse("Report id already used"),
+  413: errorResponse("Request or attachment too large"),
+  422: errorResponse("Attachment refused"),
+  429: errorResponse("Too many reports"),
+  503: errorResponse("This server takes no reports without signing in"),
+} as const;
 
 type SubmitFeedbackInput = z.infer<typeof SubmitFeedbackSchema>;
 
@@ -109,13 +153,42 @@ export function resetFeedbackRateLimiter(next: FeedbackRateLimiter = createFeedb
   limiter = next;
 }
 
-function refusal(error: FeedbackRefusedError): Rejection {
+export interface FeedbackRefusalResponse {
+  readonly status: 409 | 413 | 422 | 503;
+  readonly code: string;
+  readonly message: string;
+  readonly details: Record<string, unknown>;
+}
+
+export function feedbackRefusal(error: FeedbackRefusedError): FeedbackRefusalResponse {
   const details = { reason: error.reason, ...(error.filename ? { filename: error.filename } : {}) };
   if (error.reason === "attachment_too_large" || error.reason === "screenshot_too_large")
-    return reject.payloadTooLarge("an attached file is too large", details);
+    return {
+      status: 413,
+      code: "payload_too_large",
+      message: "an attached file is too large",
+      details,
+    };
   if (error.reason === "report_id_taken")
-    return reject.conflict("this report id was already used", details);
-  return reject.unprocessable("an attached file cannot be accepted", details);
+    return { status: 409, code: "conflict", message: "this report id was already used", details };
+  if (error.reason === "intake_unavailable")
+    return {
+      status: 503,
+      code: "feedback_unavailable",
+      message: "this server takes no reports without signing in",
+      details,
+    };
+  return {
+    status: 422,
+    code: "unprocessable",
+    message: "an attached file cannot be accepted",
+    details,
+  };
+}
+
+function refusal(error: FeedbackRefusedError): Rejection {
+  const response = feedbackRefusal(error);
+  return reject.status(response.status, response.code, response.message, response.details);
 }
 
 export const submitFeedbackOperation = defineOperation<SubmitFeedbackInput, SubmittedFeedback>({

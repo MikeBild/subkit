@@ -1,7 +1,7 @@
 ---
 slug: sk-ref-webhooks
-name: sk Platform Reference — Webhooks & Triggers
-description: How sk receives inbound webhooks (public signed ingress, replay dedup, CRUD bindings) and how workflow triggers (request | webhook | schedule) start executions.
+name: subkit Platform Reference — Webhooks & Triggers
+description: How subkit receives inbound webhooks (public signed ingress, replay dedup, CRUD bindings) and how workflow triggers (request | webhook | schedule) start executions.
 tags: [sk-platform-reference, webhooks, triggers, schedule, cron, inbound, signature-verification]
 scope: global
 version: 3
@@ -9,10 +9,10 @@ version: 3
 
 # Webhooks & Triggers — overview
 
-sk starts a workflow execution in three ways, selected by the workflow's optional `trigger` block:
+subkit starts a workflow execution in three ways, selected by the workflow's optional `trigger` block:
 
 - `request` — on demand (chat, CLI, MCP `run_workflow`, HTTP execution start). This is the default when no `trigger` is set.
-- `webhook` — an external provider POSTs a signed event to a public ingress URL; sk verifies the signature and enqueues an execution.
+- `webhook` — an external provider POSTs a signed event to a public ingress URL; subkit verifies the signature and enqueues an execution.
 - `schedule` — a cron cadence fires the workflow on a clock, in a declared timezone.
 
 Two surfaces exist for inbound webhooks:

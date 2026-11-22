@@ -10,7 +10,7 @@ function makeReq(url: string, headers: Record<string, string> = {}) {
 }
 
 beforeAll(async () => {
-  const dir = mkdtempSync(join(tmpdir(), "sk-cfg-redirect-uri-test-"));
+  const dir = mkdtempSync(join(tmpdir(), "subkit-cfg-redirect-uri-test-"));
   await loadConfig({
     env: { DATABASE_URL: "postgres://placeholder/redirect-uri-test", NODE_ENV: "test" },
     configPathOverride: join(dir, "subkit.config.json"),

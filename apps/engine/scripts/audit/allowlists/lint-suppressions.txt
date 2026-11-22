@@ -5,7 +5,7 @@
 # `bun run apps/engine/scripts/audit-invariants.ts --update-baseline` (lowers budgets, drops fixed files).
 # `--accept-new` also admits new offenders; use it only for a reviewed baseline reset.
 
-apps/sk/src/tests/helpers/ink.tsx                            1
+apps/subkit/src/tests/helpers/ink.tsx                            1
 packages/chat-ui/src/elicit/FormPrompt.tsx                   1
 packages/chat-ui/src/elicit/TextPrompt.tsx                   1
 packages/shared/src/invoke-snippet.ts                        1

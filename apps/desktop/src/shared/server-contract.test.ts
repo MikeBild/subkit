@@ -46,6 +46,7 @@ describe("parseDescriptor", () => {
         loginSupported: true,
         callbacks: ["subkit://callback"],
         feedbackPath: null,
+        anonymousFeedbackPath: null,
       },
     });
   });
@@ -93,6 +94,7 @@ describe("parseDescriptor", () => {
           desktop: {
             login: { start: "https://evil.test/start", session: "//evil.test" },
             feedback_path: "/feedback",
+            anonymous_feedback_path: "/v1/feedback/anonymous",
           },
         },
       })?.desktop,
@@ -102,13 +104,20 @@ describe("parseDescriptor", () => {
       loginSupported: true,
       callbacks: ["subkit://callback"],
       feedbackPath: "/feedback",
+      anonymousFeedbackPath: "/v1/feedback/anonymous",
     });
+    expect(
+      parseDescriptor({
+        version: "12.0.0",
+        clients: { desktop: { login, anonymous_feedback_path: "https://evil.test/collect" } },
+      })?.desktop?.anonymousFeedbackPath,
+    ).toBeNull();
     expect(parseDescriptor({ service: "other" })).toBeNull();
     expect(parseDescriptor("<html>")).toBeNull();
   });
 
   test("requires the first server release with the local capabilities", () => {
-    expect(MIN_SERVER_VERSION).toBe("12.0.0");
+    expect(MIN_SERVER_VERSION).toBe("12.1.0");
   });
 });
 

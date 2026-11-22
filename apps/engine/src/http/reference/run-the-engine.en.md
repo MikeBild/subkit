@@ -11,8 +11,26 @@ audience: operator
 Afterwards SubKit runs on your own server: the engine with the Cockpit, a PostgreSQL database and an object store, started with Docker Compose.
 Database, files and keys stay on your server.
 
+### In short
+
+1. Install Docker with Compose and OpenSSL on your server.
+2. Download [`docker-compose.yml`](https://github.com/MikeBild/subkit/releases/latest/download/docker-compose.yml) of the newest release into an empty directory.
+3. Create `.env` with `MASTER_KEY` and `SUBKIT_DB_PASSWORD`, using the command below.
+4. Start everything with `docker compose pull && docker compose up -d --wait`.
+5. Create the admin account and connect your AI key with `docker compose exec engine subkit init`, as described in “First-run setup”.
+6. Open `http://localhost:3000`. You land in the Cockpit.
+
+The details follow.
+
 You need Docker with Compose, OpenSSL and a POSIX shell.
-Put `docker-compose.yml` in a dedicated directory. Take it from the same published release as the engine image.
+Download `docker-compose.yml` into a dedicated directory. It always comes from the newest release and starts the engine image of that release:
+
+```bash
+mkdir subkit && cd subkit
+curl -fsSLO https://github.com/MikeBild/subkit/releases/latest/download/docker-compose.yml
+```
+
+Every setting and its default is in [`subkit.config.example.json`](https://github.com/MikeBild/subkit/releases/latest/download/subkit.config.example.json). You need it only when you change a setting by file, as described in “Settings”.
 Use only published release images. If pulling the image fails, the installation is not finished, even if other services start.
 Do not combine an older image with a newer Compose file.
 
@@ -37,7 +55,7 @@ docker compose pull && docker compose up -d --wait
 curl -fsS http://localhost:3000/health
 ```
 
-Then set up the admin account and AI provider as described in "First-run setup".
+Then set up the admin account and AI provider as described in “First-run setup”.
 
 ### Protect keys and passwords
 
@@ -70,18 +88,18 @@ Complete the first-run setup locally before you expose the API.
 Access from outside needs HTTPS and access control. Never expose the database or object store publicly.
 
 A recovery needs the database, object-store data, `.env`, the matching Compose file and the image identity together.
-Test recovery in a separate installation before you rely on a backup or upgrade. The steps are under "Backup and recovery".
+Test recovery in a separate installation before you rely on a backup or upgrade. The steps are under “Backup and recovery”.
 
 ### Browser crawling for connector discovery
 
 The supplied image contains no browser and no Node.js.
 Connector discovery therefore looks for a service's documentation over HTTP: OpenAPI, GraphQL, Swagger UI, `llms.txt` and HTML pages.
-When none of them finds the documentation, the result names the missing piece: "browser discovery is not available".
+When none of them finds the documentation, the result names the missing piece: “browser discovery is not available”.
 If the documentation needs JavaScript to display, provide a reachable OpenAPI specification or enter the connector endpoints yourself.
 
 Browser crawling runs only when both conditions hold:
 
-- `SK_PLAYWRIGHT_ENTRY` names an installed Playwright module with its Chromium build,
+- `SUBKIT_PLAYWRIGHT_ENTRY` names an installed Playwright module with its Chromium build,
   readable by the container user (uid 1001), for example in your own image derived
   from the SubKit image.
 - The outbound network guard is not strict. The container starts with `NODE_ENV=production`
@@ -95,7 +113,7 @@ and ship the browser licenses. This path is not part of the release checks.
 ### Backup and recovery
 
 A backup copies the whole installation and restores it with the same image.
-To move only a workspace's own workflows, connectors, skills and knowledge to another engine, export a package instead, as described in "Use the sk CLI on your machine".
+To move only a workspace's own workflows, connectors, skills and knowledge to another engine, export a package instead, as described in “Use the subkit CLI on your machine”.
 
 Plan a maintenance window for a consistent backup.
 These steps apply to the bundled PostgreSQL and object store; external services need their own procedure.
@@ -111,7 +129,7 @@ The dump, object archive and `.env` contain sensitive data.
    Check the exit status before you continue. Keep the engine stopped until both data stores are backed up.
 3. Stop the object store with `docker compose stop object-store`. Find its exact volume
    using `docker inspect --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Name}}{{end}}{{end}}' "$(docker compose ps -aq object-store)"`.
-   Archive it read-only with `docker run --rm --network none -v <object-volume>:/data:ro --entrypoint tar oven/bun:1.4.5-debian -C /data -cf - . > /path/to/backup/objects.tar`.
+   Archive it read-only with `docker run --rm --network none -v <object-volume>:/data:ro --entrypoint tar oven/bun:@@BUN_VERSION@@-debian -C /data -cf - . > /path/to/backup/objects.tar`.
    Replace `<object-volume>` with that inspected name, not a guessed one.
 4. Check that each command succeeded. Set all backup files to mode `0600` and record
    their SHA-256 checksums. Restart the original installation with `docker compose up -d --wait`.
@@ -136,7 +154,7 @@ networks:
 1. Create fresh storage with `docker compose -p subkit-recovery create postgres object-store`.
    Inspect the new object-store container's `/data` volume as above, using the recovery
    project. Restore only into that new volume:
-   `docker run --rm -i --network none -v <new-object-volume>:/data --entrypoint tar oven/bun:1.4.5-debian -C /data -xf - < /path/to/backup/objects.tar`.
+   `docker run --rm -i --network none -v <new-object-volume>:/data --entrypoint tar oven/bun:@@BUN_VERSION@@-debian -C /data -xf - < /path/to/backup/objects.tar`.
 2. Start the new database with `docker compose -p subkit-recovery up -d --wait postgres`.
    Restore it with `docker compose -p subkit-recovery exec -T postgres pg_restore --exit-on-error --clean --if-exists --no-owner -U subkit -d subkit < /path/to/backup/postgres.dump`.
    This command replaces database contents. Use it only against the new recovery project.

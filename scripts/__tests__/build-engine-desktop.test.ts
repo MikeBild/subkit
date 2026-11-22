@@ -2,14 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  ENGINE_DESKTOP_TARGETS,
   engineBuildCommand,
   engineDesktopPath,
   engineMetafile,
   nativeDependenciesCommand,
-  selectTargets,
 } from "../build-engine-desktop.ts";
 import { plan } from "../lib/commands.ts";
+import { ENGINE_DESKTOP_TARGETS } from "../lib/engine-desktop-targets.ts";
 
 const ROOT = join(import.meta.dir, "..", "..");
 const CTX = { version: "1.2.3", platform: "linux" };
@@ -35,13 +34,6 @@ describe("desktop engine targets", () => {
       expect(config).toMatch(
         new RegExp(`dist/engine-desktop/${target.os}/\\$\\{arch\\}/${target.file}`),
       );
-  });
-
-  test("an unknown target is refused", () => {
-    expect(selectTargets([])).toHaveLength(2);
-    expect(() => selectTargets(["mac-x64"])).toThrow("unknown engine target");
-    expect(selectTargets(["win-x64"]).map((t) => t.file)).toEqual(["engine.exe"]);
-    expect(() => selectTargets(["linux-x64"])).toThrow("unknown engine target");
   });
 });
 
@@ -84,5 +76,24 @@ describe("desktop engine build", () => {
       "compile desktop engines",
       "desktop engine notices",
     ]);
+  });
+
+  test("hands one target to the compile and the notices, and refuses an unknown one", () => {
+    const argvOf = (args: string[]) => {
+      const result = plan("build", ["desktop-engine", "--skip-deps", ...args], CTX);
+      if (!result.ok) throw new Error(result.usage);
+      return result.steps.map((step) => step.argv.join(" "));
+    };
+    expect(argvOf(["--target", "darwin-arm64"])).toEqual([
+      "bun scripts/build-engine-desktop.ts --target darwin-arm64",
+      "bun scripts/engine-desktop-notices.ts --target darwin-arm64",
+    ]);
+    expect(argvOf([])).toEqual([
+      "bun scripts/build-engine-desktop.ts",
+      "bun scripts/engine-desktop-notices.ts",
+    ]);
+    const unknown = plan("build", ["desktop-engine", "--target", "mac-arm64"], CTX);
+    expect(unknown.ok).toBe(false);
+    if (!unknown.ok) expect(unknown.usage).toContain("--target darwin-arm64|windows-x64");
   });
 });

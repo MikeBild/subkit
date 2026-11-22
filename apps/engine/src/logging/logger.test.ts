@@ -220,7 +220,7 @@ describe("ndjson field-length cap", () => {
 describe("sd-daemon priority prefix", () => {
   function captureRawLine(env: Record<string, string | undefined>, fn: () => void): string {
     const savedEnv: Record<string, string | undefined> = {
-      SK_LOG_SD_DAEMON: testEnv.SK_LOG_SD_DAEMON,
+      SUBKIT_LOG_SD_DAEMON: testEnv.SUBKIT_LOG_SD_DAEMON,
       JOURNAL_STREAM: testEnv.JOURNAL_STREAM,
     };
     for (const [k, v] of Object.entries(env)) {
@@ -248,19 +248,19 @@ describe("sd-daemon priority prefix", () => {
     return captured.trim();
   }
 
-  test("maps error→<3> and warn→<4> when SK_LOG_SD_DAEMON=1", () => {
-    const errLine = captureRawLine({ SK_LOG_SD_DAEMON: "1", JOURNAL_STREAM: undefined }, () =>
+  test("maps error→<3> and warn→<4> when SUBKIT_LOG_SD_DAEMON=1", () => {
+    const errLine = captureRawLine({ SUBKIT_LOG_SD_DAEMON: "1", JOURNAL_STREAM: undefined }, () =>
       logger.error({ module: "t", action: "a", msg: "boom" }),
     );
     expect(errLine.startsWith("<3>{")).toBe(true);
-    const warnLine = captureRawLine({ SK_LOG_SD_DAEMON: "1", JOURNAL_STREAM: undefined }, () =>
+    const warnLine = captureRawLine({ SUBKIT_LOG_SD_DAEMON: "1", JOURNAL_STREAM: undefined }, () =>
       logger.warn({ module: "t", action: "a" }),
     );
     expect(warnLine.startsWith("<4>{")).toBe(true);
   });
 
   test("maps fatal→<2>, info→<6>, debug/trace→<7>", () => {
-    const env = { SK_LOG_SD_DAEMON: "1", JOURNAL_STREAM: undefined };
+    const env = { SUBKIT_LOG_SD_DAEMON: "1", JOURNAL_STREAM: undefined };
     expect(
       captureRawLine(env, () => logger.fatal({ module: "t", action: "a" })).startsWith("<2>{"),
     ).toBe(true);
@@ -276,7 +276,7 @@ describe("sd-daemon priority prefix", () => {
   });
 
   test("keeps the JSON payload unchanged after the marker", () => {
-    const line = captureRawLine({ SK_LOG_SD_DAEMON: "1", JOURNAL_STREAM: undefined }, () =>
+    const line = captureRawLine({ SUBKIT_LOG_SD_DAEMON: "1", JOURNAL_STREAM: undefined }, () =>
       logger.error({ module: "t", action: "a", msg: "boom" }),
     );
     const rec = JSON.parse(line.slice("<3>".length)) as Record<string, unknown>;
@@ -286,21 +286,23 @@ describe("sd-daemon priority prefix", () => {
   });
 
   test("emits bare JSON without the flag and without JOURNAL_STREAM", () => {
-    const line = captureRawLine({ SK_LOG_SD_DAEMON: undefined, JOURNAL_STREAM: undefined }, () =>
-      logger.error({ module: "t", action: "a" }),
+    const line = captureRawLine(
+      { SUBKIT_LOG_SD_DAEMON: undefined, JOURNAL_STREAM: undefined },
+      () => logger.error({ module: "t", action: "a" }),
     );
     expect(line.startsWith("{")).toBe(true);
   });
 
   test("auto-enables when systemd exports JOURNAL_STREAM", () => {
-    const line = captureRawLine({ SK_LOG_SD_DAEMON: undefined, JOURNAL_STREAM: "9:12345" }, () =>
-      logger.error({ module: "t", action: "a" }),
+    const line = captureRawLine(
+      { SUBKIT_LOG_SD_DAEMON: undefined, JOURNAL_STREAM: "9:12345" },
+      () => logger.error({ module: "t", action: "a" }),
     );
     expect(line.startsWith("<3>{")).toBe(true);
   });
 
-  test("SK_LOG_SD_DAEMON=0 force-disables even under JOURNAL_STREAM", () => {
-    const line = captureRawLine({ SK_LOG_SD_DAEMON: "0", JOURNAL_STREAM: "9:12345" }, () =>
+  test("SUBKIT_LOG_SD_DAEMON=0 force-disables even under JOURNAL_STREAM", () => {
+    const line = captureRawLine({ SUBKIT_LOG_SD_DAEMON: "0", JOURNAL_STREAM: "9:12345" }, () =>
       logger.error({ module: "t", action: "a" }),
     );
     expect(line.startsWith("{")).toBe(true);

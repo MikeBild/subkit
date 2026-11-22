@@ -39,6 +39,46 @@ const MESSAGES = {
   "report.copy": { de: "Diagnose kopieren", en: "Copy diagnostics" },
   "report.save": { de: "Als Datei speichern …", en: "Save as file…" },
   "report.cancel": { de: "Abbrechen", en: "Cancel" },
+  "report.close": { de: "Schließen", en: "Close" },
+  "report.send": { de: "An den Server senden", en: "Send to server" },
+  "report.sendDetail": {
+    de: "Die Diagnosedaten enthalten App-Version, Betriebssystem, Server-Version und die letzten 10 Fehler. Zugangsdaten, Pfade und URL-Parameter sind entfernt. Du kannst sie ohne Anmeldung an deinen Server senden oder kopieren.",
+    en: "The diagnostics contain the app version, operating system, server version and the last 10 errors. Credentials, paths and URL parameters are removed. You can send them to your server without signing in, or copy them.",
+  },
+  "report.sent": { de: "Danke, deine Meldung ist angekommen.", en: "Thanks, your report arrived." },
+  "report.sent.detail": {
+    de: "Wer deinen Server betreibt, findet sie im Eingang.",
+    en: "Whoever runs your server finds it in the inbox.",
+  },
+  "report.rate_limited": {
+    de: "Gerade gehen zu viele Meldungen ein.",
+    en: "Too many reports are coming in right now.",
+  },
+  "report.rate_limited.detail": {
+    de: "Versuch es in ein paar Minuten noch einmal oder kopier die Diagnose.",
+    en: "Try again in a few minutes or copy the diagnostics.",
+  },
+  "report.refused": {
+    de: "Der Server hat die Meldung nicht angenommen.",
+    en: "The server didn’t accept the report.",
+  },
+  "report.refused.detail": {
+    de: "Kopier die Diagnose und schick sie an die Person, die deinen Server betreibt.",
+    en: "Copy the diagnostics and send them to the person who runs your server.",
+  },
+  "report.unavailable": {
+    de: "Dieser Server nimmt keine Meldungen ohne Anmeldung an.",
+    en: "This server takes no reports without sign-in.",
+  },
+  "report.unavailable.detail": {
+    de: "Kopier die Diagnose und schick sie an die Person, die deinen Server betreibt.",
+    en: "Copy the diagnostics and send them to the person who runs your server.",
+  },
+  "report.failed": { de: "Die Meldung wurde nicht gesendet.", en: "The report wasn’t sent." },
+  "report.failed.detail": {
+    de: "Prüf deine Verbindung und versuch es noch einmal, oder kopier die Diagnose.",
+    en: "Check your connection and try again, or copy the diagnostics.",
+  },
 
   "updates.title": { de: "Updates", en: "Updates" },
   "updates.ready.title": { de: "Update bereit", en: "Update ready" },
@@ -312,6 +352,7 @@ const MESSAGES = {
     en: "Changes need your okay.",
   },
   "welcome.start": { de: "Loslegen", en: "Get started" },
+  "welcome.create": { de: "Neuen Arbeitsbereich anlegen", en: "Create a new workspace" },
   "welcome.invite": { de: "Einladungslink verwenden", en: "Use an invitation link" },
   "welcome.invite.label": { de: "Einladungslink", en: "Invitation link" },
   "welcome.invite.hint": {
@@ -337,7 +378,7 @@ const MESSAGES = {
     de: "Einladung für {email} · gültig bis {date}",
     en: "Invitation for {email} · valid until {date}",
   },
-  "invite.join": { de: "Im Browser beitreten", en: "Join in your browser" },
+  "invite.join": { de: "Beitreten und anmelden", en: "Join and sign in" },
   "invite.expired": { de: "Diese Einladung ist abgelaufen", en: "This invitation has expired" },
   "invite.withdrawn": {
     de: "Diese Einladung wurde zurückgezogen",
@@ -451,9 +492,13 @@ const MESSAGES = {
   },
   "signin.exchanging": { de: "Anmeldung wird abgeschlossen …", en: "Finishing sign-in…" },
   "signin.done": { de: "Angemeldet", en: "Signed in" },
-  "signin.afterJoin": {
-    de: "Schließ zuerst den Beitritt im Browser ab, dann melde dich hier an.",
-    en: "First finish joining in your browser, then sign in here.",
+  "signin.join": {
+    de: "Tritt im Browser bei und bestätige dort dieses Gerät.",
+    en: "Join in your browser and confirm this device there.",
+  },
+  "signin.create": {
+    de: "Melde dich im Browser an. Dort gibst du deinem neuen Arbeitsbereich einen Namen.",
+    en: "Sign in in your browser. There you give your new workspace a name.",
   },
   "signin.cancel": { de: "Abbrechen", en: "Cancel" },
   "signin.doneTitle": { de: "Gerät registriert", en: "Device registered" },
@@ -590,6 +635,14 @@ const MESSAGES = {
   "settings.open": { de: "Einstellungen", en: "Settings" },
 
   "local.title": { de: "Lokale Fähigkeiten", en: "Local capabilities" },
+  "local.macOnly.title": {
+    de: "Nur auf einem Mac mit Apple Silicon",
+    en: "Only on a Mac with Apple Silicon",
+  },
+  "local.macOnly.body": {
+    de: "Dateien in erlaubten Ordnern, erlaubte Websites und erlaubte Apps kann SubKit vorerst nur auf einem Mac mit Apple Silicon nutzen. Auf diesem Computer greift SubKit nicht auf deine Dateien, Websites oder Apps zu.",
+    en: "SubKit can use files in allowed folders, allowed websites and allowed apps only on a Mac with Apple Silicon for now. On this computer SubKit does not reach your files, websites or apps.",
+  },
   "local.manage": { de: "Verwalten", en: "Manage" },
   "local.toggle": {
     de: "Chat und Aufgaben dürfen diesen Mac nutzen",
@@ -688,6 +741,10 @@ const MESSAGES = {
   "local.blockedApp.file_manager": { de: "Finder", en: "Finder" },
   "workspace.choice.server": { de: "Mit einem Server verbinden", en: "Connect to a server" },
   "workspace.choice.local": { de: "Nur auf diesem Mac", en: "Only on this Mac" },
+  "workspace.local.macOnly": {
+    de: "Ein Workspace nur auf diesem Computer ist vorerst nur auf einem Mac mit Apple Silicon verfügbar.",
+    en: "A workspace only on this computer is available only on a Mac with Apple Silicon for now.",
+  },
   "workspace.workspace": { de: "Auf diesem Mac", en: "On this Mac" },
   "workspace.step.folder": { de: "Datenordner", en: "Data folder" },
   "workspace.step.you": { de: "Du", en: "You" },

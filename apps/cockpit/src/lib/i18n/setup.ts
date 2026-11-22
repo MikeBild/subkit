@@ -267,14 +267,6 @@ export const setupEn = {
   "chat.policy.ask.ruleExpired": "Your rule for this action has expired. Renew it under Rules.",
   "chat.policy.ask.ruleLimit": "Your rule for this action has reached its limit for today.",
   "chat.policy.ask.ruleContent": "Your rule covers a different text than this one.",
-  "chat.policy.changeRefused": "Your reply changes the action, so nothing ran",
-  "chat.policy.changeRefusedBody":
-    "The question is still open. Allow exactly what is shown, or decline and send your changed request.",
-  "chat.policy.declineAndRephrase": "Decline and rephrase",
-  "chat.policy.meant": "Did you mean: {choice}?",
-  "chat.policy.meantBody":
-    "Nothing ran. Typed text never gives an approval; confirm with the button, or keep the card open.",
-  "chat.policy.meantNo": "No, keep the card open",
   "audit.action.userSetupUpdated": "Setup choices changed",
   "audit.action.approvalRuleCreated": "Approval rule saved",
   "audit.action.approvalRuleDismissed": "Approval rule declined",
@@ -567,14 +559,6 @@ export const setupDe: Record<keyof typeof setupEn, string> = {
     "Deine Regel für diese Aktion ist abgelaufen. Verlängere sie unter Regeln.",
   "chat.policy.ask.ruleLimit": "Deine Regel für diese Aktion hat ihr Tageslimit erreicht.",
   "chat.policy.ask.ruleContent": "Deine Regel deckt einen anderen Text als diesen.",
-  "chat.policy.changeRefused": "Deine Antwort ändert die Aktion, deshalb lief nichts",
-  "chat.policy.changeRefusedBody":
-    "Die Frage ist noch offen. Erlaube genau das Gezeigte, oder lehne ab und schick deinen geänderten Auftrag.",
-  "chat.policy.declineAndRephrase": "Ablehnen und neu formulieren",
-  "chat.policy.meant": "Meintest du: {choice}?",
-  "chat.policy.meantBody":
-    "Ausgeführt wurde nichts. Getippter Text gibt nie eine Freigabe; bestätige mit der Schaltfläche oder lass die Karte offen.",
-  "chat.policy.meantNo": "Nein, Karte offen lassen",
   "audit.action.userSetupUpdated": "Einrichtung geändert",
   "audit.action.approvalRuleCreated": "Regel gespeichert",
   "audit.action.approvalRuleDismissed": "Regel abgelehnt",

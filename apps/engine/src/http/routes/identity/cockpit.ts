@@ -1,5 +1,6 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
+import { WorkspaceLanguageSchema } from "../../../api/index.ts";
 import { AiAccessSchema } from "../../../api/operations/workspace-ai-access.ts";
 import {
   browserSessionForPrincipal,
@@ -47,6 +48,7 @@ const CockpitBootstrapResponse = z
       slug: z.string(),
       display_name: z.string(),
       timezone: z.string().describe("IANA time zone of the workspace"),
+      language: WorkspaceLanguageSchema,
       origin: z.enum(["self_hosted", "self_service"]),
       engine_operator: z
         .boolean()
@@ -260,6 +262,7 @@ export function registerCockpitIdentityRoutes(app: OpenAPIHono<AppEnv>): void {
           slug: identityRow.tenant_slug,
           display_name: identityRow.tenant_display_name,
           timezone: identityRow.tenant_timezone,
+          language: identityRow.tenant_language,
           origin: identityRow.tenant_origin,
           engine_operator: await isOperatorPrincipal(db, principal),
         },

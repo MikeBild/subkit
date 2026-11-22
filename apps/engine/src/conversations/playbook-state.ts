@@ -1,3 +1,4 @@
+import type { WorkspaceLanguage } from "@shared/workspace-language.ts";
 import { type PlaybookHandOver, stepHoldsDeliveredResult } from "./core/task-run-result.ts";
 import type {
   PlaybookDocument,
@@ -13,7 +14,7 @@ export interface PlaybookEvidenceResolution {
 }
 export type PlaybookEvidenceMap = ReadonlyMap<string, readonly PlaybookEvidenceResolution[]>;
 
-function criterionLabel(step: PlaybookStep, locale: "de" | "en" = "de"): string {
+function criterionLabel(step: PlaybookStep, locale: WorkspaceLanguage): string {
   switch (step.criterion.kind) {
     case "assessment":
       return step.criterion.description;
@@ -34,7 +35,7 @@ export function projectPlaybook(
   document: PlaybookDocument,
   revision: number,
   evidenceMap: PlaybookEvidenceMap,
-  locale: "de" | "en" = "de",
+  locale: WorkspaceLanguage,
   handOver: PlaybookHandOver = "conversation",
 ): PlaybookView {
   const en = locale === "en";

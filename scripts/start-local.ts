@@ -11,7 +11,7 @@ import {
   LOCAL_DEFAULT_LLM_API_KEY,
   LOCAL_DEFAULT_LLM_PROVIDER,
   LOCAL_DEFAULT_TENANT_NAME,
-} from "../apps/sk/src/commands/init.ts";
+} from "../apps/subkit/src/commands/init.ts";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const ENV_FILE = join(ROOT, ".env");
@@ -108,7 +108,7 @@ async function main(): Promise<void> {
   say("→ completing first-run setup");
   const init = composeExec(
     [
-      "sk",
+      "subkit",
       "init",
       "--token",
       bootstrapKey,
@@ -129,7 +129,7 @@ async function main(): Promise<void> {
   const alreadyDone = /already been bootstrapped|already_completed/.test(initOutput);
   if (init.status !== 0 && !alreadyDone) {
     process.stderr.write(initOutput);
-    fail("sk init failed");
+    fail("subkit init failed");
   }
   if (!QUIET && initOutput.trim().length > 0) {
     process.stdout.write(
@@ -145,7 +145,7 @@ async function main(): Promise<void> {
   let ranDemo = false;
   if (!SKIP_RUN) {
     say(`→ running the seeded starter workflow '${DEMO_WORKFLOW}'`);
-    const exec = composeExec(["sk", "workflows", "run", DEMO_WORKFLOW, "--follow"], {
+    const exec = composeExec(["subkit", "workflows", "run", DEMO_WORKFLOW, "--follow"], {
       capture: true,
     });
     const execOutput = `${exec.stdout ?? ""}${exec.stderr ?? ""}`;
@@ -161,7 +161,7 @@ async function main(): Promise<void> {
       process.stderr.write(execOutput);
       fail(
         `the starter workflow did not run. List what the tenant has:\n` +
-          `  docker compose exec ${COMPOSE_SERVICE} sk workflows list`,
+          `  docker compose exec ${COMPOSE_SERVICE} subkit workflows list`,
       );
     }
   }
@@ -172,14 +172,14 @@ async function main(): Promise<void> {
       `  Cockpit          ${base}/\n` +
       `  API reference    ${base}/docs\n` +
       `  Machine-readable ${base}/llms.txt\n\n` +
-      `  Run it again     docker compose exec ${COMPOSE_SERVICE} sk workflows run ${DEMO_WORKFLOW} --follow\n` +
-      `  See what ran     docker compose exec ${COMPOSE_SERVICE} sk executions list --limit 5\n` +
-      `  Open the CLI     docker compose exec -it ${COMPOSE_SERVICE} sk\n` +
+      `  Run it again     docker compose exec ${COMPOSE_SERVICE} subkit workflows run ${DEMO_WORKFLOW} --follow\n` +
+      `  See what ran     docker compose exec ${COMPOSE_SERVICE} subkit executions list --limit 5\n` +
+      `  Open the CLI     docker compose exec -it ${COMPOSE_SERVICE} subkit\n` +
       `  Stop everything  docker compose down\n\n` +
       `The LLM provider is 'mock', so nothing leaves this machine and the\n` +
       `conversational authoring loop stays inert. Point it at a real provider with:\n` +
-      `  docker compose exec ${COMPOSE_SERVICE} sk settings set llm.provider '"anthropic"'\n` +
-      `  docker compose exec ${COMPOSE_SERVICE} sk settings set llm.providers.anthropic.api_key '"sk-ant-..."'\n`,
+      `  docker compose exec ${COMPOSE_SERVICE} subkit settings set llm.provider '"anthropic"'\n` +
+      `  docker compose exec ${COMPOSE_SERVICE} subkit settings set llm.providers.anthropic.api_key '"sk-ant-..."'\n`,
   );
 }
 

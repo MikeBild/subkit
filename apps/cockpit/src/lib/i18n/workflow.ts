@@ -18,7 +18,7 @@ export const workflowEn = {
   "workflowUse.card.webhook": "Other systems start it through an address.",
   "workflowUse.card.http": "With an API key",
   "workflowUse.card.mcp": "Claude and other assistants can start it.",
-  "workflowUse.card.cli": "For scripts with sk.",
+  "workflowUse.card.cli": "For scripts with subkit.",
   "workflowUse.sheet.schedule": "Starts the workflow at fixed times.",
   "workflowUse.sheet.webhook": "Another system starts the workflow by calling this address.",
   "workflowUse.sheet.http": "Other programs start the workflow through a web address.",
@@ -378,7 +378,7 @@ export const workflowDe: Record<keyof typeof workflowEn, string> = {
   "workflowUse.card.webhook": "Andere Systeme starten ihn über eine Adresse.",
   "workflowUse.card.http": "Mit einem API-Schlüssel",
   "workflowUse.card.mcp": "Claude und andere Assistenten können ihn starten.",
-  "workflowUse.card.cli": "Für Skripte mit sk.",
+  "workflowUse.card.cli": "Für Skripte mit subkit.",
   "workflowUse.sheet.schedule": "Startet den Workflow zu festen Zeiten.",
   "workflowUse.sheet.webhook":
     "Ein anderes System startet den Workflow, indem es diese Adresse aufruft.",

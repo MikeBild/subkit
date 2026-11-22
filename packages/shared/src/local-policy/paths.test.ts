@@ -295,14 +295,17 @@ describe("allowed roots", () => {
     );
     expect(
       outcome(
-        classifyRoot("/Users/mike/Projects", { os: "darwin", data_dir: "/Users/mike/Projects/sk" }),
+        classifyRoot("/Users/mike/Projects", {
+          os: "darwin",
+          data_dir: "/Users/mike/Projects/subkit",
+        }),
       ),
     ).toBe("outside_allowance");
     expect(
       outcome(
-        classifyRoot("/Users/mike/Projects/sk/files", {
+        classifyRoot("/Users/mike/Projects/subkit/files", {
           os: "darwin",
-          data_dir: "/Users/mike/Projects/sk",
+          data_dir: "/Users/mike/Projects/subkit",
         }),
       ),
     ).toBe("outside_allowance");

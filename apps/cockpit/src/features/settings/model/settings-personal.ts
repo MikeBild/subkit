@@ -1,3 +1,4 @@
+import type { WorkspaceLanguage } from "@shared/workspace-language.ts";
 import type { Bootstrap } from "@/api/client";
 import type { TranslationKey } from "@/lib/i18n";
 import {
@@ -12,6 +13,7 @@ export interface PersonalDrafts {
   name?: string;
   workspaceName?: string;
   timezone?: string;
+  language?: WorkspaceLanguage;
   aiProvider?: OwnKeyProvider;
   aiKey?: string;
   aiModel?: string;
@@ -30,7 +32,7 @@ export interface AiAccessChange {
 export interface PersonalChanges {
   ai: AiAccessChange | null;
   profile: { display_name: string } | null;
-  workspace: { display_name?: string; timezone?: string } | null;
+  workspace: { display_name?: string; timezone?: string; language?: WorkspaceLanguage } | null;
   count: number;
   invalid: PersonalField[];
   areas: SettingAreaId[];
@@ -98,6 +100,9 @@ export function personalChanges(session: PersonalSession, drafts: PersonalDrafts
       : {}),
     ...(drafts.timezone !== undefined && drafts.timezone !== session.tenant.timezone
       ? { timezone: drafts.timezone }
+      : {}),
+    ...(drafts.language !== undefined && drafts.language !== session.tenant.language
+      ? { language: drafts.language }
       : {}),
   };
   const workspaceCount = Object.keys(workspace).length;

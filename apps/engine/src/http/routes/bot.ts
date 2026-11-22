@@ -14,16 +14,16 @@ function escapeHtml(value: string): string {
 
 function renderMarkdown(origin: string): string {
   const host = new URL(origin).host;
-  return `# sk-web-scraper
+  return `# subkit-web-scraper
 
 The engine at ${origin} runs SubKit, a workflow engine.
 Its web scraper fetches a page only when a workflow of this installation asks for it.
 
-- It sends the User-Agent \`sk-web-scraper/<version>\` with a link to this page.
+- It sends the User-Agent \`subkit-web-scraper/<version>\` with a link to this page.
 - It follows robots.txt by default. To stop it, add:
 
   \`\`\`
-  User-agent: sk-web-scraper
+  User-agent: subkit-web-scraper
   Disallow: /
   \`\`\`
 
@@ -41,7 +41,7 @@ function renderHtml(origin: string): string {
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>sk-web-scraper</title>
+<title>subkit-web-scraper</title>
 <style>
   :root { color-scheme: light dark; }
   body { font: 16px/1.6 system-ui, sans-serif; max-width: 40rem; margin: 4rem auto; padding: 0 1.5rem; }
@@ -49,13 +49,13 @@ function renderHtml(origin: string): string {
   pre { padding: .75rem 1rem; border: 1px solid rgba(128,128,128,.3); border-radius: .5rem; }
   footer { margin-top: 2rem; opacity: .7; font-size: .9rem; }
 </style>
-<h1>sk-web-scraper</h1>
+<h1>subkit-web-scraper</h1>
 <p>The engine at <code>${safeOrigin}</code> runs SubKit, a workflow engine.
 Its web scraper fetches a page only when a workflow of this installation asks for it.</p>
 <ul>
-  <li>It sends the User-Agent <code>sk-web-scraper/&lt;version&gt;</code> with a link to this page.</li>
+  <li>It sends the User-Agent <code>subkit-web-scraper/&lt;version&gt;</code> with a link to this page.</li>
   <li>It follows robots.txt by default. To stop it, add:
-<pre>User-agent: sk-web-scraper
+<pre>User-agent: subkit-web-scraper
 Disallow: /</pre></li>
   <li>It waits between requests to the same site.</li>
 </ul>

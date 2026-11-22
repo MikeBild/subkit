@@ -11,8 +11,31 @@ export function inviteToken(hash: string): string | null {
   return token.length >= 14 && token.length <= 128 && !/\s/.test(token) ? token : null;
 }
 
+export const DESKTOP_LOGIN_START = "/v1/identity/desktop-login/start";
+
+export function desktopContinuation(raw: string | null, origin: string): string | null {
+  if (!raw?.startsWith("/") || raw.startsWith("//")) return null;
+  let url: URL;
+  try {
+    url = new URL(raw, origin);
+  } catch {
+    return null;
+  }
+  if (url.origin !== origin || url.pathname !== DESKTOP_LOGIN_START || url.hash) return null;
+  return `${url.pathname}${url.search}`;
+}
+
+export function inviteContinuation(search: string, origin: string): string | null {
+  return desktopContinuation(new URLSearchParams(search).get("continue"), origin);
+}
+
+export function inviteReturned(search: string): boolean {
+  const params = new URLSearchParams(search);
+  return params.get("joined") === "1" || Boolean(params.get("error"));
+}
+
 export function joinCommand(origin: string, token: string): string {
-  return `sk join --invite ${token} --engine-url ${origin}`;
+  return `subkit join --invite ${token} --engine-url ${origin}`;
 }
 
 export interface InvitePreview {

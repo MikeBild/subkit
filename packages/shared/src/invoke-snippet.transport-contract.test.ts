@@ -25,7 +25,7 @@ test("Node snippets remain executable when unknown leaf values cannot be JSON en
       calls.push({ url, body: init.body });
       return { json: async () => ({ ok: true }) };
     },
-    { env: { SK_API_KEY: "test-key" } },
+    { env: { SUBKIT_API_KEY: "test-key" } },
     { log: () => {} },
   );
   expect(calls).toEqual([

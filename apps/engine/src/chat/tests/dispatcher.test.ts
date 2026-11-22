@@ -319,7 +319,7 @@ describe("chat dispatcher", () => {
     const welcome = adapter.sends[adapter.sends.length - 1]?.text ?? "";
     expect(welcome).not.toContain("Usage");
     expect(welcome.toLowerCase()).toContain("run a saved workflow");
-    expect(welcome).toContain("sk");
+    expect(welcome).toContain("subkit");
     expect(emptyOut.conversation_id).toBeUndefined();
     const execsAfter = (
       await ctx.testDb.db.select().from(executions).where(eq(executions.workflow_id, wf.id))

@@ -184,7 +184,10 @@ export const RATCHETS: readonly Ratchet[] = [
     rule: "a canonical pure target or runtime helper reaching db/, llm/, audit/, queue/, filesystem/network/process I/O, unresolved require/dynamic imports, clock or entropy",
     unit: "hits",
     measure: (cache) => {
-      const files = cache.list([ENGINE, "apps/cockpit/src", "apps/sk/src", "packages"], () => true);
+      const files = cache.list(
+        [ENGINE, "apps/cockpit/src", "apps/subkit/src", "packages"],
+        () => true,
+      );
       assertCompletePureTargetInventory(files);
       const scopes = purityScopes(cache);
       return countBy(

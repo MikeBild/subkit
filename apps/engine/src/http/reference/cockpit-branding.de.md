@@ -27,17 +27,17 @@ Das Branding liegt im PostgreSQL-Schema deines Arbeitsbereichs. Im gehosteten Be
 
 ### Über HTTP, CLI und MCP
 
-Cockpit, HTTP-API, `sk` und MCP folgen denselben Regeln: gleiche Bildprüfung, gleiche Berechtigungen, gleiche Revisionen. Jede gespeicherte Fassung hat eine Revision. Hat jemand anderes inzwischen gespeichert, schlägt dein Speichern mit einem Konflikt fehl und die gespeicherte Fassung bleibt erhalten. Lade dann neu und versuche es noch einmal.
+Cockpit, HTTP-API, `subkit` und MCP folgen denselben Regeln: gleiche Bildprüfung, gleiche Berechtigungen, gleiche Revisionen. Jede gespeicherte Fassung hat eine Revision. Hat jemand anderes inzwischen gespeichert, schlägt dein Speichern mit einem Konflikt fehl und die gespeicherte Fassung bleibt erhalten. Lade dann neu und versuche es noch einmal.
 
 Angemeldete Aufrufer lesen mit `GET /v1/tenant/branding`, speichern mit `PUT` und setzen mit `DELETE` zurück. Schreiben braucht beide Rechte, `settings:write` und `identity:write`. Ein API-Schlüssel mit Scope bleibt auf seine Rechte begrenzt; Schreibzugriffe aus dem Browser prüfen zusätzlich das CSRF-Token. Logo-Abrufe sind an Arbeitsbereich und Revision gebunden. Ist nur ein Logo hinterlegt, nutzt das Cockpit es für das helle und das dunkle Design; HTTP, CLI und MCP liefern beide Logo-Adressen aus.
 
 Die CLI bietet diese Befehle:
 
 ```bash
-sk branding get
-sk branding update <json-file|->
-sk branding reset <revision>
-sk branding logo <light|dark> --output <file>
+subkit branding get
+subkit branding update <json-file|->
+subkit branding reset <revision>
+subkit branding logo <light|dark> --output <file>
 ```
 
 Über MCP stehen `get_tenant_branding`, `update_tenant_branding`, `reset_tenant_branding` und `get_tenant_branding_logo` bereit. Änderungen über MCP brauchen wie üblich die Freigabe einer angemeldeten Person. SubKit prüft beide Schreibrechte, bevor es die Freigabe anfordert. Normale Lesezugriffe liefern Metadaten; nur `get_tenant_branding_logo` liefert die normalisierten PNG-Bytes. Die OpenAPI- und MCP-Eingabeschemas werden aus derselben Anfragebeschreibung erzeugt.

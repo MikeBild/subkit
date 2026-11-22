@@ -66,6 +66,7 @@ export type Command =
   | { type: "ChooseWorkspace"; tenantId: string }
   | { type: "KeepWorkspace" }
   | { type: "StartConnect" }
+  | { type: "CreateWorkspace" }
   | { type: "ToggleInvite" }
   | { type: "EditInvite"; link: string }
   | { type: "OpenInvite" }
@@ -82,7 +83,7 @@ export type Event =
   | { type: "SignInRefused"; result: CheckResult }
   | { type: "WentBack"; to: FlowStep }
   | { type: "ReloginDismissed" }
-  | { type: "ConnectStarted" }
+  | { type: "ConnectStarted"; path: "server" | "create" }
   | { type: "InviteToggled" }
   | { type: "InviteEdited"; link: string }
   | { type: "InviteRejected" }
@@ -265,7 +266,11 @@ export function decide(state: SignInState, command: Command, context: DecideCont
         : NOTHING;
     case "StartConnect":
       return screen?.kind === "welcome"
-        ? { events: [{ type: "ConnectStarted" }], effects: [] }
+        ? { events: [{ type: "ConnectStarted", path: "server" }], effects: [] }
+        : NOTHING;
+    case "CreateWorkspace":
+      return screen?.kind === "welcome"
+        ? { events: [{ type: "ConnectStarted", path: "create" }], effects: [] }
         : NOTHING;
     case "ToggleInvite":
       return screen?.kind === "welcome"
@@ -433,7 +438,7 @@ export function evolve(state: SignInState, event: Event): SignInState {
     case "ConnectStarted":
       return {
         ...state,
-        flow: { ...flow, step: "connect", path: "server", invite: CLOSED_INVITE },
+        flow: { ...flow, step: "connect", path: event.path, invite: CLOSED_INVITE },
       };
     case "InviteToggled":
       return {

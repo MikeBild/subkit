@@ -8,7 +8,13 @@ import { CircleHelp, ListChecks, type LucideIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ApiError } from "@/api/client";
-import { absolute, conversationHref, settingsHref, usageHref } from "@/app/links";
+import {
+  absolute,
+  conversationHref,
+  conversationMessageHref,
+  settingsHref,
+  usageHref,
+} from "@/app/links";
 import {
   ActionButton,
   ActionMenu,
@@ -262,6 +268,7 @@ function OverviewTab({
   turnsUsed,
   playbook,
   start,
+  canOpenChat,
 }: {
   task: Task;
   run: TaskLatestRun | null;
@@ -269,6 +276,7 @@ function OverviewTab({
   turnsUsed: number | null;
   playbook: Playbook | null;
   start: StartView;
+  canOpenChat: boolean;
 }) {
   const { t, dateTime } = useI18n();
   const live = run && (isOpenRun(run) || run.state === "result_ready") ? run : null;
@@ -310,6 +318,28 @@ function OverviewTab({
             value: <span className="[overflow-wrap:anywhere]">{task.done_when}</span>,
             testId: "task-done-when",
           },
+          ...(task.source_conversation_id && task.source_message_id && canOpenChat
+            ? [
+                {
+                  label: t("tasks.overview.source"),
+                  value: (
+                    <a
+                      href={absolute(
+                        conversationMessageHref(
+                          task.source_conversation_id,
+                          task.source_message_id,
+                        ),
+                      )}
+                      className="font-medium underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      data-testid="task-source-message"
+                    >
+                      {t("tasks.overview.sourceOpen")}
+                    </a>
+                  ),
+                  testId: "task-source",
+                },
+              ]
+            : []),
         ]}
       />
       <StepProgress task={task} playbook={playbook} state={run?.state ?? null} />
@@ -609,6 +639,7 @@ export function TaskDetail({
           turnsUsed={latestRecord?.turns_used ?? null}
           playbook={playbook.data ?? null}
           start={nextUp}
+          canOpenChat={permissions.includes("conversation:read")}
         />
       ),
     },

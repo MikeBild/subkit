@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { dictionary, type Locale } from "../../shared/i18n.ts";
 import { type ConnectState, LOCAL_UNAVAILABLE, type LocalView } from "../../shared/ipc.ts";
 import { NO_ONBOARDING } from "../../shared/onboarding.ts";
+import { platformCapabilities } from "../../shared/platform-capabilities.ts";
 import { createMockLocalCapabilities, type SignInStore } from "../adapter/index.ts";
 import { type Event, evolveAll, INITIAL_STATE, type SignInState, viewOf } from "../domain/index.ts";
 import { desktopRunner } from "../lib/test-runner.ts";
@@ -40,6 +41,7 @@ function main(
       lost: [],
     },
     local: { ...LOCAL_UNAVAILABLE, available: true, folder: FOLDER, ...local },
+    platform: platformCapabilities("darwin", "arm64"),
   };
 }
 
@@ -68,7 +70,7 @@ const at = (step: number): Event[] => [...setup, { type: "LocalStepChanged", ste
 
 describe.skipIf(!desktopRunner)("local mode in the connect window", () => {
   test("the connect step offers a server or only this Mac", () => {
-    const html = render({}, [{ type: "ConnectStarted" }], "de");
+    const html = render({}, [{ type: "ConnectStarted", path: "server" }], "de");
     expect(html).toContain("Mit einem Server verbinden");
     expect(html).toContain("Nur auf diesem Mac");
     expect(render({ available: false })).not.toContain("connect-choice-local");

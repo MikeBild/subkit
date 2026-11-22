@@ -54,7 +54,7 @@ const AgentBriefingResponse = z
     tasks_omitted: z.number().int(),
     guides: z
       .array(z.string())
-      .describe("Slugs of the skills that teach how to work with sk, listed for every domain."),
+      .describe("Slugs of the skills that teach how to work with subkit, listed for every domain."),
     intake: z
       .object({
         clips: z.number().int().nonnegative(),

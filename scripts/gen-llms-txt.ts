@@ -31,7 +31,7 @@ import {
   stripGeneratedMarker,
   summary,
   webpInfo,
-} from "./docs-source.ts";
+} from "./lib/docs-source.ts";
 
 const OUT_DIR = "apps/engine/src/http/llms";
 
@@ -189,9 +189,9 @@ interface SeedEntry {
 const SEEDS: Record<string, SeedEntry> = {
   "sk-ref-coding-agents": {
     file: "coding-agents.md",
-    name: "sk Platform Reference — Coding Agents",
+    name: "subkit Platform Reference — Coding Agents",
     description:
-      "How a person connects Claude Code, Codex, Hermes or another MCP client to sk, what the session briefing is and how knowledge reaches it, how an agent runs workflows and looks things up under the person's own rights, how learnings flow back, and what to check when a briefing does not arrive.",
+      "How a person connects Claude Code, Codex, Hermes or another MCP client to subkit, what the session briefing is and how knowledge reaches it, how an agent runs workflows and looks things up under the person's own rights, how learnings flow back, and what to check when a briefing does not arrive.",
     tags: [
       "sk-platform-reference",
       "coding-agents",
@@ -317,7 +317,7 @@ const SOURCES: Record<string, () => string> = {
         .map((c) => c.body)
         .join(""),
     ),
-  "coding-agents.md": () => technicalReference("use-sk-from-a-coding-agent"),
+  "coding-agents.md": () => technicalReference("use-subkit-from-a-coding-agent"),
   "transactional-email.md": () => technicalReference("transactional-email-replies"),
   "cli.md": () => run("scripts/gen-cli-reference.ts"),
   "settings.md": () => run("apps/engine/scripts/gen-settings-doc.ts"),
@@ -331,7 +331,7 @@ function run(script: string): string {
 }
 
 const OWN_LLMS_PATH_BY_SLUG: Record<string, string> = {
-  "use-sk-from-a-coding-agent": "coding-agents.md",
+  "use-subkit-from-a-coding-agent": "coding-agents.md",
   "transactional-email-replies": "transactional-email.md",
   cli: "cli.md",
   settings: "settings.md",

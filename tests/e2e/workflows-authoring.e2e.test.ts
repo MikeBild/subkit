@@ -70,11 +70,11 @@ describe("create → history → update → restore", () => {
   }, 60_000);
 });
 
-describe("sk workflows CLI", () => {
-  test("sk workflows list surfaces a seeded workflow", async () => {
+describe("subkit workflows CLI", () => {
+  test("subkit workflows list surfaces a seeded workflow", async () => {
     const { slug } = await seedWorkflow(env, { description: "cli visible" });
     const result = await cli(["workflows", "list"], { env, persona: "admin" });
-    expectSuccess(result, "sk workflows list");
+    expectSuccess(result, "subkit workflows list");
     expect(result.stdout).toContain(slug);
   }, 60_000);
 });

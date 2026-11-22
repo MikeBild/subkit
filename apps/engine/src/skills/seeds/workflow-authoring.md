@@ -2,7 +2,7 @@
 slug: workflow-authoring
 scope: global
 title: Authoring Workflows In A Conversation
-description: The canonical recipe for turning a user intent into a committed sk workflow draft: caller contract, grounding, author_workflow vs edit_workflow_patch, build vs run, failure caps and the repair signal.
+description: The canonical recipe for turning a user intent into a committed workflow draft: caller contract, grounding, author_workflow vs edit_workflow_patch, build vs run, failure caps and the repair signal.
 activates_when: [{"kind":"tool","tool":"author_workflow"},{"kind":"tool","tool":"edit_workflow_patch"},{"kind":"tool","tool":"approve_discovery_artifact"},{"kind":"tool","tool":"preview_attachment"},{"kind":"tool","tool":"inspect_workflow"},{"kind":"tool","tool":"list_schedules"},{"kind":"tool","tool":"review_workflow_automation"},{"kind":"tool","tool":"run_workflow"},{"kind":"tool","tool":"dry_run_workflow"},{"kind":"tool","tool":"save_workflow_draft"},{"kind":"intent_keyword","word":"create workflow"},{"kind":"intent_keyword","word":"build workflow"},{"kind":"intent_keyword","word":"new workflow"},{"kind":"intent_keyword","word":"workflow erstellen"},{"kind":"intent_keyword","word":"workflow bauen"},{"kind":"intent_keyword","word":"workflow anlegen"},{"kind":"intent_keyword","word":"neuen workflow"},{"kind":"intent_keyword","word":"automatisch"},{"kind":"intent_keyword","word":"automatic"},{"kind":"intent_keyword","word":"recurring"}]
 side_effects: read
 idempotency: none

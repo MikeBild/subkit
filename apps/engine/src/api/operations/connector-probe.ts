@@ -223,7 +223,7 @@ export const probeConnectorDefinitionOperation = defineOperation<ProbeBody, Prob
     path: "/v1/connectors/probe",
     tags: ["connectors"],
     description:
-      "Runs the driver's health probe against a definition as it would be saved. Persists nothing — neither the connector nor the credential. `sk connectors probe --file` calls this. A definition read back from the API may carry the mask `***redacted***`: it stands for the secret stored on the connector with the same slug and environment, as it does on a write. For driver `mcp`, the probe performs a throwaway initialize + tools/list handshake with the supplied static credential and closes the session immediately.",
+      "Runs the driver's health probe against a definition as it would be saved. Persists nothing — neither the connector nor the credential. `subkit connectors probe --file` calls this. A definition read back from the API may carry the mask `***redacted***`: it stands for the secret stored on the connector with the same slug and environment, as it does on a write. For driver `mcp`, the probe performs a throwaway initialize + tools/list handshake with the supplied static credential and closes the session immediately.",
     body: ProbeConnectorBody,
     response: ProbeConnectorResponse,
     success: {

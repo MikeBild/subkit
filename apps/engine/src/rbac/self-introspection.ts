@@ -1,7 +1,7 @@
 export const SELF_INTROSPECTION_ROUTES = Object.freeze([
   "whoami",
   "identity-permissions",
-  "sk-bootstrap",
+  "subkit-bootstrap",
   "cockpit-bootstrap",
   "identity-login",
   "identity-sessions",

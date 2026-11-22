@@ -279,11 +279,7 @@ function NeedsYou({
       <DataState state="empty" line={emptyLine} testId="attention-empty" />
     );
   return (
-    <ul
-      className="flex flex-col gap-2"
-      data-testid="attention-list"
-      data-family-slot="attention-list"
-    >
+    <ul className="flex flex-col gap-2" data-testid="attention-list" data-sk-slot="attention-list">
       {items.map((item, index) => {
         const row = attentionRow(item, t);
         const href = subjectHref(item);
@@ -890,11 +886,7 @@ function ReviewBody({
     );
 
   return (
-    <div
-      className="flex flex-col gap-4"
-      data-testid="attention-review-body"
-      data-family-slot="queue"
-    >
+    <div className="flex flex-col gap-4" data-testid="attention-review-body" data-sk-slot="queue">
       {held.map((schedule) => (
         <ScheduleReviewCard key={schedule.id} schedule={schedule} />
       ))}

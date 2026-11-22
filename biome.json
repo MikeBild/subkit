@@ -26,7 +26,7 @@
       "!apps/cockpit/src/lib/service-icon-marks.generated.ts",
       "!apps/engine/src/http/llms/docs.json",
       "!apps/engine/src/http/cockpit-embedded.ts",
-      "!contract/cockpit-ui.css",
+      "!packages/ui/contract/cockpit-ui.css",
       "!apps/engine/src/db/migrations/embedded.ts",
       "!apps/engine/eval/out",
       "!.agent-prime.json",
@@ -100,6 +100,16 @@
     }
   },
   "overrides": [
+    {
+      "includes": ["apps/desktop/src/runner/**"],
+      "linter": {
+        "rules": {
+          "nursery": {
+            "noFloatingPromises": "error"
+          }
+        }
+      }
+    },
     {
       "includes": ["apps/cockpit/src/lib/preference-cookie.ts"],
       "linter": {

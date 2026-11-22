@@ -40,7 +40,7 @@ describe("markdown toolbar", () => {
   });
 
   test("code is inline for a word and fenced for several lines", () => {
-    expect(run("nutze sk", 6, 8, "code").next).toBe("nutze `sk`");
+    expect(run("nutze subkit", 6, 8, "code").next).toBe("nutze `subkit`");
     expect(run("a\nb", 0, 3, "code").next).toBe("```\na\nb\n```");
   });
 

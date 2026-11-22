@@ -36,7 +36,7 @@ function resolveEngineVersion(): string {
 }
 
 const SHARED_INTRO = [
-  "sk runs your business workflows as governed, audited, versioned executions —",
+  "subkit runs your business workflows as governed, audited, versioned executions —",
   "every run is permission-checked, recorded, and replayable.",
 ];
 
@@ -56,7 +56,7 @@ const AUTHORING_INTRO = [
   ...SHARED_INTRO,
   "",
   "Start with `conversation_start`: describe the outcome you want in plain language",
-  "and sk turns it into a runnable, governed workflow.",
+  "and subkit turns it into a runnable, governed workflow.",
   "",
   "Tools are grouped into workflow tools (find, inspect, and run your workflows) and",
   "conversation/session tools (author, refine, and commit workflows through a guided chat).",
@@ -71,8 +71,8 @@ const READ_EXECUTE_INTRO = [
   "execute, `get_execution` to follow a run that outlives the call.",
   "",
   "This credential reads and runs; it does not author. Creating or changing a workflow,",
-  "connector, knowledge source or skill happens in the `sk` CLI — `sk workflows --help`,",
-  "`sk connectors --help` — where the change is a file that can be reviewed before it",
+  "connector, knowledge source or skill happens in the `subkit` CLI — `subkit workflows --help`,",
+  "`subkit connectors --help` — where the change is a file that can be reviewed before it",
   "lands. Do not describe an authoring tool you cannot see here; point at the CLI instead.",
   "",
   ...CATALOG_AND_GROUNDING,
@@ -193,12 +193,12 @@ export async function createMcpServer(p: CreateMcpServerParams): Promise<Server>
   const server = new Server(
     {
       name: "subkit-engine",
-      title: "sk",
+      title: "subkit",
       version: resolveEngineVersion(),
       description:
         "Run your business workflows as governed, audited, versioned executions — " +
         "every run permission-checked, recorded, and replayable. Describe an outcome " +
-        "in plain language and sk turns it into a runnable, governed workflow.",
+        "in plain language and subkit turns it into a runnable, governed workflow.",
     },
     {
       capabilities: {

@@ -35,8 +35,8 @@ describe("the delivery gate refuses an unsafe report and a held hook proposes it
     let grantRequest: Request;
 
     const ENCODER = [
-      "const subject = '[watchkit page] api.example.com — certificate expires';",
-      "const html = '<p>watchkit.finding · api.example.com · ' + input.input.at + '</p>';",
+      "const subject = '[uptime page] api.example.com — certificate expires';",
+      "const html = '<p>uptime.finding · api.example.com · ' + input.input.at + '</p>';",
       "const msg = 'From: ops@example.com\\r\\nTo: ops@example.com\\r\\nSubject: ' + subject +",
       "  '\\r\\nMIME-Version: 1.0\\r\\nContent-Type: text/html; charset=UTF-8\\r\\n\\r\\n' + html;",
       "return { raw: sk.base64UrlEncode(msg) };",
@@ -74,7 +74,7 @@ describe("the delivery gate refuses an unsafe report and a held hook proposes it
       );
 
     beforeAll(async () => {
-      ctx = await createJourneyCtx("gate-watchkit-binary-encoder");
+      ctx = await createJourneyCtx("gate-uptime-binary-encoder");
       const now = await databaseNow(ctx.db);
       const [user] = await ctx.db
         .insert(users)
@@ -213,11 +213,11 @@ describe("the delivery gate refuses an unsafe report and a held hook proposes it
   describe("a held hook proposes its gate repair", () => {
     const SECRET = "whsec_j72_standardaaaaaaaaaaaaaaa";
 
-    const HOOK = "watchkit-findings";
+    const HOOK = "uptime-findings";
 
     const ENCODER = [
-      "const subject = '[watchkit page] api.example.com — certificate expires';",
-      "const html = '<p>watchkit.finding · api.example.com</p>';",
+      "const subject = '[uptime page] api.example.com — certificate expires';",
+      "const html = '<p>uptime.finding · api.example.com</p>';",
       "const msg = 'From: ops@example.com\\r\\nTo: ops@example.com\\r\\nSubject: ' + subject +",
       "  '\\r\\nMIME-Version: 1.0\\r\\nContent-Type: text/html; charset=UTF-8\\r\\n\\r\\n' + html;",
       "return { raw: sk.base64UrlEncode(msg) };",
@@ -324,8 +324,8 @@ describe("the delivery gate refuses an unsafe report and a held hook proposes it
       });
 
       const wf = await seedWorkflow(ctx, {
-        slug: "watchkit-finding-mail",
-        name: "WatchKit finding mail",
+        slug: "uptime-finding-mail",
+        name: "Uptime finding mail",
         steps: [
           { kind: "transform", id: "compose", language: "javascript", expression: ENCODER },
           {

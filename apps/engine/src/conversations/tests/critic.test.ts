@@ -16,7 +16,7 @@ async function ensureConfigLoaded(): Promise<void> {
     getConfig();
     return;
   } catch {}
-  const dir = mkdtempSync(join(tmpdir(), "sk-cfg-critic-unit-"));
+  const dir = mkdtempSync(join(tmpdir(), "subkit-cfg-critic-unit-"));
   await loadConfig({
     env: { DATABASE_URL: "postgres://placeholder/critic-unit", NODE_ENV: "test" },
     configPathOverride: join(dir, "subkit.config.json"),

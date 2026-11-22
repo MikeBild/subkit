@@ -1,12 +1,12 @@
 # SubKit Desktop
 
-A hardened Electron app for SubKit on Macs with Apple Silicon. It loads `<server>/cockpit`
+A hardened Electron app for SubKit on macOS with Apple Silicon and on Windows x64. It loads `<server>/cockpit`
 same-origin in a sandboxed window with the normal Cockpit cookie session, and brings the
 attention list to the tray, the dock badge and native notifications. Its own windows are the
 connect, sign-in and settings screens, quick capture, the drop sheet, the browser sheet and the
 live view. There is no API key in the Cockpit window.
 
-On top of the shell it runs on the person's Mac what they allow:
+On a Mac with Apple Silicon it also runs on the Mac what the person allows:
 
 - **Local capabilities.** A runner host executes device commands for files, a filtered browser
   (agent-browser) and computer use (agent-desktop), only inside the folders, websites and apps
@@ -15,6 +15,21 @@ On top of the shell it runs on the person's Mac what they allow:
   and stop everything with ⌘⇧⎋.
 - **Local workspace.** “Only on this Mac” starts a bundled PostgreSQL 18 and the engine on the
   Mac, with backups, restore, a move to a server and removal.
+
+## Platforms
+
+| | macOS on Apple Silicon | Windows x64 |
+| --- | --- | --- |
+| System | macOS 13 or newer, Apple silicon (M1 or newer) | Windows 10 or 11, 64-bit (x64) |
+| Cockpit window, tray, notifications, quick capture, drop sheet, updates | yes | yes |
+| Local capabilities: files, browser, computer use, permission setup | yes | no |
+| Live view | yes | no |
+| Local workspace „Only on this Mac“ | yes | no |
+
+`platformCapabilities(platform, arch)` in `src/shared/platform-capabilities.ts` is the one place
+that decides this. The runner announces only the device capabilities of its platform, so a
+Windows app enrolls no runner, and the connect and settings screens say on Windows that these
+features are Mac-only. Intel Macs and Linux get no build.
 
 The user guide is the reference chapter “SubKit Desktop”
 (`apps/engine/src/http/reference/subkit-desktop.en.md`); the step bodies of local workflow steps
@@ -99,7 +114,7 @@ bun run quality mutation computer
 ```
 
 Each run mutates the files in place (`inPlace: true`), so do not edit them while it runs, and
-writes `reports/mutation/desktop-<scope>.json`. Add a new pure core to both `mutate` and the
+writes `.reports/mutation/desktop-<scope>.json`. Add a new pure core to both `mutate` and the
 test command of its scope when you create one.
 
 ## Production and development builds
@@ -123,8 +138,9 @@ build as too old for it.
 
 ## Server contract the shell codes against
 
-The shell needs a server from version 12.0.0 on, the first release with the local
-capabilities, the live view and the device routes. It reports an older server as too old.
+The shell needs a server of at least `MIN_SERVER_VERSION` in `src/shared/server-contract.ts`,
+the first release with the local capabilities, the live view and the device routes. It reports
+an older server as too old.
 
 - `GET /.well-known/service-descriptor.json` with `version` and `clients.desktop`:
   `min_version` and `login` with `start`, `session`, `callback` (`subkit://callback`),
@@ -223,7 +239,7 @@ app window as its overlay.
 
 | View | Opens on | Does |
 | --- | --- | --- |
-| `capture` | ⌥ Space (Ctrl+Alt+Space on Windows and Linux) or the tray | `POST /v1/intake/items` as a note |
+| `capture` | ⌥ Space (Ctrl+Alt+Space on Windows) or the tray | `POST /v1/intake/items` as a note |
 | `drop` | files dropped on the window, the Dock icon, the menu bar icon or opened with SubKit (at most 20) | file: `POST /v1/files/inline` (5 MB); source: `POST /v1/knowledge-sources` (50 MB); inbox: text files as notes (1 MB); chat: `/v1/chat/composer/attachments` for the next message (10 files), then the Cockpit opens `/chat` |
 | `sheet` | the Cockpit sends the window to an OAuth authorization address whose `redirect_uri` is this server's `/v1/oauth/callback` | opens it in the system browser, shows host and path with the lock, and reloads the Cockpit when the person comes back |
 
@@ -282,14 +298,18 @@ needs an entry in `src/shared/app-files.ts`.
 
 ## Packaging, signing and updates
 
-`electron-builder.base.yml` targets macOS (dmg and zip, Apple silicon only), Windows (NSIS, x64) and
-Linux (AppImage and deb). Only the macOS build carries the local engine, PostgreSQL,
+`electron-builder.base.yml` targets macOS (dmg and zip, Apple silicon only) and Windows (NSIS, x64).
+`bun run package` stages what the platform of the package supports (`packagePlatform` in
+`scripts/package.ts`): only the macOS build carries the local engine, PostgreSQL,
 agent-browser and agent-desktop; the local capabilities and the local workspace exist only there. `electron-builder.yml` adds name, bundle id, scheme, artifact names,
 notarization and the update feed of the production channel, `electron-builder.dev.yml` those of
 the development channel; the schemes live only there because the builder joins lists of an
 extended file.
 
-Signed installers are built only by the workflow `.github/workflows/desktop-release.yml`;
+Signed installers for both platforms are built only by the workflow
+`.github/workflows/desktop-release.yml`, which adds them to the GitHub release; the newest
+installer is always at
+`https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-mac-arm64.dmg`.
 [RELEASING.md](RELEASING.md) names the secrets, the first dry run, how to verify a download and
 how to roll an update back. Locally only unpacked, unsigned builds for macOS arm64 were made
 with `bun run package --dir` and `bun run package --dev`.
@@ -310,9 +330,8 @@ Updates exist only in a packaged production build that is signed and has a feed.
 | `0` | off |
 
 A build counts as signed when the signing identity of its platform is configured: `CSC_LINK`
-on macOS, `WIN_CSC_LINK` or the cloud signing service on Windows. Linux has no code signature;
-there the release workflow sets `SUBKIT_DESKTOP_SIGNED_RELEASE=1` because the checksum list of
-the release is signed. Without updates `electron-updater` is never loaded.
+on macOS, `WIN_CSC_LINK` or the cloud signing service on Windows. Both platforms read their update
+feed from the GitHub release: `latest-mac.yml` on macOS and `latest.yml` on Windows. Without updates `electron-updater` is never loaded.
 The app checks at start and every six
 hours, and on demand from the tray, the Help menu and the settings screen. `src/shared/updates.ts`
 holds the states, each with its own text in German and English:
@@ -337,24 +356,20 @@ What is verified, as far as `electron-updater` supports it:
 - macOS: Squirrel.Mac installs an update only when its code signature satisfies the
   designated requirement of the running app, so both need the same Developer ID. An unsigned
   app cannot update itself and reports “could not be verified”.
-- Linux: AppImage has the SHA-512 check only. A deb installation is updated by the package
-  updater of `electron-updater`, which asks for administrator rights; not exercised.
 - No staged rollout: the feed carries no percentage, so every installation sees a release at
   once. The release workflow refuses a feed with one.
 
-### Windows and Linux
+### Windows
 
-Links and autostart are written for all three systems, but only macOS was exercised. On
-Windows and Linux a link starts a second instance; the first instance reads the link from
+Links and autostart are written for both systems, but only macOS was exercised. On
+Windows a link starts a second instance; the first instance reads the link from
 the arguments (`secondInstanceAction`) and the second one quits; an autostart with `--hidden`
 while the app already runs opens nothing. At login macOS passes no arguments, so the app asks
 the system whether it was opened at login and then starts without a window.
 `src/shared/deep-link.test.ts`, `src/shared/channel.test.ts` and `src/shared/autostart.test.ts`
-cover that parsing, the protocol registration of a packaged and a development start and the
-XDG autostart entry. Not exercised: the registry entry that `setAsDefaultProtocolClient`
-writes on Windows, the `x-scheme-handler` entry of the Linux desktop file, the Windows login
-item (`executableWillLaunchAtLogin`), the XDG autostart file, the tray on both systems and the
-overlay badge on Windows.
+cover that parsing and the protocol registration of a packaged and a development start. Not
+exercised: the registry entry that `setAsDefaultProtocolClient` writes on Windows, the Windows
+login item (`executableWillLaunchAtLogin`), the tray and the overlay badge on Windows.
 
 ## License notices
 

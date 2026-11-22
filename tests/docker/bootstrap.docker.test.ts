@@ -7,7 +7,7 @@ import {
   dockerApi,
   dockerBoot,
   issueAdminKeyViaExec,
-  skDocker,
+  subkitDocker,
 } from "./_harness.ts";
 
 let env: DockerEnv;
@@ -21,7 +21,7 @@ afterAll(() => {
 }, 60_000);
 
 describe("container bootstrap", () => {
-  test("health and readiness implement the family contract", async () => {
+  test("health and readiness match the documented shape", async () => {
     const res = await dockerApi<{
       status: string;
       service: string;
@@ -44,10 +44,10 @@ describe("container bootstrap", () => {
     expect(env.adminKey).toMatch(/^wf_live_/);
   });
 
-  test("sk health + sk status answer against the container", async () => {
-    const health = await skDocker(env, ["health"]);
+  test("subkit health + subkit status answer against the container", async () => {
+    const health = await subkitDocker(env, ["health"]);
     expect(health.exitCode).toBe(0);
-    const status = await skDocker(env, ["status"]);
+    const status = await subkitDocker(env, ["status"]);
     expect(status.exitCode).toBe(0);
   }, 60_000);
 

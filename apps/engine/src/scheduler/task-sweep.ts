@@ -128,7 +128,7 @@ export async function sweepTenantTasks(
     .where(
       and(
         eq(taskRuns.tenant_id, tenant_id),
-        isNotNull(taskRuns.conversation_id),
+        api.taskRunConversationPrepared(),
         or(
           inArray(taskRuns.state, ["running", "waiting", "sleeping"]),
           and(

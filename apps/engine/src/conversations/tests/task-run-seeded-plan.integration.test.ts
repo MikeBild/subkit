@@ -47,6 +47,7 @@ beforeAll(async () => {
   owner = { provider: "session", kind: "user", id: user.id, tenant_id, roles: ["member"] };
   const task = await createTask(
     {
+      locale: "de",
       tenant_id,
       principal: owner,
       input: {

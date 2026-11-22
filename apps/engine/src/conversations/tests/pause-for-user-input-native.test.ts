@@ -500,7 +500,7 @@ describe("pauseForUserInput — D7 secret-elicitation guard (surface gated)", ()
     if (result.ok) expect(result.pause).toBeDefined();
   });
 
-  test("sk-cli local surface is NOT weakened — a password form still pauses for input", async () => {
+  test("subkit-cli local surface is NOT weakened — a password form still pauses for input", async () => {
     const conversation_id = await freshConversation();
     const result = await pauseForUserInput(
       { ...buildCtx(conversation_id), surface: "sk_interactive" },

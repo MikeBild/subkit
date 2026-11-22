@@ -9,7 +9,7 @@ const ROUTES_DIR = "apps/engine/src/http/routes";
 const FILE_TO_SLUG: Record<string, string> = {
   "whoami.ts": "whoami",
   "permissions.ts": "identity-permissions",
-  "sk-bootstrap.ts": "sk-bootstrap",
+  "subkit-bootstrap.ts": "subkit-bootstrap",
   "cockpit.ts": "cockpit-bootstrap",
   "providers.ts": "identity-providers",
   "login.ts": "identity-login",
@@ -118,7 +118,7 @@ describe("self-introspection carve-out is a contract, not just a comment", () =>
       "identity-providers",
       "identity-sessions",
       "identity-workspace",
-      "sk-bootstrap",
+      "subkit-bootstrap",
       "whoami",
     ]);
   });

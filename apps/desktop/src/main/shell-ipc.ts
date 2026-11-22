@@ -44,7 +44,7 @@ export interface ShellIpcHost {
   answerNotifications(allow: boolean): void;
   answerDiagnostics(share: boolean): void;
   checkInvite(link: unknown): Promise<InviteCheck>;
-  joinInvite(link: unknown): void;
+  joinInvite(link: unknown): Promise<CheckResult | null>;
   recheckServer(): Promise<void>;
   desktopSettings(): DesktopSettingsView;
   updateDesktopSettings(patch: unknown): void;

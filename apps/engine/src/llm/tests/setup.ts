@@ -32,7 +32,7 @@ export async function createLlmTestCtx(label: string): Promise<LlmTestCtx> {
   resetMockProvider();
   const testDb = await createTestDb(`llm_${label}`);
 
-  const configDir = mkdtempSync(join(tmpdir(), `sk-cfg-llm-${label}-`));
+  const configDir = mkdtempSync(join(tmpdir(), `subkit-cfg-llm-${label}-`));
   _resetConfigForTests();
   await loadConfig({
     env: { DATABASE_URL: "postgres://x", NODE_ENV: "test" },

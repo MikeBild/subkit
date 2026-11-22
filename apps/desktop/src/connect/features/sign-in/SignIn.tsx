@@ -42,9 +42,9 @@ export function SignIn() {
       ) : (
         <>
           <p className="mt-2 font-mono text-xs text-muted-foreground">{s.host}</p>
-          {s.joining && (
-            <p data-testid="signin-after-join" className="mt-3 text-sm">
-              {t("signin.afterJoin")}
+          {s.hint && (
+            <p data-testid="signin-hint" className="mt-3 text-sm">
+              {t(s.hint)}
             </p>
           )}
           <SignInNotice model={signin} t={t} />

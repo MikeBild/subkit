@@ -49,7 +49,7 @@ Eine Aufgabe kostet in jeder Arbeitsrunde KI-Aufrufe. Ein Workflow kostet sie nu
 
 Alles Weitere ist vorbelegt und zugeklappt: der Zeitplan, die Grenzen, die Websuche und ob die Aufgabe im **Test** oder im **Echtbetrieb** arbeitet.
 
-Im Chat geht es schneller. Beschreibe das Ziel, arbeite es einmal durch und bitte SubKit, es als Aufgabe zu speichern. SubKit zeigt, was es speichern wird, und wartet auf deine Bestätigung. Die Aufgabe übernimmt ihre Schritte aus dem Plan dieser Unterhaltung.
+Im Chat geht es schneller. Beschreibe das Ziel, arbeite es einmal durch und bitte SubKit, es als Aufgabe zu speichern. SubKit zeigt, was es speichern wird, und wartet auf deine Bestätigung. Die Aufgabe übernimmt ihre Schritte aus dem Plan dieser Unterhaltung. Sie bleibt an die Nachricht gebunden, die sie gewünscht hat: Der Chat zeigt die Aufgabe unter dieser Nachricht, und **Gewünscht in** auf dem Tab **Überblick** der Aufgabe führt zurück zu ihr.
 
 Gut zu wissen:
 
@@ -89,7 +89,7 @@ Mit der Dauererlaubnis darf eine Aufgabe alleine starten. Sie gilt für genau di
 3. Wähle unter **Gültigkeit**, wie lange: **Bis auf Widerruf**, **30 Tage** oder **7 Tage**.
 4. Bestätige mit **Erlauben**.
 
-Das kann nur eine Person, die im Browser im Cockpit angemeldet ist. Mit einem API-Schlüssel, in der Kommandozeile `sk` oder aus einem KI-Client geht es nicht.
+Das kann nur eine Person, die im Browser im Cockpit angemeldet ist. Mit einem API-Schlüssel, in der Kommandozeile `subkit` oder aus einem KI-Client geht es nicht.
 
 Was sie abdeckt:
 
@@ -184,7 +184,7 @@ Sind alle Schritte erledigt, lautet der Zustand **Ergebnis liegt vor**, und du b
 3. Wähle **Passt**, um zu bestätigen. Der Zustand wechselt zu **erledigt**.
 4. Oder wähle **Nacharbeiten**. Der Run erfährt, dass das Ergebnis noch nicht reicht, und arbeitet weiter. Schreib in seine Unterhaltung, was fehlt. Dasselbe Ergebnis legt er dir nicht unverändert noch einmal vor.
 
-Ein Ergebnis bestätigt oder verwirft nur ein Mensch, der im Browser im Cockpit angemeldet ist. Mit einem API-Schlüssel, in der Kommandozeile `sk` oder aus einem KI-Client geht es nicht, und SubKit kann seine eigene Arbeit nicht bestätigen.
+Ein Ergebnis bestätigt oder verwirft nur ein Mensch, der im Browser im Cockpit angemeldet ist. Mit einem API-Schlüssel, in der Kommandozeile `subkit` oder aus einem KI-Client geht es nicht, und SubKit kann seine eigene Arbeit nicht bestätigen.
 
 Ein Ergebnis, das du noch nicht bestätigt hast, hält den Zeitplan nicht auf. Der nächste Run einer täglichen Aufgabe startet morgen, auch wenn das Ergebnis von gestern noch offen ist. **Nacharbeiten** geht nur, solange kein neuerer Run offen ist und die Aufgabe seitdem weder geändert noch pausiert wurde.
 
@@ -241,7 +241,7 @@ So hältst du die Kosten niedrig:
 - **Hinweise:** In der **Übersicht** erscheint eine Aufgabe, wenn ein Run auf deine Antwort wartet, ein Ergebnis vorliegt, ein Run fehlgeschlagen ist oder die Dauererlaubnis fehlt oder bald endet. Sind Push-Nachrichten eingeschaltet, bekommst du zusätzlich einen neutralen Push.
 - **Webhooks:** Die Ereignisse `task_run.started`, `task_run.waiting`, `task_run.result_ready`, `task_run.completed` und `task_run.failed` stehen für Abonnements bereit.
 
-Der `sk`-Eingang eines neuen Arbeitsbereichs erhält zusätzlich `task_run.waiting`, `task_run.result_ready` und `task_run.failed`. Ein Arbeitsbereich, den es schon gab, behält seine gespeicherte Eingangsregel. Damit die Aufgaben-Ereignisse dort ankommen, ergänze sie in dieser Regel mit `sk notifications rules`.
+Der `subkit`-Eingang eines neuen Arbeitsbereichs erhält zusätzlich `task_run.waiting`, `task_run.result_ready` und `task_run.failed`. Ein Arbeitsbereich, den es schon gab, behält seine gespeicherte Eingangsregel. Damit die Aufgaben-Ereignisse dort ankommen, ergänze sie in dieser Regel mit `subkit notifications rules`.
 
 ### Was SubKit nicht erzwingt
 
@@ -271,22 +271,22 @@ Der `sk`-Eingang eines neuen Arbeitsbereichs erhält zusätzlich `task_run.waiti
 
 ### Dasselbe im Terminal und aus KI-Clients
 
-Mit der Kommandozeile `sk`:
+Mit der Kommandozeile `subkit`:
 
 ```bash
-sk tasks list
-sk tasks get <task-id>
-sk tasks create --file task.json
-sk tasks update <task-id> --cron "0 7 * * *" --timezone Europe/Berlin
-sk tasks run <task-id>
-sk tasks runs <task-id>
-sk tasks pause <task-id>
-sk tasks resume <task-id>
-sk tasks abort <run-id>
-sk tasks delete <task-id>
+subkit tasks list
+subkit tasks get <task-id>
+subkit tasks create --file task.json
+subkit tasks update <task-id> --cron "0 7 * * *" --timezone Europe/Berlin
+subkit tasks run <task-id>
+subkit tasks runs <task-id>
+subkit tasks pause <task-id>
+subkit tasks resume <task-id>
+subkit tasks abort <run-id>
+subkit tasks delete <task-id>
 ```
 
-`sk tasks update <task-id> --run-at <time>` legt einen einzelnen Start fest. Wartet ein Run auf einen Menschen, gibt `sk` die Adresse der Aufgabe im Cockpit aus. Die Dauererlaubnis lässt sich in `sk` nicht erteilen, und ein Ergebnis lässt sich dort weder bestätigen noch verwerfen. `sk tasks get` zeigt, ob eine Dauererlaubnis gilt.
+`subkit tasks update <task-id> --run-at <time>` legt einen einzelnen Start fest. Wartet ein Run auf einen Menschen, gibt `subkit` die Adresse der Aufgabe im Cockpit aus. Die Dauererlaubnis lässt sich in `subkit` nicht erteilen, und ein Ergebnis lässt sich dort weder bestätigen noch verwerfen. `subkit tasks get` zeigt, ob eine Dauererlaubnis gilt.
 
 KI-Clients, die per MCP angebunden sind, können Aufgaben finden, lesen, starten und abbrechen. Anlegen und Ändern braucht die Stufe **Bearbeiten**. Rückfragen eines Runs beantwortest du im Cockpit, und dort bestätigst du auch Ergebnisse. Mehr dazu in „KI-Clients per MCP anbinden“.
 

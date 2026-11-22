@@ -129,11 +129,11 @@ async function mintToken(db: Db): Promise<{ plaintext: string; expires_at: Date 
 export function buildBootstrapBanner(plaintextToken: string, expiresAt: Date): string {
   const banner = pc.bgYellow(pc.black(" SUBKIT FIRST-RUN BOOTSTRAP "));
   const headline = pc.bold("This engine has no tenants yet. Complete first-run setup:");
-  const cmd = pc.cyan(`sk init --token ${plaintextToken}`);
+  const cmd = pc.cyan(`subkit init --token ${plaintextToken}`);
   const docker = pc.dim(
     [
       "In a container, run it there and pass the first admin and model:",
-      `  docker exec <container> sk init --token ${plaintextToken} \\`,
+      `  docker exec <container> subkit init --token ${plaintextToken} \\`,
       '      --admin-email you@example.com --tenant-name "My Org" \\',
       "      --llm-provider anthropic --llm-api-key <key>",
       "More admin keys later: docker exec <container> engine --issue-admin-key --tenant <slug>",
@@ -215,7 +215,7 @@ interface ConsumeOptions {
 }
 
 export const LLM_UNREACHABLE_HINT =
-  "nothing was saved — no tenant, no key; fix the key or the provider and run `sk init` again with the same token";
+  "nothing was saved — no tenant, no key; fix the key or the provider and run `subkit init` again with the same token";
 
 export async function consume(
   db: Db,
@@ -242,7 +242,7 @@ export async function consume(
         status: "failed",
         code: "in_progress",
         message: "another first start is running right now",
-        hint: "wait until it finishes; if it fails, run `sk init` again with the same token",
+        hint: "wait until it finishes; if it fails, run `subkit init` again with the same token",
       } as const;
     }
     return consumeClaimed(db, rbacIds, rawPayload, opts);
@@ -290,7 +290,7 @@ async function consumeClaimed(
       status: "failed",
       code: "token_expired",
       message: "bootstrap token expired",
-      hint: "a fresh token was just printed to the engine logs — copy the new `sk init --token <token>` command from there and re-run it",
+      hint: "a fresh token was just printed to the engine logs — copy the new `subkit init --token <token>` command from there and re-run it",
     };
   }
   if (!constantTimeEquals(sha256Hex(opts.token), envelope.token_sha256)) {

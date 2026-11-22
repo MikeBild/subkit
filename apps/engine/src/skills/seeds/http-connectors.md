@@ -13,7 +13,7 @@ version: 5
 
 # HTTP Connectors
 
-The `http` driver is the most commonly used connector in sk. It speaks
+The `http` driver is the most commonly used connector in subkit. It speaks
 REST/JSON over HTTPS, handles auth, retries, and pagination, and returns the
 standard envelope.
 
@@ -451,6 +451,6 @@ connector.
 
 ## See also
 
-- `sk-concepts.md` — placeholder tokens and envelope shape.
+- `subkit-concepts.md` — placeholder tokens and envelope shape.
 - `data-handling.md` — trimming HTTP responses with `data_selector`.
 - `error-recovery.md` — `http_4xx`, `http_5xx`, and `permission_denied` recovery.

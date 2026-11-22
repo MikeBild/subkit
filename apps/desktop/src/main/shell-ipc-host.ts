@@ -2,7 +2,7 @@ import { desktopSettingsPatch } from "../shared/ipc.ts";
 import { findProfile } from "../shared/profiles.ts";
 import { connectShown } from "../shared/shell-session.ts";
 import { diagnosticsBundle } from "./diagnostics.ts";
-import { checkAddress, checkInvite, joinInvite } from "./server-checks.ts";
+import { checkAddress, checkInvite } from "./server-checks.ts";
 import type { ShellCore } from "./shell-core.ts";
 import type { ShellIpcHost } from "./shell-ipc.ts";
 
@@ -45,7 +45,7 @@ export function shellIpcHost(core: ShellCore): ShellIpcHost {
     answerNotifications: (allow) => settings.answerNotifications(allow),
     answerDiagnostics: (share) => settings.answerDiagnostics(share),
     checkInvite: (link) => checkInvite(link),
-    joinInvite: (link) => joinInvite(link),
+    joinInvite: (link) => profiles.joinInvite(link),
     recheckServer: () => core.feed.checkCompatibility(),
     desktopSettings: () => settings.view(),
     updateDesktopSettings: (patch) => settings.change({ ...desktopSettingsPatch(patch) }),

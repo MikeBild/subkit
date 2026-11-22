@@ -49,6 +49,7 @@ async function seedTask(key: string, tenant_id: string, owner_id: string): Promi
   const [row] = await ctx.db
     .insert(tasks)
     .values({
+      locale: "de",
       tenant_id,
       name: key,
       description: `About ${key}`,

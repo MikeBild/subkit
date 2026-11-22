@@ -37,6 +37,8 @@ jobs:
       version: ${{ steps.resolve.outputs.version }}
       dry_run: ${{ steps.resolve.outputs.dry_run }}
       windows_signing: ${{ steps.resolve.outputs.windows_signing }}
+      macos: ${{ steps.platforms.outputs.macos || 'true' }}
+      windows: ${{ steps.platforms.outputs.windows || 'true' }}
     env:
       REQUESTED_TAG: ${{ inputs.tag || github.event.workflow_run.head_branch }}
       EXPECTED_COMMIT: ${{ github.event.workflow_run.head_sha }}
@@ -82,7 +84,8 @@ jobs:
             echo "windows_signing=$WINDOWS_SIGNING"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Require signing secrets
+      - name: Choose the platforms whose signing values are set
+        id: platforms
         if: ${{ steps.resolve.outputs.dry_run != 'true' }}
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
@@ -99,26 +102,39 @@ jobs:
           RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
         run: |
           set -euo pipefail
-          required="CSC_LINK CSC_KEY_PASSWORD APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER RELEASE_SIGNING_KEY"
-          if [ "$WINDOWS_SIGNING" = "cloud" ]; then
-            windows="WIN_CLOUD_SIGN_ENV WIN_CLOUD_SIGN_TOOL WIN_CLOUD_SIGN_ARGS WIN_PUBLISHER_NAME"
-          else
-            windows="WIN_CSC_LINK WIN_CSC_KEY_PASSWORD"
-          fi
-          missing=""
-          for name in $required; do
-            [ -n "${!name:-}" ] || missing="$missing $name"
-          done
-          if [ -n "$missing" ]; then
-            echo "::error::SubKit Desktop is not released: these signing values are not set in the repository settings:$missing. See apps/desktop/RELEASING.md. Nothing was built or published." >&2
+          missing_of() {
+            local missing=""
+            for name in "$@"; do
+              [ -n "${!name:-}" ] || missing="$missing $name"
+            done
+            printf '%s' "$missing"
+          }
+          release=$(missing_of RELEASE_SIGNING_KEY)
+          if [ -n "$release" ]; then
+            echo "::error::SubKit Desktop is not released: RELEASE_SIGNING_KEY is not set in the repository settings. See apps/desktop/RELEASING.md. Nothing was built or published." >&2
             exit 1
           fi
-          missing_windows=""
-          for name in $windows; do
-            [ -n "${!name:-}" ] || missing_windows="$missing_windows $name"
-          done
-          if [ -n "$missing_windows" ]; then
-            echo "::warning::the Windows signing values are not set:$missing_windows. The Windows build fails and this release ships without Windows. See apps/desktop/RELEASING.md."
+          macos=$(missing_of CSC_LINK CSC_KEY_PASSWORD APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER)
+          if [ "$WINDOWS_SIGNING" = "cloud" ]; then
+            windows=$(missing_of WIN_CLOUD_SIGN_ENV WIN_CLOUD_SIGN_TOOL WIN_CLOUD_SIGN_ARGS WIN_PUBLISHER_NAME)
+          else
+            windows=$(missing_of WIN_CSC_LINK WIN_CSC_KEY_PASSWORD)
+          fi
+          if [ -n "$macos" ]; then
+            echo "::warning::the macOS signing values are not set:$macos. This release ships without macOS. See apps/desktop/RELEASING.md."
+            echo "macos=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "macos=true" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -n "$windows" ]; then
+            echo "::warning::the Windows signing values are not set:$windows. This release ships without Windows. See apps/desktop/RELEASING.md."
+            echo "windows=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "windows=true" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -n "$macos" ] && [ -n "$windows" ]; then
+            echo "::error::SubKit Desktop is not released: neither the macOS nor the Windows signing values are set. Nothing was built or published." >&2
+            exit 1
           fi
 
       - name: Require the published release without desktop artifacts
@@ -129,11 +145,12 @@ jobs:
           set -euo pipefail
           release=$(gh release view "$REQUESTED_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,assets) || { echo "::error::no release exists for $REQUESTED_TAG; this workflow never creates one" >&2; exit 1; }
           [ "$(jq -r '.isDraft' <<<"$release")" = "false" ] || { echo "::error::the release of $REQUESTED_TAG is still a draft" >&2; exit 1; }
-          existing=$(jq -r '[.assets[].name | select(test("^(subkit-desktop-|latest(-mac|-linux)?\\.yml$|SHA256SUMS-desktop)"))] | join(" ")' <<<"$release")
+          existing=$(jq -r '[.assets[].name | select(test("^(subkit-desktop-|latest(-mac)?\\.yml$|SHA256SUMS-desktop)"))] | join(" ")' <<<"$release")
           [ -z "$existing" ] || { echo "::error::the release of $REQUESTED_TAG already carries desktop artifacts: $existing" >&2; exit 1; }
 
-  engine:
+  engine-darwin:
     needs: preflight
+    if: ${{ needs.preflight.outputs.macos == 'true' }}
     runs-on: macos-15
     timeout-minutes: 150
     env:
@@ -150,14 +167,14 @@ jobs:
         with:
           bun-version: 1.4.5
 
-      - name: Build the engine for macOS and Windows
+      - name: Build the engine for macOS
         run: |
           set -euo pipefail
           bun install --frozen-lockfile
-          bun run build desktop-engine
-          ls -l dist/engine-desktop/*/*/
+          bun run build desktop-engine --target darwin-arm64
+          ls -l dist/engine-desktop/mac/arm64/
 
-      - name: Sign and notarize the macOS engines
+      - name: Sign and notarize the macOS engine
         if: ${{ needs.preflight.outputs.dry_run != 'true' }}
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
@@ -212,8 +229,40 @@ jobs:
           if-no-files-found: error
           path: dist/engine-desktop/mac/
 
+  engine-windows:
+    needs: preflight
+    if: ${{ needs.preflight.outputs.windows == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      ENGINE_VERSION: ${{ needs.preflight.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.preflight.outputs.ref }}
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
+        with:
+          bun-version: 1.4.5
+
+      - name: Build the engine for Windows
+        run: |
+          set -euo pipefail
+          bun install --frozen-lockfile
+          bun run build desktop-engine --target windows-x64
+          ls -l dist/engine-desktop/win/x64/
+          test -s dist/engine-desktop/win/THIRD_PARTY_NOTICES.engine.txt
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: engine-desktop-win
+          retention-days: 7
+          if-no-files-found: error
+          path: dist/engine-desktop/win/
+
   macos:
-    needs: [preflight, engine]
+    needs: [preflight, engine-darwin]
     runs-on: macos-15
     timeout-minutes: 90
     env:
@@ -410,7 +459,7 @@ jobs:
           path: apps/desktop/staged/
 
   windows:
-    needs: preflight
+    needs: [preflight, engine-windows]
     runs-on: windows-2025
     timeout-minutes: 60
     env:
@@ -431,6 +480,18 @@ jobs:
           set -euo pipefail
           bun install --frozen-lockfile
           node node_modules/electron/install.js
+
+      - name: Start the Windows engine on Windows
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name engine-desktop-win --dir dist/engine-desktop/win
+          engine=dist/engine-desktop/win/x64/engine.exe
+          test -s dist/engine-desktop/win/THIRD_PARTY_NOTICES.engine.txt
+          [ "$("$engine" --version | tr -d '\r')" = "$VERSION" ] || { echo "::error::$engine does not report version $VERSION" >&2; exit 1; }
+          "$engine" --help > /dev/null
+          "$engine" --smoke
 
       - name: Build and sign with the certificate
         if: ${{ needs.preflight.outputs.dry_run != 'true' && needs.preflight.outputs.windows_signing == 'certificate' }}
@@ -512,72 +573,9 @@ jobs:
           if-no-files-found: error
           path: apps/desktop/staged/
 
-  linux:
-    needs: preflight
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    env:
-      VERSION: ${{ needs.preflight.outputs.version }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ needs.preflight.outputs.ref }}
-          persist-credentials: false
-
-      - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
-        with:
-          bun-version: 1.4.5
-
-      - name: Install the app toolchain and the runtime distribution
-        working-directory: apps/desktop
-        run: |
-          set -euo pipefail
-          bun install --frozen-lockfile
-          node node_modules/electron/install.js
-
-      - name: Build for a release with signed checksums
-        if: ${{ needs.preflight.outputs.dry_run != 'true' }}
-        working-directory: apps/desktop
-        env:
-          SUBKIT_DESKTOP_SIGNED_RELEASE: "1"
-          SUBKIT_DESKTOP_UPDATES: "1"
-        run: |
-          set -euo pipefail
-          bun run package --prebuilt --linux --publish never
-
-      - name: Build unsigned dry run
-        if: ${{ needs.preflight.outputs.dry_run == 'true' }}
-        working-directory: apps/desktop
-        env:
-          SUBKIT_DESKTOP_UPDATES: "0"
-        run: |
-          set -euo pipefail
-          bun run package --prebuilt --linux --publish never
-
-      - name: Stage artifacts
-        working-directory: apps/desktop
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          images=(release/subkit-desktop-"$VERSION"-linux-*.AppImage)
-          packages=(release/subkit-desktop-"$VERSION"-linux-*.deb)
-          [ "${#images[@]}" -eq 1 ] && [ "${#packages[@]}" -eq 1 ] || { echo "::error::expected one AppImage and one deb" >&2; exit 1; }
-          mkdir -p staged
-          cp release/subkit-desktop-"$VERSION"-linux-* release/latest-linux.yml staged/
-          cp dist/THIRD_PARTY_NOTICES.txt "staged/subkit-desktop-$VERSION-linux-THIRD_PARTY_NOTICES.txt"
-          bun run scripts/verify-feed.ts staged "$VERSION" latest-linux.yml
-          ls -l staged
-
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: desktop-linux
-          retention-days: 7
-          if-no-files-found: error
-          path: apps/desktop/staged/
-
   publish:
-    needs: [preflight, macos, windows, linux]
-    if: ${{ !cancelled() && needs.preflight.outputs.dry_run != 'true' && needs.macos.result == 'success' }}
+    needs: [preflight, macos, windows]
+    if: ${{ !cancelled() && needs.preflight.outputs.dry_run != 'true' && (needs.macos.result == 'success' || needs.windows.result == 'success') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -599,8 +597,8 @@ jobs:
       - name: Collect the artifacts of this run
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MACOS_RESULT: ${{ needs.macos.result }}
           WINDOWS_RESULT: ${{ needs.windows.result }}
-          LINUX_RESULT: ${{ needs.linux.result }}
         run: |
           set -euo pipefail
           download="$RUNNER_TEMP/desktop-artifacts"
@@ -608,19 +606,19 @@ jobs:
           rm -rf "$download" "$assets"
           mkdir -p "$download" "$assets"
           gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --dir "$download"
-          names="desktop-macos"
-          feeds="latest-mac.yml"
+          names=""
+          feeds=""
+          if [ "$MACOS_RESULT" = "success" ]; then
+            names="$names desktop-macos"
+            feeds="$feeds latest-mac.yml"
+          else
+            echo "::warning::the macOS build ended with $MACOS_RESULT; this release ships without macOS"
+          fi
           if [ "$WINDOWS_RESULT" = "success" ]; then
             names="$names desktop-windows"
             feeds="$feeds latest.yml"
           else
             echo "::warning::the Windows build ended with $WINDOWS_RESULT; this release ships without Windows"
-          fi
-          if [ "$LINUX_RESULT" = "success" ]; then
-            names="$names desktop-linux"
-            feeds="$feeds latest-linux.yml"
-          else
-            echo "::warning::the Linux build ended with $LINUX_RESULT; this release ships without Linux"
           fi
           for name in $names; do
             test -d "$download/$name"
@@ -630,6 +628,11 @@ jobs:
               cp "$file" "$assets/"
             done
           done
+          for installer in "$assets/subkit-desktop-$VERSION-mac-arm64.dmg" "$assets/subkit-desktop-$VERSION-win-x64.exe"; do
+            [ -f "$installer" ] || continue
+            cp "$installer" "$assets/$(basename "$installer" | sed "s/-$VERSION-/-/")"
+          done
+          [ "$MACOS_RESULT" != "success" ] || test -f "$assets/subkit-desktop-mac-arm64.dmg"
           echo "ASSETS_DIR=$assets" >> "$GITHUB_ENV"
           echo "FEEDS=$feeds" >> "$GITHUB_ENV"
 

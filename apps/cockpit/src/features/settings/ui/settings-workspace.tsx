@@ -1,3 +1,11 @@
+import { WORKSPACE_LANGUAGES, type WorkspaceLanguage } from "@shared/workspace-language.ts";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@ui/molecules/select";
 import { useSession } from "@/app/session";
 import { FieldError, Input, TimezoneSelect } from "@/components/cockpit/patterns";
 import { NAME_MAX } from "@/features/setup";
@@ -12,6 +20,8 @@ export function WorkspaceArea({
   onName,
   timezone,
   onTimezone,
+  language,
+  onLanguage,
   disabled,
   onBrandingDraft,
 }: {
@@ -20,6 +30,8 @@ export function WorkspaceArea({
   onName(text: string): void;
   timezone: string;
   onTimezone(zone: string): void;
+  language: WorkspaceLanguage;
+  onLanguage(language: WorkspaceLanguage): void;
   disabled: boolean;
   onBrandingDraft(handle: BrandingDraftHandle | null): void;
 }) {
@@ -33,6 +45,8 @@ export function WorkspaceArea({
         onName={onName}
         timezone={timezone}
         onTimezone={onTimezone}
+        language={language}
+        onLanguage={onLanguage}
         disabled={disabled}
       />
       <Question
@@ -53,6 +67,8 @@ export function WorkspaceQuestions({
   onName,
   timezone,
   onTimezone,
+  language,
+  onLanguage,
   disabled,
 }: {
   name: string;
@@ -60,6 +76,8 @@ export function WorkspaceQuestions({
   onName(text: string): void;
   timezone: string;
   onTimezone(zone: string): void;
+  language: WorkspaceLanguage;
+  onLanguage(language: WorkspaceLanguage): void;
   disabled: boolean;
 }) {
   const { t } = useI18n();
@@ -98,6 +116,39 @@ export function WorkspaceQuestions({
           disabled={disabled}
           testId="settings-workspace-timezone"
         />
+      </Question>
+      <Question
+        title={t("settings.workspace.language")}
+        help={t("settings.workspace.languageHelp")}
+        testId="settings-question-workspace-language"
+      >
+        <Select
+          value={language}
+          onValueChange={(next) => {
+            const chosen = WORKSPACE_LANGUAGES.find((option) => option === next);
+            if (chosen) onLanguage(chosen);
+          }}
+          disabled={disabled}
+        >
+          <SelectTrigger
+            className="w-full"
+            aria-label={t("settings.workspace.language")}
+            data-testid="settings-workspace-language"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {WORKSPACE_LANGUAGES.map((option) => (
+              <SelectItem
+                key={option}
+                value={option}
+                data-testid={`settings-workspace-language-${option}`}
+              >
+                {t(`language.native.${option}`)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </Question>
     </>
   );

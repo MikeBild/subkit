@@ -5,8 +5,8 @@ import { join } from "node:path";
 
 export const cockpitDemoFingerprintInputs = [
   "vendor/embedding-assets.json",
-  "docker-compose.test.yml",
-  "docker-compose.demo.yml",
+  "docker/docker-compose.test.yml",
+  "docker/docker-compose.demo.yml",
   "scripts/start-cockpit-demo.ts",
   "scripts/verify-cockpit-local-demo.ts",
   "scripts/verify-cockpit-local.ts",
@@ -32,7 +32,7 @@ const sourceRoots = [
   "scripts/build-clipper.ts",
   "scripts/fetch-embedding-assets.ts",
   "scripts/stage-cli-binaries.ts",
-  "deploy/docker",
+  "docker",
 ];
 
 export function cockpitDemoSourceFingerprint(root: string, discoveredPaths: string[]): string {

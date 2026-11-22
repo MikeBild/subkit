@@ -97,6 +97,7 @@ const SIGNAL_KEYS: Record<string, TranslationKey> = {
   memory_high_water: "overview.signal.memory_high_water",
   llm_provider_quota: "overview.signal.llm_provider_quota",
   llm_provider_unavailable: "overview.signal.llm_provider_unavailable",
+  llm_key_rejected: "overview.signal.llm_key_rejected",
 };
 
 interface AttentionSentence {

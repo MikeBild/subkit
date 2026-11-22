@@ -77,6 +77,8 @@ export const ERROR_CODES = {
   http_429: entry("rate_limited", "wait"),
   graphql_throttle: entry("rate_limited", "wait"),
   placeholder_unresolved: entry("placeholder_unresolved", "patch"),
+  engine_stopped_during_write: entry("aborted", null),
+  mcp_timeout_during_write: entry("timeout", null),
 } as const satisfies Record<string, ErrorClass>;
 
 export type ErrorCode = keyof typeof ERROR_CODES;

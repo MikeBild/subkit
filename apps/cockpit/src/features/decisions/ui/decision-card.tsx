@@ -600,13 +600,13 @@ export function DecisionCard({
       data-testid={testId}
       data-decision-key={key}
       data-state="open"
-      data-family-slot="decision-row"
-      data-family-decision-kind={item.kind}
-      data-family-decision-priority={priority}
+      data-sk-slot="decision-row"
+      data-sk-decision-kind={item.kind}
+      data-sk-decision-priority={priority}
     >
       <div
         className="flex min-w-0 flex-col gap-2 @sm:flex-row @sm:items-start @sm:justify-between"
-        data-family-slot="decision-meta"
+        data-sk-slot="decision-meta"
       >
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <Badge variant="outline" data-testid={`${testId}-kind`}>
@@ -623,7 +623,7 @@ export function DecisionCard({
           )}
         </div>
         <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2 text-xs text-muted-foreground @sm:justify-end">
-          <span data-family-slot="decision-source">{t(ORIGIN_LABEL[item.origin])}</span>
+          <span data-sk-slot="decision-source">{t(ORIGIN_LABEL[item.origin])}</span>
           <span data-testid={`${testId}-age`}>
             {age === 0
               ? t("decisions.age.today")
@@ -646,12 +646,12 @@ export function DecisionCard({
         className="line-clamp-2 text-sm font-medium"
         title={heading}
         data-testid={`${testId}-title`}
-        data-family-slot="decision-title"
+        data-sk-slot="decision-title"
       >
         {hideTechnicalIdentifiers(heading, t("tool.referenceHiddenInline"))}
       </h3>
 
-      <p className="truncate text-sm text-muted-foreground" data-family-slot="decision-effect">
+      <p className="truncate text-sm text-muted-foreground" data-sk-slot="decision-effect">
         {t(KIND_EFFECT[item.kind])}
       </p>
 
@@ -660,7 +660,7 @@ export function DecisionCard({
       ) : null}
 
       <div className="mt-auto flex flex-wrap items-center justify-between gap-2">
-        <span data-family-slot="decision-details">
+        <span data-sk-slot="decision-details">
           {hasDetail && !compact ? (
             <Button
               variant="ghost"
@@ -676,7 +676,7 @@ export function DecisionCard({
         {inSheet ? null : (
           <div
             className="flex min-w-0 flex-wrap items-center justify-end gap-2"
-            data-family-slot="decision-actions"
+            data-sk-slot="decision-actions"
           >
             {actions}
             {blocked}

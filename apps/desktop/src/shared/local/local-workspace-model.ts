@@ -1,4 +1,5 @@
 import { loopbackModelOrigin } from "@shared/local-model-server.ts";
+import { localBundle, platformCapabilities } from "../platform-capabilities.ts";
 import { normalizeServerAddress } from "../server-address.ts";
 import type { BackupReason, SupervisorPhase } from "./supervisor-model.ts";
 
@@ -167,8 +168,9 @@ export interface LocalRuntime {
 }
 
 export function localRuntime(input: LocalRuntimeInput): LocalRuntime | null {
-  if (input.platform !== "darwin" || input.arch !== "arm64") return null;
-  const compiled = `${input.repo}/dist/engine-desktop/mac/arm64/engine`;
+  const bundle = localBundle(platformCapabilities(input.platform, input.arch));
+  if (!bundle) return null;
+  const compiled = `${input.repo}/dist/engine-desktop/${bundle.engine}`;
   const source = `${input.repo}/apps/engine/src/index.ts`;
   const engine = input.packaged
     ? `${input.resourcesPath}/local/engine`
@@ -177,7 +179,7 @@ export function localRuntime(input: LocalRuntimeInput): LocalRuntime | null {
       : source;
   const postgresDir = input.packaged
     ? `${input.resourcesPath}/local/postgres`
-    : `${input.repo}/apps/desktop/resources/postgres/darwin-arm64`;
+    : `${input.repo}/apps/desktop/resources/postgres/${bundle.postgres}`;
   if (!input.exists(`${postgresDir}/bin/postgres`) || !input.exists(engine)) return null;
   return { postgresDir, engineCommand: engine === source ? ["bun", source] : [engine] };
 }

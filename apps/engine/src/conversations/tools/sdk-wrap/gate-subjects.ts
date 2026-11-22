@@ -3,7 +3,11 @@ import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import type { Executor } from "../../../db/client.ts";
 import { resolvedFromRow } from "../../../files/resolver.ts";
 import { findReadyFileByHash, listExecutionDataFileSizes } from "../../../files/service/index.ts";
-import { loadStoredPackageArchive, previewPackageImport } from "../../../identity/index.ts";
+import {
+  languageFor,
+  loadStoredPackageArchive,
+  previewPackageImport,
+} from "../../../identity/index.ts";
 import { getIntakeItemsForReview } from "../../../knowledge/index.ts";
 import { getSkillCandidatesForReview } from "../../../skill-candidates/index.ts";
 import { buildPendingOutputForTool } from "../../tool-policies.ts";
@@ -91,13 +95,14 @@ async function loadPackagePlans(
   locale: ToolContext["locale"],
 ): Promise<GateRecord[]> {
   const records: GateRecord[] = [];
+  const language = await languageFor(tenantId, db, locale);
   for (const id of ids) {
     try {
       const stored = await loadStoredPackageArchive(db, tenantId, id);
       const plan = await previewPackageImport(db, tenantId, stored.bytes);
       records.push({
         id,
-        title: formatPackagePlanTitle(stored.filename, plan, locale),
+        title: formatPackagePlanTitle(stored.filename, plan, language),
         status: "previewed",
       });
     } catch {}

@@ -26,7 +26,7 @@ function attachStdoutCapture(buf: string[]): () => void {
 }
 
 beforeAll(async () => {
-  cfgDir = mkdtempSync(join(tmpdir(), "sk-cfg-leak-"));
+  cfgDir = mkdtempSync(join(tmpdir(), "subkit-cfg-leak-"));
   _resetConfigForTests();
   await loadConfig({
     env: { DATABASE_URL: "postgres://placeholder/leak", NODE_ENV: "test" },

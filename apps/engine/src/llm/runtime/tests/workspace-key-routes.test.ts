@@ -11,7 +11,7 @@ const ROUTES = ["LLM_PROVIDER", "LLM_FALLBACK_PROVIDER", "SUMMARIZE_LLM_PROVIDER
 let configDir: string;
 
 beforeAll(async () => {
-  configDir = mkdtempSync(join(tmpdir(), "sk-workspace-key-routes-"));
+  configDir = mkdtempSync(join(tmpdir(), "subkit-workspace-key-routes-"));
   const file = join(configDir, "subkit.config.json");
   writeFileSync(
     file,

@@ -96,7 +96,9 @@ export async function recordUsage(entry: LlmCallLogEntry, exec?: Executor): Prom
     z.string()
       .regex(/^[a-zA-Z0-9._:@/+-]{1,200}$/)
       .parse(entry.model);
-    z.enum(["success", "quota_exhausted", "context_too_large", "error"]).parse(entry.result);
+    z.enum(["success", "quota_exhausted", "context_too_large", "key_rejected", "error"]).parse(
+      entry.result,
+    );
     z.enum(["system", "user", "system_account"]).parse(entry.actor_type ?? "system");
   }
   const billed = billedTokenUsage({

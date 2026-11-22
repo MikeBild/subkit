@@ -98,10 +98,10 @@ describe("deriveConversationOutcome", () => {
 });
 
 describe("surfaceFromClientHeader", () => {
-  test("maps the Cockpit header, sk modes and the bare API", () => {
+  test("maps the Cockpit header, subkit modes and the bare API", () => {
     expect(surfaceFromClientHeader("cockpit")).toBe("web");
     expect(surfaceFromClientHeader("Cockpit ")).toBe("web");
-    expect(surfaceFromClientHeader("sk")).toBe("sk_interactive");
+    expect(surfaceFromClientHeader("subkit")).toBe("sk_interactive");
     expect(surfaceFromClientHeader("sk_headless")).toBe("sk_headless");
     expect(surfaceFromClientHeader(undefined)).toBe("api");
     expect(surfaceFromClientHeader("curl/8")).toBe("api");

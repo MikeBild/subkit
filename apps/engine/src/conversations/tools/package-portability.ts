@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import type { WorkspaceLanguage } from "@shared/workspace-language.ts";
 import { parseFileId, toFileId } from "../../api/files-schemas.ts";
 import { applyPackageImportOperation } from "../../api/operations/package.ts";
 import {
@@ -102,9 +103,9 @@ function counted(count: number, [one, other]: PlanWords): string {
 export function formatPackagePlanTitle(
   filename: string,
   plan: PackagePlan,
-  locale: ToolContext["locale"],
+  locale: WorkspaceLanguage,
 ): string {
-  const copy = PLAN_COPY[locale ?? "de"];
+  const copy = PLAN_COPY[locale];
   const actions = (["create", "update", "unchanged", "conflict"] as const)
     .filter((action) => plan.summary[action] > 0)
     .map((action) => counted(plan.summary[action], copy[action]));

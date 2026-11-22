@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { DeviceCommandSchema } from "@shared/device/protocol.ts";
 import { and, eq, sql } from "drizzle-orm";
 import { deviceCommands, deviceUploads, files } from "../../db/schema/index.ts";
+import { closeDeviceCommand } from "../../devices/channel.ts";
 import { workflowCommandId } from "../../devices/core/command-id.ts";
 import { sendDeviceCommand } from "../../devices/dispatch.ts";
 import { handleDeviceWaitJob } from "../../devices/waiting.ts";
@@ -267,6 +268,77 @@ describe("dispatch from a step", () => {
       evidence: {},
     });
     expect((await reopening).kind).toBe("result");
+  });
+
+  test("a lost write keeps the late result once, and a retried step reads it instead of sending again", async () => {
+    const runner = await enroll("Late (Mike)");
+    const write = await command(runner, "files.write");
+    await call(runner, "POST", `/v1/device-runner/commands/${write.id}/claim`, {});
+    const later = () => Date.now() + 60_000; // allow-wall-clock: the server stamps claims on its clock
+    const request = {
+      command_id: write.id,
+      tenant_id: server.tenantId,
+      device_id: runner.device_id,
+      execution_id: null,
+      task_run_id: write.task_run_id,
+      step_id: write.step_id,
+      authority_id: null,
+      manifest_digest: null,
+      kind: write.kind,
+      args: {},
+      source: null,
+    };
+    const dispatch = () =>
+      sendDeviceCommand(
+        { db: server.db, signal: new AbortController().signal, now: later },
+        request,
+      );
+    expect((await dispatch()).kind).toBe("closed");
+    expect(await state(write.id)).toBe("lost");
+    const done = { status: "done" as const, output: { written: true }, evidence: {} };
+    const late = await call(runner, "POST", `/v1/device-runner/commands/${write.id}/result`, done);
+    expect(await late.json()).toEqual({ stored: true, state: "done" });
+    const again = await call(runner, "POST", `/v1/device-runner/commands/${write.id}/result`, done);
+    expect(await again.json()).toEqual({ stored: false, state: "done" });
+    expect(await dispatch()).toEqual({ kind: "result", command_id: write.id, result: done });
+    expect(await state(write.id)).toBe("done");
+  });
+
+  test("a read whose late result lands before its reopen uses that result", async () => {
+    const runner = await enroll("Late read (Mike)");
+    const read = await command(runner, "files.list");
+    await call(runner, "POST", `/v1/device-runner/commands/${read.id}/claim`, {});
+    await closeDeviceCommand(server.db, read, "lost");
+    const done = { status: "done" as const, output: ["a.txt"], evidence: {} };
+    let transactions = 0;
+    const racing = new Proxy(server.db, {
+      get(target, key, receiver) {
+        if (key !== "transaction") return Reflect.get(target, key, receiver);
+        return async (...args: Parameters<typeof target.transaction>) => {
+          transactions += 1;
+          if (transactions === 2)
+            await call(runner, "POST", `/v1/device-runner/commands/${read.id}/result`, done);
+          return target.transaction(...args);
+        };
+      },
+    });
+    const outcome = await sendDeviceCommand(
+      { db: racing, signal: new AbortController().signal },
+      {
+        command_id: read.id,
+        tenant_id: server.tenantId,
+        device_id: runner.device_id,
+        execution_id: null,
+        task_run_id: read.task_run_id,
+        step_id: read.step_id,
+        authority_id: null,
+        manifest_digest: null,
+        kind: read.kind,
+        args: {},
+        source: null,
+      },
+    );
+    expect(outcome).toEqual({ kind: "result", command_id: read.id, result: done });
   });
 
   test("browser and computer steps only run for the device's own person", async () => {

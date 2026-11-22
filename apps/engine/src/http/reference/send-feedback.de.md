@@ -66,7 +66,10 @@ In SubKit Desktop bietet der Dialog zusätzlich ein **Bildschirmfoto des Fenster
 
 Passwortfelder und Felder für Geheimnisse sind im Bild ausgeblendet. Was offen im Fenster steht, zum Beispiel ein gerade erstellter API-Key, bleibt sichtbar.
 
-Ist die App nicht angemeldet, öffnet **Fehler melden …** stattdessen den Dialog **Diagnosedaten** mit **Diagnose kopieren** und **Als Datei speichern …**. Die Daten enthalten App-Version, Betriebssystem, Server-Version und die letzten 10 Fehler. Füg sie deiner Meldung an die Person bei, die deinen Server betreibt.
+Ist die App nicht angemeldet, öffnet **Fehler melden …** stattdessen den Dialog **Diagnosedaten**. Die Daten enthalten App-Version, Betriebssystem, Server-Version und die letzten 10 Fehler.
+
+- Nimmt dein Server Meldungen ohne Anmeldung an, bietet der Dialog **An den Server senden**. Die App schickt die Diagnosedaten dann mit ihrer Geräte-ID, und du liest „Danke, deine Meldung ist angekommen.“
+- Sonst, etwa bei einem älteren Server, bietet er nur **Diagnose kopieren** und **Als Datei speichern …**. Füg die Daten deiner Meldung an die Person bei, die deinen Server betreibt.
 
 ### Einen Bericht offline schreiben
 
@@ -80,7 +83,7 @@ Erreicht SubKit den Server nicht, schreib den Bericht trotzdem und wähle **In W
 - **Die Überschrift des Eintrags ist englisch.** Sie beginnt mit „Bug report:“, „Idea:“ oder „Feedback:“, gefolgt von der ersten Zeile deines Textes.
 - **Zwei verschiedene Marken.** Das Cockpit schreibt im deutschen Diagnosebericht `[entfernt]`, der Server `[removed]`, `[email]` und `[path]`.
 - **Fünf Berichte in zehn Minuten.** Danach bittet dich der Dialog, ein paar Minuten zu warten.
-- **Nur aus dem Cockpit.** Mit einem API-Schlüssel oder aus der Kommandozeile `sk` lässt sich kein Bericht senden.
+- **Kein API-Schlüssel.** Mit einem API-Schlüssel oder aus der Kommandozeile `subkit` lässt sich kein Bericht senden.
 
 ### Wenn etwas nicht klappt
 
@@ -98,3 +101,18 @@ Erreicht SubKit den Server nicht, schreib den Bericht trotzdem und wähle **In W
 `POST /v1/feedback` nimmt einen Bericht an. Die Route arbeitet nur mit einer Browsersitzung und braucht kein eigenes Recht. Sie antwortet mit `201` und den Feldern `id`, `intake_item_id` und `replayed`. `replayed` ist `true`, wenn dieselbe `client_request_id` schon abgelegt wurde.
 
 Alle Felder, Grenzen und Fehlercodes stehen in „Referenz: Desktop-App, Regeln, Zeitpläne und Fehlerberichte“.
+
+### Ohne Anmeldung
+
+Auf der Anmeldeseite öffnet **Fehler melden** ein kurzes Formular: was passiert ist, eine E-Mail-Adresse für Rückfragen (optional) und ein Bildschirmfoto (optional, PNG oder JPG mit höchstens 2 MB). **Meldung senden** legt es ohne Anmeldung ab.
+
+Hinter dem Formular und dem Button in SubKit Desktop steht `POST /v1/feedback/anonymous`. Die Route braucht keine Sitzung und keinen Schlüssel. Sie nimmt dieselben Felder an, dazu `device_id` aus SubKit Desktop und eine optionale `contact_email`.
+
+- **Wohin:** in den **Eingang** des Betreiber-Arbeitsbereichs, in die Kategorie `feedback`. Als Sammler nennt der Eintrag `anonymous`. Ohne Betreiber-Arbeitsbereich antwortet der Server mit `503 feedback_unavailable`.
+- **Was entfernt wird:** dasselbe wie bei einem Bericht aus dem Cockpit.
+- **Wie viele:** 3 Berichte in 10 Minuten je Adresse, 3 je Desktop-Gerät und 60 für den ganzen Server. Danach antwortet der Server mit `429` und `Retry-After`.
+- **Wie groß:** höchstens 6 MB für die ganze Anfrage. Die Grenzen je Datei bleiben gleich; eine größere Anfrage lehnt der Server mit `413` ab.
+- **Von einer fremden Seite:** Eine Browser-Anfrage von einer fremden Seite lehnt der Server mit `403 csrf_rejected` ab.
+- **Wiederholen:** Eine wiederholte `client_request_id` liefert den gespeicherten Bericht, zählt aber trotzdem gegen die Grenzen.
+
+Der Service-Descriptor nennt die Route als `clients.desktop.anonymous_feedback_path`.

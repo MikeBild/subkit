@@ -144,7 +144,7 @@ export function recordSuggestNextOutcome(args: {
   kind?: string;
 }): void {
   safe(() => {
-    getMetrics().inc(METRIC_NAMES.SK_SUGGEST_NEXT_TOTAL, {
+    getMetrics().inc(METRIC_NAMES.SUBKIT_SUGGEST_NEXT_TOTAL, {
       tenant_id: args.tenant_id,
       outcome: args.outcome,
       kind: args.kind ?? "",

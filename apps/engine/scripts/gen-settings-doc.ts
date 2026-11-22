@@ -1,3 +1,7 @@
+import {
+  UpdateWorkspaceBodySchema,
+  WORKSPACE_SETTING_DEFAULTS,
+} from "../src/api/workspace-schemas.ts";
 import { ConfigSchema, SECTION_ORDER } from "../src/config/schema.ts";
 import { type ConfigLeaf, dottedPath, listConfigLeaves } from "../src/config/walk.ts";
 
@@ -64,6 +68,44 @@ function renderSection(section: string, leaves: ConfigLeaf[]): string {
   return `${header}${blurb}\n${table}\n`;
 }
 
+interface WorkspaceField {
+  description?: string;
+  unwrap?: () => WorkspaceField;
+  options?: readonly string[];
+  def: { type: string };
+}
+
+function workspaceFieldType(field: WorkspaceField): string {
+  const inner = field.def.type === "optional" && field.unwrap ? field.unwrap() : field;
+  if (inner.def.type === "enum" && inner.options) {
+    return `enum(${inner.options.map((v) => `"${v}"`).join(" \\| ")})`;
+  }
+  return inner.def.type;
+}
+
+function renderWorkspaceSettings(): string {
+  const shape = UpdateWorkspaceBodySchema.shape as unknown as Record<string, WorkspaceField>;
+  const rows = Object.entries(shape).map(([name, field]) => {
+    const inner = field.def.type === "optional" && field.unwrap ? field.unwrap() : field;
+    const fallback = WORKSPACE_SETTING_DEFAULTS[name as keyof typeof WORKSPACE_SETTING_DEFAULTS];
+    const def = fallback === null || fallback === undefined ? "—" : JSON.stringify(fallback);
+    const desc = (field.description ?? inner.description ?? "").replace(/\|/g, "\\|");
+    return `| \`${name}\` | ${workspaceFieldType(field)} | \`${def}\` | ${desc} |`;
+  });
+  return [
+    "## Workspace settings",
+    "",
+    "Every workspace keeps its own name, time zone and language. They are not runtime settings: the workspace owner or a holder of `identity:write` changes them in the Cockpit under Settings › Workspace or with `PATCH /v1/identity/workspace`.",
+    "",
+    "| field | type | default | description |",
+    "| ----- | ---- | ------- | ----------- |",
+    ...rows,
+    "",
+    "Texts that no person's language decides follow the workspace language: device connector names when the desktop app sends no known language, and new tasks created without a language from the request. A person's own app language still wins; without either, the text is English.",
+    "",
+  ].join("\n");
+}
+
 function main(): void {
   const all = listConfigLeaves();
   const bySection = new Map<string, ConfigLeaf[]>();
@@ -80,7 +122,7 @@ function main(): void {
     "# SubKit runtime settings",
     "",
     "Look up every runtime setting with its description and default value.",
-    "You change a value with `sk settings configure` and `sk settings set`, through the",
+    "You change a value with `subkit settings configure` and `subkit settings set`, through the",
     "HTTP or MCP settings APIs, or in the canonical config file. Per-tenant overrides go",
     "into the file's `tenants` section and only apply to settings tagged `scope=tenant`.",
     "",
@@ -97,10 +139,12 @@ function main(): void {
     lines.push(renderSection(section, leaves));
   }
 
+  lines.push(renderWorkspaceSettings());
+
   lines.push(
     "## Authentication providers",
     "",
-    "`auth.providers` is one atomic, validated runtime setting available through Cockpit, HTTP, MCP, `sk settings`, and the canonical config file. Records use `protocol: api_key` or `oidc`; one API-key adapter and multiple named direct OIDC adapters may coexist. Provider ids must be unique, and every OIDC callback is `/v1/identity/login/callback` on `server.public_base_url`. A successful write is active for subsequent browser-login requests without an engine restart.",
+    "`auth.providers` is one atomic, validated runtime setting available through Cockpit, HTTP, MCP, `subkit settings`, and the canonical config file. Records use `protocol: api_key` or `oidc`; one API-key adapter and multiple named direct OIDC adapters may coexist. Provider ids must be unique, and every OIDC callback is `/v1/identity/login/callback` on `server.public_base_url`. A successful write is active for subsequent browser-login requests without an engine restart.",
     "",
     "OIDC records are public clients using Authorization Code with PKCE. Runtime configuration intentionally has no `client_secret` field and rejects one if supplied; use an issuer that supports public clients with `token_endpoint_auth_method=none`. The environment is not an auth-provider source.",
     "",

@@ -34,7 +34,7 @@ async function ensureConfig(): Promise<void> {
     const { getConfig } = await import("../config/loader.ts");
     getConfig();
   } catch {
-    const dir = mkdtempSync(join(tmpdir(), "sk-cfg-risk-"));
+    const dir = mkdtempSync(join(tmpdir(), "subkit-cfg-risk-"));
     await loadConfig({
       env: { DATABASE_URL: "postgres://placeholder/risk-test", NODE_ENV: "test" },
       configPathOverride: join(dir, "subkit.config.json"),

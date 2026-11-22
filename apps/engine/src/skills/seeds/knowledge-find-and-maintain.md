@@ -13,7 +13,7 @@ version: 2
 
 # Wissen finden und pflegen
 
-sk keeps one shared memory for people and agents: knowledge sources (runbooks,
+subkit keeps one shared memory for people and agents: knowledge sources (runbooks,
 policies, reference pages, what the team learned) and skills (how to work).
 Read it before you answer; collect what a person teaches you for review.
 

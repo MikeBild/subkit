@@ -91,7 +91,7 @@ async function toolContextFor(conversationId: string, workflowId: string | null)
 beforeAll(async () => {
   srv = await createHttpTestServer("conv-run-focus");
   growthId = await seedSlugWorkflow("mission-control-growth-weekly");
-  triageId = await seedSlugWorkflow("watchkit-finding-triage");
+  triageId = await seedSlugWorkflow("uptime-finding-triage");
   growthFailedRun = await seedRun(growthId, "failed", "2026-09-01T08:00:00.000Z");
   growthNewerRun = await seedRun(growthId, "succeeded", "2026-09-02T08:00:00.000Z");
   triageNewestRun = await seedRun(triageId, "failed", "2026-09-03T08:00:00.000Z");

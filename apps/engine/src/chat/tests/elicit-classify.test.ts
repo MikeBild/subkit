@@ -10,7 +10,7 @@ describe("classifyChatElicitError — surface_unsupported", () => {
     if (c.kind === "surface_unsupported") {
       expect(c.tool_name).toBe("create_skill");
       expect(c.user_text.toLowerCase()).toContain("read-only");
-      expect(c.user_text).toMatch(/sk CLI|portal/i);
+      expect(c.user_text).toMatch(/subkit CLI|portal/i);
     }
   });
 

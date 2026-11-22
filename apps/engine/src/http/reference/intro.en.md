@@ -14,7 +14,7 @@ You describe the task in your own words, the AI drafts a workflow from it, and a
 After that it runs in fixed steps, with only the approved permissions.
 Every run is recorded.
 
-You work in the Cockpit in the browser, as an installed app or in the SubKit Desktop program, with the `sk` command line, or from AI clients such as Claude Code over MCP; the Web Clipper also collects web pages into your inbox.
+You work in the Cockpit in the browser, as an installed app or in the SubKit Desktop program, with the `subkit` command line, or from AI clients such as Claude Code over MCP; the Web Clipper also collects web pages into your inbox.
 
 ![Overview with key figures for runs, success rate, connector health and cost, the "Needs you" list with open decisions and the latest failed runs](images/intro-overview.en.webp)
 

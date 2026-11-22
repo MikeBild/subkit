@@ -65,18 +65,18 @@ Wann Benachrichtigungen kommen, legst du in „Benachrichtigungen und Ruhezeiten
 
 ### Web-App oder SubKit Desktop
 
-Neben der installierten Web-App gibt es SubKit Desktop, eine Mac-App für Apple Silicon. Beide zeigen dasselbe Cockpit deines Servers. Nur SubKit Desktop kann außerdem mit Dateien, einem Browser und Apps auf deinem Mac arbeiten, und nur, wenn du es erlaubst.
+Neben der installierten Web-App gibt es SubKit Desktop, eine App für Macs mit Apple Silicon und für Windows x64. Beide zeigen dasselbe Cockpit deines Servers. Nur SubKit Desktop auf einem Mac kann außerdem mit Dateien, einem Browser und Apps auf diesem Mac arbeiten, und nur, wenn du es erlaubst.
 
 | | Installierte Web-App | SubKit Desktop |
 | --- | --- | --- |
 | Installation | Aus dem Browser, je Arbeitsbereich eine App | Ein Programm, je Server ein Profil |
-| Geräte | Rechner und Handy | Mac mit Apple Silicon |
+| Geräte | Rechner und Handy | Mac mit Apple Silicon (ab macOS 13), Windows 10 oder 11 (x64) |
 | Benachrichtigungen | Push über den Browser | Benachrichtigungen des Betriebssystems, solange das Programm läuft |
 | Ruhezeiten | Unter **Einstellungen › Einrichtung** | In den Einstellungen des Programms |
 | Symbol in der Menüleiste oder im Infobereich | Nein | Ja, mit der Zahl der offenen Punkte |
 | Beim Anmelden am Computer starten | Nein | Ja |
 | Inhalte aus anderen Apps teilen | Ja | Dateien auf die App oder ihr Symbol ziehen |
-| Dateien, Browser und Apps auf deinem Gerät | Nein | Ja, was du erlaubst |
+| Dateien, Browser und Apps auf deinem Gerät | Nein | Auf dem Mac: ja, was du erlaubst. Unter Windows: nein |
 | Updates | Kommen mit dem Server | Eigene Updates des Programms |
 
 Mehr in „SubKit Desktop“.
@@ -101,7 +101,7 @@ Jede App hat ihre eigene Anmeldung. Deine Anmeldung im normalen Cockpit bleibt d
 
 ### Branding eines Arbeitsbereichs festlegen
 
-1. Öffne **Einstellungen** und darin unter **Arbeiten mit sk** den Bereich **Arbeitsbereich-Branding**.
+1. Öffne **Einstellungen** und darin unter **Arbeiten mit subkit** den Bereich **Arbeitsbereich-Branding**.
 2. Lade unter **App-Icon (1:1)** ein quadratisches PNG mit mindestens 512 Pixeln Kantenlänge hoch.
 3. Wähle unter **Farbpalette** zwischen **Standard**, **Indigo** und **Teal**.
 

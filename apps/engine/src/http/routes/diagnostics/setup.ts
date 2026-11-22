@@ -128,11 +128,11 @@ function buildLlmSection(snapshot: ReturnType<typeof getConfig>): SetupSection {
         "llm-primary",
         "blocker",
         "Primary LLM route",
-        "no provider configured (set llm.provider via `sk settings configure`)",
+        "no provider configured (set llm.provider via `subkit settings configure`)",
       ),
     );
     recommendations.push(
-      "Run `sk settings configure --tab llm` to set llm.provider and the matching api_key.",
+      "Run `subkit settings configure --tab llm` to set llm.provider and the matching api_key.",
     );
   }
 
@@ -406,7 +406,7 @@ function buildPublicUrlsSection(snapshot: ReturnType<typeof getConfig>): SetupSe
   const recommendations: string[] = [];
   if (!baseUrl) {
     recommendations.push(
-      "For external webhooks, chat deeplinks, and OAuth callbacks, set a public base URL: `sk settings set server.public_base_url '\"https://...\"'` with the externally reachable engine URL.",
+      "For external webhooks, chat deeplinks, and OAuth callbacks, set a public base URL: `subkit settings set server.public_base_url '\"https://...\"'` with the externally reachable engine URL.",
     );
   }
   return buildSection(

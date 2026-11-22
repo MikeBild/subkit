@@ -16,7 +16,10 @@ beforeAll(async () => {
   } catch {
     await loadConfig({
       env: { DATABASE_URL: "postgres://placeholder/oauth-origin-test", NODE_ENV: "test" },
-      configPathOverride: join(mkdtempSync(join(tmpdir(), "sk-cfg-origin-")), "subkit.config.json"),
+      configPathOverride: join(
+        mkdtempSync(join(tmpdir(), "subkit-cfg-origin-")),
+        "subkit.config.json",
+      ),
     });
   }
   configuredBefore = getConfig().server.public_base_url;

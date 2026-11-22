@@ -1,5 +1,6 @@
 import type { components } from "@cli-core/engine-api/openapi";
 import { createSseParser } from "@shared/sse.ts";
+import { type OpenQuestion, typedReply } from "@shared/typed-reply.ts";
 import { cockpitApiHref } from "@/app/installation-context";
 import { apiCall } from "./call";
 import { tenantContextHeaders } from "./tenant-context";
@@ -179,7 +180,7 @@ type SendConversationTurnInput = {
   | {
       conversationId: string;
       target?: never;
-      pendingElicitation?: { id: string; tool_name: string } | null;
+      pendingElicitation?: (OpenQuestion & { id: string }) | null;
     }
   | {
       conversationId?: null;
@@ -194,11 +195,24 @@ export async function sendConversationTurn(
 ): Promise<ConversationRun> {
   if (input.conversationId) {
     const path = `/v1/conversations/${encodeURIComponent(input.conversationId)}`;
-    if (input.pendingElicitation?.tool_name === "ask_user_text") {
-      return respondToChatText(
+    const reply = input.pendingElicitation
+      ? typedReply(input.pendingElicitation, input.message)
+      : null;
+    if (input.pendingElicitation && reply?.kind === "refused") {
+      throw new ApiError(
+        409,
+        {
+          code: "pending_elicitation_secret",
+          message: "The open form asks for a secret; enter it in the form.",
+        },
+        null,
+      );
+    }
+    if (input.pendingElicitation && reply?.kind === "answer") {
+      return respondToChatElicitation(
         input.conversationId,
         input.pendingElicitation.id,
-        input.message,
+        reply.output,
         onEvent,
       );
     }
@@ -243,15 +257,15 @@ export function respondToChatChoice(
   );
 }
 
-function respondToChatText(
+function respondToChatElicitation(
   conversationId: string,
   elicitationId: string,
-  value: string,
+  output: Readonly<Record<string, unknown>>,
   onEvent?: (event: ConversationStreamEvent) => void,
 ): Promise<ConversationRun> {
   return streamConversation(
     `/v1/conversations/${encodeURIComponent(conversationId)}/elicitations/${encodeURIComponent(elicitationId)}/respond`,
-    { output: { value } },
+    { output },
     onEvent,
   );
 }

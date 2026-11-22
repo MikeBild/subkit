@@ -32,7 +32,7 @@ beforeAll(async () => {
     await loader.loadConfig({
       env: { DATABASE_URL: "postgres://placeholder/desktop-login-test", NODE_ENV: "test" },
       configPathOverride: join(
-        mkdtempSync(join(tmpdir(), "sk-cfg-desktop-")),
+        mkdtempSync(join(tmpdir(), "subkit-cfg-desktop-")),
         "subkit.config.json",
       ),
     });

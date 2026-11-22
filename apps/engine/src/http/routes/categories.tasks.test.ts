@@ -49,6 +49,7 @@ async function seedTask(tenant_id: string, owner_id: string, category: string): 
   const [row] = await ctx.db
     .insert(tasks)
     .values({
+      locale: "de",
       tenant_id,
       name: `Task in ${category}`,
       category,

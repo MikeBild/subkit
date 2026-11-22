@@ -8,7 +8,3 @@ protocols:
   name: SubKit Dev
   schemes:
     - subkit-dev
-linux:
-  executableName: subkit-desktop-dev
-  mimeTypes:
-    - x-scheme-handler/subkit-dev

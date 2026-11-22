@@ -46,7 +46,7 @@ The same block on a graphql connector:
   "graphql": {
     "operation": "query",
     "query": "query IssuesWithComments($owner:String!,$name:String!){ repository(owner:$owner,name:$name){ issues(last:20,states:OPEN){ nodes { number title comments(last:5){ nodes { body } } labels(first:10){ nodes { name } } } } } }",
-    "variables": { "owner": "sk", "name": "sk" }
+    "variables": { "owner": "subkit", "name": "subkit" }
   }
 }
 ```
@@ -61,7 +61,7 @@ GraphQL pagination uses `pageInfo.endCursor` + `first: 50`. Example:
 
 ```graphql
 query($after: String) {
-  repository(owner: "sk", name: "sk") {
+  repository(owner: "subkit", name: "subkit") {
     issues(first: 50, after: $after, states: OPEN) {
       nodes { number title }
       pageInfo { endCursor hasNextPage }
@@ -94,7 +94,7 @@ An exhausted primary limit still answers HTTP 200 with an error of type `RATE_LI
 
 ## Pitfalls
 
-- Subscriptions are not supported by the sk `graphql` driver. Use webhooks for push.
+- Subscriptions are not supported by the subkit `graphql` driver. Use webhooks for push.
 - Under-requested fields can break downstream steps silently — explicitly list every field the workflow consumes.
 - Variables are stricter than REST query strings: type them in the query header (`$owner: String!`) or the request fails before the wire.
 - A GraphQL query uses HTTP POST but is read-only only when the reviewed document contains no mutation. Keep the effect review and the caller's approval boundary intact.

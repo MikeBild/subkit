@@ -132,7 +132,7 @@ function sameList(left: readonly string[], right: readonly string[]): boolean {
 }
 
 function expectedRunRoot(repo: string, wave: MutationWaveManifest, runId: string): string {
-  return join(repo, "reports", "mutation", "runs", wave.wave_id, runId);
+  return join(repo, ".reports", "mutation", "runs", wave.wave_id, runId);
 }
 
 function assertBoundFiles(repo: string, paths: readonly string[], label: string): void {
@@ -453,7 +453,7 @@ function assertTicketShape(ticket: MutationValidationTicket, ticketPath: string)
     throw new Error("parent mutation validation ticket has non-canonical inputs");
   if (
     !canonicalRepoPath(ticket.runtime_snapshot_path) ||
-    !ticket.runtime_snapshot_path.startsWith("reports/mutation/runs/") ||
+    !ticket.runtime_snapshot_path.startsWith(".reports/mutation/runs/") ||
     !SHA256.test(ticket.runtime_snapshot_sha256) ||
     !SHA256.test(ticket.runtime_snapshot_seal_sha256) ||
     !SHA256.test(ticket.runtime_artifact_digest_sha256)
@@ -521,7 +521,7 @@ export function validateParentMutationValidationTicket(input: {
   if (
     wave.runtime_artifact_digest_sha256 === undefined ||
     wave.runtime_artifact_digest_sha256 !== ticket.runtime_artifact_digest_sha256 ||
-    !ticket.runtime_snapshot_path.startsWith("reports/mutation/runs/")
+    !ticket.runtime_snapshot_path.startsWith(".reports/mutation/runs/")
   )
     throw new Error("parent mutation validation ticket runtime snapshot binding differs");
   assertMutationRuntimeSnapshotFast({

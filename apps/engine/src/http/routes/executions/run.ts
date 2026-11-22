@@ -108,7 +108,7 @@ export async function enforceSavedWorkflowAllowlist(
   } catch {}
 
   throw new HttpError(403, "forbidden", "workflow_not_in_allowlist", {
-    hint: "your account's allowed_workflows grant does not include this workflow — ask an operator to add it (sk rbac / api-key allowed_workflows) or run a workflow you are granted",
+    hint: "your account's allowed_workflows grant does not include this workflow — ask an operator to add it (subkit rbac / api-key allowed_workflows) or run a workflow you are granted",
   });
 }
 

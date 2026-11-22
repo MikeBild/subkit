@@ -109,13 +109,13 @@ describe("macOS release binary signature check", () => {
       "code signature exceeds the file",
     ]);
     expect(
-      inspectMacosBinary(Buffer.from("#!/bin/sh\necho sk\n".padEnd(64)), "arm64").problems,
+      inspectMacosBinary(Buffer.from("#!/bin/sh\necho subkit\n".padEnd(64)), "arm64").problems,
     ).toEqual(["not a 64-bit little-endian Mach-O file"]);
   });
 
   test("derives the expected architecture from the release file name", () => {
-    expect(expectedArchFromName("assets/sk_darwin_arm64")).toBe("arm64");
-    expect(expectedArchFromName("assets/sk_darwin_x64")).toBe("x64");
-    expect(() => expectedArchFromName("assets/sk_linux_x64")).toThrow();
+    expect(expectedArchFromName("assets/subkit-darwin-arm64")).toBe("arm64");
+    expect(expectedArchFromName("assets/subkit-darwin-x64")).toBe("x64");
+    expect(() => expectedArchFromName("assets/subkit-linux-x64")).toThrow();
   });
 });

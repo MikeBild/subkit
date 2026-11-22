@@ -18,7 +18,7 @@ afterAll(() => {
 
 export async function configureHostedAdmissionsForTests(databaseUrl: string): Promise<void> {
   if (!isConfigLoaded()) {
-    ownedConfig = mkdtempSync(join(tmpdir(), "sk-hosted-admission-"));
+    ownedConfig = mkdtempSync(join(tmpdir(), "subkit-hosted-admission-"));
     await loadConfig({
       env: { DATABASE_URL: databaseUrl, NODE_ENV: "test" },
       configPathOverride: join(ownedConfig, "seed.json"),

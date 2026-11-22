@@ -37,7 +37,7 @@ describe("an address nobody serves", () => {
     expect(res.headers.get("vary")).toBe("Accept, Cookie");
     expect(html).toContain("<title>SubKit Cockpit</title>");
     expect(html).toContain("Diese Seite gibt es nicht");
-    expect(html).toContain('data-family-surface="not-found"');
+    expect(html).toContain('data-sk-surface="not-found"');
     expect(html.match(/<a\s/g)?.length).toBe(1);
     expect(html).toContain('href="/cockpit"');
   });
@@ -64,7 +64,7 @@ describe("an unhandled failure", () => {
     expect(trace.length).toBeGreaterThan(0);
     expect(html).toContain("Something went wrong");
     expect(html).toContain(trace);
-    expect(html).toContain('data-family-surface="fatal-error"');
+    expect(html).toContain('data-sk-surface="fatal-error"');
     expect(html).not.toContain("an unexpected failure");
     expect(html.match(/<a\s/g)?.length).toBe(1);
   });

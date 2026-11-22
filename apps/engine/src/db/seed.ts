@@ -218,7 +218,7 @@ export async function seedTenantBootstrap(
         label: `${BOOTSTRAP_SYS_ACCOUNT_NAME} (admin)`,
         plaintext: key.plaintext,
         tenant: slug,
-        usage: `Admin key for tenant "${slug}". Use with: sk login --api-key <key>`,
+        usage: `Admin key for tenant "${slug}". Use with: subkit login --api-key <key>`,
       });
       adminApiKey = { plaintext: key.plaintext, prefix: key.prefix };
     }
@@ -534,7 +534,7 @@ async function seedDevFixtures(db: Db, rbacIds: SeededRoleIds): Promise<IssuedKe
         label: "default-bot (admin)",
         plaintext: key.plaintext,
         tenant: DEFAULT_TENANT_SLUG,
-        usage: `Dev-only admin key for tenant "${DEFAULT_TENANT_SLUG}". Use with: sk login --api-key <key>`,
+        usage: `Dev-only admin key for tenant "${DEFAULT_TENANT_SLUG}". Use with: subkit login --api-key <key>`,
       },
       {
         label: "metrics-scraper (metrics:read)",

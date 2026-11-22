@@ -18,7 +18,7 @@ import { testEnv } from "../../../test-helpers/determinism/env.ts";
 import { grantApproval, hashToolArgs } from "../../../tools/approval.ts";
 import { dispatchTool } from "../../../tools/dispatcher.ts";
 import { getUnifiedRegistry } from "../../../tools/index.ts";
-import { SK_CONFIRM_ID_META_KEY, SK_CONFIRM_META_KEY } from "../../../tools/policy.ts";
+import { SUBKIT_CONFIRM_ID_META_KEY, SUBKIT_CONFIRM_META_KEY } from "../../../tools/policy.ts";
 import type { ToolEnvelope } from "../../../tools/types.ts";
 import { pendingPrompt } from "../../resume.ts";
 import { freshSignals } from "../../tests/turn-signals.ts";
@@ -332,7 +332,7 @@ describe("candidate confirmations show only server-resolved subjects", () => {
     const replay = await mcpCall(
       "approve_skill_candidate",
       {},
-      { [SK_CONFIRM_META_KEY]: true, [SK_CONFIRM_ID_META_KEY]: approvalId },
+      { [SUBKIT_CONFIRM_META_KEY]: true, [SUBKIT_CONFIRM_ID_META_KEY]: approvalId },
     );
     expect(replay.status).toBe("error");
     if (replay.status === "error") expect(replay.error_code).toBe("changed_since_review");

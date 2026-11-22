@@ -1,3 +1,4 @@
+import type { WorkspaceLanguage } from "@shared/workspace-language.ts";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
@@ -26,6 +27,7 @@ interface CockpitIdentity {
   tenant_slug: string;
   tenant_display_name: string;
   tenant_timezone: string;
+  tenant_language: WorkspaceLanguage;
   tenant_origin: "self_hosted" | "self_service";
   tenant_owner_identity_id: string | null;
 }
@@ -126,6 +128,7 @@ export async function findCockpitIdentity(
       tenant_slug: tenants.slug,
       tenant_display_name: tenants.display_name,
       tenant_timezone: tenants.timezone,
+      tenant_language: tenants.language,
       tenant_origin: tenants.origin,
       tenant_owner_identity_id: tenants.owner_identity_id,
     })

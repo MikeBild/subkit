@@ -24,7 +24,7 @@ export async function seedDefaultCliNotificationRule(
 
   await tx.insert(notificationRules).values({
     tenant_id,
-    name: "sk CLI inbox (default)",
+    name: "subkit CLI inbox (default)",
     event_pattern: DEFAULT_CLI_INBOX_EVENT_PATTERN,
     workflow_pattern: "*",
     severity: "info",

@@ -2,7 +2,7 @@ import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { listFiles } from "./files.ts";
 
-const RUNTIME_ROOTS = ["apps/cockpit/src", "apps/engine/src", "apps/sk/src", "packages"];
+const RUNTIME_ROOTS = ["apps/cockpit/src", "apps/engine/src", "apps/subkit/src", "packages"];
 const RUNTIME_FILE = /\.(?:ts|tsx|js|jsx|mjs|cjs|json|md|sql|wat)$/;
 
 interface PackagePatchManifest {
@@ -99,6 +99,7 @@ const RUNNER_INPUTS = [
   "apps/engine/scripts/audit/coverage-artifacts.ts",
   "apps/engine/scripts/audit/coverage-publication.ts",
   "apps/engine/scripts/audit/coverage-retention.ts",
+  "apps/engine/scripts/audit/mutation-retention.ts",
   "apps/engine/scripts/audit/coverage-floor.ts",
   "apps/engine/scripts/audit/coverage-shard-plan.ts",
   "apps/engine/scripts/audit/external-runtime-tests.ts",
@@ -116,7 +117,7 @@ const RUNNER_INPUTS = [
   "tests/docker/_run.ts",
   "tests/docker/_harness.ts",
   "tests/docker/_finalize-seeds.ts",
-  "docker-compose.test.yml",
+  "docker/docker-compose.test.yml",
   "apps/engine/scripts/run-core-tests.ts",
   "apps/engine/scripts/audit/core-tests.ts",
   "apps/engine/scripts/audit/files.ts",

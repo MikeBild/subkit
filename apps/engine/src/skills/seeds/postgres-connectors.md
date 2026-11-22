@@ -319,6 +319,6 @@ after a migration.
 
 ## See also
 
-- `sk-concepts.md` — envelope fields for SQL rows.
+- `subkit-concepts.md` — envelope fields for SQL rows.
 - `rbac-and-scopes.md` — who can author workflows that write to production DBs.
 - `error-recovery.md` — handling Postgres errors (23505 unique violation, etc.).

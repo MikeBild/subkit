@@ -65,18 +65,18 @@ The app needs your server. It only keeps its program files, no data.
 
 ### Web app or SubKit Desktop
 
-Besides the installed web app there is SubKit Desktop, a Mac app for Apple Silicon. Both show the same Cockpit of your server. Only SubKit Desktop can also work with files, a browser and apps on your Mac, and only when you allow it.
+Besides the installed web app there is SubKit Desktop, an app for Macs with Apple Silicon and for Windows x64. Both show the same Cockpit of your server. Only SubKit Desktop on a Mac can also work with files, a browser and apps on that Mac, and only when you allow it.
 
 | | Installed web app | SubKit Desktop |
 | --- | --- | --- |
 | Installation | From the browser, one app per workspace | One program, one profile per server |
-| Devices | Computer and phone | Mac with Apple Silicon |
+| Devices | Computer and phone | Mac with Apple Silicon (macOS 13 or later), Windows 10 or 11 (x64) |
 | Notifications | Push through the browser | Notifications of the operating system while the program runs |
 | Quiet hours | Under **Settings › Setup** | In the settings of the program |
 | Icon in the menu bar or the notification area | No | Yes, with the number of open items |
 | Launch when you log in to your computer | No | Yes |
 | Share content from other apps | Yes | Drop files on the app or its icon |
-| Files, browser and apps on your device | No | Yes, what you allow |
+| Files, browser and apps on your device | No | On a Mac: yes, what you allow. On Windows: no |
 | Updates | Come with the server | The program’s own updates |
 
 More in “SubKit Desktop”.
@@ -101,7 +101,7 @@ Each app has its own sign-in. Your sign-in in the regular Cockpit stays untouche
 
 ### Set the branding of a workspace
 
-1. Open **Settings** and, under **Working with sk**, the **Workspace branding** section.
+1. Open **Settings** and, under **Working with subkit**, the **Workspace branding** section.
 2. Under **App icon (1:1)**, upload a square PNG with at least 512 pixels per side.
 3. Under **Color palette**, choose **Standard**, **Indigo** or **Teal**.
 

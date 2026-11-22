@@ -4,6 +4,7 @@ import { MCP_WIRE_METHOD } from "../../../mcp/client/remote-call.ts";
 import { recordRequestRetry } from "../../../observability/instrumentation.ts";
 import type { RequestStep } from "../../../workflows/types.ts";
 import { type Clock, SYSTEM_CLOCK } from "../../clock.ts";
+import { WRITE_OUTCOME_GUIDANCE } from "../../core/status.ts";
 import type { ConnectorResolutionSummary, StepResult, StepWarning } from "../../types.ts";
 import { RequestError } from "./errors.ts";
 import { backoffMs, requestMaxAttempts, resolveRetryPolicy } from "./retry.ts";
@@ -27,8 +28,14 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
+export const MCP_TIMEOUT_DURING_WRITE = "mcp_timeout_during_write";
+
 function isMcpAvailabilityFailure(failure: McpInvokeResult["failure"]): boolean {
-  return failure === "transport" || failure === "not_connected";
+  return failure === "transport" || failure === "timeout" || failure === "not_connected";
+}
+
+function writeOutcomeUnclear(result: McpInvokeResult): boolean {
+  return result.failure === "timeout" && result.effect !== "read";
 }
 
 interface RunMcpWithRetryParams {
@@ -52,7 +59,7 @@ export async function runMcpWithRetry(p: RunMcpWithRetryParams): Promise<StepRes
   for (let attempt = 0; attempt < max_attempts; attempt++) {
     finalAttempt = attempt;
     last = await p.attempt();
-    if (last.ok || !isMcpAvailabilityFailure(last.failure)) break;
+    if (last.ok || !isMcpAvailabilityFailure(last.failure) || writeOutcomeUnclear(last)) break;
     if (attempt >= max_attempts - 1) break;
     const wait = backoffMs(attempt, policy.backoff_base_ms);
     logger.info({
@@ -124,6 +131,22 @@ export async function runMcpWithRetry(p: RunMcpWithRetryParams): Promise<StepRes
       duration_ms: clock.now() - p.start,
       request_meta,
       warnings,
+    };
+  }
+
+  if (writeOutcomeUnclear(last)) {
+    const tool = last.tool_name ?? p.operation;
+    return {
+      status: "failed",
+      output,
+      retry_count: finalAttempt,
+      duration_ms: clock.now() - p.start,
+      request_meta,
+      error: {
+        code: MCP_TIMEOUT_DURING_WRITE,
+        message: `The tool “${tool}” did not answer in time while it was sending a change. It may have reached the target.`,
+        guidance: WRITE_OUTCOME_GUIDANCE,
+      },
     };
   }
 

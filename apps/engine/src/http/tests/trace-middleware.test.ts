@@ -33,10 +33,10 @@ describe("traceMiddleware", () => {
     expect(parseTraceparent("00-4bf92f3577b34da6a3ce929d0e0e4736-0000000000000000-01")).toBeNull();
   });
 
-  test("uses an inbound x-sk-trace-id when shape is valid", async () => {
+  test("uses an inbound x-subkit-trace-id when shape is valid", async () => {
     const app = appWithTrace();
     const res = await app.request("/echo", {
-      headers: { "x-sk-trace-id": "cli-abc12345defgh" },
+      headers: { "x-subkit-trace-id": "cli-abc12345defgh" },
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { trace_id: string };
@@ -44,7 +44,7 @@ describe("traceMiddleware", () => {
     expect(res.headers.get("x-trace-id")).toBe("cli-abc12345defgh");
   });
 
-  test("uses x-trace-id when x-sk-trace-id is absent", async () => {
+  test("uses x-trace-id when x-subkit-trace-id is absent", async () => {
     const app = appWithTrace();
     const res = await app.request("/echo", {
       headers: { "x-trace-id": "cli-zzzzzzzzzzzzz" },
@@ -56,7 +56,7 @@ describe("traceMiddleware", () => {
   test("ignores malformed inbound trace ids and generates a fresh one", async () => {
     const app = appWithTrace();
     const res = await app.request("/echo", {
-      headers: { "x-sk-trace-id": "../../etc/passwd" },
+      headers: { "x-subkit-trace-id": "../../etc/passwd" },
     });
     const body = (await res.json()) as { trace_id: string };
     expect(body.trace_id).not.toBe("../../etc/passwd");

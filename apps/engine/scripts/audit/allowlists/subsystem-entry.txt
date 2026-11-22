@@ -166,7 +166,7 @@ apps/engine/src/chat/intake-handoff.ts                                          
 apps/engine/src/chat/pending-spaces.ts                                             4
 apps/engine/src/chat/principal.ts                                                  3
 apps/engine/src/chat/scheduled/chat-dedup-cleanup-runner.ts                        1
-apps/engine/src/chat/sk-cli/adapter.ts                                             4
+apps/engine/src/chat/subkit-cli/adapter.ts                                             4
 apps/engine/src/chat/slack/adapter.ts                                              2
 apps/engine/src/chat/sync-turn.ts                                                  2
 apps/engine/src/chat/turn-lock.ts                                                  1
@@ -702,7 +702,6 @@ apps/engine/src/execution/wait-reaper.ts                                        
 apps/engine/src/execution/workflow-permission.ts                                   3
 apps/engine/src/execution/workflow-run-admission.ts                                7
 apps/engine/src/feedback/core/redaction.ts                                         1
-apps/engine/src/feedback/rate-limit.ts                                             1
 apps/engine/src/feedback/service.ts                                                9
 apps/engine/src/files/composer-tray.ts                                             2
 apps/engine/src/files/dedup-counter.ts                                             2
@@ -821,7 +820,7 @@ apps/engine/src/http/routes/identity/portal-tokens.ts                           
 apps/engine/src/http/routes/identity/provider-identities.ts                        3
 apps/engine/src/http/routes/identity/providers.ts                                  2
 apps/engine/src/http/routes/identity/sessions.ts                                   4
-apps/engine/src/http/routes/identity/sk-bootstrap.ts                               3
+apps/engine/src/http/routes/identity/subkit-bootstrap.ts                               3
 apps/engine/src/http/routes/identity/system-accounts.ts                            2
 apps/engine/src/http/routes/identity/tenants.ts                                    2
 apps/engine/src/http/routes/identity/users.ts                                      2
@@ -1266,7 +1265,7 @@ apps/engine/src/tasks/run-question.ts                                           
 apps/engine/src/tasks/service/admission.ts                                         5
 apps/engine/src/tasks/service/run-reads.ts                                         2
 apps/engine/src/tasks/service/run-rows.ts                                          10
-apps/engine/src/tasks/service/runs.ts                                              10
+apps/engine/src/tasks/service/runs.ts                                              6
 apps/engine/src/tasks/service/shared.ts                                            17
 apps/engine/src/tasks/service/tasks.ts                                             10
 apps/engine/src/tasks/trace.ts                                                     1

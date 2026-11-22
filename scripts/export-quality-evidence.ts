@@ -76,13 +76,13 @@ export function exportCoverageEvidence(coverageDir: string, destination: string)
 if (import.meta.main) {
   const args = process.argv.slice(2);
   if (args.some((arg) => arg !== "--if-present")) throw new Error("Unknown export option");
-  const coverageDir = resolve(import.meta.dir, "../reports/coverage");
+  const coverageDir = resolve(import.meta.dir, "../.reports/coverage");
   if (args.includes("--if-present") && !pathExists(join(coverageDir, "latest.json"))) {
     console.log("No published coverage run to export");
   } else {
     const runId = exportCoverageEvidence(
       coverageDir,
-      resolve(import.meta.dir, "../reports/quality-export/coverage"),
+      resolve(import.meta.dir, "../.reports/quality-export/coverage"),
     );
     console.log(`Exported complete coverage evidence: ${runId}`);
   }

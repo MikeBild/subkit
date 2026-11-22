@@ -22,15 +22,15 @@ let suite: McpTestSuite;
 let prevMode: string | undefined;
 
 beforeAll(async () => {
-  prevMode = testEnv.SK_MCP_MODE;
-  testEnv.SK_MCP_MODE = "admin";
+  prevMode = testEnv.SUBKIT_MCP_MODE;
+  testEnv.SUBKIT_MCP_MODE = "admin";
   suite = await startMcpTestSuite("self-healing-scan");
 });
 
 afterAll(async () => {
   await suite.cleanup();
-  if (prevMode === undefined) delete testEnv.SK_MCP_MODE;
-  else testEnv.SK_MCP_MODE = prevMode;
+  if (prevMode === undefined) delete testEnv.SUBKIT_MCP_MODE;
+  else testEnv.SUBKIT_MCP_MODE = prevMode;
 });
 
 describe("mcp self_healing_scan tool", () => {

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { copyFile, mkdir, readdir, readFile } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
-import { renderRuntimeNotices } from "../../../scripts/runtime-notices.ts";
+import { renderRuntimeNotices } from "../../../scripts/lib/runtime-notices.ts";
 import {
   collectNotices,
   noticeInputs,

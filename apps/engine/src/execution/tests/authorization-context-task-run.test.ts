@@ -51,6 +51,7 @@ async function insertTask(
   const [task] = await ctx.testDb.db
     .insert(tasks)
     .values({
+      locale: "de",
       tenant_id: tenantId,
       name: "Weekly report",
       owner_id: ownerId,

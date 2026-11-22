@@ -59,7 +59,7 @@ export const MUTATION_RUNTIME_ARTIFACTS = [
   "apps/engine/assets/embeddings/onnxruntime/ort-wasm-simd-threaded.asyncify.wasm",
   "assets/clipper/clipper.zip",
   "assets/clipper/manifest.json",
-  "dist/sk",
+  "dist/subkit",
 ] as const;
 
 export interface MutationRuntimeSnapshot {
@@ -119,8 +119,8 @@ function artifactRows(repo: string): MutationRuntimeSnapshot["artifacts"] {
     );
     const stat = lstatSync(source);
     const executable = (stat.mode & 0o111) !== 0;
-    if (path === "dist/sk" && !executable)
-      throw new Error("runtime artifact dist/sk must be executable");
+    if (path === "dist/subkit" && !executable)
+      throw new Error("runtime artifact dist/subkit must be executable");
     return { path, sha256: sha(readFileSync(source)), bytes: stat.size, executable };
   });
 }
@@ -274,7 +274,7 @@ export function rehydrateMutationRuntimeSnapshot(input: {
 }): MutationRuntimeSnapshot {
   const snapshot = validateMutationRuntimeSnapshot(input);
   for (const artifact of snapshot.artifacts) {
-    if (artifact.executable !== (artifact.path === "dist/sk"))
+    if (artifact.executable !== (artifact.path === "dist/subkit"))
       throw new Error("runtime snapshot executable inventory is invalid");
     chmodSync(join(input.path, artifact.path), artifact.executable ? 0o555 : 0o444);
   }

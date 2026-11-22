@@ -23,7 +23,7 @@ describe("local CLI OAuth browser fixture", () => {
       cleanups.push(fixture.cleanup);
       const dir = fixture.env.PATH?.split(path.delimiter)[0] ?? "";
 
-      expect(fixture.env.SK_E2E_OAUTH_ENGINE_ORIGIN).toBe("http://127.0.0.1:3210");
+      expect(fixture.env.SUBKIT_E2E_OAUTH_ENGINE_ORIGIN).toBe("http://127.0.0.1:3210");
       expect(existsSync(path.join(dir, "open"))).toBe(true);
       expect(existsSync(path.join(dir, "xdg-open"))).toBe(true);
       expect(statSync(path.join(dir, "open")).mode & 0o111).not.toBe(0);

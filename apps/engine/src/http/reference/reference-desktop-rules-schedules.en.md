@@ -1,14 +1,14 @@
 ---
 slug: reference-desktop-rules-schedules
 title: Reference: desktop app, rules, schedules and problem reports
-summary: Look up the routes, fields, events, audit actions and settings added in version 11.2.0.
+summary: Look up the routes, fields, events, audit actions and settings for the desktop app, rules, schedules and problem reports.
 section: reference
 order: 5
 audience: public
 ---
 ## Reference: desktop app, rules, schedules and problem reports
 
-This page lists what version 11.2.0 added to the HTTP API, the events, the audit trail and the settings.
+This page lists the HTTP API, the events, the audit trail and the settings for the desktop app, rules, schedules and problem reports.
 It is for developers and operators who build on these parts. The task-oriented chapters are “SubKit Desktop”, “When SubKit asks”, “Keep an eye on schedules”, “Notifications and quiet hours”, “Set SubKit up for yourself” and “Report a bug”.
 The complete, machine-readable description of every route is at `/openapi.json` on your engine.
 
@@ -150,7 +150,7 @@ Query parameters of `GET /v1/identity/desktop-login/start`:
 | `device_id` | A UUID the app creates once per server profile. |
 | `device_label` | 1 to 64 characters without control characters. |
 | `redirect_uri` | Optional: `subkit://callback` or, where accepted, `subkit-dev://callback`. |
-| `app_version` | The version of the app such as `1.4.0`, also with a pre-release tag such as `1.4.0-beta.1`. Without it, or below `server.desktop_min_version`, the engine answers `426`. |
+| `app_version` | The version of the app such as `@@SUBKIT_VERSION@@`, also with a pre-release tag such as `@@SUBKIT_VERSION@@-beta.1`. Without it, or below `server.desktop_min_version`, the engine answers `426`. |
 
 Body of `POST /v1/identity/desktop-session`: `code` (43 characters), `code_verifier` (43 to 128 characters), `app_version` and optionally `state`. The answer is `200` with `installation_id`, `cockpit_path` and `created`, and it sets the session cookie.
 
@@ -186,7 +186,7 @@ The fields of `clients.desktop` in `/.well-known/service-descriptor.json` are de
 
 ### Events and attention items
 
-Three event types are new. All three can be used in subscriptions and webhooks, and the `sk` inbox of a new workspace receives them.
+Three event types are new. All three can be used in subscriptions and webhooks, and the `subkit` inbox of a new workspace receives them.
 
 | Event | Sent when | Fields |
 | --- | --- | --- |
@@ -229,7 +229,7 @@ An action that ran in chat without a question is written as `tool_policy.confirm
 
 | Setting | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `server.desktop_min_version` | Version such as `1.4.0` | `0.1.0` | Oldest SubKit Desktop version this engine accepts. Published as `clients.desktop.min_version` and enforced by the engine at the desktop sign-in (`426 desktop_app_outdated`). |
+| `server.desktop_min_version` | Version such as `@@SUBKIT_VERSION@@` | `@@DESKTOP_MIN_APP_VERSION@@` | Oldest SubKit Desktop version this engine accepts. Published as `clients.desktop.min_version` and enforced by the engine at the desktop sign-in (`426 desktop_app_outdated`). |
 | `server.desktop_dev_callback` | `true` or `false` | `false` | Also accept `subkit-dev://callback` as a sign-in target, for development builds. |
 
 Both also appear in the generated settings reference. The thresholds for schedules, rules and notices are fixed and have no setting: backoff from 3 failures, pause at 5, history for 90 days, rules for 90 days with 20 runs a day, before an approval ends a notice in the overview 7 days before, with push also on devices, and a notification through channels and rules 3 days before.

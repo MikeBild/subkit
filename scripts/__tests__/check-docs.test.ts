@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DOCS_SECTIONS, type DocsBundle, DocsBundleSchema } from "@shared/llms-index.ts";
 import { checkDocs, type DocsPaths, type Finding } from "../check-docs.ts";
-import { headings, images, servedImageSrc } from "../docs-source.ts";
+import { headings, images, servedImageSrc } from "../lib/docs-source.ts";
 
 let root: string;
 let paths: DocsPaths;
@@ -23,8 +23,8 @@ const EN_GUIDE =
 const DE_GUIDE =
   "# Anleitung\n\nLies die [Details](#einzelheiten) und [die Referenz](cli.md#befehle).\n\n## Einzelheiten\n\nRufe https://api.stripe.com/v1 auf.\n";
 const EN_CLI =
-  "# CLI\n\n## Commands\n\nRun `sk` at 127.0.0.1 or https://github.com/example/tool.\n";
-const DE_CLI = "Die Befehlsreferenz bleibt auf Englisch.\n\n# CLI\n\n## Befehle\n\nRun `sk`.\n";
+  "# CLI\n\n## Commands\n\nRun `subkit` at 127.0.0.1 or https://github.com/example/tool.\n";
+const DE_CLI = "Die Befehlsreferenz bleibt auf Englisch.\n\n# CLI\n\n## Befehle\n\nRun `subkit`.\n";
 
 let pages: PageSpec[];
 let chapters: Record<string, string>;
@@ -115,7 +115,7 @@ function run(): Finding[] {
     if (p.llms_path) sections.set(p.llms_path, [...(sections.get(p.llms_path) ?? []), p.en]);
   }
   const full = [
-    "# sk\n\n- [Guide](llms/guide.md)\n- [CLI](llms/cli.md)",
+    "# subkit\n\n- [Guide](llms/guide.md)\n- [CLI](llms/cli.md)",
     ...[...sections].map(([path, bodies]) => `\n<!-- Source: ${path} -->\n\n${bodies.join("\n")}`),
   ].join("\n");
   writeFileSync(join(paths.llmsDir, "llms-full.txt"), `${full}\n`);
@@ -270,8 +270,8 @@ describe("checkDocs", () => {
   });
 
   test("accepts near misses of local-only names", () => {
-    guide().en += `\nSet SK_API_KEY or \${SK_API_KEY}, read key.txt docs, and keep build artifacts/ out of http://localhost:3000/demo.\n`;
-    guide().en += "\nRun `sk verify` or `bun run verifying` and `bun run demos`.\n";
+    guide().en += `\nSet SUBKIT_API_KEY or \${SUBKIT_API_KEY}, read key.txt docs, and keep build artifacts/ out of http://localhost:3000/demo.\n`;
+    guide().en += "\nRun `subkit verify` or `bun run verifying` and `bun run demos`.\n";
     expect(run()).toEqual([]);
   });
 

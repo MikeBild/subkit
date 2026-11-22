@@ -1,3 +1,10 @@
+export type {
+  PreparedVaultValue,
+  PreparedVaultValues,
+  VaultInjection,
+  VaultInjectionFailure,
+} from "./core/injection.ts";
+export { injectVaultValue, vaultValueKey } from "./core/injection.ts";
 export {
   connectorItemName,
   normalizeItemName,
@@ -11,6 +18,7 @@ export {
   deleteVaultItem,
   getVaultItem,
   listVaultItems,
+  prepareVaultValues,
   resolveVaultHandle,
   revealVaultItem,
   updateVaultItem,

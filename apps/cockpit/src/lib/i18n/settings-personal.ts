@@ -95,6 +95,9 @@ export const settingsPersonalEn = {
   "settings.workspace.nameError": "Give your workspace a name.",
   "settings.workspace.timezone": "Which time zone do you work in?",
   "settings.workspace.timezoneHelp": "Scheduled runs and quiet hours follow it.",
+  "settings.workspace.language": "Which language does your workspace use?",
+  "settings.workspace.languageHelp":
+    "For texts without a person’s own language, such as device names and scheduled tasks.",
   "settings.workspace.look": "How should SubKit look for your team?",
   "settings.workspace.lookHelp": "Logos, a subtitle and colors of this workspace.",
   "settings.personal.forbidden":
@@ -217,6 +220,9 @@ export const settingsPersonalDe: Record<keyof typeof settingsPersonalEn, string>
   "settings.workspace.nameError": "Gib deinem Arbeitsbereich einen Namen.",
   "settings.workspace.timezone": "In welcher Zeitzone arbeitet ihr?",
   "settings.workspace.timezoneHelp": "Geplante Abläufe und Ruhezeiten richten sich danach.",
+  "settings.workspace.language": "Welche Sprache nutzt euer Arbeitsbereich?",
+  "settings.workspace.languageHelp":
+    "Für Texte ohne eigene Sprache einer Person, etwa Gerätenamen und geplante Aufgaben.",
   "settings.workspace.look": "Wie soll SubKit bei euch aussehen?",
   "settings.workspace.lookHelp": "Logos, Untertitel und Farben dieses Arbeitsbereichs.",
   "settings.personal.forbidden":

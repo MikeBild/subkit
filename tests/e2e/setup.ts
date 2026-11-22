@@ -31,7 +31,7 @@ async function ensureEngineConfigLoaded(): Promise<void> {
     getEngineConfig();
     return;
   } catch {}
-  const dir = mkdtempSync(path.join(tmpdir(), "sk-cfg-e2e-"));
+  const dir = mkdtempSync(path.join(tmpdir(), "subkit-cfg-e2e-"));
   await loadEngineConfig({
     env: { DATABASE_URL: "postgres://placeholder/e2e", NODE_ENV: "test" },
     configPathOverride: path.join(dir, "subkit.config.json"),
@@ -161,7 +161,7 @@ export async function closeHttpServer(
 }
 
 export function providerFromEnv(): string | undefined {
-  const raw = process.env.SK_OVERRIDE_LLM_PROVIDER ?? process.env.LLM_PROVIDER;
+  const raw = process.env.SUBKIT_OVERRIDE_LLM_PROVIDER ?? process.env.LLM_PROVIDER;
   return raw?.toLowerCase();
 }
 
@@ -187,13 +187,13 @@ function detectRealProvider(): { provider: string; reason: string } {
   }
   throw new Error(
     "E2E boot() needs either a mock provider, AI_GATEWAY_API_KEY + AI_GATEWAY_MODEL, " +
-      "or SK_OVERRIDE_LLM_PROVIDER (or LLM_PROVIDER) set to " +
+      "or SUBKIT_OVERRIDE_LLM_PROVIDER (or LLM_PROVIDER) set to " +
       `${DIRECT_E2E_PROVIDERS.join("/")} with the matching credentials.`,
   );
 }
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../..");
-const SK_BIN = path.join(REPO_ROOT, "dist/sk");
+const SUBKIT_BIN = path.join(REPO_ROOT, "dist/subkit");
 
 function sha256Hex(value: string): string {
   return createHash("sha256").update(value).digest("hex");
@@ -277,7 +277,7 @@ export async function boot(label: string, opts: BootOpts = {}): Promise<E2EEnv> 
 
   const personas = {} as Record<PersonaName, Persona>;
   for (const def of PERSONA_DEFS) {
-    const homeDir = mkdtempSync(path.join(tmpdir(), `sk-e2e-${def.name}-`));
+    const homeDir = mkdtempSync(path.join(tmpdir(), `subkit-e2e-${def.name}-`));
 
     const [user] = await testDb.db
       .insert(users)
@@ -396,7 +396,7 @@ export async function cli(
 ): Promise<CliResult> {
   const persona = opts.persona ? opts.env.personas[opts.persona] : opts.env.personas.admin;
 
-  const proc = Bun.spawn([SK_BIN, ...args], {
+  const proc = Bun.spawn([SUBKIT_BIN, ...args], {
     cwd: REPO_ROOT,
     env: {
       ...process.env,
@@ -461,7 +461,7 @@ export function expectSuccess(result: CliResult, context?: string): void {
 
 export async function run(args: string[], opts: Parameters<typeof cli>[1]): Promise<string> {
   const result = await cli(args, opts);
-  expectSuccess(result, `sk ${args.join(" ")}`);
+  expectSuccess(result, `subkit ${args.join(" ")}`);
   return result.stdout;
 }
 
@@ -470,6 +470,6 @@ export async function runJson<T = unknown>(
   opts: Parameters<typeof cli>[1],
 ): Promise<T> {
   const result = await cli([...args, "--json"], opts);
-  expectSuccess(result, `sk ${args.join(" ")} --json`);
+  expectSuccess(result, `subkit ${args.join(" ")} --json`);
   return parseJson<T>(result);
 }

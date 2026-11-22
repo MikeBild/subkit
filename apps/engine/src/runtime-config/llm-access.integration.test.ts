@@ -57,7 +57,7 @@ beforeAll(async () => {
   await configureHostedPolicyForTests(tdb.db, tdb.url);
   first = await workspace("first-owner");
   second = await workspace("second-owner");
-  configDir = mkdtempSync(join(tmpdir(), "sk-llm-access-"));
+  configDir = mkdtempSync(join(tmpdir(), "subkit-llm-access-"));
   _resetConfigForTests();
   await loadConfig({
     env: { DATABASE_URL: tdb.url, NODE_ENV: "test" },

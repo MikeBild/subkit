@@ -1,0 +1,29 @@
+volumes:
+  demo-postgres:
+  demo-objects:
+
+services:
+  postgres:
+    volumes:
+      - demo-postgres:/var/lib/postgresql
+
+  object-store:
+    volumes:
+      - demo-objects:/data
+
+  demo-api:
+    image: oven/bun:1.4.5-debian@sha256:3dddea58e1f8f2240eca906b023fedb944f9a8352515a35309fd0c879fe00aaa
+    command: ["bun", "--watch", "/demo/server.ts"]
+    volumes:
+      - ../scripts/lib/cockpit-demo-server.ts:/demo/server.ts:ro
+    healthcheck:
+      test: ["CMD", "bun", "-e", "if (!(await fetch('http://127.0.0.1:8080/health')).ok) process.exit(1)"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  engine:
+    image: ${SUBKIT_TEST_IMAGE:-subkit:cockpit-demo}
+    depends_on:
+      demo-api:
+        condition: service_healthy

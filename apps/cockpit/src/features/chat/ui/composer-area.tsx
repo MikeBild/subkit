@@ -26,8 +26,6 @@ export function ChatComposerArea({
   runScope,
   composerHint,
   initialInput,
-  choiceOpen,
-  formOpen,
   pendingText,
   attachments,
   setAttachments,
@@ -44,8 +42,6 @@ export function ChatComposerArea({
   runScope: string | null;
   composerHint: { text: string; visible: boolean } | null;
   initialInput: string;
-  choiceOpen: boolean;
-  formOpen: boolean;
   pendingText: ChatText | null;
   attachments: PendingAttachment[];
   setAttachments: React.Dispatch<React.SetStateAction<PendingAttachment[]>>;
@@ -109,8 +105,7 @@ export function ChatComposerArea({
         />
         <PromptInputProvider key={sessionKey} initialInput={initialInput}>
           <ChatComposer
-            disabled={busy || choiceOpen || formOpen}
-            locked={choiceOpen || formOpen}
+            disabled={busy}
             status={status}
             placeholder={
               pendingText

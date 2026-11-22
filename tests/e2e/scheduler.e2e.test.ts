@@ -76,10 +76,10 @@ describe("workflow schedule fan-out", () => {
     expect(await findScheduledExecutions(env, workflowId)).toHaveLength(0);
   }, 60_000);
 
-  test("sk schedules list surfaces the bound schedule", async () => {
+  test("subkit schedules list surfaces the bound schedule", async () => {
     const { id: workflowId } = await seedWorkflow(env, { description: "cli schedule" });
     await seedSchedule(env, workflowId, { cron: "0 9 * * *", timezone: "Europe/Berlin" });
     const result = await cli(["schedules", "list"], { env, persona: "admin" });
-    expectSuccess(result, "sk schedules list");
+    expectSuccess(result, "subkit schedules list");
   }, 60_000);
 });

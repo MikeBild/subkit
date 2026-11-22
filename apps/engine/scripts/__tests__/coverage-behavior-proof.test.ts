@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
-import { runIsolatedTestFile } from "../../../sk/src/tests/run-isolated-test-file.ts";
+import { runIsolatedTestFile } from "../../../subkit/src/tests/run-isolated-test-file.ts";
 import {
   type CoverageBehaviorProof,
   executeCoverageBehaviorTests,
@@ -131,7 +131,7 @@ test("runs a real isolated child, exports its terminal chain, and rejects a fail
   const clone = join(repo, ".artifacts", `coverage-behavior-clone-${randomUUID()}`);
   mkdirSync(source, { recursive: true });
   mkdirSync(clone, { recursive: true });
-  const artifactRoot = join(source, "reports", "coverage", "behavior");
+  const artifactRoot = join(source, ".reports", "coverage", "behavior");
   const expected = {
     wave_id: "wave",
     manifest_sha256: "a".repeat(64),

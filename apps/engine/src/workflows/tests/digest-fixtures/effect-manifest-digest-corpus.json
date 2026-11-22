@@ -11956,10 +11956,10 @@
             "configuration_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
             "credential_binding_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
             "rewrites_target": false,
-            "target": "https://contentkit.example.test/v1/content/{approved-item}/revisions",
+            "target": "https://editorial.example.test/v1/content/{approved-item}/revisions",
             "content_publication": {
               "kind": "content_revision",
-              "origin": "https://contentkit.example.test",
+              "origin": "https://editorial.example.test",
               "item_ids": [
                 "00000000-0000-4000-8000-00000000000a",
                 "00000000-0000-4000-8000-00000000000b"
@@ -11977,10 +11977,10 @@
             "configuration_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
             "credential_binding_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
             "rewrites_target": false,
-            "target": "https://contentkit.example.test/v1/sites/00000000-0000-4000-8000-00000000000c/releases",
+            "target": "https://editorial.example.test/v1/sites/00000000-0000-4000-8000-00000000000c/releases",
             "content_publication": {
               "kind": "content_release",
-              "origin": "https://contentkit.example.test",
+              "origin": "https://editorial.example.test",
               "site_id": "00000000-0000-4000-8000-00000000000c",
               "reason": "weekly release",
               "sources": [
@@ -11996,7 +11996,7 @@
           }
         ]
       },
-      "digest": "81637ecac62fee67bb7b27c65d36a4d7e8ea85eb4906a9298e43046b62d3deb0"
+      "digest": "6f580533af9891a2a9247bdc0d0e92eadd11a534fc40b1585ff95947a4e35f42"
     },
     {
       "input": {

@@ -304,8 +304,8 @@ describe("docs model", () => {
       "cli",
       0,
       "public",
-      content("sk CLI reference", "Intro.\n\n# sk CLI reference\n\n## Commands", [
-        { depth: 1, text: "sk CLI reference", anchor: "sk-cli-reference" },
+      content("subkit CLI reference", "Intro.\n\n# subkit CLI reference\n\n## Commands", [
+        { depth: 1, text: "subkit CLI reference", anchor: "subkit-cli-reference" },
         { depth: 2, text: "Commands", anchor: "commands" },
       ]),
     );

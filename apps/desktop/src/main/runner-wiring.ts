@@ -17,12 +17,20 @@ import {
 import type { LiveEvent } from "../shared/local/live-view-model.ts";
 import type { Permissions } from "../shared/local/permission-model.ts";
 import type { RunnerBrowserConfig, RunnerState } from "../shared/local/runner-port.ts";
+import { problemLine } from "../shared/local/runner-problems.ts";
+import {
+  offeredDeviceCapabilities,
+  platformCapabilities,
+  supports,
+} from "../shared/platform-capabilities.ts";
 import type { LocalAllowances } from "./local-allowances.ts";
 import { markQuarantine } from "./quarantine.ts";
 import { createRunnerHost, type RunnerHost } from "./runner-host.ts";
 import type { SecretVault } from "./vault.ts";
 import { volumeIdOf } from "./volume-id.ts";
 import type { WorkspaceApi } from "./workspace-api.ts";
+
+const PLATFORM = platformCapabilities(process.platform, process.arch);
 
 export const ENROLL_RETRY_MAX_MS = 30 * 60_000;
 
@@ -44,6 +52,8 @@ export interface RunnerWiringOptions {
   readonly browserHost: { killAll(): Promise<unknown> };
   readonly permissions: () => Permissions;
   readonly onLive: (event: LiveEvent, screenshot?: Uint8Array) => void;
+  readonly onBusy: (commandId: string, busy: boolean) => void;
+  readonly onExit: () => void;
   readonly idleSeconds: () => number | null;
   readonly target: () => RunnerTarget | null;
   readonly onEnrolled: () => void;
@@ -116,7 +126,7 @@ export class RunnerWiring {
 
   private async ensure(): Promise<void> {
     const target = this.options.target();
-    if (!target) {
+    if (!target || !supports(PLATFORM, "files")) {
       await this.shutdown();
       return;
     }
@@ -160,7 +170,7 @@ export class RunnerWiring {
   }
 
   private capabilities(browser: RunnerBrowserConfig | null): DeviceCapability[] {
-    return [
+    return offeredDeviceCapabilities(PLATFORM, [
       "files",
       ...(browser ? (["browser"] as const) : []),
       ...(computerOffered({
@@ -169,7 +179,7 @@ export class RunnerWiring {
       })
         ? (["computer"] as const)
         : []),
-    ];
+    ]);
   }
 
   private hostFor(
@@ -197,6 +207,8 @@ export class RunnerWiring {
       computer: this.options.computer,
       permissions: this.options.permissions,
       onLive: this.options.onLive,
+      onBusy: this.options.onBusy,
+      onExit: this.options.onExit,
       idleSeconds: this.options.idleSeconds,
       files: () => allowances.snapshot(),
       mayTouch: (path) => allowances.mayTouch(path),
@@ -211,6 +223,7 @@ export class RunnerWiring {
         }
         this.options.onState(state);
       },
+      onProblem: (problem) => this.options.onError(`runner.${problem.scope}`, problemLine(problem)),
       now: Date.now,
     });
   }

@@ -1,7 +1,9 @@
-export function conversationLocale(
+import { DEFAULT_WORKSPACE_LANGUAGE, type WorkspaceLanguage } from "@shared/workspace-language.ts";
+
+export function requestLanguage(
   cookieHeader: string | undefined,
   acceptLanguage: string | undefined,
-): "de" | "en" {
+): WorkspaceLanguage | null {
   const cookie = cookieHeader
     ?.split(";")
     .map((item) => item.trim())
@@ -27,5 +29,12 @@ export function conversationLocale(
     if (language === "de" || language?.startsWith("de-")) return "de";
     if (language === "en" || language?.startsWith("en-")) return "en";
   }
-  return "en";
+  return null;
+}
+
+export function conversationLocale(
+  cookieHeader: string | undefined,
+  acceptLanguage: string | undefined,
+): WorkspaceLanguage {
+  return requestLanguage(cookieHeader, acceptLanguage) ?? DEFAULT_WORKSPACE_LANGUAGE;
 }

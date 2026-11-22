@@ -14,7 +14,7 @@ interface Entry {
 
 const ENTRIES: ReadonlyArray<Entry> = [
   { path: "/docker-compose.yml", what: "The topology that runs this exact release" },
-  { path: "/install", what: "Installer for the matching sk command-line client" },
+  { path: "/install", what: "Installer for the matching subkit command-line client" },
   {
     path: "/install/skill",
     what: "Installer for an agent skill that asks the make-or-buy question mid-build",
@@ -51,7 +51,7 @@ function escapeHtml(value: string): string {
 
 function renderMarkdown(origin: string): string {
   const rows = ENTRIES.map((e) => `- [${e.path}](${origin}${e.path}) — ${e.what}`).join("\n");
-  return `# sk
+  return `# subkit
 
 A governed workflow engine, version ${OPENAPI_INFO.version}, reachable at ${origin}.
 

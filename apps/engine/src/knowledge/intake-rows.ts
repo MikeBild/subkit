@@ -5,7 +5,12 @@ import { auditAwait } from "../audit/audit.ts";
 import type { AuditAction } from "../audit/types.ts";
 import type { Executor } from "../db/client.ts";
 import { intakeCategoryDefaults, type intakeItems } from "../db/schema/intake.ts";
-import type { IntakeItemOriginFilter, IntakeItemView } from "./intake-types.ts";
+import {
+  ANONYMOUS_COLLECTOR,
+  type IntakeCollector,
+  type IntakeItemOriginFilter,
+  type IntakeItemView,
+} from "./intake-types.ts";
 
 export const DEFAULT_INTAKE_CATEGORY = "inbox";
 
@@ -28,6 +33,16 @@ export function intakeActor(kind: string, id: string): Actor {
   return { kind: kind === "user" ? "user" : "system_account", id };
 }
 
+export function intakeCollector(kind: string, id: string | null): IntakeCollector {
+  return kind === "anonymous" || id === null ? ANONYMOUS_COLLECTOR : intakeActor(kind, id);
+}
+
+export function collectorAuditActor(actor: IntakeCollector) {
+  return actor.kind === "anonymous"
+    ? { actor_type: "unknown" as const, actor_id: null }
+    : auditActor(actor);
+}
+
 export function intakeItemView(row: typeof intakeItems.$inferSelect): IntakeItemView {
   return {
     id: row.id,
@@ -40,7 +55,7 @@ export function intakeItemView(row: typeof intakeItems.$inferSelect): IntakeItem
     note: row.note,
     state: row.state,
     version: row.version,
-    collected_by: intakeActor(row.collected_by_type, row.collected_by_id),
+    collected_by: intakeCollector(row.collected_by_type, row.collected_by_id),
     admitted_target_kind: row.admitted_target_kind,
     admitted_target_id: row.admitted_target_id,
     attachment:
@@ -53,7 +68,7 @@ export function intakeItemView(row: typeof intakeItems.$inferSelect): IntakeItem
 export async function recordIntakeAudit(
   tx: Executor,
   tenant_id: string,
-  actor: Actor,
+  actor: IntakeCollector,
   action: (typeof AuditAction)[keyof typeof AuditAction],
   resource_type: string,
   resource_id: string,
@@ -62,7 +77,7 @@ export async function recordIntakeAudit(
   await auditAwait(
     {
       tenant_id,
-      ...auditActor(actor),
+      ...collectorAuditActor(actor),
       action,
       resource_type,
       resource_id,

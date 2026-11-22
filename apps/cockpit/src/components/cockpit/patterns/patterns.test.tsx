@@ -48,7 +48,7 @@ describe("P1 Page", () => {
       expect(count(html, new RegExp(width.replace(/[[\]]/g, "\\$&"), "g"))).toBe(2);
       expect(count(html, /mx-auto/g)).toBe(0);
       expect(html).toContain("px-4 sm:px-8");
-      expect(html).toContain('data-family-slot="scroll-region"');
+      expect(html).toContain('data-sk-slot="scroll-region"');
     }
     expect(READING_COLUMN).not.toContain("mx-auto");
   });
@@ -71,8 +71,8 @@ describe("P1 Page", () => {
         body
       </Page>,
     );
-    expect(html).not.toContain('data-family-slot="scroll-region"');
-    expect(html).toContain('data-family-slot="filters"');
+    expect(html).not.toContain('data-sk-slot="scroll-region"');
+    expect(html).toContain('data-sk-slot="filters"');
     expect(html).toContain('data-testid="p"');
   });
 });

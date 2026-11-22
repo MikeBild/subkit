@@ -146,13 +146,13 @@ describe("stateless transform endpoint", () => {
   }, 30_000);
 });
 
-describe("sk executions CLI", () => {
-  test("sk executions list returns rows after a run", async () => {
+describe("subkit executions CLI", () => {
+  test("subkit executions list returns rows after a run", async () => {
     const api = apiClient(env);
     const { id } = await seedWorkflow(env, { description: "cli executions" });
     await api.post<RunResponse>("/v1/executions", { source: "saved", workflow_id: id, input: {} });
 
     const result = await cli(["executions", "list"], { env, persona: "admin" });
-    expectSuccess(result, "sk executions list");
+    expectSuccess(result, "subkit executions list");
   }, 60_000);
 });

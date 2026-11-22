@@ -54,9 +54,9 @@ const COMPOSE = [
   "-p",
   PROJECT,
   "-f",
-  "docker-compose.test.yml",
+  "docker/docker-compose.test.yml",
   "-f",
-  "docker-compose.demo.yml",
+  "docker/docker-compose.demo.yml",
 ];
 const env = {
   ...process.env,

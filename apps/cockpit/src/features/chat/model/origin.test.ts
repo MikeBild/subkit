@@ -6,12 +6,12 @@ const t = ((key: string) =>
   ({
     "chat.origin.web": "Cockpit",
     "chat.origin.api": "API",
-    "chat.origin.sk_interactive": "sk",
+    "chat.origin.sk_interactive": "subkit",
     "chat.origin.mcp": "MCP",
     "chat.origin.chat": "Chat",
     "chat.origin.slack": "Slack",
     "chat.origin.google_chat": "Google Chat",
-    "chat.origin.sk_headless": "sk (headless)",
+    "chat.origin.sk_headless": "subkit (headless)",
   })[key] ?? key) as never;
 
 const at = "2026-09-04T06:00:00.000Z";

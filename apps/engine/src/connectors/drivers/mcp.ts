@@ -265,6 +265,7 @@ export interface McpInvokeResult {
   structured_content?: unknown;
   bytes: number;
   failure: InvokeRemoteToolResult["failure"];
+  effect: InvokeRemoteToolResult["effect"];
   wire_method: string;
   tool_name?: string;
 }
@@ -339,6 +340,7 @@ export async function invokeMcpConnectorCall(p: {
     ...(res.structured_content !== undefined ? { structured_content: res.structured_content } : {}),
     bytes: res.bytes,
     failure: res.failure,
+    effect: res.effect,
     wire_method: MCP_WIRE_METHOD[p.call.operation],
     ...(tool_name !== undefined ? { tool_name } : {}),
   };

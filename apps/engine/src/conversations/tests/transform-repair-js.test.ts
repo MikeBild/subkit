@@ -18,7 +18,7 @@ async function ensureConfigLoaded(): Promise<void> {
     getConfig();
     return;
   } catch {}
-  const dir = mkdtempSync(join(tmpdir(), "sk-cfg-transform-repair-js-"));
+  const dir = mkdtempSync(join(tmpdir(), "subkit-cfg-transform-repair-js-"));
   await loadConfig({
     env: {
       DATABASE_URL: "postgres://placeholder/transform-repair-js",

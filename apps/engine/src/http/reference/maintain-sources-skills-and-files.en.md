@@ -87,10 +87,10 @@ Good to know:
 
 ### The same in the terminal
 
-You can also replace files with the `sk` command line. How to set it up is in the chapter "Use the sk CLI on your machine".
+You can also replace files with the `subkit` command line. How to set it up is in the chapter "Use the subkit CLI on your machine".
 
 ```bash
-sk files replace <file-id> <path>
-sk files versions <file-id>
-sk files restore <file-id> <version>
+subkit files replace <file-id> <path>
+subkit files versions <file-id>
+subkit files restore <file-id> <version>
 ```

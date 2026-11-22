@@ -4,93 +4,29 @@ import { join } from "node:path";
 import {
   checkForUpdate,
   defaultUpdaterConfig,
-  formatUpdateBanner,
-  isNewer,
+  engineRelease,
+  latestRelease,
   parseChecksum,
-  platformArch,
   readCache,
   type UpdateCache,
-  type UpdateInfo,
   writeCache,
 } from "../updater.ts";
 import {
   makeCacheDir,
   makeConfig,
   makeFetchImpl,
-  makeGitHubResponse,
   TEST_NOW_MS,
   useUpdaterTmpDir,
 } from "./updater-fixtures.ts";
 
 useUpdaterTmpDir();
 
-describe("isNewer", () => {
-  test("returns false for equal versions", () => {
-    expect(isNewer("1.2.3", "1.2.3")).toBe(false);
+function releaseRedirect(tag: string): Response {
+  return new Response(null, {
+    status: 302,
+    headers: { location: `https://github.test/o/r/releases/tag/${tag}` },
   });
-
-  test("returns true when remote major is greater", () => {
-    expect(isNewer("2.0.0", "1.0.0")).toBe(true);
-  });
-
-  test("returns true when remote minor is greater", () => {
-    expect(isNewer("1.3.0", "1.2.0")).toBe(true);
-  });
-
-  test("returns true when remote patch is greater", () => {
-    expect(isNewer("1.2.4", "1.2.3")).toBe(true);
-  });
-
-  test("returns false when remote major is lower", () => {
-    expect(isNewer("0.9.0", "1.0.0")).toBe(false);
-  });
-
-  test("returns false when remote minor is lower", () => {
-    expect(isNewer("1.1.0", "1.2.0")).toBe(false);
-  });
-
-  test("returns false when remote patch is lower", () => {
-    expect(isNewer("1.2.2", "1.2.3")).toBe(false);
-  });
-
-  test("handles versions with missing parts", () => {
-    expect(isNewer("1.2", "1.2.0")).toBe(false);
-    expect(isNewer("1.3", "1.2.0")).toBe(true);
-  });
-
-  test("handles 0.0.0 as local (always outdated for any real version)", () => {
-    expect(isNewer("0.1.0", "0.0.0")).toBe(true);
-  });
-
-  test("handles large version numbers", () => {
-    expect(isNewer("100.200.300", "1.2.3")).toBe(true);
-    expect(isNewer("1.2.3", "100.200.300")).toBe(false);
-  });
-});
-
-describe("platformArch", () => {
-  test("returns os/arch/ext for current platform", () => {
-    const result = platformArch();
-    expect(result).not.toBeNull();
-    expect(result!.os).toBeDefined();
-    expect(result!.arch).toBeDefined();
-    expect(typeof result!.ext).toBe("string");
-  });
-
-  test("returns empty ext for non-windows", () => {
-    const result = platformArch();
-    if (process.platform !== "win32") {
-      expect(result!.ext).toBe("");
-    }
-  });
-
-  test("os matches expected mapping for current platform", () => {
-    const result = platformArch();
-    if (!result) return;
-    const expected: Record<string, string> = { darwin: "darwin", linux: "linux", win32: "windows" };
-    expect(result.os).toBe(expected[process.platform]!);
-  });
-});
+}
 
 describe("parseChecksum", () => {
   test("rejects repeated or malformed entries for the requested asset", () => {
@@ -106,70 +42,46 @@ describe("parseChecksum", () => {
   const hash64b = "b".repeat(64);
 
   test("extracts hash for matching asset name", () => {
-    const sums = `${hash64}  sk_darwin_arm64\n`;
-    expect(parseChecksum(sums, "sk_darwin_arm64")).toBe(hash64);
+    const sums = `${hash64}  subkit-darwin-arm64\n`;
+    expect(parseChecksum(sums, "subkit-darwin-arm64")).toBe(hash64);
   });
 
   test("returns null when asset not found", () => {
-    const sums = `${hash64}  sk_darwin_arm64\n`;
-    expect(parseChecksum(sums, "sk_linux_x64")).toBeNull();
+    const sums = `${hash64}  subkit-darwin-arm64\n`;
+    expect(parseChecksum(sums, "subkit-linux-x64")).toBeNull();
   });
 
   test("handles multiple entries", () => {
-    const sums = `${hash64}  sk_darwin_arm64\n${hash64b}  sk_linux_x64\n`;
-    expect(parseChecksum(sums, "sk_linux_x64")).toBe(hash64b);
-    expect(parseChecksum(sums, "sk_darwin_arm64")).toBe(hash64);
+    const sums = `${hash64}  subkit-darwin-arm64\n${hash64b}  subkit-linux-x64\n`;
+    expect(parseChecksum(sums, "subkit-linux-x64")).toBe(hash64b);
+    expect(parseChecksum(sums, "subkit-darwin-arm64")).toBe(hash64);
   });
 
   test("handles empty file", () => {
-    expect(parseChecksum("", "sk_darwin_arm64")).toBeNull();
+    expect(parseChecksum("", "subkit-darwin-arm64")).toBeNull();
   });
 
   test("handles extra whitespace and blank lines", () => {
-    const sums = `\n  \n${hash64}  sk_darwin_arm64\n\n`;
-    expect(parseChecksum(sums, "sk_darwin_arm64")).toBe(hash64);
-  });
-});
-
-describe("formatUpdateBanner", () => {
-  test("includes version number", () => {
-    const info: UpdateInfo = { version: "2.0.0", tag: "v2.0.0", assets: [], body: "" };
-    const banner = formatUpdateBanner(info, "sk");
-    expect(banner).toContain("2.0.0");
-  });
-
-  test("includes binary name in command suggestion", () => {
-    const info: UpdateInfo = { version: "2.0.0", tag: "v2.0.0", assets: [], body: "" };
-    const banner = formatUpdateBanner(info, "subkit");
-    expect(banner).toContain("subkit update");
+    const sums = `\n  \n${hash64}  subkit-darwin-arm64\n\n`;
+    expect(parseChecksum(sums, "subkit-darwin-arm64")).toBe(hash64);
   });
 });
 
 describe("defaultUpdaterConfig", () => {
-  test("sets correct binaryName and repo", () => {
-    const cfg = defaultUpdaterConfig("sk", "1.0.0");
-    expect(cfg.binaryName).toBe("sk");
-    expect(cfg.githubRepo).toBe("mikebild/subkit");
+  test("selects the release asset of the running platform", () => {
+    const cfg = defaultUpdaterConfig("subkit", "1.0.0");
+    expect(cfg.binaryName).toBe("subkit");
+    expect(cfg.asset === null || cfg.asset.startsWith("subkit-")).toBe(true);
+    expect(cfg.releasesUrl).toBe(
+      process.env.SUBKIT_RELEASES_URL || "https://github.com/MikeBild/subkit/releases",
+    );
   });
 
-  test("sets 24h check interval", () => {
-    const cfg = defaultUpdaterConfig("sk", "1.0.0");
-    expect(cfg.checkIntervalMs).toBe(86_400_000);
-  });
-
-  test("defaults to stable channel", () => {
-    const cfg = defaultUpdaterConfig("sk", "1.0.0");
-    expect(cfg.channel).toBe("stable");
-  });
-
-  test("respects beta channel parameter", () => {
-    const cfg = defaultUpdaterConfig("sk", "1.0.0", "beta");
-    expect(cfg.channel).toBe("beta");
-  });
-
-  test("cacheDir includes binaryName", () => {
+  test("checks once a day and keeps its cache per binary", () => {
     const cfg = defaultUpdaterConfig("my-tool", "1.0.0");
+    expect(cfg.checkIntervalMs).toBe(86_400_000);
     expect(cfg.cacheDir).toContain("my-tool");
+    expect(cfg.asset).toBeNull();
   });
 });
 
@@ -254,7 +166,7 @@ describe("checkForUpdate", () => {
     let fetchCalled = false;
     const fetchImpl = makeFetchImpl(() => {
       fetchCalled = true;
-      return new Response(JSON.stringify(makeGitHubResponse("v2.0.0")));
+      return releaseRedirect("v2.0.0");
     });
     await checkForUpdate(cfg, true, fetchImpl);
     expect(fetchCalled).toBe(true);
@@ -262,9 +174,7 @@ describe("checkForUpdate", () => {
 
   test("returns null when remote version equals local", async () => {
     const cfg = makeConfig({ currentVersion: "1.0.0" });
-    const fetchImpl = makeFetchImpl(
-      () => new Response(JSON.stringify(makeGitHubResponse("v1.0.0"))),
-    );
+    const fetchImpl = makeFetchImpl(() => releaseRedirect("v1.0.0"));
     const result = await checkForUpdate(cfg, true, fetchImpl);
     expect(result).toBeNull();
   });
@@ -293,64 +203,87 @@ describe("checkForUpdate", () => {
     await expect(checkForUpdate(cfg, true, fetchImpl)).rejects.toThrow();
   });
 
-  test("explicit --self-update (force=true) THROWS on a 404 with a private-repo/token hint", async () => {
+  test("explicit check (force=true) THROWS when no release is published", async () => {
     const cfg = makeConfig({ currentVersion: "1.0.0" });
     const fetchImpl = makeFetchImpl(() => new Response("not found", { status: 404 }));
-    await expect(checkForUpdate(cfg, true, fetchImpl)).rejects.toThrow(/private|GITHUB_TOKEN|404/i);
-  });
-
-  test("sends an Authorization header when authToken is set", async () => {
-    const cfg = makeConfig({ currentVersion: "1.0.0", authToken: "test-token-123" });
-    let sawAuth: string | null = null;
-    const fetchImpl = makeFetchImpl((_url, init) => {
-      sawAuth = new Headers(init!.headers as HeadersInit).get("authorization");
-      return new Response(JSON.stringify(makeGitHubResponse("v2.0.0")));
-    });
-    await checkForUpdate(cfg, true, fetchImpl);
-    expect(sawAuth as string | null).toBe("Bearer test-token-123");
-  });
-
-  test("no Authorization header when authToken is unset", async () => {
-    const cfg = makeConfig({ currentVersion: "1.0.0" });
-    let sawAuth: string | null = "unset";
-    const fetchImpl = makeFetchImpl((_url, init) => {
-      sawAuth = new Headers(init!.headers as HeadersInit).get("authorization");
-      return new Response(JSON.stringify(makeGitHubResponse("v2.0.0")));
-    });
-    await checkForUpdate(cfg, true, fetchImpl);
-    expect(sawAuth as string | null).toBeNull();
+    await expect(checkForUpdate(cfg, true, fetchImpl)).rejects.toThrow(/no published release/);
   });
 
   test("writes cache after successful fetch", async () => {
     const cfg = makeConfig({ currentVersion: "1.0.0" });
-    const fetchImpl = makeFetchImpl(
-      () => new Response(JSON.stringify(makeGitHubResponse("v2.0.0"))),
-    );
+    const fetchImpl = makeFetchImpl(() => releaseRedirect("v2.0.0"));
     await checkForUpdate(cfg, true, fetchImpl);
     const cache = readCache(cfg.cacheDir);
     expect(cache).not.toBeNull();
     expect(cache!.latest_version).toBe("2.0.0");
   });
 
-  test("uses /latest for stable channel", async () => {
-    const cfg = makeConfig({ currentVersion: "1.0.0", channel: "stable" });
+  test("asks the latest-release redirect and downloads from the pinned tag", async () => {
+    const cfg = makeConfig({ currentVersion: "1.0.0" });
     let urlCalled = "";
-    const fetchImpl = makeFetchImpl((url) => {
+    const fetchImpl = makeFetchImpl((url, init) => {
       urlCalled = url;
-      return new Response(JSON.stringify(makeGitHubResponse("v2.0.0")));
+      expect(init?.redirect).toBe("manual");
+      return releaseRedirect("v2.0.0");
     });
-    await checkForUpdate(cfg, true, fetchImpl);
-    expect(urlCalled).toContain("/releases/latest");
+    const info = await checkForUpdate(cfg, true, fetchImpl);
+    expect(urlCalled).toBe("https://github.test/o/r/releases/latest");
+    expect(info?.assets.map((a) => a.url)).toEqual([
+      "https://github.test/o/r/releases/download/v2.0.0/test-bin-linux-x64",
+      "https://github.test/o/r/releases/download/v2.0.0/SHA256SUMS",
+      "https://github.test/o/r/releases/download/v2.0.0/SHA256SUMS.sig",
+      "https://github.test/o/r/releases/download/v2.0.0/LICENSE",
+      "https://github.test/o/r/releases/download/v2.0.0/THIRD_PARTY_NOTICES.txt",
+    ]);
+  });
+});
+
+describe("latestRelease", () => {
+  test("returns the latest release even when it is not newer", async () => {
+    const info = await latestRelease(
+      makeConfig({ currentVersion: "3.0.0" }),
+      makeFetchImpl(() => releaseRedirect("v2.0.0")),
+    );
+    expect(info.version).toBe("2.0.0");
+  });
+});
+
+describe("engineRelease", () => {
+  const engine = "https://engine.example.test/";
+
+  test("a signed bundle on the engine is the source of the engine's version", async () => {
+    const seen: string[] = [];
+    const fetchImpl = makeFetchImpl((url) => {
+      seen.push(url);
+      if (url === "https://engine.example.test/health") return Response.json({ version: "2.0.0" });
+      if (url === "https://engine.example.test/install/SHA256SUMS.sig") return new Response("");
+      return new Response("unexpected", { status: 500 });
+    });
+    const info = await engineRelease(makeConfig(), engine, fetchImpl);
+    expect(info.version).toBe("2.0.0");
+    expect(info.assets[0]).toEqual({
+      name: "test-bin-linux-x64",
+      url: "https://engine.example.test/install/test-bin-linux-x64",
+    });
+    expect(seen.some((url) => url.includes("github"))).toBe(false);
   });
 
-  test("uses ?per_page=1 for beta channel", async () => {
-    const cfg = makeConfig({ currentVersion: "1.0.0", channel: "beta" });
-    let urlCalled = "";
-    const fetchImpl = makeFetchImpl((url) => {
-      urlCalled = url;
-      return new Response(JSON.stringify([makeGitHubResponse("v2.0.0-beta.1")]));
-    });
-    await checkForUpdate(cfg, true, fetchImpl);
-    expect(urlCalled).toContain("per_page=1");
+  test("an engine without the bundle points at the release with its version", async () => {
+    const fetchImpl = makeFetchImpl((url) =>
+      url.endsWith("/health")
+        ? Response.json({ version: "2.0.0" })
+        : new Response("absent", { status: 404 }),
+    );
+    const info = await engineRelease(makeConfig(), engine, fetchImpl);
+    expect(info.assets[0]?.url).toBe(
+      "https://github.test/o/r/releases/download/v2.0.0/test-bin-linux-x64",
+    );
+  });
+
+  test("an engine without a release version cannot be matched", async () => {
+    const fetchImpl = makeFetchImpl(() => Response.json({ version: "unknown" }));
+    await expect(engineRelease(makeConfig(), engine, fetchImpl)).rejects.toThrow(
+      "did not report a release version",
+    );
   });
 });

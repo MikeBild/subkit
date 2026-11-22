@@ -48,7 +48,10 @@ export function registerCliSessionRoute(app: OpenAPIHono<AppEnv>): void {
     c.header("Cache-Control", "no-store");
     const token = bearerToken(c.req.header("authorization"));
     if (!token) {
-      throw new UnauthorizedError("missing_or_invalid_cli_oauth_token", 'Bearer realm="sk-cli"');
+      throw new UnauthorizedError(
+        "missing_or_invalid_cli_oauth_token",
+        'Bearer realm="subkit-cli"',
+      );
     }
     const result = await consumeCliLoginToken({
       db: c.get("db"),
@@ -59,9 +62,12 @@ export function registerCliSessionRoute(app: OpenAPIHono<AppEnv>): void {
     });
     if (!result.ok) {
       if (result.error === "insufficient_scope") {
-        throw new ForbiddenError("cli OAuth token lacks sk:login scope");
+        throw new ForbiddenError("cli OAuth token lacks subkit:login scope");
       }
-      throw new UnauthorizedError("invalid_or_expired_cli_oauth_token", 'Bearer realm="sk-cli"');
+      throw new UnauthorizedError(
+        "invalid_or_expired_cli_oauth_token",
+        'Bearer realm="subkit-cli"',
+      );
     }
     return c.json(
       {

@@ -9,7 +9,7 @@ import { routeUp } from "../step-router.ts";
 
 let dir: string;
 beforeAll(async () => {
-  dir = mkdtempSync(join(tmpdir(), "sk-default-route-"));
+  dir = mkdtempSync(join(tmpdir(), "subkit-default-route-"));
   const cfgPath = join(dir, "subkit.config.json");
   writeFileSync(cfgPath, JSON.stringify({ database: { url: "postgres://x:y@127.0.0.1:5432/z" } }));
   _resetConfigForTests();

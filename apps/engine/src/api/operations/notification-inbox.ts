@@ -153,7 +153,7 @@ export const ackNotificationInboxOperation = defineOperation<
   summary: "Mark this caller's inbox tasks read up to a cursor",
   permission: "notification:read",
   effect: "write",
-  audit: AuditAction.SK_CLI_INBOX_ACKED,
+  audit: AuditAction.SUBKIT_CLI_INBOX_ACKED,
   async handler(scope, { up_to_cursor }) {
     const caller = reader(scope.principal);
     if (isRejection(caller)) return caller;

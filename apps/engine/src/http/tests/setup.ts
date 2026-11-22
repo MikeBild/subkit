@@ -34,7 +34,7 @@ async function ensureConfigLoaded(): Promise<void> {
     getConfig();
     return;
   } catch {}
-  const dir = mkdtempSync(join(tmpdir(), "sk-cfg-http-test-"));
+  const dir = mkdtempSync(join(tmpdir(), "subkit-cfg-http-test-"));
   await loadConfig({
     env: { DATABASE_URL: "postgres://placeholder/http-test", NODE_ENV: "test" },
     configPathOverride: join(dir, "subkit.config.json"),
@@ -48,7 +48,7 @@ export async function loadAuthProvidersForTest(
   databaseUrl = "postgres://placeholder/http-test",
   opts: { enableSignup?: boolean } = {},
 ): Promise<void> {
-  const dir = mkdtempSync(join(tmpdir(), "sk-auth-providers-test-"));
+  const dir = mkdtempSync(join(tmpdir(), "subkit-auth-providers-test-"));
   const file = join(dir, "subkit.config.json");
   const enable_signup = opts.enableSignup ?? true;
   await writeFile(file, JSON.stringify({ auth: { providers, enable_signup } }));

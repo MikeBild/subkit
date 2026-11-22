@@ -273,6 +273,35 @@ describe("the task sweep starts scheduled tasks", () => {
     });
   }, 180_000);
 
+  test("a start that stopped after its conversation was attached gets no turn and fails", async () => {
+    const w = await workspace();
+    const task = await scheduled(w, daily);
+    await grant(w, task);
+    await sweep(w, "2027-03-27T07:00:00.000Z");
+    const [run] = await runs(w, task);
+    if (!run?.conversation_id) throw new Error("the run has no conversation");
+    const conversation = and(
+      eq(conversations.tenant_id, w.tenant_id),
+      eq(conversations.id, run.conversation_id),
+    );
+    await db
+      .update(conversations)
+      .set({ playbook: null, playbook_revision: 0, loaded_skills: [] })
+      .where(conversation);
+    expect(await sweep(w, "2027-03-27T07:04:00.000Z")).not.toContain(run.id);
+    expect((await runs(w, task))[0]?.state).toBe("running");
+    expect(await sweep(w, "2027-03-27T07:06:00.000Z")).not.toContain(run.id);
+    expect((await runs(w, task))[0]).toMatchObject({
+      state: "failed",
+      failure_code: "start_failed",
+    });
+    const [closed] = await db
+      .select({ status: conversations.status })
+      .from(conversations)
+      .where(conversation);
+    expect(closed?.status).toBe("abandoned");
+  }, 180_000);
+
   test("a hold never outlives a schedule change and never replaces the due check", async () => {
     const w = await workspace();
     const task = await scheduled(w, daily);

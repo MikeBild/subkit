@@ -22,6 +22,7 @@ import {
   clearPendingRegistrationCookie,
 } from "../../../identity/index.ts";
 import type { AppEnv } from "../../openapi.ts";
+import { feedbackFormLink } from "../feedback-form-page.ts";
 import { parseFormBody } from "../oauth/shared.ts";
 import {
   authHtmlResponse,
@@ -129,8 +130,10 @@ export function registerLoginRoutes(app: OpenAPIHono<AppEnv>): void {
         label: provider.label,
         href: `${base}/v1/identity/login/start?provider=${encodeURIComponent(provider.id)}&login_state=${encodeURIComponent(state)}`,
       }));
-      if (choices.length > 0)
-        return authHtmlResponse(renderProviderChoice(choices, resolvePageLook(c.req.raw.headers)));
+      if (choices.length > 0) {
+        const look = resolvePageLook(c.req.raw.headers);
+        return authHtmlResponse(renderProviderChoice(choices, look, feedbackFormLink(look)));
+      }
       return wantsHtmlPage(c.req.header("accept"))
         ? negotiatedPageResponse(
             renderUnavailablePage(resolvePageLook(c.req.raw.headers), "login"),

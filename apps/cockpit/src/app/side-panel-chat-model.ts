@@ -31,6 +31,19 @@ export function panelSubjectKey(subject: SidePanelSubject | null): string {
   return subject ? `${subject.type}:${subject.id}` : "workspace";
 }
 
+export function panelConversationId(input: {
+  subject: SidePanelSubject | null;
+  thread: string | null;
+  task: { conversationId: string | null; ownerId: string | null } | null;
+  viewer: { id: string | null; admin: boolean };
+}): string | null {
+  if (input.thread) return input.thread;
+  if (input.subject?.type !== "task" || !input.task?.conversationId) return null;
+  const mayContinue =
+    input.viewer.admin || (input.viewer.id !== null && input.viewer.id === input.task.ownerId);
+  return mayContinue ? input.task.conversationId : null;
+}
+
 export interface PanelLine {
   id: string;
   author: "user" | "assistant";

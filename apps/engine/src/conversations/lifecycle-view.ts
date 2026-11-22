@@ -47,7 +47,7 @@ export function surfaceFromClientHeader(value: string | undefined | null): Conve
   switch ((value ?? "").trim().toLowerCase()) {
     case "cockpit":
       return "web";
-    case "sk":
+    case "subkit":
     case "sk_interactive":
       return "sk_interactive";
     case "sk_headless":

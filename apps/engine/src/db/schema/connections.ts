@@ -57,7 +57,6 @@ export const outboundConnectionStarts = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
-    user_id: uuid("user_id"),
     actor_type: text("actor_type").$type<ConnectionStartActorType>().notNull().default("unknown"),
     actor_id: uuid("actor_id"),
     owner_user_id: uuid("owner_user_id").references(() => users.id, { onDelete: "set null" }),

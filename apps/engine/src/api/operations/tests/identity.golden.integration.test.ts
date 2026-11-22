@@ -126,7 +126,7 @@ describe("identity operations keep their HTTP responses byte for byte", () => {
       ["denied", w.deniedKey],
     ] as const) {
       record(`http.whoami.${who}`, await http("GET", "/v1/identity/whoami", undefined, key));
-      record(`http.sk_bootstrap.${who}`, await http("GET", "/v1/sk/bootstrap", undefined, key));
+      record(`http.sk_bootstrap.${who}`, await http("GET", "/v1/subkit/bootstrap", undefined, key));
       record(
         `http.permissions.${who}`,
         await http(

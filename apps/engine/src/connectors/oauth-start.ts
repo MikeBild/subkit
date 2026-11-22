@@ -171,7 +171,7 @@ export async function beginConnectorOAuthDance(
         "bad_request",
         `template "${connector.template_slug}" requires tenant OAuth client credentials, and none are stored`,
         {
-          hint: `run \`sk connector-templates set-oauth ${connector.template_slug}\` (POST /v1/connector-templates/${connector.template_slug}/oauth-credentials), then retry oauth/start`,
+          hint: `run \`subkit connector-templates set-oauth ${connector.template_slug}\` (POST /v1/connector-templates/${connector.template_slug}/oauth-credentials), then retry oauth/start`,
         },
       );
     }

@@ -161,7 +161,7 @@ async function saveTask(ctx: ToolContext, args: SaveTaskArgs): Promise<ToolResul
       "Saving a task over MCP needs a credential with the mcp:authoring scope. Without it, tasks can be listed, started and stopped here and are created in the Cockpit.",
     );
   const operations = await import("../../../../api/operations/tasks.ts");
-  const { TaskCreateInputSchema, TaskUpdateInputSchema } = await import(
+  const { TaskCreateInputSchema, TaskUpdateInputSchema, readTaskSourceOfToolCall } = await import(
     "../../../../tasks/index.ts"
   );
   const scope: OperationScope = {
@@ -189,7 +189,15 @@ async function saveTask(ctx: ToolContext, args: SaveTaskArgs): Promise<ToolResul
       },
     });
     if (!parsed.success) return invalid(parsed.error);
-    const created = await operations.createTaskOperation.handler(scope, parsed.data);
+    const origin = await readTaskSourceOfToolCall(ctx.db, {
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+      tool_call_id: ctx.held_tool_call_id ?? ctx.tool_call_id ?? null,
+    });
+    const created = await operations.createTaskOperation.handler(scope, {
+      ...parsed.data,
+      source: origin,
+    });
     if (isRejection(created)) return operations.taskToolFailure(created);
     return {
       ok: true,

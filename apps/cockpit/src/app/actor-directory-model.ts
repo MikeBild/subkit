@@ -18,10 +18,11 @@ export function actorDirectoryName(directory: ActorDirectory, kind: string, id: 
 
 export function actorLabel(
   directory: ActorDirectory,
-  actor: { kind: string; id: string } | null | undefined,
+  actor: { kind: string; id: string | null } | null | undefined,
   t: (key: TranslationKey) => string,
 ): string | null {
   if (!actor) return null;
+  if (actor.kind === "anonymous") return t("audit.actor.anonymous");
   return (
     actorDirectoryName(directory, actor.kind, actor.id) ??
     t(actor.kind === "user" ? "audit.actor.user" : "audit.actor.systemAccount")

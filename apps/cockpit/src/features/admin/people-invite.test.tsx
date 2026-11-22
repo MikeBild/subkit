@@ -29,7 +29,7 @@ describe("the invitation link step", () => {
       <InviteLinkBody invite={invite} origin="https://subkit.example" selfHosted={false} />,
     );
     expect(html).not.toContain("Mit der Kommandozeile beitreten");
-    expect(html).not.toContain("sk join");
+    expect(html).not.toContain("subkit join");
   });
 
   test("a self-hosted workspace keeps the command, collapsed", () => {

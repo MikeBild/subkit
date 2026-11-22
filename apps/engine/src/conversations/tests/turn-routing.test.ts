@@ -42,7 +42,7 @@ describe("planTurnRouting", () => {
     });
     expect(plan.intent).toBe("surface_help");
     expect(plan.action).toContain("/mcp");
-    expect(plan.action).toContain("sk mcp");
+    expect(plan.action).toContain("subkit mcp");
   });
 
   test("routes schedule questions to the real schedule tool surface", () => {

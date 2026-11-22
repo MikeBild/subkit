@@ -1,6 +1,6 @@
 import { SYSTEM_TENANT_ID } from "../audit/types.ts";
 
-const DEFAULT_CAPACITY_FROM_ENV = (): number => envInt("SK_LOG_RING_SIZE", 10_000);
+const DEFAULT_CAPACITY_FROM_ENV = (): number => envInt("SUBKIT_LOG_RING_SIZE", 10_000);
 
 export interface CapturedLog {
   ts: number;

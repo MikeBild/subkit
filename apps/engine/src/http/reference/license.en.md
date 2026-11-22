@@ -17,7 +17,7 @@ texts of all bundled packages, the embedded embedding model and the Bun runtime.
 
 - **Embedding model:** `paraphrase-multilingual-MiniLM-L12-v2` by sentence-transformers,
   Apache-2.0 per the upstream Hugging Face model card; ONNX conversion by Xenova.
-- **Bun runtime:** the `engine` and `sk` executables contain the Bun runtime, which statically
+- **Bun runtime:** the `engine` and `subkit` executables contain the Bun runtime, which statically
   links LGPL components (JavaScriptCore/WebKit, tinycc). The section "Relinking and
   corresponding source" in `THIRD_PARTY_NOTICES.txt` explains how to rebuild and relink.
 - **Container image:** `/usr/local/share/subkit/` also holds `BASE_IMAGE_INVENTORY.txt`

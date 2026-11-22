@@ -1,8 +1,10 @@
 import { BubbleSkeleton, FadeIn } from "@ui/atoms/skeleton";
 import { useLoadingPhase } from "@ui/lib/loading-phase";
 import { ChatBubble } from "@ui/molecules/chat-bubble";
-import { Fragment } from "react";
+import { Fragment, useEffect, useMemo } from "react";
 import type { ConversationDetail } from "@/api/client";
+import { chatMessageAnchor } from "@/app/links";
+import { useSession } from "@/app/session";
 import { CHAT_COLUMN } from "@/app/shell-header";
 import { MessageResponse } from "@/components/ai-elements/message";
 import {
@@ -15,6 +17,7 @@ import {
   MessageScrollerProvider,
   MessageScrollerViewport,
 } from "@/components/cockpit/patterns";
+import { useConversationTasks } from "@/features/tasks";
 import { DiffCard } from "@/features/workflows";
 import { useI18n } from "@/lib/i18n-context";
 import type { ChatLookups } from "../hooks/lookups";
@@ -24,7 +27,9 @@ import { answerPhase, bubbleContinues, bubbleSide, previousSides } from "../mode
 import { actionLabel, NO_LIVE_REVIEWS, textFromPart } from "../model/labels";
 import { elapsedMs } from "../model/live-calls";
 import { optimisticUiMessage } from "../model/session";
+import { messageIdFromHash, tasksBySourceMessage } from "../model/source-tasks";
 import { ChatMessage } from "./message";
+import { MessageTasks } from "./message-tasks";
 import { FollowSubmittedTurn } from "./parts";
 
 export function ChatTranscript({
@@ -63,6 +68,18 @@ export function ChatTranscript({
   dock: React.ReactNode;
 }) {
   const { t } = useI18n();
+  const { permissions } = useSession();
+  const sourceTasks = useConversationTasks(activeId, permissions.includes("task:read"));
+  const tasksByMessage = useMemo(
+    () => tasksBySourceMessage(sourceTasks.data?.items ?? []),
+    [sourceTasks.data],
+  );
+  const hasMessages = messages.length > 0;
+  useEffect(() => {
+    const target = hasMessages ? messageIdFromHash(window.location.hash) : null;
+    if (target)
+      document.getElementById(chatMessageAnchor(target))?.scrollIntoView({ block: "center" });
+  }, [hasMessages]);
   const {
     sessionKey,
     send,
@@ -126,7 +143,7 @@ export function ChatTranscript({
             ) : (
               messages.map((message, index) => (
                 <Fragment key={message.id}>
-                  <MessageScrollerItem>
+                  <MessageScrollerItem id={chatMessageAnchor(message.id)}>
                     <ChatMessage
                       conversationId={activeId ?? undefined}
                       message={message}
@@ -199,6 +216,10 @@ export function ChatTranscript({
                           operation: beginOperation(),
                         })
                       }
+                    />
+                    <MessageTasks
+                      tasks={tasksByMessage.get(message.id) ?? []}
+                      testId={`chat-message-${index}-tasks`}
                     />
                   </MessageScrollerItem>
                   {index === playbookPlacement.inlineIndex ? playbookSummary : null}

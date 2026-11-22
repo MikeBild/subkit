@@ -20,7 +20,7 @@ SubKit only reports what a person is needed for: something was stopped, somethin
 | The **Needs you** list on the **Overview** | Every open item with cause and action. | Never. The list is always current. |
 | Push in the browser or in the installed web app | One notification per item. A click opens the item. | Yes, according to your choice in **Setup**. |
 | SubKit Desktop | A notification of the operating system and the number on the icon. | According to the quiet hours you set in the app. |
-| Subscriptions, webhooks and the `sk` inbox | Events for programs and for the terminal. | Never. |
+| Subscriptions, webhooks and the `subkit` inbox | Events for programs and for the terminal. | Never. |
 
 A notification says what happened and what to do. Names of workflows or connectors, content and approval buttons never appear in a browser push.
 
@@ -130,8 +130,8 @@ What you read below the choice:
 `GET /v1/identity/me/setup` reads your choice, `PUT /v1/identity/me/setup` changes it. Fields you leave out keep their value.
 
 ```bash
-curl -s -X PUT "$SK_URL/v1/identity/me/setup" \
-  -H "Authorization: Bearer $SK_KEY" \
+curl -s -X PUT "$SUBKIT_URL/v1/identity/me/setup" \
+  -H "Authorization: Bearer $SUBKIT_KEY" \
   -H "Content-Type: application/json" \
   -d '{"notifications":{"mode":"working_hours","from":"08:00","to":"18:00","days":[1,2,3,4,5]},"timezone":"Europe/Berlin","critical_breakthrough":true}'
 ```

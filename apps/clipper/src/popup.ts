@@ -18,6 +18,7 @@ import {
   previewBlocks,
   showHelpLink,
 } from "./ui.ts";
+import { showUpdateNotice } from "./update-notice.ts";
 
 const captureErrorKey = "captureError";
 const form = document.querySelector<HTMLFormElement>("#clip-form");
@@ -605,6 +606,7 @@ async function initialize(): Promise<void> {
   applyText(text);
   engineUrl = settings.engineUrl;
   showHelpLink(help, engineUrl);
+  void showUpdateNotice(engineUrl, text);
   const stored = await chromeApi.storage.local.get(captureErrorKey);
   const captureError = stored[captureErrorKey] as CaptureError | undefined;
   const draftId = new URL(location.href).searchParams.get("draft");

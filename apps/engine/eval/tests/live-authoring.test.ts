@@ -9,10 +9,10 @@ import {
   type TurnEventLike,
 } from "../live-authoring.ts";
 
-const ENV = { SK_API_KEY: "key-under-test", SK_ENGINE_URL: "http://engine.test/" };
+const ENV = { SUBKIT_API_KEY: "key-under-test", SUBKIT_ENGINE_URL: "http://engine.test/" };
 
 describe("parseCliArgs", () => {
-  test("the key comes only from SK_API_KEY and never lands in the parsed arguments", () => {
+  test("the key comes only from SUBKIT_API_KEY and never lands in the parsed arguments", () => {
     const parsed = parseCliArgs(["--engine-url", "http://e.test/"], ENV);
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
@@ -25,22 +25,22 @@ describe("parseCliArgs", () => {
     const parsed = parseCliArgs(["--api-key", "secret"], ENV);
     expect(parsed.ok).toBe(false);
     if (parsed.ok) return;
-    expect(parsed.error).toContain("SK_API_KEY");
+    expect(parsed.error).toContain("SUBKIT_API_KEY");
     expect(parsed.error).not.toContain("secret");
   });
 
-  test("a missing SK_API_KEY or engine url is an error, not a prompt", () => {
-    expect(parseCliArgs([], { SK_ENGINE_URL: "http://e.test" })).toMatchObject({
+  test("a missing SUBKIT_API_KEY or engine url is an error, not a prompt", () => {
+    expect(parseCliArgs([], { SUBKIT_ENGINE_URL: "http://e.test" })).toMatchObject({
       ok: false,
-      error: expect.stringContaining("SK_API_KEY"),
+      error: expect.stringContaining("SUBKIT_API_KEY"),
     });
-    expect(parseCliArgs([], { SK_API_KEY: "k" })).toMatchObject({
+    expect(parseCliArgs([], { SUBKIT_API_KEY: "k" })).toMatchObject({
       ok: false,
       error: expect.stringContaining("--engine-url"),
     });
   });
 
-  test("--trials, --cleanup, --recipient and --scenario are parsed; SK_EVAL_RECIPIENT is the fallback", () => {
+  test("--trials, --cleanup, --recipient and --scenario are parsed; SUBKIT_EVAL_RECIPIENT is the fallback", () => {
     const parsed = parseCliArgs(
       ["--trials", "3", "--cleanup", "--scenario", "a, b", "--recipient", "ops@acme.test"],
       ENV,
@@ -49,7 +49,7 @@ describe("parseCliArgs", () => {
       ok: true,
       args: { trials: 3, cleanup: true, scenarios: ["a", "b"], recipient: "ops@acme.test" },
     });
-    expect(parseCliArgs([], { ...ENV, SK_EVAL_RECIPIENT: "env@acme.test" })).toMatchObject({
+    expect(parseCliArgs([], { ...ENV, SUBKIT_EVAL_RECIPIENT: "env@acme.test" })).toMatchObject({
       ok: true,
       args: { recipient: "env@acme.test" },
     });

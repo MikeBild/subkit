@@ -236,7 +236,7 @@ describe("conversation_append", () => {
     expect(taskRows.length).toBe(2);
   });
 
-  test("a pending dialog blocks the append with a coded error and a logged cause", async () => {
+  test("a typed answer to a pending dialog is refused with a coded error and a logged cause", async () => {
     const started = await handleConversationTool({
       db: testDb.db,
       principal,
@@ -266,7 +266,7 @@ describe("conversation_append", () => {
         db: testDb.db,
         principal,
         name: "conversation_append",
-        args: { conversation_id, message: "another message" },
+        args: { conversation_id, message: "einmal erlauben" },
       });
     } finally {
       spy.mockRestore();
@@ -284,7 +284,7 @@ describe("conversation_append", () => {
       error_code: "pending_elicitation_blocked",
       error: "resolve the pending dialog before sending another prompt",
     });
-    expect(JSON.stringify(failure)).not.toContain("another message");
+    expect(JSON.stringify(failure)).not.toContain("einmal erlauben");
   });
 });
 

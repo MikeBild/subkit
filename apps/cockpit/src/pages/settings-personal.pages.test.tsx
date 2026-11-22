@@ -141,6 +141,8 @@ describe("Arbeitsbereich", () => {
       onName={() => {}}
       timezone="Europe/Berlin"
       onTimezone={() => {}}
+      language="de"
+      onLanguage={() => {}}
       disabled={false}
     />,
   );
@@ -152,6 +154,12 @@ describe("Arbeitsbereich", () => {
     expect(html).toContain("Geplante Abläufe und Ruhezeiten richten sich danach.");
     expect(html).toContain("Europe/Berlin");
     expect(filled(html)).toBe(0);
+  });
+
+  test("asks for the workspace language as one choice", () => {
+    expect(html).toContain(">Welche Sprache nutzt euer Arbeitsbereich?</h2>");
+    expect(html).toContain("Für Texte ohne eigene Sprache einer Person");
+    expect(html).toContain('data-testid="settings-workspace-language"');
   });
 
   test("the workspace has one name: the branding form no longer asks for a second", () => {

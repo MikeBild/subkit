@@ -120,7 +120,7 @@ export function useAttentionTenant(): void {
     const db = testDb.db;
     const now = getTestNow();
 
-    const dir = mkdtempSync(join(tmpdir(), "sk-cfg-attention-"));
+    const dir = mkdtempSync(join(tmpdir(), "subkit-cfg-attention-"));
     const configPath = join(dir, "subkit.config.json");
     writeFileSync(configPath, JSON.stringify({}));
     await loadConfig({

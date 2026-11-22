@@ -261,7 +261,7 @@ describe("decision adapters", () => {
         ...conversationBase,
         title: null,
         last_message_excerpt:
-          "**ContentKit Editorial MCP PROD** ist gespeichert und live. - Connector-ID: `2f65bdfb-0e86-4d70-b197-048062ca94ce` (prod)",
+          "**Editorial MCP PROD** ist gespeichert und live. - Connector-ID: `2f65bdfb-0e86-4d70-b197-048062ca94ce` (prod)",
       },
       LABELS,
     );

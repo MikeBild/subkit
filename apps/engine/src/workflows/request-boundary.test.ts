@@ -143,7 +143,7 @@ test("a static query is part of the boundary; a GET may not carry a body", () =>
       path: "/spaces/${item.slug}/proposals",
       query: { status: "pending" },
       boundary: {
-        variables: { "item.slug": { enum: ["wikikit", "blog-de"] } },
+        variables: { "item.slug": { enum: ["handbook", "blog-de"] } },
         max_body_bytes: 0,
         max_calls: 6,
       },
@@ -153,7 +153,7 @@ test("a static query is part of the boundary; a GET may not carry a body", () =>
   expect(boundary?.query.fixed).toEqual({ status: "pending" });
   const ok = {
     method: "GET",
-    url: "https://api.example.test/v2/spaces/wikikit/proposals?status=pending",
+    url: "https://api.example.test/v2/spaces/handbook/proposals?status=pending",
     headers: {},
     body: null,
   };

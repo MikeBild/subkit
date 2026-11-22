@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import {
   DEVICE_CONNECTOR_DRIVERS,
   DEVICE_CONNECTOR_ENVIRONMENTS,
@@ -76,14 +76,24 @@ test("names follow the person's language", () => {
   expect(Object.keys(DEVICE_CONNECTOR_LABELS.de)).toEqual(Object.keys(DEVICE_CONNECTOR_LABELS.en));
 });
 
-test("the first known language wins, English otherwise", () => {
-  expect(deviceConnectorLocale(["de", "en"])).toBe("de");
-  expect(deviceConnectorLocale([null, "en"])).toBe("en");
-  expect(deviceConnectorLocale(["fr", undefined, 7, "de-AT"])).toBe("de");
-  expect(deviceConnectorLocale(["de-DE,de;q=0.9,en;q=0.8"])).toBe("de");
-  expect(deviceConnectorLocale(["EN-us"])).toBe("en");
-  expect(deviceConnectorLocale(["deutsch", "english"])).toBe("en");
-  expect(deviceConnectorLocale([])).toBe("en");
+describe("the language of device connector names", () => {
+  test("the app language wins over the workspace language", () => {
+    expect(deviceConnectorLocale({ app: "de", workspace: "en" })).toBe("de");
+    expect(deviceConnectorLocale({ app: "en-US", workspace: "de" })).toBe("en");
+    expect(deviceConnectorLocale({ app: "de-DE,de;q=0.9,en;q=0.8", workspace: "en" })).toBe("de");
+  });
+
+  test("without a known app language the workspace language applies", () => {
+    expect(deviceConnectorLocale({ app: undefined, workspace: "de" })).toBe("de");
+    expect(deviceConnectorLocale({ app: "fr-FR", workspace: "de" })).toBe("de");
+    expect(deviceConnectorLocale({ app: "", workspace: "de" })).toBe("de");
+  });
+
+  test("without either it is English", () => {
+    expect(deviceConnectorLocale({ app: undefined, workspace: undefined })).toBe("en");
+    expect(deviceConnectorLocale({ app: "fr", workspace: null })).toBe("en");
+    expect(deviceConnectorLocale({ app: "deutsch", workspace: "english" })).toBe("en");
+  });
 });
 
 test("an existing connector keeps its name in another language", () => {

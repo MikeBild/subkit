@@ -83,16 +83,18 @@ describe("loadEmbeddedKnowledgeSeeds — all 8 embedded files", () => {
     }
   });
 
-  test("sk-ref-cli seed documents the engine-served install one-liner and never npm or a public GitHub link", () => {
+  test("sk-ref-cli seed documents the engine and release install one-liners and never npm", () => {
     const r = loadEmbeddedKnowledgeSeeds();
     const cli = r.knowledge.find((k) => k.slug === "sk-ref-cli");
     expect(cli).toBeDefined();
     expect(cli!.body).toContain("/install");
     expect(cli!.body).toContain("curl -fsSL <engine-url>/install | bash");
-    expect(cli!.body).toContain("~/.subkit/bin");
+    expect(cli!.body).toContain(
+      "curl -fsSL https://github.com/MikeBild/subkit/releases/latest/download/install.sh | bash",
+    );
+    expect(cli!.body).toContain("~/.local/bin");
     expect(cli!.body).not.toContain("@subkit/cli");
     expect(cli!.body).not.toContain("raw.githubusercontent.com");
-    expect(cli!.body).not.toContain("github.com");
   });
 
   test("sk-ref-coding-agents seed is generated from the coding-agent chapter", () => {
@@ -473,7 +475,7 @@ describe.skipIf(skip)("searchKnowledge — FTS over seeded sk-platform-reference
     expect(outcome.inserted).toBe(8);
   }, TEST_DB_HOOK_TIMEOUT);
 
-  test("'login' returns at least one hit (sk-ref-cli covers sk login command)", async () => {
+  test("'login' returns at least one hit (sk-ref-cli covers subkit login command)", async () => {
     const hits = await searchKnowledge({ tenant_id: searchTenantId, query: "login" }, dbCtx.db);
     expect(hits.length).toBeGreaterThan(0);
     expect(hits[0]!.snippet).toBeDefined();

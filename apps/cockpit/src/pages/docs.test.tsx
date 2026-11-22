@@ -355,14 +355,14 @@ describe("docs pages", () => {
     const html = await renderInRouter(
       <DocsArticleView bundle={DOCS} slug="missing-chapter" version={VERSION} />,
     );
-    expect(html).toContain('data-family-surface="not-found"');
+    expect(html).toContain('data-sk-surface="not-found"');
     expect(html).not.toContain('data-testid="docs-article"');
   });
 
   test("the loading frame mirrors the article column and its toc", async () => {
     const html = await renderInRouter(<ReadingSkeleton />);
-    expect(html).toContain('data-family-state="loading"');
-    expect(html).toContain('data-family-slot="page-toc"');
+    expect(html).toContain('data-sk-state="loading"');
+    expect(html).toContain('data-sk-slot="page-toc"');
     expect(html).toContain("max-w-[780px]");
   });
 
@@ -402,7 +402,7 @@ describe("docs pages", () => {
     expect(html).not.toContain('href="/docs"');
     expect(html).not.toContain('href="/settings');
     const missing = await renderAt(bundle, "/cockpit/docs/nope");
-    expect(missing).toContain('data-family-surface="not-found"');
+    expect(missing).toContain('data-sk-surface="not-found"');
     expect(missing).not.toContain('data-testid="docs-article"');
   });
 

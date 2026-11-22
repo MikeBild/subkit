@@ -11,13 +11,13 @@ import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 let suite: McpTestSuite;
 
 beforeAll(async () => {
-  testEnv.SK_MCP_MODE = "authoring";
+  testEnv.SUBKIT_MCP_MODE = "authoring";
   suite = await startMcpTestSuite("tools-list-disabled");
 });
 
 afterAll(async () => {
   await suite.cleanup();
-  delete testEnv.SK_MCP_MODE;
+  delete testEnv.SUBKIT_MCP_MODE;
 });
 
 describe("mcp tools/list — draft_write omitted (authoring mode)", () => {

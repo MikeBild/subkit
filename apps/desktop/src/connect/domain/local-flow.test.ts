@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { dictionary } from "../../shared/i18n.ts";
 import { type ConnectState, LOCAL_UNAVAILABLE, type LocalView } from "../../shared/ipc.ts";
 import { NO_ONBOARDING } from "../../shared/onboarding.ts";
+import { platformCapabilities } from "../../shared/platform-capabilities.ts";
 import {
   type Command,
   decide,
@@ -43,6 +44,7 @@ function main(patch: Partial<LocalView> = {}): ConnectState {
       lost: [],
     },
     local: local(patch),
+    platform: platformCapabilities("darwin", "arm64"),
   };
 }
 
@@ -60,7 +62,9 @@ const opened = () => run(received(INITIAL_STATE), { type: "StartLocalSetup" }).s
 describe("choosing to run SubKit only on this Mac", () => {
   test("the connect step offers it only where local mode is available and not set up", () => {
     const screen = (patch: Partial<LocalView>) =>
-      viewOf(evolveAll(received(INITIAL_STATE, patch), [{ type: "ConnectStarted" }]))?.screen;
+      viewOf(
+        evolveAll(received(INITIAL_STATE, patch), [{ type: "ConnectStarted", path: "server" }]),
+      )?.screen;
     expect(screen({})).toMatchObject({ kind: "connect", localAvailable: true });
     expect(screen({ available: false })).toMatchObject({ localAvailable: false });
     expect(screen({ configured: true })).toMatchObject({ localAvailable: false });

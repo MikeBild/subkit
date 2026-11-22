@@ -84,6 +84,11 @@ export function Connect() {
     <div>
       <h1 className="text-2xl font-semibold">{t("connect.title")}</h1>
       <p className="mt-2 text-sm text-muted-foreground">{t("connect.lead")}</p>
+      {s.localMacOnly && (
+        <p data-testid="connect-local-mac-only" className="mt-2 text-sm text-muted-foreground">
+          {t("workspace.local.macOnly")}
+        </p>
+      )}
       {s.localAvailable && (
         <div className="my-4 flex flex-col gap-2">
           <Button

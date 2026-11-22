@@ -68,7 +68,7 @@ describe("read-only chat", () => {
       ok: false,
       error_code: "chat_readonly_channel",
       message:
-        "This chat channel is read-only: the approved delete_workflow was NOT performed — nothing was persisted or deleted. Do NOT report success. Tell the user to make this change via the sk CLI or the web portal.",
+        "This chat channel is read-only: the approved delete_workflow was NOT performed — nothing was persisted or deleted. Do NOT report success. Tell the user to make this change via the subkit CLI or the web portal.",
       next_best_actions: ["cannot_help"],
       source: "harness_auto_persist",
     });

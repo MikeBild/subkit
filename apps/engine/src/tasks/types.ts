@@ -181,6 +181,12 @@ export const TaskSchema = z
     fingerprint: Fingerprint,
     revision: z.number().int(),
     lifecycle: TaskLifecycleSchema,
+    source_conversation_id: Id.nullable().describe(
+      "The conversation whose message asked for this task. Null when the task was not created from a chat message.",
+    ),
+    source_message_id: Id.nullable().describe(
+      "The chat message this task serves. Null when the task was not created from a chat message or the message was deleted.",
+    ),
     created_at: Timestamp,
     updated_at: Timestamp,
   })

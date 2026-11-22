@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
-  invitePageUrl,
+  inviteJoinUrl,
   invitePreviewBody,
   parseInviteLink,
   parseInvitePreview,
@@ -39,8 +39,21 @@ describe("invitation link", () => {
 
   test("the browser opens the same server's invitation page, the preview sends only the token", () => {
     const link = { origin: "https://subkit.example.com", token: TOKEN };
-    expect(invitePageUrl(link)).toBe(`https://subkit.example.com/cockpit/invite#${TOKEN}`);
     expect(JSON.parse(invitePreviewBody(link))).toEqual({ token: TOKEN });
+  });
+
+  test("joining carries the device sign-in on to the invitation page as a same-server path", () => {
+    const link = { origin: "https://subkit.example.com", token: TOKEN };
+    const start =
+      "https://subkit.example.com/v1/identity/desktop-login/start?code_challenge=abc&state=s%201";
+    const url = new URL(inviteJoinUrl(link, start));
+    expect(url.origin).toBe("https://subkit.example.com");
+    expect(url.pathname).toBe("/cockpit/invite");
+    expect(url.hash).toBe(`#${TOKEN}`);
+    expect(url.searchParams.get("continue")).toBe(
+      "/v1/identity/desktop-login/start?code_challenge=abc&state=s%201",
+    );
+    expect([...url.searchParams.keys()]).toEqual(["continue"]);
   });
 });
 

@@ -56,6 +56,10 @@ export const engineSentenceEn = {
     "This step was skipped because an earlier writing step was held in the trial run.",
   "engine.code.caller_saved_workflow_required":
     "This caller can run only a saved workflow version, not a draft.",
+  "engine.code.engine_stopped_during_write":
+    "SubKit stopped while this step was sending a change. The change may have arrived. Check the target before you run again.",
+  "engine.code.mcp_timeout_during_write":
+    "The tool did not answer in time while this step was sending a change. The change may have arrived. Check the target before you run again.",
 } as const;
 
 export const engineSentenceDe: Record<keyof typeof engineSentenceEn, string> = {
@@ -117,4 +121,8 @@ export const engineSentenceDe: Record<keyof typeof engineSentenceEn, string> = {
     "Dieser Schritt wurde übersprungen, weil ein früherer schreibender Schritt im Probe-Run angehalten wurde.",
   "engine.code.caller_saved_workflow_required":
     "Dieser Aufrufer kann nur eine gespeicherte Workflow-Version ausführen, keinen Entwurf.",
+  "engine.code.engine_stopped_during_write":
+    "SubKit wurde beendet, während dieser Schritt eine Änderung gesendet hat. Die Änderung ist vielleicht angekommen. Prüf das Ziel, bevor du den Run noch einmal startest.",
+  "engine.code.mcp_timeout_during_write":
+    "Das Tool hat nicht rechtzeitig geantwortet, während dieser Schritt eine Änderung gesendet hat. Die Änderung ist vielleicht angekommen. Prüf das Ziel, bevor du den Run noch einmal startest.",
 };

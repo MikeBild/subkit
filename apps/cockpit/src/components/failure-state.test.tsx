@@ -66,11 +66,11 @@ describe("ForbiddenState", () => {
 
   test("is a titled forbidden state inside the page, never a second page title or an action", () => {
     const html = render(<ForbiddenState />);
-    expect(html).toContain('data-family-slot="data-state"');
-    expect(html).toContain('data-family-state="forbidden"');
-    expect(html).toContain('data-family-failure-kind="forbidden"');
+    expect(html).toContain('data-sk-slot="data-state"');
+    expect(html).toContain('data-sk-state="forbidden"');
+    expect(html).toContain('data-sk-failure-kind="forbidden"');
     expect(html).toContain('data-testid="resource-permission-alert"');
-    expect(html).not.toContain("data-family-surface");
+    expect(html).not.toContain("data-sk-surface");
     expect(html).not.toMatch(/<h[1-6][\s>]/);
     expect(html).not.toMatch(/<(a|button)[\s>]/);
   });
@@ -97,7 +97,7 @@ describe("BootstrapErrorPage", () => {
   test("names an unreachable SubKit and offers retry in German and English", () => {
     const de = render(<BootstrapErrorPage onRetry={() => {}} />, "de");
     expect(de).toContain('data-testid="fatal-error"');
-    expect(de).toContain('data-family-surface="fatal-error"');
+    expect(de).toContain('data-sk-surface="fatal-error"');
     expect(de).toContain('role="alert"');
     expect(de).toMatch(/<h1[^>]*>SubKit ist gerade nicht erreichbar<\/h1>/);
     expect(de).toContain("Das Cockpit konnte nicht geladen werden. Versuche es erneut.");

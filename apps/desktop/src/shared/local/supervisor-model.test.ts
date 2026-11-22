@@ -132,22 +132,22 @@ describe("data folder", () => {
     expect(
       socketDirectoryFor(
         "/Users/mike/Library/Application Support/SubKit/local/default/pgdata",
-        "/tmp/sk",
+        "/tmp/subkit",
       ),
     ).toBe("/Users/mike/Library/Application Support/SubKit/local/default/pgdata");
     const long = `/Users/mike/${"x".repeat(80)}/pgdata`;
-    expect(socketDirectoryFor(long, "/tmp/sk")).toBe("/tmp/sk");
+    expect(socketDirectoryFor(long, "/tmp/subkit")).toBe("/tmp/subkit");
   });
 });
 
 describe("postgres settings", () => {
   test("the laptop profile listens on the socket only, with small memory and no JIT", () => {
-    const args = laptopPostgresSettings({ kind: "socket", directory: "/tmp/sk" });
+    const args = laptopPostgresSettings({ kind: "socket", directory: "/tmp/subkit" });
     expect(args).toContain("shared_buffers=64MB");
     expect(args).toContain("max_connections=50");
     expect(args).toContain("jit=off");
     expect(args).toContain("listen_addresses=");
-    expect(args).toContain("unix_socket_directories=/tmp/sk");
+    expect(args).toContain("unix_socket_directories=/tmp/subkit");
     expect(args).toContain("unix_socket_permissions=0700");
     const tcp = laptopPostgresSettings({ kind: "tcp", host: "127.0.0.1", port: 55001 });
     expect(tcp).toContain("listen_addresses=127.0.0.1");
@@ -155,8 +155,8 @@ describe("postgres settings", () => {
   });
 
   test("builds the engine database URL for a socket and for loopback", () => {
-    expect(databaseUrl({ kind: "socket", directory: "/tmp/sk" }, "p@ss")).toBe(
-      "postgres://subkit:p%40ss@/postgres?host=%2Ftmp%2Fsk",
+    expect(databaseUrl({ kind: "socket", directory: "/tmp/subkit" }, "p@ss")).toBe(
+      "postgres://subkit:p%40ss@/postgres?host=%2Ftmp%2Fsubkit",
     );
     expect(databaseUrl({ kind: "tcp", host: "127.0.0.1", port: 55001 }, "pw")).toBe(
       "postgres://subkit:pw@127.0.0.1:55001/postgres",

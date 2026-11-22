@@ -1,6 +1,6 @@
 import { existsSync, statSync } from "node:fs";
 import path from "node:path";
-import { runIsolatedTestFile } from "../apps/sk/src/tests/run-isolated-test-file";
+import { runIsolatedTestFile } from "../apps/subkit/src/tests/run-isolated-test-file";
 
 const repoRoot = path.resolve(import.meta.dir, "..");
 const args = process.argv.slice(2);

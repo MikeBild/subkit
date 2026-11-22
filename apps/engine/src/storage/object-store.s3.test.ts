@@ -8,7 +8,7 @@ import {
 import { MULTIPART_PART_BYTES, S3ObjectStore } from "./object-store.ts";
 import { objectStoreContract } from "./object-store-contract-fixtures.ts";
 
-const BUCKET = `sk-objstore-test-${Math.random().toString(36).slice(2, 8)}`; // allow-random: legacy; review before changing
+const BUCKET = `subkit-objstore-test-${Math.random().toString(36).slice(2, 8)}`; // allow-random: legacy; review before changing
 
 const DOCKER = await dockerAvailable();
 let objectStore: ObjectStoreFixture | null = null;
@@ -16,7 +16,7 @@ let store: S3ObjectStore | null = null;
 
 beforeAll(async () => {
   if (!DOCKER) return;
-  objectStore = await startObjectStore("sk-s3-store-test");
+  objectStore = await startObjectStore("subkit-s3-store-test");
   const bootstrap = new S3Client({
     region: "us-east-1",
     endPoint: objectStore.endpoint,

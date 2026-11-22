@@ -180,7 +180,7 @@ describe("request_connector_reauth — MCP surface routes to a secure setup URL 
     );
   });
 
-  test("sk-cli surface is unchanged — still binds a re-issue draft + instructs ask_user_form", async () => {
+  test("subkit-cli surface is unchanged — still binds a re-issue draft + instructs ask_user_form", async () => {
     const { connector_id } = await seedConnector({ slug: "rr-cli-bearer", auth_type: "bearer" });
     let bound = false;
     const cliCtx: ToolContext = {

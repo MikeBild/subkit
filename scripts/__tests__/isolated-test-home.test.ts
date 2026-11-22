@@ -18,7 +18,7 @@ import {
   claimIsolatedTestHome,
   createIsolatedTestHome,
   removeIsolatedTestHome,
-} from "../../apps/sk/src/tests/isolated-test-home";
+} from "../../apps/subkit/src/tests/isolated-test-home";
 
 const candidate = path.resolve(import.meta.dir, "..", "..");
 let root: string | undefined;
@@ -28,9 +28,9 @@ function makeFixture(): string {
   if (fixture) return fixture;
   root = mkdtempSync(path.join(tmpdir(), "h1-isolated-home-project-"));
   for (const source of [
-    "apps/sk/src/tests/isolated-test-home.ts",
-    "apps/sk/src/tests/setup-isolated-home.ts",
-    "apps/sk/src/tests/run-isolated-test-file.ts",
+    "apps/subkit/src/tests/isolated-test-home.ts",
+    "apps/subkit/src/tests/setup-isolated-home.ts",
+    "apps/subkit/src/tests/run-isolated-test-file.ts",
     "scripts/lib/owned-process-watchdog.ts",
     "scripts/test-files-isolated.ts",
   ]) {
@@ -40,7 +40,7 @@ function makeFixture(): string {
   }
   writeFileSync(
     path.join(root, "bunfig.toml"),
-    '[test]\npreload = ["./apps/sk/src/tests/setup-isolated-home.ts"]\n',
+    '[test]\npreload = ["./apps/subkit/src/tests/setup-isolated-home.ts"]\n',
   );
   fixture = path.join(root, "scripts", "fixtures");
   mkdirSync(fixture, { recursive: true });
@@ -80,7 +80,7 @@ function recorded(...names: string[]): string[] {
 
 async function copiedSeam() {
   return await import(
-    pathToFileURL(path.join(root!, "apps/sk/src/tests/run-isolated-test-file.ts")).href
+    pathToFileURL(path.join(root!, "apps/subkit/src/tests/run-isolated-test-file.ts")).href
   );
 }
 
@@ -135,7 +135,7 @@ describe("isolated test homes", () => {
     const privateTmp = mkdtempSync(path.join(tmpdir(), "h1-spawn-private-"));
     const probe = writeFixture(
       "spawn-probe.ts",
-      `import { runIsolatedTestFile } from "../../apps/sk/src/tests/run-isolated-test-file"; try { await runIsolatedTestFile("missing.test.ts", { cwd: "${path.join(makeFixture(), "missing")}" }); } catch { const roots = [...new Bun.Glob("subkit-test-home-*").scanSync({ cwd: process.env.TMPDIR! })]; if (roots.length === 0) console.log("clean"); }`,
+      `import { runIsolatedTestFile } from "../../apps/subkit/src/tests/run-isolated-test-file"; try { await runIsolatedTestFile("missing.test.ts", { cwd: "${path.join(makeFixture(), "missing")}" }); } catch { const roots = [...new Bun.Glob("subkit-test-home-*").scanSync({ cwd: process.env.TMPDIR! })]; if (roots.length === 0) console.log("clean"); }`,
     );
     const child = Bun.spawn(["bun", probe], {
       cwd: root!,
@@ -263,7 +263,7 @@ describe("isolated test homes", () => {
       const report = path.join(makeFixture(), "tmpdir.txt");
       const probe = writeFixture(
         "tmpdir-probe.ts",
-        `import { createIsolatedTestHome, removeIsolatedTestHome } from "../../apps/sk/src/tests/isolated-test-home"; process.env.TMPDIR = ${JSON.stringify(laterTmp)}; const home = createIsolatedTestHome(); console.log(home.path); removeIsolatedTestHome(home);`,
+        `import { createIsolatedTestHome, removeIsolatedTestHome } from "../../apps/subkit/src/tests/isolated-test-home"; process.env.TMPDIR = ${JSON.stringify(laterTmp)}; const home = createIsolatedTestHome(); console.log(home.path); removeIsolatedTestHome(home);`,
       );
       const child = Bun.spawn(["bun", probe], {
         cwd: root!,

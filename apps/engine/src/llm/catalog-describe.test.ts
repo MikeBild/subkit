@@ -167,10 +167,12 @@ describe("a thin object and a fixed category", () => {
   });
 
   test("a fixed category is part of the input, the hash and the prompt", () => {
-    const fixed: CatalogDescribeInput = { ...workflow, pinned_category: "wikikit" };
-    expect(renderCatalogInput(fixed)).toContain("category (fixed): wikikit");
+    const fixed: CatalogDescribeInput = { ...workflow, pinned_category: "knowledge" };
+    expect(renderCatalogInput(fixed)).toContain("category (fixed): knowledge");
     expect(catalogInputHash(fixed)).not.toBe(catalogInputHash(workflow));
-    expect(buildDescribePrompt(fixed, vocabulary)).toContain('The category is fixed as "wikikit"');
+    expect(buildDescribePrompt(fixed, vocabulary)).toContain(
+      'The category is fixed as "knowledge"',
+    );
     expect(buildDescribePrompt(workflow, vocabulary)).not.toContain("is fixed as");
   });
 
@@ -182,10 +184,10 @@ describe("a thin object and a fixed category", () => {
     try {
       const out = await describeCatalogObject({
         tenant_id: "00000000-0000-0000-0000-000000000001",
-        input: { ...workflow, pinned_category: "wikikit" },
+        input: { ...workflow, pinned_category: "knowledge" },
         vocabulary,
       });
-      expect(out?.category).toBe("wikikit");
+      expect(out?.category).toBe("knowledge");
       expect(out?.description).toBe("Reads the wiki.");
     } finally {
       spy.mockRestore();

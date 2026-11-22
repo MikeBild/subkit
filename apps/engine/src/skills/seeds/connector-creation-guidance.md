@@ -395,7 +395,7 @@ Common codes you will see while authoring a connector:
 ## MCP connectors (driver `mcp`) — a different shape, not a different entity
 
 An external MCP server is a connector. There is no separate MCP-server
-registry, no `sk mcp-servers` command and no `/v1/mcp-servers` route; if the
+registry, no `subkit mcp-servers` command and no `/v1/mcp-servers` route; if the
 operator asks to "add an MCP server", they are asking for a connector with
 `driver: "mcp"`. Its config is narrow and strictly validated — an unknown key
 under `config.mcp` is rejected at write time, not at first call:
@@ -428,7 +428,7 @@ branch, so it would send a plain HTTP request to the endpoint and prove nothing
 about a handshake. Do not walk an MCP connector through it and do not narrate a
 creation you cannot complete — call `cannot_help` and name the surface that
 owns it: an MCP connector is authored as a definition, through
-`POST /v1/connectors` or `sk connectors create --file` (which validates the
+`POST /v1/connectors` or `subkit connectors create --file` (which validates the
 definition before it saves anything).
 
 What you CAN do from here, once the connector exists:
@@ -444,9 +444,9 @@ What you CAN do from here, once the connector exists:
 Two operator actions live outside the conversation palette, because a browser
 or a terminal has to be involved: `POST /v1/connectors/{id}/mcp/inspect`
 (handshake plus the tools, capabilities and instructions the remote serves,
-also `sk connectors mcp-inspect`) and `POST /v1/connectors/{id}/mcp/authorize`
+also `subkit connectors mcp-inspect`) and `POST /v1/connectors/{id}/mcp/authorize`
 (the interactive OAuth 2.1 URL the operator opens, also
-`sk connectors mcp-authorize`). The MCP flow is separate from the ordinary
+`subkit connectors mcp-authorize`). The MCP flow is separate from the ordinary
 connector `authenticate_oauth` path because an MCP server publishes its own
 authorization server rather than declaring one in config.
 
@@ -492,7 +492,7 @@ read the response before re-asking.
 
 ## See also
 
-- `sk-concepts.md` — placeholder grammar, envelope shape.
+- `subkit-concepts.md` — placeholder grammar, envelope shape.
 - `http-connectors.md` — driver specifics, pagination modes, retry semantics.
 - `oauth-flow.md` — the two-phase OAuth2 dance.
 - `error-recovery.md` — typed error codes beyond connector creation.

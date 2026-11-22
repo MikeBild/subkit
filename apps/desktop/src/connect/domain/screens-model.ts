@@ -22,6 +22,7 @@ import {
 import type { PermissionView } from "../../shared/local/permission-port.ts";
 import type { DataFolderRefusal } from "../../shared/local/supervisor-model.ts";
 import { currentStep, type WorkspaceOption } from "../../shared/onboarding.ts";
+import { supports } from "../../shared/platform-capabilities.ts";
 import { hostOf } from "../../shared/server-address.ts";
 import { REVOKED_CODE } from "../../shared/server-contract.ts";
 import { type TooOldAsk, tooOldAsk } from "../../shared/server-too-old.ts";
@@ -39,7 +40,7 @@ import { SIGN_IN_ERRORS, type SignInErrorCase } from "./sign-in-errors.ts";
 export { hostOf };
 
 export type FlowStep = "welcome" | "invite" | "connect" | "signin" | "local";
-export type FlowPath = "server" | "invite";
+export type FlowPath = "server" | "invite" | "create";
 export type ConsentTopic = "notifications" | "diagnostics";
 
 export interface FlowUi {
@@ -134,7 +135,7 @@ export interface LocalSetupModel {
 export type Screen =
   | { kind: "settings" }
   | { kind: "permissions"; setup: PermissionSetupModel }
-  | { kind: "local-capabilities"; device: string; signedIn: boolean }
+  | { kind: "local-capabilities"; device: string; signedIn: boolean; supported: boolean }
   | LocalSetupModel
   | { kind: "welcome"; invite: WelcomeInvite }
   | { kind: "invite"; invite: InviteView }
@@ -148,9 +149,10 @@ export type Screen =
       examples: string[];
       canContinue: boolean;
       localAvailable: boolean;
+      localMacOnly: boolean;
       back: boolean;
     }
-  | { kind: "signin"; origin: string; host: string; signin: SignInModel; joining: boolean }
+  | { kind: "signin"; origin: string; host: string; signin: SignInModel; hint: MessageKey | null }
   | {
       kind: "signed-in";
       profileId: string;
@@ -343,6 +345,13 @@ function profileStrip(state: ConnectState): StripModel | null {
   };
 }
 
+export function signInHint(path: FlowPath, signin: SignInModel): MessageKey | null {
+  if (path === "create")
+    return signin.phase === "ready" || signin.phase === "waiting" ? "signin.create" : null;
+  if (path === "invite") return signin.phase === "waiting" ? "signin.join" : null;
+  return null;
+}
+
 export function reloginOrigin(state: ConnectState, ui: FlowUi): string | null {
   const { notice } = state;
   if (notice?.kind !== "expired" || ui.reloginDismissed || ui.step !== "connect") return null;
@@ -424,6 +433,7 @@ export function screenFor(state: ConnectState, ui: FlowUi): Screen {
       kind: "local-capabilities",
       device: state.deviceLabel,
       signedIn: Boolean(state.signedIn),
+      supported: supports(state.platform, "files"),
     };
   if (state.view === "permissions")
     return { kind: "permissions", setup: permissionSetupFor(state.permissions) };
@@ -436,7 +446,7 @@ export function screenFor(state: ConnectState, ui: FlowUi): Screen {
       origin,
       host: hostOf(origin),
       signin: { phase: "done", serverVersion },
-      joining: false,
+      hint: null,
     };
   }
   const onboarding = currentStep(state.onboarding);
@@ -470,8 +480,13 @@ export function screenFor(state: ConnectState, ui: FlowUi): Screen {
   if (ui.step === "signin" && ui.target) {
     const { origin } = ui.target;
     const signin = signInFor(state.login, origin);
-    const joining = ui.path === "invite" && signin.phase === "ready";
-    return { kind: "signin", origin, host: hostOf(origin), signin, joining };
+    return {
+      kind: "signin",
+      origin,
+      host: hostOf(origin),
+      signin,
+      hint: signInHint(ui.path, signin),
+    };
   }
   if (ui.step === "invite" && ui.invitation) {
     return { kind: "invite", invite: inviteView(ui.invitation, state.locale) };
@@ -491,5 +506,6 @@ export function screenFor(state: ConnectState, ui: FlowUi): Screen {
     canContinue: slot.kind === "outcome" && slot.outcome.kind === "ok",
     back: welcomeAvailable(state),
     localAvailable: state.local.available && !state.local.configured,
+    localMacOnly: !supports(state.platform, "localWorkspace"),
   };
 }

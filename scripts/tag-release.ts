@@ -1,18 +1,28 @@
 #!/usr/bin/env bun
 
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { liveGateFailureHint } from "./lib/llm-live-checks.ts";
 import {
   DEFER_MUTATION_FLAG,
   mutationDeferralWarning,
   parseMutationDeferral,
   releaseGateDescription,
 } from "./lib/mutation-deferral.ts";
-import { liveGateFailureHint } from "./llm-live-checks.ts";
+import {
+  completeHighlights,
+  HIGHLIGHTS_FLAG,
+  type Highlights,
+  highlightsFromBody,
+  missingHighlightLanguages,
+  releaseBody,
+  splitHighlightsFlag,
+} from "./lib/release-highlights.ts";
+import { releaseVersionWasUsed } from "./lib/release-history.ts";
 import { assertReleaseRefsUnchanged, releaseGateContext } from "./release-gate-provenance.ts";
-import { releaseVersionWasUsed } from "./release-history.ts";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -25,7 +35,12 @@ function require_(condition: boolean, message: string): void {
   if (!condition) problems.push(message);
 }
 
-const { mutation, rest: liveArgs } = parseMutationDeferral(process.argv.slice(2));
+const highlightsFlag = splitHighlightsFlag(process.argv.slice(2));
+if (highlightsFlag.error) {
+  console.error(`release tag: ${highlightsFlag.error}`);
+  process.exit(1);
+}
+const { mutation, rest: liveArgs } = parseMutationDeferral(highlightsFlag.rest);
 
 const version = (
   JSON.parse(readFileSync(join(REPO, "package.json"), "utf8")) as { version: string }
@@ -42,6 +57,33 @@ const originMain = git("rev-parse", "origin/main");
 const dirty = git("status", "--porcelain");
 
 require_(branch === "main", `on branch '${branch}' — releases are cut from main`);
+type Draft = { body: string; isDraft: boolean } | null;
+function readDraft(): Draft {
+  try {
+    return JSON.parse(
+      execFileSync("gh", ["release", "view", tag, "--json", "body,isDraft"], {
+        cwd: REPO,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      }),
+    ) as Draft;
+  } catch {
+    return null;
+  }
+}
+const draft = readDraft();
+require_(draft === null || draft.isDraft, `${tag} already has a published release`);
+const highlightSource = highlightsFlag.path
+  ? readFileSync(resolve(highlightsFlag.path), "utf8")
+  : (draft?.body ?? "");
+const foundHighlights = highlightsFromBody(highlightSource);
+const missingHighlights = missingHighlightLanguages(foundHighlights);
+require_(
+  missingHighlights.length === 0,
+  `no reviewed highlights for ${version} in ${missingHighlights.join(" and ")} — pass ` +
+    `${HIGHLIGHTS_FLAG} <file> with "## Highlights (en)" and "## Highlights (de)", or put them into the draft release`,
+);
+const highlights = completeHighlights(foundHighlights) as Highlights;
 require_(dirty === "", `working tree is dirty:\n${dirty}`);
 require_(
   head === originMain,
@@ -177,6 +219,28 @@ assertReleaseRefsUnchanged(
   git("ls-remote", "--tags", "origin", `refs/tags/${tag}`),
   head,
 );
+const bodyFile = join(mkdtempSync(join(tmpdir(), "subkit-release-")), "body.md");
+writeFileSync(bodyFile, releaseBody(highlights, draft?.body ?? ""));
+execFileSync(
+  "gh",
+  draft
+    ? ["release", "edit", tag, "--notes-file", bodyFile]
+    : [
+        "release",
+        "create",
+        tag,
+        "--draft",
+        "--target",
+        head,
+        "--title",
+        `SubKit ${version}`,
+        "--notes-file",
+        bodyFile,
+      ],
+  { cwd: REPO, stdio: "inherit" },
+);
+console.log(`release tag: wrote the highlights into the draft release of ${tag}`);
+
 if (localTag === "") git("tag", tag, head);
 if (readLocalTag() !== head) throw new Error("Release tag no longer points to the verified commit");
 console.log(`release tag: ${tag} → ${head.slice(0, 8)} (mutation: ${mutation})`);

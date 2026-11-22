@@ -22,7 +22,7 @@ let logoPath: string;
 beforeAll(async () => {
   ctx = await createHttpTestServer("tenant-branding-cli");
   secondary = await createSecondaryTenant(ctx, "tenant-branding-cli");
-  profileHome = await mkdtemp(join(tmpdir(), "sk-branding-cli-"));
+  profileHome = await mkdtemp(join(tmpdir(), "subkit-branding-cli-"));
   inputPath = join(profileHome, "branding.json");
   logoPath = join(profileHome, "logo.png");
   const logo = await sharp({
@@ -35,7 +35,7 @@ beforeAll(async () => {
     JSON.stringify({
       revision: 0,
       display_name: "CLI Research",
-      subtitle: "Managed through sk",
+      subtitle: "Managed through subkit",
       palette: "teal",
       logos: {
         light: {
@@ -54,14 +54,14 @@ afterAll(async () => {
   await Promise.all([ctx.cleanup(), rm(profileHome, { recursive: true, force: true })]);
 });
 
-async function sk(args: string[]) {
-  const child = Bun.spawn([process.execPath, "apps/sk/src/index.ts", "branding", ...args], {
+async function subkit(args: string[]) {
+  const child = Bun.spawn([process.execPath, "apps/subkit/src/index.ts", "branding", ...args], {
     cwd: ROOT,
     env: {
       ...testEnv,
       HOME: profileHome,
       USERPROFILE: profileHome,
-      SK_HOME: profileHome,
+      SUBKIT_HOME: profileHome,
       XDG_CONFIG_HOME: profileHome,
       NO_COLOR: "1",
       NO_UPDATE_CHECK: "1",
@@ -86,11 +86,11 @@ function json(output: string): Record<string, unknown> {
 }
 
 test("the source CLI completes branding get, update, logo, reset, and reports API failures", async () => {
-  const initial = await sk(["get", ...args(ctx.apiKey)]);
+  const initial = await subkit(["get", ...args(ctx.apiKey)]);
   expect(initial).toMatchObject({ exitCode: 0, stderr: "" });
   expect(json(initial.stdout)).toMatchObject({ configured: false, revision: 0 });
 
-  const updated = await sk(["update", inputPath, ...args(ctx.apiKey)]);
+  const updated = await subkit(["update", inputPath, ...args(ctx.apiKey)]);
   expect(updated).toMatchObject({ exitCode: 0, stderr: "" });
   expect(json(updated.stdout)).toMatchObject({
     configured: true,
@@ -100,11 +100,11 @@ test("the source CLI completes branding get, update, logo, reset, and reports AP
     logos: { light: true, dark: false },
   });
 
-  const read = await sk(["get", ...args(ctx.apiKey)]);
+  const read = await subkit(["get", ...args(ctx.apiKey)]);
   expect(read.exitCode).toBe(0);
   expect(json(read.stdout)).toMatchObject({ revision: 1, display_name: "CLI Research" });
 
-  const logo = await sk([
+  const logo = await subkit([
     "logo",
     "dark",
     "--revision",
@@ -118,15 +118,15 @@ test("the source CLI completes branding get, update, logo, reset, and reports AP
     Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
   );
 
-  const stale = await sk(["reset", "0", ...args(ctx.apiKey)]);
+  const stale = await subkit(["reset", "0", ...args(ctx.apiKey)]);
   expect(stale.exitCode).toBe(1);
   expect(json(stale.stdout)).toMatchObject({ code: "tenant_branding_conflict" });
 
-  const denied = await sk(["update", inputPath, ...args(secondary.member.apiKey)]);
+  const denied = await subkit(["update", inputPath, ...args(secondary.member.apiKey)]);
   expect(denied.exitCode).toBe(2);
   expect(json(denied.stdout)).toMatchObject({ code: "forbidden" });
 
-  const reset = await sk(["reset", "1", ...args(ctx.apiKey)]);
+  const reset = await subkit(["reset", "1", ...args(ctx.apiKey)]);
   expect(reset).toMatchObject({ exitCode: 0, stderr: "" });
   expect(json(reset.stdout)).toMatchObject({ configured: false, revision: 2 });
 });

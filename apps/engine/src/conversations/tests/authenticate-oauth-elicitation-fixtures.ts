@@ -33,7 +33,7 @@ export async function ensureConfigLoaded(): Promise<void> {
     getConfig();
     return;
   } catch {}
-  const dir = mkdtempSync(join(tmpdir(), "sk-cfg-aoauth-elicit-"));
+  const dir = mkdtempSync(join(tmpdir(), "subkit-cfg-aoauth-elicit-"));
   await loadConfig({
     env: { DATABASE_URL: "postgres://placeholder/aoauth-elicit", NODE_ENV: "test" },
     configPathOverride: join(dir, "subkit.config.json"),

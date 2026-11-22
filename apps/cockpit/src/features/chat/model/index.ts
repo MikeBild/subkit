@@ -120,13 +120,10 @@ export {
   ranLine,
   ranWithoutAsking,
   rawRequest,
-  refusedApprovalReply,
   ruleName,
   scopeSentence,
   type ToolCallPolicy,
-  type TypedDecision,
   targetLabel,
-  typedDecision,
   verbLabel,
 } from "./policy";
 export {

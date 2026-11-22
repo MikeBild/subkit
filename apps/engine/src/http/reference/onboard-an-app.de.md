@@ -21,7 +21,7 @@ Hosts und IDs in den Beispielen sind Platzhalter (`example.test`, `<...>`).
 
 ### Was du brauchst
 
-- Die `sk`-CLI, angemeldet an deiner Engine. In SubKit Cloud ist die Engine-Adresse `https://subkit-cloud.mikebild.dev`, ohne `/cockpit`.
+- Die `subkit`-CLI, angemeldet an deiner Engine. In SubKit Cloud ist die Engine-Adresse `https://subkit-cloud.mikebild.dev`, ohne `/cockpit`.
 - Ein echtes Access-Token eines Testkontos der App.
 - Zugang zu den Diensten, die die Workflows aufrufen, etwa zur API deines KI-Modells.
 
@@ -44,20 +44,20 @@ Soll nicht jede Person mit einem Token Benutzer werden, schränke `required_clai
 
 ### 2. Laufzeitkonfiguration setzen
 
-Die Laufzeitkonfiguration sind Einstellungen deiner Engine, die du mit `sk settings` liest und schreibst.
+Die Laufzeitkonfiguration sind Einstellungen deiner Engine, die du mit `subkit settings` liest und schreibst.
 `auth.providers` und `products` werden dabei jeweils als Ganzes ersetzt.
 Lies deshalb jeden Wert zuerst und schreib ihn mit deiner Ergänzung zurück.
 
 1. Lies die aktuellen Anmeldeanbieter.
 
 ```bash
-sk settings get auth.providers --json
+subkit settings get auth.providers --json
 ```
 
 2. Ergänze deinen Anbietereintrag und schreib die ganze Liste zurück. Behalte jeden bestehenden Eintrag, sonst geht er verloren.
 
 ```bash
-sk settings set auth.providers '[
+subkit settings set auth.providers '[
   {"protocol":"api_key","id":"api-key","label":"SubKit API key"},
   {"protocol":"oidc_bearer","id":"<provider-id>","label":"<app> account",
    "issuer_url":"https://idp.example.test","audience":"<audience>","algorithms":["ES256"],
@@ -70,19 +70,19 @@ sk settings set auth.providers '[
 3. Lies die aktuellen Produkte.
 
 ```bash
-sk settings get products --json
+subkit settings get products --json
 ```
 
 4. Ergänze deinen Produkteintrag und schreib den ganzen Wert zurück.
 
 ```bash
-sk settings set products '{"<product-id>":{"execution_environment":"prod",
+subkit settings set products '{"<product-id>":{"execution_environment":"prod",
   "assistant_workflow_id":"<assistant-workflow-id>","budget_bucket":"<bucket>"}}'
 ```
 
 `tenant_slug` nennt den Arbeitsbereich, also den abgetrennten Bereich in der Engine, in dem SubKit die Nutzer der App anlegt.
 `assistant_workflow_id` ist die ID, die du in Schritt 4 für den abgesicherten Workflow wählst.
-Sobald die Schritte 3 bis 5 erledigt sind, zeigt `sk apps show <product-id>`, was die Werte ergeben.
+Sobald die Schritte 3 bis 5 erledigt sind, zeigt `subkit apps show <product-id>`, was die Werte ergeben.
 
 ### 3. Connectors anlegen
 
@@ -94,12 +94,12 @@ Das ist meist die API des KI-Modells und, falls die App Konten löscht, die Admi
 3. Hinterlege die Zugangsdaten.
 
 ```bash
-sk connectors create --file connector-model.json --skip-checks
-printf '%s' "$MODEL_API_KEY" | sk vault attach <model-connector-id> --mode bearer
-printf 'Authorization=Bearer %s\napikey=%s\n' "$IDP_ADMIN_KEY" "$IDP_ADMIN_KEY" | sk vault attach <idp-admin-connector-id> --mode header
+subkit connectors create --file connector-model.json --skip-checks
+printf '%s' "$MODEL_API_KEY" | subkit vault attach <model-connector-id> --mode bearer
+printf 'Authorization=Bearer %s\napikey=%s\n' "$IDP_ADMIN_KEY" "$IDP_ADMIN_KEY" | subkit vault attach <idp-admin-connector-id> --mode header
 ```
 
-- `--skip-checks` ist nötig, weil die Zugangsdaten beim Anlegen des Connectors noch fehlen. `sk vault attach` prüft sie anschließend.
+- `--skip-checks` ist nötig, weil die Zugangsdaten beim Anlegen des Connectors noch fehlen. `subkit vault attach` prüft sie anschließend.
 - `bearer` sendet `Authorization: Bearer <token>`. `header` sendet die genannten Header (kommagetrennt `Name=Value`).
 - Zugangsdaten stammen aus deiner Shell oder deinem Secret-Speicher, nie aus einer Datei, der App oder diesem Repository.
 - Ersetzt du im Cockpit Zugangsdaten mit mehreren Headern, füll alle Header-Felder aus. Lässt du alle leer, bleiben die alten Werte.
@@ -110,7 +110,7 @@ Damit SubKit die Zugangsdaten prüfen kann, gib dem Connector eine Probe. Das is
 "config": {"probe_endpoint": {"method": "GET", "path": "/admin/users?per_page=1", "expected_status": [200, 200]}}
 ```
 
-Führe dann `sk connectors test <id>` aus.
+Führe dann `subkit connectors test <id>` aus.
 Antwortet die Probe mit 401 oder 403, gilt der Connector als abgemeldet. Seine Workflows sind dann blockiert.
 
 ### 4. Workflows anlegen
@@ -120,8 +120,8 @@ Lege sie mit festen IDs an, damit die App sie fest im Code hinterlegen kann.
 Nur ein Administrator darf eine Workflow-`id` (eine unbenutzte UUID) wählen.
 
 ```bash
-sk workflows create --file workflows/assistant.json
-sk workflows create --file workflows/delete-account.json
+subkit workflows create --file workflows/assistant.json
+subkit workflows create --file workflows/delete-account.json
 ```
 
 Jeder Produkt-Workflow setzt:
@@ -163,7 +163,7 @@ Eine neue Version braucht keine neue Freigabe, solange sie nicht mehr Systeme, A
 Prüfe zuerst die Bereitschaft. Jede Prüfung sollte `ok` lauten. Eine fehlschlagende Prüfung nennt ihre nächste Maßnahme.
 
 ```bash
-sk apps show <product-id>
+subkit apps show <product-id>
 ```
 
 Ruf dann die Engine mit einem echten Token auf:
@@ -183,7 +183,7 @@ curl -s -X POST $BASE/v1/executions -H "Authorization: Bearer $TOKEN" -H 'conten
 Erwartet:
 
 - `$BAD_TOKEN`, eine falsche Audience, ein fehlender Pflicht-Claim oder ein abgelaufenes Token antworten `401 invalid bearer token`.
-- `sk executions` und der Datensatz des Runs zeigen, wer aufgerufen hat und welche Freigabe galt.
+- `subkit executions` und der Datensatz des Runs zeigen, wer aufgerufen hat und welche Freigabe galt.
 
 ### Zugangsdaten eines Connectors erneuern
 
@@ -191,9 +191,9 @@ Zugangsdaten in Connectors können ablaufen, und Admin-Schlüssel werden regelm�
 Halte Name, Connector, Verantwortliche und Ablaufdatum aller Zugangsdaten im Repository der App fest, nie den Wert.
 Erneuere sie vor Ablauf.
 
-1. Hinterlege den neuen Wert mit `sk vault attach`.
-2. Prüfe ihn mit `sk connectors test <connector-id>`.
-3. Entferne den alten mit `sk vault rm <vault-item-id>`.
+1. Hinterlege den neuen Wert mit `subkit vault attach`.
+2. Prüfe ihn mit `subkit connectors test <connector-id>`.
+3. Entferne den alten mit `subkit vault rm <vault-item-id>`.
 
 Das Cockpit und `GET /v1/health` zeigen fehlschlagende Connectors.
 
@@ -201,7 +201,7 @@ Das Cockpit und `GET /v1/health` zeigen fehlschlagende Connectors.
 
 1. Widerrufe die Freigabe des Workflows im Tab **Freigaben**. Die App erhält dann 403, nichts läuft.
 2. Stell die Werte von `auth.providers` und `products` aus Schritt 2 wieder her.
-3. Stell eine Workflow-Version mit `sk workflows history <id>` und `sk workflows restore <id>` wieder her.
+3. Stell eine Workflow-Version mit `subkit workflows history <id>` und `subkit workflows restore <id>` wieder her.
 
 Ohne den Anbietereintrag werden die Tokens der App nicht mehr angenommen. Bestehende Aufruferdatensätze bleiben, bis der Lösch-Workflow sie löscht.
 
@@ -218,13 +218,13 @@ Es entfernt die eigenen Daten von SubKit über eine Person für eine App:
 
 Eine neue Anmeldung beim Anbieter legt einen neuen, leeren App-Benutzer an.
 
-1. Ermittle die Benutzer-ID mit `sk apps show <product-id>`.
-2. Führe `sk apps erase-user <product-id> <user-id>` aus und bestätige.
+1. Ermittle die Benutzer-ID mit `subkit apps show <product-id>`.
+2. Führe `subkit apps erase-user <product-id> <user-id>` aus und bestätige.
 
 ```bash
-sk apps show <product-id>                          # lists the user ids of the app
-sk apps erase-user <product-id> <user-id>          # asks for confirmation
-sk apps erase-user <product-id> <user-id> --yes    # non-interactive; --json prints the result
+subkit apps show <product-id>                          # lists the user ids of the app
+subkit apps erase-user <product-id> <user-id>          # asks for confirmation
+subkit apps erase-user <product-id> <user-id> --yes    # non-interactive; --json prints the result
 ```
 
 Gut zu wissen:
@@ -255,10 +255,10 @@ Die App selbst speichert nichts.
 Änderungen machst du über `auth.providers`, `products` und die Workflows (Schritte 2 bis 5).
 
 ```bash
-sk apps list                      # app, environment, users, budget today, readiness
-sk apps show <product-id>         # settings, sign-in, workflows, users, budget today, readiness
-sk apps show <product-id> --json
-sk users list --app <product-id>  # users who signed in to that app
+subkit apps list                      # app, environment, users, budget today, readiness
+subkit apps show <product-id>         # settings, sign-in, workflows, users, budget today, readiness
+subkit apps show <product-id> --json
+subkit users list --app <product-id>  # users who signed in to that app
 ```
 
 Im Cockpit öffnest du **Personen & Rechte** > **Apps** und wählst eine App. Über HTTP nutzt du `GET /v1/apps` und `GET /v1/apps/{id}`. Beide brauchen `settings:read`.
@@ -280,8 +280,8 @@ Das heutige Budget zeigt die heute verbrauchten und reservierten Einheiten, die 
 
 | Einstellung | Wo sie liegt |
 | --- | --- |
-| Anbietereintrag, `products`-Eintrag, Connectors und ihre Zugangsdaten | Laufzeitkonfiguration pro Deployment, gesetzt mit `sk` |
-| Workflow-Definitionen und ihre festen IDs | Das eigene Repository der App, angelegt mit `sk workflows create` |
+| Anbietereintrag, `products`-Eintrag, Connectors und ihre Zugangsdaten | Laufzeitkonfiguration pro Deployment, gesetzt mit `subkit` |
+| Workflow-Definitionen und ihre festen IDs | Das eigene Repository der App, angelegt mit `subkit workflows create` |
 | Freigaben der Workflows | Eine Person, pro Workflow und Umgebung, im Cockpit |
 | Ablaufnachweise für Zugangsdaten | Das eigene Repository der App (nur Metadaten) |
 
@@ -292,9 +292,9 @@ Jede Änderung an einem Anmeldeanbieter oder `products`-Eintrag landet im Verlau
 | Was du siehst | Was du tust |
 | --- | --- |
 | `401 invalid bearer token` | Das Token wurde abgelehnt. Prüfe `issuer_url`, `audience` und `required_claims` gegen ein echtes Token und ob es abgelaufen ist. |
-| `403` bei einem Produktlauf oder `ok: false` bei `GET /v1/health` | Es fehlt die Freigabe aus Schritt 5 oder Zugangsdaten. Prüfe `sk apps show <product-id>`. |
-| `429 rate_limited` | Das Tageslimit ist verbraucht. `sk apps show` nennt, wann der Tag zurückgesetzt wird. |
+| `403` bei einem Produktlauf oder `ok: false` bei `GET /v1/health` | Es fehlt die Freigabe aus Schritt 5 oder Zugangsdaten. Prüfe `subkit apps show <product-id>`. |
+| `429 rate_limited` | Das Tageslimit ist verbraucht. `subkit apps show` nennt, wann der Tag zurückgesetzt wird. |
 | `409 turn_busy` | Ein Aufruf desselben Durchgangs läuft noch. Warte ab, oder sende den ersten Aufruf mit seinem `idempotency_key` erneut; dann liefert die Engine dessen Ergebnis noch einmal. Ein anderer Schlüssel bekommt weiter 409, bis der erste Aufruf fertig ist. |
-| `credential_unverified` und `PROBE_AUTH_UNVERIFIED`, oder „Verbunden · Anmeldung nicht geprüft“ im Cockpit | Der Connector hat keine Probe, und `GET /` lieferte keine klare Antwort. Setze einen Probe-Pfad mit authentifiziertem Lesezugriff (Schritt 3) und prüfe mit `sk connectors test <id>`. |
-| Ein Connector gilt als abgemeldet | Dessen Probe hat 401 oder 403 geliefert. Hinterlege die Zugangsdaten neu (Schritt 3) und prüfe mit `sk connectors test <id>`. |
+| `credential_unverified` und `PROBE_AUTH_UNVERIFIED`, oder „Verbunden · Anmeldung nicht geprüft“ im Cockpit | Der Connector hat keine Probe, und `GET /` lieferte keine klare Antwort. Setze einen Probe-Pfad mit authentifiziertem Lesezugriff (Schritt 3) und prüfe mit `subkit connectors test <id>`. |
+| Ein Connector gilt als abgemeldet | Dessen Probe hat 401 oder 403 geliefert. Hinterlege die Zugangsdaten neu (Schritt 3) und prüfe mit `subkit connectors test <id>`. |
 | `409` beim Löschen eines App-Benutzers | Die Person hat Anmeldeverknüpfungen zu einer anderen App oder zu SubKit selbst und wird nicht gelöscht. |

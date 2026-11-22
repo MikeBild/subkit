@@ -9,8 +9,8 @@ let dirB: string;
 let originalCwd: string;
 
 beforeEach(() => {
-  dirA = realpathSync(mkdtempSync(join(tmpdir(), "sk-cfg-path-a-")));
-  dirB = realpathSync(mkdtempSync(join(tmpdir(), "sk-cfg-path-b-")));
+  dirA = realpathSync(mkdtempSync(join(tmpdir(), "subkit-cfg-path-a-")));
+  dirB = realpathSync(mkdtempSync(join(tmpdir(), "subkit-cfg-path-b-")));
   originalCwd = process.cwd();
 });
 

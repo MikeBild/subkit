@@ -1,4 +1,4 @@
-import { parseVaultHandle } from "@shared/vault-handle.ts";
+import { parseVaultHandle, type VaultHandle } from "@shared/vault-handle.ts";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import {
@@ -12,7 +12,11 @@ import type { Db } from "../../db/client.ts";
 import { connectors, vaultItems } from "../../db/schema/connectors.ts";
 import { logger } from "../../logging/index.ts";
 import { can } from "../../rbac/evaluator.ts";
-import { resolveVaultHandle } from "../../vault/index.ts";
+import {
+  injectVaultValue,
+  type PreparedVaultValues,
+  prepareVaultValues,
+} from "../../vault/index.ts";
 import { authorityConnectorDigest } from "../../workflows/authority-configuration.ts";
 import { suggestClosest } from "../../workflows/levenshtein.ts";
 import { type Placeholder, parsePlaceholders } from "./parser.ts";
@@ -37,9 +41,7 @@ export interface ResolverContext {
   principal?: ResolvedPrincipal;
   own_connector?: { id: string; onSecret: (value: string) => void };
   vault?: {
-    user_id: string | null;
-    execution_id: string | null;
-    step_id: string | null;
+    values: PreparedVaultValues;
     onSecret: (value: string) => void;
   };
   onAuthorityReference?: (reference: ResolvedAuthorityReference) => void;
@@ -352,27 +354,35 @@ async function resolveOne(tok: Placeholder, ctx: ResolverContext): Promise<OneRe
   }
 }
 
-async function resolveSecret(tok: Placeholder, ctx: ResolverContext): Promise<OneResult> {
-  const handle = parseVaultHandle(tok.path);
-  if (!handle) return { ok: false, code: "parse_error", message: `malformed ${tok.raw}` };
-  if (!ctx.vault) {
-    return {
-      ok: false,
-      code: "secret_withheld",
-      message: `${tok.raw} is resolved only inside a connector step of an approved workflow run; approve the workflow and send it through its connector`,
-    };
-  }
-  const resolved = await resolveVaultHandle(ctx.db, {
-    tenant_id: ctx.tenant_id,
-    environment: ctx.environment,
-    user_id: ctx.vault.user_id,
-    handle,
-    execution_id: ctx.vault.execution_id,
-    step_id: ctx.vault.step_id,
-  });
-  if (!resolved.ok) return resolved;
-  for (const secret of resolved.secret.secrets) ctx.vault.onSecret(secret);
-  return { ok: true, value: resolved.secret.value };
+function resolveSecret(tok: Placeholder, ctx: ResolverContext): OneResult {
+  const injected = injectVaultValue(tok.raw, tok.path, ctx.vault?.values ?? null);
+  if (!injected.ok) return injected;
+  for (const secret of injected.secrets) ctx.vault?.onSecret(secret);
+  return { ok: true, value: injected.value };
+}
+
+export function vaultHandlesIn(value: unknown): VaultHandle[] {
+  if (typeof value === "string")
+    return parsePlaceholders(value).tokens.flatMap((token) => {
+      const handle = token.kind === "secret" ? parseVaultHandle(token.path) : null;
+      return handle ? [handle] : [];
+    });
+  if (value === null || typeof value !== "object") return [];
+  return Object.values(value).flatMap(vaultHandlesIn);
+}
+
+export function prepareStepVault(
+  db: Db,
+  input: {
+    tenant_id: string;
+    environment: Environment;
+    user_id: string | null;
+    execution_id: string | null;
+    step_id: string;
+  },
+  parts: readonly unknown[],
+): Promise<PreparedVaultValues> {
+  return prepareVaultValues(db, { ...input, handles: vaultHandlesIn(parts) });
 }
 
 async function resolveCred(tok: Placeholder, ctx: ResolverContext): Promise<OneResult> {

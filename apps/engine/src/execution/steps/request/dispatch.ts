@@ -5,6 +5,7 @@ import { lookupDriver, requestDriverKind } from "../../../connectors/drivers/por
 import { getConnectorForEnvironment, isCircuitOpenBlocking } from "../../../connectors/service.ts";
 import type { CredentialUseSnapshot } from "../../../credentials/index.ts";
 import {
+  prepareStepVault,
   type ResolvedAuthorityReference,
   resolvePlaceholders,
   resolvePlaceholdersTypePreserving,
@@ -487,9 +488,17 @@ async function dispatchRequestStep(
         ? {
             ...resolver,
             vault: {
-              user_id: p.ctx.principal?.kind === "user" ? p.ctx.principal.id : null,
-              execution_id: p.ctx.execution_id,
-              step_id: p.step.id,
+              values: await prepareStepVault(
+                p.ctx.db,
+                {
+                  tenant_id: p.ctx.tenant_id,
+                  environment: p.ctx.execution_mode,
+                  user_id: p.ctx.principal?.kind === "user" ? p.ctx.principal.id : null,
+                  execution_id: p.ctx.execution_id,
+                  step_id: p.step.id,
+                },
+                [p.step.headers, p.step.query, p.step.body],
+              ),
               onSecret: (value: string) => {
                 ownCredentials.push(value);
               },

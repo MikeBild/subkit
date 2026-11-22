@@ -10,8 +10,8 @@ import {
 } from "../llms-index.ts";
 
 const pages: LlmsPage[] = [
-  { path: "setup.md", title: "sk", summary: "Run the engine." },
-  { path: "cli.md", title: "sk CLI reference", summary: "" },
+  { path: "setup.md", title: "subkit", summary: "Run the engine." },
+  { path: "cli.md", title: "subkit CLI reference", summary: "" },
 ];
 
 describe("renderLlmsIndex", () => {
@@ -26,8 +26,8 @@ describe("renderLlmsIndex", () => {
   });
 
   test("lists every page through linkFor, with its summary when present", () => {
-    expect(out).toContain("- [sk](https://x/llms/setup.md): Run the engine.");
-    expect(out).toContain("- [sk CLI reference](https://x/llms/cli.md)\n".trimEnd());
+    expect(out).toContain("- [subkit](https://x/llms/setup.md): Run the engine.");
+    expect(out).toContain("- [subkit CLI reference](https://x/llms/cli.md)\n".trimEnd());
   });
 
   test("the served page set is fixed and starts with setup", () => {
@@ -46,13 +46,13 @@ describe("renderLlmsIndex", () => {
       [
         "# SubKit",
         "",
-        "> A self-hosted engine for governed workflows. These pages describe setup, coding-agent briefings and hooks, the sk CLI, runtime settings, the connector catalog, and governed transactional email.",
+        "> A self-hosted engine for governed workflows. These pages describe setup, coding-agent briefings and hooks, the subkit CLI, runtime settings, the connector catalog, and governed transactional email.",
         "> All pages in one file: https://x/llms-full.txt",
         "",
         "## Pages",
         "",
-        "- [sk](https://x/llms/setup.md): Run the engine.",
-        "- [sk CLI reference](https://x/llms/cli.md)",
+        "- [subkit](https://x/llms/setup.md): Run the engine.",
+        "- [subkit CLI reference](https://x/llms/cli.md)",
       ].join("\n"),
     );
   });

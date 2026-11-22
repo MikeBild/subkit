@@ -1,0 +1,20 @@
+{
+  "name": "subkit-cli-verify-1779520576",
+  "slug": "subkit-cli-verify-1779520576",
+  "steps": [
+    {
+      "id": "list_repos",
+      "kind": "request",
+      "path": "/user/repos",
+      "query": {
+        "per_page": 100,
+        "visibility": "private",
+        "affiliation": "owner"
+      },
+      "method": "GET",
+      "on_error": "fail",
+      "connector_id": "aaaaaaaa-aaaa-4aaa-8aaa-000000000001"
+    }
+  ],
+  "description": "List the authenticated user's private GitHub repositories"
+}

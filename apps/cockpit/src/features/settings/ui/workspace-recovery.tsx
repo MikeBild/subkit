@@ -92,7 +92,7 @@ export function WorkspaceRecovery({
                 data-testid="workspace-recovery-login"
                 href={loginHref({ pathname: "/cockpit", search: "" })}
               >
-                {t("familyFailure.expired.signIn")}
+                {t("failure.expired.signIn")}
               </a>
             </Button>
           </AlertDescription>

@@ -18,7 +18,7 @@ let dir: string;
 let cfgPath: string;
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), "sk-cfg-"));
+  dir = mkdtempSync(join(tmpdir(), "subkit-cfg-"));
   cfgPath = join(dir, "subkit.config.json");
   _resetConfigForTests();
 });

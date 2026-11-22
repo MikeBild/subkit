@@ -66,7 +66,8 @@ type TurnFailureCause =
         | "tool_schema_invalid"
         | "provider_context_too_large"
         | "spend_limit_reached"
-        | "ai_access_missing";
+        | "ai_access_missing"
+        | "key_rejected";
       retryAt: string | null;
     }
   | { kind: "provider_timeout"; timeoutMs: number | null };
@@ -90,6 +91,8 @@ function causeKind(
       return "provider_context_too_large";
     case "ai_access_missing":
       return "ai_access_missing";
+    case "llm_key_rejected":
+      return "key_rejected";
     default:
       return null;
   }

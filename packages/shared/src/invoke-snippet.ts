@@ -71,7 +71,7 @@ export function renderInvokeSnippet(options: InvokeSnippetOptions): string {
   if (lang === "curl") {
     return [
       `curl -sS -X POST ${shellQuote(url)} \\`,
-      `  -H 'authorization: Bearer '"$SK_API_KEY" \\`,
+      `  -H 'authorization: Bearer '"$SUBKIT_API_KEY" \\`,
       `  -H 'x-subkit-environment: ${environment}' \\`,
       `  -H 'content-type: application/json' \\`,
       `  -d ${shellQuote(JSON.stringify(body))}`,
@@ -84,7 +84,7 @@ export function renderInvokeSnippet(options: InvokeSnippetOptions): string {
       `  method: "POST",`,
       `  headers: {`,
       // biome-ignore lint/suspicious/noTemplateCurlyInString: emitted verbatim into the reader's Node snippet as a template-literal placeholder.
-      "    authorization: `Bearer ${process.env.SK_API_KEY}`,",
+      "    authorization: `Bearer ${process.env.SUBKIT_API_KEY}`,",
       `    "x-subkit-environment": "${environment}",`,
       `    "content-type": "application/json",`,
       `  },`,
@@ -102,7 +102,7 @@ export function renderInvokeSnippet(options: InvokeSnippetOptions): string {
     `res = requests.post(`,
     `    ${JSON.stringify(url)},`,
     `    headers={`,
-    `        "authorization": f"Bearer {os.environ['SK_API_KEY']}",`,
+    `        "authorization": f"Bearer {os.environ['SUBKIT_API_KEY']}",`,
     `        "x-subkit-environment": "${environment}",`,
     `        "content-type": "application/json",`,
     `    },`,

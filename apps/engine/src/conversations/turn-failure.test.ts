@@ -226,3 +226,28 @@ describe("providerFailureNotice", () => {
     expect(providerFailureNotice(new Error("boom"), "de")).toBeNull();
   });
 });
+
+describe("a rejected AI key during a run", () => {
+  const rejected = new APICallError({
+    message: "invalid x-api-key",
+    url: "https://api.anthropic.com/v1/messages",
+    requestBodyValues: {},
+    statusCode: 401,
+    isRetryable: false,
+  });
+
+  test("is typed as a rejected key, not as a quota or an unreachable provider", () => {
+    expect(describeTurnFailure(rejected, now)).toMatchObject({
+      code: "llm_key_rejected",
+      kind: "key_rejected",
+    });
+  });
+
+  test("asks to reconnect the key in the AI settings, in German and English", () => {
+    expect(providerFailureNotice(rejected, "de")).toContain("API-Schlüssel");
+    expect(providerFailureNotice(rejected, "de")).toContain("Einstellungen → KI-Assistent");
+    expect(providerFailureNotice(rejected, "en")).toContain("Reconnect the key");
+    expect(providerFailureNotice(rejected, "en")).toContain("Settings → AI assistant");
+    expect(providerFailureNotice(rejected, "en")).not.toContain("x-api-key");
+  });
+});

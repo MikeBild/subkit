@@ -13,10 +13,12 @@ import { closeCommandsOfExecution } from "../devices/channel.ts";
 import { errorFields, logger } from "../logging/index.ts";
 import {
   crashRecoveryOutcome,
+  interruptedWriteNotice,
   TERMINAL_EXECUTION_STATUSES,
   type TerminalExecutionStatus,
 } from "./core/status.ts";
 import { terminalizeExecutionRow } from "./state.ts";
+import { classifyRequestStepSideEffects } from "./steps/request/side-effects.ts";
 
 const DEFAULT_WORKFLOW_TIMEOUT_MS = 6 * 60 * 60 * 1000;
 const DEVICE_STEP_INTERRUPTED = "device_step_interrupted";
@@ -51,6 +53,51 @@ async function hasDeviceCommands(
   return Boolean(row);
 }
 
+type RequestStep = Parameters<typeof classifyRequestStepSideEffects>[0];
+
+function stepWrites(dag: unknown, step_key: string): boolean {
+  const steps = (dag as { steps?: unknown } | null)?.steps;
+  if (!Array.isArray(steps)) return false;
+  const def = steps.find(
+    (step): step is RequestStep =>
+      typeof step === "object" && step !== null && (step as { id?: unknown }).id === step_key,
+  );
+  if (def?.kind !== "request") return false;
+  try {
+    return classifyRequestStepSideEffects(def) === "write";
+  } catch {
+    return true;
+  }
+}
+
+async function runningWriteSteps(
+  db: Db,
+  tenant_id: string,
+  execution_id: string,
+  workflow_version_id: string | null,
+): Promise<string[]> {
+  const running = await db
+    .select({ step_key: executionSteps.step_key })
+    .from(executionSteps)
+    .where(
+      and(
+        eq(executionSteps.tenant_id, tenant_id),
+        eq(executionSteps.execution_id, execution_id),
+        eq(executionSteps.status, "running"),
+        eq(executionSteps.kind, "request"),
+      ),
+    );
+  if (running.length === 0 || workflow_version_id === null) return [];
+  const [version] = await db
+    .select({ dag: workflowVersions.dag })
+    .from(workflowVersions)
+    .where(
+      and(eq(workflowVersions.tenant_id, tenant_id), eq(workflowVersions.id, workflow_version_id)),
+    )
+    .limit(1);
+  return running.map((step) => step.step_key).filter((key) => stepWrites(version?.dag, key));
+}
+
 export function resolveCrashRecoveryThresholdMs(envValue: string | undefined): number | undefined {
   if (!envValue) return undefined;
   const parsed = Number.parseInt(envValue, 10);
@@ -62,6 +109,7 @@ interface CandidateRow {
   id: string;
   tenant_id: string;
   workflow_id: string | null;
+  workflow_version_id: string | null;
   started_at: Date | null;
   abort_requested_at: Date | null;
   workflow_timeout_ms: number | null;
@@ -89,6 +137,7 @@ export async function recoverCrashedExecutions(
       id: executions.id,
       tenant_id: executions.tenant_id,
       workflow_id: executions.workflow_id,
+      workflow_version_id: executions.workflow_version_id,
       started_at: executions.started_at,
       abort_requested_at: executions.abort_requested_at,
       workflow_timeout_ms: sql<
@@ -118,9 +167,18 @@ export async function recoverCrashedExecutions(
     if (!outcome) continue;
     const interrupted =
       outcome.status === "timed_out" && (await hasDeviceCommands(db, row.tenant_id, row.id));
-    const terminalStatus: TerminalExecutionStatus = interrupted ? "failed" : outcome.status;
-    const recoveryReason: string = interrupted ? DEVICE_STEP_INTERRUPTED : outcome.reason;
-    const recoveryMessage = interrupted ? DEVICE_STEP_INTERRUPTED_MESSAGE : outcome.message;
+    const writes = interrupted
+      ? []
+      : await runningWriteSteps(db, row.tenant_id, row.id, row.workflow_version_id);
+    const writeNotice = interruptedWriteNotice(writes);
+    const terminalStatus: TerminalExecutionStatus =
+      interrupted || writeNotice ? "failed" : outcome.status;
+    const recoveryReason: string = interrupted
+      ? DEVICE_STEP_INTERRUPTED
+      : (writeNotice?.code ?? outcome.reason);
+    const recoveryMessage = interrupted
+      ? DEVICE_STEP_INTERRUPTED_MESSAGE
+      : (writeNotice?.message ?? outcome.message);
     const thresholdMs = outcome.threshold_ms;
     const ageMs = outcome.age_ms;
 
@@ -132,7 +190,7 @@ export async function recoverCrashedExecutions(
           status: terminalStatus,
           finished_at: now,
           failure: {
-            step_id: null,
+            step_id: writeNotice?.step_id ?? null,
             error_code: recoveryReason,
             error_message: recoveryMessage,
           },
@@ -171,8 +229,26 @@ export async function recoverCrashedExecutions(
             kind: executionSteps.kind,
             duration_ms: executionSteps.duration_ms,
           });
+        if (writeNotice) {
+          await tx
+            .update(executionSteps)
+            .set({
+              error: {
+                code: writeNotice.code,
+                message: writeNotice.message,
+                guidance: writeNotice.guidance,
+              },
+            })
+            .where(
+              and(
+                eq(executionSteps.execution_id, row.id),
+                inArray(executionSteps.step_key, writes),
+              ),
+            );
+        }
 
         for (const step of terminalizedSteps) {
+          const wrote = writes.includes(step.step_key);
           await writeEvent(tx, {
             tenant_id: row.tenant_id,
             channel: "execution.status",
@@ -184,7 +260,7 @@ export async function recoverCrashedExecutions(
               kind: step.kind,
               status: terminalStatus,
               duration_ms: step.duration_ms,
-              error_code: terminalStatus,
+              error_code: wrote && writeNotice ? writeNotice.code : terminalStatus,
               reason: recoveryReason,
             },
           });
@@ -215,6 +291,7 @@ export async function recoverCrashedExecutions(
             timeout_ms: thresholdMs,
             workflow_timeout_ms: row.workflow_timeout_ms,
             age_ms: ageMs,
+            interrupted_writes: writes,
             source,
           },
           executor: tx,

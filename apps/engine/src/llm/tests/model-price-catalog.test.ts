@@ -284,7 +284,7 @@ describe("the catalog never reaches the stored configuration", () => {
   const ENV = { DATABASE_URL: "postgres://x:y@127.0.0.1:5432/z", NODE_ENV: "test" };
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "sk-price-catalog-"));
+    dir = mkdtempSync(join(tmpdir(), "subkit-price-catalog-"));
     cfgPath = join(dir, "subkit.config.json");
     _resetConfigForTests();
   });

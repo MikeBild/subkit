@@ -26,7 +26,7 @@ const hash = (text: string): string => createHash("sha256").update(text).digest(
 
 export function releaseMutationReceiptPath(repo: string, commit: string): string {
   if (!/^[a-f0-9]{40}$/.test(commit)) throw new Error("release mutation commit is malformed");
-  return join(repo, "reports/mutation/release", `${commit}.json`);
+  return join(repo, ".reports/mutation/release", `${commit}.json`);
 }
 
 function unionScore(unionText: string): {
@@ -104,7 +104,7 @@ export function assertReleaseMutationReceipt(input: {
   if (
     receipt.version !== 1 ||
     typeof receipt.union_path !== "string" ||
-    !/^reports\/mutation\/runs\/[a-z0-9-]+\/[a-z0-9-]+\/union\.json$/.test(receipt.union_path) ||
+    !/^\.reports\/mutation\/runs\/[a-z0-9-]+\/[a-z0-9-]+\/union\.json$/.test(receipt.union_path) ||
     typeof receipt.union_sha256 !== "string" ||
     Number.isNaN(Date.parse(receipt.recorded_at ?? ""))
   )
@@ -141,7 +141,7 @@ export async function recordReleaseMutationEvidence(repo: string): Promise<strin
     throw new Error("Release mutation requires a job-owned PostgreSQL resource");
   const head = cleanHead(repo);
   const waveId = `release-${randomUUID()}`;
-  const inputRoot = `reports/quality-inputs/${waveId}`;
+  const inputRoot = `.reports/quality-inputs/${waveId}`;
   const ledger = `${inputRoot}/runtime-ledger.json`;
   const candidate = `${inputRoot}/candidate.json`;
   const manifest = `${inputRoot}/wave.json`;

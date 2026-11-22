@@ -82,7 +82,7 @@ describe("codesign-macos.sh", () => {
 });
 
 describe("build commands", () => {
-  for (const name of ["sk", "engine"]) {
+  for (const name of ["subkit", "engine"]) {
     test(`build ${name} only signs on a macOS host`, () => {
       const signs = (platform: string) => {
         const result = plan("build", [name, "--skip-deps"], { version: "1.2.3", platform });

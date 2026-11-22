@@ -462,13 +462,13 @@ test("only a signed-in person can save a spec as stated by a person", async () =
   expect(WorkflowDraftSchema.parse(await viaSession.json()).spec?.origin).toBe("person");
 });
 
-test("a person signed in through sk can save a spec as stated by a person", async () => {
+test("a person signed in through subkit can save a spec as stated by a person", async () => {
   const viaCli = await fetch(`${ctx.baseUrl}/v1/workflows/drafts`, {
     method: "POST",
     headers: headers(cliKey),
     body: JSON.stringify({
       definition: definition("api-spec-person-cli"),
-      spec: spec("Person goal from sk", "person"),
+      spec: spec("Person goal from subkit", "person"),
     }),
   });
   expect(viaCli.status).toBe(201);

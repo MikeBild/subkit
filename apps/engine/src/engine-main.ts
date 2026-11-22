@@ -1,7 +1,7 @@
 import { checkForUpdate, defaultUpdaterConfig } from "@cli-core/updater.ts";
 import { SYSTEM_TENANT_ID } from "./audit/index.ts";
 import { ChatAdapterRegistry } from "./chat/registry.ts";
-import { SkCliAdapter } from "./chat/sk-cli/adapter.ts";
+import { SubkitCliAdapter } from "./chat/subkit-cli/adapter.ts";
 import {
   createEngineShutdown,
   runBootSeeds,
@@ -101,7 +101,7 @@ async function runServer(): Promise<void> {
     engineShutdown.attachRuntimeConfig(coordinator);
     lifetime.registerStop(() => coordinator.pause());
     const chatRegistry = new ChatAdapterRegistry();
-    chatRegistry.registerFallback("sk_cli", new SkCliAdapter(db));
+    chatRegistry.registerFallback("sk_cli", new SubkitCliAdapter(db));
 
     await lifetime.step(() =>
       coordinator.registerStartup(async (tx) => {

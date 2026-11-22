@@ -50,7 +50,7 @@ describe("robots-cache / parsing", () => {
     const robots = await getRobots({
       tenantId: "tenant-a",
       origin: "https://example.com",
-      userAgent: "sk-web-scraper/1.0",
+      userAgent: "subkit-web-scraper/1.0",
       fetchImpl: makeFetch({
         "https://example.com/robots.txt": {
           body: "User-agent: *\nDisallow: /private",
@@ -58,15 +58,15 @@ describe("robots-cache / parsing", () => {
       }),
     });
     expect(robots).not.toBeNull();
-    expect(robots?.isAllowed("https://example.com/public", "sk-web-scraper/1.0")).toBe(true);
-    expect(robots?.isAllowed("https://example.com/private", "sk-web-scraper/1.0")).toBe(false);
+    expect(robots?.isAllowed("https://example.com/public", "subkit-web-scraper/1.0")).toBe(true);
+    expect(robots?.isAllowed("https://example.com/private", "subkit-web-scraper/1.0")).toBe(false);
   });
 
   test("missing robots.txt is treated as allow-all (returns null)", async () => {
     const robots = await getRobots({
       tenantId: "tenant-a",
       origin: "https://example.com",
-      userAgent: "sk-web-scraper/1.0",
+      userAgent: "subkit-web-scraper/1.0",
       fetchImpl: makeFetch({}),
     });
     expect(robots).toBeNull();
@@ -76,14 +76,14 @@ describe("robots-cache / parsing", () => {
     const robots = await getRobots({
       tenantId: "tenant-a",
       origin: "https://example.com",
-      userAgent: "sk-web-scraper",
+      userAgent: "subkit-web-scraper",
       fetchImpl: makeFetch({
         "https://example.com/robots.txt": {
-          body: "User-agent: *\nAllow: /\n\nUser-agent: sk-web-scraper\nDisallow: /forbidden",
+          body: "User-agent: *\nAllow: /\n\nUser-agent: subkit-web-scraper\nDisallow: /forbidden",
         },
       }),
     });
-    expect(robots?.isAllowed("https://example.com/forbidden", "sk-web-scraper")).toBe(false);
+    expect(robots?.isAllowed("https://example.com/forbidden", "subkit-web-scraper")).toBe(false);
     expect(robots?.isAllowed("https://example.com/forbidden", "other-bot")).toBe(true);
   });
 });

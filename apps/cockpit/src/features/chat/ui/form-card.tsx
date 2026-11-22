@@ -47,8 +47,6 @@ export function ChatFormCard({
     github_owner: t("chat.form.githubOwner"),
     github_repositories: t("chat.form.repositories"),
     search_console_site: t("chat.form.searchSite"),
-    wikikit_report_space: t("chat.form.knowledgeSpace"),
-    contentkit_report_site: t("chat.form.reportSite"),
   };
   const runQuestion = /^Workflow ".+" needs the following inputs? to run:$/.test(form.question);
   const question = runQuestion ? t("chat.form.runQuestion") : form.question;

@@ -23,12 +23,12 @@ describe("redactPayload — sensitive key masking", () => {
       headers: {
         Authorization: "Bearer sk-live-xyz",
         "X-API-Key": "some-key",
-        "User-Agent": "sk-cli/1.0",
+        "User-Agent": "subkit-cli/1.0",
       },
     }) as { headers: Record<string, string> };
     expect(out.headers.Authorization).toBe("[REDACTED]");
     expect(out.headers["X-API-Key"]).toBe("[REDACTED]");
-    expect(out.headers["User-Agent"]).toBe("sk-cli/1.0");
+    expect(out.headers["User-Agent"]).toBe("subkit-cli/1.0");
   });
 
   test("case-insensitive key matching", () => {

@@ -84,7 +84,7 @@ describe("e2e harness isolation", () => {
     }
     const hostHasPlaywright = await (
       Function("s", "return import(s)") as (s: string) => Promise<unknown>
-    )(process.env.SK_PLAYWRIGHT_ENTRY || "playwright").then(
+    )(process.env.SUBKIT_PLAYWRIGHT_ENTRY || "playwright").then(
       () => true,
       () => false,
     );

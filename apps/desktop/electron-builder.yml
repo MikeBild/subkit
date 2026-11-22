@@ -6,9 +6,6 @@ protocols:
   name: SubKit
   schemes:
     - subkit
-linux:
-  mimeTypes:
-    - x-scheme-handler/subkit
 mac:
   notarize: true
 publish:

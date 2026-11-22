@@ -47,6 +47,12 @@ afterAll(async () => {
   await ctx.cleanup();
 }, 30_000);
 
+async function atChainHead(): Promise<void> {
+  await ctx.cleanup();
+  ctx = await createTestDb("baseline-stamp", [baseline]);
+  await replaceHistory(oldLineage, UNTAGGED);
+}
+
 async function replaceHistory(tags: readonly string[], untagged: number): Promise<void> {
   await ctx.db.execute(sql`DELETE FROM "subkit"."__drizzle_migrations"`);
   await ctx.db.execute(
@@ -99,7 +105,7 @@ describe("baseline over the replaced migration chain", () => {
   });
 
   test("the boot preflight accepts the replaced chain before and after the stamp and still refuses newer tags", async () => {
-    await replaceHistory(oldLineage, UNTAGGED);
+    await atChainHead();
     expect(await schemaAheadTags(ctx.db)).toEqual([]);
     expect(await schemaBehindChainHead(ctx.db)).toBeNull();
     await runMigrations(ctx.db);
@@ -113,7 +119,7 @@ describe("baseline over the replaced migration chain", () => {
   });
 
   test("a database at the chain head is stamped without DDL and applies only what follows the baseline", async () => {
-    await replaceHistory(oldLineage, UNTAGGED);
+    await atChainHead();
     expect(await runMigrations(ctx.db)).toEqual({
       applied: EMBEDDED_MIGRATIONS.length - 1,
       skipped: 0,
@@ -153,7 +159,7 @@ describe("baseline over the replaced migration chain", () => {
   });
 
   test("a tag from the replaced chain never hides a new migration, not even in the stamping run", async () => {
-    await replaceHistory(oldLineage, UNTAGGED);
+    await atChainHead();
     expect(await tableSchemas("baseline_reused_tag_probe")).toEqual([]);
     const report = await runMigrations(ctx.db, [...EMBEDDED_MIGRATIONS, reused]);
     expect(report).toEqual({

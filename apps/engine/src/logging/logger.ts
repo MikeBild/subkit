@@ -30,7 +30,7 @@ const SD_DAEMON_PREFIX: Record<LogLevelName, string> = {
 };
 
 function defaultSdDaemonPrefix(): boolean {
-  const flag = (readEnv("SK_LOG_SD_DAEMON") ?? "").toLowerCase();
+  const flag = (readEnv("SUBKIT_LOG_SD_DAEMON") ?? "").toLowerCase();
   if (flag === "1" || flag === "true") return true;
   if (flag === "0" || flag === "false") return false;
   return Boolean(readEnv("JOURNAL_STREAM"));

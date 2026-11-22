@@ -41,6 +41,7 @@ import { hostedIngressRateLimit, hostedTenantRateLimit } from "./middleware/host
 import { loggingMiddleware } from "./middleware/logging.ts";
 import { rateLimitMiddleware } from "./middleware/rate-limit.ts";
 import { traceMiddleware } from "./middleware/trace.ts";
+import { versionHeaderMiddleware } from "./middleware/version-header.ts";
 import { type AppEnv, createOpenApiApp, OPENAPI_INFO, SECURITY_SCHEMES } from "./openapi.ts";
 import { registerAgentBriefingRoutes } from "./routes/agent-briefing.ts";
 import { registerAgentSessionRoutes } from "./routes/agent-sessions.ts";
@@ -98,7 +99,7 @@ import { registerPortalTokenRoutes } from "./routes/identity/portal-tokens.ts";
 import { registerProviderIdentityRoutes } from "./routes/identity/provider-identities.ts";
 import { registerProvidersRoute } from "./routes/identity/providers.ts";
 import { registerIdentitySessionsRoute } from "./routes/identity/sessions.ts";
-import { registerSkBootstrapRoute } from "./routes/identity/sk-bootstrap.ts";
+import { registerSkBootstrapRoute } from "./routes/identity/subkit-bootstrap.ts";
 import { registerSystemAccountRoutes } from "./routes/identity/system-accounts.ts";
 import { registerTenantRoutes } from "./routes/identity/tenants.ts";
 import { registerUserRoutes } from "./routes/identity/users.ts";
@@ -219,6 +220,7 @@ export function createApp(opts: CreateAppOptions): OpenAPIHono<AppEnv> {
   const registry = opts.registry ?? buildDefaultRegistry(opts.db);
 
   app.use("*", traceMiddleware());
+  app.use("*", versionHeaderMiddleware(OPENAPI_INFO.version));
   app.use("*", loggingMiddleware());
   app.use("*", metricsMiddleware());
   app.use("*", errorMiddleware());

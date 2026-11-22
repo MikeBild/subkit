@@ -430,7 +430,7 @@ export const approvePatchCandidateOperation = defineOperation<ApproveInput, stri
       return notProposed(
         row,
         "approved",
-        "the candidate already reached a terminal status — a fresh drift scan may have superseded it; sk patch-candidates list shows what is still open",
+        "the candidate already reached a terminal status — a fresh drift scan may have superseded it; subkit patch-candidates list shows what is still open",
       );
     let versionId: string | null;
     try {
@@ -476,7 +476,7 @@ export const rejectPatchCandidateOperation = defineOperation<RejectInput, { reje
       return notProposed(
         row,
         "rejected",
-        "the candidate already reached a terminal status — nothing to do; sk patch-candidates list shows what is still open",
+        "the candidate already reached a terminal status — nothing to do; subkit patch-candidates list shows what is still open",
       );
     const rejected = await rejectPatchCandidate(
       {

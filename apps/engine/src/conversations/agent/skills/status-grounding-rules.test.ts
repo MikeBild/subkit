@@ -1,14 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { renderTenantSummaryBlock } from "../../../llm/runtime/tenant-summary.ts";
 import { generateMainAgentSystemPrompt } from "../context.ts";
-import { SK_STATUS_GROUNDING } from "../prompts.ts";
+import { SUBKIT_STATUS_GROUNDING } from "../prompts.ts";
 
 const SNAPSHOT_DEFERENCE = "unless the tenant snapshot above already lists it";
 
 describe("status grounding defers to the tenant snapshot", () => {
   test("the grounding rule carries the snapshot exception", () => {
-    expect(SK_STATUS_GROUNDING).toContain(SNAPSHOT_DEFERENCE);
-    expect(SK_STATUS_GROUNDING).toContain("answer ONLY from that source");
+    expect(SUBKIT_STATUS_GROUNDING).toContain(SNAPSHOT_DEFERENCE);
+    expect(SUBKIT_STATUS_GROUNDING).toContain("answer ONLY from that source");
   });
 
   test("the chat-surface prompt renders the rule with the exception", async () => {
@@ -37,7 +37,7 @@ describe("status grounding defers to the tenant snapshot", () => {
       new Set(["nightly-sync"]),
     ) as string;
     expect(snapshot).toContain("DO NOT call list_workflows");
-    expect(SK_STATUS_GROUNDING).toContain("`list_workflows` / `list_connectors`");
-    expect(SK_STATUS_GROUNDING).toContain(SNAPSHOT_DEFERENCE);
+    expect(SUBKIT_STATUS_GROUNDING).toContain("`list_workflows` / `list_connectors`");
+    expect(SUBKIT_STATUS_GROUNDING).toContain(SNAPSHOT_DEFERENCE);
   });
 });

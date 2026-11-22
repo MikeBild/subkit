@@ -54,6 +54,7 @@ const REASON_LABEL: Record<string, TranslationKey> = {
   error: "usage.reason.error",
   context_too_large: "usage.reason.contextTooLarge",
   quota_exhausted: "usage.reason.quotaExhausted",
+  key_rejected: "usage.reason.keyRejected",
 };
 
 export interface SheetContext {

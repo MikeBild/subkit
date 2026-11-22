@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, isNull, lte, or, sql } from "drizzle-orm";
 import { humanMetadataWrite } from "../../api/catalog-metadata.ts";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
@@ -6,7 +6,7 @@ import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { assertInsertRow } from "../../db/assert-insert.ts";
 import { lockCatalogVocabulary } from "../../db/catalog-vocabulary.ts";
 import type { Db, Executor } from "../../db/client.ts";
-import { tasks } from "../../db/schema/index.ts";
+import { conversationMessages, conversationToolCalls, tasks } from "../../db/schema/index.ts";
 import { BadRequestError, ConflictError, ForbiddenError } from "../../http/errors.ts";
 import { emitResourceChange } from "../../pubsub/resource-changes.ts";
 import { taskFingerprint } from "../core/fingerprint.ts";
@@ -14,6 +14,7 @@ import { goalWriterId, nextGoalEditor } from "../core/goal-editor.ts";
 import { taskPlanTemplateIssue } from "../core/plan-instance.ts";
 import { decideTaskRunResume } from "../core/run-state.ts";
 import { taskScheduleChanged, taskScheduleIssue } from "../core/schedule.ts";
+import { type TaskSource, taskSource, taskSourceMessageId } from "../core/source.ts";
 import type {
   Task,
   TaskCreateInput,
@@ -46,6 +47,7 @@ type TaskDefinition = Omit<TaskUpdateInput, "expected_revision">;
 export interface ListTasksParams extends TaskScope {
   lifecycle?: TaskLifecycle;
   owner_id?: string;
+  source_conversation_id?: string;
   category?: string;
   q?: string;
   sort?: "name" | "updated_at" | "created_at";
@@ -120,7 +122,8 @@ export async function createTask(
     tenant_id: string;
     principal: ResolvedPrincipal;
     input: TaskCreateInput;
-    locale?: TaskLocale | undefined;
+    locale: TaskLocale;
+    source?: TaskSource | null | undefined;
   },
   db: Executor,
   overrides: Partial<TaskServiceDeps> = {},
@@ -139,7 +142,13 @@ export async function createTask(
         owner_id: p.principal.id,
         ...definitionColumns(p.input, p.principal.id),
         goal_edited_by: goalWriterId(p.principal),
-        ...(p.locale ? { locale: p.locale } : {}),
+        locale: p.locale,
+        ...(p.source
+          ? {
+              source_conversation_id: p.source.conversation_id,
+              source_message_id: p.source.message_id,
+            }
+          : {}),
         ...humanMetadataWrite({
           description: p.input.description,
           ...(p.input.category !== undefined ? { category: p.input.category } : {}),
@@ -165,6 +174,7 @@ export async function createTask(
           environment: row.environment,
           owner_id: row.owner_id,
           schedule_kind: scheduleKind(row),
+          ...(p.source ? { source_message_id: p.source.message_id } : {}),
         },
       },
       tx,
@@ -548,6 +558,9 @@ function listFilter(p: ListTasksParams) {
     eq(tasks.lifecycle, p.lifecycle ?? "active"),
     taskVisibility(p),
     p.owner_id ? eq(tasks.owner_id, p.owner_id) : undefined,
+    p.source_conversation_id
+      ? eq(tasks.source_conversation_id, p.source_conversation_id)
+      : undefined,
     p.category ? eq(tasks.category, p.category) : undefined,
     pattern
       ? or(
@@ -579,4 +592,48 @@ export async function countTasks(p: ListTasksParams, db: Executor): Promise<numb
     .from(tasks)
     .where(listFilter(p));
   return row?.total ?? 0;
+}
+
+interface ToolCallScope {
+  readonly tenant_id: string;
+  readonly conversation_id: string;
+  readonly tool_call_id: string | null;
+}
+
+export async function readTaskSourceOfToolCall(
+  db: Executor,
+  scope: ToolCallScope,
+): Promise<TaskSource | null> {
+  const [call] = scope.tool_call_id
+    ? await db
+        .select({ created_at: conversationToolCalls.created_at })
+        .from(conversationToolCalls)
+        .where(
+          and(
+            eq(conversationToolCalls.tenant_id, scope.tenant_id),
+            eq(conversationToolCalls.conversation_id, scope.conversation_id),
+            eq(conversationToolCalls.id, scope.tool_call_id),
+          ),
+        )
+        .limit(1)
+    : [];
+  const askedAt = call?.created_at ?? new Date();
+  const messages = await db
+    .select({
+      id: conversationMessages.id,
+      role: conversationMessages.role,
+      created_at: conversationMessages.created_at,
+    })
+    .from(conversationMessages)
+    .where(
+      and(
+        eq(conversationMessages.tenant_id, scope.tenant_id),
+        eq(conversationMessages.conversation_id, scope.conversation_id),
+        eq(conversationMessages.role, "user"),
+        lte(conversationMessages.created_at, askedAt),
+      ),
+    )
+    .orderBy(desc(conversationMessages.created_at))
+    .limit(1);
+  return taskSource(scope.conversation_id, taskSourceMessageId(messages, askedAt));
 }

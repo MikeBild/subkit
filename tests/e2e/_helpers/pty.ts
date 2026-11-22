@@ -4,10 +4,10 @@ import { scrubString } from "@shared/redaction.ts";
 import type { E2EEnv } from "../setup.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
-export const SK_BIN = path.join(REPO_ROOT, "dist/sk");
+export const SUBKIT_BIN = path.join(REPO_ROOT, "dist/subkit");
 export const EXPECT_BIN = Bun.which("expect");
 
-export const HAS_SK_BIN = existsSync(SK_BIN);
+export const HAS_SK_BIN = existsSync(SUBKIT_BIN);
 
 export const SKIP_PTY_WHEN_NO_EXPECT = !EXPECT_BIN && !process.env.CI;
 
@@ -62,7 +62,7 @@ export function buildExpectScript(
   steps: readonly ExpectStep[],
   opts: { binary?: string; args?: readonly string[] } = {},
 ): string {
-  const bin = opts.binary ?? SK_BIN;
+  const bin = opts.binary ?? SUBKIT_BIN;
   const lines = [
     "set timeout 20",
     "match_max 100000",
@@ -193,7 +193,7 @@ export async function runPtyScenario(
     CI: "1",
     NO_COLOR: "1",
     NO_UPDATE_CHECK: "1",
-    SK_ALT_SCREEN: "never",
+    SUBKIT_ALT_SCREEN: "never",
   };
   if (opts.persona) {
     baseEnv.SUBKIT_API_KEY = opts.persona.apiKey;

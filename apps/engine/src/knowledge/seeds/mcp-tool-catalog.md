@@ -1,7 +1,7 @@
 ---
 slug: sk-ref-mcp-tools
-name: sk Platform Reference — MCP Tool Catalog
-description: The public MCP callable surface of sk — every tool name (underscore form) tagged with the MCP mode that can call it, plus the write approval gate, warnings envelope, OAuth scopes, resource URI schemes, and how a remote MCP server the tenant registered (a connector with driver `mcp`) relates to this catalog.
+name: subkit Platform Reference — MCP Tool Catalog
+description: The public MCP callable surface of subkit — every tool name (underscore form) tagged with the MCP mode that can call it, plus the write approval gate, warnings envelope, OAuth scopes, resource URI schemes, and how a remote MCP server the tenant registered (a connector with driver `mcp`) relates to this catalog.
 tags: [sk-platform-reference, mcp, tools, oauth, resources]
 scope: global
 version: 6
@@ -24,7 +24,7 @@ that confirms intake admission. A person reviews the exact content, sources
 and destination in the Cockpit before confirming. Raw clips never become
 ordinary knowledge merely because they were collected or read.
 
-sk exposes its engine over the Model Context Protocol (MCP). A connected client
+subkit exposes its engine over the Model Context Protocol (MCP). A connected client
 sees a `tools/list` catalog and calls tools via `tools/call`. Every run is
 RBAC-checked, audited, and version-pinned.
 
@@ -217,7 +217,7 @@ Its OAuth is NOT the `authenticate` tool below. `authenticate` builds an
 authorization URL from the connector's declared OAuth config, which an MCP
 connector does not have — an MCP server publishes its own authorization server,
 so the grant runs through `POST /v1/connectors/{id}/mcp/authorize` (or
-`sk connectors mcp-authorize`), an operator action outside this catalog. Say
+`subkit connectors mcp-authorize`), an operator action outside this catalog. Say
 that rather than handing over a link the token endpoint will reject.
 
 **The remote's own tools are not in this catalog.** They are minted into the
@@ -241,7 +241,7 @@ OpenAPI specs, GraphQL introspection, then **llms-txt** — the standard
 carries the intent and pitfalls a bare schema omits (which auth header, error-code
 meanings, gotchas), so a connector that publishes it lets authoring get the
 conventions right on the first pass. `fetch_connector_docs` / `search_docs` then
-search that grounded prose. The sk engine itself publishes `/llms.txt` and
+search that grounded prose. The subkit engine itself publishes `/llms.txt` and
 `/llms-full.txt`, so it is discoverable the same way.
 
 # Knowledge & Docs Search
@@ -252,7 +252,7 @@ Ground answers in tenant knowledge and product docs.
   Sources.
 - `list_knowledge_sources` **[product]** — enumerate Knowledge Sources.
 - `get_knowledge_source` **[product]** — one source's metadata + chunk count.
-- `search_docs` **[product]** — search the sk product documentation.
+- `search_docs` **[product]** — search the subkit product documentation.
 - `fetch_connector_docs` **[authoring]** — connector-specific documentation/recipe.
 
 Web-search escalation precedence: `search_knowledge` → `search_docs` →
@@ -344,14 +344,14 @@ you explicitly; you never take one on your own initiative.
 
 # Write Approval Gate
 
-The approval for a write happens in YOUR client, before the call reaches sk.
+The approval for a write happens in YOUR client, before the call reaches subkit.
 
 Every write/destructive entry advertises `destructiveHint: true` in its
 `tools/list` annotations; a trusted MCP client renders its own per-call
-approval dialog from that hint. If the human allows, the call reaches sk and
+approval dialog from that hint. If the human allows, the call reaches subkit and
 executes directly, writing its audit row. If they deny, it never arrives.
 
-There is no sk-side approval portal, no `approval_url`, no `confirm_tool_call`
+There is no subkit-side approval portal, no `approval_url`, no `confirm_tool_call`
 and no `needs_confirm` envelope — those were removed. Do not author your own
 confirmation prompt before a write either; your client already renders one, and
 pre-empting it just asks the human twice.
@@ -394,8 +394,8 @@ means "no narrowing of role-derived access"; it does not mean consent to author.
 A credential authors over MCP only when someone wrote `mcp:authoring` on it.
 Calling a `conversation_*` tool without that scope is refused, not merely hidden.
 
-Where authoring normally happens is the `sk` CLI — `sk workflows create --file`,
-`sk connectors create --file`, `sk connectors import --spec` — because a
+Where authoring normally happens is the `subkit` CLI — `subkit workflows create --file`,
+`subkit connectors create --file`, `subkit connectors import --spec` — because a
 definition edit should arrive as a file a person can read before it lands. If a
 caller asks you to create or change a workflow, connector, knowledge source or
 skill and you do not see the authoring tools, point at the CLI. Do not describe

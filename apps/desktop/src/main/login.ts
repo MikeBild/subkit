@@ -1,6 +1,7 @@
 import type { Session } from "electron";
 import { shell } from "electron";
 import type { DeepLink } from "../shared/deep-link.ts";
+import { type InviteLink, inviteJoinUrl } from "../shared/invite-link.ts";
 import type { LoginPhase } from "../shared/ipc.ts";
 import { createPkcePair, createState, sameState } from "../shared/pkce.ts";
 import {
@@ -36,7 +37,11 @@ export class LoginController {
 
   constructor(private readonly hooks: LoginHooks) {}
 
-  async start(origin: string, descriptor: ServiceDescriptor): Promise<void> {
+  async start(
+    origin: string,
+    descriptor: ServiceDescriptor,
+    invite: InviteLink | null = null,
+  ): Promise<void> {
     if (!descriptor.desktop) return;
     this.clear();
     const pkce = createPkcePair();
@@ -52,7 +57,7 @@ export class LoginController {
       appVersion: this.hooks.appVersion(),
     });
     try {
-      await shell.openExternal(url);
+      await shell.openExternal(invite ? inviteJoinUrl(invite, url) : url);
       this.hooks.onPhase({ phase: "waiting", origin });
     } catch (error) {
       this.hooks.onError("login.open-browser", error);

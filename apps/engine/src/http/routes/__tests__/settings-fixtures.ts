@@ -52,7 +52,7 @@ export function setupSettingsRoutes(): void {
   det = createDeterministicHexFactory(0xc0ffee);
   seq = 0;
   beforeAll(async () => {
-    cfgDir = mkdtempSync(join(tmpdir(), "sk-cfg-route-"));
+    cfgDir = mkdtempSync(join(tmpdir(), "subkit-cfg-route-"));
     _resetConfigForTests();
     await loadConfig({
       env: {

@@ -1,13 +1,17 @@
 import { and, eq } from "drizzle-orm";
-import type { Actor } from "../audit/actor.ts";
-import { auditActor } from "../audit/actor.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
 import { intakeItems } from "../db/schema/intake.ts";
 import { persistInlineUpload } from "../files/persist-inline-upload.ts";
 import { removeStoredFile } from "../files/remove-stored-file.ts";
+import {
+  ANONYMOUS_COLLECTOR,
+  collectorAuditActor,
+  type IntakeCollector,
+} from "../knowledge/index.ts";
 import { createIntakeItem } from "../knowledge/intake.ts";
+import { operatorTenantId } from "../rbac/index.ts";
 import {
   classifyFeedbackFile,
   decodeBase64,
@@ -36,7 +40,8 @@ export type FeedbackRefusal =
   | "attachment_rejected"
   | "screenshot_invalid"
   | "screenshot_too_large"
-  | "report_id_taken";
+  | "report_id_taken"
+  | "intake_unavailable";
 
 export class FeedbackRefusedError extends Error {
   constructor(
@@ -50,7 +55,7 @@ export class FeedbackRefusedError extends Error {
 
 export interface SubmitFeedbackParams {
   readonly tenant_id: string;
-  readonly actor: Actor;
+  readonly actor: IntakeCollector;
   readonly report_id: string;
   readonly kind: FeedbackKind;
   readonly message: string;
@@ -59,6 +64,7 @@ export interface SubmitFeedbackParams {
     | readonly { readonly filename: string; readonly content_base64: string }[]
     | undefined;
   readonly screenshot_png_base64?: string | undefined;
+  readonly contact_email?: string | undefined;
   readonly now: Date;
   readonly created_on_device_at?: Date | undefined;
 }
@@ -124,6 +130,7 @@ export async function existingReport(
     .select({
       id: intakeItems.id,
       category: intakeItems.category,
+      collected_by_type: intakeItems.collected_by_type,
       collected_by_id: intakeItems.collected_by_id,
     })
     .from(intakeItems)
@@ -132,7 +139,11 @@ export async function existingReport(
     )
     .limit(1);
   if (!row) return null;
-  if (row.category !== FEEDBACK_CATEGORY || row.collected_by_id !== p.actor.id)
+  if (
+    row.category !== FEEDBACK_CATEGORY ||
+    row.collected_by_type !== p.actor.kind ||
+    row.collected_by_id !== p.actor.id
+  )
     throw new FeedbackRefusedError("report_id_taken");
   return { id: p.report_id, intake_item_id: row.id, replayed: true };
 }
@@ -188,6 +199,7 @@ export async function submitFeedback(db: Db, p: SubmitFeedbackParams): Promise<S
             diagnostics: diagnostics?.value ?? null,
             files: stored,
             redactions,
+            contact_email: p.contact_email ?? null,
           }),
         },
         tx,
@@ -195,7 +207,7 @@ export async function submitFeedback(db: Db, p: SubmitFeedbackParams): Promise<S
       await auditAwait(
         {
           tenant_id: p.tenant_id,
-          ...auditActor(p.actor),
+          ...collectorAuditActor(p.actor),
           action: AuditAction.FEEDBACK_SUBMITTED,
           resource_type: "intake_item",
           resource_id: item.id,
@@ -204,6 +216,7 @@ export async function submitFeedback(db: Db, p: SubmitFeedbackParams): Promise<S
             kind: p.kind,
             report_id: p.report_id,
             category: FEEDBACK_CATEGORY,
+            provenance: p.actor.kind === "anonymous" ? "anonymous" : "signed_in",
             client_kind: diagnostics?.value.client_kind ?? null,
             diagnostics: diagnostics !== null,
             attachments: p.attachments?.length ?? 0,
@@ -211,6 +224,7 @@ export async function submitFeedback(db: Db, p: SubmitFeedbackParams): Promise<S
             file_ids: stored.map((file) => file.id),
             redactions,
             created_on_device_at: p.created_on_device_at?.toISOString() ?? null,
+            contact: Boolean(p.contact_email),
           },
         },
         tx,
@@ -221,4 +235,13 @@ export async function submitFeedback(db: Db, p: SubmitFeedbackParams): Promise<S
     for (const id of created) await removeStoredFile(db, p.tenant_id, id).catch(() => {});
     throw error;
   }
+}
+
+export async function submitAnonymousFeedback(
+  db: Db,
+  p: Omit<SubmitFeedbackParams, "tenant_id" | "actor">,
+): Promise<SubmittedFeedback> {
+  const tenant_id = await operatorTenantId(db);
+  if (!tenant_id) throw new FeedbackRefusedError("intake_unavailable");
+  return submitFeedback(db, { ...p, tenant_id, actor: ANONYMOUS_COLLECTOR });
 }

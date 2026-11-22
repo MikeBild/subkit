@@ -2,24 +2,25 @@ import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import {
+  CLI_TARGETS,
+  cliAssetName,
+  type ReleaseTarget,
+} from "../packages/cli-core/src/release/assets.ts";
 import { buildClipper } from "./build-clipper.ts";
 
 const REPO_ROOT = join(import.meta.dir, "..");
-const ENTRY = join(REPO_ROOT, "apps/sk/src/index.ts");
+const ENTRY = join(REPO_ROOT, "apps/subkit/src/index.ts");
 const DEFAULT_DIR = "/usr/local/share/subkit/binaries";
 
-const TARGETS = [
-  { os: "darwin", arch: "arm64", bunTarget: "bun-darwin-arm64" },
-  { os: "darwin", arch: "x64", bunTarget: "bun-darwin-x64" },
-  { os: "linux", arch: "arm64", bunTarget: "bun-linux-arm64" },
-  { os: "linux", arch: "x64", bunTarget: "bun-linux-x64" },
-  { os: "windows", arch: "x64", bunTarget: "bun-windows-x64" },
-] as const;
-
-function diskFilename(os: string, arch: string): string {
-  const ext = os === "windows" ? ".exe" : "";
-  return `sk_${os}_${arch}${ext}`;
+interface StageTarget extends ReleaseTarget {
+  bunTarget: string;
 }
+
+export const STAGE_TARGETS: readonly StageTarget[] = CLI_TARGETS.map((target) => ({
+  ...target,
+  bunTarget: `bun-${target.os}-${target.arch}`,
+}));
 
 function parseArgs(argv: string[]): { dir: string; version?: string } {
   let dir = process.env.SUBKIT_BINARIES_DIR || DEFAULT_DIR;
@@ -72,7 +73,7 @@ async function purgeCachedRuntime(stderr: string): Promise<string | null> {
 }
 
 async function runBunBuild(
-  target: (typeof TARGETS)[number],
+  target: StageTarget,
   outFile: string,
   version: string,
 ): Promise<{ code: number; stderr: string }> {
@@ -100,11 +101,7 @@ async function runBunBuild(
   return { code, stderr };
 }
 
-async function compileTarget(
-  target: (typeof TARGETS)[number],
-  outFile: string,
-  version: string,
-): Promise<void> {
+async function compileTarget(target: StageTarget, outFile: string, version: string): Promise<void> {
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     const { code, stderr } = await runBunBuild(target, outFile, version);
     if (code === 0) return;
@@ -180,10 +177,10 @@ async function main(): Promise<void> {
   const version = await resolveVersion(explicitVersion);
   await mkdir(dir, { recursive: true });
 
-  console.log(`staging sk ${version} → ${dir}`);
+  console.log(`staging subkit ${version} → ${dir}`);
   const sumsLines: string[] = [];
-  for (const target of TARGETS) {
-    const filename = diskFilename(target.os, target.arch);
+  for (const target of STAGE_TARGETS) {
+    const filename = cliAssetName(target);
     const outFile = join(dir, filename);
     console.log(`  building ${filename} (${target.bunTarget})`);
     await compileTarget(target, outFile, version);

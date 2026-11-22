@@ -38,6 +38,8 @@ export function task(change: Partial<TaskView> = {}): TaskView {
     fingerprint: "a".repeat(64),
     revision: 3,
     lifecycle: "active",
+    source_conversation_id: null,
+    source_message_id: null,
     created_at: "2026-11-01T08:00:00.000Z",
     updated_at: "2026-11-18T08:00:00.000Z",
     latest_run: null,

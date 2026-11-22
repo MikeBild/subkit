@@ -91,6 +91,8 @@ interface PooledClient {
   last_heartbeat_at: number;
   backoff_until: number;
   consecutive_failures: number;
+  active_calls: number;
+  lifecycle: "pooled" | "retiring" | "closed";
 }
 
 interface TenantMcpPool {
@@ -181,6 +183,8 @@ async function connectClient(
       last_heartbeat_at: Date.now(),
       backoff_until: 0,
       consecutive_failures: 0,
+      active_calls: 0,
+      lifecycle: "pooled",
     };
     bucket.clients.set(row.id, pooled);
     bucket.backoff.delete(row.id);
@@ -198,11 +202,7 @@ async function connectClient(
       consecutive_failures: failures,
       backoff_until: backoffWindow(failures),
     });
-    const stale = bucket.clients.get(row.id);
-    if (stale) {
-      bucket.clients.delete(row.id);
-      void stale.client.close().catch(() => {});
-    }
+    retireClient(bucket, row.id);
     await parkMcpConnectorFailure(db, row, err, (n) => new Date(backoffWindow(n)));
     logger.warn({
       module: "mcp_client",
@@ -398,19 +398,19 @@ export interface InvokeRemoteToolResult {
   content: unknown;
   structured_content?: unknown;
   bytes: number;
-  failure: "not_connected" | "transport" | "remote_error" | "cancelled" | null;
+  failure: "not_connected" | "transport" | "timeout" | "remote_error" | "cancelled" | null;
+  effect: SideEffect;
 }
 
 function classifyCallFailure(
   err: unknown,
   signal: AbortSignal | undefined,
-): "transport" | "remote_error" | "cancelled" {
+): "transport" | "timeout" | "remote_error" | "cancelled" {
   if (signal?.aborted === true) return "cancelled";
   if (err instanceof Error && err.name === "AbortError") return "cancelled";
   if (err instanceof McpError) {
-    return err.code === ErrorCode.ConnectionClosed || err.code === ErrorCode.RequestTimeout
-      ? "transport"
-      : "remote_error";
+    if (err.code === ErrorCode.RequestTimeout) return "timeout";
+    return err.code === ErrorCode.ConnectionClosed ? "transport" : "remote_error";
   }
   return "transport";
 }
@@ -485,6 +485,7 @@ async function invokeRemoteToolWithContext(
         content: { error: "no enabled mcp connector with this id" },
         bytes: 0,
         failure: "not_connected",
+        effect: callEffect(null, args.call),
       };
     }
     const outcome = await connectClient(args.db, args.tenant_id, row, environment, requestSource, {
@@ -497,6 +498,7 @@ async function invokeRemoteToolWithContext(
         content: { error: `mcp connector handshake failed: ${outcome.error}` },
         bytes: 0,
         failure: "not_connected",
+        effect: callEffect(null, args.call),
       };
     }
     pooled = outcome.pooled;
@@ -511,6 +513,7 @@ async function invokeRemoteToolWithContext(
       },
       bytes: 0,
       failure: "remote_error",
+      effect: callEffect(pooled, args.call),
     };
   }
 
@@ -531,6 +534,8 @@ async function invokeRemoteToolWithContext(
   let content: unknown;
   let structured_content: unknown;
   let hasStructured = false;
+  const caller = pooled;
+  caller.active_calls += 1;
   try {
     args.on_dispatch?.();
     const res = await performRemoteCall(pooled.client, args.call, {
@@ -554,6 +559,9 @@ async function invokeRemoteToolWithContext(
     transportFailed = failure === "transport";
     unauthorized = transportFailed && isUnauthorized(err);
     content = { error: err instanceof Error ? err.message : String(err) };
+  } finally {
+    caller.active_calls -= 1;
+    closeWhenIdle(caller);
   }
 
   const serialized = (() => {
@@ -566,7 +574,7 @@ async function invokeRemoteToolWithContext(
   const rawBytes = Buffer.byteLength(serialized, "utf8");
 
   if (transportFailed) {
-    invalidateCachedManifest(args.tenant_id, args.connector_id);
+    retireClient(bucket, args.connector_id, caller);
     if (unauthorized) {
       await invalidateOAuth2TokenForServer(
         args.db,
@@ -603,7 +611,13 @@ async function invokeRemoteToolWithContext(
     ...(hasStructured ? { structured_content } : {}),
     bytes: rawBytes,
     failure,
+    effect: callEffect(pooled, args.call),
   };
+}
+
+function callEffect(pooled: PooledClient | null, call: RemoteCall): SideEffect {
+  if (call.operation !== "call_tool") return "read";
+  return (pooled && advertisedSideEffect(pooled, call)) ?? "write";
 }
 
 function advertisedSideEffect(pooled: PooledClient, call: RemoteCall): SideEffect | null {
@@ -633,14 +647,24 @@ export function evictServer(tenant_id: string, connector_id: string): void {
   bucket.backoff.delete(connector_id);
 }
 
+function retireClient(bucket: TenantMcpPool, connector_id: string, pooled?: PooledClient): void {
+  const target = pooled ?? bucket.clients.get(connector_id);
+  if (!target) return;
+  if (bucket.clients.get(connector_id) === target) bucket.clients.delete(connector_id);
+  if (target.lifecycle === "pooled") target.lifecycle = "retiring";
+  closeWhenIdle(target);
+}
+
+function closeWhenIdle(pooled: PooledClient): void {
+  if (pooled.lifecycle !== "retiring" || pooled.active_calls > 0) return;
+  pooled.lifecycle = "closed";
+  void pooled.client.close().catch(() => {});
+}
+
 export function invalidateCachedManifest(tenant_id: string, connector_id: string): void {
   const bucket = POOL.get(tenant_id);
   if (!bucket) return;
-  const pooled = bucket.clients.get(connector_id);
-  if (pooled) {
-    bucket.clients.delete(connector_id);
-    void pooled.client.close().catch(() => {});
-  }
+  retireClient(bucket, connector_id);
 }
 
 export function __resetMcpClientPoolForTests(): void {

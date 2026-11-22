@@ -35,10 +35,10 @@ const EnvSchema = z.object({
   http_proxy: text,
   https_proxy: text,
   all_proxy: text,
-  SK_MCP_MODE: text,
-  SK_PLAYWRIGHT_ENTRY: text,
-  SK_LOG_SD_DAEMON: text,
-  SK_LOG_RING_SIZE: text,
+  SUBKIT_MCP_MODE: text,
+  SUBKIT_PLAYWRIGHT_ENTRY: text,
+  SUBKIT_LOG_SD_DAEMON: text,
+  SUBKIT_LOG_RING_SIZE: text,
   SUBKIT_HEAP_DIAG: text,
   SUBKIT_DIAGNOSTICS: text,
   SUBKIT_DIAGNOSTICS_EMBEDDING_INLINE: text,
@@ -198,13 +198,13 @@ const RETIRED_ENV_KEYS = new Set([
   "LANGFUSE_BASE_URL",
   "OTEL_EXPORTER_OTLP_ENDPOINT",
   "OTEL_SERVICE_NAME",
-  "SK_MCP_READ_ONLY",
+  "SUBKIT_MCP_READ_ONLY",
   "EGRESS_GUARD",
   "SUBKIT_LLM_PROVIDER_HOSTS_EXTRA",
   "SUBKIT_ALLOW_PRIVATE_SPEC_FETCH",
   "SUBKIT_PUBLIC_BASE_URL",
   "LLM_CONTEXT_1M",
-  "SK_ERROR_RING_SIZE",
+  "SUBKIT_ERROR_RING_SIZE",
   "SKIP_DOCKER",
 ]);
 
@@ -263,7 +263,7 @@ export function validateEnv(): void {
   if (retired.length > 0 && rawEnv("NODE_ENV") !== "test") {
     process.stderr.write(
       `[env] retired env vars detected: ${retired.join(", ")}. ` +
-        `Move these into the PostgreSQL-backed settings API (Cockpit, HTTP, MCP, or \`sk settings configure\`) — ` +
+        `Move these into the PostgreSQL-backed settings API (Cockpit, HTTP, MCP, or \`subkit settings configure\`) — ` +
         `they are ignored after the initial runtime revision.\n`,
     );
   }

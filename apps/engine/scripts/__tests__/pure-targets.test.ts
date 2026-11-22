@@ -14,7 +14,7 @@ describe("canonical pure target discovery", () => {
       "apps/engine/src/workflows/core/workflow.ts",
       "apps/engine/src/workflows/service.ts",
       "apps/cockpit/src/features/audit/model/audit-filter-state.ts",
-      "apps/sk/src/commands/workflow-file-model.ts",
+      "apps/subkit/src/commands/workflow-file-model.ts",
       "packages/shared/src/approval-choice.ts",
       "packages/shared/src/jsonl-ring.ts",
     ]);
@@ -43,10 +43,10 @@ describe("canonical pure target discovery", () => {
         runtime_kind: "runtime",
       },
       {
-        path: "apps/sk/src/commands/workflow-file-model.ts",
-        owner_shard: "sk",
-        subsystem: "sk",
-        target_kind: "sk",
+        path: "apps/subkit/src/commands/workflow-file-model.ts",
+        owner_shard: "subkit",
+        subsystem: "subkit",
+        target_kind: "subkit",
         eligibility: "eligible",
         source_of_inclusion: "explicit_manifest",
         public_facade_obligations: [],

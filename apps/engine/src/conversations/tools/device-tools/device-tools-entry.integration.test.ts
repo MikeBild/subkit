@@ -220,6 +220,7 @@ describe("task runs", () => {
     const owner = browserPerson();
     const task = await createTask(
       {
+        locale: "de",
         tenant_id: harness.server.tenantId,
         principal: owner,
         input: {

@@ -20,10 +20,10 @@
   "config_template_stdio": {
     "mcp_servers": {
       "subkit": {
-        "command": "sk",
+        "command": "subkit",
         "args": ["mcp"]
       }
     }
   },
-  "notes": "Codex reads TOML, not JSON: write the template as the table [mcp_servers.subkit] with the same keys (http_headers as an inline table). Streamable HTTP is the recommended transport. The stdio path requires `sk login` on the local machine first; the proxy reads SUBKIT_API_KEY / SUBKIT_ENGINE_URL / ~/.sk/config.json."
+  "notes": "Codex reads TOML, not JSON: write the template as the table [mcp_servers.subkit] with the same keys (http_headers as an inline table). Streamable HTTP is the recommended transport. The stdio path requires `subkit login` on the local machine first; the proxy reads SUBKIT_API_KEY / SUBKIT_ENGINE_URL / ~/.subkit/config.json."
 }

@@ -19,11 +19,11 @@
     "/.devtools",
     "/.superdesign",
     "/.claude",
-    "/.sk",
+    "/.subkit",
     "/dist",
     "/docs",
     "/benchmarks",
-    "/reports",
+    "/.reports",
     "/coverage",
     "/assets/cockpit",
     "/assets/clipper",
@@ -41,7 +41,7 @@
     "apps/engine/subkit.config.json"
   ],
   "reporters": ["clear-text", "json"],
-  "jsonReporter": { "fileName": "reports/mutation/desktop-shell.json" },
+  "jsonReporter": { "fileName": ".reports/mutation/desktop-shell.json" },
   "concurrency": 4,
   "timeoutMS": 30000,
   "thresholds": { "high": 100, "low": 100, "break": 100 }

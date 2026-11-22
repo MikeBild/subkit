@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { defineCommand } from "citty";
 import { and, eq } from "drizzle-orm";
-import { connectorsCommand } from "../../../../sk/src/commands/connectors.ts";
-import { executionsCommand } from "../../../../sk/src/commands/executions.ts";
-import { workflowsCommand } from "../../../../sk/src/commands/workflows.ts";
+import { connectorsCommand } from "../../../../subkit/src/commands/connectors.ts";
+import { executionsCommand } from "../../../../subkit/src/commands/executions.ts";
+import { workflowsCommand } from "../../../../subkit/src/commands/workflows.ts";
 import { auditLog, executions } from "../../db/schema/index.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { waitFor } from "../../test-helpers/determinism/index.ts";
@@ -26,8 +26,8 @@ import {
   seedWorkflow,
 } from "./setup.ts";
 
-describe("an operator manages workflows, connectors and runs from the sk CLI", () => {
-  describe("sk workflows", () => {
+describe("an operator manages workflows, connectors and runs from the subkit CLI", () => {
+  describe("subkit workflows", () => {
     const TEST_NOW_MS = getTestNow();
 
     let ctx: JourneyCtx;
@@ -216,7 +216,7 @@ describe("an operator manages workflows, connectors and runs from the sk CLI", (
     });
   });
 
-  describe("sk connectors", () => {
+  describe("subkit connectors", () => {
     let ctx: JourneyCtx;
 
     let connectorId = "";
@@ -355,7 +355,7 @@ describe("an operator manages workflows, connectors and runs from the sk CLI", (
     });
   });
 
-  describe("sk executions", () => {
+  describe("subkit executions", () => {
     let ctx: JourneyCtx;
 
     let wfId = "";

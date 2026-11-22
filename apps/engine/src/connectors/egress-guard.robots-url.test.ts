@@ -34,7 +34,7 @@ test("a robots refusal names the address without its query", async () => {
       assertRobotsAllowed("https://example.com/private/list?appid=s3cr3t-robots&page=2", {
         tenant_id: "tenant-robots",
         exec: {} as Executor,
-        userAgent: "sk-web-scraper/1.0",
+        userAgent: "subkit-web-scraper/1.0",
         fetchImpl: robots,
       }).then(
         () => null,

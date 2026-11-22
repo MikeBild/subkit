@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, count, eq } from "drizzle-orm";
-import { auditCommand } from "../../../../sk/src/commands/audit.ts";
-import { rbacCommand } from "../../../../sk/src/commands/rbac.ts";
+import { auditCommand } from "../../../../subkit/src/commands/audit.ts";
+import { rbacCommand } from "../../../../subkit/src/commands/rbac.ts";
 import {
   auditLog,
   groupMembers,
@@ -13,8 +13,8 @@ import {
 import { type Captured, extractLastJson, patchStd, withEnv, withNoExit } from "./cli-capture.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
-describe("an admin governs access and reads the audit trail from the sk CLI", () => {
-  describe("sk rbac", () => {
+describe("an admin governs access and reads the audit trail from the subkit CLI", () => {
+  describe("subkit rbac", () => {
     let ctx: JourneyCtx;
 
     async function run(path: string[], extraArgs: Record<string, string> = {}): Promise<Captured> {
@@ -217,7 +217,7 @@ describe("an admin governs access and reads the audit trail from the sk CLI", ()
     });
   });
 
-  describe("sk audit", () => {
+  describe("subkit audit", () => {
     let ctx: JourneyCtx;
 
     async function run(
@@ -371,7 +371,7 @@ describe("an admin governs access and reads the audit trail from the sk CLI", ()
     });
   });
 
-  describe("the sk role matrix", () => {
+  describe("the subkit role matrix", () => {
     let ctx: JourneyCtx;
 
     interface CanResult {
@@ -449,7 +449,7 @@ describe("an admin governs access and reads the audit trail from the sk CLI", ()
     const users_by_role: Record<string, string> = {};
 
     beforeAll(async () => {
-      ctx = await createJourneyCtx("sk-cli-05-rbac-matrix");
+      ctx = await createJourneyCtx("subkit-cli-05-rbac-matrix");
       users_by_role.admin = ctx.userId;
 
       for (const roleName of [
@@ -462,7 +462,7 @@ describe("an admin governs access and reads the audit trail from the sk CLI", ()
           .insert(users)
           .values({
             tenant_id: ctx.tenantId,
-            email: `${roleName}@sk-cli-05.test`,
+            email: `${roleName}@subkit-cli-05.test`,
             role_id: ctx.rbacRoleIds[roleName],
           })
           .returning();

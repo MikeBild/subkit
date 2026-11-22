@@ -38,6 +38,7 @@ describe("scoreScenario · clarification", () => {
       no_authoring_before_answer: "PASS",
       question_names_missing_inputs: "PASS",
       no_placeholder_in_reply: "PASS",
+      no_needless_question: "PASS",
     });
     expect(score.guard_fired).toBeNull();
     expect(score.previews).toBe(0);

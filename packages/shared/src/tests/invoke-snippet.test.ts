@@ -27,7 +27,7 @@ describe("renderInvokeSnippet", () => {
     expect(renderInvokeSnippet({ ...BASE, lang: "curl", environment: "prod" })).toBe(
       [
         "curl -sS -X POST 'https://engine.example.com/v1/executions' \\",
-        `  -H 'authorization: Bearer '"$SK_API_KEY" \\`,
+        `  -H 'authorization: Bearer '"$SUBKIT_API_KEY" \\`,
         "  -H 'x-subkit-environment: prod' \\",
         "  -H 'content-type: application/json' \\",
         `  -d '{"source":"saved","workflow_id":"${WORKFLOW}","input":{}}'`,
@@ -54,7 +54,7 @@ describe("renderInvokeSnippet", () => {
   });
 
   test.each([...INVOKE_SNIPPET_LANGUAGES])("%s names the key only as a placeholder", (lang) => {
-    expect(renderInvokeSnippet({ ...BASE, lang, environment: "dev" })).toContain("SK_API_KEY");
+    expect(renderInvokeSnippet({ ...BASE, lang, environment: "dev" })).toContain("SUBKIT_API_KEY");
   });
 
   test("a trailing slash on the engine URL does not double up", () => {
@@ -112,7 +112,7 @@ describe("renderInvokeSnippet", () => {
     expect(node).toContain('await fetch("https://engine.example.com/v1/executions", {');
     expect(node).toContain('"x-subkit-environment": "dev",');
     // biome-ignore lint/suspicious/noTemplateCurlyInString: the placeholder the snippet prints.
-    expect(node).toContain("authorization: `Bearer ${process.env.SK_API_KEY}`,");
+    expect(node).toContain("authorization: `Bearer ${process.env.SUBKIT_API_KEY}`,");
     expect(node).toContain('    "source": "saved",');
   });
 
@@ -123,7 +123,7 @@ describe("renderInvokeSnippet", () => {
         '  method: "POST",',
         "  headers: {",
         // biome-ignore lint/suspicious/noTemplateCurlyInString: emitted Node snippet placeholder.
-        "    authorization: `Bearer ${process.env.SK_API_KEY}`,",
+        "    authorization: `Bearer ${process.env.SUBKIT_API_KEY}`,",
         '    "x-subkit-environment": "prod",',
         '    "content-type": "application/json",',
         "  },",
@@ -145,7 +145,7 @@ describe("renderInvokeSnippet", () => {
         "res = requests.post(",
         '    "https://engine.example.com/v1/executions",',
         "    headers={",
-        `        "authorization": f"Bearer {os.environ['SK_API_KEY']}",`,
+        `        "authorization": f"Bearer {os.environ['SUBKIT_API_KEY']}",`,
         '        "x-subkit-environment": "dev",',
         '        "content-type": "application/json",',
         "    },",
@@ -257,7 +257,7 @@ async function runNodeSnippet(snippet: string): Promise<SentRequest> {
   ) => (...values: unknown[]) => Promise<void>;
   await new AsyncFunction("fetch", "process", "console", snippet)(
     fetchStub,
-    { env: { SK_API_KEY: "placeholder-key" } },
+    { env: { SUBKIT_API_KEY: "placeholder-key" } },
     { log: () => {} },
   );
   if (sent.length !== 1 || !sent[0])

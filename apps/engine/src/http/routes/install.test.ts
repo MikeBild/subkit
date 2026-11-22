@@ -2,9 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { getConfig, setConfigKey } from "../../config/loader.ts";
 import type { AppEnv } from "../openapi.ts";
-import { _internal, registerInstallRoute } from "./install.ts";
-
-const { buildScript } = _internal;
+import { _internal, pinInstallScript, registerInstallRoute } from "./install.ts";
 
 async function fetchScript(headers: Record<string, string>): Promise<string> {
   const app = new OpenAPIHono<AppEnv>();
@@ -14,103 +12,52 @@ async function fetchScript(headers: Record<string, string>): Promise<string> {
   return res.text();
 }
 
-describe("install script template", () => {
-  test("starts with a bash shebang", () => {
-    const script = buildScript("3.0.0", "https://engine.example.com");
-    expect(script.startsWith("#!/usr/bin/env bash\n")).toBe(true);
+const pins = { version: "12.1.0", engineUrl: "https://engine.example.com", downloadUrl: null };
+
+function defaultsOf(script: string): string[] {
+  return script.split("\n").filter((line) => /^SUBKIT_[A-Z_]+="\$\{/.test(line));
+}
+
+describe("pinned install script", () => {
+  test("is the release installer with only its defaults changed", () => {
+    const pinned = pinInstallScript(_internal.installScript, pins);
+    const strip = (script: string) =>
+      script
+        .split("\n")
+        .filter((line) => !/^SUBKIT_[A-Z_]+="\$\{/.test(line))
+        .join("\n");
+    expect(strip(pinned)).toBe(strip(_internal.installScript));
+    expect(pinned.startsWith("#!/usr/bin/env bash\n")).toBe(true);
   });
 
-  test("aborts on errors (set -euo pipefail)", () => {
-    const script = buildScript("3.0.0", "https://engine.example.com");
-    expect(script).toContain("set -euo pipefail");
+  test("pins the engine version and keeps the variable overridable", () => {
+    expect(defaultsOf(pinInstallScript(_internal.installScript, pins))).toEqual([
+      'SUBKIT_VERSION="${SUBKIT_VERSION:-12.1.0}"',
+      'SUBKIT_DOWNLOAD_URL="${SUBKIT_DOWNLOAD_URL:-}"',
+      'SUBKIT_ENGINE_URL="${SUBKIT_ENGINE_URL:-https://engine.example.com}"',
+      'SUBKIT_INSTALL_DIR="${SUBKIT_INSTALL_DIR:-$HOME/.local/bin}"',
+      'SUBKIT_RELEASES_URL="${SUBKIT_RELEASES_URL:-https://github.com/MikeBild/subkit/releases}"',
+    ]);
   });
 
-  test("interpolates the engine version into the script", () => {
-    const script = buildScript("3.3.0", "https://engine.example.com");
-    expect(script).toContain('VERSION="3.3.0"');
-  });
-
-  test("probes the engine's bundled binary endpoint first", () => {
-    const script = buildScript("3.4.0", "https://engine.example.com");
-    expect(script).toContain("BUNDLED_ASSET_URL=");
-    expect(script).toContain("/install/sk-${os}-${arch}");
-    expect(script).toContain("/install/sha256sums");
-    expect(script).toMatch(/curl -fsSI[^\n]*BUNDLED_ASSET_URL/);
-  });
-
-  test("never points at the private source repository", () => {
-    const script = buildScript("3.4.0", "https://engine.example.com");
-    expect(script).not.toContain("github.com");
-    expect(script).not.toContain("releases/download");
-  });
-
-  test("accepts an operator-supplied mirror as the second source", () => {
-    const script = buildScript("3.4.0", "https://engine.example.com");
-    expect(script).toContain('MIRROR_BASE="${SK_INSTALL_BASE_URL:-}"');
-    expect(script).toMatch(/elif \[ -n "\$MIRROR_BASE" \]; then/);
-    expect(script).toContain("${MIRROR_BASE%/}/${ASSET}");
-    expect(script).toContain("${MIRROR_BASE%/}/SHA256SUMS");
-  });
-
-  test("with no bundle and no mirror it explains itself and installs nothing", () => {
-    const script = buildScript("3.4.0", "https://engine.example.com");
-    expect(script).toContain("This engine does not serve the sk binaries");
-    expect(script).toContain("https://engine.example.com/docker-compose.yml");
-    expect(script).toContain("SK_INSTALL_BASE_URL=");
-    expect(script).toContain("docker compose cp engine:/usr/local/bin/sk");
-    expect(script).toContain("Nothing was installed.");
-  });
-
-  test("interpolates the engine base URL into the next-step message", () => {
-    const script = buildScript("3.0.0", "https://my.engine.test");
-    expect(script).toContain('ENGINE_URL="https://my.engine.test"');
-    expect(script).toContain("sk init --engine-url");
-    expect(script).toContain("--token <bootstrap-token>");
-    expect(script).toContain("sk login --engine-url");
-    expect(script).not.toContain("sk profile login");
-  });
-
-  test("detects darwin + linux", () => {
-    const script = buildScript("3.0.0", "https://engine.example.com");
-    expect(script).toMatch(/Darwin\) os=darwin/);
-    expect(script).toMatch(/Linux\)\s+os=linux/);
-    expect(script).toContain("unsupported OS:");
-  });
-
-  test("detects arm64 + x64", () => {
-    const script = buildScript("3.0.0", "https://engine.example.com");
-    expect(script).toMatch(/arm64\|aarch64\) arch=arm64/);
-    expect(script).toMatch(/x86_64\|amd64\)\s+arch=x64/);
-    expect(script).toContain("unsupported arch:");
-  });
-
-  test("verifies SHA256 and refuses on mismatch", () => {
-    const script = buildScript("3.0.0", "https://engine.example.com");
-    expect(script).toContain("SHA256SUMS");
-    expect(script).toContain("SHA256 mismatch");
-    expect(script).toContain("refusing to install");
-  });
-
-  test("falls back between sha256sum and shasum (BSD vs GNU)", () => {
-    const script = buildScript("3.0.0", "https://engine.example.com");
-    expect(script).toContain("command -v sha256sum");
-    expect(script).toContain("command -v shasum");
-  });
-
-  test("installs to ~/.subkit/bin/sk by default, overridable via SK_INSTALL_DIR", () => {
-    const script = buildScript("3.0.0", "https://engine.example.com");
-    const D = String.fromCharCode(36);
-    const L = String.fromCharCode(123);
-    const R = String.fromCharCode(125);
+  test("downloads from the engine when it bundles the CLI", () => {
+    const script = pinInstallScript(_internal.installScript, {
+      ...pins,
+      downloadUrl: "https://engine.example.com/install",
+    });
     expect(script).toContain(
-      `INSTALL_DIR="${D}${L}SK_INSTALL_DIR:-${D}${L}HOME${R}/.subkit/bin${R}"`,
+      'SUBKIT_DOWNLOAD_URL="${SUBKIT_DOWNLOAD_URL:-https://engine.example.com/install}"',
     );
-    expect(script).toContain(`mv "${D}${L}TMP${R}/${D}${L}ASSET${R}" "${D}${L}INSTALL_DIR${R}/sk"`);
   });
 
-  test("points sk doctor as the verification step", () => {
-    const script = buildScript("3.0.0", "https://engine.example.com");
-    expect(script).toContain("sk doctor");
+  test("the release installer itself defaults to the latest release", () => {
+    expect(defaultsOf(_internal.installScript)[0]).toBe(
+      'SUBKIT_VERSION="${SUBKIT_VERSION:-latest}"',
+    );
+  });
+
+  test("refuses a script without the expected defaults", () => {
+    expect(() => pinInstallScript("#!/bin/sh\n", pins)).toThrow("SUBKIT_VERSION");
   });
 });
 
@@ -169,7 +116,7 @@ describe("GET /install — header injection", () => {
     });
     expect(script).not.toContain("attacker");
     expect(script).not.toContain("| bash; echo");
-    expect(script).toContain('ENGINE_URL="http://127.0.0.1"');
+    expect(script).toContain('SUBKIT_ENGINE_URL="${SUBKIT_ENGINE_URL:-http://127.0.0.1}"');
   });
 
   test("a clean X-Forwarded-Host is honoured", async () => {
@@ -177,6 +124,8 @@ describe("GET /install — header injection", () => {
       "x-forwarded-host": "engine.example.com",
       "x-forwarded-proto": "https",
     });
-    expect(script).toContain('ENGINE_URL="https://engine.example.com"');
+    expect(script).toContain(
+      'SUBKIT_ENGINE_URL="${SUBKIT_ENGINE_URL:-https://engine.example.com}"',
+    );
   });
 });

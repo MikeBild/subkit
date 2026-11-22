@@ -28,8 +28,12 @@ export function parseInviteLink(raw: string): InviteLink | null {
   return TOKEN.test(token) ? { origin: address.origin, token } : null;
 }
 
-export function invitePageUrl(link: InviteLink): string {
-  return `${link.origin}${INVITE_PAGE_PATH}#${link.token}`;
+export const INVITE_CONTINUE_PARAM = "continue";
+
+export function inviteJoinUrl(link: InviteLink, loginStartUrl: string): string {
+  const start = new URL(loginStartUrl);
+  const next = encodeURIComponent(`${start.pathname}${start.search}`);
+  return `${link.origin}${INVITE_PAGE_PATH}?${INVITE_CONTINUE_PARAM}=${next}#${link.token}`;
 }
 
 export function invitePreviewBody(link: InviteLink): string {

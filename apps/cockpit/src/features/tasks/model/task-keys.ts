@@ -1,6 +1,7 @@
 export const taskKeys = {
   lists: ["tasks"] as const,
   list: (q: string) => ["tasks", "list", q] as const,
+  fromConversation: (conversationId: string) => ["tasks", "conversation", conversationId] as const,
   details: ["task"] as const,
   detail: (id: string) => ["task", id] as const,
   runsOf: (id: string) => ["task-runs", id] as const,

@@ -4,7 +4,7 @@ import { collectReferencedResources, namedResources } from "./references";
 describe("namedResources", () => {
   test("an id is named by the resource it belongs to, not by the name the draft targets", () => {
     const named = namedResources({
-      target: { kind: "workflow", id: "workflow-growth", name: "watchkit-finding-triage" },
+      target: { kind: "workflow", id: "workflow-growth", name: "uptime-finding-triage" },
       created: [],
       referenced: [
         {

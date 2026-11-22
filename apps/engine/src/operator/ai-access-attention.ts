@@ -5,7 +5,7 @@ import { readModelServerCapability } from "../identity/local-model-probe.ts";
 import { workspaceAiAccess } from "../llm/runtime/workspace-access.ts";
 import type { TenantReader } from "./attention-readers.ts";
 
-const AI_SETTINGS_HREF = "/cockpit/settings?area=ai";
+export const AI_SETTINGS_HREF = "/cockpit/settings?area=ai";
 
 function settingsItem(tenantId: string, reason: "ai_access_missing" | "model_tools_missing") {
   const missing = reason === "ai_access_missing";

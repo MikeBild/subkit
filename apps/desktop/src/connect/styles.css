@@ -1,5 +1,5 @@
 /*
- * Sign-in window stylesheet: Tailwind v4 like the Cockpit, tokens from contract/cockpit-ui.css,
+ * Sign-in window stylesheet: Tailwind v4 like the Cockpit, tokens from packages/ui/contract/cockpit-ui.css,
  * the theme mapping and onboarding rhythm from the accepted design. Built into one external
  * file, so the window's CSP (style-src subkit-app://shell) holds without inline styles.
  */
@@ -71,9 +71,9 @@
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
 
-/* The palette of contract/cockpit-ui.css; ink tones and radii come from packages/ui tokens. */
+/* The palette of packages/ui/contract/cockpit-ui.css, kept equal by the token-sync test. */
 :root {
-  --radius: 0.75rem;
+  --radius: 12px;
   --background: #ffffff;
   --foreground: #020817;
   --card: #ffffff;

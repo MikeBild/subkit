@@ -34,8 +34,8 @@ export function frozenWaveFixture() {
   const tests = targets.map((target) => target.replace(/\.ts$/, ".test.ts"));
   put("package.json", '{"patchedDependencies":{}}\n');
   for (const path of MUTATION_RUNTIME_ARTIFACTS) put(path, `fixture:${path}\n`);
-  writeFileSync(join(root, "dist/sk"), "#!/bin/sh\nexit 0\n");
-  chmodSync(join(root, "dist/sk"), 0o755);
+  writeFileSync(join(root, "dist/subkit"), "#!/bin/sh\nexit 0\n");
+  chmodSync(join(root, "dist/subkit"), 0o755);
   for (const [index, target] of targets.entries()) {
     put(target, "export const fixture = true;\n");
     put(tests[index]!, `import { fixture } from "./${target.split("/").at(-1)}"; void fixture;\n`);

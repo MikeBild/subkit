@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:subkit:health-readiness:v1",
+  "title": "SubKit health and readiness documents",
+  "oneOf": [{ "$ref": "#/$defs/health" }, { "$ref": "#/$defs/ready" }],
+  "$defs": {
+    "service": {
+      "const": "subkit"
+    },
+    "checkState": {
+      "enum": ["pass", "fail"]
+    },
+    "health": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "service", "version"],
+      "properties": {
+        "status": { "const": "ok" },
+        "service": { "$ref": "#/$defs/service" },
+        "version": { "type": "string", "minLength": 1 }
+      }
+    },
+    "ready": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "service", "version", "checks"],
+      "properties": {
+        "status": { "enum": ["ready", "not_ready"] },
+        "service": { "$ref": "#/$defs/service" },
+        "version": { "type": "string", "minLength": 1 },
+        "checks": {
+          "type": "object",
+          "required": ["lifecycle", "database"],
+          "properties": {
+            "lifecycle": { "$ref": "#/$defs/checkState" },
+            "database": { "$ref": "#/$defs/checkState" }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  }
+}

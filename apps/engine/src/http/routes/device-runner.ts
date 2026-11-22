@@ -36,6 +36,7 @@ import {
   uploadRefusalStatus,
 } from "../../devices/index.ts";
 import { scheduleScreenshotExpiry } from "../../devices/screenshot-retention.ts";
+import { workspaceLanguage } from "../../identity/index.ts";
 import type { AppEnv } from "../openapi.ts";
 import { streamShutdownSignal } from "../stream-shutdown.ts";
 import { streamTenantSSE } from "../tenant-stream.ts";
@@ -203,7 +204,7 @@ const resultRoute = createRoute({
   tags: ["device-runner"],
   summary: "Hand in the result of a command",
   description:
-    "The first result is kept. A repeated result, for example one answered from the runner's ledger, is acknowledged and changes nothing.",
+    "The first result is kept, also when it arrives after the command was counted as lost. A repeated result, for example one answered from the runner's ledger, is acknowledged and changes nothing.",
   request: {
     params: CommandParam,
     body: { required: true, content: { "application/json": { schema: DeviceResultSchema } } },
@@ -367,11 +368,11 @@ export function registerDeviceRunnerRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(heartbeatRoute, async (c) => {
     const runner = await runnerOf(c.get("db"), c.get("principal"));
     if (!runner) return c.json(NOT_A_RUNNER, 403);
-    const recorded = await recordHeartbeat(
-      c.get("db"),
-      runner,
-      c.req.valid("json"),
-      deviceConnectorLocale([c.req.header("accept-language")]),
+    const recorded = await recordHeartbeat(c.get("db"), runner, c.req.valid("json"), async () =>
+      deviceConnectorLocale({
+        app: c.req.header("accept-language"),
+        workspace: await workspaceLanguage(runner.tenant_id, c.get("db")),
+      }),
     );
     if (!recorded) return c.json({ code: "device_revoked" }, 403);
     return c.json(recorded, 200);

@@ -332,7 +332,7 @@ describe("assertEgressAllowed (mode resolution)", () => {
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
     _resetConfigForTests();
-    const dir = mkdtempSync(join(tmpdir(), "sk-cfg-egress-"));
+    const dir = mkdtempSync(join(tmpdir(), "subkit-cfg-egress-"));
     try {
       await loadConfig({
         env: { DATABASE_URL: "postgres://x", NODE_ENV: "test" },

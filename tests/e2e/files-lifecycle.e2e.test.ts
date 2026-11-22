@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { boot, cli, type E2EEnv, expectSuccess, parseJson, run, shutdown } from "./setup.ts";
 
-const TINY_CONTENT = "tiny fixture content for sk files e2e tests";
+const TINY_CONTENT = "tiny fixture content for subkit files e2e tests";
 const SMALL_CONTENT = Buffer.alloc(1024 * 200, 0xab);
 
 let env: E2EEnv;
@@ -15,7 +15,7 @@ let smallPath: string;
 beforeAll(async () => {
   env = await boot("files-lifecycle", { llm: "mock" });
 
-  fixtureDir = mkdtempSync(join(tmpdir(), "sk-files-e2e-fixtures-"));
+  fixtureDir = mkdtempSync(join(tmpdir(), "subkit-files-e2e-fixtures-"));
   tinyPath = join(fixtureDir, "tiny.txt");
   writeFileSync(tinyPath, TINY_CONTENT);
   smallPath = join(fixtureDir, "small.bin");
@@ -59,7 +59,7 @@ describe("E1: full lifecycle", () => {
   });
 
   test("download writes bytes to disk, sha256 matches", async () => {
-    downloadDir = mkdtempSync(join(tmpdir(), "sk-e1-dl-"));
+    downloadDir = mkdtempSync(join(tmpdir(), "subkit-e1-dl-"));
     const outPath = join(downloadDir, "dl.txt");
     await run(["files", "download", fid, "--output", outPath], { env, persona: "admin" });
     expect(existsSync(outPath)).toBe(true);
@@ -136,7 +136,7 @@ describe("E3: authenticated streamed upload (large file)", () => {
 });
 
 describe("E5: headless --attach with mock LLM", () => {
-  test("sk -p with --attach exits 0 and emits file_attached in stream-json", async () => {
+  test("subkit -p with --attach exits 0 and emits file_attached in stream-json", async () => {
     const result = await cli(
       [
         "--p",
@@ -265,7 +265,7 @@ describe("E16: audit completeness", () => {
     expectSuccess(r1, "E16 upload");
     const fid = parseJson<{ id: string }>(r1).id;
 
-    const dlDir = mkdtempSync(join(tmpdir(), "sk-e16-dl-"));
+    const dlDir = mkdtempSync(join(tmpdir(), "subkit-e16-dl-"));
     const outPath = join(dlDir, "dl.txt");
     await run(["files", "download", fid, "--output", outPath], { env, persona: "admin" });
 
@@ -320,7 +320,7 @@ describe("E18: legacy @attachment: text rewrite", () => {
 });
 
 describe("stats smoke", () => {
-  test("sk files stats --json returns correct shape", async () => {
+  test("subkit files stats --json returns correct shape", async () => {
     const result = await cli(["files", "stats", "--json"], { env, persona: "admin" });
     expectSuccess(result, "stats shape");
     const stats = parseJson<{

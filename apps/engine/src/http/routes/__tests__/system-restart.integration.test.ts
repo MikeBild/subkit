@@ -34,7 +34,7 @@ beforeAll(async () => {
   previousMasterKey = testEnv.MASTER_KEY;
   testEnv.MASTER_KEY = "33".repeat(32);
   testEnv.NODE_ENV = "test";
-  configDir = mkdtempSync(join(tmpdir(), "sk-system-restart-"));
+  configDir = mkdtempSync(join(tmpdir(), "subkit-system-restart-"));
   _resetConfigForTests();
   await loadConfig({
     env: { DATABASE_URL: "postgres://placeholder/system-restart", NODE_ENV: "test" },

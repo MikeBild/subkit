@@ -68,7 +68,7 @@ describe("run plan", () => {
   const texts: Record<string, string> = {
     "apps/engine/a.test.ts": 'mock.module("pg", () => ({}));',
     "apps/engine/b.test.ts": "expect(1).toBe(1);",
-    "apps/sk/c.test.ts": "const mocked = mock(() => 1);",
+    "apps/subkit/c.test.ts": "const mocked = mock(() => 1);",
     "scripts/d.test.ts": "mock.module('./x', () => ({}));",
   };
   const files = Object.keys(texts);
@@ -78,7 +78,7 @@ describe("run plan", () => {
     expect(planRuns(files, RUNNERS.unit, text)).toEqual({
       groups: [
         { root: "apps/engine", files: ["apps/engine/b.test.ts"] },
-        { root: "apps/sk", files: ["apps/sk/c.test.ts"] },
+        { root: "apps/subkit", files: ["apps/subkit/c.test.ts"] },
       ],
       solo: ["apps/engine/a.test.ts", "scripts/d.test.ts"],
     });

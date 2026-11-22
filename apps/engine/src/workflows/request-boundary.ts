@@ -125,7 +125,11 @@ function connectorQueryKeys(query: ConnectorQuery | undefined): string[] {
 
 function connectorQueryConsistent(boundary: {
   connector_query?: ConnectorQuery | undefined;
-  query: { fixed: Record<string, string>; variable: Array<{ key: string }> };
+  query: {
+    fixed: Record<string, string>;
+    variable: Array<{ key: string }>;
+    vault?: string[] | undefined;
+  };
   pagination?: { params: string[]; location?: "body" | undefined } | undefined;
 }): boolean {
   const own = connectorQueryKeys(boundary.connector_query);
@@ -137,6 +141,7 @@ function connectorQueryConsistent(boundary: {
   const taken = new Set([
     ...Object.keys(boundary.query.fixed),
     ...boundary.query.variable.map((entry) => entry.key),
+    ...(boundary.query.vault ?? []),
     ...(boundary.pagination?.location === "body" ? [] : (boundary.pagination?.params ?? [])),
   ]);
   return !own.some((key) => taken.has(key));
@@ -158,6 +163,7 @@ export const RequestBoundarySchema = z
       .object({
         fixed: z.record(z.string(), z.string()),
         variable: z.array(z.object({ key: z.string().min(1), var: expression }).strict()).max(50),
+        vault: z.array(z.string().min(1).max(200)).min(1).max(20).optional(),
       })
       .strict(),
     connector_query: ConnectorQuerySchema.optional(),
@@ -321,15 +327,18 @@ export function compileRequestBoundary(
   }
   const fixedQuery: Record<string, string> = {};
   const variableQuery: Array<{ key: string; var: string }> = [];
+  const vaultQuery: string[] = [];
   for (const [key, value] of Object.entries(step.query ?? {})) {
     const whole = typeof value === "string" ? WHOLE_SEGMENT.exec(value) : null;
     if (whole?.[1] !== undefined && expression.safeParse(whole[1]).success)
       variableQuery.push({ key, var: whole[1] });
+    else if (!hasRuntimeValue(key) && onlyVaultHandles(value)) vaultQuery.push(key);
     else if (hasRuntimeValue(value) || hasRuntimeValue(key))
       return refuse("query_placeholder_unsupported");
     else fixedQuery[key] = String(value);
   }
   variableQuery.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  vaultQuery.sort();
   let idempotencyKey: { var: string } | undefined;
   for (const [name, value] of Object.entries(step.headers ?? {})) {
     if (hasRuntimeValue(name)) return refuse("runtime_header");
@@ -456,7 +465,10 @@ export function compileRequestBoundary(
     paging !== "unbounded" &&
     !pagesThroughBody &&
     paging.params.some(
-      (name) => name in fixedQuery || variableQuery.some((entry) => entry.key === name),
+      (name) =>
+        name in fixedQuery ||
+        vaultQuery.includes(name) ||
+        variableQuery.some((entry) => entry.key === name),
     )
   )
     return refuse("pagination_param_conflict");
@@ -465,6 +477,7 @@ export function compileRequestBoundary(
     ownQueryKeys.some(
       (name) =>
         name in fixedQuery ||
+        vaultQuery.includes(name) ||
         variableQuery.some((entry) => entry.key === name) ||
         (paging && paging !== "unbounded" && !pagesThroughBody && paging.params.includes(name)),
     )
@@ -478,7 +491,11 @@ export function compileRequestBoundary(
     ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
     segments,
     variables: scope.data.variables,
-    query: { fixed: fixedQuery, variable: variableQuery },
+    query: {
+      fixed: fixedQuery,
+      variable: variableQuery,
+      ...(vaultQuery.length > 0 ? { vault: vaultQuery } : {}),
+    },
     ...(ownQueryKeys.length > 0 ? { connector_query: ownQuery } : {}),
     max_body_bytes: scope.data.max_body_bytes,
     max_calls: scope.data.max_calls,
@@ -503,6 +520,7 @@ export function compileRequestBoundary(
         const url = resolveUrl(base_url, concrete);
         for (const [key, fixed] of Object.entries(fixedQuery)) url.searchParams.set(key, fixed);
         for (const entry of variableQuery) url.searchParams.set(entry.key, pick(entry.var));
+        for (const key of vaultQuery) url.searchParams.set(key, "vault");
         const { connector_query: _connectorQuery, ...ownRequest } = candidate.data;
         if (!matchTarget(ownRequest, url) || !matchQuery(ownRequest, url))
           return refuse("enum_value_unroutable");
@@ -606,6 +624,7 @@ function queryViolation(boundary: RequestBoundary, url: URL): RequestQueryViolat
     ...fixedKeys,
     ...Object.keys(pinned),
     ...boundary.query.variable.map((entry) => entry.key),
+    ...(boundary.query.vault ?? []),
     ...(boundary.connector_query?.credential ?? []),
   ]);
   const paging = new Set(

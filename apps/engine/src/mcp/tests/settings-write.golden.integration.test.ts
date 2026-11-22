@@ -99,7 +99,7 @@ beforeAll(async () => {
   previousMasterKey = testEnv.MASTER_KEY;
   testEnv.MASTER_KEY = "67".repeat(32);
   testEnv.NODE_ENV = "test";
-  configDir = mkdtempSync(join(tmpdir(), "sk-mcp-settings-golden-"));
+  configDir = mkdtempSync(join(tmpdir(), "subkit-mcp-settings-golden-"));
   _resetConfigForTests();
   await loadConfig({
     env: { DATABASE_URL: "postgres://placeholder/mcp-settings-golden", NODE_ENV: "test" },

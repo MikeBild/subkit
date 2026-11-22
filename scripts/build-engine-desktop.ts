@@ -1,16 +1,10 @@
 import { mkdir, readFile, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { compileCommand, ENGINE_ENTRIES } from "./lib/commands.ts";
+import { type EngineDesktopTarget, parseEngineDesktopArgs } from "./lib/engine-desktop-targets.ts";
 
 const REPO_ROOT = join(import.meta.dir, "..");
 const DEFAULT_OUT = join(REPO_ROOT, "dist", "engine-desktop");
-
-export const ENGINE_DESKTOP_TARGETS = [
-  { os: "mac", arch: "arm64", bunTarget: "bun-darwin-arm64", platform: "darwin", file: "engine" },
-  { os: "win", arch: "x64", bunTarget: "bun-windows-x64", platform: "win32", file: "engine.exe" },
-] as const;
-
-export type EngineDesktopTarget = (typeof ENGINE_DESKTOP_TARGETS)[number];
 
 export function engineDesktopPath(outDir: string, target: EngineDesktopTarget): string {
   return join(outDir, target.os, target.arch, target.file);
@@ -46,30 +40,6 @@ export function engineBuildCommand(
   });
 }
 
-export function selectTargets(names: string[]): EngineDesktopTarget[] {
-  if (names.length === 0) return [...ENGINE_DESKTOP_TARGETS];
-  return names.map((name) => {
-    const target = ENGINE_DESKTOP_TARGETS.find((t) => `${t.os}-${t.arch}` === name);
-    if (!target) {
-      const known = ENGINE_DESKTOP_TARGETS.map((t) => `${t.os}-${t.arch}`).join(", ");
-      throw new Error(`unknown engine target ${name}; known targets: ${known}`);
-    }
-    return target;
-  });
-}
-
-function parseArgs(argv: string[]): { out: string; targets: string[] } {
-  let out = DEFAULT_OUT;
-  const targets: string[] = [];
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === "--out") out = argv[++i] ?? out;
-    else if (arg === "--target") targets.push(argv[++i] ?? "");
-    else throw new Error(`unknown argument ${arg}`);
-  }
-  return { out, targets };
-}
-
 async function resolveVersion(): Promise<string> {
   if (process.env.ENGINE_VERSION) return process.env.ENGINE_VERSION;
   const pkg = JSON.parse(await readFile(join(REPO_ROOT, "package.json"), "utf8"));
@@ -77,23 +47,22 @@ async function resolveVersion(): Promise<string> {
 }
 
 async function main(): Promise<void> {
-  const { out, targets } = parseArgs(Bun.argv.slice(2));
+  const parsed = parseEngineDesktopArgs(Bun.argv.slice(2));
+  if (!parsed.ok) throw new Error(parsed.error);
+  const out = parsed.args.out ?? DEFAULT_OUT;
   const version = await resolveVersion();
-  for (const target of selectTargets(targets)) {
+  for (const target of parsed.args.targets) {
     const outFile = engineDesktopPath(out, target);
     const metafile = engineMetafile(out, target);
     await mkdir(dirname(outFile), { recursive: true });
     await mkdir(dirname(metafile), { recursive: true });
-    await run(
-      nativeDependenciesCommand(target),
-      `installing the ${target.platform}-${target.arch} packages`,
-    );
+    await run(nativeDependenciesCommand(target), `installing the ${target.name} packages`);
     await run(
       engineBuildCommand(target, version, outFile, metafile),
       `bun build for ${target.bunTarget}`,
     );
     const { size } = await stat(outFile);
-    console.log(`engine ${version} ${target.os}-${target.arch}: ${outFile} (${size} bytes)`);
+    console.log(`engine ${version} ${target.name}: ${outFile} (${size} bytes)`);
   }
 }
 

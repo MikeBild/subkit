@@ -5,6 +5,7 @@ import {
   chatIdentities,
   chatWorkspaces,
   conversationElicitations,
+  conversationMessages,
   users,
 } from "../../db/schema/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
@@ -191,7 +192,7 @@ describe("chat session mapping", () => {
   });
 });
 
-describe("typed reply while an elicitation is pending (salvage)", () => {
+describe("typed reply while an elicitation is pending", () => {
   const WS = "T_SALVAGE";
   const GUIDANCE_MARKER = "buttons or menu";
   let secondUserId: string;
@@ -328,7 +329,24 @@ describe("typed reply while an elicitation is pending (salvage)", () => {
     expect(adapter.sends.some((d) => d.text?.includes(GUIDANCE_MARKER))).toBe(false);
   });
 
-  test("pending ask_user_confirm + typed reply posts ONE guidance message and stays pending", async () => {
+  test("pending ask_user_confirm + a clear yes answers it like the button", async () => {
+    const conversationId = await seedConversation("C_SALV_YES");
+    const elicitationId = await seedPendingElicitation(conversationId, "ask_user_confirm", {
+      question: "Proceed?",
+    });
+
+    const adapter = new FakeSlackAdapter();
+    const r = await handleChatEvent({ db: ctx.testDb.db, adapter }, mention("C_SALV_YES", "ja"));
+    expect(r.status).toBe("ok");
+
+    const row = await readElicitation(elicitationId);
+    expect(row.status).toBe("resolved");
+    expect(row.output).toMatchObject({ confirmed: true });
+    expect(row.decided_by).toBe(ctx.user_id);
+    expect(adapter.sends.some((d) => d.text?.includes(GUIDANCE_MARKER))).toBe(false);
+  });
+
+  test("pending ask_user_confirm + any other reply reaches the agent and the question stays open", async () => {
     const conversationId = await seedConversation("C_SALV_CONFIRM");
     const elicitationId = await seedPendingElicitation(conversationId, "ask_user_confirm", {
       question: "Proceed?",
@@ -341,18 +359,77 @@ describe("typed reply while an elicitation is pending (salvage)", () => {
     );
     expect(r.status).toBe("ok");
     expect(r.conversation_id).toBe(conversationId);
-
-    const guidance = adapter.sends.filter((d) => d.text?.includes(GUIDANCE_MARKER));
-    expect(guidance.length).toBe(1);
-    expect(guidance[0]?.text).toContain("/new");
-    expect(adapter.sends.length).toBe(1);
+    expect(adapter.sends.some((d) => d.text?.includes(GUIDANCE_MARKER))).toBe(false);
+    expect(adapter.sends.length).toBeGreaterThan(0);
 
     const row = await readElicitation(elicitationId);
     expect(row.status).toBe("pending");
     expect(row.output).toBeNull();
   });
 
-  test("pending multi-field ask_user_form + typed reply posts guidance and stays pending", async () => {
+  test("pending write confirmation + a typed yes never approves it", async () => {
+    const conversationId = await seedConversation("C_SALV_WRITE");
+    const elicitationId = await seedPendingElicitation(conversationId, "ask_user_confirm", {
+      question: "Send the reminder?",
+      kind: "external_write",
+      commit_intent: { kind: "execute_confirmed_tool_call", payload: {} },
+    });
+
+    const adapter = new FakeSlackAdapter();
+    const r = await handleChatEvent({ db: ctx.testDb.db, adapter }, mention("C_SALV_WRITE", "ja"));
+    expect(r.status).toBe("ok");
+
+    const row = await readElicitation(elicitationId);
+    expect(row.status).toBe("pending");
+    expect(row.output).toBeNull();
+  });
+
+  test("pending password form + typed text is refused and never stored", async () => {
+    const conversationId = await seedConversation("C_SALV_SECRET");
+    const elicitationId = await seedPendingElicitation(conversationId, "ask_user_form", {
+      fields: [{ name: "token", type: "password", label: "Token" }],
+    });
+
+    const adapter = new FakeSlackAdapter();
+    const r = await handleChatEvent(
+      { db: ctx.testDb.db, adapter },
+      mention("C_SALV_SECRET", "tok-fixture-value"),
+    );
+    expect(r.status).toBe("ok");
+    expect(adapter.sends.filter((d) => d.text?.includes("asks for a secret")).length).toBe(1);
+
+    const row = await readElicitation(elicitationId);
+    expect(row.status).toBe("pending");
+    const stored = await ctx.testDb.db
+      .select()
+      .from(conversationMessages)
+      .where(eq(conversationMessages.conversation_id, conversationId));
+    expect(JSON.stringify(stored)).not.toContain("tok-fixture-value");
+  });
+
+  test("pending ask_user_choice + a reply naming exactly one option answers it", async () => {
+    const conversationId = await seedConversation("C_SALV_CHOICE");
+    const elicitationId = await seedPendingElicitation(conversationId, "ask_user_choice", {
+      question: "When?",
+      options: [
+        { value: "today", label: "Today" },
+        { value: "tomorrow", label: "Tomorrow morning" },
+      ],
+    });
+
+    const adapter = new FakeSlackAdapter();
+    const r = await handleChatEvent(
+      { db: ctx.testDb.db, adapter },
+      mention("C_SALV_CHOICE", "tomorrow morning"),
+    );
+    expect(r.status).toBe("ok");
+
+    const row = await readElicitation(elicitationId);
+    expect(row.status).toBe("resolved");
+    expect(row.output).toEqual({ value: "tomorrow" });
+  });
+
+  test("pending multi-field ask_user_form + typed reply reaches the agent and stays pending", async () => {
     const conversationId = await seedConversation("C_SALV_FORM2");
     const elicitationId = await seedPendingElicitation(conversationId, "ask_user_form", {
       fields: [
@@ -367,9 +444,7 @@ describe("typed reply while an elicitation is pending (salvage)", () => {
       mention("C_SALV_FORM2", "Berlin Germany"),
     );
     expect(r.status).toBe("ok");
-
-    const guidance = adapter.sends.filter((d) => d.text?.includes(GUIDANCE_MARKER));
-    expect(guidance.length).toBe(1);
+    expect(adapter.sends.some((d) => d.text?.includes(GUIDANCE_MARKER))).toBe(false);
 
     const row = await readElicitation(elicitationId);
     expect(row.status).toBe("pending");

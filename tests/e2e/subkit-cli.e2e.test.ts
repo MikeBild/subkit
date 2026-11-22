@@ -12,13 +12,13 @@ import {
 
 let env: E2EEnv;
 beforeAll(async () => {
-  env = await boot("sk-cli", { llm: "mock" });
+  env = await boot("subkit-cli", { llm: "mock" });
 }, 90_000);
 afterAll(async () => {
   await shutdown(env);
 }, 30_000);
 
-describe("sk CLI admin commands", () => {
+describe("subkit CLI admin commands", () => {
   describe("health", () => {
     test("reports liveness and readiness", async () => {
       const out = await run(["health"], { env });

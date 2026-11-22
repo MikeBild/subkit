@@ -161,7 +161,7 @@ function catalogSection(
 
 function assemble(input: AssembleInput, state: AssembleState): string {
   const lines: string[] = [
-    `# sk session briefing — domains: ${input.domains.join(", ")}`,
+    `# subkit session briefing — domains: ${input.domains.join(", ")}`,
     "",
     "Grounding rule: for facts of these domains, look up instead of guessing —",
     `call \`search_knowledge\` with \`tags: ["${input.domains.map((d) => `${DOMAIN_TAG_PREFIX}${d}`).join('", "')}"]\`.`,
@@ -219,7 +219,7 @@ function assemble(input: AssembleInput, state: AssembleState): string {
   );
 
   if (input.guides.length > 0) {
-    lines.push("", "## Working with sk");
+    lines.push("", "## Working with subkit");
     for (const guide of input.guides) lines.push(guideLine(guide));
   }
 

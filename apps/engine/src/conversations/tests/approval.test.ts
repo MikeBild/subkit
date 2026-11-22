@@ -208,7 +208,7 @@ describe("conversations/elicitation", () => {
     });
   });
 
-  test("a fresh user prompt is blocked while an elicitation is still pending", async () => {
+  test("a typed yes never approves a write confirmation", async () => {
     const outcome = await createConversationWithTurn(
       {
         tenant_id: ctx.tenant_id,
@@ -222,30 +222,56 @@ describe("conversations/elicitation", () => {
     const elicitationId = outcome.result.pending_elicitation_id;
     if (!elicitationId) throw new Error("no elicitation id");
 
-    await expect(
-      appendMessageWithTurn(
-        {
-          tenant_id: ctx.tenant_id,
-          conversation_id: outcome.conversation.id,
-          actor_id: ctx.user_id,
-          message: "now nothing happens",
-        },
-        ctx.testDb.db,
-      ),
-    ).rejects.toMatchObject({
-      name: "PendingElicitationBlockedError",
-      pending_elicitation: {
-        id: elicitationId,
-        tool_name: "ask_user_confirm",
+    await appendMessageWithTurn(
+      {
+        tenant_id: ctx.tenant_id,
+        conversation_id: outcome.conversation.id,
+        actor_id: ctx.user_id,
+        message: "yes",
       },
-    });
+      ctx.testDb.db,
+    );
 
-    const pendingRow = await ctx.testDb.db
+    const [row] = await ctx.testDb.db
       .select()
       .from(conversationElicitations)
       .where(eq(conversationElicitations.id, elicitationId))
       .limit(1);
-    expect(pendingRow[0]?.status).toBe("pending");
+    expect(row?.status).toBe("pending");
+    expect(row?.output).toBeNull();
+  });
+
+  test("any other prompt while a question is pending reaches the agent and keeps the question open", async () => {
+    const outcome = await createConversationWithTurn(
+      {
+        tenant_id: ctx.tenant_id,
+        actor_id: ctx.user_id,
+        connector_id: ctx.connector_id,
+        initial_message: "list users",
+        ask_before_writing: true,
+      },
+      ctx.testDb.db,
+    );
+    const elicitationId = outcome.result.pending_elicitation_id;
+    if (!elicitationId) throw new Error("no elicitation id");
+
+    const next = await appendMessageWithTurn(
+      {
+        tenant_id: ctx.tenant_id,
+        conversation_id: outcome.conversation.id,
+        actor_id: ctx.user_id,
+        message: "which users would that list?",
+      },
+      ctx.testDb.db,
+    );
+    expect(next.conversation.id).toBe(outcome.conversation.id);
+
+    const [row] = await ctx.testDb.db
+      .select()
+      .from(conversationElicitations)
+      .where(eq(conversationElicitations.id, elicitationId))
+      .limit(1);
+    expect(row?.status).toBe("pending");
   });
 });
 

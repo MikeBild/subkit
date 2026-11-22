@@ -17,7 +17,7 @@ afterAll(async () => {
 });
 
 describe("GET /health", () => {
-  test("returns the exact family liveness document", async () => {
+  test("returns the exact liveness document", async () => {
     const res = await fetch(`${ctx.baseUrl}/health`);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("application/json");

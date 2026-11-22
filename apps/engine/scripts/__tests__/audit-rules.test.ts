@@ -24,7 +24,7 @@ const imp = (specifier: string, resolved = specifier, typeOnly = false): Resolve
 describe("path classification", () => {
   test("isTestPath covers test files and test directories", () => {
     expect(isTestPath("apps/engine/src/a.test.ts")).toBe(true);
-    expect(isTestPath("apps/sk/src/a.test.tsx")).toBe(true);
+    expect(isTestPath("apps/subkit/src/a.test.tsx")).toBe(true);
     expect(isTestPath("apps/engine/src/x/tests/setup.ts")).toBe(true);
     expect(isTestPath("apps/engine/src/db/vault-maintenance-fixtures.ts")).toBe(true);
     expect(isTestPath("apps/engine/src/db/vault-fixtures-loader.ts")).toBe(false);
@@ -210,7 +210,7 @@ describe("isGetDbFallbackScope", () => {
       "apps/engine/src/connectors/robots-cache.ts",
       "apps/engine/src/connectors/egress-guard.test.ts",
       "apps/engine/src/identity/tests/service.ts",
-      "apps/sk/src/engine-client/index.ts",
+      "apps/subkit/src/engine-client/index.ts",
     ])
       expect(isGetDbFallbackScope(path)).toBe(false);
   });

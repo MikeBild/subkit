@@ -1,9 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  AUTH_UI_DIGEST,
   authHtmlResponse,
   BROWSER_TITLE,
   localeCookie,
@@ -22,15 +20,28 @@ import {
   wantsHtmlPage,
 } from "./ui.ts";
 
-const CONTRACT_PATH = join(import.meta.dir, "..", "..", "..", "..", "..", "..", "contract");
-const CONTRACT = readFileSync(join(CONTRACT_PATH, "cockpit-ui.css"));
-const CONTRACT_TEXT = CONTRACT.toString("utf8");
+const TOKENS_TEXT = readFileSync(
+  join(
+    import.meta.dir,
+    "..",
+    "..",
+    "..",
+    "..",
+    "..",
+    "..",
+    "packages",
+    "ui",
+    "contract",
+    "cockpit-ui.css",
+  ),
+  "utf8",
+);
 
 function region(name: string): string {
-  const match = CONTRACT_TEXT.match(
+  const match = TOKENS_TEXT.match(
     new RegExp(`/\\* cockpit-ui:begin ${name} \\*/\\n([\\s\\S]*?)/\\* cockpit-ui:end ${name} \\*/`),
   );
-  if (!match?.[1]) throw new Error(`contract region ${name} missing`);
+  if (!match?.[1]) throw new Error(`token region ${name} missing`);
   return match[1];
 }
 
@@ -113,7 +124,7 @@ function visibleText(html: string): string[] {
 }
 
 describe("one design source", () => {
-  test("serves the contract's token regions byte for byte, never a copy", () => {
+  test("serves the token regions from the token file, never a copy", () => {
     const style = styleOf(renderProviderChoice(PROVIDERS, EN));
     expect(style).toContain(region("tokens-light"));
     expect(style).toContain(region("tokens-dark"));
@@ -126,13 +137,6 @@ describe("one design source", () => {
       .replace(region("tokens-dark"), "")
       .replace(declarations, "");
     expect(outside.match(/#[0-9a-f]{3,8}\b/gi) ?? []).toEqual([]);
-  });
-
-  test("announces the digest of the contract bytes it renders", () => {
-    const html = renderNotFoundPage(EN);
-    const digest = createHash("sha256").update(CONTRACT).digest("base64");
-    expect(html).toContain(`<meta name="cockpit-ui-digest" content="sha256-${digest}">`);
-    expect(html).toContain(`<meta name="mcp-auth-ui-contract" content="${AUTH_UI_DIGEST}">`);
   });
 
   test("the single page is a 420px card with no shadow and the cockpit's button geometry", () => {
@@ -152,8 +156,8 @@ describe("one design source", () => {
     test(`${name} has one title, one surface, the word mark and the cockpit browser title`, () => {
       const html = render(DE);
       expect(html.match(/<h1[\s>]/g)?.length).toBe(1);
-      expect(html.match(/data-family-surface="/g)?.length).toBe(1);
-      expect(html).toContain('data-family-slot="product-identity"');
+      expect(html.match(/data-sk-surface="/g)?.length).toBe(1);
+      expect(html).toContain('data-sk-slot="product-identity"');
       expect(html).toContain('<link rel="icon" type="image/svg+xml" href="/cockpit/favicon.svg">');
       expect(html).toContain(`<title>${BROWSER_TITLE}</title>`);
       expect(BROWSER_TITLE).toBe("SubKit Cockpit");
@@ -237,8 +241,8 @@ describe("pages without a way back are dead ends", () => {
     expect(html).toContain("Etwas ist schiefgelaufen");
     expect(html).toContain("&lt;trace&gt;");
     expect(html).toContain('value="&lt;trace&gt;" readonly');
-    expect(html).toContain('data-family-surface="fatal-error"');
-    expect(renderNotFoundPage(DE)).toContain('data-family-surface="not-found"');
+    expect(html).toContain('data-sk-surface="fatal-error"');
+    expect(renderNotFoundPage(DE)).toContain('data-sk-surface="not-found"');
     expect(renderNotFoundPage(DE)).toContain("Diese Seite gibt es nicht");
   });
 
@@ -273,7 +277,7 @@ describe("sign-in pages", () => {
       look: EN,
     });
     expect(html).toContain('data-auth-contract="mcp-auth"');
-    expect(html).toContain('data-family-surface="auth"');
+    expect(html).toContain('data-sk-surface="auth"');
     expect(html).toContain('value="mcp:read" checked disabled');
     expect(html).toContain('value="switch_account"');
     expect(html).not.toContain("<script>bad</script>");
@@ -299,13 +303,12 @@ describe("sign-in pages", () => {
     expect(consent(EN)).toContain('value="approve" class="button primary">Allow<');
   });
 
-  test("the provider chooser puts SSO first and carries the family identity", () => {
+  test("the provider chooser puts SSO first and carries the product identity", () => {
     const html = renderProviderChoice(PROVIDERS, DE);
     expect(html.indexOf('data-auth-provider="sso"')).toBeLessThan(
       html.indexOf('data-auth-provider="api-key"'),
     );
-    expect(html).toContain('data-family-slot="provider-actions"');
-    expect(html).toContain('data-auth-product="subkit"');
+    expect(html).toContain('data-sk-slot="provider-actions"');
     expect(html).toContain('data-testid="auth-product-icon"');
     expect(html).toContain("Bei SubKit anmelden");
     expect(html).toContain("SubKit · OAuth 2.1");
@@ -402,7 +405,7 @@ test("API key sign-in returns to the same authorization attempt and retains esca
 test("an unassigned company account has its own error outcome", () => {
   const unassigned = renderErrorPage("account_not_assigned", "/v1/identity/login/start", DE);
   expect(unassigned.match(/<h1[\s>]/g)?.length).toBe(1);
-  expect(unassigned).toContain('<h1 data-family-slot="auth-heading">Konto nicht zugeordnet</h1>');
+  expect(unassigned).toContain('<h1 data-sk-slot="auth-heading">Konto nicht zugeordnet</h1>');
   expect(unassigned).toContain('class="stack" role="alert"');
   expect(unassigned).toContain(
     "Dieses Firmenkonto ist SubKit nicht zugeordnet. Frag eine Person mit der Rolle Administrator.",
@@ -413,16 +416,14 @@ test("an unassigned company account has its own error outcome", () => {
   expect(unassigned).not.toContain("Anmeldung fehlgeschlagen");
 
   const denied = renderErrorPage("grant_denied", "/v1/identity/login/start", DE);
-  expect(denied).toContain('<h1 data-family-slot="auth-heading">Anmeldung fehlgeschlagen</h1>');
+  expect(denied).toContain('<h1 data-sk-slot="auth-heading">Anmeldung fehlgeschlagen</h1>');
   expect(denied).toContain(
     "Dein Konto ist für SubKit nicht freigegeben. Frag eine Person mit der Rolle Administrator.",
   );
   expect(denied).not.toContain("Konto nicht zugeordnet");
 
   const unassignedEnglish = renderErrorPage("account_not_assigned", "/v1/identity/login/start", EN);
-  expect(unassignedEnglish).toContain(
-    '<h1 data-family-slot="auth-heading">Account not assigned</h1>',
-  );
+  expect(unassignedEnglish).toContain('<h1 data-sk-slot="auth-heading">Account not assigned</h1>');
   expect(unassignedEnglish).toContain(
     "This company account is not assigned to SubKit. Contact an administrator.",
   );

@@ -19,7 +19,7 @@ Do not open a public issue for a vulnerability.
 Send the report through the contact form at <https://subkit.mikebild.dev/en/contact/> and start the
 subject with “Security”. Include:
 
-- the affected version (`engine --version`, `sk --version` or the desktop app's About panel),
+- the affected version (`engine --version`, `subkit --version` or the desktop app's About panel),
 - what an attacker can do and what they need for it,
 - the steps to reproduce it, ideally with a minimal request or workflow,
 - whether you have already told anyone else.

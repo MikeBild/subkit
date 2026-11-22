@@ -6,7 +6,7 @@ import {
   finalizeVerificationRun,
   verificationRunsRoot,
 } from "../../../../scripts/lib/verification-run-lifecycle.ts";
-import { runIsolatedTestFile } from "../../../sk/src/tests/run-isolated-test-file.ts";
+import { runIsolatedTestFile } from "../../../subkit/src/tests/run-isolated-test-file.ts";
 
 export type CoverageBehaviorProof = {
   version: 2;

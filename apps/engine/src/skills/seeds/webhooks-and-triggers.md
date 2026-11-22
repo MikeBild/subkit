@@ -2,7 +2,7 @@
 slug: webhooks-and-triggers
 scope: global
 title: Webhooks & Triggers
-description: Mental model for how sk starts a workflow — request, webhook, or schedule trigger — plus inbound signed ingress. Thin pointer; the full reference lives in the sk-ref-webhooks knowledge source.
+description: Mental model for how subkit starts a workflow — request, webhook, or schedule trigger — plus inbound signed ingress. Thin pointer; the full reference lives in the sk-ref-webhooks knowledge source.
 activates_when: [{"kind":"intent_keyword","word":"webhook"},{"kind":"intent_keyword","word":"inbound hook"},{"kind":"intent_keyword","word":"trigger"},{"kind":"intent_keyword","word":"schedule"},{"kind":"intent_keyword","word":"cron"}]
 side_effects: read
 idempotency: none

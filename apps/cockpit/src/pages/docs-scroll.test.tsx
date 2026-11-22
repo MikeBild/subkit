@@ -114,7 +114,7 @@ async function mount(initial: string): Promise<Harness> {
   function Chapter() {
     const { slug } = useParams({ strict: false }) as { slug: string };
     return (
-      <div data-family-slot="scroll-region" data-testid="docs-scroll">
+      <div data-sk-slot="scroll-region" data-testid="docs-scroll">
         <DocsArticleView bundle={DOCS} slug={slug} version="1.2.3" />
       </div>
     );

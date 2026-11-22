@@ -5,9 +5,7 @@ import { ActionMenu, Button, StatusBadge, StatusStrip } from "@/components/cockp
 import { useI18n } from "@/lib/i18n-context";
 import type { ChatTurn } from "../hooks/turn";
 import { chatContextControlsTarget } from "../hooks/workspace";
-import { refusedApprovalReply } from "../model/policy";
 import { ReadingColumn } from "./parts";
-import { RefusedReply } from "./policy";
 
 export function ConversationHead({
   headerText,
@@ -88,32 +86,19 @@ export function TurnErrors({
   const { t } = useI18n();
   const { send, sendError, turnFailure, failureCauseText, turnFailureMessage, retryTurn, decide } =
     turn;
-  const blocked = sendError instanceof ApiError && sendError.code === "pending_elicitation_blocked";
-  const refusedReply = sendError instanceof ApiError && refusedApprovalReply(sendError) !== null;
+  const secret = sendError instanceof ApiError && sendError.code === "pending_elicitation_secret";
+  const blocked =
+    secret || (sendError instanceof ApiError && sendError.code === "pending_elicitation_blocked");
   return (
     <>
-      {refusedReply && questionOpen ? (
-        <ReadingColumn className="pb-3">
-          <RefusedReply turn={turn} busy={busy} />
-        </ReadingColumn>
-      ) : null}
-      {(send.error || turnFailure) && !refusedReply && (
+      {(send.error || turnFailure) && (
         <ReadingColumn className="pb-3">
           <StatusStrip
             tone="error"
             testId="chat-error"
             line={
               blocked ? (
-                t(
-                  (sendError instanceof ApiError
-                    ? (sendError.details?.pending_elicitation as
-                        | { tool_name?: unknown }
-                        | undefined)
-                    : undefined
-                  )?.tool_name === "ask_user_text"
-                    ? "chat.text.blocked"
-                    : "chat.pendingQuestionRequired",
-                )
+                t(secret ? "chat.form.secretOnly" : "chat.text.blocked")
               ) : (
                 <span data-testid={failureCauseText ? "chat-error-cause" : undefined}>
                   {failureCauseText ?? t("chat.failed")}

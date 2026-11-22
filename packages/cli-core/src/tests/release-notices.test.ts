@@ -16,7 +16,7 @@ afterEach(() => {
 function fixture() {
   const directory = mkdtempSync(join(tmpdir(), "release-notices-"));
   directories.push(directory);
-  const binary = join(directory, "sk");
+  const binary = join(directory, "subkit");
   writeFileSync(binary, "old binary");
   writeFileSync(join(directory, "subkit.LICENSE"), "old license");
   writeFileSync(join(directory, "subkit.THIRD_PARTY_NOTICES.txt"), "old notices");
@@ -43,7 +43,7 @@ test("restores both notices when binary replacement fails", () => {
   );
   expect(readFileSync(binary, "utf8")).toBe("old binary");
   expect(readdirSync(directory).sort()).toEqual([
-    "sk",
+    "subkit",
     "subkit.LICENSE",
     "subkit.THIRD_PARTY_NOTICES.txt",
   ]);

@@ -19,7 +19,7 @@ import {
 } from "./_run.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..", "..");
-const COMPOSE_FILE = "docker-compose.test.yml";
+const COMPOSE_FILE = "docker/docker-compose.test.yml";
 const SERVICE = "engine";
 const TEST_BOOTSTRAP_KEY = "b".repeat(64);
 const DOCKER_ENV = {
@@ -295,17 +295,17 @@ export async function dockerBoot(): Promise<DockerEnv> {
   return { baseUrl: dockerBaseUrl(), ...boot };
 }
 
-export interface SkResult {
+export interface SubkitResult {
   stdout: string;
   stderr: string;
   exitCode: number;
 }
 
-export async function skDocker(
+export async function subkitDocker(
   env: DockerEnv,
   args: string[],
   opts: { timeout?: number } = {},
-): Promise<SkResult> {
+): Promise<SubkitResult> {
   const proc = Bun.spawn(
     [
       "docker",
@@ -331,7 +331,7 @@ export async function skDocker(
       "-e",
       "BUN_OPTIONS=",
       SERVICE,
-      "sk",
+      "subkit",
       ...args,
     ],
     {
@@ -681,6 +681,7 @@ export async function grantScheduleAuthority(
   workflowId: string,
   versionId: string,
   preview: ScheduleAuthorityPreview,
+  environment: "dev" | "prod",
 ): Promise<string> {
   const client = new pg.Client({ connectionString: containerDatabaseUrl() });
   await client.connect();
@@ -702,7 +703,7 @@ export async function grantScheduleAuthority(
       `INSERT INTO subkit.workflow_execution_authorities
          (tenant_id, workflow_id, workflow_version_id, effect_manifest_digest, effect_manifest,
           target_constraints, execution_environment, valid_from, valid_until, max_runs, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, 'prod', now() - interval '1 minute', now() + interval '1 hour', 3, $7)
+       VALUES ($1, $2, $3, $4, $5, $6, $8, now() - interval '1 minute', now() + interval '1 hour', 3, $7)
        RETURNING id`,
       [
         user.tenant_id,
@@ -712,6 +713,7 @@ export async function grantScheduleAuthority(
         JSON.stringify(preview.manifest),
         JSON.stringify({ targets }),
         user.id,
+        environment,
       ],
     );
     const id = inserted.rows[0]?.id;
@@ -719,9 +721,9 @@ export async function grantScheduleAuthority(
     await client.query(
       `UPDATE subkit.workflows_schedules
           SET admission_hold = NULL, last_enqueued_at = clock_timestamp()
-        WHERE tenant_id = $1 AND workflow_id = $2 AND execution_mode = 'prod'
+        WHERE tenant_id = $1 AND workflow_id = $2 AND execution_mode = $3
           AND paused = false AND admission_hold IS NOT NULL`,
-      [user.tenant_id, workflowId],
+      [user.tenant_id, workflowId, environment],
     );
     return id;
   } finally {

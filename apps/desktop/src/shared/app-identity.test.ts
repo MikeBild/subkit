@@ -237,7 +237,7 @@ describe("icons", () => {
     );
   });
 
-  test("Windows and Linux keep the PNG icon", () => {
+  test("Windows keeps the PNG icon", () => {
     expect(base.win.icon).toBe("assets/icon.png");
     expect(pngSize(join(assets, "icon.png"))).toEqual([512, 512]);
   });

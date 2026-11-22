@@ -13,7 +13,13 @@ export const LLM_GROUP_DIMS = [
 ] as const;
 export type LlmGroupDim = (typeof LLM_GROUP_DIMS)[number];
 
-export const LLM_RESULTS = ["success", "quota_exhausted", "context_too_large", "error"] as const;
+export const LLM_RESULTS = [
+  "success",
+  "quota_exhausted",
+  "context_too_large",
+  "key_rejected",
+  "error",
+] as const;
 
 export interface LlmStatsParams {
   tenantId: string;

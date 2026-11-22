@@ -36,6 +36,7 @@ export {
   type StreamedDiff,
 } from "./model/labels";
 export {
+  type ConversationPlaybook,
   type PlaybookAction,
   playbookActionTarget,
   playbookAnchorIndex,
@@ -46,7 +47,7 @@ export { resumeNextAction, resumeSummaryLine } from "./model/resume";
 export { activeConversationId, type ConversationSelection } from "./model/selection";
 export { budgetPill, chatHeaderTitle, optimisticVisible } from "./model/session";
 export { startersVisible } from "./model/start-model";
-export { runMarker, runPlaybook } from "./model/task-run";
+export { type RunMarker, runMarker, runPlaybook } from "./model/task-run";
 export { questionExcerpt } from "./model/text";
 export {
   type ClaimedFile,

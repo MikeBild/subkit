@@ -28,11 +28,11 @@ let cacheDir = "";
 function makeConfig(): UpdaterConfig {
   return {
     binaryName: "engine",
-    currentVersion: "0.0.0-dev",
+    asset: "engine_linux_x64",
+    currentVersion: "1.0.0",
     cacheDir,
-    githubRepo: "test/repo",
+    releasesUrl: "https://github.test/o/r/releases",
     checkIntervalMs: 86_400_000,
-    channel: "stable",
   };
 }
 
@@ -73,6 +73,13 @@ function captureWrites(): void {
   }) as typeof process.stdout.write;
 }
 
+function releaseRedirect(tag: string): Response {
+  return new Response(null, {
+    status: 302,
+    headers: { location: `https://github.test/o/r/releases/tag/${tag}` },
+  });
+}
+
 function makeFetchImpl(handler: (url: string) => Response | Promise<Response>): typeof fetch {
   return (async (input: RequestInfo | URL) => {
     const url =
@@ -85,12 +92,7 @@ describe("engine runSelfUpdate", () => {
   test("'already at latest' branch is DB-free and emits no audit row", async () => {
     captureWrites();
     const before = new Date(getTestNow() - 1);
-    const fetchImpl = makeFetchImpl(
-      () =>
-        new Response(
-          JSON.stringify({ tag_name: "v0.0.0", prerelease: false, body: "", assets: [] }),
-        ),
-    );
+    const fetchImpl = makeFetchImpl(() => releaseRedirect("v0.0.0"));
     await runSelfUpdate(fetchImpl, makeConfig());
     expect(stdoutOutput).toContain("already at latest version");
     const rows = await testDb.db
@@ -104,20 +106,10 @@ describe("engine runSelfUpdate", () => {
   test("update path with a missing binary asset writes INITIATED + FAILED rows", async () => {
     captureWrites();
     const before = new Date(getTestNow() - 1);
-    const fetchImpl = makeFetchImpl(
-      () =>
-        new Response(
-          JSON.stringify({
-            tag_name: "v99.0.0",
-            prerelease: false,
-            body: "notes",
-            assets: [
-              { name: "SHA256SUMS", browser_download_url: "https://example.com/SHA256SUMS" },
-            ],
-          }),
-        ),
+    const fetchImpl = makeFetchImpl(() => releaseRedirect("v99.0.0"));
+    await expect(runSelfUpdate(fetchImpl, { ...makeConfig(), asset: null })).rejects.toThrow(
+      /no engine build/,
     );
-    await expect(runSelfUpdate(fetchImpl, makeConfig())).rejects.toThrow(/no binary/);
     expect(stdoutOutput).toContain("checking for updates");
     expect(stdoutOutput).toContain("99.0.0");
 
@@ -148,9 +140,7 @@ describe("engine runSelfUpdate", () => {
     let fetchCalled = false;
     const fetchImpl = makeFetchImpl(() => {
       fetchCalled = true;
-      return new Response(
-        JSON.stringify({ tag_name: "v0.0.0", prerelease: false, body: "", assets: [] }),
-      );
+      return releaseRedirect("v0.0.0");
     });
     await runSelfUpdate(fetchImpl, makeConfig());
     expect(fetchCalled).toBe(true);
@@ -166,12 +156,10 @@ describe("engine runSelfUpdate", () => {
     expect(stdoutOutput).not.toContain("already at latest version");
   });
 
-  test("explicit self-update on a private-repo 404 surfaces a token hint", async () => {
+  test("explicit self-update without a published release says so", async () => {
     captureWrites();
     const fetchImpl = makeFetchImpl(() => new Response("not found", { status: 404 }));
-    await expect(runSelfUpdate(fetchImpl, makeConfig())).rejects.toThrow(
-      /private|GITHUB_TOKEN|404/i,
-    );
+    await expect(runSelfUpdate(fetchImpl, makeConfig())).rejects.toThrow(/no published release/);
   });
 });
 

@@ -419,7 +419,10 @@ describe("the language of a run", () => {
   test("an update by the owner moves the language without touching the fingerprint; an admin's update and a missing language keep it", async () => {
     const w = await workspace();
     const input = taskInput();
-    const task = await createTask({ tenant_id: w.tenant_id, principal: w.owner, input }, db);
+    const task = await createTask(
+      { locale: "de", tenant_id: w.tenant_id, principal: w.owner, input },
+      db,
+    );
     const locale = async () => {
       const [row] = await db
         .select({ locale: tasks.locale })

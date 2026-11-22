@@ -391,7 +391,7 @@ describe("connected applications, in the order a reader needs them", () => {
   const real = [
     client({ id: "claude", client_name: "Claude", created_at: daysAgo(60) }),
     client({ id: "chatgpt", client_name: "ChatGPT", created_at: daysAgo(20) }),
-    client({ id: "watchkit", client_name: "WatchKit", created_at: daysAgo(3) }),
+    client({ id: "monitor", client_name: "Monitor", created_at: daysAgo(3) }),
   ];
   const all = [
     ...dead.slice(0, 100),
@@ -405,7 +405,7 @@ describe("connected applications, in the order a reader needs them", () => {
 
   test("the applications someone holds a valid grant for lead, newest first", () => {
     const groups = groupConnectedClients(all);
-    expect(groups.granted.map((item) => item.id)).toEqual(["watchkit", "chatgpt", "claude"]);
+    expect(groups.granted.map((item) => item.id)).toEqual(["monitor", "chatgpt", "claude"]);
   });
 
   test("registrations nobody holds a grant for are a group of their own", () => {

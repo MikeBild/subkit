@@ -140,7 +140,7 @@ export const effectivePermissionsOperation = defineOperation<
   },
 });
 
-const SkBootstrapWhoamiSchema = z.object({
+const SubkitBootstrapWhoamiSchema = z.object({
   id: z.string().uuid(),
   kind: z.enum(["user", "system_account"]),
   tenant_id: z.string().uuid(),
@@ -152,20 +152,20 @@ const SkBootstrapWhoamiSchema = z.object({
   scopes: z.array(z.string()).nullable(),
 });
 
-const SkBootstrapTenantSchema = z.object({
+const SubkitBootstrapTenantSchema = z.object({
   id: z.string().uuid(),
   slug: z.string().nullable(),
   display_name: z.string().nullable(),
 });
 
-const SkBootstrapSessionRefSchema = z.object({
+const SubkitBootstrapSessionRefSchema = z.object({
   id: z.string().uuid(),
   title: z.string().nullable(),
   updated_at: z.string(),
   tenant_id: z.string().uuid(),
 });
 
-const SkBootstrapFlagsSchema = z.object({}).strict();
+const SubkitBootstrapFlagsSchema = z.object({}).strict();
 
 const UxGatingPermissionEnum = z.enum(
   UX_GATING_PERMISSIONS as unknown as readonly [UxGatingPermission, ...UxGatingPermission[]],
@@ -173,13 +173,13 @@ const UxGatingPermissionEnum = z.enum(
 
 const PERMISSIONS_CHECKED_RESPONSE: UxGatingPermission[] = [...UX_GATING_PERMISSIONS];
 
-const SkBootstrapPrefsSchema = z
+const SubkitBootstrapPrefsSchema = z
   .object({
     theme: z.enum(["auto", "light", "dark", "high-contrast"]).describe("REPL color theme."),
     personality: z.enum(["concise", "balanced", "verbose"]).describe("Assistant response style."),
     titleFormat: z
       .enum(["session-id", "tenant-session", "model-tenant-session"])
-      .describe("Window-title format used by the sk REPL."),
+      .describe("Window-title format used by the subkit REPL."),
     statuslineFormat: z.enum(["minimal", "compact", "detailed"]).describe("Status-line layout."),
     pushNotifyEnabled: z.boolean().describe("Push-notify on long-running execution completion."),
     pushNotifyThresholdSec: z
@@ -199,27 +199,27 @@ const SkBootstrapPrefsSchema = z
   })
   .describe("REPL + UI preferences resolved for this principal.");
 
-const SkBootstrapResponseSchema = z
+const SubkitBootstrapResponseSchema = z
   .object({
-    whoami: SkBootstrapWhoamiSchema,
+    whoami: SubkitBootstrapWhoamiSchema,
     permissions: z
       .array(UxGatingPermissionEnum)
       .describe("Allowed UX-gating permissions for the principal."),
     permissions_checked: z
       .array(UxGatingPermissionEnum)
       .describe("Stable list of permissions probed; reflects the engine's known UX gating set."),
-    tenant: SkBootstrapTenantSchema,
-    recent_sessions: z.array(SkBootstrapSessionRefSchema),
-    flags: SkBootstrapFlagsSchema.describe(
+    tenant: SubkitBootstrapTenantSchema,
+    recent_sessions: z.array(SubkitBootstrapSessionRefSchema),
+    flags: SubkitBootstrapFlagsSchema.describe(
       "Persona-visible feature flags. Keys are drawn from a typed enum.",
     ),
-    prefs: SkBootstrapPrefsSchema,
+    prefs: SubkitBootstrapPrefsSchema,
     server_time: z.string().describe("Server-side ISO timestamp; lets the CLI sync clocks."),
   })
-  .openapi("SkBootstrap");
+  .openapi("SubkitBootstrap");
 
-type SkBootstrap = z.infer<typeof SkBootstrapResponseSchema>;
-type SkBootstrapPrefs = z.infer<typeof SkBootstrapPrefsSchema>;
+type SubkitBootstrap = z.infer<typeof SubkitBootstrapResponseSchema>;
+type SubkitBootstrapPrefs = z.infer<typeof SubkitBootstrapPrefsSchema>;
 
 export function enforceTenantMatch<T extends { tenant_id: string }>(
   rows: readonly T[],
@@ -235,7 +235,7 @@ export function enforceTenantMatch<T extends { tenant_id: string }>(
   return { rejected: true, foreign_tenant_ids: foreign };
 }
 
-function resolvePrefs(tenantId: string): SkBootstrapPrefs {
+function resolvePrefs(tenantId: string): SubkitBootstrapPrefs {
   const cfg = getConfig();
   const overlay = cfg.tenants?.[tenantId];
   return {
@@ -261,9 +261,9 @@ interface RecentSession {
   readonly updated_at: Date;
 }
 
-export const skBootstrapOperation = defineOperation<null, SkBootstrap>({
+export const subkitBootstrapOperation = defineOperation<null, SubkitBootstrap>({
   id: "identity.sk_bootstrap",
-  summary: "Composite startup payload for the sk CLI (whoami + permissions + recent sessions)",
+  summary: "Composite startup payload for the subkit CLI (whoami + permissions + recent sessions)",
   permission: null,
   effect: "read",
   async handler(scope) {
@@ -328,7 +328,7 @@ export const skBootstrapOperation = defineOperation<null, SkBootstrap>({
           logger.warn({
             module: "rbac",
             action: "sk_bootstrap_can_failed",
-            msg: "rbac probe failed during sk-bootstrap; treating as deny",
+            msg: "rbac probe failed during subkit-bootstrap; treating as deny",
             tenant_id: principal.tenant_id,
             permission: perm,
             error: err instanceof Error ? err.message : String(err),
@@ -402,9 +402,9 @@ export const skBootstrapOperation = defineOperation<null, SkBootstrap>({
   },
   http: {
     method: "get",
-    path: "/v1/sk/bootstrap",
+    path: "/v1/subkit/bootstrap",
     tags: TAGS,
-    response: SkBootstrapResponseSchema,
+    response: SubkitBootstrapResponseSchema,
     errors: {
       401: "Unauthenticated — no bearer or invalid bearer.",
       404: "Product principals have no CLI bootstrap.",

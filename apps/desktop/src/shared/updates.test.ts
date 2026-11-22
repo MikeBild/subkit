@@ -224,7 +224,6 @@ describe("updates decision at build time", () => {
     expect(buildSigned("win32", { WIN_CSC_LINK: "base64" })).toBe(true);
     expect(buildSigned("win32", { SUBKIT_DESKTOP_WIN_SIGNING: "cloud" })).toBe(true);
     expect(buildSigned("win32", {})).toBe(false);
-    expect(buildSigned("linux", { SUBKIT_DESKTOP_SIGNED_RELEASE: "1" })).toBe(true);
     expect(buildSigned("linux", { CSC_LINK: "base64" })).toBe(false);
     expect(buildSigned("freebsd", { CSC_LINK: "base64" })).toBe(false);
   });

@@ -253,7 +253,7 @@ connectors cannot send a graphql block. Set auth once on the connector;
 reference credentials only if you need them inside variables (e.g. an API key
 as an input to the query).
 
-Common GraphQL auth conventions, mapped to sk `auth_type`:
+Common GraphQL auth conventions, mapped to subkit `auth_type`:
 
 | Provider                       | `auth_type` | Header / config                                  |
 |--------------------------------|-------------|--------------------------------------------------|
@@ -274,7 +274,7 @@ header **without** a scheme prefix:
 Authorization: eyJraWQiOiJ…
 ```
 
-Two ways to get this with sk:
+Two ways to get this with subkit:
 
 1. **Static token (`auth_type=header`)** — best when you have a long-lived
    ID token or a Lambda authorizer with a custom format. Store it as a

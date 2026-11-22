@@ -362,7 +362,7 @@ describe("fire-and-forget writer", () => {
         action: "tenant.created",
         resource_id: resourceId,
         ip: "203.0.113.7",
-        user_agent: "sk-cli/1.0",
+        user_agent: "subkit-cli/1.0",
       },
       testDb.db,
     );
@@ -370,7 +370,7 @@ describe("fire-and-forget writer", () => {
     expect(row?.id).toBe(id);
     expect(row?.ts.getTime()).toBe(FROZEN_NOW);
     expect(row?.ip).toBe("203.0.113.7");
-    expect(row?.user_agent).toBe("sk-cli/1.0");
+    expect(row?.user_agent).toBe("subkit-cli/1.0");
   });
 });
 

@@ -101,7 +101,7 @@ describe("scrubString — generic high-entropy pattern (code-context-suppressed)
 
   test("file path with mixed-case segments is NOT matched (`/` not in charset)", () => {
     const text =
-      "wrote /var/folders/k8/z_zlllnn46l7vt1s8b209mv80000gn/T/sk-cfg-logs-AVTtuq/subkit.config.json ok";
+      "wrote /var/folders/k8/z_zlllnn46l7vt1s8b209mv80000gn/T/subkit-cfg-logs-AVTtuq/subkit.config.json ok";
     expect(scrubString(text)).toBe(text);
   });
 

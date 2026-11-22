@@ -92,8 +92,13 @@ describe("results", () => {
   });
 
   test("a closed command keeps its result; a repeated result changes nothing", () => {
-    for (const state of ["done", "failed", "lost", "cancelled"] as DeviceCommandState[])
+    for (const state of ["done", "failed", "cancelled", "expired"] as DeviceCommandState[])
       expect(resultVerdict(state, done)).toEqual({ store: false });
+  });
+
+  test("a lost command takes the late result the device still delivers", () => {
+    expect(resultVerdict("lost", done)).toEqual({ store: true, state: "done" });
+    expect(resultVerdict("lost", { status: "stopped" })).toEqual({ store: true, state: "stopped" });
   });
 });
 

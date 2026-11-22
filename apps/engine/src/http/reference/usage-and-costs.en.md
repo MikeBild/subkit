@@ -109,7 +109,8 @@ Long conversations get more expensive because every reply reads the history so f
 You open **Failed AI calls** from the **AI calls** tile.
 Failed calls can still cost money. The sheet names the amount.
 Under **Where they happen** you see the workflow or conversation and the reason:
-**Provider error**, **Input too large** or **AI budget reached**.
+**Provider error**, **Input too large**, **API key rejected** or **AI budget reached**.
+When the provider rejects the API key during a run, **Needs you** asks you to reconnect the key under **Settings** › **AI assistant**.
 
 ### The AI budget
 
@@ -181,13 +182,13 @@ Expand **Technical details** at the end of the page. It shows:
 
 ### The same in the terminal
 
-You get the same numbers with `sk stats llm` or through the HTTP API with `GET /v1/stats/llm`. Each answer includes tokens, cost and the savings from the cache. How to set up `sk` is in the chapter "Use the sk CLI on your machine".
+You get the same numbers with `subkit stats llm` or through the HTTP API with `GET /v1/stats/llm`. Each answer includes tokens, cost and the savings from the cache. How to set up `subkit` is in the chapter "Use the subkit CLI on your machine".
 
 ```bash
-sk stats llm --bucket day --from <from> --to <to> --group-by workflow
+subkit stats llm --bucket day --from <from> --to <to> --group-by workflow
 ```
 
 - `group_by` breaks down by `model`, `flow`, `user`, `workflow`, `conversation`, `execution` or `task`. At most two values at once.
-- `result=` filters by result: `success`, `quota_exhausted`, `context_too_large` or `error`.
+- `result=` filters by result: `success`, `quota_exhausted`, `context_too_large`, `key_rejected` or `error`.
 - `workflow_id=` shows only the calls of one workflow.
 - Breakdowns by `user`, `conversation` or `task` need `stats:read:all`. That does not apply when `user_id` is your own ID.

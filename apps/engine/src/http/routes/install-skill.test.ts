@@ -21,7 +21,7 @@ const offlineDb = createDbFromUrl("postgres://localhost/offline").db;
 
 let configDirectory: string;
 beforeAll(async () => {
-  configDirectory = mkdtempSync(join(tmpdir(), "sk-install-skill-"));
+  configDirectory = mkdtempSync(join(tmpdir(), "subkit-install-skill-"));
   await loadConfig({
     env: { DATABASE_URL: "postgres://localhost/x", NODE_ENV: "test" },
     configPathOverride: join(configDirectory, "subkit.config.json"),
@@ -33,7 +33,10 @@ afterAll(() => {
 });
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../../../..");
-const onDisk = readFileSync(join(ROOT, "agent-skills/build-or-adopt/SKILL.md"), "utf8");
+const onDisk = readFileSync(
+  join(ROOT, "apps/engine/src/http/skills/build-or-adopt/SKILL.md"),
+  "utf8",
+);
 
 function app(): OpenAPIHono<AppEnv> {
   const a = new OpenAPIHono<AppEnv>();
@@ -76,7 +79,7 @@ describe("the skill file", () => {
     expect(SKILL_MD).toContain("Delete those, or record why each one stays.");
   });
 
-  test("names the cases where sk is not the answer, not only sk", () => {
+  test("names the cases where subkit is not the answer, not only subkit", () => {
     expect(SKILL_MD).toContain("Write that down as\nthe decision when it fits.");
   });
 });
@@ -100,9 +103,9 @@ describe("the installer", () => {
   });
 
   test("embeds the skill unexpanded and fetches references from the serving engine", () => {
-    expect(script).toContain("<<'SK_SKILL_EOF'");
+    expect(script).toContain("<<'SUBKIT_SKILL_EOF'");
     expect(script).toContain(SKILL_MD);
-    expect(SKILL_MD).not.toContain("SK_SKILL_EOF");
+    expect(SKILL_MD).not.toContain("SUBKIT_SKILL_EOF");
     for (const r of SKILL_REFERENCES) {
       expect(script).toContain(`"\${ENGINE_URL}/llms/${r.servedPath}"`);
     }
@@ -112,7 +115,7 @@ describe("the installer", () => {
 
   test("installs to both user-level skill directories unless told otherwise", () => {
     expect(script).toContain(`SKILL_DIRS='"\${HOME}/.claude/skills" "\${HOME}/.agents/skills"'`);
-    expect(script).toContain("SK_SKILL_DIR");
+    expect(script).toContain("SUBKIT_SKILL_DIR");
   });
 
   test("is served with the script content type and no caching", async () => {

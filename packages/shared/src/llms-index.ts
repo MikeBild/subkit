@@ -24,7 +24,7 @@ export function renderLlmsIndex(pages: LlmsPage[], opts: RenderLlmsIndexOptions)
   const lines = [
     "# SubKit",
     "",
-    "> A self-hosted engine for governed workflows. These pages describe setup, coding-agent briefings and hooks, the sk CLI, runtime settings, the connector catalog, and governed transactional email.",
+    "> A self-hosted engine for governed workflows. These pages describe setup, coding-agent briefings and hooks, the subkit CLI, runtime settings, the connector catalog, and governed transactional email.",
     `> All pages in one file: ${opts.fullUrl}`,
     "",
     "## Pages",
@@ -102,11 +102,12 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     locales: {
       en: {
         title: "Reference",
-        description: "Look up sk commands, settings, the connector catalog and the license.",
+        description: "Look up subkit commands, settings, the connector catalog and the license.",
       },
       de: {
         title: "Referenz",
-        description: "Schlag sk-Befehle, Einstellungen, den Konnektor-Katalog und die Lizenz nach.",
+        description:
+          "Schlag subkit-Befehle, Einstellungen, den Konnektor-Katalog und die Lizenz nach.",
       },
     },
   },

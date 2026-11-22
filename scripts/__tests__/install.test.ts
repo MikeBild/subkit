@@ -7,7 +7,6 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
-  readlinkSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -26,6 +25,10 @@ const publicKey = createPublicKey(privateKey)
   .toString()
   .trim();
 const roots: string[] = [];
+const opensslChecksEd25519 = (() => {
+  const help = spawnSync("openssl", ["pkeyutl", "-help"], { encoding: "utf8" });
+  return `${help.stdout}${help.stderr}`.includes("-rawin");
+})();
 
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -39,12 +42,12 @@ function fixture(mode = "valid", os = "Linux", arch = "x86_64") {
   const installed = join(root, "installed");
   const temporary = join(root, "temporary");
   for (const dir of [bin, downloads, installed, temporary]) mkdirSync(dir);
-  const asset = `sk_${os.toLowerCase()}_${arch === "x86_64" ? "x64" : "arm64"}`;
+  const asset = `subkit-${os.toLowerCase()}-${arch === "x86_64" ? "x64" : "arm64"}`;
   const bytes = Buffer.from("#!/bin/sh\nprintf 'verified fixture\\n'\n");
   const hash = createHash("sha256").update(bytes).digest("hex");
   let manifest = `${hash}  ${asset}\n`;
   if (mode === "duplicate") manifest += manifest;
-  if (mode === "missing") manifest = `${hash}  prefix_${asset}\n`;
+  if (mode === "missing") manifest = `${hash}  prefix-${asset}\n`;
   for (const file of ["LICENSE", "THIRD_PARTY_NOTICES.txt"]) {
     const text = `Signed ${file} fixture\n`;
     const checksum = createHash("sha256").update(text).digest("hex");
@@ -66,21 +69,14 @@ function fixture(mode = "valid", os = "Linux", arch = "x86_64") {
         : sign(null, Buffer.from(manifest), privateKey),
     );
   }
-  writeFileSync(join(downloads, "latest.json"), JSON.stringify({ tag_name: "v1.2.3" }));
-  writeFileSync(join(installed, "sk"), "previous binary");
+  if (mode === "directory") mkdirSync(join(installed, "subkit"));
+  else writeFileSync(join(installed, "subkit"), "previous binary");
   for (const file of ["LICENSE", "THIRD_PARTY_NOTICES.txt"])
     writeFileSync(join(installed, `subkit.${file}`), `previous ${file}`);
-  if (mode === "directory") mkdirSync(join(installed, "subkit"));
-  else writeFileSync(join(installed, "subkit"), "previous alias");
   if (mode === "fresh") rmSync(installed, { recursive: true });
   writeFileSync(
     join(bin, "uname"),
     `#!/bin/sh\nif [ "$1" = -s ]; then echo '${os}'; else echo '${arch}'; fi\n`,
-    { mode: 0o755 },
-  );
-  writeFileSync(
-    join(bin, "codesign"),
-    `#!/bin/sh\nexit ${mode === "codesign-failure" ? "1" : "0"}\n`,
     { mode: 0o755 },
   );
   writeFileSync(
@@ -89,10 +85,15 @@ function fixture(mode = "valid", os = "Linux", arch = "x86_64") {
 set -eu
 output=''
 while [ "$#" -gt 0 ]; do
-  if [ "$1" = -o ]; then output="$2"; shift 2; else url="$1"; shift; fi
+  case "$1" in
+    -o) output="$2"; shift 2 ;;
+    --proto|--proto-redir|--retry|--retry-delay) shift 2 ;;
+    -*) shift ;;
+    *) url="$1"; shift ;;
+  esac
 done
 printf '%s\\n' "$url" >> "$FIXTURE_REQUESTS"
-if [[ "$url" = */releases/latest ]]; then cat "$FIXTURE_DOWNLOADS/latest.json"; else cp "$FIXTURE_DOWNLOADS/\${url##*/}" "$output"; fi
+cp "$FIXTURE_DOWNLOADS/\${url##*/}" "$output"
 `,
     { mode: 0o755 },
   );
@@ -115,7 +116,7 @@ if [[ "$url" = */releases/latest ]]; then cat "$FIXTURE_DOWNLOADS/latest.json"; 
   return { result, root, installed, temporary, bytes, asset };
 }
 
-describe("signed GitHub installer", () => {
+describe("release installer", () => {
   test("installer and updater pin the same public key", () => {
     expect(
       installer.match(/-----BEGIN PUBLIC KEY-----\n[\s\S]*?\n-----END PUBLIC KEY-----/)?.[0],
@@ -125,26 +126,34 @@ describe("signed GitHub installer", () => {
   test("creates a fresh installation only after verifying the release", () => {
     const f = fixture("fresh");
     expect(f.result.status, f.result.stderr).toBe(0);
-    expect(readFileSync(join(f.installed, "sk"))).toEqual(f.bytes);
-    expect(readlinkSync(join(f.installed, "subkit"))).toBe("sk");
-    expect(f.result.stdout).not.toContain("verified fixture");
+    expect(readFileSync(join(f.installed, "subkit"))).toEqual(f.bytes);
+    expect(f.result.stdout).toContain("checksums: verified");
+    expect(f.result.stdout).toContain("Installed verified fixture");
     expect(readdirSync(f.temporary)).toEqual([]);
+  });
+
+  test("downloads the stable latest-release links", () => {
+    const f = fixture("valid");
+    const requests = readFileSync(join(f.root, "requests"), "utf8").trim().split("\n");
+    expect(requests[0]).toBe(
+      "https://github.com/MikeBild/subkit/releases/latest/download/subkit-linux-x64",
+    );
+    expect(requests).toContain(
+      "https://github.com/MikeBild/subkit/releases/latest/download/SHA256SUMS.sig",
+    );
   });
 
   for (const [os, arch] of [
     ["Linux", "x86_64"],
     ["Linux", "aarch64"],
     ["Darwin", "arm64"],
-    ["Darwin", "x86_64"],
   ]) {
-    test(`installs the signed CLI and local alias for ${os}/${arch}`, () => {
+    test(`installs the CLI and its notices for ${os}/${arch}`, () => {
       const f = fixture("valid", os, arch);
       expect(f.result.status, f.result.stderr).toBe(0);
-      expect(readFileSync(join(f.installed, "sk"))).toEqual(f.bytes);
-      expect(readlinkSync(join(f.installed, "subkit"))).toBe("sk");
+      expect(readFileSync(join(f.installed, "subkit"))).toEqual(f.bytes);
       expect(readdirSync(f.temporary)).toEqual([]);
       expect(readdirSync(f.installed).sort()).toEqual([
-        "sk",
         "subkit",
         "subkit.LICENSE",
         "subkit.THIRD_PARTY_NOTICES.txt",
@@ -153,12 +162,20 @@ describe("signed GitHub installer", () => {
         expect(readFileSync(join(f.installed, `subkit.${file}`), "utf8")).toBe(
           `Signed ${file} fixture\n`,
         );
-      const requests = readFileSync(join(f.root, "requests"), "utf8");
-      expect(requests).toContain(f.asset);
-      expect(requests).not.toMatch(/\/subkit_(linux|darwin)/);
+      expect(readFileSync(join(f.root, "requests"), "utf8")).toContain(f.asset);
+      expect(f.result.stdout).toContain(
+        opensslChecksEd25519 ? "signature: verified" : "signature: skipped",
+      );
     });
   }
 
+  test("installs with checksums alone when no signature is published", () => {
+    const f = fixture("signature-missing");
+    expect(f.result.status, f.result.stderr).toBe(0);
+    expect(f.result.stdout).toContain("signature: not published");
+  });
+
+  const signatureModes = opensslChecksEd25519 ? ["wrong-key", "signature-tamper"] : [];
   for (const mode of [
     ...["LICENSE", "THIRD_PARTY_NOTICES.txt"].flatMap((file) => [
       `missing-${file}`,
@@ -166,24 +183,24 @@ describe("signed GitHub installer", () => {
       `missing-checksum-${file}`,
       `duplicate-checksum-${file}`,
     ]),
-    "wrong-key",
-    "signature-missing",
-    "signature-tamper",
+    ...signatureModes,
     "manifest-tamper",
     "binary-tamper",
     "duplicate",
     "missing",
     "directory",
-    "codesign-failure",
+    "unsupported-platform",
   ]) {
     test(`preserves the existing installation on ${mode}`, () => {
-      const f = fixture(mode, mode === "codesign-failure" ? "Darwin" : "Linux");
+      const f =
+        mode === "unsupported-platform"
+          ? fixture(mode, "Darwin", "x86_64")
+          : fixture(mode, "Linux");
       expect(f.result.status).not.toBe(0);
-      expect(readFileSync(join(f.installed, "sk"), "utf8")).toBe("previous binary");
+      if (mode !== "directory")
+        expect(readFileSync(join(f.installed, "subkit"), "utf8")).toBe("previous binary");
       for (const file of ["LICENSE", "THIRD_PARTY_NOTICES.txt"])
         expect(readFileSync(join(f.installed, `subkit.${file}`), "utf8")).toBe(`previous ${file}`);
-      if (mode !== "directory")
-        expect(readFileSync(join(f.installed, "subkit"), "utf8")).toBe("previous alias");
       expect(readdirSync(f.temporary)).toEqual([]);
       expect(existsSync(join(f.installed, "release-public-key.pem"))).toBe(false);
     });

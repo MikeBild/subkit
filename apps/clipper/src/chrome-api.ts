@@ -1,4 +1,5 @@
 import type { CaptureMode, Draft } from "./types.ts";
+import type { InstallType } from "./update.ts";
 
 type StorageRecord = Record<string, unknown>;
 
@@ -29,6 +30,10 @@ interface ChromeApi {
       ): void;
     };
     openOptionsPage(): Promise<void>;
+    getManifest(): { version: string };
+  };
+  management: {
+    getSelf(): Promise<{ installType: InstallType }>;
   };
   tabs: {
     query(queryInfo: {

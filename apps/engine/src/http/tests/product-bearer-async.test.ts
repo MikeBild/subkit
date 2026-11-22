@@ -53,7 +53,7 @@ function call(path: string, bearer: string, init: RequestInit = {}) {
 beforeAll(async () => {
   ctx = await createHttpTestServer("product-bearer-async");
   issuer = await startTestBearerIssuer();
-  const dir = mkdtempSync(join(tmpdir(), "sk-product-async-"));
+  const dir = mkdtempSync(join(tmpdir(), "subkit-product-async-"));
   const created = await createWorkflowRow(ctx, {
     name: "async brain round",
     product_id: "testapp",

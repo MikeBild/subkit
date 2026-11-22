@@ -27,7 +27,7 @@ const USER_B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
 beforeAll(async () => {
   if (skip) return;
   testDb = await createTestDb("user-budget");
-  configDir = mkdtempSync(join(tmpdir(), "sk-cfg-user-budget-"));
+  configDir = mkdtempSync(join(tmpdir(), "subkit-cfg-user-budget-"));
   _resetConfigForTests();
   await loadConfig({
     env: { DATABASE_URL: "postgres://x", NODE_ENV: "test" },

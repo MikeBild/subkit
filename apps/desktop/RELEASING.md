@@ -11,12 +11,20 @@ replaces an asset and publishes nothing when a signing value is missing.
 | --- | --- | --- |
 | macOS on Apple silicon (arm64) | `subkit-desktop-<version>-mac-arm64.dmg` and `.zip`, signed with Developer ID, notarized, ticket stapled | `latest-mac.yml` |
 | Windows x64 | `subkit-desktop-<version>-win-x64.exe` (NSIS), Authenticode signed with a timestamp | `latest.yml` |
-| Linux x64 | `subkit-desktop-<version>-linux-<arch>.AppImage` and `.deb` | `latest-linux.yml` |
+| Latest copies | `subkit-desktop-mac-arm64.dmg`, `subkit-desktop-win-x64.exe`: the same installers without the version | |
 | All | block maps, `subkit-desktop-<version>-<os>-THIRD_PARTY_NOTICES.txt`, `SHA256SUMS-desktop`, `SHA256SUMS-desktop.sig` | |
 
-The macOS build is the one a release needs. The Windows and Linux jobs still run, but a failed
-Windows or Linux build does not hold back the release: the publish job waits for them, takes
-only the platforms that built, warns about the missing one and checks only their feeds.
+Both platforms are first-class and independent. Each has its own engine job and its own app
+job, and no job of one platform waits for the other. The publish job ships what built: it takes
+every platform whose build succeeded, warns about the one that did not and checks only the
+feeds it ships. There is no Linux build.
+
+The latest copies keep the download links stable. They always point at the newest release:
+
+- macOS: `https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-mac-arm64.dmg`
+- Windows: `https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-win-x64.exe`
+
+Until the desktop artifacts of the newest release are uploaded, these links answer 404.
 
 macOS ships for Apple silicon (arm64) only; Intel Macs get no build. `SHA256SUMS-desktop` is signed
 with the same release key as `SHA256SUMS`; the existing `SHA256SUMS` of the server release is
@@ -51,6 +59,13 @@ values belongs in the repository.
 
 The workflow writes `APPLE_API_KEY` into a file on the runner and removes it after the build.
 
+`RELEASE_SIGNING_KEY` is needed for any release. The signing values of one platform only decide
+that platform: when the macOS values (`CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_API_KEY`,
+`APPLE_API_KEY_ID`, `APPLE_API_ISSUER`) or the Windows values (`WIN_CSC_LINK` and
+`WIN_CSC_KEY_PASSWORD`, or the cloud signing values below) are missing, the first job skips that
+platform with a warning and the release ships the other one. When both are missing, nothing is
+built.
+
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `DESKTOP_RELEASE_AUTO` | unset | `true` starts the desktop release by itself after every successful `release` run of a tag. Unset, the desktop release starts only by hand. |
@@ -80,12 +95,21 @@ credentials.
 
 There is one desktop app with both modes: it connects to a server or runs a local workspace
 „Nur auf diesem Mac“. Every macOS (Apple silicon) build therefore carries the compiled engine and
-PostgreSQL; there is no switch and no second builder config. The Windows and Linux apps carry
-neither for now.
+PostgreSQL; there is no switch and no second builder config. The Windows app carries neither for
+now: the local workspace, files, websites and apps are Mac-only (`platformCapabilities` in
+`src/shared/platform-capabilities.ts` decides this in one place).
 
-The `engine` job builds the engine on macOS for `darwin-arm64` and
-`windows-x64` (`bun run build desktop-engine`, output in `dist/engine-desktop/<os>/<arch>/`),
-with the same embedded cockpit, migrations and assets as the Linux image. It then:
+Each platform has its own engine job, so a failed build on one platform never stops another.
+`bun run build desktop-engine --target <darwin-arm64|windows-x64>` builds one target; without
+`--target` it builds both. The output lands in `dist/engine-desktop/<os>/<arch>/`, with the same
+embedded cockpit, migrations and assets as the Linux image.
+
+The `engine-windows` job builds `windows-x64` on Linux, the cheapest runner that compiles it, and
+keeps the binary and its notices as the `engine-desktop-win` artifact. The `windows` job needs it
+and starts it on Windows with `--version`, `--help` and `--smoke` before it packages the app, so
+the Windows engine is checked on every release while the Windows app does not carry it yet.
+
+The `engine-darwin` job builds `darwin-arm64` on macOS. It then:
 
 - signs the macOS binary with the Developer ID from `CSC_LINK`, the hardened runtime, a secure
   timestamp and `assets/entitlements.mac.plist` (`scripts/codesign-macos.sh <binary> <identity>
@@ -97,10 +121,10 @@ with the same embedded cockpit, migrations and assets as the Linux image. It the
 - verifies the signatures and starts the arm64 engine with `--version`, `--help` and `--smoke`.
 
 The same command writes the engine's own notices (the packages
-of the compiled engine and its embedded cockpit, the Bun runtime and the models) next to each
-binary as `THIRD_PARTY_NOTICES.engine.txt`.
+of the compiled engine and its embedded cockpit, the Bun runtime and the models) for each target
+it builds, as `dist/engine-desktop/<os>/THIRD_PARTY_NOTICES.engine.txt`.
 
-The `macos` job downloads the macOS binary and packages with `electron-builder.yml`, whose base
+The `macos` job needs only `engine-darwin`. It downloads the macOS binary and packages with `electron-builder.yml`, whose base
 config adds it as `Resources/local/engine`.
 
 On macOS the job also fetches PostgreSQL for `darwin-arm64` (`scripts/fetch-postgres.ts`), signs every
@@ -122,13 +146,13 @@ hardened runtime and no entitlements, Bun's JavaScriptCore runs without JIT and 
 `SharedArrayBuffer`, and the engine stops at startup. `allow-unsigned-executable-memory` is not
 needed. The app already uses the same file, so the app and the engine share one entitlement set.
 
-The engine adds about 350 MB to the macOS app and about 376 MB to the Windows app; PostgreSQL
-adds about 63 MB. macOS releases are built for Apple silicon only.
+The engine adds about 350 MB to the macOS app and PostgreSQL about 63 MB; the Windows engine
+binary is about 376 MB. macOS releases are built for Apple silicon only.
 
 To build and sign the engine and PostgreSQL on a Mac by hand:
 
 ```sh
-bun run build desktop-engine
+bun run build desktop-engine --target darwin-arm64
 sh scripts/codesign-macos.sh dist/engine-desktop/mac/arm64/engine "Developer ID Application: <name> (<team>)" apps/desktop/assets/entitlements.mac.plist
 APPLE_API_KEY=<path to AuthKey_<id>.p8> APPLE_API_KEY_ID=<id> APPLE_API_ISSUER=<issuer> sh scripts/notarize-macos.sh dist/engine-desktop/mac/arm64/engine
 bun run --cwd apps/desktop scripts/fetch-postgres.ts --target darwin-arm64
@@ -137,14 +161,14 @@ sh scripts/codesign-macos-folder.sh apps/desktop/resources/postgres/darwin-arm64
 
 ## First dry run
 
-A dry run builds all three platforms unsigned, keeps the result as workflow artifacts for seven
+A dry run builds both platforms unsigned, keeps the result as workflow artifacts for seven
 days and publishes nothing. It needs no secret and no existing release.
 
 1. Merge the workflow to `main`; a workflow can be started by hand only when its file is on
    the default branch.
 2. Actions → `desktop-release` → Run workflow. Choose the branch, leave `tag` empty and tick
    `unsigned_dry_run`.
-3. Download `desktop-macos`, `desktop-windows` and `desktop-linux` from the run and start each
+3. Download `desktop-macos` and `desktop-windows` from the run and start each
    build once. An unsigned build has updates turned off, and macOS asks before it opens it.
 
 Then add the secrets and release for real: after the `release` workflow has published a tag,
@@ -158,9 +182,9 @@ check and try again later, because the newest release has no feed file yet. With
 
 ## What the workflow checks before it publishes
 
-- Missing macOS or checksum signing value: the first job stops with the list of missing names.
-  Nothing is built. A missing Windows signing value only raises a warning; the Windows build
-  then fails and the release ships without Windows.
+- Missing checksum signing key: the first job stops and nothing is built. Missing signing values
+  of one platform: the first job skips that platform with a warning, and the release ships the
+  other one.
 - The tag must equal both versions, and in an automatic run the commit that was released.
 - macOS: `codesign --verify --deep --strict`, a Developer ID authority, the hardened runtime,
   `spctl -a -t exec` and `xcrun stapler validate` for the app inside every zip and every dmg.
@@ -172,7 +196,7 @@ check and try again later, because the newest release has no feed file yet. With
   signed `SHA256SUMS-desktop`.
 
 A run that fails after some files were uploaded leaves them on the release. Delete the desktop
-assets (`subkit-desktop-*`, `latest*.yml`, `SHA256SUMS-desktop*`) from the release and start the
+assets (`subkit-desktop-*`, `latest.yml`, `latest-mac.yml`, `SHA256SUMS-desktop*`) from the release and start the
 workflow again with the tag; it refuses a release that already carries desktop assets. If the
 repository makes published releases immutable, later uploads are refused: then this workflow
 cannot add to a release, and the desktop build has to move into the `release` workflow before
@@ -180,7 +204,7 @@ the draft is published.
 
 ## Verify a downloaded build
 
-Checksums, any platform:
+Checksums, both platforms:
 
 ```sh
 gh release download v<version> --repo MikeBild/subkit --pattern 'subkit-desktop-*' --pattern 'latest*.yml' --pattern 'SHA256SUMS-desktop*'
@@ -207,8 +231,6 @@ Windows, in PowerShell:
 Get-AuthenticodeSignature .\subkit-desktop-<version>-win-x64.exe | Format-List Status, SignerCertificate, TimeStamperCertificate
 signtool verify /pa /all /v .\subkit-desktop-<version>-win-x64.exe
 ```
-
-Linux: the checksum check above is the whole verification; AppImage and deb carry no signature.
 
 ## App identity, permissions and entitlements on macOS
 
@@ -252,7 +274,7 @@ Icons: `assets/icon-mac.svg` (the Cockpit mark on the macOS icon grid), `assets/
 `assets/dmg-background.svg` are the sources. `bun run build --icons` renders `icon.icns`
 (16 to 1024 pixels), `icon-mac.png` (dock icon of an unpackaged start), `trayTemplate.png` and
 `@2x`, and the DMG background at 1x and 2x, on a Mac with `rsvg-convert`. Notifications, the
-Dock and the About panel of the packaged app use the bundle icon. Windows and Linux keep
+Dock and the About panel of the packaged app use the bundle icon. Windows keeps
 `assets/icon.png`.
 
 To check a build, here an unsigned one:
@@ -268,7 +290,7 @@ codesign -d --entitlements :- release/mac-arm64/SubKit.app
 The app never installs an older version (`allowDowngrade` is off), and a published tag is never
 reused. A bad desktop build is therefore withdrawn in two steps:
 
-1. Stop the rollout: delete `latest-mac.yml`, `latest.yml` and `latest-linux.yml` from the bad
+1. Stop the rollout: delete `latest-mac.yml` and `latest.yml` from the bad
    release (`gh release delete-asset v<version> latest-mac.yml`, and so on). Apps then report a
    failed update check and stay on the version they have. Apps that already installed the bad
    version keep it.
@@ -286,7 +308,7 @@ in.
 ## License notices: what the owner should confirm
 
 Every package carries `THIRD_PARTY_NOTICES.txt`, the Electron license and
-`LICENSES.chromium.html` (next to the binary on Windows and Linux, in `Contents/Resources` on
+`LICENSES.chromium.html` (next to the binary on Windows, in `Contents/Resources` on
 macOS). The notices end with a section on FFmpeg, the one LGPL component that the Electron
 runtime ships as a separate shared library. Its facts are read from `LICENSES.chromium.html` of
 the Electron distribution the package was built from; the build stops when that file no longer
@@ -312,5 +334,5 @@ Before the first public release, confirm:
    you.
 5. What is still not covered, as the `scope` of the manifest lists: the per-platform
    differences of `LICENSES.chromium.html` (each platform ships its own file), the installer components that the builder adds
-   on Windows, the AppImage runtime on Linux, and legal approval as such. The notices are a
+   on Windows, and legal approval as such. The notices are a
    draft, not a distribution approval.

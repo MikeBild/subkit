@@ -131,14 +131,14 @@ describe("trimToBudget", () => {
     const { markdown, state } = trimToBudget(input(), 16000);
     expect(state.fullBodyCount).toBe(3);
     expect(state.knowledgeCount).toBe(2);
-    expect(markdown).toContain("# sk session briefing — domains: blog-de");
+    expect(markdown).toContain("# subkit session briefing — domains: blog-de");
     expect(markdown).toContain("## Conventions");
     expect(markdown).toContain("### Skill 1");
     expect(markdown).toContain("never do the bad thing");
     expect(markdown).toContain("## Knowledge index");
     expect(markdown).toContain("**Source 2**");
     expect(markdown).not.toContain("suggestions");
-    expect(markdown).not.toMatch(/sk learnings|create_skill|propose_skill|skill candidate/i);
+    expect(markdown).not.toMatch(/subkit learnings|create_skill|propose_skill|skill candidate/i);
     expect(markdown).toContain('search_knowledge` with `tags: ["domain:blog-de"]');
   });
 
@@ -212,14 +212,14 @@ describe("trimToBudget", () => {
     expect(oneLess.markdown).toContain("…and 1 more — call `list_knowledge_sources`");
   });
 
-  test("lists the guides for working with sk as load pointers that are never trimmed", () => {
+  test("lists the guides for working with subkit as load pointers that are never trimmed", () => {
     const guide = {
       ...makeSkill(4, 2000),
       slug: "workflow-find-run-check",
       title: "Find a Workflow",
     };
     const { markdown } = trimToBudget(input({ guides: [guide] }), 1);
-    expect(markdown).toContain("## Working with sk");
+    expect(markdown).toContain("## Working with subkit");
     expect(markdown).toContain(
       "- Find a Workflow — load via `get_skill`/`find_skill` (`workflow-find-run-check`).",
     );
@@ -244,7 +244,7 @@ describe("trimToBudget", () => {
 
   test("never trims the header and grounding rule", () => {
     const { markdown } = trimToBudget(input(), 1);
-    expect(markdown).toContain("# sk session briefing");
+    expect(markdown).toContain("# subkit session briefing");
     expect(markdown).toContain("search_knowledge");
   });
 
@@ -264,7 +264,7 @@ describe("trimToBudget", () => {
     expect(markdown).toContain(
       "Only a person can confirm what becomes knowledge or a skill, in the Cockpit.",
     );
-    expect(markdown).not.toMatch(/sk learnings|create_skill|propose_skill|skill candidate/i);
+    expect(markdown).not.toMatch(/subkit learnings|create_skill|propose_skill|skill candidate/i);
   });
 
   test("multi-domain header and search tags list every domain", () => {
@@ -469,6 +469,7 @@ describe("buildAgentBriefing tasks", () => {
     const [row] = await testDb.db
       .insert(tasks)
       .values({
+        locale: "de",
         tenant_id: tenant,
         name: key,
         description: `About ${key}`,

@@ -13,6 +13,8 @@ import { createCache, evaluateRatchet, RATCHETS, writeRatchetBaseline } from "./
 import { isTestPath } from "./audit/rules.ts";
 import { auditTenantFilter } from "./audit/tenant-filter-ast.ts";
 import { loadTestLayers } from "./audit/test-layer-source.ts";
+import { unexpectedTopLevelEntries } from "./audit/top-level.ts";
+import { findTypedVersions, TYPED_VERSION_SCOPE } from "./audit/typed-versions.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const REPO = resolve(dirname(__filename), "..", "..", "..");
@@ -237,7 +239,7 @@ function checkFileSize(): Result {
   const violations: string[] = [];
   const SIZE_ROOTS = [
     ENGINE_SRC,
-    join(REPO, "apps/sk/src"),
+    join(REPO, "apps/subkit/src"),
     join(REPO, "packages/shared/src"),
     join(REPO, "packages/cli-core/src"),
     join(REPO, "packages/chat-ui/src"),
@@ -442,7 +444,7 @@ function checkTestSeamsGated(): Result {
   ] as const;
 
   const offenders: string[] = [];
-  const roots = ["apps/engine/src", "apps/sk/src", "packages"];
+  const roots = ["apps/engine/src", "apps/subkit/src", "packages"];
   for (const root of roots) {
     const files = listFiles(
       root,
@@ -485,7 +487,7 @@ function checkTestSeamsGated(): Result {
 
 function checkTestFixturesGated(): Result {
   const offenders: string[] = [];
-  for (const root of ["apps/engine/src", "apps/sk/src", "apps/cockpit/src", "packages"]) {
+  for (const root of ["apps/engine/src", "apps/subkit/src", "apps/cockpit/src", "packages"]) {
     const files = listFiles(
       root,
       (p) => (p.endsWith(".ts") || p.endsWith(".tsx")) && !isTestPath(relative(REPO, p)),
@@ -779,6 +781,54 @@ function checkNoComments(): Result {
   };
 }
 
+function checkTopLevelLayout(): Result {
+  const paths = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], {
+    cwd: REPO,
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  }).split("\n");
+  const unexpected = unexpectedTopLevelEntries(paths);
+  return unexpected.length === 0
+    ? { id: "top_level_layout", status: "PASS", message: "only pinned top-level entries" }
+    : {
+        id: "top_level_layout",
+        status: "FAIL",
+        message: `unexpected top-level entries; move them into the folder that owns them or pin them in apps/engine/scripts/audit/top-level.ts:\n  ${unexpected.join("\n  ")}`,
+      };
+}
+
+function checkNoTypedVersions(): Result {
+  const files = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], {
+    cwd: REPO,
+    encoding: "utf8",
+  })
+    .split("\n")
+    .filter((f) => TYPED_VERSION_SCOPE.test(f));
+  const violations: string[] = [];
+  for (const file of files) {
+    let text: string;
+    try {
+      text = readFileSync(join(REPO, file), "utf8");
+    } catch {
+      continue;
+    }
+    for (const hit of findTypedVersions(text))
+      violations.push(`${file}:${hit.line} ${hit.version}`);
+  }
+  if (violations.length === 0) {
+    return {
+      id: "no_typed_versions",
+      status: "PASS",
+      message: `no hand-typed version numbers in ${files.length} docs and clipper files`,
+    };
+  }
+  return {
+    id: "no_typed_versions",
+    status: "FAIL",
+    message: `${violations.length} hand-typed version number(s); use a @@TOKEN@@ from scripts/lib/version-tokens.ts, "latest" wording, or the release-history region:\n  ${violations.slice(0, 20).join("\n  ")}`,
+  };
+}
+
 const CHECKS: Array<() => Result> = [
   checkAiSdkLocality,
   checkJsonataLocality,
@@ -801,6 +851,8 @@ const CHECKS: Array<() => Result> = [
   checkExecutorCanonical,
   checkTestServersBindLoopback,
   checkNoComments,
+  checkTopLevelLayout,
+  checkNoTypedVersions,
 ];
 
 const cache = createCache(REPO);

@@ -91,7 +91,7 @@ async function appRefusalsToday(): Promise<number> {
 }
 
 async function loadProductConfig(assistant: string) {
-  const dir = mkdtempSync(join(tmpdir(), "sk-product-config-"));
+  const dir = mkdtempSync(join(tmpdir(), "subkit-product-config-"));
   const file = join(dir, "subkit.config.json");
   await writeFile(
     file,

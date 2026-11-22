@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { EngineClient } from "../../../../sk/src/engine-client.ts";
+import { EngineClient } from "../../../../subkit/src/engine-client.ts";
 import type { AppSummary, AppView } from "../../api/app-schemas.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { handleGetApp, handleListApps } from "../../mcp/tools/apps.ts";
@@ -207,7 +207,7 @@ describe("apps view parity across surfaces", () => {
     return new EngineClient({ engine_url: ctx.baseUrl, api_key: ctx.apiKey });
   }
 
-  test("HTTP, MCP get_app and the sk client read equal values for every visible app", async () => {
+  test("HTTP, MCP get_app and the subkit client read equal values for every visible app", async () => {
     const http = await json<{ items: AppSummary[] }>(await call("/v1/apps", ctx.apiKey));
     const mcp = await handleListApps(mcpContext());
     expect(mcp.ok).toBe(true);

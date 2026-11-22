@@ -17,7 +17,7 @@ const REF = screenshotRef(PNG);
 
 describe("the state a device step shows", () => {
   test("open, closed and lost commands read as the step states of the timeline", () => {
-    expect(DEVICE_COMMAND_STATES.map(stepViewState)).toEqual([
+    expect(DEVICE_COMMAND_STATES.map((state) => stepViewState(state, "read"))).toEqual([
       "queued",
       "running",
       "done",
@@ -31,7 +31,14 @@ describe("the state a device step shows", () => {
       "stopped",
     ]);
     for (const state of DEVICE_COMMAND_STATES)
-      expect(DEVICE_STEP_VIEW_STATES).toContain(stepViewState(state));
+      for (const effect of ["read", "write"] as const)
+        expect(DEVICE_STEP_VIEW_STATES).toContain(stepViewState(state, effect));
+  });
+
+  test("a change the device never confirmed reads as an unclear outcome", () => {
+    expect(stepViewState("lost", "write")).toBe("unclear");
+    expect(stepViewState("lost", "read")).toBe("failed");
+    expect(stepViewState("done", "write")).toBe("done");
   });
 });
 

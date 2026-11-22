@@ -572,7 +572,7 @@ export function SettingsSummary({
         help={t("settings.storage.body")}
       />
       <div
-        data-family-slot="filters"
+        data-sk-slot="filters"
         data-testid="settings-filters"
         className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b pb-3"
       >

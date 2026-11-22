@@ -10,6 +10,7 @@ export {
   startTaskRun,
   taskKeys,
   updateTask,
+  useConversationTasks,
   useRunPlaybook,
   useTask,
   useTaskHistory,

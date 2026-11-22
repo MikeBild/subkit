@@ -40,7 +40,7 @@ describe("save_learning sensitive paths", () => {
 });
 
 describe("save_learning assistant", () => {
-  test("names the MCP client, Cockpit chat or the sk CLI", () => {
+  test("names the MCP client, Cockpit chat or the subkit CLI", () => {
     expect(learningClient({ surface: "mcp", mcp_client_name: "  claude-code " })).toBe(
       "claude-code",
     );
@@ -52,7 +52,7 @@ describe("save_learning assistant", () => {
     expect(learningClient({ surface: "mcp", mcp_client_name: "x".repeat(200) })).toHaveLength(80);
     expect(learningClient({ surface: "web" })).toBe("chat");
     expect(learningClient({})).toBe("chat");
-    expect(learningClient({ surface: "sk_interactive" })).toBe("sk");
-    expect(learningClient({ surface: "sk_headless" })).toBe("sk");
+    expect(learningClient({ surface: "sk_interactive" })).toBe("subkit");
+    expect(learningClient({ surface: "sk_headless" })).toBe("subkit");
   });
 });

@@ -46,7 +46,7 @@ export function PageHeader({
   const reading = rhythm === "reading";
   return (
     <header
-      data-family-slot="page-header"
+      data-sk-slot="page-header"
       data-slot="page-header"
       data-testid={testId}
       data-header-rhythm={rhythm}

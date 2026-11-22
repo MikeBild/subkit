@@ -15,7 +15,11 @@ let testDb: TestDb;
 
 async function seedCalls(
   tenant_id: string,
-  calls: Array<{ result: "success" | "error"; error?: string; minutesAgo: number }>,
+  calls: Array<{
+    result: "success" | "error" | "key_rejected";
+    error?: string;
+    minutesAgo: number;
+  }>,
 ): Promise<void> {
   const now = FROZEN_NOW;
   await testDb.db.insert(llmUsage).values(
@@ -91,6 +95,27 @@ describe("provider outage in the attention feed", () => {
     expect(await providerItems(tenant_id)).toHaveLength(0);
   });
 
+  test("a key rejected during a run raises one item that opens the AI settings", async () => {
+    const tenant_id = (
+      await seedTenant(testDb.db, {
+        slug: "provider-outage-key",
+        display_name: "provider-outage-key",
+      })
+    ).id;
+    await seedCalls(tenant_id, [
+      { result: "success", minutesAgo: 30 },
+      { result: "key_rejected", error: "invalid x-api-key", minutesAgo: 5 },
+    ]);
+    invalidateAttention(tenant_id);
+    const attention = await buildAttention(testDb.db, adminPrincipal(tenant_id), {
+      now: new Date(FROZEN_NOW),
+    });
+    const items = attention.items.filter((item) => item.kind === "llm_key_rejected");
+    expect(items).toHaveLength(1);
+    expect(items[0]?.class).toBe("stopped");
+    expect(items[0]?.actions[0]?.href).toBe("/cockpit/settings?area=ai");
+  });
+
   test("a single failure or failures outside the window raise nothing", async () => {
     const single = (
       await seedTenant(testDb.db, {
@@ -130,6 +155,29 @@ describe("providerOutageFrom", () => {
       since: at(4).toISOString(),
       last_error: "upstream 502",
     });
+  });
+
+  test("one rejected key asks to reconnect it at once", () => {
+    expect(
+      providerOutageFrom([
+        { result: "key_rejected", error: "invalid x-api-key", created_at: at(1) },
+        { result: "success", error: null, created_at: at(9) },
+      ]),
+    ).toEqual({
+      kind: "llm_key_rejected",
+      failures: 1,
+      since: at(1).toISOString(),
+      last_error: "invalid x-api-key",
+    });
+  });
+
+  test("a rejection before the key was replaced no longer counts", () => {
+    expect(
+      providerOutageFrom(
+        [{ result: "key_rejected", error: "invalid x-api-key", created_at: at(5) }],
+        at(3),
+      ),
+    ).toBeNull();
   });
 
   test("a refused token budget is not a provider failure", () => {

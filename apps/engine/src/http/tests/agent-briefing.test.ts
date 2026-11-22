@@ -64,7 +64,7 @@ describe("GET /v1/agent/briefing — happy path", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { markdown: string; skills_full: string[] };
     expect(body.skills_full).toEqual([]);
-    expect(body.markdown).toContain("# sk session briefing");
+    expect(body.markdown).toContain("# subkit session briefing");
     expect(body.markdown).not.toContain("## Conventions");
   });
 

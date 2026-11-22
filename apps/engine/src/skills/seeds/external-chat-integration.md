@@ -2,7 +2,7 @@
 slug: external-chat-integration
 scope: global
 title: External Chat Integration
-description: Mental model for bringing sk into Slack and Google Chat (Microsoft Teams is not supported yet) — the same governed Conversation authoring loop, rendered as native platform messages. Exhaustive setup, route, and identity-linking facts live in the sk-ref-chat knowledge source; fetch them with search_knowledge.
+description: Mental model for bringing subkit into Slack and Google Chat (Microsoft Teams is not supported yet) — the same governed Conversation authoring loop, rendered as native platform messages. Exhaustive setup, route, and identity-linking facts live in the sk-ref-chat knowledge source; fetch them with search_knowledge.
 activates_when: [{"kind":"intent_keyword","word":"slack"},{"kind":"intent_keyword","word":"teams"},{"kind":"intent_keyword","word":"google chat"},{"kind":"intent_keyword","word":"chat"}]
 side_effects: read
 idempotency: none
@@ -11,11 +11,11 @@ tags: [chat, integration, sk-platform-reference]
 version: 2
 ---
 
-# Bringing sk into Slack and Google Chat
+# Bringing subkit into Slack and Google Chat
 
 Mental model: each chat platform gets a dedicated adapter that normalises
-incoming messages — mentions, slash commands, interaction callbacks — into sk's
-Conversation model. The *same* AI authoring loop that runs in the sk CLI runs
+incoming messages — mentions, slash commands, interaction callbacks — into subkit's
+Conversation model. The *same* AI authoring loop that runs in the subkit CLI runs
 inside the thread, rendered as native platform messages. Chat is a door onto the
 one governed engine: same RBAC, same Audit Log, same identity envelope. It is
 not a second authoring stack.
@@ -33,12 +33,12 @@ not a second authoring stack.
   `platform_unsupported`. Say so plainly and do not walk anyone through a
   Teams setup.
 - **Identity linking is mandatory.** A platform identity (Slack user ID or Google
-  Chat identity) must be linked to an sk account before
+  Chat identity) must be linked to a subkit account before
   messages carry a role and permissions. Unlinked senders are rejected, not
   silently run. Workspaces are installed via `/v1/chat/workspaces`; identities
   are managed via `/v1/chat/identities` (admin routes).
 - **Conversations persist across days.** A thread started today and continued
-  tomorrow resumes exactly where it left off — it maps to a durable sk
+  tomorrow resumes exactly where it left off — it maps to a durable subkit
   Conversation, the same one the underscore tools `conversation_start`,
   `conversation_append`, `conversation_get`, and `conversation_commit` drive.
 - **Approvals are in-thread.** When a Draft or Patch Candidate needs sign-off,
@@ -48,14 +48,14 @@ not a second authoring stack.
 - **Slash verbs are `chat`, `run`, `help`.** `chat` opens/continues authoring,
   `run` invokes a committed workflow with args, `help` returns guidance.
 - **Notifications route through Notification Rules** by event, severity, and
-  quiet hours. Chat is sk's primary notification channel; email notifications
+  quiet hours. Chat is subkit's primary notification channel; email notifications
   are not supported.
 - **The chat palette is read-only, and that excludes remote MCP tools.** A
   tenant's external MCP servers are connectors with `driver: "mcp"`, and their
   remote tools (`mcp_<connector_slug>__<remote_tool>`) are merged into the
   palette on authoring surfaces only — never on Slack or Google Chat,
   the same posture as `call_connector`. On this channel, explain what the
-  connector does and point the operator at the `sk` CLI or the web portal;
+  connector does and point the operator at the `subkit` CLI or the web portal;
   do not offer to call a remote MCP tool you cannot reach.
 
 ## Get the full reference before you act

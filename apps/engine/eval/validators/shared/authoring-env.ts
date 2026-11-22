@@ -20,7 +20,7 @@ async function ensureConfigLoaded(): Promise<void> {
     getConfig();
     return;
   } catch {}
-  const dir = mkdtempSync(join(tmpdir(), "sk-cfg-eval-authoring-"));
+  const dir = mkdtempSync(join(tmpdir(), "subkit-cfg-eval-authoring-"));
   await loadConfig({
     env: {
       DATABASE_URL: "postgres://placeholder/eval-authoring",

@@ -39,7 +39,7 @@ describe("signedInPage", () => {
     const off = { ...FACTS, enabled: false };
     const cli = signedInPage("de", "cli", off, null);
     expect(text(cli)).toContain("abgeschaltet und bleibt es, bis ihn jemand einschaltet");
-    expect(cli.command).toBe("sk connectors enable");
+    expect(cli.command).toBe("subkit connectors enable");
     for (const origin of ["chat", "portal", "cockpit"] as const)
       expect(signedInPage("de", origin, off, null).command).toBeNull();
     expect(text(signedInPage("de", "cli", FACTS, null))).not.toContain("abgeschaltet");

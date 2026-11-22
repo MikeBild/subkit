@@ -25,7 +25,7 @@ const noTenantRow = {
 } as unknown as Executor;
 
 async function useLlm(llm: Record<string, unknown>): Promise<void> {
-  dir = mkdtempSync(join(tmpdir(), "sk-provider-default-"));
+  dir = mkdtempSync(join(tmpdir(), "subkit-provider-default-"));
   const cfgPath = join(dir, "subkit.config.json");
   writeFileSync(cfgPath, JSON.stringify({ database: { url: DB_URL }, llm }));
   _resetConfigForTests();

@@ -104,7 +104,7 @@ function mapLlmError(c: Context<AppEnv>, err: unknown): Response | null {
   if (err instanceof Error && err.name === "ProviderMisconfiguredError") {
     captureToRing(c, err, 400, "llm_provider_misconfigured", "llm_provider");
     return envelope(c, 400, "llm_provider_misconfigured", err.message, {
-      hint: "set the provider key with `sk settings set llm.providers.<provider>.api_key '\"…\"'` (or `sk init --llm-api-key`), then retry",
+      hint: "set the provider key with `subkit settings set llm.providers.<provider>.api_key '\"…\"'` (or `subkit init --llm-api-key`), then retry",
     });
   }
   if (err instanceof HostedChatOwnershipRequired) return envelope(c, 403, err.code, err.message);

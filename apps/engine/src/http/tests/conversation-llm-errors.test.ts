@@ -198,7 +198,7 @@ describe("POST /v1/conversations provider-limit handling", () => {
     for (const answer of answers) expect(answer.model).toBe("mock:conv-quota-primary");
   });
 
-  test("returns 409 when a conversation already has pending user input", async () => {
+  test("returns 409 when a typed reply answers the pending question", async () => {
     const [conversation] = await srv.db
       .insert(conversations)
       .values({
@@ -215,12 +215,9 @@ describe("POST /v1/conversations provider-limit handling", () => {
         tenant_id: srv.tenantId,
         conversation_id: conversation.id,
         tool_call_id: null,
-        tool_name: "ask_user_form",
-        summary: "Provide your DigitalOcean API token",
-        input: {
-          title: "DigitalOcean credential",
-          fields: [{ key: "token", label: "Token", type: "password" }],
-        },
+        tool_name: "ask_user_confirm",
+        summary: "Use the shorter title?",
+        input: { question: "Use the shorter title?" },
         status: "pending",
       })
       .returning();
@@ -233,7 +230,7 @@ describe("POST /v1/conversations provider-limit handling", () => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        message: "now nothing happens",
+        message: "yes",
       }),
     });
     expect(res.status).toBe(409);
@@ -256,13 +253,10 @@ describe("POST /v1/conversations provider-limit handling", () => {
     expect(body.details?.conversation_status).toBe("awaiting_input");
     expect(body.details?.pending_elicitation).toEqual({
       id: elicitation.id,
-      tool_name: "ask_user_form",
-      summary: "Provide your DigitalOcean API token",
+      tool_name: "ask_user_confirm",
+      summary: "Use the shorter title?",
       tool_call_id: null,
-      input: {
-        title: "DigitalOcean credential",
-        fields: [{ key: "token", label: "Token", type: "password" }],
-      },
+      input: { question: "Use the shorter title?" },
     });
   });
 });

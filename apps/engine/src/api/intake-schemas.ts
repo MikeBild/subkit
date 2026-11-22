@@ -150,7 +150,7 @@ export const IntakeItemSnapshotSchema = z
         .string()
         .optional()
         .describe(
-          "Assistant that prepared the entry: the MCP client name, chat for Cockpit chat or sk for the sk CLI. Absent when the assistant was not recorded.",
+          "Assistant that prepared the entry: the MCP client name, chat for Cockpit chat or subkit for the subkit CLI. Absent when the assistant was not recorded.",
         ),
       session_id: z.string(),
       repo: z.string().nullable(),

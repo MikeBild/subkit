@@ -8,6 +8,7 @@ import { getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { apiKeys, systemAccounts, tenants, users } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { hasLiveRun } from "../../execution/abort.ts";
 import { buildDefaultRegistry, createApp } from "../../http/server.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
 import { logger } from "../../logging/index.ts";
@@ -32,6 +33,7 @@ import {
   withTestEnv,
 } from "../../test-helpers/determinism/index.ts";
 import { __resetAll as resetCircuitBreakers } from "../../webhooks/outbound/circuit-breaker.ts";
+import { captureLogLines, journeyInvariantViolations } from "./invariants.ts";
 
 export const JOURNEY_HOOK_TIMEOUT = 120_000;
 
@@ -70,7 +72,7 @@ async function ensureConfigLoaded(databaseUrl: string): Promise<void> {
   try {
     getConfig();
   } catch {
-    const dir = mkdtempSync(join(tmpdir(), "sk-cfg-journey-"));
+    const dir = mkdtempSync(join(tmpdir(), "subkit-cfg-journey-"));
     await loadConfig({
       env: { DATABASE_URL: databaseUrl, NODE_ENV: "test" },
       configPathOverride: join(dir, "subkit.config.json"),
@@ -99,8 +101,10 @@ export async function createJourneyCtx(
   const ids = createDeterministicIdFactory(`j-${safeLabel}`);
   const random = createSeededRandom(seed);
 
+  const logs = captureLogLines();
   const failSafe: Array<{ name: string; fn: () => Promise<void> }> = [
     { name: "env-handle", fn: async () => envHandle.restore() },
+    { name: "log-capture", fn: async () => logs.stop() },
   ];
   const fail = async (err: unknown): Promise<never> => {
     for (const step of failSafe.reverse()) {
@@ -223,6 +227,12 @@ export async function createJourneyCtx(
       ids,
       random,
       cleanup: async () => {
+        const violations = await journeyInvariantViolations({
+          db: testDb.db,
+          knownSecrets: [key.plaintext, TEST_MASTER_KEY],
+          logs: logs.lines,
+          liveWorker: hasLiveRun,
+        });
         for (const step of failSafe.reverse()) {
           // allow-wall-clock: duration delta for observability — not a
           // timestamp consumed by the SUT. The tests/journey logger
@@ -250,6 +260,8 @@ export async function createJourneyCtx(
                 : {}),
           });
         }
+        if (violations.length > 0)
+          throw new Error(`journey invariants violated:\n${violations.join("\n")}`);
       },
     };
   } catch (e) {

@@ -42,8 +42,8 @@ async function main(): Promise<void> {
   if (issued.status !== 0 || !/wf_live_[A-Za-z0-9_-]+/.test(`${issued.stdout}\n${issued.stderr}`)) {
     fail(`could not mint admin key: ${issued.stdout}${issued.stderr}`);
   }
-  if (!/sk login --engine-url .* --api-key /.test(`${issued.stdout}\n${issued.stderr}`)) {
-    fail("issue-admin-key did not print a copy-paste `sk login` line");
+  if (!/subkit login --engine-url .* --api-key /.test(`${issued.stdout}\n${issued.stderr}`)) {
+    fail("issue-admin-key did not print a copy-paste `subkit login` line");
   }
   ok("operator key issuance is copy-paste ready");
 
@@ -93,7 +93,7 @@ async function main(): Promise<void> {
   }
   ok(`MCP streamable-HTTP exposes ${tools.length} tenant tools`);
 
-  const turn = await harness.skDocker(
+  const turn = await harness.subkitDocker(
     env,
     ["-p", "list my workflows", "--output", "text", "--max-turns", "4"],
     { timeout: 60_000 },

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
-import { SkCliAdapter } from "../../chat/sk-cli/adapter.ts";
+import { SubkitCliAdapter } from "../../chat/subkit-cli/adapter.ts";
 import {
   cliNotificationInbox,
   notificationChannels,
@@ -48,7 +48,7 @@ async function wipe(): Promise<void> {
 async function seedDefaultCliRule(tenantId: string = ctx.tenant_id): Promise<void> {
   await ctx.db.insert(notificationRules).values({
     tenant_id: tenantId,
-    name: "sk CLI inbox (default)",
+    name: "subkit CLI inbox (default)",
     event_pattern: "*",
     workflow_pattern: "*",
     severity: "info",
@@ -60,7 +60,7 @@ async function seedDefaultCliRule(tenantId: string = ctx.tenant_id): Promise<voi
 }
 
 function makeAdapterResolver(db: typeof ctx.db) {
-  const adapter = new SkCliAdapter(db);
+  const adapter = new SubkitCliAdapter(db);
   return () => adapter as unknown as NotificationAdapter;
 }
 

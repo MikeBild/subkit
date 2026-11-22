@@ -162,7 +162,7 @@ describe("answering pending conversation questions", () => {
     expect(calls).toEqual([
       {
         path: "/v1/conversations/conversation-1/elicitations/question-1/respond",
-        body: { output: { value: "ja, aber nur vorbereiten" } },
+        body: { output: { text: "ja, aber nur vorbereiten" } },
       },
     ]);
   });
@@ -182,20 +182,107 @@ describe("answering pending conversation questions", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  test("never turns typed yes into confirmation of a structured approval", async () => {
-    const fetchMock = mock(async () => blocked("ask_user_confirm"));
+  test("a clear yes answers a confirmation through the endpoint its button uses", async () => {
+    const calls: { path: string; body: unknown }[] = [];
+    globalThis.fetch = mock(async (path: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ path: String(path), body: JSON.parse(String(init?.body)) });
+      return outcomeResponse();
+    }) as unknown as typeof fetch;
+    await sendConversationTurn({
+      conversationId: "conversation-1",
+      message: "ja",
+      pendingElicitation: { ...question, tool_name: "ask_user_confirm" },
+    });
+    expect(calls).toEqual([
+      {
+        path: "/v1/conversations/conversation-1/elicitations/question-1/respond",
+        body: { output: { confirmed: true } },
+      },
+    ]);
+  });
+
+  test("any other reply to a confirmation is sent as an ordinary message", async () => {
+    const calls: { path: string; body: unknown }[] = [];
+    globalThis.fetch = mock(async (path: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ path: String(path), body: JSON.parse(String(init?.body)) });
+      return outcomeResponse();
+    }) as unknown as typeof fetch;
+    await sendConversationTurn({
+      conversationId: "conversation-1",
+      message: "ja, aber nur an Ada",
+      pendingElicitation: { ...question, tool_name: "ask_user_confirm" },
+    });
+    expect(calls).toEqual([
+      {
+        path: "/v1/conversations/conversation-1/messages",
+        body: { message: "ja, aber nur an Ada" },
+      },
+    ]);
+  });
+
+  test("a typed yes never approves a confirmation that lets an action run", async () => {
+    const calls: { path: string; body: unknown }[] = [];
+    globalThis.fetch = mock(async (path: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ path: String(path), body: JSON.parse(String(init?.body)) });
+      return outcomeResponse();
+    }) as unknown as typeof fetch;
+    await sendConversationTurn({
+      conversationId: "conversation-1",
+      message: "ja",
+      pendingElicitation: {
+        ...question,
+        tool_name: "ask_user_confirm",
+        input: { question: "Allow once?", commit_intent: { kind: "execute_confirmed_tool_call" } },
+      },
+    });
+    expect(calls).toEqual([
+      { path: "/v1/conversations/conversation-1/messages", body: { message: "ja" } },
+    ]);
+  });
+
+  test("text typed while a form asks for a secret never leaves the browser", async () => {
+    const fetchMock = mock(async () => outcomeResponse());
     globalThis.fetch = fetchMock as unknown as typeof fetch;
     await expect(
       sendConversationTurn({
         conversationId: "conversation-1",
-        message: "ja",
-        pendingElicitation: { ...question, tool_name: "ask_user_confirm" },
+        message: "tok-fixture-value",
+        pendingElicitation: {
+          ...question,
+          tool_name: "ask_user_form",
+          input: { fields: [{ name: "token", type: "password" }] },
+        },
       }),
-    ).rejects.toMatchObject({
-      code: "pending_elicitation_blocked",
-      details: { pending_elicitation: { tool_name: "ask_user_confirm" } },
+    ).rejects.toMatchObject({ code: "pending_elicitation_secret" });
+    expect(fetchMock).toHaveBeenCalledTimes(0);
+  });
+
+  test("a reply naming exactly one option answers a choice", async () => {
+    const calls: { path: string; body: unknown }[] = [];
+    globalThis.fetch = mock(async (path: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ path: String(path), body: JSON.parse(String(init?.body)) });
+      return outcomeResponse();
+    }) as unknown as typeof fetch;
+    await sendConversationTurn({
+      conversationId: "conversation-1",
+      message: "Morgen",
+      pendingElicitation: {
+        ...question,
+        tool_name: "ask_user_choice",
+        input: {
+          options: [
+            { value: "today", label: "Heute" },
+            { value: "tomorrow", label: "Morgen" },
+          ],
+        },
+      },
     });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(calls).toEqual([
+      {
+        path: "/v1/conversations/conversation-1/elicitations/question-1/respond",
+        body: { output: { value: "tomorrow" } },
+      },
+    ]);
   });
 
   test("does not retry a stale or rejected elicitation answer", async () => {

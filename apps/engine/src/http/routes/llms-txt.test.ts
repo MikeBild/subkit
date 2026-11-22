@@ -16,7 +16,7 @@ const ORIGIN = "https://docs.example.test";
 let dir: string;
 
 beforeAll(async () => {
-  dir = mkdtempSync(join(tmpdir(), "sk-llms-txt-"));
+  dir = mkdtempSync(join(tmpdir(), "subkit-llms-txt-"));
   const cfgPath = join(dir, "subkit.config.json");
   writeFileSync(cfgPath, JSON.stringify({ server: { public_base_url: ORIGIN } }));
   _resetConfigForTests();
@@ -67,7 +67,7 @@ describe("GET /llms/{path}", () => {
     expect(res.headers.get("content-type")).toMatch(/^text\/markdown; charset=utf-?8$/i);
     const body = await res.text();
     expect(body.length).toBeGreaterThan(0);
-    expect(body).toContain("# sk CLI reference");
+    expect(body).toContain("# subkit CLI reference");
   });
 
   test("does not carry a page outside the set", async () => {
@@ -101,7 +101,7 @@ describe("GET /docs.json", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toMatch(/^application\/json/);
     expect(res.headers.get("cache-control")).toBe("public, max-age=3600");
-    expect(res.headers.get("x-sk-docs-version")).toBe(OPENAPI_INFO.version);
+    expect(res.headers.get("x-subkit-docs-version")).toBe(OPENAPI_INFO.version);
     const bundle = DocsBundleSchema.parse(await res.json());
     expect(bundle.locales).toEqual(["en", "de"]);
     expect(bundle.pages.length).toBeGreaterThan(0);

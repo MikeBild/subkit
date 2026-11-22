@@ -25,7 +25,7 @@ beforeAll(async () => {
   previousMasterKey = testEnv.MASTER_KEY;
   testEnv.MASTER_KEY = "22".repeat(32);
   testEnv.NODE_ENV = "test";
-  configDir = mkdtempSync(join(tmpdir(), "sk-runtime-http-"));
+  configDir = mkdtempSync(join(tmpdir(), "subkit-runtime-http-"));
   _resetConfigForTests();
   await loadConfig({
     env: {

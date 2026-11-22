@@ -16,7 +16,7 @@ test("runtime auth remains provider-neutral with only generic browser routes", (
     ...productionSources("apps/engine/src/auth"),
     ...productionSources("apps/engine/src/config"),
     ...productionSources("apps/engine/src/http/routes/identity"),
-    ...productionSources("apps/sk/src"),
+    ...productionSources("apps/subkit/src"),
     ...productionSources("packages/cli-core/src"),
   ];
   const source = files.map((file) => readFileSync(file, "utf8")).join("\n");

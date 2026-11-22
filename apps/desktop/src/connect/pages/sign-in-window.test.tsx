@@ -8,6 +8,7 @@ import {
   LOCAL_UNAVAILABLE,
 } from "../../shared/ipc.ts";
 import { completeStep, NO_ONBOARDING, startOnboarding } from "../../shared/onboarding.ts";
+import { platformCapabilities } from "../../shared/platform-capabilities.ts";
 import { createMockLocalCapabilities, type SignInStore } from "../adapter/index.ts";
 import { type Event, evolveAll, INITIAL_STATE, type SignInState, viewOf } from "../domain/index.ts";
 import { desktopRunner } from "../lib/test-runner.ts";
@@ -49,6 +50,7 @@ function main(patch: Partial<ConnectState> = {}, locale: Locale = "en"): Connect
       lost: [],
     },
     local: LOCAL_UNAVAILABLE,
+    platform: platformCapabilities("darwin", "arm64"),
     ...patch,
   };
 }
@@ -294,11 +296,13 @@ describe("first run after sign-in", () => {
 });
 
 describe.skipIf(!desktopRunner)("welcome and invitation", () => {
-  test("a first start shows four promises, Get started and the invitation link", () => {
+  test("a first start shows four promises, Get started, Create and the invitation link", () => {
     const html = render(state({ profiles: [] }, [], "de"));
     expect(html).toContain("Willkommen bei SubKit Desktop");
     expect(count(html, "<li")).toBe(4);
     expect(html).toContain('data-testid="welcome-start"');
+    expect(html).toContain('data-testid="welcome-create"');
+    expect(html).toContain("Neuen Arbeitsbereich anlegen");
     expect(html).toContain('data-testid="welcome-invite" aria-expanded="false"');
     expect(html).not.toContain("welcome-invite-link");
   });
@@ -342,6 +346,6 @@ describe.skipIf(!desktopRunner)("welcome and invitation", () => {
     expect(html).toContain("Du bist eingeladen");
     expect(html).toContain("Anna Schmidt hat dich in den Arbeitsbereich „Harmoniqs“ eingeladen.");
     expect(html).toContain("Einladung für m•••@example.com · gültig bis 27.11.2026");
-    expect(html).toContain("Im Browser beitreten");
+    expect(html).toContain("Beitreten und anmelden");
   });
 });

@@ -30,8 +30,8 @@ export function EmptyState({
         data-testid={testId}
         data-slot="empty-state"
         data-state="empty"
-        data-family-slot="data-state"
-        data-family-state="empty"
+        data-sk-slot="data-state"
+        data-sk-state="empty"
       >
         {title ? (
           <p className="text-sm text-muted-foreground" data-slot="data-state-line">

@@ -33,7 +33,7 @@ let configDir: string;
 beforeAll(async () => {
   testEnv.MASTER_KEY = "11".repeat(32);
   tdb = await createTestDb("runtime-config");
-  configDir = mkdtempSync(join(tmpdir(), "sk-runtime-config-"));
+  configDir = mkdtempSync(join(tmpdir(), "subkit-runtime-config-"));
   _resetConfigForTests();
   await loadConfig({
     env: { DATABASE_URL: tdb.url, NODE_ENV: "test" },

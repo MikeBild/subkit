@@ -1,14 +1,14 @@
 ---
 slug: subkit-desktop
 title: SubKit Desktop
-summary: Install SubKit Desktop on your Mac, sign in, and let SubKit work with your files, a browser and your apps while you watch in the live view.
+summary: Install SubKit Desktop on your Mac or Windows PC, sign in, and on a Mac let SubKit work with your files, a browser and your apps while you watch in the live view.
 section: work
 order: 18
 audience: public
 ---
 ## SubKit Desktop
 
-This chapter is for anyone who wants SubKit on their Mac: to keep an eye on it all day, and to let it work with files, websites and apps on that Mac.
+This chapter is for anyone who wants SubKit on their Mac or Windows PC: to keep an eye on it all day, and on a Mac to let it work with files, websites and apps on that Mac.
 Afterwards you have installed SubKit Desktop, signed in, allowed what SubKit may use on your Mac, and you know how to follow and stop it in the live view.
 You can also run a workspace only on your Mac and move it to a server later.
 
@@ -31,25 +31,38 @@ The table in “Cockpit as an app” shows how it differs from the installed web
 
 ### What you need
 
-- A Mac with Apple Silicon and macOS 13 or later. Intel Macs are not supported. Files, browser, apps and the local workspace exist only on the Mac.
-- For a server: a SubKit server of version 12.0.0 or later. Its address has to be reachable over `https://`; only `localhost` may use `http://`.
-- An account you can sign in to the Cockpit with in the browser, or an invitation link from your invitation email.
+- A Mac with Apple Silicon and macOS 13 or later, or a PC with Windows 10 or 11 (64-bit, x64). Intel Macs and Linux are not supported.
+- Files, browser, apps, the live view and the local workspace exist only on the Mac. On Windows SubKit Desktop brings the Cockpit, the tray icon, notifications, the quick note, “Where should this go?” for dropped files and updates; the app says so where a Mac-only feature would be.
+- For a server: a SubKit server of version @@DESKTOP_MIN_SERVER_VERSION@@ or later. Its address has to be reachable over `https://`; only `localhost` may use `http://`.
+- An account you can sign in to the Cockpit with in the browser, an invitation link from your invitation email, or a new account for a workspace of your own.
 - For a workspace only on your Mac: no server, but an API key of Anthropic, OpenAI or Google Gemini, or a model server on your Mac.
 
 ### Install
 
-SubKit Desktop comes as a signed DMG file for Apple Silicon, named for example `subkit-desktop-12.0.0-mac-arm64.dmg`. Ask the person who runs your server where your team gets it.
+SubKit Desktop is a signed DMG file for Macs with Apple Silicon.
 
-1. Open the DMG file.
-2. Drag **SubKit** into **Applications**.
-3. Start SubKit from **Applications**. On the first start, macOS asks whether you want to open an app from the internet. Select **Open**.
+1. Download [SubKit for Mac](https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-mac-arm64.dmg).
+2. Open the DMG file.
+3. Drag **SubKit** into **Applications**.
+4. Start SubKit from **Applications**. On the first start, macOS asks whether you want to open an app from the internet. Select **Open**.
+5. Select **Get started** and connect to SubKit Cloud at `https://subkit-cloud.mikebild.dev` or to your own server, as described in “Connect to a server”.
+6. Sign in in your browser. Then allow the folders and apps SubKit may use, as described in “Let SubKit work on your Mac”.
+
+The app updates itself, so you download it only once.
+
+On Windows SubKit Desktop is a signed installer for Windows x64.
+
+1. Download [SubKit for Windows](https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-win-x64.exe).
+2. Open the installer. It installs SubKit for your Windows account, without administrator rights.
+3. Start SubKit from the Start menu.
 
 ### Welcome and invitation link
 
 On the first start you see “Welcome to SubKit Desktop”. It names four things: see what needs your approval, chat and draft workflows, get tasks done step by step, and “You stay in control”.
 
 - **Get started** leads to “Connect server”.
-- **Use an invitation link** is for an invitation email. Paste the whole link under **Invitation link** and select **Open invitation**. You read, for example, “Anna invited you to the workspace ‘Brennwerk’.” with the address and the validity. **Join in your browser** opens the invitation in your browser. Join there, then sign in in the app.
+- **Create a new workspace** also leads to “Connect server”. When you sign in in the browser, SubKit then asks for your name, the name of the workspace, the time zone and the key of your AI provider. After that you sign the device in as usual. This works with an account that does not belong to a workspace yet, and only when the server allows new workspaces. Otherwise the browser tells you.
+- **Use an invitation link** is for an invitation email. Paste the whole link under **Invitation link** and select **Open invitation**. You read, for example, “Anna invited you to the workspace ‘Brennwerk’.” with the address and the validity. **Join and sign in** opens the invitation in your browser, and the app waits for the confirmation. Join in the browser. Right after that, the browser shows “Sign in to SubKit Desktop” (see “Sign in in the browser”, from step 3). After **Sign in** you are signed in to the app, without a second step in the app.
 
 An invitation that has expired, was withdrawn or was already used says so. Ask the person who invited you for a new one.
 
@@ -289,7 +302,7 @@ If you work with several SubKit servers, each one gets its own profile with its 
 
 ### Updates
 
-The app checks for updates at start and every six hours after that. If **Settings** reads “Automatic updates are not enabled in this build.”, your build was made without updates; ask the person who gave it to you for a new version.
+The app checks for updates at start and every six hours after that, on the Mac and on Windows alike. If **Settings** reads “Automatic updates are not enabled in this build.”, your build was made without updates. Download SubKit again as described in “Install”.
 
 | What you read | What happens |
 | --- | --- |
@@ -310,6 +323,7 @@ When the server requires a newer app, you read it while connecting. Update SubKi
 - **Local steps run only while the app is open and the Mac is awake.** A run that needs the Mac waits for it and says “A run is waiting for its device to come online.”
 - **Browser and app steps run only for the person of the Mac.** From their chat or task, a run they start, or a schedule they set up.
 - **Redaction covers password fields and fields marked as sensitive.** A secret that a page or app shows as plain text stays in the screenshot.
+- **On Windows, SubKit does not work on the PC.** Files, browser, apps, the live view and **Only on this Mac** are Mac-only for now. **Local capabilities** and the connect screen say so on Windows.
 
 ### If something does not work
 

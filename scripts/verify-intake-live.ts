@@ -61,8 +61,8 @@ export function parseIntakeLiveArgs(
   argv: string[],
   env: Record<string, string | undefined>,
 ): IntakeLiveArgs {
-  let engineUrl = env.SK_ENGINE_URL ?? "";
-  const apiKey = env.SK_INTAKE_TEST_KEY ?? "";
+  let engineUrl = env.SUBKIT_ENGINE_URL ?? "";
+  const apiKey = env.SUBKIT_INTAKE_TEST_KEY ?? "";
   let allowWrites = false;
   let runId: string | null = null;
   let testTenantId: string | null = null;
@@ -102,7 +102,8 @@ export function parseIntakeLiveArgs(
         throw new IntakeLiveUsageError(`unknown argument: ${arg}`);
     }
   }
-  if (!engineUrl) throw new IntakeLiveUsageError("no engine URL (--engine-url or SK_ENGINE_URL)");
+  if (!engineUrl)
+    throw new IntakeLiveUsageError("no engine URL (--engine-url or SUBKIT_ENGINE_URL)");
   let origin: URL;
   try {
     origin = new URL(engineUrl);
@@ -113,7 +114,7 @@ export function parseIntakeLiveArgs(
     throw new IntakeLiveUsageError(
       "--engine-url must be an origin without a path, query, or fragment",
     );
-  if (!apiKey) throw new IntakeLiveUsageError("no API key (set SK_INTAKE_TEST_KEY)");
+  if (!apiKey) throw new IntakeLiveUsageError("no API key (set SUBKIT_INTAKE_TEST_KEY)");
   if (origin.protocol !== "https:" && origin.protocol !== "http:")
     throw new IntakeLiveUsageError("--engine-url must use http or https");
   if (origin.username || origin.password)
@@ -691,7 +692,7 @@ export async function runIntakeLiveSmoke(
 }
 
 function usage(error: unknown): string {
-  return `${errorText(error)}\nusage: SK_INTAKE_TEST_KEY=… bun run verify intake-live -- --engine-url <selected-test-tenant-origin> [--allow-writes --test-tenant-id <uuid> --run-id <unique-id> --json <report-path> [--after-confirm --proposal-id <uuid>]]`;
+  return `${errorText(error)}\nusage: SUBKIT_INTAKE_TEST_KEY=… bun run verify intake-live -- --engine-url <selected-test-tenant-origin> [--allow-writes --test-tenant-id <uuid> --run-id <unique-id> --json <report-path> [--after-confirm --proposal-id <uuid>]]`;
 }
 
 if (import.meta.main) {

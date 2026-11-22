@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { and, asc, eq, like } from "drizzle-orm";
-import { connectors } from "../db/schema/index.ts";
+import { connectors, tenants } from "../db/schema/index.ts";
 import {
   call,
   enroll,
@@ -120,4 +120,22 @@ test("a device without a known language gets English connector names", async () 
     "Laptop (Mike): Files",
     "Laptop (Mike): Files",
   ]);
+});
+
+test("a device without a known language follows the workspace language", async () => {
+  await server.db.update(tenants).set({ language: "de" }).where(eq(tenants.id, server.tenantId));
+  try {
+    const runner = await enroll("Mini (Mike)");
+    const beat = await call(runner, "POST", "/v1/device-runner/heartbeat", {
+      ...heartbeat(0),
+      capabilities: ["files"],
+    });
+    expect(beat.status).toBe(200);
+    expect((await deviceConnectors(runner.device_id)).map((row) => row.display_name)).toEqual([
+      "Mini (Mike): Dateien",
+      "Mini (Mike): Dateien",
+    ]);
+  } finally {
+    await server.db.update(tenants).set({ language: "en" }).where(eq(tenants.id, server.tenantId));
+  }
 });

@@ -89,7 +89,7 @@ beforeAll(async () => {
     transform("fetch_report", "return { visits: 1 };"),
     transform("send_report", "return input.scope.fetch_report;"),
   ]);
-  triageId = await seedSaved("watchkit-finding-triage", [
+  triageId = await seedSaved("uptime-finding-triage", [
     transform("classify", "return { severity: 'low' };"),
     transform("send_email", "return input.scope.classify;"),
   ]);
@@ -111,7 +111,7 @@ describe("the draft names and verifies the workflow it belongs to", () => {
     const { toolCtx, draft } = await openConversationFor(growthId);
     const before = JSON.stringify(draft().workflow);
     const result = await editWorkflowPatchTool.execute(toolCtx, {
-      workflow: "watchkit-finding-triage",
+      workflow: "uptime-finding-triage",
       step_patches: [{ step_id: "send_email", op: "replace", path: "/expression", value: "1" }],
     });
     expect(result.ok).toBe(false);
@@ -160,7 +160,7 @@ describe("author_workflow never regenerates a saved workflow", () => {
     const before = JSON.stringify(draft().workflow);
     const result = await authorWorkflowTool.execute(toolCtx, {
       goal: "triage the findings and email them",
-      slug: "watchkit-finding-triage",
+      slug: "uptime-finding-triage",
     });
     expect(result.ok).toBe(false);
     const data = errorOf(result.data);
@@ -177,43 +177,43 @@ describe("author_workflow next to an archived workflow", () => {
     await ctx.testDb.db
       .update(workflows)
       .set({ lifecycle: "archived" })
-      .where(eq(workflows.slug, "watchkit-finding-triage"));
+      .where(eq(workflows.slug, "uptime-finding-triage"));
     const { toolCtx, draft } = await openConversationFor(growthId);
     getMockProvider().generateOverrides.generate = () => ({
       name: "Finding triage",
-      slug: "watchkit-finding-triage",
+      slug: "uptime-finding-triage",
       steps: [{ id: "s", kind: "transform", language: "javascript", expression: "return {};" }],
     });
     const result = await authorWorkflowTool.execute(toolCtx, {
       goal: "triage the findings",
-      slug: "watchkit-finding-triage",
+      slug: "uptime-finding-triage",
     });
     expect(result.ok).toBe(true);
-    expect(draft().workflow?.slug).toBe("watchkit-finding-triage-2");
+    expect(draft().workflow?.slug).toBe("uptime-finding-triage-2");
     await ctx.testDb.db
       .update(workflows)
       .set({ lifecycle: "active" })
-      .where(eq(workflows.slug, "watchkit-finding-triage"));
+      .where(eq(workflows.slug, "uptime-finding-triage"));
   });
 
   test("a generated slug moves past an archived workflow too", async () => {
     await ctx.testDb.db
       .update(workflows)
       .set({ lifecycle: "archived" })
-      .where(eq(workflows.slug, "watchkit-finding-triage"));
+      .where(eq(workflows.slug, "uptime-finding-triage"));
     const { toolCtx, draft } = await openConversationFor(null);
     getMockProvider().generateOverrides.generate = () => ({
       name: "Finding triage",
-      slug: "watchkit-finding-triage",
+      slug: "uptime-finding-triage",
       steps: [{ id: "s", kind: "transform", language: "javascript", expression: "return {};" }],
     });
     const result = await authorWorkflowTool.execute(toolCtx, { goal: "triage the findings" });
     expect(result.ok).toBe(true);
-    expect(draft().workflow?.slug).toBe("watchkit-finding-triage-2");
+    expect(draft().workflow?.slug).toBe("uptime-finding-triage-2");
     await ctx.testDb.db
       .update(workflows)
       .set({ lifecycle: "active" })
-      .where(eq(workflows.slug, "watchkit-finding-triage"));
+      .where(eq(workflows.slug, "uptime-finding-triage"));
   });
 });
 
@@ -245,18 +245,18 @@ describe("open_workflow_draft switches the draft from the saved definition", () 
   test("opens another saved workflow, rebinds the conversation, and patches land on it", async () => {
     const { conversationId, toolCtx, draft } = await openConversationFor(growthId);
     const opened = await openWorkflowDraftTool.execute(toolCtx, {
-      workflow: "watchkit-finding-triage",
+      workflow: "uptime-finding-triage",
     });
     expect(opened.ok).toBe(true);
     expect((opened.data as { step_ids: string[] }).step_ids).toEqual(["classify", "send_email"]);
-    expect(draft().workflow.slug).toBe("watchkit-finding-triage");
+    expect(draft().workflow.slug).toBe("uptime-finding-triage");
     expect(draft().summary?.active_target.id).toBe(triageId);
     expect(draft().summary?.persisted_resources.map((r) => r.id)).toEqual([triageId]);
     expect(toolCtx.workflow_id).toBe(triageId);
     expect(await targetOf(conversationId)).toBe(triageId);
 
     const patched = await editWorkflowPatchTool.execute(toolCtx, {
-      workflow: "watchkit-finding-triage",
+      workflow: "uptime-finding-triage",
       step_patches: [
         {
           step_id: "send_email",
@@ -279,18 +279,18 @@ describe("open_workflow_draft switches the draft from the saved definition", () 
     });
     expect(edited.ok).toBe(true);
     const refused = await openWorkflowDraftTool.execute(toolCtx, {
-      workflow: "watchkit-finding-triage",
+      workflow: "uptime-finding-triage",
     });
     expect(refused.ok).toBe(false);
     expect(errorOf(refused.data).error_code).toBe("draft_has_unsaved_changes");
     expect(draft().workflow.slug).toBe("mission-control-growth-weekly");
 
     const switched = await openWorkflowDraftTool.execute(toolCtx, {
-      workflow: "watchkit-finding-triage",
+      workflow: "uptime-finding-triage",
       discard_unsaved: true,
     });
     expect(switched.ok).toBe(true);
-    expect(draft().workflow.slug).toBe("watchkit-finding-triage");
+    expect(draft().workflow.slug).toBe("uptime-finding-triage");
   });
 
   test("an unknown workflow is workflow_not_found", async () => {

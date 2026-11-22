@@ -142,7 +142,7 @@ export async function consumeCliLoginToken(input: {
               tenant_id: tokenRow.tenant_id,
               actor_type: "user",
               actor_id: user.id,
-              action: AuditAction.SK_CLI_LOGIN,
+              action: AuditAction.SUBKIT_CLI_LOGIN,
               resource_type: "user",
               resource_id: user.id,
               result: "success",

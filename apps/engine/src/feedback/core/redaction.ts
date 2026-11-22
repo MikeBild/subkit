@@ -1,8 +1,18 @@
+import {
+  EMAIL_ADDRESS,
+  isPhoneNumber,
+  PHONE_NUMBER,
+  PRIVATE_UNIX_PATH,
+  PRIVATE_WINDOWS_PATH,
+  SCHEMELESS_LINK,
+  schemelessLinkParts,
+} from "@shared/redaction.ts";
 import { redactSecretShapes } from "../../logging/scrub-secrets.ts";
 
 export const FEEDBACK_REMOVED = "[removed]";
 export const FEEDBACK_EMAIL = "[email]";
 export const FEEDBACK_PATH = "[path]";
+export const FEEDBACK_PHONE = "[phone]";
 
 const HEADER_SECRET =
   /\b(proxy-authorization|authorization|set-cookie|cookie|x-api-key|x-auth-token|x-subkit-csrf)\b(["']?\s*[:=]\s*["']?)[^\r\n"']+/gi;
@@ -10,15 +20,7 @@ const AUTH_SCHEME = /\b(Bearer|Basic|Token)\s+[A-Za-z0-9._~+/=-]{8,}/g;
 const NAMED_SECRET =
   /\b(code_verifier|access_token|refresh_token|id_token|client_secret|session_id|token|password|passwd|secret|api[_-]?key)\b(["']?\s*[:=]\s*["']?)(?!\[removed\])[^\s"',;&}]+/gi;
 const URL = /\b([a-z][a-z0-9+.-]{1,20}):\/\/[^\s"'<>)\]}]+/gi;
-const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
-const PATH_BODY = "[^\\s\"'`<>|;,()]*";
-const UNIX_PATH = new RegExp(
-  `(?<![\\w.:/~-])(?:~|/(?:Users|home|root|var|private|tmp|etc|opt|usr|Volumes|mnt|srv|Library|Applications|System|proc|run|snap|nix))/${PATH_BODY}`,
-  "g",
-);
-const WINDOWS_PATH = new RegExp(`(?<![\\w])(?:[A-Za-z]:\\\\|\\\\\\\\)${PATH_BODY}`, "g");
 const WEB_SCHEMES = new Set(["http", "https", "ws", "wss"]);
-
 export interface FeedbackRedaction<T> {
   readonly value: T;
   readonly count: number;
@@ -37,6 +39,11 @@ export interface FeedbackDiagnostics {
   readonly connection?: string | undefined;
   readonly route?: string | undefined;
   readonly recent_errors?: readonly FeedbackRecentError[] | undefined;
+}
+
+function cleanSchemelessLink(match: string): string {
+  const { host, detail } = schemelessLinkParts(match);
+  return `${host}${detail.split(/[?#]/)[0] ?? ""}`;
 }
 
 function cleanUrl(match: string, scheme: string): { text: string; changed: boolean } {
@@ -70,15 +77,21 @@ export function redactFeedbackText(
     if (cleaned.changed) count++;
     return cleaned.text;
   });
+  out = out.replace(SCHEMELESS_LINK, (match) => {
+    const text = cleanSchemelessLink(match);
+    if (text !== match) count++;
+    return text;
+  });
   out = out.replace(NAMED_SECRET, (_match, name: string, separator: string) =>
     mark(`${name}${separator}${FEEDBACK_REMOVED}`),
   );
   const shapes = redactSecretShapes(out);
   out = shapes.text;
   count += shapes.count;
-  out = out.replace(UNIX_PATH, () => mark(FEEDBACK_PATH));
-  out = out.replace(WINDOWS_PATH, () => mark(FEEDBACK_PATH));
-  if (options.emails) out = out.replace(EMAIL, () => mark(FEEDBACK_EMAIL));
+  out = out.replace(PRIVATE_UNIX_PATH, () => mark(FEEDBACK_PATH));
+  out = out.replace(PRIVATE_WINDOWS_PATH, () => mark(FEEDBACK_PATH));
+  out = out.replace(PHONE_NUMBER, (match) => (isPhoneNumber(match) ? mark(FEEDBACK_PHONE) : match));
+  if (options.emails) out = out.replace(EMAIL_ADDRESS, () => mark(FEEDBACK_EMAIL));
   return { value: out, count };
 }
 

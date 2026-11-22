@@ -3,15 +3,15 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { and, eq } from "drizzle-orm";
-import type { ResolvedProfile } from "../../../../sk/src/config.ts";
-import { runHeadless } from "../../../../sk/src/headless.ts";
-import { loadMemory } from "../../../../sk/src/memory.ts";
-import { loadSettings } from "../../../../sk/src/settings.ts";
+import type { ResolvedProfile } from "../../../../subkit/src/config.ts";
+import { runHeadless } from "../../../../subkit/src/headless.ts";
+import { loadMemory } from "../../../../subkit/src/memory.ts";
+import { loadSettings } from "../../../../subkit/src/settings.ts";
 import { auditLog, conversations } from "../../db/schema/index.ts";
 import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
-describe("the sk terminal chat runs headless, remembers and layers settings", () => {
+describe("the subkit terminal chat runs headless, remembers and layers settings", () => {
   describe("the headless output contract", () => {
     let ctx: JourneyCtx;
 
@@ -46,7 +46,7 @@ describe("the sk terminal chat runs headless, remembers and layers settings", ()
     }
 
     beforeAll(async () => {
-      ctx = await createJourneyCtx("sk-cli-08-headless");
+      ctx = await createJourneyCtx("subkit-cli-08-headless");
     }, JOURNEY_HOOK_TIMEOUT);
 
     afterAll(async () => {
@@ -66,7 +66,7 @@ describe("the sk terminal chat runs headless, remembers and layers settings", ()
       });
       expect(result.exitCode).toBe(0);
       expect(result.conversation_id).not.toBeNull();
-      expect(stderr.toString()).not.toContain("sk:");
+      expect(stderr.toString()).not.toContain("subkit:");
     });
 
     test("AC2: --output json emits a parseable envelope with all documented fields", async () => {
@@ -153,7 +153,7 @@ describe("the sk terminal chat runs headless, remembers and layers settings", ()
         stderr,
       });
       expect(result.exitCode).toBe(2);
-      expect(stderr.toString()).toContain("sk:");
+      expect(stderr.toString()).toContain("subkit:");
     });
   });
 
@@ -202,8 +202,8 @@ describe("the sk terminal chat runs headless, remembers and layers settings", ()
     }
 
     beforeAll(async () => {
-      ctx = await createJourneyCtx("sk-cli-10-memory");
-      tmpWorkspace = mkdtempSync(join(tmpdir(), "sk-memory-ws-"));
+      ctx = await createJourneyCtx("subkit-cli-10-memory");
+      tmpWorkspace = mkdtempSync(join(tmpdir(), "subkit-memory-ws-"));
       writeFileSync(
         join(tmpWorkspace, "SK.md"),
         "# Project memory\n- prefer JSON response shapes\n- avoid pagination for list endpoints under 100 rows\n",
@@ -335,34 +335,38 @@ describe("the sk terminal chat runs headless, remembers and layers settings", ()
     }
 
     beforeAll(async () => {
-      ctx = await createJourneyCtx("sk-cli-15-settings");
-      userHome = mkdtempSync(join(tmpdir(), "sk-set-home-"));
-      tmpWorkspace = mkdtempSync(join(tmpdir(), "sk-set-ws-"));
-      prevSkHome = testEnv.SK_HOME;
-      testEnv.SK_HOME = userHome;
+      ctx = await createJourneyCtx("subkit-cli-15-settings");
+      userHome = mkdtempSync(join(tmpdir(), "subkit-set-home-"));
+      tmpWorkspace = mkdtempSync(join(tmpdir(), "subkit-set-ws-"));
+      prevSkHome = testEnv.SUBKIT_HOME;
+      testEnv.SUBKIT_HOME = userHome;
     }, JOURNEY_HOOK_TIMEOUT);
 
     afterAll(async () => {
-      if (prevSkHome !== undefined) testEnv.SK_HOME = prevSkHome;
-      else delete testEnv.SK_HOME;
+      if (prevSkHome !== undefined) testEnv.SUBKIT_HOME = prevSkHome;
+      else delete testEnv.SUBKIT_HOME;
       rmSync(userHome, { recursive: true, force: true });
       rmSync(tmpWorkspace, { recursive: true, force: true });
       await ctx.cleanup();
     }, JOURNEY_HOOK_TIMEOUT);
 
     function writeProject(obj: unknown): void {
-      mkdirSync(join(tmpWorkspace, ".sk"), { recursive: true });
-      writeFileSync(join(tmpWorkspace, ".sk", "settings.json"), JSON.stringify(obj), "utf8");
+      mkdirSync(join(tmpWorkspace, ".subkit"), { recursive: true });
+      writeFileSync(join(tmpWorkspace, ".subkit", "settings.json"), JSON.stringify(obj), "utf8");
     }
 
     function writeLocal(obj: unknown): void {
-      mkdirSync(join(tmpWorkspace, ".sk"), { recursive: true });
-      writeFileSync(join(tmpWorkspace, ".sk", "settings.local.json"), JSON.stringify(obj), "utf8");
+      mkdirSync(join(tmpWorkspace, ".subkit"), { recursive: true });
+      writeFileSync(
+        join(tmpWorkspace, ".subkit", "settings.local.json"),
+        JSON.stringify(obj),
+        "utf8",
+      );
     }
 
     function clearLayers(): void {
       try {
-        rmSync(join(tmpWorkspace, ".sk"), { recursive: true, force: true });
+        rmSync(join(tmpWorkspace, ".subkit"), { recursive: true, force: true });
       } catch {}
     }
 

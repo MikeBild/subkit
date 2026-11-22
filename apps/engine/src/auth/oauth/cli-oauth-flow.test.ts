@@ -43,8 +43,8 @@ describe("CLI OAuth authorization-code flow", () => {
         client_name: "SubKit CLI test",
         grant_types: ["authorization_code", "refresh_token"],
         token_endpoint_auth_method: "none",
-        scope: "sk:login",
-        software_id: "subkit-sk",
+        scope: "subkit:login",
+        software_id: "subkit-subkit",
       }),
     });
     expect(registration.status).toBe(201);
@@ -63,7 +63,7 @@ describe("CLI OAuth authorization-code flow", () => {
         response_type: "code",
         code_challenge: CODE_CHALLENGE,
         code_challenge_method: "S256",
-        scope: "sk:login mcp:admin",
+        scope: "subkit:login mcp:admin",
         resource,
         state: "cli-state",
       })}`,
@@ -71,7 +71,7 @@ describe("CLI OAuth authorization-code flow", () => {
     );
     expect(authorize.status).toBe(200);
     const html = await authorize.text();
-    expect(html).toContain('value="sk:login"');
+    expect(html).toContain('value="subkit:login"');
     expect(html).not.toContain('value="mcp:admin"');
     const csrfToken = html.match(/name="csrf_token"\s+value="([^"]+)"/)?.[1];
     if (!csrfToken) throw new Error("consent page omitted CSRF token");
@@ -88,7 +88,7 @@ describe("CLI OAuth authorization-code flow", () => {
         redirect_uri: redirectUri,
         resource,
         state: "cli-state",
-        scope: "sk:login",
+        scope: "subkit:login",
         decision: "approve",
       }).toString(),
       redirect: "manual",
@@ -116,11 +116,11 @@ describe("CLI OAuth authorization-code flow", () => {
       refresh_token: string;
       scope: string;
     };
-    expect(tokens.scope).toBe("sk:login");
+    expect(tokens.scope).toBe("subkit:login");
 
     const exchange = await fetch(`${ctx.baseUrl}/v1/identity/cli-session`, {
       method: "POST",
-      headers: { authorization: `Bearer ${tokens.access_token}`, "user-agent": "sk-cli/test" },
+      headers: { authorization: `Bearer ${tokens.access_token}`, "user-agent": "subkit-cli/test" },
     });
     expect(exchange.status).toBe(200);
     const credential = (await exchange.json()) as { api_key: string; context_id: string };
@@ -132,10 +132,10 @@ describe("CLI OAuth authorization-code flow", () => {
       .where(
         and(
           eq(auditLog.tenant_id, ctx.tenantId),
-          inArray(auditLog.action, [AuditAction.API_KEY_ISSUED, AuditAction.SK_CLI_LOGIN]),
+          inArray(auditLog.action, [AuditAction.API_KEY_ISSUED, AuditAction.SUBKIT_CLI_LOGIN]),
         ),
       );
-    for (const action of [AuditAction.API_KEY_ISSUED, AuditAction.SK_CLI_LOGIN]) {
+    for (const action of [AuditAction.API_KEY_ISSUED, AuditAction.SUBKIT_CLI_LOGIN]) {
       const event = exchangeAudit.find((entry) => entry.action === action);
       expect(event?.metadata).toMatchObject({
         audit_access_type: "token_exchange",

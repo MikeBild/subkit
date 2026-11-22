@@ -44,7 +44,7 @@ function attachStdoutCapture(buf: CapturedLog[]): () => void {
 }
 
 beforeEach(async () => {
-  dir = mkdtempSync(join(tmpdir(), "sk-cfg-leaf-"));
+  dir = mkdtempSync(join(tmpdir(), "subkit-cfg-leaf-"));
   cfgPath = join(dir, "subkit.config.json");
   captured = [];
   const { reconfigureLogger } = await import("../../logging/logger.ts");

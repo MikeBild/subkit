@@ -32,7 +32,7 @@ function fixtureRoot(): string {
 }
 
 async function publishCoverage(root: string): Promise<string> {
-  const coverage = join(root, "reports", "coverage");
+  const coverage = join(root, ".reports", "coverage");
   const target = "packages/shared/src/example.ts";
   const lcov = `SF:${target}\nFN:1,f\nFNDA:1,f\nFNF:1\nFNH:1\nDA:1,1\nLF:1\nLH:1\nend_of_record\n`;
   const proof = createDirectTargetProof(target, lcov);
@@ -56,7 +56,7 @@ afterEach(() => {
 
 test("packages only the selected global coverage run and fails closed", async () => {
   const root = fixtureRoot();
-  writeFileSync(join(root, ".gitignore"), "reports/\nrelease-assets/\n");
+  writeFileSync(join(root, ".gitignore"), ".reports/\nrelease-assets/\n");
   writeFileSync(join(root, "source.txt"), "fixture\n");
   git(root, ["init", "--quiet"]);
   git(root, ["add", "."]);

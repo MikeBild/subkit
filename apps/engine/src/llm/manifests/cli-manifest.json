@@ -1,7 +1,7 @@
 {
-  "$comment": "Canonical `sk` CLI surface, plus the `subkit` compatibility alias. Hand-curated and asserted against `sk <cmd> --help` by cli-manifest.contract.test.ts. Add new subcommands or flags here when the CLI changes.",
-  "binary": "sk",
-  "aliases": ["subkit"],
+  "$comment": "Canonical `subkit` CLI surface. Hand-curated and asserted against `subkit <cmd> --help` by cli-manifest.contract.test.ts. Add new subcommands or flags here when the CLI changes.",
+  "binary": "subkit",
+  "aliases": [],
   "global_flags": [
     { "name": "engine-url", "type": "string" },
     { "name": "api-key", "type": "string" },

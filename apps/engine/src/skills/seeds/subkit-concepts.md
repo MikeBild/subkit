@@ -1,8 +1,8 @@
 ---
 slug: subkit-concepts
 scope: global
-title: sk Core Concepts
-description: The minimum mental model an agent needs to author, run, and reason about sk workflows.
+title: subkit Core Concepts
+description: The minimum mental model an agent needs to author, run, and reason about subkit workflows.
 activates_when: [{"kind":"baseline"},{"kind":"intent_keyword","word":"$caller"},{"kind":"intent_keyword","word":"caller identity"},{"kind":"intent_keyword","word":"aufruferidentität"},{"kind":"intent_keyword","word":"aufrufer"}]
 side_effects: read
 idempotency: none
@@ -11,9 +11,9 @@ tags: [foundations, concepts]
 version: 5
 ---
 
-# sk Core Concepts
+# subkit Core Concepts
 
-sk is a governance-first workflow engine. Every workflow is a list of **steps**
+subkit is a governance-first workflow engine. Every workflow is a list of **steps**
 executed by the engine, backed by PostgreSQL, and scoped to a tenant. This document
 is the canonical primer for agents authoring or editing workflows.
 
@@ -212,5 +212,5 @@ long as connector slugs match and required credentials exist in the prod env.
 - `workflow-authoring.md` — how to actually build these in a conversation.
 - `data-handling.md` — deep dive on the envelope, data_selector, and JSONata.
 - `error-recovery.md` — reading tool errors from the conversation surface.
-- For exhaustive platform facts (every REST endpoint, every `sk` CLI command, the full MCP tool
+- For exhaustive platform facts (every REST endpoint, every `subkit` CLI command, the full MCP tool
   catalog, webhooks, triggers, chat, status) call `search_knowledge({ query, tags: ["sk-platform-reference"] })`.

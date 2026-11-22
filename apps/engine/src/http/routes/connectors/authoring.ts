@@ -67,7 +67,7 @@ const validateConnectorOperation = defineOperation<
     path: "/v1/connectors/validate",
     tags: ["connectors"],
     description:
-      "Checks the definition against its driver's config schema. Persists nothing. Use before `POST /v1/connectors`; `sk connectors validate --file` calls this.",
+      "Checks the definition against its driver's config schema. Persists nothing. Use before `POST /v1/connectors`; `subkit connectors validate --file` calls this.",
     body: CreateConnectorSchema,
     response: ValidateConnectorResponse,
     success: {
@@ -104,7 +104,7 @@ const importConnectorDraftOperation = defineOperation<
     path: "/v1/connectors/import",
     tags: ["connectors"],
     description:
-      "Parses an OpenAPI/Google Discovery document, a request collection, a HAR, GraphQL SDL or introspection endpoint, or a curl command into a connector definition. Persists nothing — review the returned draft, then save it with `POST /v1/connectors`. `sk connectors import --spec` calls this.",
+      "Parses an OpenAPI/Google Discovery document, a request collection, a HAR, GraphQL SDL or introspection endpoint, or a curl command into a connector definition. Persists nothing — review the returned draft, then save it with `POST /v1/connectors`. `subkit connectors import --spec` calls this.",
     body: importConnectorFromSpecInputSchema,
     response: ImportConnectorResponse,
     success: {

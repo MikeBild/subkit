@@ -96,7 +96,7 @@ async function postIdentity(body: unknown): Promise<Response> {
 beforeAll(async () => {
   testDb = await createTestDb("identity-sessions");
   mock = await startMockOidc();
-  configDir = mkdtempSync(join(tmpdir(), "sk-identity-sessions-"));
+  configDir = mkdtempSync(join(tmpdir(), "subkit-identity-sessions-"));
   await writeOidcConfig(mock.url, CLIENT_ID);
 
   const t = await seedTenant(testDb.db, { slug: "default", display_name: "Default" });
@@ -221,7 +221,7 @@ describe("POST /v1/identity/sessions — configured provider boundary", () => {
     expect(identity?.subject).toBe("user-1");
   });
 
-  test("a sign-in from the sk CLI records sk_cli.login, any other client does not", async () => {
+  test("a sign-in from the subkit CLI records sk_cli.login, any other client does not", async () => {
     async function signIn(subject: string, userAgent: string): Promise<string> {
       const identityToken = await mock.signIdToken({
         sub: subject,
@@ -241,14 +241,17 @@ describe("POST /v1/identity/sessions — configured provider boundary", () => {
         .select()
         .from(auditLog)
         .where(
-          and(eq(auditLog.action, AuditAction.SK_CLI_LOGIN), eq(auditLog.actor_id, principalId)),
+          and(
+            eq(auditLog.action, AuditAction.SUBKIT_CLI_LOGIN),
+            eq(auditLog.actor_id, principalId),
+          ),
         );
     }
 
-    const cliUser = await signIn("cli-user", "sk-cli/0.0.1");
+    const cliUser = await signIn("cli-user", "subkit-cli/0.0.1");
     const cliRows = await cliLogins(cliUser);
     expect(cliRows).toHaveLength(1);
-    expect(cliRows[0]?.metadata).toMatchObject({ user_agent: "sk-cli/0.0.1" });
+    expect(cliRows[0]?.metadata).toMatchObject({ user_agent: "subkit-cli/0.0.1" });
 
     const browserUser = await signIn("browser-user", "subkit/0.0.1");
     expect(await cliLogins(browserUser)).toHaveLength(0);

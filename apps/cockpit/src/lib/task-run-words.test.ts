@@ -40,7 +40,7 @@ describe("one vocabulary for run states", () => {
 
   test("the command line prints the same English words", () => {
     const source = readFileSync(
-      resolve(import.meta.dir, "../../../sk/src/commands/tasks.ts"),
+      resolve(import.meta.dir, "../../../subkit/src/commands/tasks.ts"),
       "utf8",
     );
     const block = source.match(/export const RUN_STATE_WORDS[^=]*= \{([^}]*)\}/)?.[1] ?? "";

@@ -97,8 +97,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Public sk install script
-         * @description Returns a POSIX shell script that detects platform/arch, fetches the matching `sk` binary and license notices from the engine bundle or an explicit mirror, verifies SHA256, and installs to ~/.subkit/bin.
+         * Public subkit CLI installer, pinned to this engine's version
+         * @description Returns the release installer script with the CLI version pinned to this engine's version. When the engine image bundles the CLI, the script downloads from this engine's /install files; otherwise from the GitHub release of the same version. It verifies the checksums and installs `subkit` to ~/.local/bin.
          */
         get: {
             parameters: {
@@ -137,7 +137,7 @@ export interface paths {
         };
         /**
          * Installer for the build-or-adopt agent skill
-         * @description Returns a POSIX shell script that installs the `build-or-adopt` skill into the user-level agent skill directories (`~/.claude/skills`, `~/.agents/skills`, or `SK_SKILL_DIR`) and fetches this engine's decision-and-install pages next to it as references. The skill makes a coding agent answer, in writing, which share of what it is about to write is generic execution infrastructure, before it writes it.
+         * @description Returns a POSIX shell script that installs the `build-or-adopt` skill into the user-level agent skill directories (`~/.claude/skills`, `~/.agents/skills`, or `SUBKIT_SKILL_DIR`) and fetches this engine's decision-and-install pages next to it as references. The skill makes a coding agent answer, in writing, which share of what it is about to write is generic execution infrastructure, before it writes it.
          */
         get: {
             parameters: {
@@ -254,7 +254,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/install/sha256sums": {
+    "/install/SHA256SUMS": {
         parameters: {
             query?: never;
             header?: never;
@@ -262,8 +262,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Bundled SHA256SUMS for the binaries shipped in this image
-         * @description Returns the verbatim SHA256SUMS file for the `sk` binary bundled in this engine image. 404 when the slim image is in use; clients should fall back to https://github.com/MikeBild/subkit/releases for the matching tag.
+         * Bundled SHA256SUMS for the CLI binaries shipped in this image
+         * @description Returns the verbatim SHA256SUMS file for the `subkit` CLI binaries bundled in this engine image, so /install works like a release download directory. 404 when the slim image is in use; clients then use the GitHub release of the same version.
          */
         get: {
             parameters: {
@@ -302,7 +302,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/install/sha256sums.sig": {
+    "/install/SHA256SUMS.sig": {
         parameters: {
             query?: never;
             header?: never;
@@ -311,7 +311,7 @@ export interface paths {
         };
         /**
          * Release signature of the bundled SHA256SUMS
-         * @description Returns the Ed25519 release signature over /install/sha256sums, so `sk update` verifies an engine-served binary exactly like a GitHub release asset. 404 when the bundle or its signature is absent.
+         * @description Returns the Ed25519 release signature over /install/SHA256SUMS, so `subkit update --match-engine` verifies an engine-served binary exactly like a GitHub release asset. 404 when the bundle or its signature is absent.
          */
         get: {
             parameters: {
@@ -358,15 +358,15 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Bundled sk binary or license notice
-         * @description Streams the sk CLI binary or its LICENSE/THIRD_PARTY_NOTICES.txt bundled in the engine-with-cli image variant. Returns 404 with a pointer body when the bundle is absent, the asset name is malformed, or the requested platform/arch is not built. Verifies bytes via the `x-subkit-sha256` response header.
+         * Bundled subkit CLI binary or license notice
+         * @description Streams a `subkit` CLI binary or its LICENSE/THIRD_PARTY_NOTICES.txt bundled in the application-complete image, under the same file names as the GitHub release. Returns 404 with a pointer body when the bundle is absent or the file is not part of it. Verifies bytes via the `x-subkit-sha256` response header.
          */
         get: {
             parameters: {
                 query?: never;
                 header?: never;
                 path: {
-                    /** @description Asset slug or LICENSE / THIRD_PARTY_NOTICES.txt. Binary grammar: `sk-(darwin|linux|windows)-(arm64|x64)`. windows-arm64 is not built. */
+                    /** @description Release file name, as on the GitHub release: subkit-darwin-arm64, subkit-linux-x64, subkit-linux-arm64, subkit-windows-x64.exe, LICENSE, THIRD_PARTY_NOTICES.txt. */
                     asset: string;
                 };
                 cookie?: never;
@@ -410,7 +410,7 @@ export interface paths {
         };
         /**
          * Check whether first-run bootstrap is still pending
-         * @description Returns `{pending: true}` until the operator completes the first-run setup wizard. Drives the `sk init` health probe so the CLI can refuse to prompt against an already-bootstrapped engine.
+         * @description Returns `{pending: true}` until the operator completes the first-run setup wizard. Drives the `subkit init` health probe so the CLI can refuse to prompt against an already-bootstrapped engine.
          */
         get: {
             parameters: {
@@ -881,7 +881,7 @@ export interface paths {
                     tz?: string;
                     model?: string | string[];
                     flow?: string | string[];
-                    /** @description Only calls with one of these results: success, quota_exhausted, context_too_large, error. */
+                    /** @description Only calls with one of these results: success, quota_exhausted, context_too_large, key_rejected, error. */
                     result?: string | string[];
                     workflow_id?: string;
                     group_by?: string | string[];
@@ -3058,7 +3058,7 @@ export interface paths {
         };
         /**
          * llms-txt index of what this engine describes about itself
-         * @description A robots.txt-style index (https://llmstxt.org): setup, the sk CLI, runtime settings and the connector catalog, each generated from the engine's code. Links drill down to /llms/{path}; /llms-full.txt carries all pages in one fetch.
+         * @description A robots.txt-style index (https://llmstxt.org): setup, the subkit CLI, runtime settings and the connector catalog, each generated from the engine's code. Links drill down to /llms/{path}; /llms-full.txt carries all pages in one fetch.
          */
         get: {
             parameters: {
@@ -3175,7 +3175,7 @@ export interface paths {
         };
         /**
          * Every documentation chapter in English and German, in one fetch
-         * @description The documentation bundle this binary embeds: the reading sections with their English and German titles and descriptions, and each chapter with its audience, section, order within the section, headings, images, a sha256 and the Markdown body per locale. The engine version travels in the service descriptor and the x-sk-docs-version header, never in the body.
+         * @description The documentation bundle this binary embeds: the reading sections with their English and German titles and descriptions, and each chapter with its audience, section, order within the section, headings, images, a sha256 and the Markdown body per locale. The engine version travels in the service descriptor and the x-subkit-docs-version header, never in the body.
          */
         get: {
             parameters: {
@@ -3382,7 +3382,7 @@ export interface paths {
         };
         /**
          * Compose file that runs this engine's release
-         * @description The Docker Compose topology for a self-hosted sk: this engine's pinned image, PostgreSQL, a private S3-compatible object store, and a one-shot bucket initializer. Served verbatim from the running binary, so the image tag matches the engine you fetched it from. `MASTER_KEY` is the only value you must supply.
+         * @description The Docker Compose topology for a self-hosted subkit: this engine's pinned image, PostgreSQL, a private S3-compatible object store, and a one-shot bucket initializer. Served verbatim from the running binary, so the image tag matches the engine you fetched it from. `MASTER_KEY` is the only value you must supply.
          */
         get: {
             parameters: {
@@ -4920,7 +4920,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Rename the current workspace or change its time zone */
+        /** Rename the current workspace or change its time zone or language */
         patch: {
             parameters: {
                 query?: never;
@@ -8059,7 +8059,7 @@ export interface paths {
         put?: never;
         /**
          * Hand in the result of a command
-         * @description The first result is kept. A repeated result, for example one answered from the runner's ledger, is acknowledged and changes nothing.
+         * @description The first result is kept, also when it arrives after the command was counted as lost. A repeated result, for example one answered from the runner's ledger, is acknowledged and changes nothing.
          */
         post: {
             parameters: {
@@ -9309,14 +9309,14 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/sk/bootstrap": {
+    "/v1/subkit/bootstrap": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Composite startup payload for the sk CLI (whoami + permissions + recent sessions) */
+        /** Composite startup payload for the subkit CLI (whoami + permissions + recent sessions) */
         get: {
             parameters: {
                 query?: never;
@@ -9332,7 +9332,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["SkBootstrap"];
+                        "application/json": components["schemas"]["SubkitBootstrap"];
                     };
                 };
                 /** @description Unauthenticated — no bearer or invalid bearer. */
@@ -13459,7 +13459,7 @@ export interface paths {
         put?: never;
         /**
          * Validate a connector definition without saving it
-         * @description Checks the definition against its driver's config schema. Persists nothing. Use before `POST /v1/connectors`; `sk connectors validate --file` calls this.
+         * @description Checks the definition against its driver's config schema. Persists nothing. Use before `POST /v1/connectors`; `subkit connectors validate --file` calls this.
          */
         post: {
             parameters: {
@@ -13502,7 +13502,7 @@ export interface paths {
         put?: never;
         /**
          * Probe a connector definition without saving it
-         * @description Runs the driver's health probe against a definition as it would be saved. Persists nothing — neither the connector nor the credential. `sk connectors probe --file` calls this. A definition read back from the API may carry the mask `***redacted***`: it stands for the secret stored on the connector with the same slug and environment, as it does on a write. For driver `mcp`, the probe performs a throwaway initialize + tools/list handshake with the supplied static credential and closes the session immediately.
+         * @description Runs the driver's health probe against a definition as it would be saved. Persists nothing — neither the connector nor the credential. `subkit connectors probe --file` calls this. A definition read back from the API may carry the mask `***redacted***`: it stands for the secret stored on the connector with the same slug and environment, as it does on a write. For driver `mcp`, the probe performs a throwaway initialize + tools/list handshake with the supplied static credential and closes the session immediately.
          */
         post: {
             parameters: {
@@ -13563,7 +13563,7 @@ export interface paths {
         put?: never;
         /**
          * Turn an API specification into a connector draft
-         * @description Parses an OpenAPI/Google Discovery document, a request collection, a HAR, GraphQL SDL or introspection endpoint, or a curl command into a connector definition. Persists nothing — review the returned draft, then save it with `POST /v1/connectors`. `sk connectors import --spec` calls this.
+         * @description Parses an OpenAPI/Google Discovery document, a request collection, a HAR, GraphQL SDL or introspection endpoint, or a curl command into a connector definition. Persists nothing — review the returned draft, then save it with `POST /v1/connectors`. `subkit connectors import --spec` calls this.
          */
         post: {
             parameters: {
@@ -16128,6 +16128,8 @@ export interface paths {
                 query?: {
                     lifecycle?: "active" | "archived";
                     owner_id?: string;
+                    /** @description Only tasks created from a message of this conversation. */
+                    source_conversation_id?: string;
                     /** @description Only objects in this catalog block (see `GET /v1/categories`). */
                     category?: components["schemas"]["CatalogCategoryFilter"];
                     q?: string;
@@ -17965,6 +17967,103 @@ export interface paths {
                 };
                 /** @description Too many reports */
                 429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/feedback/anonymous": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a bug report or feedback without signing in
+         * @description For the sign-in page and SubKit Desktop before sign-in. The report is cleaned the same way as a signed-in report and filed in the intake of the operator workspace under the category `feedback`, marked as `anonymous`. Each address may send 3 reports in 10 minutes, each desktop device (`device_id`) 3 as well, and the whole server 60. The whole request may hold at most 6 MB; the limits for each file stay the same.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AnonymousFeedbackBody"];
+                };
+            };
+            responses: {
+                /** @description Filed */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SubmittedFeedback"];
+                    };
+                };
+                /** @description Sent from another site */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Report id already used */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Request or attachment too large */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Attachment refused */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Too many reports */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description This server takes no reports without signing in */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -28891,13 +28990,24 @@ export interface components {
             id: string;
             display_name: string;
             timezone: string;
+            /**
+             * @description Language for texts that no person's language decides, such as device connector names and scheduled task runs; a person's own app language still wins
+             * @enum {string}
+             */
+            language: "de" | "en";
             /** @enum {string} */
             origin: "self_hosted" | "self_service";
         };
         UpdateWorkspaceBody: {
+            /** @description Name of the workspace */
             display_name?: string;
             /** @description IANA time zone, e.g. Europe/Berlin */
             timezone?: string;
+            /**
+             * @description Language for texts that no person's language decides, such as device connector names and scheduled task runs; a person's own app language still wins
+             * @enum {string}
+             */
+            language?: "de" | "en";
         };
         AiAccess: {
             /** @description This workspace can make model calls right now. A self-service workspace needs its own provider key for that; a self-hosted one uses the engine settings. */
@@ -29211,6 +29321,11 @@ export interface components {
                 display_name: string;
                 /** @description IANA time zone of the workspace */
                 timezone: string;
+                /**
+                 * @description Language for texts that no person's language decides, such as device connector names and scheduled task runs; a person's own app language still wins
+                 * @enum {string}
+                 */
+                language: "de" | "en";
                 /** @enum {string} */
                 origin: "self_hosted" | "self_service";
                 /** @description True when this workspace is the engine operator and may change the whole engine */
@@ -29336,7 +29451,7 @@ export interface components {
             step_id: string;
             kind: string;
             /** @enum {string} */
-            state: "queued" | "running" | "done" | "refused" | "confirmation_required" | "failed" | "stopped";
+            state: "queued" | "running" | "done" | "refused" | "confirmation_required" | "failed" | "stopped" | "unclear";
             /** @description What the step worked on; only the device's person reads it, others get null. */
             target: string | null;
             /** @description True when the device's person can read the redacted screenshot of this step, kept for 30 days. */
@@ -29509,7 +29624,7 @@ export interface components {
                 note?: string;
             } | null;
         };
-        SkBootstrap: {
+        SubkitBootstrap: {
             whoami: {
                 /** Format: uuid */
                 id: string;
@@ -29557,7 +29672,7 @@ export interface components {
                  */
                 personality: "concise" | "balanced" | "verbose";
                 /**
-                 * @description Window-title format used by the sk REPL.
+                 * @description Window-title format used by the subkit REPL.
                  * @enum {string}
                  */
                 titleFormat: "session-id" | "tenant-session" | "model-tenant-session";
@@ -29792,6 +29907,7 @@ export interface components {
                             key: string;
                             var: string;
                         }[];
+                        vault?: string[];
                     };
                     connector_query?: {
                         fixed: {
@@ -34513,6 +34629,16 @@ export interface components {
             revision: number;
             /** @enum {string} */
             lifecycle: "active" | "archived";
+            /**
+             * Format: uuid
+             * @description The conversation whose message asked for this task. Null when the task was not created from a chat message.
+             */
+            source_conversation_id: string | null;
+            /**
+             * Format: uuid
+             * @description The chat message this task serves. Null when the task was not created from a chat message or the message was deleted.
+             */
+            source_message_id: string | null;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -34630,6 +34756,16 @@ export interface components {
             revision: number;
             /** @enum {string} */
             lifecycle: "active" | "archived";
+            /**
+             * Format: uuid
+             * @description The conversation whose message asked for this task. Null when the task was not created from a chat message.
+             */
+            source_conversation_id: string | null;
+            /**
+             * Format: uuid
+             * @description The chat message this task serves. Null when the task was not created from a chat message or the message was deleted.
+             */
+            source_message_id: string | null;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -34997,11 +35133,16 @@ export interface components {
             /** @enum {string} */
             state: "collected" | "reviewing" | "admitted" | "discarded";
             version: number;
+            /** @description Who collected the item. `anonymous` is a report sent without signing in, from the sign-in page or the desktop app. */
             collected_by: {
                 /** @enum {string} */
                 kind: "user" | "system_account";
                 /** Format: uuid */
                 id: string;
+            } | {
+                /** @enum {string} */
+                kind: "anonymous";
+                id: null;
             };
             /** @enum {string|null} */
             admitted_target_kind: "knowledge" | "skill" | null;
@@ -35049,7 +35190,7 @@ export interface components {
             /** Format: uri */
             source_url?: string;
             agent: string;
-            /** @description Assistant that prepared the entry: the MCP client name, chat for Cockpit chat or sk for the sk CLI. Absent when the assistant was not recorded. */
+            /** @description Assistant that prepared the entry: the MCP client name, chat for Cockpit chat or subkit for the subkit CLI. Absent when the assistant was not recorded. */
             client?: string;
             session_id: string;
             repo: string | null;
@@ -35317,6 +35458,18 @@ export interface components {
                 /** Format: date-time */
                 at: string;
             }[];
+        };
+        AnonymousFeedbackBody: components["schemas"]["SubmitFeedbackBody"] & {
+            /**
+             * Format: email
+             * @description An address the operator may answer to. It is stored as written.
+             */
+            contact_email?: string;
+            /**
+             * Format: uuid
+             * @description The device id of SubKit Desktop. The app sends it so its reports count against the device as well as the address.
+             */
+            device_id?: string;
         };
         KnowledgeSourceVersionListResponse: {
             items: components["schemas"]["KnowledgeSourceVersion"][];
@@ -35678,7 +35831,7 @@ export interface components {
             /** @description Ids of the domain's active tasks as listed in the briefing: the caller's own, or every task of the tenant for an admin. Empty without task:read. */
             tasks: string[];
             tasks_omitted: number;
-            /** @description Slugs of the skills that teach how to work with sk, listed for every domain. */
+            /** @description Slugs of the skills that teach how to work with subkit, listed for every domain. */
             guides: string[];
             /** @description Intake items awaiting review whose shared category is one of the requested domains, split into collected clips and session learnings, plus the draft proposals that cite them; null when the caller cannot read intake. Never includes item content. */
             intake: {

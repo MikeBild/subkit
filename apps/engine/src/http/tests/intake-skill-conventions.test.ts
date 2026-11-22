@@ -34,7 +34,7 @@ async function ensureMockConfig(): Promise<void> {
         NODE_ENV: "test",
         LLM_PROVIDER: "mock",
       },
-      configPathOverride: join(mkdtempSync(join(tmpdir(), "sk-cfg-conventions-")), "c.json"),
+      configPathOverride: join(mkdtempSync(join(tmpdir(), "subkit-cfg-conventions-")), "c.json"),
     });
   }
   await setConfigKey(["llm", "provider"], "mock");

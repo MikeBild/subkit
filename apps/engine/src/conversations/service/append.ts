@@ -1,3 +1,4 @@
+import { typedReply } from "@shared/typed-reply.ts";
 import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { resolveActor } from "../../audit/recorders/types.ts";
@@ -53,7 +54,7 @@ export async function appendUserMessage(
     const pending = (await listElicitationsForConversation(p.tenant_id, p.conversation_id, exec))
       .filter((elicitation) => elicitation.status === "pending")
       .at(0);
-    if (pending) {
+    if (pending && typedReply(pending, p.message).kind !== "message") {
       throw new PendingElicitationBlockedError({
         id: pending.id,
         tool_name: pending.tool_name,

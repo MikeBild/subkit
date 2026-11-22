@@ -32,7 +32,7 @@ function attach(
 }
 
 beforeEach(async () => {
-  dir = mkdtempSync(join(tmpdir(), "sk-cfg-tenant-strip-"));
+  dir = mkdtempSync(join(tmpdir(), "subkit-cfg-tenant-strip-"));
   cfgPath = join(dir, "subkit.config.json");
   captured = [];
   restoreStdout = attach(captured);

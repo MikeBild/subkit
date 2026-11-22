@@ -217,7 +217,7 @@ export { InviteRedeemedSchema } from "./operations/identity-representation.ts";
 export {
   effectivePermissionsOperation,
   enforceTenantMatch,
-  skBootstrapOperation,
+  subkitBootstrapOperation,
   whoamiOperation,
 } from "./operations/identity-self.ts";
 export { getSetupOperation, putSetupOperation } from "./operations/identity-setup.ts";
@@ -567,3 +567,4 @@ export {
 export { PackagePreviewJsonRequestSchema, PackagePreviewResultSchema } from "./packages-schemas.ts";
 export type { EventClass } from "./stats/event-classes.ts";
 export { EVENT_CLASS_ACTIONS } from "./stats/event-classes.ts";
+export { WorkspaceLanguageSchema } from "./workspace-schemas.ts";

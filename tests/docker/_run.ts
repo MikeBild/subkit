@@ -12,6 +12,7 @@ import {
 } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import path from "node:path";
+import { releaseAssetFor } from "../../packages/cli-core/src/release/assets.ts";
 import { gitVisibleSourceDigest } from "../../scripts/lib/source-digest.ts";
 
 export const REPO_ROOT = path.resolve(import.meta.dir, "..", "..");
@@ -186,10 +187,9 @@ function extractHostCli(image: string): {
   sha256: string;
   platform: string;
 } {
-  const os = process.platform === "win32" ? "windows" : process.platform;
-  const arch = process.arch;
-  const platform = `${os}_${arch}`;
-  const filename = `sk_${platform}${os === "windows" ? ".exe" : ""}`;
+  const platform = `${process.platform}_${process.arch}`;
+  const filename = releaseAssetFor("subkit", process.platform, process.arch);
+  if (!filename) throw new Error(`no subkit build for ${platform}`);
   const dir = mkdtempSync(path.join(tmpdir(), "subkit-docker-host-cli-"));
   const container = output("docker", ["create", image]).trim();
   try {
@@ -238,7 +238,7 @@ export function buildFreshImage(run: DockerTestRun): DockerTestRun {
       "-p",
       run.project,
       "-f",
-      "docker-compose.test.yml",
+      "docker/docker-compose.test.yml",
       "build",
       "--build-arg",
       `CLI_BINARIES_SOURCE=${cliBinariesSource}`,
@@ -261,7 +261,7 @@ export function buildFreshImage(run: DockerTestRun): DockerTestRun {
     "/bin/sh",
     imageId,
     "-c",
-    "sha256sum /usr/local/bin/engine.bin /usr/local/bin/sk.bin",
+    "sha256sum /usr/local/bin/engine.bin /usr/local/bin/subkit.bin",
   ]);
   const binaries = Object.fromEntries(
     hashes
@@ -275,9 +275,11 @@ export function buildFreshImage(run: DockerTestRun): DockerTestRun {
   if (
     Object.keys(binaries).length !== 2 ||
     !binaries["/usr/local/bin/engine.bin"] ||
-    !binaries["/usr/local/bin/sk.bin"]
+    !binaries["/usr/local/bin/subkit.bin"]
   )
-    throw new Error("image receipt did not contain exactly engine.bin and sk.bin SHA-256 hashes");
+    throw new Error(
+      "image receipt did not contain exactly engine.bin and subkit.bin SHA-256 hashes",
+    );
   const hostCli = extractHostCli(imageId);
   const platform = output("docker", [
     "image",
@@ -346,7 +348,7 @@ export function cleanupDockerTestRun(run: DockerTestRun): DockerCleanupResult {
     DOCKER_CONFIG: process.env.DOCKER_CONFIG ?? path.join(userInfo().homedir, ".docker"),
     ...runEnv(run),
   };
-  const composeArgs = ["compose", "-p", run.project, "-f", "docker-compose.test.yml"];
+  const composeArgs = ["compose", "-p", run.project, "-f", "docker/docker-compose.test.yml"];
 
   spawnSync("docker", [...composeArgs, "stop", "--timeout", String(DOCKER_STOP_TIMEOUT_SECONDS)], {
     cwd: REPO_ROOT,
@@ -408,7 +410,7 @@ export function cleanupDockerTestRun(run: DockerTestRun): DockerCleanupResult {
       "-p",
       run.project,
       "-f",
-      "docker-compose.test.yml",
+      "docker/docker-compose.test.yml",
       "down",
       "--volumes",
       "--remove-orphans",

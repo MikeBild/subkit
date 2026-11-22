@@ -2,14 +2,14 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { initialSessionState, type SkSessionState } from "@cli-core/index.ts";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import type { ResolvedProfile } from "../../../../sk/src/config.ts";
-import { EngineClient } from "../../../../sk/src/engine-client.ts";
-import { handleSlash } from "../../../../sk/src/repl/slash/handler.ts";
+import type { ResolvedProfile } from "../../../../subkit/src/config.ts";
+import { EngineClient } from "../../../../subkit/src/engine-client.ts";
+import { handleSlash } from "../../../../subkit/src/repl/slash/handler.ts";
 import * as conversationsSvc from "../../conversations/service/index.ts";
 import { skills } from "../../db/schema/index.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx } from "./setup.ts";
 
-describe("the sk terminal chat proxies MCP and answers slash commands", () => {
+describe("the subkit terminal chat proxies MCP and answers slash commands", () => {
   describe("the MCP stdio proxy", () => {
     let ctx: JourneyCtx;
 
@@ -33,11 +33,11 @@ describe("the sk terminal chat proxies MCP and answers slash commands", () => {
         engine_url: ctx.baseUrl,
         api_key: ctx.apiKey,
         tenant: ctx.tenantId,
-        user_agent: "sk-cli/0.0.1 (mcp-test)",
+        user_agent: "subkit-cli/0.0.1 (mcp-test)",
       });
 
       const server = new Server(
-        { name: "sk-cli", version: "0.0.1" },
+        { name: "subkit-cli", version: "0.0.1" },
         { capabilities: { tools: {} } },
       );
 
@@ -157,7 +157,7 @@ describe("the sk terminal chat proxies MCP and answers slash commands", () => {
     }
 
     beforeAll(async () => {
-      ctx = await createJourneyCtx("sk-cli-13-mcp-stdio");
+      ctx = await createJourneyCtx("subkit-cli-13-mcp-stdio");
     }, JOURNEY_HOOK_TIMEOUT);
 
     afterAll(async () => {
@@ -250,7 +250,7 @@ describe("the sk terminal chat proxies MCP and answers slash commands", () => {
     }
 
     beforeAll(async () => {
-      ctx = await createJourneyCtx("sk-cli-14-slash");
+      ctx = await createJourneyCtx("subkit-cli-14-slash");
       profile = {
         name: "journey",
         engine_url: ctx.baseUrl,
@@ -262,7 +262,7 @@ describe("the sk terminal chat proxies MCP and answers slash commands", () => {
         engine_url: profile.engine_url,
         api_key: profile.api_key,
         tenant: profile.active_tenant_id,
-        user_agent: "sk-cli/0.0.1 (test)",
+        user_agent: "subkit-cli/0.0.1 (test)",
       });
 
       await ctx.db.insert(skills).values({

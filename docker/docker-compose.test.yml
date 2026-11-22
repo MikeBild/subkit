@@ -1,0 +1,94 @@
+configs:
+  object_store_identities:
+    content: |
+      {
+        "identities": [
+          {
+            "name": "subkit",
+            "credentials": [
+              { "accessKey": "subkit", "secretKey": "subkit-object-test" }
+            ],
+            "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+          }
+        ]
+      }
+
+services:
+  postgres:
+    image: postgres:18.6-trixie@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
+    ports:
+      - "127.0.0.1:${SUBKIT_DB_PORT:-0}:5432"
+    environment:
+      POSTGRES_USER: subkit
+      POSTGRES_PASSWORD: subkit-test
+      POSTGRES_DB: subkit
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U subkit -d subkit"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  object-store:
+    image: chrislusf/seaweedfs@sha256:bb05d66d2963b1cc48073190781c3dd29e2c4c88a2ae2986bf58e38c86d89c6e
+    command: server -dir=/data -master.volumePreallocate=false -s3 -s3.port=9000 -s3.config=/etc/seaweedfs/s3.json
+    configs:
+      - source: object_store_identities
+        target: /etc/seaweedfs/s3.json
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8888/"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  object-store-init:
+    image: chrislusf/seaweedfs@sha256:bb05d66d2963b1cc48073190781c3dd29e2c4c88a2ae2986bf58e38c86d89c6e
+    depends_on:
+      object-store:
+        condition: service_healthy
+    entrypoint:
+      [
+        "/bin/sh",
+        "-c",
+        "for attempt in 1 2 3 4 5 6 7 8 9 10; do echo 's3.bucket.create -name subkit-test' | timeout 20 weed shell -master object-store:9333 -filer object-store:8888 >/dev/null 2>&1; if wget -q -O /dev/null http://object-store:8888/buckets/subkit-test/; then exit 0; fi; sleep 2; done; echo 'object store did not accept the bucket subkit-test' >&2; exit 1",
+      ]
+
+  engine:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: ${SUBKIT_TEST_IMAGE:-subkit:cintest}
+    environment:
+      DATABASE_URL: postgres://subkit:subkit-test@postgres:5432/subkit
+      NODE_ENV: production
+      MASTER_KEY: "00000000000000000000000000000000000000000000000000000000000000aa"
+      SUBKIT_BOOTSTRAP_KEY: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      OBJECT_STORAGE_ENDPOINT: http://object-store:9000
+      OBJECT_STORAGE_REGION: us-east-1
+      OBJECT_STORAGE_BUCKET: subkit-test
+      OBJECT_STORAGE_ACCESS_KEY_ID: subkit
+      OBJECT_STORAGE_SECRET_ACCESS_KEY: subkit-object-test
+      OBJECT_STORAGE_PATH_STYLE: "true"
+      SUBKIT_DIAGNOSTICS: ${SUBKIT_DIAGNOSTICS:-0}
+      SUBKIT_DIAGNOSTICS_INTERVAL_MS: ${SUBKIT_DIAGNOSTICS_INTERVAL_MS:-1000}
+      SUBKIT_DIAGNOSTICS_MAX_SAMPLES: ${SUBKIT_DIAGNOSTICS_MAX_SAMPLES:-300}
+      SUBKIT_DIAGNOSTICS_GC: ${SUBKIT_DIAGNOSTICS_GC:-0}
+      SUBKIT_DIAGNOSTICS_LOCK_SNAPSHOT: ${SUBKIT_DIAGNOSTICS_LOCK_SNAPSHOT:-0}
+      SUBKIT_DIAGNOSTICS_EMBEDDING_INLINE: ${SUBKIT_DIAGNOSTICS_EMBEDDING_INLINE:-0}
+      BUN_OPTIONS: ${SUBKIT_BUN_OPTIONS:-}
+    ports:
+      - "127.0.0.1:${SUBKIT_TEST_PORT:-0}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      object-store-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -fsS http://127.0.0.1:3000/health >/dev/null && curl -fsS http://127.0.0.1:3000/ready >/dev/null",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 90s

@@ -20,7 +20,7 @@ export const searchDocsTool: ConversationTool = {
   inputSchema,
   category: "tenant_read" as const,
   use_case:
-    "Answer questions about SubKit itself (install, sk CLI, Cockpit, Web Clipper, settings) from the product documentation, or pull endpoint- or field-level detail for a specific connector while drafting a step. Complements `fetch_connector_docs` (which returns a connector overview) and `search_knowledge` (which searches tenant Knowledge Sources).",
+    "Answer questions about SubKit itself (install, subkit CLI, Cockpit, Web Clipper, settings) from the product documentation, or pull endpoint- or field-level detail for a specific connector while drafting a step. Complements `fetch_connector_docs` (which returns a connector overview) and `search_knowledge` (which searches tenant Knowledge Sources).",
   important_notes: [
     "Source `product` searches the read-only product documentation in English and German; each hit names its chapter `slug`, `heading`, `anchor` and content `sha256`. It is the default when no connector is bound.",
     "Source `connector` searches a connector's ingested docs and requires `connector_id` unless the conversation is bound to a connector; it is the default when a connector is bound.",

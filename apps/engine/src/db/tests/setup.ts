@@ -9,6 +9,7 @@ import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { createMigrationDbFromUrl } from "../client.ts";
 import { runMigrations } from "../migrate.ts";
+import type { EmbeddedMigration } from "../migrations/embedded.ts";
 import * as schema from "../schema/index.ts";
 
 const { Client, Pool } = pg;
@@ -103,7 +104,10 @@ export type TestDb = {
   cleanup: () => Promise<void>;
 };
 
-export async function createTestDb(label: string): Promise<TestDb> {
+export async function createTestDb(
+  label: string,
+  migrations?: readonly EmbeddedMigration[],
+): Promise<TestDb> {
   const rand = randomBytes(6).toString("hex");
   const dbName = `test_${label}_${process.pid}_${rand}`.toLowerCase().replace(/[^a-z0-9_]/g, "_");
 
@@ -122,7 +126,7 @@ export async function createTestDb(label: string): Promise<TestDb> {
   const url = rewriteDbName(adminUrl, dbName);
   const migration = createMigrationDbFromUrl(url);
   try {
-    await runMigrations(migration.db);
+    await runMigrations(migration.db, migrations);
   } finally {
     await migration.pool.end();
   }

@@ -12,12 +12,12 @@ import {
   LOCAL_DEFAULT_LLM_API_KEY,
   LOCAL_DEFAULT_LLM_PROVIDER,
   LOCAL_DEFAULT_TENANT_NAME,
-} from "../../apps/sk/src/commands/init.ts";
+} from "../../apps/subkit/src/commands/init.ts";
 import { COMPOSE_SERVICE, DEFAULT_HOST_PORT, DEMO_WORKFLOW } from "../start-local.ts";
 
 const ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const compose = readFileSync(join(ROOT, "docker-compose.yml"), "utf8");
-const initSource = readFileSync(join(ROOT, "apps/sk/src/commands/init.ts"), "utf8");
+const initSource = readFileSync(join(ROOT, "apps/subkit/src/commands/init.ts"), "utf8");
 const startLocalSource = readFileSync(join(ROOT, "scripts/start-local.ts"), "utf8");
 
 describe("start-local ↔ docker-compose.yml", () => {
@@ -48,7 +48,7 @@ describe("start-local ↔ the seeded starter workflows", () => {
   });
 });
 
-describe("sk init --defaults ↔ the engine's setup contract", () => {
+describe("subkit init --defaults ↔ the engine's setup contract", () => {
   test("the flag exists and fills every payload field", () => {
     expect(initSource).toContain("defaults:");
     for (const field of ["admin_email", "tenant_name", "llm_provider", "llm_api_key"]) {

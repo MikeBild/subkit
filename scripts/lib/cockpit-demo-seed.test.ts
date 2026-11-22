@@ -275,7 +275,7 @@ test("seed shows every feature: intake from AI, template connectors, an AI step 
   expect(versions.rows.map((row) => row.version)).toEqual([1, 2, 3]);
   for (const table of ["workflows", "connectors", "knowledge_sources", "skills"]) {
     const leaked = await context.pool.query(
-      `SELECT count(*)::int AS n FROM ${table} WHERE tenant_id=$1 AND (description LIKE 'Mock description:%' OR category IN ('mock-category','sk'))`,
+      `SELECT count(*)::int AS n FROM ${table} WHERE tenant_id=$1 AND (description LIKE 'Mock description:%' OR category IN ('mock-category','subkit'))`,
       [tenantId],
     );
     expect(leaked.rows[0]?.n).toBe(0);
@@ -293,7 +293,7 @@ test("platform files and starter workflows lose mock catalog text after the plat
   );
   await context.pool.query(
     `INSERT INTO files (id, tenant_id, status, filename, content_type, size_bytes, storage_uri, description, category, description_source, category_source)
-     VALUES ($1,$2,'ready','sk-ref-webhooks.md','text/markdown',10,'s3://demo/x','Mock description: You catalogue one file','sk','llm','llm')`,
+     VALUES ($1,$2,'ready','sk-ref-webhooks.md','text/markdown',10,'s3://demo/x','Mock description: You catalogue one file','subkit','llm','llm')`,
     [fileId, tenantId],
   );
   await context.pool.query(
@@ -302,7 +302,7 @@ test("platform files and starter workflows lose mock catalog text after the plat
     [workflowId, tenantId],
   );
   await context.pool.query(
-    "INSERT INTO catalog_categories (tenant_id,name) VALUES ($1,'mock-category'),($1,'sk') ON CONFLICT DO NOTHING",
+    "INSERT INTO catalog_categories (tenant_id,name) VALUES ($1,'mock-category'),($1,'subkit') ON CONFLICT DO NOTHING",
     [tenantId],
   );
   try {
@@ -324,7 +324,7 @@ test("platform files and starter workflows lose mock catalog text after the plat
     expect(workflow.rows[0]?.category).toBe("demo");
     expect(String(workflow.rows[0]?.description)).not.toContain("Mock");
     const categories = await context.pool.query(
-      "SELECT name FROM catalog_categories WHERE tenant_id=$1 AND name IN ('mock-category','sk')",
+      "SELECT name FROM catalog_categories WHERE tenant_id=$1 AND name IN ('mock-category','subkit')",
       [tenantId],
     );
     expect(categories.rows).toEqual([]);

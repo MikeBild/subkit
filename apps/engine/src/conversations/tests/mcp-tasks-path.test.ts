@@ -17,7 +17,7 @@ let connectorId: string;
 beforeAll(async () => {
   testEnv.MASTER_KEY = "b".repeat(64);
   testEnv.LLM_PROVIDER = "mock";
-  testEnv.SK_MCP_MODE = "authoring";
+  testEnv.SUBKIT_MCP_MODE = "authoring";
   resetMockProvider();
   suite = await startMcpTestSuite("conversations-tasks", { withQueue: true });
   await setConfigKey("server.public_base_url", suite.http.baseUrl, { force: true });
@@ -40,7 +40,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await suite.cleanup();
-  delete testEnv.SK_MCP_MODE;
+  delete testEnv.SUBKIT_MCP_MODE;
 });
 
 async function pollTask(

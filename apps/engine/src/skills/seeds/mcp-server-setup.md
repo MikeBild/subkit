@@ -2,8 +2,8 @@
 slug: mcp-server-setup
 scope: global
 title: MCP Server Setup
-description: Protocol-level facts for connecting any MCP client (Codex, Claude Desktop, Cursor, Continue, Zed, Goose, …) to sk as an MCP server, and how to tell that direction apart from registering a remote MCP server (which is a connector with driver `mcp`). Vendor-specific config shapes live in the VendorRecipeManifest and must be fetched via `get_vendor_recipe`, not reproduced in prose.
-activates_when: [{"kind":"baseline"},{"kind":"intent_keyword","word":"mcp"},{"kind":"intent_keyword","word":"mcp server"},{"kind":"intent_keyword","word":"mcp client"},{"kind":"intent_keyword","word":"model context protocol"},{"kind":"intent_keyword","word":"codex"},{"kind":"intent_keyword","word":"claude code"},{"kind":"intent_keyword","word":"claude desktop"},{"kind":"intent_keyword","word":"cursor"},{"kind":"intent_keyword","word":"continue"},{"kind":"intent_keyword","word":"zed"},{"kind":"intent_keyword","word":"goose"},{"kind":"intent_keyword","word":"sk mcp"}]
+description: Protocol-level facts for connecting any MCP client (Codex, Claude Desktop, Cursor, Continue, Zed, Goose, …) to subkit as an MCP server, and how to tell that direction apart from registering a remote MCP server (which is a connector with driver `mcp`). Vendor-specific config shapes live in the VendorRecipeManifest and must be fetched via `get_vendor_recipe`, not reproduced in prose.
+activates_when: [{"kind":"baseline"},{"kind":"intent_keyword","word":"mcp"},{"kind":"intent_keyword","word":"mcp server"},{"kind":"intent_keyword","word":"mcp client"},{"kind":"intent_keyword","word":"model context protocol"},{"kind":"intent_keyword","word":"codex"},{"kind":"intent_keyword","word":"claude code"},{"kind":"intent_keyword","word":"claude desktop"},{"kind":"intent_keyword","word":"cursor"},{"kind":"intent_keyword","word":"continue"},{"kind":"intent_keyword","word":"zed"},{"kind":"intent_keyword","word":"goose"},{"kind":"intent_keyword","word":"subkit mcp"}]
 side_effects: read
 idempotency: none
 maturity: stable
@@ -11,22 +11,22 @@ tags: [mcp, integration]
 version: 5
 ---
 
-# Connecting a client to sk as an MCP server
+# Connecting a client to subkit as an MCP server
 
-**Check the direction first.** This skill covers sk *serving* MCP to a client.
-If the user wants sk to CALL a remote MCP server ("add the Atlassian MCP
+**Check the direction first.** This skill covers subkit *serving* MCP to a client.
+If the user wants subkit to CALL a remote MCP server ("add the Atlassian MCP
 server", "connect our internal MCP server", "register an MCP server"), that is
 the other direction and none of the steps below apply: a remote MCP server is a
 **connector with `driver: "mcp"`**, created and managed through the connector
-tools, `POST /v1/connectors`, or `sk connectors` (`mcp-inspect`,
+tools, `POST /v1/connectors`, or `subkit connectors` (`mcp-inspect`,
 `mcp-authorize`, `enable`, `disable`). There is no separate MCP-server
-registry, no `sk mcp-servers` command and no `/v1/mcp-servers` route — never
+registry, no `subkit mcp-servers` command and no `/v1/mcp-servers` route — never
 send a user to one. The `connector-creation-guidance` skill carries that path.
 
-sk exposes MCP at two transports:
+subkit exposes MCP at two transports:
 
 - **Streamable HTTP** — `${engine_url}/mcp`, `Authorization: Bearer <api_key>`. Default for any modern MCP client.
-- **stdio proxy** — `sk mcp` on the user's machine. Reads `SK_API_KEY`, `SK_ENGINE_URL`, and the active profile from `~/.sk/config.json`. Use only when the client cannot speak Streamable HTTP.
+- **stdio proxy** — `subkit mcp` on the user's machine. Reads `SUBKIT_API_KEY`, `SUBKIT_ENGINE_URL`, and the active profile from `~/.subkit/config.json`. Use only when the client cannot speak Streamable HTTP.
 
 ## How to answer "how do I connect X?"
 
@@ -44,7 +44,7 @@ The base-prompt TURN-ONE DISCIPLINE rule applies in full: do not call `create_ap
 ## Refusals
 
 - Do not substitute this tool lookup with an inline JSON shape, even for well-known clients.
-- Do not emit `your-sk-instance.com`, `<YOUR_API_KEY>`, `[rest-of-your-key]`, or any other placeholder host / key. The output guard will rewrite these; the user will reject them.
+- Do not emit `your-subkit-instance.com`, `<YOUR_API_KEY>`, `[rest-of-your-key]`, or any other placeholder host / key. The output guard will rewrite these; the user will reject them.
 - Do not recommend a transport the recipe does not declare in its `transports` array.
 
 ## Example: get_vendor_recipe response (engine-side only)

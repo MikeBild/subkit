@@ -14,6 +14,7 @@ import {
   NO_ONBOARDING,
   startOnboarding,
 } from "../../shared/onboarding.ts";
+import { platformCapabilities } from "../../shared/platform-capabilities.ts";
 import {
   type CheckSlot,
   EXAMPLE_ADDRESS,
@@ -30,6 +31,7 @@ import {
   type Screen,
   screenFor,
   signInFor,
+  signInHint,
   slotFor,
 } from "./screens-model.ts";
 import { frameFor, stepIndex } from "./steps-model.ts";
@@ -100,6 +102,7 @@ function connectState(patch: Partial<ConnectState> = {}): ConnectState {
       lost: [],
     },
     local: LOCAL_UNAVAILABLE,
+    platform: platformCapabilities("darwin", "arm64"),
     ...patch,
   };
 }
@@ -298,7 +301,7 @@ describe("connect flow: sign-in", () => {
       origin: profile.serverOrigin,
       host: "work.example.com",
       signin: { phase: "done", serverVersion: "11.2.0" },
-      joining: false,
+      hint: null,
     });
     expect(frameFor(screen).dots).toEqual({ visible: true, current: 1, total: 6 });
   });
@@ -544,5 +547,42 @@ describe("window frame", () => {
   test("settings mark the toggle as pressed", () => {
     const frame = frameFor(screenFor(connectState({ view: "settings" }), INITIAL_FLOW));
     expect(frame).toEqual({ dots: { visible: false, current: 0, total: 6 }, settingsOpen: true });
+  });
+});
+
+describe("signInHint", () => {
+  test("creating a workspace says so until the browser hands back", () => {
+    expect(signInHint("create", { phase: "ready" })).toBe("signin.create");
+    expect(signInHint("create", { phase: "waiting" })).toBe("signin.create");
+    expect(signInHint("create", { phase: "exchanging" })).toBeNull();
+  });
+
+  test("an invitation asks to join and confirm while the browser has it", () => {
+    expect(signInHint("invite", { phase: "waiting" })).toBe("signin.join");
+    expect(signInHint("invite", { phase: "ready" })).toBeNull();
+  });
+
+  test("a plain server sign-in needs no hint", () => {
+    expect(signInHint("server", { phase: "ready" })).toBeNull();
+    expect(signInHint("server", { phase: "waiting" })).toBeNull();
+  });
+});
+
+describe("platform capabilities", () => {
+  test("a Mac with Apple Silicon offers the local workspace and the local capabilities", () => {
+    expect(connectScreen(screenFor(connectState(), CONNECT)).localMacOnly).toBe(false);
+    expect(screenFor(connectState({ view: "local" }), CONNECT)).toMatchObject({
+      kind: "local-capabilities",
+      supported: true,
+    });
+  });
+
+  test("Windows says that the local workspace and the local capabilities are Mac-only", () => {
+    const windows = { platform: platformCapabilities("win32", "x64") };
+    expect(connectScreen(screenFor(connectState(windows), CONNECT)).localMacOnly).toBe(true);
+    expect(screenFor(connectState({ ...windows, view: "local" }), CONNECT)).toMatchObject({
+      kind: "local-capabilities",
+      supported: false,
+    });
   });
 });

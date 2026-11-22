@@ -9,8 +9,8 @@ import { startOwnedChild } from "../../../scripts/lib/owned-process-watchdog.ts"
 import {
   createIsolatedTestHome,
   removeIsolatedTestHome,
-} from "../../sk/src/tests/isolated-test-home.ts";
-import { runIsolatedTestFile } from "../../sk/src/tests/run-isolated-test-file.ts";
+} from "../../subkit/src/tests/isolated-test-home.ts";
+import { runIsolatedTestFile } from "../../subkit/src/tests/run-isolated-test-file.ts";
 import { boundedConcurrency, runBoundedInOrder } from "./audit/bounded-runner.ts";
 import {
   type CoverageRunLease,
@@ -66,8 +66,8 @@ const __filename = fileURLToPath(import.meta.url);
 const REPO = resolve(dirname(__filename), "..", "..", "..");
 const COVERAGE_DIR = process.env.SUBKIT_COVERAGE_DIR
   ? resolve(process.env.SUBKIT_COVERAGE_DIR)
-  : join(REPO, "reports/coverage");
-const COVERAGE_INPUT_ROOTS = ["apps/cockpit/src", "apps/engine/src", "apps/sk/src", "packages"];
+  : join(REPO, ".reports/coverage");
+const COVERAGE_INPUT_ROOTS = ["apps/cockpit/src", "apps/engine/src", "apps/subkit/src", "packages"];
 const COVERAGE_INPUT_FILE = /\.(?:ts|tsx|js|jsx|mjs|cjs|json|md|sql|wat)$/;
 const COVERAGE_CONFIG_INPUTS = [
   "apps/engine/.coverage-floor.json",
@@ -76,6 +76,7 @@ const COVERAGE_CONFIG_INPUTS = [
   "apps/engine/scripts/audit/coverage-behavior-proof.ts",
   "apps/engine/scripts/audit/coverage-environment.ts",
   "apps/engine/scripts/audit/coverage-publication.ts",
+  "apps/engine/scripts/audit/coverage-retention.ts",
   "apps/engine/scripts/audit/bounded-runner.ts",
   "apps/engine/scripts/audit/coverage-floor.ts",
   "apps/engine/scripts/audit/files.ts",
@@ -644,7 +645,7 @@ for (const [subsystem, floor] of Object.entries(floors.subsystems)) {
   }
 }
 
-const sourceFiles = ["apps/cockpit/src", "apps/engine/src", "apps/sk/src", "packages"].flatMap(
+const sourceFiles = ["apps/cockpit/src", "apps/engine/src", "apps/subkit/src", "packages"].flatMap(
   (root) => listFiles(join(REPO, root), isSource).map((abs) => relative(REPO, abs)),
 );
 const canonicalEntries = assertCompletePureTargetInventory(sourceFiles);

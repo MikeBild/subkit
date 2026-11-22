@@ -24,7 +24,7 @@ async function ensureConfigLoaded(): Promise<void> {
     getConfig();
     return;
   } catch {}
-  const dir = mkdtempSync(join(tmpdir(), "sk-cfg-transform-ceiling-"));
+  const dir = mkdtempSync(join(tmpdir(), "subkit-cfg-transform-ceiling-"));
   await loadConfig({
     env: { DATABASE_URL: "postgres://placeholder/transform-ceiling", NODE_ENV: "test" },
     configPathOverride: join(dir, "subkit.config.json"),

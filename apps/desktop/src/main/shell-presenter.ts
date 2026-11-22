@@ -3,6 +3,7 @@ import { app, globalShortcut } from "electron";
 import { badgeLabel } from "../shared/attention.ts";
 import { dictionary, t } from "../shared/i18n.ts";
 import { COCKPIT_CHANNELS, CONNECT_CHANNELS, type ConnectState } from "../shared/ipc.ts";
+import { platformCapabilities } from "../shared/platform-capabilities.ts";
 import { activeProfile, isSignedIn } from "../shared/profiles.ts";
 import { deviceLabel } from "../shared/server-contract.ts";
 import { profileSummaries } from "../shared/shell-session.ts";
@@ -45,6 +46,7 @@ export class ShellPresenter {
       update: core.updates.current,
       permissions: core.device.permissions.view(),
       local: core.localWorkspace.view(),
+      platform: platformCapabilities(process.platform, process.arch),
     };
   }
 

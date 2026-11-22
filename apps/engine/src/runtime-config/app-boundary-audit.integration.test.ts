@@ -36,7 +36,7 @@ const apiKey = { protocol: "api_key", id: "api-key", label: "SubKit API key" };
 beforeAll(async () => {
   testEnv.MASTER_KEY = "55".repeat(32);
   tdb = await createTestDb("runtime-config-app-boundary");
-  configDir = mkdtempSync(join(tmpdir(), "sk-app-boundary-"));
+  configDir = mkdtempSync(join(tmpdir(), "subkit-app-boundary-"));
   _resetConfigForTests();
   await loadConfig({
     env: { DATABASE_URL: tdb.url, NODE_ENV: "test" },

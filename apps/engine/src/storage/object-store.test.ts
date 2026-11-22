@@ -9,7 +9,7 @@ import { objectStoreContract } from "./object-store-contract-fixtures.ts";
 const memory = new MemoryObjectStore();
 objectStoreContract("memory", { store: () => memory });
 
-const root = mkdtempSync(join(tmpdir(), "sk-fs-contract-"));
+const root = mkdtempSync(join(tmpdir(), "subkit-fs-contract-"));
 const filesystem = new FileSystemObjectStore(join(root, "files"));
 objectStoreContract("filesystem", { store: () => filesystem });
 

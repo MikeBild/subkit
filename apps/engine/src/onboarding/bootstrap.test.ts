@@ -80,7 +80,7 @@ describe("run() — banner + token mint", () => {
     const result = await run(tdb.db, { stdout: { write: (c) => captured.push(c) } });
     expect(result.status).toBe("minted");
     expect(result.plaintext_token).toMatch(/^[0-9a-f]{64}$/);
-    expect(captured.join("")).toContain("sk init --token");
+    expect(captured.join("")).toContain("subkit init --token");
     expect(captured.join("")).toContain(result.plaintext_token!);
 
     const envelope = await _internal.readSetting<{ token_sha256: string; expires_at_ms: number }>(
@@ -152,7 +152,7 @@ describe("consume() — single-use enforcement + 410 lockout", () => {
         llm_provider: "anthropic",
         llm_api_key: "sk-ant-test-key",
       },
-      { token, ip: "127.0.0.1", user_agent: "sk/test", probe: acceptingProbe },
+      { token, ip: "127.0.0.1", user_agent: "subkit/test", probe: acceptingProbe },
     );
 
     expect(outcome.status).toBe("ok");
@@ -272,8 +272,8 @@ describe("consume() — single-use enforcement + 410 lockout", () => {
     expect(reminted!.token_sha256).not.toBe(envelope!.token_sha256);
     expect(reminted!.expires_at_ms).toBeGreaterThan(getTestNow());
     const banner = captured.join("");
-    expect(banner).toContain("sk init --token");
-    const tokenMatch = /sk init --token ([0-9a-f]{64})/.exec(banner);
+    expect(banner).toContain("subkit init --token");
+    const tokenMatch = /subkit init --token ([0-9a-f]{64})/.exec(banner);
     expect(tokenMatch).not.toBeNull();
 
     const retry = await consume(
@@ -353,12 +353,12 @@ describe("deriveTenantSlug", () => {
 });
 
 describe("buildBootstrapBanner", () => {
-  test("includes the literal token + the sk init command + an iso expiry", () => {
+  test("includes the literal token + the subkit init command + an iso expiry", () => {
     const expires = new Date("2030-01-01T00:00:00.000Z");
     const out = buildBootstrapBanner("abc123", expires);
-    expect(out).toContain("sk init --token abc123");
+    expect(out).toContain("subkit init --token abc123");
     expect(out).toContain("2030-01-01T00:00:00.000Z");
-    expect(out).toContain("docker exec <container> sk init --token abc123");
+    expect(out).toContain("docker exec <container> subkit init --token abc123");
     expect(out).toContain("--admin-email");
     expect(out).toContain("engine --issue-admin-key --tenant <slug>");
   });

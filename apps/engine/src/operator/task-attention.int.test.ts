@@ -144,6 +144,7 @@ describe("task runs in the composed attention", () => {
     const [task] = await testDb.db
       .insert(tasks)
       .values({
+        locale: "de",
         tenant_id,
         name: "Chase the invoice",
         category: "finance",

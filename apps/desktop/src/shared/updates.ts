@@ -123,7 +123,7 @@ export function updateFeedProblem(builderConfig: string): string | null {
   return insecure ? "the update feed must be an https address" : null;
 }
 
-export type BuildPlatform = "darwin" | "win32" | "linux";
+export type BuildPlatform = "darwin" | "win32";
 
 function filled(value: string | undefined): boolean {
   return Boolean(value?.trim());
@@ -135,7 +135,6 @@ export function buildSigned(platform: string, env: Record<string, string | undef
     return (
       filled(env.WIN_CSC_LINK) || filled(env.CSC_LINK) || env.SUBKIT_DESKTOP_WIN_SIGNING === "cloud"
     );
-  if (platform === "linux") return env.SUBKIT_DESKTOP_SIGNED_RELEASE === "1";
   return false;
 }
 

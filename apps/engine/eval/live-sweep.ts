@@ -56,12 +56,12 @@ export type ParsedSweep = { ok: true; args: SweepArgs } | { ok: false; error: st
 
 function usageText(): string {
   return [
-    "Usage: SK_API_KEY=… bun run apps/engine/eval/live-sweep.ts --engine-url <url>",
+    "Usage: SUBKIT_API_KEY=… bun run apps/engine/eval/live-sweep.ts --engine-url <url>",
     "         [--workflow-slug a,b] [--connector-slug x] [--yes]",
     "",
     `Lists every conversation titled "${EVAL_LIVE_TITLE_PREFIX}…" plus the workflows and connectors`,
     "with exactly the given slugs, prints the table and deletes them only with --yes.",
-    "Env: SK_ENGINE_URL (fallback for --engine-url), SK_API_KEY (never an argument, never printed).",
+    "Env: SUBKIT_ENGINE_URL (fallback for --engine-url), SUBKIT_API_KEY (never an argument, never printed).",
   ].join("\n");
 }
 
@@ -76,7 +76,7 @@ export function parseSweepArgs(
   argv: string[],
   env: Record<string, string | undefined>,
 ): ParsedSweep {
-  let engine_url = env.SK_ENGINE_URL ?? "";
+  let engine_url = env.SUBKIT_ENGINE_URL ?? "";
   const workflowSlugs: string[] = [];
   const connectorSlugs: string[] = [];
   let yes = false;
@@ -90,7 +90,7 @@ export function parseSweepArgs(
     if (arg === "--api-key") {
       return {
         ok: false,
-        error: "--api-key is not accepted: pass the key only through SK_API_KEY",
+        error: "--api-key is not accepted: pass the key only through SUBKIT_API_KEY",
       };
     }
     const value = argv[i + 1];
@@ -103,8 +103,9 @@ export function parseSweepArgs(
     else if (arg === "--connector-slug") connectorSlugs.push(...csv(value));
     else return { ok: false, error: `unknown argument ${arg}` };
   }
-  if (!engine_url) return { ok: false, error: "--engine-url (or SK_ENGINE_URL) is required" };
-  if (!env.SK_API_KEY) return { ok: false, error: "SK_API_KEY is required in the environment" };
+  if (!engine_url) return { ok: false, error: "--engine-url (or SUBKIT_ENGINE_URL) is required" };
+  if (!env.SUBKIT_API_KEY)
+    return { ok: false, error: "SUBKIT_API_KEY is required in the environment" };
   return {
     ok: true,
     args: { engine_url: engine_url.replace(/\/+$/, ""), workflowSlugs, connectorSlugs, yes },
@@ -164,7 +165,7 @@ async function main(): Promise<void> {
     process.exit(2);
   }
   const { args } = parsed;
-  const client = createEngineClient(args.engine_url, process.env.SK_API_KEY ?? "");
+  const client = createEngineClient(args.engine_url, process.env.SUBKIT_API_KEY ?? "");
   const listing = await listSweepCandidates(client);
   const plan = sweepPlan(listing, {
     titlePrefix: EVAL_LIVE_TITLE_PREFIX,

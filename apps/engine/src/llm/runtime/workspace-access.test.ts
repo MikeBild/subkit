@@ -11,7 +11,7 @@ const KEYLESS = "0b0b1c0e-4f43-4a53-9a0b-2f6f2f3b9a22";
 let configDir: string;
 
 beforeAll(async () => {
-  configDir = mkdtempSync(join(tmpdir(), "sk-workspace-key-model-"));
+  configDir = mkdtempSync(join(tmpdir(), "subkit-workspace-key-model-"));
   const file = join(configDir, "subkit.config.json");
   writeFileSync(
     file,

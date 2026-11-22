@@ -19,7 +19,7 @@ let tenantId: string;
 let userId: string;
 
 beforeAll(async () => {
-  const configDir = await mkdtemp(join(tmpdir(), "sk-mcp-oauth-provider-"));
+  const configDir = await mkdtemp(join(tmpdir(), "subkit-mcp-oauth-provider-"));
   await loadConfig({
     env: { DATABASE_URL: "postgresql://test:test@127.0.0.1:5432/subkit" },
     configPathOverride: join(configDir, "subkit.config.json"),

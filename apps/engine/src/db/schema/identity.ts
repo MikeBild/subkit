@@ -1,3 +1,4 @@
+import type { WorkspaceLanguage } from "@shared/workspace-language.ts";
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
@@ -55,6 +56,7 @@ export const tenants = pgTable(
     llm_fallback: text("llm_fallback"),
     egress_guard_mode: egressGuardModeEnum("egress_guard_mode"),
     timezone: text("timezone").default("UTC").notNull(),
+    language: text("language").$type<WorkspaceLanguage>().default("en").notNull(),
     last_proactive_scan_at: timestamp("last_proactive_scan_at", { withTimezone: true }),
     last_skill_candidate_analyze_at: timestamp("last_skill_candidate_analyze_at", {
       withTimezone: true,
@@ -94,6 +96,7 @@ export const tenants = pgTable(
       "tenants_workflow_approval_policy_check",
       sql`${t.workflow_approval_policy} IN ('single', 'pair')`,
     ),
+    check("tenants_language_check", sql`${t.language} IN ('de', 'en')`),
     uniqueIndex("tenants_owner_identity_key").on(t.owner_identity_id),
     check(
       "tenants_origin_owner_check",

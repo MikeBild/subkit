@@ -19,7 +19,7 @@ afterAll(() => {
 
 const HOME = mkdtempSync(path.join(tmpdir(), "subkit-docker-repl-home-"));
 
-describe("sk REPL against the container", () => {
+describe("subkit REPL against the container", () => {
   test.skipIf(SKIP_PTY_WHEN_NO_EXPECT)(
     "boots to the quick-start banner over a PTY and exits cleanly",
     async () => {

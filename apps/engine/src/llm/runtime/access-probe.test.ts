@@ -128,7 +128,7 @@ describe("probeLlmAccess — one minimal call through the model client", () => {
 
 describe("probeModel — which model the first-start check uses", () => {
   beforeAll(async () => {
-    const dir = mkdtempSync(join(tmpdir(), "sk-probe-model-"));
+    const dir = mkdtempSync(join(tmpdir(), "subkit-probe-model-"));
     const file = join(dir, "subkit.config.json");
     writeFileSync(
       file,
@@ -151,7 +151,7 @@ describe("probeModel — which model the first-start check uses", () => {
     _resetConfigForTests();
   });
 
-  test("a model passed to sk init wins", () => {
+  test("a model passed to subkit init wins", () => {
     expect(probeModel("anthropic", "claude-chosen")).toBe("claude-chosen");
     expect(probeModel("azure", " my-deployment ")).toBe("my-deployment");
   });
@@ -165,7 +165,7 @@ describe("probeModel — which model the first-start check uses", () => {
     expect(probeModel("gemini")).toBe("gemini-2.5-flash");
   });
 
-  test("azure and bedrock have no default and say which sk init flag to pass", async () => {
+  test("azure and bedrock have no default and say which subkit init flag to pass", async () => {
     expect(probeModel("azure")).toBeUndefined();
     expect(probeModel("bedrock")).toBeUndefined();
     const generate = (async () => ({})) as never;
@@ -175,11 +175,11 @@ describe("probeModel — which model the first-start check uses", () => {
       model: null,
       code: "misconfigured",
       reason:
-        "azure needs a model before the first start; pass it with sk init --llm-model <deployment name>",
+        "azure needs a model before the first start; pass it with subkit init --llm-model <deployment name>",
     });
     const bedrock = await probeLlmAccess({ provider: "bedrock", api_key: "k" }, { generate });
     expect(bedrock.ok).toBe(false);
-    if (!bedrock.ok) expect(bedrock.reason).toContain("sk init --llm-model <model id>");
+    if (!bedrock.ok) expect(bedrock.reason).toContain("subkit init --llm-model <model id>");
   });
 
   test("a missing provider setting is named without pointing at the Cockpit", async () => {
@@ -192,7 +192,7 @@ describe("probeModel — which model the first-start check uses", () => {
       model: "anthropic.claude",
       code: "misconfigured",
       reason:
-        "bedrock needs AWS_REGION in the engine environment before the first start; set it and run sk init again",
+        "bedrock needs AWS_REGION in the engine environment before the first start; set it and run subkit init again",
     });
     expect(JSON.stringify(result)).not.toContain("Cockpit");
   });

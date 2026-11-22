@@ -16,6 +16,7 @@ import {
   StandalonePage,
 } from "@/components/cockpit/patterns";
 import {
+  afterJoinTarget,
   INVITE_PAGE,
   type InvitePreview,
   type InviteSession,
@@ -24,6 +25,7 @@ import {
   joinCommand,
   type RefusedInvite,
   refusalActions,
+  rememberInviteContinuation,
 } from "@/features/admin";
 import { NAME_MAX } from "@/features/setup";
 import { nameFromEmail } from "@/features/setup/model";
@@ -34,10 +36,17 @@ function signInHref(): string {
   return loginHref({ pathname: "/cockpit", search: "" });
 }
 
+function continueAfterJoin(): void {
+  window.location.replace(afterJoinTarget(window.location.origin, absolute("/")));
+}
+
 export function InvitePage() {
   const { t } = useI18n();
   const [token] = useState(() => inviteToken(window.location.hash));
   const [search, setSearch] = useState(() => window.location.search);
+  useEffect(() => {
+    rememberInviteContinuation(window.location.search, window.location.origin);
+  }, []);
   const returned = new URLSearchParams(search);
   const waiting = token !== null && returned.get("joined") !== "1" && !returned.get("error");
   const preview = useQuery({
@@ -175,7 +184,7 @@ export function InviteRefused({
                   </Button>
                 ) : actions.primary === "retry" ? (
                   <Button onClick={onRetry} data-testid="invite-retry">
-                    {t("familyFailure.retry")}
+                    {t("failure.retry")}
                   </Button>
                 ) : actions.primary === "home" ? (
                   <Button asChild>
@@ -265,7 +274,7 @@ function InviteJoined() {
   });
   const named = Boolean(session.data?.principal.display_name?.trim());
   useEffect(() => {
-    if (named) window.location.replace(absolute("/"));
+    if (named) continueAfterJoin();
   }, [named]);
   if (session.data && !named) {
     return <InviteName email={session.data.principal.email ?? ""} />;
@@ -314,7 +323,7 @@ export function InviteName({ email }: { email: string }) {
   const [checked, setChecked] = useState(false);
   const save = useMutation({
     mutationFn: () => apiCall("patch", "/v1/identity/me", { body: { display_name: name.trim() } }),
-    onSuccess: () => window.location.replace(absolute("/")),
+    onSuccess: continueAfterJoin,
   });
   const busy = save.isPending || save.isSuccess;
   const missing = checked && !name.trim();

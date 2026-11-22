@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { buildDiagnostics, redactKnown } from "../shared/diagnostics.ts";
 import { ErrorLog } from "./error-log.ts";
 
-const folder = mkdtempSync(join(tmpdir(), "sk-errors-"));
+const folder = mkdtempSync(join(tmpdir(), "subkit-errors-"));
 afterAll(() => rmSync(folder, { recursive: true, force: true }));
 
 const SECRETS = {

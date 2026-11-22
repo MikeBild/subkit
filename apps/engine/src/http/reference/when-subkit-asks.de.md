@@ -29,7 +29,7 @@ Lesen, Suchen und das Vorbereiten von Entwürfen laufen ohne Frage. Drei Dinge g
 
 Eine Aktion läuft nur dann ohne Frage, wenn alle folgenden Bedingungen erfüllt sind. Fehlt eine, erscheint die Frage-Karte.
 
-1. **Du bist im Browser angemeldet, oder es ist ein Run deiner eigenen Aufgabe.** Die Regel gilt für dich in einer Cockpit-Sitzung: im Browser, in der installierten App oder in SubKit Desktop. Sie gilt auch im Run einer Aufgabe, die dir gehört, wenn du den Run gestartet hast oder ihr Zeitplan (siehe „Dein Auftrag deckt die ganze Arbeit“). Mit einem API-Schlüssel, in der Kommandozeile `sk`, aus einem KI-Client über MCP und in einem Run einer Aufgabe, den jemand anderes gestartet hat, fragt jede dieser Aktionen.
+1. **Du bist im Browser angemeldet, oder es ist ein Run deiner eigenen Aufgabe.** Die Regel gilt für dich in einer Cockpit-Sitzung: im Browser, in der installierten App oder in SubKit Desktop. Sie gilt auch im Run einer Aufgabe, die dir gehört, wenn du den Run gestartet hast oder ihr Zeitplan (siehe „Dein Auftrag deckt die ganze Arbeit“). Mit einem API-Schlüssel, in der Kommandozeile `subkit`, aus einem KI-Client über MCP und in einem Run einer Aufgabe, den jemand anderes gestartet hat, fragt jede dieser Aktionen.
 2. **Es ist ein Aufruf eines Connectors.** Die Regel gilt für Aufrufe, die über einen Connector etwas senden, anlegen oder ändern, und für das Speichern eines Connector-Entwurfs. Tools externer MCP-Server und SQL-Anweisungen fragen immer.
 3. **SubKit kennt die Wirkung, und sie ist gewöhnlich.** SubKit ordnet jede Operation einer Wirkung zu. Zahlung, Löschung, Veröffentlichung, Rechte oder Einstellungen, neues Konto und Zugangsdaten fragen immer. Das gilt auch für jeden Aufruf mit `DELETE` und für jeden, der einen Header mit Zugangsdaten setzt. Erkennt SubKit nicht, was eine Operation bewirkt, fragt es.
 4. **Du hast es mit eigenen Worten verlangt.** In deiner letzten Nachricht steht ein Auftrag wie „Schick …“ oder „Kannst du … anlegen“. Eine Informationsfrage wie „Was würde passieren, wenn …“ ist kein Auftrag. Enthält der Auftrag eine Bedingung oder ein „nicht“, fragt SubKit. Das Verb muss zur Aktion passen: „Leg an“ deckt kein Senden. Ein Auftrag zum Senden deckt auch den Entwurf davor, nie umgekehrt.
@@ -69,10 +69,11 @@ Unter den Feldern steht, warum SubKit fragt, zum Beispiel „Du hast diesen Empf
 2. Wähle **Einmal erlauben**, wenn genau das passieren soll. Die Aktion läuft einmal.
 3. Wähle **Ablehnen**, wenn nicht. Nichts läuft.
 
-Zwei Dinge schützen dich vor einem Versehen:
+Während eine Karte offen ist, kannst du weiterschreiben:
 
-- **Getippter Text gibt nie eine Freigabe.** Schreibst du „ja“ ins Nachrichtenfeld, während eine Karte offen ist, fragt SubKit „Meintest du: Einmal erlauben?“. Ausgeführt wurde nichts. Bestätige mit der Schaltfläche oder wähle **Nein, Karte offen lassen**.
-- **Eine Antwort, die die Aktion ändert, führt nichts aus.** Du liest dann „Deine Antwort ändert die Aktion, deshalb lief nichts“. Erlaube genau das Gezeigte, oder wähle **Ablehnen und neu formulieren** und schick deinen geänderten Auftrag.
+- **Getippter Text gibt nie eine Freigabe.** Eine Karte, die eine Aktion laufen lässt, etwa **Einmal erlauben**, nimmt ihre Antwort nur über ihre Schaltflächen an. Schreibst du „ja“, geht das als normale Nachricht an SubKit, nichts läuft, und die Karte bleibt offen.
+- **Eine einfache Frage nimmt eine getippte Antwort an.** Eine Ja-Nein-Frage ohne angehängte Aktion nimmt ein klares „ja“ oder „nein“ an. Eine Frage mit Optionen nimmt eine Antwort an, die genau eine Option nennt. Alles andere geht als normale Nachricht an SubKit, und die Frage bleibt offen.
+- **Ein Geheimnis gehört nur in sein Formular.** Während ein Formular nach einem Passwort oder Schlüssel fragt, wird eine getippte Nachricht abgelehnt und nie gespeichert.
 
 ### Eine Aktion als Regel speichern
 

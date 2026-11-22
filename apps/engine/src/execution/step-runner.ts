@@ -188,7 +188,7 @@ export async function runStep(
             const rf = resolved as unknown as ResolvedFile;
             let effectiveRf = rf;
             if (rf.size_bytes > SPOOL_THRESHOLD_BYTES) {
-              const tmpPath = join(tmpdir(), `sk-spool-${rf.id}-${Date.now()}`);
+              const tmpPath = join(tmpdir(), `subkit-spool-${rf.id}-${Date.now()}`);
               const stream = await rf.openRead();
               const chunks: Uint8Array[] = [];
               for await (const chunk of stream) chunks.push(chunk);

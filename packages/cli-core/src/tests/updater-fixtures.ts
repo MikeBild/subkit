@@ -23,18 +23,6 @@ export function makeCacheDir(): string {
   return dir;
 }
 
-export function makeGitHubResponse(tag: string, assets: Array<{ name: string }> = []) {
-  return {
-    tag_name: tag,
-    prerelease: false,
-    body: "release notes",
-    assets: assets.map((a) => ({
-      name: a.name,
-      browser_download_url: `https://github.com/test/repo/releases/download/${tag}/${a.name}`,
-    })),
-  };
-}
-
 export function makeFetchImpl(
   handler: (url: string, init?: RequestInit) => Response | Promise<Response>,
 ): typeof fetch {
@@ -48,11 +36,11 @@ export function makeFetchImpl(
 export function makeConfig(overrides: Partial<UpdaterConfig> = {}): UpdaterConfig {
   return {
     binaryName: "test-bin",
+    asset: "test-bin-linux-x64",
     currentVersion: "1.0.0",
     cacheDir: makeCacheDir(),
-    githubRepo: "test/repo",
+    releasesUrl: "https://github.test/o/r/releases",
     checkIntervalMs: 86_400_000,
-    channel: "stable",
     publicKey: TEST_PUBLIC_KEY_PEM,
     ...overrides,
   };

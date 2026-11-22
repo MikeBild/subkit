@@ -8,6 +8,7 @@ import {
   conversations,
   conversationToolCalls,
 } from "../db/schema/index.ts";
+import { languageFor } from "../identity/index.ts";
 import { can } from "../rbac/evaluator.ts";
 import { now } from "../utils/clock.ts";
 import { getTaskRunMarker } from "./core/draft.ts";
@@ -66,6 +67,7 @@ export async function readPlaybook(
     ).allow
   )
     return null;
+  const locale = await languageFor(scope.tenant_id, db, scope.locale);
   const evidence = new Map<string, PlaybookEvidenceResolution[]>();
   for (const step of parsed.data.plan.steps) {
     const items: PlaybookEvidenceResolution[] = [];
@@ -76,7 +78,7 @@ export async function readPlaybook(
         result.matches = false;
         result.evidence.freshness = "stale";
         result.reason =
-          scope.locale === "en"
+          locale === "en"
             ? "The goal, check criterion, or resource has changed since this evidence was recorded."
             : "Ziel, Prüfkriterium oder Ressource hat sich seit dem Beleg verändert.";
       }
@@ -88,7 +90,7 @@ export async function readPlaybook(
     parsed.data,
     row?.revision ?? 0,
     evidence,
-    scope.locale,
+    locale,
     getTaskRunMarker(row?.draft) === null ? "conversation" : "task_run",
   );
 }

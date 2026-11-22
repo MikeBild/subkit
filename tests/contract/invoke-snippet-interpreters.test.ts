@@ -23,7 +23,11 @@ const available = (command: string): boolean =>
 function curlArguments(command: string): string[] {
   const run = spawnSync("sh", ["-c", `curl() { printf '%s\\0' "$@"; }\n${command}`], {
     encoding: "utf8",
-    env: { PATH: process.env.PATH ?? "", HOME: "/expanded-home", SK_API_KEY: "placeholder-key" },
+    env: {
+      PATH: process.env.PATH ?? "",
+      HOME: "/expanded-home",
+      SUBKIT_API_KEY: "placeholder-key",
+    },
   });
   if (run.status !== 0) throw new Error(`sh failed: ${run.stderr}`);
   return run.stdout.split("\0").slice(0, -1);
@@ -71,7 +75,7 @@ describe("the curl snippet in a real shell", () => {
 
 describe("the python snippet in a real interpreter", () => {
   test.skipIf(!available("python3"))("requests.post is called with the input as written", () => {
-    const dir = mkdtempSync(join(tmpdir(), "sk-invoke-snippet-"));
+    const dir = mkdtempSync(join(tmpdir(), "subkit-invoke-snippet-"));
     try {
       writeFileSync(
         join(dir, "requests.py"),
@@ -105,7 +109,7 @@ describe("the python snippet in a real interpreter", () => {
             PATH: process.env.PATH ?? "",
             PYTHONPATH: dir,
             PYTHONIOENCODING: "utf-8",
-            SK_API_KEY: "placeholder-key",
+            SUBKIT_API_KEY: "placeholder-key",
           },
         },
       );

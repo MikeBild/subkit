@@ -9,12 +9,12 @@ function bash(...lines: string[]): string {
 
 describe("cliScanner", () => {
   it("passes a clean apikeys create with the real flags", () => {
-    const text = bash('sk apikeys create --name "Codex MCP" --scopes "workflow:read"');
+    const text = bash('subkit apikeys create --name "Codex MCP" --scopes "workflow:read"');
     expect(cliScanner.scan(text, ctx)).toEqual([]);
   });
 
   it("flags an invented flag (the original transcript bug)", () => {
-    const text = bash('sk apikeys create --name X --scoped "*"');
+    const text = bash('subkit apikeys create --name X --scoped "*"');
     const vs = cliScanner.scan(text, ctx);
     expect(vs.map((v) => v.kind)).toContain("cli.invented_flag");
     const v = vs[0]!;
@@ -22,13 +22,13 @@ describe("cliScanner", () => {
   });
 
   it("suggests the nearest valid flag when the user mistyped", () => {
-    const text = bash("sk apikeys create --name X --expirs 2026-01-01");
+    const text = bash("subkit apikeys create --name X --expirs 2026-01-01");
     const vs = cliScanner.scan(text, ctx);
     expect(vs[0]?.details?.suggestion).toBe("expires");
   });
 
   it("flags an unknown subcommand", () => {
-    const text = bash("sk fubar create");
+    const text = bash("subkit fubar create");
     const vs = cliScanner.scan(text, ctx);
     expect(vs.map((v) => v.kind)).toContain("cli.unknown_subcommand");
   });
@@ -39,41 +39,41 @@ describe("cliScanner", () => {
   });
 
   it("ignores non-bash fenced blocks", () => {
-    const text = '```json\n{ "sk": "--foo" }\n```';
+    const text = '```json\n{ "subkit": "--foo" }\n```';
     expect(cliScanner.scan(text, ctx)).toEqual([]);
   });
 
   it("accepts global flags on any subcommand", () => {
-    const text = bash("sk apikeys create --name X --tenant my-tenant");
+    const text = bash("subkit apikeys create --name X --tenant my-tenant");
     expect(cliScanner.scan(text, ctx)).toEqual([]);
   });
 
   it("handles --key=value flag form", () => {
-    const text = bash("sk apikeys create --name=X --scopes=workflow:read");
+    const text = bash("subkit apikeys create --name=X --scopes=workflow:read");
     expect(cliScanner.scan(text, ctx)).toEqual([]);
   });
 
   it("skips multi-line continuations and pipes correctly", () => {
-    const text = bash("sk apikeys list --json | jq '.items[].id'");
+    const text = bash("subkit apikeys list --json | jq '.items[].id'");
     expect(cliScanner.scan(text, ctx)).toEqual([]);
   });
 
   it("passes the package export and import commands with their real flags", () => {
     const text = bash(
-      "sk packages export --out workspace.zip --only workflow,skill --profile api",
-      "sk packages import workspace.zip --profile cloud --yes",
-      "sk packages installs --json",
+      "subkit packages export --out workspace.zip --only workflow,skill --profile api",
+      "subkit packages import workspace.zip --profile cloud --yes",
+      "subkit packages installs --json",
     );
     expect(cliScanner.scan(text, ctx)).toEqual([]);
   });
 
   it("flags an invented package subcommand flag", () => {
-    const text = bash("sk packages import workspace.zip --force");
+    const text = bash("subkit packages import workspace.zip --force");
     const vs = cliScanner.scan(text, ctx);
     expect(vs.map((v) => v.kind)).toContain("cli.invented_flag");
   });
 
-  it("does not flag plain prose mentioning sk", () => {
-    expect(cliScanner.scan("sk is a CLI", ctx)).toEqual([]);
+  it("does not flag plain prose mentioning subkit", () => {
+    expect(cliScanner.scan("subkit is a CLI", ctx)).toEqual([]);
   });
 });

@@ -32,7 +32,7 @@ const OBJECT_STORE_ENV = {
 beforeAll(async () => {
   testEnv.MASTER_KEY = "22".repeat(32);
   tdb = await createTestDb("preflight-database");
-  scratch = mkdtempSync(join(tmpdir(), "sk-preflight-database-"));
+  scratch = mkdtempSync(join(tmpdir(), "subkit-preflight-database-"));
   _resetConfigForTests();
   await loadConfig({
     env: { DATABASE_URL: tdb.url, NODE_ENV: "test" },

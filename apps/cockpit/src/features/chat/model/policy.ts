@@ -312,62 +312,6 @@ export function scopeSentence(scope: ActionScope, t: Translate): string {
     .join(" ");
 }
 
-interface PendingLike {
-  id?: unknown;
-  tool_name?: unknown;
-}
-
-export type TypedDecision = "approve" | "decline";
-
-const TYPED_APPROVE = new Set([
-  "ja",
-  "jo",
-  "jep",
-  "klar",
-  "ok",
-  "okay",
-  "yes",
-  "y",
-  "yep",
-  "sure",
-  "mach",
-  "mach das",
-  "erlauben",
-  "einmal erlauben",
-  "allow",
-  "allow once",
-  "go",
-  "do it",
-]);
-const TYPED_DECLINE = new Set([
-  "nein",
-  "ne",
-  "nee",
-  "nö",
-  "no",
-  "n",
-  "nope",
-  "ablehnen",
-  "abbrechen",
-  "stopp",
-  "stop",
-  "decline",
-  "cancel",
-  "lieber nicht",
-]);
-
-export function typedDecision(text: string | null | undefined): TypedDecision | null {
-  const word = (text ?? "")
-    .trim()
-    .toLocaleLowerCase("de")
-    .replace(/[.!?,;:\s]+$/u, "")
-    .replace(/\s+/gu, " ");
-  if (!word || word.length > 20) return null;
-  if (TYPED_APPROVE.has(word)) return "approve";
-  if (TYPED_DECLINE.has(word)) return "decline";
-  return null;
-}
-
 export const LIVE_POLICY_KEY = "tool-call-policy";
 
 export function livePolicy(event: {
@@ -379,15 +323,4 @@ export function livePolicy(event: {
   const policy = record(payload?.policy);
   if (!payload || !policy || typeof payload.call_id !== "string") return null;
   return { callId: payload.call_id, policy: policy as ToolCallPolicy };
-}
-
-export function refusedApprovalReply(error: {
-  code: string | null;
-  details?: Record<string, unknown> | null;
-}): string | null {
-  if (error.code !== "pending_elicitation_blocked") return null;
-  const pending = record(error.details?.pending_elicitation) as PendingLike | null;
-  return pending?.tool_name === "ask_user_confirm" && typeof pending.id === "string"
-    ? pending.id
-    : null;
 }

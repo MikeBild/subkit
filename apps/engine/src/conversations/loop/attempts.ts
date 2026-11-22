@@ -4,6 +4,7 @@ import {
   classifyProviderError,
   shouldFallBack,
   toLlmProviderError,
+  usageResultOf,
 } from "../../llm/provider-errors.ts";
 import { logger } from "../../logging/index.ts";
 import { isExpectedCancellation } from "../abort.ts";
@@ -68,7 +69,7 @@ async function runFallback(
     await recordFailedUsage(p, actorFields(p.principal), {
       model: route.fallback,
       prompt_tokens: env.estimatedPromptTokens,
-      result: "error",
+      result: usageResultOf(fbErr),
       error: fbMsg,
     });
     const typedFallbackErr = typedProviderError(fbErr);
@@ -109,7 +110,7 @@ export async function runTurnAttempts(
     await recordFailedUsage(p, actorFields(p.principal), {
       model: seedModel,
       prompt_tokens: env.estimatedPromptTokens,
-      result: "error",
+      result: usageResultOf(primaryErr),
       error: msg,
     });
     if (

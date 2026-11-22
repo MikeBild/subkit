@@ -159,7 +159,7 @@ describe("Tier 2 — slash → engine endpoints", () => {
     expect(body.allow).toBe(true);
   }, 30_000);
 
-  test("/profile (no engine call) — sk profile list visible via subkit-adjacent helpers", async () => {
+  test("/profile (no engine call) — subkit profile list visible via subkit-adjacent helpers", async () => {
     expect(true).toBe(true);
   });
 });

@@ -14,14 +14,14 @@ describe("pure mutation scope", () => {
         "apps/engine/src/workflows/core/workflow.ts",
         "apps/engine/src/workflows/service.ts",
         "apps/cockpit/src/features/audit/model/audit-filter-state.ts",
-        "apps/sk/src/domain/agent/agent-file.ts",
+        "apps/subkit/src/domain/agent/agent-file.ts",
         "packages/shared/src/approval-choice.ts",
         "packages/shared/src/jsonl-ring.ts",
       ]),
     ).toEqual([
       "apps/cockpit/src/features/audit/model/audit-filter-state.ts",
       "apps/engine/src/workflows/core/workflow.ts",
-      "apps/sk/src/domain/agent/agent-file.ts",
+      "apps/subkit/src/domain/agent/agent-file.ts",
       "packages/shared/src/approval-choice.ts",
     ]);
   });

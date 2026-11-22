@@ -128,7 +128,7 @@ describe("service identity", () => {
   });
 
   test("unknown services fall back to the driver, never to initials", () => {
-    expect(serviceIdentity({ slug: "contentkit-prod", driver: "http" })).toEqual({
+    expect(serviceIdentity({ slug: "editorial-prod", driver: "http" })).toEqual({
       kind: "generic",
       driver: "http",
     });

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const ENGINE_CLIENT_DIR = join(import.meta.dir, "../../../../apps/sk/src/engine-client");
+const ENGINE_CLIENT_DIR = join(import.meta.dir, "../../../../apps/subkit/src/engine-client");
 const DIAGNOSTICS_PATHS_FILE = join(import.meta.dir, "../diagnostics-paths.ts");
 const OPENAPI_JSON_PATH = join(import.meta.dir, "openapi.json");
 
@@ -218,8 +218,8 @@ function extractCliEndpointPairs(): Set<string> {
 
 const KNOWN_UNDOCUMENTED_ENDPOINTS: string[] = [];
 
-describe("sk CLI <-> engine OpenAPI contract", () => {
-  test("the scanner still finds the sk CLI's engine calls in both call forms", () => {
+describe("subkit CLI <-> engine OpenAPI contract", () => {
+  test("the scanner still finds the subkit CLI's engine calls in both call forms", () => {
     const pairs = extractCliEndpointPairs();
     expect(pairs.size).toBeGreaterThan(150);
     const typed = new Set(
@@ -248,7 +248,7 @@ describe("sk CLI <-> engine OpenAPI contract", () => {
     ]);
   });
 
-  test("every (method, path) the sk CLI calls exists in the committed openapi.json", () => {
+  test("every (method, path) the subkit CLI calls exists in the committed openapi.json", () => {
     const cliPairs = extractCliEndpointPairs();
     const openApiPairs = loadOpenApiPairs();
     const missing = [...cliPairs]

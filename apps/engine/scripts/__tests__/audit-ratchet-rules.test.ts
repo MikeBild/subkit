@@ -59,7 +59,7 @@ describe("vendorImportHits", () => {
     expect(what("workflows/service.ts", ["zod", "hono", "./ai.ts", "aid"])).toEqual([]);
     expect(what("workflows/service.test.ts", ["drizzle-orm"])).toEqual([]);
     expect(what("workflows/tests/setup.ts", ["drizzle-orm"])).toEqual([]);
-    expect(vendorImportHits("apps/sk/src/x.ts", [imp("drizzle-orm")])).toEqual([]);
+    expect(vendorImportHits("apps/subkit/src/x.ts", [imp("drizzle-orm")])).toEqual([]);
   });
 });
 

@@ -179,7 +179,7 @@ export const LlmStatsQuery = BucketWindowQuery.extend({
   flow: CsvOrArray,
   result: CsvOrArray.openapi({
     description:
-      "Only calls with one of these results: success, quota_exhausted, context_too_large, error.",
+      "Only calls with one of these results: success, quota_exhausted, context_too_large, key_rejected, error.",
   }),
   workflow_id: z.string().uuid().optional(),
   group_by: CsvOrArray,

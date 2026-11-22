@@ -37,8 +37,8 @@ import {
   confirmIdFromArgs,
   DRAFT_REQUIRED_MCP_UNAVAILABLE_REASON,
   isConfirmedRequest,
-  SK_CONFIRM_ID_META_KEY,
-  SK_CONFIRM_META_KEY,
+  SUBKIT_CONFIRM_ID_META_KEY,
+  SUBKIT_CONFIRM_META_KEY,
 } from "./policy.ts";
 import type { ConversationProviderEntry } from "./providers/conversation.ts";
 import type { StaticProviderEntry } from "./providers/static.ts";
@@ -77,7 +77,7 @@ function normalizeConversationResult(r: ToolResult): ToolEnvelope {
 }
 
 function confirmIdFromInvocation(invocation: ToolInvocation): string | null {
-  const fromMeta = invocation.meta?.[SK_CONFIRM_ID_META_KEY];
+  const fromMeta = invocation.meta?.[SUBKIT_CONFIRM_ID_META_KEY];
   if (typeof fromMeta === "string" && fromMeta.length > 0) return fromMeta;
   return confirmIdFromArgs(invocation.args as Record<string, unknown>);
 }
@@ -407,7 +407,7 @@ async function dispatchTenantTool(
     if (halted) {
     } else {
       const policyMeta = confirmed
-        ? { ...(invocation.meta ?? {}), [SK_CONFIRM_META_KEY]: true }
+        ? { ...(invocation.meta ?? {}), [SUBKIT_CONFIRM_META_KEY]: true }
         : invocation.meta;
       const preparedGate =
         claimed === null
@@ -546,7 +546,10 @@ async function dispatchTenantTool(
                     surface: invocation.surface,
                     name: tool,
                     args: {},
-                    meta: { [SK_CONFIRM_META_KEY]: true, [SK_CONFIRM_ID_META_KEY]: approvalId },
+                    meta: {
+                      [SUBKIT_CONFIRM_META_KEY]: true,
+                      [SUBKIT_CONFIRM_ID_META_KEY]: approvalId,
+                    },
                   }),
                 ...(deps.mcpMode !== undefined ? { mcpMode: deps.mcpMode } : {}),
                 ...(deps.readOnly !== undefined ? { readOnly: deps.readOnly } : {}),

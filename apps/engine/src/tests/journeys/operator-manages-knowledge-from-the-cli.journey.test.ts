@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { knowledgeSourcesCommand } from "../../../../sk/src/commands/knowledge-sources.ts";
+import { knowledgeSourcesCommand } from "../../../../subkit/src/commands/knowledge-sources.ts";
 import { connectors } from "../../db/schema/index.ts";
 import { getDocsSearchCacheStats, invalidateDocsCache } from "../../docs-ingestion/service.ts";
 import { getKnowledgeSearchCacheStats, invalidateKnowledgeCache } from "../../knowledge/service.ts";
@@ -13,8 +13,8 @@ import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch }
 
 const TEST_NOW_MS = getTestNow();
 
-describe("an operator manages knowledge from the sk CLI", () => {
-  describe("sk knowledge-sources", () => {
+describe("an operator manages knowledge from the subkit CLI", () => {
+  describe("subkit knowledge-sources", () => {
     let ctx: JourneyCtx;
 
     let tmpFile: string;
@@ -307,7 +307,7 @@ describe("an operator manages knowledge from the sk CLI", () => {
     });
   });
 
-  describe("sk knowledge upload, search and converse", () => {
+  describe("subkit knowledge upload, search and converse", () => {
     let ctx: JourneyCtx;
 
     let tmpFile: string;

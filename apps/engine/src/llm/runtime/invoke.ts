@@ -26,7 +26,7 @@ import {
 } from "../accounting/index.ts";
 import { LlmGenerationAborted, LlmProviderError, LlmSpendLimitReached } from "../errors.ts";
 import { getMockProvider, type MockResult } from "../mock-provider.ts";
-import { classifyProviderError, shouldFallBack } from "../provider-errors.ts";
+import { llmProviderErrorKind, shouldFallBack, usageResultOf } from "../provider-errors.ts";
 import type { LlmFlow, LlmProviderKind, ModelRoute, UserTurn } from "../types.ts";
 import { AiSdkModel } from "./ai-sdk-model.ts";
 import type { SubkitLlmAnsweredBy, SubkitLlmMessage } from "./base-types.ts";
@@ -268,19 +268,8 @@ interface InvokeResult<T = unknown> {
 
 export function mapProviderError(err: unknown): LlmProviderError {
   if (err instanceof LlmGenerationAborted) return err;
-  const kind = classifyProviderError(err);
   const msg = err instanceof Error ? err.message : String(err);
-  const mappedKind =
-    kind === "rate_limit"
-      ? "rate_limit"
-      : kind === "quota_exhausted"
-        ? "quota_exhausted"
-        : kind === "overloaded"
-          ? "overloaded"
-          : kind === "context_length_exceeded"
-            ? "context_length_exceeded"
-            : "other";
-  return new LlmProviderError(mappedKind, msg);
+  return new LlmProviderError(llmProviderErrorKind(err), msg);
 }
 
 export async function invoke<T = unknown>(
@@ -413,7 +402,7 @@ async function dispatchMock<T>(
         prompt_tokens: assembled.prompt.token_counts.total,
         completion_tokens: 0,
         latency_ms: Date.now() - start,
-        result: "error",
+        result: usageResultOf(err),
         error: err.message,
         ...actorFields(params.principal),
       },
@@ -606,7 +595,7 @@ async function dispatchReal<T>(
         prompt_tokens: assembled.prompt.token_counts.total,
         completion_tokens: 0,
         latency_ms: latency,
-        result: "error",
+        result: usageResultOf(err),
         error: mapped.message,
         ...actorFields(params.principal),
         ...usageAttribution(telemetryMeta),

@@ -31,7 +31,7 @@ const NO_ACCESS: AiAccess = { configured: false, provider: null, model: null, ow
 function session(name: string | null = "Mira Kessler", aiAccess: AiAccess = OWN_ACCESS) {
   return {
     principal: { display_name: name },
-    tenant: { display_name: "Albrecht & Partner", timezone: "Europe/Berlin" },
+    tenant: { display_name: "Albrecht & Partner", timezone: "Europe/Berlin", language: "en" },
     ai_access: aiAccess,
   } as Pick<Bootstrap, "principal" | "tenant" | "ai_access">;
 }
@@ -43,6 +43,7 @@ describe("drafts of the personal areas", () => {
       name: " Mira Kessler ",
       workspaceName: "Albrecht & Partner",
       timezone: "Europe/Berlin",
+      language: "en",
     });
     expect(same).toEqual({
       ai: null,
@@ -69,6 +70,13 @@ describe("drafts of the personal areas", () => {
 
   test("only the time zone changes: the name is not sent", () => {
     expect(personalChanges(session(), { timezone: "UTC" }).workspace).toEqual({ timezone: "UTC" });
+  });
+
+  test("a changed workspace language is one workspace change", () => {
+    const changes = personalChanges(session(), { language: "de" });
+    expect(changes.workspace).toEqual({ language: "de" });
+    expect(changes.count).toBe(1);
+    expect(changes.areas).toEqual(["workspace"]);
   });
 
   test("an emptied name is a draft that cannot be saved", () => {

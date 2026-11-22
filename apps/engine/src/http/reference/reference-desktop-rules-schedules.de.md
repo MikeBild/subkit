@@ -1,14 +1,14 @@
 ---
 slug: reference-desktop-rules-schedules
 title: Referenz: Desktop-App, Regeln, Zeitpläne und Fehlerberichte
-summary: Schlag die Routen, Felder, Ereignisse, Audit-Aktionen und Einstellungen nach, die Version 11.2.0 ergänzt.
+summary: Schlag die Routen, Felder, Ereignisse, Audit-Aktionen und Einstellungen für die Desktop-App, Regeln, Zeitpläne und Fehlerberichte nach.
 section: reference
 order: 5
 audience: public
 ---
 ## Referenz: Desktop-App, Regeln, Zeitpläne und Fehlerberichte
 
-Diese Seite listet, was Version 11.2.0 an der HTTP-API, den Ereignissen, dem Audit-Trail und den Einstellungen ergänzt.
+Diese Seite listet die HTTP-API, die Ereignisse, den Audit-Trail und die Einstellungen für die Desktop-App, Regeln, Zeitpläne und Fehlerberichte.
 Sie ist für alle, die mit eigenem Code oder im Betrieb auf diesen Teilen aufbauen. Die Kapitel mit den Arbeitsschritten sind „SubKit Desktop“, „Wann SubKit fragt“, „Zeitpläne im Blick behalten“, „Benachrichtigungen und Ruhezeiten“, „SubKit auf dich einstellen“ und „Einen Fehler melden“.
 Die vollständige, maschinenlesbare Beschreibung jeder Route steht unter `/openapi.json` auf deiner Engine.
 
@@ -150,7 +150,7 @@ Abfrage-Parameter von `GET /v1/identity/desktop-login/start`:
 | `device_id` | Eine UUID, die die App einmal je Serverprofil erzeugt. |
 | `device_label` | 1 bis 64 Zeichen ohne Steuerzeichen. |
 | `redirect_uri` | Optional: `subkit://callback` oder, wo angenommen, `subkit-dev://callback`. |
-| `app_version` | Die Version der App wie `1.4.0`, auch mit Vorabkennung wie `1.4.0-beta.1`. Fehlt sie oder liegt sie unter `server.desktop_min_version`, antwortet die Engine mit `426`. |
+| `app_version` | Die Version der App wie `@@SUBKIT_VERSION@@`, auch mit Vorabkennung wie `@@SUBKIT_VERSION@@-beta.1`. Fehlt sie oder liegt sie unter `server.desktop_min_version`, antwortet die Engine mit `426`. |
 
 Body von `POST /v1/identity/desktop-session`: `code` (43 Zeichen), `code_verifier` (43 bis 128 Zeichen), `app_version` und optional `state`. Die Antwort ist `200` mit `installation_id`, `cockpit_path` und `created` und setzt das Sitzungs-Cookie.
 
@@ -186,7 +186,7 @@ Die Felder von `clients.desktop` in `/.well-known/service-descriptor.json` sind 
 
 ### Ereignisse und Punkte der Liste „Braucht dich“
 
-Drei Ereignistypen sind neu. Alle drei lassen sich in Abonnements und Webhooks nutzen, und der `sk`-Eingang eines neuen Arbeitsbereichs bekommt sie.
+Drei Ereignistypen sind neu. Alle drei lassen sich in Abonnements und Webhooks nutzen, und der `subkit`-Eingang eines neuen Arbeitsbereichs bekommt sie.
 
 | Ereignis | Wird gesendet, wenn | Felder |
 | --- | --- | --- |
@@ -229,7 +229,7 @@ Eine Aktion, die im Chat ohne Frage lief, steht als `tool_policy.confirmation_sk
 
 | Einstellung | Typ | Standard | Bedeutung |
 | --- | --- | --- | --- |
-| `server.desktop_min_version` | Version wie `1.4.0` | `0.1.0` | Die älteste Version von SubKit Desktop, die diese Engine annimmt. Wird als `clients.desktop.min_version` veröffentlicht und bei der Desktop-Anmeldung von der Engine durchgesetzt (`426 desktop_app_outdated`). |
+| `server.desktop_min_version` | Version wie `@@SUBKIT_VERSION@@` | `@@DESKTOP_MIN_APP_VERSION@@` | Die älteste Version von SubKit Desktop, die diese Engine annimmt. Wird als `clients.desktop.min_version` veröffentlicht und bei der Desktop-Anmeldung von der Engine durchgesetzt (`426 desktop_app_outdated`). |
 | `server.desktop_dev_callback` | `true` oder `false` | `false` | Nimmt zusätzlich `subkit-dev://callback` als Anmeldeziel an, für Entwicklungs-Builds. |
 
 Beide stehen auch in der erzeugten Referenz der Einstellungen. Die Schwellen für Zeitpläne, Regeln und Ankündigungen sind fest und haben keine Einstellung: Wartezeit ab 3 Fehlern, Pause bei 5, Verlauf für 90 Tage, Regeln für 90 Tage mit 20 Ausführungen pro Tag, vor dem Ende einer Freigabe ein Hinweis 7 Tage vorher in der Übersicht, mit Push auch auf den Geräten, und eine Benachrichtigung über Kanäle und Regeln 3 Tage vorher.

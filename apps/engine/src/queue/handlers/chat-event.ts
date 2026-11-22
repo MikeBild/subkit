@@ -145,7 +145,7 @@ async function handleOne(job: Job<ChatEventJob>, opts: RegisterChatEventOptions)
                 channel_id: event.channel_id,
                 ...(event.thread_id ? { thread_id: event.thread_id } : {}),
                 kind: "message",
-                text: "This space isn't connected to sk yet. Ask an admin to install the sk app here to start using it.",
+                text: "This space isn't connected to subkit yet. Ask an admin to install the subkit app here to start using it.",
               });
             } catch (err) {
               logger.debug({

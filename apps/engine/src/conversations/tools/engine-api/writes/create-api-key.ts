@@ -10,7 +10,7 @@ export const CreateApiKeyInput = z
       .max(120)
       .optional()
       .describe(
-        "Friendly label shown alongside the key in the UI / sk apikeys list. Optional but recommended.",
+        "Friendly label shown alongside the key in the UI / subkit apikeys list. Optional but recommended.",
       ),
     owner_kind: z
       .enum(["user", "system_account"])
@@ -79,7 +79,7 @@ export const createApiKeyTool: ConversationTool = {
         ok: false,
         error_code: "api_key_issuer_unknown",
         message:
-          "This conversation has no signed-in person, so no key can be issued. Create the key in Cockpit or with sk.",
+          "This conversation has no signed-in person, so no key can be issued. Create the key in Cockpit or with subkit.",
         data: { error: "api_key_issuer_unknown" },
       };
     }

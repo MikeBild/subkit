@@ -97,15 +97,15 @@ beforeAll(async () => {
       description: "test scraper",
     })
     .returning();
-  const sk = genKey("wf_live_");
+  const issued = genKey("wf_live_");
   await srv.db.insert(apiKeys).values({
     tenant_id: srv.tenantId,
     system_account_id: scraper!.id,
-    prefix: sk.keyPrefix,
-    token_sha256: sk.hash,
+    prefix: issued.keyPrefix,
+    token_sha256: issued.hash,
     scopes: ["metrics:read"],
   });
-  scraperKey = sk.plaintext;
+  scraperKey = issued.plaintext;
 });
 
 afterAll(async () => {

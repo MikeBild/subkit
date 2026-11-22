@@ -12,7 +12,7 @@ import {
   finalizeVerificationRun,
   verificationRunsRoot,
 } from "../../../scripts/lib/verification-run-lifecycle.ts";
-import { runIsolatedTestFile } from "../../sk/src/tests/run-isolated-test-file.ts";
+import { runIsolatedTestFile } from "../../subkit/src/tests/run-isolated-test-file.ts";
 import {
   ACTIVE_MUTANT_ENV,
   activeMutantTarget,

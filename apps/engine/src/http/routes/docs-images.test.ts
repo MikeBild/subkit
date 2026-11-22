@@ -31,7 +31,7 @@ function webp(): Uint8Array<ArrayBuffer> {
 }
 
 beforeAll(async () => {
-  dir = mkdtempSync(join(tmpdir(), "sk-docs-images-"));
+  dir = mkdtempSync(join(tmpdir(), "subkit-docs-images-"));
   bytes = webp();
   sha = createHash("sha256").update(bytes).digest("hex");
   const path = join(dir, FILE);

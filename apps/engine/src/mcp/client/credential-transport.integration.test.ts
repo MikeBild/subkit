@@ -100,7 +100,7 @@ beforeAll(async () => {
   _resetConfigForTests();
   await loadConfig({
     env: { DATABASE_URL: db.url, NODE_ENV: "test" },
-    configPathOverride: join(mkdtempSync(join(tmpdir(), "sk-mcp-credential-")), "config.json"),
+    configPathOverride: join(mkdtempSync(join(tmpdir(), "subkit-mcp-credential-")), "config.json"),
   });
   await setConfigKey("server.public_base_url", "https://engine.example.test", { force: true });
   oauth = await startCredentialOAuthServer();

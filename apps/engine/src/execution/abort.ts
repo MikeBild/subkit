@@ -21,6 +21,10 @@ export function unregisterAbort(executionId: string): void {
   REGISTRY.delete(executionId);
 }
 
+export function hasLiveRun(executionId: string): boolean {
+  return REGISTRY.has(executionId);
+}
+
 export function cancel(executionId: string, reason = "cancelled"): boolean {
   const registered = REGISTRY.get(executionId);
   if (!registered || registered.controller.signal.aborted) return false;

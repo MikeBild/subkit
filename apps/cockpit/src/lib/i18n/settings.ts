@@ -170,9 +170,9 @@ export const settingsEn = {
   "settings.question.notifications.push":
     "Should your computer report when a long run has finished?",
   "settings.question.notifications.threshold": "When does a run count as long?",
-  "settings.question.notifications.quiet": "Quiet hours in the terminal (sk)",
+  "settings.question.notifications.quiet": "Quiet hours in the terminal (subkit)",
   "settings.question.notifications.quietHelp":
-    "For sk in the terminal, for the whole workspace. Leave empty for none.",
+    "For subkit in the terminal, for the whole workspace. Leave empty for none.",
   "settings.question.notifications.retention": "How long do finished messages stay visible?",
   "settings.question.notifications.rules": "Which messages reach whom?",
   "settings.question.operations.deployment": "How does SubKit run?",
@@ -188,7 +188,7 @@ export const settingsEn = {
   "settings.attention.restart": "Waiting for a restart:",
   "settings.attention.notActivated": "Last change not activated",
   "settings.copyKey": "Copy key",
-  "settings.copyKeyTooltip": "sk settings set {key}",
+  "settings.copyKeyTooltip": "subkit settings set {key}",
   "settings.appliesTo": "Applies to: {scope}",
   "settings.sourceIs": "Source: {source}",
   "settings.storage.body":
@@ -403,9 +403,9 @@ export const settingsDe: Record<keyof typeof settingsEn, string> = {
   "settings.question.notifications.push":
     "Soll dein Computer melden, wenn ein langer Run fertig ist?",
   "settings.question.notifications.threshold": "Ab wann gilt ein Run als lang?",
-  "settings.question.notifications.quiet": "Ruhezeiten im Terminal (sk)",
+  "settings.question.notifications.quiet": "Ruhezeiten im Terminal (subkit)",
   "settings.question.notifications.quietHelp":
-    "Für sk im Terminal, für den ganzen Arbeitsbereich. Leer lassen für keine.",
+    "Für subkit im Terminal, für den ganzen Arbeitsbereich. Leer lassen für keine.",
   "settings.question.notifications.retention": "Wie lange bleiben erledigte Meldungen sichtbar?",
   "settings.question.notifications.rules": "Welche Meldungen gehen an wen?",
   "settings.question.operations.deployment": "Wie läuft SubKit?",
@@ -421,7 +421,7 @@ export const settingsDe: Record<keyof typeof settingsEn, string> = {
   "settings.attention.restart": "Wartet auf Neustart:",
   "settings.attention.notActivated": "Letzte Änderung nicht aktiviert",
   "settings.copyKey": "Schlüssel kopieren",
-  "settings.copyKeyTooltip": "sk settings set {key}",
+  "settings.copyKeyTooltip": "subkit settings set {key}",
   "settings.appliesTo": "Gilt für: {scope}",
   "settings.sourceIs": "Quelle: {source}",
   "settings.storage.body":

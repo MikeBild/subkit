@@ -50,7 +50,7 @@ function fixture(options: { patch?: boolean; qualityPolicy?: boolean; witness?: 
   );
   if (options.patch) put("patches/fixture.patch", "fixture patch\n");
   for (const path of MUTATION_RUNTIME_ARTIFACTS) put(path, `fixture:${path}\n`);
-  chmodSync(join(root, "dist/sk"), 0o755);
+  chmodSync(join(root, "dist/subkit"), 0o755);
   for (const path of mutationTestInputs(root)) if (path !== "package.json") put(path, "\n");
   const source = "export const target = true;\n";
   const testSource = 'import { target } from "./target.ts"; void target;\n';
@@ -130,7 +130,7 @@ function fixture(options: { patch?: boolean; qualityPolicy?: boolean; witness?: 
       },
     ],
   };
-  const run = join(root, "reports/mutation/runs", wave.wave_id, "run-fixture");
+  const run = join(root, ".reports/mutation/runs", wave.wave_id, "run-fixture");
   mkdirSync(run, { recursive: true });
   const manifestPath = join(run, "wave.json");
   const manifestText = `${JSON.stringify(wave)}\n`;

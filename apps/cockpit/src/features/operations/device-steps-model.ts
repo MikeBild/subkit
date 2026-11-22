@@ -6,7 +6,7 @@ import {
 } from "@shared/device/protocol.ts";
 import type { Tone } from "@ui/atoms/pill";
 
-export type DeviceStepState = "queued" | "running" | DeviceResultStatus;
+export type DeviceStepState = "queued" | "running" | "unclear" | DeviceResultStatus;
 
 export interface DeviceStepRecord {
   command_id: string;
@@ -41,6 +41,7 @@ const TONES: Record<DeviceStepState, Tone> = {
   refused: "danger",
   failed: "danger",
   stopped: "neutral",
+  unclear: "warning",
 };
 
 export function deviceStepRecords(items: readonly DeviceStepItem[]): DeviceStepRecord[] {

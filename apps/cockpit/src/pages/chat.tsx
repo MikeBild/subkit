@@ -465,14 +465,16 @@ export function ChatPage() {
             />
           </ReadingColumn>
           {run?.taskRunId && activeId && !conversationFailed ? (
-            <TaskRunLine
-              key={run.taskRunId}
-              marker={run}
-              conversationId={activeId}
-              playbook={storedPlaybook}
-              permissions={session.permissions}
-              refreshedAt={detail.dataUpdatedAt}
-            />
+            <ReadingColumn className="shrink-0 border-b py-2">
+              <TaskRunLine
+                key={run.taskRunId}
+                marker={run}
+                conversationId={activeId}
+                playbook={storedPlaybook}
+                permissions={session.permissions}
+                refreshedAt={detail.dataUpdatedAt}
+              />
+            </ReadingColumn>
           ) : null}
           {summaryLine ? (
             <ReadingColumn className="pt-2">
@@ -535,8 +537,6 @@ export function ChatPage() {
             runScope={run ? t("chat.taskRun.scope") : null}
             composerHint={composerHint}
             initialInput={selection.kind === "new" ? initialPrompt : ""}
-            choiceOpen={choiceOpen}
-            formOpen={formOpen}
             pendingText={pendingText}
             attachments={attachments}
             setAttachments={setAttachments}

@@ -13,6 +13,11 @@ import type { Executor } from "../db/client.ts";
 import { auditLog, connectors, vaultItems } from "../db/schema/index.ts";
 import { can } from "../rbac/evaluator.ts";
 import {
+  type PreparedVaultValue,
+  type PreparedVaultValues,
+  vaultValueKey,
+} from "./core/injection.ts";
+import {
   handleMatches,
   isEditableKind,
   VAULT_PERMISSION,
@@ -584,4 +589,30 @@ export async function resolveVaultHandle(
       secrets: [resolved, ...vaultSecretsOf(value)],
     },
   };
+}
+
+export async function prepareVaultValues(
+  db: Executor,
+  input: {
+    tenant_id: string;
+    environment: VaultEnvironment;
+    user_id: string | null;
+    handles: readonly VaultHandle[];
+    execution_id?: string | null;
+    step_id?: string | null;
+  },
+): Promise<PreparedVaultValues> {
+  const values = new Map<string, PreparedVaultValue>();
+  for (const handle of input.handles) {
+    const key = vaultValueKey(handle);
+    if (values.has(key)) continue;
+    const resolved = await resolveVaultHandle(db, { ...input, handle });
+    values.set(
+      key,
+      resolved.ok
+        ? { ok: true, value: resolved.secret.value, secrets: resolved.secret.secrets }
+        : resolved,
+    );
+  }
+  return values;
 }

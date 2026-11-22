@@ -27,7 +27,7 @@ let configDir: string;
 
 beforeEach(async () => {
   tdb = await createTestDb("activation-failure");
-  configDir = mkdtempSync(join(tmpdir(), "sk-activation-failure-"));
+  configDir = mkdtempSync(join(tmpdir(), "subkit-activation-failure-"));
   _resetConfigForTests();
   await loadConfig({
     env: { DATABASE_URL: tdb.url, NODE_ENV: "test" },

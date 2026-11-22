@@ -32,7 +32,7 @@ const ENGINE_EVENT_TYPES = [
 ].map((match) => match[1] as string);
 
 const SEEDED_RULE = {
-  name: "sk CLI inbox (default)",
+  name: "subkit CLI inbox (default)",
   event_pattern: SEEDED_EVENT_PATTERN,
   workflow_pattern: "*",
   target_workspace_id: "_cli",

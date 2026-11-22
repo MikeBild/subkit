@@ -1,7 +1,7 @@
 ---
 slug: sk-ref-coding-agents
-name: sk Platform Reference — Coding Agents
-description: How a person connects Claude Code, Codex, Hermes or another MCP client to sk, what the session briefing is and how knowledge reaches it, how an agent runs workflows and looks things up under the person's own rights, how learnings flow back, and what to check when a briefing does not arrive.
+name: subkit Platform Reference — Coding Agents
+description: How a person connects Claude Code, Codex, Hermes or another MCP client to subkit, what the session briefing is and how knowledge reaches it, how an agent runs workflows and looks things up under the person's own rights, how learnings flow back, and what to check when a briefing does not arrive.
 tags: [sk-platform-reference, coding-agents, claude-code, codex, hermes, mcp, hooks, briefing, onboarding]
 scope: global
 version: 3
@@ -25,7 +25,7 @@ Collected material always follows one path: **collect → review with your agent
 
 ### What you need
 
-- The sk CLI, signed in to your engine. In the cloud, use `sk login --engine-url https://subkit-cloud.mikebild.dev` and **Sign in with work account**. The briefing uses this signed-in profile.
+- The subkit CLI, signed in to your engine. In the cloud, use `subkit login --engine-url https://subkit-cloud.mikebild.dev` and **Sign in with work account**. The briefing uses this signed-in profile.
 - The MCP address of your engine, `https://<your-engine>/mcp`. On SubKit Cloud it is `https://subkit-cloud.mikebild.dev/mcp`.
 - Claude Code, Codex or Hermes.
 - A repository where the briefings should appear.
@@ -33,22 +33,22 @@ Collected material always follows one path: **collect → review with your agent
 ### Set up the SubKit tools once per machine
 
 1. In the Cockpit, open **API access** and create a key.
-2. Store the key in `SK_API_KEY`.
+2. Store the key in `SUBKIT_API_KEY`.
 3. Register SubKit in your client with the matching command.
 
 Claude Code:
 
 ```bash
-claude mcp add --transport http --scope user sk https://<your-engine>/mcp --header "Authorization: Bearer ${SK_API_KEY}"
+claude mcp add --transport http --scope user subkit https://<your-engine>/mcp --header "Authorization: Bearer ${SUBKIT_API_KEY}"
 ```
 
 Codex:
 
 ```bash
-codex mcp add sk --url https://<your-engine>/mcp --bearer-token-env-var SK_API_KEY
+codex mcp add subkit --url https://<your-engine>/mcp --bearer-token-env-var SUBKIT_API_KEY
 ```
 
-A key without `mcp:authoring` lets the agent read and run workflows but build nothing. If it should draft workflows and connectors, create the key with `sk apikeys create --scopes …,mcp:authoring`.
+A key without `mcp:authoring` lets the agent read and run workflows but build nothing. If it should draft workflows and connectors, create the key with `subkit apikeys create --scopes …,mcp:authoring`.
 To sign in without a key, see "Connect AI clients via MCP".
 
 ### Set up briefings in a repository
@@ -56,27 +56,27 @@ To sign in without a key, see "Connect AI clients via MCP".
 1. In the repository, declare the domains:
 
    ```bash
-   sk agent init --domains <category>
+   subkit agent init --domains <category>
    ```
 
    For several domains, separate them with commas: `--domains <category>[,<category>]`.
-   The command writes `.sk/agent.json` and adds the SubKit hooks to `~/.claude/settings.json` and `~/.codex/hooks.json`. Other tools' hooks stay in place.
-2. Commit `.sk/agent.json` so every checkout uses the same domains.
+   The command writes `.subkit/agent.json` and adds the SubKit hooks to `~/.claude/settings.json` and `~/.codex/hooks.json`. Other tools' hooks stay in place.
+2. Commit `.subkit/agent.json` so every checkout uses the same domains.
 3. In Claude Code or Codex, run `/hooks` and check that the SubKit hooks are active.
 4. Trust new or changed SubKit hooks.
 
 ### Set up Hermes by hand
 
-For Hermes, `sk agent init` sets up no hooks. The command's output shows what you need under "Hermes (manual)".
+For Hermes, `subkit agent init` sets up no hooks. The command's output shows what you need under "Hermes (manual)".
 
 1. In Hermes, register an MCP server over streamable HTTP with the address `https://<your-engine>/mcp`.
-2. Pass the header `Authorization: Bearer ${SK_API_KEY}`.
-3. At the start of a session, run `sk agent briefing` in the repository and hand the output to Hermes as context.
+2. Pass the header `Authorization: Bearer ${SUBKIT_API_KEY}`.
+3. At the start of a session, run `subkit agent briefing` in the repository and hand the output to Hermes as context.
 
 ### Check the briefing
 
-1. In the repository, run `sk status`.
-2. Run `sk agent briefing --json`.
+1. In the repository, run `subkit status`.
+2. Run `subkit agent briefing --json`.
 3. Check the fields `domains`, `knowledge_sources`, `skills_full` and `used_tokens`.
 
 ### Review collected material with your coding agent
@@ -87,7 +87,7 @@ Your agent can start a review of collected entries. You confirm the result in th
 2. Open the Cockpit link the agent returns. It leads to the item's **Review** tab.
 3. Check the proposal's sources, exact text and knowledge destination.
 4. Select **Confirm as source**.
-5. Run `sk agent briefing --json` and check `knowledge_sources`.
+5. Run `subkit agent briefing --json` and check `knowledge_sources`.
 
 A new session loads the updated briefing.
 
@@ -101,14 +101,14 @@ Good to know:
 
 | Command | What it does |
 | --- | --- |
-| `sk intake list` | Shows collected items in your default category. |
-| `sk intake list --category research` | Shows collected items of one category. |
-| `sk intake review --category research` | Starts the review and prints the Cockpit link. |
-| `sk intake review --items <comma-separated-ids>` | Reviews only particular entries. |
-| `sk intake default --category research` | Changes your personal default category. |
-| `sk intake move --item <id> --category research` | Moves an entry to a category. |
-| `sk intake discard --item <id>` | Discards an entry. |
-| `sk intake restore --item <id>` | Restores a discarded entry. |
+| `subkit intake list` | Shows collected items in your default category. |
+| `subkit intake list --category research` | Shows collected items of one category. |
+| `subkit intake review --category research` | Starts the review and prints the Cockpit link. |
+| `subkit intake review --items <comma-separated-ids>` | Reviews only particular entries. |
+| `subkit intake default --category research` | Changes your personal default category. |
+| `subkit intake move --item <id> --category research` | Moves an entry to a category. |
+| `subkit intake discard --item <id>` | Discards an entry. |
+| `subkit intake restore --item <id>` | Restores a discarded entry. |
 
 - Without a selection, `review` uses your default category.
 - `--json` returns machine-readable results.
@@ -118,14 +118,14 @@ Good to know:
 
 **Domains.** A domain is a catalog category or a `domain:<slug>` tag.
 
-- `sk agent init` adds the requested domains and removes nothing that exists.
-- Without `.sk/agent.json`, the hooks match the folder name against your project categories. On a unique match they create `.sk/agent.json` for you. Otherwise they ask instead of guessing.
-- To fix the domains yourself, edit `domains` in `.sk/agent.json` and remove `inferred` and `inferred_folder_domain`.
+- `subkit agent init` adds the requested domains and removes nothing that exists.
+- Without `.subkit/agent.json`, the hooks match the folder name against your project categories. On a unique match they create `.subkit/agent.json` for you. Otherwise they ask instead of guessing.
+- To fix the domains yourself, edit `domains` in `.subkit/agent.json` and remove `inferred` and `inferred_folder_domain`.
 - A prompt can add other matching domains as the task changes.
 
 **Hooks.** `init` sets up the SessionStart, UserPromptSubmit and SessionEnd hooks for Claude Code and Codex. `--skip-claude` and `--skip-codex` leave that client's settings untouched.
 
-**Size.** A briefing has at most 1,800 tokens and 9,500 characters, shared by both clients and the interactive sk session.
+**Size.** A briefing has at most 1,800 tokens and 9,500 characters, shared by both clients and the interactive subkit session.
 Whatever does not fit is shortened, and you see a warning.
 
 A briefing contains:
@@ -140,7 +140,7 @@ A briefing contains:
 - The engine keeps only practices and facts a person taught or confirmed.
 - It drops events, status updates and anything credential-related.
 - The rest lands in the Inbox with origin `session`, in the project's shared category or your default category. A repeated learning adds evidence to the existing entry.
-- Learnings are not knowledge and not skills until a person confirms them in the Cockpit. `sk intake list` shows what is waiting.
+- Learnings are not knowledge and not skills until a person confirms them in the Cockpit. `subkit intake list` shows what is waiting.
 
 **Reviews with an agent.** The review runs in a saved SubKit conversation.
 
@@ -152,9 +152,9 @@ A briefing contains:
 
 | What you see | What to do |
 | --- | --- |
-| `sk agent briefing: no domains …` | There is no declaration. Pass `--domains` or run `sk agent init --domains <category>`. |
+| `subkit agent briefing: no domains …` | There is no declaration. Pass `--domains` or run `subkit agent init --domains <category>`. |
 | `knowledge_sources` or `skills_full` are empty | The briefing works but nothing is assigned to the domain. Put knowledge and skills in the domain's category or use the `domain:<slug>` tag. |
-| The client shows a briefing warning | The engine cannot be reached. The session continues. Check sign-in and connection with `sk status`. |
+| The client shows a briefing warning | The engine cannot be reached. The session continues. Check sign-in and connection with `subkit status`. |
 | No briefings in Claude Code or Codex | Open `/hooks`, check that the SubKit hooks are active, and trust new or changed hooks. |
 | `/hooks` in Codex shows the SubKit hooks as disabled | Codex hooks are on by default, so no `config.toml` edit is normally needed. Check the effective feature setting and your administrator policy first, then follow the [Codex hooks guide](https://learn.chatgpt.com/docs/hooks). |
 | The agent cannot draft anything | Its key has no `mcp:authoring`. Create a new key with that scope. |

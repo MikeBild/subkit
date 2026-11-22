@@ -21,6 +21,8 @@ export {
   taskPlanTemplateIssue,
   taskPlaybookFacts,
 } from "./core/plan-instance.ts";
+export type { TaskRunStart, TaskRunStartFacts } from "./core/run-start.ts";
+export { TASK_RUN_SEED_SKILL, taskRunStart } from "./core/run-start.ts";
 export type {
   TaskRunDecision,
   TaskRunObservation,
@@ -54,6 +56,8 @@ export {
   taskScheduleIssue,
   taskTriggerFor,
 } from "./core/schedule.ts";
+export type { TaskSource, TaskSourceCandidate } from "./core/source.ts";
+export { taskSource, taskSourceMessageId } from "./core/source.ts";
 export {
   TASK_AUTHORITY_SKIP_REASONS,
   TASK_GRANT_REVOCATION_REASONS,
@@ -83,6 +87,7 @@ export {
   revokeTaskAuthority,
   type TaskGrantHumanContext,
 } from "./grants.ts";
+export { taskRunConversationPrepared } from "./persistence/run-start-rows.ts";
 export { recordTaskAdmissionChange } from "./service/admission.ts";
 export type { ListTaskRunsParams } from "./service/run-reads.ts";
 export {
@@ -93,23 +98,23 @@ export {
 } from "./service/run-reads.ts";
 export type { TaskRunEndReason, TaskRunSource } from "./service/run-rows.ts";
 export type {
-  RecordRunObservationParams,
-  RunObservationResult,
   ScheduledTaskStart,
   StartTaskRunParams,
   StartTaskRunResult,
-} from "./service/runs.ts";
+} from "./service/run-start.ts";
+export {
+  failStalledStarts,
+  startScheduledTaskRun,
+  startTaskRun,
+} from "./service/run-start.ts";
+export type { RecordRunObservationParams, RunObservationResult } from "./service/runs.ts";
 export {
   abortTaskRun,
   completeTaskRun,
-  failStalledStarts,
   readTaskRunPlaybook,
   recordRunObservation,
   rejectTaskRunResult,
   resumeTaskRun,
-  startScheduledTaskRun,
-  startTaskRun,
-  TASK_RUN_SEED_SKILL,
   taskRunPrincipal,
 } from "./service/runs.ts";
 export type {
@@ -145,6 +150,7 @@ export {
   pauseTask,
   pauseTasksOfOwner,
   pauseTasksOfOwnerLocked,
+  readTaskSourceOfToolCall,
   resumeTask,
   updateTask,
 } from "./service/tasks.ts";

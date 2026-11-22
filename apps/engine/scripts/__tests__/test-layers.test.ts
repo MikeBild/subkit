@@ -29,7 +29,7 @@ describe("layerByPath", () => {
     expect(layerByPath("tests/e2e/a.e2e.test.ts")).toBe("e2e");
     expect(layerByPath("apps/engine/src/tests/journeys/01-a.journey.test.ts")).toBe("journey");
     expect(layerByPath("apps/engine/src/x/a.journey.test.ts")).toBe("journey");
-    expect(layerByPath("apps/sk/src/a.regression.test.tsx")).toBe("regression");
+    expect(layerByPath("apps/subkit/src/a.regression.test.tsx")).toBe("regression");
     expect(layerByPath("apps/engine/src/a.int.test.ts")).toBe("integration");
     expect(layerByPath("apps/engine/src/a.integration.test.ts")).toBe("integration");
     expect(layerByPath("apps/engine/src/a-regression.test.ts")).toBeNull();
@@ -131,7 +131,7 @@ describe("RUNNERS and groupByRoot", () => {
     expect(
       groupByRoot([
         "scripts/__tests__/a.test.ts",
-        "apps/sk/src/b.test.ts",
+        "apps/subkit/src/b.test.ts",
         "apps/engine/src/c.test.ts",
         "packages/shared/src/d.test.ts",
         "apps/engine/scripts/e.test.ts",
@@ -141,7 +141,7 @@ describe("RUNNERS and groupByRoot", () => {
         root: "apps/engine",
         files: ["apps/engine/src/c.test.ts", "apps/engine/scripts/e.test.ts"],
       },
-      { root: "apps/sk", files: ["apps/sk/src/b.test.ts"] },
+      { root: "apps/subkit", files: ["apps/subkit/src/b.test.ts"] },
       { root: "packages/shared", files: ["packages/shared/src/d.test.ts"] },
       { root: "scripts", files: ["scripts/__tests__/a.test.ts"] },
     ]);

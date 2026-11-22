@@ -8,6 +8,34 @@
       "when": 1795219200000,
       "tag": "0000_baseline_v2",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1795326354616,
+      "tag": "0001_workspace_language",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795333020517,
+      "tag": "0002_connection_start_owner",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1795333194468,
+      "tag": "0003_task_source_message",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795333884842,
+      "tag": "0004_intake_anonymous_collector",
+      "breakpoints": true
     }
   ]
 }

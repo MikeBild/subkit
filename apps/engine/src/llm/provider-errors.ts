@@ -32,22 +32,37 @@ const NETWORK_PATTERNS = [
   "too many tokens",
 ] as const;
 
+const KEY_REJECTED_STATUSES: ReadonlySet<number> = new Set([401, 403]);
+
+interface ErrorShape {
+  statusCode?: unknown;
+  status?: unknown;
+  message?: string;
+  lastError?: unknown;
+}
+
+function ownStatus(err: ErrorShape | undefined): number | null {
+  if (typeof err?.statusCode === "number") return err.statusCode;
+  if (typeof err?.status === "number") return err.status;
+  return null;
+}
+
+function statusOf(err: unknown): number | null {
+  const anyErr = err as ErrorShape | undefined;
+  return ownStatus(anyErr) ?? ownStatus(anyErr?.lastError as ErrorShape | undefined);
+}
+
 function readErrorParts(err: unknown): { statusCode: number | null; message: string } {
-  const anyErr = err as { statusCode?: number; status?: number; message?: string } | undefined;
-  const statusCode =
-    typeof anyErr?.statusCode === "number"
-      ? anyErr.statusCode
-      : typeof anyErr?.status === "number"
-        ? anyErr.status
-        : null;
+  const anyErr = err as ErrorShape | undefined;
   const message = (anyErr?.message ?? String(err ?? "")).toLowerCase();
-  return { statusCode, message };
+  return { statusCode: statusOf(err), message };
 }
 
 export function classifyProviderError(err: unknown): SubkitProviderErrorKind {
   if (err instanceof LlmGenerationAborted) return "other";
   if (err instanceof LlmProviderError && err.kind !== "other") return err.kind;
   const { statusCode, message } = readErrorParts(err);
+  if (statusCode !== null && KEY_REJECTED_STATUSES.has(statusCode)) return "key_rejected";
 
   if (message.includes("context_length") || message.includes("too many tokens")) {
     return "context_length_exceeded";
@@ -61,6 +76,10 @@ export function classifyProviderError(err: unknown): SubkitProviderErrorKind {
   if (statusCode !== null && (statusCode >= 500 || statusCode === 503)) return "network_5xx";
   if (NETWORK_PATTERNS.some((pattern) => message.includes(pattern))) return "network_5xx";
   return "other";
+}
+
+export function usageResultOf(err: unknown): "error" | "key_rejected" {
+  return classifyProviderError(err) === "key_rejected" ? "key_rejected" : "error";
 }
 
 export function isFallbackEligible(err: unknown): boolean {
@@ -109,13 +128,8 @@ function parseRetryAt(message: string): string | null {
 }
 
 export function buildProviderErrorDetails(err: unknown): Record<string, unknown> | undefined {
-  const anyErr = err as { statusCode?: number; status?: number; message?: string } | undefined;
-  const statusCode =
-    typeof anyErr?.statusCode === "number"
-      ? anyErr.statusCode
-      : typeof anyErr?.status === "number"
-        ? anyErr.status
-        : null;
+  const anyErr = err as ErrorShape | undefined;
+  const statusCode = statusOf(err);
   const message = anyErr?.message ?? (err instanceof Error ? err.message : String(err));
   const retryAt = parseRetryAt(message);
   const details: Record<string, unknown> = {};
@@ -124,20 +138,14 @@ export function buildProviderErrorDetails(err: unknown): Record<string, unknown>
   return Object.keys(details).length > 0 ? details : undefined;
 }
 
-export function toLlmProviderError(err: unknown): LlmProviderError {
+export function llmProviderErrorKind(err: unknown): LlmProviderError["kind"] {
   const kind = classifyProviderError(err);
+  return kind === "network_5xx" || kind === "timeout" ? "other" : kind;
+}
+
+export function toLlmProviderError(err: unknown): LlmProviderError {
   const message = err instanceof Error ? err.message : String(err);
-  const mappedKind =
-    kind === "rate_limit"
-      ? "rate_limit"
-      : kind === "quota_exhausted"
-        ? "quota_exhausted"
-        : kind === "overloaded"
-          ? "overloaded"
-          : kind === "context_length_exceeded"
-            ? "context_length_exceeded"
-            : "other";
-  return new LlmProviderError(mappedKind, message, buildProviderErrorDetails(err));
+  return new LlmProviderError(llmProviderErrorKind(err), message, buildProviderErrorDetails(err));
 }
 
 export function isToolSchemaError(error: unknown): boolean {

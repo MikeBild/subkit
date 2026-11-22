@@ -35,7 +35,7 @@ import {
 } from "@/components/cockpit/patterns/reading";
 import { Loadable } from "@/components/cockpit/patterns/skeleton";
 import { NotFoundPage } from "@/components/failure-state";
-import { FamilyAuditLink, FamilySection, FamilyState } from "@/components/family-ui";
+import { AuditMeta, PageSection, StatePanel } from "@/components/ui-states";
 import {
   activeHeading,
   anchorFor,
@@ -105,7 +105,7 @@ const ENGINE_INDEX_HREF = "/engine";
 function ReleaseLine({ version }: { version: string | null }) {
   const { t } = useI18n();
   return (
-    <FamilyAuditLink
+    <AuditMeta
       className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t pt-4 text-xs leading-4"
       data-testid="docs-release"
     >
@@ -121,7 +121,7 @@ function ReleaseLine({ version }: { version: string | null }) {
         <ExternalLink aria-hidden="true" className="ml-0.5 inline size-3 align-[-2px]" />
         <span className="sr-only"> ({t("docs.external")})</span>
       </a>
-    </FamilyAuditLink>
+    </AuditMeta>
   );
 }
 
@@ -242,7 +242,7 @@ function DocsSection({ group }: { group: DocsSectionGroup }) {
   const numbered = group.id === "start";
   const List = numbered ? "ol" : "ul";
   return (
-    <FamilySection
+    <PageSection
       slot="docs-section"
       data-testid={`docs-section-${group.id}`}
       title={group.title}
@@ -261,17 +261,13 @@ function DocsSection({ group }: { group: DocsSectionGroup }) {
           ),
         )}
       </List>
-    </FamilySection>
+    </PageSection>
   );
 }
 
 function DocsIndexSkeleton() {
   return (
-    <div
-      className="flex flex-col gap-10"
-      data-family-state="loading"
-      data-testid="docs-index-loading"
-    >
+    <div className="flex flex-col gap-10" data-sk-state="loading" data-testid="docs-index-loading">
       {[5, 4, 3].map((count, section) => (
         <div key={section} className="flex flex-col gap-3">
           <Skeleton className="h-5 w-40" />
@@ -318,10 +314,10 @@ export function DocsIndexView({
   if (failed) body = <LoadFailed onRetry={onRetry} />;
   else if (pending || !bundle) body = <DocsIndexSkeleton />;
   else if (rows.length === 0)
-    body = <FamilyState state="empty" title={t("docs.empty")} data-testid="docs-empty" />;
+    body = <StatePanel state="empty" title={t("docs.empty")} data-testid="docs-empty" />;
   else if (groups.length === 0)
     body = (
-      <FamilyState
+      <StatePanel
         state="empty"
         title={t("docs.noMatches")}
         description={t("resource.broaderSearch")}
@@ -531,7 +527,7 @@ function TocLinks({
 }) {
   const shallowest = Math.min(...toc.map((heading) => heading.depth));
   return (
-    <nav aria-label={label} data-family-slot="toc" className="flex flex-col gap-1">
+    <nav aria-label={label} data-sk-slot="toc" className="flex flex-col gap-1">
       {toc.map((heading) => (
         <Link
           key={heading.anchor}
@@ -595,7 +591,7 @@ function revealHeading(id: string): boolean {
 }
 
 function scrollRegion(root: HTMLElement | null): HTMLElement | null {
-  return root?.closest<HTMLElement>('[data-family-slot="scroll-region"]') ?? null;
+  return root?.closest<HTMLElement>('[data-sk-slot="scroll-region"]') ?? null;
 }
 
 function useDocsScroll(hash: string, anchor: RefObject<HTMLDivElement | null>) {
@@ -859,7 +855,7 @@ export function DocsArticleView({
     >
       <article
         data-testid="docs-article"
-        data-family-surface="detail"
+        data-sk-surface="detail"
         className="flex min-w-0 flex-col"
       >
         <PageHeader
@@ -877,7 +873,7 @@ export function DocsArticleView({
               </CollapsibleCard>
             </ReadingCompanion>
           ) : null}
-          <section data-family-slot="content" className="min-w-0">
+          <section data-sk-slot="content" className="min-w-0">
             <MessageResponse
               key={`${page.slug}:${locale}`}
               controls={false}

@@ -19,7 +19,7 @@
   "config_template_stdio": {
     "mcpServers": {
       "subkit": {
-        "command": "sk",
+        "command": "subkit",
         "args": ["mcp"]
       }
     }

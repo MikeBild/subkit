@@ -20,6 +20,7 @@ import {
   type StopState,
   unreportedStop,
 } from "../shared/local/runner-port.ts";
+import type { RunnerProblem } from "../shared/local/runner-problems.ts";
 import { signAssertion } from "./runner-key.ts";
 import { readJson, writeJsonAtomic } from "./store.ts";
 
@@ -29,6 +30,8 @@ export interface RunnerHostOptions {
   computer: () => Omit<ComputerSnapshot, "permissions">;
   permissions: () => Permissions;
   onLive: (event: LiveEvent, screenshot?: Uint8Array) => void;
+  onBusy: (commandId: string, busy: boolean) => void;
+  onExit: () => void;
   idleSeconds: () => number | null;
   stopStatePath: string;
   files: () => FilesSnapshot;
@@ -37,6 +40,7 @@ export interface RunnerHostOptions {
   volumeId: (path: string) => Promise<string | null>;
   privateKey: () => string | null;
   onState: (state: RunnerState | "crashed" | "given_up") => void;
+  onProblem: (problem: RunnerProblem) => void;
   now: () => number;
   browser?: { killAll(): Promise<unknown> };
 }
@@ -97,7 +101,8 @@ export function createRunnerHost(options: RunnerHostOptions): RunnerHost {
     else if (message.type === "live") {
       const live = liveEventOf(message.event);
       if (live) options.onLive(live.event, live.screenshot);
-    } else if (message.type === "idle_query") {
+    } else if (message.type === "busy") options.onBusy(message.command_id, message.busy);
+    else if (message.type === "idle_query") {
       let seconds: number | null = null;
       try {
         seconds = options.idleSeconds();
@@ -105,7 +110,8 @@ export function createRunnerHost(options: RunnerHostOptions): RunnerHost {
         seconds = null;
       }
       send({ type: "idle", request_id: message.request_id, seconds });
-    } else if (message.type === "stop_reported")
+    } else if (message.type === "problem") options.onProblem(message.problem);
+    else if (message.type === "stop_reported")
       saveStopState(markReported(stopState, message.generation));
     else if (message.type === "state") {
       if (message.state === "stopped" && stopTimer) {
@@ -153,6 +159,7 @@ export function createRunnerHost(options: RunnerHostOptions): RunnerHost {
     forked.on("message", (raw) => void onMessage(raw));
     forked.once("exit", () => {
       if (child === forked) child = null;
+      options.onExit();
       void options.browser?.killAll();
       if (!wanted) return;
       options.onState("crashed");

@@ -9,6 +9,7 @@ import {
   NO_ONBOARDING,
   startOnboarding,
 } from "../../src/shared/onboarding.ts";
+import { platformCapabilities } from "../../src/shared/platform-capabilities.ts";
 import { INITIAL_CAPTURE } from "../../src/shared/quick-capture-model.ts";
 import { DEFAULT_QUIET_HOURS } from "../../src/shared/quiet-hours.ts";
 import type { ShellState, ShellView } from "../../src/shared/shell-ipc.ts";
@@ -272,6 +273,7 @@ export function connectState(scenario: ConnectScenario, locale: Locale): Connect
       lost: [],
     },
     local: LOCAL_UNAVAILABLE,
+    platform: platformCapabilities("darwin", "arm64"),
     ...scenario.patch,
   };
 }

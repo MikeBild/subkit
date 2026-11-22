@@ -206,7 +206,7 @@ let ctx: BoundaryCtx;
 let configDirectory: string;
 
 beforeAll(async () => {
-  configDirectory = mkdtempSync(join(tmpdir(), "sk-route-boundary-"));
+  configDirectory = mkdtempSync(join(tmpdir(), "subkit-route-boundary-"));
   await loadConfig({
     env: { DATABASE_URL: "postgres://localhost/x", NODE_ENV: "test" },
     configPathOverride: join(configDirectory, "subkit.config.json"),

@@ -16,7 +16,7 @@ export function learningClient(
     const name = ctx.mcp_client_name?.trim().slice(0, CLIENT_NAME_MAX);
     return name || undefined;
   }
-  if (ctx.surface === "sk_headless" || ctx.surface === "sk_interactive") return "sk";
+  if (ctx.surface === "sk_headless" || ctx.surface === "sk_interactive") return "subkit";
   return "chat";
 }
 

@@ -22,23 +22,23 @@ export type PolicyDecision =
 export const MCP_ELICITATION_BLURB =
   "the engine collects any input it needs — forms, OAuth authorization — through the authoring conversation in this client, so the operator stays in the chat";
 
-export const DRAFT_WRITE_MCP_UNAVAILABLE_REASON = `This tool mutates a conversation-scoped working draft and is only available inside an authoring conversation. Author from the sk CLI (\`sk workflows --help\`, \`sk connectors --help\`), which edits definitions from a file you can read. Over MCP, conversation_start opens an authoring conversation when the credential carries the mcp:authoring scope; ${MCP_ELICITATION_BLURB}.`;
+export const DRAFT_WRITE_MCP_UNAVAILABLE_REASON = `This tool mutates a conversation-scoped working draft and is only available inside an authoring conversation. Author from the subkit CLI (\`subkit workflows --help\`, \`subkit connectors --help\`), which edits definitions from a file you can read. Over MCP, conversation_start opens an authoring conversation when the credential carries the mcp:authoring scope; ${MCP_ELICITATION_BLURB}.`;
 
 export const CONVERSATION_TOOL_MCP_UNAVAILABLE_REASON =
-  "Authoring is not enabled for this credential. Definitions — workflows, connectors, knowledge sources, skills — are authored through the sk CLI (`sk workflows --help`, `sk connectors --help`), where the change is a file you can read before it is applied. To author over MCP instead, the credential must carry the mcp:authoring scope.";
+  "Authoring is not enabled for this credential. Definitions — workflows, connectors, knowledge sources, skills — are authored through the subkit CLI (`subkit workflows --help`, `subkit connectors --help`), where the change is a file you can read before it is applied. To author over MCP instead, the credential must carry the mcp:authoring scope.";
 
-export const DRAFT_REQUIRED_MCP_UNAVAILABLE_REASON = `This tool operates on a conversation-scoped working draft and is only available inside an authoring conversation. Author from the sk CLI (\`sk workflows --help\`, \`sk connectors --help\`), which edits definitions from a file you can read. Over MCP, conversation_start opens an authoring conversation when the credential carries the mcp:authoring scope; ${MCP_ELICITATION_BLURB}.`;
+export const DRAFT_REQUIRED_MCP_UNAVAILABLE_REASON = `This tool operates on a conversation-scoped working draft and is only available inside an authoring conversation. Author from the subkit CLI (\`subkit workflows --help\`, \`subkit connectors --help\`), which edits definitions from a file you can read. Over MCP, conversation_start opens an authoring conversation when the credential carries the mcp:authoring scope; ${MCP_ELICITATION_BLURB}.`;
 
-const SK_CONFIRM_META_KEY = "sk_confirm";
+const SUBKIT_CONFIRM_META_KEY = "sk_confirm";
 const ARGS_CONFIRM_KEY = "__policy_confirmed";
-const SK_CONFIRM_ID_META_KEY = "sk_confirm_id";
+const SUBKIT_CONFIRM_ID_META_KEY = "sk_confirm_id";
 const ARGS_CONFIRM_ID_KEY = "__policy_confirm_id";
 
 function isConfirmed(
   args: Record<string, unknown>,
   meta: Record<string, unknown> | undefined,
 ): boolean {
-  if (meta && meta[SK_CONFIRM_META_KEY] === true) return true;
+  if (meta && meta[SUBKIT_CONFIRM_META_KEY] === true) return true;
   if (args[ARGS_CONFIRM_KEY] === true) return true;
   return false;
 }
@@ -162,4 +162,9 @@ export function confirmEnvelopeFor(p: {
   };
 }
 
-export { ARGS_CONFIRM_ID_KEY, ARGS_CONFIRM_KEY, SK_CONFIRM_ID_META_KEY, SK_CONFIRM_META_KEY };
+export {
+  ARGS_CONFIRM_ID_KEY,
+  ARGS_CONFIRM_KEY,
+  SUBKIT_CONFIRM_ID_META_KEY,
+  SUBKIT_CONFIRM_META_KEY,
+};

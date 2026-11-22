@@ -11,8 +11,26 @@ audience: operator
 Danach läuft SubKit auf deinem eigenen Server: die Engine mit Cockpit, eine PostgreSQL-Datenbank und ein Objektspeicher, gestartet mit Docker Compose.
 Datenbank, Dateien und Schlüssel bleiben auf deinem Server.
 
+### Kurz und knapp
+
+1. Installiere Docker mit Compose und OpenSSL auf deinem Server.
+2. Lade die [`docker-compose.yml`](https://github.com/MikeBild/subkit/releases/latest/download/docker-compose.yml) des neuesten Releases in ein leeres Verzeichnis.
+3. Erzeuge die `.env` mit `MASTER_KEY` und `SUBKIT_DB_PASSWORD`, mit dem Befehl weiter unten.
+4. Starte alles mit `docker compose pull && docker compose up -d --wait`.
+5. Leg das Admin-Konto an und verbinde deinen KI-Schlüssel mit `docker compose exec engine subkit init`, wie unter „Erstes Setup“ beschrieben.
+6. Öffne `http://localhost:3000`. Du landest im Cockpit.
+
+Die Details folgen.
+
 Du brauchst Docker mit Compose, OpenSSL und eine POSIX-Shell.
-Lege die `docker-compose.yml` in ein eigenes Verzeichnis. Nimm sie aus demselben veröffentlichten Release wie das Engine-Image.
+Lade die `docker-compose.yml` in ein eigenes Verzeichnis. Sie kommt immer aus dem neuesten Release und startet das Engine-Image dieses Release:
+
+```bash
+mkdir subkit && cd subkit
+curl -fsSLO https://github.com/MikeBild/subkit/releases/latest/download/docker-compose.yml
+```
+
+Jede Einstellung mit ihrem Standardwert steht in der [`subkit.config.example.json`](https://github.com/MikeBild/subkit/releases/latest/download/subkit.config.example.json). Du brauchst sie nur, wenn du eine Einstellung per Datei änderst, wie unter „Einstellungen“ beschrieben.
 Nutze nur veröffentlichte Release-Images. Schlägt das Laden des Images fehl, ist die Installation nicht fertig, auch wenn andere Dienste starten.
 Kombiniere kein älteres Image mit einer neueren Compose-Datei.
 
@@ -81,7 +99,7 @@ Braucht die Dokumentation JavaScript zum Anzeigen, stelle eine erreichbare OpenA
 
 Browser-Crawling läuft nur, wenn beide Bedingungen gelten:
 
-- `SK_PLAYWRIGHT_ENTRY` nennt ein installiertes Playwright-Modul mit seinem Chromium-Build,
+- `SUBKIT_PLAYWRIGHT_ENTRY` nennt ein installiertes Playwright-Modul mit seinem Chromium-Build,
   lesbar für den Container-Nutzer (uid 1001), zum Beispiel in einem eigenen, vom
   SubKit-Image abgeleiteten Image.
 - Der Schutz für ausgehende Verbindungen ist nicht strikt. Der Container startet mit
@@ -95,7 +113,7 @@ es und liefere die Browser-Lizenzen mit. Dieser Weg ist nicht Teil der Release-P
 ### Backup und Wiederherstellung
 
 Ein Backup kopiert die ganze Installation und stellt sie mit demselben Image wieder her.
-Um nur die eigenen Workflows, Connectors, Skills und das Wissen eines Arbeitsbereichs auf eine andere Engine zu bringen, exportiere stattdessen ein Paket wie in „Die sk-CLI auf deinem Rechner verwenden“ beschrieben.
+Um nur die eigenen Workflows, Connectors, Skills und das Wissen eines Arbeitsbereichs auf eine andere Engine zu bringen, exportiere stattdessen ein Paket wie in „Die subkit-CLI auf deinem Rechner verwenden“ beschrieben.
 
 Plane für ein konsistentes Backup ein Wartungsfenster ein.
 Die Schritte gelten für die mitgelieferte PostgreSQL und den mitgelieferten Objektspeicher; externe Dienste brauchen ein eigenes Verfahren.
@@ -111,7 +129,7 @@ Dump, Objektarchiv und `.env` enthalten sensible Daten.
    Prüfe den Exit-Status, bevor du weitermachst. Lass die Engine gestoppt, bis beide Datenspeicher gesichert sind.
 3. Stoppe den Objektspeicher mit `docker compose stop object-store`. Ermittle sein genaues Volume
    mit `docker inspect --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Name}}{{end}}{{end}}' "$(docker compose ps -aq object-store)"`.
-   Archiviere es schreibgeschützt mit `docker run --rm --network none -v <object-volume>:/data:ro --entrypoint tar oven/bun:1.4.5-debian -C /data -cf - . > /path/to/backup/objects.tar`.
+   Archiviere es schreibgeschützt mit `docker run --rm --network none -v <object-volume>:/data:ro --entrypoint tar oven/bun:@@BUN_VERSION@@-debian -C /data -cf - . > /path/to/backup/objects.tar`.
    Ersetze `<object-volume>` durch den ermittelten Namen, nicht durch einen geratenen.
 4. Prüfe, dass jeder Befehl erfolgreich war. Setze alle Backup-Dateien auf den Modus `0600` und halte
    ihre SHA-256-Prüfsummen fest. Starte die ursprüngliche Installation mit `docker compose up -d --wait` neu.
@@ -136,7 +154,7 @@ networks:
 1. Lege neuen Speicher mit `docker compose -p subkit-recovery create postgres object-store` an.
    Ermittle das `/data`-Volume des neuen Objektspeicher-Containers wie oben, mit dem Wiederherstellungsprojekt.
    Stelle nur in dieses neue Volume wieder her:
-   `docker run --rm -i --network none -v <new-object-volume>:/data --entrypoint tar oven/bun:1.4.5-debian -C /data -xf - < /path/to/backup/objects.tar`.
+   `docker run --rm -i --network none -v <new-object-volume>:/data --entrypoint tar oven/bun:@@BUN_VERSION@@-debian -C /data -xf - < /path/to/backup/objects.tar`.
 2. Starte die neue Datenbank mit `docker compose -p subkit-recovery up -d --wait postgres`.
    Stelle sie mit `docker compose -p subkit-recovery exec -T postgres pg_restore --exit-on-error --clean --if-exists --no-owner -U subkit -d subkit < /path/to/backup/postgres.dump` wieder her.
    Dieser Befehl ersetzt Datenbankinhalte. Verwende ihn nur gegen das neue Wiederherstellungsprojekt.

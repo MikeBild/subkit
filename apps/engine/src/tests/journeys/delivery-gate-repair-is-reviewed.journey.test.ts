@@ -37,8 +37,8 @@ describe("a refused report is repaired by a reviewed deterministic fix", () => {
     let grantRequest: Request;
 
     const ENCODER = [
-      "const subject = '[watchkit page] api.example.com — certificate expires';",
-      "const html = '<p>watchkit.finding · api.example.com · ' + input.input.at + '</p>';",
+      "const subject = '[uptime page] api.example.com — certificate expires';",
+      "const html = '<p>uptime.finding · api.example.com · ' + input.input.at + '</p>';",
       "const msg = 'From: ops@example.com\\r\\nTo: ops@example.com\\r\\nSubject: ' + subject +",
       "  '\\r\\nMIME-Version: 1.0\\r\\nContent-Type: text/html; charset=UTF-8\\r\\n\\r\\n' + html;",
       "return { raw: sk.base64UrlEncode(msg) };",
@@ -167,7 +167,7 @@ describe("a refused report is repaired by a reviewed deterministic fix", () => {
     }
 
     beforeAll(async () => {
-      ctx = await createJourneyCtx("gate-repair-watchkit");
+      ctx = await createJourneyCtx("gate-repair-uptime");
       const now = await databaseNow(ctx.db);
       const [user] = await ctx.db
         .insert(users)

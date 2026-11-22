@@ -18,35 +18,45 @@ image and the binaries. The desktop app follows with its own workflow, see
    the minor and patch updates that the version ranges allow. It holds exact pins, patched packages,
    overrides, local files and new majors and says why; update those by hand. `--check` only
    reports. Run `bun run verify static` and commit the updates on their own.
-3. Bump the version in every package:
+3. Write the reviewed highlights in a file outside the repository, with a
+   `## Highlights (en)` and a `## Highlights (de)` section of five to seven plain-language
+   bullets each: effects for the people who use SubKit, no internal names. German uses „du“,
+   „…“ and DIN 5008 (`typografie-de`, `du-sie-check`, `microcopy-ux`); English uses US spelling
+   and curly quotes. They end up in the GitHub release description, and the Cockpit shows them
+   under “What’s new”, falling back to the `feat(user)` and `fix(user)` subjects.
+4. Bump the version and regenerate the release notes with the highlights:
 
    ```sh
    bun run release bump <version>
+   bun run gen release-notes --highlights <file>
    ```
 
-   Commit the bump.
-4. Produce the mutation evidence for this commit. It runs long and is only needed once per commit:
+   Commit the bump and the generated notes together. The generator reads the highlights of
+   published releases from GitHub.
+5. Produce the mutation evidence for this commit. It runs long and is only needed once per commit:
 
    ```sh
    bun run quality release
    ```
 
-5. Push `main`, wait for the `quality` workflow of that commit, then tag:
+6. Push `main`, wait for the `quality` workflow of that commit, then tag:
 
    ```sh
-   bun run release tag
+   bun run release tag --highlights <file>
    ```
 
-   `release tag` refuses a dirty tree, a commit that differs from `origin/main` and a version that
-   was used before. It then checks the mutation evidence (`bun run quality release --check`), runs
-   the paid live model gate (`bun run verify llm-live`) and the release gate
-   (`bun run verify release`), and only then pushes the tag.
+   `release tag` refuses a dirty tree, a commit that differs from `origin/main`, a version that
+   was used before and a version without highlights in both languages, taken from `--highlights`
+   or an existing draft release. It then checks the mutation evidence
+   (`bun run quality release --check`), runs the paid live model gate (`bun run verify llm-live`)
+   and the release gate (`bun run verify release`), and only then writes the highlights into the
+   draft release and pushes the tag.
    To release before the mutation evidence is ready, tag with `bun run release tag --defer-mutation`.
    It skips `bun run quality release --check`, runs `bun run verify release --defer-mutation` and prints a
    loud warning. The release gate status then ends in `mutation: deferred`, and the GitHub release notes
    say "Mutation evidence: deferred". Produce the evidence afterwards with `bun run quality release`.
    Without the flag nothing changes.
-6. After the `release` workflow has published, check the deployed engine:
+7. After the `release` workflow has published, check the deployed engine:
 
    ```sh
    bun run release verify --engine-url <url> --version <version>
@@ -75,7 +85,7 @@ There is one gate list, in `scripts/lib/commands.ts`. Each profile is a subset o
 | `bun run quality mutation` | The engine mutation floor with `stryker.config.json` |
 | `bun run quality mutation <computer\|browser\|live\|local\|kernel\|shell>` | The desktop cores with `apps/desktop/stryker.<scope>.json` |
 | `bun run quality release` | The release mutation evidence for the current commit (`--check` only checks it) |
-| `bun run quality prune <coverage\|runs>` | Shows old coverage or verification runs; `--apply` deletes them |
+| `bun run quality prune <coverage\|mutation\|runs>` | Shows old coverage, mutation or verification runs; `--apply` deletes them. Coverage and mutation runs also prune themselves: each keeps only its latest run per kind, and receipts in `.reports/mutation/release/` are never deleted |
 | `bun run quality benchmark <smoke\|release\|full>` | The runtime benchmark |
 
 ## Security
@@ -89,5 +99,30 @@ verifies the final image and writes its software inventory (`bun run release sec
 `bun scripts/gen-release-key.ts` creates a new release signing key pair. Use it only to rotate the
 key: it writes the public key into `packages/cli-core/src/release-public-key.ts` and the installer
 trust root in `scripts/install.sh`, and prints the private key, which you store as the
-`RELEASE_SIGNING_KEY` secret. Installed `sk` binaries trust only the old key until they update, so
+`RELEASE_SIGNING_KEY` secret. Installed `subkit` binaries trust only the old key until they update, so
 rotate together with a release.
+
+## Web Clipper
+
+Every release attaches the Web Clipper as `subkit-clipper.zip`, so
+`https://github.com/MikeBild/subkit/releases/latest/download/subkit-clipper.zip` always serves the
+newest version. `bun run release bump` renders the version into its manifest.
+
+The Web Clipper is published in the Chrome Web Store as
+[`odefbnmjeehgfbanpaajiaocliccldma`](https://chromewebstore.google.com/detail/odefbnmjeehgfbanpaajiaocliccldma).
+The store copy updates itself and never shows the update hint. The release ZIP stays as the
+fallback for unmanaged or offline setups; an unpacked copy asks its engine for the version once a
+day and shows "Update available" with a download link.
+
+The last release step submits `assets/subkit-clipper.zip` to that store item with
+`scripts/publish-clipper-store.ts`, which pins the extension ID. Without secrets it prints that it
+skipped. It needs all four:
+
+| Secret | What it is |
+| --- | --- |
+| `CHROME_WEB_STORE_CLIENT_ID` | OAuth client of a Google Cloud project with the Chrome Web Store API enabled |
+| `CHROME_WEB_STORE_CLIENT_SECRET` | Secret of that OAuth client |
+| `CHROME_WEB_STORE_REFRESH_TOKEN` | Refresh token for the scope `https://www.googleapis.com/auth/chromewebstore` |
+| `CHROME_WEB_STORE_PUBLISHER_ID` | Publisher ID from the developer dashboard |
+
+The listing texts in English and German live in `apps/clipper/store/listing.json`.

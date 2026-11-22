@@ -2,6 +2,12 @@
 
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
+import {
+  localBundle,
+  type PlatformCapabilities,
+  platformCapabilities,
+  supports,
+} from "../src/shared/platform-capabilities.ts";
 
 const APP = join(import.meta.dir, "..");
 const REPO = join(APP, "..", "..");
@@ -28,15 +34,60 @@ export function parsePackageArgs(argv: readonly string[]): PackageOptions {
   };
 }
 
-export function packageSteps(options: PackageOptions): PackageStep[] {
-  const stage: PackageStep[] = options.prebuilt
-    ? []
-    : [
-        { argv: ["bun", "scripts/fetch-agent-desktop.ts"], cwd: "app" },
-        { argv: ["bun", "scripts/fetch-agent-browser.ts"], cwd: "app" },
-        { argv: ["bun", "run", "build", "desktop-engine"], cwd: "repo" },
-        { argv: ["bun", "scripts/fetch-postgres.ts", "--target", "darwin-arm64"], cwd: "app" },
-      ];
+const BUILDER_PLATFORMS = [
+  ["--mac", "darwin", "arm64"],
+  ["--win", "win32", "x64"],
+  ["--linux", "linux", "x64"],
+] as const;
+
+export function packagePlatform(
+  options: PackageOptions,
+  host: { platform: string; arch: string },
+): PlatformCapabilities {
+  const named = BUILDER_PLATFORMS.find(([flag]) => options.builder.includes(flag));
+  return named
+    ? platformCapabilities(named[1], named[2])
+    : platformCapabilities(host.platform, host.arch);
+}
+
+function stageSteps(platform: PlatformCapabilities): PackageStep[] {
+  const bundle = localBundle(platform);
+  return [
+    ...(supports(platform, "computer")
+      ? [{ argv: ["bun", "scripts/fetch-agent-desktop.ts"], cwd: "app" } as const]
+      : []),
+    ...(supports(platform, "browser")
+      ? [{ argv: ["bun", "scripts/fetch-agent-browser.ts"], cwd: "app" } as const]
+      : []),
+    ...(bundle && platform.platform
+      ? [
+          {
+            argv: [
+              "bun",
+              "run",
+              "build",
+              "desktop-engine",
+              "--target",
+              ENGINE_TARGET[platform.platform],
+            ],
+            cwd: "repo",
+          } as const,
+          {
+            argv: ["bun", "scripts/fetch-postgres.ts", "--target", bundle.postgres],
+            cwd: "app",
+          } as const,
+        ]
+      : []),
+  ];
+}
+
+const ENGINE_TARGET = { "darwin-arm64": "darwin-arm64", "win32-x64": "windows-x64" } as const;
+
+export function packageSteps(
+  options: PackageOptions,
+  host: { platform: string; arch: string } = process,
+): PackageStep[] {
+  const stage = options.prebuilt ? [] : stageSteps(packagePlatform(options, host));
   return [
     ...stage,
     { argv: ["bun", "scripts/build.ts", ...(options.dev ? [] : ["--production"])], cwd: "app" },

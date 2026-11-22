@@ -32,7 +32,9 @@ import { cleanLeftovers } from "./files/leftovers.ts";
 import { createHandover } from "./handover.ts";
 import { createImporter } from "./importer.ts";
 import { openLedger, type RunnerLedger } from "./ledger.ts";
+import { createResultOutbox, type ResultOutbox } from "./outbox.ts";
 import { createRunnerQueue, type RunnerQueue } from "./queue.ts";
+import { createProblemReporter, type ReportPort } from "./report.ts";
 import { abortableWait, createStopReporter, type StopReporter } from "./stop-report.ts";
 
 export interface RunnerPort {
@@ -42,10 +44,17 @@ export interface RunnerPort {
 
 export interface RunnerOptions {
   readonly exit?: () => void;
+  readonly report?: ReportPort;
 }
 
 export function runRunner(port: RunnerPort, options: RunnerOptions = {}): void {
   const pending = new Map<string, (value: unknown) => void>();
+  const problems =
+    options.report ??
+    createProblemReporter({
+      now: Date.now,
+      emit: (problem) => port.postMessage({ type: "problem", problem }),
+    });
 
   function ask<T>(message: RunnerToMain & { request_id: string }): Promise<T> {
     return new Promise((resolve) => {
@@ -65,10 +74,11 @@ export function runRunner(port: RunnerPort, options: RunnerOptions = {}): void {
         resolve(false);
       };
       signal.addEventListener("abort", onAbort, { once: true });
-      void ask<boolean>(message).then((value) => {
+      const settle = (value: unknown) => {
         signal.removeEventListener("abort", onAbort);
         resolve(value === true);
-      });
+      };
+      ask<boolean>(message).then(settle, settle);
     });
   }
 
@@ -176,9 +186,11 @@ export function runRunner(port: RunnerPort, options: RunnerOptions = {}): void {
   interface Session {
     execute: (command: DeviceCommand, signal: AbortSignal) => Promise<DeviceResult>;
     commands: Map<string, DeviceCommand>;
+    unsaved: Map<string, DeviceResult>;
     channel: RunnerChannel;
     ledger: RunnerLedger;
     queue: RunnerQueue;
+    outbox: ResultOutbox;
     stops: StopReporter;
     abort: AbortController;
     browser: BrowserCapability | null;
@@ -203,28 +215,64 @@ export function runRunner(port: RunnerPort, options: RunnerOptions = {}): void {
     };
   }
 
-  async function report(current: Session, commandId: string, result: DeviceResult): Promise<void> {
-    current.ledger.remember(commandId, result, current.commands.get(commandId) ?? null);
-    current.commands.delete(commandId);
-    await current.channel.result(commandId, result).catch(() => {});
+  async function send(current: Session, commandId: string, result: DeviceResult): Promise<void> {
+    try {
+      await current.channel.result(commandId, result);
+    } catch (error) {
+      if (!(error instanceof ChannelError && error.status === 404)) throw error;
+    }
+    current.unsaved.delete(commandId);
+    journal(() => current.ledger.delivered(commandId));
   }
 
-  async function onAvailable(current: Session, commandId: string): Promise<void> {
-    const known = current.ledger.recall(commandId);
-    if (known) {
-      const result = known.replay
-        ? replayVerdict(
-            known.result,
-            await current.execute(known.replay, AbortSignal.timeout(60_000)),
-          )
-        : known.result;
-      await current.channel.result(commandId, result).catch(() => {});
-      return;
+  function journal(write: () => void): boolean {
+    try {
+      write();
+      return true;
+    } catch (error) {
+      problems.failed("ledger", error);
+      return false;
     }
+  }
+
+  async function report(current: Session, commandId: string, result: DeviceResult): Promise<void> {
+    const command = current.commands.get(commandId) ?? null;
+    current.commands.delete(commandId);
+    if (!journal(() => current.ledger.remember(commandId, result, command)))
+      current.unsaved.set(commandId, result);
+    try {
+      await send(current, commandId, result);
+    } catch (error) {
+      problems.failed("delivery", error);
+      current.outbox.add(commandId);
+    }
+  }
+
+  async function resend(current: Session, commandId: string): Promise<void> {
+    const unsaved = current.unsaved.get(commandId);
+    if (unsaved) return send(current, commandId, unsaved);
+    const known = current.ledger.recall(commandId);
+    if (!known) return;
+    const result = known.replay
+      ? replayVerdict(
+          known.result,
+          await current.execute(known.replay, AbortSignal.timeout(60_000)),
+        )
+      : known.result;
+    await send(current, commandId, result);
+  }
+
+  async function claim(current: Session, commandId: string): Promise<void> {
     const command = await current.channel.claim(commandId);
     if (!command) return;
     current.commands.set(commandId, command);
     current.queue.submit(command);
+  }
+
+  function onAvailable(current: Session, commandId: string): void {
+    if (current.unsaved.has(commandId) || current.ledger.recall(commandId))
+      current.outbox.add(commandId);
+    else claim(current, commandId).catch((error) => problems.failed("claim", error));
   }
 
   async function streamLoop(current: Session): Promise<void> {
@@ -234,7 +282,8 @@ export function runRunner(port: RunnerPort, options: RunnerOptions = {}): void {
         setState("connected");
         await current.channel.stream((event) => {
           attempt = 0;
-          if (event.type === "command.available") void onAvailable(current, event.command_id);
+          current.outbox.wake();
+          if (event.type === "command.available") onAvailable(current, event.command_id);
           else if (event.type === "command.cancelled") current.queue.cancel(event.command_id);
           else {
             setState("revoked");
@@ -302,13 +351,28 @@ export function runRunner(port: RunnerPort, options: RunnerOptions = {}): void {
         },
       },
     );
+    const tracked: typeof execute = async (command, signal) => {
+      port.postMessage({ type: "busy", command_id: command.command_id, busy: true });
+      try {
+        return await execute(command, signal);
+      } finally {
+        port.postMessage({ type: "busy", command_id: command.command_id, busy: false });
+      }
+    };
     const current: Session = {
-      execute,
+      execute: tracked,
       commands: new Map(),
+      unsaved: new Map(),
       channel,
       ledger,
       abort,
       browser,
+      outbox: createResultOutbox({
+        deliver: (commandId) => resend(current, commandId),
+        failed: (error) => problems.failed("delivery", error),
+        wait: abortableWait,
+        jitter: Math.random,
+      }),
       stops: createStopReporter({
         send: (stopReport) => channel.reportStop(stopReport),
         acknowledged: (generation) => port.postMessage({ type: "stop_reported", generation }),
@@ -317,23 +381,31 @@ export function runRunner(port: RunnerPort, options: RunnerOptions = {}): void {
       }),
       queue: createRunnerQueue({
         generation: config.generation,
-        execute,
+        execute: tracked,
         now: Date.now,
-        settle: (settled) => void report(current, settled.command_id, settled.result),
+        settle: (settled) =>
+          report(current, settled.command_id, settled.result).catch((error) =>
+            problems.failed("delivery", error),
+          ),
       }),
     };
     session = current;
     setState("starting");
     if (config.unreported_stop) current.stops.report(config.unreported_stop);
+    for (const commandId of ledger.undelivered()) current.outbox.add(commandId);
     const beat = () =>
-      void channel.heartbeat(heartbeatBody(config, current.queue.generation())).catch(() => {});
+      void channel.heartbeat(heartbeatBody(config, current.queue.generation())).then(
+        () => current.outbox.wake(),
+        () => {},
+      );
     beat();
     const timer = setInterval(beat, HEARTBEAT_INTERVAL_MS);
     abort.signal.addEventListener("abort", () => {
       clearInterval(timer);
       current.stops.close();
+      current.outbox.close();
     });
-    void streamLoop(current);
+    streamLoop(current).catch(() => setState("offline"));
     void cleanLeftovers(files, { now: Date.now, trash: trashFromRunner }).catch(() => {});
   }
 
@@ -346,7 +418,7 @@ export function runRunner(port: RunnerPort, options: RunnerOptions = {}): void {
       liveSession = null;
       handover.stop();
       session?.queue.stop(message.report.generation);
-      void session?.browser?.stop();
+      session?.browser?.stop().catch(() => {});
       session?.stops.report(message.report);
       setState("stopped");
       return;
@@ -354,9 +426,8 @@ export function runRunner(port: RunnerPort, options: RunnerOptions = {}): void {
     if (message.type === "shutdown") {
       session?.queue.stop();
       session?.abort.abort();
-      void (session?.browser?.close() ?? Promise.resolve()).finally(
-        options.exit ?? (() => process.exit(0)),
-      );
+      const exit = options.exit ?? (() => process.exit(0));
+      (session?.browser?.close() ?? Promise.resolve()).then(exit, exit);
       return;
     }
     if (message.type === "allowances") {

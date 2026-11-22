@@ -138,7 +138,11 @@ export async function ownedTask(
   input = taskInput(),
   deps: Partial<TaskServiceDeps> = {},
 ): Promise<Task> {
-  return await createTask({ tenant_id: w.tenant_id, principal: w.owner, input }, db, deps);
+  return await createTask(
+    { locale: "de", tenant_id: w.tenant_id, principal: w.owner, input },
+    db,
+    deps,
+  );
 }
 
 export interface StartedRun {

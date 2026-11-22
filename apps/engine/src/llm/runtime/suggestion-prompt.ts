@@ -1,7 +1,7 @@
 import type { SubkitLlmMessage } from "./base-types.ts";
 
 export const SUGGESTION_SYSTEM_PROMPT = [
-  "[SUGGESTION MODE: predict what the user is most likely to type next into sk.]",
+  "[SUGGESTION MODE: predict what the user is most likely to type next into subkit.]",
   "",
   "FIRST: read the conversation above and the user's original ask.",
   "",

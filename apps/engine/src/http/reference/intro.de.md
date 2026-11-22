@@ -14,7 +14,7 @@ Du beschreibst die Aufgabe in eigenen Worten, die KI entwirft daraus einen Workf
 Danach läuft er in festen Schritten, nur mit den freigegebenen Rechten.
 Jeder Run wird aufgezeichnet.
 
-Du arbeitest im Cockpit im Browser, als installierte App oder im Programm SubKit Desktop, mit der Kommandozeile `sk` oder aus KI-Clients wie Claude Code über MCP; der Web Clipper sammelt dazu Webseiten in deinem Eingang.
+Du arbeitest im Cockpit im Browser, als installierte App oder im Programm SubKit Desktop, mit der Kommandozeile `subkit` oder aus KI-Clients wie Claude Code über MCP; der Web Clipper sammelt dazu Webseiten in deinem Eingang.
 
 ![Übersicht mit Kennzahlen zu Runs, Erfolgsquote, Connector-Zustand und Kosten, der Liste „Braucht dich“ mit offenen Entscheidungen und den letzten fehlgeschlagenen Runs](images/intro-overview.de.webp)
 

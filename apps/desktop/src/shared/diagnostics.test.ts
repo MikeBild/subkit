@@ -18,6 +18,23 @@ describe("diagnostics", () => {
     expect(log.every((entry) => entry.message.length <= 500)).toBe(true);
   });
 
+  test("masks Linux drive paths, local phone numbers and links without a scheme", () => {
+    const [entry] = appendError([], {
+      at: "2026-11-20T10:00:00.000Z",
+      scope: "files",
+      message:
+        "copy /media/alex/Backup/notes.txt failed, call 030 12345678 or open intranet.example.com/hr/alex?id=7",
+    });
+    expect(entry?.message).not.toContain("alex");
+    expect(entry?.message).not.toContain("12345678");
+    expect(entry?.message).toContain("intranet.example.com/");
+  });
+
+  test("keeps versions, dates and ports in diagnostic text", () => {
+    const message = "version 0.1.0 at 2026-11-20 on :8080 after 12345 bytes, see report.pdf";
+    expect(appendError([], { at: "x", scope: "s", message })[0]?.message).toBe(message);
+  });
+
   test("builds a diagnostics bundle without paths, queries or secrets", () => {
     const bundle = buildDiagnostics(
       {

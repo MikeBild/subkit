@@ -42,7 +42,7 @@ async function bootstrap(session: Session) {
   expect(response.status).toBe(200);
   return (await response.json()) as {
     principal: { id: string; display_name: string | null; is_owner: boolean };
-    tenant: { display_name: string; timezone: string; origin: string };
+    tenant: { display_name: string; timezone: string; language: string; origin: string };
     start_steps: Record<"hidden" | "connector" | "workflow" | "run" | "people" | "client", boolean>;
   };
 }
@@ -84,27 +84,38 @@ async function inviteSignIn(token: string, claims: { sub: string; email: string 
 }
 
 describe("workspace settings", () => {
-  test("the owner renames the workspace and changes its time zone, and deletion asks for the new name", async () => {
+  test("the owner renames the workspace and changes its time zone and language, and deletion asks for the new name", async () => {
     const owner = await login("settings-owner");
     expect(await bootstrap(owner)).toMatchObject({
       principal: { display_name: "Test Owner", is_owner: true },
-      tenant: { display_name: "Test workspace", timezone: "UTC", origin: "self_service" },
+      tenant: {
+        display_name: "Test workspace",
+        timezone: "UTC",
+        language: "en",
+        origin: "self_service",
+      },
     });
     const renamed = await fetch(`${ctx.baseUrl}/v1/identity/workspace`, {
       method: "PATCH",
       headers: browserHeaders(owner),
-      body: JSON.stringify({ display_name: "  Harbor Office ", timezone: "Europe/Berlin" }),
+      body: JSON.stringify({
+        display_name: "  Harbor Office ",
+        timezone: "Europe/Berlin",
+        language: "de",
+      }),
     });
     expect(renamed.status).toBe(200);
     expect(await renamed.json()).toEqual({
       id: owner.payload.tenant_id,
       display_name: "Harbor Office",
       timezone: "Europe/Berlin",
+      language: "de",
       origin: "self_service",
     });
     expect((await bootstrap(owner)).tenant).toMatchObject({
       display_name: "Harbor Office",
       timezone: "Europe/Berlin",
+      language: "de",
     });
     const [entry] = await ctx.db
       .select()
@@ -118,7 +129,16 @@ describe("workspace settings", () => {
       resource_type: "tenant",
       resource_id: owner.payload.tenant_id,
       result: "success",
+      before: { display_name: "Test workspace", timezone: "UTC", language: "en" },
+      after: { display_name: "Harbor Office", timezone: "Europe/Berlin", language: "de" },
     });
+
+    const badLanguage = await fetch(`${ctx.baseUrl}/v1/identity/workspace`, {
+      method: "PATCH",
+      headers: browserHeaders(owner),
+      body: JSON.stringify({ language: "fr" }),
+    });
+    expect(badLanguage.status).toBe(400);
 
     const badZone = await fetch(`${ctx.baseUrl}/v1/identity/workspace`, {
       method: "PATCH",

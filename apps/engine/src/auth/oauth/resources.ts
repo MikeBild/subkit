@@ -1,4 +1,4 @@
-export const CLI_LOGIN_SCOPE = "sk:login" as const;
+export const CLI_LOGIN_SCOPE = "subkit:login" as const;
 
 type OAuthResourceKind = "mcp" | "cli_login";
 

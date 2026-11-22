@@ -16,14 +16,14 @@ export function ReadingScroll({ testId, children }: { testId: string; children: 
   return (
     <main className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div
-        data-family-slot="scroll-region"
+        data-sk-slot="scroll-region"
         data-testid={testId}
         className={cn(
           "min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto pb-6",
           pageGutter("detail"),
         )}
       >
-        <div data-family-slot="content" className={pageColumn("detail")}>
+        <div data-sk-slot="content" className={pageColumn("detail")}>
           {children}
         </div>
       </div>
@@ -46,7 +46,7 @@ export function ReadingLayout({
     <div ref={ref} data-slot="reading-layout" className={LAYOUT}>
       <div className={COLUMN}>{children}</div>
       {aside ? (
-        <aside data-family-slot="page-toc" className={ASIDE}>
+        <aside data-sk-slot="page-toc" className={ASIDE}>
           <div className="max-h-[calc(100dvh-3rem)] overflow-y-auto pt-10 pb-6">
             {asideLabel ? (
               <p className="mb-2 px-2 text-xs leading-4 font-medium text-muted-foreground">
@@ -63,7 +63,7 @@ export function ReadingLayout({
 
 export function ReadingCompanion({ children }: { children: ReactNode }) {
   return (
-    <div className="flex flex-col gap-2 xl:hidden" data-family-slot="facts">
+    <div className="flex flex-col gap-2 xl:hidden" data-sk-slot="facts">
       {children}
     </div>
   );
@@ -113,7 +113,7 @@ function lines(count: number, last = "w-3/5") {
 export function ReadingSkeleton() {
   return (
     <div data-slot="reading-layout" className={LAYOUT}>
-      <div className={COLUMN} data-family-state="loading">
+      <div className={COLUMN} data-sk-state="loading">
         <div className="flex flex-col pt-10 pb-6">
           <Skeleton className="mb-6 h-5 w-28" />
           <Skeleton className="mb-2 h-4 w-24" />
@@ -133,7 +133,7 @@ export function ReadingSkeleton() {
           <Skeleton className="h-4 w-36" />
         </div>
       </div>
-      <aside data-family-slot="page-toc" className={ASIDE} aria-hidden="true">
+      <aside data-sk-slot="page-toc" className={ASIDE} aria-hidden="true">
         <div className="flex flex-col gap-3 px-2 pt-10">
           <Skeleton className="h-3 w-24" />
           {Array.from({ length: 8 }, (_, index) => (

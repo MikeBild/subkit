@@ -196,7 +196,7 @@ function cliRunCommand(
   input: Record<string, unknown>,
 ): string {
   const name = PLAIN_SLUG.test(workflow.slug) ? workflow.slug : workflow.id;
-  return `sk workflows run ${name} --input ${shellQuote(JSON.stringify(input))}`;
+  return `subkit workflows run ${name} --input ${shellQuote(JSON.stringify(input))}`;
 }
 
 export function registerWorkflowInvocationRoutes(app: OpenAPIHono<AppEnv>): void {

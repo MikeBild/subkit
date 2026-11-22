@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { parsePruneCoverageRunsArgs } from "../prune-coverage-runs.ts";
+import { parsePruneMutationRunsArgs } from "../prune-mutation-runs.ts";
 
 describe("prune coverage runs arguments", () => {
   test("defaults to preview and requires explicit apply", () => {
@@ -7,5 +8,14 @@ describe("prune coverage runs arguments", () => {
     expect(parsePruneCoverageRunsArgs(["--preview"])).toBe(false);
     expect(parsePruneCoverageRunsArgs(["--apply"])).toBe(true);
     expect(() => parsePruneCoverageRunsArgs(["--delete"])).toThrow();
+  });
+});
+
+describe("prune mutation runs arguments", () => {
+  test("defaults to preview and requires explicit apply", () => {
+    expect(parsePruneMutationRunsArgs([])).toBe(false);
+    expect(parsePruneMutationRunsArgs(["--preview"])).toBe(false);
+    expect(parsePruneMutationRunsArgs(["--apply"])).toBe(true);
+    expect(() => parsePruneMutationRunsArgs(["--delete"])).toThrow();
   });
 });

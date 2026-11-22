@@ -27,7 +27,7 @@ export const CHANNEL_PLATFORMS = ["slack", "google_chat", "webhook"] as const;
 
 export const SEVERITIES = ["debug", "info", "warn", "error", "critical"] as const;
 export type Severity = (typeof SEVERITIES)[number];
-const SEEDED_INBOX_RULE = "sk CLI inbox (default)";
+const SEEDED_INBOX_RULE = "subkit CLI inbox (default)";
 
 const PLATFORM_KEYS: Readonly<Record<string, TranslationKey>> = {
   sk_cli: "notifications.platform.inbox",

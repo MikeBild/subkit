@@ -16,7 +16,7 @@ import { findLeafByPath } from "../walk.ts";
 let dir: string;
 
 beforeEach(async () => {
-  dir = mkdtempSync(join(tmpdir(), "sk-cfg-readback-"));
+  dir = mkdtempSync(join(tmpdir(), "subkit-cfg-readback-"));
   _resetConfigForTests();
   await loadConfig({
     env: { DATABASE_URL: "postgres://x", NODE_ENV: "test" },

@@ -6,7 +6,10 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { and, count, eq } from "drizzle-orm";
-import { AGENT_FILE_RELPATH, getBriefingHookOutput } from "../../../../sk/src/commands/agent.ts";
+import {
+  AGENT_FILE_RELPATH,
+  getBriefingHookOutput,
+} from "../../../../subkit/src/commands/agent.ts";
 import { generateAccessToken } from "../../auth/oauth/tokens.ts";
 import {
   intakeItems,
@@ -241,8 +244,8 @@ beforeAll(async () => {
   });
   mcpOauthToken = token.plaintext;
 
-  hookRoot = mkdtempSync(join(tmpdir(), "sk-intake-journey-"));
-  mkdirSync(join(hookRoot, ".sk"), { recursive: true });
+  hookRoot = mkdtempSync(join(tmpdir(), "subkit-intake-journey-"));
+  mkdirSync(join(hookRoot, ".subkit"), { recursive: true });
   writeFileSync(join(hookRoot, AGENT_FILE_RELPATH), JSON.stringify({ domains: [DOMAIN] }));
 }, JOURNEY_HOOK_TIMEOUT);
 

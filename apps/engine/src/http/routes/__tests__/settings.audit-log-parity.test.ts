@@ -19,7 +19,7 @@ function appliedLeavesSinceBaseline(): string[] {
 }
 
 beforeAll(async () => {
-  cfgDir = mkdtempSync(join(tmpdir(), "sk-cfg-parity-"));
+  cfgDir = mkdtempSync(join(tmpdir(), "subkit-cfg-parity-"));
   _resetConfigForTests();
   await loadConfig({
     env: { DATABASE_URL: "postgres://placeholder/parity", NODE_ENV: "test" },
@@ -113,7 +113,7 @@ describe("audit_log ↔ setting.applied bijection", () => {
     expect(appliedLeavesSinceBaseline().length, "applied delta").toBe(0);
   });
 
-  const INVALID_AUDIT_SOURCES = ["automation", "sk-cli", "SK_CLI", "", "ui"] as const;
+  const INVALID_AUDIT_SOURCES = ["automation", "subkit-cli", "SUBKIT_CLI", "", "ui"] as const;
 
   for (const bad of INVALID_AUDIT_SOURCES) {
     test(`rejects x-subkit-audit-source=${JSON.stringify(bad)} with 400 and writes no audit row`, async () => {

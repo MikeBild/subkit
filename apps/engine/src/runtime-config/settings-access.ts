@@ -66,7 +66,7 @@ export async function resolveSettingWriteTarget(
       return {
         ok: false,
         code: "operator_required",
-        message: `${path} without a tenant changes the whole engine. To change it for your workspace only, send ?tenant=<your tenant id> (sk settings set ${path} --tenant ${principal.tenant_id}).`,
+        message: `${path} without a tenant changes the whole engine. To change it for your workspace only, send ?tenant=<your tenant id> (subkit settings set ${path} --tenant ${principal.tenant_id}).`,
       };
     }
     return engineOnly(path);

@@ -10,7 +10,7 @@ const EXAMPLE_PATH = join(REPO_ROOT, "subkit.config.example.json");
 let dir: string;
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), "sk-cfg-example-"));
+  dir = mkdtempSync(join(tmpdir(), "subkit-cfg-example-"));
   _resetConfigForTests();
 });
 

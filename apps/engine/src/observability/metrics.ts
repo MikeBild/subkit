@@ -125,7 +125,7 @@ export const METRIC_NAMES = {
 
   SETTINGS_OVERRIDE_ACTIVE: "settings_override_active",
   ENGINE_UPDATE_TOTAL: "engine_update_total",
-  SK_SUGGEST_NEXT_TOTAL: "sk_suggest_next_total",
+  SUBKIT_SUGGEST_NEXT_TOTAL: "sk_suggest_next_total",
   PROACTIVE_DRIFT_SCANS_TOTAL: "proactive_drift_scans_total",
   PROACTIVE_DRIFT_SIGNALS_TOTAL: "proactive_drift_signals_total",
   PROACTIVE_DRIFT_CANDIDATES_TOTAL: "proactive_drift_candidates_total",
@@ -193,7 +193,7 @@ function buildRegistry(): MetricsRegistry {
     labels: ["result", "channel"],
   });
   reg.registerCounter({
-    name: METRIC_NAMES.SK_SUGGEST_NEXT_TOTAL,
+    name: METRIC_NAMES.SUBKIT_SUGGEST_NEXT_TOTAL,
     help: "Next-message suggestion outcomes — generation + acceptance.",
     labels: ["tenant_id", "outcome", "kind"],
   });

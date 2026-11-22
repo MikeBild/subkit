@@ -38,7 +38,7 @@ Ein API-Schlüssel dagegen ist ein langlebiger Zugang, der auf deinem Rechner li
 
 ### Mit Browser-Anmeldung verbinden
 
-1. Füge in deinem Client einen entfernten MCP-Server mit der Adresse `https://<deine-engine>/mcp` hinzu und nenne ihn `sk`.
+1. Füge in deinem Client einen entfernten MCP-Server mit der Adresse `https://<deine-engine>/mcp` hinzu und nenne ihn `subkit`.
 2. Melde dich in dem Browserfenster, das der Client öffnet, so an wie im Cockpit.
 3. Prüfe auf der Seite **Zugriff erlauben**, welcher Client auf welchen Arbeitsbereich zugreifen will.
 4. Hake an, was der Client darf. **Lesen** ist immer an.
@@ -50,10 +50,10 @@ Wo du den Server einträgst, hängt vom Client ab:
 - **Claude Code:**
 
   ```bash
-  claude mcp add --transport http --scope user sk https://<deine-engine>/mcp
+  claude mcp add --transport http --scope user subkit https://<deine-engine>/mcp
   ```
 
-  Führe danach in Claude Code `/mcp` aus und wähle `sk`, um dich anzumelden.
+  Führe danach in Claude Code `/mcp` aus und wähle `subkit`, um dich anzumelden.
 - **ChatGPT und Cursor:** in den MCP- oder Connector-Einstellungen des Clients.
 
 Menünamen ändern sich zwischen Client-Versionen. Sieht ein Schritt anders aus, folge der Anleitung deines Clients für entfernte MCP-Server.
@@ -64,7 +64,7 @@ Menünamen ändern sich zwischen Client-Versionen. Sieht ein Schritt anders aus,
 2. Lege den Schlüssel in einer Umgebungsvariable ab, nicht in einer Datei, die du teilst:
 
    ```bash
-   export SK_API_KEY=<dein-schluessel>
+   export SUBKIT_API_KEY=<dein-schluessel>
    ```
 
 3. Trage den Server mit dem passenden Befehl in deinem Client ein.
@@ -72,21 +72,21 @@ Menünamen ändern sich zwischen Client-Versionen. Sieht ein Schritt anders aus,
 Claude Code:
 
 ```bash
-claude mcp add --transport http --scope user sk https://<deine-engine>/mcp --header "Authorization: Bearer ${SK_API_KEY}"
+claude mcp add --transport http --scope user subkit https://<deine-engine>/mcp --header "Authorization: Bearer ${SUBKIT_API_KEY}"
 ```
 
 Codex:
 
 ```bash
-codex mcp add sk --url https://<deine-engine>/mcp --bearer-token-env-var SK_API_KEY
+codex mcp add subkit --url https://<deine-engine>/mcp --bearer-token-env-var SUBKIT_API_KEY
 ```
 
 Andere Clients schicken bei jeder Anfrage den Header `Authorization: Bearer <dein-schluessel>` mit.
 
-Kann dein Client nur lokale MCP-Server starten, gibt es den Befehl `sk mcp`. Er nutzt dein angemeldetes `sk`-Profil, bietet aber nur fünf Tools: einen Verbindungstest und vier Tools für Unterhaltungen mit SubKit. Workflows, Connectors und Wissen erreicht dein Client nur über die Adresse `/mcp` deiner Engine.
+Kann dein Client nur lokale MCP-Server starten, gibt es den Befehl `subkit mcp`. Er nutzt dein angemeldetes `subkit`-Profil, bietet aber nur fünf Tools: einen Verbindungstest und vier Tools für Unterhaltungen mit SubKit. Workflows, Connectors und Wissen erreicht dein Client nur über die Adresse `/mcp` deiner Engine.
 
 Ein Schlüssel ohne MCP-Scope verbindet im Modus **Lesen**.
-Soll der Client auch bauen dürfen, ergänzt du `mcp:authoring` in `--scopes`, wenn du den Schlüssel mit `sk apikeys create` anlegst.
+Soll der Client auch bauen dürfen, ergänzt du `mcp:authoring` in `--scopes`, wenn du den Schlüssel mit `subkit apikeys create` anlegst.
 
 ### Die Verbindung prüfen
 
@@ -174,7 +174,7 @@ Ein Run, den ein Client startet, hat dieselben Grenzen wie jeder Run: Er nutzt n
 
 Der umgekehrte Weg: Ein MCP-Server, den dein Team schon nutzt, wird in SubKit ein Connector. Workflows und der Chat rufen dann seine Tools auf.
 Jedes Tool fragt vor dem Run nach, es sei denn, der Betreiber hat es einzeln freigeschaltet. Das darf nur, wer den Connector ändern darf; eine normale Bearbeitung des Connectors ändert diese Liste nicht.
-`sk connectors mcp-inspect <id>` zeigt, welche Tools der Server wirklich anbietet. Verlangt der Server OAuth-Zugangsdaten, folge „OAuth-Zugangsdaten für externe MCP-Server“.
+`subkit connectors mcp-inspect <id>` zeigt, welche Tools der Server wirklich anbietet. Verlangt der Server OAuth-Zugangsdaten, folge „OAuth-Zugangsdaten für externe MCP-Server“.
 
 ### Wenn etwas nicht klappt
 
@@ -188,5 +188,5 @@ Die Engine liefert diese Meldungen auf Englisch; sie stehen hier deshalb wörtli
 | `403` `product_caller_forbidden` | Das Token gehört zu einem App-Benutzer und hat keinen MCP-Zugang. Nutze die Anmeldung oder den Schlüssel einer Person. |
 | `400` „Unsupported protocol version“ | Der Client spricht eine MCP-Version, die die Engine nicht kennt. Aktualisiere den Client. |
 | `404` „Session not found“ | Die Sitzung ist abgelaufen, etwa nach einem Engine-Neustart. Verbinde den Server im Client neu. |
-| Tools zum Bearbeiten fehlen | Der Zugang hat kein `mcp:authoring`. Melde dich neu an und hake **Bearbeiten** an, oder arbeite mit der sk-CLI. |
+| Tools zum Bearbeiten fehlen | Der Zugang hat kein `mcp:authoring`. Melde dich neu an und hake **Bearbeiten** an, oder arbeite mit der subkit-CLI. |
 | Neue Tools fehlen nach einem Update | claude.ai behält seine alte Tool-Liste. Entferne den Connector und füge ihn neu hinzu. |

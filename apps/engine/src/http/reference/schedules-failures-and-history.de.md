@@ -33,7 +33,7 @@ Ein gescheiterter Run zeigt einen Hinweis mit drei Teilen: was passiert ist, ein
 | **KI-Budget erreicht** | **Administrator fragen**: Eine Administratorin oder ein Administrator erhöht das Budget unter **Einstellungen** › **Nutzung** oder macht diesen Monat ohne Grenze weiter. |
 | **Connector fehlt**, **Platzhalter nicht auflösbar**, **Antwort in unerwarteter Form**, **Nachricht fehlerhaft**, **Nicht eingeordnet** | **Im Chat beheben**: Der Chat öffnet sich mit der Frage nach Ursache und Lösung. |
 
-Für vertrauliche Workflows (`execution_privacy: sensitive`) speichert SubKit keine Fehlerdetails. Seit dieser Version behält ein solcher Run trotzdem seine Ursache und einen festen Satz, der sagt, was zu tun ist. Beispiel: „The connected service rejected the sign-in. Reconnect the connector, then run again. Nothing was changed by this step.“ Erkennt SubKit keine Ursache, bleibt es bei „Sensitive execution failed.“ Diese Sätze schreibt die Engine auf Englisch. Das Cockpit sagt sie in deiner Sprache, wo es die Ursache, den Grund eines Anhaltens oder den Fehlercode kennt: in der Übersicht bei angehaltenen und scheiternden Workflows, bei einem abgelehnten erneuten Start und in Fehlerhinweisen. Das Beispiel oben liest du dort als „Der verbundene Dienst hat die Anmeldung abgelehnt. Verbinde den Connector neu und starte den Run noch einmal. Dieser Schritt hat nichts verändert.“ In den technischen Angaben eines Runs, über die HTTP-API und in `sk` steht weiter der englische Satz der Engine. Auch SubKit Desktop benachrichtigt in deiner Sprache.
+Für vertrauliche Workflows (`execution_privacy: sensitive`) speichert SubKit keine Fehlerdetails. Seit dieser Version behält ein solcher Run trotzdem seine Ursache und einen festen Satz, der sagt, was zu tun ist. Beispiel: „The connected service rejected the sign-in. Reconnect the connector, then run again. Nothing was changed by this step.“ Erkennt SubKit keine Ursache, bleibt es bei „Sensitive execution failed.“ Diese Sätze schreibt die Engine auf Englisch. Das Cockpit sagt sie in deiner Sprache, wo es die Ursache, den Grund eines Anhaltens oder den Fehlercode kennt: in der Übersicht bei angehaltenen und scheiternden Workflows, bei einem abgelehnten erneuten Start und in Fehlerhinweisen. Das Beispiel oben liest du dort als „Der verbundene Dienst hat die Anmeldung abgelehnt. Verbinde den Connector neu und starte den Run noch einmal. Dieser Schritt hat nichts verändert.“ In den technischen Angaben eines Runs, über die HTTP-API und in `subkit` steht weiter der englische Satz der Engine. Auch SubKit Desktop benachrichtigt in deiner Sprache.
 
 ### Warum ein Zeitplan wartet
 
@@ -104,7 +104,7 @@ Eine Freigabe eines Workflows und die Dauererlaubnis einer Aufgabe können ein E
 | Wann | Was passiert |
 | --- | --- |
 | 7 Tage vorher: Hinweis | Am Workflow oder an der Aufgabe erscheint ein Hinweis wie „Die Freigabe läuft in 5 Tagen ab“ mit **Erneuern**. Unter **Braucht dich** erscheint ein Punkt, und mit eingeschaltetem Push bekommst du den Hinweis auch auf deine Geräte. |
-| 3 Tage vorher: Benachrichtigung | SubKit sendet einmal das Ereignis `workflow.approval_expiring` oder `task.grant_expiring` an Abonnements, Webhooks und den `sk`-Eingang. |
+| 3 Tage vorher: Benachrichtigung | SubKit sendet einmal das Ereignis `workflow.approval_expiring` oder `task.grant_expiring` an Abonnements, Webhooks und den `subkit`-Eingang. |
 | Weniger als ein Zehntel der Runs übrig | Bei einer Freigabe mit Run-Grenze erscheint der Punkt unter **Braucht dich** ebenfalls. |
 
 1. Wähle **Erneuern** im Hinweis oder am Punkt unter **Braucht dich**.
@@ -128,7 +128,7 @@ Der Run endet sofort. Der Zeitplan bleibt aktiv. Schritte, die ein Fremdsystem s
 - **Fehlende Eingaben pausieren nichts.** Ein Zeitplan, dem Eingaben fehlen, wird gehalten und meldet sich in der **Übersicht**, zählt aber nicht als Fehler.
 - **Die Ursache der Pause ist bei vertraulichen Workflows grob.** Für sie zählt SubKit alle Fehler ohne erkannte Ursache als dieselbe Ursache.
 - **Manche Gründe bei Aufgaben haben keinen eigenen Text.** Ist die Dauererlaubnis aufgebraucht, passt sie nicht mehr zur geänderten Aufgabe, fehlt die Besitzerin, fehlt der KI-Anbieter oder ist die Aufgabe pausiert, steht im Verlauf nur „Angehalten, bis du handelst.“ Den genauen Grund zeigt die Seite der Aufgabe.
-- **Der `sk`-Eingang bestehender Arbeitsbereiche bekommt die neuen Ereignisse nicht von selbst.** Ergänze sie mit `sk notifications rules` in der gespeicherten Regel.
+- **Der `subkit`-Eingang bestehender Arbeitsbereiche bekommt die neuen Ereignisse nicht von selbst.** Ergänze sie mit `subkit notifications rules` in der gespeicherten Regel.
 
 ### Wenn etwas nicht klappt
 
@@ -143,15 +143,15 @@ Der Run endet sofort. Der Zeitplan bleibt aktiv. Schritte, die ein Fremdsystem s
 
 ### Das Gleiche im Terminal und über die HTTP-API
 
-Mit der Kommandozeile `sk`:
+Mit der Kommandozeile `subkit`:
 
 ```bash
-sk schedules list
-sk schedules pause <schedule-id>
-sk schedules resume <schedule-id>
+subkit schedules list
+subkit schedules pause <schedule-id>
+subkit schedules resume <schedule-id>
 ```
 
-`sk schedules resume` setzt auch einen automatisch pausierten Zeitplan fort und zählt die Fehler neu. Für den Verlauf gibt es keinen `sk`-Befehl.
+`subkit schedules resume` setzt auch einen automatisch pausierten Zeitplan fort und zählt die Fehler neu. Für den Verlauf gibt es keinen `subkit`-Befehl.
 
 | Route | Bewirkt |
 | --- | --- |

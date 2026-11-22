@@ -165,7 +165,7 @@ describe("GET /v1/oauth/callback", () => {
     const body = await res.text();
     expect(body).toContain("Signed in");
     expect(body).toContain("switched off and stays off until someone switches it on");
-    expect(body).toContain("sk connectors enable");
+    expect(body).toContain("subkit connectors enable");
 
     const row = await getConnectorRow();
     expect(row.enabled).toBe(false);
@@ -191,7 +191,7 @@ describe("GET /v1/oauth/callback", () => {
     expect(body).toContain("abgeschaltet und bleibt es, bis ihn jemand einschaltet");
     expect(body).toContain("zur Unterhaltung zurückkehren");
     expect(body).not.toContain("Terminal");
-    expect(body).not.toContain("sk connectors enable");
+    expect(body).not.toContain("subkit connectors enable");
     expect((await getConnectorRow()).enabled).toBe(false);
 
     await server.db.update(connectors).set({ enabled: true }).where(eq(connectors.id, connectorId));

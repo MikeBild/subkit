@@ -8,7 +8,7 @@ export {
 export { RuntimeConfigCoordinator } from "./coordinator.ts";
 export { configDigest } from "./document.ts";
 export type { LlmAccessChange } from "./llm-access.ts";
-export { persistLlmAccess, storeWorkspaceLlmAccess } from "./llm-access.ts";
+export { llmKeySecretName, persistLlmAccess, storeWorkspaceLlmAccess } from "./llm-access.ts";
 export { waitOutWorkspaceChange } from "./pending-engine-change.ts";
 export type { PendingSecretVersion } from "./pending-secrets.ts";
 export {

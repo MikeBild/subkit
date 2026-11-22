@@ -227,7 +227,7 @@ describe("request hook operations keep their HTTP responses byte for byte", () =
       headers: {
         authorization: `Bearer ${ctx.apiKey}`,
         "content-type": "application/json",
-        "x-sk-trace-id": "golden-request-hook-trace",
+        "x-subkit-trace-id": "golden-request-hook-trace",
       },
       body: JSON.stringify({ role: "auditor", code: VALID }),
     });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { SK_INSTALL_GROUNDING } from "../../../conversations/agent/prompts.ts";
+import { SUBKIT_INSTALL_GROUNDING } from "../../../conversations/agent/prompts.ts";
 import { applyRuntimeTemplate } from "../context-assembler.ts";
 
 describe("applyRuntimeTemplate", () => {
@@ -11,7 +11,7 @@ describe("applyRuntimeTemplate", () => {
   });
 
   it("renders the install-grounding command with the real host (the P1 outcome)", () => {
-    const out = applyRuntimeTemplate(SK_INSTALL_GROUNDING, {
+    const out = applyRuntimeTemplate(SUBKIT_INSTALL_GROUNDING, {
       engine_url: "https://engine.example.com",
     });
     expect(out).toContain("curl -fsSL https://engine.example.com/install | bash");
@@ -19,7 +19,7 @@ describe("applyRuntimeTemplate", () => {
   });
 
   it("leaves the install token literal when no engine_url is known", () => {
-    const out = applyRuntimeTemplate(SK_INSTALL_GROUNDING, {});
+    const out = applyRuntimeTemplate(SUBKIT_INSTALL_GROUNDING, {});
     expect(out).toContain("${engine_url}/install");
   });
 

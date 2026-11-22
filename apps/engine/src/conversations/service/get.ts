@@ -1,3 +1,4 @@
+import type { WorkspaceLanguage } from "@shared/workspace-language.ts";
 import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Executor } from "../../db/client.ts";
@@ -58,7 +59,7 @@ export async function getConversation(
   id: string,
   exec: Executor,
   principal?: ResolvedPrincipal,
-  locale: "de" | "en" = "de",
+  locale?: WorkspaceLanguage,
 ): Promise<ConversationDetail | null> {
   const rows = await exec
     .select()
@@ -315,7 +316,12 @@ export async function getConversation(
     ),
     draft,
     playbook: principal
-      ? await readPlaybook(exec, { tenant_id, conversation_id: id, principal, locale })
+      ? await readPlaybook(exec, {
+          tenant_id,
+          conversation_id: id,
+          principal,
+          ...(locale ? { locale } : {}),
+        })
       : null,
     resume_summary: resumeSummary,
   };

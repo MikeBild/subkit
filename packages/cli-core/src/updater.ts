@@ -18,6 +18,15 @@ import { dirname, join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import {
+  RELEASES_URL,
+  releaseAssetFor,
+  releaseDownloadBase,
+  releaseFileUrls,
+  versionFromReleaseLocation,
+} from "./release/assets.ts";
+import { UPDATE_CHECK_INTERVAL_MS } from "./release/update-policy.ts";
+import { isNewer, parseVersion } from "./release/version.ts";
+import {
   downloadReleaseNotices,
   readRetainedNotices,
   replaceWithNotices,
@@ -25,20 +34,16 @@ import {
 } from "./release-notices.ts";
 import { RELEASE_PUBLIC_KEY } from "./release-public-key.ts";
 
-export const GITHUB_REPO = "mikebild/subkit";
-
 export const RETAINED_VERSIONS_KEEP = 3;
 
 export interface UpdaterConfig {
   binaryName: string;
+  asset: string | null;
   currentVersion: string;
   cacheDir: string;
-  githubRepo: string;
+  releasesUrl: string;
   checkIntervalMs: number;
-  channel: "stable" | "beta";
   publicKey?: string;
-  authToken?: string;
-  engineUrl?: string;
 }
 
 export interface UpdateInfo {
@@ -61,25 +66,6 @@ export interface PerformUpdateResult {
   sha256: string;
 }
 
-export function platformArch(): { os: string; arch: string; ext: string } | null {
-  const osMap: Record<string, string> = { darwin: "darwin", linux: "linux", win32: "windows" };
-  const archMap: Record<string, string> = { arm64: "arm64", x64: "x64" };
-  const os = osMap[process.platform];
-  const arch = archMap[process.arch];
-  if (!os || !arch) return null;
-  return { os, arch, ext: os === "windows" ? ".exe" : "" };
-}
-
-export function isNewer(remote: string, local: string): boolean {
-  const r = remote.split(".").map(Number);
-  const l = local.split(".").map(Number);
-  for (let i = 0; i < 3; i++) {
-    if ((r[i] ?? 0) > (l[i] ?? 0)) return true;
-    if ((r[i] ?? 0) < (l[i] ?? 0)) return false;
-  }
-  return false;
-}
-
 function cachePath(cacheDir: string): string {
   return join(cacheDir, "update-check.json");
 }
@@ -100,123 +86,68 @@ export function writeCache(cacheDir: string, cache: UpdateCache): void {
   writeFileSync(p, JSON.stringify(cache, null, 2), { mode: 0o600 });
 }
 
-interface GitHubRelease {
-  tag_name: string;
-  prerelease: boolean;
-  body: string;
-  assets: Array<{
-    name: string;
-    browser_download_url: string;
-  }>;
-}
-
 class UpdateCheckError extends Error {
-  constructor(
-    message: string,
-    readonly status?: number,
-  ) {
+  constructor(message: string) {
     super(message);
     this.name = "UpdateCheckError";
   }
 }
 
-function releaseApiHeaders(authToken?: string): Record<string, string> {
-  const headers: Record<string, string> = { Accept: "application/vnd.github+json" };
-  if (authToken) headers.Authorization = `Bearer ${authToken}`;
-  return headers;
+const CHECK_TIMEOUT_MS = 5000;
+
+function releaseInfo(config: UpdaterConfig, version: string, downloadBase: string): UpdateInfo {
+  return {
+    version,
+    tag: `v${version}`,
+    assets: releaseFileUrls(downloadBase, config.asset),
+    body: "",
+  };
 }
 
-function describeReleaseHttpError(status: number, repo: string, authToken?: string): string {
-  if (status === 404) {
-    return authToken
-      ? `github releases API returned 404 for ${repo} — no published release found (or the token lacks access)`
-      : `github releases API returned 404 for ${repo} — the repo is private (GitHub returns 404 to unauthenticated reads); set GITHUB_TOKEN / SUBKIT_UPDATE_TOKEN to enable self-update`;
-  }
-  if (status === 401 || status === 403) {
-    return `github releases API returned ${status} for ${repo} — the update token is missing, invalid, or rate-limited`;
-  }
-  return `github releases API returned HTTP ${status} for ${repo}`;
-}
-
-async function fetchLatestRelease(
-  repo: string,
-  channel: "stable" | "beta",
+export async function latestRelease(
+  config: UpdaterConfig,
   fetchImpl: typeof fetch = fetch,
-  authToken?: string,
-): Promise<GitHubRelease | null> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
-  try {
-    const headers = releaseApiHeaders(authToken);
-    if (channel === "stable") {
-      const res = await fetchImpl(`https://api.github.com/repos/${repo}/releases/latest`, {
-        signal: controller.signal,
-        headers,
-      });
-      if (!res.ok)
-        throw new UpdateCheckError(
-          describeReleaseHttpError(res.status, repo, authToken),
-          res.status,
-        );
-      return (await res.json()) as GitHubRelease;
-    }
-    const res = await fetchImpl(`https://api.github.com/repos/${repo}/releases?per_page=1`, {
-      signal: controller.signal,
-      headers,
-    });
-    if (!res.ok)
-      throw new UpdateCheckError(describeReleaseHttpError(res.status, repo, authToken), res.status);
-    const releases = (await res.json()) as GitHubRelease[];
-    return releases[0] ?? null;
-  } finally {
-    clearTimeout(timeout);
+): Promise<UpdateInfo> {
+  const latestUrl = `${config.releasesUrl.replace(/\/+$/, "")}/latest`;
+  const res = await fetchImpl(latestUrl, {
+    redirect: "manual",
+    signal: AbortSignal.timeout(CHECK_TIMEOUT_MS),
+  });
+  const version = versionFromReleaseLocation(res.headers.get("location"));
+  if (version)
+    return releaseInfo(config, version, releaseDownloadBase(version, config.releasesUrl));
+  if (res.status === 404 || (res.status >= 300 && res.status < 400)) {
+    throw new UpdateCheckError(`no published release found at ${config.releasesUrl}`);
   }
+  throw new UpdateCheckError(`the release server returned HTTP ${res.status} for ${latestUrl}`);
 }
 
-const ENGINE_NOTICES = ["LICENSE", "THIRD_PARTY_NOTICES.txt"] as const;
-
-async function fetchEngineRelease(
-  binaryName: string,
+export async function engineRelease(
+  config: UpdaterConfig,
   engineUrl: string,
-  fetchImpl: typeof fetch,
-): Promise<GitHubRelease | null> {
-  const pa = platformArch();
-  if (!pa) return null;
+  fetchImpl: typeof fetch = fetch,
+): Promise<UpdateInfo> {
   const base = engineUrl.replace(/\/+$/, "");
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
-  try {
-    const health = await fetchImpl(`${base}/health`, { signal: controller.signal });
-    if (!health.ok) return null;
-    const { version } = (await health.json()) as { version?: unknown };
-    if (typeof version !== "string" || !/^\d+\.\d+\.\d+$/.test(version)) return null;
-    const signature = await fetchImpl(`${base}/install/sha256sums.sig`, {
-      signal: controller.signal,
-    });
-    if (!signature.ok) return null;
-    await signature.arrayBuffer();
-    return {
-      tag_name: `v${version}`,
-      prerelease: false,
-      body: "",
-      assets: [
-        {
-          name: `${binaryName}_${pa.os}_${pa.arch}${pa.ext}`,
-          browser_download_url: `${base}/install/${binaryName}-${pa.os}-${pa.arch}`,
-        },
-        { name: "SHA256SUMS", browser_download_url: `${base}/install/sha256sums` },
-        { name: "SHA256SUMS.sig", browser_download_url: `${base}/install/sha256sums.sig` },
-        ...ENGINE_NOTICES.map((name) => ({
-          name,
-          browser_download_url: `${base}/install/${name}`,
-        })),
-      ],
-    };
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timeout);
+  const health = await fetchImpl(`${base}/health`, {
+    signal: AbortSignal.timeout(CHECK_TIMEOUT_MS),
+  });
+  const body = health.ok ? ((await health.json()) as { version?: unknown }) : {};
+  const version = typeof body.version === "string" ? body.version.trim() : "";
+  if (!parseVersion(version)) {
+    throw new UpdateCheckError(`the engine at ${base} did not report a release version`);
   }
+  const bundled = await fetchImpl(`${base}/install/SHA256SUMS.sig`, {
+    method: "HEAD",
+    signal: AbortSignal.timeout(CHECK_TIMEOUT_MS),
+  }).then(
+    (res) => res.ok,
+    () => false,
+  );
+  return releaseInfo(
+    config,
+    version,
+    bundled ? `${base}/install` : releaseDownloadBase(version, config.releasesUrl),
+  );
 }
 
 export async function checkForUpdate(
@@ -227,49 +158,32 @@ export async function checkForUpdate(
   if (!force) {
     const cache = readCache(config.cacheDir);
     if (cache && Date.now() - cache.last_check < config.checkIntervalMs) {
-      if (isNewer(cache.latest_version, config.currentVersion)) {
-        return { version: cache.latest_version, tag: cache.latest_tag, assets: [], body: "" };
-      }
-      return null;
+      return isNewer(cache.latest_version, config.currentVersion)
+        ? releaseInfo(
+            config,
+            cache.latest_version,
+            releaseDownloadBase(cache.latest_version, config.releasesUrl),
+          )
+        : null;
     }
   }
 
-  let release: Awaited<ReturnType<typeof fetchLatestRelease>> =
-    config.engineUrl && config.channel === "stable"
-      ? await fetchEngineRelease(config.binaryName, config.engineUrl, fetchImpl)
-      : null;
-  if (!release) {
-    try {
-      release = await fetchLatestRelease(
-        config.githubRepo,
-        config.channel,
-        fetchImpl,
-        config.authToken,
-      );
-    } catch (err) {
-      if (force) throw err;
-      return null;
-    }
+  let info: UpdateInfo;
+  try {
+    info = await latestRelease(config, fetchImpl);
+  } catch (err) {
+    if (force) throw err;
+    return null;
   }
-  if (!release) return null;
-
-  const version = release.tag_name.replace(/^v/, "");
 
   writeCache(config.cacheDir, {
     last_check: Date.now(),
-    latest_version: version,
-    latest_tag: release.tag_name,
+    latest_version: info.version,
+    latest_tag: info.tag,
     current_version_at_check: config.currentVersion,
   });
 
-  if (!isNewer(version, config.currentVersion)) return null;
-
-  return {
-    version,
-    tag: release.tag_name,
-    assets: release.assets.map((a) => ({ name: a.name, url: a.browser_download_url })),
-    body: release.body,
-  };
+  return isNewer(info.version, config.currentVersion) ? info : null;
 }
 
 export function verifySignature(
@@ -447,15 +361,14 @@ export async function performUpdate(
   info: UpdateInfo,
   fetchImpl: typeof fetch = fetch,
 ): Promise<PerformUpdateResult> {
-  const pa = platformArch();
-  if (!pa) {
-    throw new Error(`unsupported platform: ${process.platform}/${process.arch}`);
+  const assetName = config.asset;
+  if (!assetName) {
+    throw new Error(`no ${config.binaryName} build for ${process.platform}/${process.arch}`);
   }
 
   const fromVersion = config.currentVersion;
   const toVersion = info.version;
 
-  const assetName = `${config.binaryName}_${pa.os}_${pa.arch}${pa.ext}`;
   const asset = info.assets.find((a) => a.name === assetName);
   if (!asset) {
     throw new Error(
@@ -496,9 +409,8 @@ export async function performUpdate(
     fetchImpl,
   );
 
-  const tmpDir = join(config.cacheDir, "tmp");
-  mkdirSync(tmpDir, { recursive: true });
-  const tmpPath = join(tmpDir, `${config.binaryName}.download.${process.pid}`);
+  const execPath = process.execPath;
+  const tmpPath = `${execPath}.download.${process.pid}`;
 
   let actualHash = "";
   try {
@@ -540,7 +452,6 @@ export async function performUpdate(
       );
     }
 
-    const execPath = process.execPath;
     const isWindows = process.platform === "win32";
 
     prepareDownloadedBinary(tmpPath, process.platform);
@@ -592,31 +503,18 @@ export function parseChecksum(sumsText: string, assetName: string): string | nul
   return checksum;
 }
 
-export function formatUpdateBanner(info: UpdateInfo, binaryName: string): string {
-  return (
-    `\n  Update available: ${info.version}\n` +
-    `  Run \`${binaryName} update\` to install the latest version.\n\n`
-  );
-}
-
-export function defaultUpdaterConfig(
-  binaryName: string,
-  currentVersion: string,
-  channel: "stable" | "beta" = "stable",
-): UpdaterConfig {
+export function defaultUpdaterConfig(binaryName: string, currentVersion: string): UpdaterConfig {
   const isWindows = process.platform === "win32";
   const cacheDir = isWindows
     ? join(process.env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local"), binaryName)
     : join(homedir(), `.${binaryName}`);
-  const authToken = process.env.GITHUB_TOKEN || process.env.SUBKIT_UPDATE_TOKEN;
   return {
     binaryName,
+    asset: releaseAssetFor(binaryName, process.platform, process.arch),
     currentVersion,
     cacheDir,
-    githubRepo: GITHUB_REPO,
-    checkIntervalMs: 86_400_000,
-    channel,
-    ...(authToken ? { authToken } : {}),
+    releasesUrl: process.env.SUBKIT_RELEASES_URL || RELEASES_URL,
+    checkIntervalMs: UPDATE_CHECK_INTERVAL_MS,
   };
 }
 

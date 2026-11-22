@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { runHeadless } from "../../../../sk/src/headless.ts";
+import { runHeadless } from "../../../../subkit/src/headless.ts";
 import { _drainAuditWritesForTests } from "../../audit/audit.ts";
 import { apiKeys, auditLog, portalTokens, users } from "../../db/schema/index.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
@@ -17,7 +17,7 @@ function sha256Hex(v: string): string {
   return createHash("sha256").update(v).digest("hex");
 }
 
-describe("each role works in the sk terminal chat", () => {
+describe("each role works in the subkit terminal chat", () => {
   describe("an admin's golden path", () => {
     let ctx: JourneyCtx;
 
@@ -44,7 +44,7 @@ describe("each role works in the sk terminal chat", () => {
     let conversationId: string;
 
     beforeAll(async () => {
-      ctx = await createJourneyCtx("sk-cli-01-admin");
+      ctx = await createJourneyCtx("subkit-cli-01-admin");
     }, JOURNEY_HOOK_TIMEOUT);
 
     afterAll(async () => {
@@ -207,12 +207,12 @@ describe("each role works in the sk terminal chat", () => {
     let conversationId = "";
 
     beforeAll(async () => {
-      ctx = await createJourneyCtx("sk-cli-02-member");
+      ctx = await createJourneyCtx("subkit-cli-02-member");
       const [u] = await ctx.db
         .insert(users)
         .values({
           tenant_id: ctx.tenantId,
-          email: "member@sk-cli-02.test",
+          email: "member@subkit-cli-02.test",
           role_id: ctx.rbacRoleIds.member,
         })
         .returning();
@@ -316,12 +316,12 @@ describe("each role works in the sk terminal chat", () => {
     }
 
     beforeAll(async () => {
-      ctx = await createJourneyCtx("sk-cli-03-enduser");
+      ctx = await createJourneyCtx("subkit-cli-03-enduser");
       const [u] = await ctx.db
         .insert(users)
         .values({
           tenant_id: ctx.tenantId,
-          email: "enduser@sk-cli-03.test",
+          email: "enduser@subkit-cli-03.test",
           role_id: ctx.rbacRoleIds.enduser,
         })
         .returning();
@@ -409,7 +409,7 @@ describe("each role works in the sk terminal chat", () => {
     }
 
     beforeAll(async () => {
-      ctx = await createJourneyCtx("sk-cli-04-portal");
+      ctx = await createJourneyCtx("subkit-cli-04-portal");
 
       workflowId = (
         await seedWorkflow(ctx, {
@@ -423,7 +423,7 @@ describe("each role works in the sk terminal chat", () => {
         .insert(users)
         .values({
           tenant_id: ctx.tenantId,
-          email: "portal-customer@sk-cli-04.test",
+          email: "portal-customer@subkit-cli-04.test",
           role_id: ctx.rbacRoleIds.portal_token_user,
         })
         .returning();

@@ -1,10 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { notificationsCommand } from "../../../../sk/src/commands/notifications.ts";
+import { notificationsCommand } from "../../../../subkit/src/commands/notifications.ts";
 import { type Captured, extractLastJson, patchStd, withEnv, withNoExit } from "./cli-capture.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
-describe("an operator manages notifications from the sk CLI", () => {
-  describe("sk notifications", () => {
+describe("an operator manages notifications from the subkit CLI", () => {
+  describe("subkit notifications", () => {
     let ctx: JourneyCtx;
 
     async function run(

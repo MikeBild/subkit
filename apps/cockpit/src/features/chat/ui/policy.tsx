@@ -9,7 +9,7 @@ import {
   dismissApprovalRule,
   listApprovalRules,
 } from "@/api/approval-rules";
-import { ApiError, getConversation } from "@/api/client";
+import { getConversation } from "@/api/client";
 import { absolute, settingsHref } from "@/app/links";
 import {
   Button,
@@ -22,7 +22,6 @@ import {
 import { useConnectorNames } from "@/features/connectors";
 import { namedConnector, RuleFacts } from "@/features/rules";
 import { useI18n } from "@/lib/i18n-context";
-import type { ChatTurn } from "../hooks/turn";
 import {
   type ApprovalBinding as ApprovalBindingModel,
   actionLine,
@@ -33,10 +32,8 @@ import {
   type RuleOffer,
   ranWithoutAsking,
   rawRequest,
-  refusedApprovalReply,
   ruleName,
   type ToolCallPolicy,
-  typedDecision,
 } from "../model/policy";
 
 function useToolCall(conversationId: string | undefined, toolCallId: string) {
@@ -257,73 +254,5 @@ export function ToolPolicyNote({
       ) : null}
       {offer ? <RuleOfferCard offer={offer} testId={`${testId}-offer`} /> : null}
     </>
-  );
-}
-
-export function RefusedReply({ turn, busy }: { turn: ChatTurn; busy: boolean }) {
-  const { t } = useI18n();
-  const { sendError, send, submitApproval } = turn;
-  const elicitationId = sendError instanceof ApiError ? refusedApprovalReply(sendError) : null;
-  if (!elicitationId) return null;
-  const meant = typedDecision(send.variables?.message);
-  const decide = (approved: boolean) => {
-    send.reset();
-    submitApproval(elicitationId, approved);
-  };
-  if (meant)
-    return (
-      <ErrorNotice
-        kind="unknown"
-        technical={false}
-        tone="warning"
-        testId="chat-reply-refused"
-        title={t("chat.policy.meant", {
-          choice: t(meant === "approve" ? "chat.approval.approve" : "chat.approval.decline"),
-        })}
-        body={t("chat.policy.meantBody")}
-        actions={
-          <>
-            <Button
-              size="sm"
-              disabled={busy}
-              onClick={() => decide(meant === "approve")}
-              data-testid={`chat-reply-meant-${meant}`}
-              data-meant={meant}
-            >
-              {t(meant === "approve" ? "chat.approval.approve" : "chat.approval.decline")}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={busy}
-              onClick={() => send.reset()}
-              data-testid="chat-reply-meant-dismiss"
-            >
-              {t("chat.policy.meantNo")}
-            </Button>
-          </>
-        }
-      />
-    );
-  return (
-    <ErrorNotice
-      kind="unknown"
-      technical={false}
-      tone="warning"
-      testId="chat-reply-refused"
-      title={t("chat.policy.changeRefused")}
-      body={t("chat.policy.changeRefusedBody")}
-      actions={
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={busy}
-          onClick={() => decide(false)}
-          data-testid="chat-reply-refused-decline"
-        >
-          {t("chat.policy.declineAndRephrase")}
-        </Button>
-      }
-    />
   );
 }

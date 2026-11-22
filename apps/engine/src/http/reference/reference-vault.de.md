@@ -36,7 +36,7 @@ Geräteeinträge legt SubKit Desktop selbst an, zum Beispiel den Schlüssel, mit
 
 ### Einen Eintrag in einem Workflow nutzen
 
-Schreib das Handle in einen Header eines Request-Schritts mit Connector:
+Schreib das Handle in einen Header, einen Query-Wert oder den Body eines Request-Schritts mit Connector:
 
 ```json
 {
@@ -46,6 +46,7 @@ Schreib das Handle in einen Header eines Request-Schritts mit Connector:
   "method": "GET",
   "path": "/contacts",
   "headers": { "authorization": "Bearer ${secret.crm-token}" },
+  "query": { "account": "${secret.crm-account}" },
   "boundary": { "variables": {}, "max_body_bytes": 0, "max_calls": 1 }
 }
 ```
@@ -61,22 +62,23 @@ Diese Regeln gelten immer:
 - **Die Freigabe nennt die Einträge.** Sie zeigt „Nutzt aus dem Tresor: crm-token, …“ und bindet die Namen, nie die Werte. Nutzt eine neue Version einen weiteren Eintrag, braucht sie eine neue Freigabe. Weniger Einträge übernehmen die Freigabe.
 - **Nur in freigegebenen Runs.** In Entwürfen, Probe-Runs und zurückgehaltenen Schritten bleibt das Handle unaufgelöst (`secret_withheld`), und es wird nichts gesendet.
 - **Nur zum eigenen Connector.** Ein Schritt mit Tresor-Wert darf nur an den Origin seines Connectors gehen. Jede andere Adresse bricht mit `credential_boundary_violation` ab, bevor etwas gesendet wird.
-- **Nur im Header.** In Pfad, Query, URL oder Body bleibt ein Handle unaufgelöst oder macht den Schritt unfreigebbar.
+- **Nur in Header, Query und Body.** In Pfad, URL, einer GraphQL-Abfrage oder einem MCP-Aufruf wird ein Handle nie aufgelöst; in Pfad oder URL stoppt der Schritt, bevor etwas gesendet wird.
+- **Überall dieselben Regeln.** Ein Handle in Query oder Body wird genauso aufgelöst, unkenntlich gemacht und freigegeben wie eines im Header. Ein Query-Wert darf festen Text um ein Handle enthalten, aber keinen anderen Platzhalter. Die Freigabe prüft, dass der Schlüssel gesendet wird, nicht seinen Wert; eine Rotation braucht deshalb keine neue Freigabe.
 - **Fehlt der Eintrag, scheitert der Schritt** mit `placeholder_unresolved`, und nichts wird gesendet.
 
 ### Was die KI und die Aufzeichnung sehen
 
-Die KI, der Chat, MCP und die sk-CLI bekommen Namen, Art, Bereich, Umgebung, Version und letzte Nutzung, aber nie den Wert.
+Die KI, der Chat, MCP und die subkit-CLI bekommen Namen, Art, Bereich, Umgebung, Version und letzte Nutzung, aber nie den Wert.
 Ergebnis, Fehlermeldung, Log und Audit-Trail eines Runs enthalten den Wert nicht. SubKit ersetzt ihn, auch URL- oder JSON-kodiert, durch `***redacted***`.
 
 ### Rotation
 
-**Wert ersetzen** im Tresor oder `sk vault rotate` speichert einen neuen Wert und erhöht die Version. Der nächste Run nutzt ihn. Die Freigabe des Workflows bleibt gültig, weil sie das Handle bindet und nicht den Wert.
+**Wert ersetzen** im Tresor oder `subkit vault rotate` speichert einen neuen Wert und erhöht die Version. Der nächste Run nutzt ihn. Die Freigabe des Workflows bleibt gültig, weil sie das Handle bindet und nicht den Wert.
 Den Master-Schlüssel der Engine (`MASTER_KEY`) tauschst du wie bisher mit der Rewrap-Wartung.
 
 ### Aufdecken und Aktivität
 
-**Aufdecken** zeigt dir den Wert für kurze Zeit, `sk vault reveal <id> --yes` gibt ihn im Terminal aus. Jedes Aufdecken steht im Audit-Trail.
+**Aufdecken** zeigt dir den Wert für kurze Zeit, `subkit vault reveal <id> --yes` gibt ihn im Terminal aus. Jedes Aufdecken steht im Audit-Trail.
 Die Aktivität eines Eintrags zeigt, wann er angelegt, genutzt, aufgedeckt, rotiert oder gelöscht wurde. Bei einer Nutzung stehen Run und Schritt dabei.
 
 ### Rechte
@@ -91,10 +93,10 @@ Die Aktivität eines Eintrags zeigt, wann er angelegt, genutzt, aufgedeckt, roti
 
 Deine Einträge „Nur ich“ verwaltest du immer selbst, auch ohne diese Rechte.
 
-### Im Cockpit, mit sk und per MCP
+### Im Cockpit, mit subkit und per MCP
 
 - **Cockpit:** Einstellungen › Tresor.
-- **sk:** `sk vault list`, `show`, `add`, `rotate`, `reveal`, `refresh`, `rm`, `attach` und `connector`. `add` und `rotate` lesen den Wert von stdin oder aus einer verdeckten Eingabe, nie aus Argumenten.
+- **subkit:** `subkit vault list`, `show`, `add`, `rotate`, `reveal`, `refresh`, `rm`, `attach` und `connector`. `add` und `rotate` lesen den Wert von stdin oder aus einer verdeckten Eingabe, nie aus Argumenten.
 - **MCP:** `list_vault_items` und `get_vault_item` liefern nur Metadaten.
 - **HTTP:** `/v1/vault`, siehe die HTTP-API.
 

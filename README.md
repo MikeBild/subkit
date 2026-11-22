@@ -1,27 +1,57 @@
 <p align="center">
-  <a href="https://subkit.mikebild.dev/en/#gh-dark-mode-only"><img src=".github/readme/hero-dark.webp" alt="SubKit: Design. Review. Approve. Run. Governed workflows for recurring work, self-hosted or cloud." width="100%" /></a>
-  <a href="https://subkit.mikebild.dev/en/#gh-light-mode-only"><img src=".github/readme/hero.webp" alt="SubKit: Design. Review. Approve. Run. Governed workflows for recurring work, self-hosted or cloud." width="100%" /></a>
+  <a href="https://subkit.mikebild.dev/en/#gh-dark-mode-only"><img src=".github/readme/hero-dark.webp" alt="SubKit: the AI assistant your team can trust. Design. Review. Approve. Run. Cloud, self-hosted or on your computer." width="100%" /></a>
+  <a href="https://subkit.mikebild.dev/en/#gh-light-mode-only"><img src=".github/readme/hero.webp" alt="SubKit: the AI assistant your team can trust. Design. Review. Approve. Run. Cloud, self-hosted or on your computer." width="100%" /></a>
 </p>
 
 <p align="center">
-  <strong>SubKit runs the recurring work that spans several systems and today hangs on one person or a fragile script.</strong><br />
-  You describe the task, the AI drafts a workflow, and a person approves what it may touch.
+  <strong>The AI assistant your team can trust.</strong><br />
+  It does the recurring work. A person approves what it may touch. Every run is on record.
 </p>
 
 <p align="center">
   <a href="https://subkit.mikebild.dev/en/"><strong>Website</strong></a> ·
   <a href="https://subkit.mikebild.dev/en/documentation/"><strong>Documentation</strong></a> ·
   <a href="https://subkit.mikebild.dev/en/use-cases/"><strong>Use cases</strong></a> ·
-  <a href="#run-subkit"><strong>Run SubKit</strong></a>
+  <a href="#run-subkit"><strong>Run SubKit</strong></a> ·
+  <a href="#subkit-desktop"><strong>Desktop app</strong></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/MikeBild/subkit/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/MikeBild/subkit?style=flat-square&labelColor=141414&color=1E4FD6&label=release" /></a>
+  <a href="https://github.com/MikeBild/subkit/releases/latest"><img alt="Release date of the latest release" src="https://img.shields.io/github/release-date/MikeBild/subkit?style=flat-square&labelColor=141414&color=1E4FD6&label=released" /></a>
+  <a href="https://github.com/MikeBild/subkit/releases/latest"><img alt="Downloads of the latest release" src="https://img.shields.io/github/downloads/MikeBild/subkit/latest/total?style=flat-square&labelColor=141414&color=1E4FD6&label=downloads" /></a>
+  <a href="https://github.com/MikeBild/subkit/actions/workflows/quality.yml"><img alt="Workflow status: quality" src="https://github.com/MikeBild/subkit/actions/workflows/quality.yml/badge.svg" /></a>
+  <a href="https://github.com/MikeBild/subkit/actions/workflows/security.yml"><img alt="Workflow status: security" src="https://github.com/MikeBild/subkit/actions/workflows/security.yml/badge.svg" /></a>
+  <a href="https://github.com/MikeBild/subkit/actions/workflows/release.yml"><img alt="Workflow status: release" src="https://github.com/MikeBild/subkit/actions/workflows/release.yml/badge.svg" /></a>
+  <a href="https://github.com/MikeBild/subkit/actions/workflows/desktop-release.yml"><img alt="Workflow status: desktop-release" src="https://github.com/MikeBild/subkit/actions/workflows/desktop-release.yml/badge.svg" /></a>
+  <a href="https://github.com/MikeBild/subkit/commits/main"><img alt="Last commit" src="https://img.shields.io/github/last-commit/MikeBild/subkit?style=flat-square&labelColor=141414&color=1E4FD6" /></a>
+  <a href="https://github.com/MikeBild/subkit/graphs/commit-activity"><img alt="Commit activity per month" src="https://img.shields.io/github/commit-activity/m/MikeBild/subkit?style=flat-square&labelColor=141414&color=1E4FD6" /></a>
+  <a href="https://github.com/MikeBild/subkit/issues"><img alt="Open issues" src="https://img.shields.io/github/issues/MikeBild/subkit?style=flat-square&labelColor=141414&color=1E4FD6" /></a>
 </p>
 
 <p align="center">
   <a href="LICENSE"><img alt="License: Apache 2.0" src="https://img.shields.io/badge/license-Apache_2.0-1E4FD6?style=flat-square&labelColor=141414" /></a>
-  <img alt="Runs self-hosted or in the cloud" src="https://img.shields.io/badge/runs-self--hosted_or_cloud-1E4FD6?style=flat-square&labelColor=141414" />
+  <img alt="Top language" src="https://img.shields.io/github/languages/top/MikeBild/subkit?style=flat-square&labelColor=141414&color=1E4FD6" />
+  <img alt="Code size" src="https://img.shields.io/github/languages/code-size/MikeBild/subkit?style=flat-square&labelColor=141414&color=1E4FD6&label=code%20size" />
+  <img alt="Runs in the cloud, self-hosted or on your computer" src="https://img.shields.io/badge/runs-cloud_·_self--hosted_·_desktop-1E4FD6?style=flat-square&labelColor=141414" />
   <img alt="Works with MCP clients" src="https://img.shields.io/badge/MCP-server_and_client-1E4FD6?style=flat-square&labelColor=141414" />
   <img alt="Interface languages: English and German" src="https://img.shields.io/badge/languages-EN_·_DE-1E4FD6?style=flat-square&labelColor=141414" />
+  <img alt="Desktop app: macOS 13 or later on Apple Silicon, Windows x64" src="https://img.shields.io/badge/desktop-macOS_13+_·_Apple_Silicon_·_Windows_x64-1E4FD6?style=flat-square&labelColor=141414" />
   <img alt="Status: SubKit Cloud is a beta by invitation" src="https://img.shields.io/badge/cloud-beta_by_invitation-1E4FD6?style=flat-square&labelColor=141414" />
 </p>
+
+<br />
+
+<table>
+  <tr>
+    <td width="50%" valign="top"><strong>Hands the recurring work over.</strong><br />Approved workflows run on demand, on a schedule or on a webhook.<br /><a href="#hands-the-recurring-work-over">The work</a></td>
+    <td width="50%" valign="top"><strong>Your team’s second brain.</strong><br />Shared knowledge and skills that teach it your house rules.<br /><a href="#your-teams-second-brain">Knowledge</a></td>
+  </tr>
+  <tr>
+    <td valign="top"><strong>Works on your computer.</strong><br />Files, browser and apps, only where you allow it.<br /><a href="#works-on-your-computer">Desktop</a></td>
+    <td valign="top"><strong>Reach it from anywhere.</strong><br />Cockpit, Slack, Google Chat, MCP clients and the terminal.<br /><a href="#reach-it-from-anywhere">Access</a></td>
+  </tr>
+</table>
 
 <br />
 
@@ -30,7 +60,7 @@
   <img src=".github/readme/heading-approval.webp#gh-light-mode-only" alt="In your words, on your approval" width="100%" />
 </p>
 
-<p align="center">The AI helps you design a workflow. It does not decide what the workflow may do.<br />That stays with a person, and it is written down before the first run.</p>
+<p align="center">The AI helps you design. It never decides what a workflow may do.<br />A person does, in writing, before the first run.</p>
 
 <p align="center">
   <img src=".github/readme/lifecycle-dark.webp#gh-dark-mode-only" alt="Four steps: Design, describe the task in your own words and the AI drafts a workflow. Review, read every step and what it reads or writes. Approve, a person approves the environment, the validity and the boundary. Run, fixed steps with only the approved permissions, and every run is recorded." width="100%" />
@@ -39,66 +69,118 @@
 
 [![Approval dialog for the workflow “Invoice export v1”: environment Test, validity until revoked, 1 read, 0 writes, 1 service, with the sentence “Only reads from report at Sales reporting API. Changes nothing.”](.github/readme/cockpit-approval.webp)](https://subkit.mikebild.dev/en/documentation/first-workflow/)
 
-<p align="center">Before anything runs, you see what the workflow reads, what it writes and which services it reaches.<br />You approve it for one environment and for as long as you choose.</p>
-
-[![Overview with key figures for runs, success rate, connector health and cost, and the “Needs you” list with open decisions](.github/readme/cockpit-overview.webp)](https://subkit.mikebild.dev/en/documentation/)
-
-<p align="center">The Overview shows what ran, what failed and what waits for your decision.</p>
-
-[![Result of a run: succeeded, one step in 36 seconds, with the sections “Why it was allowed” and “Technical details” and a link to the audit trail](.github/readme/cockpit-run-result.webp)](https://subkit.mikebild.dev/en/documentation/first-workflow/)
-
-<p align="center">Every run says what happened, which version ran and why it was allowed.</p>
+<p align="center">See what it reads, writes and reaches before anything runs.<br />Approve it for one environment, for as long as you choose.</p>
 
 <br />
+
+<a name="hands-the-recurring-work-over"></a>
 
 <p align="center">
   <img src=".github/readme/heading-recurring-dark.webp#gh-dark-mode-only" alt="Hand over the recurring ones" width="100%" />
   <img src=".github/readme/heading-recurring.webp#gh-light-mode-only" alt="Hand over the recurring ones" width="100%" />
 </p>
 
-<p align="center">The jobs that come back every day, every week or with every order.<br />SubKit runs them on demand, on a schedule or when a webhook arrives.</p>
+<p align="center">The jobs that come back daily, weekly or with every order.<br />SubKit does them, the same way every time.</p>
 
 <p align="center">
   <img src=".github/readme/use-cases-dark.webp#gh-dark-mode-only" alt="Six examples: file the invoices from Gmail to Google Drive, mail the daily numbers from Google Analytics, sum up the week, list your open Jira tickets, watch a price page and mail every change, unlock paid access after a Stripe checkout." width="100%" />
   <img src=".github/readme/use-cases.webp#gh-light-mode-only" alt="Six examples: file the invoices from Gmail to Google Drive, mail the daily numbers from Google Analytics, sum up the week, list your open Jira tickets, watch a price page and mail every change, unlock paid access after a Stripe checkout." width="100%" />
 </p>
 
+<table>
+  <tr>
+    <td width="50%" valign="top"><strong>Workflows with fixed steps.</strong><br />Every change is a new version that needs a new approval.</td>
+    <td width="50%" valign="top"><strong>Schedules and webhooks.</strong><br />Runs start on demand, on time or when an event arrives.</td>
+  </tr>
+  <tr>
+    <td valign="top"><strong>Tasks for work that varies.</strong><br />A goal, a plan and limits. A task asks before it writes.</td>
+    <td valign="top"><strong>An audit trail for every run.</strong><br />What happened, which version ran and why it was allowed.</td>
+  </tr>
+</table>
+
+[![Overview with key figures for runs, success rate, connector health and cost, and the “Needs you” list with open decisions](.github/readme/cockpit-overview.webp)](https://subkit.mikebild.dev/en/documentation/)
+
+<p align="center">The Overview shows what ran, what failed and what waits for you.</p>
+
+[![Result of a run: succeeded, one step in 36 seconds, with the sections “Why it was allowed” and “Technical details” and a link to the audit trail](.github/readme/cockpit-run-result.webp)](https://subkit.mikebild.dev/en/documentation/first-workflow/)
+
 <p align="center">
-  SubKit ships with <strong>61 connector templates</strong> and <strong>248 ready-made recipes</strong>, among them GitHub, Slack, Notion, Jira, Linear,<br />
-  HubSpot, Salesforce, Stripe, Shopify, Google Workspace, Airtable, Supabase and AWS.<br />
+  <strong>61 connector templates</strong> and <strong>248 ready-made recipes</strong>: GitHub, Slack, Notion, Jira, Linear,<br />
+  HubSpot, Salesforce, Stripe, Shopify, Google Workspace, Airtable, Supabase, AWS and more.<br />
   <a href="https://subkit.mikebild.dev/en/use-cases/">More use cases</a>
 </p>
 
+<br />
+
+<a name="your-teams-second-brain"></a>
+
+<p align="center">
+  <img src=".github/readme/heading-knowledge-dark.webp#gh-dark-mode-only" alt="Your team’s second brain" width="100%" />
+  <img src=".github/readme/heading-knowledge.webp#gh-light-mode-only" alt="Your team’s second brain" width="100%" />
+</p>
+
+<p align="center">Explain how your team works once. Everyone with the right permissions reuses it.</p>
+
+[![Inbox with seven collected entries from notes, the browser, chat, Claude Code and Codex, all waiting for review](.github/readme/cockpit-inbox.webp)](https://subkit.mikebild.dev/en/documentation/collect-ideas-and-turn-them-into-knowledge-or-skills/)
+
 <table>
   <tr>
-    <td width="50%"><strong>Cockpit, in the browser.</strong><br />Design, approve and follow workflows without writing code. English and German.</td>
-    <td width="50%"><strong><code>sk</code>, in the terminal.</strong><br />Draft, change and run workflows as files that you can review before they land.</td>
+    <td width="50%" valign="top"><strong>One inbox for what you find.</strong><br />Notes, chat findings, files and pages from the Web Clipper.</td>
+    <td width="50%" valign="top"><strong>You decide what becomes knowledge.</strong><br />Make it a source or a skill, or drop it. Nothing is adopted on its own.</td>
   </tr>
   <tr>
-    <td><strong>MCP, from your AI client.</strong><br />Every approved workflow is a tool in Claude Code, Codex and other MCP clients.</td>
-    <td><strong>Chat, where your team works.</strong><br />Ask questions and start approved workflows from Slack or Google Chat.</td>
+    <td valign="top"><strong>Skills teach your house rules.</strong><br />Reusable instructions for chat and for drafting workflows.</td>
+    <td valign="top"><strong>Shared across the team.</strong><br />Sources and skills are versioned. Every search hit names its source.</td>
   </tr>
 </table>
 
 <br />
 
+<a name="works-on-your-computer"></a>
+
 <p align="center">
-  <img src=".github/readme/heading-knowledge-dark.webp#gh-dark-mode-only" alt="It learns how your business works" width="100%" />
-  <img src=".github/readme/heading-knowledge.webp#gh-light-mode-only" alt="It learns how your business works" width="100%" />
+  <img src=".github/readme/heading-desktop-dark.webp#gh-dark-mode-only" alt="Works on your computer" width="100%" />
+  <img src=".github/readme/heading-desktop.webp#gh-light-mode-only" alt="Works on your computer" width="100%" />
 </p>
 
-<p align="center">Explain how you work once, not with every task.</p>
-
-[![Inbox with seven collected entries from notes, the browser, chat, Claude Code and Codex, all waiting for review](.github/readme/cockpit-inbox.webp)](https://subkit.mikebild.dev/en/documentation/)
+<p align="center">SubKit Desktop does the work that lives on your computer.<br />Nothing runs there until you turn it on.</p>
 
 <table>
   <tr>
-    <td width="50%"><strong>An inbox for everything you find.</strong><br />Notes, chat findings and web pages from the Web Clipper land in one list.</td>
-    <td width="50%"><strong>You decide what becomes knowledge.</strong><br />Turn an entry into a source or a skill, or drop it. Nothing is adopted on its own.</td>
+    <td width="50%" valign="top"><strong>Computer use.</strong><br />Buttons and fields in apps you allowed. Sensitive apps stay blocked.</td>
+    <td width="50%" valign="top"><strong>Browser use.</strong><br />Websites you allowed, in a browser of its own.</td>
   </tr>
   <tr>
-    <td><strong>Every change is a version.</strong><br />For each source and skill you see who saved it and when.</td>
-    <td><strong>Search stays in the engine.</strong><br />Full-text search in PostgreSQL plus a local embedding model. No external search service.</td>
+    <td valign="top"><strong>Local files.</strong><br />Read or read-and-write, per folder you allowed.</td>
+    <td valign="top"><strong>A live view and a stop key.</strong><br />Every step with a redacted screenshot. ⌘⇧⎋ stops it.</td>
+  </tr>
+  <tr>
+    <td valign="top"><strong>A fully local workspace.</strong><br />Your own AI key or a local model server. Move it to a server later.</td>
+    <td valign="top"><strong>Approved per device.</strong><br />A workflow’s approval names the device, folders, websites and apps.</td>
+  </tr>
+</table>
+
+<p align="center"><sub>SubKit Desktop runs on macOS 13+ with Apple Silicon and on Windows x64; files, browser and apps work on the Mac.</sub></p>
+
+<br />
+
+<a name="reach-it-from-anywhere"></a>
+
+<p align="center">
+  <img src=".github/readme/heading-anywhere-dark.webp#gh-dark-mode-only" alt="Reach it from anywhere" width="100%" />
+  <img src=".github/readme/heading-anywhere.webp#gh-light-mode-only" alt="Reach it from anywhere" width="100%" />
+</p>
+
+<p align="center">One assistant, the same permissions, wherever your team works.</p>
+
+<table>
+  <tr>
+    <td width="50%" valign="top"><strong>Cockpit, in the browser.</strong><br />Design, approve and follow workflows. No code. English and German.</td>
+    <td width="50%" valign="top"><strong>Chat, where your team works.</strong><br />Ask and start approved workflows from Slack or Google Chat.</td>
+  </tr>
+  <tr>
+    <td valign="top"><strong>MCP, from your AI client.</strong><br />Every approved workflow is a tool in Claude Code, Codex and others.</td>
+    <td valign="top"><strong><code>subkit</code>, in the terminal.</strong><br />Workflows as files you review before they land.</td>
   </tr>
 </table>
 
@@ -109,13 +191,14 @@
   <img src=".github/readme/heading-boundaries.webp#gh-light-mode-only" alt="Your engine. Your model. Your boundaries." width="100%" />
 </p>
 
-- **Runs on your server or in SubKit Cloud.** Self-hosted, the database, files and keys stay on your server.
-- **Uses the model you choose.** Anthropic, OpenAI, Google Gemini, Azure, Amazon Bedrock or Vertex AI, with your own key.
-- **Stays inside the approved boundary.** An approval names the environment, how long it is valid and what the workflow reads and writes. A new version that reaches further needs a new approval.
-- **Asks before it writes.** A write tool called from an AI client pauses until a person allows it once or declines.
-- **Gives each person only their rights.** Roles, permissions and scoped API keys apply to the Cockpit, the CLI, the API and MCP alike.
-- **Keeps secrets in one vault.** API keys, logins and connector credentials live in the vault, encrypted with AES-256-GCM under the master key of the installation. Workflows name them by handle, the AI never sees a value, and every use is in the audit trail.
-- **Shows what it costs.** Usage lists AI cost per run, workflow, person and model. One monthly AI budget in US dollars caps the cost: at 100% chat, tasks and model steps pause, while workflows without a model step keep running.
+- **SubKit Cloud, your server or your computer.** Self-hosted, your data, files and keys stay with you.
+- **Your model.** Anthropic, OpenAI, Google Gemini, Azure, Amazon Bedrock or Vertex AI, with your own key.
+- **The approved boundary.** An approval names environment, validity, reads, writes and the vault items it uses.
+- **One vault for every secret.** Workspace, personal and device secrets. Values reach only approved runs and their connector, never the model.
+- **Device secrets stay on the device.** SubKit Desktop keeps them in the operating system’s secure storage.
+- **“Always ask first.”** Turn it on, and every write asks you, in chat, in tasks and on your computer.
+- **Each person’s rights, nothing more.** Roles, permissions and scoped API keys, in Cockpit, CLI, API and MCP alike.
+- **A monthly AI budget in US dollars.** At 100%, chat, tasks and model steps pause. Other workflows keep running.
 
 <p align="center">
   <a href="https://subkit.mikebild.dev/en/documentation/execution-identity-and-permission/">Identity and permission</a> · <a href="https://subkit.mikebild.dev/en/documentation/usage-and-costs/">Usage and costs</a> · <a href="https://subkit.mikebild.dev/en/documentation/engine-operator/">Operating the engine</a>
@@ -128,16 +211,16 @@
   <img src=".github/readme/heading-engine.webp#gh-light-mode-only" alt="Inside the engine" width="100%" />
 </p>
 
-<p align="center">One engine binary with the Cockpit built in, a PostgreSQL database and an object store.</p>
+<p align="center">One engine binary with the Cockpit built in, PostgreSQL and an object store.</p>
 
 ```mermaid
 flowchart LR
   subgraph you["Where you work"]
     cockpit["Cockpit<br/>browser"]
-    sk["sk<br/>terminal"]
+    subkit["subkit CLI<br/>terminal"]
     mcp["MCP clients<br/>Claude Code · Codex"]
     chat["Slack<br/>Google Chat"]
-    desktop["SubKit Desktop<br/>your Mac"]
+    desktop["SubKit Desktop<br/>your computer"]
   end
   subgraph start["What starts a run"]
     schedule["Schedule"]
@@ -145,7 +228,7 @@ flowchart LR
   end
   engine["SubKit engine<br/>permissions · approvals<br/>fixed-step execution<br/>audit · usage"]:::brand
   cockpit --> engine
-  sk --> engine
+  subkit --> engine
   mcp --> engine
   chat --> engine
   desktop --> engine
@@ -190,14 +273,12 @@ stateDiagram-v2
   Archived --> [*]
 ```
 
-- **Fixed steps, not a free-running agent.** A workflow is built from eight step kinds: request, transform, call, wait, wait for event, branch, parallel and loop.
-- **Tasks: a goal with limits.** Where the way to a result differs from case to case, a task takes a goal, a plan and the workflows and connectors it may use. It asks a person before anything that writes, it cannot author workflows, and it starts on its own only with a standing permission that ends when the task changes. What proves itself in a task becomes a workflow.
-- **A desktop app that works on your Mac only where you allow it.** SubKit Desktop for Macs with Apple Silicon brings the Cockpit with a menu bar icon, notifications, a quick note and a drop sheet. Once you turn it on, chat, tasks and workflows work with files in folders you allowed, in websites you allowed and in apps you allowed. A live view shows every step with a redacted screenshot, and one shortcut stops it. With “Only on this Mac” a whole workspace runs on the Mac and can move to a server later. The Cockpit can also be installed as a web app.
-- **Chat asks unless you asked.** An action runs without a question only when you asked for it in your own words, named the target and wrote or saw the content; payments, deletions, publications, settings, new accounts and credentials always ask. The rule “Always ask first” makes every write ask.
-- **Schedules explain themselves.** A schedule that fails five times in a row for the same reason pauses and says so once; a schedule history shows what became of every scheduled time.
-- **Code runs in a sandbox.** Code in transform steps runs in a QuickJS sandbox, not in the engine process itself.
-- **One contract for every door.** The HTTP API is described in OpenAPI 3.1 at `/openapi.json`, and the engine describes itself to AI clients at `/llms.txt`.
-- **Built with** TypeScript on Bun, Hono, Drizzle, PostgreSQL with pg-boss, Zod, React and the Model Context Protocol SDK.
+- **Fixed steps, not a free-running agent.** Eight step kinds: request, transform, call, wait, wait for event, branch, parallel and loop.
+- **Chat asks unless you asked.** Payments, deletions, publications, settings and credentials always ask.
+- **Schedules explain themselves.** After five failures in a row for one reason, a schedule pauses and says why.
+- **Code runs in a sandbox.** Transform steps run in QuickJS, outside the engine process.
+- **One contract for every door.** OpenAPI 3.1 at `/openapi.json`, and `/llms.txt` for AI clients.
+- **Built with** TypeScript on Bun, Hono, Drizzle, PostgreSQL with pg-boss, Zod, React, Electron and the MCP SDK.
 
 <br />
 
@@ -206,19 +287,19 @@ stateDiagram-v2
   <img src=".github/readme/heading-proven.webp#gh-light-mode-only" alt="Proven by tests, not by promises" width="100%" />
 </p>
 
-<p align="center">Every release has to pass the same gate. These numbers come from the files in this repository.</p>
+<p align="center">Every release passes the same gate. The numbers come from this repository.</p>
 
 <table align="center">
   <tr>
-    <td align="center" valign="top" width="25%"><h1>3,021</h1><strong>test files</strong><br /><sub>unit, integration, journey, end-to-end, Docker and regression</sub></td>
-    <td align="center" valign="top" width="25%"><h1>100%</h1><strong>mutation score required</strong><br /><sub>on the pure decision cores</sub></td>
+    <td align="center" valign="top" width="25%"><h1>3,455</h1><strong>test files</strong><br /><sub>unit, integration, journey, end-to-end, Docker and regression</sub></td>
+    <td align="center" valign="top" width="25%"><h1>100%</h1><strong>mutation floor</strong><br /><sub>the gate’s break threshold for the pure decision cores</sub></td>
     <td align="center" valign="top" width="25%"><h1>90%</h1><strong>line coverage floor</strong><br /><sub>for permissions and the audit log</sub></td>
-    <td align="center" valign="top" width="25%"><h1>52</h1><strong>AI eval cases</strong><br /><sub>with stored baselines</sub></td>
+    <td align="center" valign="top" width="25%"><h1>55</h1><strong>AI eval cases</strong><br /><sub>with stored baselines</sub></td>
   </tr>
 </table>
 
 <p align="center">
-  <sub>Counted on November 19, 2026. The thresholds are in <a href="stryker.config.json"><code>stryker.config.json</code></a> and <a href="apps/engine/.coverage-floor.json"><code>apps/engine/.coverage-floor.json</code></a>. They are test requirements, not a guarantee.</sub>
+  <sub>Counted on November 22, 2026. The thresholds are in <a href="stryker.config.json"><code>stryker.config.json</code></a> and <a href="apps/engine/.coverage-floor.json"><code>apps/engine/.coverage-floor.json</code></a>. They are test requirements, not a guarantee.</sub>
 </p>
 
 <br />
@@ -232,7 +313,7 @@ stateDiagram-v2
 <summary><strong>What does it cost?</strong></summary>
 <br />
 
-SubKit is open source under the Apache License 2.0. You bring your own model provider, which bills you directly. [Usage](https://subkit.mikebild.dev/en/documentation/usage-and-costs/) shows what the AI calls cost, and your monthly AI budget in US dollars pauses chat, tasks and model steps when it is reached.
+SubKit is open source under the Apache License 2.0. Your model provider bills you directly. [Usage](https://subkit.mikebild.dev/en/documentation/usage-and-costs/) shows the AI cost, and your monthly budget in US dollars caps it.
 
 </details>
 
@@ -240,7 +321,7 @@ SubKit is open source under the Apache License 2.0. You bring your own model pro
 <summary><strong>Does the AI act on its own while a workflow runs?</strong></summary>
 <br />
 
-No. The AI helps while you design. At run time the workflow follows its fixed steps. A step can ask a model for a summary or a classification, but it cannot add steps, reach other systems or widen its own permissions.
+No. The AI helps you design. At run time the workflow follows its fixed steps. A model step can summarize or classify, but it cannot add steps, reach other systems or widen its permissions.
 
 </details>
 
@@ -248,7 +329,7 @@ No. The AI helps while you design. At run time the workflow follows its fixed st
 <summary><strong>Where does my data go?</strong></summary>
 <br />
 
-Self-hosted, the database, files and keys stay on your server. Your model provider gets what a draft or an AI step needs, and each connected system gets the requests of the workflows you approved. Knowledge search runs inside the engine.
+Self-hosted, your data, files and keys stay on your server, or on your computer with a fully local workspace. Your model provider gets what a draft or an AI step needs. Each connected system gets only the requests you approved.
 
 </details>
 
@@ -256,7 +337,7 @@ Self-hosted, the database, files and keys stay on your server. Your model provid
 <summary><strong>What happens when a workflow breaks?</strong></summary>
 <br />
 
-The run fails visibly and shows up on the Overview. SubKit can propose a fix. By default it applies only patches it classifies as safe; everything else waits for your review. You can turn automatic fixes off.
+The run fails visibly on the Overview. SubKit can propose a fix. It applies only fixes it classifies as safe; the rest waits for your review. You can turn this off.
 
 </details>
 
@@ -264,7 +345,7 @@ The run fails visibly and shows up on the Overview. SubKit can propose a fix. By
 <summary><strong>Do I need to write code?</strong></summary>
 <br />
 
-No. You can design, approve and run workflows in the Cockpit. If you prefer files and reviews, the same workflows are available with `sk` and over the HTTP API.
+No. Design, approve and run workflows in the Cockpit. If you prefer files and reviews, use the `subkit` CLI or the HTTP API.
 
 </details>
 
@@ -272,7 +353,7 @@ No. You can design, approve and run workflows in the Cockpit. If you prefer file
 <summary><strong>Is it ready for my team?</strong></summary>
 <br />
 
-SubKit is in beta. [SubKit Cloud](https://subkit.mikebild.dev/en/documentation/subkit-cloud/) is hosted and by invitation, and the self-hosting package follows with the public beta. The Web Clipper works in Chrome only.
+SubKit is in beta. [SubKit Cloud](https://subkit.mikebild.dev/en/documentation/subkit-cloud/) is by invitation. Everything else, from the Compose file to SubKit Desktop, is in the [latest release](https://github.com/MikeBild/subkit/releases/latest). The Web Clipper works in Chrome only.
 
 </details>
 
@@ -285,16 +366,22 @@ SubKit is in beta. [SubKit Cloud](https://subkit.mikebild.dev/en/documentation/s
   <img src=".github/readme/heading-run.webp#gh-light-mode-only" alt="Run SubKit" width="100%" />
 </p>
 
-<p align="center">Use SubKit Cloud, or run the engine on your own server.</p>
+<p align="center">Use SubKit Cloud, your own server or your computer.</p>
 
 <table>
   <tr>
-    <td width="50%" valign="top"><strong>SubKit Cloud</strong><br />SubKit runs for you, and you sign in from the browser. The cloud is a hosted beta by invitation.<br /><br /><a href="https://subkit.mikebild.dev/en/contact/">Ask for an invitation</a></td>
-    <td width="50%" valign="top"><strong>Your own engine</strong><br />SubKit is built to run on your own server: the engine with the Cockpit, a PostgreSQL database and an object store, started with Docker Compose. Open the engine's address in your browser and you land in the Cockpit. The self-hosting package follows with the public beta.<br /><br /><a href="https://subkit.mikebild.dev/en/documentation/run-the-engine/">How self-hosting works</a></td>
+    <td width="50%" valign="top"><strong>SubKit Cloud</strong><br />SubKit runs for you. Sign in from the browser. Hosted beta, by invitation.<br /><br /><a href="https://subkit.mikebild.dev/en/contact/">Ask for an invitation</a></td>
+    <td width="50%" valign="top"><strong>Your own engine</strong><br />Engine with Cockpit, PostgreSQL and an object store, started with Docker Compose.<br /><br /><a href="https://github.com/MikeBild/subkit/releases/latest/download/docker-compose.yml">Download <code>docker-compose.yml</code></a> · <a href="https://subkit.mikebild.dev/en/documentation/run-the-engine/">How self-hosting works</a></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><a name="subkit-desktop"></a><strong>SubKit Desktop</strong><br />Your Cockpit as a desktop app, plus files, browser and computer use.<br /><sub>macOS 13+ on Apple Silicon, Windows x64</sub><br /><br /><a href="https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-mac-arm64.dmg">Download for Mac</a> · <a href="https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-win-x64.exe">Download for Windows</a> · <a href="https://subkit.mikebild.dev/en/documentation/subkit-desktop/">How to get SubKit Desktop</a></td>
+    <td width="50%" valign="top"><strong>Fully local workspace</strong><br />A whole workspace on your computer, with backups and your own AI key or local model. No server needed.<br /><sub>Inside SubKit Desktop</sub><br /><br /><a href="https://subkit.mikebild.dev/en/documentation/subkit-desktop/">Set up a local workspace</a></td>
   </tr>
 </table>
 
-<p align="center">Then connect the tools you already use: the <code>sk</code> CLI in the terminal,<br />and AI clients such as Claude Code and Codex over MCP.</p>
+<p align="center">Then connect your tools: <code>subkit</code> in the terminal,<br />Claude Code, Codex and other AI clients over MCP.</p>
+
+<p align="center">Collect pages from Chrome with the Web Clipper: <a href="https://chromewebstore.google.com/detail/odefbnmjeehgfbanpaajiaocliccldma">add it from the Chrome Web Store</a>, where it updates itself. For offline setups, <a href="https://github.com/MikeBild/subkit/releases/latest/download/subkit-clipper.zip">download the ZIP file</a> and follow the <a href="https://subkit.mikebild.dev/en/documentation/web-clipper/">install guide</a>.</p>
 
 <details>
 <summary><strong>Develop from source</strong></summary>
@@ -309,7 +396,7 @@ bun install --frozen-lockfile
 bun run verify        # the full local release gate
 ```
 
-The engine lives in `apps/engine`, the CLI in `apps/sk`, the Cockpit in `apps/cockpit`, SubKit Desktop in `apps/desktop` and the Web Clipper in `apps/clipper`.
+The engine lives in `apps/engine`, the CLI in `apps/subkit`, the Cockpit in `apps/cockpit`, SubKit Desktop in `apps/desktop` and the Web Clipper in `apps/clipper`.
 
 Every root command groups one concern: `gen`, `build`, `test`, `verify`, `quality`, `demo`, `release`, `eval`, `db` and `compose`. `bun run <command> help` lists its subcommands, for example `bun run verify help`. [RELEASING.md](RELEASING.md) describes a release, [SECURITY.md](SECURITY.md) how to report a vulnerability.
 
@@ -323,47 +410,29 @@ Every root command groups one concern: `gen`, `build`, `test`, `verify`, `qualit
 
 ## Features at a glance
 
-| Feature | Since |
+<!-- release-history -->
+
+| What your team gets done | Since |
 | --- | --- |
-| Workflows with fixed steps, versions and recorded runs | 1.0.0 |
-| `sk` CLI | 1.0.0 |
-| MCP server for AI clients | 1.0.0 |
-| Slack and Google Chat | 1.0.0 |
-| Knowledge sources and skills | 1.0.0 |
-| Schedules and inbound webhooks | 1.0.0 |
-| Roles, permissions and audit log | 1.0.0 |
-| Allow once for write tools in AI clients | 1.8.1 |
-| Coding-agent briefings | 1.11.0 |
-| MCP servers as connectors | 6.0.0 |
-| Cockpit in the browser | 6.1.1 |
-| Sign-in through your own OIDC provider | 6.22.44 |
+| Work on your computer: computer use, browser use and local files, with a live view | 12.1.0 |
+| A fully local workspace | 12.1.0 |
+| One vault for workspace, personal and device secrets | 12.1.0 |
+| A monthly AI budget in US dollars | 12.1.0 |
+| “Always ask first” for every write | 12.1.0 |
+| SubKit Desktop for Windows x64 | 12.1.0 |
+| SubKit Desktop | 11.2.0 |
+| Tasks: a goal, a plan and limits | 11.0.0 |
+| SubKit Cloud | 10.1.4 |
+| A shared inbox for knowledge, fed by the Web Clipper | 9.10.0 |
+| Ready-made recipes | 9.5.0 |
 | Approvals bound to environment, validity and effects | 6.45.0 |
-| Usage and costs | 8.4.0 |
-| “Needs you” list | 8.10.0 |
-| Approvals until revoked | 8.16.0 |
-| Ready-made recipes and versioned knowledge sources | 9.5.0 |
-| Web Clipper | 9.9.0 |
-| Inbox with reviewed proposals | 9.10.0 |
-| Your own app: product sign-in and caller budgets | 9.14.0 |
-| SubKit Cloud workspaces | 10.1.4 |
-| Signed-JWT credentials and email replies | 10.1.4 |
-| Cockpit branding | 10.1.4 |
-| Cockpit as an installable app | 10.1.5 |
-| Documentation in the Cockpit, English and German | 10.4.0 |
-| Packages to move resources between engines | 10.18.13 |
-| Tasks | 11.0.0 |
-| SubKit Desktop, setup questions, quiet hours and chat rules | 11.2.0 |
-| Two-person approval (optional, teams with 2+ approvers) | 12.0.0 |
-| File drops from the desktop, notification pause and offline bug reports | 12.0.0 |
-| Vault for API keys, logins and connector credentials, used by handle | 12.0.0 |
-| SubKit Desktop for Apple Silicon: welcome, invitation link, quick note and drop sheet | 12.0.0 |
-| Local files, browser and computer use on your Mac, with allowances you set | 12.0.0 |
-| Live view with redacted screenshots and a stop shortcut | 12.0.0 |
-| Workflow steps on your device, approved per folder, website and app | 12.0.0 |
-| Fully local workspace on your Mac, with backups and a move to a server | 12.0.0 |
-| “Always ask first” instead of chat modes | 12.0.0 |
-| Monthly AI budget in US dollars instead of the token budget | 12.0.0 |
+| Recurring work handed over: workflows on demand, on a schedule or on a webhook | 1.0.0 |
+| Shared knowledge sources and skills for the whole team | 1.0.0 |
+| Roles, permissions and an audit trail for every run | 1.0.0 |
+| Chat in Slack and Google Chat | 1.0.0 |
 | [All features](https://subkit.mikebild.dev/en/documentation/features/) | – |
+
+<!-- /release-history -->
 
 <br />
 

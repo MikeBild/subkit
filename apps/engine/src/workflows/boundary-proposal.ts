@@ -39,6 +39,7 @@ import {
   wholePlaceholder,
   withoutOrigin,
 } from "./core/boundary-derivation.ts";
+import { onlyVaultHandles } from "./core/vault-uses.ts";
 import { gateRequestBoundary } from "./effect-resolution.ts";
 import { hasRuntimeValue, supportsReportDelivery } from "./report-delivery-boundary.ts";
 import {
@@ -256,6 +257,7 @@ function queryVariables(
 ): Map<string, string> | null {
   const names = new Map<string, string>();
   for (const [key, value] of Object.entries({ ...step.query, ...rewrite?.query })) {
+    if (!hasRuntimeValue(key) && onlyVaultHandles(value)) continue;
     const name = wholePlaceholder(value);
     if (name !== null) names.set(key, name);
     else if (hasRuntimeValue(value) || hasRuntimeValue(key)) return null;

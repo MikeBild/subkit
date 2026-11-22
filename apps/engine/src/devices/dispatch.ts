@@ -241,6 +241,9 @@ export async function sendDeviceCommand(
             new Date(commandDeadlineAt(row.kind, now())),
           );
           if (reopened) continue;
+          const settled = await watchCommand(ctx.db, device, request.command_id);
+          const late = settled ? storedResult(settled.row) : null;
+          if (late) return { kind: "result", command_id: row.id, result: late };
         }
         return closed(row, row.state as ClosureState);
       }

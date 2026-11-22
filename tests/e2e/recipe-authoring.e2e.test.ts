@@ -120,13 +120,13 @@ describe("recipe-authoring e2e", () => {
   });
 });
 
-describe("sk workflows create --from-recipe", () => {
+describe("subkit workflows create --from-recipe", () => {
   test("names the missing connector, then creates the solution once it exists", async () => {
     const refused = await cli(["workflows", "create", "--from-recipe", "webhook-to-slack"], {
       env,
     });
     expect(refused.exitCode).not.toBe(0);
-    expect(refused.stderr).toContain("sk connectors create --template slack");
+    expect(refused.stderr).toContain("subkit connectors create --template slack");
 
     const slack = await createConnector({
       name: "Slack E2E",
@@ -141,7 +141,7 @@ describe("sk workflows create --from-recipe", () => {
       ["workflows", "create", "--from-recipe", "webhook-to-slack", "--json"],
       { env, timeout: 60_000 },
     );
-    expectSuccess(created, "sk workflows create --from-recipe");
+    expectSuccess(created, "subkit workflows create --from-recipe");
     const workflow = parseJson<{ id: string; slug: string }>(created);
     expect(workflow.slug).toBe("webhook-to-slack");
 

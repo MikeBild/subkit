@@ -3,6 +3,7 @@ import { chromeApi } from "./chrome-api.ts";
 import { loadSettings, normalizeEngineUrl, parseInstallConfig, saveSettings } from "./clipper.ts";
 import type { Copy } from "./ui.ts";
 import { applyText, copy, language as resolveLanguage, showHelpLink } from "./ui.ts";
+import { showUpdateNotice } from "./update-notice.ts";
 
 const form = document.querySelector<HTMLFormElement>("#settings-form");
 const engineUrl = document.querySelector<HTMLInputElement>("#engine-url");
@@ -42,6 +43,7 @@ async function initialize(): Promise<void> {
   if (language) language.value = settings.language || "de";
   applyLanguage(settings.language);
   showHelpLink(help, initialUrl);
+  void showUpdateNotice(settings.engineUrl, text);
   if (settings.engineUrl && settings.apiKey) {
     await verifyConnection(settings.engineUrl, settings.apiKey);
   }
@@ -93,6 +95,7 @@ form?.addEventListener("submit", async (event) => {
     initialEngineUrl = nextUrl;
     applyLanguage(language?.value === "en" ? "en" : "de");
     showHelpLink(help, nextUrl);
+    void showUpdateNotice(nextUrl, text);
     await chromeApi.runtime.sendMessage({ type: "settings-updated" });
     await verifyConnection(nextUrl, enteredKey || oldSettings.apiKey || "");
   } catch (error) {

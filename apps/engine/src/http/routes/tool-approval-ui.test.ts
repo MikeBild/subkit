@@ -197,7 +197,7 @@ const PENDING_HTML = (locale: "de" | "en") =>
 test("the decision page is one wide single page with a status chip and the §8.4 verbs", () => {
   const html = PENDING_HTML("de");
   expect(html.match(/<h1[\s>]/g)?.length).toBe(1);
-  expect(html).toContain('data-family-surface="auth"');
+  expect(html).toContain('data-sk-surface="auth"');
   expect(html).toContain('<main class="card wide"');
   expect(html).toContain("<title>SubKit Cockpit</title>");
   expect(html).toContain('<span class="dot warning"></span>Entscheidung ausstehend</span>');

@@ -42,7 +42,7 @@ beforeAll(async () => {
   resetMockProvider();
 
   const testDb = await createTestDb("j-chat-ai");
-  configDirectory = mkdtempSync(join(tmpdir(), "sk-chat-journey-"));
+  configDirectory = mkdtempSync(join(tmpdir(), "subkit-chat-journey-"));
   await loadConfig({
     env: { DATABASE_URL: testDb.url, NODE_ENV: "test", LLM_PROVIDER: "mock" },
     configPathOverride: join(configDirectory, "subkit.config.json"),

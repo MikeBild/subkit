@@ -55,7 +55,7 @@ beforeAll(async () => {
   ctx = await createTestDb("mcp-pool-invoke-401");
   await closeDb();
   testEnv.DATABASE_URL = ctx.url;
-  const cfgDir = mkdtempSync(join(tmpdir(), "sk-cfg-pool-401-"));
+  const cfgDir = mkdtempSync(join(tmpdir(), "subkit-cfg-pool-401-"));
   _resetConfigForTests();
   await loadConfig({
     env: { DATABASE_URL: ctx.url, NODE_ENV: "test" },

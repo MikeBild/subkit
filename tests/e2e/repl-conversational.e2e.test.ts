@@ -59,9 +59,9 @@ function succeededPath(records: Array<Record<string, unknown>>, route: string): 
   );
 }
 
-const SKIP_PTY_DISPATCH = process.env.SK_RUN_PTY_DISPATCH !== "1";
+const SKIP_PTY_DISPATCH = process.env.SUBKIT_RUN_PTY_DISPATCH !== "1";
 
-describe("sk REPL over a PTY", () => {
+describe("subkit REPL over a PTY", () => {
   test.skipIf(SKIP_PTY_WHEN_NO_EXPECT)(
     "boots to the quick-start banner and exits cleanly",
     async () => {
@@ -114,7 +114,7 @@ describe("sk REPL over a PTY", () => {
         {
           persona: env.personas.admin,
           engineUrl: env.baseUrl,
-          env: { SK_DEBUG_FILE: logPath },
+          env: { SUBKIT_DEBUG_FILE: logPath },
         },
       );
       expect(result.exitCode).toBe(0);
@@ -147,7 +147,7 @@ describe("sk REPL over a PTY", () => {
         {
           persona: env.personas.member,
           engineUrl: env.baseUrl,
-          env: { SK_DEBUG_FILE: logPath },
+          env: { SUBKIT_DEBUG_FILE: logPath },
         },
       );
       expect(result.exitCode).toBe(0);

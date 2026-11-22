@@ -158,7 +158,7 @@ export interface LlmCallLogEntry {
   cache_read_tokens?: number;
   cache_creation_tokens?: number;
   latency_ms: number;
-  result: "success" | "quota_exhausted" | "context_too_large" | "error";
+  result: "success" | "quota_exhausted" | "context_too_large" | "key_rejected" | "error";
   error?: string;
   execution_id?: string;
   conversation_id?: string;

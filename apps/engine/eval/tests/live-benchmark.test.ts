@@ -11,6 +11,7 @@ const AUTHORING_PASS = {
   single_preview: "PASS",
   tool_calls_le_15: "PASS",
   content_correct_first_preview: "PASS",
+  no_needless_question: "PASS",
 } as const;
 
 const CLARIFICATION_PASS: ClarificationTargets = {
@@ -18,6 +19,7 @@ const CLARIFICATION_PASS: ClarificationTargets = {
   no_authoring_before_answer: "PASS",
   question_names_missing_inputs: "PASS",
   no_placeholder_in_reply: "PASS",
+  no_needless_question: "PASS",
 };
 
 function score(overrides: Partial<LiveScenarioScore> & { scenario: string }): LiveScenarioScore {

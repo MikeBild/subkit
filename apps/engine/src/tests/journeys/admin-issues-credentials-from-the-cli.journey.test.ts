@@ -1,13 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { apiKeysCommand } from "../../../../sk/src/commands/apikeys.ts";
-import { portalTokensCommand } from "../../../../sk/src/commands/portal-tokens.ts";
-import { systemAccountsCommand } from "../../../../sk/src/commands/system-accounts.ts";
-import { usersCommand } from "../../../../sk/src/commands/users.ts";
+import { apiKeysCommand } from "../../../../subkit/src/commands/apikeys.ts";
+import { portalTokensCommand } from "../../../../subkit/src/commands/portal-tokens.ts";
+import { systemAccountsCommand } from "../../../../subkit/src/commands/system-accounts.ts";
+import { usersCommand } from "../../../../subkit/src/commands/users.ts";
 import { type Captured, extractLastJson, patchStd, withEnv, withNoExit } from "./cli-capture.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
-describe("an admin issues keys, accounts and portal tokens from the sk CLI", () => {
-  describe("sk apikeys", () => {
+describe("an admin issues keys, accounts and portal tokens from the subkit CLI", () => {
+  describe("subkit apikeys", () => {
     let ctx: JourneyCtx;
 
     async function run(
@@ -200,7 +200,7 @@ describe("an admin issues keys, accounts and portal tokens from the sk CLI", () 
     });
   });
 
-  describe("sk users and system-accounts", () => {
+  describe("subkit users and system-accounts", () => {
     let ctx: JourneyCtx;
 
     async function run(
@@ -252,7 +252,7 @@ describe("an admin issues keys, accounts and portal tokens from the sk CLI", () 
       if (ctx?.cleanup) await ctx.cleanup();
     }, JOURNEY_HOOK_TIMEOUT);
 
-    describe("sk users CLI", () => {
+    describe("subkit users CLI", () => {
       test("AC1: users list --json returns >= 1 item; items have id and email", async () => {
         const { stdout } = await run(usersCommand, ["list"]);
         const items = JSON.parse(extractLastJson(stdout)) as Array<{ id: string; email: string }>;
@@ -295,7 +295,7 @@ describe("an admin issues keys, accounts and portal tokens from the sk CLI", () 
       });
     });
 
-    describe("sk system-accounts CLI", () => {
+    describe("subkit system-accounts CLI", () => {
       test("AC3: system-accounts list --json returns >= 1 item; items have id and name", async () => {
         const { stdout } = await run(systemAccountsCommand, ["list"]);
         const items = JSON.parse(extractLastJson(stdout)) as Array<{ id: string; name: string }>;
@@ -376,7 +376,7 @@ describe("an admin issues keys, accounts and portal tokens from the sk CLI", () 
     });
   });
 
-  describe("sk portal-tokens", () => {
+  describe("subkit portal-tokens", () => {
     let ctx: JourneyCtx;
 
     async function run(

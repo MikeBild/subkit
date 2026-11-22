@@ -22,15 +22,15 @@ describe("readEnv", () => {
 describe("envInt", () => {
   test("returns the fallback when unset, empty, non-numeric, zero or negative", async () => {
     for (const value of [undefined, "", "not-a-number", "0", "-5"]) {
-      await runWithTestEnv({ SK_LOG_RING_SIZE: value }, () =>
-        expect(envInt("SK_LOG_RING_SIZE", 42)).toBe(42),
+      await runWithTestEnv({ SUBKIT_LOG_RING_SIZE: value }, () =>
+        expect(envInt("SUBKIT_LOG_RING_SIZE", 42)).toBe(42),
       );
     }
   });
 
   test("returns the floored integer when set", async () => {
-    await runWithTestEnv({ SK_LOG_RING_SIZE: "100.9" }, () =>
-      expect(envInt("SK_LOG_RING_SIZE", 42)).toBe(100),
+    await runWithTestEnv({ SUBKIT_LOG_RING_SIZE: "100.9" }, () =>
+      expect(envInt("SUBKIT_LOG_RING_SIZE", 42)).toBe(100),
     );
   });
 });

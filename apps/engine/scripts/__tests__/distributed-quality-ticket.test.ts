@@ -15,8 +15,8 @@ const ticket: DistributedQualityTicket = {
   github_run_id: "12",
   coverage_run_id: "run-coverage-12",
   mutation_run_id: "run-mutation-12",
-  manifest_path: "reports/quality-inputs/wave.json",
-  ticket_path: "reports/quality-inputs/ticket.json",
+  manifest_path: ".reports/quality-inputs/wave.json",
+  ticket_path: ".reports/quality-inputs/ticket.json",
   wave_id: "wave-12",
   manifest_sha256: "b".repeat(64),
   source_sha256: "c".repeat(64),
@@ -149,13 +149,13 @@ test("V2 ticket artifacts must equal the restored snapshot manifest", () => {
     path,
     sha256: String(index % 10).repeat(64),
     bytes: index + 1,
-    executable: path === "dist/sk",
+    executable: path === "dist/subkit",
   }));
   const v2 = parseDistributedQualityTicket({
     ...ticket,
     version: 2,
     runtime_snapshot: {
-      path: "reports/mutation/runs/wave-12/run-mutation-12/runtime-snapshots/snapshot",
+      path: ".reports/mutation/runs/wave-12/run-mutation-12/runtime-snapshots/snapshot",
       sha256: "8".repeat(64),
       artifact_digest_sha256: "9".repeat(64),
       artifacts,

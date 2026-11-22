@@ -27,13 +27,13 @@ describe("chatFirstScanner — fenced shell blocks", () => {
     expect(vs.map((v) => v.kind)).toContain("chat_first.shell_command_in_chat");
   });
 
-  it("does not flag `sk` invocations (cliScanner owns those)", () => {
-    const text = bash("sk apikeys create --name demo");
+  it("does not flag `subkit` invocations (cliScanner owns those)", () => {
+    const text = bash("subkit apikeys create --name demo");
     const vs = chatFirstScanner.scan(text, ctx);
     expect(vs).toEqual([]);
   });
 
-  it("does not flag the sk CLI installer curl (the one grounded /install one-liner)", () => {
+  it("does not flag the subkit CLI installer curl (the one grounded /install one-liner)", () => {
     const vs = chatFirstScanner.scan(
       bash("curl -fsSL https://subkit.example.com/install | bash"),
       ctx,

@@ -37,11 +37,11 @@ async function seedOAuthToken(input: { scope?: string; resource?: string; withRe
       .insert(mcpOauthRefreshTokens)
       .values({
         tenant_id: ctx.tenantId,
-        client_id: "sk-cli-test",
+        client_id: "subkit-cli-test",
         user_id: ctx.userId,
         prefix: refresh.prefix,
         token_sha256: refresh.hash,
-        scope: input.scope ?? "sk:login",
+        scope: input.scope ?? "subkit:login",
         resource: input.resource ?? `${publicBaseUrl}/v1/identity/cli-session`,
         expires_at: expiresAt,
       })
@@ -52,11 +52,11 @@ async function seedOAuthToken(input: { scope?: string; resource?: string; withRe
     .insert(mcpOauthAccessTokens)
     .values({
       tenant_id: ctx.tenantId,
-      client_id: "sk-cli-test",
+      client_id: "subkit-cli-test",
       user_id: ctx.userId,
       prefix: access.prefix,
       token_sha256: access.hash,
-      scope: input.scope ?? "sk:login",
+      scope: input.scope ?? "subkit:login",
       resource: input.resource ?? `${publicBaseUrl}/v1/identity/cli-session`,
       refresh_token_id: refreshTokenId,
       expires_at: expiresAt,
@@ -69,7 +69,7 @@ async function seedOAuthToken(input: { scope?: string; resource?: string; withRe
 async function exchange(token: string): Promise<Response> {
   return fetch(`${ctx.baseUrl}/v1/identity/cli-session`, {
     method: "POST",
-    headers: { authorization: `Bearer ${token}`, "user-agent": "sk-cli/test" },
+    headers: { authorization: `Bearer ${token}`, "user-agent": "subkit-cli/test" },
   });
 }
 
@@ -77,7 +77,7 @@ describe("POST /v1/identity/cli-session", () => {
   test("requires a dedicated OAuth bearer credential", async () => {
     const res = await fetch(`${ctx.baseUrl}/v1/identity/cli-session`, { method: "POST" });
     expect(res.status).toBe(401);
-    expect(res.headers.get("www-authenticate")).toBe('Bearer realm="sk-cli"');
+    expect(res.headers.get("www-authenticate")).toBe('Bearer realm="subkit-cli"');
     expect(res.headers.get("cache-control")).toBe("no-store");
   });
 
@@ -97,7 +97,7 @@ describe("POST /v1/identity/cli-session", () => {
     expect(mcpRes.status).toBe(401);
   });
 
-  test("returns 403 when the dedicated audience lacks the exact sk:login scope", async () => {
+  test("returns 403 when the dedicated audience lacks the exact subkit:login scope", async () => {
     const seeded = await seedOAuthToken({ scope: "mcp:read" });
     expect((await exchange(seeded.access)).status).toBe(403);
   });
@@ -154,10 +154,13 @@ describe("POST /v1/identity/cli-session", () => {
       .select({ action: auditLog.action })
       .from(auditLog)
       .where(
-        and(eq(auditLog.tenant_id, ctx.tenantId), eq(auditLog.action, AuditAction.SK_CLI_LOGIN)),
+        and(
+          eq(auditLog.tenant_id, ctx.tenantId),
+          eq(auditLog.action, AuditAction.SUBKIT_CLI_LOGIN),
+        ),
       )
       .limit(1);
-    expect(loginAudit?.action).toBe(AuditAction.SK_CLI_LOGIN);
+    expect(loginAudit?.action).toBe(AuditAction.SUBKIT_CLI_LOGIN);
 
     expect((await exchange(seeded.access)).status).toBe(401);
     const replayKeys = await ctx.db

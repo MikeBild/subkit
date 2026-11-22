@@ -143,10 +143,10 @@ const SHAPES: Record<string, { definition: unknown; bindings: unknown[]; calls?:
     bindings: [
       {
         ...binding("revise", "a2db2ff26d75ab1df802d141d09c0416a4e946d157994fad22ce4c7284aac9b1", {
-          target: "https://contentkit.example.test/v1/content/{approved-item}/revisions",
+          target: "https://editorial.example.test/v1/content/{approved-item}/revisions",
           content_publication: {
             kind: "content_revision",
-            origin: "https://contentkit.example.test",
+            origin: "https://editorial.example.test",
             item_ids: [ITEM_A, ITEM_B],
             max_bytes: 200_000,
           },
@@ -155,10 +155,10 @@ const SHAPES: Record<string, { definition: unknown; bindings: unknown[]; calls?:
       },
       {
         ...binding("release", "98a0c6b18e261305060bc5b38fed5d0bdc1beb208037de75935b69a93898a949", {
-          target: `https://contentkit.example.test/v1/sites/${SITE}/releases`,
+          target: `https://editorial.example.test/v1/sites/${SITE}/releases`,
           content_publication: {
             kind: "content_release",
-            origin: "https://contentkit.example.test",
+            origin: "https://editorial.example.test",
             site_id: SITE,
             reason: "weekly release",
             sources: [{ step_id: "revise", item_ids: [ITEM_A, ITEM_B] }],
@@ -385,7 +385,7 @@ const PINNED: Record<string, { options_digest: string; digest: string }> = {
   },
   content_publication: {
     options_digest: "d6d2d72cbba26fb45f4c9b802766cd5871e90431b47c1913436cc011152d96a0",
-    digest: "81637ecac62fee67bb7b27c65d36a4d7e8ea85eb4906a9298e43046b62d3deb0",
+    digest: "6f580533af9891a2a9247bdc0d0e92eadd11a534fc40b1585ff95947a4e35f42",
   },
   request_boundary: {
     options_digest: "149b249e3250bd401a9dda84773021c20e7f1c9ae37a4c3f3915662928126bf6",

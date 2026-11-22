@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { renderRuntimeNotices } from "./runtime-notices.ts";
+import { renderRuntimeNotices } from "./lib/runtime-notices.ts";
 
 export interface NoticePackage {
   name: string;

@@ -1,7 +1,7 @@
 import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { app, powerMonitor } from "electron";
+import { app, powerMonitor, powerSaveBlocker } from "electron";
 import type { Locale } from "../shared/i18n.ts";
 import { helperBinaryPath } from "../shared/local/agent-desktop-bundle.ts";
 import { browserCliPath } from "../shared/local/browser-runtime.ts";
@@ -20,8 +20,9 @@ import { endsSession } from "../shared/local/live-progress.ts";
 import type { LiveDecision } from "../shared/local/live-view-model.ts";
 import { permissionGranted } from "../shared/local/permission-model.ts";
 import { MacPermissions } from "../shared/local/permission-port.ts";
-import type { RunnerBrowserConfig } from "../shared/local/runner-port.ts";
+import type { RunnerBrowserConfig, RunnerState } from "../shared/local/runner-port.ts";
 import { createBrowserHost } from "./browser-host.ts";
+import { KeepAwake } from "./keep-awake.ts";
 import { type LivePort, LiveUi } from "./live-ui.ts";
 import { LocalWiring } from "./local-wiring.ts";
 import { electronPermissionSystem } from "./permissions-mac.ts";
@@ -53,6 +54,13 @@ export interface DeviceGlueOptions {
   onError: (scope: string, error: unknown) => void;
 }
 
+const RUNNER_ENDED: ReadonlySet<RunnerState | "crashed" | "given_up"> = new Set([
+  "crashed",
+  "given_up",
+  "stopped",
+  "revoked",
+]);
+
 export class DeviceGlue {
   readonly permissions = new MacPermissions(electronPermissionSystem());
   private readonly userData = app.getPath("userData");
@@ -68,6 +76,7 @@ export class DeviceGlue {
   readonly runner: RunnerWiring;
   readonly live: LiveUi;
   private readonly asks = new Map<string, PendingAsk>();
+  private readonly awake = new KeepAwake(powerSaveBlocker);
   private liveActive = false;
   private personalWas = false;
 
@@ -107,11 +116,20 @@ export class DeviceGlue {
       browser: (runnerId) => this.browserConfig(runnerId),
       browserHost: this.browserHost,
       permissions: () => this.permissions.check().permissions,
-      onLive: (event, screenshot) => this.live.push(event, screenshot),
+      onLive: (event, screenshot) => {
+        if (event.type === "started")
+          this.awake.apply({ type: "task_started", session_id: event.session_id });
+        this.live.push(event, screenshot);
+      },
+      onBusy: (commandId, busy) =>
+        this.awake.apply({ type: busy ? "step_started" : "step_ended", command_id: commandId }),
+      onExit: () => this.awake.apply({ type: "runner_ended" }),
       idleSeconds: () => powerMonitor.getSystemIdleTime(),
       target: options.target,
       onEnrolled: () => this.local.sync(),
-      onState: () => {},
+      onState: (state) => {
+        if (RUNNER_ENDED.has(state)) this.awake.apply({ type: "runner_ended" });
+      },
       onError,
     });
   }
@@ -136,12 +154,16 @@ export class DeviceGlue {
   }
 
   onStreamEvent(name: string, data: string): void {
-    if (endsSession(name, data, this.live.session())) this.live.push({ type: "finished" });
+    if (endsSession(name, data, this.live.session())) {
+      this.awake.apply({ type: "task_ended" });
+      this.live.push({ type: "finished" });
+    }
     const device = requestedDevice(name, data);
     if (device !== null) void this.loadAsks(device);
   }
 
   stop(): void {
+    this.awake.apply({ type: "runner_ended" });
     this.live.closeAll();
     this.local.stop();
     void this.runner.shutdown();

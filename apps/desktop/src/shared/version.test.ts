@@ -49,8 +49,8 @@ describe("handshake", () => {
   test("refuses a server older than the release with the local capabilities", () => {
     const current = { ...base, minServerVersion: MIN_SERVER_VERSION };
     expect(handshake({ ...current, serverVersion: "11.3.0" })).toBe("server-too-old");
-    expect(handshake({ ...current, serverVersion: "12.0.0-rc.1" })).toBe("server-too-old");
-    expect(handshake({ ...current, serverVersion: "12.0.0" })).toBe("compatible");
+    expect(handshake({ ...current, serverVersion: "12.1.0-rc.1" })).toBe("server-too-old");
+    expect(handshake({ ...current, serverVersion: "12.0.0" })).toBe("server-too-old");
     expect(handshake({ ...current, serverVersion: "12.1.0" })).toBe("compatible");
   });
 

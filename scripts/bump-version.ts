@@ -109,4 +109,8 @@ try {
   console.log("bump: OpenAPI artifact updated");
 }
 
+console.log("bump: rendering the version into the docs and the Web Clipper …");
+execFileSync("bun", ["run", "gen", "llms"], { cwd: REPO, stdio: "inherit" });
+execFileSync("bun", ["run", "build", "clipper"], { cwd: REPO, stdio: "inherit" });
+
 console.log(`\nbump: at ${next}. Commit the change, then: bun run release tag`);

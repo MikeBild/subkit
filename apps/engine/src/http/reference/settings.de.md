@@ -6,7 +6,7 @@ section: reference
 order: 2
 audience: public
 ---
-Hier steht jeder Wert der Laufzeitkonfiguration mit Beschreibung und Standardwert. Du änderst ihn mit `sk settings configure` und `sk settings set`, über die HTTP- oder MCP-Schnittstelle für Einstellungen oder in der Konfigurationsdatei `subkit.config.json`. Eigene Werte für einen Arbeitsbereich gelten nur bei Einstellungen, die dafür markiert sind (`scope=tenant`). Umgebungsvariablen setzen keine dieser Einstellungen. Ausnahmen sind die Bootstrap-Werte `database.url`, `storage.backend`, `storage.filesystem.root` und `deployment.mode` (aus `SUBKIT_DEPLOYMENT_MODE`) – diese Werte kommen bei jedem Start aus der Umgebung.
+Hier steht jeder Wert der Laufzeitkonfiguration mit Beschreibung und Standardwert. Du änderst ihn mit `subkit settings configure` und `subkit settings set`, über die HTTP- oder MCP-Schnittstelle für Einstellungen oder in der Konfigurationsdatei `subkit.config.json`. Eigene Werte für einen Arbeitsbereich gelten nur bei Einstellungen, die dafür markiert sind (`scope=tenant`). Umgebungsvariablen setzen keine dieser Einstellungen. Ausnahmen sind die Bootstrap-Werte `database.url`, `storage.backend`, `storage.filesystem.root` und `deployment.mode` (aus `SUBKIT_DEPLOYMENT_MODE`) – diese Werte kommen bei jedem Start aus der Umgebung.
 
 ## Dateien in einem Ordner statt im Objektspeicher
 
@@ -24,5 +24,7 @@ Beide Werte gelten nur beim Start. Eine gespeicherte Revision ändert sie nicht,
 - **Schlüssel:** Jedes Segment wird in kleine ASCII-Zeichen übersetzt (`a-z`, `0-9`, `.`, `_`, `-`, alles andere als `%xx`). So bleiben Schlüssel getrennt, die sich nur in Groß- und Kleinschreibung oder Unicode-Form unterscheiden, auch auf Platten ohne Unterscheidung der Schreibweise. Reservierte Windows-Namen sind sicher. `..`, leere Segmente und absolute Schlüssel lehnt die Engine ab, und einem Link aus dem Ordner hinaus folgt sie nie.
 - **Sicherung:** Der Ordner ist der ganze Objektspeicher. Kopier ihn zusammen mit dem Datenbank-Dump.
 - **Nicht unterstützt:** Netzlaufwerke, Ordner mit Cloud-Sync und Platten ohne Hard-Links wie exFAT.
+
+Name, Zeitzone und Sprache eines Arbeitsbereichs sind keine Laufzeiteinstellungen. Du änderst sie in den Einstellungen unter Arbeitsbereich oder mit `PATCH /v1/identity/workspace`. Die Sprache gilt für Texte, für die keine Person ihre eigene Sprache mitbringt, etwa Gerätenamen und geplante Aufgaben; Standard ist Englisch.
 
 Die Referenz unten wird aus der Konfiguration erzeugt und ist deshalb auf Englisch.

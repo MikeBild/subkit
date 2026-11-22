@@ -35,7 +35,7 @@ Jede Zeile sagt, was du bekommst, und verlinkt das Kapitel, das sie erklärt.
 | Im Chat reparieren | Scheitert ein Schritt oder blockiert er eine Freigabe, schlägt SubKit im Chat eine Korrektur vor, die du erneut prüfst. | Überall | [Dein erster Workflow](setup.md#dein-erster-workflow) |
 | Automatisierungs-Check | Beim Speichern eines Workflows oder Zeitplans erfährst du, ob er allein laufen kann oder welcher Schritt eine Änderung braucht. | Überall | [Die HTTP-API nutzen](setup.md#die-http-api-nutzen) |
 | Sandbox-Datenwerkzeuge | Transform-Schritte rechnen, parsen und prüfen Daten mit eingebauten Helfern in einer abgeschotteten Sandbox. | Überall | [Sandbox-Datenwerkzeuge](setup.md#sandbox-datenwerkzeuge) |
-| Pakete | Exportiere Workflows, Connectors, Skills, Zeitpläne, Quellen und Dateien und importiere sie in eine andere Engine. | Überall | [Die sk-CLI auf deinem Rechner verwenden](setup.md#die-sk-cli-auf-deinem-rechner-verwenden) |
+| Pakete | Exportiere Workflows, Connectors, Skills, Zeitpläne, Quellen und Dateien und importiere sie in eine andere Engine. | Überall | [Die subkit-CLI auf deinem Rechner verwenden](setup.md#die-subkit-cli-auf-deinem-rechner-verwenden) |
 
 ### Freigaben und Rechte
 
@@ -47,7 +47,7 @@ Jede Zeile sagt, was du bekommst, und verlinkt das Kapitel, das sie erklärt.
 | Vor dem Ende verlängern | SubKit meldet eine Freigabe drei Tage vor ihrem Ende, und du verlängerst sie. | Überall | [Zeitpläne im Blick behalten](setup.md#zeitpläne-im-blick-behalten) |
 | Freigabe zu zweit („gemeinsam freigeben“) | Jede Workflow-Freigabe braucht zwei verschiedene Personen, für Teams, in denen niemand sensible Workflows allein freigeben darf. Standardmäßig aus; die Einstellung erscheint erst, wenn mindestens zwei Personen im Arbeitsbereich freigeben dürfen, und nur Admins ändern sie. | Admin · Optional | [Referenz: Freigabe zu zweit, Einladungen, Offline-Berichte und Benachrichtigungspause](setup.md#referenz-freigabe-zu-zweit-einladungen-offline-berichte-und-benachrichtigungspause) |
 | Einmal erlauben | Ein schreibendes Tool aus einem KI-Client wartet, bis eine Person **Einmal erlauben** oder **Ablehnen** wählt. | Überall | [KI-Clients per MCP anbinden](setup.md#ki-clients-per-mcp-anbinden) |
-| Rollen, Gruppen und Berechtigungen | Rollen, Berechtigungen und eingeschränkte API-Keys gelten gleich für Cockpit, `sk`, API und MCP. | Admin | [Ausführungsidentität und Berechtigung](setup.md#ausführungsidentität-und-berechtigung) |
+| Rollen, Gruppen und Berechtigungen | Rollen, Berechtigungen und eingeschränkte API-Keys gelten gleich für Cockpit, `subkit`, API und MCP. | Admin | [Ausführungsidentität und Berechtigung](setup.md#ausführungsidentität-und-berechtigung) |
 | Wer einen Run gestartet hat | Jeder Run nennt seinen Aufrufer, und du verfolgst ihn über alle Kanäle. | Überall | [Ausführungsidentität und Berechtigung](setup.md#ausführungsidentität-und-berechtigung) |
 
 ### Aufgaben
@@ -128,9 +128,9 @@ Jede Zeile sagt, was du bekommst, und verlinkt das Kapitel, das sie erklärt.
 
 | Funktion | Was du bekommst | Gilt | Mehr |
 | --- | --- | --- | --- |
-| SubKit Desktop | Das Cockpit deines Servers als Mac-App für Apple Silicon (ab macOS 13), mit Symbol in der Menüleiste, Benachrichtigungen und Start bei der Anmeldung. | Überall | [SubKit Desktop](setup.md#subkit-desktop) |
+| SubKit Desktop | Das Cockpit deines Servers als App für Macs mit Apple Silicon (ab macOS 13) und für Windows 10 und 11 (x64), mit Symbol in der Menüleiste oder im Infobereich, Benachrichtigungen und Start bei der Anmeldung. | Überall | [SubKit Desktop](setup.md#subkit-desktop) |
 | Willkommen und Einladungslink | Der erste Start erklärt, was SubKit tut, und öffnet den Einladungslink aus deiner E-Mail, sodass du in wenigen Schritten einem Arbeitsbereich beitrittst. | Überall | [SubKit Desktop](setup.md#subkit-desktop) |
-| Anmeldung über den Browser | Die App meldet sich über deinen Browser an; jeder Mac ist ein eigenes Gerät, das du widerrufen kannst. | Überall | [SubKit Desktop](setup.md#subkit-desktop) |
+| Anmeldung über den Browser | Die App meldet sich über deinen Browser an; jeder Computer ist ein eigenes Gerät, das du widerrufen kannst. | Überall | [SubKit Desktop](setup.md#subkit-desktop) |
 | Mehrere Server | SubKit Desktop merkt sich ein Profil pro Server. | Überall | [SubKit Desktop](setup.md#subkit-desktop) |
 | Menüleiste | Die Zahl der Einträge, die dich brauchen, Ruhezeiten, Pause, Schnellnotiz, Live-Ansicht, Updates und „Fehler melden“ in einem Menü. | Überall | [SubKit Desktop](setup.md#subkit-desktop) |
 | Schnellnotiz | ⌥ Leertaste öffnet von überall eine Notiz; sie landet in deinem Eingang. | Überall | [SubKit Desktop](setup.md#subkit-desktop) |
@@ -141,7 +141,7 @@ Jede Zeile sagt, was du bekommst, und verlinkt das Kapitel, das sie erklärt.
 
 ### SubKit auf deinem Mac
 
-Diese Funktionen brauchen SubKit Desktop auf einem Mac mit Apple Silicon. Auf deinem Mac läuft nichts, bevor du es unter **Lokale Fähigkeiten** einschaltest.
+Diese Funktionen brauchen SubKit Desktop auf einem Mac mit Apple Silicon; unter Windows gibt es sie vorerst nicht. Auf deinem Mac läuft nichts, bevor du es unter **Lokale Fähigkeiten** einschaltest.
 
 | Funktion | Was du bekommst | Gilt | Mehr |
 | --- | --- | --- | --- |
@@ -154,12 +154,12 @@ Diese Funktionen brauchen SubKit Desktop auf einem Mac mit Apple Silicon. Auf de
 | Lokale Workflow-Schritte | Workflows mit festen Schritten für Dateien, Browser und Apps; die Freigabe nennt Gerät, Ordner, Websites und Apps. | Überall | [Referenz: Workflow-Schritte auf deinem Gerät](setup.md#referenz-workflow-schritte-auf-deinem-gerät) |
 | Vollständig lokaler Arbeitsbereich | Betreib einen Arbeitsbereich nur auf deinem Mac, mit eigener Datenbank, Sicherungen und deinem eigenen KI-Key oder einem lokalen Modell-Server; zieh ihn später auf einen Server um. | Selbst betrieben | [SubKit Desktop](setup.md#subkit-desktop) |
 
-### sk-CLI, HTTP-API und MCP
+### subkit-CLI, HTTP-API und MCP
 
 | Funktion | Was du bekommst | Gilt | Mehr |
 | --- | --- | --- | --- |
-| sk-CLI | Du entwirfst, änderst und startest Workflows als Dateien im Terminal, auch mit mehreren Engines. | Überall | [Die sk-CLI auf deinem Rechner verwenden](setup.md#die-sk-cli-auf-deinem-rechner-verwenden) |
-| Befehlsreferenz | Jeder `sk`-Befehl mit seinen Argumenten. | Überall | [sk-CLI-Referenz](cli.md) |
+| subkit-CLI | Du entwirfst, änderst und startest Workflows als Dateien im Terminal, auch mit mehreren Engines. | Überall | [Die subkit-CLI auf deinem Rechner verwenden](setup.md#die-subkit-cli-auf-deinem-rechner-verwenden) |
+| Befehlsreferenz | Jeder `subkit`-Befehl mit seinen Argumenten. | Überall | [subkit-CLI-Referenz](cli.md) |
 | HTTP-API | Du startest Workflows aus deinem eigenen Code und liest ihre Ergebnisse; beschrieben in OpenAPI unter `/openapi.json`. | Überall | [Die HTTP-API nutzen](setup.md#die-http-api-nutzen) |
 | MCP-Server | Jeder freigegebene Workflow ist ein Tool in Claude Code, Codex und anderen MCP-Clients, mit Anmeldung im Browser oder API-Key. | Überall | [KI-Clients per MCP anbinden](setup.md#ki-clients-per-mcp-anbinden) |
 | Aufgaben aus einem KI-Client | Du legst Aufgaben aus einem MCP-Client an und verfolgst sie. | Überall | [KI-Clients per MCP anbinden](setup.md#ki-clients-per-mcp-anbinden) |
@@ -198,7 +198,7 @@ Diese Funktionen brauchen SubKit Desktop auf einem Mac mit Apple Silicon. Auf de
 | Backup und Wiederherstellung | Sichere die ganze Installation und stell sie mit demselben Image wieder her. | Selbst betrieben | [Die Engine betreiben](setup.md#die-engine-betreiben) |
 | Browser-Crawling | Durchsuche Seiten für die Connector-Erkennung mit einem abgeleiteten Image. | Selbst betrieben · Optional | [Die Engine betreiben](setup.md#die-engine-betreiben) |
 | Engine-Betreiber | Ein Arbeitsbereich verwaltet die ganze Engine. | Admin · Selbst betrieben | [Engine-Betreiber](setup.md#engine-betreiber) |
-| Laufzeiteinstellungen | Jede Einstellung der Engine mit Beschreibung und Standardwert, änderbar mit `sk settings`, über die API oder in der Konfigurationsdatei. | Admin | [Einstellungen](settings.md) |
+| Laufzeiteinstellungen | Jede Einstellung der Engine mit Beschreibung und Standardwert, änderbar mit `subkit settings`, über die API oder in der Konfigurationsdatei. | Admin | [Einstellungen](settings.md) |
 
 ### Sicherheit und Audit
 

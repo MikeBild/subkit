@@ -38,7 +38,7 @@ Writing `$scope.list_orders.results` accesses `.results` on the envelope
 itself. That field doesn't exist. JSONata returns `undefined`, which silently
 propagates — your next `transform` gets `null`, your final output is empty,
 and nothing logs an error. This is the single most time-consuming authoring
-bug in sk.
+bug in subkit.
 
 The three envelope fields you actually use downstream:
 
@@ -493,6 +493,6 @@ no `.data`. Sibling body-step results in the same iteration are read via
 
 ## See also
 
-- `sk-concepts.md` — envelope and placeholder tokens.
+- `subkit-concepts.md` — envelope and placeholder tokens.
 - `workflow-authoring-transforms.md` — when to use each reshaping location.
 - `http-connectors.md` — pagination and the shape of concatenated responses.

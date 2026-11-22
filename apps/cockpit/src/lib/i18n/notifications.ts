@@ -84,7 +84,7 @@ export const notificationsEn = {
   "notifications.event.task_run.failed": "Task failed",
   "notifications.workflows.all": "all workflows",
   "notifications.rule.defaultInbox": "Notifications (default)",
-  "notifications.target.inbox": "Delivers to notifications — in the cockpit and in sk.",
+  "notifications.target.inbox": "Delivers to notifications — in the cockpit and in subkit.",
   "notifications.target.channel": "Delivers to {channel}.",
   "notifications.target.pending":
     "Its channel is created with the first delivery; nothing has been delivered yet.",
@@ -199,7 +199,7 @@ export const notificationsDe: Record<keyof typeof notificationsEn, string> = {
   "notifications.event.task_run.failed": "Aufgabe fehlgeschlagen",
   "notifications.workflows.all": "alle Workflows",
   "notifications.rule.defaultInbox": "Benachrichtigungen (Standard)",
-  "notifications.target.inbox": "Stellt in die Benachrichtigungen zu — im Cockpit und in sk.",
+  "notifications.target.inbox": "Stellt in die Benachrichtigungen zu — im Cockpit und in subkit.",
   "notifications.target.channel": "Stellt an {channel} zu.",
   "notifications.target.pending":
     "Der Kanal entsteht mit der ersten Zustellung; bisher wurde nichts zugestellt.",

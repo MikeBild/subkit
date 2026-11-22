@@ -1,7 +1,6 @@
 import { Workflow } from "lucide-react";
 import type { ReactNode } from "react";
 import { StandaloneControls } from "@/app/standalone-controls";
-import { FAMILY_UI_VERSION } from "@/components/family-ui";
 import { useI18n } from "@/lib/i18n-context";
 
 export interface StandaloneActions {
@@ -28,8 +27,7 @@ export function StandalonePage({
   return (
     <main
       className="flex min-h-full flex-col gap-10 bg-background px-4 py-4 sm:px-8"
-      data-family-surface="auth"
-      data-family-contract-version={FAMILY_UI_VERSION}
+      data-sk-surface="auth"
       data-slot="standalone-page"
       data-testid={testId}
       aria-busy={busy || undefined}

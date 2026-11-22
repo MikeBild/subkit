@@ -15,7 +15,7 @@ import {
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const CONFIG = join(REPO, "stryker.config.json");
-const RECEIPT = join(REPO, "reports/mutation/provenance.json");
+const RECEIPT = join(REPO, ".reports/mutation/provenance.json");
 
 function sha256(parts: readonly (string | Uint8Array)[]): string {
   const hash = createHash("sha256");
@@ -31,7 +31,7 @@ if (!mutationGlobsMatch(config.mutate)) {
 const files = [
   "apps/cockpit/src",
   "apps/engine/src",
-  "apps/sk/src",
+  "apps/subkit/src",
   "packages/shared/src",
   "packages/cli-core/src",
 ].flatMap((root) =>

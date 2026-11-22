@@ -7,7 +7,7 @@ audience: operator
 ---
 ## Sandbox-Datenwerkzeuge
 
-In einem Umformungs-Schritt mit JavaScript rechnest, zerlegst und prüfst du Daten mit den eingebauten `sk`-Helfern. Du brauchst sie, wenn ein Workflow Beträge rechnet, CSV oder XML liest, Zeiten über Zeitzonen umrechnet oder Eingaben prüft. Danach weißt du, was jeder Helfer kann und wo seine Grenzen liegen.
+In einem Umformungs-Schritt mit JavaScript rechnest, zerlegst und prüfst du Daten mit den eingebauten `subkit`-Helfern. Du brauchst sie, wenn ein Workflow Beträge rechnet, CSV oder XML liest, Zeiten über Zeitzonen umrechnet oder Eingaben prüft. Danach weißt du, was jeder Helfer kann und wo seine Grenzen liegen.
 
 Die Helfer laufen synchron und begrenzt in der Sandbox, der abgeschotteten Laufzeit des Schritts. Sie greifen nie auf Netzwerk, Dateisystem oder Zugangsdaten zu. Die Namensräume der Helfer sind unveränderlich. Promises und Zufallswerte ohne festen Startwert werden nicht unterstützt; für wiederholbare Werte nimmst du die Ausführungsuhr und `sk.uuid()`.
 

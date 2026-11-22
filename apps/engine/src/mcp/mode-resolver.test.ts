@@ -79,7 +79,7 @@ describe("MCP catalog visibility · modeFlags", () => {
     });
   });
 
-  test("admin mode under SK_MCP_READ_ONLY=1 keeps tenant reads, drops writes", () => {
+  test("admin mode under SUBKIT_MCP_READ_ONLY=1 keeps tenant reads, drops writes", () => {
     expect(modeFlags("admin", true)).toEqual({
       showProductTools: true,
       showConversationTools: true,

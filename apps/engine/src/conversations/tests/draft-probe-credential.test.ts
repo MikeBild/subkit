@@ -94,12 +94,12 @@ describe("probe_connector_draft + draft credential", () => {
     const draft: DraftDocument = {
       mode: "connector_authoring",
       connector: {
-        name: "ContentKit Editorial MCP PROD",
-        slug: "contentkit-editorial-mcp-prod-test",
+        name: "Editorial MCP PROD",
+        slug: "editorial-mcp-prod-test",
         driver: "mcp",
         environment: "prod",
         auth_type: "bearer",
-        base_url: "https://contentkit-editorial.mcpprobetest.invalid/mcp",
+        base_url: "https://editorial.mcpprobetest.invalid/mcp",
         config: { mcp: { transport: "http", auth: { kind: "bearer" } } },
       },
       workflow: { name: "", steps: [] },

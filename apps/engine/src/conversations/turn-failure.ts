@@ -18,6 +18,7 @@ export type TurnFailureCode =
   | "llm_provider_limited"
   | "llm_provider_quota_exhausted"
   | "llm_provider_unavailable"
+  | "llm_key_rejected"
   | "llm_context_too_large"
   | "llm_spend_limit_reached"
   | "llm_timeout"
@@ -74,11 +75,13 @@ function providerFailure(error: LlmProviderError, at: string): TurnFailure {
   const code: TurnFailureCode =
     error.kind === "context_length_exceeded"
       ? "llm_context_too_large"
-      : error.kind === "quota_exhausted"
-        ? "llm_provider_quota_exhausted"
-        : error.kind === "rate_limit"
-          ? "llm_provider_limited"
-          : "llm_provider_unavailable";
+      : error.kind === "key_rejected"
+        ? "llm_key_rejected"
+        : error.kind === "quota_exhausted"
+          ? "llm_provider_quota_exhausted"
+          : error.kind === "rate_limit"
+            ? "llm_provider_limited"
+            : "llm_provider_unavailable";
   return {
     code,
     message: error.message,
@@ -155,6 +158,10 @@ const PROVIDER_FAILURE_NOTICES = {
     de: "Das eingestellte KI-Modell ist beim Anbieter nicht verfügbar, deshalb kam keine Antwort. Prüfe das Modell unter Einstellungen → KI & Kosten und sende deine Nachricht dann erneut.",
     en: "The configured AI model is not available at the provider, so no answer was produced. Check the model under Settings → AI & cost, then send your message again.",
   },
+  key: {
+    de: "Der KI-Anbieter hat deinen API-Schlüssel abgelehnt, deshalb kam keine Antwort. Verbinde den Schlüssel unter Einstellungen → KI-Assistent neu und sende deine Nachricht dann erneut.",
+    en: "The AI provider rejected your API key, so no answer was produced. Reconnect the key under Settings → AI assistant, then send your message again.",
+  },
   access: {
     de: "Für diesen Arbeitsbereich ist noch kein KI-Zugang eingerichtet, deshalb kam keine Antwort. Trag unter Einstellungen → KI-Assistent deinen Anbieter und deinen API-Schlüssel ein und sende deine Nachricht dann erneut.",
     en: "This workspace has no AI access yet, so no answer was produced. Enter your provider and API key under Settings → AI assistant, then send your message again.",
@@ -168,6 +175,7 @@ const PROVIDER_FAILURE_NOTICES = {
 export function providerFailureNotice(error: unknown, locale: "de" | "en"): string | null {
   const failure = describeTurnFailure(error);
   if (failure.code === "ai_access_missing") return PROVIDER_FAILURE_NOTICES.access[locale];
+  if (failure.code === "llm_key_rejected") return PROVIDER_FAILURE_NOTICES.key[locale];
   const message = error instanceof Error ? error.message : String(error ?? "");
   const status = (error as { statusCode?: unknown } | null)?.statusCode;
   const modelUnavailable = MODEL_UNAVAILABLE_RE.test(message) || status === 404;

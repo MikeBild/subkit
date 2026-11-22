@@ -1,9 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { getConversation, sendConversationTurn } from "@/api/client";
-import { createEmptyConversation, linkAttachment } from "@/features/chat";
+import {
+  type ConversationPlaybook,
+  createEmptyConversation,
+  linkAttachment,
+  type RunMarker,
+  runMarker,
+} from "@/features/chat";
+import { useTask } from "@/features/tasks";
+import { useSession } from "./session";
 import {
   type PanelLine,
+  panelConversationId,
   panelLines,
   panelReference,
   panelSubjectKey,
@@ -14,6 +23,9 @@ import type { SidePanelSubject } from "./side-panel-model";
 export interface SidePanelChat {
   lines: PanelLine[];
   conversationId: string | null;
+  run: RunMarker | null;
+  playbook: ConversationPlaybook | null;
+  refreshedAt: number;
   sending: boolean;
   error: unknown;
   waiting: boolean;
@@ -25,9 +37,25 @@ export function useSidePanelChat(
   label: string | null,
 ): SidePanelChat {
   const client = useQueryClient();
+  const { permissions, principal } = useSession();
   const key = panelSubjectKey(subject);
   const [thread, setThread] = useState<{ key: string; id: string | null }>({ key, id: null });
-  const conversationId = thread.key === key ? thread.id : null;
+  const taskId = subject?.type === "task" ? subject.id : "";
+  const task = useTask(
+    taskId,
+    permissions.includes("task:read") && permissions.includes("conversation:read"),
+  );
+  const conversationId = panelConversationId({
+    subject,
+    thread: thread.key === key ? thread.id : null,
+    task: task.data
+      ? {
+          conversationId: task.data.latest_run?.conversation_id ?? null,
+          ownerId: task.data.owner_id ?? null,
+        }
+      : null,
+    viewer: { id: principal.id ?? null, admin: principal.role_name === "admin" },
+  });
   const [streamed, setStreamed] = useState("");
   const detail = useQuery({
     queryKey: ["conversation", conversationId],
@@ -76,6 +104,9 @@ export function useSidePanelChat(
       streamed,
     }),
     conversationId,
+    run: detail.data ? runMarker(detail.data.draft) : null,
+    playbook: detail.data?.playbook ?? null,
+    refreshedAt: detail.dataUpdatedAt,
     sending: send.isPending,
     error: send.error,
     waiting: Boolean(summary?.pending_approval),

@@ -1,22 +1,28 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { z } from "zod";
+import { canaryVerdict, MAX_ATTEMPTS, withFaultRetry } from "./faults.ts";
+import { gateStatus, recordProofs } from "./gate.ts";
+import { liveFingerprints, provenOn, readGate, writeGate } from "./gate-store.ts";
 import { compareLiveAuthoringReports } from "./live-benchmark.ts";
 import {
   ASK_TOOLS,
   aggregateTrials,
   bindScenarioInputs,
   buildLiveReport,
+  CANARY_SPEC,
   type CreatedArtifact,
   collectCreatedArtifacts,
   deletionOrder,
   EVAL_LIVE_TITLE_PREFIX,
   LIVE_SCENARIOS,
   type LiveAuthoringReport,
+  type LiveRunSpec,
   type LiveScenarioScore,
   type LiveScenarioSpec,
   type ObservedToolCall,
   type ObservedTurn,
+  type ProviderFaultRecord,
   type ScenarioObservation,
   scenarioPassed,
   scoreScenario,
@@ -39,37 +45,45 @@ export interface CliArgs {
   trials: number;
   cleanup: boolean;
   recipient: string | null;
+  ask_before_writing: boolean;
 }
 
 export type ParsedCli = { ok: true; args: CliArgs } | { ok: false; error: string };
 
 function usageText(): string {
   return [
-    "Usage: SK_API_KEY=… bun run apps/engine/eval/live-authoring.ts --engine-url <url>",
+    "Usage: SUBKIT_API_KEY=… bun run apps/engine/eval/live-authoring.ts --engine-url <url>",
     "         [--scenario <slug>[,<slug>…]] [--scenarios-file <scenarios.json>]",
     "         [--out <report.json>] [--baseline <report.json>]",
-    "         [--trials <n>] [--cleanup] [--recipient <address>]",
+    "         [--trials <n>] [--cleanup] [--recipient <address>] [--ask-before-writing]",
     "",
     `Scenarios: ${LIVE_SCENARIOS.map((s) => s.slug).join(", ")}`,
     "  (--scenarios-file merges local-only scenarios; same JSON shape as LIVE_SCENARIOS entries)",
     "  --trials runs every selected scenario n times in sequence and aggregates the scores",
     "  --cleanup deletes every workflow, knowledge source, connector and conversation a scenario created",
-    "  --recipient binds {recipient} in goals and content checks (env: SK_EVAL_RECIPIENT)",
+    "  --recipient binds {recipient} in goals and content checks (env: SUBKIT_EVAL_RECIPIENT)",
+    "  --ask-before-writing: the key's user has “Always ask first” on, so write confirmations",
+    "    and approvals are required and never count as needless questions",
     "",
-    "Env: SK_ENGINE_URL (fallback for --engine-url), SK_API_KEY (the only way to pass the key;",
-    "it is never accepted as an argument and never printed), SK_EVAL_RECIPIENT. No .env file is ever read.",
+    "A canary turn runs first; when the provider fails it twice, nothing is scored (exit 3).",
+    "Provider faults (rate limit, 5xx, timeouts) are retried once and reported apart from failures.",
+    "Every built-in scenario that passes records its proof in apps/engine/eval/gate.json.",
+    "",
+    "Env: SUBKIT_ENGINE_URL (fallback for --engine-url), SUBKIT_API_KEY (the only way to pass the key;",
+    "it is never accepted as an argument and never printed), SUBKIT_EVAL_RECIPIENT. No .env file is ever read.",
   ].join("\n");
 }
 
 export function parseCliArgs(argv: string[], env: Record<string, string | undefined>): ParsedCli {
-  let engine_url = env.SK_ENGINE_URL ?? "";
+  let engine_url = env.SUBKIT_ENGINE_URL ?? "";
   let scenarios: string[] | null = null;
   let scenarios_file: string | null = null;
   let out = DEFAULT_OUT;
   let baseline: string | null = null;
   let trials = 1;
   let cleanup = false;
-  let recipient = env.SK_EVAL_RECIPIENT ?? null;
+  let recipient = env.SUBKIT_EVAL_RECIPIENT ?? null;
+  let ask_before_writing = false;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     const next = (): string | null => {
@@ -87,11 +101,15 @@ export function parseCliArgs(argv: string[], env: Record<string, string | undefi
       cleanup = true;
       continue;
     }
+    if (arg === "--ask-before-writing") {
+      ask_before_writing = true;
+      continue;
+    }
     if (arg === "--api-key") {
       return {
         ok: false,
         error:
-          "--api-key was removed: pass the key only through the SK_API_KEY environment variable",
+          "--api-key was removed: pass the key only through the SUBKIT_API_KEY environment variable",
       };
     }
     const value = required(arg ?? "");
@@ -113,8 +131,9 @@ export function parseCliArgs(argv: string[], env: Record<string, string | undefi
       trials = n;
     } else return { ok: false, error: `unknown argument ${arg}` };
   }
-  if (!engine_url) return { ok: false, error: "--engine-url (or SK_ENGINE_URL) is required" };
-  if (!env.SK_API_KEY) return { ok: false, error: "SK_API_KEY is required in the environment" };
+  if (!engine_url) return { ok: false, error: "--engine-url (or SUBKIT_ENGINE_URL) is required" };
+  if (!env.SUBKIT_API_KEY)
+    return { ok: false, error: "SUBKIT_API_KEY is required in the environment" };
   return {
     ok: true,
     args: {
@@ -126,6 +145,7 @@ export function parseCliArgs(argv: string[], env: Record<string, string | undefi
       trials,
       cleanup,
       recipient,
+      ask_before_writing,
     },
   };
 }
@@ -144,6 +164,7 @@ export const ScenarioFileEntrySchema = z.object({
   connectors: z.array(z.string()),
   content_checks: z.array(ContentCheckSchema),
   content_source: z.enum(["envelope", "final_output"]).optional(),
+  facts: z.array(ContentCheckSchema).optional(),
 });
 const ScenarioFileSchema = z.array(ScenarioFileEntrySchema);
 
@@ -173,6 +194,15 @@ function loadScenariosFile(path: string): LiveScenarioSpec[] {
     ...(entry.follow_up_turns ? { follow_up_turns: entry.follow_up_turns } : {}),
     ...(entry.answer_turns ? { answer_turns: entry.answer_turns } : {}),
     ...(entry.content_source ? { content_source: entry.content_source } : {}),
+    ...(entry.facts
+      ? {
+          facts: entry.facts.map((c) => ({
+            name: c.name,
+            pattern: c.pattern,
+            ...(c.flags !== undefined ? { flags: c.flags } : {}),
+          })),
+        }
+      : {}),
   }));
 }
 
@@ -377,6 +407,21 @@ export function answerForElicitation(
   }
 }
 
+export function provenScenarios(
+  scores: LiveScenarioScore[],
+  faults: ProviderFaultRecord[],
+): Set<string> {
+  const bySlug = new Map<string, LiveScenarioScore[]>();
+  for (const score of scores)
+    bySlug.set(score.scenario, [...(bySlug.get(score.scenario) ?? []), score]);
+  const proven = new Set<string>();
+  for (const [slug, trials] of bySlug) {
+    if (faults.some((f) => f.scenario === slug)) continue;
+    if (trials.every(scenarioPassed)) proven.add(slug);
+  }
+  return proven;
+}
+
 export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 
 export interface EngineClient {
@@ -408,7 +453,7 @@ export function createEngineClient(
 }
 
 function errorObservation(
-  spec: LiveScenarioSpec,
+  spec: LiveRunSpec,
   started: number,
   turns: ObservedTurn[],
   created_artifacts: CreatedArtifact[],
@@ -459,7 +504,7 @@ async function fetchCreatedArtifacts(
 
 export async function runScenario(
   client: EngineClient,
-  spec: LiveScenarioSpec,
+  spec: LiveRunSpec,
 ): Promise<ScenarioObservation> {
   const started = Date.now();
   const turns: ObservedTurn[] = [];
@@ -647,7 +692,7 @@ async function main(): Promise<void> {
     process.exit(2);
   }
   const args = parsed.args;
-  const client = createEngineClient(args.engine_url, process.env.SK_API_KEY ?? "");
+  const client = createEngineClient(args.engine_url, process.env.SUBKIT_API_KEY ?? "");
   const fileScenarios = args.scenarios_file ? loadScenariosFile(args.scenarios_file) : [];
   const candidates: LiveScenarioSpec[] = [
     ...LIVE_SCENARIOS.filter((s) => !fileScenarios.some((f) => f.slug === s.slug)),
@@ -665,13 +710,25 @@ async function main(): Promise<void> {
   const needingRecipient = selected.filter(specNeedsRecipient).map((s) => s.slug);
   if (needingRecipient.length > 0 && !args.recipient) {
     console.error(
-      `scenario(s) ${needingRecipient.join(", ")} use {recipient}: pass --recipient or set SK_EVAL_RECIPIENT`,
+      `scenario(s) ${needingRecipient.join(", ")} use {recipient}: pass --recipient or set SUBKIT_EVAL_RECIPIENT`,
     );
     process.exit(2);
   }
   const specs = args.recipient
     ? selected.map((s) => bindScenarioInputs(s, { recipient: args.recipient ?? "" }))
     : selected;
+
+  const builtIn = new Map(
+    LIVE_SCENARIOS.filter((s) => !fileScenarios.some((f) => f.slug === s.slug)).map((s) => [
+      s.slug,
+      s,
+    ]),
+  );
+  const gate = readGate();
+  const fingerprints = liveFingerprints(LIVE_SCENARIOS);
+  const before = gateStatus(gate.live, fingerprints);
+  for (const slug of before.changed) console.log(`gate: ${slug} changed after its last proven run`);
+  for (const slug of before.unproven) console.log(`gate: ${slug} has no proven run yet`);
 
   const started_at = new Date().toISOString();
   console.log(
@@ -700,6 +757,30 @@ async function main(): Promise<void> {
     for (const failure of result.failures) console.log(`  cleanup failure: ${failure}`);
   };
 
+  const runWithRetry = (spec: LiveRunSpec, key: string) =>
+    withFaultRetry(
+      async () => {
+        const obs = await runScenario(client, spec);
+        observations.push(obs);
+        if (args.cleanup) awaitingCleanup.set(key, collectCreatedArtifacts(obs));
+        return { value: obs, error: obs.error };
+      },
+      async (_obs, fault, error, attempt) => {
+        console.log(`  provider fault (${fault}), attempt ${attempt}/${MAX_ATTEMPTS}: ${error}`);
+        if (args.cleanup) await cleanupNow(key);
+      },
+    );
+
+  console.log(`▶ ${CANARY_SPEC.slug}`);
+  const canary = canaryVerdict(await runWithRetry(CANARY_SPEC, CANARY_SPEC.slug));
+  if (args.cleanup) await cleanupNow(CANARY_SPEC.slug);
+  if (!canary.ok) {
+    console.error(`canary: ${canary.reason}; nothing was scored`);
+    process.exit(canary.provider_down ? 3 : 1);
+  }
+  console.log("  canary: provider answers\n");
+
+  const provider_faults: ProviderFaultRecord[] = [];
   try {
     for (const spec of specs) {
       const trialScores: LiveScenarioScore[] = [];
@@ -707,18 +788,30 @@ async function main(): Promise<void> {
         console.log(
           args.trials > 1 ? `▶ ${spec.slug} [trial ${trial}/${args.trials}]` : `▶ ${spec.slug}`,
         );
-        const obs = await runScenario(client, spec);
-        observations.push(obs);
         const key = `${spec.slug}#${trial}`;
-        if (args.cleanup) awaitingCleanup.set(key, collectCreatedArtifacts(obs));
-        const score = scoreScenario(spec, obs);
+        const outcome = await runWithRetry(spec, key);
+        if (outcome.kind === "faulted") {
+          provider_faults.push({
+            scenario: spec.slug,
+            trial,
+            fault: outcome.fault,
+            error: outcome.error,
+          });
+          console.log(`  not scored: provider fault (${outcome.fault}) on every attempt`);
+          if (args.cleanup) await cleanupNow(key);
+          console.log("");
+          continue;
+        }
+        const score = scoreScenario(spec, outcome.value, {
+          ask_before_writing: args.ask_before_writing,
+        });
         scores.push(score);
         trialScores.push(score);
         printScore(score);
         if (args.cleanup) await cleanupNow(key);
         console.log("");
       }
-      if (args.trials > 1) {
+      if (args.trials > 1 && trialScores.length > 0) {
         const agg = aggregateTrials(trialScores);
         trialAggregates.push(agg);
         console.log(`Σ ${spec.slug}`);
@@ -737,6 +830,7 @@ async function main(): Promise<void> {
     finished_at: new Date().toISOString(),
     ...(trialAggregates.length > 0 ? { trials: trialAggregates } : {}),
     ...(args.cleanup ? { cleanup: cleanupTotals } : {}),
+    provider_faults,
   });
 
   mkdirSync(dirname(args.out), { recursive: true });
@@ -745,7 +839,20 @@ async function main(): Promise<void> {
   writeFileSync(resultsOut, `${JSON.stringify(observations, null, 2)}\n`, "utf8");
   console.log(`Report: ${args.out}`);
   console.log(`Raw observations: ${resultsOut}`);
-  console.log(`Scenarios: ${report.total}   PASS: ${report.passed}   FAIL: ${report.failed}`);
+  console.log(
+    `Scenarios: ${report.total}   PASS: ${report.passed}   FAIL: ${report.failed}   ` +
+      `provider faults: ${provider_faults.length}`,
+  );
+  for (const f of provider_faults) {
+    console.log(`  provider fault ${f.scenario} [trial ${f.trial}] ${f.fault}: ${f.error}`);
+  }
+  const proven = provenScenarios(
+    scores.filter((s) => builtIn.has(s.scenario) && specs.some((spec) => spec.slug === s.scenario)),
+    provider_faults,
+  );
+  const nextGate = recordProofs(gate, "live", fingerprints, proven, provenOn(new Date()));
+  writeGate(nextGate);
+  if (proven.size > 0) console.log(`gate: proven ${[...proven].sort().join(", ")}`);
   if (args.cleanup) {
     console.log(
       `Cleanup: deleted ${cleanupTotals.deleted}   failures: ${cleanupTotals.failures.length}`,
@@ -767,6 +874,10 @@ async function main(): Promise<void> {
     passed &&= comparison.passed;
   }
   if (cleanupTotals.failures.length > 0) passed = false;
+  if (scores.length === 0 && provider_faults.length > 0) {
+    console.error("every scenario hit a provider fault; nothing was scored");
+    process.exit(3);
+  }
 
   process.exit(passed ? 0 : 1);
 }

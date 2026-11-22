@@ -55,7 +55,9 @@ export function claimVerdict(
 export type ResultVerdict = { store: true; state: DeviceResultStatus } | { store: false };
 
 export function resultVerdict(state: DeviceCommandState, result: DeviceResult): ResultVerdict {
-  return isOpenCommand(state) ? { store: true, state: result.status } : { store: false };
+  return isOpenCommand(state) || state === "lost"
+    ? { store: true, state: result.status }
+    : { store: false };
 }
 
 export function stopCloses(

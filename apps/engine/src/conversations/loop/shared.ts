@@ -55,7 +55,7 @@ export function recordFailedUsage(
   failure: {
     model: string;
     prompt_tokens: number;
-    result: "error" | "quota_exhausted";
+    result: "error" | "key_rejected" | "quota_exhausted";
     error: string;
   },
 ): Promise<void> {

@@ -29,6 +29,7 @@ async function seedTask(values: TaskInsert = {}, tenant = tenant_id): Promise<st
   const [row] = await testDb.db
     .insert(tasks)
     .values({
+      locale: "de",
       tenant_id: tenant,
       name: "Confidential acquisition digest",
       owner_id: OWNER,

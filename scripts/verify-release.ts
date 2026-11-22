@@ -15,9 +15,9 @@ function usage(message: string): never {
 }
 
 function parseArgs(argv: string[]): Args {
-  let engineUrl = process.env.SK_ENGINE_URL ?? "";
+  let engineUrl = process.env.SUBKIT_ENGINE_URL ?? "";
   let version = "";
-  let apiKey = process.env.SK_API_KEY;
+  let apiKey = process.env.SUBKIT_API_KEY;
   for (let i = 0; i < argv.length; i++) {
     const next = argv[i + 1];
     switch (argv[i]) {
@@ -40,7 +40,7 @@ function parseArgs(argv: string[]): Args {
         usage(`unknown argument: ${argv[i]}`);
     }
   }
-  if (!engineUrl) usage("no engine url (--engine-url or SK_ENGINE_URL)");
+  if (!engineUrl) usage("no engine url (--engine-url or SUBKIT_ENGINE_URL)");
   if (!version) usage("no expected version (--version)");
   return { engineUrl: engineUrl.replace(/\/+$/, ""), version, apiKey };
 }
@@ -113,7 +113,7 @@ try {
 }
 
 if (!args.apiKey) {
-  record("SKIP", "mcp.version", "no --api-key / SK_API_KEY — MCP initialize needs a principal");
+  record("SKIP", "mcp.version", "no --api-key / SUBKIT_API_KEY — MCP initialize needs a principal");
 } else {
   try {
     const res = await fetch(`${args.engineUrl}/mcp`, {
@@ -130,7 +130,7 @@ if (!args.apiKey) {
         params: {
           protocolVersion: "2025-06-18",
           capabilities: {},
-          clientInfo: { name: "sk-verify-release", version: "1" },
+          clientInfo: { name: "subkit-verify-release", version: "1" },
         },
       }),
       signal: AbortSignal.timeout(20_000),

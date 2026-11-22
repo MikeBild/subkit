@@ -19,7 +19,7 @@ describe("install-answer grounding — cross-layer (prompt + guard + chat-first)
 
   it("layer 1: authoring/no-surface base does NOT carry the install grounding (stays lean)", async () => {
     const base = (await basePromptFor("converse", undefined)).content;
-    expect(base).not.toContain("GROUNDING sk SELF-QUESTIONS");
+    expect(base).not.toContain("GROUNDING subkit SELF-QUESTIONS");
   });
 
   it("layer 1: with NO runtime host, the install command is NOT fabricated (token stays literal)", async () => {

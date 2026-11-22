@@ -14,7 +14,7 @@ version: 4
 # Self-Healing And Patch Candidates
 
 When a step fails repeatedly in ways that match known drift patterns — a field
-was renamed upstream, a schema moved, a new required header appeared — sk's
+was renamed upstream, a schema moved, a new required header appeared — subkit's
 repair loop proposes a **patch candidate**. A candidate is *never* auto-applied.
 It's a structured proposal, classified, durably stored, and promoted only when
 it proves itself or a human approves.
@@ -159,4 +159,4 @@ Contrast with an unsafe example:
 
 - `rbac-and-scopes.md` — `patch:approve` permission semantics.
 - `error-recovery.md` — the error shapes that feed the drift detector.
-- `sk-concepts.md` — step and envelope shapes being patched.
+- `subkit-concepts.md` — step and envelope shapes being patched.

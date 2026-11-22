@@ -18,7 +18,6 @@ const ALLOW_LIST: ReadonlySet<string> = new Set([
   "this",
   "self",
   "subkit",
-  "sk",
   "mcp",
   "engine_url",
   "tenant_slug",

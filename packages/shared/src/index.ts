@@ -89,3 +89,4 @@ export type { UxGatingPermission } from "./ux-gating.ts";
 export { UX_GATING_PERMISSIONS } from "./ux-gating.ts";
 export type { ValidationIssue, ValidationResult } from "./validation-result.ts";
 export { fail, ok } from "./validation-result.ts";
+export * from "./workspace-language.ts";

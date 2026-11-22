@@ -5,7 +5,7 @@ import { readEnv } from "../env.ts";
 export type McpMode = "product" | "authoring" | "admin";
 
 function readEnvOverride(): McpMode | null {
-  const v = readEnv("SK_MCP_MODE");
+  const v = readEnv("SUBKIT_MCP_MODE");
   if (v === "product" || v === "authoring" || v === "admin") return v;
   return null;
 }

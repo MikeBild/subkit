@@ -8,12 +8,12 @@ import {
   EXECUTION_PERSONA,
   GENERAL_RULES,
   RBAC_EDITING_PERSONA,
-  SK_ACTION_HONESTY,
-  SK_CONCEPT_GROUNDING,
-  SK_COUNT_HYGIENE,
-  SK_INSTALL_GROUNDING,
-  SK_STATUS_GROUNDING,
   SKILL_LOADING_INSTRUCTIONS,
+  SUBKIT_ACTION_HONESTY,
+  SUBKIT_CONCEPT_GROUNDING,
+  SUBKIT_COUNT_HYGIENE,
+  SUBKIT_INSTALL_GROUNDING,
+  SUBKIT_STATUS_GROUNDING,
   verbosityFor,
 } from "./prompts.ts";
 import { loadAgentSkills, resolveAgentSkillsForMode } from "./skills/index.ts";
@@ -176,12 +176,12 @@ export async function generateMainAgentSystemPrompt(
     `VERBOSITY:\n- ${verbosityFor(input.surface)}`,
   ];
   if (input.surface === "chat" || input.surface === "mcp" || input.surface === "web") {
-    sections.push(SK_INSTALL_GROUNDING);
-    sections.push(SK_CONCEPT_GROUNDING);
-    sections.push(SK_COUNT_HYGIENE);
-    sections.push(SK_STATUS_GROUNDING);
+    sections.push(SUBKIT_INSTALL_GROUNDING);
+    sections.push(SUBKIT_CONCEPT_GROUNDING);
+    sections.push(SUBKIT_COUNT_HYGIENE);
+    sections.push(SUBKIT_STATUS_GROUNDING);
   }
-  if (input.surface) sections.push(SK_ACTION_HONESTY);
+  if (input.surface) sections.push(SUBKIT_ACTION_HONESTY);
   const focusBlock = input.surface === "chat" ? "" : authoringFocusPrompt(input.authoring_hint);
   sections.push(loadAgentSkills(resolveAgentSkillsForMode(input.surface === "chat" ? null : mode)));
   return {

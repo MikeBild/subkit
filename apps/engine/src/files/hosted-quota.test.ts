@@ -22,7 +22,7 @@ let sequence = 0;
 const store = new MemoryObjectStore();
 beforeAll(async () => {
   tdb = await createTestDb("hosted-file-quota");
-  configDir = mkdtempSync(join(tmpdir(), "sk-hosted-file-quota-"));
+  configDir = mkdtempSync(join(tmpdir(), "subkit-hosted-file-quota-"));
   _resetConfigForTests();
   await loadConfig({
     env: { DATABASE_URL: tdb.url, NODE_ENV: "test" },

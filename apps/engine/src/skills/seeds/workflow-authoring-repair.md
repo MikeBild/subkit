@@ -26,7 +26,7 @@ chat; the same tools repair in place:
 4. **`validate_draft`** — re-runs structural checks (rarely needed; see below).
 5. **`dry_run_workflow`** — preview the patch. In `auto`, a green judged run may commit inline. In `ask`/`plan`, call `save_workflow_draft` after `save_required: true`; the structured human gate decides. Any structural change must run dry-run first.
 
-Do not instruct the user to run `sk workflow commit` (no CLI fallback exists). Do not re-run the failed workflow before re-validating (overwrites the diagnosis). Do not skip failing steps with `if: false` unless the user asks for that behaviour. After three failed repair iterations on the same error, stop and ask the user.
+Do not instruct the user to run a CLI commit (no CLI fallback exists). Do not re-run the failed workflow before re-validating (overwrites the diagnosis). Do not skip failing steps with `if: false` unless the user asks for that behaviour. After three failed repair iterations on the same error, stop and ask the user.
 
 ## Metadata-only edits — `update_workflow`, never the build/preview cycle
 
@@ -201,6 +201,6 @@ and repair the tool definition or provider adapter rather than retrying unchange
 
 ## See also
 
-- `sk-concepts.md` — the envelope and placeholder tokens.
+- `subkit-concepts` — the envelope and placeholder tokens.
 - `data-handling.md` — JSONata cheatsheet and reshaping patterns.
 - `error-recovery.md` — recovering from tool errors mid-conversation.

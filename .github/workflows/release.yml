@@ -97,8 +97,8 @@ jobs:
               source.extractall(destination)
           PY
           test -f "$coverage_download/latest.json"
-          mkdir -p reports/coverage
-          cp -a "$coverage_download/." reports/coverage/
+          mkdir -p .reports/coverage
+          cp -a "$coverage_download/." .reports/coverage/
 
       - name: Require mandatory local release gate
         env:
@@ -113,7 +113,7 @@ jobs:
           set -euo pipefail
           quality_assets="$RUNNER_TEMP/quality-evidence-assets"
           rm -rf "$quality_assets"
-          bun run scripts/release-quality-evidence.ts package --commit "$RELEASE_COMMIT" --quality-run-id "$QUALITY_RUN_ID" --release-run-id "$GITHUB_RUN_ID" --coverage-dir reports/coverage --assets-dir "$quality_assets"
+          bun run scripts/release-quality-evidence.ts package --commit "$RELEASE_COMMIT" --quality-run-id "$QUALITY_RUN_ID" --release-run-id "$GITHUB_RUN_ID" --coverage-dir .reports/coverage --assets-dir "$quality_assets"
           test -s "$quality_assets/quality-evidence.tar.gz"
           test -s "$quality_assets/quality-evidence.json"
           echo "QUALITY_ASSETS_DIR=$quality_assets" >> "$GITHUB_ENV"
@@ -172,15 +172,17 @@ jobs:
           docker cp "$id:/usr/local/share/subkit/THIRD_PARTY_NOTICES.txt" assets/THIRD_PARTY_NOTICES.txt
           docker rm "$id"
           cp docker-compose.yml assets/docker-compose.yml
+          cp subkit.config.example.json assets/subkit.config.example.json
+          cp scripts/install.sh assets/install.sh
           cp LICENSE assets/LICENSE
           cp assets/clipper/clipper.zip assets/subkit-clipper.zip
           rm -f assets/SHA256SUMS
-          for a in engine_linux_x64 sk_darwin_arm64 sk_darwin_x64 sk_linux_arm64 sk_linux_x64 sk_windows_x64.exe docker-compose.yml subkit-clipper.zip LICENSE THIRD_PARTY_NOTICES.txt; do
+          for a in engine_linux_x64 subkit-darwin-arm64 subkit-linux-arm64 subkit-linux-x64 subkit-windows-x64.exe docker-compose.yml subkit.config.example.json install.sh subkit-clipper.zip LICENSE THIRD_PARTY_NOTICES.txt; do
             test -s "assets/$a"
           done
           chmod 755 assets/engine_linux_x64
           assets/engine_linux_x64 --smoke
-          bun scripts/verify-macos-binaries.ts assets/sk_darwin_arm64 assets/sk_darwin_x64
+          bun scripts/verify-macos-binaries.ts assets/subkit-darwin-arm64
 
       - name: Stage verified quality evidence in release assets
         run: |
@@ -196,7 +198,7 @@ jobs:
       - name: Write release checksums
         run: |
           set -euo pipefail
-          (cd assets && sha256sum engine_* sk_* docker-compose.yml subkit-clipper.zip LICENSE THIRD_PARTY_NOTICES.txt quality-evidence.tar.gz quality-evidence.json > SHA256SUMS && cat SHA256SUMS)
+          (cd assets && sha256sum engine_* subkit-darwin-arm64 subkit-linux-arm64 subkit-linux-x64 subkit-windows-x64.exe docker-compose.yml subkit.config.example.json install.sh subkit-clipper.zip LICENSE THIRD_PARTY_NOTICES.txt quality-evidence.tar.gz quality-evidence.json > SHA256SUMS && cat SHA256SUMS)
 
       - uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567
         with:
@@ -257,7 +259,11 @@ jobs:
           set -euo pipefail
           bun -e 'import { RELEASE_HISTORY } from "./apps/cockpit/src/app/release-notes.generated.ts"; const release = RELEASE_HISTORY.releases.find((entry) => entry.version === process.env.TAG); if (!release) throw new Error(`missing release notes for ${process.env.TAG}`); process.stdout.write(release.notes.length ? release.notes.map((note) => `- ${note}`).join("\n") + "\n" : "No short notes were recorded for this version.\n");' > notes.md
           bun run scripts/release-mutation-note.ts "$RUNNER_TEMP/release-gate.json" "$TAG" >> notes.md
-          gh release create "$TAG" assets/engine_* assets/sk_* assets/docker-compose.yml assets/subkit-clipper.zip assets/LICENSE assets/THIRD_PARTY_NOTICES.txt assets/quality-evidence.tar.gz assets/quality-evidence.json assets/SHA256SUMS assets/SHA256SUMS.sig --draft --title "$TAG" --notes-file notes.md
+          [ "$(gh release view "$TAG" --json isDraft --jq '.isDraft')" = "true" ] || { echo "::error::no draft release with highlights exists for $TAG; bun run release tag writes it" >&2; exit 1; }
+          gh release view "$TAG" --json body --jq '.body' > draft-body.md
+          bun run scripts/release-body.ts draft-body.md notes.md > body.md
+          gh release upload "$TAG" assets/engine_* assets/subkit-darwin-arm64 assets/subkit-linux-arm64 assets/subkit-linux-x64 assets/subkit-windows-x64.exe assets/docker-compose.yml assets/subkit.config.example.json assets/install.sh assets/subkit-clipper.zip assets/LICENSE assets/THIRD_PARTY_NOTICES.txt assets/quality-evidence.tar.gz assets/quality-evidence.json assets/SHA256SUMS assets/SHA256SUMS.sig
+          gh release edit "$TAG" --draft --title "SubKit $VERSION" --notes-file body.md
 
       - name: Download and verify release draft assets
         env:
@@ -284,3 +290,11 @@ jobs:
             docker tag subkit:release "$image:latest"
             docker push "$image:latest"
           done
+
+      - name: Submit the Web Clipper to the Chrome Web Store
+        env:
+          CHROME_WEB_STORE_CLIENT_ID: ${{ secrets.CHROME_WEB_STORE_CLIENT_ID }}
+          CHROME_WEB_STORE_CLIENT_SECRET: ${{ secrets.CHROME_WEB_STORE_CLIENT_SECRET }}
+          CHROME_WEB_STORE_REFRESH_TOKEN: ${{ secrets.CHROME_WEB_STORE_REFRESH_TOKEN }}
+          CHROME_WEB_STORE_PUBLISHER_ID: ${{ secrets.CHROME_WEB_STORE_PUBLISHER_ID }}
+        run: bun scripts/publish-clipper-store.ts assets/subkit-clipper.zip

@@ -66,6 +66,7 @@ describe("a task's stored goal covers the steps of its own run", () => {
     const [task] = await tdb.db
       .insert(tasks)
       .values({
+        locale: "de",
         tenant_id,
         name: "Weekly report",
         owner_id: user_id,
@@ -348,7 +349,7 @@ describe("only the owner's own goal gives cover", () => {
 
   test("the owner's goal covers, an admin's edit asks, the owner's re-edit covers again", async () => {
     const created = await createTask(
-      { tenant_id, principal: person, input: definition(GOAL, DONE) },
+      { locale: "de", tenant_id, principal: person, input: definition(GOAL, DONE) },
       tdb.db,
       deps,
     );
@@ -395,7 +396,7 @@ describe("only the owner's own goal gives cover", () => {
 
   test("an admin who changes only the limits leaves the owner's goal in place", async () => {
     const created = await createTask(
-      { tenant_id, principal: person, input: definition(GOAL, DONE) },
+      { locale: "de", tenant_id, principal: person, input: definition(GOAL, DONE) },
       tdb.db,
       deps,
     );
@@ -415,7 +416,7 @@ describe("only the owner's own goal gives cover", () => {
 
   test("a goal the run itself rewrote is nobody's words", async () => {
     const created = await createTask(
-      { tenant_id, principal: person, input: definition(GOAL, DONE) },
+      { locale: "de", tenant_id, principal: person, input: definition(GOAL, DONE) },
       tdb.db,
       deps,
     );

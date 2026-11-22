@@ -51,8 +51,8 @@ export function DataState({
         className={cn("flex flex-col gap-1", className)}
         data-testid={testId}
         data-state="loading"
-        data-family-slot="data-state"
-        data-family-state="loading"
+        data-sk-slot="data-state"
+        data-sk-state="loading"
       >
         {line ? <span className="sr-only">{line}</span> : null}
         {Array.from({ length: LOADING_ROWS }, (_, index) => (

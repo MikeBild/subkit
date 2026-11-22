@@ -1,6 +1,7 @@
 export { AppsTab } from "./apps-tab";
 export { GrantAccessDialog, GrantsTab } from "./grants-tab";
 export { GroupsTab } from "./groups-tab";
+export { afterJoinTarget, rememberInviteContinuation } from "./invite-continuation";
 export {
   openPeopleSection,
   permissionLabel,

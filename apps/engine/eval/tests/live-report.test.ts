@@ -142,40 +142,51 @@ describe("benchmark targets (authoring)", () => {
   };
 
   test("all targets PASS on the happy shape", () => {
-    expect(Object.values(evaluateBenchmarkTargets(base))).toEqual(["PASS", "PASS", "PASS", "PASS"]);
+    expect(Object.values(evaluateBenchmarkTargets(base, []))).toEqual([
+      "PASS",
+      "PASS",
+      "PASS",
+      "PASS",
+      "PASS",
+    ]);
   });
 
   test("pipeline_llm_calls_le_3 boundary: 3 passes, 4 fails, missing fails", () => {
     expect(
-      evaluateBenchmarkTargets({ ...base, llm_passes: BENCHMARK_TARGETS.pipeline_llm_calls_max })
-        .pipeline_llm_calls_le_3,
+      evaluateBenchmarkTargets(
+        { ...base, llm_passes: BENCHMARK_TARGETS.pipeline_llm_calls_max },
+        [],
+      ).pipeline_llm_calls_le_3,
     ).toBe("PASS");
     expect(
-      evaluateBenchmarkTargets({
-        ...base,
-        llm_passes: BENCHMARK_TARGETS.pipeline_llm_calls_max + 1,
-      }).pipeline_llm_calls_le_3,
+      evaluateBenchmarkTargets(
+        {
+          ...base,
+          llm_passes: BENCHMARK_TARGETS.pipeline_llm_calls_max + 1,
+        },
+        [],
+      ).pipeline_llm_calls_le_3,
     ).toBe("FAIL");
-    expect(evaluateBenchmarkTargets({ ...base, llm_passes: null }).pipeline_llm_calls_le_3).toBe(
-      "FAIL",
-    );
+    expect(
+      evaluateBenchmarkTargets({ ...base, llm_passes: null }, []).pipeline_llm_calls_le_3,
+    ).toBe("FAIL");
   });
 
   test("single_preview demands exactly one preview", () => {
-    expect(evaluateBenchmarkTargets({ ...base, previews: 0 }).single_preview).toBe("FAIL");
-    expect(evaluateBenchmarkTargets({ ...base, previews: 2 }).single_preview).toBe("FAIL");
+    expect(evaluateBenchmarkTargets({ ...base, previews: 0 }, []).single_preview).toBe("FAIL");
+    expect(evaluateBenchmarkTargets({ ...base, previews: 2 }, []).single_preview).toBe("FAIL");
   });
 
   test("tool_calls_le_15 boundary: 15 passes, 16 fails, 0 fails (nothing ran)", () => {
     expect(
-      evaluateBenchmarkTargets({ ...base, tool_calls: BENCHMARK_TARGETS.tool_calls_max })
+      evaluateBenchmarkTargets({ ...base, tool_calls: BENCHMARK_TARGETS.tool_calls_max }, [])
         .tool_calls_le_15,
     ).toBe("PASS");
     expect(
-      evaluateBenchmarkTargets({ ...base, tool_calls: BENCHMARK_TARGETS.tool_calls_max + 1 })
+      evaluateBenchmarkTargets({ ...base, tool_calls: BENCHMARK_TARGETS.tool_calls_max + 1 }, [])
         .tool_calls_le_15,
     ).toBe("FAIL");
-    expect(evaluateBenchmarkTargets({ ...base, tool_calls: 0 }).tool_calls_le_15).toBe("FAIL");
+    expect(evaluateBenchmarkTargets({ ...base, tool_calls: 0 }, []).tool_calls_le_15).toBe("FAIL");
   });
 });
 
@@ -195,7 +206,7 @@ describe("scoreScenario · authoring", () => {
       guard_fired: null,
       auto_repaired_first_preview: false,
     });
-    expect(Object.values(score.targets)).toEqual(["PASS", "PASS", "PASS", "PASS"]);
+    expect(Object.values(score.targets)).toEqual(["PASS", "PASS", "PASS", "PASS", "PASS"]);
     expect(scenarioPassed(score)).toBe(true);
   });
 
@@ -233,7 +244,7 @@ describe("scoreScenario · authoring", () => {
     expect(score.content_pass).toBe(false);
     expect(score.llm_passes).toBeNull();
     expect(score.previews).toBe(0);
-    expect(Object.values(score.targets)).toEqual(["FAIL", "FAIL", "FAIL", "FAIL"]);
+    expect(Object.values(score.targets)).toEqual(["FAIL", "FAIL", "FAIL", "FAIL", "PASS"]);
     expect(score.notes.join(" ")).toContain("ECONNREFUSED");
   });
 });

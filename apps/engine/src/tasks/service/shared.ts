@@ -2,7 +2,14 @@ import { and, eq } from "drizzle-orm";
 import { catalogMetadataView } from "../../api/catalog-metadata.ts";
 import type { AuditActorType } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import { clearTaskRunCheck } from "../../conversations/public/authoring.ts";
+import {
+  clearTaskRunCheck,
+  createConversation,
+  PlaybookPlanSchema,
+  setConversationLoadedSkills,
+  type TaskRunMarker,
+  updatePlaybook,
+} from "../../conversations/public/authoring.ts";
 import { cancelOpenTaskRunQuestions } from "../../conversations/public/elicitation.ts";
 import {
   cancelConversation,
@@ -17,7 +24,7 @@ import {
   tenants,
   users,
 } from "../../db/schema/index.ts";
-import { ForbiddenError, NotFoundError } from "../../http/errors.ts";
+import { BadRequestError, ForbiddenError, NotFoundError } from "../../http/errors.ts";
 import { checkAndDecrement } from "../../llm/accounting/budget.ts";
 import { workspaceAiAccess } from "../../llm/runtime/workspace-access.ts";
 import { errorFields, logger } from "../../logging/index.ts";
@@ -28,11 +35,14 @@ import { emitTaskRunEvent } from "../../webhooks/events/catalog.ts";
 import type { TaskGrantAuthorityRevocationReason } from "../../workflows/execution-authorities.ts";
 import { normalizeFailureCode } from "../core/failure-codes.ts";
 import type { TaskGrantFacts } from "../core/grant.ts";
+import { instantiateTaskPlan } from "../core/plan-instance.ts";
+import { taskRunLoadedSkills } from "../core/run-start.ts";
 import { reserveTaskGrantRun, type TaskGrantReservation } from "../grants/reservation.ts";
 import {
   revokeTaskGrantsForTaskLocked,
   type TaskGrantLifecycleActor,
 } from "../grants/revocation.ts";
+import { conversationLoadedSkills } from "../persistence/run-start-rows.ts";
 import type {
   Task,
   TaskAdmissionReason,
@@ -76,8 +86,21 @@ export interface TaskOwnerFacts {
   email: string | null;
 }
 
+export interface RunConversationOpening {
+  tenant_id: string;
+  owner_id: string;
+  principal: ResolvedPrincipal;
+  title: string;
+  task_run: TaskRunMarker;
+  plan_template: unknown;
+  goal: string;
+  started_at: string;
+  skills: readonly string[];
+}
+
 export interface TaskServiceDeps {
   now(): Date;
+  openRunConversation(db: Db, opening: RunConversationOpening): Promise<string>;
   loadOwner(db: Executor, tenant_id: string, owner_id: string): Promise<TaskOwnerFacts>;
   aiAccessConfigured(db: Executor, tenant_id: string): Promise<boolean>;
   llmBudgetAvailable(
@@ -314,8 +337,37 @@ async function withdrawRunQuestions(
   }
 }
 
+async function openRunConversation(db: Db, opening: RunConversationOpening): Promise<string> {
+  const plan = instantiateTaskPlan(PlaybookPlanSchema.parse(opening.plan_template), {
+    goal: opening.goal,
+    started_at: opening.started_at,
+  });
+  const { conversation } = await createConversation(
+    {
+      tenant_id: opening.tenant_id,
+      actor_id: opening.owner_id,
+      principal: opening.principal,
+      title: opening.title,
+      surface: "web",
+      playbook_mode: "auto",
+      task_run: opening.task_run,
+    },
+    db,
+  );
+  const scope = { tenant_id: opening.tenant_id, conversation_id: conversation.id };
+  const loaded = taskRunLoadedSkills(await conversationLoadedSkills(db, scope), opening.skills);
+  if (loaded) await setConversationLoadedSkills(db, scope, loaded);
+  await updatePlaybook(
+    db,
+    { ...scope, principal: opening.principal },
+    { expected_revision: 0, plan },
+  );
+  return conversation.id;
+}
+
 export const defaultTaskServiceDeps: TaskServiceDeps = {
   now: () => new Date(now()),
+  openRunConversation,
   loadOwner: loadTaskOwner,
   aiAccessConfigured: tenantAiAccessConfigured,
   llmBudgetAvailable: tenantLlmBudgetAvailable,
@@ -378,6 +430,8 @@ export function rowToTask(row: TaskRow): Task {
     fingerprint: row.fingerprint,
     revision: row.revision,
     lifecycle: row.lifecycle,
+    source_conversation_id: row.source_conversation_id,
+    source_message_id: row.source_message_id,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
   };
@@ -440,4 +494,10 @@ export function grantFacts(row: TaskGrantRow): TaskGrantFacts {
     reserved_runs: row.reserved_runs,
     revoked_at: row.revoked_at,
   };
+}
+
+export function taskRunStarterInvalid(): BadRequestError {
+  return new BadRequestError("A person starts manual runs; scheduled runs start without one.", {
+    code: "task_run_starter_invalid",
+  });
 }

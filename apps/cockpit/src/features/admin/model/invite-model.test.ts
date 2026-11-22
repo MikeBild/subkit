@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
+  desktopContinuation,
   type InvitePreview,
+  inviteContinuation,
   inviteLink,
+  inviteReturned,
   inviteToken,
   inviteView,
   joinCommand,
@@ -40,7 +43,7 @@ describe("the invitation link", () => {
 
   test("the command line joins the same engine with the same token", () => {
     expect(joinCommand("https://subkit.example", TOKEN)).toBe(
-      `sk join --invite ${TOKEN} --engine-url https://subkit.example`,
+      `subkit join --invite ${TOKEN} --engine-url https://subkit.example`,
     );
   });
 });
@@ -126,5 +129,41 @@ describe("what the invitation page shows", () => {
       back: true,
     });
     expect(signedIn({ kind: "unreachable" })).toEqual({ primary: "retry", back: true });
+  });
+});
+
+describe("desktop continuation after joining", () => {
+  const ORIGIN = "https://subkit.example.com";
+  const START = "/v1/identity/desktop-login/start?code_challenge=abc&state=s1";
+
+  test("the desktop sign-in start on the same server is kept with its query", () => {
+    const search = `?continue=${encodeURIComponent(START)}`;
+    expect(inviteContinuation(search, ORIGIN)).toBe(START);
+    expect(desktopContinuation(START, ORIGIN)).toBe(START);
+  });
+
+  test("anything else is dropped", () => {
+    for (const raw of [
+      null,
+      "",
+      "/cockpit",
+      "/v1/identity/desktop-login/confirm?request=x",
+      "//evil.example.com/v1/identity/desktop-login/start?x=1",
+      "https://evil.example.com/v1/identity/desktop-login/start?x=1",
+      "https://subkit.example.com/v1/identity/desktop-login/start?x=1",
+      "/v1/identity/desktop-login/start#x",
+      "/v1/identity/desktop-login/start/../../../cockpit",
+      "javascript:alert(1)",
+    ]) {
+      expect(desktopContinuation(raw, ORIGIN)).toBeNull();
+    }
+    expect(inviteContinuation("", ORIGIN)).toBeNull();
+  });
+
+  test("the page is returned to after the browser sign-in or a refusal", () => {
+    expect(inviteReturned("?joined=1")).toBe(true);
+    expect(inviteReturned("?error=invite_invalid")).toBe(true);
+    expect(inviteReturned(`?continue=${encodeURIComponent(START)}`)).toBe(false);
+    expect(inviteReturned("")).toBe(false);
   });
 });

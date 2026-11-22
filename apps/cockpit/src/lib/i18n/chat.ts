@@ -86,8 +86,6 @@ export const chatEn = {
   "chat.form.githubOwner": "GitHub account or organization",
   "chat.form.repositories": "GitHub repositories",
   "chat.form.searchSite": "Website in Google Search Console",
-  "chat.form.knowledgeSpace": "WikiKit space for findings",
-  "chat.form.reportSite": "ContentKit website for reports",
   "chat.form.runQuestion": "Complete the missing report settings.",
   "chat.form.runQuestionHelp": "This does not authorize automatic runs.",
   "chat.form.cancel": "Cancel question",
@@ -97,7 +95,8 @@ export const chatEn = {
   "chat.choice.title": "Your answer is needed",
   "chat.choice.select": "Choose an option",
   "chat.choice.submit": "Send selection",
-  "chat.choice.hint": "Choose an option in the question above to continue.",
+  "chat.choice.hint":
+    "Choose an option above or type its name. Anything else is sent as a message, and the question stays open.",
   "chat.attachment.packageTooLarge":
     "{name} is larger than {max}. Import packages up to {packageMax} with “Import package…” in the lists or in the packages section of the settings.",
   "chat.attachment.openPackages": "Open packages",
@@ -135,8 +134,8 @@ export const chatEn = {
   "chat.hidden.back": "Back to conversations",
   "chat.hidden.empty": "Nothing hidden",
   "chat.origin.web": "Cockpit",
-  "chat.origin.sk_interactive": "sk",
-  "chat.origin.sk_headless": "sk headless",
+  "chat.origin.sk_interactive": "subkit",
+  "chat.origin.sk_headless": "subkit headless",
   "chat.origin.mcp": "MCP client",
   "chat.origin.chat": "Chat channel",
   "chat.origin.slack": "Slack",
@@ -188,8 +187,10 @@ export const chatEn = {
   "chat.text.blocked": "A question is waiting for you. Your message is still in the composer.",
   "chat.text.answeredQuestion": "Question",
   "chat.text.answerTo": "Answer to the question",
+  "chat.sourceTask": "Task “{name}”",
+  "chat.form.secretOnly":
+    "The form above asks for a secret. Enter it in the form; a message never carries it.",
   "chat.referenceUnnamed": "an entry",
-  "chat.pendingQuestionRequired": "Answer the open question using its controls to continue.",
   "chat.failedKept": "Your message is kept.",
   "chat.failedDescription": "The request could not be completed. Your input has been kept.",
   "chat.cause.provider_quota_exhausted": "The AI provider's usage limit has been reached.",
@@ -207,6 +208,8 @@ export const chatEn = {
   "chat.spendNotice": "This run cost {amount}, more than {threshold}.",
   "chat.cause.ai_access_missing":
     "This workspace has no AI access yet. Enter your provider and API key under Settings → AI assistant.",
+  "chat.cause.key_rejected":
+    "The AI provider rejected your API key. Reconnect the key under Settings → AI assistant.",
   "chat.cause.provider_timeout": "Timed out after {seconds} s",
   "chat.cause.provider_timeoutUnknown": "The AI provider did not answer in time.",
   "chat.empty.title": "Describe what SubKit should do.",
@@ -544,8 +547,6 @@ export const chatDe: Record<keyof typeof chatEn, string> = {
   "chat.form.githubOwner": "GitHub-Konto oder Organisation",
   "chat.form.repositories": "GitHub-Projekte",
   "chat.form.searchSite": "Website in Google Search Console",
-  "chat.form.knowledgeSpace": "WikiKit-Bereich für Erkenntnisse",
-  "chat.form.reportSite": "ContentKit-Website für Berichte",
   "chat.form.runQuestion": "Ergänze die fehlenden Berichtseinstellungen.",
   "chat.form.runQuestionHelp": "Dadurch werden keine automatischen Runs freigegeben.",
   "chat.form.cancel": "Rückfrage abbrechen",
@@ -556,7 +557,8 @@ export const chatDe: Record<keyof typeof chatEn, string> = {
   "chat.choice.title": "Deine Antwort wird benötigt",
   "chat.choice.select": "Option auswählen",
   "chat.choice.submit": "Auswahl senden",
-  "chat.choice.hint": "Wähle eine Option in der Rückfrage oben, um fortzufahren.",
+  "chat.choice.hint":
+    "Wähle oben eine Option oder schreib ihren Namen. Alles andere geht als Nachricht raus, und die Rückfrage bleibt offen.",
   "chat.attachment.packageTooLarge":
     "{name} ist größer als {max}. Pakete bis {packageMax} spielst du über „Paket importieren…“ in den Listen oder im Paketbereich der Einstellungen ein.",
   "chat.attachment.openPackages": "Pakete öffnen",
@@ -594,8 +596,8 @@ export const chatDe: Record<keyof typeof chatEn, string> = {
   "chat.hidden.back": "Zurück zu den Unterhaltungen",
   "chat.hidden.empty": "Nichts ausgeblendet",
   "chat.origin.web": "Cockpit",
-  "chat.origin.sk_interactive": "sk",
-  "chat.origin.sk_headless": "sk headless",
+  "chat.origin.sk_interactive": "subkit",
+  "chat.origin.sk_headless": "subkit headless",
   "chat.origin.mcp": "MCP-Client",
   "chat.origin.chat": "Chat-Kanal",
   "chat.origin.slack": "Slack",
@@ -652,9 +654,10 @@ export const chatDe: Record<keyof typeof chatEn, string> = {
   "chat.text.blocked": "Eine Rückfrage wartet auf dich. Deine Nachricht steht noch im Eingabefeld.",
   "chat.text.answeredQuestion": "Rückfrage",
   "chat.text.answerTo": "Antwort auf die Rückfrage",
+  "chat.sourceTask": "Aufgabe „{name}“",
+  "chat.form.secretOnly":
+    "Das Formular oben fragt nach einem Geheimnis. Trag es dort ein; eine Nachricht transportiert es nie.",
   "chat.referenceUnnamed": "ein Eintrag",
-  "chat.pendingQuestionRequired":
-    "Beantworte die offene Rückfrage über ihre Auswahl, um fortzufahren.",
   "chat.failedKept": "Deine Nachricht bleibt erhalten.",
   "chat.failedDescription":
     "Die Anfrage konnte nicht abgeschlossen werden. Deine Eingabe bleibt erhalten.",
@@ -673,6 +676,8 @@ export const chatDe: Record<keyof typeof chatEn, string> = {
   "chat.spendNotice": "Dieser Run hat {amount} gekostet, mehr als {threshold}.",
   "chat.cause.ai_access_missing":
     "Für diesen Arbeitsbereich ist noch kein KI-Zugang eingerichtet. Trag unter Einstellungen → KI-Assistent deinen Anbieter und deinen API-Schlüssel ein.",
+  "chat.cause.key_rejected":
+    "Der KI-Anbieter hat deinen API-Schlüssel abgelehnt. Verbinde den Schlüssel unter Einstellungen → KI-Assistent neu.",
   "chat.cause.provider_timeout": "Zeitüberschreitung nach {seconds} s",
   "chat.cause.provider_timeoutUnknown": "Der KI-Anbieter hat nicht rechtzeitig geantwortet.",
   "chat.empty.title": "Beschreibe, was SubKit tun soll.",

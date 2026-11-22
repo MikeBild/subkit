@@ -17,7 +17,7 @@ const TENANT = "00000000-0000-4000-8000-000000000492";
 let dir: string | null = null;
 
 async function useConfig(doc: Record<string, unknown>): Promise<void> {
-  dir = mkdtempSync(join(tmpdir(), "sk-model-mismatch-"));
+  dir = mkdtempSync(join(tmpdir(), "subkit-model-mismatch-"));
   const cfgPath = join(dir, "subkit.config.json");
   writeFileSync(cfgPath, JSON.stringify({ database: { url: DB_URL }, ...doc }));
   _resetConfigForTests();

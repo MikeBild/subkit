@@ -1,4 +1,5 @@
 import type { DeviceStopReport, Heartbeat } from "@shared/device/protocol.ts";
+import type { WorkspaceLanguage } from "@shared/workspace-language.ts";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -6,7 +7,6 @@ import type { Db } from "../db/client.ts";
 import { deviceRunners } from "../db/schema/index.ts";
 import { emitResourceChange } from "../pubsub/resource-changes.ts";
 import { closeStoppedCommands } from "./channel.ts";
-import type { DeviceConnectorLocale } from "./core/device-connectors.ts";
 import { mergedStopGeneration, stopReportIsNew } from "./core/generation.ts";
 import { ensureDeviceConnectors } from "./device-connectors.ts";
 import { DEVICE_ONLINE_WINDOW_MS } from "./registry.ts";
@@ -27,7 +27,7 @@ export async function recordHeartbeat(
   db: Db,
   runner: RunnerIdentity,
   heartbeat: Heartbeat,
-  locale: DeviceConnectorLocale,
+  connectorLanguage: () => Promise<WorkspaceLanguage>,
 ): Promise<{ stop_generation: number } | null> {
   const recorded = await db.transaction(async (tx) => {
     const [before] = await tx
@@ -76,7 +76,7 @@ export async function recordHeartbeat(
     await ensureDeviceConnectors(
       db,
       { tenant_id: runner.tenant_id, device_id: runner.device_id },
-      locale,
+      await connectorLanguage(),
     );
   return { stop_generation: recorded.stop_generation };
 }

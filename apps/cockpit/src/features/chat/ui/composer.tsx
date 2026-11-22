@@ -41,7 +41,6 @@ import { ComposerTrayChips } from "./tray-view";
 
 export function ChatComposer({
   disabled,
-  locked,
   status,
   placeholder,
   describedBy,
@@ -58,7 +57,6 @@ export function ChatComposer({
   onRemoveTray = () => {},
 }: {
   disabled: boolean;
-  locked: boolean;
   status: React.ComponentProps<typeof PromptInputSubmit>["status"];
   placeholder: string;
   describedBy?: string;
@@ -227,7 +225,7 @@ export function ChatComposer({
             <PromptInputFooter className="p-0" data-testid="chat-composer-tools">
               <IconButton
                 label={t("chat.attach")}
-                disabled={disabled || locked}
+                disabled={disabled}
                 onClick={() => fileInputRef.current?.click()}
                 data-testid="chat-attach"
               >
@@ -250,7 +248,7 @@ export function ChatComposer({
                 variant="outline"
                 status={status}
                 onStop={onStop}
-                disabled={streaming ? false : disabled || locked || seedPending}
+                disabled={streaming ? false : disabled || seedPending}
                 aria-label={t(streaming ? "chat.stop" : "chat.submit")}
                 tooltip={t(streaming ? "chat.stop" : "chat.submit")}
                 data-testid="chat-composer-submit"

@@ -76,7 +76,7 @@ export function getPool(): pg.Pool {
   if (!url) url = readEnv("DATABASE_URL") ?? "";
   if (!url) {
     throw new Error(
-      "database.url is not set. Configure via `sk settings set database.url '\"…\"'` or set DATABASE_URL.",
+      "database.url is not set. Configure via `subkit settings set database.url '\"…\"'` or set DATABASE_URL.",
     );
   }
   _pool = new Pool(databasePoolOptions(url));

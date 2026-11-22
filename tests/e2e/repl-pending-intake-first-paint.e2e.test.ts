@@ -31,7 +31,7 @@ afterAll(async () => {
   await shutdown(env ?? undefined);
 }, 30_000);
 
-describe("e2e: sk REPL pending intake first paint", () => {
+describe("e2e: subkit REPL pending intake first paint", () => {
   test.skipIf(SKIP_PTY)(
     "the flushed welcome banner already shows the category-aware review row on first paint",
     async () => {

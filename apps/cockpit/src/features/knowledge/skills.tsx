@@ -806,10 +806,10 @@ export function SkillPage({ id }: { id: string }) {
     queryFn: () => apiCall("get", "/v1/skills/{id}", { path: { id } }),
   });
   if (!query.data && !query.isError) return <ListSkeleton />;
-  return <Loaded query={query}>{(sk) => <SkillDetail key={sk.id} sk={sk} />}</Loaded>;
+  return <Loaded query={query}>{(skill) => <SkillDetail key={skill.id} skill={skill} />}</Loaded>;
 }
 
-function SkillDetail({ sk }: { sk: Skill }) {
+function SkillDetail({ skill }: { skill: Skill }) {
   const { t, dateTime } = useI18n();
   const navigate = useNavigate();
   const client = useQueryClient();
@@ -817,16 +817,16 @@ function SkillDetail({ sk }: { sk: Skill }) {
   const refresh = useRefreshKnowledge();
   const rel = useRel();
   const directory = useActorDirectory(true);
-  const v = skillView(sk);
+  const v = skillView(skill);
   const canWrite = session.permissions.includes("skill:write");
   const canActivate = session.permissions.includes("skill:activate");
   const canArchive = session.permissions.includes("skill:archive");
   const canDelete = session.permissions.includes("skill:delete");
   const meta = useMetadataMenu({
     kind: "skill",
-    id: sk.id,
-    record: sk,
-    queryKey: KEYS.skill(sk.id),
+    id: skill.id,
+    record: skill,
+    queryKey: KEYS.skill(skill.id),
     nameKey: "title",
   });
   const search = useRouterState({ select: (state) => state.location.searchStr });
@@ -835,22 +835,22 @@ function SkillDetail({ sk }: { sk: Skill }) {
   );
   const [conflict, setConflict] = useState(false);
   const uses = useRecordUses({
-    binding: { scope: sk.scope, workflowId: sk.workflow_id, connectorId: sk.connector_id },
-    target: { kind: "skill", id: sk.id },
+    binding: { scope: skill.scope, workflowId: skill.workflow_id, connectorId: skill.connector_id },
+    target: { kind: "skill", id: skill.id },
   });
   const [del, setDel] = useState(false);
   const fail = (error: unknown) => reportFailure(t("common.actionFailed"), error);
   const saved = (n: Skill) => {
-    client.setQueryData(KEYS.skill(sk.id), n);
+    client.setQueryData(KEYS.skill(skill.id), n);
     void refresh();
-    void client.invalidateQueries({ queryKey: [...KEYS.skill(sk.id), "history"] });
+    void client.invalidateQueries({ queryKey: [...KEYS.skill(skill.id), "history"] });
   };
   const on = v.status === "active";
   const toggle = useMutation({
     mutationFn: () =>
       on
-        ? apiCall("post", "/v1/skills/{id}/archive", { path: { id: sk.id } })
-        : apiCall("post", "/v1/skills/{id}/activate", { path: { id: sk.id } }),
+        ? apiCall("post", "/v1/skills/{id}/archive", { path: { id: skill.id } })
+        : apiCall("post", "/v1/skills/{id}/activate", { path: { id: skill.id } }),
     onSuccess: (n) => {
       toast.success(t(on ? "kn.turnedOff" : "kn.turnedOn", { name: v.name }));
       saved(n);
@@ -860,12 +860,12 @@ function SkillDetail({ sk }: { sk: Skill }) {
   const save = useMutation({
     mutationFn: (d: Draft) =>
       apiCall("patch", "/v1/skills/{id}", {
-        path: { id: sk.id },
+        path: { id: skill.id },
         body: {
           title: d.name,
           body: d.body,
           applies_to: SCOPE_APPLIES[d.scope],
-          expected_version: sk.version,
+          expected_version: skill.version,
         },
       }),
     onSuccess: (n) => {
@@ -880,7 +880,7 @@ function SkillDetail({ sk }: { sk: Skill }) {
     },
   });
   const remove = useMutation({
-    mutationFn: () => apiCall("delete", "/v1/skills/{id}", { path: { id: sk.id } }),
+    mutationFn: () => apiCall("delete", "/v1/skills/{id}", { path: { id: skill.id } }),
     onSuccess: () => {
       toast.success(t("kn.deleted", { name: v.name }));
       void refresh();
@@ -889,13 +889,13 @@ function SkillDetail({ sk }: { sk: Skill }) {
     onError: fail,
   });
   const history = useQuery({
-    queryKey: [...KEYS.skill(sk.id), "history"],
-    queryFn: () => apiCall("get", "/v1/skills/{id}/history", { path: { id: sk.id } }),
+    queryKey: [...KEYS.skill(skill.id), "history"],
+    queryFn: () => apiCall("get", "/v1/skills/{id}/history", { path: { id: skill.id } }),
   });
   const restore = useMutation({
     mutationFn: (auditId: string) =>
       apiCall("post", "/v1/skills/{id}/restore", {
-        path: { id: sk.id },
+        path: { id: skill.id },
         body: { audit_entry_id: auditId },
       }),
     onSuccess: (n) => {
@@ -904,8 +904,8 @@ function SkillDetail({ sk }: { sk: Skill }) {
     },
     onError: fail,
   });
-  const rows = skillVersionRows(history.data?.items ?? [], sk.version);
-  const gap = history.data ? skillHistoryGap(rows, sk.version) : null;
+  const rows = skillVersionRows(history.data?.items ?? [], skill.version);
+  const gap = history.data ? skillHistoryGap(rows, skill.version) : null;
   const kept = keptVersionCount(rows.length);
   const versions = rows
     .filter((r) => r.version !== null && r.has_snapshot)
@@ -917,7 +917,7 @@ function SkillDetail({ sk }: { sk: Skill }) {
       current: r.current,
     }));
   const reload = (): Draft => {
-    void client.invalidateQueries({ queryKey: KEYS.skill(sk.id) });
+    void client.invalidateQueries({ queryKey: KEYS.skill(skill.id) });
     return { name: v.name, body: v.body, scope: v.scope };
   };
   return (
@@ -927,7 +927,7 @@ function SkillDetail({ sk }: { sk: Skill }) {
         onBack={() => void navigate({ to: "/skills" })}
         icon={<IconTile icon={Sparkles} size="lg" />}
         title={v.name}
-        sub={<CatalogPurpose record={sk} />}
+        sub={<CatalogPurpose record={skill} />}
         strip={{
           tone: SKILL_TONE[v.status],
           text: t(`kn.skills.strip.${v.status}`),
@@ -958,7 +958,7 @@ function SkillDetail({ sk }: { sk: Skill }) {
         menu={
           <ChatMenu
             label={t("kn.detailMenu")}
-            references={[{ type: "skill", id: sk.id }]}
+            references={[{ type: "skill", id: skill.id }]}
             prompts={[t("kn.editInChat")]}
             extra={
               canWrite || canActivate || canArchive || canDelete ? (
@@ -1042,7 +1042,7 @@ function SkillDetail({ sk }: { sk: Skill }) {
                 }
                 load={async (k) => {
                   const d = await apiCall("get", "/v1/skills/{id}/history/{audit_entry_id}", {
-                    path: { id: sk.id, audit_entry_id: k },
+                    path: { id: skill.id, audit_entry_id: k },
                   });
                   const after = d.after as { body?: unknown } | null;
                   return typeof after?.body === "string" ? after.body : "";
@@ -1052,16 +1052,16 @@ function SkillDetail({ sk }: { sk: Skill }) {
           },
         ]}
         facts={[
-          { label: t("kn.fact.ref"), value: sk.slug ? `@skill:${sk.slug}` : "—", mono: true },
+          { label: t("kn.fact.ref"), value: skill.slug ? `@skill:${skill.slug}` : "—", mono: true },
           { label: t("kn.skills.col.applies"), value: t(BINDING_KEY[v.binding]) },
           { label: t("kn.skills.col.scope"), value: t(SCOPE_KEY[v.scope]) },
-          { label: t("kn.fact.version"), value: `v${sk.version} · ${rel(v.changed)}` },
+          { label: t("kn.fact.version"), value: `v${skill.version} · ${rel(v.changed)}` },
           {
             label: t("kn.col.category"),
-            value: humanizeCategory(sk.category, t("catalog.categoryOther")),
+            value: humanizeCategory(skill.category, t("catalog.categoryOther")),
           },
-          { label: t("kn.fact.created"), value: dateTime(sk.created_at) },
-          { label: t("kn.fact.id"), value: sk.id, mono: true },
+          { label: t("kn.fact.created"), value: dateTime(skill.created_at) },
+          { label: t("kn.fact.id"), value: skill.id, mono: true },
         ]}
       />
       <SkillEditor

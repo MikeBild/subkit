@@ -44,7 +44,7 @@ describe("identifiers a reader is shown", () => {
     for (const value of [
       "cli-949cacce25ff4379",
       "203.0.113.7",
-      "sk/8.3.5",
+      "subkit/8.3.5",
       "connectors.mcp.tools_list_max_pages",
     ]) {
       expect(shortIdentifier(value)).toBe(value);

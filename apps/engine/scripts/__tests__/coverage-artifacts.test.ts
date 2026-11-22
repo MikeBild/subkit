@@ -204,3 +204,15 @@ describe("coverage artifacts", () => {
     expect(marker.retention_until).toBeString();
   });
 });
+
+describe("coverage run retention", () => {
+  test("a new published run replaces the previous one", async () => {
+    const coverageDir = tempDir("retention");
+    const first = await publish(coverageDir);
+    removeCoverageRawRunAfterReceipt(first.lease);
+    const second = await publish(coverageDir, "apps/engine/src/other.ts");
+    removeCoverageRawRunAfterReceipt(second.lease);
+    expect(readdirSync(join(coverageDir, "runs"))).toEqual([second.lease.runId]);
+    expect(readPublishedCoverage(coverageDir).runId).toBe(second.lease.runId);
+  });
+});

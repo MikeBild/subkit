@@ -20,7 +20,7 @@ async function ensureConfigLoaded(): Promise<void> {
     getConfig();
     return;
   } catch {}
-  const dir = mkdtempSync(join(tmpdir(), "sk-cfg-receval-cap-"));
+  const dir = mkdtempSync(join(tmpdir(), "subkit-cfg-receval-cap-"));
   await loadConfig({
     env: {
       DATABASE_URL: "postgres://placeholder/receval-cap",

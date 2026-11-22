@@ -125,7 +125,7 @@ export const cliScanner: Scanner = {
         if (inv.unknown_head) {
           out.push({
             kind: "cli.unknown_subcommand",
-            message: `Recommended \`sk ${inv.unknown_head}\` but no such subcommand exists in the CLI manifest.`,
+            message: `Recommended \`subkit ${inv.unknown_head}\` but no such subcommand exists in the CLI manifest.`,
             details: { path: inv.unknown_head },
           });
           continue;
@@ -134,7 +134,7 @@ export const cliScanner: Scanner = {
         if (inv.path.length > 0 && !spec) {
           out.push({
             kind: "cli.unknown_subcommand",
-            message: `Recommended \`sk ${inv.path.join(" ")}\` but no such subcommand exists in the CLI manifest.`,
+            message: `Recommended \`subkit ${inv.path.join(" ")}\` but no such subcommand exists in the CLI manifest.`,
             details: { path: inv.path.join(" ") },
           });
           continue;
@@ -147,8 +147,8 @@ export const cliScanner: Scanner = {
           out.push({
             kind: "cli.invented_flag",
             message: suggestion
-              ? `Recommended \`sk ${inv.path.join(" ")} --${flag}\` but the manifest only knows \`--${suggestion}\` here.`
-              : `Recommended \`sk ${inv.path.join(" ")} --${flag}\` but no such flag exists on this subcommand.`,
+              ? `Recommended \`subkit ${inv.path.join(" ")} --${flag}\` but the manifest only knows \`--${suggestion}\` here.`
+              : `Recommended \`subkit ${inv.path.join(" ")} --${flag}\` but no such flag exists on this subcommand.`,
             details: {
               path: inv.path.join(" "),
               invented_flag: flag,

@@ -21,7 +21,7 @@ function stepIndex(predicate: (step: (typeof steps)[number]) => boolean): number
   return index;
 }
 
-describe("macOS sk signing in the release chain", () => {
+describe("macOS subkit signing in the release chain", () => {
   test("the image signs darwin binaries with the pinned rcodesign before staging them", () => {
     const lines = dockerfile.split("\n");
     const stage = lines.findIndex((line) => /^FROM builder AS generated-cli$/.test(line));
@@ -56,15 +56,15 @@ describe("macOS sk signing in the release chain", () => {
     expect(sign).toBeGreaterThan(checksums);
     expect(stageRun).toContain('test ! -e "assets/$asset"');
     expect(stageRun).toContain('cp "$QUALITY_ASSETS_DIR/$asset" "assets/$asset"');
-    expect(checksumsRun).toMatch(/sha256sum[^\n]*sk_\*/);
+    expect(checksumsRun).toMatch(/sha256sum[^\n]*subkit-darwin-arm64/);
     expect(checksumsRun).toContain("quality-evidence.tar.gz quality-evidence.json");
     const verifyMacos = extractRun.indexOf(
-      "bun scripts/verify-macos-binaries.ts assets/sk_darwin_arm64 assets/sk_darwin_x64",
+      "bun scripts/verify-macos-binaries.ts assets/subkit-darwin-arm64",
     );
     expect(verifyMacos).toBeGreaterThan(extractRun.indexOf("/usr/local/share/subkit/binaries/."));
     for (const step of steps.slice(extract + 1)) {
       expect(step.run ?? "").not.toMatch(
-        /(codesign|rcodesign)\b|>\s*assets\/sk_|cp [^\n]*assets\/sk_/,
+        /(codesign|rcodesign)\b|>\s*assets\/subkit-darwin|cp [^\n]*assets\/subkit-darwin/,
       );
     }
   });

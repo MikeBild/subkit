@@ -56,7 +56,7 @@ describe("isTransient", () => {
 describe("download retry loop", () => {
   const directories: string[] = [];
   const tmp = () => {
-    const directory = mkdtempSync(join(tmpdir(), "sk-embedding-"));
+    const directory = mkdtempSync(join(tmpdir(), "subkit-embedding-"));
     directories.push(directory);
     return join(directory, "asset.bin");
   };

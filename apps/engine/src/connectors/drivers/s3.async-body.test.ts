@@ -29,7 +29,7 @@ let testDb: TestDb;
 let tenantId: string;
 let objectStore: ObjectStoreFixture | null = null;
 let connectorId: string | null = null;
-const BUCKET = `sk-s3-async-test-${Math.random().toString(36).slice(2, 8)}`; // allow-random: legacy; review before changing
+const BUCKET = `subkit-s3-async-test-${Math.random().toString(36).slice(2, 8)}`; // allow-random: legacy; review before changing
 
 beforeAll(async () => {
   if (!DOCKER) return;

@@ -1,3 +1,4 @@
+import type { WorkspaceLanguage } from "@shared/workspace-language.ts";
 import { and, asc, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
@@ -128,7 +129,7 @@ export async function getContextSnapshot(
   conversation_id: string,
   exec: Db,
   principal?: ResolvedPrincipal,
-  locale: "de" | "en" = "de",
+  locale?: WorkspaceLanguage,
 ): Promise<ContextSnapshot | null> {
   const detail = await getConversation(tenant_id, conversation_id, exec, principal, locale);
   if (!detail) return null;

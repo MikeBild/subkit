@@ -63,7 +63,7 @@ const scenarios: Array<{
 ];
 
 function childFixture(body: string) {
-  const directory = mkdtempSync(path.join(tmpdir(), "sk-pty-child-"));
+  const directory = mkdtempSync(path.join(tmpdir(), "subkit-pty-child-"));
   chmodSync(directory, 0o700);
   const binary = path.join(directory, "child.ts");
   const pidFile = path.join(directory, "child.pid");

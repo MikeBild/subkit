@@ -228,6 +228,7 @@ describe("a local step that must ask uses the chat confirmation", () => {
     const [task] = await server.db
       .insert(tasks)
       .values({
+        locale: "de",
         tenant_id: server.tenantId,
         name: "Bestellung",
         owner_id,

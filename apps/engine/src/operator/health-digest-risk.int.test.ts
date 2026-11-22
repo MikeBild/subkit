@@ -27,7 +27,7 @@ beforeAll(async () => {
   tenant_id = (await seedTenant(testDb.db, { slug: "t-risk-digest", display_name: "Risk Digest" }))
     .id;
 
-  const dir = mkdtempSync(join(tmpdir(), "sk-cfg-risk-digest-"));
+  const dir = mkdtempSync(join(tmpdir(), "subkit-cfg-risk-digest-"));
   await loadConfig({
     env: { DATABASE_URL: testDb.url, NODE_ENV: "test" },
     configPathOverride: join(dir, "subkit.config.json"),

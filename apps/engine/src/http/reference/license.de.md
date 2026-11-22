@@ -17,7 +17,7 @@ Lizenztexte aller gebündelten Pakete, des eingebetteten Embedding-Modells und d
 
 - **Embedding-Modell:** `paraphrase-multilingual-MiniLM-L12-v2` von sentence-transformers,
   Apache-2.0 laut Hugging-Face-Model-Card; ONNX-Konvertierung von Xenova.
-- **Bun-Runtime:** Die Programme `engine` und `sk` enthalten die Bun-Runtime. Sie bindet
+- **Bun-Runtime:** Die Programme `engine` und `subkit` enthalten die Bun-Runtime. Sie bindet
   LGPL-Komponenten statisch ein (JavaScriptCore/WebKit, tinycc). Der Abschnitt „Relinking and
   corresponding source“ in `THIRD_PARTY_NOTICES.txt` beschreibt Neubau und Relinking.
 - **Container-Image:** In `/usr/local/share/subkit/` liegen zusätzlich `BASE_IMAGE_INVENTORY.txt`

@@ -7,6 +7,15 @@ import type {
   IntakeTargetKind,
 } from "../db/schema/intake.ts";
 
+export interface AnonymousCollector {
+  readonly kind: "anonymous";
+  readonly id: null;
+}
+
+export const ANONYMOUS_COLLECTOR: AnonymousCollector = { kind: "anonymous", id: null };
+
+export type IntakeCollector = Actor | AnonymousCollector;
+
 export type IntakeItemOriginFilter = "capture" | "note" | "session";
 
 export type IntakeItemState = "collected" | "reviewing" | "admitted" | "discarded";
@@ -30,7 +39,7 @@ export interface IntakeItemView {
   note: string;
   state: IntakeItemState;
   version: number;
-  collected_by: Actor;
+  collected_by: IntakeCollector;
   admitted_target_kind: IntakeTargetKind | null;
   admitted_target_id: string | null;
   attachment: IntakeAttachmentFacts | null;
@@ -80,7 +89,7 @@ export interface SetIntakeDefaultCategoryParams {
 
 export interface CreateIntakeItemParams {
   tenant_id: string;
-  actor: Actor;
+  actor: IntakeCollector;
   client_request_id: string;
   category?: string | undefined;
   title: string;

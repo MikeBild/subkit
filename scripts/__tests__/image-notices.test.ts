@@ -7,10 +7,7 @@ import { join } from "node:path";
 const root = join(import.meta.dir, "../..");
 const dockerfile = readFileSync(join(root, "Dockerfile"), "utf8");
 const runtime = dockerfile.slice(dockerfile.indexOf(" AS runtime"));
-const offer = readFileSync(join(root, "deploy/docker/SOURCE_OFFER.txt"), "utf8").replace(
-  /\s+/g,
-  " ",
-);
+const offer = readFileSync(join(root, "docker/SOURCE_OFFER.txt"), "utf8").replace(/\s+/g, " ");
 const temporary: string[] = [];
 
 afterEach(() => {
@@ -31,7 +28,7 @@ function inventoryStep(): string {
 
 test("ships the source offer and base image inventory next to the notices", () => {
   expect(runtime).toContain(
-    "COPY deploy/docker/SOURCE_OFFER.txt /usr/local/share/subkit/SOURCE_OFFER.txt",
+    "COPY docker/SOURCE_OFFER.txt /usr/local/share/subkit/SOURCE_OFFER.txt",
   );
   expect(runtime.indexOf("THIRD_PARTY_NOTICES.txt /usr/local/share/subkit/")).toBeLessThan(
     runtime.indexOf("BASE_IMAGE_INVENTORY.txt"),

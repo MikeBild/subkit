@@ -1,0 +1,20 @@
+[90mEnd-user CLI for subkit-backend (chat-first terminal) (subkit v4.0.0)[39m
+
+[4m[1mUSAGE[22m[24m [36msk [OPTIONS] [PROMPT] login|logout|profile|status|tenants|mcp|update|sessions|ls|show|rename|rm|health|doctor|settings|extract|init[39m
+
+[4m[1mARGUMENTS[22m[24m
+
+  [36mPROMPT[39m    Initial prompt (REPL or headless with -p)
+
+[4m[1mOPTIONS[22m[24m
+
+  [36m--engine-url=<engine_url>[39m    Engine base URL                                                                            
+        [36m--api-key=<api_key>[39m    API key (Bearer)                                                                           
+          [36m--tenant=<tenant>[39m    Active tenant id                                                                           
+        [36m--profile=<profile>[39m    Profile name (~/.subkit/config.json)                                                           
+                    [36m--p=<p>[39m    Headless mode: run a single prompt and print the result                                    
+          [36m--output=<output>[39m    Output format for headless: text|json|stream-json (default: text) [90m(Default: text)[39m
+                        [36m--c[39m    Continue the most recent session [90m(Default: false)[39m                                
+                    [36m--r=<r>[39m    Resume a specific conversation id                                                          
+  [36m--session-id=<session_id>[39m    Attach to a specific conversation id                                                       
+                [36m--no-memory[39m    Skip SK.md injection for this invocation [90m(Default: false)[39m                        

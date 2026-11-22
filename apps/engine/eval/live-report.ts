@@ -1,4 +1,5 @@
 import { findPlaceholderDestinations } from "../src/workflows/destination-placeholders.ts";
+import type { ProviderFault } from "./faults.ts";
 
 export const BENCHMARK_TARGETS = {
   pipeline_llm_calls_max: 3,
@@ -17,6 +18,8 @@ export const ASK_TOOLS: ReadonlySet<string> = new Set([
   "ask_user_choice",
   "ask_user_multi",
 ]);
+
+export const CONFIRM_TOOL = "ask_user_confirm";
 
 export const AUTHORING_TOOLS: ReadonlySet<string> = new Set([
   "author_workflow",
@@ -49,6 +52,16 @@ export interface LiveScenarioSpec {
   connectors: string[];
   content_checks: ContentCheck[];
   content_source?: "envelope" | "final_output";
+  facts?: ContentCheck[];
+}
+
+export type LiveRunSpec = Pick<
+  LiveScenarioSpec,
+  "slug" | "goal" | "answer_turns" | "follow_up_turns"
+>;
+
+export interface ScoringOptions {
+  ask_before_writing: boolean;
 }
 
 export interface ObservedToolCall {
@@ -92,6 +105,7 @@ export interface AuthoringTargets {
   single_preview: TargetVerdict;
   tool_calls_le_15: TargetVerdict;
   content_correct_first_preview: TargetVerdict;
+  no_needless_question: TargetVerdict;
 }
 
 export interface ClarificationTargets {
@@ -100,6 +114,7 @@ export interface ClarificationTargets {
   question_names_missing_inputs: TargetVerdict;
   no_placeholder_in_reply: TargetVerdict;
   placeholder_rejected_after_answer?: TargetVerdict;
+  no_needless_question: TargetVerdict;
 }
 
 export type ScenarioTargets = AuthoringTargets | ClarificationTargets;
@@ -126,6 +141,13 @@ export interface LiveScenarioScore {
   notes: string[];
 }
 
+export interface ProviderFaultRecord {
+  scenario: string;
+  trial: number;
+  fault: ProviderFault;
+  error: string;
+}
+
 export interface LiveAuthoringReport {
   started_at: string;
   finished_at: string;
@@ -136,6 +158,7 @@ export interface LiveAuthoringReport {
   scenarios: LiveScenarioScore[];
   trials?: TrialAggregate[];
   cleanup?: { deleted: number; failures: string[] };
+  provider_faults?: ProviderFaultRecord[];
 }
 
 function asRecord(v: unknown): Record<string, unknown> | null {
@@ -234,6 +257,7 @@ export function evaluateBenchmarkTargets(
     LiveScenarioScore,
     "llm_passes" | "previews" | "tool_calls" | "first_preview_content_pass"
   >,
+  needless: NeedlessQuestion[],
 ): AuthoringTargets {
   return {
     pipeline_llm_calls_le_3:
@@ -248,6 +272,7 @@ export function evaluateBenchmarkTargets(
         ? "PASS"
         : "FAIL",
     content_correct_first_preview: score.first_preview_content_pass ? "PASS" : "FAIL",
+    no_needless_question: needless.length === 0 ? "PASS" : "FAIL",
   };
 }
 
@@ -332,9 +357,78 @@ function isProseQuestion(turn: ObservedTurn): boolean {
   return turn.status !== "awaiting_input" && /\?/.test(turn.assistant_text);
 }
 
+export type QuestionKind = "question" | "confirmation" | "approval";
+
+export interface AskedQuestion {
+  kind: QuestionKind;
+  text: string;
+}
+
+export interface NeedlessQuestion extends AskedQuestion {
+  fact: string;
+}
+
+function proseQuestions(text: string): string[] {
+  return text
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.endsWith("?"));
+}
+
+export function askedQuestions(turns: ObservedTurn[]): AskedQuestion[] {
+  const asked: AskedQuestion[] = [];
+  for (const turn of turns) {
+    let structured = false;
+    for (const call of turn.tool_calls) {
+      if (ASK_TOOLS.has(call.tool)) {
+        structured = true;
+        asked.push({ kind: "question", text: askTexts([call]).join("\n") });
+      } else if (call.tool === CONFIRM_TOOL) {
+        structured = true;
+        asked.push({ kind: "confirmation", text: JSON.stringify(call.input) ?? "" });
+      }
+    }
+    const delivered = turn.delivered_ask;
+    if (
+      delivered?.tool_name &&
+      !ASK_TOOLS.has(delivered.tool_name) &&
+      delivered.tool_name !== CONFIRM_TOOL
+    ) {
+      structured = true;
+      asked.push({
+        kind: "approval",
+        text: `${delivered.tool_name} ${JSON.stringify(delivered.input) ?? ""}`,
+      });
+    }
+    if (!structured && turn.status !== "awaiting_input") {
+      for (const question of proseQuestions(turn.assistant_text)) {
+        asked.push({ kind: "question", text: question });
+      }
+    }
+  }
+  return asked;
+}
+
+export function needlessQuestions(
+  spec: Pick<LiveScenarioSpec, "facts">,
+  turns: ObservedTurn[],
+  options: ScoringOptions,
+): NeedlessQuestion[] {
+  const facts = spec.facts ?? [];
+  if (facts.length === 0) return [];
+  const needless: NeedlessQuestion[] = [];
+  for (const question of askedQuestions(turns)) {
+    if (options.ask_before_writing && question.kind !== "question") continue;
+    const fact = facts.find((f) => new RegExp(f.pattern, f.flags).test(question.text));
+    if (fact) needless.push({ ...question, fact: fact.name });
+  }
+  return needless;
+}
+
 export function evaluateClarificationTargets(
   spec: LiveScenarioSpec,
   obs: ScenarioObservation,
+  needless: NeedlessQuestion[],
 ): { targets: ClarificationTargets; guard_fired: boolean | null; notes: string[] } {
   const notes: string[] = [];
   const first: ObservedTurn = obs.turns[0] ?? {
@@ -376,6 +470,7 @@ export function evaluateClarificationTargets(
     question_names_missing_inputs:
       (asks.length > 0 || proseAsk) && questionChecks.pass ? "PASS" : "FAIL",
     no_placeholder_in_reply: placeholders.length === 0 ? "PASS" : "FAIL",
+    no_needless_question: needless.length === 0 ? "PASS" : "FAIL",
   };
 
   const answers = spec.answer_turns ?? [];
@@ -424,9 +519,16 @@ export function evaluateClarificationTargets(
   return { targets, guard_fired, notes };
 }
 
-export function scoreScenario(spec: LiveScenarioSpec, obs: ScenarioObservation): LiveScenarioScore {
+export function scoreScenario(
+  spec: LiveScenarioSpec,
+  obs: ScenarioObservation,
+  options: ScoringOptions = { ask_before_writing: false },
+): LiveScenarioScore {
   const notes: string[] = [];
   if (obs.error) notes.push(`run error: ${obs.error}`);
+  const needless = needlessQuestions(spec, obs.turns, options);
+  for (const q of needless)
+    notes.push(`needless ${q.kind} about ${q.fact}: ${q.text.slice(0, 160)}`);
 
   const llm_passes = extractLlmPasses(obs.results);
   const previews = extractPreviews(obs.results);
@@ -486,7 +588,7 @@ export function scoreScenario(spec: LiveScenarioSpec, obs: ScenarioObservation):
   };
 
   if (spec.kind === "clarification") {
-    const clarification = evaluateClarificationTargets(spec, obs);
+    const clarification = evaluateClarificationTargets(spec, obs, needless);
     notes.push(...clarification.notes);
     return {
       ...base,
@@ -509,12 +611,15 @@ export function scoreScenario(spec: LiveScenarioSpec, obs: ScenarioObservation):
     ...base,
     content_pass: first_preview_content_pass,
     guard_fired: null,
-    targets: evaluateBenchmarkTargets({
-      llm_passes,
-      previews: previews.length,
-      tool_calls: obs.tool_calls,
-      first_preview_content_pass,
-    }),
+    targets: evaluateBenchmarkTargets(
+      {
+        llm_passes,
+        previews: previews.length,
+        tool_calls: obs.tool_calls,
+        first_preview_content_pass,
+      },
+      needless,
+    ),
     notes,
   };
 }
@@ -582,6 +687,7 @@ export function buildLiveReport(args: {
   finished_at: string;
   trials?: TrialAggregate[];
   cleanup?: { deleted: number; failures: string[] };
+  provider_faults?: ProviderFaultRecord[];
 }): LiveAuthoringReport {
   const passed = args.scores.filter(scenarioPassed).length;
   return {
@@ -594,6 +700,9 @@ export function buildLiveReport(args: {
     scenarios: args.scores,
     ...(args.trials ? { trials: args.trials } : {}),
     ...(args.cleanup ? { cleanup: args.cleanup } : {}),
+    ...(args.provider_faults && args.provider_faults.length > 0
+      ? { provider_faults: args.provider_faults }
+      : {}),
   };
 }
 
@@ -668,6 +777,29 @@ export function deletionOrder(artifacts: CreatedArtifact[]): CreatedArtifact[] {
     .map(({ a }) => a);
 }
 
+const SAVE_FACT: ContentCheck = {
+  name: "save after a correct preview",
+  pattern: "\\bsave\\b|save_workflow_draft|speicher",
+  flags: "i",
+};
+
+const LOCATION_FACT: ContentCheck = {
+  name: "location",
+  pattern: "which (city|location|place)|latitude|longitude|coordinates|welche stadt|koordinaten",
+  flags: "i",
+};
+
+const CELSIUS_FACT: ContentCheck = {
+  name: "temperature unit",
+  pattern: "celsius|fahrenheit|which unit|welche einheit",
+  flags: "i",
+};
+
+export const CANARY_SPEC: LiveRunSpec = {
+  slug: "canary",
+  goal: "Reply with the single word ready. Do not call any tool.",
+};
+
 export const LIVE_SCENARIOS: LiveScenarioSpec[] = [
   {
     slug: "droplet-specs-email",
@@ -684,6 +816,19 @@ export const LIVE_SCENARIOS: LiveScenarioSpec[] = [
       { name: "memory spec present", pattern: "memory|ram|_gb|gb\\b", flags: "i" },
       { name: "disk spec present", pattern: "disk", flags: "i" },
     ],
+    facts: [
+      {
+        name: "recipient",
+        pattern: "recipient|e-?mail address|which address|to whom|empfänger",
+        flags: "i",
+      },
+      {
+        name: "droplet specs",
+        pattern: "which (specs|fields|details)|vcpu|memory|disk|welche angaben",
+        flags: "i",
+      },
+      SAVE_FACT,
+    ],
   },
   {
     slug: "gh-org-top-repos-table",
@@ -698,6 +843,14 @@ export const LIVE_SCENARIOS: LiveScenarioSpec[] = [
       { name: "markdown table separator", pattern: "\\|\\s*:?-{3,}" },
       { name: "stars column", pattern: "stars", flags: "i" },
     ],
+    facts: [
+      {
+        name: "ranking",
+        pattern: "how many (repositories|repos)|top \\d+|which columns|rank(ed)? by|sort(ed)? by",
+        flags: "i",
+      },
+      SAVE_FACT,
+    ],
   },
   {
     slug: "berlin-weather-summary",
@@ -710,6 +863,7 @@ export const LIVE_SCENARIOS: LiveScenarioSpec[] = [
       { name: "temperature digits", pattern: "-?\\d+(\\.\\d+)?" },
       { name: "min/max present", pattern: "min|max|tmin|tmax", flags: "i" },
     ],
+    facts: [LOCATION_FACT, CELSIUS_FACT, SAVE_FACT],
   },
   {
     slug: "underspecified-asks-first",
@@ -770,6 +924,12 @@ export const LIVE_SCENARIOS: LiveScenarioSpec[] = [
       { name: "warmest_day date", pattern: "20\\d\\d-\\d\\d-\\d\\d" },
       { name: "temperature value", pattern: "\\d+(\\.\\d+)?" },
     ],
+    facts: [
+      LOCATION_FACT,
+      CELSIUS_FACT,
+      { name: "forecast range", pattern: "how many days|forecast_days|which days", flags: "i" },
+      SAVE_FACT,
+    ],
   },
   {
     slug: "ta-js-transform-input-scope",
@@ -790,6 +950,11 @@ export const LIVE_SCENARIOS: LiveScenarioSpec[] = [
       { name: "highest_max_c numeric", pattern: '"highest_max_c"\\s*:\\s*-?\\d+(\\.\\d+)?' },
       { name: "lowest_min_c numeric", pattern: '"lowest_min_c"\\s*:\\s*-?\\d+(\\.\\d+)?' },
     ],
+    facts: [
+      LOCATION_FACT,
+      { name: "rounding", pattern: "round|decimal|nachkomma", flags: "i" },
+      SAVE_FACT,
+    ],
   },
   {
     slug: "ta-jsonata-variable-block",
@@ -808,5 +973,6 @@ export const LIVE_SCENARIOS: LiveScenarioSpec[] = [
       { name: "hottest_temp_c numeric", pattern: '"hottest_temp_c"\\s*:\\s*-?\\d+(\\.\\d+)?' },
       { name: "hottest_day iso date", pattern: '"hottest_day"\\s*:\\s*"20\\d\\d-\\d\\d-\\d\\d"' },
     ],
+    facts: [LOCATION_FACT, SAVE_FACT],
   },
 ];

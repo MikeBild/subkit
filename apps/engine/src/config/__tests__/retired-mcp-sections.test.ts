@@ -13,7 +13,7 @@ function writeConfig(body: Record<string, unknown>): void {
 }
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), "sk-cfg-retired-mcp-"));
+  dir = mkdtempSync(join(tmpdir(), "subkit-cfg-retired-mcp-"));
   cfgPath = join(dir, "subkit.config.json");
   _resetConfigForTests();
 });
@@ -46,7 +46,7 @@ describe("retired mcp config sections", () => {
     const message = (err as Error).message;
     expect(message).toContain("mcp.servers (1 declaration(s))");
     expect(message).toContain('driver: "mcp"');
-    expect(message).toContain("sk connectors create --file");
+    expect(message).toContain("subkit connectors create --file");
     expect(message).toContain(cfgPath);
   });
 

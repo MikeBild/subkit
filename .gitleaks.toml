@@ -52,30 +52,6 @@ regexes = [
 ]
 
 [[allowlists]]
-description = "fixture UUIDs in the cockpit visual stand scripts"
-targetRules = ["generic-api-key"]
-condition = "AND"
-paths = [
-  '''scripts/lib/cockpit-[a-z-]+\.mjs''',
-]
-regexes = [
-  '''^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$''',
-]
-
-[[allowlists]]
-description = "API access browser route fixture plaintexts - synthetic invalid key shapes"
-targetRules = ["generic-api-key"]
-condition = "AND"
-regexTarget = "secret"
-paths = [
-  '''^scripts/lib/cockpit-api-access\.mjs$''',
-]
-regexes = [
-  '''^wf_live_v11_3_fixture_secret$''',
-  '''^wf_live_v11_5_rotated_fixture_secret$''',
-]
-
-[[allowlists]]
 description = "Generated vault maintenance migration tag after the secret ownership symbol"
 targetRules = ["generic-api-key"]
 condition = "AND"

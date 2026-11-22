@@ -19,7 +19,7 @@ tsconfig.tsbuildinfo
 .claude/
 .codex/
 .devtools/
-.sk/
+.subkit/
 .vscode/
 .idea/
 .DS_Store
@@ -32,10 +32,9 @@ tests/
 apps/engine/eval/out/
 coverage/
 .stryker-tmp*/
-reports/
+.reports/
 
 *.log
-docker/binaries/
 .tmp/
 .artifacts/
 .agent-prime.json

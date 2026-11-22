@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, asc, eq, like } from "drizzle-orm";
 import { _drainAuditWritesForTests } from "../../audit/audit.ts";
 import { ChatAdapterRegistry } from "../../chat/registry.ts";
-import { SkCliAdapter } from "../../chat/sk-cli/adapter.ts";
+import { SubkitCliAdapter } from "../../chat/subkit-cli/adapter.ts";
 import { auditLog } from "../../db/schema/audit.ts";
 import { events } from "../../db/schema/events.ts";
 import {
@@ -82,7 +82,7 @@ beforeAll(async () => {
     active: true,
   });
   const registry = new ChatAdapterRegistry();
-  registry.registerFallback("sk_cli", new SkCliAdapter(ctx.db));
+  registry.registerFallback("sk_cli", new SubkitCliAdapter(ctx.db));
   resolver = makeRegistryAdapterResolver(registry);
 }, JOURNEY_HOOK_TIMEOUT);
 

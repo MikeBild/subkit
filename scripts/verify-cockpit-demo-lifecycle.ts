@@ -199,9 +199,9 @@ function composeArgs(project: string): string[] {
     "-p",
     project,
     "-f",
-    "docker-compose.test.yml",
+    "docker/docker-compose.test.yml",
     "-f",
-    "docker-compose.demo.yml",
+    "docker/docker-compose.demo.yml",
   ];
 }
 
@@ -229,7 +229,7 @@ async function main(): Promise<void> {
   };
   const instance = resolveCockpitDemoInstance(environment, ROOT);
   const receiptPath = join(RECEIPT_ROOT, `${id}.json`);
-  const recovery = `If cleanup.attempted is true, use the receipt's exact project/container/volume identities before retrying docker compose -p ${instance.project} -f docker-compose.test.yml -f docker-compose.demo.yml down --volumes --remove-orphans from ${ROOT}; remove the private state path only after its instance marker matches ${instance.project}. If cleanup.attempted is false, retain state and receipt; first inspect Docker identities for the exact generated project and compare them with the receipt and default demo identity. Only after confirming that every resource belongs exclusively to this disposable project may the same project-scoped down command be run. If identity is uncertain or isolation preflight failed, leave resources untouched for manual recovery. Never use global prune.`;
+  const recovery = `If cleanup.attempted is true, use the receipt's exact project/container/volume identities before retrying docker compose -p ${instance.project} -f docker/docker-compose.test.yml -f docker/docker-compose.demo.yml down --volumes --remove-orphans from ${ROOT}; remove the private state path only after its instance marker matches ${instance.project}. If cleanup.attempted is false, retain state and receipt; first inspect Docker identities for the exact generated project and compare them with the receipt and default demo identity. Only after confirming that every resource belongs exclusively to this disposable project may the same project-scoped down command be run. If identity is uncertain or isolation preflight failed, leave resources untouched for manual recovery. Never use global prune.`;
   const portCollisions = new Set<number>();
   let beforeIdentity: DockerIdentity | null = null;
   let afterIdentity: DockerIdentity | null = null;

@@ -295,9 +295,12 @@ export function SettingsPage() {
             ...current.tenant,
             display_name: workspace.display_name,
             timezone: workspace.timezone,
+            language: workspace.language,
           },
         }));
-        setPersonal(({ workspaceName: _name, timezone: _zone, ...rest }) => rest);
+        setPersonal(
+          ({ workspaceName: _name, timezone: _zone, language: _language, ...rest }) => rest,
+        );
         await Promise.all([
           sessionUpdate.refresh(),
           client.invalidateQueries({ queryKey: ["identity-memberships"] }),
@@ -532,6 +535,8 @@ export function SettingsPage() {
               onName={(workspaceName) => editPersonal({ workspaceName })}
               timezone={personal.timezone ?? session.tenant.timezone}
               onTimezone={(timezone) => editPersonal({ timezone })}
+              language={personal.language ?? session.tenant.language}
+              onLanguage={(language) => editPersonal({ language })}
               disabled={save.isPending}
               onBrandingDraft={setBranding}
             />,

@@ -14,11 +14,11 @@ Afterwards you know what your server tells the app, which two settings you can s
 
 ### What you need
 
-- An engine of version 12.0.0 or later. The update runs the migrations for the app’s sign-in.
+- An engine of version @@DESKTOP_MIN_SERVER_VERSION@@ or later. The update runs the migrations for the app’s sign-in.
 - An address with `https://`. The app only connects over `https`; it allows `http` for `localhost` alone.
 - A working way to sign in to the Cockpit in the browser. The app uses exactly this sign-in and no API key.
-- The app itself. SubKit Desktop runs on a Mac with Apple Silicon and macOS 13 or later. There is no public download yet: it comes with the public release of SubKit. Whoever has access to the repository builds the app for macOS (dmg and zip) themselves; signing and distributing is then part of it. What you need for that is listed below. The Cockpit as an installed web app works today on every system.
-- For the local capabilities (files, browser and apps on the Mac) an engine of version 12.0.0 or later.
+- The app itself. SubKit Desktop runs on a Mac with Apple Silicon and macOS 13 or later and on Windows 10 or 11 (x64). Download it for [Mac](https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-mac-arm64.dmg) or [Windows](https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-win-x64.exe); both links always serve the newest release. To build and distribute it yourself, see below. The Cockpit as an installed web app works on every system.
+- For the local capabilities (files, browser and apps on the Mac) an engine of version @@DESKTOP_MIN_SERVER_VERSION@@ or later. On Windows the app offers no local capabilities, so the server sees no device of a Windows PC.
 
 ### What the server tells the app
 
@@ -29,7 +29,7 @@ Before every connection the app reads `GET /.well-known/service-descriptor.json`
   "version": "<version>",
   "clients": {
     "desktop": {
-      "min_version": "0.1.0",
+      "min_version": "@@DESKTOP_MIN_APP_VERSION@@",
       "login": {
         "start": "/v1/identity/desktop-login/start",
         "session": "/v1/identity/desktop-session",
@@ -37,7 +37,8 @@ Before every connection the app reads `GET /.well-known/service-descriptor.json`
         "callbacks": ["subkit://callback"],
         "code_challenge_methods": ["S256"]
       },
-      "feedback_path": "/cockpit?feedback=1"
+      "feedback_path": "/cockpit?feedback=1",
+      "anonymous_feedback_path": "/v1/feedback/anonymous"
     }
   }
 }
@@ -45,7 +46,7 @@ Before every connection the app reads `GET /.well-known/service-descriptor.json`
 
 | Field | Meaning |
 | --- | --- |
-| `version` | The version of the engine. The app requires at least 12.0.0. |
+| `version` | The version of the engine. The app requires at least @@DESKTOP_MIN_SERVER_VERSION@@. |
 | `clients.desktop.min_version` | The oldest app version this server accepts. An older app asks for an update instead of signing in. |
 | `clients.desktop.login.start` | The address the app opens in the browser. |
 | `clients.desktop.login.session` | The address where the app exchanges its code for a session. |
@@ -53,6 +54,7 @@ Before every connection the app reads `GET /.well-known/service-descriptor.json`
 | `clients.desktop.login.callbacks` | Every target this server accepts. An app whose target is missing does not sign in. |
 | `clients.desktop.login.code_challenge_methods` | The accepted methods. There is only `S256`. |
 | `clients.desktop.feedback_path` | The Cockpit address that opens the “Report a bug” dialog. |
+| `clients.desktop.anonymous_feedback_path` | The route that takes a report before the app is signed in, see “Report a bug”. |
 
 When `clients.desktop` is missing, the app reports the server as too old. When `login` is missing in it, the app reports that the server does not offer the sign-in it needs.
 
@@ -62,7 +64,7 @@ Both are in the Cockpit under **Settings** and apply to the whole engine, withou
 
 | Setting | Shown in the Cockpit as | Default | Effect |
 | --- | --- | --- | --- |
-| `server.desktop_min_version` | **Minimum desktop app version** | `0.1.0` | Published as `clients.desktop.min_version`. Format: three numbers such as `1.4.0`. |
+| `server.desktop_min_version` | **Minimum desktop app version** | `@@DESKTOP_MIN_APP_VERSION@@` | Published as `clients.desktop.min_version`. Format: three numbers such as `@@SUBKIT_VERSION@@`. |
 | `server.desktop_dev_callback` | **Accept desktop development builds** | `false` | Also accepts `subkit-dev://callback` as a target. Outside `NODE_ENV=production` this applies without the setting. |
 
 This is how you raise the minimum version:
@@ -79,7 +81,7 @@ The app and the engine both enforce the minimum version. The app checks the publ
 | Confirmation page, when shown and when submitted | The same page with `426`. No code is issued. |
 | `POST /v1/identity/desktop-session` | `426` with the code `desktop_app_outdated`. The sign-in code is not consumed. The app shows “This version of the app is too old for this server. …” |
 
-A pre-release such as `1.4.0-beta.1` counts as older than `1.4.0`. The check applies to new sign-ins: an older app that is already signed in keeps its session until it expires or you revoke the device. The app names its version itself; the limit keeps honest older apps out and does not replace access control.
+A pre-release such as `@@SUBKIT_VERSION@@-beta.1` counts as older than `@@SUBKIT_VERSION@@`. The check applies to new sign-ins: an older app that is already signed in keeps its session until it expires or you revoke the device. The app names its version itself; the limit keeps honest older apps out and does not replace access control.
 
 Leave `server.desktop_dev_callback` switched off in production. Development builds are called “SubKit Dev”, use the scheme `subkit-dev://` and are meant only for developing the app.
 
@@ -138,14 +140,15 @@ When a person is deactivated, the exchange refuses with `403 user_inactive`.
 
 ### Build and distribute the app
 
-There is no public download until the public release of SubKit; this section is for those who have access to the repository. The app lives there under `apps/desktop`. A build for distribution is made there with `bun run package`. The repository does not bring the following; you supply it yourself:
+Most teams use the signed builds from the [latest release](https://github.com/MikeBild/subkit/releases/latest). This section is for building your own from the repository. The app lives there under `apps/desktop`. A build for distribution is made there with `bun run package`. The repository does not bring the following; you supply it yourself:
 
 | For | What you provide |
 | --- | --- |
 | Signing for macOS | A Developer ID certificate and the credentials for notarization. |
+| Signing for Windows | A code signing certificate (Authenticode) with a timestamp, or a cloud signing service. |
 | Updates | A place where you publish versions over `https`, and the decision to enable updates (`SUBKIT_DESKTOP_UPDATES=1` when building). |
 
-Without enabled updates the app shows “Automatic updates are not enabled in this build.” An unsigned app cannot update itself on macOS. None of these values belongs in the repository. The details are in the README file under `apps/desktop`.
+Without enabled updates the app shows “Automatic updates are not enabled in this build.” An unsigned app cannot update itself, on macOS or on Windows. None of these values belongs in the repository. The details are in the README file under `apps/desktop`.
 
 ### What the audit trail records
 
@@ -164,7 +167,7 @@ An exchange with an unknown code only appears in the engine log, not in the audi
 
 | What you see | What to do |
 | --- | --- |
-| The app reports the server as too old | Check `version` in the service descriptor. The app needs 12.0.0 or later and the section `clients.desktop`. |
+| The app reports the server as too old | Check `version` in the service descriptor. The app needs @@DESKTOP_MIN_SERVER_VERSION@@ or later and the section `clients.desktop`. |
 | The app reports that the server does not offer the sign-in it needs | The app is a development build and your server does not accept `subkit-dev://callback`, or `login` is missing in the descriptor. |
 | `400 invalid_redirect_uri` at the start | The app’s target is not in `callbacks`. Use a production build or switch on `server.desktop_dev_callback`. |
 | `401 invalid_grant` at the exchange | The code is unknown, used, expired or does not match the `code_verifier`. The person starts the sign-in again. |

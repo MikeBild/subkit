@@ -10,12 +10,12 @@ const MCP_PROTOCOL_VERSION = "2025-11-25";
 
 let env: E2EEnv;
 beforeAll(async () => {
-  process.env.SK_MCP_MODE = "admin";
+  process.env.SUBKIT_MCP_MODE = "admin";
   env = await boot("mcp-surface", { llm: "mock" });
 }, 90_000);
 afterAll(async () => {
   await shutdown(env);
-  delete process.env.SK_MCP_MODE;
+  delete process.env.SUBKIT_MCP_MODE;
 }, 30_000);
 
 class McpSession {

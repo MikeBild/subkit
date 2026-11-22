@@ -137,11 +137,11 @@ describe("base prompts — step-kind enumeration + cleanup facts", () => {
     expect(p).toContain("There is no generic Subkit web UI/dashboard");
   });
 
-  it("converse prompt (any mode) includes sk-first product-help facts", async () => {
+  it("converse prompt (any mode) includes subkit-first product-help facts", async () => {
     const p = (await basePromptFor("converse", "sk_interactive")).content;
     expect(p).toContain("/openapi.json");
     expect(p).toContain("/docs");
-    expect(p).toContain("sk mcp");
+    expect(p).toContain("subkit mcp");
     expect(p).toContain("Google Chat is a first-class chat adapter");
     expect(p).toContain("tenant_create_schedule");
     expect(p).toContain("every:<seconds>");

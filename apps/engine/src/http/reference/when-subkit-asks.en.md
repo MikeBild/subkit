@@ -29,7 +29,7 @@ Reading, searching and preparing drafts run without a question. Three things alw
 
 An action runs without a question only when all of the following conditions hold. If one is missing, the question card appears.
 
-1. **You are signed in in the browser, or it is a run of your own task.** The rule applies to you in a Cockpit session: in the browser, in the installed app or in SubKit Desktop. It also applies in a run of a task you own, when you started the run or its schedule did (see “Your request covers the whole job”). With an API key, in the `sk` command line, from an AI client over MCP and in a task run someone else started, each of these actions asks.
+1. **You are signed in in the browser, or it is a run of your own task.** The rule applies to you in a Cockpit session: in the browser, in the installed app or in SubKit Desktop. It also applies in a run of a task you own, when you started the run or its schedule did (see “Your request covers the whole job”). With an API key, in the `subkit` command line, from an AI client over MCP and in a task run someone else started, each of these actions asks.
 2. **It is a call to a connector.** The rule applies to calls that send, create or change something through a connector, and to saving a connector draft. Tools of external MCP servers and SQL statements always ask.
 3. **SubKit knows the effect, and it is ordinary.** SubKit assigns every operation an effect. Payment, deletion, publication, permissions or settings, new account and credentials always ask. So does every call with `DELETE` and every call that sets a header with credentials. When SubKit cannot tell what an operation does, it asks.
 4. **You asked for it in your own words.** Your latest message contains a request such as “Send …” or “Can you create …”. An information question such as “What would happen if …” is not a request. When the request carries a condition or a “not”, SubKit asks. The verb has to match the action: “create” does not cover sending. A request to send also covers the draft that comes before it, never the other way round.
@@ -69,10 +69,11 @@ Below the fields the card says why SubKit asks, for example “You did not name 
 2. Select **Allow once** if exactly this should happen. The action runs once.
 3. Select **Decline** if not. Nothing runs.
 
-Two things protect you from a slip:
+You can keep writing while a card is open:
 
-- **Typed text never gives an approval.** If you type “yes” into the message field while a card is open, SubKit asks “Did you mean: Allow once?”. Nothing ran. Confirm with the button or select **No, keep the card open**.
-- **A reply that changes the action runs nothing.** You then read “Your reply changes the action, so nothing ran”. Allow exactly what is shown, or select **Decline and rephrase** and send your changed request.
+- **Typed text never gives an approval.** A card that lets an action run, such as **Allow once**, takes its answer from its buttons only. If you type “yes”, it reaches SubKit as an ordinary message, nothing runs, and the card stays open.
+- **A plain question takes a typed answer.** A yes-or-no question with no action attached takes a clear “yes” or “no”. A question with options takes a reply that names exactly one option. Anything else reaches SubKit as an ordinary message, and the question stays open.
+- **A secret goes into its form only.** While a form asks for a password or key, a typed message is refused and never stored.
 
 ### Save an action as a rule
 

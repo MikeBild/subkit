@@ -198,7 +198,7 @@ export function setupAppsHttp(): void {
     });
     narrowKey = narrow.plaintext;
 
-    const dir = mkdtempSync(join(tmpdir(), "sk-apps-config-"));
+    const dir = mkdtempSync(join(tmpdir(), "subkit-apps-config-"));
     const file = join(dir, "subkit.config.json");
     await writeFile(
       file,

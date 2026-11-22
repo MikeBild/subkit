@@ -86,6 +86,7 @@ export interface ToolContext {
   principal?: import("../../auth/types.ts").ResolvedPrincipal | null;
   task_run?: import("../types.ts").TaskRunMarker | null;
   tool_call_id?: string;
+  held_tool_call_id?: string;
   assistant_message_id?: string | null;
   connector_id: string | null;
   workflow_id: string | null;

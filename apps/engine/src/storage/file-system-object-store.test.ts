@@ -39,7 +39,7 @@ import {
   resetObjectStoreForRuntimeConfig,
 } from "./object-store.ts";
 
-const base = mkdtempSync(join(tmpdir(), "sk-fs-store-"));
+const base = mkdtempSync(join(tmpdir(), "subkit-fs-store-"));
 let folders = 0;
 const freshRoot = () => {
   folders += 1;

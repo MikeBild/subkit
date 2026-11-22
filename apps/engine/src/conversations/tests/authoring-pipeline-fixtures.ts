@@ -24,7 +24,7 @@ export async function ensureConfigLoaded(): Promise<void> {
     getConfig();
     return;
   } catch {}
-  const dir = mkdtempSync(join(tmpdir(), "sk-cfg-authoring-pipeline-"));
+  const dir = mkdtempSync(join(tmpdir(), "subkit-cfg-authoring-pipeline-"));
   await loadConfig({
     env: {
       DATABASE_URL: "postgres://placeholder/authoring-pipeline",

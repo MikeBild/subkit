@@ -64,7 +64,7 @@ describe("GET /v1/workflows/{id}/invocation", () => {
       },
     });
     expect(body.cli).toEqual({
-      command: `sk workflows run ${wf.slug} --input '${JSON.stringify(body.input.sample)}'`,
+      command: `subkit workflows run ${wf.slug} --input '${JSON.stringify(body.input.sample)}'`,
       environment: "dev",
     });
     expect(body.hooks).toEqual([]);
@@ -221,7 +221,7 @@ describe("GET /v1/workflows/{id}/invocation", () => {
     expect(text).not.toContain(ctx.apiKey);
     for (const word of ["secret_ciphertext", "secret_iv", "secret_auth_tag", "ciphertext"])
       expect(text).not.toContain(word);
-    expect(text).toContain("SK_API_KEY");
+    expect(text).toContain("SUBKIT_API_KEY");
   });
 
   test("a stored approval for the running version makes that environment live", async () => {
@@ -387,20 +387,20 @@ describe("the copyable command", () => {
     async (slug) => {
       const { id, command } = await commandFor(slug);
       expect(command).not.toContain(slug);
-      expect(command).toBe(`sk workflows run ${id} --input '{}'`);
+      expect(command).toBe(`subkit workflows run ${id} --input '{}'`);
     },
   );
 
   test("a plain slug is printed as it is", async () => {
     const { command } = await commandFor("daily-report_2");
-    expect(command).toBe("sk workflows run daily-report_2 --input '{}'");
+    expect(command).toBe("subkit workflows run daily-report_2 --input '{}'");
   });
 
   test("an apostrophe in the sample cannot end the input word early", async () => {
     const wf = await createWorkflow({ input_schema_sample: { note: "it's $HOME" } });
     const { body } = await invocation(wf.id);
     expect(body.cli.command).toBe(
-      `sk workflows run ${wf.slug} --input '{"note":"it'\\''s $HOME"}'`,
+      `subkit workflows run ${wf.slug} --input '{"note":"it'\\''s $HOME"}'`,
     );
   });
 });

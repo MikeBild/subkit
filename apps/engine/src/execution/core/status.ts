@@ -107,6 +107,33 @@ export function crashRecoveryOutcome(
   };
 }
 
+export const ENGINE_STOPPED_DURING_WRITE = "engine_stopped_during_write";
+
+export const WRITE_OUTCOME_GUIDANCE =
+  "Check in the target system whether the change arrived before you run it again.";
+
+interface InterruptedWriteNotice {
+  code: typeof ENGINE_STOPPED_DURING_WRITE;
+  step_id: string;
+  message: string;
+  guidance: string;
+}
+
+export function interruptedWriteNotice(
+  write_step_keys: readonly string[],
+): InterruptedWriteNotice | null {
+  const [first] = write_step_keys;
+  if (first === undefined) return null;
+  const named = write_step_keys.map((key) => `“${key}”`).join(", ");
+  const subject = write_step_keys.length === 1 ? `step ${named} was` : `steps ${named} were`;
+  return {
+    code: ENGINE_STOPPED_DURING_WRITE,
+    step_id: first,
+    message: `The engine stopped while ${subject} sending a change. It may have reached the target.`,
+    guidance: WRITE_OUTCOME_GUIDANCE,
+  };
+}
+
 export type ExecutionOutcome =
   | { type: "completed" }
   | { type: "failed" }

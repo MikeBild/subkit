@@ -18,7 +18,7 @@ let restoreStdout: () => void;
 let restoreStderr: () => void;
 
 beforeEach(async () => {
-  dir = mkdtempSync(join(tmpdir(), "sk-cfg-logs-"));
+  dir = mkdtempSync(join(tmpdir(), "subkit-cfg-logs-"));
   cfgPath = join(dir, "subkit.config.json");
   captured = [];
 
@@ -102,12 +102,12 @@ describe("config loader — structured logs", () => {
     expect(logLines((l) => l.module === "config" && l.action === "loaded").length).toBe(2);
   });
 
-  test("an SK_OVERRIDE_* environment value never reaches the configuration", async () => {
+  test("an SUBKIT_OVERRIDE_* environment value never reaches the configuration", async () => {
     await loadConfig({
       env: {
         DATABASE_URL: "postgres://x",
         NODE_ENV: "test",
-        SK_OVERRIDE_LLM_API_KEY: "env-value",
+        SUBKIT_OVERRIDE_LLM_API_KEY: "env-value",
       },
       configPathOverride: cfgPath,
     });

@@ -4,6 +4,7 @@ import type { FlowPath, Screen } from "./screens-model.ts";
 export const PATH_STEPS = {
   server: ["connect", "signin", "workspace", "notifications", "diagnostics", "done"],
   invite: ["invite", "signin", "workspace", "notifications", "diagnostics", "done"],
+  create: ["connect", "signin", "workspace", "notifications", "diagnostics", "done"],
 } as const satisfies Record<FlowPath, readonly string[]>;
 
 export type PathStep = (typeof PATH_STEPS)[FlowPath][number];

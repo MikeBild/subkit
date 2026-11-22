@@ -13,7 +13,7 @@ let connectorId: string;
 beforeAll(async () => {
   testEnv.MASTER_KEY = "c".repeat(64);
   testEnv.LLM_PROVIDER = "mock";
-  testEnv.SK_MCP_MODE = "authoring";
+  testEnv.SUBKIT_MCP_MODE = "authoring";
   resetMockProvider();
   suite = await startMcpTestSuite("conversations", { withQueue: true });
   await setConfigKey("server.public_base_url", suite.http.baseUrl, { force: true });
@@ -36,7 +36,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await suite.cleanup();
-  delete testEnv.SK_MCP_MODE;
+  delete testEnv.SUBKIT_MCP_MODE;
 });
 
 interface GetResult {

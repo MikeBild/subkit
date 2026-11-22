@@ -13,7 +13,7 @@ version: 4
 
 # Error Recovery
 
-Tools in sk return a uniform error envelope when they fail. This skill is
+Tools in subkit return a uniform error envelope when they fail. This skill is
 the playbook: how to read it, how to diagnose, and how to fix without
 thrashing.
 
@@ -63,7 +63,7 @@ or `details.body`.
 
 Based on the code:
 
-- `placeholder_unresolved` → `load_skill("sk-concepts")` to re-check token
+- `placeholder_unresolved` → `load_skill("subkit-concepts")` to re-check token
   shapes, or the relevant driver skill if the token refers to a connector.
 - `http_4xx` / `http_5xx` → `load_skill("http-connectors")`.
 - Postgres error → `load_skill("postgres-connectors")`.
@@ -160,7 +160,7 @@ have cost another round-trip guessing `closedate_unix` or similar.
 
 ## See also
 
-- `sk-concepts.md` — placeholder tokens and scope paths.
+- `subkit-concepts.md` — placeholder tokens and scope paths.
 - `workflow-authoring.md` — the six-phase authoring flow (probe is step 3).
 - `self-healing.md` — how repeated failures become patch candidates.
 - `rbac-and-scopes.md` — `permission_denied` recovery.

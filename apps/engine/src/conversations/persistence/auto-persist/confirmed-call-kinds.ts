@@ -97,6 +97,7 @@ export async function executeConfirmedToolCall(
     {
       ...ctx,
       principal: approver,
+      ...(p.elicitation.tool_call_id ? { held_tool_call_id: p.elicitation.tool_call_id } : {}),
       ...(usesDirectConnectorApproval(claim.tool)
         ? {
             direct_connector_approval: {

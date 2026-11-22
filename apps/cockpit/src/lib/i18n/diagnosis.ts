@@ -1,16 +1,15 @@
 export const diagnosisEn = {
-  "familyFailure.expired.signIn": "Sign in again",
-  "familyFailure.expired.description": "Sign in again to continue.",
-  "familyFailure.expired.title": "Your session has expired",
-  "familyFailure.unreachable.title": "SubKit is currently unreachable",
-  "familyFailure.notFound.title": "This page does not exist",
-  "familyFailure.notFound.description": "This address is not part of the current cockpit.",
-  "familyFailure.fatal.title": "This page could not be shown",
-  "familyFailure.fatal.description":
-    "The view could not be loaded. Try again or return to the overview.",
-  "familyFailure.bootstrap.description": "The cockpit could not be loaded. Try again.",
-  "familyFailure.retry": "Try again",
-  "familyFailure.overview": "To the overview",
+  "failure.expired.signIn": "Sign in again",
+  "failure.expired.description": "Sign in again to continue.",
+  "failure.expired.title": "Your session has expired",
+  "failure.unreachable.title": "SubKit is currently unreachable",
+  "failure.notFound.title": "This page does not exist",
+  "failure.notFound.description": "This address is not part of the current cockpit.",
+  "failure.fatal.title": "This page could not be shown",
+  "failure.fatal.description": "The view could not be loaded. Try again or return to the overview.",
+  "failure.bootstrap.description": "The cockpit could not be loaded. Try again.",
+  "failure.retry": "Try again",
+  "failure.overview": "To the overview",
   "error.title": "This page could not be shown",
   "error.description":
     "Something in this view failed while rendering. Nothing was changed — try again, or go back to the overview.",
@@ -116,19 +115,18 @@ export const diagnosisEn = {
 } as const;
 
 export const diagnosisDe: Record<keyof typeof diagnosisEn, string> = {
-  "familyFailure.expired.signIn": "Neu anmelden",
-  "familyFailure.expired.description": "Melde dich erneut an, um fortzufahren.",
-  "familyFailure.expired.title": "Deine Sitzung ist abgelaufen",
-  "familyFailure.unreachable.title": "SubKit ist gerade nicht erreichbar",
-  "familyFailure.notFound.title": "Diese Seite gibt es nicht",
-  "familyFailure.notFound.description": "Diese Adresse gehört nicht zum aktuellen Cockpit.",
-  "familyFailure.fatal.title": "Diese Seite konnte nicht angezeigt werden",
-  "familyFailure.fatal.description":
+  "failure.expired.signIn": "Neu anmelden",
+  "failure.expired.description": "Melde dich erneut an, um fortzufahren.",
+  "failure.expired.title": "Deine Sitzung ist abgelaufen",
+  "failure.unreachable.title": "SubKit ist gerade nicht erreichbar",
+  "failure.notFound.title": "Diese Seite gibt es nicht",
+  "failure.notFound.description": "Diese Adresse gehört nicht zum aktuellen Cockpit.",
+  "failure.fatal.title": "Diese Seite konnte nicht angezeigt werden",
+  "failure.fatal.description":
     "Die Ansicht konnte nicht geladen werden. Versuche es erneut oder kehre zur Übersicht zurück.",
-  "familyFailure.bootstrap.description":
-    "Das Cockpit konnte nicht geladen werden. Versuche es erneut.",
-  "familyFailure.retry": "Erneut versuchen",
-  "familyFailure.overview": "Zur Übersicht",
+  "failure.bootstrap.description": "Das Cockpit konnte nicht geladen werden. Versuche es erneut.",
+  "failure.retry": "Erneut versuchen",
+  "failure.overview": "Zur Übersicht",
   "error.title": "Diese Seite ließ sich nicht anzeigen",
   "error.description":
     "Beim Aufbau dieser Ansicht ist etwas schiefgegangen. Geändert wurde nichts — versuch es erneut oder geh zurück zur Übersicht.",

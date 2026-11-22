@@ -2,7 +2,7 @@
 slug: engine-status-and-capabilities
 scope: global
 title: Engine Status & Capabilities
-description: Mental model for sk's runtime self-inspection — engine status, health, identity, effective permissions, operator health digest, and token/LLM usage — across REST and MCP tools. Consult the sk-ref-status knowledge source for exhaustive field and endpoint detail.
+description: Mental model for subkit's runtime self-inspection — engine status, health, identity, effective permissions, operator health digest, and token/LLM usage — across REST and MCP tools. Consult the sk-ref-status knowledge source for exhaustive field and endpoint detail.
 activates_when: [{"kind":"intent_keyword","word":"status"},{"kind":"intent_keyword","word":"health"},{"kind":"intent_keyword","word":"capabilities"},{"kind":"intent_keyword","word":"ai budget"},{"kind":"intent_keyword","word":"whoami"}]
 side_effects: read
 idempotency: none
@@ -13,7 +13,7 @@ version: 1
 
 # Engine Status & Capabilities
 
-Runtime self-inspection answers four questions without guessing: what is sk's state, who am I, what may I do, and how much have I spent? The same reads are exposed two ways — REST endpoints and MCP tools (underscore names, never dots). Every read is tenant-scoped; self-introspection is gated by authentication only, operational posture needs a permission.
+Runtime self-inspection answers four questions without guessing: what is subkit's state, who am I, what may I do, and how much have I spent? The same reads are exposed two ways — REST endpoints and MCP tools (underscore names, never dots). Every read is tenant-scoped; self-introspection is gated by authentication only, operational posture needs a permission.
 
 ## Key facts
 

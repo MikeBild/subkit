@@ -15,7 +15,7 @@ export function describeRunWorkflowError(error: unknown): {
     return {
       error_code: code,
       message:
-        "Sensitive workflows cannot run on conversation surfaces. Use an authenticated non-chat run through sk CLI or Cockpit, then read the sensitive result as the original caller. Keep execution_privacy=sensitive.",
+        "Sensitive workflows cannot run on conversation surfaces. Use an authenticated non-chat run through subkit CLI or Cockpit, then read the sensitive result as the original caller. Keep execution_privacy=sensitive.",
       recommended_mode: "execution",
       recoverable: false,
     };

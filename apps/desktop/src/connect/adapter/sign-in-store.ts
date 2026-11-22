@@ -128,7 +128,10 @@ export function createSignInStore(bridge: ConnectBridge, options: StoreOptions =
         return;
       }
       case "joinInvite":
-        void bridge.joinInvite(effect.link);
+        bridge.joinInvite(effect.link).then(
+          (result) => apply(signInAnswered(result)),
+          () => apply(signInAnswered(null)),
+        );
         return;
     }
   }

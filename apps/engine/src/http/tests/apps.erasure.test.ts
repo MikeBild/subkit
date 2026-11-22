@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { and, desc, eq } from "drizzle-orm";
-import { EngineClient } from "../../../../sk/src/engine-client.ts";
+import { EngineClient } from "../../../../subkit/src/engine-client.ts";
 import {
   apiKeys,
   auditLog,
@@ -227,7 +227,7 @@ describe("erasing an app user over HTTP", () => {
   });
 });
 
-describe("erasing an app user parity between HTTP and the sk client", () => {
+describe("erasing an app user parity between HTTP and the subkit client", () => {
   async function appUser() {
     const subject = nextUuid();
     const bearer = await token(subject);
@@ -265,7 +265,7 @@ describe("erasing an app user parity between HTTP and the sk client", () => {
     ).toBe(404);
   });
 
-  test("unknown ids, foreign apps and refused callers fail the same on the sk client", async () => {
+  test("unknown ids, foreign apps and refused callers fail the same on the subkit client", async () => {
     const { bearer, userId } = await appUser();
     await expect(client(ctx.apiKey).eraseAppUser("nokit", userId)).rejects.toMatchObject({
       status: 404,
@@ -283,7 +283,7 @@ describe("erasing an app user parity between HTTP and the sk client", () => {
     expect(own?.deleted_at).toBeNull();
   });
 
-  test("a user with access outside the app is a conflict on the sk client", async () => {
+  test("a user with access outside the app is a conflict on the subkit client", async () => {
     const { userId } = await appUser();
     await ctx.db.insert(userIdentities).values({
       tenant_id: ctx.tenantId,

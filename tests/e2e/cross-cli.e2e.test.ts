@@ -19,7 +19,7 @@ afterAll(async () => {
 }, 30_000);
 
 describe("admin create → member query", () => {
-  test("workflow created by admin is visible to member via sk", async () => {
+  test("workflow created by admin is visible to member via subkit", async () => {
     const wfDef = JSON.stringify({
       name: "cross-cli-test",
       slug: "cross-cli-test",
@@ -39,7 +39,7 @@ describe("admin create → member query", () => {
       env,
       persona: "admin",
     });
-    expectSuccess(createResult, "sk workflows create (admin)");
+    expectSuccess(createResult, "subkit workflows create (admin)");
 
     const wfs = await runJson<Array<{ id: string; name: string }>>(["workflows", "list"], {
       env,
@@ -54,15 +54,15 @@ describe("admin create → member query", () => {
   }, 90_000);
 });
 
-describe("sk converse → sk audit", () => {
-  test("sk conversation appears in audit log", async () => {
-    const skResult = await cli(["--p", "list all available workflows", "--output", "json"], {
+describe("subkit converse → subkit audit", () => {
+  test("subkit conversation appears in audit log", async () => {
+    const subkitResult = await cli(["--p", "list all available workflows", "--output", "json"], {
       env,
       persona: "member",
       timeout: 60_000,
     });
-    expectSuccess(skResult, "sk converse");
-    const data = JSON.parse(skResult.stdout) as { session_id: string };
+    expectSuccess(subkitResult, "subkit converse");
+    const data = JSON.parse(subkitResult.stdout) as { session_id: string };
     expect(data.session_id).toBeTruthy();
 
     const auditOut = await run(["audit", "query", "--limit", "20"], {

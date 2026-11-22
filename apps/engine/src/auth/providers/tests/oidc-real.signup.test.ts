@@ -65,9 +65,7 @@ describe("oidc provider — auth.enable_signup gate", () => {
     expect(res.status).toBe(403);
     expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
     const html = await res.text();
-    expect(html).toMatch(
-      /<h1\b[^>]*data-family-slot="auth-heading"[^>]*>Account not assigned<\/h1>/,
-    );
+    expect(html).toMatch(/<h1\b[^>]*data-sk-slot="auth-heading"[^>]*>Account not assigned<\/h1>/);
     expect(html).toContain(
       "This company account is not assigned to SubKit. Contact an administrator.",
     );

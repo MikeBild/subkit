@@ -45,7 +45,7 @@ const COMPACTION_SCRUB_WINDOW_CHARS = COMPACTION_MESSAGE_MAX_CHARS * 8;
 const COMPACTION_OMISSION_RESERVE_CHARS = 48;
 
 const COMPACTION_INSTRUCTIONS = [
-  "Summarize the earlier part of this conversation between a user and the sk assistant so the assistant can continue without the original messages.",
+  "Summarize the earlier part of this conversation between a user and the subkit assistant so the assistant can continue without the original messages.",
   "Keep every identifier verbatim: ids, slugs, names, URLs.",
   "Cover, in this order:",
   "1. Decisions taken.",

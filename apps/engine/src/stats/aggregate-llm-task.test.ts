@@ -45,6 +45,7 @@ async function seedTask(tenant: string, name: string): Promise<string> {
   const [row] = await testDb.db
     .insert(tasks)
     .values({
+      locale: "de",
       tenant_id: tenant,
       name,
       owner_id: OWNER,

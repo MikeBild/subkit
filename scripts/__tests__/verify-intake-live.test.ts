@@ -8,7 +8,7 @@ import {
 } from "../verify-intake-live.ts";
 
 const tenantId = "00000000-0000-4000-8000-000000000001";
-const env = { SK_INTAKE_TEST_KEY: "restricted-test-key" };
+const env = { SUBKIT_INTAKE_TEST_KEY: "restricted-test-key" };
 
 const proposalUuid = "00000000-0000-4000-8000-0000000000aa";
 

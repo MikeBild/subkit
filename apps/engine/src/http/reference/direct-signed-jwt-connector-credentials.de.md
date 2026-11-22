@@ -75,7 +75,7 @@ gegen bestehende Freigaben.
 Hänge den Schlüssel über die CLI an einen bereits konfigurierten Connector an oder ersetze ihn:
 
 ```sh
-sk vault attach <connector-id> --mode signed_jwt --json < ./provider-key.p8
+subkit vault attach <connector-id> --mode signed_jwt --json < ./provider-key.p8
 ```
 
 Die CLI liest die Datei lokal und sendet ihren Inhalt nur an den authentifizierten

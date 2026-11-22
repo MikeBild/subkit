@@ -49,7 +49,7 @@ const connect: ConnectBridge = {
   answerNotifications: async () => {},
   answerDiagnostics: async () => {},
   checkInvite: () => ipcRenderer.invoke("preview:connect-invite"),
-  joinInvite: async () => {},
+  joinInvite: async () => null,
   onState: () => {},
 };
 

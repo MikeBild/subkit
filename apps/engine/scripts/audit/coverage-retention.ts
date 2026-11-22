@@ -1,5 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { lstatSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+} from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 export interface CoveragePruneAction {
@@ -150,4 +158,43 @@ export function pruneExpiredCoverageRawRuns(
         action.action === "delete" ? claim(root, action, now, pidLive) : action,
       )
     : actions;
+}
+
+export function pruneSupersededCoverageRuns(
+  coverageDir: string,
+  options: { apply?: boolean } = {},
+): CoveragePruneAction[] {
+  const coverage = resolve(coverageDir);
+  const runs = join(coverage, "runs");
+  let latest: unknown;
+  try {
+    latest = (
+      JSON.parse(readFileSync(join(coverage, "latest.json"), "utf8")) as { run_id?: unknown }
+    ).run_id;
+    noSymlink(runs, coverage);
+    if (!lstatSync(runs).isDirectory()) return [];
+  } catch {
+    return [];
+  }
+  if (typeof latest !== "string") return [];
+  const actions = readdirSync(runs, { withFileTypes: true })
+    .filter((entry) => !entry.name.startsWith("."))
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((entry): CoveragePruneAction => {
+      if (entry.name === latest)
+        return { runId: entry.name, action: "skip", reason: "latest published run" };
+      if (!entry.isDirectory() || entry.isSymbolicLink() || !/^[a-z0-9-]{10,200}$/.test(entry.name))
+        return { runId: entry.name, action: "skip", reason: "not a published run directory" };
+      if (existsSync(join(coverage, "raw", "runs", entry.name)))
+        return { runId: entry.name, action: "skip", reason: "raw run still leased" };
+      return { runId: entry.name, action: "delete", reason: "superseded published run" };
+    });
+  if (!options.apply) return actions;
+  for (const action of actions) {
+    if (action.action !== "delete") continue;
+    const claimed = join(runs, `.${action.runId}.pruning-${randomUUID()}`);
+    renameSync(join(runs, action.runId), claimed);
+    rmSync(claimed, { recursive: true, force: true, maxRetries: 1 });
+  }
+  return actions;
 }

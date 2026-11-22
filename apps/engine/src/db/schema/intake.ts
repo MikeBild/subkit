@@ -138,7 +138,7 @@ export const intakeItems = subkit.table(
     state: intakeItemStateEnum("state").notNull().default("collected"),
     version: integer("version").notNull().default(1),
     collected_by_type: text("collected_by_type").notNull(),
-    collected_by_id: uuid("collected_by_id").notNull(),
+    collected_by_id: uuid("collected_by_id"),
     admitted_target_kind: text("admitted_target_kind").$type<IntakeTargetKind>(),
     admitted_target_id: uuid("admitted_target_id"),
     attachment_file_id: uuid("attachment_file_id"),
@@ -150,7 +150,11 @@ export const intakeItems = subkit.table(
     index("intake_items_tenant_state_updated_idx").on(t.tenant_id, t.state, t.updated_at),
     check(
       "intake_items_collected_by_type_check",
-      sql`${t.collected_by_type} IN ('user', 'system_account')`,
+      sql`${t.collected_by_type} IN ('user', 'system_account', 'anonymous')`,
+    ),
+    check(
+      "intake_items_collected_by_id_check",
+      sql`(${t.collected_by_type} = 'anonymous') = (${t.collected_by_id} IS NULL)`,
     ),
     check(
       "intake_items_admitted_target_check",

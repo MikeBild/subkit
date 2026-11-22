@@ -32,7 +32,7 @@ async function ensureConfigLoaded(): Promise<void> {
     getConfig();
     return;
   } catch {}
-  const dir = mkdtempSync(join(tmpdir(), "sk-cfg-critic-review-"));
+  const dir = mkdtempSync(join(tmpdir(), "subkit-cfg-critic-review-"));
   await loadConfig({
     env: {
       DATABASE_URL: "postgres://placeholder/critic-review",

@@ -58,7 +58,7 @@ describe("the section list", () => {
     expect(ENGINE_SECTIONS.length).toBeGreaterThan(15);
   });
 
-  test("every engine section is either in the Cockpit or a server section for sk", () => {
+  test("every engine section is either in the Cockpit or a server section for subkit", () => {
     const placed = SETTING_AREAS.flatMap((group) => group.sections);
     expect(new Set(placed).size).toBe(placed.length);
     expect([...placed].sort()).toEqual([...COCKPIT_SECTIONS].sort());

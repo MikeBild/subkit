@@ -31,7 +31,7 @@ import type { McpAuthConfig } from "./registry.ts";
 import { updateMcpAuthConfig } from "./registry.ts";
 import { OAuthTokenEvidence } from "./token-response-evidence.ts";
 
-const CLIENT_NAME = "sk-mcp-client";
+const CLIENT_NAME = "subkit-mcp-client";
 
 export interface McpDbOAuthClientProviderInput {
   db: Db;

@@ -1,6 +1,6 @@
 ---
 slug: sk-ref-knowledge-and-skills
-name: sk Platform Reference — Knowledge Sources & Skills
+name: subkit Platform Reference — Knowledge Sources & Skills
 description: How Skills and Knowledge Sources differ, when to use which, how the engine processes and searches knowledge, and how to model a whole business domain with a connector plus skills plus knowledge sources.
 tags: [sk-platform-reference, skills, knowledge-sources, domain-modeling, concepts]
 scope: global
@@ -9,7 +9,7 @@ version: 4
 
 # Knowledge Sources & Skills
 
-sk carries organization-specific context in two primitives. They look similar
+subkit carries organization-specific context in two primitives. They look similar
 from the outside — both feed the AI while it authors, discovers, and repairs
 workflows — but they play opposite roles.
 
@@ -72,7 +72,7 @@ learns what works; humans decide what becomes canonical.
 
 ## Modeling a business domain
 
-The two primitives are strongest together. To teach sk a whole domain — an
+The two primitives are strongest together. To teach subkit a whole domain — an
 expense policy, a contract-review process, a compliance framework — stand up
 three things around it:
 
@@ -97,13 +97,13 @@ as Knowledge Sources.
 
 Domains connect Skills and Knowledge Sources to external coding agents
 (Claude Code, Codex). A domain is the tag `domain:<slug>` on both primitives;
-a repo declares which domains it works in via `.sk/agent.json` (written by
-`sk agent init`).
+a repo declares which domains it works in via `.subkit/agent.json` (written by
+`subkit agent init`).
 
 - **In:** every new session gets a budgeted briefing (`GET /v1/agent/briefing`)
   carrying the domain's active Skills verbatim and an INDEX of its Knowledge
   Sources — details stay behind `search_knowledge` so sessions look up
-  instead of preloading. `sk skills sync` additionally materializes the Skills
+  instead of preloading. `subkit skills sync` additionally materializes the Skills
   as SKILL.md files for offline use.
 - **Back:** session transcripts (`POST /v1/agent/sessions`, wired by the
   SessionEnd hook) and explicit `save_learning` calls collect Intake items with
@@ -119,19 +119,19 @@ a repo declares which domains it works in via `.sk/agent.json` (written by
 
 - **Knowledge Source** — self-serve. In a Conversation, upload or paste the
   document and ask to add it as a Knowledge Source (tag it while you are there).
-  Scriptable: `sk knowledge-sources create --file ./runbook.md --tags "..."`, or
+  Scriptable: `subkit knowledge-sources create --file ./runbook.md --tags "..."`, or
   `POST /v1/knowledge-sources`.
 - **Knowledge bundle (whole directory)** — import a markdown directory
   (Obsidian vault, agent wiki, OKF bundle) as ONE source with one passage per
-  file: `sk knowledge-sources import ./team-wiki` or `/knowledge import
+  file: `subkit knowledge-sources import ./team-wiki` or `/knowledge import
   ./team-wiki` in the REPL (`POST /v1/knowledge-sources/bundle`). Upsert by
   slug — re-imports of unchanged content are no-ops. Frontmatter is read
   tolerantly: `type: Runbook` becomes a filterable `type:runbook` tag; files
   without frontmatter import fine; `index.md`/`log.md` are skipped.
 
 - **Skill** — operator-owned. Author one in a Conversation, from the CLI
-  (`sk skills create --file ./skill.json`, a SkillDef JSON), or promote a
-  detected Skill Candidate (`sk skill-candidates approve <id>`). Skills are not
+  (`subkit skills create --file ./skill.json`, a SkillDef JSON), or promote a
+  detected Skill Candidate (`subkit skill-candidates approve <id>`). Skills are not
   created silently — a human always confirms what becomes canonical guidance.
 
 ## Reading knowledge back

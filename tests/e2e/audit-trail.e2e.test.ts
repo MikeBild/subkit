@@ -35,7 +35,7 @@ interface AuditListResponse {
 }
 
 describe("audit trail over CLI", () => {
-  test("`sk skills list --json` returns an array", async () => {
+  test("`subkit skills list --json` returns an array", async () => {
     const rows = await runJson<unknown[]>(["skills", "list"], {
       env,
       persona: "admin",

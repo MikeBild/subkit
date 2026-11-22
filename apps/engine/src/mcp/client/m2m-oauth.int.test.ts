@@ -59,7 +59,7 @@ beforeAll(async () => {
   await closeDb();
   testEnv.DATABASE_URL = ctx.url;
 
-  const cfgDir = mkdtempSync(join(tmpdir(), "sk-cfg-m2m-oauth-"));
+  const cfgDir = mkdtempSync(join(tmpdir(), "subkit-cfg-m2m-oauth-"));
   _resetConfigForTests();
   await loadConfig({
     env: { DATABASE_URL: ctx.url, NODE_ENV: "test" },

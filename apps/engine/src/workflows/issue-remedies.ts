@@ -130,7 +130,8 @@ const REQUEST_REFUSAL_REMEDY: Partial<Record<RequestBoundaryRefusal, string>> = 
     "is not a plain string, or names a root other than `input`, `scope` or `item`. Only a query " +
     'value that is one whole placeholder (`"${scope.window.data.start}"`) can be bounded, with an ' +
     "entry of its own in `boundary.variables`. Build the full value in a transform first if text " +
-    "has to surround it.",
+    'has to surround it. A value made only of vault handles (`"${secret.crm-token}"`) needs no ' +
+    "entry: the approval names the vault item.",
   runtime_header:
     "`boundary` cannot cover this step: a header value is a runtime placeholder. Make the header " +
     "a literal, or leave this step to concrete-run review.",

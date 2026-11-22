@@ -13,6 +13,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, join, relative, resolve, sep } from "node:path";
+import { pruneSupersededCoverageRuns } from "./coverage-retention.ts";
 
 export interface InputSnapshot {
   files: string[];
@@ -256,6 +257,11 @@ export function removeCoverageRawRunAfterReceipt(lease: CoverageRunLease): void 
     throw new Error(`refusing to remove an unowned or finalized coverage raw run: ${lease.rawDir}`);
   rmSync(lease.rawDir, { recursive: true, force: true });
   activeLeaseTokens.delete(lease.rawDir);
+  try {
+    pruneSupersededCoverageRuns(lease.coverageDir, { apply: true });
+  } catch (error) {
+    console.warn(`coverage retention skipped: ${(error as Error).message}`);
+  }
 }
 
 export function createDirectTargetProof(target: string, lcov: string): DirectTargetProof {

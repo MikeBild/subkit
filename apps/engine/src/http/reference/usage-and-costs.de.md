@@ -109,7 +109,8 @@ Lange Unterhaltungen werden teurer, weil jede Antwort den bisherigen Verlauf mit
 **Fehlgeschlagene KI-Aufrufe** öffnest du über die Kachel **KI-Aufrufe**.
 Fehlgeschlagene Aufrufe können trotzdem kosten. Das Sheet nennt den Betrag.
 Unter **Wo sie auftreten** siehst du Workflow oder Unterhaltung und den Grund:
-**Fehler beim Anbieter**, **Eingabe zu groß** oder **KI-Budget erreicht**.
+**Fehler beim Anbieter**, **Eingabe zu groß**, **API-Schlüssel abgelehnt** oder **KI-Budget erreicht**.
+Lehnt der Anbieter den API-Schlüssel während eines Runs ab, bittet dich **Braucht dich**, den Schlüssel unter **Einstellungen** › **KI-Assistent** neu zu verbinden.
 
 ### Das KI-Budget
 
@@ -181,13 +182,13 @@ Klappe **Technische Angaben** am Ende der Seite auf. Dort stehen:
 
 ### Dasselbe im Terminal
 
-Dieselben Zahlen holst du mit `sk stats llm` oder über die HTTP-API mit `GET /v1/stats/llm`. Jede Antwort enthält Token, Kosten und die Ersparnis durch den Cache. Wie du `sk` einrichtest, steht im Kapitel „Die sk-CLI auf deinem Rechner verwenden“.
+Dieselben Zahlen holst du mit `subkit stats llm` oder über die HTTP-API mit `GET /v1/stats/llm`. Jede Antwort enthält Token, Kosten und die Ersparnis durch den Cache. Wie du `subkit` einrichtest, steht im Kapitel „Die subkit-CLI auf deinem Rechner verwenden“.
 
 ```bash
-sk stats llm --bucket day --from <from> --to <to> --group-by workflow
+subkit stats llm --bucket day --from <from> --to <to> --group-by workflow
 ```
 
 - `group_by` schlüsselt nach `model`, `flow`, `user`, `workflow`, `conversation`, `execution` oder `task` auf. Höchstens zwei Werte zugleich.
-- `result=` filtert nach Ergebnis: `success`, `quota_exhausted`, `context_too_large` oder `error`.
+- `result=` filtert nach Ergebnis: `success`, `quota_exhausted`, `context_too_large`, `key_rejected` oder `error`.
 - `workflow_id=` zeigt nur die Aufrufe eines Workflows.
 - Aufschlüsselungen nach `user`, `conversation` oder `task` brauchen `stats:read:all`. Das gilt nicht, wenn `user_id` deine eigene Kennung ist.

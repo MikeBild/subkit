@@ -351,7 +351,7 @@ export async function loadConfig(
         .map((i) => `  - ${i.path.join(".") || "(root)"}: ${i.message}`)
         .join("\n");
       throw new ConfigLoaderError(
-        `subkit.config.json validation failed at ${configPath}:\n${issues}\n\nSet missing values via the Cockpit, settings HTTP/MCP API, or \`sk settings configure\`.`,
+        `subkit.config.json validation failed at ${configPath}:\n${issues}\n\nSet missing values via the Cockpit, settings HTTP/MCP API, or \`subkit settings configure\`.`,
       );
     }
     throw err;
@@ -584,7 +584,7 @@ export async function setConfigKey(
   if (requiresRestart && readEnv("NODE_ENV") === "production" && !opts.force) {
     throw new RestartRequiredError(
       `${leafPath.join(".")} requires a restart in production. Re-run with the --force flag ` +
-        `(sk settings set … --force) to apply it now; the write takes effect in this process ` +
+        `(subkit settings set … --force) to apply it now; the write takes effect in this process ` +
         `immediately, and "restart" only matters for other running instances.`,
     );
   }

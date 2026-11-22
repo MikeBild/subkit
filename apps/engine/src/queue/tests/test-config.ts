@@ -8,7 +8,7 @@ export async function ensureTestConfig(): Promise<void> {
     getConfig();
     return;
   } catch {}
-  const dir = mkdtempSync(join(tmpdir(), "sk-cfg-test-"));
+  const dir = mkdtempSync(join(tmpdir(), "subkit-cfg-test-"));
   await loadConfig({
     env: { DATABASE_URL: "postgres://placeholder/test", NODE_ENV: "test" },
     configPathOverride: join(dir, "subkit.config.json"),

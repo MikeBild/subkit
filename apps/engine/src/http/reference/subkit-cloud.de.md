@@ -13,6 +13,17 @@ audience: public
 Mit SubKit Cloud läuft SubKit für dich. Du installierst nichts und betreibst keine eigene Engine.
 Du meldest dich im Browser an und arbeitest im Cockpit deines Arbeitsbereichs.
 
+### Kurz und knapp
+
+1. Bitte über das [Kontaktformular](https://subkit.mikebild.dev/kontakt/) um eine Einladung.
+2. Öffne `https://subkit-cloud.mikebild.dev` und wähle **Mit Firmenkonto anmelden**.
+3. Melde dich bei Upraft Auth mit der E-Mail-Adresse deiner Einladung an.
+4. Gib deinen Namen, einen Namen für deinen Arbeitsbereich und deine Zeitzone an.
+5. Wähle deinen KI-Anbieter, gib deinen API-Schlüssel ein und wähle **Loslegen**.
+6. Bau deinen ersten Workflow mit dem Kapitel „Dein erster Workflow“.
+
+Hat dich jemand in einen bestehenden Arbeitsbereich eingeladen? Dann öffne stattdessen den Einladungslink, wie unter „Einem Arbeitsbereich beitreten“ beschrieben.
+
 ### Was du brauchst
 
 - Ein Konto bei Upraft Auth, dem Anmeldedienst der Plattform, auf der SubKit Cloud läuft. Während der Beta vergibt der Betreiber diese Konten auf Einladung.
@@ -116,11 +127,11 @@ Was dann passiert:
 - 7 Tage lang kannst du es dir anders überlegen. Melde dich erneut an und wähle **Löschung rückgängig machen**.
 
 Hast du eine Löschung rückgängig gemacht, bleiben alte Schlüssel und Verbindungen widerrufen.
-Melde die sk-CLI und deine MCP-Clients neu an. Für den Web Clipper erstellst du einen neuen Schlüssel.
+Melde die subkit-CLI und deine MCP-Clients neu an. Für den Web Clipper erstellst du einen neuen Schlüssel.
 
-### Mit der sk-CLI anmelden
+### Mit der subkit-CLI anmelden
 
-Die `sk`-CLI meldet dich wie das Cockpit über den Browser an.
+Die `subkit`-CLI meldet dich wie das Cockpit über den Browser an.
 
 1. Installiere die CLI:
 
@@ -131,13 +142,13 @@ Die `sk`-CLI meldet dich wie das Cockpit über den Browser an.
 2. Melde dich an. Nutze die Adresse ohne `/cockpit`:
 
    ```bash
-   sk login --engine-url https://subkit-cloud.mikebild.dev
+   subkit login --engine-url https://subkit-cloud.mikebild.dev
    ```
 
 3. Wähle im geöffneten Browser **Mit Firmenkonto anmelden**.
 
-Die CLI speichert danach einen persönlichen Schlüssel. Starte mit `sk`.
-Alles Weitere steht im Kapitel „Die sk-CLI auf deinem Rechner verwenden“.
+Die CLI speichert danach einen persönlichen Schlüssel. Starte mit `subkit`.
+Alles Weitere steht im Kapitel „Die subkit-CLI auf deinem Rechner verwenden“.
 
 ### Einen MCP-Client verbinden
 
@@ -170,11 +181,11 @@ Einige Einstellungen verwaltet aber der Betreiber, nicht du.
   Adressen in einem privaten Netz, etwa `localhost` oder ein interner Firmenserver, sind gesperrt.
 - **Slack und Google Chat sind gesperrt.** Chat-Arbeitsbereiche auf diesen Plattformen bleiben gesperrt,
   bis bestätigt ist, wem der Arbeitsbereich gehört. Nutze stattdessen den Chat im Cockpit.
-- **API-Schlüssel nur für Werkzeuge.** API-Schlüssel funktionieren weiter für die sk-CLI, den Web Clipper,
+- **API-Schlüssel nur für Werkzeuge.** API-Schlüssel funktionieren weiter für die subkit-CLI, den Web Clipper,
   die HTTP-API (Bearer) und MCP-Clients mit Schlüssel. Die Browser-Anmeldung mit einem API-Schlüssel
   gibt es nur bei selbst betriebenen Installationen ohne Anmeldeanbieter.
 - **Export als Paket.** Du kannst deine eigenen Workflows, Connectors, Skills, Zeitpläne, Quellen und Dateien als Paket exportieren und in eine andere Engine importieren.
-  Zugangsdaten, Freigaben und der Run-Verlauf sind nicht enthalten. Siehe „Die sk-CLI auf deinem Rechner verwenden“.
+  Zugangsdaten, Freigaben und der Run-Verlauf sind nicht enthalten. Siehe „Die subkit-CLI auf deinem Rechner verwenden“.
 
 ### Limits und ihre Meldungen
 
@@ -197,4 +208,4 @@ Erreichst du eines, zeigt SubKit eine Meldung. Die meisten dieser Meldungen ersc
 | Du hast dein Passwort vergessen | Upraft Auth schickt dir eine E-Mail, mit der du es zurücksetzt. |
 | Du willst ein anderes Konto nutzen | Folge „Konto wechseln“. |
 | Du wirst unerwartet abgemeldet | Deine Sitzung ist nach 8 Stunden Inaktivität oder 24 Stunden abgelaufen. Melde dich erneut an. |
-| `sk login` oder der MCP-Client kann sich nicht verbinden | Nutze `https://subkit-cloud.mikebild.dev` und `https://subkit-cloud.mikebild.dev/mcp`, ohne `/cockpit`. |
+| `subkit login` oder der MCP-Client kann sich nicht verbinden | Nutze `https://subkit-cloud.mikebild.dev` und `https://subkit-cloud.mikebild.dev/mcp`, ohne `/cockpit`. |

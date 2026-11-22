@@ -94,6 +94,10 @@ async function removeSecret(
   }
 }
 
+export function llmKeySecretName(tenantId: string | undefined): string {
+  return settingSecretName(tenantId, ["llm", "api_key"]);
+}
+
 async function storedKeyVersion(
   db: Db,
   revision: number,
@@ -102,7 +106,7 @@ async function storedKeyVersion(
   const { document } = await getRuntimeRevision(db, revision);
   const stored = getDeep(document, ["tenants", tenantId, "llm", "api_key"]);
   const parsed = typeof stored === "string" ? parseSecretReference(stored) : null;
-  return parsed?.name === settingSecretName(tenantId, ["llm", "api_key"]) ? parsed : null;
+  return parsed?.name === llmKeySecretName(tenantId) ? parsed : null;
 }
 
 async function saveLlmAccess(
@@ -148,7 +152,7 @@ export async function persistLlmAccess(db: Db, input: PersistLlmAccess): Promise
   const keyVersion = async (): Promise<SecretVersion | null> => {
     if (key.created || change.api_key === undefined) return key.created;
     key.created = await createSecretVersion(db, {
-      name: settingSecretName(tenantId, ["llm", "api_key"]),
+      name: llmKeySecretName(tenantId),
       value: change.api_key,
       created_by: actor.actor_id,
     });

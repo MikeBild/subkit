@@ -18,6 +18,32 @@ describe("feedbackTitle", () => {
 });
 
 describe("feedbackBody", () => {
+  test("names the address a report without sign-in may be answered at", () => {
+    expect(
+      feedbackBody({
+        report_id: "r-2",
+        kind: "bug",
+        message: "Sign-in loops",
+        redactions: 0,
+        diagnostics: null,
+        files: [],
+        contact_email: "alex@example.test",
+      }),
+    ).toBe(
+      [
+        "Sign-in loops",
+        "",
+        "## Contact",
+        "- Email: alex@example.test",
+        "",
+        "## Report",
+        "- Kind: bug",
+        "- Report id: r-2",
+        "- Removed before storing: 0",
+      ].join("\n"),
+    );
+  });
+
   test("renders message, report facts, diagnostics and attachments", () => {
     const body = feedbackBody({
       report_id: "r-1",

@@ -53,7 +53,7 @@ const statusRoute = createRoute({
   tags: ["setup"],
   summary: "Check whether first-run bootstrap is still pending",
   description:
-    "Returns `{pending: true}` until the operator completes the first-run setup wizard. Drives the `sk init` health probe so the CLI can refuse to prompt against an already-bootstrapped engine.",
+    "Returns `{pending: true}` until the operator completes the first-run setup wizard. Drives the `subkit init` health probe so the CLI can refuse to prompt against an already-bootstrapped engine.",
   responses: {
     200: {
       description: "Bootstrap state",

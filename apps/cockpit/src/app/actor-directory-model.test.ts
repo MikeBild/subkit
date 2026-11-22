@@ -41,4 +41,11 @@ describe("typed actor directory", () => {
     expect(actorLabel(directory, { kind: "system_account", id: "x" }, de)).toBe("Systemkonto");
     expect(actorLabel(directory, null, de)).toBeNull();
   });
+
+  test("a report sent without signing in is named as such in both languages", () => {
+    const directory = actorDirectory(undefined, undefined);
+    const anonymous = { kind: "anonymous", id: null };
+    expect(actorLabel(directory, anonymous, (key) => translate("de", key))).toBe("Ohne Anmeldung");
+    expect(actorLabel(directory, anonymous, (key) => translate("en", key))).toBe("Without sign-in");
+  });
 });

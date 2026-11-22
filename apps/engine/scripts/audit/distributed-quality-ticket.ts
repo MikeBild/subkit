@@ -127,7 +127,9 @@ export function parseDistributedQualityTicket(value: unknown): DistributedQualit
     if (
       JSON.stringify(snapshot.artifacts.map((artifact) => artifact.path)) !==
         JSON.stringify(MUTATION_RUNTIME_ARTIFACTS) ||
-      snapshot.artifacts.some((artifact) => artifact.executable !== (artifact.path === "dist/sk"))
+      snapshot.artifacts.some(
+        (artifact) => artifact.executable !== (artifact.path === "dist/subkit"),
+      )
     )
       throw new Error(
         "Distributed runtime snapshot inventory differs from trusted runtime closure",

@@ -1,5 +1,4 @@
-import { createHash } from "node:crypto";
-import contractCss from "../../../../../../contract/cockpit-ui.css" with { type: "text" };
+import tokensCss from "../../../../../../packages/ui/contract/cockpit-ui.css" with { type: "text" };
 import { escapeHtml } from "./shared.ts";
 
 const AUTH_CONTRACT = "mcp-auth";
@@ -17,7 +16,7 @@ export interface PageLook {
   scheme: PageScheme | null;
 }
 
-function contractRegion(css: string, name: string): string {
+function tokenRegion(css: string, name: string): string {
   const begin = `/* cockpit-ui:begin ${name} */\n`;
   const end = `/* cockpit-ui:end ${name} */`;
   const start = css.indexOf(begin);
@@ -26,15 +25,13 @@ function contractRegion(css: string, name: string): string {
   return css.slice(start + begin.length, stop);
 }
 
-const TOKENS_LIGHT = contractRegion(contractCss, "tokens-light");
-const TOKENS_DARK = contractRegion(contractCss, "tokens-dark");
-const THEME_MAP = contractRegion(contractCss, "theme-map");
+const TOKENS_LIGHT = tokenRegion(tokensCss, "tokens-light");
+const TOKENS_DARK = tokenRegion(tokensCss, "tokens-dark");
+const THEME_MAP = tokenRegion(tokensCss, "theme-map");
 const DARK_DECLARATIONS = TOKENS_DARK.slice(
   TOKENS_DARK.indexOf("{") + 1,
   TOKENS_DARK.lastIndexOf("}"),
 );
-
-const COCKPIT_UI_DIGEST = `sha256-${createHash("sha256").update(contractCss).digest("base64")}`;
 
 const SINGLE_PAGE = `
 :root{color-scheme:light;--font-sans:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--font-mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace}
@@ -77,19 +74,13 @@ pre.payload{white-space:pre-wrap;overflow-wrap:anywhere;padding:12px;border-radi
 @media (max-width:639px){body{place-items:start center;padding:16px}.card{padding:20px}.actions .button{flex:1}.facts{grid-template-columns:1fr}.facts dt+dd{border-top:0;padding-top:0}}
 `;
 
-const STYLES = `/*mcp-auth:begin*/
+const STYLES = `
 ${TOKENS_LIGHT}${TOKENS_DARK}@media (prefers-color-scheme: dark) {
 :root:not(.light) {${DARK_DECLARATIONS}}
 }
 :root {
 ${THEME_MAP}}
-${SINGLE_PAGE}/*mcp-auth:end*/`;
-
-export const AUTH_UI_DIGEST = `sha256-${createHash("sha256").update(sharedRegion(STYLES)).digest("hex").slice(0, 12)}`;
-
-function sharedRegion(css: string): string {
-  return css.match(/\/\*mcp-auth:begin\*\/([\s\S]*?)\/\*mcp-auth:end\*\//)?.[1] ?? "";
-}
+${SINGLE_PAGE}`;
 
 export function resolveAuthLocale(acceptLanguage: string | null | undefined): AuthLocale {
   for (const range of acceptLanguage?.split(",") ?? []) {
@@ -143,7 +134,7 @@ interface SinglePage {
 }
 
 const SURFACE_ATTRIBUTES: Record<PageSurface, string> = {
-  auth: ` data-auth-contract="${AUTH_CONTRACT}" data-auth-product="subkit" data-testid="auth-page"`,
+  auth: ` data-auth-contract="${AUTH_CONTRACT}" data-testid="auth-page"`,
   "not-found": ' data-testid="single-page"',
   "fatal-error": ' data-testid="single-page"',
 };
@@ -158,14 +149,11 @@ export function renderSinglePage(page: SinglePage): string {
   <meta name="robots" content="noindex,nofollow,noarchive">
   <meta name="referrer" content="no-referrer">
   <meta name="color-scheme" content="light dark">
-  <meta name="cockpit-ui-contract" content="cockpit-ui">
-  <meta name="cockpit-ui-digest" content="${COCKPIT_UI_DIGEST}">
-  <meta name="mcp-auth-ui-contract" content="${AUTH_UI_DIGEST}">
   <link rel="icon" type="image/svg+xml" href="/cockpit/favicon.svg">
   <title>${BROWSER_TITLE}</title>
   <style>${STYLES}</style>${page.styles ? `\n  <style>${page.styles}</style>` : ""}
 </head>
-<body><main class="card${page.wide ? " wide" : ""}" data-family-surface="${page.surface}"${SURFACE_ATTRIBUTES[page.surface]}${page.attributes ?? ""}><div class="brand" data-family-slot="product-identity"><img src="/cockpit/favicon.svg" alt="" data-testid="auth-product-icon"><span>${PRODUCT_NAME}</span></div>${page.body}<footer class="foot" data-family-slot="auth-meta"><span>${PRODUCT_NAME} · ${escapeHtml(page.context)}</span>${page.footer ?? ""}</footer></main></body>
+<body><main class="card${page.wide ? " wide" : ""}" data-sk-surface="${page.surface}"${SURFACE_ATTRIBUTES[page.surface]}${page.attributes ?? ""}><div class="brand" data-sk-slot="product-identity"><img src="/cockpit/favicon.svg" alt="" data-testid="auth-product-icon"><span>${PRODUCT_NAME}</span></div>${page.body}<footer class="foot" data-sk-slot="auth-meta"><span>${PRODUCT_NAME} · ${escapeHtml(page.context)}</span>${page.footer ?? ""}</footer></main></body>
 </html>`;
 }
 
@@ -190,11 +178,11 @@ export function pageHead(head: PageHead): string {
     : head.line
       ? `<p class="muted">${escapeHtml(head.line)}</p>`
       : "";
-  return `<div class="head">${eyebrow}<div class="title"><h1 data-family-slot="${head.slot}">${escapeHtml(head.title)}</h1>${chip}</div>${line}</div>`;
+  return `<div class="head">${eyebrow}<div class="title"><h1 data-sk-slot="${head.slot}">${escapeHtml(head.title)}</h1>${chip}</div>${line}</div>`;
 }
 
 export function pageActions(html: string, opts: { stack?: boolean; slot?: string } = {}): string {
-  const slot = opts.slot ? ` data-family-slot="${opts.slot}"` : "";
+  const slot = opts.slot ? ` data-sk-slot="${opts.slot}"` : "";
   return `<div class="actions${opts.stack ? " stack" : ""}"${slot}>${html}</div>`;
 }
 
@@ -372,7 +360,11 @@ interface LoginProviderChoice {
   label?: string;
 }
 
-export function renderProviderChoice(providers: LoginProviderChoice[], look: PageLook): string {
+export function renderProviderChoice(
+  providers: LoginProviderChoice[],
+  look: PageLook,
+  footer?: string,
+): string {
   const de = look.locale === "de";
   const severalAccounts =
     providers.filter((provider) => provider.protocol !== "api_key").length > 1;
@@ -409,6 +401,7 @@ export function renderProviderChoice(providers: LoginProviderChoice[], look: Pag
     surface: "auth",
     context: copy.oauthContext,
     body: `${pageHead({ title: copy.signInHeading, slot: "auth-heading", line: de ? "Du bist abgemeldet. Wähle, wie du dich bei SubKit anmeldest." : "You are signed out. Choose how to sign in to SubKit." })}${pageActions(links, { stack: true, slot: "provider-actions" })}`,
+    ...(footer ? { footer } : {}),
   });
 }
 
@@ -450,21 +443,24 @@ export function renderConsentPage(opts: {
         "mcp:authoring": ["Bearbeiten", "Entwürfe, Versionen und Vorschauen anlegen"],
         "mcp:admin": ["Verwalten", "Freigaben erteilen und Zugriff verwalten"],
         "metrics:read": ["Betriebszähler", "Betriebszähler lesen — sonst nichts"],
-        "sk:login": ["CLI-Anmeldung", "Einen persönlichen Schlüssel für die SubKit CLI ausstellen"],
+        "subkit:login": [
+          "CLI-Anmeldung",
+          "Einen persönlichen Schlüssel für die SubKit CLI ausstellen",
+        ],
       }
     : {
         "mcp:read": ["Read", "Read published content, resources and product statistics"],
         "mcp:authoring": ["Authoring", "Create drafts, revisions and previews"],
         "mcp:admin": ["Administration", "Publish releases and administer access"],
         "metrics:read": ["Operational counters", "Read the operational counters — nothing else"],
-        "sk:login": ["CLI sign-in", "Issue a personal key for the SubKit CLI"],
+        "subkit:login": ["CLI sign-in", "Issue a personal key for the SubKit CLI"],
       };
   const checked = new Set(opts.preChecked);
   const scopeItems = opts.offeredScopes
     .map((scope) => {
       const value = escapeHtml(scope);
       const [name, description] = labels[scope] ?? [scope, scope];
-      const required = scope === "mcp:read" || scope === "sk:login";
+      const required = scope === "mcp:read" || scope === "subkit:login";
       return `<li><label class="scope-row"><input type="checkbox" name="scope" value="${value}"${required || checked.has(scope) ? " checked" : ""}${required ? " disabled" : ""}><span class="scope-text"><span class="scope-name">${escapeHtml(name)} · ${value}</span><span class="scope-desc">${escapeHtml(description)}</span></span></label>${required ? `<input type="hidden" name="scope" value="${value}">` : ""}</li>`;
     })
     .join("");
@@ -516,7 +512,7 @@ const NOTICE_COPY: Record<
       "No sign-in provider is configured for this installation. An administrator has to add one under auth.providers.",
     bundleMissingTitle: "The Cockpit is not included",
     bundleMissingLine:
-      "This installation was built without the Cockpit. The API and the sk command-line client keep working.",
+      "This installation was built without the Cockpit. The API and the subkit command-line client keep working.",
     returnInvalidTitle: "This sign-in link is invalid",
     returnInvalidLine:
       "Its return address leads outside the Cockpit. Open the Cockpit and sign in there.",
@@ -533,7 +529,7 @@ const NOTICE_COPY: Record<
       "Für diese Installation ist kein Anmeldeanbieter eingerichtet. Eine Person mit der Rolle Administrator muss einen unter auth.providers hinterlegen.",
     bundleMissingTitle: "Das Cockpit fehlt",
     bundleMissingLine:
-      "Diese Installation wurde ohne das Cockpit gebaut. Die API und die Kommandozeile sk funktionieren weiter.",
+      "Diese Installation wurde ohne das Cockpit gebaut. Die API und die Kommandozeile subkit funktionieren weiter.",
     returnInvalidTitle: "Dieser Anmeldelink ist ungültig",
     returnInvalidLine:
       "Seine Rücksprungadresse führt aus dem Cockpit hinaus. Öffne das Cockpit und melde dich dort an.",

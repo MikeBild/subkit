@@ -1,92 +1,89 @@
-import { afterAll, afterEach, describe, expect, test } from "bun:test";
-import { rmSync } from "node:fs";
-import { join } from "node:path";
-import { getTestNow } from "../../../../apps/engine/src/test-helpers/determinism/clock.ts";
-import { notifyIfUpdateAvailable } from "../update-notifier.ts";
+import { describe, expect, test } from "bun:test";
+import { startUpdateNotifier, type UpdateNotifierOptions } from "../update-notifier.ts";
+import { writeCache } from "../updater.ts";
+import { makeConfig, makeFetchImpl, TEST_NOW_MS, useUpdaterTmpDir } from "./updater-fixtures.ts";
 
-const TEST_NOW_MS = getTestNow();
+useUpdaterTmpDir();
 
-const cleanupDirs: string[] = [];
+function harness(overrides: Partial<UpdateNotifierOptions> = {}, latestTag = "v99.0.0") {
+  const written: string[] = [];
+  const exits: Array<() => void> = [];
+  const seen: string[] = [];
+  const options: UpdateNotifierOptions = {
+    command: "workflows",
+    machineReadable: false,
+    enabledInSettings: true,
+    config: makeConfig({ currentVersion: "12.1.0" }),
+    fetchImpl: makeFetchImpl((url) => {
+      seen.push(url);
+      return new Response(null, {
+        status: 302,
+        headers: { location: `https://github.test/o/r/releases/tag/${latestTag}` },
+      });
+    }),
+    sink: { isTTY: true, write: (text) => written.push(text) },
+    onExit: (listener) => exits.push(listener),
+    now: TEST_NOW_MS,
+    ...overrides,
+  };
+  return {
+    options,
+    written,
+    seen,
+    exit: () => {
+      for (const listener of exits) listener();
+    },
+  };
+}
 
-afterAll(() => {
-  for (const dir of cleanupDirs) {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-describe("notifyIfUpdateAvailable", () => {
-  const originalWrite = process.stderr.write;
-  let stderrOutput: string;
-
-  afterEach(() => {
-    process.stderr.write = originalWrite;
+describe("startUpdateNotifier", () => {
+  test("prints one hint line at exit when a newer release exists", async () => {
+    const h = harness();
+    await startUpdateNotifier(h.options);
+    h.exit();
+    expect(h.written).toEqual([
+      "subkit 99.0.0 is available (you have 12.1.0). Run `subkit update` to install it.\n",
+    ]);
   });
 
-  function captureStderr(): void {
-    stderrOutput = "";
-    process.stderr.write = ((chunk: string | Uint8Array) => {
-      stderrOutput += typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
-      return true;
-    }) as typeof process.stderr.write;
-  }
-
-  test("writes banner to stderr when update available", async () => {
-    captureStderr();
-    const fetchImpl = (async () =>
-      new Response(
-        JSON.stringify({
-          tag_name: "v99.0.0",
-          prerelease: false,
-          body: "",
-          assets: [],
-        }),
-      )) as unknown as typeof fetch;
-
-    const name = `notifier-test-banner-${TEST_NOW_MS}`;
-    notifyIfUpdateAvailable(name, fetchImpl);
-    await new Promise((r) => setTimeout(r, 300)); // allow-wall-clock: update-notifier debounce window across cache reads
-    expect(stderrOutput).toContain("99.0.0");
-    expect(stderrOutput).toContain(`${name} update`);
-    const { homedir } = await import("node:os");
-    const cacheDir = join(homedir(), `.${name}`);
-    cleanupDirs.push(cacheDir);
+  test("stays quiet when the installed version is the latest", async () => {
+    const h = harness({}, "v12.1.0");
+    await startUpdateNotifier(h.options);
+    h.exit();
+    expect(h.written).toEqual([]);
   });
 
-  test("does nothing when no update available", async () => {
-    captureStderr();
-    const fetchImpl = (async () =>
-      new Response(
-        JSON.stringify({
-          tag_name: "v0.0.0",
-          prerelease: false,
-          body: "",
-          assets: [],
-        }),
-      )) as unknown as typeof fetch;
-
-    const name = `notifier-test-noop-${TEST_NOW_MS}`;
-    notifyIfUpdateAvailable(name, fetchImpl);
-    await new Promise((r) => setTimeout(r, 300)); // allow-wall-clock: update-notifier debounce window across cache reads
-    expect(stderrOutput).toBe("");
-    const { homedir } = await import("node:os");
-    cleanupDirs.push(join(homedir(), `.${name}`));
+  test("uses the daily cache instead of the network", async () => {
+    const config = makeConfig({ currentVersion: "12.1.0" });
+    writeCache(config.cacheDir, {
+      last_check: TEST_NOW_MS - 1000,
+      latest_version: "12.2.0",
+      latest_tag: "v12.2.0",
+      current_version_at_check: "12.1.0",
+    });
+    const h = harness({ config });
+    await startUpdateNotifier(h.options);
+    h.exit();
+    expect(h.seen).toEqual([]);
+    expect(h.written.join("")).toContain("subkit 12.2.0 is available");
   });
 
-  test("swallows errors silently", async () => {
-    captureStderr();
-    const fetchImpl = (async () => {
-      throw new Error("network failure");
-    }) as unknown as typeof fetch;
-
-    const name = `notifier-test-error-${TEST_NOW_MS}`;
-    notifyIfUpdateAvailable(name, fetchImpl);
-    await new Promise((r) => setTimeout(r, 300)); // allow-wall-clock: update-notifier debounce window across cache reads
-    expect(stderrOutput).toBe("");
+  test("does not check at all when switched off in the settings", () => {
+    const h = harness({ enabledInSettings: false });
+    expect(startUpdateNotifier(h.options)).toBeNull();
+    h.exit();
+    expect(h.seen).toEqual([]);
+    expect(h.written).toEqual([]);
   });
 
-  test("calls cleanupOldBinary without error", () => {
-    const fetchImpl = (async () => new Response("", { status: 404 })) as unknown as typeof fetch;
-    const name = `notifier-test-cleanup-${TEST_NOW_MS}`;
-    expect(() => notifyIfUpdateAvailable(name, fetchImpl)).not.toThrow();
+  test("swallows network failures", async () => {
+    const h = harness({
+      fetchImpl: makeFetchImpl(() => {
+        throw new Error("offline");
+      }),
+    });
+    await startUpdateNotifier(h.options);
+    h.exit();
+    expect(h.written).toEqual([]);
   });
 });

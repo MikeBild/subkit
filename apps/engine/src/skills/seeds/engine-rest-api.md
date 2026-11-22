@@ -2,7 +2,7 @@
 slug: engine-rest-api
 scope: global
 title: Engine REST API
-description: Mental model for sk's /v1 REST surface, plus where to fetch the exhaustive endpoint reference.
+description: Mental model for subkit's /v1 REST surface, plus where to fetch the exhaustive endpoint reference.
 activates_when: [{"kind":"intent_keyword","word":"rest"},{"kind":"intent_keyword","word":"api"},{"kind":"intent_keyword","word":"endpoint"},{"kind":"intent_keyword","word":"/v1"},{"kind":"intent_keyword","word":"openapi"},{"kind":"intent_keyword","word":"curl"},{"kind":"intent_keyword","word":"http api"}]
 side_effects: read
 idempotency: none
@@ -15,7 +15,7 @@ version: 1
 
 ## Mental model
 
-sk exposes one tenant-scoped HTTP API under the `/v1` prefix. Every route is a Zod-first
+subkit exposes one tenant-scoped HTTP API under the `/v1` prefix. Every route is a Zod-first
 contract: the OpenAPI spec is generated from the route definitions, never hand-written. The
 same domain operations are reachable two ways — REST (for clients and scripts) and the MCP
 tools (for an LLM). They share the same handlers, permissions, and audit trail, so a fact

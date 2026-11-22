@@ -266,9 +266,15 @@ export async function startFilteringProxy(options: FilteringProxyOptions): Promi
     });
   };
 
-  const server = createServer((req, res) => void onRequest(req, res));
-  server.on("connect", (req, socket, head) => void onConnect(req, socket, head));
-  server.on("upgrade", (req, socket, head) => void onUpgrade(req, socket, head));
+  const server = createServer((req, res) => {
+    onRequest(req, res).catch(() => res.destroy());
+  });
+  server.on("connect", (req, socket, head) => {
+    onConnect(req, socket, head).catch(() => socket.destroy());
+  });
+  server.on("upgrade", (req, socket, head) => {
+    onUpgrade(req, socket, head).catch(() => socket.destroy());
+  });
   server.on("connection", (socket) => track(socket));
 
   await new Promise<void>((resolveListen, reject) => {

@@ -29,7 +29,7 @@ function smokeArgs(extra: string[] = []) {
       "/tmp/intake-live-smoke.json",
       ...extra,
     ],
-    { SK_INTAKE_TEST_KEY: ctx.apiKey },
+    { SUBKIT_INTAKE_TEST_KEY: ctx.apiKey },
   );
 }
 

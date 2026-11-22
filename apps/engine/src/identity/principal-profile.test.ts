@@ -141,6 +141,7 @@ describe("reading tenant and cockpit identity", () => {
       tenant_slug: "profile-home",
       tenant_display_name: "Profile Home",
       tenant_timezone: "UTC",
+      tenant_language: "en",
       tenant_origin: "self_hosted",
       tenant_owner_identity_id: null,
     });

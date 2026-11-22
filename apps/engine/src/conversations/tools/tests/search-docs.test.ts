@@ -36,7 +36,7 @@ describe("search_docs product documentation", () => {
       locale: "de",
       anchor: "die-erweiterung-installieren",
     });
-    expect(top?.snippet).toContain("sk clipper install");
+    expect(top?.snippet).toContain("subkit clipper install");
     expect(top?.sha256).toMatch(/^[0-9a-f]{64}$/);
   });
 
@@ -48,7 +48,7 @@ describe("search_docs product documentation", () => {
       title: "Collect web pages with the Web Clipper",
       heading: "Install the extension",
     });
-    expect(top?.snippet).toContain("sk clipper install");
+    expect(top?.snippet).toContain("subkit clipper install");
   });
 
   it("narrows product hits to one locale", async () => {

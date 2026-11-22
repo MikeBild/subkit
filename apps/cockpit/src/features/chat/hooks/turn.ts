@@ -27,6 +27,7 @@ import {
 } from "../api/attachments";
 import { asStreamedDiff, type RestoreComposer, type StreamedDiff } from "../model/labels";
 import { applyLiveCall, type LiveCall, reduceLiveCall } from "../model/live-calls";
+import { openQuestionOf } from "../model/open-question";
 import { LIVE_POLICY_KEY, livePolicy } from "../model/policy";
 import { type ConversationSelection, pinSelectionForSend } from "../model/selection";
 import {
@@ -216,8 +217,7 @@ export function useChatTurn({
               conversationId: targetId,
               message: text,
               references,
-              pendingElicitation:
-                (await getConversation(targetId)).resume_summary?.pending_approval ?? null,
+              pendingElicitation: openQuestionOf(await getConversation(targetId)),
             }
           : {
               message: text,

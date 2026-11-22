@@ -36,7 +36,7 @@ export function parseTraceparent(value: string | undefined): ParsedTraceparent |
 function inboundTraceId(c: { req: { header: (n: string) => string | undefined } }): string | null {
   const tp = parseTraceparent(c.req.header("traceparent"));
   if (tp) return tp.trace_id;
-  const candidates = [c.req.header("x-sk-trace-id"), c.req.header("x-trace-id")];
+  const candidates = [c.req.header("x-subkit-trace-id"), c.req.header("x-trace-id")];
   for (const raw of candidates) {
     if (raw && INBOUND_TRACE_ID.test(raw)) return raw;
   }

@@ -44,16 +44,16 @@ function structuredError(
 export const requestConnectorReauthTool: ConversationTool = {
   name: "request_connector_reauth",
   description:
-    "Repair a connector whose credential is dead — flagged `needs_reauth`, or a `call_connector`/`probe_connector` came back `health: auth_failed`. OAuth2 (authorization_code) and non-OAuth MCP repairs pause for native URL-mode elicitation; the URL is never returned as model text. OAuth2 (client_credentials) refreshes machine-side. Local sk/web non-OAuth repairs use a masked form. Every path rotates in place (same connector id, dependent workflows untouched). Resolves by `connector_id` (uuid) or `slug`.",
+    "Repair a connector whose credential is dead — flagged `needs_reauth`, or a `call_connector`/`probe_connector` came back `health: auth_failed`. OAuth2 (authorization_code) and non-OAuth MCP repairs pause for native URL-mode elicitation; the URL is never returned as model text. OAuth2 (client_credentials) refreshes machine-side. Local subkit/web non-OAuth repairs use a masked form. Every path rotates in place (same connector id, dependent workflows untouched). Resolves by `connector_id` (uuid) or `slug`.",
   use_case:
-    "A saved connector's credential was revoked or rotated upstream and calls now fail with auth_failed. MCP browser flows are surfaced through native URL elicitation; client-credentials refresh immediately; local sk/web non-OAuth flows use a masked form.",
+    "A saved connector's credential was revoked or rotated upstream and calls now fail with auth_failed. MCP browser flows are surfaced through native URL elicitation; client-credentials refresh immediately; local subkit/web non-OAuth flows use a masked form.",
   important_notes: [
     "Pass either `connector_id` (uuid) or `slug`; `connector_id` wins when both are given.",
     "OAuth2 (authorization_code) → over MCP pauses for native URL elicitation; local surfaces receive `reauth_url`. The single-use browser grant expires after approximately ten minutes.",
     "OAuth2 (client_credentials) → returns `method: oauth2`, `status: reauthorized` — no URL needed.",
-    "Non-OAuth on sk-cli/web → returns `method: portal_setup`, `mode: credential_re_issue`, and stages a re-issue draft; follow with `ask_user_form(type: password, sensitive: true)` to collect the new secret and it rotates in place.",
+    "Non-OAuth on subkit-cli/web → returns `method: portal_setup`, `mode: credential_re_issue`, and stages a re-issue draft; follow with `ask_user_form(type: password, sensitive: true)` to collect the new secret and it rotates in place.",
     "Non-OAuth over MCP → pauses for `elicitation/create(mode: url)` backed by a single-use secure credential page. The URL is transported directly to the client and is absent from model-facing tool data.",
-    "Never paste the secret in chat — on sk-cli/web collect it through `ask_user_form(type: password, sensitive: true)`; over MCP it is entered only in the URL-elicited secure page.",
+    "Never paste the secret in chat — on subkit-cli/web collect it through `ask_user_form(type: password, sensitive: true)`; over MCP it is entered only in the URL-elicited secure page.",
     "Requires `connector:write` on the connector (the non-OAuth path stages a credential rotation).",
   ],
   example_input: { slug: "digitalocean" },

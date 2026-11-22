@@ -198,7 +198,9 @@ export async function createIntakeItem(
   return (db as Db).transaction(async (tx) => {
     const intakeCategory = p.category
       ? parseIntakeCategory(p.category)
-      : await defaultIntakeCategory(tx, p.tenant_id, p.actor);
+      : p.actor.kind === "anonymous"
+        ? DEFAULT_INTAKE_CATEGORY
+        : await defaultIntakeCategory(tx, p.tenant_id, p.actor);
     const digest = itemRequestDigest(p, intakeCategory);
     const { params: clean, redactions } = redactCollected(p);
     const previous = await tx

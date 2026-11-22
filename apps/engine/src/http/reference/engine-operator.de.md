@@ -32,7 +32,7 @@ engine --set-operator-tenant <slug>
 Jeder andere Arbeitsbereich behält seine eigenen Einstellungen. `GET /v1/settings` liefert die Sicht deines Mandanten: nur Einstellungen, die eine Überlagerung je Mandant unterstützen, jeweils mit ihrem wirksamen Wert. Eine Änderung gilt nur für deinen Arbeitsbereich, wenn du ihn ausdrücklich nennst:
 
 ```bash
-sk settings set llm.model '"<model>"' --tenant <your-tenant-id>
+subkit settings set llm.model '"<model>"' --tenant <your-tenant-id>
 ```
 
 Im Cockpit sehen Arbeitsbereiche außerhalb des Betreibers die Einstellungen derzeit nur lesend. Zum Ändern nimmst du den CLI-Befehl oben.

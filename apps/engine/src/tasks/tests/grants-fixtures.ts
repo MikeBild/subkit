@@ -145,6 +145,7 @@ export function taskGrantFixtures(state: { readonly ctx: TestDb }) {
     const [row] = await state.ctx.db
       .insert(tasks)
       .values({
+        locale: "de",
         tenant_id,
         name: `task-${++counter}`,
         owner_id,

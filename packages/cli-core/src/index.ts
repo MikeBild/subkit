@@ -38,6 +38,23 @@ export {
 } from "./interrupt.ts";
 export { redact } from "./redact.ts";
 export {
+  CLI_ASSETS,
+  CLI_BINARY,
+  CLI_TARGETS,
+  cliAssetName,
+  RELEASES_URL,
+  releaseAssetFor,
+  releaseDownloadBase,
+} from "./release/assets.ts";
+export {
+  compatibilityWarning,
+  type EngineCompatibility,
+  engineCompatibility,
+  isIncompatible,
+} from "./release/compatibility.ts";
+export { type UpdateAction, updateAction, updateHint } from "./release/update-policy.ts";
+export { compareVersions, isDevBuild, isNewer, parseVersion } from "./release/version.ts";
+export {
   SECRET_PATTERNS,
   SENSITIVE_KEY_PATTERN,
   type SecretKind,
@@ -74,19 +91,17 @@ export {
   type TurnEvent,
   type TurnUsage,
 } from "./turn-event.ts";
-export { notifyIfUpdateAvailable } from "./update-notifier.ts";
+export { startUpdateNotifier, type UpdateNotifierOptions } from "./update-notifier.ts";
 export {
   checkForUpdate,
   cleanupOldBinary,
   defaultUpdaterConfig,
-  formatUpdateBanner,
-  GITHUB_REPO,
-  isNewer,
+  engineRelease,
+  latestRelease,
   listRetainedVersions,
   type PerformUpdateResult,
   parseChecksum,
   performUpdate,
-  platformArch,
   pruneRetainedVersions,
   RETAINED_VERSIONS_KEEP,
   type RetainedVersion,

@@ -28,7 +28,7 @@ import {
   readKeyFile,
   redactDetail,
   renderTable,
-} from "./llm-live-checks.ts";
+} from "./lib/llm-live-checks.ts";
 
 interface LiveTarget {
   label: string;

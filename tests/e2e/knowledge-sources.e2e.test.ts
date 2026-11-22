@@ -48,7 +48,7 @@ describe("inline ingest → search → read", () => {
     expect(hit.knowledge_source_id).toBe(created.body.id);
 
     const list = await cli(["knowledge-sources", "list"], { env, persona: "admin" });
-    expectSuccess(list, "sk knowledge-sources list");
+    expectSuccess(list, "subkit knowledge-sources list");
   }, 60_000);
 
   test("a foreign tenant header cannot broaden access (api key re-resolves its tenant)", async () => {

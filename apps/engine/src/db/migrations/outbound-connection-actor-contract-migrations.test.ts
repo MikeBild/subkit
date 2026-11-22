@@ -40,13 +40,13 @@ test(
 
       await ctx.pool.query(
         `INSERT INTO outbound_connection_starts
-          (tenant_id, user_id, state_sha256, code_verifier, redirect_uri, name, base_url,
+          (tenant_id, state_sha256, code_verifier, redirect_uri, name, base_url,
            issuer, authorization_endpoint, token_endpoint, client_id, scopes, expires_at)
-         VALUES ($1, $2, 'before-actor-columns', 'verifier', 'https://engine.test/callback',
+         VALUES ($1, 'before-actor-columns', 'verifier', 'https://engine.test/callback',
            'legacy', 'https://provider.test', 'https://provider.test',
            'https://provider.test/authorize', 'https://provider.test/token', 'client',
            '[]'::jsonb, '2030-01-01T00:00:00Z')`,
-        [tenant.id, user.id],
+        [tenant.id],
       );
 
       const upgraded = await ctx.pool.query(

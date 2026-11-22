@@ -1,7 +1,8 @@
 import { mkdir, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { ENGINE_DESKTOP_TARGETS, engineMetafile } from "./build-engine-desktop.ts";
-import { renderRuntimeNotices } from "./runtime-notices.ts";
+import { engineMetafile } from "./build-engine-desktop.ts";
+import { parseEngineDesktopArgs } from "./lib/engine-desktop-targets.ts";
+import { renderRuntimeNotices } from "./lib/runtime-notices.ts";
 import {
   collectNotices,
   noticeInputs,
@@ -64,18 +65,19 @@ async function noticesFor(graphs: string[]): Promise<string> {
 }
 
 async function main(): Promise<void> {
+  const parsed = parseEngineDesktopArgs(Bun.argv.slice(2));
+  if (!parsed.ok) throw new Error(parsed.error);
+  const out = parsed.args.out ?? OUT;
   await buildCockpitMaps();
   const maps = (await readdir(COCKPIT_MAPS))
     .filter((name) => name.endsWith(".map"))
     .map((name) => join(COCKPIT_MAPS, name));
   if (!maps.length) throw new Error(`no cockpit source maps in ${COCKPIT_MAPS}`);
-  for (const os of ["mac", "win"] as const) {
-    const graphs = ENGINE_DESKTOP_TARGETS.filter((target) => target.os === os).map((target) =>
-      engineMetafile(OUT, target),
-    );
-    await mkdir(join(OUT, os), { recursive: true });
-    await Bun.write(join(OUT, os, ENGINE_NOTICES_FILE), await noticesFor([...graphs, ...maps]));
-    console.log(`engine notices for ${os} written to ${join(OUT, os, ENGINE_NOTICES_FILE)}`);
+  for (const target of parsed.args.targets) {
+    const file = join(out, target.os, ENGINE_NOTICES_FILE);
+    await mkdir(join(out, target.os), { recursive: true });
+    await Bun.write(file, await noticesFor([engineMetafile(out, target), ...maps]));
+    console.log(`engine notices for ${target.name} written to ${file}`);
   }
 }
 

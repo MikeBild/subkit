@@ -22,7 +22,7 @@ async function ensureConfigLoaded(): Promise<void> {
     getConfig();
     return;
   } catch {}
-  const dir = mkdtempSync(join(tmpdir(), "sk-cfg-aog-gate-"));
+  const dir = mkdtempSync(join(tmpdir(), "subkit-cfg-aog-gate-"));
   await loadConfig({
     env: { DATABASE_URL: "postgres://placeholder/aog-gate", NODE_ENV: "test" },
     configPathOverride: join(dir, "subkit.config.json"),

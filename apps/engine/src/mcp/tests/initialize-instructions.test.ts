@@ -26,7 +26,7 @@ function resolveEngineVersionForTest(): string {
   return VERSION ?? "0.0.0-dev";
 }
 
-const BASE_INTRO_SENTINEL = "sk runs your business workflows";
+const BASE_INTRO_SENTINEL = "subkit runs your business workflows";
 
 function sha256Hex(s: string): string {
   return createHash("sha256").update(s).digest("hex");

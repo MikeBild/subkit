@@ -62,6 +62,44 @@ describe("redactFeedbackText", () => {
     expect(clean("/home/alex/.config/subkit,/tmp/x")).toBe("[path],[path]");
   });
 
+  test("removes Linux home and drive paths", () => {
+    expect(clean("saved to /media/alex/Backup/notes.txt")).toBe("saved to [path]");
+    expect(clean("mounted /run/media/alex/USB")).toBe("mounted [path]");
+    expect(clean("ENOENT /home/alex.meier/report.pdf")).toBe("ENOENT [path]");
+  });
+
+  test("removes local phone numbers", () => {
+    expect(clean("call me at 030 12345678 tomorrow")).toBe("call me at [phone] tomorrow");
+    expect(clean("mobile 0171/2345678")).toBe("mobile [phone]");
+    expect(clean("office (030) 1234-5678")).toBe("office [phone]");
+    expect(clean("intl +49 30 12345678")).toBe("intl [phone]");
+  });
+
+  test("keeps versions, dates, times, ports and ids that only look like numbers", () => {
+    for (const text of [
+      "version 0.1.0 on darwin 25.0 arm64",
+      "at 2026-11-20T10:00:00.000Z and 2026-11-20",
+      "listening on :8080 after 0 ms",
+      "HTTP 500 after 12345 bytes",
+      "trace 01234567abcdef",
+      "build 20261120",
+    ])
+      expect(redactFeedbackText(text)).toEqual({ value: text, count: 0 });
+  });
+
+  test("strips query, fragment and credentials from links without a scheme", () => {
+    expect(clean("open intranet.example.com/hr/report?employee=alex.meier#salary")).toBe(
+      "open intranet.example.com/hr/report",
+    );
+    expect(clean("see www.example.org?ref=alex")).toBe("see www.example.org");
+    expect(clean("opened alex:pw@intranet.example.com/x")).toBe("opened intranet.example.com/x");
+  });
+
+  test("keeps file names and relative paths that look like hosts", () => {
+    for (const text of ["see apps/cockpit/src/main.tsx", "attach report.pdf", "node v24.1.0"])
+      expect(redactFeedbackText(text)).toEqual({ value: text, count: 0 });
+  });
+
   test("keeps server routes and relative paths", () => {
     expect(clean("POST /v1/feedback answered 500")).toBe("POST /v1/feedback answered 500");
     expect(clean("see apps/cockpit/src/main.tsx")).toBe("see apps/cockpit/src/main.tsx");

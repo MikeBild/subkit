@@ -757,7 +757,7 @@
   },
   "web-scraper-basics": {
     "title": "Web scraper basics",
-    "body": "The web-scraper connector fetches public web pages over plain HTTP and converts them via three transform languages: `readability` (Mozilla Readability article extraction), `html-to-markdown` (Turndown), and `structured-data` (JSON-LD / OpenGraph / microdata). No JavaScript rendering, no CSS-selector engineering. Defaults are zero-config: robots.txt respected, 1000-page crawl cap, 100K-char extract cap, friendly User-Agent. All tunables live under `connectors.web_scraper.*` and can be overridden per tenant via `sk settings set`.",
+    "body": "The web-scraper connector fetches public web pages over plain HTTP and converts them via three transform languages: `readability` (Mozilla Readability article extraction), `html-to-markdown` (Turndown), and `structured-data` (JSON-LD / OpenGraph / microdata). No JavaScript rendering, no CSS-selector engineering. Defaults are zero-config: robots.txt respected, 1000-page crawl cap, 100K-char extract cap, friendly User-Agent. All tunables live under `connectors.web_scraper.*` and can be overridden per tenant via `subkit settings set`.",
     "examples": [
       "GET https://example.com → transform.html-to-markdown → { markdown, bytes, url, truncated, stripped_elements }",
       "GET https://blog.example.com/post → transform.readability → { title, byline, content_html, lang, length, url }",

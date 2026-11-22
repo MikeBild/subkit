@@ -13,10 +13,8 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  checkForUpdate,
   listRetainedVersions,
   performUpdate,
-  platformArch,
   prepareDownloadedBinary,
   pruneRetainedVersions,
   rollbackTo,
@@ -28,7 +26,6 @@ import {
   makeCacheDir,
   makeConfig,
   makeFetchImpl,
-  makeGitHubResponse,
   TEST_NOW_MS,
   TEST_PRIVATE_KEY,
   TEST_PUBLIC_KEY_PEM,
@@ -41,14 +38,13 @@ function signSums(sumsText: string): Buffer {
 
 useUpdaterTmpDir();
 
-function buildSignedRelease(opts: { binaryName: string; binaryBytes: Buffer; tag: string }): {
+function buildSignedRelease(opts: { assetName: string; binaryBytes: Buffer; tag: string }): {
   info: UpdateInfo;
   fetchImpl: typeof fetch;
   sumsText: string;
   expectedHash: string;
 } {
-  const pa = platformArch()!;
-  const assetName = `${opts.binaryName}_${pa.os}_${pa.arch}${pa.ext}`;
+  const assetName = opts.assetName;
   const expectedHash = createHash("sha256").update(opts.binaryBytes).digest("hex");
   const noticeFiles = { LICENSE: "Fixture license", "THIRD_PARTY_NOTICES.txt": "Fixture notices" };
   const sumsText =
@@ -118,7 +114,7 @@ describe("performUpdate signature gating", () => {
   test("rejects a correctly signed duplicate manifest before downloading the binary", async () => {
     const cfg = makeConfig();
     const release = buildSignedRelease({
-      binaryName: cfg.binaryName,
+      assetName: cfg.asset as string,
       binaryBytes: Buffer.from("candidate"),
       tag: "v2.0.0",
     });
@@ -136,9 +132,8 @@ describe("performUpdate signature gating", () => {
   });
 
   test("throws when SHA256SUMS.sig asset is missing", async () => {
-    const pa = platformArch()!;
     const cfg = makeConfig();
-    const assetName = `${cfg.binaryName}_${pa.os}_${pa.arch}${pa.ext}`;
+    const assetName = cfg.asset as string;
     const info: UpdateInfo = {
       version: "2.0.0",
       tag: "v2.0.0",
@@ -155,7 +150,7 @@ describe("performUpdate signature gating", () => {
   test("throws when SHA256SUMS body has been tampered with (signature mismatch)", async () => {
     const cfg = makeConfig();
     const release = buildSignedRelease({
-      binaryName: cfg.binaryName,
+      assetName: cfg.asset as string,
       binaryBytes: Buffer.from("hello"),
       tag: "v2.0.0",
     });
@@ -173,7 +168,7 @@ describe("performUpdate signature gating", () => {
   test("throws when the .sig payload is corrupted", async () => {
     const cfg = makeConfig();
     const release = buildSignedRelease({
-      binaryName: cfg.binaryName,
+      assetName: cfg.asset as string,
       binaryBytes: Buffer.from("hello"),
       tag: "v2.0.0",
     });
@@ -193,7 +188,7 @@ describe("performUpdate retention", () => {
       test(`rejects ${mode} ${name} before binary retention`, async () => {
         const cfg = makeConfig();
         const release = buildSignedRelease({
-          binaryName: cfg.binaryName,
+          assetName: cfg.asset as string,
           binaryBytes: Buffer.from("NEW"),
           tag: "v2.0.0",
         });
@@ -214,7 +209,7 @@ describe("performUpdate retention", () => {
     test(`rejects tampered ${name} before retaining or replacing any binary`, async () => {
       const cfg = makeConfig();
       const release = buildSignedRelease({
-        binaryName: cfg.binaryName,
+        assetName: cfg.asset as string,
         binaryBytes: Buffer.from("NEW"),
         tag: "v2.0.0",
       });
@@ -238,7 +233,7 @@ describe("performUpdate retention", () => {
     Object.defineProperty(process, "execPath", { value: fakeBinary, configurable: true });
     try {
       const release = buildSignedRelease({
-        binaryName: cfg.binaryName,
+        assetName: cfg.asset as string,
         binaryBytes: Buffer.from("NEW-BINARY"),
         tag: "v2.0.0",
       });
@@ -276,7 +271,7 @@ describe("performUpdate retention", () => {
     Object.defineProperty(process, "execPath", { value: fakeBinary, configurable: true });
     try {
       const release = buildSignedRelease({
-        binaryName: cfg.binaryName,
+        assetName: cfg.asset as string,
         binaryBytes: Buffer.from("RELEASE-BINARY"),
         tag: "v2.0.0",
       });
@@ -388,9 +383,9 @@ describe("rollbackTo", () => {
 
 describe("prepareDownloadedBinary", () => {
   test("keeps the verified bytes so the installed binary still matches SHA256SUMS", () => {
-    const dir = mkdtempSync(join(tmpdir(), "sk-prepare-"));
+    const dir = mkdtempSync(join(tmpdir(), "subkit-prepare-"));
     try {
-      const path = join(dir, "sk");
+      const path = join(dir, "subkit");
       copyFileSync(existsSync("/usr/bin/true") ? "/usr/bin/true" : process.execPath, path);
       const before = createHash("sha256").update(readFileSync(path)).digest("hex");
       prepareDownloadedBinary(path, process.platform);
@@ -403,51 +398,10 @@ describe("prepareDownloadedBinary", () => {
   });
 });
 
-describe("engine update source", () => {
-  const engine = "https://engine.example.test/";
-  const pa = platformArch()!;
-
-  test("a signed bundle on the configured engine is the stable update, without GitHub", async () => {
-    const seen: string[] = [];
-    const fetchImpl = makeFetchImpl((url) => {
-      seen.push(url);
-      if (url === "https://engine.example.test/health")
-        return Response.json({ status: "ok", version: "2.0.0" });
-      if (url === "https://engine.example.test/install/sha256sums.sig")
-        return new Response(new Uint8Array(64));
-      return new Response("unexpected", { status: 500 });
-    });
-    const info = await checkForUpdate(makeConfig({ engineUrl: engine }), true, fetchImpl);
-    expect(info?.version).toBe("2.0.0");
-    expect(info?.assets).toContainEqual({
-      name: `test-bin_${pa.os}_${pa.arch}${pa.ext}`,
-      url: `https://engine.example.test/install/test-bin-${pa.os}-${pa.arch}`,
-    });
-    expect(info?.assets.map((asset) => asset.name)).toEqual(
-      expect.arrayContaining([
-        "SHA256SUMS",
-        "SHA256SUMS.sig",
-        "LICENSE",
-        "THIRD_PARTY_NOTICES.txt",
-      ]),
-    );
-    expect(seen.some((url) => url.includes("api.github.com"))).toBe(false);
-  });
-
-  test("an engine without the release signature falls back to GitHub", async () => {
-    const fetchImpl = makeFetchImpl((url) => {
-      if (url.endsWith("/health")) return Response.json({ version: "2.0.0" });
-      if (url.endsWith("/install/sha256sums.sig")) return new Response("absent", { status: 404 });
-      if (url.includes("api.github.com")) return Response.json(makeGitHubResponse("v3.0.0"));
-      return new Response("unexpected", { status: 500 });
-    });
-    const info = await checkForUpdate(makeConfig({ engineUrl: engine }), true, fetchImpl);
-    expect(info?.version).toBe("3.0.0");
-  });
-
+describe("forged engine bundles", () => {
   test("an engine-served binary still needs the release signature", async () => {
     const release = buildSignedRelease({
-      binaryName: "test-bin",
+      assetName: "test-bin-linux-x64",
       binaryBytes: Buffer.from("engine-binary"),
       tag: "v2.0.0",
     });

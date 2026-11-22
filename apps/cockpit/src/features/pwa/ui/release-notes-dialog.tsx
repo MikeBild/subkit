@@ -2,6 +2,7 @@ import { useState } from "react";
 import { RELEASE_HISTORY } from "@/app/release-notes.generated";
 import { Button, FormDialog, Section } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
+import { releaseNotesFor } from "../release-notes";
 
 export function ReleaseNotesDialog({
   open,
@@ -10,9 +11,11 @@ export function ReleaseNotesDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [showAll, setShowAll] = useState(false);
-  const hasNotes = RELEASE_HISTORY.unpublished.length > 0 || RELEASE_HISTORY.releases.length > 0;
+  const pending = RELEASE_HISTORY.unpublished;
+  const pendingNotes = releaseNotesFor(pending, locale).notes;
+  const hasNotes = pendingNotes.length > 0 || RELEASE_HISTORY.releases.length > 0;
   const releases = [...RELEASE_HISTORY.releases].reverse();
   const visibleReleases = showAll ? releases : releases.slice(0, 5);
 
@@ -25,10 +28,10 @@ export function ReleaseNotesDialog({
       testId="release-notes"
     >
       <div className="flex flex-col gap-5">
-        {RELEASE_HISTORY.unpublished.length > 0 && (
+        {pendingNotes.length > 0 && (
           <ReleaseNotesSection
-            title={t("releaseNotes.unpublished")}
-            notes={RELEASE_HISTORY.unpublished}
+            title={pending.version ? `v${pending.version}` : t("releaseNotes.unpublished")}
+            notes={pendingNotes}
             empty={t("releaseNotes.empty")}
           />
         )}
@@ -36,7 +39,7 @@ export function ReleaseNotesDialog({
           <ReleaseNotesSection
             key={release.version}
             title={release.version}
-            notes={release.notes}
+            notes={releaseNotesFor(release, locale).notes}
             empty={t("releaseNotes.empty")}
           />
         ))}

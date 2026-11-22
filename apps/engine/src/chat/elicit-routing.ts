@@ -30,6 +30,59 @@ import type { ChatEvent, ElicitationKind } from "./types.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+export interface ChatAnswer {
+  readonly tenant_id: string;
+  readonly conversation_id: string;
+  readonly elicitation_id: string;
+  readonly user_id: string;
+  readonly kind: ElicitationKind;
+  readonly output: unknown;
+}
+
+export type ChatAnswerOutcome =
+  | { readonly kind: "invalid" }
+  | {
+      readonly kind: "answered";
+      readonly output: unknown;
+      readonly result: Awaited<ReturnType<typeof respondElicitation>>["result"];
+    };
+
+export async function answerChatElicitation(db: Db, a: ChatAnswer): Promise<ChatAnswerOutcome> {
+  const output = validateElicitationOutput(a.kind, a.output);
+  if (output === null) return { kind: "invalid" };
+  const principal = await resolveChatPrincipal(db, a.tenant_id, a.user_id);
+  await assertTaskRunWriter(db, {
+    tenant_id: a.tenant_id,
+    conversation_id: a.conversation_id,
+    actor_id: a.user_id,
+    principal,
+  });
+  const turnAbortCtrl = await registerConversationAbort(a.tenant_id, a.conversation_id, db);
+  try {
+    const resolved = await withConversationTurnLock(a.tenant_id, a.conversation_id, () =>
+      respondElicitation(
+        {
+          tenant_id: a.tenant_id,
+          conversation_id: a.conversation_id,
+          elicitation_id: a.elicitation_id,
+          actor_id: a.user_id,
+          principal,
+          answer_actor: humanChatAnswer(principal),
+          output,
+          turn_abort_ctrl: turnAbortCtrl,
+          require_same_actor: true,
+          surface: "chat",
+          local_confirmations: deviceConfirmationPort(db),
+        },
+        db,
+      ),
+    );
+    return { kind: "answered", output, result: resolved.result };
+  } finally {
+    await unregisterConversationAbort(a.tenant_id, a.conversation_id, turnAbortCtrl);
+  }
+}
+
 function parseEnvelope(raw: string): { c: string; o?: unknown } | null {
   if (!raw) return null;
   let parsed: unknown;
@@ -105,7 +158,7 @@ export function classifyChatElicitError(err: unknown): ChatElicitErrorClass {
       kind: "surface_unsupported",
       tool_name: err.toolName,
       user_text:
-        "Creating or editing connectors, workflows, skills, or knowledge sources isn't available from chat — this channel is read-only (I can look things up and run your saved workflows). To set that up, use the sk CLI or the web portal.",
+        "Creating or editing connectors, workflows, skills, or knowledge sources isn't available from chat — this channel is read-only (I can look things up and run your saved workflows). To set that up, use the subkit CLI or the web portal.",
     };
   }
   if (err instanceof ElicitationActorMismatchError) {
@@ -231,40 +284,27 @@ export async function routeChatInteraction(
     return { status: "ignored" };
   }
 
-  const output = validateElicitationOutput(kind, rawOutput);
-  if (output === null) {
-    logger.warn({
-      module: "chat",
-      action: "interaction.output_shape_invalid",
-      msg: "elicitation output failed schema validation — discarding",
-      kind,
-      action_id,
-    });
-    return { status: "ignored" };
-  }
-
-  const principal = await resolveChatPrincipal(db, tenant_id, user_id);
-  await assertTaskRunWriter(db, { tenant_id, conversation_id, actor_id: user_id, principal });
-  const turnAbortCtrl = await registerConversationAbort(tenant_id, conversation_id, db);
+  let output: unknown;
   try {
-    await withConversationTurnLock(tenant_id, conversation_id, () =>
-      respondElicitation(
-        {
-          tenant_id,
-          conversation_id,
-          elicitation_id,
-          actor_id: user_id,
-          principal,
-          answer_actor: humanChatAnswer(principal),
-          output,
-          turn_abort_ctrl: turnAbortCtrl,
-          require_same_actor: true,
-          surface: "chat",
-          local_confirmations: deviceConfirmationPort(db),
-        },
-        db,
-      ),
-    );
+    const answered = await answerChatElicitation(db, {
+      tenant_id,
+      conversation_id,
+      elicitation_id,
+      user_id,
+      kind,
+      output: rawOutput,
+    });
+    if (answered.kind === "invalid") {
+      logger.warn({
+        module: "chat",
+        action: "interaction.output_shape_invalid",
+        msg: "elicitation output failed schema validation — discarding",
+        kind,
+        action_id,
+      });
+      return { status: "ignored" };
+    }
+    output = answered.output;
   } catch (err) {
     const classified = classifyChatElicitError(err);
     switch (classified.kind) {
@@ -354,8 +394,6 @@ export async function routeChatInteraction(
       default:
         throw err;
     }
-  } finally {
-    await unregisterConversationAbort(tenant_id, conversation_id, turnAbortCtrl);
   }
   const isApprove =
     approval?.[1] === "approve" ||

@@ -35,7 +35,7 @@ Each line says what you get and links to the chapter that explains it.
 | Fix it in chat | When a step fails or blocks an approval, SubKit suggests a fix in chat that you review again. | All | [Your first workflow](setup.md#your-first-workflow) |
 | Automation check | Saving a workflow or schedule tells you whether it can run on its own or which step needs a change. | All | [Use the HTTP API](setup.md#use-the-http-api) |
 | Sandbox data tools | Transform steps calculate, parse and validate data with built-in helpers in an isolated sandbox. | All | [Sandbox data tools](setup.md#sandbox-data-tools) |
-| Packages | Export workflows, connectors, skills, schedules, sources and files and import them into another engine. | All | [Use the sk CLI on your machine](setup.md#use-the-sk-cli-on-your-machine) |
+| Packages | Export workflows, connectors, skills, schedules, sources and files and import them into another engine. | All | [Use the subkit CLI on your machine](setup.md#use-the-subkit-cli-on-your-machine) |
 
 ### Approvals and permissions
 
@@ -47,7 +47,7 @@ Each line says what you get and links to the chapter that explains it.
 | Renew before it ends | SubKit reports an approval three days before it ends, and you can renew it. | All | [Keep an eye on schedules](setup.md#keep-an-eye-on-schedules) |
 | Two-person approval (“approve together”) | Every workflow approval needs two different people, for teams that must not let one person approve sensitive workflows alone. Off by default; the setting appears only when at least two people in the workspace may approve, and only administrators change it. | Admin · Optional | [Reference: pair approval, invitations, offline reports and notification pause](setup.md#reference-pair-approval-invitations-offline-reports-and-notification-pause) |
 | Allow once | A write tool called from an AI client pauses until a person selects **Allow once** or **Decline**. | All | [Connect AI clients via MCP](setup.md#connect-ai-clients-via-mcp) |
-| Roles, groups and grants | Roles, permissions and scoped API keys apply the same way to the Cockpit, `sk`, the API and MCP. | Admin | [Execution identity and permission](setup.md#execution-identity-and-permission) |
+| Roles, groups and grants | Roles, permissions and scoped API keys apply the same way to the Cockpit, `subkit`, the API and MCP. | Admin | [Execution identity and permission](setup.md#execution-identity-and-permission) |
 | Who started a run | Every run names its caller, and you can trace it across channels. | All | [Execution identity and permission](setup.md#execution-identity-and-permission) |
 
 ### Tasks
@@ -128,9 +128,9 @@ Each line says what you get and links to the chapter that explains it.
 
 | Feature | What you get | Where | More |
 | --- | --- | --- | --- |
-| SubKit Desktop | Your server's Cockpit as a Mac app for Apple Silicon (macOS 13 or later), with a menu bar icon, notifications and launch at login. | All | [SubKit Desktop](setup.md#subkit-desktop) |
+| SubKit Desktop | Your server's Cockpit as an app for Macs with Apple Silicon (macOS 13 or later) and for Windows 10 and 11 (x64), with an icon in the menu bar or the notification area, notifications and launch at login. | All | [SubKit Desktop](setup.md#subkit-desktop) |
 | Welcome and invitation link | The first start explains what SubKit does and opens the invitation link from your email, so you join a workspace in a few steps. | All | [SubKit Desktop](setup.md#subkit-desktop) |
-| Sign in through the browser | The app signs in through your browser; every Mac is a device you can revoke. | All | [SubKit Desktop](setup.md#subkit-desktop) |
+| Sign in through the browser | The app signs in through your browser; every computer is a device you can revoke. | All | [SubKit Desktop](setup.md#subkit-desktop) |
 | Several servers | SubKit Desktop keeps one profile per server. | All | [SubKit Desktop](setup.md#subkit-desktop) |
 | Menu bar | The count of what needs you, quiet hours, pause, quick note, live view, updates and “Report a problem” in one menu. | All | [SubKit Desktop](setup.md#subkit-desktop) |
 | Quick note | ⌥ Space opens a note from anywhere; it lands in your inbox. | All | [SubKit Desktop](setup.md#subkit-desktop) |
@@ -141,7 +141,7 @@ Each line says what you get and links to the chapter that explains it.
 
 ### SubKit on your Mac
 
-These features need SubKit Desktop on a Mac with Apple Silicon. Nothing runs on your Mac until you turn it on under **Local capabilities**.
+These features need SubKit Desktop on a Mac with Apple Silicon; Windows does not offer them for now. Nothing runs on your Mac until you turn it on under **Local capabilities**.
 
 | Feature | What you get | Where | More |
 | --- | --- | --- | --- |
@@ -154,12 +154,12 @@ These features need SubKit Desktop on a Mac with Apple Silicon. Nothing runs on 
 | Local workflow steps | Workflows with fixed steps for files, browser and apps; the approval names the device, folders, websites and apps. | All | [Reference: workflow steps on your device](setup.md#reference-workflow-steps-on-your-device) |
 | Fully local workspace | Run a workspace only on your Mac, with its own database, backups and your own AI key or local model server; move it to a server later. | Self-hosted | [SubKit Desktop](setup.md#subkit-desktop) |
 
-### sk CLI, HTTP API and MCP
+### subkit CLI, HTTP API and MCP
 
 | Feature | What you get | Where | More |
 | --- | --- | --- | --- |
-| sk CLI | Draft, change and run workflows as files from the terminal, on several engines. | All | [Use the sk CLI on your machine](setup.md#use-the-sk-cli-on-your-machine) |
-| Command reference | Every `sk` command with its arguments. | All | [sk CLI reference](cli.md) |
+| subkit CLI | Draft, change and run workflows as files from the terminal, on several engines. | All | [Use the subkit CLI on your machine](setup.md#use-the-subkit-cli-on-your-machine) |
+| Command reference | Every `subkit` command with its arguments. | All | [subkit CLI reference](cli.md) |
 | HTTP API | Start workflows from your own code and read their results; described in OpenAPI at `/openapi.json`. | All | [Use the HTTP API](setup.md#use-the-http-api) |
 | MCP server | Every approved workflow is a tool in Claude Code, Codex and other MCP clients, with browser sign-in or an API key. | All | [Connect AI clients via MCP](setup.md#connect-ai-clients-via-mcp) |
 | Tasks from an AI client | Create and follow tasks from an MCP client. | All | [Connect AI clients via MCP](setup.md#connect-ai-clients-via-mcp) |
@@ -198,7 +198,7 @@ These features need SubKit Desktop on a Mac with Apple Silicon. Nothing runs on 
 | Backup and recovery | Back up the whole installation and restore it with the same image. | Self-hosted | [Run the engine](setup.md#run-the-engine) |
 | Browser crawling | Crawl pages for connector discovery with a derived image. | Self-hosted · Optional | [Run the engine](setup.md#run-the-engine) |
 | Engine operator | One workspace administers the whole engine. | Admin · Self-hosted | [Engine operator](setup.md#engine-operator) |
-| Runtime settings | Every engine setting with description and default, changed with `sk settings`, the API or the config file. | Admin | [Settings](settings.md) |
+| Runtime settings | Every engine setting with description and default, changed with `subkit settings`, the API or the config file. | Admin | [Settings](settings.md) |
 
 ### Security and audit
 

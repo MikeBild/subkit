@@ -47,3 +47,8 @@ declare module "*.webp" {
   const path: string;
   export default path;
 }
+
+declare module "*.sh" {
+  const content: string;
+  export default content;
+}

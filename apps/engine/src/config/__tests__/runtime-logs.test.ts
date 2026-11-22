@@ -47,7 +47,7 @@ function attach(buf: Cap[]): () => void {
 }
 
 beforeEach(async () => {
-  dir = mkdtempSync(join(tmpdir(), "sk-cfg-runtime-logs-"));
+  dir = mkdtempSync(join(tmpdir(), "subkit-cfg-runtime-logs-"));
   cfgPath = join(dir, "subkit.config.json");
   captured = [];
   const { reconfigureLogger } = await import("../../logging/logger.ts");

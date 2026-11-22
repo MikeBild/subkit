@@ -16,6 +16,7 @@ export const DEVICE_STEP_VIEW_STATES = [
   "confirmation_required",
   "failed",
   "stopped",
+  "unclear",
 ] as const;
 export type DeviceStepViewState = (typeof DEVICE_STEP_VIEW_STATES)[number];
 
@@ -33,8 +34,11 @@ const VIEW_STATES: Record<DeviceCommandState, DeviceStepViewState> = {
   expired: "failed",
 };
 
-export function stepViewState(state: DeviceCommandState): DeviceStepViewState {
-  return VIEW_STATES[state];
+export function stepViewState(
+  state: DeviceCommandState,
+  effect: "read" | "write",
+): DeviceStepViewState {
+  return state === "lost" && effect === "write" ? "unclear" : VIEW_STATES[state];
 }
 
 const TARGET_FIELDS: Readonly<Record<DeviceCapability, readonly string[]>> = {

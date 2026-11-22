@@ -85,56 +85,6 @@ test("connection callbacks preserve actors, ownership, and system refresh proven
     );
   expect(created).toEqual({ actor_type: "user", actor_id: server.userId });
 
-  const legacyUserStart = await api("/v1/connections/start", {
-    method: "POST",
-    body: JSON.stringify({
-      name: "audit-actor-legacy-user",
-      base_url: fake.baseUrl,
-      scopes: ["read"],
-    }),
-  });
-  expect(legacyUserStart.status).toBe(200);
-  const legacyUserUrl = ((await legacyUserStart.json()) as { authorization_url: string })
-    .authorization_url;
-  const legacyUserState = new URL(legacyUserUrl).searchParams.get("state");
-  if (!legacyUserState) throw new Error("legacy user OAuth state missing");
-  await server.db
-    .update(outboundConnectionStarts)
-    .set({ actor_type: "unknown", actor_id: null, owner_user_id: null })
-    .where(
-      eq(
-        outboundConnectionStarts.state_sha256,
-        createHash("sha256").update(legacyUserState).digest("hex"),
-      ),
-    );
-  const legacyUserConsent = await fetch(legacyUserUrl, { redirect: "manual" });
-  const legacyUserCallback = await fetch(legacyUserConsent.headers.get("location") ?? "", {
-    redirect: "manual",
-  });
-  expect([200, 303]).toContain(legacyUserCallback.status);
-  const [legacyUserConnection] = await server.db
-    .select({ id: outboundConnections.id, created_by: outboundConnections.created_by })
-    .from(outboundConnections)
-    .where(
-      and(
-        eq(outboundConnections.tenant_id, server.tenantId),
-        eq(outboundConnections.name, "audit-actor-legacy-user"),
-      ),
-    );
-  if (!legacyUserConnection) throw new Error("legacy user connection missing after callback");
-  expect(legacyUserConnection.created_by).toBe(server.userId);
-  const [legacyUserAudit] = await server.db
-    .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
-    .from(auditLog)
-    .where(
-      and(
-        eq(auditLog.tenant_id, server.tenantId),
-        eq(auditLog.action, "connection.created"),
-        eq(auditLog.resource_id, legacyUserConnection.id),
-      ),
-    );
-  expect(legacyUserAudit).toEqual({ actor_type: "unknown", actor_id: null });
-
   const machineStart = await api(
     "/v1/connections/start",
     {
@@ -157,7 +107,6 @@ test("connection callbacks preserve actors, ownership, and system refresh proven
       actor_type: outboundConnectionStarts.actor_type,
       actor_id: outboundConnectionStarts.actor_id,
       owner_user_id: outboundConnectionStarts.owner_user_id,
-      user_id: outboundConnectionStarts.user_id,
     })
     .from(outboundConnectionStarts)
     .where(
@@ -170,7 +119,6 @@ test("connection callbacks preserve actors, ownership, and system refresh proven
     actor_type: "system_account",
     actor_id: server.systemAccountId,
     owner_user_id: null,
-    user_id: null,
   });
   const machineConsent = await fetch(machineUrl, { redirect: "manual" });
   const machineCallback = await fetch(machineConsent.headers.get("location") ?? "", {
@@ -203,65 +151,6 @@ test("connection callbacks preserve actors, ownership, and system refresh proven
     .from(outboundConnections)
     .where(eq(outboundConnections.id, machineConnection.id));
   expect(machineOwner?.created_by).toBeNull();
-
-  const legacyMachineStart = await api(
-    "/v1/connections/start",
-    {
-      method: "POST",
-      body: JSON.stringify({
-        name: "audit-actor-legacy-machine",
-        base_url: fake.baseUrl,
-        scopes: ["read"],
-      }),
-    },
-    systemAccountApiKey,
-  );
-  expect(legacyMachineStart.status).toBe(200);
-  const legacyMachineUrl = ((await legacyMachineStart.json()) as { authorization_url: string })
-    .authorization_url;
-  const legacyMachineState = new URL(legacyMachineUrl).searchParams.get("state");
-  if (!legacyMachineState) throw new Error("legacy system-account OAuth state missing");
-  await server.db
-    .update(outboundConnectionStarts)
-    .set({
-      user_id: server.systemAccountId,
-      actor_type: "unknown",
-      actor_id: null,
-      owner_user_id: null,
-    })
-    .where(
-      eq(
-        outboundConnectionStarts.state_sha256,
-        createHash("sha256").update(legacyMachineState).digest("hex"),
-      ),
-    );
-  const legacyMachineConsent = await fetch(legacyMachineUrl, { redirect: "manual" });
-  const legacyMachineCallback = await fetch(legacyMachineConsent.headers.get("location") ?? "", {
-    redirect: "manual",
-  });
-  expect([200, 303]).toContain(legacyMachineCallback.status);
-  const [legacyMachineConnection] = await server.db
-    .select({ id: outboundConnections.id, created_by: outboundConnections.created_by })
-    .from(outboundConnections)
-    .where(
-      and(
-        eq(outboundConnections.tenant_id, server.tenantId),
-        eq(outboundConnections.name, "audit-actor-legacy-machine"),
-      ),
-    );
-  if (!legacyMachineConnection) throw new Error("legacy machine connection missing after callback");
-  expect(legacyMachineConnection.created_by).toBeNull();
-  const [legacyMachineAudit] = await server.db
-    .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
-    .from(auditLog)
-    .where(
-      and(
-        eq(auditLog.tenant_id, server.tenantId),
-        eq(auditLog.action, "connection.created"),
-        eq(auditLog.resource_id, legacyMachineConnection.id),
-      ),
-    );
-  expect(legacyMachineAudit).toEqual({ actor_type: "unknown", actor_id: null });
 
   const renewal = await api(
     `/v1/connections/${connection.id}/renew`,

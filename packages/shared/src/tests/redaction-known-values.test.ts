@@ -163,7 +163,7 @@ describe("redactDiagnosticText", () => {
     expect(redactDiagnosticText("Bearer abc")).toBe("Bearer abc");
   });
 
-  test("keeps short sk words", () => {
+  test("keeps short subkit words", () => {
     expect(redactDiagnosticText("sk-short")).toBe("sk-short");
   });
 

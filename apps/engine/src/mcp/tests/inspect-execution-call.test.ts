@@ -6,13 +6,13 @@ import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 let suite: McpTestSuite;
 
 beforeAll(async () => {
-  testEnv.SK_MCP_MODE = "authoring";
+  testEnv.SUBKIT_MCP_MODE = "authoring";
   suite = await startMcpTestSuite("inspect-execution-call");
 });
 
 afterAll(async () => {
   await suite.cleanup();
-  delete testEnv.SK_MCP_MODE;
+  delete testEnv.SUBKIT_MCP_MODE;
 });
 
 describe("mcp inspect_execution — surface-agnostic tenant_read", () => {

@@ -17,7 +17,7 @@ import {
   tenantId,
   timestamps,
 } from "./_common.ts";
-import { conversations } from "./conversations.ts";
+import { conversationMessages, conversations } from "./conversations.ts";
 import { tenants } from "./identity.ts";
 
 export const tasks = pgTable(
@@ -58,12 +58,21 @@ export const tasks = pgTable(
     fingerprint: text("fingerprint").notNull(),
     revision: integer("revision").notNull().default(1),
     lifecycle: text("lifecycle").$type<"active" | "archived">().notNull().default("active"),
-    locale: text("locale").$type<"de" | "en">().notNull().default("de"),
+    locale: text("locale").$type<"de" | "en">().notNull(),
+    source_conversation_id: uuid("source_conversation_id").references(() => conversations.id, {
+      onDelete: "set null",
+    }),
+    source_message_id: uuid("source_message_id").references(() => conversationMessages.id, {
+      onDelete: "set null",
+    }),
     ...timestamps,
   },
   (t) => [
     uniqueIndex("tasks_tenant_id_key").on(t.tenant_id, t.id),
     index("tasks_tenant_owner_idx").on(t.tenant_id, t.owner_id),
+    index("tasks_tenant_source_conversation_idx")
+      .on(t.tenant_id, t.source_conversation_id)
+      .where(sql`${t.source_conversation_id} IS NOT NULL`),
     ...catalogMetadataConstraints("tasks", t),
     check("tasks_lifecycle_check", sql`${t.lifecycle} IN ('active', 'archived')`),
     check("tasks_locale_check", sql`${t.locale} IN ('de', 'en')`),

@@ -24,7 +24,7 @@ beforeAll(async () => {
   testEnv.MASTER_KEY = "66".repeat(32);
   tdb = await createTestDb("onboarding_bootstrap_global_llm");
   rbacIds = await seedBuiltinRolesAndPermissions(tdb.db);
-  configDir = mkdtempSync(join(tmpdir(), "sk-bootstrap-global-llm-"));
+  configDir = mkdtempSync(join(tmpdir(), "subkit-bootstrap-global-llm-"));
   _resetConfigForTests();
   await loadConfig({
     env: { DATABASE_URL: tdb.url, NODE_ENV: "test" },

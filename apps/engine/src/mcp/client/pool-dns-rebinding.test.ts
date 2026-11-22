@@ -64,7 +64,7 @@ async function seed(tenant_id: string, slug: string): Promise<string> {
 }
 
 beforeAll(async () => {
-  const dir = await mkdtemp(join(tmpdir(), "sk-mcp-rebind-"));
+  const dir = await mkdtemp(join(tmpdir(), "subkit-mcp-rebind-"));
   await loadConfig({
     env: { DATABASE_URL: "postgresql://test:test@127.0.0.1:5432/subkit" },
     configPathOverride: join(dir, "subkit.config.json"),

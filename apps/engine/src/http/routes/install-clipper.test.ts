@@ -14,7 +14,7 @@ const offlineDb = createDbFromUrl("postgres://localhost/offline").db;
 
 let configDirectory: string;
 beforeAll(async () => {
-  configDirectory = mkdtempSync(join(tmpdir(), "sk-install-clipper-"));
+  configDirectory = mkdtempSync(join(tmpdir(), "subkit-install-clipper-"));
   await loadConfig({
     env: { DATABASE_URL: "postgres://localhost/x", NODE_ENV: "test" },
     configPathOverride: join(configDirectory, "subkit.config.json"),

@@ -368,7 +368,12 @@ export function llmGroups(envelope: unknown): LlmGroupView[] {
   });
 }
 
-export const FAILED_RESULTS = ["error", "context_too_large", "quota_exhausted"] as const;
+export const FAILED_RESULTS = [
+  "error",
+  "context_too_large",
+  "quota_exhausted",
+  "key_rejected",
+] as const;
 
 function isFailedResult(result: string): boolean {
   return (FAILED_RESULTS as readonly string[]).includes(result);

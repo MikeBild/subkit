@@ -11,7 +11,7 @@ Dieses Kapitel ist für alle, die beim Lesen im Browser Material für ihr Team s
 Du installierst den Web Clipper, verbindest ihn mit deiner Engine und sammelst die erste Seite.
 Danach landet, was du für wichtig hältst, mit Quelle in deiner Inbox (im Cockpit **Eingang**) und wartet dort auf eine Prüfung.
 
-Der Web Clipper ist eine Chrome-Erweiterung. Er legt eine Seite, eine markierte Stelle oder ein YouTube-Transkript als Markdown in deine Inbox; Wissen wird daraus erst, wenn eine Person es bestätigt. Er ist noch nicht im Chrome Web Store, du richtest ihn mit `sk clipper install` ein.
+Der Web Clipper ist eine Chrome-Erweiterung. Er legt eine Seite, eine markierte Stelle oder ein YouTube-Transkript als Markdown in deine Inbox; Wissen wird daraus erst, wenn eine Person es bestätigt. Du installierst ihn aus dem [Chrome Web Store](https://chromewebstore.google.com/detail/odefbnmjeehgfbanpaajiaocliccldma); dann aktualisiert er sich selbst. Für nicht verwaltete oder Offline-Umgebungen gibt es eine ZIP-Datei und `subkit clipper install`.
 
 Der Weg ist immer gleich: **sammeln → im Chat prüfen → bestätigen → Wissen oder Skill**.
 
@@ -20,23 +20,43 @@ Der Weg ist immer gleich: **sammeln → im Chat prüfen → bestätigen → Wiss
 - **Google Chrome.** Microsoft Edge und andere Chromium-Browser sind nicht getestet. Firefox wird nicht unterstützt, weil die Erweiterung einen Hintergrund-Service-Worker von Chrome nutzt.
 - **Eine Engine-Adresse** mit HTTPS. Reines HTTP geht nur mit `localhost`, `127.0.0.1` oder `[::1]`. In SubKit Cloud ist es `https://subkit-cloud.mikebild.dev`, ohne `/cockpit`.
 - **Ein Konto mit `intake:read` und `intake:write`.** Fehlen sie, bitte eine Administratorin oder einen Administrator darum.
-- **Für die Installation per CLI:** die `sk`-CLI, angemeldet an deiner Engine. Siehe „Die sk-CLI auf deinem Rechner verwenden“. Ohne CLI nimmst du die ZIP-Datei.
+- **Für die Installation per CLI:** die `subkit`-CLI, angemeldet an deiner Engine. Siehe „Die subkit-CLI auf deinem Rechner verwenden“. Sonst nimmst du den Chrome Web Store oder die ZIP-Datei.
 
 ### Die Erweiterung installieren
 
-Der Installer übernimmt die Engine-Adresse deines aktiven Profils. Später trägst du nur noch einen API-Schlüssel ein.
+Installier den Web Clipper aus dem Chrome Web Store. ZIP-Datei und CLI sind der Ausweg für nicht verwaltete oder Offline-Umgebungen; alle Wege laden dieselbe Erweiterung.
 
-1. Führe `sk clipper install` aus. Der Befehl entpackt die Erweiterung nach `~/.sk/clipper` und versucht, die Erweiterungsseite von Chrome zu öffnen. Die Ausgabe nennt den Ordner und die nächsten Schritte:
+| Weg | Engine-Adresse | Geeignet für |
+| --- | --- | --- |
+| [Chrome Web Store](https://chromewebstore.google.com/detail/odefbnmjeehgfbanpaajiaocliccldma) | trägst du beim Verbinden ein | alle; aktualisiert sich selbst |
+| ZIP-Datei aus dem neuesten Release | trägst du beim Verbinden ein | alle, auch ohne CLI |
+| ZIP-Datei von deiner Engine | trägst du beim Verbinden ein | genau die Version, die deine Engine nutzt |
+| `subkit clipper install` | kommt aus deinem aktiven Profil | alle, die die CLI nutzen |
 
-   ```text
-   sk: clipping extension installed to /Users/you/.sk/clipper
-   sk: in Chrome, enable Developer mode, select Load unpacked, and choose the directory above. Reload the extension there after a future install.
+#### Aus dem Chrome Web Store installieren
+
+1. Öffne [SubKit Clipper im Chrome Web Store](https://chromewebstore.google.com/detail/odefbnmjeehgfbanpaajiaocliccldma) und wähle **Hinzufügen** (in englischem Chrome: **Add to Chrome**).
+2. Hefte die Erweiterung „SubKit Clipper“ an die Symbolleiste.
+
+#### Die ZIP-Datei herunterladen
+
+1. Lade die neueste Version von [github.com/MikeBild/subkit/releases/latest/download/subkit-clipper.zip](https://github.com/MikeBild/subkit/releases/latest/download/subkit-clipper.zip) herunter. Die Version deiner Engine liegt unter `<Engine-Adresse>/install/clipper.zip`, zum Beispiel `https://subkit-cloud.mikebild.dev/install/clipper.zip`.
+2. Entpacke die Datei in einen Ordner, den du behältst. Chrome lädt die Erweiterung aus diesem Ordner.
+3. Öffne in Chrome `chrome://extensions` und schalte oben rechts den **Entwicklermodus** ein.
+4. Wähle **Entpackte Erweiterung laden** (in englischem Chrome: **Load unpacked**) und den entpackten Ordner.
+5. Hefte die Erweiterung „SubKit Clipper“ an die Symbolleiste.
+
+#### Mit der CLI installieren
+
+1. Starte den Installer:
+
+   ```sh
+   subkit clipper install
    ```
 
-2. Öffne in Chrome `chrome://extensions`. Hat sich Chrome nicht selbst geöffnet, meldet der Befehl `sk: could not open Chrome automatically`.
-3. Schalte oben rechts den **Entwicklermodus** ein.
-4. Wähle **Entpackte Erweiterung laden** (in englischem Chrome: **Load unpacked**) und den Ordner aus der Ausgabe.
-5. Hefte die Erweiterung „SubKit Clipper“ an die Symbolleiste.
+   Der Befehl entpackt die Erweiterung nach `~/.subkit/clipper`, übernimmt die Engine-Adresse deines aktiven Profils und versucht, die Erweiterungsseite von Chrome zu öffnen. Die Ausgabe nennt den Ordner.
+2. Öffne in Chrome `chrome://extensions`, falls es sich nicht selbst geöffnet hat, schalte den **Entwicklermodus** ein und wähle **Entpackte Erweiterung laden** mit dem Ordner aus der Ausgabe.
+3. Hefte die Erweiterung „SubKit Clipper“ an die Symbolleiste.
 
 Der Befehl kennt drei Optionen:
 
@@ -46,19 +66,16 @@ Der Befehl kennt drei Optionen:
 | `--engine-url <url>` | Nutzt diese Engine-Adresse statt der des aktiven Profils. |
 | `--no-open` | Öffnet Chrome nicht. |
 
-### Ohne CLI installieren
-
-Deine Engine bietet die Erweiterung auch als ZIP-Datei an. Darin steht keine Engine-Adresse; die trägst du beim Verbinden selbst ein.
-
-1. Lade `<Engine-Adresse>/install/clipper.zip` herunter, zum Beispiel `https://subkit-cloud.mikebild.dev/install/clipper.zip`.
-2. Entpacke die Datei in einen Ordner, den du behältst. Chrome lädt die Erweiterung aus diesem Ordner.
-3. Öffne in Chrome `chrome://extensions`, schalte den **Entwicklermodus** ein und wähle **Entpackte Erweiterung laden** mit dem entpackten Ordner.
-
 ### Die Erweiterung aktualisieren
 
-Nach einem Update der `sk`-CLI installierst du den Web Clipper neu:
+Der Web Clipper aus dem Chrome Web Store aktualisiert sich selbst und zeigt nie einen Update-Hinweis. Ein entpackt geladener Web Clipper bleibt auf seiner Version, bis du ihn ersetzt. Deshalb passt er für dich auf:
 
-1. Führe `sk clipper install` aus. Hast du die ZIP-Datei genutzt, entpackst du die neue Datei in denselben Ordner.
+- Öffnest du Popup oder Einstellungen, fragt er deine Engine höchstens einmal am Tag nach ihrer Version. Er schickt dabei keinen API-Schlüssel und nichts über deine Seiten.
+- Läuft auf der Engine eine neuere Version, zeigen Popup und Einstellungen „Update verfügbar: Version …“ mit dem Link **Herunterladen** zu `<Engine-Adresse>/install/clipper.zip`.
+
+So aktualisierst du:
+
+1. Lade die neue ZIP-Datei herunter und entpacke sie in denselben Ordner, sodass sie die alten Dateien ersetzt. Mit der CLI aktualisierst du zuerst die CLI und führst dann `subkit clipper install` erneut aus.
 2. Lade die Erweiterung „SubKit Clipper“ auf `chrome://extensions` neu.
 
 Engine-Adresse und Sprache bleiben erhalten. Den API-Schlüssel fügst du nach dem Neuladen erneut ein.
@@ -126,7 +143,7 @@ Dazu kommen Quelladresse, Autor und Veröffentlichungsdatum, sofern die Seite si
 
 ### Datenschutz
 
-- **Ziel:** Einträge gehen nur an die Engine, die du eingestellt hast. Für ein Transkript lädt der Web Clipper eventuell Seite und Untertitel direkt von YouTube.
+- **Ziel:** Einträge und die tägliche Update-Prüfung gehen nur an die Engine, die du eingestellt hast. Für ein Transkript lädt der Web Clipper eventuell Seite und Untertitel direkt von YouTube.
 - **Zugangsdaten werden geschwärzt:** Vor dem Speichern ersetzt SubKit erkennbare Zugangsdaten (API-Schlüssel, Tokens, private Schlüssel, Signaturen signierter Links) durch eine Markierung. Die Werte werden nie gespeichert. Personenbezogene Daten bleiben erhalten; sammle deshalb keine Seiten, die Passwörter oder Schlüssel zeigen.
 - **Dein API-Schlüssel** liegt nur im Sitzungsspeicher des Browsers und wird nie auf dein Gerät geschrieben. Deshalb fügst du ihn nach einem Neustart des Browsers oder einem Neuladen der Erweiterung erneut ein. Ein Schlüssel aus der Vorlage **Web Clipper** darf nur gesammelte Einträge ansehen und bearbeiten (`intake:read`, `intake:write`), auch die Clips anderer in diesem Arbeitsbereich. Widerrufe ihn im Cockpit, wenn du ihn nicht mehr brauchst.
 - **Reichweite des Schlüssels:** Die Vorlage **Web Clipper** erlaubt nur Anzeigen und Bearbeiten gesammelter Einträge (`intake:read`, `intake:write`), auch der Clips anderer Personen in deinem Arbeitsbereich. Widerrufe den Schlüssel im Cockpit, wenn du ihn nicht mehr brauchst.

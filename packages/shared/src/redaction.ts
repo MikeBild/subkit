@@ -447,14 +447,41 @@ export function redactKnownValues<T>(value: T, secrets: readonly string[]): T {
   return walk(value) as T;
 }
 
+const PATH_ROOTS =
+  "Users|home|root|var|private|tmp|etc|opt|usr|Volumes|media|mnt|srv|Library|Applications|System|proc|run|snap|nix";
+const PATH_BODY = "[^\\s\"'`<>|;,()]*";
+export const PRIVATE_UNIX_PATH = new RegExp(
+  `(?<![\\w.:/~-])(?:~|/(?:${PATH_ROOTS}))/${PATH_BODY}`,
+  "g",
+);
+export const PRIVATE_WINDOWS_PATH = new RegExp(
+  `(?<!\\w)(?:[A-Za-z]:\\\\|\\\\\\\\)${PATH_BODY}`,
+  "g",
+);
+export const EMAIL_ADDRESS = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+export const SCHEMELESS_LINK =
+  /(?<![\w@./:-])(?:[^\s"'<>@/:]+(?::[^\s"'<>@/]*)?@)?(?:[a-z0-9-]+\.)+[a-z]{2,24}(?=[/?#])[^\s"'<>)\]}]*/gi;
+export const PHONE_NUMBER = /(?<![\w+.:/-])(?:\+\d{1,3}[ -]?|\(?0)\d[\d ()/-]{5,18}\d(?![\w.:/-])/g;
+const PHONE_DIGITS = { min: 7, max: 15 } as const;
+
+export function isPhoneNumber(match: string): boolean {
+  const digits = match.replace(/\D/g, "").length;
+  return digits >= PHONE_DIGITS.min && digits <= PHONE_DIGITS.max;
+}
+
+export function schemelessLinkParts(match: string): { host: string; detail: string } {
+  const cut = match.search(/[/?#]/);
+  const authority = cut < 0 ? match : match.slice(0, cut);
+  return {
+    host: authority.slice(authority.lastIndexOf("@") + 1),
+    detail: cut < 0 ? "" : match.slice(cut),
+  };
+}
+
 const DIAGNOSTIC_URL = /\b[a-z][a-z0-9+.-]{1,20}:\/\/[^\s"'<>)\]}]+/gi;
 const DIAGNOSTIC_AUTH_SCHEME = /\b(Bearer|Basic|Token)\s+[A-Za-z0-9._~+/=-]{4,}/gi;
-const DIAGNOSTIC_UNIX_PATH =
-  /(?<![\w.:/~-])(?:~|\/(?:Users|home|root|var|private|tmp|etc|opt|usr|Volumes|mnt|srv|Library|Applications|System))\/[^\s"'`<>|;,()]*/g;
-const DIAGNOSTIC_WINDOWS_PATH = /(?<!\w)(?:[A-Za-z]:\\|\\\\)[^\s"'`<>|;,()]*/g;
 const DIAGNOSTIC_JWT = /\beyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]*/g;
 const DIAGNOSTIC_API_KEY = /\bsk[_-][A-Za-z0-9_-]{8,}/g;
-const DIAGNOSTIC_EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 const DIAGNOSTIC_NAMED_SECRET =
   /\b(code_verifier|code_challenge|code|state|access_token|refresh_token|id_token|client_secret|token|password|passwd|secret|api[_-]?key|set-cookie|cookie|authorization|session(?:_id)?)\b(["']?\s*[:=]\s*["']?)([^\s"',;&}]+)/gi;
 export const REDACTED_EMAIL = "***email***";
@@ -482,6 +509,10 @@ export function redactDiagnosticText(
   const secret = mask ?? DEFAULT_REDACTED;
   const home = homeDir && homeDir.length > 1 ? text.split(homeDir).join("~") : text;
   let out = home.replace(DIAGNOSTIC_URL, (match) => redactUrl(match, secret));
+  out = out.replace(SCHEMELESS_LINK, (match) => {
+    const { host, detail } = schemelessLinkParts(match);
+    return detail.length > 1 ? `${host}/${secret}` : host;
+  });
   out = out.replace(DIAGNOSTIC_AUTH_SCHEME, (_match, scheme: string) => `${scheme} ${secret}`);
   out = out.replace(DIAGNOSTIC_JWT, secret);
   out = out.replace(DIAGNOSTIC_API_KEY, secret);
@@ -489,9 +520,10 @@ export function redactDiagnosticText(
     DIAGNOSTIC_NAMED_SECRET,
     (_match, name: string, separator: string) => `${name}${separator}${secret}`,
   );
-  out = out.replace(DIAGNOSTIC_UNIX_PATH, secret);
-  out = out.replace(DIAGNOSTIC_WINDOWS_PATH, secret);
-  return out.replace(DIAGNOSTIC_EMAIL, mask ?? REDACTED_EMAIL);
+  out = out.replace(PRIVATE_UNIX_PATH, secret);
+  out = out.replace(PRIVATE_WINDOWS_PATH, secret);
+  out = out.replace(PHONE_NUMBER, (match) => (isPhoneNumber(match) ? secret : match));
+  return out.replace(EMAIL_ADDRESS, mask ?? REDACTED_EMAIL);
 }
 
 export function redactedRequestTarget(raw: string | null | undefined): string | null {

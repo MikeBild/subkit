@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { pollUntil } from "../e2e/_helpers/poll.ts";
-import { composeDown, type DockerEnv, dockerApi, dockerBoot, skDocker } from "./_harness.ts";
+import { composeDown, type DockerEnv, dockerApi, dockerBoot, subkitDocker } from "./_harness.ts";
 
 let env: DockerEnv;
 beforeAll(async () => {
@@ -53,7 +53,7 @@ describe("connectors over the wire", () => {
 });
 
 describe("workflows over the wire", () => {
-  test("save → history shows a version → sk workflows list sees it", async () => {
+  test("save → history shows a version → subkit workflows list sees it", async () => {
     const slug = uniq("dwf");
     const created = await dockerApi<{ id: string }>(env, "POST", "/v1/workflows", {
       name: "Docker WF",
@@ -76,7 +76,7 @@ describe("workflows over the wire", () => {
     );
     expect(hist.status).toBe(200);
 
-    const list = await skDocker(env, ["workflows", "list"]);
+    const list = await subkitDocker(env, ["workflows", "list"]);
     expect(list.exitCode).toBe(0);
     expect(list.stdout).toContain(created.body.id);
   }, 60_000);

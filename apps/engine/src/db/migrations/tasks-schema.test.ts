@@ -47,6 +47,7 @@ async function insertTask(tenant: string, name = "Weekly report"): Promise<strin
   const [row] = await ctx.db
     .insert(tasks)
     .values({
+      locale: "de",
       tenant_id: tenant,
       name,
       owner_id: nextUuid(),

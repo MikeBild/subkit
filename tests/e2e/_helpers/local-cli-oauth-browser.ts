@@ -20,7 +20,7 @@ export function createLocalCliOAuthBrowser(input: {
     throw new Error("local OAuth browser fixture supports POSIX launchers only");
   }
 
-  const dir = mkdtempSync(path.join(tmpdir(), "sk-e2e-oauth-browser-"));
+  const dir = mkdtempSync(path.join(tmpdir(), "subkit-e2e-oauth-browser-"));
   const driver = path.join(dir, "driver.ts");
   writeFileSync(driver, DRIVER, "utf8");
   for (const launcher of ["open", "xdg-open"]) {
@@ -34,8 +34,8 @@ export function createLocalCliOAuthBrowser(input: {
   return {
     env: {
       PATH: `${dir}:${process.env.PATH ?? ""}`,
-      SK_E2E_OAUTH_ENGINE_ORIGIN: engine.origin,
-      SK_E2E_OAUTH_API_KEY: input.apiKey,
+      SUBKIT_E2E_OAUTH_ENGINE_ORIGIN: engine.origin,
+      SUBKIT_E2E_OAUTH_API_KEY: input.apiKey,
     },
     cleanup: () => rmSync(dir, { recursive: true, force: true }),
   };
@@ -46,8 +46,8 @@ function isLoopback(url: URL): boolean {
 }
 
 const DRIVER = `
-const engineOrigin = process.env.SK_E2E_OAUTH_ENGINE_ORIGIN;
-const apiKey = process.env.SK_E2E_OAUTH_API_KEY;
+const engineOrigin = process.env.SUBKIT_E2E_OAUTH_ENGINE_ORIGIN;
+const apiKey = process.env.SUBKIT_E2E_OAUTH_API_KEY;
 if (!engineOrigin || !apiKey) throw new Error("missing local OAuth driver configuration");
 const engine = new URL(engineOrigin);
 if (engine.protocol !== "http:" || !["127.0.0.1", "localhost"].includes(engine.hostname)) {
@@ -108,7 +108,7 @@ const body = new URLSearchParams({
   resource: hidden(html, "resource"),
   state: hidden(html, "state"),
   decision: "approve",
-  scope: "sk:login",
+  scope: "subkit:login",
 });
 response = await request(new URL("/v1/oauth/authorize/decision", engine), {
   method: "POST",

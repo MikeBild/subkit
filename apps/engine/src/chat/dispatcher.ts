@@ -1,8 +1,8 @@
+import { typedReply } from "@shared/typed-reply.ts";
 import { and, eq, like } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { principalOrigin } from "../auth/origin.ts";
-import type { ResolvedPrincipal } from "../auth/types.ts";
 import {
   appendUserMessage,
   createConversation,
@@ -11,10 +11,7 @@ import {
   runConversationTurn,
   type TurnFailure,
 } from "../conversations/public/authoring.ts";
-import {
-  PendingElicitationBlockedError,
-  respondElicitation,
-} from "../conversations/public/elicitation.ts";
+import { PendingElicitationBlockedError } from "../conversations/public/elicitation.ts";
 import {
   assertTaskRunWriter,
   conversationTurnId,
@@ -39,9 +36,12 @@ import { resolveChatPrincipal } from "./principal.ts";
 
 export type { DispatchOutcome, HandleChatEventOpts } from "./dispatcher-types.ts";
 
-import { deviceConfirmationPort } from "../conversations/public/elicitation.ts";
 import type { DispatchOutcome, HandleChatEventOpts } from "./dispatcher-types.ts";
-import { classifyChatElicitError, routeChatInteraction } from "./elicit-routing.ts";
+import {
+  answerChatElicitation,
+  classifyChatElicitError,
+  routeChatInteraction,
+} from "./elicit-routing.ts";
 import { withConversationTurnLock } from "./turn-lock.ts";
 import {
   type ApprovalCard,
@@ -323,7 +323,7 @@ export async function handleChatEvent(
   }
 }
 
-async function salvageTypedReplyToPendingElicitation(args: {
+async function answerTypedReply(args: {
   deps: DispatcherDeps;
   ev: ChatEvent;
   tenant_id: string;
@@ -331,9 +331,10 @@ async function salvageTypedReplyToPendingElicitation(args: {
   conversation_id: string;
   prompt: string;
   pending: { id: string; tool_name: string; summary: string; input?: unknown };
-  principal: ResolvedPrincipal | null;
 }): Promise<RunLoopResult | null> {
-  const { deps, ev, tenant_id, user_id, conversation_id, prompt, pending, principal } = args;
+  const { deps, ev, tenant_id, user_id, conversation_id, prompt, pending } = args;
+  const reply = typedReply(pending, prompt);
+  const kind = mapToolNameToKind(pending.tool_name);
   const notify = (text: string) =>
     sendTracked(deps.adapter, ev.platform, {
       tenant_id,
@@ -343,53 +344,23 @@ async function salvageTypedReplyToPendingElicitation(args: {
       kind: "message",
       text,
     });
-
-  const kind = mapToolNameToKind(pending.tool_name);
-  let output: unknown = null;
-  if (kind === "text") {
-    output = { text: prompt };
-  } else if (kind === "form") {
-    const fields =
-      pending.input &&
-      typeof pending.input === "object" &&
-      Array.isArray((pending.input as { fields?: unknown }).fields)
-        ? (pending.input as { fields: Array<{ name?: unknown }> }).fields
-        : [];
-    if (fields.length === 1 && typeof fields[0]?.name === "string") {
-      output = { [fields[0].name]: prompt };
-    }
-  }
-
-  if (output === null) {
+  if (reply.kind === "refused") {
     await notify(
-      "There's a prompt waiting for your answer just above — please use the " +
-        "buttons or menu to respond, or type `/new` to start over.",
+      "The form above asks for a secret. Enter it in the form; a chat message never carries it and was not stored.",
     ).catch(() => {});
     return null;
   }
-
-  await assertTaskRunWriter(deps.db, { tenant_id, conversation_id, actor_id: user_id, principal });
-  const turnAbortCtrl = await registerConversationAbort(tenant_id, conversation_id, deps.db);
+  if (reply.kind !== "answer" || kind === null) return null;
   try {
-    const resolved = await withConversationTurnLock(tenant_id, conversation_id, () =>
-      respondElicitation(
-        {
-          tenant_id,
-          conversation_id,
-          elicitation_id: pending.id,
-          actor_id: user_id,
-          principal,
-          answer_actor: humanChatAnswer(principal),
-          output,
-          turn_abort_ctrl: turnAbortCtrl,
-          require_same_actor: true,
-          surface: "chat",
-          local_confirmations: deviceConfirmationPort(deps.db),
-        },
-        deps.db,
-      ),
-    );
-    return resolved.result;
+    const answered = await answerChatElicitation(deps.db, {
+      tenant_id,
+      conversation_id,
+      elicitation_id: pending.id,
+      user_id,
+      kind,
+      output: reply.output,
+    });
+    return answered.kind === "answered" ? answered.result : null;
   } catch (err) {
     const classified = classifyChatElicitError(err);
     if (classified.kind === "rethrow") throw err;
@@ -418,8 +389,6 @@ async function salvageTypedReplyToPendingElicitation(args: {
       deps.db,
     );
     return null;
-  } finally {
-    await unregisterConversationAbort(tenant_id, conversation_id, turnAbortCtrl);
   }
 }
 
@@ -647,7 +616,7 @@ async function handleChatEventImpl(
       channel_id: ev.channel_id,
       ...(ev.thread_id ? { thread_id: ev.thread_id } : {}),
       kind: "ephemeral",
-      text: "Hi — I can run a saved workflow, look up executions, connectors, or knowledge, and answer questions about your sk setup. Just tell me what you need.",
+      text: "Hi — I can run a saved workflow, look up executions, connectors, or knowledge, and answer questions about your subkit setup. Just tell me what you need.",
     });
     return { status: "help" };
   }
@@ -715,7 +684,7 @@ async function handleChatEventImpl(
       );
     } catch (err) {
       if (!(err instanceof PendingElicitationBlockedError)) throw err;
-      const resumed = await salvageTypedReplyToPendingElicitation({
+      const resumed = await answerTypedReply({
         deps,
         ev,
         tenant_id,
@@ -723,7 +692,6 @@ async function handleChatEventImpl(
         conversation_id,
         prompt,
         pending: err.pending_elicitation,
-        principal: chatPrincipal,
       });
       if (resumed === null) return { status: "ok", conversation_id };
       turn = { outcome: resumed };

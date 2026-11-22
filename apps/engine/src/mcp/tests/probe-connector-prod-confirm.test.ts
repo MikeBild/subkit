@@ -12,7 +12,7 @@ let mock: MockServer;
 let hits = 0;
 
 beforeAll(async () => {
-  testEnv.SK_MCP_MODE = "authoring";
+  testEnv.SUBKIT_MCP_MODE = "authoring";
   suite = await startMcpTestSuite("probe-connector-prod-confirm");
   mock = await createMockServer((_req, res) => {
     hits++;
@@ -23,7 +23,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await mock?.close();
   await suite?.cleanup();
-  delete testEnv.SK_MCP_MODE;
+  delete testEnv.SUBKIT_MCP_MODE;
 });
 
 function body(result: Awaited<ReturnType<Client["callTool"]>>) {

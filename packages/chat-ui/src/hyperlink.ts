@@ -18,7 +18,7 @@ const HYPERLINK_TERMINALS = new Set([
 ]);
 
 function detectHyperlinkSupport(env: NodeJS.ProcessEnv = process.env): boolean {
-  const forced = env.SK_FORCE_HYPERLINKS;
+  const forced = env.SUBKIT_FORCE_HYPERLINKS;
   if (forced === "1" || forced === "true") return true;
   if (forced === "0" || forced === "false") return false;
   if (process.stdout && process.stdout.isTTY !== true) return false;

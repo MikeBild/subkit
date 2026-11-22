@@ -108,7 +108,8 @@ const INVITE_PREVIEW_MESSAGES: Record<string, string> = {
   invite_revoked: "This invitation link was withdrawn. Ask for a new one.",
   invite_already_redeemed: "This invitation link was already used. Sign in instead.",
   invite_unavailable: "This invitation is no longer available. Ask for a new one.",
-  invite_credential_only: "This invitation is meant for the sk command line, not for the browser.",
+  invite_credential_only:
+    "This invitation is meant for the subkit command line, not for the browser.",
 };
 
 const InviteLoginStarted = z.object({ authorization_url: z.url() }).openapi("InviteLoginStarted");

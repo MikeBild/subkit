@@ -35,9 +35,9 @@ function fixture() {
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, `fixture:${path}\n`);
   }
-  chmodSync(join(root, "dist/sk"), 0o755);
+  chmodSync(join(root, "dist/subkit"), 0o755);
   const sourceFreezeSha256 = mutationRuntimeArtifactDigest(root);
-  const parentRunRoot = join(root, "reports/mutation/runs/wave-1/run-1");
+  const parentRunRoot = join(root, ".reports/mutation/runs/wave-1/run-1");
   mkdirSync(parentRunRoot, { recursive: true });
   return { root, parentRunRoot, sourceFreezeSha256 };
 }
@@ -96,8 +96,8 @@ test("snapshots immutable runtime artifacts once and provisions only sandbox lin
       artifact_digest_sha256: snapshot.snapshot.artifact_digest_sha256,
     },
   });
-  expect(lstatSync(join(snapshot.path, "dist/sk")).isSymbolicLink()).toBe(false);
-  expect(lstatSync(join(snapshot.path, "dist/sk")).nlink).toBe(1);
+  expect(lstatSync(join(snapshot.path, "dist/subkit")).isSymbolicLink()).toBe(false);
+  expect(lstatSync(join(snapshot.path, "dist/subkit")).nlink).toBe(1);
   chmodSync(join(snapshot.path, "runtime-snapshot.seal.json"), 0o644);
   writeFileSync(join(snapshot.path, "runtime-snapshot.seal.json"), "{}\n");
   const secondSandbox = join(f.root, "second-sandbox");
@@ -121,7 +121,7 @@ test("snapshots immutable runtime artifacts once and provisions only sandbox lin
 
 test("fails closed when a required runtime artifact is absent or stale", () => {
   const f = fixture();
-  rmSync(join(f.root, "dist/sk"));
+  rmSync(join(f.root, "dist/subkit"));
   expect(() =>
     createMutationRuntimeSnapshot({
       repo: f.root,
@@ -134,8 +134,8 @@ test("fails closed when a required runtime artifact is absent or stale", () => {
     }),
   ).toThrow("ENOENT");
 
-  writeFileSync(join(f.root, "dist/sk"), "replacement\n");
-  chmodSync(join(f.root, "dist/sk"), 0o755);
+  writeFileSync(join(f.root, "dist/subkit"), "replacement\n");
+  chmodSync(join(f.root, "dist/subkit"), 0o755);
   const current = mutationRuntimeArtifactDigest(f.root);
   const snapshot = createMutationRuntimeSnapshot({
     repo: f.root,
@@ -146,8 +146,8 @@ test("fails closed when a required runtime artifact is absent or stale", () => {
     manifestSha256: "a".repeat(64),
     artifactDigestSha256: current,
   });
-  chmodSync(join(snapshot.path, "dist/sk"), 0o644);
-  writeFileSync(join(snapshot.path, "dist/sk"), "tampered\n");
+  chmodSync(join(snapshot.path, "dist/subkit"), 0o644);
+  writeFileSync(join(snapshot.path, "dist/subkit"), "tampered\n");
   const sandbox = join(f.root, "sandbox");
   mkdirSync(sandbox);
   expect(() =>
@@ -164,7 +164,7 @@ test("fails closed when a required runtime artifact is absent or stale", () => {
       },
     }),
   ).toThrow("size differs");
-  expect(existsSync(join(sandbox, "dist/sk"))).toBe(false);
+  expect(existsSync(join(sandbox, "dist/subkit"))).toBe(false);
 });
 
 test("rejects snapshots bound to a different campaign before sandbox provisioning", () => {
@@ -198,8 +198,8 @@ test("rejects snapshots bound to a different campaign before sandbox provisionin
 
 test("rejects source artifacts reachable through a hardlink", () => {
   const f = fixture();
-  const artifact = join(f.root, "dist/sk");
-  const linked = join(f.root, "dist/sk-linked");
+  const artifact = join(f.root, "dist/subkit");
+  const linked = join(f.root, "dist/subkit-linked");
   linkSync(artifact, linked);
   rmSync(artifact);
   linkSync(linked, artifact);
@@ -218,8 +218,8 @@ test("rejects a pre-existing non-snapshot sandbox artifact", () => {
     artifactDigestSha256: f.sourceFreezeSha256,
   });
   const sandbox = join(f.root, "sandbox");
-  mkdirSync(dirname(join(sandbox, "dist/sk")), { recursive: true });
-  writeFileSync(join(sandbox, "dist/sk"), "foreign\n");
+  mkdirSync(dirname(join(sandbox, "dist/subkit")), { recursive: true });
+  writeFileSync(join(sandbox, "dist/subkit"), "foreign\n");
   expect(() =>
     provisionMutationRuntimeSnapshot({
       sandboxRepo: sandbox,
@@ -271,7 +271,7 @@ test("rejects a foreign file inside the snapshot before sandbox provisioning", (
       expected,
     }),
   ).toThrow("unexpected entry dist/foreign");
-  expect(existsSync(join(sandbox, "dist/sk"))).toBe(false);
+  expect(existsSync(join(sandbox, "dist/subkit"))).toBe(false);
 });
 
 test("rejects an existing seal that does not cover every snapshot artifact", () => {

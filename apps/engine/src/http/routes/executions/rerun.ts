@@ -117,7 +117,7 @@ export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
         "conflict",
         `execution has source_kind='${original.source_kind}' — only saved-workflow executions can be rerun`,
         {
-          hint: "draft and step runs carry their definition in the original request — re-POST it to POST /v1/executions (sk workflows run --draft/--step)",
+          hint: "draft and step runs carry their definition in the original request — re-POST it to POST /v1/executions (subkit workflows run --draft/--step)",
         },
       );
     }

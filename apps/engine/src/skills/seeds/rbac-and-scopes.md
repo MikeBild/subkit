@@ -2,7 +2,7 @@
 slug: rbac-and-scopes
 scope: global
 title: RBAC And Scopes
-description: How sk authorizes workflow authoring, connector changes, and run invocation across subjects.
+description: How subkit authorizes workflow authoring, connector changes, and run invocation across subjects.
 activates_when: [{"kind":"tool","tool":"test_rbac_expression"}]
 side_effects: read
 idempotency: none
@@ -13,7 +13,7 @@ version: 3
 
 # RBAC And Scopes
 
-sk's authorization model is permission-based: every API call, tool
+subkit's authorization model is permission-based: every API call, tool
 invocation, and workflow run is checked against the subject's permissions
 within the tenant. This skill covers the model and the common recovery paths.
 
@@ -168,6 +168,6 @@ It cannot:
 
 ## See also
 
-- `sk-concepts.md` — environment scoping (dev/prod credentials).
+- `subkit-concepts.md` — environment scoping (dev/prod credentials).
 - `self-healing.md` — `patch:approve` and the safe/unsafe classification.
 - `error-recovery.md` — general shape of `{ok:false, error:{...}}` and recovery.

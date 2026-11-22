@@ -103,8 +103,8 @@ export function formatIssuedKeyBanner(issued: IssuedAdminKey): string {
     ` user:    ${issued.user_email}`,
     ` key:     ${issued.key_plaintext}`,
     "----------------------------------------------------------------",
-    " run this on your machine to log the host `sk` in:",
-    `   sk login --engine-url ${engineUrl} --api-key ${issued.key_plaintext}`,
+    " run this on your machine to log the host `subkit` in:",
+    `   subkit login --engine-url ${engineUrl} --api-key ${issued.key_plaintext}`,
     "",
   ].join("\n");
 }

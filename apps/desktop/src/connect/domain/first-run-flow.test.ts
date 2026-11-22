@@ -7,6 +7,7 @@ import {
   LOCAL_UNAVAILABLE,
 } from "../../shared/ipc.ts";
 import { NO_ONBOARDING } from "../../shared/onboarding.ts";
+import { platformCapabilities } from "../../shared/platform-capabilities.ts";
 import {
   type Command,
   decide,
@@ -14,6 +15,7 @@ import {
   evolveAll,
   INITIAL_STATE,
   type SignInState,
+  signInAnswered,
   viewOf,
 } from "./sign-in-model.ts";
 
@@ -58,6 +60,7 @@ function main(patch: Partial<ConnectState> = {}): ConnectState {
       lost: [],
     },
     local: LOCAL_UNAVAILABLE,
+    platform: platformCapabilities("darwin", "arm64"),
     ...patch,
   };
 }
@@ -115,6 +118,48 @@ describe("first run: welcome", () => {
   });
 });
 
+describe("first run: create a workspace", () => {
+  test("Create goes to the connect step on its own path, back returns to welcome", () => {
+    const { state } = run(ready(), { type: "CreateWorkspace" });
+    expect(state.flow.path).toBe("create");
+    expect(viewOf(state)?.screen.kind).toBe("connect");
+    expect(viewOf(state)?.frame.dots).toEqual({ visible: true, current: 0, total: 6 });
+    const back = run(state, { type: "GoBack" }).state;
+    expect(back.flow.step).toBe("welcome");
+    expect(back.flow.path).toBe("server");
+  });
+
+  test("Create is refused outside the welcome step", () => {
+    const connect = run(ready(), { type: "StartConnect" }).state;
+    expect(decide(connect, { type: "CreateWorkspace" }, CONTEXT).events).toEqual([]);
+  });
+
+  test("after a fitting server, sign-in says the workspace gets its name in the browser", () => {
+    const created = run(ready(), { type: "CreateWorkspace" }).state;
+    const checked = evolveAll(created, [
+      { type: "VersionCheckStarted", address: ORIGIN, requestId: 7 },
+      { type: "VersionChecked", requestId: 7, result: result("compatible") },
+    ]);
+    const signin = run(checked, { type: "ContinueToSignIn" }).state;
+    const view = viewOf(signin);
+    expect(view?.frame.dots).toEqual({ visible: true, current: 1, total: 6 });
+    expect(view?.screen.kind === "signin" && view.screen.hint).toBe("signin.create");
+    expect(run(signin, { type: "StartSignIn", origin: ORIGIN }).effects).toEqual([
+      { kind: "login", origin: ORIGIN },
+    ]);
+  });
+
+  test("Get started stays on the server path without a hint", () => {
+    const started = run(ready(), { type: "StartConnect" }).state;
+    const checked = evolveAll(started, [
+      { type: "VersionCheckStarted", address: ORIGIN, requestId: 7 },
+      { type: "VersionChecked", requestId: 7, result: result("compatible") },
+    ]);
+    const view = viewOf(run(checked, { type: "ContinueToSignIn" }).state);
+    expect(view?.screen.kind === "signin" && view.screen.hint).toBeNull();
+  });
+});
+
 describe("first run: invitation link", () => {
   test("a link that is not an invitation is refused here, without asking the server", () => {
     const open = run(ready(), { type: "ToggleInvite" }).state;
@@ -162,14 +207,31 @@ describe("first run: invitation link", () => {
     expect(screen?.kind === "welcome" && screen.invite.error).toBe("welcome.invite.invalid");
   });
 
-  test("joining opens the browser and moves on to sign-in, back returns to the invitation", () => {
+  test("joining starts join and device sign-in as one browser flow, back returns to the invitation", () => {
     const joined = run(shown(), { type: "JoinInvite" });
     expect(joined.effects).toEqual([{ kind: "joinInvite", link: LINK }]);
-    const view = viewOf(joined.state);
+    const waiting = evolve(joined.state, {
+      type: "MainStateReceived",
+      state: main({ login: { phase: "waiting", origin: ORIGIN } }),
+    });
+    const view = viewOf(waiting);
     expect(view?.screen.kind).toBe("signin");
     expect(view?.frame.dots).toEqual({ visible: true, current: 1, total: 6 });
-    expect(view?.screen.kind === "signin" && view.screen.joining).toBe(true);
-    expect(run(joined.state, { type: "GoBack" }).state.flow.step).toBe("invite");
+    const screen = view?.screen;
+    expect(screen?.kind === "signin" && screen.signin.phase).toBe("waiting");
+    expect(screen?.kind === "signin" && screen.hint).toBe("signin.join");
+    const back = run(waiting, { type: "GoBack" });
+    expect(back.effects).toEqual([{ kind: "cancelLogin" }]);
+    expect(back.state.flow.step).toBe("invite");
+  });
+
+  test("a server that refuses the device sign-in behind the invitation lands on connect", () => {
+    const joined = run(shown(), { type: "JoinInvite" }).state;
+    const old = result("app-too-old", { minAppVersion: "99.0.0" });
+    const refused = evolveAll(joined, signInAnswered(old));
+    expect(refused.flow.step).toBe("connect");
+    expect(refused.flow.check).toEqual({ phase: "done", result: old });
+    expect(evolveAll(joined, signInAnswered(null))).toBe(joined);
   });
 
   test("an expired invitation cannot be joined, back returns to welcome", () => {

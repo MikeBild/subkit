@@ -27,7 +27,7 @@ describe("mcp-tool-contract.md · local approval boundary", () => {
     expect(body).toContain("durable held-write run");
     expect(body).not.toContain("executes directly");
     expect(body).not.toContain("Those were removed");
-    expect(body).not.toContain("client dialog, not sk");
+    expect(body).not.toContain("client dialog, not subkit");
   });
 });
 

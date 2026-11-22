@@ -47,7 +47,7 @@ describe("persona-variant selection", () => {
         authoring_hint: makeHint(mode),
       });
       expect(r.content).toContain(ANCHOR);
-      expect(r.content).toContain("driven from sk-CLI in headless mode");
+      expect(r.content).toContain("driven from subkit-CLI in headless mode");
     }
   });
 
@@ -118,7 +118,7 @@ describe("install-grounding rule is surface-gated (chat/mcp/web), not in the aut
         surface,
         authoring_hint: makeHint("workflow"),
       });
-      expect(r.content).toContain("GROUNDING sk SELF-QUESTIONS");
+      expect(r.content).toContain("GROUNDING subkit SELF-QUESTIONS");
       expect(r.content).toContain("curl -fsSL ${engine_url}/install | bash");
       expect(r.content).toContain("@subkit/cli");
     }
@@ -130,7 +130,7 @@ describe("install-grounding rule is surface-gated (chat/mcp/web), not in the aut
         surface,
         authoring_hint: makeHint("workflow"),
       });
-      expect(r.content).not.toContain("GROUNDING sk SELF-QUESTIONS");
+      expect(r.content).not.toContain("GROUNDING subkit SELF-QUESTIONS");
     }
   });
 });
@@ -219,7 +219,7 @@ describe("chat surface persona", () => {
       surface: "chat",
       authoring_hint: makeHint("execution"),
     });
-    expect(r.content).toContain("GROUNDING sk SELF-QUESTIONS");
+    expect(r.content).toContain("GROUNDING subkit SELF-QUESTIONS");
     expect(r.content).toContain("curl -fsSL ${engine_url}/install | bash");
     expect(r.content).toContain("@subkit/cli");
     expect(r.content).toContain("docker-compose install step");

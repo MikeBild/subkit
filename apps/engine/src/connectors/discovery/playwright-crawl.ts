@@ -88,7 +88,7 @@ export function setChromiumProviderForTesting(
 async function loadChromium(): Promise<PlaywrightChromiumLauncher> {
   if (chromiumProvider) return chromiumProvider();
   try {
-    const specifier = readEnv("SK_PLAYWRIGHT_ENTRY") || "playwright";
+    const specifier = readEnv("SUBKIT_PLAYWRIGHT_ENTRY") || "playwright";
     const mod = (await (Function("s", "return import(s)") as (s: string) => Promise<unknown>)(
       specifier,
     )) as { chromium: PlaywrightChromiumLauncher };
@@ -100,7 +100,7 @@ async function loadChromium(): Promise<PlaywrightChromiumLauncher> {
 }
 
 export const PLAYWRIGHT_UNAVAILABLE_MESSAGE =
-  "browser discovery is not available: this engine has no Playwright module (the SubKit container image ships no browser); set SK_PLAYWRIGHT_ENTRY to an installed Playwright module to enable it";
+  "browser discovery is not available: this engine has no Playwright module (the SubKit container image ships no browser); set SUBKIT_PLAYWRIGHT_ENTRY to an installed Playwright module to enable it";
 
 function isPlaywrightAvailable(): Promise<boolean> {
   if (!availabilityProbe) {

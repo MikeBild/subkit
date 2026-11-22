@@ -7,6 +7,7 @@ import { conversationCommandId } from "../../../devices/core/command-id.ts";
 import { localAgenticRefusal } from "../../../devices/core/run-source.ts";
 import { sendDeviceCommand } from "../../../devices/dispatch.ts";
 import { activeAllowances } from "../../../devices/registry.ts";
+import { languageFor } from "../../../identity/index.ts";
 import {
   browserPartition,
   commandArgsOf,
@@ -317,7 +318,7 @@ export async function executeDeviceTool(
   if (decision.decision === "refuse")
     return toolResult(stoppedOutput(decision.reason, decision.detail ?? null));
   if (decision.decision === "ask") {
-    const locale = ctx.locale ?? "de";
+    const locale = await languageFor(ctx.tenant_id, db, ctx.locale);
     const target = confirmationTarget(spec.name, assembled.step, locale);
     const question = confirmationQuestion(locale, target);
     await recordPendingCommand(db, ctx.tenant_id, tool_call_id, pending);

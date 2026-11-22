@@ -33,7 +33,7 @@ function query(engine: LocalEngine): SQL {
 
 describe.skipIf(!bundled || target?.startsWith("win32"))("bundled PostgreSQL", () => {
   test("initializes, starts on its socket, backs up, restores and stops", async () => {
-    workspace = await mkdtemp(join(tmpdir(), "sk-local-"));
+    workspace = await mkdtemp(join(tmpdir(), "subkit-local-"));
     const layout = localLayout(workspace, "default");
     const statuses: string[] = [];
     const engine = new LocalEngine({
