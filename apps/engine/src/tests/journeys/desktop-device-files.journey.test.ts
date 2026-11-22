@@ -59,7 +59,7 @@ const fromRunner: RunnerToMain[] = [];
 let toRunner: ((message: MainToRunner) => void) | null = null;
 
 function personalBase(): string {
-  const candidates = [join(process.cwd(), ".reports", "journeys"), homedir(), "/Users/Shared"];
+  const candidates = [join(process.cwd(), "dist", "journeys"), homedir(), "/Users/Shared"];
   for (const candidate of candidates) {
     try {
       mkdirSync(candidate, { recursive: true });
