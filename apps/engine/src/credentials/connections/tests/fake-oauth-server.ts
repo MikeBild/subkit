@@ -1,4 +1,4 @@
-import { createHash, randomInt } from "node:crypto";
+import { createHash } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
@@ -220,9 +220,7 @@ export async function startFakeOAuthServer(
     json(res, 404, { error: "not_found" });
   });
 
-  await new Promise<void>((resolve) =>
-    server.listen(randomInt(20_000, 60_000), "127.0.0.1", () => resolve()),
-  );
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
   const addr = server.address() as AddressInfo;
   state.baseUrl = `http://127.0.0.1:${addr.port}`;
   state.close = () => new Promise<void>((resolve) => server.close(() => resolve()));
