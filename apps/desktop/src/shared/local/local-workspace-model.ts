@@ -16,6 +16,8 @@ export type LocalErrorKind =
   | "permission"
   | "folder"
   | "keyRejected"
+  | "database"
+  | "version"
   | "failed"
   | "restore"
   | "move";
@@ -60,6 +62,7 @@ export function setupComplete(progress: LocalProgress): boolean {
 }
 
 const FAILURES: [RegExp, LocalErrorKind][] = [
+  [/downgrade_refused|newer version|version mismatch/i, "version"],
   [/network_folder|cloud_synced_folder|relative_path/, "folder"],
   [/EADDRINUSE|address already in use|port \d+ is (in use|taken)/i, "port"],
   [/ENOSPC|no space left|disk is full|could not extend file/i, "disk"],
@@ -67,6 +70,7 @@ const FAILURES: [RegExp, LocalErrorKind][] = [
     /EACCES|EPERM|EROFS|permission denied|operation not permitted|read-only file system/i,
     "permission",
   ],
+  [/postgres|pg_ctl|pg_isready|initdb|database is not running/i, "database"],
 ];
 
 export function classifyLocalFailure(reason: string): LocalErrorKind {

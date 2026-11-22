@@ -47,6 +47,8 @@ export type Command =
   | { type: "ChangeSettings"; patch: SettingsPatch }
   | { type: "RunUpdateAction" }
   | { type: "ReportProblem" }
+  | { type: "CopyDiagnostics" }
+  | { type: "OpenLogs" }
   | { type: "CheckPermissions" }
   | { type: "OpenPermissionSettings"; key: PermissionKey }
   | { type: "RestartApp" }
@@ -106,6 +108,8 @@ export type Effect =
   | { kind: "updateSettings"; patch: SettingsPatch }
   | { kind: "updateAction" }
   | { kind: "reportProblem" }
+  | { kind: "copyDiagnostics" }
+  | { kind: "openLogs" }
   | { kind: "checkPermissions" }
   | { kind: "openPermissionSettings"; key: PermissionKey }
   | { kind: "restartApp" }
@@ -247,6 +251,10 @@ export function decide(state: SignInState, command: Command, context: DecideCont
       return only({ kind: "updateAction" });
     case "ReportProblem":
       return only({ kind: "reportProblem" });
+    case "CopyDiagnostics":
+      return only({ kind: "copyDiagnostics" });
+    case "OpenLogs":
+      return only({ kind: "openLogs" });
     case "CheckPermissions":
       return only({ kind: "checkPermissions" });
     case "OpenPermissionSettings":

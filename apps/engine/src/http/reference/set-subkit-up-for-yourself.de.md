@@ -38,7 +38,7 @@ Mit **Jetzt nicht** überspringst du den Schritt. SubKit übernimmt dann die emp
 | „Wann darf SubKit dich benachrichtigen?“ | **Sofort** (empfohlen), **Nur zu meinen Arbeitszeiten** oder **Einmal täglich als Zusammenfassung** | Benachrichtigungen und Ruhezeiten. |
 | „Wie viel darf SubKit im Monat für KI ausgeben?“ (nur Administratoren) | **20 $**, **50 $** (empfohlen), **200 $** oder **Ohne Grenze** | Das monatliche KI-Budget des Arbeitsbereichs. |
 
-Als Administratorin oder Administrator bekommst du diese sechste Frage. Das KI-Budget gilt für den ganzen Arbeitsbereich; was bei 80 % und 100 % passiert, steht in „Nutzung und Kosten im Blick“. Unter **Einstellungen** › **Einrichtung** führt diese Zeile zu **Einstellungen** › **Nutzung**, der einen Stelle, an der das Budget geändert wird.
+Als Administratorin oder Administrator bekommst du diese sechste Frage. Das KI-Budget gilt für den ganzen Arbeitsbereich; was bei 80 % und 100 % passiert, steht in „Nutzung und Kosten im Blick“. Unter **Einstellungen** › **Einrichtung** führt diese Zeile zu **Einstellungen** › **Budget**, der einen Stelle, an der das Budget geändert wird.
 
 Die ersten beiden Antworten ändern nur, was dir das Cockpit zuerst vorschlägt. Sie verbinden keinen Dienst und legen keinen Workflow an. Die anderen drei ändern, wie SubKit arbeitet:
 

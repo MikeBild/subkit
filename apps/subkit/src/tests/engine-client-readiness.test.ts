@@ -7,9 +7,9 @@ function clientAnswering(bodies: Record<string, unknown>): EngineClient {
     api_key: "key",
     fetchImpl: async (input) => {
       const path = new URL(String(input)).pathname;
-      return path in bodies
-        ? Response.json(bodies[path])
-        : Response.json({ code: "not_found" }, { status: 404 });
+      const body = bodies[path] as { status?: string } | undefined;
+      if (!body) return Response.json({ code: "not_found" }, { status: 404 });
+      return Response.json(body, { status: body.status === "not_ready" ? 503 : 200 });
     },
   });
 }
@@ -29,7 +29,26 @@ describe("readiness EngineClient", () => {
     expect(await client.ready()).toEqual({
       status: "ready",
       service: "subkit",
-      checks: { lifecycle: "pass", database: "fail" },
+      checks: { lifecycle: "pass", database: "fail", schema: "unknown" },
+      failing: [],
+    });
+  });
+
+  test("a 503 still reports which dependency fails", async () => {
+    const client = clientAnswering({
+      "/ready": {
+        status: "not_ready",
+        service: "subkit",
+        version: "12.1.2",
+        checks: { lifecycle: "pass", database: "fail", schema: "drift" },
+        failing: ["database"],
+      },
+    });
+    expect(await client.ready()).toEqual({
+      status: "not_ready",
+      service: "subkit",
+      checks: { lifecycle: "pass", database: "fail", schema: "drift" },
+      failing: ["database"],
     });
   });
 
@@ -43,7 +62,8 @@ describe("readiness EngineClient", () => {
     expect(await client.ready()).toEqual({
       status: "ready",
       service: "subkit",
-      checks: { lifecycle: "unknown", database: "unknown" },
+      checks: { lifecycle: "unknown", database: "unknown", schema: "unknown" },
+      failing: [],
     });
   });
 

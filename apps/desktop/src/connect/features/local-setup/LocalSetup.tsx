@@ -232,6 +232,18 @@ export function LocalSetup() {
                     ),
                     onClick: copy.remedy === "folder" && !s.starting ? a.back : a.retry,
                   }}
+                  secondary={{ label: t("report.copy"), onClick: a.copyDiagnostics }}
+                  actions={
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      data-testid="local-error-logs"
+                      onClick={a.openLogs}
+                    >
+                      {t("startup.openLogs")}
+                    </Button>
+                  }
                 />
               )}
             </div>

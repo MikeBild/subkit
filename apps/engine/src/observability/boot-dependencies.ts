@@ -11,6 +11,13 @@ interface ProbeResult {
   ok: boolean;
   blocker: boolean;
   detail?: string;
+  duration_ms?: number;
+}
+
+async function timed(probe: () => ProbeResult | Promise<ProbeResult>): Promise<ProbeResult> {
+  const started = performance.now();
+  const result = await probe();
+  return { ...result, duration_ms: Math.round(performance.now() - started) };
 }
 
 async function probeDbConnect(db: Db): Promise<ProbeResult> {
@@ -139,12 +146,17 @@ function resolveStateDirs(): string[] {
   return FALLBACK_STATE_DIRS;
 }
 
-async function runAllProbes(db: Db): Promise<ProbeResult[]> {
+function probeObjectStore(root: string): ProbeResult {
+  return { ...probeFsWrite(root), name: "object_store", blocker: true };
+}
+
+async function runAllProbes(db: Db, objectStoreRoot: string | null): Promise<ProbeResult[]> {
   const probes: ProbeResult[] = [
-    probeRuntime(),
-    probeCryptoSelfTest(),
-    await probeDbConnect(db),
-    await probeDbExtensions(db),
+    await timed(probeRuntime),
+    await timed(probeCryptoSelfTest),
+    await timed(() => probeDbConnect(db)),
+    await timed(() => probeDbExtensions(db)),
+    ...(objectStoreRoot ? [await timed(() => probeObjectStore(objectStoreRoot))] : []),
   ];
   if (isProduction()) {
     for (const dir of resolveStateDirs()) probes.push(probeFsWrite(dir));
@@ -152,10 +164,13 @@ async function runAllProbes(db: Db): Promise<ProbeResult[]> {
   return probes;
 }
 
-export async function validateBootDependencies(db: Db): Promise<void> {
-  const probes = await runAllProbes(db);
+export async function validateBootDependencies(
+  db: Db,
+  objectStoreRoot: string | null = null,
+): Promise<void> {
+  const probes = await runAllProbes(db, objectStoreRoot);
 
-  let blockerFailed = false;
+  const failedBlockers: string[] = [];
   for (const p of probes) {
     if (p.ok) {
       logger.info({
@@ -163,16 +178,18 @@ export async function validateBootDependencies(db: Db): Promise<void> {
         action: `boot.dependency.${p.name}.ok`,
         msg: `boot dependency ok: ${p.name}`,
         detail: p.detail ?? null,
+        duration_ms: p.duration_ms ?? null,
       });
       continue;
     }
     if (p.blocker) {
-      blockerFailed = true;
+      failedBlockers.push(p.detail ? `${p.name}: ${p.detail}` : p.name);
       logger.fatal({
         module: "observability",
         action: `boot.dependency.${p.name}.fail`,
         msg: `boot blocker failed: ${p.name} — engine cannot serve requests`,
         detail: p.detail ?? null,
+        duration_ms: p.duration_ms ?? null,
       });
     } else {
       logger.warn({
@@ -180,25 +197,23 @@ export async function validateBootDependencies(db: Db): Promise<void> {
         action: `boot.dependency.${p.name}.fail`,
         msg: `boot dependency degraded: ${p.name} — continuing`,
         detail: p.detail ?? null,
+        duration_ms: p.duration_ms ?? null,
       });
     }
   }
 
-  if (blockerFailed) {
-    logger.fatal({
-      module: "observability",
-      action: "boot.dependency.aborted",
-      msg: "one or more boot dependency probes failed; aborting",
-    });
-    process.exit(1);
-  }
+  if (failedBlockers.length > 0)
+    throw new Error(`boot dependency failed: ${failedBlockers.join("; ")}`);
 }
 
-export async function _validateBootDependenciesForTests(db: Db): Promise<{
+export async function _validateBootDependenciesForTests(
+  db: Db,
+  objectStoreRoot: string | null = null,
+): Promise<{
   blockerFailed: boolean;
   probes: ProbeResult[];
 }> {
-  const probes = await runAllProbes(db);
+  const probes = await runAllProbes(db, objectStoreRoot);
   return { blockerFailed: probes.some((p) => p.blocker && !p.ok), probes };
 }
 

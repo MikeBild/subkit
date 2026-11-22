@@ -258,7 +258,7 @@ The `subkit` inbox of a new workspace also receives `task_run.waiting`, `task_ru
 | The standing permission ended after you edited the task | That is intended. Check the change and select **Allow** again. |
 | **Start** answers that a run is already in progress | Open the run. Answer it, wait for it or select **Stop**, then start again. |
 | The scheduled start did not happen | Read the line for the next start. **due, waiting for permission**: select **Allow**. **waiting for the current run**: answer or stop the open run. Otherwise check whether the task is paused. |
-| The run waits and names the budget | The monthly AI budget is reached. An administrator raises it under **Settings** › **Usage** or continues this month; otherwise the run waits for the next month. It then continues on its own. |
+| The run waits and names the budget | The monthly AI budget is reached. An administrator raises it under **Settings** › **Budget** or continues this month; otherwise the run waits for the next month. It then continues on its own. |
 | The run waits without a question | It made no progress or a round was interrupted: tell it what is missing. |
 | The run ended at its round limit or time limit | It cannot be continued. Select **Start again**. If the rounds are too few for the task, raise them when you edit the task. |
 | “This workflow is not part of the task.” | Bind the workflow to the task. This ends the standing permission; allow it again. |

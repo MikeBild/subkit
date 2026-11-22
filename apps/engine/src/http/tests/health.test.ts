@@ -69,7 +69,8 @@ describe("GET /ready", () => {
       status: "ready",
       service: "subkit",
       version: expect.any(String),
-      checks: { lifecycle: "pass", database: "pass" },
+      checks: { lifecycle: "pass", database: "pass", schema: "pass" },
+      failing: [],
     });
   });
 
@@ -83,7 +84,8 @@ describe("GET /ready", () => {
       status: "not_ready",
       service: "subkit",
       version: expect.any(String),
-      checks: { lifecycle: "pass", database: "fail" },
+      checks: { lifecycle: "pass", database: "fail", schema: "pass" },
+      failing: ["database"],
     });
   });
 
@@ -99,7 +101,8 @@ describe("GET /ready", () => {
         status: "not_ready",
         service: "subkit",
         version: expect.any(String),
-        checks: { lifecycle: "fail", database: "pass" },
+        checks: { lifecycle: "fail", database: "pass", schema: "pass" },
+        failing: ["lifecycle"],
       });
     } finally {
       setHealthState({ draining: false });

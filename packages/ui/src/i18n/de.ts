@@ -19,7 +19,6 @@ export const de = {
     cause: "Ursache",
     code: "Code",
     http: "HTTP-Status",
-    request: "Anfrage-ID",
     time: "Zeit",
     server: "Server",
     copy: "Kopieren",

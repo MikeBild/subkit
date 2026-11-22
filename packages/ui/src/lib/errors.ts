@@ -26,7 +26,6 @@ export interface TechRowLabels {
   cause: string;
   code: string;
   http: string;
-  request: string;
   time: string;
   server: string;
 }
@@ -45,16 +44,9 @@ export function techRows(input: {
     [labels.cause, catalog.causes[meta.cause] ?? meta.cause],
     [labels.code, meta.code],
     [labels.http, meta.http ? String(meta.http) : "–"],
-    [labels.request, requestId(kind, at)],
     [labels.time, fmt(new Date(at).toISOString())],
     [labels.server, server ?? "–"],
   ];
-}
-
-export function requestId(c: ErrorKind, at: number) {
-  let h = 0;
-  for (const ch of `${c}${Math.floor(at / 1000)}`) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return `req_${h.toString(16).padStart(8, "0")}`;
 }
 
 export interface PageFailureSpec {

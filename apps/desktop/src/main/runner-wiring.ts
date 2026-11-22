@@ -53,7 +53,7 @@ export interface RunnerWiringOptions {
   readonly permissions: () => Permissions;
   readonly onLive: (event: LiveEvent, screenshot?: Uint8Array) => void;
   readonly onBusy: (commandId: string, busy: boolean) => void;
-  readonly onExit: () => void;
+  readonly onExit: (code: number | null) => void;
   readonly idleSeconds: () => number | null;
   readonly target: () => RunnerTarget | null;
   readonly onEnrolled: () => void;

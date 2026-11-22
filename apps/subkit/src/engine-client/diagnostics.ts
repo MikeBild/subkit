@@ -3,7 +3,7 @@ import {
   DIAGNOSTICS_LOG_TAIL_PATH,
 } from "@cli-core/diagnostics-paths.ts";
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
-import { TransportError } from "@cli-core/errors.ts";
+import { isEngineError, TransportError } from "@cli-core/errors.ts";
 import type { EngineClient } from "../engine-client.ts";
 import type { ApiQuery } from "./http.ts";
 
@@ -25,6 +25,34 @@ type CheckState = "pass" | "fail" | "unknown";
 
 function checkState(value: unknown): CheckState {
   return value === "pass" || value === "fail" ? value : "unknown";
+}
+
+export interface EngineReadiness {
+  status: "ready" | "not_ready";
+  service: "subkit";
+  checks: { lifecycle: CheckState; database: CheckState; schema: "pass" | "drift" | "unknown" };
+  failing: string[];
+}
+
+export function readinessOf(raw: unknown): EngineReadiness {
+  const body = (raw && typeof raw === "object" ? raw : {}) as {
+    status?: unknown;
+    checks?: { lifecycle?: unknown; database?: unknown; schema?: unknown };
+    failing?: unknown;
+  };
+  const schema = body.checks?.schema;
+  return {
+    status: body.status === "ready" || body.status === "ok" ? "ready" : "not_ready",
+    service: "subkit",
+    checks: {
+      lifecycle: checkState(body.checks?.lifecycle),
+      database: checkState(body.checks?.database),
+      schema: schema === "pass" || schema === "drift" ? schema : "unknown",
+    },
+    failing: Array.isArray(body.failing)
+      ? body.failing.filter((name): name is string => typeof name === "string")
+      : [],
+  };
 }
 
 export const diagnosticsMethods = {
@@ -56,23 +84,15 @@ export const diagnosticsMethods = {
     };
   },
 
-  async ready(this: EngineClient): Promise<{
-    status: "ready" | "not_ready";
-    service: "subkit";
-    checks: { lifecycle: CheckState; database: CheckState };
-  }> {
-    const body = (await this.api.GET("/ready")).data as {
-      status?: string;
-      checks?: { lifecycle?: unknown; database?: unknown };
-    };
-    return {
-      status: body.status === "ready" || body.status === "ok" ? "ready" : "not_ready",
-      service: "subkit",
-      checks: {
-        lifecycle: checkState(body.checks?.lifecycle),
-        database: checkState(body.checks?.database),
+  async ready(this: EngineClient): Promise<EngineReadiness> {
+    const body = await this.api.GET("/ready").then(
+      ({ data }) => data as unknown,
+      (error: unknown) => {
+        if (isEngineError(error) && error.status === 503) return error.body;
+        throw error;
       },
-    };
+    );
+    return readinessOf(body);
   },
 
   async diagnosticsVersion(this: EngineClient): Promise<Schemas["DiagnosticsVersionResponse"]> {

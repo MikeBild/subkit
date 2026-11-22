@@ -34,7 +34,9 @@ export interface ShellIpcHost {
   checkUpdates(): Promise<void>;
   reportProblem(): Promise<void>;
   updateSettings(input: Record<string, unknown>): void;
-  diagnostics(profile: Profile): DesktopDiagnostics;
+  diagnostics(profile: Profile): Promise<DesktopDiagnostics>;
+  copyDiagnostics(): Promise<void>;
+  openLogs(): Promise<void>;
   cockpitStatus(): ShellStatus;
   captureForCockpit(): Promise<string | null>;
   feedbackListening(senderId: number, listening: boolean): void;
@@ -106,6 +108,8 @@ export function registerShellIpc(host: ShellIpcHost): void {
   handle(CONNECT_CHANNELS.restartApp, () => host.restartApp());
   handle(CONNECT_CHANNELS.updateAction, () => host.checkUpdates());
   handle(CONNECT_CHANNELS.reportProblem, () => host.reportProblem());
+  handle(CONNECT_CHANNELS.copyDiagnostics, () => host.copyDiagnostics());
+  handle(CONNECT_CHANNELS.openLogs, () => host.openLogs());
   registerLocalIpc(handle, host.allowances, () => host.connectWindow());
   host.registerWorkspaceIpc(handle);
   handle(CONNECT_CHANNELS.chooseWorkspace, (tenantId) =>

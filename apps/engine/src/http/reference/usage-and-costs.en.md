@@ -116,7 +116,7 @@ When the provider rejects the API key during a run, **Needs you** asks you to re
 
 Every workspace has exactly one limit on AI cost: the monthly AI budget in US dollars. Tokens are still counted, but not limited. A new workspace starts at $50 per month. A workspace that existed before the AI budget starts without a limit and gets one item under **Needs you**: "Set a monthly AI budget". The month follows the time zone of your workspace.
 
-The budget lives in one place: **Settings** › **Usage**. It shows what this month's model calls cost, for example "$12.40 of $50". You need `stats:read` to see it; administrators change it there, everyone else with `stats:read` sees it read-only.
+The budget lives in one place: **Settings** › **Budget**. It shows what this month's model calls cost, for example "$12.40 of $50". You need `stats:read` to see it; administrators change it there, everyone else with `stats:read` sees it read-only.
 
 - Only priced calls count. A local model, or a model without a price, never counts towards the AI budget.
 - At 80% you get one item under **Needs you** and one notification per month.
@@ -125,7 +125,7 @@ The budget lives in one place: **Settings** › **Usage**. It shows what this mo
 
 What an administrator can do when the budget is reached:
 
-1. Open the item under **Needs you**, or **Settings** › **Usage**.
+1. Open the item under **Needs you**, or **Settings** › **Budget**.
 2. Choose **Raise budget** and pick a new limit: $20, $50, $200 or **No limit**.
 3. Or choose **Continue without a limit this month**. The next month starts with the limit again.
 
@@ -175,9 +175,9 @@ Expand **Technical details** at the end of the page. It shows:
 | **Person**, **Conversation** and **Task** are missing | You lack `stats:read:all`. Ask someone with the Admin role for it. |
 | **at least** in front of the cost | Some models have no price. Add it through **Set a price**. |
 | **Cost unknown** | None of the models used has a price. Add the prices. |
-| Chat, tasks and model steps are paused | The AI budget is reached. An administrator raises it under **Settings** › **Usage** or continues this month. |
+| Chat, tasks and model steps are paused | The AI budget is reached. An administrator raises it under **Settings** › **Budget** or continues this month. |
 | "No AI calls in this window." | Choose **Show this month** or another window. |
-| A workflow run fails with `llm_spend_limit_reached` | Its model step sits inside a loop, a parallel block or a "for each", where a run cannot wait without repeating steps. Raise the limit or continue this month under **Settings** › **Usage**, then run the workflow again. |
+| A workflow run fails with `llm_spend_limit_reached` | Its model step sits inside a loop, a parallel block or a "for each", where a run cannot wait without repeating steps. Raise the limit or continue this month under **Settings** › **Budget**, then run the workflow again. |
 | A workflow run stays **queued** with "Waiting for budget" | The AI budget is reached. Raise it or continue this month; the run then continues by itself. |
 
 ### The same in the terminal

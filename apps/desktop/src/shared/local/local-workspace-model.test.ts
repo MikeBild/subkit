@@ -85,6 +85,10 @@ describe("failures get a remedy", () => {
     expect(classifyLocalFailure("cloud_synced_folder")).toBe("folder");
     expect(classifyLocalFailure("network_folder")).toBe("folder");
     expect(classifyLocalFailure("the engine did not become healthy in time")).toBe("failed");
+    expect(classifyLocalFailure("PostgreSQL ended while starting; see postgres.log")).toBe(
+      "database",
+    );
+    expect(classifyLocalFailure("downgrade_refused")).toBe("version");
   });
 });
 

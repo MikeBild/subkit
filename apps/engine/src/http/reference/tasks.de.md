@@ -258,7 +258,7 @@ Der `subkit`-Eingang eines neuen Arbeitsbereichs erhält zusätzlich `task_run.w
 | Die Dauererlaubnis endete, nachdem du die Aufgabe bearbeitet hast | Das ist gewollt. Prüfe die Änderung und wähle erneut **Erlauben**. |
 | **Starten** meldet, dass schon ein Run läuft | Öffne den Run. Beantworte ihn, warte auf ihn oder wähle **Abbrechen**, dann starte erneut. |
 | Der geplante Start blieb aus | Lies die Zeile zum nächsten Start. **fällig, wartet auf Erlaubnis**: Wähle **Erlauben**. **wartet auf den laufenden Run**: Beantworte den offenen Run oder brich ihn ab. Sonst prüfe, ob die Aufgabe pausiert ist. |
-| Der Run wartet und nennt das Budget | Das monatliche KI-Budget ist erreicht. Ein Administrator erhöht es unter **Einstellungen** › **Nutzung** oder macht diesen Monat weiter; sonst wartet der Run auf den nächsten Monat. Er arbeitet dann von selbst weiter. |
+| Der Run wartet und nennt das Budget | Das monatliche KI-Budget ist erreicht. Ein Administrator erhöht es unter **Einstellungen** › **Budget** oder macht diesen Monat weiter; sonst wartet der Run auf den nächsten Monat. Er arbeitet dann von selbst weiter. |
 | Der Run wartet ohne Rückfrage | Er kam nicht voran, oder eine Runde wurde angehalten: Sag ihm, was fehlt. |
 | Der Run endete am Rundenlimit oder an der Frist | Er lässt sich nicht fortsetzen. Wähle **Neu starten**. Reichen die Runden für die Aufgabe nicht, erhöhe sie beim Bearbeiten der Aufgabe. |
 | „This workflow is not part of the task.“ | Binde den Workflow an die Aufgabe. Das beendet die Dauererlaubnis. Erlaube sie danach erneut. |

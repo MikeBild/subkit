@@ -247,8 +247,11 @@ export function feedbackFailure(error: unknown): FeedbackFailure {
 
 export function clientErrorCode(error: unknown): string {
   const fields = record(error);
-  if (typeof fields.status === "number")
-    return `${text(fields.code) ?? "request_failed"} (${fields.status})`;
+  if (typeof fields.status === "number") {
+    const trace = text(fields.traceId);
+    const code = `${text(fields.code) ?? "request_failed"} (${fields.status})`;
+    return trace && /^[\w-]{8,64}$/.test(trace) ? `${code} trace=${trace}` : code;
+  }
   return text(fields.name) ?? "Error";
 }
 

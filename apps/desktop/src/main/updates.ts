@@ -6,6 +6,7 @@ import {
   type UpdateState,
   updateBusy,
 } from "../shared/updates.ts";
+import { appLog } from "./app-log.ts";
 import { CHANNEL } from "./channel.ts";
 
 declare const SUBKIT_DESKTOP_UPDATES: boolean;
@@ -72,6 +73,7 @@ export class UpdateController {
   async check(): Promise<void> {
     if (this.state.phase === "disabled" || this.state.phase === "ready") return;
     if (updateBusy(this.state)) return;
+    appLog.info("update.check", { channel: CHANNEL.channel });
     this.dispatch({ type: "checking" });
     try {
       await (await updater()).checkForUpdates();
@@ -94,6 +96,7 @@ export class UpdateController {
   private dispatch(event: UpdateEvent): void {
     const next = reduceUpdate(this.state, event);
     if (JSON.stringify(next) === JSON.stringify(this.state)) return;
+    if (next.phase !== this.state.phase) appLog.info("update.state", { phase: next.phase });
     this.state = next;
     this.hooks.onState(next);
   }

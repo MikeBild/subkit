@@ -21,7 +21,6 @@ export const en: UiDict = {
     cause: "Cause",
     code: "Code",
     http: "HTTP status",
-    request: "Request ID",
     time: "Time",
     server: "Server",
     copy: "Copy",

@@ -21,6 +21,7 @@ import {
   unreportedStop,
 } from "../shared/local/runner-port.ts";
 import type { RunnerProblem } from "../shared/local/runner-problems.ts";
+import { appLog } from "./app-log.ts";
 import { signAssertion } from "./runner-key.ts";
 import { readJson, writeJsonAtomic } from "./store.ts";
 
@@ -31,7 +32,7 @@ export interface RunnerHostOptions {
   permissions: () => Permissions;
   onLive: (event: LiveEvent, screenshot?: Uint8Array) => void;
   onBusy: (commandId: string, busy: boolean) => void;
-  onExit: () => void;
+  onExit: (code: number | null) => void;
   idleSeconds: () => number | null;
   stopStatePath: string;
   files: () => FilesSnapshot;
@@ -156,10 +157,11 @@ export function createRunnerHost(options: RunnerHostOptions): RunnerHost {
       env: runnerEnv(),
     });
     child = forked;
+    appLog.info("runner.start", { pid: forked.pid });
     forked.on("message", (raw) => void onMessage(raw));
-    forked.once("exit", () => {
+    forked.once("exit", (code) => {
       if (child === forked) child = null;
-      options.onExit();
+      options.onExit(typeof code === "number" ? code : null);
       void options.browser?.killAll();
       if (!wanted) return;
       options.onState("crashed");

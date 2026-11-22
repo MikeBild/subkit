@@ -1,5 +1,6 @@
 import { DomainRefusal } from "../logging/domain-refusal.ts";
 import { errorFields, log, logger } from "../logging/index.ts";
+import { type BootFailure, bootFailure } from "./boot-failure.ts";
 import { recordProcessRssHighWater, setDbPoolStats } from "./instrumentation.ts";
 import { getMetrics, METRIC_NAMES } from "./metrics.ts";
 import { sampleTransientRetryRate } from "./transient-retry-rate.ts";
@@ -140,6 +141,12 @@ export async function instrument<T>(
   }
 }
 
+let lastFailedPhase: string | null = null;
+
+export function failedBoot(cause: string): BootFailure {
+  return bootFailure(lastFailedPhase, cause);
+}
+
 export async function bootPhase<T>(phase: string, fn: () => Promise<T> | T): Promise<T> {
   const started = Date.now();
   log.boot.phase({ phase, status: "start", rss_mb: sampleMemory().rss_mb });
@@ -157,6 +164,7 @@ export async function bootPhase<T>(phase: string, fn: () => Promise<T> | T): Pro
     safe(() => getMetrics().observe(METRIC_NAMES.BOOT_PHASE_DURATION_MS, duration_ms, { phase }));
     return result;
   } catch (err) {
+    lastFailedPhase ??= phase;
     log.boot.phase({
       phase,
       status: "error",

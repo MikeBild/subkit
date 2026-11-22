@@ -21,6 +21,7 @@ import type { LiveDecision } from "../shared/local/live-view-model.ts";
 import { permissionGranted } from "../shared/local/permission-model.ts";
 import { MacPermissions } from "../shared/local/permission-port.ts";
 import type { RunnerBrowserConfig, RunnerState } from "../shared/local/runner-port.ts";
+import { appLog } from "./app-log.ts";
 import { createBrowserHost } from "./browser-host.ts";
 import { KeepAwake } from "./keep-awake.ts";
 import { type LivePort, LiveUi } from "./live-ui.ts";
@@ -78,6 +79,7 @@ export class DeviceGlue {
   private readonly asks = new Map<string, PendingAsk>();
   private readonly awake = new KeepAwake(powerSaveBlocker);
   private liveActive = false;
+  runnerState: string | null = null;
   private personalWas = false;
 
   constructor(private readonly options: DeviceGlueOptions) {
@@ -123,11 +125,18 @@ export class DeviceGlue {
       },
       onBusy: (commandId, busy) =>
         this.awake.apply({ type: busy ? "step_started" : "step_ended", command_id: commandId }),
-      onExit: () => this.awake.apply({ type: "runner_ended" }),
+      onExit: (code) => {
+        appLog.info("runner.exit", { exit_code: code });
+        this.awake.apply({ type: "runner_ended" });
+      },
       idleSeconds: () => powerMonitor.getSystemIdleTime(),
       target: options.target,
       onEnrolled: () => this.local.sync(),
       onState: (state) => {
+        this.runnerState = state;
+        appLog[state === "crashed" || state === "given_up" ? "warn" : "info"]("runner.state", {
+          runner_state: state,
+        });
         if (RUNNER_ENDED.has(state)) this.awake.apply({ type: "runner_ended" });
       },
       onError,

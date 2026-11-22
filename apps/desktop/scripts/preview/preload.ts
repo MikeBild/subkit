@@ -24,6 +24,8 @@ const connect: ConnectBridge = {
   showView: async () => {},
   updateAction: async () => {},
   reportProblem: async () => {},
+  copyDiagnostics: async () => {},
+  openLogs: async () => {},
   local: {
     pickFolder: async () => ({ status: "cancelled" }),
     listAllowances: async () => ({ personal_enabled: false, items: [] }),

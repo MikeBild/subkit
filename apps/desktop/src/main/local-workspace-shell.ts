@@ -51,6 +51,9 @@ export class LocalWorkspaceShell {
       onGone: (origin) => this.gone(origin),
       onSecret: (secret) => host.errors.addSecret(secret),
       onError: (scope, error) => host.errors.record(scope, error),
+      onStartFailed: () => {
+        if (this.activeIsLocal() && !host.connectWindow()?.isVisible()) host.open();
+      },
     });
   }
 

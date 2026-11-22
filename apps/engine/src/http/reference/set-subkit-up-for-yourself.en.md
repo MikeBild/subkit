@@ -38,7 +38,7 @@ The step appears once, after your first sign-in to a workspace.
 | “When may SubKit notify you?” | **Right away** (recommended), **Only during my working hours** or **Once a day as a summary** | Notifications and quiet hours. |
 | “How much may SubKit spend on AI per month?” (administrators only) | **$20**, **$50** (recommended), **$200** or **No limit** | The monthly AI budget of the workspace. |
 
-As an administrator you get this sixth question. The AI budget applies to the whole workspace; “Usage and costs” explains what happens at 80% and 100%. Under **Settings** › **Setup** this row leads to **Settings** › **Usage**, the one place where the budget is changed.
+As an administrator you get this sixth question. The AI budget applies to the whole workspace; “Usage and costs” explains what happens at 80% and 100%. Under **Settings** › **Setup** this row leads to **Settings** › **Budget**, the one place where the budget is changed.
 
 The first two answers only change what the Cockpit suggests to you first. They connect no service and create no workflow. The other three change how SubKit works:
 

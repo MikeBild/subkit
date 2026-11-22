@@ -53,6 +53,29 @@ describe("anonymousReportBody", () => {
     });
   });
 
+  test("lists crashes next to errors in time order", () => {
+    const body = anonymousReportBody({
+      bundle: bundle({
+        crashes: [
+          {
+            at: "2026-11-19T10:00:00.000Z",
+            source: "gpu",
+            process: "GPU",
+            reason: "crashed",
+            exitCode: 9,
+          },
+        ],
+      }),
+      deviceId: DEVICE,
+      locale: "en",
+      reportId: REPORT_ID,
+    });
+    expect(body.diagnostics.recent_errors).toEqual([
+      { code: "crash.gpu: GPU crashed exit 9", at: "2026-11-19T10:00:00.000Z" },
+      { code: "login: exchange failed", at: "2026-11-20T10:00:00.000Z" },
+    ]);
+  });
+
   test("writes the message in German and leaves out what the app does not know", () => {
     const body = anonymousReportBody({
       bundle: bundle({ serverVersion: null, connection: " ", errors: [] }),

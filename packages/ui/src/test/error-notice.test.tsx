@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { de } from "@ui/i18n/de";
-import { type ErrorCatalog, errorMeta, requestId, techRows } from "@ui/lib/errors";
+import { type ErrorCatalog, errorMeta, techRows } from "@ui/lib/errors";
 import { UiProvider } from "@ui/lib/ui-context";
 import { ErrorNotice, ErrorState, FieldError, TechDetail } from "@ui/molecules/error-notice";
 import type { ReactNode } from "react";
@@ -63,7 +63,6 @@ describe("technical rows", () => {
       ["Ursache", "Zeitüberschreitung"],
       ["Code", "server_offline"],
       ["HTTP-Status", "503"],
-      ["Anfrage-ID", requestId("offline", AT)],
       ["Zeit", `at ${new Date(AT).toISOString()}`],
       ["Server", "srv"],
     ]);
@@ -101,7 +100,7 @@ describe("TechDetail", () => {
   it("falls back to the catalog rows with the injected clock", () => {
     const out = html(<TechDetail kind="offline" defaultOpen />);
     expect(out).toContain(`at ${new Date(AT).toISOString()}`);
-    expect(out).toContain(requestId("offline", AT));
+    expect(out).not.toContain("req_");
     expect(out).toContain("https://app.example");
   });
 

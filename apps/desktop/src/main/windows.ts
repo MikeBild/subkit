@@ -4,6 +4,7 @@ import { CONNECT_URL, isConnectUrl } from "../shared/app-url.ts";
 import type { Profile } from "../shared/profiles.ts";
 import { decideNavigation } from "../shared/server-address.ts";
 import { COCKPIT_WINDOW, initialWindowSize, windowBackground } from "../shared/window-frame.ts";
+import { appLog } from "./app-log.ts";
 import { guardWebContents, securePreferences } from "./hardening.ts";
 
 export const CONNECT_PARTITION = "connect";
@@ -42,7 +43,12 @@ export function createConnectWindow(): BrowserWindow {
     webPreferences: securePreferences(PATHS.connectPreload, CONNECT_PARTITION),
   });
   guardWebContents(window.webContents, (url) => (isConnectUrl(url) ? "allow" : "deny"));
-  void window.loadURL(CONNECT_URL).catch(() => {});
+  appLog.info("window.connect.created");
+  window.webContents.on("did-fail-load", (_event, code, description, _url, isMainFrame) => {
+    if (isMainFrame && code !== -3)
+      appLog.warn("window.connect.load_failed", { error_code: code, description });
+  });
+  void window.loadURL(CONNECT_URL).catch((error) => appLog.error("window.connect.load", error));
   return window;
 }
 
@@ -60,6 +66,7 @@ export function createCockpitWindow(
     backgroundColor: windowBackground(nativeTheme.shouldUseDarkColors),
     webPreferences: securePreferences(PATHS.cockpitPreload, partitionFor(profile.id)),
   });
+  appLog.info("window.cockpit.created");
   guardWebContents(window.webContents, (url) => {
     const decision = decideNavigation(url, profile.serverOrigin);
     return decision === "external" && intercept(url) ? "deny" : decision;

@@ -172,6 +172,16 @@ describe("diagnostics", () => {
       "internal_error (500)",
     );
     expect(clientErrorCode({ status: 502 })).toBe("request_failed (502)");
+    expect(
+      clientErrorCode({
+        status: 503,
+        code: "unavailable",
+        traceId: "4bf92f3577b34da6a3ce929d0e0e4736",
+      }),
+    ).toBe("unavailable (503) trace=4bf92f3577b34da6a3ce929d0e0e4736");
+    expect(clientErrorCode({ status: 503, traceId: "not a trace <script>" })).toBe(
+      "request_failed (503)",
+    );
     expect(clientErrorCode(new TypeError("private detail"))).toBe("TypeError");
     expect(clientErrorCode("text")).toBe("Error");
   });

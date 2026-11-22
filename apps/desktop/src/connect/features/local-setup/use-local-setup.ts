@@ -18,6 +18,8 @@ export interface LocalSetupActions {
   retry: () => void;
   open: () => void;
   skipAi: () => void;
+  copyDiagnostics: () => void;
+  openLogs: () => void;
 }
 
 export function useLocalSetup(): { s: LocalSetupModel; form: SetupForm; a: LocalSetupActions } {
@@ -35,6 +37,8 @@ export function useLocalSetup(): { s: LocalSetupModel; form: SetupForm; a: Local
       back: () => dispatch({ type: "LocalBack" }),
       retry: () => dispatch({ type: "LocalRetry" }),
       open: () => dispatch({ type: "LocalOpen" }),
+      copyDiagnostics: () => dispatch({ type: "CopyDiagnostics" }),
+      openLogs: () => dispatch({ type: "OpenLogs" }),
       skipAi: () => {
         const input = skipInput(form);
         if (input) dispatch({ type: "LocalFinish", input });

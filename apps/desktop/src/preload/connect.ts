@@ -13,6 +13,8 @@ const bridge: ConnectBridge = {
   showView: (view) => ipcRenderer.invoke(CONNECT_CHANNELS.showView, view),
   updateAction: () => ipcRenderer.invoke(CONNECT_CHANNELS.updateAction),
   reportProblem: () => ipcRenderer.invoke(CONNECT_CHANNELS.reportProblem),
+  copyDiagnostics: () => ipcRenderer.invoke(CONNECT_CHANNELS.copyDiagnostics),
+  openLogs: () => ipcRenderer.invoke(CONNECT_CHANNELS.openLogs),
   local: {
     pickFolder: (options) =>
       ipcRenderer.invoke(CONNECT_CHANNELS.localPickFolder, {

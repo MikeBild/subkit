@@ -56,13 +56,20 @@ export function anonymousReportBody(input: {
     diagnostics: {
       client_kind: "desktop",
       ...Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined)),
-      recent_errors: bundle.errors
-        .filter((entry) => validTime(entry.at))
-        .slice(-10)
-        .map((entry) => ({
-          code: short(`${entry.scope}: ${entry.message}`, CODE_MAX) ?? "error",
+      recent_errors: [
+        ...bundle.errors.map((entry) => ({
+          text: `${entry.scope}: ${entry.message}`,
           at: entry.at,
         })),
+        ...bundle.crashes.map((crash) => ({
+          text: `crash.${crash.source}: ${crash.process} ${crash.reason} exit ${crash.exit_code ?? "-"}`,
+          at: crash.at,
+        })),
+      ]
+        .filter((entry) => validTime(entry.at))
+        .sort((left, right) => left.at.localeCompare(right.at))
+        .slice(-10)
+        .map((entry) => ({ code: short(entry.text, CODE_MAX) ?? "error", at: entry.at })),
     },
   };
 }

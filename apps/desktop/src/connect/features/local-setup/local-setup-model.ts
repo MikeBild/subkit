@@ -147,6 +147,18 @@ export function errorCopy(kind: LocalErrorKind): ErrorCopy {
         body: "workspace.err.move.body",
         remedy: "retry",
       };
+    case "database":
+      return {
+        title: "workspace.err.database.title",
+        body: "workspace.err.database.body",
+        remedy: "retry",
+      };
+    case "version":
+      return {
+        title: "workspace.err.version.title",
+        body: "workspace.err.version.body",
+        remedy: "retry",
+      };
     case "failed":
       return {
         title: "workspace.err.failed.title",
@@ -162,6 +174,8 @@ export const ERROR_CODES: Record<LocalErrorKind, string> = {
   permission: "local_permission_denied",
   folder: "local_folder_refused",
   keyRejected: "llm_key_rejected",
+  database: "local_database_failed",
+  version: "local_version_newer",
   failed: "local_start_failed",
   restore: "local_restore_failed",
   move: "local_move_failed",

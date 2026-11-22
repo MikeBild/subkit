@@ -13,7 +13,7 @@ import {
   type LocalWorkspace,
 } from "../identity/local-workspace.ts";
 import { logger } from "../logging/index.ts";
-import { readMemoryUsage } from "../observability/runtime-telemetry.ts";
+import { bootPhase, readMemoryUsage } from "../observability/runtime-telemetry.ts";
 import type { EngineShutdown } from "./shutdown.ts";
 
 export interface HttpDeps {
@@ -35,13 +35,24 @@ export async function startHttp(db: Db, deps: HttpDeps): Promise<void> {
   const opts = engineServeOptions(port, envSnapshot(), localWorkspace !== null);
   await lifetime.acquire(
     () =>
-      serve({
-        fetch: (request, env) => {
-          if (lifetime.stopping) return new Response("Service unavailable", { status: 503 });
-          return lifetime.handleRequest(() => app.fetch(request, env));
-        },
-        port: opts.port,
-        hostname: opts.hostname,
+      bootPhase("listen", () => {
+        const server = serve({
+          fetch: (request, env) => {
+            if (lifetime.stopping) return new Response("Service unavailable", { status: 503 });
+            return lifetime.handleRequest(() => app.fetch(request, env));
+          },
+          port: opts.port,
+          hostname: opts.hostname,
+        });
+        return new Promise<typeof server>((resolve, reject) => {
+          if (server.listening) return resolve(server);
+          const failed = (error: Error) => reject(error);
+          server.once("error", failed);
+          server.once("listening", () => {
+            server.off("error", failed);
+            resolve(server);
+          });
+        });
       }),
     (server) => shutdown.attachHttpServer(server),
   );

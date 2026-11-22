@@ -47,7 +47,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Engine readiness (503 when the database is unreachable) */
+        /** Engine readiness (503 names the failing checks) */
         get: {
             parameters: {
                 query?: never;
@@ -68,7 +68,7 @@ export interface paths {
                         "application/json": components["schemas"]["ReadyResponse"];
                     };
                 };
-                /** @description Not ready — database unreachable */
+                /** @description Not ready; failing lists the checks that failed */
                 503: {
                     headers: {
                         /** @description Availability responses are always evaluated live and must not be cached. */
@@ -27900,7 +27900,14 @@ export interface components {
                 lifecycle: "pass" | "fail";
                 /** @enum {string} */
                 database: "pass" | "fail";
+                /**
+                 * @description drift means the database schema differs from this engine; it does not block readiness
+                 * @enum {string}
+                 */
+                schema: "pass" | "drift";
             };
+            /** @description The checks that keep the engine from being ready; empty when ready */
+            failing: ("lifecycle" | "database")[];
         };
         SetupStatusResponse: {
             pending: boolean;

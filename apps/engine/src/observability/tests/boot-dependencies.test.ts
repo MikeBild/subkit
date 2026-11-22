@@ -1,4 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { _validateBootDependenciesForTests } from "../../test-helpers/boot.ts";
 import { testEnv } from "../../test-helpers/determinism/env.ts";
@@ -23,6 +26,7 @@ describe("_validateBootDependenciesForTests", () => {
     expect(byName.get("crypto_self_test")?.ok).toBe(true);
     expect(byName.get("db_connect")?.ok).toBe(true);
     expect(byName.get("db_extensions")?.ok).toBe(true);
+    expect(probes.every((p) => typeof p.duration_ms === "number")).toBe(true);
   });
 
   test("DB connect probe is a BLOCKER (sets blockerFailed=true on failure)", async () => {
@@ -60,6 +64,25 @@ describe("_validateBootDependenciesForTests", () => {
     const ext = probes.find((p) => p.name === "db_extensions");
     expect(ext).toBeDefined();
     expect(ext?.blocker).toBe(false);
+  });
+
+  test("the filesystem object store is a BLOCKER probe", async () => {
+    const folder = mkdtempSync(join(tmpdir(), "subkit-object-store-"));
+    try {
+      const writable = await _validateBootDependenciesForTests(testDb.db, join(folder, "files"));
+      expect(writable.probes.find((p) => p.name === "object_store")?.ok).toBe(true);
+      writeFileSync(join(folder, "plain-file"), "x");
+      const broken = await _validateBootDependenciesForTests(
+        testDb.db,
+        join(folder, "plain-file", "files"),
+      );
+      const probe = broken.probes.find((p) => p.name === "object_store");
+      expect(probe?.ok).toBe(false);
+      expect(probe?.blocker).toBe(true);
+      expect(broken.blockerFailed).toBe(true);
+    } finally {
+      rmSync(folder, { recursive: true, force: true });
+    }
   });
 
   test("FS write probes are skipped outside production (no /etc/subkit warns in dev)", async () => {

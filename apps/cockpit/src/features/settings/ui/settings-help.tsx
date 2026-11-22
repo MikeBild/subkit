@@ -32,7 +32,7 @@ export function HelpArea() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => openFeedback()}
+            onClick={() => openFeedback({ kind: "bug", diagnostics: true })}
             data-testid="settings-help-report-open"
           >
             {t("settings.helpArea.reportOpen")}

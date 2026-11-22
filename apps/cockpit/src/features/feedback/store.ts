@@ -26,6 +26,7 @@ export interface FeedbackState {
 export interface FeedbackPrefill {
   kind?: FeedbackKind;
   text?: string;
+  diagnostics?: boolean;
 }
 
 interface StoreEnvironment {
@@ -82,10 +83,11 @@ export function createFeedbackStore(env: StoreEnvironment = BROWSER) {
       if (opening) return;
       opening = true;
       try {
-        if (prefill.kind || prefill.text)
+        if (prefill.kind || prefill.text || prefill.diagnostics !== undefined)
           update({
             ...(prefill.kind ? { kind: prefill.kind } : {}),
             ...(prefill.text ? { text: mergePrefill(state.draft.text, prefill.text) } : {}),
+            ...(prefill.diagnostics !== undefined ? { diagnostics: prefill.diagnostics } : {}),
           });
         const bridge = env.bridge();
         if (bridge && !state.open) {
@@ -99,7 +101,11 @@ export function createFeedbackStore(env: StoreEnvironment = BROWSER) {
               ...state.draft,
               screenshot: png,
               screenshotIncluded: false,
-              ...(consent === null ? {} : { diagnostics: consent }),
+              ...(prefill.diagnostics !== undefined
+                ? { diagnostics: prefill.diagnostics }
+                : consent === null
+                  ? {}
+                  : { diagnostics: consent }),
             },
           });
         }

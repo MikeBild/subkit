@@ -185,6 +185,15 @@ describe("feedback store", () => {
     expect(values.has(FEEDBACK_DRAFT_KEY)).toBe(false);
   });
 
+  test("sending diagnostics on purpose turns them on even when the desktop default is off", async () => {
+    const store = createFeedbackStore(
+      environment({ captureWindow: async () => null, diagnosticsConsent: async () => false }).env,
+    );
+    await store.open({ kind: "bug", diagnostics: true });
+    expect(store.get().draft.kind).toBe("bug");
+    expect(store.get().draft.diagnostics).toBe(true);
+  });
+
   test("a prefill sets kind and text and is added to an existing draft", async () => {
     const store = createFeedbackStore(environment().env);
     await store.open({ kind: "bug", text: "Fehler: X" });

@@ -68,6 +68,7 @@ import {
   saveConfig,
   saveProfile,
 } from "./config.ts";
+import { enableRequestTrace, isDebugVerbose } from "./debug.ts";
 import { EngineClient } from "./engine-client.ts";
 import type { OutputFormat } from "./headless.ts";
 import { runHeadless } from "./headless.ts";
@@ -94,6 +95,11 @@ const commonArgs = {
   "api-key": { type: "string" as const, description: "API key (Bearer)" },
   tenant: { type: "string" as const, description: "Active tenant id" },
   profile: { type: "string" as const, description: "Profile name (~/.subkit/config.json)" },
+  verbose: {
+    type: "boolean" as const,
+    description:
+      "Print each request with its trace id and timing to stderr (same as SUBKIT_DEBUG=1)",
+  },
 };
 
 const loginCommand = defineCommand({
@@ -725,6 +731,7 @@ async function dispatch(): Promise<void> {
   const profile = profileOption(rawArgs);
   if (profile) process.env.SUBKIT_PROFILE = profile;
   if (sub) {
+    if (isDebugVerbose()) enableRequestTrace(process.stderr);
     warnOnIncompatibleEngine();
     const separator = rest.indexOf("--");
     const subArgs =

@@ -271,3 +271,32 @@ export function parseEngineReady(line: string): { port: number; reassigned: bool
     return null;
   }
 }
+
+export interface EngineBootFailure {
+  phase: string;
+  error: string;
+  next: string | null;
+}
+
+export function parseEngineBootFailed(line: string): EngineBootFailure | null {
+  if (!line.startsWith("{") || !line.includes("boot.failed")) return null;
+  try {
+    const value = JSON.parse(line) as Record<string, unknown>;
+    if (value.action !== "boot.failed") return null;
+    const text = (field: unknown) => (typeof field === "string" && field ? field : null);
+    return {
+      phase: text(value.phase) ?? "unknown",
+      error: [text(value.error), text(value.cause)].filter(Boolean).join(": ") || "unknown",
+      next: text(value.next),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function engineEndedReason(code: number | null, failure: EngineBootFailure | null): string {
+  const base = `the engine ended while starting (exit ${code})`;
+  return failure
+    ? `${base} in ${failure.phase}: ${failure.error}; see engine.log`
+    : `${base}; see engine.log`;
+}

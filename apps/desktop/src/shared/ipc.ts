@@ -32,6 +32,8 @@ export const CONNECT_CHANNELS = {
   showView: "connect:show-view",
   updateAction: "connect:update-action",
   reportProblem: "connect:report-problem",
+  copyDiagnostics: "connect:copy-diagnostics",
+  openLogs: "connect:open-logs",
   checkPermissions: "connect:check-permissions",
   openPermissionSettings: "connect:open-permission-settings",
   restartApp: "connect:restart-app",
@@ -237,6 +239,8 @@ export interface ConnectBridge {
   showView(view: ConnectView): Promise<void>;
   updateAction(): Promise<void>;
   reportProblem(): Promise<void>;
+  copyDiagnostics(): Promise<void>;
+  openLogs(): Promise<void>;
   checkPermissions(): Promise<void>;
   openPermissionSettings(key: PermissionKey): Promise<void>;
   restartApp(): Promise<void>;

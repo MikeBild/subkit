@@ -35,6 +35,8 @@ const KINDS: LocalErrorKind[] = [
   "permission",
   "folder",
   "keyRejected",
+  "database",
+  "version",
   "failed",
   "restore",
   "move",
@@ -155,6 +157,22 @@ describe("copy and remedies", () => {
       [
         "keyRejected",
         { title: "workspace.err.keyRejected.title", body: "workspace.keyError", remedy: "retry" },
+      ],
+      [
+        "database",
+        {
+          title: "workspace.err.database.title",
+          body: "workspace.err.database.body",
+          remedy: "retry",
+        },
+      ],
+      [
+        "version",
+        {
+          title: "workspace.err.version.title",
+          body: "workspace.err.version.body",
+          remedy: "retry",
+        },
       ],
       [
         "failed",

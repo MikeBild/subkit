@@ -1,13 +1,21 @@
+import { spawnSync } from "node:child_process";
 import { writeFile } from "node:fs/promises";
 import { homedir, release } from "node:os";
+import { dirname } from "node:path";
 import { app, type BrowserWindow, clipboard, dialog } from "electron";
 import type { AnonymousReportOutcome } from "../shared/anonymous-report.ts";
 import {
+  BUNDLE_LOG_LINES,
   buildDiagnostics,
   type DesktopDiagnostics,
   type ErrorEntry,
+  type LocalStatus,
+  parseCodesign,
+  type SigningInfo,
 } from "../shared/diagnostics.ts";
 import { type Locale, t } from "../shared/i18n.ts";
+import { appLog } from "./app-log.ts";
+import { crashCapture } from "./crash-capture.ts";
 
 export interface DiagnosticsContext {
   locale: Locale;
@@ -16,6 +24,28 @@ export interface DiagnosticsContext {
   connection: string;
   profileCount: number;
   errors: readonly ErrorEntry[];
+  local?: LocalStatus | undefined;
+  runner?: string | null | undefined;
+  permissions?: Readonly<Record<string, string>> | undefined;
+}
+
+let signing: SigningInfo | null | undefined;
+
+function signingInfo(): SigningInfo | null {
+  if (signing !== undefined) return signing;
+  signing = null;
+  if (process.platform !== "darwin" || !app.isPackaged) return signing;
+  try {
+    const bundle = dirname(dirname(dirname(process.execPath)));
+    const result = spawnSync("/usr/bin/codesign", ["-dv", "--verbose=2", bundle], {
+      encoding: "utf8",
+      timeout: 3000,
+    });
+    signing = parseCodesign(`${result.stdout ?? ""}${result.stderr ?? ""}`, result.status);
+  } catch {
+    signing = null;
+  }
+  return signing;
 }
 
 export function diagnosticsBundle(context: DiagnosticsContext): DesktopDiagnostics {
@@ -35,9 +65,21 @@ export function diagnosticsBundle(context: DiagnosticsContext): DesktopDiagnosti
       profileCount: context.profileCount,
       errors: context.errors,
       generatedAt: new Date().toISOString(),
+      signing: signingInfo() ?? undefined,
+      logTail: appLog.tail(BUNDLE_LOG_LINES),
+      crashes: crashCapture.recent(),
+      minidumps: crashCapture.minidumps(),
+      local: context.local,
+      runner: context.runner,
+      permissions: context.permissions,
+      secrets: appLog.knownSecrets(),
     },
     homedir(),
   );
+}
+
+export function diagnosticsText(context: DiagnosticsContext): string {
+  return `${JSON.stringify(diagnosticsBundle(context), null, 2)}\n`;
 }
 
 export type SendDiagnostics = (bundle: DesktopDiagnostics) => Promise<AnonymousReportOutcome>;

@@ -18,8 +18,9 @@ export const settingsPersonalEn = {
   "settings.helpArea.docs": "Documentation",
   "settings.helpArea.docsHint": "Guides and answers about SubKit.",
   "settings.helpArea.docsOpen": "Open",
-  "settings.helpArea.reportHint": "Describe what didn’t work.",
-  "settings.helpArea.reportOpen": "Write a report",
+  "settings.helpArea.reportHint":
+    "Describe what didn’t work. We attach the diagnostics without credentials.",
+  "settings.helpArea.reportOpen": "Send diagnostics",
   "settings.notifications.on": "Notifications",
   "settings.notifications.onHint":
     "System notifications for runs, approvals and connector problems.",
@@ -142,8 +143,9 @@ export const settingsPersonalDe: Record<keyof typeof settingsPersonalEn, string>
   "settings.helpArea.docs": "Dokumentation",
   "settings.helpArea.docsHint": "Anleitungen und Antworten zu SubKit.",
   "settings.helpArea.docsOpen": "Öffnen",
-  "settings.helpArea.reportHint": "Beschreib, was nicht funktioniert hat.",
-  "settings.helpArea.reportOpen": "Bericht schreiben",
+  "settings.helpArea.reportHint":
+    "Beschreib, was nicht funktioniert hat. Wir hängen die Diagnosedaten ohne Zugangsdaten an.",
+  "settings.helpArea.reportOpen": "Diagnose senden",
   "settings.notifications.on": "Benachrichtigungen",
   "settings.notifications.onHint":
     "Systembenachrichtigungen für Runs, Freigaben und Connector-Probleme.",

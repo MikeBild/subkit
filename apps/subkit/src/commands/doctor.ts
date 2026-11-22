@@ -1,19 +1,56 @@
+import { existsSync, readFileSync } from "node:fs";
 import { isEngineError, isTransportError } from "@cli-core/errors.ts";
 import { printJson } from "@cli-core/format";
+import { CLI_BINARY } from "@cli-core/release/assets.ts";
 import { compatibilityWarning } from "@cli-core/release/compatibility.ts";
+import { defaultUpdaterConfig, readCache } from "@cli-core/updater.ts";
 import { VERSION as CLI_VERSION } from "@cli-core/version.ts";
 import { defineCommand } from "citty";
 import pc from "picocolors";
-import { resolveProfile } from "../config.ts";
+import { configPath, resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
+import { loadSettings } from "../settings.ts";
+import {
+  type CheckResult,
+  type CheckStatus,
+  type ConfigFacts,
+  configCheck,
+  reachabilityCheck,
+  updateChannelCheck,
+  worst,
+} from "./doctor-checks.ts";
 
-export type CheckStatus = "ok" | "warn" | "blocked";
+export type { CheckResult, CheckStatus } from "./doctor-checks.ts";
 
-export interface CheckResult {
-  name: string;
-  status: CheckStatus;
-  detail: string;
-  hint?: string;
+function configFacts(profile: string): ConfigFacts {
+  const path = configPath();
+  if (!existsSync(path))
+    return { path, exists: false, parses: false, profile, profileFound: false };
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as { profiles?: Record<string, unknown> };
+    return {
+      path,
+      exists: true,
+      parses: true,
+      profile,
+      profileFound: Boolean(parsed.profiles && profile in parsed.profiles),
+    };
+  } catch {
+    return { path, exists: true, parses: false, profile, profileFound: false };
+  }
+}
+
+function updateCheckResult(): CheckResult {
+  const config = defaultUpdaterConfig(CLI_BINARY, CLI_VERSION);
+  const cache = readCache(config.cacheDir);
+  return updateChannelCheck({
+    version: CLI_VERSION,
+    checksEnabled:
+      loadSettings().merged.updateCheck !== false && process.env.NO_UPDATE_CHECK !== "1",
+    latest: cache?.latest_version ?? null,
+    lastCheck: cache?.last_check ?? null,
+    now: Date.now(),
+  });
 }
 
 export function engineCheckDenial(name: string, err: unknown): CheckResult | null {
@@ -34,12 +71,6 @@ function statusGlyph(s: CheckStatus): string {
   if (s === "ok") return pc.green("✔");
   if (s === "warn") return pc.yellow("⚠");
   return pc.red("✘");
-}
-
-function worst(results: CheckResult[]): CheckStatus {
-  if (results.some((r) => r.status === "blocked")) return "blocked";
-  if (results.some((r) => r.status === "warn")) return "warn";
-  return "ok";
 }
 
 function exitCodeFromStatus(s: CheckStatus): number {
@@ -65,7 +96,7 @@ export const doctorCommand = defineCommand({
       api_key: args["api-key"] as string | undefined,
       profile: args.profile as string | undefined,
     });
-    const results: CheckResult[] = [];
+    const results: CheckResult[] = [configCheck(configFacts(profile.name))];
 
     const profileStatus: CheckStatus = !profile.api_key
       ? "blocked"
@@ -99,19 +130,7 @@ export const doctorCommand = defineCommand({
     try {
       const [h, ready] = await Promise.all([client.health(), client.ready()]);
       engineVersion = h.version === "unknown" ? undefined : h.version;
-      const database = ready.checks.database;
-      reachability = {
-        name: "reachability",
-        status: ready.status === "ready" && database !== "fail" ? "ok" : "blocked",
-        detail: `engine live=${h.status} ready=${ready.status} version=${h.version} database=${database}`,
-        ...(database === "fail"
-          ? { hint: "engine is up but cannot reach the database" }
-          : database === "unknown"
-            ? {
-                hint: "a proxy in front of the engine answered /ready without the engine's checks; the database state is not visible from here",
-              }
-            : {}),
-      };
+      reachability = reachabilityCheck(h, ready);
     } catch (err) {
       const detail = isTransportError(err)
         ? `cannot reach engine — ${err.message}`
@@ -321,6 +340,8 @@ export const doctorCommand = defineCommand({
         results.push({ name: "integrations", status: "warn", detail: `unavailable: ${detail}` });
       }
     }
+
+    results.push(updateCheckResult());
 
     const overall = worst(results);
 

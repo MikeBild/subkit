@@ -116,7 +116,7 @@ Lehnt der Anbieter den API-Schlüssel während eines Runs ab, bittet dich **Brau
 
 Jeder Arbeitsbereich hat genau eine Grenze für KI-Kosten: das monatliche KI-Budget in US-Dollar. Token werden weiter gezählt, aber nicht begrenzt. Ein neuer Arbeitsbereich beginnt mit 50 $ im Monat. Ein Arbeitsbereich, den es schon vor dem KI-Budget gab, beginnt ohne Grenze und bekommt einen Punkt unter **Braucht dich**: „Monatliches KI-Budget festlegen“. Der Monat richtet sich nach der Zeitzone deines Arbeitsbereichs.
 
-Das Budget steht an einer Stelle: **Einstellungen** › **Nutzung**. Dort siehst du, was die Modellaufrufe dieses Monats gekostet haben, zum Beispiel „12,40 $ von 50 $“. Sehen kannst du es mit `stats:read`; Administratoren ändern es dort, alle anderen mit `stats:read` sehen es nur.
+Das Budget steht an einer Stelle: **Einstellungen** › **Budget**. Dort siehst du, was die Modellaufrufe dieses Monats gekostet haben, zum Beispiel „12,40 $ von 50 $“. Sehen kannst du es mit `stats:read`; Administratoren ändern es dort, alle anderen mit `stats:read` sehen es nur.
 
 - Es zählen nur Aufrufe mit Preis. Ein lokales Modell oder ein Modell ohne Preis zählt nie zum KI-Budget.
 - Bei 80 % bekommst du einen Punkt unter **Braucht dich** und eine Benachrichtigung, einmal im Monat.
@@ -125,7 +125,7 @@ Das Budget steht an einer Stelle: **Einstellungen** › **Nutzung**. Dort siehst
 
 Was ein Administrator tun kann, wenn das Budget erreicht ist:
 
-1. Öffne den Punkt unter **Braucht dich** oder **Einstellungen** › **Nutzung**.
+1. Öffne den Punkt unter **Braucht dich** oder **Einstellungen** › **Budget**.
 2. Wähle **Budget erhöhen** und eine neue Grenze: 20 $, 50 $, 200 $ oder **Ohne Grenze**.
 3. Oder wähle **Diesen Monat weiter ohne Grenze**. Der nächste Monat beginnt wieder mit der Grenze.
 
@@ -175,9 +175,9 @@ Klappe **Technische Angaben** am Ende der Seite auf. Dort stehen:
 | **Person**, **Unterhaltung** und **Aufgabe** fehlen | Dir fehlt `stats:read:all`. Bitte eine Person mit Admin-Rolle darum. |
 | **mind.** vor den Kosten | Für manche Modelle fehlt ein Preis. Hinterleg ihn über **Preis hinterlegen**. |
 | **Kosten unbekannt** | Für keines der genutzten Modelle ist ein Preis hinterlegt. Hinterleg die Preise. |
-| Chat, Aufgaben und Modellschritte pausieren | Das KI-Budget ist erreicht. Ein Administrator erhöht es unter **Einstellungen** › **Nutzung** oder macht diesen Monat weiter. |
+| Chat, Aufgaben und Modellschritte pausieren | Das KI-Budget ist erreicht. Ein Administrator erhöht es unter **Einstellungen** › **Budget** oder macht diesen Monat weiter. |
 | „Keine KI-Aufrufe in diesem Zeitraum.“ | Wähle **Dieser Monat anzeigen** oder einen anderen Zeitraum. |
-| Ein Workflow-Run schlägt mit `llm_spend_limit_reached` fehl | Sein Modellschritt liegt in einer Schleife, einem parallelen Block oder einem „für jeden“, wo ein Run nicht warten kann, ohne Schritte zu wiederholen. Erhöhe die Grenze oder mach diesen Monat unter **Einstellungen** › **Nutzung** weiter, dann starte den Workflow erneut. |
+| Ein Workflow-Run schlägt mit `llm_spend_limit_reached` fehl | Sein Modellschritt liegt in einer Schleife, einem parallelen Block oder einem „für jeden“, wo ein Run nicht warten kann, ohne Schritte zu wiederholen. Erhöhe die Grenze oder mach diesen Monat unter **Einstellungen** › **Budget** weiter, dann starte den Workflow erneut. |
 | Ein Workflow-Run bleibt **wartend** mit „Wartet auf Budget“ | Das KI-Budget ist erreicht. Erhöhe es oder mach diesen Monat weiter; der Run läuft dann von selbst weiter. |
 
 ### Dasselbe im Terminal

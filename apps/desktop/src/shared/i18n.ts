@@ -33,8 +33,8 @@ const MESSAGES = {
 
   "report.title": { de: "Diagnosedaten", en: "Diagnostics" },
   "report.detail": {
-    de: "Die Diagnosedaten enthalten App-Version, Betriebssystem, Server-Version und die letzten 10 Fehler. Zugangsdaten, Pfade und URL-Parameter sind entfernt. Füg sie deiner Fehlermeldung bei.",
-    en: "The diagnostics contain the app version, operating system, server version and the last 10 errors. Credentials, paths and URL parameters are removed. Add them to your problem report.",
+    de: "Die Diagnosedaten enthalten App-Version, Betriebssystem, Signatur, Server-Version, den Status von Engine und Runner, Berechtigungen, Abstürze, die letzten 10 Fehler und die letzten Log-Zeilen. Zugangsdaten, Pfade und URL-Parameter sind entfernt. Füg sie deiner Fehlermeldung bei.",
+    en: "The diagnostics contain the app version, operating system, signature, server version, engine and runner status, permissions, crashes, the last 10 errors and the latest log lines. Credentials, paths and URL parameters are removed. Add them to your problem report.",
   },
   "report.copy": { de: "Diagnose kopieren", en: "Copy diagnostics" },
   "report.save": { de: "Als Datei speichern …", en: "Save as file…" },
@@ -42,8 +42,8 @@ const MESSAGES = {
   "report.close": { de: "Schließen", en: "Close" },
   "report.send": { de: "An den Server senden", en: "Send to server" },
   "report.sendDetail": {
-    de: "Die Diagnosedaten enthalten App-Version, Betriebssystem, Server-Version und die letzten 10 Fehler. Zugangsdaten, Pfade und URL-Parameter sind entfernt. Du kannst sie ohne Anmeldung an deinen Server senden oder kopieren.",
-    en: "The diagnostics contain the app version, operating system, server version and the last 10 errors. Credentials, paths and URL parameters are removed. You can send them to your server without signing in, or copy them.",
+    de: "Die Diagnosedaten enthalten App-Version, Betriebssystem, Signatur, Server-Version, den Status von Engine und Runner, Berechtigungen, Abstürze, die letzten 10 Fehler und die letzten Log-Zeilen. Zugangsdaten, Pfade und URL-Parameter sind entfernt. Du kannst sie ohne Anmeldung an deinen Server senden oder kopieren.",
+    en: "The diagnostics contain the app version, operating system, signature, server version, engine and runner status, permissions, crashes, the last 10 errors and the latest log lines. Credentials, paths and URL parameters are removed. You can send them to your server without signing in, or copy them.",
   },
   "report.sent": { de: "Danke, deine Meldung ist angekommen.", en: "Thanks, your report arrived." },
   "report.sent.detail": {
@@ -777,6 +777,67 @@ const MESSAGES = {
     de: "Gib die Adresse des Modell-Servers auf diesem Mac ein, etwa http://localhost:11434, ohne Pfad.",
     en: "Enter the address of the model server on this Mac, such as http://localhost:11434, without a path.",
   },
+  "startup.title": { de: "SubKit startet nicht", en: "SubKit doesn’t start" },
+  "startup.openLogs": { de: "Log-Ordner öffnen", en: "Open log folder" },
+  "startup.logs": { de: "Log-Ordner: {folder}", en: "Log folder: {folder}" },
+  "startup.port.title": { de: "Der Port ist belegt", en: "The port is in use" },
+  "startup.port.next": {
+    de: "Beende das andere Programm, das den Port nutzt, und starte SubKit neu.",
+    en: "Quit the other program that uses the port, then restart SubKit.",
+  },
+  "startup.database.title": {
+    de: "Die Datenbank startet nicht",
+    en: "The database doesn’t start",
+  },
+  "startup.database.next": {
+    de: "Starte deinen Computer neu und öffne SubKit noch einmal. Hilft das nicht, kopier die Diagnose und schick sie an den SubKit-Support.",
+    en: "Restart your computer and open SubKit again. If that doesn’t help, copy the diagnostics and send them to SubKit support.",
+  },
+  "startup.engine.title": { de: "Die Engine startet nicht", en: "The engine doesn’t start" },
+  "startup.engine.next": {
+    de: "Öffne SubKit noch einmal. Hilft das nicht, kopier die Diagnose und schick sie an den SubKit-Support.",
+    en: "Open SubKit again. If that doesn’t help, copy the diagnostics and send them to SubKit support.",
+  },
+  "startup.version.title": {
+    de: "Deine Daten stammen aus einer neueren Version",
+    en: "Your data comes from a newer version",
+  },
+  "startup.version.next": {
+    de: "Installier die neueste Version von SubKit. Deine Daten bleiben unverändert.",
+    en: "Install the latest version of SubKit. Your data stays unchanged.",
+  },
+  "startup.disk.title": { de: "Nicht genug Speicherplatz", en: "Not enough disk space" },
+  "startup.disk.next": {
+    de: "Gib Speicher auf diesem Computer frei und öffne SubKit dann noch einmal.",
+    en: "Free up space on this computer, then open SubKit again.",
+  },
+  "startup.permission.title": {
+    de: "Kein Zugriff auf den Datenordner",
+    en: "No access to the data folder",
+  },
+  "startup.permission.next": {
+    de: "Prüf die Zugriffsrechte des Datenordners und öffne SubKit dann noch einmal.",
+    en: "Check the access rights of the data folder, then open SubKit again.",
+  },
+  "startup.folder.title": { de: "Datenordner nicht geeignet", en: "Data folder not suitable" },
+  "startup.folder.next": {
+    de: "Wähle einen lokalen Ordner, der nicht in der Cloud synchronisiert wird.",
+    en: "Choose a local folder that isn’t synced to the cloud.",
+  },
+  "startup.window.title": {
+    de: "Das Fenster lässt sich nicht öffnen",
+    en: "The window doesn’t open",
+  },
+  "startup.window.next": {
+    de: "Installier SubKit neu. Hilft das nicht, kopier die Diagnose und schick sie an den SubKit-Support.",
+    en: "Reinstall SubKit. If that doesn’t help, copy the diagnostics and send them to SubKit support.",
+  },
+  "startup.app.title": { de: "SubKit startet nicht", en: "SubKit doesn’t start" },
+  "startup.app.next": {
+    de: "Öffne SubKit noch einmal. Hilft das nicht, kopier die Diagnose und schick sie an den SubKit-Support.",
+    en: "Open SubKit again. If that doesn’t help, copy the diagnostics and send them to SubKit support.",
+  },
+
   "workspace.private": { de: "Nur auf diesem Mac", en: "Only on this Mac" },
   "workspace.hint": {
     de: "Läuft, solange die App offen und der Mac wach ist. Vor jedem Update wird gesichert.",
@@ -810,6 +871,22 @@ const MESSAGES = {
   "workspace.err.failed.body": {
     de: "Datenbank oder Engine sind nicht gestartet. Nichts wurde geändert.",
     en: "The database or the engine didn’t start. Nothing was changed.",
+  },
+  "workspace.err.database.title": {
+    de: "Die Datenbank startet nicht",
+    en: "The database doesn’t start",
+  },
+  "workspace.err.database.body": {
+    de: "Nichts wurde geändert. Versuch es noch einmal. Hilft das nicht, kopier die Diagnose für den SubKit-Support.",
+    en: "Nothing was changed. Try again. If that doesn’t help, copy the diagnostics for SubKit support.",
+  },
+  "workspace.err.version.title": {
+    de: "Deine Daten stammen aus einer neueren Version",
+    en: "Your data comes from a newer version",
+  },
+  "workspace.err.version.body": {
+    de: "Installier die neueste Version von SubKit. Deine Daten bleiben unverändert.",
+    en: "Install the latest version of SubKit. Your data stays unchanged.",
   },
   "workspace.err.keyRejected.title": { de: "Schlüssel nicht angenommen", en: "Key not accepted" },
   "workspace.err.restore.title": {

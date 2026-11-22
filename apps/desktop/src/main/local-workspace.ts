@@ -1,9 +1,11 @@
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync, rmSync } from "node:fs";
-import { access, constants, mkdir, readdir, writeFile } from "node:fs/promises";
+import { access, constants, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { type BrowserWindow, dialog, powerMonitor, type Session, shell } from "electron";
+import { tailLines } from "../shared/app-log.ts";
+import { BUNDLE_ENGINE_LINES, type LocalStatus } from "../shared/diagnostics.ts";
 import type { LocalBusy, LocalFinishInput, LocalMoved, LocalView } from "../shared/ipc.ts";
 import type { LocalSignIn } from "../shared/local/local-profile.ts";
 import {
@@ -57,6 +59,7 @@ export interface LocalWorkspaceHost {
   onGone: (origin: string | null) => void;
   onSecret: (secret: string) => void;
   onError: (scope: string, error: unknown) => void;
+  onStartFailed: () => void;
 }
 
 function parseConfig(raw: unknown): LocalConfig {
@@ -163,6 +166,19 @@ export class LocalWorkspaceController {
     };
   }
 
+  async diagnostics(): Promise<LocalStatus> {
+    const engineLog = await readFile(join(this.layout().logs, "engine.log"), "utf8").then(
+      (text) => tailLines([text], BUNDLE_ENGINE_LINES),
+      () => [] as string[],
+    );
+    return {
+      configured: this.config.configured,
+      phase: this.engine?.status.phase ?? "stopped",
+      error: this.engine?.status.reason ?? this.error,
+      engineLog,
+    };
+  }
+
   start(): void {
     const report = () => void this.reportPower(false);
     powerMonitor.on("on-battery", report);
@@ -227,6 +243,7 @@ export class LocalWorkspaceController {
     this.starting = this.startEngine(runtime).catch((error) => {
       this.starting = null;
       this.fail("local.start", error);
+      this.host.onStartFailed();
       throw error;
     });
     this.starting.catch(() => {});

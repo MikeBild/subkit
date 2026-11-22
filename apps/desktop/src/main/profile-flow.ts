@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { dialog } from "electron";
+import { clipboard, dialog, shell } from "electron";
 import { anonymousReportBody, anonymousReportOutcome } from "../shared/anonymous-report.ts";
 import { t } from "../shared/i18n.ts";
 import type { CheckResult } from "../shared/ipc.ts";
@@ -15,7 +15,13 @@ import {
 } from "../shared/profiles.ts";
 import type { DesktopSession, ServiceDescriptor } from "../shared/server-contract.ts";
 import * as model from "../shared/shell-session.ts";
-import { type DiagnosticsContext, offerDiagnostics, type SendDiagnostics } from "./diagnostics.ts";
+import { appLog } from "./app-log.ts";
+import {
+  type DiagnosticsContext,
+  diagnosticsText,
+  offerDiagnostics,
+  type SendDiagnostics,
+} from "./diagnostics.ts";
 import { enterWorkspace, loadOnboarding } from "./onboarding-flow.ts";
 import { checkAddress, inviteLinkOf } from "./server-checks.ts";
 import { sendAnonymousReport } from "./server-client.ts";
@@ -123,8 +129,10 @@ export class ProfileFlow {
     core.feed.start();
   }
 
-  diagnosticsContext(profile: Profile | null): DiagnosticsContext {
+  async diagnosticsContext(profile: Profile | null): Promise<DiagnosticsContext> {
     const { core } = this;
+    const local = await core.localWorkspace.controller.diagnostics().catch(() => undefined);
+    const permissions = core.device.permissions.view();
     return {
       locale: core.locale(),
       serverOrigin: profile?.serverOrigin ?? null,
@@ -132,7 +140,28 @@ export class ProfileFlow {
       connection: core.state.connection,
       profileCount: core.store.data.profiles.length,
       errors: core.errors.entries,
+      local,
+      runner: core.device.runnerState,
+      permissions: permissions.supported
+        ? {
+            accessibility: permissions.permissions.accessibility ? "granted" : "missing",
+            screen: permissions.permissions.screen ? "granted" : "missing",
+          }
+        : {},
     };
+  }
+
+  async copyDiagnostics(): Promise<void> {
+    const profile = activeProfile(this.core.store.data);
+    clipboard.writeText(diagnosticsText(await this.diagnosticsContext(profile)));
+    appLog.info("diagnostics.copied");
+  }
+
+  async openLogs(): Promise<void> {
+    const folder = appLog.directory;
+    if (!folder) return;
+    const failure = await shell.openPath(folder);
+    if (failure) this.core.record("logs.open", new Error(failure));
   }
 
   async reportProblem(): Promise<void> {
@@ -146,7 +175,7 @@ export class ProfileFlow {
     const send = profile ? await this.anonymousSender(profile).catch(() => null) : null;
     await offerDiagnostics(
       core.windows.all()[0] ?? null,
-      this.diagnosticsContext(profile),
+      await this.diagnosticsContext(profile),
       send,
     ).catch((error) => core.record("diagnostics", error));
   }

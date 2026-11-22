@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { SQL } from "bun";
@@ -87,4 +87,41 @@ describe.skipIf(!bundled || target?.startsWith("win32"))("bundled PostgreSQL", (
     expect(existsSync(join(layout.pgdata, "postmaster.pid"))).toBe(false);
     expect(statuses.at(-1)).toBe("stopped");
   }, 60_000);
+});
+
+describe("engine start failure", () => {
+  test("the rejection carries the boot.failed phase and cause the engine printed last", async () => {
+    const root = await mkdtemp(join(tmpdir(), "subkit-boot-failed-"));
+    try {
+      const layout = localLayout(root, "default");
+      await mkdir(layout.logs, { recursive: true });
+      const line = JSON.stringify({
+        level: "fatal",
+        action: "boot.failed",
+        phase: "listen",
+        error: "listen EADDRINUSE: address already in use 127.0.0.1:47811",
+      });
+      const engine = new LocalEngine({
+        postgresDir: root,
+        target: "darwin-arm64",
+        engineCommand: [
+          process.execPath,
+          "-e",
+          `console.log(${JSON.stringify(line)}); process.exit(1)`,
+        ],
+        appVersion: "12.1.2",
+        layout,
+        databasePassword: PASSWORD,
+        masterKey: "a".repeat(64),
+        preferredPort: null,
+        readyTimeoutMs: 20_000,
+      });
+      Object.assign(engine, { endpoint: { kind: "tcp", host: "127.0.0.1", port: 5432 } });
+      await expect(engine.startEngine()).rejects.toThrow(
+        "the engine ended while starting (exit 1) in listen: listen EADDRINUSE: address already in use 127.0.0.1:47811; see engine.log",
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

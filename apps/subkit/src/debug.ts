@@ -70,7 +70,7 @@ function envVerbose(): boolean {
 
 function argvVerbose(): boolean {
   for (const arg of process.argv) {
-    if (arg === "--debug" || arg === "-d") return true;
+    if (arg === "--debug" || arg === "-d" || arg === "--verbose") return true;
     if (arg.startsWith("--debug=")) return true;
   }
   return false;
@@ -196,6 +196,30 @@ function compactDebugValue(value: unknown, depth = 0): unknown {
   return out;
 }
 
+interface TraceSink {
+  write(text: string): unknown;
+}
+
+let traceSink: TraceSink | null = null;
+
+export function enableRequestTrace(sink: TraceSink | null): void {
+  traceSink = sink;
+}
+
+export function requestTraceLine(
+  kind: DebugRecordKind,
+  record: Record<string, unknown>,
+): string | null {
+  if (kind !== "http.response" && kind !== "http.transport_error") return null;
+  const method = typeof record.method === "string" ? record.method : "?";
+  const path = typeof record.path === "string" ? record.path : "?";
+  const duration = typeof record.duration_ms === "number" ? `${record.duration_ms}ms` : "?ms";
+  const trace = typeof record.trace_id === "string" ? ` trace=${record.trace_id}` : "";
+  if (kind === "http.transport_error")
+    return `subkit: ${method} ${path} failed after ${duration}${trace}`;
+  return `subkit: ${method} ${path} ${String(record.status ?? "?")} ${duration}${trace}`;
+}
+
 export function debugLog(
   kind: DebugRecordKind,
   fields: Record<string, unknown> = {},
@@ -209,6 +233,16 @@ export function debugLog(
     ...fields,
   };
   appendRecord(compactDebugValue(redact(raw)) as DebugRecord);
+  const line = traceSink
+    ? requestTraceLine(
+        kind,
+        redact({ ...fields, trace_id: fields.trace_id ?? context.trace_id }) as Record<
+          string,
+          unknown
+        >,
+      )
+    : null;
+  if (line) traceSink?.write(`${line}\n`);
 }
 
 export function debugLogTail(maxLines = 40): string[] {

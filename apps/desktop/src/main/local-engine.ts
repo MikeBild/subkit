@@ -24,12 +24,15 @@ import {
   type DatabaseEndpoint,
   databaseUrl,
   dataFolderRefusal,
+  type EngineBootFailure,
+  engineEndedReason,
   INITIAL_SUPERVISOR_STATE,
   LOCAL_DATABASE,
   LOCAL_DATABASE_USER,
   type LocalLayout,
   laptopPostgresSettings,
   nextSupervisorState,
+  parseEngineBootFailed,
   parseEngineReady,
   parseMountTable,
   type SupervisorEvent,
@@ -37,6 +40,7 @@ import {
   socketDirectoryFor,
   upgradePlan,
 } from "../shared/local/supervisor-model.ts";
+import { appLog } from "./app-log.ts";
 
 export interface LocalEngineOptions {
   postgresDir: string;
@@ -123,6 +127,13 @@ export class LocalEngine {
 
   private emit(event: SupervisorEvent): void {
     this.state = nextSupervisorState(this.state, event);
+    if (event.type === "fail" || event.type === "crashed")
+      appLog.warn("local.supervisor", {
+        event: event.type,
+        phase: this.state.phase,
+        reason: this.state.reason,
+      });
+    else appLog.info("local.supervisor", { event: event.type, phase: this.state.phase });
     this.options.onStatus?.(this.state);
   }
 
@@ -255,13 +266,22 @@ export class LocalEngine {
     child.stdout?.on("data", log);
     child.stderr?.on("data", log);
     this.database = child;
-    child.once("exit", () => this.onExit("database", child));
+    appLog.info("local.database.start", { pid: child.pid, endpoint: endpoint.kind });
+    child.once("exit", (code, signal) => {
+      appLog[this.stopping ? "info" : "warn"]("local.database.exit", {
+        exit_code: code,
+        signal,
+      });
+      this.onExit("database", child);
+    });
     const deadline = this.now() + (this.options.readyTimeoutMs ?? 30_000);
     while (this.now() < deadline) {
       if (child.exitCode !== null)
         throw new Error("PostgreSQL ended while starting; see postgres.log");
-      if (spawnSync(this.program("pg_isready"), ["-q"], { env: this.toolEnv() }).status === 0)
+      if (spawnSync(this.program("pg_isready"), ["-q"], { env: this.toolEnv() }).status === 0) {
+        appLog.info("local.database.ready");
         return endpoint;
+      }
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
     throw new Error("PostgreSQL did not accept connections in time");
@@ -299,20 +319,37 @@ export class LocalEngine {
       stdio: ["pipe", "pipe", "pipe"],
     });
     this.engine = child;
+    appLog.info("local.engine.start", { pid: child.pid, preferred_port: preferred });
     child.stderr?.on("data", log);
-    child.once("exit", () => this.onExit("engine", child));
+    child.once("exit", (code, signal) => {
+      appLog[this.stopping || this.engineStopping ? "info" : "warn"]("local.engine.exit", {
+        exit_code: code,
+        signal,
+      });
+      this.onExit("engine", child);
+    });
+    let bootFailure: EngineBootFailure | null = null;
     const port = await new Promise<number>((resolve, reject) => {
       const timer = setTimeout(
         () => reject(new Error("the engine did not report its port in time")),
         this.options.readyTimeoutMs ?? 120_000,
       );
-      child.once("exit", (code) => {
+      child.once("close", (code) => {
         clearTimeout(timer);
-        reject(new Error(`the engine ended while starting (exit ${code}); see engine.log`));
+        reject(new Error(engineEndedReason(code, bootFailure)));
       });
       const lines = createInterface({ input: child.stdout as NodeJS.ReadableStream });
       lines.on("line", (line) => {
         log(Buffer.from(`${line}\n`));
+        const failed = parseEngineBootFailed(line);
+        if (failed) {
+          bootFailure = failed;
+          appLog.warn("local.engine.boot_failed", {
+            phase: failed.phase,
+            error: failed.error,
+            next: failed.next,
+          });
+        }
         const ready = parseEngineReady(line);
         if (!ready) return;
         clearTimeout(timer);
@@ -322,6 +359,7 @@ export class LocalEngine {
       });
     });
     await this.waitForHealth(port);
+    appLog.info("local.engine.ready", { port });
     await this.writeState({ engine_version: this.options.appVersion, port });
     this.session = { port, launchSecret };
     await this.sendPower();

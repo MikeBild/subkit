@@ -27,6 +27,7 @@ import {
 } from "./observability/runtime-diagnostics.ts";
 import {
   bootPhase,
+  failedBoot,
   startBootHeartbeat,
   startEventLoopLagMonitor,
   startMemorySampler,
@@ -35,6 +36,12 @@ import { startTracing } from "./observability/tracing.ts";
 import * as bootstrap from "./onboarding/bootstrap.ts";
 import { shutdownExitCode } from "./runtime-config/restart.ts";
 import { startEngineUpdateCheck } from "./update-state.ts";
+
+function bootFailedFields(error: unknown): Record<string, unknown> {
+  const fields = errorFields(error);
+  const failure = failedBoot([fields.error, fields.cause].join(" "));
+  return { ...fields, phase: failure.phase, next: failure.next };
+}
 
 const SMOKE_FLAG = "--smoke";
 const SELF_UPDATE_FLAG = "--self-update";
@@ -163,7 +170,14 @@ async function runServer(): Promise<void> {
     const { validateBootDependencies } = await lifetime.step(
       () => import("./observability/boot-dependencies.ts"),
     );
-    await lifetime.step(() => bootPhase("boot_dependencies", () => validateBootDependencies(db)));
+    await lifetime.step(() =>
+      bootPhase("boot_dependencies", () =>
+        validateBootDependencies(
+          db,
+          cfg.storage.backend === "filesystem" ? cfg.storage.filesystem.root || null : null,
+        ),
+      ),
+    );
 
     await reportMigrationDrift(db, lifetime);
 
@@ -228,7 +242,7 @@ async function runServer(): Promise<void> {
         module: "engine",
         action: "boot.failed",
         msg: "engine failed to boot",
-        ...errorFields(error),
+        ...bootFailedFields(error),
       });
     await engineShutdown.shutdown(
       "boot_failure",
@@ -523,7 +537,7 @@ main().catch((err) => {
     module: "engine",
     action: "boot.failed",
     msg: "engine failed to boot",
-    ...errorFields(err),
+    ...bootFailedFields(err),
   });
   process.exit(1);
 });

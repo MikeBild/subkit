@@ -2352,7 +2352,7 @@ When the provider rejects the API key during a run, **Needs you** asks you to re
 
 Every workspace has exactly one limit on AI cost: the monthly AI budget in US dollars. Tokens are still counted, but not limited. A new workspace starts at $50 per month. A workspace that existed before the AI budget starts without a limit and gets one item under **Needs you**: "Set a monthly AI budget". The month follows the time zone of your workspace.
 
-The budget lives in one place: **Settings** › **Usage**. It shows what this month's model calls cost, for example "$12.40 of $50". You need `stats:read` to see it; administrators change it there, everyone else with `stats:read` sees it read-only.
+The budget lives in one place: **Settings** › **Budget**. It shows what this month's model calls cost, for example "$12.40 of $50". You need `stats:read` to see it; administrators change it there, everyone else with `stats:read` sees it read-only.
 
 - Only priced calls count. A local model, or a model without a price, never counts towards the AI budget.
 - At 80% you get one item under **Needs you** and one notification per month.
@@ -2361,7 +2361,7 @@ The budget lives in one place: **Settings** › **Usage**. It shows what this mo
 
 What an administrator can do when the budget is reached:
 
-1. Open the item under **Needs you**, or **Settings** › **Usage**.
+1. Open the item under **Needs you**, or **Settings** › **Budget**.
 2. Choose **Raise budget** and pick a new limit: $20, $50, $200 or **No limit**.
 3. Or choose **Continue without a limit this month**. The next month starts with the limit again.
 
@@ -2411,9 +2411,9 @@ Expand **Technical details** at the end of the page. It shows:
 | **Person**, **Conversation** and **Task** are missing | You lack `stats:read:all`. Ask someone with the Admin role for it. |
 | **at least** in front of the cost | Some models have no price. Add it through **Set a price**. |
 | **Cost unknown** | None of the models used has a price. Add the prices. |
-| Chat, tasks and model steps are paused | The AI budget is reached. An administrator raises it under **Settings** › **Usage** or continues this month. |
+| Chat, tasks and model steps are paused | The AI budget is reached. An administrator raises it under **Settings** › **Budget** or continues this month. |
 | "No AI calls in this window." | Choose **Show this month** or another window. |
-| A workflow run fails with `llm_spend_limit_reached` | Its model step sits inside a loop, a parallel block or a "for each", where a run cannot wait without repeating steps. Raise the limit or continue this month under **Settings** › **Usage**, then run the workflow again. |
+| A workflow run fails with `llm_spend_limit_reached` | Its model step sits inside a loop, a parallel block or a "for each", where a run cannot wait without repeating steps. Raise the limit or continue this month under **Settings** › **Budget**, then run the workflow again. |
 | A workflow run stays **queued** with "Waiting for budget" | The AI budget is reached. Raise it or continue this month; the run then continues by itself. |
 
 ### The same in the terminal
@@ -2680,7 +2680,7 @@ The `subkit` inbox of a new workspace also receives `task_run.waiting`, `task_ru
 | The standing permission ended after you edited the task | That is intended. Check the change and select **Allow** again. |
 | **Start** answers that a run is already in progress | Open the run. Answer it, wait for it or select **Stop**, then start again. |
 | The scheduled start did not happen | Read the line for the next start. **due, waiting for permission**: select **Allow**. **waiting for the current run**: answer or stop the open run. Otherwise check whether the task is paused. |
-| The run waits and names the budget | The monthly AI budget is reached. An administrator raises it under **Settings** › **Usage** or continues this month; otherwise the run waits for the next month. It then continues on its own. |
+| The run waits and names the budget | The monthly AI budget is reached. An administrator raises it under **Settings** › **Budget** or continues this month; otherwise the run waits for the next month. It then continues on its own. |
 | The run waits without a question | It made no progress or a round was interrupted: tell it what is missing. |
 | The run ended at its round limit or time limit | It cannot be continued. Select **Start again**. If the rounds are too few for the task, raise them when you edit the task. |
 | “This workflow is not part of the task.” | Bind the workflow to the task. This ends the standing permission; allow it again. |
@@ -2745,7 +2745,7 @@ The step appears once, after your first sign-in to a workspace.
 | “When may SubKit notify you?” | **Right away** (recommended), **Only during my working hours** or **Once a day as a summary** | Notifications and quiet hours. |
 | “How much may SubKit spend on AI per month?” (administrators only) | **$20**, **$50** (recommended), **$200** or **No limit** | The monthly AI budget of the workspace. |
 
-As an administrator you get this sixth question. The AI budget applies to the whole workspace; “Usage and costs” explains what happens at 80% and 100%. Under **Settings** › **Setup** this row leads to **Settings** › **Usage**, the one place where the budget is changed.
+As an administrator you get this sixth question. The AI budget applies to the whole workspace; “Usage and costs” explains what happens at 80% and 100%. Under **Settings** › **Setup** this row leads to **Settings** › **Budget**, the one place where the budget is changed.
 
 The first two answers only change what the Cockpit suggests to you first. They connect no service and create no workflow. The other three change how SubKit works:
 
@@ -3204,7 +3204,7 @@ A failed run shows a notice with three parts: what happened, one recommended act
 | **Sign-in rejected** | **Sign in again**: reconnect the connector. |
 | **Approval no longer matches**, **Refused before the start** | **Review approval**: check and renew the approval. |
 | **Timed out**, **Aborted**, **Connector unavailable**, **Provider rate limit reached**, **Not read completely**, **Error in the external system** | **Try again** |
-| **AI budget reached** | **Ask an administrator**: an administrator raises the budget under **Settings** › **Usage** or continues this month without a limit. |
+| **AI budget reached** | **Ask an administrator**: an administrator raises the budget under **Settings** › **Budget** or continues this month without a limit. |
 | **Connector missing**, **Unresolved placeholder**, **Answer in an unexpected shape**, **Message malformed**, **Not classified** | **Fix it in the chat**: the chat opens with the question about cause and fix. |
 
 For confidential workflows (`execution_privacy: sensitive`) SubKit stores no failure details. From this version on, such a run still keeps its cause and one fixed sentence that says what to do. Example: “The connected service rejected the sign-in. Reconnect the connector, then run again. Nothing was changed by this step.” When SubKit recognizes no cause, it stays at “Sensitive execution failed.” The engine writes these sentences in English. The Cockpit says them in your language where it knows the cause, the reason for a hold or the failure code: on the overview for held and failing workflows, for a refused rerun and in error notices. In the technical details of a run, over the HTTP API and in `subkit` the engine’s English sentence remains. SubKit Desktop notifies in your language too.
@@ -6671,6 +6671,7 @@ Authenticate against a subkit engine
 - `--api-key` (string) — Scripted API-key login (skips device flow)
 - `--tenant` (string) — Active tenant id
 - `--profile` (string) — Profile name (~/.subkit/config.json)
+- `--verbose` — Print each request with its trace id and timing to stderr (same as SUBKIT_DEBUG=1)
 - `--portal-token` (string) — Authenticate as a portal-token principal
 
 
@@ -6714,6 +6715,7 @@ Run a stdio MCP server proxied to the engine
 - `--api-key` (string) — API key (Bearer)
 - `--tenant` (string) — Active tenant id
 - `--profile` (string) — Profile name (~/.subkit/config.json)
+- `--verbose` — Print each request with its trace id and timing to stderr (same as SUBKIT_DEBUG=1)
 
 
 ### `subkit notifications`
@@ -7415,6 +7417,7 @@ Print the active profile + engine reachability
 - `--api-key` (string) — API key (Bearer)
 - `--tenant` (string) — Active tenant id
 - `--profile` (string) — Profile name (~/.subkit/config.json)
+- `--verbose` — Print each request with its trace id and timing to stderr (same as SUBKIT_DEBUG=1)
 
 
 ### `subkit subscriptions`
@@ -7603,6 +7606,7 @@ List tenants you belong to or switch the active one
 - `--api-key` (string) — API key (Bearer)
 - `--tenant` (string) — Active tenant id
 - `--profile` (string) — Profile name (~/.subkit/config.json)
+- `--verbose` — Print each request with its trace id and timing to stderr (same as SUBKIT_DEBUG=1)
 - `<use>` (positional) — Tenant id to switch to
 
 

@@ -82,6 +82,8 @@ function stubBridge(
     answerDiagnostics: record("answerDiagnostics") as ConnectBridge["answerDiagnostics"],
     updateAction: record("updateAction") as ConnectBridge["updateAction"],
     reportProblem: record("reportProblem") as ConnectBridge["reportProblem"],
+    copyDiagnostics: record("copyDiagnostics") as ConnectBridge["copyDiagnostics"],
+    openLogs: record("openLogs") as ConnectBridge["openLogs"],
     local: {
       pickFolder: () => Promise.resolve({ status: "cancelled" }),
       listAllowances: () => Promise.resolve({ personal_enabled: false, items: [] }),
@@ -196,6 +198,8 @@ describe("sign-in store over the preload bridge", () => {
     store.dispatch({ type: "ChangeSettings", patch: { locale: "de" } });
     store.dispatch({ type: "RunUpdateAction" });
     store.dispatch({ type: "ReportProblem" });
+    store.dispatch({ type: "CopyDiagnostics" });
+    store.dispatch({ type: "OpenLogs" });
     store.dispatch({ type: "CheckPermissions" });
     store.dispatch({ type: "OpenPermissionSettings", key: "accessibility" });
     store.dispatch({ type: "RestartApp" });
@@ -207,6 +211,8 @@ describe("sign-in store over the preload bridge", () => {
       ["updateSettings", { locale: "de" }],
       ["updateAction"],
       ["reportProblem"],
+      ["copyDiagnostics"],
+      ["openLogs"],
       ["checkPermissions"],
       ["openPermissionSettings", "accessibility"],
       ["restartApp"],

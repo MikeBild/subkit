@@ -45,8 +45,16 @@ export const ReadyResponse = z
       .object({
         lifecycle: z.enum(["pass", "fail"]),
         database: z.enum(["pass", "fail"]),
+        schema: z
+          .enum(["pass", "drift"])
+          .describe(
+            "drift means the database schema differs from this engine; it does not block readiness",
+          ),
       })
       .strict(),
+    failing: z
+      .array(z.enum(["lifecycle", "database"]))
+      .describe("The checks that keep the engine from being ready; empty when ready"),
   })
   .strict()
   .openapi("ReadyResponse");
@@ -55,7 +63,7 @@ const readyRoute = createRoute({
   method: "get",
   path: "/ready",
   tags: ["health"],
-  summary: "Engine readiness (503 when the database is unreachable)",
+  summary: "Engine readiness (503 names the failing checks)",
   responses: {
     200: {
       description: "Ready",
@@ -63,7 +71,7 @@ const readyRoute = createRoute({
       content: { "application/json": { schema: ReadyResponse } },
     },
     503: {
-      description: "Not ready — database unreachable",
+      description: "Not ready; failing lists the checks that failed",
       headers: NO_STORE_RESPONSE_HEADERS,
       content: { "application/json": { schema: ReadyResponse } },
     },
@@ -80,13 +88,29 @@ interface HealthSnapshot {
   version: string;
 }
 
-interface ReadySnapshot {
-  status: "ready" | "not_ready";
-  service: "subkit";
+type ReadySnapshot = z.infer<typeof ReadyResponse>;
+
+export function readiness(input: {
+  databaseUp: boolean;
+  draining: boolean;
+  schemaDrift: boolean;
   version: string;
-  checks: {
-    lifecycle: "pass" | "fail";
-    database: "pass" | "fail";
+}): { body: ReadySnapshot; status: 200 | 503 } {
+  const checks = {
+    lifecycle: input.draining ? ("fail" as const) : ("pass" as const),
+    database: input.databaseUp ? ("pass" as const) : ("fail" as const),
+    schema: input.schemaDrift ? ("drift" as const) : ("pass" as const),
+  };
+  const failing = (["lifecycle", "database"] as const).filter((name) => checks[name] === "fail");
+  return {
+    body: {
+      status: failing.length === 0 ? "ready" : "not_ready",
+      service: "subkit",
+      version: input.version,
+      checks,
+      failing,
+    },
+    status: failing.length === 0 ? 200 : 503,
   };
 }
 
@@ -99,18 +123,13 @@ function livenessSnapshot(): HealthSnapshot {
 }
 
 async function readinessSnapshot(db: Db): Promise<{ body: ReadySnapshot; status: 200 | 503 }> {
-  const database = (await pingDatabase(db)) ? ("pass" as const) : ("fail" as const);
-  const lifecycle = getHealthState().draining ? ("fail" as const) : ("pass" as const);
-  const ready = database === "pass" && lifecycle === "pass";
-  return {
-    body: {
-      status: ready ? ("ready" as const) : ("not_ready" as const),
-      service: "subkit",
-      version: OPENAPI_INFO.version,
-      checks: { lifecycle, database },
-    },
-    status: ready ? 200 : 503,
-  };
+  const state = getHealthState();
+  return readiness({
+    databaseUp: await pingDatabase(db),
+    draining: state.draining,
+    schemaDrift: state.schema_drift,
+    version: OPENAPI_INFO.version,
+  });
 }
 
 export function registerHealthRoute(app: OpenAPIHono<AppEnv>, deps: HealthDeps): void {
