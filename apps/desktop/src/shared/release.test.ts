@@ -426,6 +426,20 @@ describe("desktop release workflow", () => {
     }
   });
 
+  test("every package build keeps the workspace dependencies out of the app", () => {
+    const builds = steps.filter((step) => step.run?.includes("bun run package --prebuilt"));
+    for (const step of builds)
+      expect(step.run).toContain(
+        '-c.npmRebuild=true "-c.beforeBuild=$RUNNER_TEMP/before-build.cjs"',
+      );
+    const hooks = steps.filter((step) => step.run?.includes('> "$RUNNER_TEMP/before-build.cjs"'));
+    expect(hooks.length).toBe(2);
+    for (const step of hooks)
+      expect(step.run).toContain(
+        readFileSync(join(app, "scripts/before-build.cjs"), "utf8").trim(),
+      );
+  });
+
   test("verifies signatures, notarization and the feed before anything is uploaded", () => {
     for (const check of [
       "codesign --verify --deep --strict",

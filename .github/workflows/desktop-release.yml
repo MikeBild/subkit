@@ -283,6 +283,7 @@ jobs:
           set -euo pipefail
           bun install --frozen-lockfile
           node node_modules/electron/install.js
+          printf 'module.exports = async () => false;\n' > "$RUNNER_TEMP/before-build.cjs"
 
       - name: Stage the signed engine for local mode
         env:
@@ -359,7 +360,7 @@ jobs:
           trap 'rm -f "$key"' EXIT
           (umask 077 && printf '%s\n' "$APPLE_API_KEY_P8" > "$key")
           export APPLE_API_KEY="$key"
-          bun run package --prebuilt --mac --publish never
+          bun run package --prebuilt --mac --publish never -c.npmRebuild=true "-c.beforeBuild=$RUNNER_TEMP/before-build.cjs"
 
       - name: Build unsigned dry run
         if: ${{ needs.resolve.outputs.dry_run == 'true' }}
@@ -369,7 +370,7 @@ jobs:
           SUBKIT_DESKTOP_UPDATES: "0"
         run: |
           set -euo pipefail
-          bun run package --prebuilt --mac --publish never -c.mac.notarize=false
+          bun run package --prebuilt --mac --publish never -c.mac.notarize=false -c.npmRebuild=true "-c.beforeBuild=$RUNNER_TEMP/before-build.cjs"
 
       - name: Check that the app carries the engine and PostgreSQL for local mode
         working-directory: apps/desktop
@@ -481,6 +482,7 @@ jobs:
           set -euo pipefail
           bun install --frozen-lockfile
           node node_modules/electron/install.js
+          printf 'module.exports = async () => false;\n' > "$RUNNER_TEMP/before-build.cjs"
 
       - name: Start the Windows engine on Windows
         env:
@@ -506,7 +508,7 @@ jobs:
           for name in WIN_CSC_LINK WIN_CSC_KEY_PASSWORD; do
             [ -n "${!name:-}" ] || { echo "::error::missing Windows signing value $name" >&2; exit 1; }
           done
-          bun run package --prebuilt --win --publish never
+          bun run package --prebuilt --win --publish never -c.npmRebuild=true "-c.beforeBuild=$RUNNER_TEMP/before-build.cjs"
 
       - name: "Alternative, off by default: build and sign with a cloud signing service"
         if: ${{ needs.resolve.outputs.dry_run != 'true' && needs.resolve.outputs.windows_signing == 'cloud' }}
@@ -523,7 +525,7 @@ jobs:
           for name in WIN_CLOUD_SIGN_ENV WIN_CLOUD_SIGN_TOOL WIN_CLOUD_SIGN_ARGS WIN_PUBLISHER_NAME; do
             [ -n "${!name:-}" ] || { echo "::error::missing Windows cloud signing value $name" >&2; exit 1; }
           done
-          bun run package --prebuilt --win --publish never \
+          bun run package --prebuilt --win --publish never -c.npmRebuild=true "-c.beforeBuild=$RUNNER_TEMP/before-build.cjs" \
             "-c.win.signtoolOptions.sign=scripts/win-cloud-sign.cjs" \
             "-c.win.signtoolOptions.publisherName=$WIN_PUBLISHER_NAME"
 
@@ -535,7 +537,7 @@ jobs:
           SUBKIT_DESKTOP_UPDATES: "0"
         run: |
           set -euo pipefail
-          bun run package --prebuilt --win --publish never
+          bun run package --prebuilt --win --publish never -c.npmRebuild=true "-c.beforeBuild=$RUNNER_TEMP/before-build.cjs"
 
       - name: Verify Authenticode signatures
         if: ${{ needs.resolve.outputs.dry_run != 'true' }}

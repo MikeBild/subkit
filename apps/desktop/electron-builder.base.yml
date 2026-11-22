@@ -21,7 +21,8 @@ extraResources:
   - from: dist/THIRD_PARTY_NOTICES.txt
     to: THIRD_PARTY_NOTICES.txt
 asar: true
-npmRebuild: false
+npmRebuild: true
+beforeBuild: scripts/before-build.cjs
 nodeGypRebuild: false
 buildDependenciesFromSource: false
 afterPack: scripts/after-pack.cjs

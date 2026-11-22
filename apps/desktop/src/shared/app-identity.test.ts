@@ -276,6 +276,15 @@ describe("icons", () => {
   });
 });
 
+describe("node modules", () => {
+  test("the bundled app packs no node_modules, not even the workspace root's", async () => {
+    expect(base).toHaveProperty("npmRebuild", true);
+    expect(base).toHaveProperty("beforeBuild", "scripts/before-build.cjs");
+    const beforeBuild = require("../../scripts/before-build.cjs") as () => Promise<boolean>;
+    expect(await beforeBuild()).toBe(false);
+  });
+});
+
 describe("helper apps", () => {
   const { renameHelper } = require("../../scripts/after-pack.cjs") as {
     renameHelper(plist: string, productName: string): string;
