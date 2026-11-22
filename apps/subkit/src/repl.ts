@@ -816,10 +816,6 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
         const path = join(process.cwd(), "SK.md");
         try {
           const fs = await import("node:fs");
-          if (fs.existsSync(path)) {
-            line(`${path} already exists — leaving it alone`);
-            return;
-          }
           const starter = [
             `# Memory — ${new Date().toISOString().slice(0, 10)}`,
             "",
@@ -838,9 +834,13 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
             "- ",
             "",
           ].join("\n");
-          fs.writeFileSync(path, starter, "utf8");
+          fs.writeFileSync(path, starter, { encoding: "utf8", flag: "wx" });
           line(`wrote ${path} — edit it and restart subkit to pick it up`);
         } catch (err) {
+          if ((err as NodeJS.ErrnoException).code === "EEXIST") {
+            line(`${path} already exists — leaving it alone`);
+            return;
+          }
           line(`subkit: init failed: ${err instanceof Error ? err.message : String(err)}`);
         }
         return;

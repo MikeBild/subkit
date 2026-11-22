@@ -34,7 +34,7 @@ export function clientIp(req: Request): string {
   );
 }
 
-export async function matchApiKeyRow(
+export async function matchApiKeyByHash(
   db: Db,
   plaintext: string,
   req: Request | null,
@@ -103,7 +103,7 @@ export function createApiKeyProvider(opts: ApiKeyProviderOptions): AuthProvider 
       const token = extractBearerToken(req);
       if (!token) return null;
       const db = opts.db;
-      const row = await matchApiKeyRow(db, token, req);
+      const row = await matchApiKeyByHash(db, token, req);
       if (!row) return null;
       return resolvePrincipalFromApiKeyRow(db, row, { provider: "api_key" });
     },

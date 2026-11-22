@@ -1,9 +1,13 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { uploadPath } from "../commands/files.ts";
 import type { EngineClient } from "../engine-client.ts";
 import { detectMime } from "../utils/mime.ts";
-import { sanitizePathInput } from "./path-input.ts";
+import {
+  type RegularFileStat,
+  readRegularFile,
+  sanitizePathInput,
+  statRegularFile,
+} from "./path-input.ts";
 
 const MAX_INLINE_LOCAL_PATH_BYTES = 262144;
 
@@ -161,19 +165,32 @@ export async function autoUploadLocalPaths(
 
   for (const c of candidates) {
     const abs = resolveCandidate(cwd, c.cleaned);
-    if (!existsSync(abs)) {
+    let found: RegularFileStat;
+    try {
+      found = statRegularFile(abs);
+    } catch (err) {
+      skipped.push({
+        raw: c.raw,
+        reason: "read_failed",
+        detail: err instanceof Error ? err.message : String(err),
+      });
+      continue;
+    }
+    if (found.kind === "missing") {
       skipped.push({ raw: c.raw, reason: "not_found" });
       continue;
     }
-    const st = statSync(abs);
-    if (!st.isFile()) {
+    if (found.kind === "not_file") {
       skipped.push({ raw: c.raw, reason: "not_file" });
       continue;
     }
+    const size = found.size;
     if (shouldInlinePath(abs) && mode === "workflow_input") {
       try {
-        const bytes = st.size;
-        let body = readFileSync(abs, "utf8");
+        const read = readRegularFile(abs);
+        if (read.kind !== "file") throw new Error(`${abs} is no longer a regular file`);
+        const bytes = read.bytes.byteLength;
+        let body = read.bytes.toString("utf8");
         const truncated = Buffer.byteLength(body, "utf8") > MAX_INLINE_LOCAL_PATH_BYTES;
         if (truncated) {
           body = Buffer.from(body, "utf8")
@@ -204,7 +221,7 @@ export async function autoUploadLocalPaths(
         raw: c.raw,
         fid: row.id,
         filename: row.filename,
-        bytes: st.size,
+        bytes: size,
       });
       if (conversationId) {
         try {

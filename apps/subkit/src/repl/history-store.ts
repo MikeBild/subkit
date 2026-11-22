@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, truncateSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { trimJsonlFile } from "@shared/jsonl-ring.ts";
@@ -85,7 +85,7 @@ export function appendHistory(
 
 export function clearHistory(path: string = defaultHistoryPath()): void {
   try {
-    if (existsSync(path)) writeFileSync(path, "", { mode: 0o600 });
+    truncateSync(path, 0);
   } catch {}
 }
 
@@ -170,6 +170,6 @@ export function loadSlashRing(
 
 export function clearSlashHistory(path: string = defaultSlashHistoryPath()): void {
   try {
-    if (existsSync(path)) writeFileSync(path, "");
+    truncateSync(path, 0);
   } catch {}
 }

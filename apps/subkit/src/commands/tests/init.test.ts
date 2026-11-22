@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { initCommand, runInit } from "../init.ts";
+import { initCommand, isLoopbackEngine, runInit } from "../init.ts";
 
 const cmd = initCommand as unknown as {
   meta: { name: string; description: string };
@@ -331,5 +331,29 @@ describe("runInit — failure modes", () => {
     });
     expect(result.status).toBe("failed");
     expect(result.error?.code).toBe("engine_unreachable");
+  });
+});
+
+describe("isLoopbackEngine", () => {
+  test("accepts engines on this machine", () => {
+    for (const url of [
+      "http://localhost:5050",
+      "http://LOCALHOST:5050/",
+      "http://127.0.0.1:5050",
+      "http://127.1.2.3",
+      "http://[::1]:5050",
+    ])
+      expect(isLoopbackEngine(url)).toBe(true);
+  });
+
+  test("refuses remote engines, look-alike hosts and invalid URLs", () => {
+    for (const url of [
+      "https://engine.example.com",
+      "http://localhost.example.com",
+      "http://127.0.0.1.example.com",
+      "http://10.0.0.1:5050",
+      "not a url",
+    ])
+      expect(isLoopbackEngine(url)).toBe(false);
   });
 });

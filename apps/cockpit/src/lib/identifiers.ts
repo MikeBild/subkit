@@ -1,3 +1,5 @@
+import { escapeMarkdownLinkText } from "@shared/markdown-escape.ts";
+
 interface TextSegment {
   text: string;
   code: boolean;
@@ -25,10 +27,6 @@ export interface ResolvedIdentifier {
 
 const IDENTIFIER_PATTERN =
   /\b(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?![0-9a-f])/gi;
-
-function escapeLinkText(value: string): string {
-  return value.replace(/([[\]])/g, "\\$1");
-}
 
 function bareIdentifier(segment: TextSegment): string | null {
   if (!segment.code || segment.text.startsWith("```")) return null;
@@ -59,7 +57,7 @@ export function nameIdentifiers(
   const name = (id: string): string => {
     const known = resolve(id);
     if (!known) return hiddenLabel;
-    const label = escapeLinkText(known.label);
+    const label = escapeMarkdownLinkText(known.label);
     return known.href ? `[${label}](${known.href})` : label;
   };
   return splitCodeAndProse(text)

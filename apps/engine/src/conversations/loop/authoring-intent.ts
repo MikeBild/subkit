@@ -42,8 +42,7 @@ const NOUN_TO_VERB = new RegExp(
 );
 
 const AUTHORING_NEGATION =
-  /\b(?:do\s+not|don't|never|must\s+not|should\s+not|shouldn't|cannot|can't|without|nicht|niemals|keinesfalls|ohne|kein(?:e|en|em|er|es)?)\b/i;
-const NON_NEGATING_IDIOMS = /\b(?:not\s+only|nicht\s+nur)\b/gi;
+  /\b(?:(?:do|must|should)\s+not(?!\s+only\b)|don't|never|shouldn't|cannot|can't|without|nicht(?!\s+nur\b)|niemals|keinesfalls|ohne|kein(?:e|en|em|er|es)?)\b/i;
 
 function hasUnnegatedMatch(text: string, pattern: RegExp): boolean {
   const flags = pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`;
@@ -59,8 +58,7 @@ function hasUnnegatedMatch(text: string, pattern: RegExp): boolean {
     );
     const prefix = text.slice(Math.max(clauseStart + 1, index - 48), index);
     const candidate = text.slice(index, index + match[0].length);
-    const polarityWindow = `${prefix}${candidate}`.replace(NON_NEGATING_IDIOMS, "");
-    if (!AUTHORING_NEGATION.test(polarityWindow)) return true;
+    if (!AUTHORING_NEGATION.test(`${prefix}${candidate}`)) return true;
   }
   return false;
 }

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { closeSync, fstatSync, openSync, readdirSync, readFileSync } from "node:fs";
 import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
@@ -142,7 +142,12 @@ function bundledCockpitFile(relativePath: string): Uint8Array | null {
   const target = normalize(join(COCKPIT_DIR, relativePath));
   if (target === COCKPIT_DIR || target.startsWith(`${COCKPIT_DIR}${sep}`)) {
     try {
-      if (statSync(target).isFile()) return readFileSync(target);
+      const fd = openSync(target, "r");
+      try {
+        if (fstatSync(fd).isFile()) return readFileSync(fd);
+      } finally {
+        closeSync(fd);
+      }
     } catch {}
   }
   const encoded = EMBEDDED_COCKPIT[relativePath];

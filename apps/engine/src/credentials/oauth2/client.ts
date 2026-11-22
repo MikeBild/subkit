@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import * as oauth from "openid-client";
 import type { EgressGuardContext } from "../../connectors/index.ts";
 import { logger } from "../../logging/index.ts";
@@ -28,15 +27,22 @@ function oauthFetchFor(context: EgressGuardContext): oauth.CustomFetch {
     });
 }
 
+export function oauthConfigCacheKey(
+  cfg: OAuth2ClientConfig,
+  tenantId: string | null,
+  mode: string | null,
+  executorId: number,
+): string {
+  return JSON.stringify([cfg, tenantId, mode, executorId]);
+}
+
 function cacheKey(cfg: OAuth2ClientConfig, context: EgressGuardContext): string {
   let executorId = 0;
   if (context.exec) {
     executorId = executors.get(context.exec) ?? ++executorSequence;
     executors.set(context.exec, executorId);
   }
-  return createHash("sha256")
-    .update(JSON.stringify([cfg, context.tenant_id ?? null, context.mode ?? null, executorId]))
-    .digest("hex");
+  return oauthConfigCacheKey(cfg, context.tenant_id ?? null, context.mode ?? null, executorId);
 }
 
 function resolveClientAuth(cfg: OAuth2ClientConfig): oauth.ClientAuth | undefined {

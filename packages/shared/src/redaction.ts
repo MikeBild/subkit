@@ -107,7 +107,7 @@ function isCodecAlphabet(match: string): boolean {
 }
 
 const CODE_ASSIGNMENT_RE: RegExp =
-  /\b(?:var|const|let)(?:\s|\/\*[\s\S]*?\*\/)+([A-Za-z_$][A-Za-z0-9_$]*)(?:\s|\/\*[\s\S]*?\*\/)*=(?:\s|\/\*[\s\S]*?\*\/)*["'`]$/;
+  /\b(?:var|const|let)(?:\s|\/\*(?:[^*]|\*(?!\/))*\*\/)+([A-Za-z_$][A-Za-z0-9_$]*)(?:\s|\/\*(?:[^*]|\*(?!\/))*\*\/)*=(?:\s|\/\*(?:[^*]|\*(?!\/))*\*\/)*["'`]$/;
 const SECRET_VAR_NAME_RE: RegExp =
   /token|secret|api[_-]?key|password|credential|auth|bearer|jwt|pat\b|\bkey\b|session|cookie|signature|\bsig\b/i;
 

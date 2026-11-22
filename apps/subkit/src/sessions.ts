@@ -4,11 +4,11 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
-  statSync,
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { readRegularFile } from "./lib/path-input.ts";
 
 export interface SessionMetadata {
   conversation_id: string;
@@ -91,9 +91,9 @@ export function listSessionMetadata(filter?: {
     if (!name.endsWith(".json")) continue;
     const full = join(dir, name);
     try {
-      const st = statSync(full);
-      if (!st.isFile()) continue;
-      const meta = JSON.parse(readFileSync(full, "utf8")) as SessionMetadata;
+      const read = readRegularFile(full);
+      if (read.kind !== "file") continue;
+      const meta = JSON.parse(read.bytes.toString("utf8")) as SessionMetadata;
       if (filter?.engine_url && meta.engine_url !== filter.engine_url) continue;
       if (filter?.tenant_id !== undefined && meta.tenant_id !== filter.tenant_id) continue;
       entries.push(meta);

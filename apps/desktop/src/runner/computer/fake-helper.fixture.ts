@@ -1,9 +1,11 @@
 import {
   appendFileSync,
   chmodSync,
+  closeSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   writeFileSync,
 } from "node:fs";
@@ -66,15 +68,14 @@ export function serveFake(): void {
   const argv = process.argv.slice(2);
   const command = commandOf(argv);
   const stdin = argv.includes("--stdin") ? readFileSync(0, "utf8") : null;
-  const log = join(home, "calls.jsonl");
-  const earlier = existsSync(log)
-    ? readFileSync(log, "utf8")
-        .split("\n")
-        .filter(Boolean)
-        .filter((line) => commandOf((JSON.parse(line) as FakeCall).argv) === command).length
-    : 0;
+  const log = openSync(join(home, "calls.jsonl"), "a+");
+  const earlier = readFileSync(log, "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .filter((line) => commandOf((JSON.parse(line) as FakeCall).argv) === command).length;
   const call: FakeCall = { argv, env: Object.keys(process.env).sort(), cwd: process.cwd(), stdin };
   appendFileSync(log, `${JSON.stringify(call)}\n`);
+  closeSync(log);
   const scenario = JSON.parse(readFileSync(join(home, "scenario.json"), "utf8")) as Record<
     string,
     FakeReply | FakeReply[]

@@ -10,6 +10,7 @@ import {
   listCategory,
   nextSort,
   sortRows,
+  sortValueOf,
   toggleColumn,
   withCategory,
 } from "./list-model";
@@ -125,5 +126,18 @@ describe("default category and columns", () => {
       false,
       true,
     ]);
+  });
+});
+
+describe("sortValueOf", () => {
+  const table = { name: (row: { n: string }) => row.n };
+
+  it("returns the sort function a known key names", () => {
+    expect(sortValueOf(table, "name")?.({ n: "x" })).toBe("x");
+  });
+
+  it("never hands out a prototype member for a crafted key", () => {
+    for (const key of ["__proto__", "constructor", "toString", "hasOwnProperty", "missing"])
+      expect(sortValueOf(table, key)).toBeNull();
   });
 });

@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { coverageRows, mergeLcov, parseLcov, renderLcov } from "../audit/lcov.ts";
+import {
+  coverageRows,
+  type LcovRecord,
+  mergedLcovRecords,
+  mergeLcov,
+  mergeLcovInto,
+  parseLcov,
+  renderLcov,
+} from "../audit/lcov.ts";
 
 const FIRST = `SF:/repo/apps/engine/src/a/core.ts
 FN:2,decide
@@ -29,7 +37,49 @@ DA:1,1
 end_of_record
 `;
 
+const FNDA_ONLY = `SF:apps/engine/src/a/core.ts
+FNDA:4,anonymous
+DA:4,2
+end_of_record
+SF:apps/engine/src/b/other.ts
+FN:1,other
+FNDA:0,other
+FNF:3
+FNH:0
+DA:1,0
+end_of_record
+`;
+
 describe("LCOV union", () => {
+  test("incremental union equals the batch union of every record", () => {
+    const runs = [FIRST, SECOND, SUMMARY_FIRST, FNDA_ONLY, SUMMARY_SECOND].map((text) => {
+      const parsed = parseLcov(text, "/repo");
+      if ("error" in parsed) throw new Error("fixture must parse");
+      return parsed;
+    });
+    const union = new Map<string, LcovRecord>();
+    for (const run of runs) mergeLcovInto(union, run);
+    const incremental = mergedLcovRecords(union);
+    const batch = mergeLcov(runs.flat());
+    expect(renderLcov(incremental)).toBe(renderLcov(batch));
+    expect(coverageRows(incremental)).toEqual(coverageRows(batch));
+    expect(incremental.map((record) => record.function_ids_complete)).toEqual(
+      batch.map((record) => record.function_ids_complete),
+    );
+    expect(incremental.some((record) => !record.function_ids_complete)).toBe(true);
+  });
+
+  test("incremental union does not alias or mutate input records", () => {
+    const first = parseLcov(FIRST, "/repo");
+    const second = parseLcov(SECOND, "/repo");
+    if ("error" in first || "error" in second) throw new Error("fixture must parse");
+    const before = renderLcov(first);
+    const union = mergeLcovInto(new Map(), first);
+    mergeLcovInto(union, second);
+    expect(renderLcov(first)).toBe(before);
+    expect(union.get("apps/engine/src/a/core.ts")).not.toBe(first[0]);
+  });
+
   test("unions per-line and per-function hits from isolated test processes", () => {
     const first = parseLcov(FIRST, "/repo");
     const second = parseLcov(SECOND, "/repo");

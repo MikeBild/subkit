@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import * as prompts from "@clack/prompts";
 import { defineCommand } from "citty";
 import {
@@ -9,6 +9,7 @@ import {
   loadConfig,
   saveProfile,
 } from "../config.ts";
+import { EngineClient } from "../engine-client.ts";
 
 const LLM_PROVIDERS = [
   "mock",
@@ -60,20 +61,39 @@ interface RunInitResult {
   error?: { code: string; message: string; httpStatus: number };
 }
 
+const LOOPBACK_HOSTS = new Set(["localhost", "[::1]"]);
+
+export function isLoopbackEngine(engineUrl: string): boolean {
+  let host: string;
+  try {
+    host = new URL(engineUrl).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  return LOOPBACK_HOSTS.has(host) || /^127(?:\.\d{1,3}){3}$/.test(host);
+}
+
+function readBootstrapTokenFile(path: string): string | null {
+  try {
+    return readFileSync(path, "utf8").trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function runInit(opts: RunInitOptions): Promise<RunInitResult> {
-  const fetchImpl = opts.fetchImpl ?? fetch;
   const save = opts.saveProfileImpl ?? saveProfile;
   const out = opts.out ?? ((line: string) => process.stdout.write(line));
   const err = opts.err ?? ((line: string) => process.stderr.write(line));
 
-  const url = `${opts.engine_url.replace(/\/$/, "")}/v1/setup`;
+  const client = new EngineClient({
+    engine_url: opts.engine_url,
+    api_key: "",
+    fetchImpl: opts.fetchImpl,
+  });
   let res: Response;
   try {
-    res = await fetchImpl(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(opts.payload),
-    });
+    res = await client.submitSetup(opts.payload);
   } catch (e) {
     err(
       `subkit init: engine unreachable at ${opts.engine_url}: ${e instanceof Error ? e.message : String(e)}\n`,
@@ -248,15 +268,17 @@ export const initCommand = defineCommand({
     },
   },
   async run({ args }) {
+    const engineUrl =
+      (args["engine-url"] as string | undefined) ??
+      process.env.SUBKIT_ENGINE_URL ??
+      DEFAULT_ENGINE_URL;
     let token = args.token as string | undefined;
-    if (!token) {
-      const tokenFile = process.env.SUBKIT_BOOTSTRAP_TOKEN_FILE;
-      if (tokenFile && existsSync(tokenFile)) {
-        const fromFile = readFileSync(tokenFile, "utf8").trim();
-        if (fromFile.length > 0) {
-          token = fromFile;
-          process.stderr.write(`subkit init: using bootstrap token from ${tokenFile}\n`);
-        }
+    const tokenFile = process.env.SUBKIT_BOOTSTRAP_TOKEN_FILE;
+    if (!token && tokenFile && isLoopbackEngine(engineUrl)) {
+      const fromFile = readBootstrapTokenFile(tokenFile);
+      if (fromFile) {
+        token = fromFile;
+        process.stderr.write(`subkit init: using bootstrap token from ${tokenFile}\n`);
       }
     }
     if (!token) {
@@ -268,10 +290,6 @@ export const initCommand = defineCommand({
       process.exit(2);
     }
 
-    const engineUrl =
-      (args["engine-url"] as string | undefined) ??
-      process.env.SUBKIT_ENGINE_URL ??
-      DEFAULT_ENGINE_URL;
     const profileName =
       (args.profile as string | undefined) ?? loadConfig().active_profile ?? DEFAULT_PROFILE;
 

@@ -207,3 +207,23 @@ describe("detectRepairIntent", () => {
     expect(detectRepairIntent(null)).toBe(false);
   });
 });
+
+describe("detectAuthoringIntent — negation polarity", () => {
+  it("treats 'not only' and 'nicht nur' as emphasis, not negation", () => {
+    expect(detectAuthoringIntent("you should not only build a workflow but also test it")).toBe(
+      true,
+    );
+    expect(detectAuthoringIntent("bitte nicht nur einen workflow erstellen, sondern testen")).toBe(
+      true,
+    );
+  });
+
+  it("still honours a real negation", () => {
+    expect(detectAuthoringIntent("you should not build a workflow for this")).toBe(false);
+    expect(detectAuthoringIntent("bitte nicht einen workflow erstellen")).toBe(false);
+  });
+
+  it("a doubled not still negates", () => {
+    expect(detectAuthoringIntent("you should not not only build a workflow")).toBe(false);
+  });
+});

@@ -2,7 +2,13 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type IncomingMessage, request, type Server } from "node:http";
 import { connect, type Socket } from "node:net";
 import type { ProxySiteRules } from "@shared/local-policy/proxy-decision.ts";
-import { type FilteringProxy, type ProxyDecisionEvent, startFilteringProxy } from "./proxy.ts";
+import {
+  type FilteringProxy,
+  forwardHeaders,
+  type ProxyDecisionEvent,
+  startFilteringProxy,
+  upstreamStatus,
+} from "./proxy.ts";
 
 const SECRET = "test-secret-0001";
 const AUTH = `Basic ${btoa(`subkit:${SECRET}`)}`;
@@ -330,5 +336,25 @@ describe("tunnels and websockets", () => {
     proxy.closeConnections();
     await ended;
     expect(tunnel.socket.destroyed).toBe(true);
+  });
+});
+
+describe("forwarded headers and status", () => {
+  test("a __proto__ header becomes a plain header, never the prototype", () => {
+    const incoming = JSON.parse('{"__proto__":"evil","x-ok":"1","connection":"close"}');
+    const out = forwardHeaders(incoming);
+    expect(Object.getPrototypeOf(out)).toBe(Object.prototype);
+    expect(Object.hasOwn(out, "__proto__")).toBe(true);
+    expect(out["x-ok"]).toBe("1");
+    expect(out.connection).toBeUndefined();
+  });
+
+  test("only status codes from 100 to 599 pass, anything else becomes 502", () => {
+    expect(upstreamStatus(200)).toBe(200);
+    expect(upstreamStatus(599)).toBe(599);
+    expect(upstreamStatus(99)).toBe(502);
+    expect(upstreamStatus(600)).toBe(502);
+    expect(upstreamStatus(200.5)).toBe(502);
+    expect(upstreamStatus(undefined)).toBe(502);
   });
 });

@@ -162,6 +162,7 @@ describe("installation worker privacy boundary", () => {
     });
     expect(response?.headers.get("location")).toBe(`${scope}?incoming=sign-in`);
     await app.dispatch("message", {
+      origin: new URL(scope).origin,
       source: { id: "client" },
       data: { type: "take-incoming", id: "incoming-fixture" },
     });
@@ -172,12 +173,14 @@ describe("installation worker privacy boundary", () => {
     await app.dispatch("fetch", { request: share("private source") });
     app.client("https://app.example.test/cockpit/i/22222222-2222-4222-8222-222222222222/");
     await app.dispatch("message", {
+      origin: new URL(scope).origin,
       source: { id: "client" },
       data: { type: "take-incoming", id: "incoming-fixture" },
     });
     expect(app.sent).toEqual([]);
     app.client(scope);
     await app.dispatch("message", {
+      origin: new URL(scope).origin,
       source: { id: "client" },
       data: { type: "take-incoming", id: "incoming-fixture" },
     });
@@ -186,6 +189,7 @@ describe("installation worker privacy boundary", () => {
       value: { text: "private source", tenantId: "tenant", userId: "owner" },
     });
     await app.dispatch("message", {
+      origin: new URL(scope).origin,
       source: { id: "client" },
       data: { type: "take-incoming", id: "incoming-fixture" },
     });
@@ -195,10 +199,12 @@ describe("installation worker privacy boundary", () => {
     const app = worker();
     await app.dispatch("fetch", { request: share("private source") });
     await app.dispatch("message", {
+      origin: new URL(scope).origin,
       source: { id: "client" },
       data: { type: "clear-incoming" },
     });
     await app.dispatch("message", {
+      origin: new URL(scope).origin,
       source: { id: "client" },
       data: { type: "take-incoming", id: "incoming-fixture" },
     });

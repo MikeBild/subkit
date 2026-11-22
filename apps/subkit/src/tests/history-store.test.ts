@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getTestNow } from "../../../engine/src/test-helpers/determinism/clock.ts";
@@ -100,6 +100,12 @@ describe("history-store: clear + prompt ring", () => {
     appendHistory("y", { path });
     clearHistory(path);
     expect(loadHistory(path)).toEqual([]);
+  });
+
+  test("clearHistory never creates a missing file", () => {
+    const path = tmpHistoryPath();
+    clearHistory(path);
+    expect(existsSync(path)).toBe(false);
   });
 
   test("loadPromptRing returns prompts oldest-first", () => {

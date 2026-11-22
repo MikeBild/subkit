@@ -10,6 +10,14 @@ export type UserInviteIssuedWire = Schemas["UserInviteIssued"];
 export type InviteRedeemedWire = Schemas["InviteRedeemed"];
 
 export const identityMethods = {
+  async submitSetup(this: EngineClient, payload: object): Promise<Response> {
+    return await this.fetchImpl(`${this.base}/v1/setup`, {
+      method: "POST",
+      headers: this.headers(),
+      body: JSON.stringify(payload),
+    });
+  },
+
   async whoami(this: EngineClient): Promise<Schemas["Whoami"]> {
     const { data } = await this.api.GET("/v1/identity/whoami");
     return data as Schemas["Whoami"];

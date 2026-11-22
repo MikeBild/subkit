@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { _resetConfigForTests, loadConfig, setConfigKey } from "../config/loader.ts";
-import { emitRequestEvent, type RequestEventPayload } from "./analytics.ts";
+import { analyticsRequest, emitRequestEvent, type RequestEventPayload } from "./analytics.ts";
 
 const SAMPLE_PAYLOAD: RequestEventPayload = {
   method: "GET",
@@ -141,5 +141,39 @@ describe("emitRequestEvent — no-op when analytics is disabled", () => {
   it("returns synchronously (does not stall the caller) when disabled", () => {
     const returned = emitRequestEvent(SAMPLE_PAYLOAD);
     expect(returned).toBeUndefined();
+  });
+});
+
+describe("analyticsRequest", () => {
+  const at = "2026-01-01T00:00:00.000Z";
+
+  it("builds one JSON POST to the configured endpoint with the bearer key", async () => {
+    const request = analyticsRequest(
+      { endpoint: "https://ingest.example.test/e", apiKey: "k", project: "p" },
+      SAMPLE_PAYLOAD,
+      at,
+    );
+    expect(request?.method).toBe("POST");
+    expect(request?.url).toBe("https://ingest.example.test/e");
+    expect(request?.headers.get("authorization")).toBe("Bearer k");
+    expect(request?.headers.get("content-type")).toBe("application/json");
+    expect(JSON.parse((await request?.text()) ?? "")).toEqual({
+      event: "http_request",
+      timestamp: at,
+      project: "p",
+      properties: SAMPLE_PAYLOAD,
+    });
+  });
+
+  it("sends no authorization without a key and nothing without an endpoint", () => {
+    const keyless = analyticsRequest(
+      { endpoint: "https://ingest.example.test/e", apiKey: "", project: "" },
+      SAMPLE_PAYLOAD,
+      at,
+    );
+    expect(keyless?.headers.has("authorization")).toBe(false);
+    expect(analyticsRequest({ endpoint: "", apiKey: "k", project: "" }, SAMPLE_PAYLOAD, at)).toBe(
+      null,
+    );
   });
 });

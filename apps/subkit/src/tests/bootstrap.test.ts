@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ResolvedProfile } from "../config.ts";
 import type { EngineClient } from "../engine-client.ts";
-import { bootstrapCachePath, loadBootstrap } from "../lib/bootstrap.ts";
+import { bootstrapCachePath, fingerprintApiKey, loadBootstrap } from "../lib/bootstrap.ts";
 
 const PROFILE: ResolvedProfile = {
   name: "default",
@@ -211,5 +212,20 @@ describe("bootstrapCachePath", () => {
     const p = bootstrapCachePath({ ...PROFILE, api_key: "wf_live_supersecretkey123" }, "/tmp/x");
     expect(p).not.toContain("supersecretkey123");
     expect(p).not.toContain("wf_live_supersecretkey123");
+  });
+});
+
+describe("fingerprintApiKey", () => {
+  test("is a stable 16-hex fingerprint that differs per key", () => {
+    const fp = fingerprintApiKey("wf_live_supersecretkey123");
+    expect(fp).toMatch(/^[0-9a-f]{16}$/);
+    expect(fingerprintApiKey("wf_live_supersecretkey123")).toBe(fp);
+    expect(fingerprintApiKey("wf_live_otherkey456")).not.toBe(fp);
+  });
+
+  test("derives the fingerprint with a key derivation function, not a bare SHA-256", () => {
+    const key = "wf_live_supersecretkey123";
+    const bare = createHash("sha256").update(key).digest("hex").slice(0, 16);
+    expect(fingerprintApiKey(key)).not.toBe(bare);
   });
 });

@@ -1,7 +1,7 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import type { ConversationReferenceType } from "@shared/conversation-reference.ts";
 import type { EngineClient } from "./engine-client.ts";
+import { readRegularFile } from "./lib/path-input.ts";
 
 interface MentionResolveOptions {
   cwd?: string;
@@ -125,17 +125,17 @@ export async function resolveMentions(
       continue;
     }
     const abs = isAbsolute(ref) ? ref : resolve(cwd, ref);
-    if (!existsSync(abs)) {
-      warnings.push(`${full}: not found`);
-      continue;
-    }
     try {
-      const st = statSync(abs);
-      if (!st.isFile()) {
+      const read = readRegularFile(abs);
+      if (read.kind === "missing") {
+        warnings.push(`${full}: not found`);
+        continue;
+      }
+      if (read.kind === "not_file") {
         warnings.push(`${full}: not a file`);
         continue;
       }
-      let body = readFileSync(abs, "utf8");
+      let body = read.bytes.toString("utf8");
       if (body.length > maxBytes) {
         body = `${body.slice(0, maxBytes)}\n\n[subkit: file truncated at ${maxBytes} bytes]`;
       }

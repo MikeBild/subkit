@@ -27,12 +27,12 @@ defaults:
     shell: bash
 
 jobs:
-  preflight:
-    if: ${{ github.event_name == 'workflow_dispatch' || (vars.DESKTOP_RELEASE_AUTO == 'true' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push') }}
+  resolve:
+    if: ${{ github.event_name == 'workflow_dispatch' || (vars.DESKTOP_RELEASE_AUTO == 'true' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
-      ref: ${{ steps.requested.outputs.ref }}
+      revision: ${{ steps.resolve.outputs.revision }}
       tag: ${{ steps.resolve.outputs.tag }}
       version: ${{ steps.resolve.outputs.version }}
       dry_run: ${{ steps.resolve.outputs.dry_run }}
@@ -45,39 +45,36 @@ jobs:
       UNSIGNED_DRY_RUN: ${{ inputs.unsigned_dry_run }}
       WINDOWS_SIGNING: ${{ vars.DESKTOP_WINDOWS_SIGNING || 'certificate' }}
     steps:
-      - name: Validate requested tag
-        id: requested
-        run: |
-          set -euo pipefail
-          if [ -z "$REQUESTED_TAG" ] && [ "$UNSIGNED_DRY_RUN" = "true" ]; then
-            echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
-          else
-            [[ "$REQUESTED_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::invalid release tag; only an unsigned dry run may leave it empty" >&2; exit 1; }
-            echo "ref=refs/tags/$REQUESTED_TAG" >> "$GITHUB_OUTPUT"
-          fi
-          case "$WINDOWS_SIGNING" in certificate|cloud) ;; *) echo "::error::DESKTOP_WINDOWS_SIGNING must be certificate or cloud" >&2; exit 1 ;; esac
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ steps.requested.outputs.ref }}
+          fetch-depth: 0
           persist-credentials: false
 
-      - name: Resolve version
+      - name: Resolve the release commit
         id: resolve
         run: |
           set -euo pipefail
-          COMMIT=$(git rev-parse HEAD)
-          if [ -n "$EXPECTED_COMMIT" ]; then
+          case "$WINDOWS_SIGNING" in certificate|cloud) ;; *) echo "::error::DESKTOP_WINDOWS_SIGNING must be certificate or cloud" >&2; exit 1 ;; esac
+          if [ -z "$REQUESTED_TAG" ] && [ "$UNSIGNED_DRY_RUN" = "true" ]; then
+            COMMIT=$(git rev-parse --verify "$GITHUB_SHA^{commit}")
+          else
+            [[ "$REQUESTED_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::invalid release tag; only an unsigned dry run may leave it empty" >&2; exit 1; }
+            TAGGED=$(git rev-parse --verify "refs/tags/$REQUESTED_TAG^{commit}") || { echo "::error::the tag $REQUESTED_TAG does not exist" >&2; exit 1; }
+            COMMIT=$(git rev-list --first-parent refs/remotes/origin/main | grep -Fx -- "$TAGGED") || { echo "::error::the tag $REQUESTED_TAG points to a commit that is not on main" >&2; exit 1; }
+          fi
+          [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::the release commit is not a full commit id" >&2; exit 1; }
+          if [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
             [ "$COMMIT" = "$EXPECTED_COMMIT" ] || { echo "::error::release tag differs from the released commit" >&2; exit 1; }
           fi
-          VERSION=$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).version')
-          DESKTOP_VERSION=$(node -p 'JSON.parse(require("node:fs").readFileSync("apps/desktop/package.json", "utf8")).version')
+          VERSION=$(git show "$COMMIT:package.json" | jq -r '.version')
+          DESKTOP_VERSION=$(git show "$COMMIT:apps/desktop/package.json" | jq -r '.version')
           if [ -n "$REQUESTED_TAG" ]; then
             [ "$REQUESTED_TAG" = "v$VERSION" ] || { echo "::error::release tag differs from package version" >&2; exit 1; }
           fi
           [ "$DESKTOP_VERSION" = "$VERSION" ] || { echo "::error::apps/desktop/package.json is at $DESKTOP_VERSION, the release at $VERSION" >&2; exit 1; }
           if [ "$UNSIGNED_DRY_RUN" = "true" ]; then DRY_RUN=true; else DRY_RUN=false; fi
           {
+            echo "revision=$COMMIT"
             echo "tag=$REQUESTED_TAG"
             echo "version=$VERSION"
             echo "dry_run=$DRY_RUN"
@@ -149,23 +146,24 @@ jobs:
           [ -z "$existing" ] || { echo "::error::the release of $REQUESTED_TAG already carries desktop artifacts: $existing" >&2; exit 1; }
 
   engine-darwin:
-    needs: preflight
-    if: ${{ needs.preflight.outputs.macos == 'true' }}
+    needs: resolve
+    if: ${{ needs.resolve.outputs.macos == 'true' }}
     runs-on: macos-15
     timeout-minutes: 150
     env:
-      VERSION: ${{ needs.preflight.outputs.version }}
-      ENGINE_VERSION: ${{ needs.preflight.outputs.version }}
-      DRY_RUN: ${{ needs.preflight.outputs.dry_run }}
+      VERSION: ${{ needs.resolve.outputs.version }}
+      ENGINE_VERSION: ${{ needs.resolve.outputs.version }}
+      DRY_RUN: ${{ needs.resolve.outputs.dry_run }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.preflight.outputs.ref }}
+          ref: ${{ needs.resolve.outputs.revision }}
           persist-credentials: false
 
       - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
         with:
           bun-version: 1.4.5
+          no-cache: true
 
       - name: Build the engine for macOS
         run: |
@@ -175,7 +173,7 @@ jobs:
           ls -l dist/engine-desktop/mac/arm64/
 
       - name: Sign and notarize the macOS engine
-        if: ${{ needs.preflight.outputs.dry_run != 'true' }}
+        if: ${{ needs.resolve.outputs.dry_run != 'true' }}
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
@@ -230,21 +228,22 @@ jobs:
           path: dist/engine-desktop/mac/
 
   engine-windows:
-    needs: preflight
-    if: ${{ needs.preflight.outputs.windows == 'true' }}
+    needs: resolve
+    if: ${{ needs.resolve.outputs.windows == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
-      ENGINE_VERSION: ${{ needs.preflight.outputs.version }}
+      ENGINE_VERSION: ${{ needs.resolve.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.preflight.outputs.ref }}
+          ref: ${{ needs.resolve.outputs.revision }}
           persist-credentials: false
 
       - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
         with:
           bun-version: 1.4.5
+          no-cache: true
 
       - name: Build the engine for Windows
         run: |
@@ -262,20 +261,21 @@ jobs:
           path: dist/engine-desktop/win/
 
   macos:
-    needs: [preflight, engine-darwin]
+    needs: [resolve, engine-darwin]
     runs-on: macos-15
     timeout-minutes: 90
     env:
-      VERSION: ${{ needs.preflight.outputs.version }}
+      VERSION: ${{ needs.resolve.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.preflight.outputs.ref }}
+          ref: ${{ needs.resolve.outputs.revision }}
           persist-credentials: false
 
       - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
         with:
           bun-version: 1.4.5
+          no-cache: true
 
       - name: Install the app toolchain and the runtime distribution
         working-directory: apps/desktop
@@ -312,7 +312,7 @@ jobs:
           test -x resources/agent-browser/darwin-arm64/agent-browser
 
       - name: Sign PostgreSQL, agent-desktop and agent-browser
-        if: ${{ needs.preflight.outputs.dry_run != 'true' }}
+        if: ${{ needs.resolve.outputs.dry_run != 'true' }}
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
@@ -341,7 +341,7 @@ jobs:
           sh scripts/codesign-macos-folder.sh apps/desktop/resources/agent-browser/darwin-arm64 "$identity"
 
       - name: Build, sign and notarize
-        if: ${{ needs.preflight.outputs.dry_run != 'true' }}
+        if: ${{ needs.resolve.outputs.dry_run != 'true' }}
         working-directory: apps/desktop
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
@@ -362,7 +362,7 @@ jobs:
           bun run package --prebuilt --mac --publish never
 
       - name: Build unsigned dry run
-        if: ${{ needs.preflight.outputs.dry_run == 'true' }}
+        if: ${{ needs.resolve.outputs.dry_run == 'true' }}
         working-directory: apps/desktop
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
@@ -389,7 +389,7 @@ jobs:
           "$resources/local/postgres/bin/initdb" --version
 
       - name: Verify signature, Gatekeeper and notarization ticket
-        if: ${{ needs.preflight.outputs.dry_run != 'true' }}
+        if: ${{ needs.resolve.outputs.dry_run != 'true' }}
         working-directory: apps/desktop
         run: |
           set -euo pipefail
@@ -459,20 +459,21 @@ jobs:
           path: apps/desktop/staged/
 
   windows:
-    needs: [preflight, engine-windows]
+    needs: [resolve, engine-windows]
     runs-on: windows-2025
     timeout-minutes: 60
     env:
-      VERSION: ${{ needs.preflight.outputs.version }}
+      VERSION: ${{ needs.resolve.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.preflight.outputs.ref }}
+          ref: ${{ needs.resolve.outputs.revision }}
           persist-credentials: false
 
       - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
         with:
           bun-version: 1.4.5
+          no-cache: true
 
       - name: Install the app toolchain and the runtime distribution
         working-directory: apps/desktop
@@ -494,7 +495,7 @@ jobs:
           "$engine" --smoke
 
       - name: Build and sign with the certificate
-        if: ${{ needs.preflight.outputs.dry_run != 'true' && needs.preflight.outputs.windows_signing == 'certificate' }}
+        if: ${{ needs.resolve.outputs.dry_run != 'true' && needs.resolve.outputs.windows_signing == 'certificate' }}
         working-directory: apps/desktop
         env:
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
@@ -508,7 +509,7 @@ jobs:
           bun run package --prebuilt --win --publish never
 
       - name: "Alternative, off by default: build and sign with a cloud signing service"
-        if: ${{ needs.preflight.outputs.dry_run != 'true' && needs.preflight.outputs.windows_signing == 'cloud' }}
+        if: ${{ needs.resolve.outputs.dry_run != 'true' && needs.resolve.outputs.windows_signing == 'cloud' }}
         working-directory: apps/desktop
         env:
           SUBKIT_DESKTOP_WIN_SIGNING: cloud
@@ -527,7 +528,7 @@ jobs:
             "-c.win.signtoolOptions.publisherName=$WIN_PUBLISHER_NAME"
 
       - name: Build unsigned dry run
-        if: ${{ needs.preflight.outputs.dry_run == 'true' }}
+        if: ${{ needs.resolve.outputs.dry_run == 'true' }}
         working-directory: apps/desktop
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
@@ -537,7 +538,7 @@ jobs:
           bun run package --prebuilt --win --publish never
 
       - name: Verify Authenticode signatures
-        if: ${{ needs.preflight.outputs.dry_run != 'true' }}
+        if: ${{ needs.resolve.outputs.dry_run != 'true' }}
         working-directory: apps/desktop
         shell: pwsh
         run: |
@@ -574,25 +575,26 @@ jobs:
           path: apps/desktop/staged/
 
   publish:
-    needs: [preflight, macos, windows]
-    if: ${{ !cancelled() && needs.preflight.outputs.dry_run != 'true' && (needs.macos.result == 'success' || needs.windows.result == 'success') }}
+    needs: [resolve, macos, windows]
+    if: ${{ !cancelled() && needs.resolve.outputs.dry_run != 'true' && (needs.macos.result == 'success' || needs.windows.result == 'success') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: write
       actions: read
     env:
-      TAG: ${{ needs.preflight.outputs.tag }}
-      VERSION: ${{ needs.preflight.outputs.version }}
+      TAG: ${{ needs.resolve.outputs.tag }}
+      VERSION: ${{ needs.resolve.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.preflight.outputs.ref }}
+          ref: ${{ needs.resolve.outputs.revision }}
           persist-credentials: false
 
       - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
         with:
           bun-version: 1.4.5
+          no-cache: true
 
       - name: Collect the artifacts of this run
         env:

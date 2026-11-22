@@ -2,6 +2,13 @@ export type SortOrder = "asc" | "desc";
 export type CreatedBy = "all" | "ai" | "person";
 export type SortValue = string | number | null | undefined;
 
+export function sortValueOf<T>(
+  table: Readonly<Record<string, (row: T) => SortValue>>,
+  key: string,
+): ((row: T) => SortValue) | null {
+  return Object.entries(table).find(([name]) => name === key)?.[1] ?? null;
+}
+
 export function sortRows<T>(
   rows: readonly T[],
   value: ((row: T) => SortValue) | null,

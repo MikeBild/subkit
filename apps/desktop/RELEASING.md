@@ -186,6 +186,10 @@ check and try again later, because the newest release has no feed file yet. With
   of one platform: the first job skips that platform with a warning, and the release ships the
   other one.
 - The tag must equal both versions, and in an automatic run the commit that was released.
+- The tag must point to a commit in the first-parent history of `main`. An automatic run starts
+  only after a push to this repository. The first job resolves that commit, and every build job
+  checks out exactly that commit id, never the tag or a branch name, so a tag moved during the
+  run changes nothing. Setup steps run without the Actions cache.
 - macOS: `codesign --verify --deep --strict`, a Developer ID authority, the hardened runtime,
   `spctl -a -t exec` and `xcrun stapler validate` for the app inside every zip and every dmg.
 - Windows: `signtool verify /pa /all`, a valid signature status and a timestamp for the

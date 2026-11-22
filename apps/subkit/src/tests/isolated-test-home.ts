@@ -1,15 +1,8 @@
 import { randomUUID } from "node:crypto";
-import {
-  lstatSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { lstatSync, mkdtempSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
+import { readRegularFile } from "../lib/path-input.ts";
 
 const prefix = "subkit-test-home-";
 const marker = ".subkit-test-home-claim.json";
@@ -41,19 +34,8 @@ function inspect(home: string, token: string, names: string[]): string | undefin
     throw new Error(`refusing to use an unsafe test home: ${home}`);
   }
   for (const name of names) {
-    const claim = join(absolute, name);
-    try {
-      const stat = lstatSync(claim);
-      if (
-        stat.isFile() &&
-        !stat.isSymbolicLink() &&
-        readFileSync(claim, "utf8") === record(token)
-      ) {
-        return absolute;
-      }
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    }
+    const claim = readRegularFile(join(absolute, name), { followSymlinks: false });
+    if (claim.kind === "file" && claim.bytes.toString("utf8") === record(token)) return absolute;
   }
   throw new Error(`refusing to use an unregistered test home: ${home}`);
 }

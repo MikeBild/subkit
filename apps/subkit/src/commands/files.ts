@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { createWriteStream, existsSync, readFileSync, statSync } from "node:fs";
+import { createWriteStream } from "node:fs";
 import { basename } from "node:path";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
@@ -16,7 +16,11 @@ import {
   catalogMetadataBody,
   shortDescription,
 } from "../lib/catalog-metadata.ts";
-import { renderSuspiciousCodepoints, sanitizePathInput } from "../lib/path-input.ts";
+import {
+  readRegularFile,
+  renderSuspiciousCodepoints,
+  sanitizePathInput,
+} from "../lib/path-input.ts";
 import { detectMime } from "../utils/mime.ts";
 import {
   readableFromBytes,
@@ -84,13 +88,14 @@ export async function uploadPath(
   } = {},
 ): Promise<FileWire> {
   const filePath = sanitizePathInput(rawFilePath);
-  if (!existsSync(filePath)) {
+  const read = readRegularFile(filePath);
+  if (read.kind === "missing") {
     throw new Error(`file not found: ${rawFilePath}${renderSuspiciousCodepoints(rawFilePath)}`);
   }
-  const st = statSync(filePath);
-  if (!st.isFile()) {
+  if (read.kind === "not_file") {
     throw new Error(`not a file: ${filePath}`);
   }
+  const bytes = read.bytes;
   const filename = basename(filePath);
   const content_type = opts.content_type ?? detectMime(filePath);
   const progress: UploadProgressOpts = {
@@ -98,13 +103,11 @@ export async function uploadPath(
     json: opts.json ?? false,
   };
 
-  if (st.size <= MAX_INLINE_BYTES) {
-    const bytes = readFileSync(filePath);
+  if (bytes.byteLength <= MAX_INLINE_BYTES) {
     const content_base64 = bytes.toString("base64");
     return await client.uploadInline({ filename, content_type, content_base64 });
   }
 
-  const bytes = readFileSync(filePath);
   const sha256 = createHash("sha256").update(bytes).digest("hex");
   const batch = await client.batchCreateFiles({
     files: [
@@ -338,12 +341,13 @@ const replaceCommand = defineCommand({
     return withCommandErrors(
       async () => {
         const filePath = sanitizePathInput(String(args.path));
-        if (!existsSync(filePath) || !statSync(filePath).isFile()) {
+        const read = readRegularFile(filePath);
+        if (read.kind !== "file") {
           throw new Error(
             `file not found: ${String(args.path)}${renderSuspiciousCodepoints(String(args.path))}`,
           );
         }
-        const bytes = readFileSync(filePath);
+        const bytes = read.bytes;
         if (bytes.byteLength > MAX_INLINE_BYTES) {
           throw new Error(`replacement content is larger than ${humanBytes(MAX_INLINE_BYTES)}`);
         }

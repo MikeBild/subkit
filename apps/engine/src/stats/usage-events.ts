@@ -161,6 +161,22 @@ function canonicalOperation(surface: UsageSurface, value: string): string {
   return value.slice(0, 160);
 }
 
+interface UsageSessionPrincipal {
+  auth_source?: { kind: string; credential_version?: string };
+  session_id?: string;
+}
+
+export function usageSessionSubject(principal: UsageSessionPrincipal | undefined): string | null {
+  const source = principal?.auth_source;
+  if (
+    (source?.kind === "api_key" || source?.kind === "token_exchange") &&
+    source.credential_version
+  ) {
+    return `${source.kind}:${source.credential_version}`;
+  }
+  return principal?.session_id ?? null;
+}
+
 export function usageHmac(secret: string, tenantId: string, kind: "actor" | "session", id: string) {
   return createHmac("sha256", secret)
     .update(`subkit-usage-v1\0${tenantId}\0${kind}\0${id}`)

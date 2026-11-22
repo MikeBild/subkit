@@ -1,5 +1,13 @@
-import { describe, expect, test } from "bun:test";
-import { renderSuspiciousCodepoints, sanitizePathInput } from "./path-input.ts";
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  readRegularFile,
+  renderSuspiciousCodepoints,
+  sanitizePathInput,
+  statRegularFile,
+} from "./path-input.ts";
 
 describe("sanitizePathInput", () => {
   test("clean ASCII path passes through unchanged", () => {
@@ -48,5 +56,52 @@ describe("renderSuspiciousCodepoints", () => {
   test("detects NBSP separately from the zero-width strip set", () => {
     const out = renderSuspiciousCodepoints("a\u00A0b");
     expect(out).toContain("a0");
+  });
+});
+
+describe("readRegularFile", () => {
+  const dir = mkdtempSync(join(tmpdir(), "sk-path-input-"));
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  test("reads the bytes of a regular file", () => {
+    const file = join(dir, "a.txt");
+    writeFileSync(file, "hello");
+    const read = readRegularFile(file);
+    expect(read.kind === "file" ? read.bytes.toString("utf8") : read.kind).toBe("hello");
+  });
+
+  test("reports a missing file instead of throwing", () => {
+    expect(readRegularFile(join(dir, "nope.txt"))).toEqual({ kind: "missing" });
+    expect(readRegularFile(join(dir, "nope", "deeper.txt"))).toEqual({ kind: "missing" });
+  });
+
+  test("reports a directory as not a file", () => {
+    expect(readRegularFile(dir)).toEqual({ kind: "not_file" });
+  });
+
+  test("follows a symlink by default and refuses it on request", () => {
+    if (process.platform === "win32") return;
+    const target = join(dir, "target.txt");
+    const link = join(dir, "link.txt");
+    writeFileSync(target, "via link");
+    symlinkSync(target, link);
+    expect(readRegularFile(link).kind).toBe("file");
+    expect(readRegularFile(link, { followSymlinks: false })).toEqual({ kind: "not_file" });
+  });
+});
+
+describe("statRegularFile", () => {
+  const dir = mkdtempSync(join(tmpdir(), "subkit-path-stat-"));
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  test("reports the size of a regular file without reading it", () => {
+    const file = join(dir, "big.bin");
+    writeFileSync(file, Buffer.alloc(4096));
+    expect(statRegularFile(file)).toEqual({ kind: "file", size: 4096 });
+  });
+
+  test("reports missing paths and directories", () => {
+    expect(statRegularFile(join(dir, "nope"))).toEqual({ kind: "missing" });
+    expect(statRegularFile(dir)).toEqual({ kind: "not_file" });
   });
 });

@@ -1,3 +1,4 @@
+import { escapeMarkdownTableCell } from "@shared/markdown-escape.ts";
 import pg from "pg";
 import { log } from "../../logging/index.ts";
 import { scrubUrl } from "../egress.ts";
@@ -176,7 +177,7 @@ export function renderSchemaMarkdown(
       const pk = pkSet.has(`${c.table_schema}.${c.table_name}.${c.column_name}`) ? "PK" : "";
       const def = c.column_default ?? "";
       out.push(
-        `| ${c.column_name} | ${c.data_type} | ${c.is_nullable} | ${escapeCell(def)} | ${pk} |`,
+        `| ${c.column_name} | ${c.data_type} | ${c.is_nullable} | ${escapeMarkdownTableCell(def)} | ${pk} |`,
       );
     }
     const fks = fksByTable.get(tableKey) ?? [];
@@ -198,10 +199,6 @@ function countSchemas(tables: string[]): number {
   const set = new Set<string>();
   for (const t of tables) set.add(t.split(".")[0] ?? "");
   return set.size;
-}
-
-function escapeCell(s: string): string {
-  return s.replace(/\|/g, "\\|").replace(/\n/g, " ");
 }
 
 class PostgresIntrospectStrategy implements DiscoveryStrategy {

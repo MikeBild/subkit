@@ -82,12 +82,16 @@ function digest(value: string): Buffer {
   return createHash("sha256").update(value).digest();
 }
 
-function forwardHeaders(headers: IncomingHttpHeaders): OutgoingHttpHeaders {
-  const result: OutgoingHttpHeaders = {};
-  for (const [name, value] of Object.entries(headers)) {
-    if (value !== undefined && !HOP_BY_HOP.has(name)) result[name] = value;
-  }
-  return result;
+export function forwardHeaders(headers: IncomingHttpHeaders): OutgoingHttpHeaders {
+  return Object.fromEntries(
+    Object.entries(headers).filter(([name, value]) => value !== undefined && !HOP_BY_HOP.has(name)),
+  );
+}
+
+const STATUS_CODES_ALLOWED: readonly number[] = Array.from({ length: 500 }, (_, i) => i + 100);
+
+export function upstreamStatus(code: number | undefined): number {
+  return STATUS_CODES_ALLOWED.find((allowed) => allowed === code) ?? 502;
 }
 
 function rawResponse(status: number, reason: string, extra: Record<string, string> = {}): string {
@@ -189,7 +193,7 @@ export async function startFilteringProxy(options: FilteringProxyOptions): Promi
       agent: false,
     });
     upstream.on("response", (answer) => {
-      const status = answer.statusCode ?? 502;
+      const status = upstreamStatus(answer.statusCode);
       const location = answer.headers.location;
       const hop = redirectAllowed(target.url, status, location, options.rules());
       if (!hop.ok) {

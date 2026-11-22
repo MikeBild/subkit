@@ -1,3 +1,4 @@
+import { escapeMarkdownTableCell } from "@shared/markdown-escape.ts";
 import type { PDFParse } from "pdf-parse";
 import {
   BinaryParseError,
@@ -24,12 +25,11 @@ export interface PdfParseOutput {
 
 function tableToMarkdown(rows: string[][]): string {
   if (rows.length === 0) return "";
-  const cell = (v: string): string => v.replace(/\|/g, "\\|").replace(/\s+/g, " ").trim();
   const header = rows[0] ?? [];
   const lines = [
-    `| ${header.map(cell).join(" | ")} |`,
+    `| ${header.map(escapeMarkdownTableCell).join(" | ")} |`,
     `| ${header.map(() => "---").join(" | ")} |`,
-    ...rows.slice(1).map((r) => `| ${r.map(cell).join(" | ")} |`),
+    ...rows.slice(1).map((r) => `| ${r.map(escapeMarkdownTableCell).join(" | ")} |`),
   ];
   return lines.join("\n");
 }

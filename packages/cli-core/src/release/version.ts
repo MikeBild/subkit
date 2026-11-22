@@ -58,6 +58,12 @@ export function isNewer(candidate: string, current: string): boolean {
   return compareVersions(next, now) > 0;
 }
 
+export function stableVersion(text: string): string | null {
+  const parsed = parseVersion(text);
+  if (!parsed || parsed.prerelease.length > 0) return null;
+  return [parsed.major, parsed.minor, parsed.patch].join(".");
+}
+
 export function isDevBuild(version: string): boolean {
   const trimmed = version.trim();
   return trimmed === "dev" || trimmed.endsWith("-dev");

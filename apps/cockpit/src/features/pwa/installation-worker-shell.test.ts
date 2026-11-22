@@ -240,17 +240,29 @@ describe("cache versioning", () => {
     const app = worker({ build: "b2", shell: SHELL, windows: [client()] });
     const replies: unknown[] = [];
     await app.dispatch("message", {
+      origin,
       source: { id: "client" },
       data: { type: "describe-build" },
       ports: [{ postMessage: (value: unknown) => replies.push(value) }],
     });
     expect(replies).toEqual([{ build: "b2", shell: SHELL }]);
-    await app.dispatch("message", { source: { id: "client" }, data: { type: "activate-update" } });
+    await app.dispatch("message", {
+      origin: "https://elsewhere.example.test",
+      source: { id: "client" },
+      data: { type: "activate-update" },
+    });
+    expect(app.calls).toEqual([]);
+    await app.dispatch("message", {
+      origin,
+      source: { id: "client" },
+      data: { type: "activate-update" },
+    });
     expect(app.calls).toEqual(["skipWaiting"]);
     const foreign = client();
     foreign.url = `${origin}/cockpit/`;
     const refused = worker({ build: "b2", windows: [foreign] });
     await refused.dispatch("message", {
+      origin,
       source: { id: "client" },
       data: { type: "activate-update" },
     });

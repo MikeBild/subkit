@@ -25,7 +25,7 @@ import localWorkflowSteps from "./seeds/local-workflow-steps.md" with { type: "t
 import mcpServerSetup from "./seeds/mcp-server-setup.md" with { type: "text" };
 import mcpToolContract from "./seeds/mcp-tool-contract.md" with { type: "text" };
 import multiStepBestPractices from "./seeds/multi-step-best-practices.md" with { type: "text" };
-import oauthFlow from "./seeds/oauth-flow.md" with { type: "text" };
+import openAuthorizationFlow from "./seeds/oauth-flow.md" with { type: "text" };
 import onboardingWorkflowCreation from "./seeds/onboarding-workflow-creation.md" with {
   type: "text",
 };
@@ -101,7 +101,7 @@ export const EMBEDDED_SKILL_SEEDS: readonly EmbeddedSeedFile[] = [
   { file: "mcp-server-setup.md", content: mcpServerSetup },
   { file: "mcp-tool-contract.md", content: mcpToolContract },
   { file: "multi-step-best-practices.md", content: multiStepBestPractices },
-  { file: "oauth-flow.md", content: oauthFlow },
+  { file: "oauth-flow.md", content: openAuthorizationFlow },
   { file: "onboarding-workflow-creation.md", content: onboardingWorkflowCreation },
   { file: "postgres-connectors.md", content: postgresConnectors },
   { file: "rbac-and-scopes.md", content: rbacAndScopes },

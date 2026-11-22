@@ -4,6 +4,7 @@ import { join } from "node:path";
 import {
   checkForUpdate,
   defaultUpdaterConfig,
+  type EngineReleaseProbe,
   engineRelease,
   latestRelease,
   parseChecksum,
@@ -249,41 +250,38 @@ describe("latestRelease", () => {
 });
 
 describe("engineRelease", () => {
-  const engine = "https://engine.example.test/";
+  const probe = (version: string, bundled: boolean): EngineReleaseProbe => ({
+    installBase: "https://engine.example.test/install",
+    version: async () => version,
+    hasInstallBundle: async () => bundled,
+  });
 
   test("a signed bundle on the engine is the source of the engine's version", async () => {
-    const seen: string[] = [];
-    const fetchImpl = makeFetchImpl((url) => {
-      seen.push(url);
-      if (url === "https://engine.example.test/health") return Response.json({ version: "2.0.0" });
-      if (url === "https://engine.example.test/install/SHA256SUMS.sig") return new Response("");
-      return new Response("unexpected", { status: 500 });
-    });
-    const info = await engineRelease(makeConfig(), engine, fetchImpl);
+    const info = await engineRelease(makeConfig(), probe("2.0.0", true));
     expect(info.version).toBe("2.0.0");
     expect(info.assets[0]).toEqual({
       name: "test-bin-linux-x64",
       url: "https://engine.example.test/install/test-bin-linux-x64",
     });
-    expect(seen.some((url) => url.includes("github"))).toBe(false);
   });
 
   test("an engine without the bundle points at the release with its version", async () => {
-    const fetchImpl = makeFetchImpl((url) =>
-      url.endsWith("/health")
-        ? Response.json({ version: "2.0.0" })
-        : new Response("absent", { status: 404 }),
-    );
-    const info = await engineRelease(makeConfig(), engine, fetchImpl);
+    const info = await engineRelease(makeConfig(), probe("2.0.0", false));
     expect(info.assets[0]?.url).toBe(
       "https://github.test/o/r/releases/download/v2.0.0/test-bin-linux-x64",
     );
   });
 
-  test("an engine without a release version cannot be matched", async () => {
-    const fetchImpl = makeFetchImpl(() => Response.json({ version: "unknown" }));
-    await expect(engineRelease(makeConfig(), engine, fetchImpl)).rejects.toThrow(
-      "did not report a release version",
-    );
+  test("an engine without a stable release version cannot be matched", async () => {
+    for (const version of ["unknown", "2.0.0-dev", "2.0.0\n../../x"])
+      await expect(engineRelease(makeConfig(), probe(version, true))).rejects.toThrow(
+        "did not report a release version",
+      );
+  });
+
+  test("the reported version is rebuilt from its numbers", async () => {
+    const info = await engineRelease(makeConfig(), probe(" v2.10.0 ", false));
+    expect(info.version).toBe("2.10.0");
+    expect(info.tag).toBe("v2.10.0");
   });
 });

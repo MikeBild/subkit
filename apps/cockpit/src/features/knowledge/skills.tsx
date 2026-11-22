@@ -79,7 +79,7 @@ import { reportFailure } from "@/lib/action-failure";
 import { useI18n } from "@/lib/i18n-context";
 import { plural } from "@/lib/plural";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
-import { categoryCounts, createdByMatches, sortRows } from "./list-model";
+import { categoryCounts, createdByMatches, sortRows, sortValueOf } from "./list-model";
 import { KEYS, useMarkdownRefs, useRefreshKnowledge, useSkills } from "./queries";
 import {
   ChatMenu,
@@ -200,7 +200,7 @@ export function SkillsPage({ creating = false }: { creating?: boolean }) {
         createdByMatches(x.describedBy, st.createdBy) &&
         matches(st.q, x.name, x.body, x.category),
     ),
-    SKILL_SORT[st.sort.key] ?? null,
+    sortValueOf(SKILL_SORT, st.sort.key),
     st.sort.order,
   );
   const key =

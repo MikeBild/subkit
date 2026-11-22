@@ -81,7 +81,7 @@ function openOAuthApprovalElicitation(
       ...(ctx.assistant_message_id ? { parent_message_id: ctx.assistant_message_id } : {}),
       tool_name: "ask_user_confirm",
       summary: `Authorize OAuth access for ${p.connectorLabel}.`,
-      input: oauthApprovalInput(
+      input: authorizationApprovalInput(
         p.authorizationUrl,
         p.redirectUri,
         p.message,
@@ -467,7 +467,7 @@ export const authenticateOAuthTool: ConversationTool = {
   },
 };
 
-function oauthApprovalInput(
+function authorizationApprovalInput(
   authorizationUrl: string,
   redirectUri: string,
   message: string,
@@ -504,7 +504,13 @@ function dbPauseForOAuth(
     {
       tool_name: "ask_user_confirm",
       summary: message,
-      input: oauthApprovalInput(authorizationUrl, redirectUri, message, connectorId, connectorSlug),
+      input: authorizationApprovalInput(
+        authorizationUrl,
+        redirectUri,
+        message,
+        connectorId,
+        connectorSlug,
+      ),
     },
     { authorizationUrl },
   );
@@ -527,7 +533,13 @@ async function demoteOAuthApprovalToPortal(
       tool_name: "ask_user_confirm",
       summary: message,
       elicitation_id: rowId,
-      input: oauthApprovalInput(authorizationUrl, redirectUri, message, connectorId, connectorSlug),
+      input: authorizationApprovalInput(
+        authorizationUrl,
+        redirectUri,
+        message,
+        connectorId,
+        connectorSlug,
+      ),
     },
   };
 }

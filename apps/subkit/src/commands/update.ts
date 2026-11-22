@@ -1,6 +1,7 @@
 import {
   CLI_BINARY,
   defaultUpdaterConfig,
+  type EngineReleaseProbe,
   engineRelease,
   latestRelease,
   listRetainedVersions,
@@ -15,6 +16,7 @@ import { runsAsCompiledBinary } from "@cli-core/release/update-policy.ts";
 import { defineCommand } from "citty";
 import { z } from "zod";
 import { resolveProfile } from "../config.ts";
+import { EngineClient } from "../engine-client.ts";
 
 const RollbackTargetSchema = z
   .string()
@@ -30,12 +32,23 @@ function fail(line: string, code: number): never {
   process.exit(code);
 }
 
-function activeEngineUrl(): string {
+function activeEngine(): EngineReleaseProbe {
+  let client: EngineClient;
   try {
-    return resolveProfile().engine_url;
+    const profile = resolveProfile();
+    client = new EngineClient({
+      engine_url: profile.engine_url,
+      api_key: profile.api_key,
+      tenant: profile.active_tenant_id,
+    });
   } catch {
     return fail("no active profile — run `subkit login` first", 2);
   }
+  return {
+    installBase: `${client.base}/install`,
+    version: async () => (await client.health()).version,
+    hasInstallBundle: () => client.hasInstallBundle(),
+  };
 }
 
 export const updateCommand = defineCommand({
@@ -91,7 +104,7 @@ export const updateCommand = defineCommand({
     const matchEngine = Boolean(args["match-engine"]);
     try {
       const info = matchEngine
-        ? await engineRelease(config, activeEngineUrl())
+        ? await engineRelease(config, activeEngine())
         : await latestRelease(config);
       const action = updateAction(VERSION, info.version, {
         check: Boolean(args.check),

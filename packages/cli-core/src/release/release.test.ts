@@ -16,7 +16,7 @@ import {
   updateAction,
   updateHint,
 } from "./update-policy.ts";
-import { compareVersions, isDevBuild, isNewer, parseVersion } from "./version.ts";
+import { compareVersions, isDevBuild, isNewer, parseVersion, stableVersion } from "./version.ts";
 
 function order(a: string, b: string): number {
   const left = parseVersion(a);
@@ -220,5 +220,17 @@ describe("release location", () => {
     expect(versionFromReleaseLocation("https://github.com/MikeBild/subkit/releases")).toBeNull();
     expect(versionFromReleaseLocation("https://x/releases/tag/nightly")).toBeNull();
     expect(versionFromReleaseLocation(null)).toBeNull();
+  });
+});
+
+describe("stableVersion", () => {
+  test("rebuilds a stable version from its numbers", () => {
+    expect(stableVersion("v12.1.0")).toBe("12.1.0");
+    expect(stableVersion(" 3.0.10 ")).toBe("3.0.10");
+  });
+
+  test("refuses prereleases and anything that is not a version", () => {
+    for (const text of ["1.2.3-beta.1", "1.2", "latest", "", "1.2.3/../x"])
+      expect(stableVersion(text)).toBeNull();
   });
 });

@@ -1,4 +1,10 @@
-import { type CreatedBy, createdByMatches, type SortOrder, sortRows } from "../list-model";
+import {
+  type CreatedBy,
+  createdByMatches,
+  type SortOrder,
+  sortRows,
+  sortValueOf,
+} from "../list-model";
 import { matches, type SourceKindView, type SourceStatus, type SourceView } from "./knowledge";
 
 export const SOURCE_KIND_KEY = {
@@ -51,7 +57,7 @@ export function visibleSources(
         createdByMatches(x.describedBy, filter.createdBy) &&
         matches(filter.q, x.name, x.url, kindLabel(x.kind), x.category),
     ),
-    SOURCE_SORT[filter.sort.key] ?? null,
+    sortValueOf(SOURCE_SORT, filter.sort.key),
     filter.sort.order,
   );
 }

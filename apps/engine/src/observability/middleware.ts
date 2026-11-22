@@ -1,7 +1,12 @@
 import type { MiddlewareHandler } from "hono";
 import type { AppEnv } from "../http/openapi.ts";
 import { logger } from "../logging/index.ts";
-import { recordUsageEvent, trafficClassFromHeader, type UsageEventInput } from "../stats/index.ts";
+import {
+  recordUsageEvent,
+  trafficClassFromHeader,
+  type UsageEventInput,
+  usageSessionSubject,
+} from "../stats/index.ts";
 import { emitRequestEvent } from "./analytics.ts";
 import { getMetrics, METRIC_NAMES } from "./metrics.ts";
 
@@ -164,7 +169,7 @@ export function metricsMiddleware(): MiddlewareHandler<AppEnv> {
         const route = usagePath(c);
         if (route !== "/mcp" && tenant_id) {
           const db = c.get("db");
-          const sessionId = principal?.api_key_id ?? principal?.session_id ?? null;
+          const sessionId = usageSessionSubject(principal);
           const contentType = c.res.headers.get("content-type") ?? "";
           const isStream = contentType.includes("text/event-stream") && c.res.body !== null;
           const surface =

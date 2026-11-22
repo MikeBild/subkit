@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { ExecutionAuthSource } from "../auth/types.ts";
 import { _resetConfigForTests, loadConfig, setConfigKey } from "../config/loader.ts";
 import type { Executor } from "../db/client.ts";
 import {
@@ -9,6 +10,7 @@ import {
   resetUsageWriterForTests,
   trafficClassFromHeader,
   usageHmac,
+  usageSessionSubject,
 } from "./usage-events.ts";
 
 let configDir = "";
@@ -135,5 +137,33 @@ describe("privacy-safe usage writer", () => {
     expect(inserted[0]?.task_phase).toBe("completed");
     expect(JSON.stringify(inserted[0])).not.toContain("raw-conversation-id");
     expect(inserted[1]?.operation).toBe("unmatched");
+  });
+});
+
+describe("usageSessionSubject", () => {
+  const keySource: ExecutionAuthSource = {
+    kind: "api_key",
+    api_key_id: "key-1",
+    credential_version: "v-abc",
+  };
+  const exchangeSource: ExecutionAuthSource = {
+    kind: "token_exchange",
+    api_key_id: "key-1",
+    credential_version: "v-def",
+    expires_at: "2026-01-01T00:00:00Z",
+  };
+  const browserSource: ExecutionAuthSource = { kind: "browser_session", session_id: "s-1" };
+
+  test("groups key traffic by credential version, never by the key id", () => {
+    const subject = usageSessionSubject({ auth_source: keySource });
+    expect(subject).toBe("api_key:v-abc");
+    expect(subject).not.toContain("key-1");
+    expect(usageSessionSubject({ auth_source: exchangeSource })).toBe("token_exchange:v-def");
+  });
+
+  test("uses the browser session id and nothing for other sources", () => {
+    expect(usageSessionSubject({ auth_source: browserSource, session_id: "s-1" })).toBe("s-1");
+    expect(usageSessionSubject({})).toBeNull();
+    expect(usageSessionSubject(undefined)).toBeNull();
   });
 });

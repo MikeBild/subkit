@@ -73,7 +73,7 @@ import { plural } from "@/lib/plural";
 import { useSearchParamState } from "@/lib/use-search-param-state";
 import { IntakeDefaultCategoryDialog, IntakeEditDialog, IntakeNoteDialog } from "./intake-dialogs";
 import { ProposalCard } from "./intake-proposal";
-import { categoryCounts, sortRows, withCategory } from "./list-model";
+import { categoryCounts, sortRows, sortValueOf, withCategory } from "./list-model";
 import {
   INTAKE_ORIGINS,
   INTAKE_STATES,
@@ -227,7 +227,7 @@ export function InboxPage() {
         (origin === "all" || e.source === origin) &&
         matches(st.q, e.title, e.from, e.body),
     ),
-    ENTRY_SORT[st.sort.key] ?? null,
+    sortValueOf(ENTRY_SORT, st.sort.key),
     st.sort.order,
   );
   const other = t("catalog.categoryOther");

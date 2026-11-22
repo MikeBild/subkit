@@ -1,4 +1,4 @@
-import { readFile, stat } from "node:fs/promises";
+import { open } from "node:fs/promises";
 import { extname, isAbsolute, resolve } from "node:path";
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import { Box, Text, useInput } from "ink";
@@ -100,13 +100,19 @@ export const KnowledgeTab: React.FC<Props> = ({ client, onInnerEscape }) => {
     setActionFlash(null);
     try {
       const abs = isAbsolute(ingestPath) ? ingestPath : resolve(process.cwd(), ingestPath);
-      const stats = await stat(abs);
-      const guard = checkIngestGuard({ absolutePath: abs, sizeBytes: stats.size });
-      if (guard.rejected) {
-        setActionFlash(guard.reason ?? "ingest refused");
-        return;
+      const handle = await open(abs, "r");
+      let content: Buffer;
+      try {
+        const stats = await handle.stat();
+        const guard = checkIngestGuard({ absolutePath: abs, sizeBytes: stats.size });
+        if (guard.rejected) {
+          setActionFlash(guard.reason ?? "ingest refused");
+          return;
+        }
+        content = await handle.readFile();
+      } finally {
+        await handle.close();
       }
-      const content = await readFile(abs);
       const name = abs.split("/").pop() ?? ingestPath;
       const mime = mimeFor(name);
       await client.createKnowledgeSource({ name, content, mime_type: mime });

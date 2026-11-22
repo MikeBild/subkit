@@ -1,5 +1,4 @@
 import { exitCodeFor } from "@cli-core/errors";
-import { TransportError } from "@cli-core/errors.ts";
 import { printJson } from "@cli-core/format";
 import { colorizeLogLevel } from "@cli-core/log-levels";
 import { readSse } from "@cli-core/sse.ts";
@@ -127,29 +126,18 @@ export const logsCommand = defineCommand({
       process.exit(exitCodeFor(err));
     }
 
-    const url = client.logsTailStreamUrl({
-      since_ms,
-      ...(moduleFilter ? { module: moduleFilter } : {}),
-      ...(actionFilter ? { action: actionFilter } : {}),
-      ...(levelFilter ? { level: levelFilter } : {}),
-    });
     const ac = new AbortController();
     process.on("SIGINT", () => ac.abort());
     process.on("SIGTERM", () => ac.abort());
-    let res: Response;
-    try {
-      res = await fetch(url, {
-        headers: {
-          authorization: `Bearer ${profile.api_key}`,
-          accept: "text/event-stream",
-        },
-        signal: ac.signal,
-      });
-    } catch (err) {
-      throw new TransportError(
-        `logs stream connect failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
+    const res = await client.openLogsTailStream(
+      {
+        since_ms,
+        ...(moduleFilter ? { module: moduleFilter } : {}),
+        ...(actionFilter ? { action: actionFilter } : {}),
+        ...(levelFilter ? { level: levelFilter } : {}),
+      },
+      ac.signal,
+    );
     if (!res.ok || !res.body) {
       process.stderr.write(`logs stream returned HTTP ${res.status}\n`);
       process.exit(1);

@@ -28,4 +28,9 @@ export {
 export { readConversationLabels } from "./llm-labels.ts";
 export { oldestAuditTimestamp } from "./retention-horizon.ts";
 export type { TrafficClass, UsageEventInput, UsageSurface } from "./usage-events.ts";
-export { recordUsageEvent, TRAFFIC_CLASSES, trafficClassFromHeader } from "./usage-events.ts";
+export {
+  recordUsageEvent,
+  TRAFFIC_CLASSES,
+  trafficClassFromHeader,
+  usageSessionSubject,
+} from "./usage-events.ts";

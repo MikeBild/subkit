@@ -25,7 +25,7 @@ import {
   versionFromReleaseLocation,
 } from "./release/assets.ts";
 import { UPDATE_CHECK_INTERVAL_MS } from "./release/update-policy.ts";
-import { isNewer, parseVersion } from "./release/version.ts";
+import { isNewer, stableVersion } from "./release/version.ts";
 import {
   downloadReleaseNotices,
   readRetainedNotices,
@@ -113,7 +113,7 @@ export async function latestRelease(
     redirect: "manual",
     signal: AbortSignal.timeout(CHECK_TIMEOUT_MS),
   });
-  const version = versionFromReleaseLocation(res.headers.get("location"));
+  const version = stableVersion(versionFromReleaseLocation(res.headers.get("location")) ?? "");
   if (version)
     return releaseInfo(config, version, releaseDownloadBase(version, config.releasesUrl));
   if (res.status === 404 || (res.status >= 300 && res.status < 400)) {
@@ -122,31 +122,27 @@ export async function latestRelease(
   throw new UpdateCheckError(`the release server returned HTTP ${res.status} for ${latestUrl}`);
 }
 
+export interface EngineReleaseProbe {
+  readonly installBase: string;
+  version(): Promise<string>;
+  hasInstallBundle(): Promise<boolean>;
+}
+
 export async function engineRelease(
   config: UpdaterConfig,
-  engineUrl: string,
-  fetchImpl: typeof fetch = fetch,
+  engine: EngineReleaseProbe,
 ): Promise<UpdateInfo> {
-  const base = engineUrl.replace(/\/+$/, "");
-  const health = await fetchImpl(`${base}/health`, {
-    signal: AbortSignal.timeout(CHECK_TIMEOUT_MS),
-  });
-  const body = health.ok ? ((await health.json()) as { version?: unknown }) : {};
-  const version = typeof body.version === "string" ? body.version.trim() : "";
-  if (!parseVersion(version)) {
-    throw new UpdateCheckError(`the engine at ${base} did not report a release version`);
+  const version = stableVersion(await engine.version().catch(() => ""));
+  if (!version) {
+    throw new UpdateCheckError(
+      `the engine at ${engine.installBase} did not report a release version`,
+    );
   }
-  const bundled = await fetchImpl(`${base}/install/SHA256SUMS.sig`, {
-    method: "HEAD",
-    signal: AbortSignal.timeout(CHECK_TIMEOUT_MS),
-  }).then(
-    (res) => res.ok,
-    () => false,
-  );
+  const bundled = await engine.hasInstallBundle().catch(() => false);
   return releaseInfo(
     config,
     version,
-    bundled ? `${base}/install` : releaseDownloadBase(version, config.releasesUrl),
+    bundled ? engine.installBase : releaseDownloadBase(version, config.releasesUrl),
   );
 }
 
@@ -176,14 +172,16 @@ export async function checkForUpdate(
     return null;
   }
 
+  const version = stableVersion(info.version);
+  if (!version) return null;
   writeCache(config.cacheDir, {
     last_check: Date.now(),
-    latest_version: info.version,
-    latest_tag: info.tag,
+    latest_version: version,
+    latest_tag: `v${version}`,
     current_version_at_check: config.currentVersion,
   });
 
-  return isNewer(info.version, config.currentVersion) ? info : null;
+  return isNewer(version, config.currentVersion) ? info : null;
 }
 
 export function verifySignature(

@@ -52,7 +52,8 @@ import { reportFailure } from "@/lib/action-failure";
 import { LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { plural } from "@/lib/plural";
-import { categoryCounts, createdByMatches, dayGroup, sortRows } from "./list-model";
+import { categoryCounts, createdByMatches, dayGroup, sortRows, sortValueOf } from "./list-model";
+import { LocalImagePreview } from "./local-image-preview";
 import { KEYS, useFiles, useRefreshKnowledge } from "./queries";
 import {
   ChatMenu,
@@ -229,14 +230,8 @@ function LocalPreview({ file }: { file: File }) {
   const { t, locale } = useI18n();
   const kind = fileKindOf(file.name);
   const [text, setText] = useState<string | null>(null);
-  const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
-    if (kind === "image") {
-      const next = URL.createObjectURL(file);
-      setUrl(next);
-      return () => URL.revokeObjectURL(next);
-    }
-    if (kind === "pdf") return;
+    if (kind === "image" || kind === "pdf") return;
     let live = true;
     void file
       .slice(0, 4000)
@@ -246,21 +241,13 @@ function LocalPreview({ file }: { file: File }) {
       live = false;
     };
   }, [file, kind]);
-  if (kind === "image")
-    return url ? (
-      <img
-        data-testid="kn-up-preview"
-        src={url}
-        alt={file.name}
-        className="w-full rounded-lg border bg-background"
-      />
-    ) : null;
-  if (kind === "pdf" || text === null)
-    return (
-      <p data-testid="kn-up-preview" className="text-sm text-muted-foreground">
-        {file.name} · {formatBytes(file.size, locale)} · {t("kn.files.noPreview")}
-      </p>
-    );
+  const noPreview = (
+    <p data-testid="kn-up-preview" className="text-sm text-muted-foreground">
+      {file.name} · {formatBytes(file.size, locale)} · {t("kn.files.noPreview")}
+    </p>
+  );
+  if (kind === "image") return <LocalImagePreview file={file} fallback={noPreview} />;
+  if (kind === "pdf" || text === null) return noPreview;
   return <PatternCode fit code={text || "—"} label={file.name} testId="kn-up-preview" />;
 }
 
@@ -397,7 +384,7 @@ export function FilesPage() {
         createdByMatches(x.describedBy, st.createdBy) &&
         matches(st.q, x.name, t(KIND_KEY[x.kind]), x.category),
     ),
-    FILE_SORT[st.sort.key] ?? null,
+    sortValueOf(FILE_SORT, st.sort.key),
     st.sort.order,
   );
   const other = t("catalog.categoryOther");

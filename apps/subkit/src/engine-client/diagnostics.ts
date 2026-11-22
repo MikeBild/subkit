@@ -3,6 +3,7 @@ import {
   DIAGNOSTICS_LOG_TAIL_PATH,
 } from "@cli-core/diagnostics-paths.ts";
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
+import { TransportError } from "@cli-core/errors.ts";
 import type { EngineClient } from "../engine-client.ts";
 import type { ApiQuery } from "./http.ts";
 
@@ -27,6 +28,14 @@ function checkState(value: unknown): CheckState {
 }
 
 export const diagnosticsMethods = {
+  async hasInstallBundle(this: EngineClient): Promise<boolean> {
+    const res = await this.fetchImpl(`${this.base}/install/SHA256SUMS.sig`, {
+      method: "HEAD",
+      signal: AbortSignal.timeout(5000),
+    });
+    return res.ok;
+  },
+
   async health(this: EngineClient): Promise<{
     status: "ok";
     service: "subkit";
@@ -103,7 +112,7 @@ export const diagnosticsMethods = {
     return this.request("GET", `${DIAGNOSTICS_LOG_TAIL_PATH}${qs ? `?${qs}` : ""}`);
   },
 
-  logsTailStreamUrl(
+  async openLogsTailStream(
     this: EngineClient,
     opts: {
       since_ms?: number;
@@ -111,14 +120,27 @@ export const diagnosticsMethods = {
       action?: string;
       level?: string;
     },
-  ): string {
+    signal: AbortSignal,
+  ): Promise<Response> {
     const params = new URLSearchParams();
     if (typeof opts.since_ms === "number") params.set("since", String(opts.since_ms));
     if (opts.module) params.set("module", opts.module);
     if (opts.action) params.set("action", opts.action);
     if (opts.level) params.set("level", opts.level);
     const qs = params.toString();
-    return `${this.base}${DIAGNOSTICS_LOG_STREAM_PATH}${qs ? `?${qs}` : ""}`;
+    try {
+      return await this.fetchImpl(
+        `${this.base}${DIAGNOSTICS_LOG_STREAM_PATH}${qs ? `?${qs}` : ""}`,
+        {
+          headers: this.headers({ accept: "text/event-stream" }),
+          signal,
+        },
+      );
+    } catch (err) {
+      throw new TransportError(
+        `logs stream connect failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   },
 
   async statusSummary(this: EngineClient): Promise<Schemas["StatusSummary"]> {

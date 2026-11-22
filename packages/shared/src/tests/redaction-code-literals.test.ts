@@ -231,3 +231,12 @@ describe("scrubString — code-context lookback boundary (256-char window)", () 
     expect(out).not.toContain(BARE_VENDORLESS_TOKEN);
   });
 });
+
+describe("scrubString — code-assignment lookback stays linear", () => {
+  test("runs of empty comments before tokens cannot stall the lookback", () => {
+    const line = `var /*${"*//*".repeat(40)}${BARE_VENDORLESS_TOKEN}`;
+    const out = scrubString(Array.from({ length: 8 }, () => line).join("\n"));
+    expect(out.match(/\*\*\*REDACTED:generic\*\*\*/g)?.length).toBe(8);
+    expect(out).not.toContain(BARE_VENDORLESS_TOKEN);
+  }, 1000);
+});

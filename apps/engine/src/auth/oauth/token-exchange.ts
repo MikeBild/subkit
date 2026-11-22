@@ -10,7 +10,7 @@ import { assertTenantActive, SelfServiceIdentityError } from "../../identity/ind
 import { log } from "../../logging/index.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
 import { getPermissionByName } from "../../rbac/catalog.ts";
-import { extractBearerToken, matchApiKeyRow } from "../providers/api-key.ts";
+import { extractBearerToken, matchApiKeyByHash } from "../providers/api-key.ts";
 import {
   type ApiKeyRow,
   normalizeAllowList,
@@ -145,7 +145,7 @@ export async function exchangeApiKeyForToken(
   const requested = parseScopeParam(input.scope);
 
   const db = input.db;
-  const row = await matchApiKeyRow(db, input.subjectToken, input.req ?? null, PROVIDER);
+  const row = await matchApiKeyByHash(db, input.subjectToken, input.req ?? null, PROVIDER);
   if (!row) throw new TokenExchangeError("invalid_grant", "api key not accepted");
   const principal = await resolvePrincipalFromApiKeyRow(db, row, { provider: PROVIDER });
   if (!principal) throw new TokenExchangeError("invalid_grant", "api key not accepted");

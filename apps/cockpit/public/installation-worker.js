@@ -281,6 +281,7 @@ self.addEventListener("fetch", (event) => {
   );
 });
 self.addEventListener("message", (event) => {
+  if (event.origin !== scope.origin) return;
   event.waitUntil(
     (async () => {
       const client = event.source?.id ? await self.clients.get(event.source.id) : null;

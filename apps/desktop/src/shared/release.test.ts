@@ -21,6 +21,7 @@ function versionOf(path: string): string {
 interface Step {
   name?: string;
   uses?: string;
+  with?: Record<string, unknown>;
   run?: string;
   if?: string;
   env?: Record<string, string>;
@@ -177,8 +178,50 @@ describe("desktop release workflow", () => {
 
   test("starts by hand, or after a release only when the owner opted in, never on a schedule", () => {
     expect(Object.keys(workflow.on).sort()).toEqual(["workflow_dispatch", "workflow_run"]);
-    expect(jobs.preflight?.if).toContain("vars.DESKTOP_RELEASE_AUTO == 'true'");
-    expect(jobs.preflight?.if).toContain("github.event_name == 'workflow_dispatch'");
+    expect(jobs.resolve?.if).toContain("vars.DESKTOP_RELEASE_AUTO == 'true'");
+    expect(jobs.resolve?.if).toContain("github.event_name == 'workflow_dispatch'");
+  });
+
+  test("an automatic run starts only after a push to this repository", () => {
+    expect(jobs.resolve?.if).toContain("github.event.workflow_run.event == 'push'");
+    expect(jobs.resolve?.if).toContain(
+      "github.event.workflow_run.head_repository.full_name == github.repository",
+    );
+  });
+
+  test("resolves the release commit from the first-parent history of main", () => {
+    const resolveSteps = jobs.resolve?.steps ?? [];
+    const checkout = resolveSteps.find((step) => step.uses?.startsWith("actions/checkout@"));
+    expect(checkout?.with?.ref).toBeUndefined();
+    expect(checkout?.with?.["fetch-depth"]).toBe(0);
+    const script =
+      resolveSteps.find((step) => step.name === "Resolve the release commit")?.run ?? "";
+    expect(script).toContain(
+      'COMMIT=$(git rev-list --first-parent refs/remotes/origin/main | grep -Fx -- "$TAGGED")',
+    );
+    expect(script).toContain('[[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]]');
+    expect(script).toContain('[ "$COMMIT" = "$EXPECTED_COMMIT" ]');
+    expect(script).toContain('echo "revision=$COMMIT"');
+  });
+
+  test("every build job checks out exactly the resolved commit", () => {
+    const builds = Object.entries(jobs).filter(([name]) => name !== "resolve");
+    expect(builds.length).toBe(5);
+    for (const [, job] of builds) {
+      const checkouts = job.steps.filter((step) => step.uses?.startsWith("actions/checkout@"));
+      expect(checkouts.length).toBe(1);
+      expect(checkouts[0]?.with?.ref).toMatch(/^\$\{\{ needs\.resolve\.outputs\.revision \}\}$/);
+      expect(checkouts[0]?.with?.["persist-credentials"]).toBe(false);
+    }
+    for (const step of steps)
+      expect(String(step.with?.ref ?? "")).not.toMatch(/github\.event|inputs\.|head_/);
+  });
+
+  test("setup steps never read or write the Actions cache", () => {
+    const setups = steps.filter((step) => step.uses?.startsWith("oven-sh/setup-bun@"));
+    expect(setups.length).toBe(5);
+    for (const step of setups) expect(step.with?.["no-cache"]).toBe(true);
+    expect(steps.some((step) => step.uses?.startsWith("actions/cache"))).toBe(false);
   });
 
   test("uses only actions pinned to a commit", () => {
@@ -211,18 +254,18 @@ describe("desktop release workflow", () => {
 
   test("builds two platforms, each from its own engine job, and no Linux", () => {
     expect(Object.keys(jobs)).toEqual([
-      "preflight",
+      "resolve",
       "engine-darwin",
       "engine-windows",
       "macos",
       "windows",
       "publish",
     ]);
-    expect(jobs["engine-darwin"]?.needs).toBe("preflight");
-    expect(jobs["engine-windows"]?.needs).toBe("preflight");
-    expect(jobs.macos?.needs).toEqual(["preflight", "engine-darwin"]);
-    expect(jobs.windows?.needs).toEqual(["preflight", "engine-windows"]);
-    expect(jobs.publish?.needs).toEqual(["preflight", "macos", "windows"]);
+    expect(jobs["engine-darwin"]?.needs).toBe("resolve");
+    expect(jobs["engine-windows"]?.needs).toBe("resolve");
+    expect(jobs.macos?.needs).toEqual(["resolve", "engine-darwin"]);
+    expect(jobs.windows?.needs).toEqual(["resolve", "engine-windows"]);
+    expect(jobs.publish?.needs).toEqual(["resolve", "macos", "windows"]);
     expect(workflowText).not.toMatch(/linux|AppImage|latest-linux/i);
   });
 
@@ -233,14 +276,14 @@ describe("desktop release workflow", () => {
     for (const name of ["engine-windows", "windows"])
       expect(needs(name).filter((need) => need.includes("darwin") || need === "macos")).toEqual([]);
     for (const name of Object.keys(jobs)) expect(jobs[name]?.["continue-on-error"]).toBeUndefined();
-    expect(jobs["engine-darwin"]?.if).toContain("needs.preflight.outputs.macos == 'true'");
-    expect(jobs["engine-windows"]?.if).toContain("needs.preflight.outputs.windows == 'true'");
+    expect(jobs["engine-darwin"]?.if).toContain("needs.resolve.outputs.macos == 'true'");
+    expect(jobs["engine-windows"]?.if).toContain("needs.resolve.outputs.windows == 'true'");
   });
 
   test("publishes what built, never in a dry run", () => {
     const condition = jobs.publish?.if ?? "";
     expect(condition).toContain("!cancelled()");
-    expect(condition).toContain("needs.preflight.outputs.dry_run != 'true'");
+    expect(condition).toContain("needs.resolve.outputs.dry_run != 'true'");
     expect(condition).toContain(
       "(needs.macos.result == 'success' || needs.windows.result == 'success')",
     );
@@ -263,8 +306,8 @@ describe("desktop release workflow", () => {
   });
 
   test("missing signing values of one platform skip and flag only that platform", () => {
-    const preflight = jobs.preflight?.steps ?? [];
-    const step = preflight.find(
+    const resolveSteps = jobs.resolve?.steps ?? [];
+    const step = resolveSteps.find(
       (candidate) => candidate.name === "Choose the platforms whose signing values are set",
     );
     const script = step?.run ?? "";
@@ -276,7 +319,7 @@ describe("desktop release workflow", () => {
     expect(script).toMatch(/::warning::the macOS signing values[\s\S]*macos=false/);
     expect(script).toMatch(/::warning::the Windows signing values[\s\S]*windows=false/);
     expect(script).toContain("release=$(missing_of RELEASE_SIGNING_KEY)");
-    const outputs = (jobs.preflight as { outputs?: Record<string, string> }).outputs ?? {};
+    const outputs = (jobs.resolve as { outputs?: Record<string, string> }).outputs ?? {};
     expect(outputs.macos).toContain("steps.platforms.outputs.macos || 'true'");
     expect(outputs.windows).toContain("steps.platforms.outputs.windows || 'true'");
   });

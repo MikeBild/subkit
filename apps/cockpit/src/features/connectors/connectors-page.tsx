@@ -68,10 +68,16 @@ type CardSort = "status" | "name" | "tested";
 const isKind = (v: string): v is KindFilter =>
   v === "all" || (CONNECTOR_KINDS as readonly string[]).includes(v);
 const isCardSort = (v: string): v is CardSort => v === "status" || v === "name" || v === "tested";
-const CARD_SORT: Record<Exclude<CardSort, "status">, (c: ConnectorCard) => string> = {
-  name: (c) => c.name,
-  tested: (c) => c.lastSync,
-};
+function cardSortValue(order: CardSort): ((c: ConnectorCard) => string) | null {
+  switch (order) {
+    case "name":
+      return (c) => c.name;
+    case "tested":
+      return (c) => c.lastSync;
+    case "status":
+      return null;
+  }
+}
 
 export function ConnectorsPage() {
   const session = useSession();
@@ -119,10 +125,7 @@ function ConnectorsScreen() {
     category: st.cat,
     createdBy: st.createdBy,
   });
-  const shown =
-    order === "status"
-      ? filtered
-      : sortRows(filtered, CARD_SORT[order], order === "tested" ? "desc" : "asc");
+  const shown = sortRows(filtered, cardSortValue(order), order === "tested" ? "desc" : "asc");
   const other = t("catalog.categoryOther");
   const key =
     st.group === "category"

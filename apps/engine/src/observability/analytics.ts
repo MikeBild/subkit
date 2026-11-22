@@ -25,36 +25,55 @@ export function emitRequestEvent(payload: RequestEventPayload): void {
   void sendEvent(payload);
 }
 
-async function sendEvent(payload: RequestEventPayload): Promise<void> {
-  let cfg: { endpoint: string; api_key: string; project: string };
+export interface AnalyticsTarget {
+  endpoint: string;
+  apiKey: string;
+  project: string;
+}
+
+export type AnalyticsExporter = (request: Request) => Promise<Response>;
+
+const EXPORT_TIMEOUT_MS = 3_000;
+
+const httpExporter: AnalyticsExporter = (request) => fetch(request);
+
+export function analyticsRequest(
+  target: AnalyticsTarget,
+  payload: RequestEventPayload,
+  timestamp: string,
+): Request | null {
+  if (!target.endpoint) return null;
+  const headers = new Headers({ "content-type": "application/json" });
+  if (target.apiKey) headers.set("authorization", `Bearer ${target.apiKey}`);
+  return new Request(target.endpoint, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      event: "http_request",
+      timestamp,
+      project: target.project || undefined,
+      properties: payload,
+    }),
+    signal: AbortSignal.timeout(EXPORT_TIMEOUT_MS),
+  });
+}
+
+function configuredTarget(): AnalyticsTarget | null {
   try {
     const raw = getConfig().observability.analytics;
-    cfg = { endpoint: raw.endpoint, api_key: raw.api_key, project: raw.project };
+    return { endpoint: raw.endpoint, apiKey: raw.api_key, project: raw.project };
   } catch {
-    return;
+    return null;
   }
-  if (!cfg.endpoint) return;
+}
 
-  const body = JSON.stringify({
-    event: "http_request",
-    timestamp: new Date().toISOString(),
-    project: cfg.project || undefined,
-    properties: payload,
-  });
-
+async function sendEvent(payload: RequestEventPayload): Promise<void> {
+  const target = configuredTarget();
+  if (!target) return;
   try {
-    const headers: Record<string, string> = {
-      "content-type": "application/json",
-    };
-    if (cfg.api_key) {
-      headers.authorization = `Bearer ${cfg.api_key}`;
-    }
-    const res = await fetch(cfg.endpoint, {
-      method: "POST",
-      headers,
-      body,
-      signal: AbortSignal.timeout(3_000),
-    });
+    const request = analyticsRequest(target, payload, new Date().toISOString());
+    if (!request) return;
+    const res = await httpExporter(request);
     if (!res.ok) {
       logger.debug({
         module: "observability.analytics",

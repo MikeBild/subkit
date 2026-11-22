@@ -125,7 +125,17 @@ export function parseLcov(text: string, repo: string): LcovRecord[] | { error: s
 }
 
 export function mergeLcov(records: readonly LcovRecord[]): LcovRecord[] {
-  const merged = new Map<string, LcovRecord>();
+  return mergedLcovRecords(mergeLcovInto(new Map(), records));
+}
+
+export function mergedLcovRecords(merged: ReadonlyMap<string, LcovRecord>): LcovRecord[] {
+  return [...merged.values()].sort((left, right) => left.file.localeCompare(right.file));
+}
+
+export function mergeLcovInto(
+  merged: Map<string, LcovRecord>,
+  records: readonly LcovRecord[],
+): Map<string, LcovRecord> {
   for (const record of records) {
     const target = merged.get(record.file) ?? {
       file: record.file,
@@ -150,7 +160,7 @@ export function mergeLcov(records: readonly LcovRecord[]): LcovRecord[] {
     }
     target.function_ids_complete &&= record.function_ids_complete;
   }
-  return [...merged.values()].sort((left, right) => left.file.localeCompare(right.file));
+  return merged;
 }
 
 export function coverageRows(records: readonly LcovRecord[]): Array<{

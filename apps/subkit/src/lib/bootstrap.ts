@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, scryptSync } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -11,11 +11,10 @@ import type { PersonaProbe } from "../slash.ts";
 
 const PERSISTED_SNAPSHOT_VERSION = 3 as const;
 
+const API_KEY_FINGERPRINT_SALT = "subkit-bootstrap-cache-v1";
+
 export function fingerprintApiKey(apiKey: string | undefined): string {
-  return createHash("sha256")
-    .update(apiKey ?? "")
-    .digest("hex")
-    .slice(0, 16);
+  return scryptSync(apiKey ?? "", API_KEY_FINGERPRINT_SALT, 8).toString("hex");
 }
 
 function bootstrapCacheKey(profile: ResolvedProfile): {

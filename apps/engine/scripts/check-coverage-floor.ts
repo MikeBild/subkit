@@ -47,7 +47,15 @@ import {
   planCoverageShardExecution,
 } from "./audit/coverage-shard-plan.ts";
 import { listFiles } from "./audit/files.ts";
-import { coverageRows, type LcovRecord, mergeLcov, parseLcov, renderLcov } from "./audit/lcov.ts";
+import {
+  coverageRows,
+  type LcovRecord,
+  mergedLcovRecords,
+  mergeLcov,
+  mergeLcovInto,
+  parseLcov,
+  renderLcov,
+} from "./audit/lcov.ts";
 import { createClosureAnalysis, directTestPaths } from "./audit/mutation-closure.ts";
 import { mutationClosureFiles, mutationTestInputs } from "./audit/mutation-inputs.ts";
 import { PURE_MUTATION_TARGETS } from "./audit/mutation-scope.ts";
@@ -101,7 +109,7 @@ interface CoverageInvocation {
   records: LcovRecord[];
 }
 
-const coverageRecords: LcovRecord[] = [];
+const coverageUnion = new Map<string, LcovRecord>();
 const coverageInvocations: CoverageInvocation[] = [];
 let coverageLease: CoverageRunLease | undefined;
 let disposeCoverageSignalRetention: (() => void) | undefined;
@@ -262,7 +270,7 @@ async function runCoverage(
 ): Promise<CoverageRun> {
   const tests = testFilesFor(targets);
   if (tests.length === 0) return { error: `no test files found for ${targets.join(", ")}` };
-  const records: LcovRecord[] = [];
+  const union = new Map<string, LcovRecord>();
   const groups = grouping === "per_target" ? [tests] : tests.map((test) => [test]);
   const preparations: Array<{ group: string[]; lcovPath: string }> = [];
   for (const group of groups) {
@@ -294,8 +302,8 @@ async function runCoverage(
     if (completedGroup.error) return { error: completedGroup.error };
     const parsed = parseLcov(readFileSync(completedGroup.lcovPath, "utf8"), REPO);
     if ("error" in parsed) return { error: `${completedGroup.group.join(", ")}: ${parsed.error}` };
-    records.push(...parsed);
-    coverageRecords.push(...parsed);
+    mergeLcovInto(union, parsed);
+    mergeLcovInto(coverageUnion, parsed);
     const invocationTargets = directTargetsByTest
       ? [...new Set(completedGroup.group.flatMap((test) => directTargetsByTest.get(test) ?? []))]
       : directTargets;
@@ -303,10 +311,10 @@ async function runCoverage(
       tests: completedGroup.group,
       ...(invocationTargets.length === 0 ? {} : { direct_targets: invocationTargets }),
       grouping,
-      records: parsed,
+      records: parsed.filter((record) => invocationTargets.includes(record.file)),
     });
   }
-  return { rows: coverageRows(mergeLcov(records)) };
+  return { rows: coverageRows(mergedLcovRecords(union)) };
 }
 
 async function runClosureBehaviorTests(tests: readonly string[]): Promise<string | undefined> {
@@ -388,7 +396,7 @@ async function persistCoverageArtifact(): Promise<string | undefined> {
     if (stale.length > 0)
       return `wave inputs changed while coverage was running: ${stale.join(", ")}`;
   }
-  const merged = mergeLcov(coverageRecords);
+  const merged = mergedLcovRecords(coverageUnion);
   if (merged.length === 0) return "coverage produced no LCOV records";
   const scope = merged.map((record) => record.file);
   const tests = coverageInvocations.flatMap((run) => run.tests).sort();

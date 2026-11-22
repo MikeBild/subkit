@@ -2,7 +2,11 @@ import type React from "react";
 import { uploadPath } from "../commands/files.ts";
 import type { KnowledgeSourceMetadata } from "../engine-client/knowledge.ts";
 import type { EngineClient } from "../engine-client.ts";
-import { renderSuspiciousCodepoints, sanitizePathInput } from "../lib/path-input.ts";
+import {
+  readRegularFile,
+  renderSuspiciousCodepoints,
+  sanitizePathInput,
+} from "../lib/path-input.ts";
 import { readClipboard } from "../repl/clipboard-read.ts";
 import type { PasteStore } from "../repl/paste-store.ts";
 import type { CommandQueue } from "../repl/queue.ts";
@@ -147,20 +151,20 @@ export async function runBuiltinSlash(trimmed: string, ctx: BuiltinSlashContext)
       showError(`/${name}: --scope workflow requires --workflow-id <uuid>`);
       return true;
     }
-    const { statSync, existsSync: exists, readFileSync } = await import("node:fs");
     const { resolve: res, basename: pathBasename } = await import("node:path");
     const abs = res(cwd ?? process.cwd(), rawPath);
-    if (!exists(abs)) {
+    const read = readRegularFile(abs);
+    if (read.kind === "missing") {
       showError(
         `/${name}: not found: ${rawPath} (resolved to ${abs})${renderSuspiciousCodepoints(rawPath)}`,
       );
       return true;
     }
-    const st = statSync(abs);
-    if (!st.isFile()) {
+    if (read.kind === "not_file") {
       showError(`/${name}: not a file: ${rawPath}`);
       return true;
     }
+    const bytes = read.bytes;
     const onProgress = (ev: UploadProgressEvent): void => {
       setTransientStatus(renderProgressLine(ev));
     };
@@ -170,7 +174,6 @@ export async function runBuiltinSlash(trimmed: string, ctx: BuiltinSlashContext)
         onProgress,
       });
       const { detectMime } = await import("../utils/mime.ts");
-      const bytes = readFileSync(abs);
       const filename = pathBasename(abs);
       const mime_type = detectMime(abs);
       const ksName = overrideName ?? (filename.replace(/\.[^.]+$/, "") || filename);

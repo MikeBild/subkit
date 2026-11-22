@@ -96,6 +96,7 @@ export {
   checkForUpdate,
   cleanupOldBinary,
   defaultUpdaterConfig,
+  type EngineReleaseProbe,
   engineRelease,
   latestRelease,
   listRetainedVersions,
