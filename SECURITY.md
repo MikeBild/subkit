@@ -16,7 +16,9 @@ The desktop app follows the server version. Its fixes ship with the same release
 
 Do not open a public issue for a vulnerability.
 
-Send the report through the contact form at <https://subkit.mikebild.dev/en/contact/> and start the
+Report it privately through
+[GitHub private vulnerability reporting](https://github.com/MikeBild/subkit/security/advisories/new),
+or send it through the contact form at <https://subkit.mikebild.dev/en/contact/> and start the
 subject with “Security”. Include:
 
 - the affected version (`engine --version`, `subkit --version` or the desktop app's About panel),

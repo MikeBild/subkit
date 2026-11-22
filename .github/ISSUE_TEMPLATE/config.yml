@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or idea
+    url: https://github.com/MikeBild/subkit/discussions
+    about: Ask a question or discuss an idea before it becomes an issue.
+  - name: Documentation
+    url: https://subkit.mikebild.dev
+    about: Setup, configuration and the workflow reference.
+  - name: Report a vulnerability
+    url: https://github.com/MikeBild/subkit/security/advisories/new
+    about: Report security issues privately, never in a public issue.
