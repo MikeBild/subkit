@@ -34,7 +34,7 @@ import type { TaskRunMarker, TurnEvent } from "../../types.ts";
 import { withoutApprovalHandle } from "../ask-user/commit-intent.ts";
 import type { ToolContext } from "../index.ts";
 import { readOnlyPaletteSpecs } from "./external-mcp-readonly.ts";
-import { jsonSafeModelOutput } from "./json-safe-output.ts";
+import { toolModelOutput } from "./model-output.ts";
 import type { TurnSignals, WrappedToolOutput } from "./state.ts";
 import { taskRunConnectorRefusal, taskRunMarkerOf } from "./task-run-guard.ts";
 
@@ -208,7 +208,7 @@ function buildOneExternalMcpTool(
 ): Tool<Record<string, unknown>, WrappedToolOutput> {
   const { spec, signals } = p;
   return tool<Record<string, unknown>, WrappedToolOutput, Record<string, unknown>>({
-    toModelOutput: jsonSafeModelOutput,
+    toModelOutput: toolModelOutput(p.name, "mcp"),
     description: spec.description,
     inputSchema: jsonSchema(
       withConfirmMarkerProperties(spec.inputSchema) as Parameters<typeof jsonSchema>[0],

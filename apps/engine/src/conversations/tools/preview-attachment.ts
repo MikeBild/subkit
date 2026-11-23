@@ -15,6 +15,7 @@ const PreviewInput = z
 
 export const previewAttachmentTool: ConversationTool = {
   name: "preview_attachment",
+  external_output: "file",
   description:
     "Fetch the stored content of an attachment by slug, truncated to max_chars. Use @attachment:<slug> (or a $file ref) in downstream tool inputs for untruncated content.",
   use_case:

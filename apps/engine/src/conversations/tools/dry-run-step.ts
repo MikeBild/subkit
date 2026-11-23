@@ -29,6 +29,7 @@ const inputSchema = z
 
 export const dryRunStepTool: ConversationTool = {
   name: "dry_run_step",
+  external_output: "workflow",
   description:
     "Run a single draft step in isolation through the real driver pipeline. Produces an auditable executions row (source_kind=step). Read steps execute for real; WRITE steps are always HELD and never dispatched. Live writes require an immutable saved workflow version and its bounded execution or prepared one-shot approval. Refused for a sensitive draft (execution_privacy: sensitive); use dry_run_workflow for its metadata-only test run.",
   inputSchema,

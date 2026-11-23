@@ -37,6 +37,7 @@ function draftConnectorRefs(ctx: ToolContext): string[] {
 
 export const fetchConnectorDocsTool: ConversationTool = {
   name: "fetch_connector_docs",
+  external_output: "web",
   description:
     "Search the ingested connector docs (OpenAPI specs, API references, vendor notes). Call this before drafting a `request` step or answering vendor-API questions — endpoints, required headers, auth shapes, pagination tokens should come from docs, not guesses. Use a short focused query matching the endpoint or concept you need. Pass `connector` (id or slug) to search one connector; without it every connector the current draft calls, plus the conversation's bound connector, is searched and each hit names its `connector_slug`. Returns `connector_scope_required` with the resolvable slugs when nothing is in scope.",
   inputSchema,

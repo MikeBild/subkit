@@ -15,6 +15,7 @@ const inputSchema = z
 
 export const searchDocsTool: ConversationTool = {
   name: "search_docs",
+  external_output: "web",
   description:
     "Search the SubKit product documentation shipped with this engine, or a connector's ingested documentation (OpenAPI / GraphQL / HTML / Markdown chunks) for ranked endpoint, auth, or schema context.",
   inputSchema,

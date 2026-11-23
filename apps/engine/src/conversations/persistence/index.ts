@@ -33,6 +33,7 @@ import {
   TOOL_OUTPUT_VERBATIM_TURNS,
 } from "../tool-output-elision.ts";
 import type { ToolCallOutcome } from "../tools/result-payload.ts";
+import { replayedToolOutput } from "../tools/sdk-wrap/model-output.ts";
 
 const MAX_REPLAY_MESSAGES = 24;
 const MAX_REPLAY_TOKENS = 12_000;
@@ -740,14 +741,17 @@ export async function buildModelMessages(
               });
         } else {
           const truncated = truncateForLlm(augmented);
-          resultValue = truncated.truncated
-            ? {
-                ...(truncated.data as Record<string, unknown>),
-                _truncated: true,
-                _raw_ref: truncated.raw_ref,
-                _note: truncated.note,
-              }
-            : augmented;
+          resultValue = replayedToolOutput(
+            call.tool,
+            truncated.truncated
+              ? {
+                  ...(truncated.data as Record<string, unknown>),
+                  _truncated: true,
+                  _raw_ref: truncated.raw_ref,
+                  _note: truncated.note,
+                }
+              : augmented,
+          );
         }
       } else if (resolvedElicitation) {
         resultValue = {

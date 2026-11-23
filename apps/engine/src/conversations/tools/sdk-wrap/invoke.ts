@@ -11,7 +11,7 @@ import { compileDescription } from "../describe.ts";
 import type { ConversationTool, ToolContext } from "../index.ts";
 import { INTAKE_REVIEW_BLOCKED_WRITES, intakeReviewBlocksWrite } from "./intake-review-guard.ts";
 import { runInvocation } from "./invoke/body.ts";
-import { jsonSafeModelOutput } from "./json-safe-output.ts";
+import { toolModelOutput } from "./model-output.ts";
 import type { TurnSignals, WrappedToolOutput } from "./state.ts";
 
 export { INTAKE_REVIEW_BLOCKED_WRITES, intakeReviewBlocksWrite };
@@ -39,7 +39,7 @@ export function wrapOne(
   return tool<Record<string, unknown>, WrappedToolOutput, Record<string, unknown>>({
     description: compileDescription(inner),
     inputSchema,
-    toModelOutput: jsonSafeModelOutput,
+    toModelOutput: toolModelOutput(inner.name, inner.external_output),
     ...(inner.strict !== undefined ? { strict: inner.strict } : {}),
     ...toInputExamples(inner.example_input),
     async execute(modelArgs: Record<string, unknown>): Promise<WrappedToolOutput> {

@@ -1,4 +1,5 @@
 import type { z } from "@hono/zod-openapi";
+import type { UntrustedSource } from "@shared/untrusted-content.ts";
 import type { Executor } from "../../db/client.ts";
 import type { EngineClient } from "../../engine-client/index.ts";
 import type { ToolCategory } from "../../tools/types.ts";
@@ -173,6 +174,7 @@ export interface ConversationTool {
   readonly strict?: boolean;
   readonly requires_persisted_workflow?: boolean;
   readonly requires_draft?: boolean;
+  readonly external_output?: UntrustedSource;
   readonly permission?: {
     readonly action: string;
     readonly resourceType: string;

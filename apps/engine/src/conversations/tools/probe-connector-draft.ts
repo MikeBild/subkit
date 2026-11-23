@@ -123,6 +123,7 @@ function isTimeoutError(error: unknown): boolean {
 
 export const probeConnectorDraftTool: ConversationTool = {
   name: "probe_connector_draft",
+  external_output: "connector",
   description:
     "Probe the current connector draft before saving it. The default response_mode:shape returns field paths and types; sample returns bounded values; full and writes require confirmation. MCP drafts perform a throwaway initialize + tools/list handshake; no draft secret is persisted before success.",
   inputSchema,

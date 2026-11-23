@@ -44,6 +44,7 @@ async function describeWorkflow(ctx: ToolContext, workflowId: string | null) {
 
 export const inspectExecutionTool: ConversationTool = {
   name: "inspect_execution",
+  external_output: "workflow",
   description:
     "Inspect a completed execution with its structured `outcome` (kind, failed step, cause class, step counts, output-contract verdict) and step-level diagnosis — per-step status, duration, warnings, truncated output previews, and scope shapes — so the next edit is grounded in the real runtime output. Omit execution_id to inspect this conversation's run, or the bound workflow's most recent execution; the result's `inspected` names the execution and workflow it chose.",
   use_case:

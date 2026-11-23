@@ -83,6 +83,7 @@ function withStatus(
 
 export const runWorkflowTool: ConversationTool = {
   name: "run_workflow",
+  external_output: "workflow",
   description:
     "Start an ALREADY-SAVED workflow. For a request to read current data from a connected service, choose a saved workflow with tool_effect read, even when the user says not to run a separate draft; pass its slug or UUID explicitly. When the user gives a human case number but the detail workflow needs an ID, run the saved list operation first, match the number, then run the saved detail operation. A read workflow does not edit or run another draft. For inspection of an existing execution, use execution history, get_execution, inspect_execution_step or diagnose_latest_execution instead. Never start a write workflow when the user says not to run, execute, test-run or start it. Use `wf_<slug>` only when the user asks to perform that workflow now; it may request a one-shot live execution decision. Every start requires matching local execution authority; otherwise writes are HELD. Setting execute_writes: true does not grant authority or bypass limits. To verify a DRAFT, use `dry_run_workflow`; an explicit no-run instruction prohibits its preview. A saved inactive draft is previewed with `dry_run_workflow` (held writes, activates nothing); `run_workflow` starts runs of the active version only. Do NOT use `run_workflow` to build/create/test a NEW workflow — that is authoring intent: call `author_workflow`.",
   inputSchema: Input,

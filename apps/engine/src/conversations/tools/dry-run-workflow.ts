@@ -17,6 +17,7 @@ const recentToolCalls: RecentToolCalls = (ctx) => listRecentToolCallOutputs(ctx.
 
 export const dryRunWorkflowTool: ConversationTool = {
   name: "dry_run_workflow",
+  external_output: "workflow",
   description:
     "Run the entire draft workflow via runExecution (source=draft), producing an auditable executions row. Read steps execute for real; WRITE steps are always HELD — resolved for inspection but never dispatched. Live writes require an immutable saved workflow version and its bounded execution or prepared one-shot approval. Omit input when repairing an existing scheduled workflow: the engine reuses its single enabled schedule in this environment. Explicit input, including {}, is preserved. Never invent dummy identifiers or destinations for real read requests. External destinations must come from the user, never fabricated placeholders. A sensitive draft (execution_privacy: sensitive) runs encrypted and returns only `sensitive_test_run` metadata: step statuses, held steps, safe failure codes, item counts, check verdicts and declared output field types. Values are never returned; do not guess them. When that test run is refused or must not read data, mode `schema_only` checks only structure.",
   inputSchema,

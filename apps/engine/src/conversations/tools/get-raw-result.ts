@@ -147,6 +147,7 @@ function rememberInScope(value: unknown, scope: RawResultScope | null): string {
 
 export const getRawResultTool: ConversationTool = {
   name: "get_raw_result",
+  external_output: "connector",
   description:
     "Retrieve a prior tool result by its `raw_ref`. Small results are returned whole. For a large result, either read a field with path, offset, and limit or follow the returned next_ref with ref-only calls until next_ref is null. Summarize the useful findings for the user in plain language; do not expose retrieval details.",
   inputSchema: Input,

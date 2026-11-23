@@ -27,6 +27,7 @@ export const getKnowledgeSourceTool: ConversationTool = toConversationTool(
 
 const searchKnowledgeTool: ConversationTool = {
   name: "search_knowledge",
+  external_output: "knowledge",
   description:
     "Search the tenant's Knowledge Sources for domain-specific notes, runbooks, compliance rules, and reference material. Call this when the request needs context beyond the tenant snapshot and the loaded skills — e.g. vendor-specific recipes, internal policy, error-code lookups. Results are chunks ranked by FTS relevance; each hit names its source via source_name. Prefer a short focused query (3–6 words). Optionally pass tags to narrow to sources carrying a topic (call list_knowledge_sources first to see available tags). If the first result does not answer the question, refine the query once and stop — do not spin.",
   inputSchema: SearchInput,
@@ -58,6 +59,7 @@ const READ_KNOWLEDGE_PAGE_SIZE = 50;
 
 export const readKnowledgeTool: ConversationTool = {
   name: "read_knowledge",
+  external_output: "knowledge",
   description:
     "Read the FULL content of a Knowledge Source, paginated — the follow-up to search_knowledge when a snippet is not enough (e.g. 'read me the deploy runbook'). Pass path to read one file of an imported bundle; repeat with next_offset until it is absent to retrieve everything.",
   inputSchema: ReadKnowledgeInput,

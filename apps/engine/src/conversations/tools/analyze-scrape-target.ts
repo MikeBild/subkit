@@ -86,6 +86,7 @@ async function countSitemapEntries(
 
 export const analyzeScrapeTargetTool: ConversationTool = {
   name: "analyze_scrape_target",
+  external_output: "web",
   description:
     "Probe a target URL before authoring a web-scraper workflow. Returns a Green / Yellow / Red verdict based on sitemap size and robots.txt, with per-tenant thresholds. Red verdicts refuse to author the recipe; Yellow pauses for operator confirmation; Green is the green-light.",
   inputSchema,
