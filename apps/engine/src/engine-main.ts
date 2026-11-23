@@ -5,7 +5,7 @@ import { SubkitCliAdapter } from "./chat/subkit-cli/adapter.ts";
 import {
   createEngineShutdown,
   runBootSeeds,
-  runWorkflowBackfillsFromUrl,
+  runDataBackfillsFromUrl,
   startHttp,
   startScheduler,
   startWorker,
@@ -121,7 +121,7 @@ async function runServer(): Promise<void> {
             bootPhase("migrations", () => runMigrationsFromUrl(cfg.database.url)),
           );
           await lifetime.step(() =>
-            bootPhase("workflow_backfills", () => runWorkflowBackfillsFromUrl(cfg.database.url)),
+            bootPhase("data_backfills", () => runDataBackfillsFromUrl(cfg.database.url)),
           );
         } catch (err) {
           if (err instanceof EngineBootStoppedError) throw err;
@@ -306,13 +306,13 @@ async function loadConfigAndReconfigureLogger() {
 async function runMigrateOnce(): Promise<void> {
   const cfg = await loadConfigAndReconfigureLogger();
   await runMigrationsFromUrl(cfg.database.url);
-  await runWorkflowBackfillsFromUrl(cfg.database.url);
+  await runDataBackfillsFromUrl(cfg.database.url);
 }
 
 async function runSeedOnce(): Promise<void> {
   const cfg = await loadConfigAndReconfigureLogger();
   await runMigrationsFromUrl(cfg.database.url);
-  await runWorkflowBackfillsFromUrl(cfg.database.url);
+  await runDataBackfillsFromUrl(cfg.database.url);
   const db = getDb();
   const result = await seedAtBoot(db);
   for (const key of result.issued_keys) {

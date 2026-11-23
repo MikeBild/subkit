@@ -1,3 +1,4 @@
+import { runProbePathV1Backfill } from "../connectors/index.ts";
 import { createDbFromUrl } from "../db/index.ts";
 import { errorFields, logger } from "../logging/index.ts";
 import {
@@ -10,9 +11,10 @@ const BACKFILLS = [
   { name: "loop to for_each", run: runLoopToForEachV2Backfill },
   { name: "request protocol", run: runRequestProtocolV1Backfill },
   { name: "model step", run: runModelStepV1Backfill },
+  { name: "connector probe path", run: runProbePathV1Backfill },
 ] as const;
 
-export async function runWorkflowBackfillsFromUrl(url: string): Promise<void> {
+export async function runDataBackfillsFromUrl(url: string): Promise<void> {
   const { pool, db } = createDbFromUrl(url);
   try {
     for (const backfill of BACKFILLS) {

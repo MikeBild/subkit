@@ -1,3 +1,4 @@
+export { runProbePathV1Backfill } from "./backfills/probe-path-v1.ts";
 export * from "./circuit-breaker.ts";
 export * from "./config-schemas.ts";
 export { type SftpMethod, SftpRefusal } from "./core/sftp.ts";
