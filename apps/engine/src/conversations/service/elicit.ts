@@ -354,7 +354,6 @@ async function settleElicitation(
   const askBeforeWriting = await askBeforeWritingFor(exec, {
     tenant_id: p.tenant_id,
     principal,
-    unattended: taskRun !== null,
   });
   const savedDraft = z
     .object({

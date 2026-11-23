@@ -33,7 +33,7 @@ test("a refusal it could not record still reaches the journal", async () => {
     await auditAdmissionRefusal(
       {
         tenant_id: "00000000-0000-4000-8000-000000000002",
-        reason: "execution_authority_unavailable",
+        reason: "execution_authority_expired",
         workflow_id: "00000000-0000-4000-8000-000000000003",
         request_source: "scheduler",
       },
@@ -56,6 +56,6 @@ test("a refusal it could not record still reaches the journal", async () => {
     });
   const line = lines.find((entry) => entry.action === "execution.boundary_refused.unrecorded");
   expect(line).toBeDefined();
-  expect(line?.refusal_reason).toBe("execution_authority_unavailable");
+  expect(line?.refusal_reason).toBe("execution_authority_expired");
   expect(line?.workflow_id).toBe("00000000-0000-4000-8000-000000000003");
 });

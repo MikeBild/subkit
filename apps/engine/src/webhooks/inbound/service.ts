@@ -3,6 +3,7 @@ import { type InboundOrigin, type InboundRow, type InboundVerifierName, serializ
 export type { InboundOrigin, InboundRow, InboundVerifierName } from "./row.ts";
 
 import { createHash, randomBytes } from "node:crypto";
+import { isAuthorityRefusalCode } from "@shared/authority-refusal.ts";
 import { and, desc, eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import { type Actor, auditActor } from "../../audit/actor.ts";
@@ -863,7 +864,9 @@ export async function handleInbound(
     if (
       ![
         "execution_authority_required",
-        "execution_authority_unavailable",
+        "execution_authority_expired",
+        "execution_authority_exhausted",
+        "execution_authority_revoked",
         "execution_authority_changed",
         "execution_boundary_mismatch",
         "workflow_version_not_active",
@@ -885,7 +888,7 @@ export async function handleInbound(
       },
       db,
     );
-    if (code === "execution_authority_required" || code === "execution_authority_unavailable")
+    if (isAuthorityRefusalCode(code))
       await holdInboundAdmission(db, row, input.now, code, {
         boss,
         version_id: wf.current_version_id,

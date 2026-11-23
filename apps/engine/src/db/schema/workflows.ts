@@ -253,9 +253,13 @@ export const workflowsSchedules = pgTable(
     admission_hold: jsonb("admission_hold").$type<{
       reason_code:
         | "execution_authority_required"
-        | "execution_authority_unavailable"
+        | "execution_authority_expired"
+        | "execution_authority_exhausted"
+        | "execution_authority_revoked"
+        | "execution_authority_changed"
         | "input_required";
       observed_at: string;
+      refusals?: number;
     }>(),
     input_error: jsonb("input_error").$type<{
       checked_version_id: string;

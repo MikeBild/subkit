@@ -36,6 +36,12 @@ function stepErrorCode(error: unknown): string | undefined {
   return typeof code === "string" ? code : undefined;
 }
 
+function stepErrorMessage(error: unknown): string | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const message = (error as { message?: unknown }).message;
+  return typeof message === "string" ? message : undefined;
+}
+
 async function bumpLastExecutedAt(env: RunEnv): Promise<void> {
   const { db, tenant_id, execution_id } = env;
   const workflow_id = env.resolved.workflow_id;
@@ -77,7 +83,9 @@ function sensitiveRunResult(
     output_preview: null,
     raw_preview: null,
     request_meta: sensitiveRequestMeta(step.request_meta),
-    error: step.error ? sensitiveFailure(stepErrorCode(step.error)) : null,
+    error: step.error
+      ? sensitiveFailure(stepErrorCode(step.error), stepErrorMessage(step.error))
+      : null,
   }));
   const safeWarnings = state.warnings
     .filter((warning) => SENSITIVE_WARNING_CODES.has(warning.code))

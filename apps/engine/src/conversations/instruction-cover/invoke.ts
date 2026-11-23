@@ -1,7 +1,8 @@
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { logger } from "../../logging/index.ts";
-import type { PolicyDecision } from "../../tools/policy.ts";
+import { ARGS_CONFIRM_ID_KEY, ARGS_CONFIRM_KEY, type PolicyDecision } from "../../tools/policy.ts";
 import type { ConfirmReason } from "../../tools/types.ts";
+import { resolveAttachmentSlugsInArgs } from "../attachments.ts";
 import { decideToolMode } from "../tool-policies.ts";
 import {
   type InvokeCall,
@@ -11,6 +12,7 @@ import {
 } from "../tools/sdk-wrap/invoke/env.ts";
 import type { WrappedToolOutput } from "../tools/sdk-wrap/state.ts";
 import { taskRunMarkerOf } from "../tools/sdk-wrap/task-run-guard.ts";
+import { coveredArgumentsDigest, coveredArgumentsVerdict } from "./core/covered-arguments.ts";
 import {
   isCoverCandidate,
   NO_PERSON_COVER,
@@ -45,7 +47,13 @@ export async function coverForCall(
       ...(taskRun ? { task_run: true } : {}),
     }).mode === "confirm_before_execution";
   if (!asks) return NO_PERSON_COVER;
-  return resolvePersonCover({
+  const covered = await resolveAttachmentSlugsInArgs(args, {
+    db: env.db,
+    tenant_id: ctx.tenant_id,
+    conversation_id: ctx.conversation_id,
+    principal,
+  });
+  const cover = await resolvePersonCover({
     db: env.db,
     tenant_id: ctx.tenant_id,
     conversation_id: ctx.conversation_id,
@@ -55,10 +63,44 @@ export async function coverForCall(
     task_run: taskRun,
     task_run_id: marker?.task_run_id ?? null,
     tool: inner.name,
-    args,
+    args: covered,
     because: env.because ?? null,
     now,
   });
+  return cover.instruction_covered || cover.rule_covered
+    ? { ...cover, covered_digest: coveredArgumentsDigest(covered) }
+    : cover;
+}
+
+export async function refuseChangedArguments(
+  env: InvokeEnv,
+  call: InvokeCall,
+  covered_digest: string | undefined,
+  pinnedArgs: Record<string, unknown>,
+): Promise<WrappedToolOutput | null> {
+  const {
+    [ARGS_CONFIRM_KEY]: _confirm,
+    [ARGS_CONFIRM_ID_KEY]: _confirmId,
+    ...executed
+  } = pinnedArgs;
+  if (coveredArgumentsVerdict(covered_digest, executed) !== "changed") return null;
+  const { inner, ctx } = env;
+  logger.warn({
+    module: "conversation_tool",
+    action: "person_cover.arguments_changed",
+    msg: "the arguments about to run differ from the ones cleared to run without a confirmation; nothing ran",
+    tenant_id: ctx.tenant_id,
+    conversation_id: ctx.conversation_id,
+    tool: inner.name,
+  });
+  const output = {
+    ok: false,
+    error_code: "covered_arguments_changed",
+    message: `${inner.name} did not run: what it would send changed after it was cleared to run without a confirmation. Call it again.`,
+  };
+  await persistToolResult(env, call, output, "error");
+  recordCall(env, call, "error");
+  return { ok: false, data: output };
 }
 
 export async function settleCover(

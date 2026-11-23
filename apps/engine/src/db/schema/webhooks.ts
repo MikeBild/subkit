@@ -31,7 +31,12 @@ export const webhooksInbound = pgTable(
     active: boolean("active").default(true).notNull(),
     origin: text("origin").notNull().default("crud"),
     admission_hold: jsonb("admission_hold").$type<{
-      reason_code: "execution_authority_required" | "execution_authority_unavailable";
+      reason_code:
+        | "execution_authority_required"
+        | "execution_authority_expired"
+        | "execution_authority_exhausted"
+        | "execution_authority_revoked"
+        | "execution_authority_changed";
       observed_at: string;
     }>(),
     ...timestamps,

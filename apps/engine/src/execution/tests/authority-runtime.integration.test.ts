@@ -268,7 +268,7 @@ test("two authorized runs reach the remote without another grant, including the 
   });
   expect((await f.run()).status).toBe("succeeded");
   expect((await f.run()).status).toBe("succeeded");
-  await expect(f.run()).rejects.toMatchObject({ code: "execution_authority_unavailable" });
+  await expect(f.run()).rejects.toMatchObject({ code: "execution_authority_exhausted" });
   expect(requests).toBe(2);
 });
 
@@ -283,7 +283,7 @@ test("revocation after the first write prevents the next step from reaching the 
   const result = await f.run();
   expect(result.status).toBe("failed");
   expect(result.steps[0]?.status).toBe("succeeded");
-  expect(result.steps[1]?.error).toMatchObject({ code: "execution_authority_unavailable" });
+  expect(result.steps[1]?.error).toMatchObject({ code: "execution_authority_revoked" });
   expect(requests).toBe(1);
 });
 
@@ -298,7 +298,7 @@ test("a GraphQL retry rechecks authority and does not send after revocation", as
   });
   const result = await f.run();
   expect(result.status).toBe("failed");
-  expect(result.steps[0]?.error).toMatchObject({ code: "execution_authority_unavailable" });
+  expect(result.steps[0]?.error).toMatchObject({ code: "execution_authority_revoked" });
   expect(requests).toBe(1);
 });
 

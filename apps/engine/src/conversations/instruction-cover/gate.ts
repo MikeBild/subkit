@@ -59,6 +59,7 @@ export interface PolicyRecord {
   readonly bound_action: BoundActionView;
   readonly because: { readonly quote: string; readonly message_id: string | null } | null;
   readonly rule_id: string | null;
+  readonly rule_quote?: string | null;
   readonly ask_reason: AskReason | null;
   readonly ask_detail?: string | null;
   readonly message_id?: string | null;
@@ -70,6 +71,7 @@ export interface PersonCover {
   readonly instruction_covered: boolean;
   readonly rule_covered: boolean;
   readonly record: PolicyRecord | null;
+  readonly covered_digest?: string;
 }
 
 export const NO_PERSON_COVER: PersonCover = {
@@ -246,6 +248,7 @@ export async function resolvePersonCover(input: PersonCoverInput): Promise<Perso
           bound_action: card,
           because: null,
           rule_id: match.rule.id,
+          ...(match.rule.source_quote ? { rule_quote: match.rule.source_quote } : {}),
           ask_reason: null,
           message_id: covering.message_id,
           job_id: job.id,
@@ -359,6 +362,7 @@ export async function recordPersonCover(p: {
         message_id: record.because?.message_id ?? record.message_id ?? null,
         ...(record.because ? { because: record.because.quote } : {}),
         ...(record.rule_id ? { rule_id: record.rule_id } : {}),
+        ...(record.rule_quote ? { rule_quote: record.rule_quote } : {}),
         ...(record.job_id ? { job_id: record.job_id } : {}),
       },
     },

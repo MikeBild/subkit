@@ -69,7 +69,7 @@ test("revocation after queue failure prevents enqueueing the reserved retry", as
   ).toBe(200);
   const retried = await request();
   expect(retried.status).toBe(409);
-  expect(await retried.json()).toMatchObject({ code: "execution_authority_unavailable" });
+  expect(await retried.json()).toMatchObject({ code: "execution_authority_revoked" });
   if (!executionId) throw new Error("missing reserved execution");
   const jobs = await ctx.db.execute(
     sql`SELECT id FROM pgboss.job WHERE name = ${EXECUTION_RUN_QUEUE} AND data->>'execution_id' = ${executionId}`,

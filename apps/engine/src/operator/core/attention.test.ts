@@ -25,7 +25,7 @@ test("exactly the approval reasons ask someone to approve", () => {
   ];
   expect(ATTENTION_REASONS.filter((reason) => needsApproval({ reason }))).toEqual(approvals);
   expect([...APPROVAL_NEEDED_REASONS].sort()).toEqual([...approvals].sort());
-  for (const reason of ["", "execution_authority_unavailable", "schedule_auto_paused", "approval"])
+  for (const reason of ["", "execution_authority_expired", "schedule_auto_paused", "approval"])
     expect(needsApproval({ reason })).toBe(false);
 });
 
@@ -50,7 +50,10 @@ test("attention schema publishes its stable sources, reasons, and subject kinds"
   expect(ATTENTION_REASONS).toEqual([
     "awaiting_answer",
     "execution_authority_required",
-    "execution_authority_unavailable",
+    "execution_authority_expired",
+    "execution_authority_exhausted",
+    "execution_authority_revoked",
+    "execution_authority_changed",
     "version_awaiting_approval",
     "version_needs_repair",
     "approval_expiring",

@@ -506,7 +506,7 @@ test("a hook-started workflow is offered thirty days sized from its recent deliv
     .insert(auditLog)
     .values([
       refusal("00000000-0000-4000-8000-00000000b001", "1 hour", "execution_authority_required"),
-      refusal("00000000-0000-4000-8000-00000000b002", "2 days", "execution_authority_unavailable"),
+      refusal("00000000-0000-4000-8000-00000000b002", "2 days", "execution_authority_expired"),
       refusal("00000000-0000-4000-8000-00000000b003", "3 hours", "signature_mismatch"),
       refusal("00000000-0000-4000-8000-00000000b004", "40 days", "execution_authority_required"),
     ]);

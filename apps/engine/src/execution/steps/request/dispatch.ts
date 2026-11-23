@@ -413,7 +413,7 @@ async function dispatchRequestStep(
       )
         throw Object.assign(
           new Error("Transactional email requires execution authority enforcement"),
-          { code: "execution_authority_unavailable" },
+          { code: "execution_authority_required" },
         );
       const documentedRead = p.step.side_effects !== "write" && isDocumentedReadOperation(request);
       const policy = await p.ctx.before_external_request?.({

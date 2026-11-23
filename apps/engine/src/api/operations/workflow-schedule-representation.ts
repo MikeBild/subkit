@@ -1,13 +1,11 @@
 import { z } from "@hono/zod-openapi";
+import { AUTHORITY_REFUSAL_CODES } from "@shared/authority-refusal.ts";
 
 const ScheduleAdmissionHold = z
   .object({
-    reason_code: z.enum([
-      "execution_authority_required",
-      "execution_authority_unavailable",
-      "input_required",
-    ]),
+    reason_code: z.enum([...AUTHORITY_REFUSAL_CODES, "input_required"]),
     observed_at: z.string().datetime(),
+    refusals: z.number().int().positive().optional(),
   })
   .nullable();
 

@@ -124,7 +124,7 @@ describe("classifyRun", () => {
 describe("planOccurrenceWrite", () => {
   const prior = {
     state: "held" as const,
-    reason_code: "execution_authority_unavailable",
+    reason_code: "execution_authority_expired",
     last_due_at: at("2026-11-20T09:00:00Z"),
   };
 
@@ -138,7 +138,7 @@ describe("planOccurrenceWrite", () => {
     expect(
       planOccurrenceWrite(prior, {
         state: "held",
-        reason_code: "execution_authority_unavailable",
+        reason_code: "execution_authority_expired",
       }),
     ).toEqual({ kind: "merge", after: prior.last_due_at });
   });

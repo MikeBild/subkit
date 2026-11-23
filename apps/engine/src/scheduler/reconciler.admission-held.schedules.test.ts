@@ -18,6 +18,7 @@ import { logger } from "../logging/index.ts";
 import { builtinRoleId } from "../rbac/roles.ts";
 import { databaseNow } from "../test-helpers/database-clock.ts";
 import { inspectScheduleAutomation } from "./automation-status.ts";
+import { REFUSAL_PAUSE_AFTER } from "./core/admission-refusals.ts";
 import { ctx, occurrenceAudits, useAdmissionHeldDb } from "./reconciler.admission-held-fixtures.ts";
 import { SchedulerReconciler } from "./reconciler.ts";
 import { logScheduleFireFailure } from "./schedule-fire-failure.ts";
@@ -78,7 +79,7 @@ test("an exhausted authority keeps the schedule held and a live matching one mak
     )
     .catch((caught: unknown) => caught);
   expect(refusal).toBeInstanceOf(DomainRefusal);
-  expect(refusal).toMatchObject({ code: "execution_authority_unavailable" });
+  expect(refusal).toMatchObject({ code: "execution_authority_exhausted" });
   await grantScheduleAuthorityFixture(ctx.testDb.db, ctx.tenantId, workflow_id);
   expect(await inspectScheduleAutomation(schedule, ctx.testDb.db)).toMatchObject({
     state: "authorized",
@@ -93,7 +94,7 @@ test("a held every-schedule is not claimed, fired or warned on repeated ticks", 
     steps: [{ id: "noop", kind: "transform", language: "javascript", expression: "return input;" }],
   });
   const hold = {
-    reason_code: "execution_authority_unavailable" as const,
+    reason_code: "execution_authority_expired" as const,
     observed_at: "2026-05-01T00:00:00.000Z",
   };
   const [schedule] = await ctx.testDb.db
@@ -131,10 +132,90 @@ test("a held every-schedule is not claimed, fired or warned on repeated ticks", 
         and(eq(workflowsSchedules.id, schedule.id), eq(workflowsSchedules.tenant_id, ctx.tenantId)),
       );
     expect(held?.last_enqueued_at).toBeNull();
-    expect(held?.admission_hold).toEqual(hold);
+    expect(held?.admission_hold).toEqual({ ...hold, refusals: 3 });
   } finally {
     warn.mockRestore();
   }
+});
+
+test("a schedule refused for the same reason again and again pauses and says why", async () => {
+  const { workflow_id } = await createWorkflowRow(ctx, {
+    name: "Refused every schedule",
+    slug: "refused-every-schedule",
+    steps: [{ id: "noop", kind: "transform", language: "javascript", expression: "return input;" }],
+  });
+  const hold = {
+    reason_code: "execution_authority_revoked" as const,
+    observed_at: "2026-05-01T00:00:00.000Z",
+  };
+  const [schedule] = await ctx.testDb.db
+    .insert(workflowsSchedules)
+    .values({
+      tenant_id: ctx.tenantId,
+      workflow_id,
+      cron: "every:60",
+      timezone: "UTC",
+      paused: false,
+      last_enqueued_at: null,
+      created_at: new Date("2026-05-01T00:00:00Z"),
+      admission_hold: hold,
+    })
+    .returning();
+  if (!schedule) throw new Error("fixture schedule missing");
+  const fired: string[] = [];
+  const read = async () =>
+    (
+      await ctx.testDb.db
+        .select()
+        .from(workflowsSchedules)
+        .where(
+          and(
+            eq(workflowsSchedules.id, schedule.id),
+            eq(workflowsSchedules.tenant_id, ctx.tenantId),
+          ),
+        )
+    )[0];
+  const tick = () =>
+    fireEverySchedule(
+      ctx.testDb.db,
+      { schedule_id: schedule.id, tenant_id: ctx.tenantId, workflow_id, seconds: 60 },
+      async (key) => {
+        fired.push(key);
+      },
+    );
+  for (let seen = 1; seen < REFUSAL_PAUSE_AFTER; seen++) {
+    await tick();
+    expect(await read()).toMatchObject({
+      paused: false,
+      admission_hold: { ...hold, refusals: seen },
+    });
+  }
+  await tick();
+  expect(await read()).toMatchObject({
+    paused: true,
+    paused_reason: "repeated_failures",
+    paused_failure_class: "execution_authority_revoked",
+    paused_failure_count: REFUSAL_PAUSE_AFTER,
+    admission_hold: hold,
+  });
+  await tick();
+  expect(fired).toHaveLength(0);
+  expect((await read())?.admission_hold).toEqual(hold);
+  const paused = await ctx.testDb.db
+    .select({ metadata: auditLog.metadata })
+    .from(auditLog)
+    .where(
+      and(
+        eq(auditLog.tenant_id, ctx.tenantId),
+        eq(auditLog.action, "schedule.paused"),
+        eq(auditLog.resource_id, schedule.id),
+      ),
+    );
+  expect(paused).toHaveLength(1);
+  expect(paused[0]?.metadata).toMatchObject({
+    failure_class: "execution_authority_revoked",
+    consecutive_failures: REFUSAL_PAUSE_AFTER,
+  });
 });
 
 test("deactivating a person revokes their key while an approved schedule still runs as system", async () => {

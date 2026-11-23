@@ -53,6 +53,11 @@ export const ToolCallPolicySchema = z
       })
       .nullable(),
     rule_id: z.string().uuid().nullable(),
+    rule_quote: z
+      .string()
+      .nullable()
+      .optional()
+      .describe("The person's own words the rule was created from, when it was stated in chat."),
     ask_reason: z
       .string()
       .nullable()

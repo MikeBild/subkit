@@ -3,9 +3,23 @@ import type { Executor } from "../db/client.ts";
 import type { workflowExecutionAuthorities } from "../db/schema/index.ts";
 import { contentBoundariesFromManifest } from "./content-publication-proposal.ts";
 import { isOpenEnded, remainingRuns } from "./core/authority.ts";
+import {
+  type AuthorityAvailability,
+  decideAuthorityAvailability,
+} from "./core/authority-availability.ts";
 import { previewWorkflowAuthority } from "./execution-authorities.ts";
 import type { WorkflowReadFacts } from "./read-facts.ts";
 import { reportBoundariesFromManifest } from "./report-delivery-proposal.ts";
+
+const RECORDED_STATE: Readonly<Record<AuthorityAvailability, WorkflowAuthority["state"]>> = {
+  live: "approved",
+  revoked: "revoked",
+  expired: "expired",
+  exhausted: "exhausted",
+  none: "not_yet_valid",
+  boundary_changed: "invalidated",
+  version_changed: "invalidated",
+};
 
 export function recordedAuthority(
   row: typeof workflowExecutionAuthorities.$inferSelect,
@@ -16,15 +30,9 @@ export function recordedAuthority(
     workflow?.lifecycle === "active" && workflow.current_version_id === row.workflow_version_id;
   const state: WorkflowAuthority["state"] = row.superseded_by
     ? "superseded"
-    : row.revoked_at
-      ? "revoked"
-      : row.valid_until !== null && row.valid_until <= new Date(now)
-        ? "expired"
-        : row.max_runs !== null && row.reserved_runs >= row.max_runs
-          ? "exhausted"
-          : row.valid_from > new Date(now)
-            ? "not_yet_valid"
-            : "approved";
+    : RECORDED_STATE[
+        decideAuthorityAvailability({ authority: row, now: new Date(now), use: "reserve" })
+      ];
   return {
     execution_environment: row.execution_environment,
     active_version,

@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { AUTHORITY_REFUSAL_CODES } from "@shared/authority-refusal.ts";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { webhooksInbound, workflows, workflowsSchedules } from "../db/schema/index.ts";
@@ -17,11 +18,7 @@ export const WorkflowScheduleBindingSchema = z
     execution_mode: z.enum(["dev", "prod"]),
     admission_hold: z
       .object({
-        reason_code: z.enum([
-          "execution_authority_required",
-          "execution_authority_unavailable",
-          "input_required",
-        ]),
+        reason_code: z.enum([...AUTHORITY_REFUSAL_CODES, "input_required"]),
         observed_at: z.string(),
       })
       .nullable(),

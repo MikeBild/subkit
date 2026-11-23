@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { describeBoundAction } from "../../instruction-cover/bound-action.ts";
+import { ruleEligible } from "../core/rule-scope.ts";
 import {
   contentHash,
   RULE_DAILY_LIMIT,
   RULE_LIFETIME_DAYS,
   type RuleLimits,
-  ruleEligible,
   ruleExpiry,
   ruleRefusal,
   usesToday,

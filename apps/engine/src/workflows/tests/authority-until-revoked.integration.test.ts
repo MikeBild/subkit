@@ -511,5 +511,5 @@ test("a run of a version whose approval moved to a newer version still stops", a
   expect(carried.inherited).toHaveLength(1);
   await expect(
     assertExecutionAuthorityCurrent(ctx.db, f.tenant_id, before.execution_id),
-  ).rejects.toMatchObject({ code: "execution_authority_unavailable" });
+  ).rejects.toMatchObject({ code: "execution_authority_revoked" });
 });

@@ -270,6 +270,10 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
     defaultMode: "no_confirm",
     neverGate: true,
   },
+  propose_approval_rule: {
+    defaultMode: "no_confirm",
+    neverGate: true,
+  },
   propose_workflow_repair: {
     defaultMode: "no_confirm",
     neverGate: true,

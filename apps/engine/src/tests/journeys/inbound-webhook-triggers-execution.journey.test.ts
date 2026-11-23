@@ -80,7 +80,7 @@ describe("inbound webhook triggers execution", () => {
     expect(res.status).toBe(409);
     expect(await res.json()).toMatchObject({
       error: "denied",
-      reason: "execution_authority_unavailable",
+      reason: "execution_authority_required",
       hint: expect.stringContaining("finite execution authority"),
     });
     expect(

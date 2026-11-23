@@ -8,15 +8,14 @@ import {
   toolApprovalRules,
 } from "../../db/schema/index.ts";
 import type { BoundAction } from "../instruction-cover/bound-action.ts";
+import { ruleEligible, scopeOf } from "./core/rule-scope.ts";
 import {
   type RuleContent,
   type RuleRefusal,
-  ruleEligible,
   ruleExpiry,
   ruleRefusal,
   scopeCovers,
   scopeHash,
-  scopeOf,
   usageDay,
 } from "./scope.ts";
 
@@ -85,6 +84,51 @@ export async function noteApprovedAction(
   return offered.length > 0
     ? { rule_id: row.id, offered: true, state: "offered" }
     : { rule_id: row.id, offered: false, state: row.state };
+}
+
+export async function offerSpokenRule(
+  db: Executor,
+  owner: RuleOwner,
+  action: BoundAction,
+  source_quote: string,
+  content_hash: string | null = null,
+): Promise<NotedApproval | null> {
+  if (!ruleEligible(action)) return null;
+  const scope = scopeOf(action);
+  const standing = sql`${toolApprovalRules.state} IN ('active', 'offered')`;
+  const [row] = await db
+    .insert(toolApprovalRules)
+    .values({
+      tenant_id: owner.tenant_id,
+      user_id: owner.user_id,
+      tool: action.tool,
+      scope_hash: scopeHash(scope),
+      scope,
+      state: "offered",
+      offered_at: sql`now()`,
+      content_class: content_hash === null ? "no_content" : "person_given",
+      content_hash,
+      source_quote,
+    })
+    .onConflictDoUpdate({
+      target: [
+        toolApprovalRules.tenant_id,
+        toolApprovalRules.user_id,
+        toolApprovalRules.scope_hash,
+      ],
+      set: {
+        state: sql`CASE WHEN ${toolApprovalRules.state} = 'active' THEN 'active' ELSE 'offered' END`,
+        offered_at: sql`CASE WHEN ${standing} THEN ${toolApprovalRules.offered_at} ELSE now() END`,
+        decided_at: sql`CASE WHEN ${standing} THEN ${toolApprovalRules.decided_at} ELSE NULL END`,
+        revoked_at: sql`NULL`,
+        source_quote: sql`CASE WHEN ${toolApprovalRules.state} = 'active' THEN ${toolApprovalRules.source_quote} ELSE ${source_quote} END`,
+        content_class: sql`CASE WHEN ${standing} THEN ${toolApprovalRules.content_class} WHEN ${content_hash}::text IS NULL THEN 'no_content' ELSE 'person_given' END`,
+        updated_at: sql`now()`,
+      },
+    })
+    .returning();
+  if (!row) return null;
+  return { rule_id: row.id, offered: row.state === "offered", state: row.state };
 }
 
 export type RuleMatch =
@@ -273,6 +317,7 @@ export async function decideRule(
           recipient_count: rule.scope.recipients.length,
           approvals_count: rule.approvals_count,
           content_class: rule.content_class,
+          ...(rule.source_quote ? { source_quote: rule.source_quote } : {}),
           daily_limit: rule.daily_limit,
           expires_at: rule.expires_at ? rule.expires_at.toISOString() : null,
         },

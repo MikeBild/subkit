@@ -5,6 +5,8 @@ import {
   auditLog,
   connectors,
   tenants,
+  users,
+  workflowAuthorityPairRequests,
   workflowExecutionAuthorities,
   workflows,
   workflowVersions,
@@ -14,6 +16,7 @@ import {
   admitAuthorizedWorkflowExecution,
   assertExecutionAuthorityCurrent,
 } from "../../execution/authority-admission.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { databaseNow } from "../../test-helpers/database-clock.ts";
 import { boundaryGrowth, carryApprovalsForward } from "../authority-inheritance.ts";
 import { WorkflowEffectManifestSchema } from "../effect-manifest.ts";
@@ -232,7 +235,7 @@ describe("an approval follows a version whose boundary does not grow", () => {
     await assertExecutionAuthorityCurrent(ctx.db, f.tenant_id, run.execution_id);
     for (let i = 1; i < 6; i++) await admitAuthorizedWorkflowExecution(params, ctx.db);
     await expect(admitAuthorizedWorkflowExecution(params, ctx.db)).rejects.toMatchObject({
-      code: "execution_authority_unavailable",
+      code: "execution_authority_exhausted",
     });
   });
 
@@ -287,6 +290,81 @@ const items = (
   method: "POST",
   path: "/graphql",
   graphql: { query, variables },
+});
+
+describe("a workspace that asks for two people", () => {
+  async function pairWorkspace(f: Awaited<ReturnType<typeof fixture>>) {
+    await ctx.db
+      .update(tenants)
+      .set({ workflow_approval_policy: "pair" })
+      .where(eq(tenants.id, f.tenant_id));
+  }
+
+  async function approvedByTwo(f: Awaited<ReturnType<typeof fixture>>) {
+    const role_id = await builtinRoleId(ctx.db, "admin");
+    const people = await ctx.db
+      .insert(users)
+      .values(
+        ["first", "second"].map((name) => ({
+          tenant_id: f.tenant_id,
+          email: `${name}-${f.workflow_id}@example.test`,
+          role_id,
+        })),
+      )
+      .returning();
+    const now = await databaseNow(ctx.db);
+    await ctx.db.insert(workflowAuthorityPairRequests).values({
+      tenant_id: f.tenant_id,
+      workflow_id: f.workflow_id,
+      workflow_version_id: f.v1,
+      execution_environment: "dev",
+      expected_manifest_digest: f.authority.effect_manifest_digest,
+      grant: {},
+      first_approver_id: people[0]?.id ?? "",
+      second_approver_id: people[1]?.id ?? "",
+      state: "approved",
+      expires_at: new Date(now.getTime() + 60_000),
+      decided_at: now,
+      authority_id: f.authority.id,
+    });
+  }
+
+  test("does not carry what one person approved, and the new version waits", async () => {
+    const f = await fixture(({ main }) => [post(main)]);
+    await pairWorkspace(f);
+    const next = await activate(f, [
+      { ...post(f.ids.main, "/messages", { to: "b" }), id: "deliver" },
+    ]);
+    expect(next.outcome.inherited).toHaveLength(0);
+    const rows = await grantsOf(f.workflow_id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.revoked_at).toBeNull();
+    await expect(
+      admitAuthorizedWorkflowExecution(
+        {
+          tenant_id: f.tenant_id,
+          workflow_id: f.workflow_id,
+          execution_environment: "dev",
+          request_source: "api",
+        },
+        ctx.db,
+      ),
+    ).rejects.toMatchObject({ code: "execution_authority_required" });
+  });
+
+  test("carries what two people approved, again on the version after", async () => {
+    const f = await fixture(({ main }) => [post(main)]);
+    await pairWorkspace(f);
+    await approvedByTwo(f);
+    const next = await activate(f, [
+      { ...post(f.ids.main, "/messages", { to: "b" }), id: "deliver" },
+    ]);
+    expect(next.outcome.inherited).toHaveLength(1);
+    const again = await activate(f, [
+      { ...post(f.ids.main, "/messages", { to: "c" }), id: "deliver" },
+    ]);
+    expect(again.outcome.inherited).toHaveLength(1);
+  });
 });
 
 describe("a read approval follows changed literal request values", () => {

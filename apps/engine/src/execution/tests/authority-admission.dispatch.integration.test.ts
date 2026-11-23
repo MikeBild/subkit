@@ -69,7 +69,7 @@ test("revocation between queueing and dispatch blocks an existing reservation", 
     .where(eq(workflowExecutionAuthorities.id, f.authority.id));
   await expect(
     assertExecutionAuthorityCurrent(ctx.db, f.params.tenant_id, run.execution_id),
-  ).rejects.toMatchObject({ code: "execution_authority_unavailable" });
+  ).rejects.toMatchObject({ code: "execution_authority_revoked" });
   expect(await reservations(f.authority.id)).toBe(1);
 });
 
@@ -346,7 +346,7 @@ test("switching the active version blocks a queued old-version run", async () =>
     .where(eq(workflows.id, f.workflow.id));
   await expect(
     assertExecutionAuthorityCurrent(ctx.db, f.params.tenant_id, run.execution_id),
-  ).rejects.toMatchObject({ code: "execution_authority_unavailable" });
+  ).rejects.toMatchObject({ code: "execution_authority_required" });
 });
 
 test("expiry after admission still blocks dispatch", async () => {
@@ -361,7 +361,7 @@ test("expiry after admission still blocks dispatch", async () => {
   });
   await expect(
     assertExecutionAuthorityCurrent(ctx.db, f.params.tenant_id, run.execution_id),
-  ).rejects.toMatchObject({ code: "execution_authority_unavailable" });
+  ).rejects.toMatchObject({ code: "execution_authority_expired" });
 });
 
 test("tenant mismatch and cancellation cannot dispatch the reserved run", async () => {

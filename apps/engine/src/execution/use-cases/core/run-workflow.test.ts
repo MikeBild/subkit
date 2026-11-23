@@ -373,7 +373,9 @@ describe("refusal vocabularies", () => {
     ]);
     expect([...AUTHORITY_UNREADY_CODES]).toEqual([
       "execution_authority_required",
-      "execution_authority_unavailable",
+      "execution_authority_expired",
+      "execution_authority_exhausted",
+      "execution_authority_revoked",
       "execution_authority_changed",
       "workflow_version_not_active",
       "prepared_credential_unavailable",

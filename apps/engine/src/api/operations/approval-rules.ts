@@ -50,6 +50,10 @@ export const ToolApprovalRuleSchema = z
     recipients: z
       .array(z.string())
       .describe("The only recipients the rule covers. Empty: actions without a recipient."),
+    source_quote: z
+      .string()
+      .nullable()
+      .describe("The person's own words the rule was created from, when it was stated in chat."),
     approvals_count: z.number().int().describe("How often the person approved this exact action."),
     use_count: z.number().int().describe("How often the rule let an action run."),
     offered_at: z.string().nullable(),
@@ -95,6 +99,7 @@ function serialize(row: ToolApprovalRuleRow): RuleView {
     target: row.scope.target,
     account: row.scope.account,
     recipients: row.scope.recipients,
+    source_quote: row.source_quote,
     approvals_count: row.approvals_count,
     use_count: row.use_count,
     offered_at: iso(row.offered_at),

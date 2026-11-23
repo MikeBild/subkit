@@ -38,7 +38,10 @@ export type AttentionVerb =
 export const ATTENTION_REASONS = [
   "awaiting_answer",
   "execution_authority_required",
-  "execution_authority_unavailable",
+  "execution_authority_expired",
+  "execution_authority_exhausted",
+  "execution_authority_revoked",
+  "execution_authority_changed",
   "version_awaiting_approval",
   "version_needs_repair",
   "approval_expiring",

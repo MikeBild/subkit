@@ -1,3 +1,4 @@
+import { AUTHORITY_REFUSAL_CODES } from "@shared/authority-refusal.ts";
 import { and, count, desc, eq, gte, inArray } from "drizzle-orm";
 import { AuditAction } from "../audit/types.ts";
 import type { Executor } from "../db/client.ts";
@@ -87,7 +88,7 @@ export async function inboundHookAutomationView(
 
 const DELIVERY_RATE_WINDOW_DAYS = 14;
 
-const GATE_REFUSAL_REASONS = ["execution_authority_required", "execution_authority_unavailable"];
+const GATE_REFUSAL_REASONS = [...AUTHORITY_REFUSAL_CODES];
 
 export async function inboundHookDeliveryRate(
   tenant: string,

@@ -1,3 +1,4 @@
+import { isAuthorityRefusalCode } from "@shared/authority-refusal.ts";
 import { and, asc, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import { auditAwait } from "../audit/audit.ts";
@@ -884,12 +885,7 @@ export class SchedulerReconciler {
       },
       this.opts.db,
     ).catch(async (error: unknown) => {
-      if (
-        error instanceof Error &&
-        "code" in error &&
-        (error.code === "execution_authority_required" ||
-          error.code === "execution_authority_unavailable")
-      ) {
+      if (error instanceof Error && "code" in error && isAuthorityRefusalCode(error.code)) {
         if (await recordScheduleAdmission(this.opts.db, audit, error.code))
           await enqueueGateDiagnosis(this.opts.boss, this.opts.db, {
             tenant_id: payload.tenant_id,

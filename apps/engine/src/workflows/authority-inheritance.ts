@@ -5,6 +5,8 @@ import type { AuditActorType } from "../audit/types.ts";
 import type { Executor } from "../db/client.ts";
 import {
   connectors,
+  tenants,
+  workflowAuthorityPairRequests,
   workflowExecutionAuthorities,
   workflows,
   workflowVersions,
@@ -15,6 +17,7 @@ import { authorityLive } from "./authority-live.ts";
 import { contentBoundariesFromManifest } from "./content-publication-proposal.ts";
 import { carryForward } from "./core/authority.ts";
 import { projectBoundaryGrowth } from "./core/authority-inheritance.ts";
+import { decideCarryUnderPolicy, pairApprovedOrigin } from "./core/authority-policy.ts";
 import { type WorkflowEffectManifest, WorkflowEffectManifestSchema } from "./effect-manifest.ts";
 import { previewWorkflowAuthority } from "./execution-authorities.ts";
 import { type ReadInheritanceEvidence, requestStepsOf } from "./read-inheritance.ts";
@@ -146,6 +149,50 @@ async function readInheritanceEvidence(
   return grantedSteps && nextSteps ? { granted: grantedSteps, next: nextSteps } : null;
 }
 
+async function carryPolicy(
+  db: Executor,
+  tenant_id: string,
+  workflow_id: string,
+): Promise<(parent: AuthorityRow) => boolean> {
+  const [workspace] = await db
+    .select({ policy: tenants.workflow_approval_policy })
+    .from(tenants)
+    .where(eq(tenants.id, tenant_id))
+    .limit(1);
+  const policy = workspace?.policy === "pair" ? "pair" : "single";
+  if (policy !== "pair") return () => true;
+  const lineage = await db
+    .select({
+      id: workflowExecutionAuthorities.id,
+      inherited_from: workflowExecutionAuthorities.inherited_from,
+    })
+    .from(workflowExecutionAuthorities)
+    .where(
+      and(
+        eq(workflowExecutionAuthorities.tenant_id, tenant_id),
+        eq(workflowExecutionAuthorities.workflow_id, workflow_id),
+      ),
+    );
+  const approved = await db
+    .select({ authority_id: workflowAuthorityPairRequests.authority_id })
+    .from(workflowAuthorityPairRequests)
+    .where(
+      and(
+        eq(workflowAuthorityPairRequests.tenant_id, tenant_id),
+        eq(workflowAuthorityPairRequests.workflow_id, workflow_id),
+        eq(workflowAuthorityPairRequests.state, "approved"),
+      ),
+    );
+  const pairApproved = new Set(
+    approved.flatMap((row) => (row.authority_id ? [row.authority_id] : [])),
+  );
+  return (parent) =>
+    decideCarryUnderPolicy({
+      policy,
+      pair_approved: pairApprovedOrigin(lineage, parent.id, pairApproved),
+    }) === "carry";
+}
+
 export async function approvalWouldCarry(
   db: Executor,
   input: {
@@ -173,7 +220,9 @@ export async function approvalWouldCarry(
         authorityLive(),
       ),
     );
+  const mayCarry = await carryPolicy(db, input.tenant_id, input.workflow_id);
   for (const parent of parents) {
+    if (!mayCarry(parent)) continue;
     const judged = await judgeCarry(db, parent, input.version_id);
     if (judged && judged.growth.length === 0) return true;
   }
@@ -214,8 +263,22 @@ export async function carryApprovalsForward(
         .for("update");
       if (parents.length === 0) return;
       const covered = new Set<"dev" | "prod">();
+      const mayCarry = await carryPolicy(sp, input.tenant_id, input.workflow_id);
       for (const parent of parents) {
         const environment = parent.execution_environment;
+        if (!mayCarry(parent)) {
+          logger.info({
+            module: "workflows",
+            action: "authority.inheritance_needs_pair",
+            msg: "approval not carried to the new version; this workspace needs two people and one person approved it",
+            tenant_id: input.tenant_id,
+            workflow_id: input.workflow_id,
+            workflow_version_id: input.to_version_id,
+            execution_authority_id: parent.id,
+            execution_environment: environment,
+          });
+          continue;
+        }
         const judged = await judgeCarry(sp, parent, input.to_version_id);
         if (!judged) continue;
         const { preview, granted, growth, relaxed_keys } = judged;

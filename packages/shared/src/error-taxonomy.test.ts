@@ -37,7 +37,7 @@ describe("error taxonomy", () => {
   });
 
   test("prefix families classify, unknown codes stay unclassified", () => {
-    expect(classifyErrorCode("execution_authority_unavailable")?.cause).toBe("authority_mismatch");
+    expect(classifyErrorCode("execution_authority_expired")?.cause).toBe("authority_mismatch");
     expect(classifyErrorCode("pagination_truncated")?.cause).toBe("incomplete_read");
     expect(classifyErrorCode("something_new")).toBeNull();
     expect(isErrorCode("something_new")).toBe(false);

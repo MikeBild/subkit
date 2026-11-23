@@ -308,7 +308,7 @@ describe("daily summary", () => {
 
 describe("what may break through quiet hours", () => {
   test("a stopped or auto-paused workflow, schedule or task is critical only in production", () => {
-    for (const reason of ["schedule_auto_paused", "execution_authority_unavailable"]) {
+    for (const reason of ["schedule_auto_paused", "execution_authority_expired"]) {
       const stopped = { class: "stopped", reason };
       expect(
         isCriticalPush({ ...stopped, subject: { kind: "workflow", environment: "prod" } }),

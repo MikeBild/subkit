@@ -26,8 +26,13 @@ export function decideRunCoverage(request: AdmissionRequest, facts: RunCoverageF
     { stage: "repeated_runs", eligible: preview.eligible },
     {
       stage: "authority",
-      authority_digest: authority.effect_manifest_digest,
-      boundary_digest: preview.digest,
+      refusal:
+        authority.effect_manifest_digest === preview.digest
+          ? null
+          : {
+              code: "execution_authority_changed",
+              message: "the execution authority no longer matches the current effect boundary",
+            },
     },
   ];
   return stages.every((stage) => decideAdmission(request, stage).kind === "admitted")

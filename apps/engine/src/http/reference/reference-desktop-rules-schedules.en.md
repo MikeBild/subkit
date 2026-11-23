@@ -64,7 +64,10 @@ Query parameters of both routes: `limit` (default 50, at most 200) and `before` 
 | `repeated_failures` | `held` | The schedule paused itself. |
 | `input_required` | `held` | The schedule lacks required input. |
 | `execution_authority_required` | `held` | No approval covers the current version. |
-| `execution_authority_unavailable` | `held` | The approval expired, is used up or was revoked. |
+| `execution_authority_expired` | `held` | The approval has expired. |
+| `execution_authority_exhausted` | `held` | The approval is used up. |
+| `execution_authority_revoked` | `held` | The approval was revoked. |
+| `execution_authority_changed` | `held` | The workflow would now do something the approval does not cover. |
 | `grant_required`, `grant_expired`, `grant_exhausted`, `grant_fingerprint_mismatch` | `held` | The standing permission of the task is missing, ended, used up or no longer fits the task. |
 | `owner_unavailable`, `ai_access_missing`, `paused` | `held` | The owner of the task is unavailable, the workspace has no AI provider, or the task is paused. |
 

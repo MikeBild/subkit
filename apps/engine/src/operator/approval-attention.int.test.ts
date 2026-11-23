@@ -228,13 +228,13 @@ describe("a version nobody has approved yet", () => {
     const wf = await workflow("mixed");
     await schedule(wf.workflow_id, {
       admission_hold: {
-        reason_code: "execution_authority_unavailable",
+        reason_code: "execution_authority_expired",
         observed_at: new Date(getTestNow()).toISOString(),
       },
     });
     await hook(wf.workflow_id, `${wf.slug}-in`);
     expect((await itemsOf(wf.workflow_id)).map((item) => item.reason)).toEqual([
-      "execution_authority_unavailable",
+      "execution_authority_expired",
     ]);
   });
 

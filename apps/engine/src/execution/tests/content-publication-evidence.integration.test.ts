@@ -142,7 +142,7 @@ test("held preview records fixed item evidence without publishing or creating a 
         },
         ctx.testDb.db,
       ),
-    ).rejects.toMatchObject({ code: "execution_authority_unavailable" });
+    ).rejects.toMatchObject({ code: "execution_authority_required" });
   });
 });
 

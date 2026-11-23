@@ -108,7 +108,7 @@ test("successive runs automatically use the matching authority without another g
     expect(entry.metadata).not.toHaveProperty("caller_context");
   }
   await expect(admitAuthorizedWorkflowExecution(f.params, ctx.db)).rejects.toMatchObject({
-    code: "execution_authority_unavailable",
+    code: "execution_authority_exhausted",
   });
 });
 
@@ -187,11 +187,11 @@ test("revoking an approval that stands until revoked ends it", async () => {
     .set({ revoked_at: sql`clock_timestamp()`, revoked_by: actor })
     .where(eq(workflowExecutionAuthorities.id, f.authority.id));
   await expect(admitAuthorizedWorkflowExecution(f.params, ctx.db)).rejects.toMatchObject({
-    code: "execution_authority_unavailable",
+    code: "execution_authority_revoked",
   });
   await expect(
     assertExecutionAuthorityCurrent(ctx.db, f.params.tenant_id, queued.execution_id),
-  ).rejects.toMatchObject({ code: "execution_authority_unavailable" });
+  ).rejects.toMatchObject({ code: "execution_authority_revoked" });
 });
 
 test("cron queue retries reuse one authorized reservation and stop at its run limit", async () => {
@@ -273,9 +273,9 @@ test("a held schedule is filed as a refusal, and its release as an admission", a
   const held = await rows();
   expect(held).toHaveLength(1);
   expect(held[0]?.result).toBe("denied");
-  expect(held[0]?.reason).toBe("execution_authority_unavailable");
+  expect(held[0]?.reason).toBe("execution_authority_exhausted");
   expect((held[0]?.metadata as Record<string, unknown> | undefined)?.reason_code).toBe(
-    "execution_authority_unavailable",
+    "execution_authority_exhausted",
   );
   expect((held[0]?.metadata as Record<string, unknown> | undefined)?.state).toBe("held");
 
