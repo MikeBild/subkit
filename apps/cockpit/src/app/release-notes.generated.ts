@@ -3,7 +3,7 @@ export type ReleaseNotes = { version: string; notes: string[]; highlights: strin
 export type PendingNotes = { version: string | null; notes: string[]; highlights: string[] | null };
 
 export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: PendingNotes } = {
-  "source": "0017b996271e38ad81297c9275721db685ca9009",
+  "source": "d929b7770e7abf832845b629874c49251ebf1860",
   "releases": [
     {
       "version": "v1.0.0",
@@ -2319,15 +2319,27 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
         "say which files a storage step may access"
       ],
       "highlights": [
-        "SubKit Desktop and the Cockpit no longer show “Server offline” while connected: the live event stream works for every signed-in workspace.",
-        "Connected and offline now come from one source, so the status in the top bar and the notice on a page always agree.",
-        "“Report a problem” in the Cockpit attaches the redacted diagnostics and the trace id of the failing request, and confirms that the report arrived."
+        "SubKit Desktop signs in even when the browser is already signed in to the Cockpit, and every browser page of SubKit opens without a workspace error.",
+        "“Report a problem” in SubKit Desktop now sends the report, with redacted diagnostics attached, even before you sign in.",
+        "SubKit Desktop starts with SubKit Cloud prefilled, and the installer window stays clean even when Finder shows hidden files.",
+        "Top-level pages in the Cockpit and in SubKit Desktop no longer repeat the menu name as a big heading.",
+        "Skipped steps read as skipped, not as failures, and failed sign-ins to connectors log the provider's reason.",
+        "SubKit is open source: contributing guide, code of conduct, issue forms and private security reports on GitHub.",
+        "The README, the documentation and the website describe SubKit in the same words.",
+        "show browser page refusals as a page, not JSON",
+        "open every browser page while signed in to the Cockpit",
+        "let the desktop sign-in page open in a signed-in browser",
+        "say which files a storage step may access"
       ]
     }
   ],
   "unpublished": {
-    "version": null,
+    "version": "12.1.5",
     "notes": [],
-    "highlights": null
+    "highlights": [
+      "SubKit Desktop and the Cockpit no longer show “Server offline” while connected: the live event stream works for every signed-in workspace.",
+      "Connected and offline now come from one source, so the status in the top bar and the notice on a page always agree.",
+      "“Report a problem” in the Cockpit attaches the redacted diagnostics and the trace id of the failing request, and confirms that the report arrived."
+    ]
   }
 };
