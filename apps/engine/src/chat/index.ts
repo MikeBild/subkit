@@ -11,6 +11,7 @@ export * from "./pending-spaces.ts";
 export * from "./registry.ts";
 export type { SlackAdapterOptions } from "./slack/adapter.ts";
 export { SlackAdapter } from "./slack/adapter.ts";
+export * from "./slack/decisions/link-token.ts";
 export * from "./sync-turn.ts";
 export * from "./types.ts";
 export * from "./workspace-admin.ts";

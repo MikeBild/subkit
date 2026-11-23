@@ -19,6 +19,7 @@ import {
   type NotificationSeverity,
 } from "./matcher.ts";
 import { tryAcquire } from "./rate-limit.ts";
+import { slackDecisionBlocks } from "./slack-decision-card.ts";
 
 export interface NotificationAdapter {
   readonly platform?: string;
@@ -179,6 +180,22 @@ function auditOutcome(
   }
 }
 
+async function decisionBlocks(db: Db, event: NotificationEvent): Promise<unknown[] | null> {
+  try {
+    return await slackDecisionBlocks(db, event);
+  } catch (err) {
+    logger.warn({
+      module: "notifications",
+      action: "slack_decision_card.failed",
+      msg: "could not build the Slack decision card; the plain notification is sent instead",
+      tenant_id: event.tenant_id,
+      event_type: event.type,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
+}
+
 export async function dispatchEvent(
   deps: DispatchDeps,
   event: NotificationEvent,
@@ -305,12 +322,14 @@ export async function dispatchEvent(
       continue;
     }
 
+    const blocks = channel.platform === "slack" ? await decisionBlocks(db, event) : null;
     const delivery: ChatDelivery = {
       tenant_id: event.tenant_id,
       workspace_id: channel.workspace_id,
       channel_id: channel.channel_id,
       kind: "message",
       text: buildText(event, rule.severity),
+      ...(blocks ? { blocks } : {}),
       notification: {
         severity: event.severity ?? rule.severity,
         event_type: event.type,
