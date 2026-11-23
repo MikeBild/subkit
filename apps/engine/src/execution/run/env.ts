@@ -51,6 +51,7 @@ export interface RunEnv {
   execution_started_at: number;
   evaluationSeed: string;
   ownConnectorCredentials: boolean;
+  attempt: number;
   beforeExternalRequest: (
     step_key: string,
   ) => NonNullable<StepRunContext["before_external_request"]>;

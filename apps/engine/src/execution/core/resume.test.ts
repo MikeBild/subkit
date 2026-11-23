@@ -9,6 +9,7 @@ import {
   resolvedStepState,
   resolveWriteVerdict,
   resumeDecision,
+  runSuperseded,
   storedStepOutput,
 } from "./resume.ts";
 
@@ -383,5 +384,19 @@ describe("resolveWriteVerdict", () => {
         step_key: "a[1]",
       }),
     ).toBe("wait");
+  });
+});
+
+describe("runSuperseded", () => {
+  test("keeps the copy whose attempt is still current", () => {
+    expect(runSuperseded(2, 2)).toBe(false);
+  });
+
+  test("stops the copy once another one claimed the run", () => {
+    expect(runSuperseded(0, 1)).toBe(true);
+  });
+
+  test("stops the copy when the run row is gone", () => {
+    expect(runSuperseded(0, null)).toBe(true);
   });
 });

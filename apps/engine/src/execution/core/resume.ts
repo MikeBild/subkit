@@ -221,3 +221,9 @@ export function resolveWriteVerdict(facts: {
   if (!facts.uncertain_step_keys.includes(facts.step_key)) return "unknown_step";
   return facts.uncertain_step_keys.every((key) => key === facts.step_key) ? "requeue" : "wait";
 }
+
+export const RUN_SUPERSEDED = "execution_superseded";
+
+export function runSuperseded(own_attempt: number, current_attempt: number | null): boolean {
+  return current_attempt !== own_attempt;
+}

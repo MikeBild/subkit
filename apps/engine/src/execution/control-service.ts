@@ -7,7 +7,7 @@ import { writeEvent } from "../db/index.ts";
 import { executionSteps, executions } from "../db/schema/index.ts";
 import { clearDeviceWait } from "../devices/waiting.ts";
 import { logger } from "../logging/index.ts";
-import { enqueueHostedWork } from "../queue/index.ts";
+import { enqueueHostedWork } from "../queue/hosted-work.ts";
 import { findAllJobs } from "../queue/list-all.ts";
 import { EXECUTION_RUN_DEVICE_QUEUE, EXECUTION_RUN_QUEUE } from "../queue/queues.ts";
 import { verifySignalToken } from "../workflow-signals/index.ts";

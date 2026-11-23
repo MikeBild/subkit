@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import { _resetConfigForTests, loadConfig, setConfigKey } from "../../config/loader.ts";
 import {
@@ -517,6 +517,93 @@ describe("a run whose engine stopped", () => {
     expect(result.status).toBe("succeeded");
     expect(beats).toHaveLength(2);
     expect((beats[1]?.getTime() ?? 0) > (beats[0]?.getTime() ?? 0)).toBe(true);
+  });
+
+  test("a stalled copy sends no change after another copy took the run over", async () => {
+    const workflow_id = await workflow(
+      "resume-fenced",
+      withConnector([
+        { id: "first", kind: "request", method: "GET", path: "/first" },
+        { id: "send", kind: "request", method: "POST", path: "/send" },
+      ]),
+    );
+    const admitted = await admitAuthorizedWorkflowExecution(
+      {
+        tenant_id: ctx.tenantId,
+        workflow_id,
+        execution_environment: "dev",
+        request_source: "api",
+        input: null,
+      },
+      ctx.testDb.db,
+    );
+    const run = { execution_id: admitted.execution_id, input: admitted.input, workflow_id };
+    const gates: Array<() => void> = [];
+    let reads = 0;
+    upstream.setHandler(async (req, res) => {
+      hits.push(`${req.method} ${req.url}`);
+      if (req.method === "GET") {
+        reads += 1;
+        await new Promise<void>((release) => gates.push(release));
+      }
+      jsonResponse(res, 200, { ok: true, path: req.url });
+    });
+    try {
+      const stalled = runExecution({
+        db: ctx.testDb.db,
+        tenant_id: ctx.tenantId,
+        source: { kind: "saved", workflow_id },
+        input: admitted.input,
+        options: { existing_execution_id: admitted.execution_id, resume_authorized: true },
+      });
+      await waitFor(async () => (reads === 1 ? true : null), {
+        tries: 500,
+        sleepMs: 10,
+        label: "stalled copy is reading",
+      });
+
+      const plan = await redeliver(run);
+      expect(plan.kind).toBe("run");
+      expect((await execution(run.execution_id)).attempt).toBe(1);
+      const takeover = continueRun(run, plan);
+      await waitFor(async () => (reads === 2 ? true : null), {
+        tries: 500,
+        sleepMs: 10,
+        label: "second copy is reading",
+      });
+
+      gates[0]?.();
+      const stalledResult = await stalled;
+      expect(stalledResult.error?.code).toBe("execution_superseded");
+      expect(hits.filter((hit) => hit.startsWith("POST"))).toEqual([]);
+      const meanwhile = await execution(run.execution_id);
+      expect(meanwhile.status).toBe("running");
+      expect(meanwhile.finished_at).toBeNull();
+
+      gates[1]?.();
+      const result = await takeover;
+      expect(result.status).toBe("succeeded");
+      expect(hits.filter((hit) => hit.startsWith("POST"))).toEqual(["POST /send"]);
+      const settled = await execution(run.execution_id);
+      expect(settled.status).toBe("succeeded");
+      expect(settled.attempt).toBe(1);
+      const completed = await ctx.testDb.db
+        .select()
+        .from(auditLog)
+        .where(
+          and(
+            eq(auditLog.tenant_id, ctx.tenantId),
+            eq(auditLog.resource_id, run.execution_id),
+            inArray(auditLog.action, ["execution.completed", "execution.aborted"]),
+          ),
+        );
+      expect(completed.map((row) => row.action)).toEqual(["execution.completed"]);
+    } finally {
+      upstream.setHandler((req, res) => {
+        hits.push(`${req.method} ${req.url}`);
+        jsonResponse(res, 200, { ok: true, path: req.url });
+      });
+    }
   });
 
   test("is handed back to the queue by the recovery sweep", async () => {

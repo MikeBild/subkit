@@ -7,6 +7,7 @@ import { getMetrics, METRIC_NAMES } from "../../observability/metrics.ts";
 import { recordExecutionOutcome } from "../../self-healing/outcome-tracker.ts";
 import { unregisterAbort } from "../abort.ts";
 import { refusedConnectorOf } from "../connector-availability.ts";
+import { RUN_SUPERSEDED, runSuperseded } from "../core/resume.ts";
 import {
   executionAuditOutcome,
   heldWriteSteps,
@@ -23,7 +24,7 @@ import {
   sensitiveRequestMeta,
 } from "../sensitive-payload.ts";
 import { settleTerminalOutcome } from "../settle-terminal.ts";
-import { finalizeExecution } from "../state.ts";
+import { finalizeExecution, readExecutionAttempt } from "../state.ts";
 import type { RunResult } from "../types.ts";
 import type { OutputChecks } from "./checks.ts";
 import type { RunEnv, RunState } from "./env.ts";
@@ -109,6 +110,25 @@ function sensitiveRunResult(
   return runResult;
 }
 
+function supersededRun(env: RunEnv, state: RunState): RunResult {
+  unregisterAbort(env.execution_id, env.abort);
+  logger.warn({
+    module: "execution",
+    action: "execution.superseded",
+    msg: "this copy of the run was taken over by another one and leaves the outcome to it",
+    tenant_id: env.tenant_id,
+    execution_id: env.execution_id,
+    attempt: env.attempt,
+  });
+  return {
+    execution_id: env.execution_id,
+    status: "aborted",
+    output: null,
+    error: { code: RUN_SUPERSEDED, message: "Another copy of this run took over." },
+    steps: env.execution_privacy === "sensitive" ? [] : state.stepSummaries,
+  };
+}
+
 export async function finalizeRun(
   env: RunEnv,
   state: RunState,
@@ -136,29 +156,41 @@ export async function finalizeRun(
     execution_privacy,
   });
 
-  await finalizeExecution(db, tenant_id, execution_id, settledOutcome(finalStatus), {
-    result_storage_uri: offload.storage_uri,
-    failure: settled.failure
-      ? {
-          step_id: state.failedStepId,
-          error_code: settled.failure.code,
-          error_message: settled.failure.message,
-          ...(refusedConnector ? { connector: refusedConnector } : {}),
-        }
-      : null,
-    result_sha256: offload.sha256,
-    output_contract: settled.output_contract,
-    ...(execution_privacy === "sensitive" ? { sensitive_result: state.lastOutput ?? null } : {}),
-    ...(execution_privacy !== "sensitive" && finalStatus === "succeeded"
-      ? {
-          result_markdown: resultMarkdown(
-            state.lastOutput,
-            def.output_schema,
-            declaredSecretValues(def.steps, state.scope),
-          ),
-        }
-      : {}),
-  });
+  const applied = await finalizeExecution(
+    db,
+    tenant_id,
+    execution_id,
+    settledOutcome(finalStatus),
+    {
+      attempt: env.attempt,
+      result_storage_uri: offload.storage_uri,
+      failure: settled.failure
+        ? {
+            step_id: state.failedStepId,
+            error_code: settled.failure.code,
+            error_message: settled.failure.message,
+            ...(refusedConnector ? { connector: refusedConnector } : {}),
+          }
+        : null,
+      result_sha256: offload.sha256,
+      output_contract: settled.output_contract,
+      ...(execution_privacy === "sensitive" ? { sensitive_result: state.lastOutput ?? null } : {}),
+      ...(execution_privacy !== "sensitive" && finalStatus === "succeeded"
+        ? {
+            result_markdown: resultMarkdown(
+              state.lastOutput,
+              def.output_schema,
+              declaredSecretValues(def.steps, state.scope),
+            ),
+          }
+        : {}),
+    },
+  );
+  if (
+    !applied &&
+    runSuperseded(env.attempt, await readExecutionAttempt(db, tenant_id, execution_id))
+  )
+    return supersededRun(env, state);
   if (execution_privacy !== "sensitive" && env.opts.self_healing?.enabled !== false) {
     await recordExecutionOutcome(
       {
@@ -207,7 +239,7 @@ export async function finalizeRun(
     );
   }
 
-  unregisterAbort(execution_id);
+  unregisterAbort(execution_id, env.abort);
 
   const runResult: RunResult = {
     execution_id,
