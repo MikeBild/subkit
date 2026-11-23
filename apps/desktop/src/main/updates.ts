@@ -1,10 +1,12 @@
 import { app } from "electron";
 import {
+  classifyUpdateError,
   initialUpdateState,
   reduceUpdate,
   type UpdateEvent,
   type UpdateState,
   updateBusy,
+  updateErrorEvent,
 } from "../shared/updates.ts";
 import { appLog } from "./app-log.ts";
 import { CHANNEL } from "./channel.ts";
@@ -35,6 +37,7 @@ export class UpdateController {
   private state: UpdateState = initialUpdateState(updatesEnabled());
   private install: (() => void) | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
+  private lastError: unknown = null;
 
   constructor(private readonly hooks: UpdateHooks) {}
 
@@ -53,10 +56,14 @@ export class UpdateController {
     autoUpdater.forceDevUpdateConfig = false;
     autoUpdater.logger = null;
     autoUpdater.on("checking-for-update", () => this.dispatch({ type: "checking" }));
-    autoUpdater.on("update-not-available", () => this.dispatch({ type: "not-available" }));
-    autoUpdater.on("update-available", (info) =>
-      this.dispatch({ type: "available", version: info.version }),
-    );
+    autoUpdater.on("update-not-available", (info) => {
+      appLog.info("update.not_available", { latest: info.version });
+      this.dispatch({ type: "not-available" });
+    });
+    autoUpdater.on("update-available", (info) => {
+      appLog.info("update.available", { latest: info.version });
+      this.dispatch({ type: "available", version: info.version });
+    });
     autoUpdater.on("download-progress", (progress) =>
       this.dispatch({ type: "progress", percent: progress.percent }),
     );
@@ -73,7 +80,8 @@ export class UpdateController {
   async check(): Promise<void> {
     if (this.state.phase === "disabled" || this.state.phase === "ready") return;
     if (updateBusy(this.state)) return;
-    appLog.info("update.check", { channel: CHANNEL.channel });
+    appLog.info("update.check", { channel: CHANNEL.channel, current: app.getVersion() });
+    this.lastError = null;
     this.dispatch({ type: "checking" });
     try {
       await (await updater()).checkForUpdates();
@@ -88,9 +96,22 @@ export class UpdateController {
     return true;
   }
 
+  // electron-updater reports one failure twice, as an "error" event and as the rejected
+  // checkForUpdates promise; handle it once.
   private fail(error: unknown): void {
+    if (error === this.lastError) return;
+    this.lastError = error;
+    const info = classifyUpdateError(error);
+    const fields = { kind: info.kind, url: info.url, status: info.status, code: info.code };
+    const event = updateErrorEvent(this.state, info, messageOf(error));
+    if (event.type === "not-available") {
+      appLog.warn("update.feed_missing", fields);
+      this.dispatch(event);
+      return;
+    }
+    appLog.warn("update.failed", { ...fields, phase: this.state.phase });
     this.hooks.onError("updates", error);
-    this.dispatch({ type: "error", message: messageOf(error) });
+    this.dispatch(event);
   }
 
   private dispatch(event: UpdateEvent): void {
