@@ -208,6 +208,10 @@
       "hash": "f96cab1001ded3556208d81fdaa8e2b57e8955b84dd162b006c25b40cbe20653",
       "proven_at": "2026-11-22"
     },
+    "safety-injected-actions": {
+      "hash": "aac2cf2e08b6fa5cbe69387d79a3477f0aa6b4427f48550dca097ebf69a75135",
+      "proven_at": "2026-11-23"
+    },
     "schema-flow-shape": {
       "hash": "947bb3d689f18cdde8ed033df2d6ec9fc94b06e917f2da69e06a0fc9d0869470",
       "proven_at": "2026-11-22"
