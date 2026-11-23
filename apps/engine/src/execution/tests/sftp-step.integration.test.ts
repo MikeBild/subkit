@@ -3,11 +3,14 @@ import { and, eq } from "drizzle-orm";
 import { _withEgressTenantOriginForTests } from "../../connectors/egress-guard.ts";
 import { upsertCredential } from "../../credentials/service.ts";
 import { connectors, executionSteps } from "../../db/schema/index.ts";
+import { createSeededRandom } from "../../test-helpers/determinism/index.ts";
 import { startTestSftpServer, type TestSftpServer } from "../../test-helpers/sftp-server.ts";
 import type { RequestStep } from "../../workflows/types.ts";
 import { runExecution } from "../engine.ts";
 import { requestRequiresPreparationHold } from "../steps/request/side-effects.ts";
 import { createEngineCtx, createWorkflowRow, type EngineTestCtx } from "./setup.ts";
+
+const rng = createSeededRandom(0x5f7_9a1);
 
 let ctx: EngineTestCtx;
 let server: TestSftpServer;
@@ -62,7 +65,7 @@ function sftpStep(
 
 async function run(steps: unknown[], options: { hold_writes?: boolean } = {}) {
   const { workflow_id } = await createWorkflowRow(ctx, {
-    name: `sftp-${Math.random().toString(36).slice(2, 8)}`,
+    name: `sftp-${rng.int(0, 0xffffff).toString(36).padStart(6, "0")}`,
     steps,
   });
   return runExecution({

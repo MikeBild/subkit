@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { ConversationTool } from "../../conversations/tools/index.ts";
 import { auditLog, intakeItems, personalNotes } from "../../db/schema/index.ts";
+import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import type { NoteWrite } from "../core/apply-proposals.ts";
 import { DEFAULT_EXPORT_LABELS } from "../core/export-markdown.ts";
 import { loadPersonalNotesBlock } from "../prompt-block.ts";
@@ -15,6 +16,8 @@ import {
   rememberForMeTool,
 } from "../tools.ts";
 import { AT, addMessage, callNotes, ownerOf, principalOf, setupNotesSuite } from "./notes-suite.ts";
+
+const nextId = createDeterministicUuidFactory(0x0e5_9ab);
 
 const suite = setupNotesSuite("notes-privacy");
 
@@ -72,17 +75,10 @@ describe("personal notes stay with their person", () => {
       "Prefers answers in short bullet points.",
     );
     expect(() => openField(ownerOf(suite, suite.ctx.userId), row.id, "text", sealed)).toThrow();
-    expect(() =>
-      openField(ownerOf(suite, suite.memberId), crypto.randomUUID(), "text", sealed),
-    ).toThrow();
+    expect(() => openField(ownerOf(suite, suite.memberId), nextId(), "text", sealed)).toThrow();
     expect(() => openField(ownerOf(suite, suite.memberId), row.id, "abstract", sealed)).toThrow();
     expect(() =>
-      openField(
-        { tenant_id: crypto.randomUUID(), user_id: suite.memberId },
-        row.id,
-        "text",
-        sealed,
-      ),
+      openField({ tenant_id: nextId(), user_id: suite.memberId }, row.id, "text", sealed),
     ).toThrow();
   });
 
@@ -176,7 +172,7 @@ describe("personal notes stay with their person", () => {
       principalOf(suite, suite.ctx.userId, "browser_session"),
       principalOf(suite, suite.ctx.userId, "task_run"),
       { ...principalOf(suite, suite.memberId, "browser_session"), auth_source: undefined },
-      { ...principalOf(suite, suite.memberId, "browser_session"), tenant_id: crypto.randomUUID() },
+      { ...principalOf(suite, suite.memberId, "browser_session"), tenant_id: nextId() },
       null,
     ]) {
       const block = await loadPersonalNotesBlock(

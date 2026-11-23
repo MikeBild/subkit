@@ -116,11 +116,11 @@ interface Admitted {
   workflow_id: string;
 }
 
-function redeliver(run: Admitted): Promise<ResumePlan> {
+async function redeliver(run: Admitted): Promise<ResumePlan> {
   return planResume(ctx.testDb.db, {
     tenant_id: ctx.tenantId,
     execution_id: run.execution_id,
-    now: new Date(Date.now() + LEASE_MS * 2),
+    now: new Date((await databaseNow(ctx.testDb.db)).getTime() + LEASE_MS * 2),
     lease_ms: LEASE_MS,
   });
 }

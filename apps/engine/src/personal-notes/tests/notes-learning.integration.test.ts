@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { conversations, userSetupPreferences } from "../../db/schema/index.ts";
+import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import type { NoteProposal } from "../core/apply-proposals.ts";
 import { learnPersonalNotes } from "../learn.ts";
 import { readNotesLearning } from "../persistence/learning-state.ts";
@@ -16,6 +17,8 @@ import {
   principalOf,
   setupNotesSuite,
 } from "./notes-suite.ts";
+
+const nextId = createDeterministicUuidFactory(0x0e5_1ea);
 
 const suite = setupNotesSuite("notes-learning");
 
@@ -72,7 +75,7 @@ describe("learning from the person's own messages", () => {
         tenant_id: suite.ctx.tenantId,
         status: "active",
         owner_id: suite.memberId,
-        draft: { session: { task_run: { task_run_id: crypto.randomUUID() } } },
+        draft: { session: { task_run: { task_run_id: nextId() } } },
       })
       .returning({ id: conversations.id });
     if (!taskChat) throw new Error("missing task conversation fixture");

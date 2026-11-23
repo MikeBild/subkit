@@ -47,8 +47,8 @@ const boss = {
   },
 } as unknown as PgBoss;
 
-function later(): Date {
-  return new Date(Date.now() + LEASE_MS * 2);
+async function later(): Promise<Date> {
+  return new Date((await databaseNow(ctx.testDb.db)).getTime() + LEASE_MS * 2);
 }
 
 beforeAll(async () => {
@@ -137,7 +137,12 @@ async function startedRun(workflow_id: string): Promise<Admitted> {
     },
     ctx.testDb.db,
   );
-  await markExecutionRunning(ctx.testDb.db, ctx.tenantId, admitted.execution_id, new Date());
+  await markExecutionRunning(
+    ctx.testDb.db,
+    ctx.tenantId,
+    admitted.execution_id,
+    await databaseNow(ctx.testDb.db),
+  );
   return { execution_id: admitted.execution_id, input: admitted.input, workflow_id };
 }
 
@@ -158,7 +163,7 @@ async function leaveStep(
   if (left === "dispatched") {
     await ctx.testDb.db
       .update(executionSteps)
-      .set({ write_dispatched_at: new Date() })
+      .set({ write_dispatched_at: await databaseNow(ctx.testDb.db) })
       .where(and(eq(executionSteps.tenant_id, ctx.tenantId), eq(executionSteps.id, id)));
   } else if (left !== "running") {
     await finalizeStepRow(
@@ -199,7 +204,8 @@ async function execution(execution_id: string) {
   return row;
 }
 
-function redeliver(run: Admitted, now: Date = later()): Promise<ResumePlan> {
+async function redeliver(run: Admitted, at?: Date): Promise<ResumePlan> {
+  const now = at ?? (await later());
   return planResume(ctx.testDb.db, {
     tenant_id: ctx.tenantId,
     execution_id: run.execution_id,
@@ -259,7 +265,10 @@ function withConnector(list: unknown[]): unknown[] {
 describe("a run whose engine stopped", () => {
   test("is left alone while its heartbeat is recent", async () => {
     const run = await startedRun(await workflow("resume-alive", withConnector(READS)));
-    expect(await redeliver(run, new Date())).toEqual({ kind: "skip", reason: "alive" });
+    expect(await redeliver(run, await databaseNow(ctx.testDb.db))).toEqual({
+      kind: "skip",
+      reason: "alive",
+    });
     expect((await execution(run.execution_id)).attempt).toBe(0);
   });
 
@@ -464,7 +473,12 @@ describe("a run whose engine stopped", () => {
       request_source: "api",
       hold_writes: true,
     });
-    await markExecutionRunning(ctx.testDb.db, ctx.tenantId, execution_id, new Date());
+    await markExecutionRunning(
+      ctx.testDb.db,
+      ctx.tenantId,
+      execution_id,
+      await databaseNow(ctx.testDb.db),
+    );
     const run = { execution_id, input: null, workflow_id };
     await leaveStep(run, "one", 0, "transform", "running");
     expect(await redeliver(run)).toEqual({ kind: "settled", status: "failed" });
@@ -526,13 +540,13 @@ describe("a run whose engine stopped", () => {
       jobs.push(job);
     };
     const fresh = await recoverCrashedExecutions(ctx.testDb.db, {
-      now: new Date(),
+      now: await databaseNow(ctx.testDb.db),
       leaseMs: LEASE_MS,
       enqueue,
     });
     expect(fresh.requeued).toBe(0);
     const stale = await recoverCrashedExecutions(ctx.testDb.db, {
-      now: later(),
+      now: await later(),
       leaseMs: LEASE_MS,
       enqueue,
     });
