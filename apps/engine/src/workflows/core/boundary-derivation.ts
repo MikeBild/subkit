@@ -48,7 +48,7 @@ export const MAX_LISTED_VALUES = 12;
 export const MAX_LISTED_LENGTH = 32;
 
 const NARROW_CLASSES = ["uuid", "timestamp", "date", "integer"] as const;
-const WIDE_CLASSES = ["file_name", "identifier"] as const;
+const WIDE_CLASSES = ["file_name", "identifier", "long_identifier"] as const;
 const LISTABLE = /^[A-Za-z0-9._-]+$/;
 const WHOLE_PLACEHOLDER = /^\$\{([^}]+)\}$/;
 const UNSPLITTABLE = /[?#%\\]/;

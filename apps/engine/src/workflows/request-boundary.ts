@@ -34,6 +34,7 @@ const enumValue = z
   });
 export const VALUE_CLASSES = {
   identifier: /^[A-Za-z0-9_-]{1,200}$/,
+  long_identifier: /^[A-Za-z0-9_-]{1,1024}$/,
   uuid: /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/,
   integer: /^(0|[1-9][0-9]{0,18})$/,
   date: /^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/,
@@ -47,6 +48,7 @@ type ValueClass = keyof typeof VALUE_CLASSES;
 const VALUE_CLASS_NAMES = Object.keys(VALUE_CLASSES) as [ValueClass, ...ValueClass[]];
 const CLASS_SAMPLE: Record<ValueClass, string> = {
   identifier: "a",
+  long_identifier: "a",
   uuid: "00000000-0000-4000-8000-000000000000",
   integer: "0",
   date: "2000-01-01",
@@ -610,6 +612,46 @@ function matchTarget(boundary: RequestBoundary, url: URL): boolean {
   });
 }
 
+export type TargetVariableIssue = {
+  name: string;
+  length: number;
+  rule: string;
+  fits_class?: ValueClass;
+};
+
+function ruleLabel(variableRule: RequestVariableRule | undefined): string {
+  if (!variableRule) return "no rule";
+  if ("enum" in variableRule) return `enum of ${variableRule.enum.length} value(s)`;
+  if ("caller_bound" in variableRule) return "the authenticated caller";
+  return `class ${variableRule.class}`;
+}
+
+function targetVariableIssue(boundary: RequestBoundary, url: URL): TargetVariableIssue | undefined {
+  if (url.origin !== boundary.origin) return undefined;
+  const actual = url.pathname.split("/");
+  if (actual.length !== boundary.segments.length) return undefined;
+  for (const [index, expected] of boundary.segments.entries()) {
+    const raw = actual[index] ?? "";
+    if (typeof expected === "string") {
+      if (raw !== expected) return undefined;
+      continue;
+    }
+    const variableRule = boundary.variables[expected.var];
+    if (valueAllowed(variableRule, raw)) continue;
+    const wider =
+      variableRule && "class" in variableRule && variableRule.class === "identifier"
+        ? VALUE_CLASSES.long_identifier.test(raw)
+        : false;
+    return {
+      name: expected.var,
+      length: raw.length,
+      rule: ruleLabel(variableRule),
+      ...(wider ? { fits_class: "long_identifier" as const } : {}),
+    };
+  }
+  return undefined;
+}
+
 export type RequestQueryViolation =
   | { reason: "unexpected_key" | "missing_key" | "duplicate_key" | "fixed_value"; key: string }
   | { reason: "variable_value"; key: string; value: string; rule: string };
@@ -648,13 +690,7 @@ function queryViolation(boundary: RequestBoundary, url: URL): RequestQueryViolat
         reason: "variable_value",
         key: entry.key,
         value: value.slice(0, 100),
-        rule: !variableRule
-          ? "no rule"
-          : "enum" in variableRule
-            ? `enum of ${variableRule.enum.length} value(s)`
-            : "caller_bound" in variableRule
-              ? "the authenticated caller"
-              : `class ${variableRule.class}`,
+        rule: ruleLabel(variableRule),
       };
   }
   return null;
@@ -673,7 +709,7 @@ export type RequestBoundaryViolation =
         | "idempotency_key";
     }
   | { kind: "method"; actual: string; reviewed: string }
-  | { kind: "target"; reviewed: string; actual: string }
+  | { kind: "target"; reviewed: string; actual: string; variable?: TargetVariableIssue }
   | { kind: "query"; detail: RequestQueryViolation }
   | { kind: "body_forbidden"; method: string }
   | { kind: "body_size"; bytes: number; max_body_bytes: number }
@@ -759,12 +795,15 @@ export function requestBoundaryViolation(
   } catch {
     return { kind: "url_invalid" };
   }
-  if (!matchTarget(reviewed, url))
+  if (!matchTarget(reviewed, url)) {
+    const variable = targetVariableIssue(reviewed, url);
     return {
       kind: "target",
       reviewed: requestBoundaryTarget(reviewed),
       actual: `${url.origin}${url.pathname}`.slice(0, 300),
+      ...(variable ? { variable } : {}),
     };
+  }
   const query = queryViolation(reviewed, url);
   if (query) return { kind: "query", detail: query };
   if (reviewed.method === "GET" || reviewed.method === "HEAD")
@@ -804,8 +843,15 @@ export function describeRequestBoundaryViolation(violation: RequestBoundaryViola
       return "the idempotency key is missing, ambiguous or outside its reviewed value rule";
     case "body_size":
       return `the body is ${violation.bytes} bytes but \`boundary.max_body_bytes\` is ${violation.max_body_bytes}`;
-    case "target":
-      return `the resolved URL ${violation.actual} is not ${violation.reviewed} with an approved value for every variable`;
+    case "target": {
+      const base = `the resolved URL ${violation.actual} is not ${violation.reviewed} with an approved value for every variable`;
+      const variable = violation.variable;
+      if (!variable) return base;
+      const named = `${base}: \`${variable.name}\` is ${variable.length} characters and outside its rule (${variable.rule})`;
+      return variable.fits_class
+        ? `${named}; the value fits the class \`${variable.fits_class}\`, so change that one rule to \`{class: "${variable.fits_class}"}\``
+        : named;
+    }
     case "method":
       return `the method is ${violation.actual} but the boundary was compiled for ${violation.reviewed}`;
     case "query": {

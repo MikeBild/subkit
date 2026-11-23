@@ -215,6 +215,7 @@ test("a refused `destructive: false` says to omit the key, not to flip it", () =
 test("the class patterns are pinned: a live approval must never change meaning", () => {
   expect(Object.fromEntries(Object.entries(VALUE_CLASSES).map(([k, v]) => [k, v.source]))).toEqual({
     identifier: "^[A-Za-z0-9_-]{1,200}$",
+    long_identifier: "^[A-Za-z0-9_-]{1,1024}$",
     uuid: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
     integer: "^(0|[1-9][0-9]{0,18})$",
     date: "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$",
