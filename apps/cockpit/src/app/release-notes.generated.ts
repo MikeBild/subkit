@@ -5,7 +5,7 @@ export type ReleaseNotes = { version: string; notes: string[]; highlights: Highl
 export type PendingNotes = { version: string | null; notes: string[]; highlights: Highlights | null };
 
 export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: PendingNotes } = {
-  "source": "2f13387ad260ac654edbebb9b9f0c5c8ea9de03e",
+  "source": "36cd86c035808211a0166c6ca860e87a5b05cdf7",
   "releases": [
     {
       "version": "v1.0.0",
@@ -2342,27 +2342,43 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
       ],
       "highlights": {
         "en": [
-          "The README, the package description and the introduction of the documentation now describe SubKit in the same words as the website: it takes over the tasks your team does over and over, you decide what it can access, and you can look up every run in the history.",
-          "The documentation says “Approve what it may access” for the approval step, in the first-workflow chapter and in the feature overview.",
-          "In the Cockpit, the message for a storage step without a reviewed folder now says which files the step “may access”.",
-          "The German introduction reads more naturally: recurring business tasks that run across several systems.",
-          "Nothing changes in how SubKit works; this release only brings the wording in line everywhere."
+          "When something goes wrong, SubKit says what and what to do next: SubKit Desktop keeps a log in ~/Library/Logs/SubKit, shows a clear screen if it cannot start, and copies a redacted diagnostics bundle with one click.",
+          "The engine names the boot phase that failed and the next step; `subkit doctor` checks reachability, version, sign-in and config, and `--verbose` shows every request with its trace id.",
+          "In the Cockpit, Help › “Send diagnostics” sends a bug report with diagnostics, and every error shows its real trace id.",
+          "SubKit Desktop for Mac is signed, notarized and checked with a launch test before every release.",
+          "Fresh screenshots in the docs show the vault, the AI budget, “Always ask first”, the live view and local permissions."
         ],
         "de": [
-          "README, Paketbeschreibung und die Einleitung der Dokumentation beschreiben SubKit jetzt mit denselben Worten wie die Website: Es übernimmt die Aufgaben, die in deinem Team immer wieder anfallen, du legst fest, worauf es zugreifen darf, und du kannst jeden Lauf im Verlauf nachlesen.",
-          "Die Dokumentation nennt den Freigabeschritt „Freigeben, worauf er zugreifen darf“, im Kapitel zum ersten Workflow und in der Funktionsübersicht.",
-          "Im Cockpit sagt die Meldung zu einem Speicher-Schritt ohne geprüften Ordner jetzt, auf welche Dateien der Schritt „zugreifen darf“.",
-          "Die deutsche Einleitung liest sich natürlicher: wiederkehrende Geschäftsaufgaben, die über mehrere Systeme laufen.",
-          "An der Arbeitsweise von SubKit ändert sich nichts; dieses Release vereinheitlicht nur die Formulierungen."
+          "Wenn etwas schiefgeht, sagt SubKit, was und wie es weitergeht: SubKit Desktop schreibt ein Log nach ~/Library/Logs/SubKit, zeigt einen klaren Bildschirm, wenn es nicht starten kann, und kopiert ein geschwärztes Diagnosepaket mit einem Klick.",
+          "Die Engine nennt die Startphase, die gescheitert ist, und den nächsten Schritt; `subkit doctor` prüft Erreichbarkeit, Version, Anmeldung und Konfiguration, und `--verbose` zeigt jede Anfrage mit ihrer Trace-ID.",
+          "Im Cockpit schickt Hilfe › „Diagnose senden“ einen Fehlerbericht mit Diagnose, und jeder Fehler zeigt seine echte Trace-ID.",
+          "SubKit Desktop für den Mac ist signiert, von Apple beglaubigt und wird vor jedem Release mit einem Starttest geprüft.",
+          "Neue Screenshots in der Doku zeigen den Tresor, das KI-Budget, „Immer vorher fragen“, die Live-Ansicht und die lokalen Berechtigungen.",
+          "diagnostics everywhere, desktop fixes, fresh screenshots"
         ]
       }
     }
   ],
   "unpublished": {
-    "version": null,
+    "version": "12.1.4",
     "notes": [
       "say which files a storage step may access"
     ],
-    "highlights": null
+    "highlights": {
+      "en": [
+        "The README, the package description and the introduction of the documentation now describe SubKit in the same words as the website: it takes over the tasks your team does over and over, you decide what it can access, and you can look up every run in the history.",
+        "The documentation says “Approve what it may access” for the approval step, in the first-workflow chapter and in the feature overview.",
+        "In the Cockpit, the message for a storage step without a reviewed folder now says which files the step “may access”.",
+        "The German introduction reads more naturally: recurring business tasks that run across several systems.",
+        "Nothing changes in how SubKit works; this release only brings the wording in line everywhere."
+      ],
+      "de": [
+        "README, Paketbeschreibung und die Einleitung der Dokumentation beschreiben SubKit jetzt mit denselben Worten wie die Website: Es übernimmt die Aufgaben, die in deinem Team immer wieder anfallen, du legst fest, worauf es zugreifen darf, und du kannst jeden Lauf im Verlauf nachlesen.",
+        "Die Dokumentation nennt den Freigabeschritt „Freigeben, worauf er zugreifen darf“, im Kapitel zum ersten Workflow und in der Funktionsübersicht.",
+        "Im Cockpit sagt die Meldung zu einem Speicher-Schritt ohne geprüften Ordner jetzt, auf welche Dateien der Schritt „zugreifen darf“.",
+        "Die deutsche Einleitung liest sich natürlicher: wiederkehrende Geschäftsaufgaben, die über mehrere Systeme laufen.",
+        "An der Arbeitsweise von SubKit ändert sich nichts; dieses Release vereinheitlicht nur die Formulierungen."
+      ]
+    }
   }
 };
