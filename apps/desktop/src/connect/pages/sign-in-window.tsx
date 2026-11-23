@@ -88,8 +88,9 @@ function Window() {
           {screen.kind === "local-capabilities" && (
             <LocalCapabilities
               device={screen.device}
-              signedIn={screen.signedIn}
+              online={screen.online}
               supported={screen.supported}
+              permissions={screen.permissions}
             />
           )}
         </OnboardingFrame>

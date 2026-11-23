@@ -287,6 +287,10 @@ export const CONNECT_SCENARIOS: ConnectScenario[] = [
   { name: "settings-first-run", patch: { view: "settings" } },
   { name: "local-capabilities", patch: { ...COMPLETED, view: "local" } },
   {
+    name: "local-capabilities-partial",
+    patch: { ...COMPLETED, view: "local", permissions: SCREEN_MISSING },
+  },
+  {
     name: "local-capabilities-from-settings",
     patch: { ...COMPLETED, view: "settings" },
     steps: [{ click: "settings-local-open" }],

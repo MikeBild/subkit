@@ -307,8 +307,12 @@ describe("sign-in model: settings", () => {
     expect(viewOf(shown)?.screen).toEqual({
       kind: "local-capabilities",
       device: "MacBook-Anna",
-      signedIn: false,
+      online: false,
       supported: true,
+      permissions: [
+        { key: "accessibility", granted: false },
+        { key: "screen", granted: false },
+      ],
     });
     expect(viewOf(shown)?.frame.settingsOpen).toBe(true);
     expect(run(shown, { type: "GoBack" }).effects).toEqual([

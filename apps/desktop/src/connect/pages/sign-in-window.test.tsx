@@ -513,3 +513,55 @@ describe.skipIf(!desktopRunner)("connected state on the server step", () => {
     expect(html).not.toMatch(/data-testid="step-next"[^>]*disabled/);
   });
 });
+
+describe.skipIf(!desktopRunner)("local capabilities status at a glance", () => {
+  const SIGNED_IN_PROFILE = {
+    id: "p1",
+    label: "work",
+    serverOrigin: "https://work.example.com",
+    signedIn: true,
+    active: true,
+  };
+  const PARTIAL = {
+    view: "local" as const,
+    profiles: [SIGNED_IN_PROFILE],
+    permissions: {
+      supported: true,
+      permissions: { accessibility: true, screen: false, restartPending: false },
+      lost: [],
+    },
+  };
+
+  test("the device is green while online and each permission shows its state", () => {
+    const html = render(state(PARTIAL, [], "de"));
+    expect(html).toMatch(/data-testid="local-status-device" data-online="true"/);
+    expect(html).toMatch(/data-testid="local-status-accessibility" data-granted="true"/);
+    expect(html).toMatch(/data-testid="local-status-screen" data-granted="false"/);
+    const de = dictionary("de");
+    expect(html).toContain(de["permissions.name.screen"]);
+    expect(html).toContain(de["permissions.missing"]);
+    expect(html).toContain(de["permissions.granted"]);
+  });
+
+  test("the device turns grey while the server is offline", () => {
+    const html = render(
+      state({ ...PARTIAL, notice: { kind: "offline", profileId: "p1" } }, [], "de"),
+    );
+    expect(html).toMatch(/data-testid="local-status-device" data-online="false"/);
+  });
+
+  test("the long explanation moved into the info button, not into the row", () => {
+    const html = render(state(PARTIAL, [], "de"));
+    const explain = dictionary("de")["local.explain"];
+    expect(html).toContain(`aria-label="${explain}"`);
+    expect(count(html, explain)).toBe(1);
+  });
+
+  test("without permission support only the device is shown", () => {
+    const html = render(
+      state({ ...PARTIAL, permissions: { ...PARTIAL.permissions, supported: false } }, [], "en"),
+    );
+    expect(html).toContain('data-testid="local-status-device"');
+    expect(html).not.toContain('data-testid="local-status-screen"');
+  });
+});

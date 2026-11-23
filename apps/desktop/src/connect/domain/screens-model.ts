@@ -146,7 +146,13 @@ export type Screen =
   | { kind: "settings" }
   | { kind: "report"; report: ReportView }
   | { kind: "permissions"; setup: PermissionSetupModel }
-  | { kind: "local-capabilities"; device: string; signedIn: boolean; supported: boolean }
+  | {
+      kind: "local-capabilities";
+      device: string;
+      online: boolean;
+      supported: boolean;
+      permissions: LocalPermission[];
+    }
   | LocalSetupModel
   | { kind: "welcome"; invite: WelcomeInvite }
   | { kind: "invite"; invite: InviteView }
@@ -424,6 +430,23 @@ export function forcedStep(state: ConnectState, ui: FlowUi): FlowUi {
   return ui;
 }
 
+export interface LocalPermission {
+  key: PermissionKey;
+  granted: boolean;
+}
+
+export function deviceOnline(state: ConnectState): boolean {
+  if (state.signedIn) return true;
+  const profile = state.profiles.find((candidate) => candidate.active && candidate.signedIn);
+  if (!profile) return false;
+  return !(state.notice?.profileId === profile.id && state.notice.kind === "offline");
+}
+
+export function localPermissions(view: PermissionView): LocalPermission[] {
+  if (!view.supported) return [];
+  return PERMISSION_KEYS.map((key) => ({ key, granted: permissionGranted(view.permissions, key) }));
+}
+
 export interface PermissionCard {
   key: PermissionKey;
   granted: boolean;
@@ -499,8 +522,9 @@ export function screenFor(state: ConnectState, ui: FlowUi): Screen {
     return {
       kind: "local-capabilities",
       device: state.deviceLabel,
-      signedIn: Boolean(state.signedIn),
+      online: deviceOnline(state),
       supported: supports(state.platform, "files"),
+      permissions: localPermissions(state.permissions),
     };
   if (state.view === "permissions")
     return { kind: "permissions", setup: permissionSetupFor(state.permissions) };
