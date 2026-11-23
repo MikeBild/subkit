@@ -375,7 +375,7 @@ describe("what a workflow call really was", () => {
       "permission_denied",
       "repair_loop_detected",
       "input_schema_violation",
-      "execution_authority_unavailable",
+      "execution_authority_expired",
     ]) {
       const key = workflowRefusalKey({ ok: false, data: { error_code: code } });
       expect(key, code).not.toBeNull();

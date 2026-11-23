@@ -79,6 +79,8 @@ import {
   reviewNavigation,
   reviewSettles,
   reviewTarget,
+  SnoozedList,
+  SnoozeMenu,
   signsInFromRow,
   sinceLabel,
   sourceLabel,
@@ -94,7 +96,12 @@ import {
   type WindowBounds,
   windowBounds,
 } from "@/features/usage/model";
-import { EnvironmentChip, ScheduleReviewCard, useOpenRunSheet } from "@/features/workflows";
+import {
+  approveAcceptedOperations,
+  EnvironmentChip,
+  ScheduleReviewCard,
+  useOpenRunSheet,
+} from "@/features/workflows";
 import { reportFailure } from "@/lib/action-failure";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
@@ -335,13 +342,18 @@ function NeedsYou({
               </>
             }
             action={
-              <span data-action-scope="attention" data-attention-id={item.id}>
+              <span
+                className="flex items-center gap-2"
+                data-action-scope="attention"
+                data-attention-id={item.id}
+              >
                 <CompletingVerb
                   item={item}
                   index={index}
                   permissions={permissions}
                   onReview={onReview}
                 />
+                <SnoozeMenu item={item} index={index} />
               </span>
             }
           />
@@ -657,6 +669,7 @@ export function OverviewPage() {
                 onReview={openReview}
               />
             )}
+            <SnoozedList items={data?.snoozed ?? []} />
           </Section>
         </div>
         {canRuns && !attention.query.isPending ? (
@@ -795,10 +808,17 @@ function ReviewBody({
       approve: boolean;
       reason: string;
       reviewDigest?: string;
+      acceptedOperations?: number[];
     }) => {
       if (input.item.kind === "patch") {
         return input.approve
-          ? approvePatchCandidate(input.item.id, input.reviewDigest ?? "")
+          ? input.acceptedOperations
+            ? approveAcceptedOperations(
+                input.item.id,
+                input.reviewDigest ?? "",
+                input.acceptedOperations,
+              )
+            : approvePatchCandidate(input.item.id, input.reviewDigest ?? "")
           : rejectPatchCandidate(input.item.id, input.reason);
       }
       return input.approve
@@ -906,8 +926,14 @@ function ReviewBody({
           priority={item?.class === "decide" ? "normal" : "urgent"}
           busy={busyId === entry.id}
           canDecide={entry.kind === "patch" ? canDecidePatches : canDecideSkills}
-          onApprove={(target, reviewDigest) =>
-            decide.mutate({ item: target, approve: true, reason: "", reviewDigest })
+          onApprove={(target, reviewDigest, acceptedOperations) =>
+            decide.mutate({
+              item: target,
+              approve: true,
+              reason: "",
+              reviewDigest,
+              ...(acceptedOperations ? { acceptedOperations } : {}),
+            })
           }
           onReject={(target, reason) => decide.mutate({ item: target, approve: false, reason })}
           permissions={session.permissions}

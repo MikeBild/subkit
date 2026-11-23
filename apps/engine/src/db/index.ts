@@ -45,6 +45,7 @@ export {
   consumePersistentRateLimits,
   rateLimitBucketKey,
 } from "./rate-limits.ts";
+export { attentionSnoozes } from "./schema/attention-snoozes.ts";
 export { auditLog } from "./schema/audit.ts";
 export { catalogCategories } from "./schema/catalog_categories.ts";
 export type { CockpitInstallationKind } from "./schema/cockpit-installations.ts";

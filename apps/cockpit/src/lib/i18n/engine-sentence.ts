@@ -1,8 +1,14 @@
 export const engineSentenceEn = {
   "engine.hold.execution_authority_required":
     "No approval covers the current version, so automatic starts wait. Review and approve the workflow to start them again. Nothing has run since the hold.",
-  "engine.hold.execution_authority_unavailable":
-    "The approval has expired, is used up or was revoked, so automatic starts wait. Renew the approval to start them again. Nothing has run since the hold.",
+  "engine.hold.execution_authority_expired":
+    "The approval has expired, so automatic starts wait. Renew the approval to start them again. Nothing has run since the hold.",
+  "engine.hold.execution_authority_exhausted":
+    "The approved number of runs is used up, so automatic starts wait. Renew the approval to start them again. Nothing has run since the hold.",
+  "engine.hold.execution_authority_revoked":
+    "The approval was revoked, so automatic starts wait. Approve the workflow again to start them. Nothing has run since the hold.",
+  "engine.hold.execution_authority_changed":
+    "The workflow changed since it was approved, so automatic starts wait. Review and approve the new version to start them again. Nothing has run since the hold.",
   "engine.hold.input_required":
     "The schedule has no input for a required field, so scheduled runs wait. Add the missing input to start them again.",
   "engine.class.auth_failed":
@@ -67,8 +73,14 @@ export const engineSentenceEn = {
 export const engineSentenceDe: Record<keyof typeof engineSentenceEn, string> = {
   "engine.hold.execution_authority_required":
     "Für die aktuelle Version gibt es keine Freigabe, deshalb warten automatische Starts. Prüfe den Workflow und gib ihn frei, dann laufen sie wieder. Seit dem Anhalten ist nichts gelaufen.",
-  "engine.hold.execution_authority_unavailable":
-    "Die Freigabe ist abgelaufen, aufgebraucht oder widerrufen, deshalb warten automatische Starts. Erneuere die Freigabe, dann laufen sie wieder. Seit dem Anhalten ist nichts gelaufen.",
+  "engine.hold.execution_authority_expired":
+    "Die Freigabe ist abgelaufen, deshalb warten automatische Starts. Erneuere die Freigabe, dann laufen sie wieder. Seit dem Anhalten ist nichts gelaufen.",
+  "engine.hold.execution_authority_exhausted":
+    "Die freigegebene Anzahl an Runs ist aufgebraucht, deshalb warten automatische Starts. Erneuere die Freigabe, dann laufen sie wieder. Seit dem Anhalten ist nichts gelaufen.",
+  "engine.hold.execution_authority_revoked":
+    "Die Freigabe wurde widerrufen, deshalb warten automatische Starts. Gib den Workflow erneut frei, dann laufen sie wieder. Seit dem Anhalten ist nichts gelaufen.",
+  "engine.hold.execution_authority_changed":
+    "Der Workflow wurde seit der Freigabe geändert, deshalb warten automatische Starts. Prüfe die neue Version und gib sie frei, dann laufen sie wieder. Seit dem Anhalten ist nichts gelaufen.",
   "engine.hold.input_required":
     "Dem Zeitplan fehlt die Eingabe für ein Pflichtfeld, deshalb warten die geplanten Runs. Trag die fehlende Eingabe nach, dann laufen sie wieder.",
   "engine.class.auth_failed":

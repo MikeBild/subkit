@@ -172,6 +172,17 @@ export const runsEn = {
   "runs.stop.failed":
     "The run could not be stopped and keeps running. Nothing was changed. Try again.",
   "runs.stop.requested": "The run is stopping",
+  "runs.uncertain.title": "It is unclear whether the change of step “{step}” arrived",
+  "runs.uncertain.body":
+    "The run was interrupted while this step was sending. Check in the other system, then answer here. Nothing is sent again until you do.",
+  "runs.uncertain.arrived": "It arrived",
+  "runs.uncertain.notArrived": "It did not arrive",
+  "runs.uncertain.resolvedArrived": "Noted. The run continues after this step.",
+  "runs.uncertain.resolvedNotArrived": "Noted. The run sends this step again.",
+  "runs.uncertain.failed": "Your answer could not be saved. Try again.",
+  "runs.uncertain.notAllowed": "You may not start this workflow, so you cannot answer this.",
+  "runs.uncertain.noStep":
+    "This run was interrupted while sending a change. The step is not known yet.",
   "runs.rerun.open": "Run again",
   "runs.rerun.prepare": "Review repeat",
   "runs.rerun.unavailable": "This run cannot be repeated safely.",
@@ -460,6 +471,18 @@ export const runsDe: Record<keyof typeof runsEn, string> = {
   "runs.stop.failed":
     "Der Run konnte nicht gestoppt werden und läuft weiter. Es wurde nichts geändert. Versuch es erneut.",
   "runs.stop.requested": "Der Run wird gestoppt",
+  "runs.uncertain.title": "Unklar, ob die Änderung von Schritt „{step}“ angekommen ist",
+  "runs.uncertain.body":
+    "Der Run wurde unterbrochen, während dieser Schritt gesendet hat. Sieh im anderen System nach und antworte dann hier. Bis dahin wird nichts erneut gesendet.",
+  "runs.uncertain.arrived": "Ist angekommen",
+  "runs.uncertain.notArrived": "Ist nicht angekommen",
+  "runs.uncertain.resolvedArrived": "Notiert. Der Run läuft nach diesem Schritt weiter.",
+  "runs.uncertain.resolvedNotArrived": "Notiert. Der Run sendet diesen Schritt erneut.",
+  "runs.uncertain.failed": "Deine Antwort ließ sich nicht speichern. Versuch es noch einmal.",
+  "runs.uncertain.notAllowed":
+    "Du darfst diesen Workflow nicht starten und kannst das deshalb nicht beantworten.",
+  "runs.uncertain.noStep":
+    "Dieser Run wurde beim Senden einer Änderung unterbrochen. Der Schritt ist noch nicht bekannt.",
   "runs.rerun.open": "Erneut starten",
   "runs.rerun.prepare": "Wiederholung prüfen",
   "runs.rerun.unavailable": "Dieser Run kann nicht sicher wiederholt werden.",

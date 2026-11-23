@@ -124,6 +124,7 @@ export class FeedFlow {
     for (const notification of notifications) {
       showNotification(notification, (href) => {
         if (notification.onDevice === "permissions") return core.showConnect("permissions");
+        if (notification.onDevice === "handover") return core.device.live.show();
         const profile = findProfile(core.store.data, profileId);
         if (isSignedIn(profile) && core.store.data.activeProfileId === profileId)
           core.openCockpit(profile, href ?? undefined);

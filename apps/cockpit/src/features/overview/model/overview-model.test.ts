@@ -101,10 +101,7 @@ describe("the sentence", () => {
     const held = (reason: AttentionItem["reason"], trigger: AttentionItem["trigger"]) =>
       item({ reason, class: "stopped", severity: "critical", trigger });
     const hook = { kind: "inbound_hook" as const, name: "findings-inbox" };
-    for (const reason of [
-      "execution_authority_required",
-      "execution_authority_unavailable",
-    ] as const) {
+    for (const reason of ["execution_authority_required", "execution_authority_expired"] as const) {
       const german = attentionSentence(held(reason, hook), de, NOW).lead;
       expect(german).toContain("„findings-inbox“");
       expect(german).not.toContain("Zeitplan");
@@ -178,13 +175,13 @@ describe("the sentence", () => {
       { kind: "inbound_hook" as const, name: "findings-inbox" },
       { kind: "schedule" as const, name: null },
     ]) {
-      const waits = attentionSentence(held("execution_authority_unavailable", trigger), de, NOW);
+      const waits = attentionSentence(held("execution_authority_expired", trigger), de, NOW);
       expect(waits.lead).toContain("Freigabe");
       expect(waits.lead).not.toContain("ohne Änderung");
       const blocked = attentionSentence(held("execution_authority_required", trigger), de, NOW);
       expect(blocked.lead).toContain("ohne Änderung am Workflow nicht freigeben");
       expect(
-        attentionSentence(held("execution_authority_unavailable", trigger), en, NOW).lead,
+        attentionSentence(held("execution_authority_expired", trigger), en, NOW).lead,
       ).not.toContain("without a change");
     }
   });
@@ -219,11 +216,11 @@ describe("the sentence", () => {
     expect(row.badge.label).toBe("automation.state.repair");
     expect(row.reason).toContain("send_email");
     const waiting = attentionRow(
-      item({ reason: "execution_authority_unavailable", class: "stopped", actions: [] }),
+      item({ reason: "execution_authority_expired", class: "stopped", actions: [] }),
       de,
     );
     expect(waiting.badge.label).toBe("workflowStrip.state.grant");
-    expect(waiting.reason).toBe("Automatische Starts warten auf Freigabe");
+    expect(waiting.reason).toBe("Freigabe abgelaufen");
   });
 
   test("a version waiting for approval is said before anything is refused", () => {
@@ -336,16 +333,16 @@ describe("the sentence", () => {
   test("a held workflow shows the hold reason in the person's language, not the engine's English", () => {
     const held = item({
       class: "stopped",
-      reason: "execution_authority_unavailable",
+      reason: "execution_authority_required",
       cause_class: "authority_mismatch",
       since: null,
       detail:
-        "The approval has expired, is used up or was revoked, so scheduled runs wait. Renew the approval to start them again. Nothing has run since the hold.",
+        "No approval covers the current version, so scheduled runs wait. Review and approve the workflow to start them again. Nothing has run since the hold.",
     });
     expect(attentionSentence(held, de, NOW).lead).toEndWith(
-      ": Die Freigabe ist abgelaufen, aufgebraucht oder widerrufen, deshalb warten automatische Starts. Erneuere die Freigabe, dann laufen sie wieder. Seit dem Anhalten ist nichts gelaufen.",
+      ": Für die aktuelle Version gibt es keine Freigabe, deshalb warten automatische Starts. Prüfe den Workflow und gib ihn frei, dann laufen sie wieder. Seit dem Anhalten ist nichts gelaufen.",
     );
-    expect(attentionSentence(held, de, NOW).lead).not.toContain("The approval");
+    expect(attentionSentence(held, de, NOW).lead).not.toContain("No approval");
     expect(attentionSentence(held, en, NOW).lead).toContain("so automatic starts wait");
   });
 
@@ -353,7 +350,7 @@ describe("the sentence", () => {
     const reasons: AttentionItem["reason"][] = [
       "awaiting_answer",
       "execution_authority_required",
-      "execution_authority_unavailable",
+      "execution_authority_expired",
       "version_awaiting_approval",
       "version_needs_repair",
       "approval_expiring",

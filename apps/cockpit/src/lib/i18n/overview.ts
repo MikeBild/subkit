@@ -58,14 +58,27 @@ export const overviewEn = {
   "overview.reason.awaiting_answer": "{subject} is waiting for your answer",
   "overview.reason.execution_authority_required":
     "{subject} is on hold: its schedule cannot be approved without a change to the workflow",
-  "overview.reason.execution_authority_unavailable":
-    "{subject} is on hold: its schedule waits for an approval",
+  "overview.reason.execution_authority_expired":
+    "{subject} is on hold: the approval for its schedule has expired",
+  "overview.reason.execution_authority_exhausted":
+    "{subject} is on hold: the approved runs of its schedule are used up",
+  "overview.reason.execution_authority_revoked":
+    "{subject} is on hold: the approval for its schedule was revoked",
+  "overview.reason.execution_authority_changed":
+    "{subject} is on hold: it changed since its schedule was approved",
+  "overview.reason.input_required": "{subject} is on hold: its schedule is missing an input",
   "overview.reason.execution_authority_requiredStep":
     "{subject} is on hold: step “{step}” must change before its automatic starts can be approved – {cause}",
   "overview.reason.execution_authority_requiredHook":
     "{subject} is on hold: it refuses calls from the webhook “{hook}” and cannot be approved without a change to the workflow",
-  "overview.reason.execution_authority_unavailableHook":
-    "{subject} is on hold: it refuses calls from the webhook “{hook}” until an approval is granted",
+  "overview.reason.execution_authority_expiredHook":
+    "{subject} is on hold: it refuses calls from the webhook “{hook}” because its approval has expired",
+  "overview.reason.execution_authority_exhaustedHook":
+    "{subject} is on hold: it refuses calls from the webhook “{hook}” because its approved number of runs is used up",
+  "overview.reason.execution_authority_revokedHook":
+    "{subject} is on hold: it refuses calls from the webhook “{hook}” because its approval was revoked",
+  "overview.reason.execution_authority_changedHook":
+    "{subject} is on hold: it refuses calls from the webhook “{hook}” because it changed since it was approved",
   "overview.reason.version_awaiting_approval":
     "{subject} has a new version {version} waiting for approval — the next scheduled start will be refused otherwise",
   "overview.reason.version_awaiting_approvalHook":
@@ -138,6 +151,8 @@ export const overviewEn = {
     "{subject} is missing a system permission for local steps",
   "overview.reason.folder_changed":
     "An allowed folder of {subject} was replaced; allow it again on the device",
+  "overview.reason.device_handover_waiting": "A step on {subject} waits for you to take over",
+  "overview.reason.knowledge_review_due": "{subject} is due for a review",
   "overview.reason.schedule_auto_paused":
     "{subject} was paused automatically after failing several times in a row",
   "overview.reason.other": "{subject} needs you",
@@ -195,6 +210,18 @@ export const overviewEn = {
   "overview.action.reviewResult": "Review result",
   "overview.action.allow": "Allow",
   "overview.action.resume": "Resume",
+  "overview.action.addInput": "Add input",
+  "overview.action.takeOver": "Take over",
+  "overview.action.reviewKnowledge": "Review",
+  "overview.snooze.menu": "Snooze",
+  "overview.snooze.threeHours": "For 3 hours",
+  "overview.snooze.tomorrow": "Until tomorrow morning",
+  "overview.snooze.nextWeek": "For a week",
+  "overview.snooze.failed": "The entry could not be snoozed. Try again.",
+  "overview.snoozed.title": "Snoozed",
+  "overview.snoozed.until": "Back on {date}",
+  "overview.snoozed.showAgain": "Show again",
+  "overview.snoozed.failed": "The entry could not be shown again. Try again.",
   "overview.source.conversations": "your questions",
   "overview.source.schedules": "schedules on hold",
   "overview.source.freshness": "scheduler heartbeat",
@@ -250,7 +277,11 @@ export const overviewEn = {
   "overview.classification.unsafe": "Unsafe",
   "overview.short.awaiting_answer": "Waits for your answer",
   "overview.short.execution_authority_required": "Change needed before approval",
-  "overview.short.execution_authority_unavailable": "Automatic starts wait for approval",
+  "overview.short.execution_authority_expired": "Approval expired",
+  "overview.short.execution_authority_exhausted": "Approved runs used up",
+  "overview.short.execution_authority_revoked": "Approval revoked",
+  "overview.short.execution_authority_changed": "Changed since approval",
+  "overview.short.input_required": "Input missing",
   "overview.short.version_awaiting_approval": "New version for production",
   "overview.short.version_needs_repair.one": "1 step blocked, first {step}",
   "overview.short.version_needs_repair.other": "{count} steps blocked, first {step}",
@@ -291,6 +322,8 @@ export const overviewEn = {
   "overview.short.local_confirmation_needed": "Confirm on your device",
   "overview.short.device_permission_missing": "Permission missing",
   "overview.short.folder_changed": "Folder changed",
+  "overview.short.device_handover_waiting": "Waiting for you to take over",
+  "overview.short.knowledge_review_due": "Review due",
   "overview.short.schedule_auto_paused": "Paused automatically after repeated failures",
   "overview.short.other": "Needs a look",
   "overview.state.answer": "Waits for an answer",
@@ -391,14 +424,27 @@ export const overviewDe: Record<keyof typeof overviewEn, string> = {
   "overview.reason.awaiting_answer": "{subject} wartet auf deine Antwort",
   "overview.reason.execution_authority_required":
     "{subject} ist angehalten: sein Zeitplan lässt sich ohne Änderung am Workflow nicht freigeben",
-  "overview.reason.execution_authority_unavailable":
-    "{subject} ist angehalten: sein Zeitplan wartet auf eine Freigabe",
+  "overview.reason.execution_authority_expired":
+    "{subject} ist angehalten: die Freigabe für seinen Zeitplan ist abgelaufen",
+  "overview.reason.execution_authority_exhausted":
+    "{subject} ist angehalten: die freigegebenen Runs seines Zeitplans sind aufgebraucht",
+  "overview.reason.execution_authority_revoked":
+    "{subject} ist angehalten: die Freigabe für seinen Zeitplan wurde widerrufen",
+  "overview.reason.execution_authority_changed":
+    "{subject} ist angehalten: er wurde geändert, seit sein Zeitplan freigegeben wurde",
+  "overview.reason.input_required": "{subject} ist angehalten: seinem Zeitplan fehlt eine Eingabe",
   "overview.reason.execution_authority_requiredStep":
     "{subject} ist angehalten: Schritt „{step}“ muss geändert werden, bevor automatische Starts freigegeben werden können – {cause}",
   "overview.reason.execution_authority_requiredHook":
     "{subject} ist angehalten: er nimmt keine Aufrufe vom Webhook „{hook}“ an und lässt sich ohne Änderung am Workflow nicht freigeben",
-  "overview.reason.execution_authority_unavailableHook":
-    "{subject} ist angehalten: er nimmt keine Aufrufe vom Webhook „{hook}“ an, bis eine Freigabe erteilt ist",
+  "overview.reason.execution_authority_expiredHook":
+    "{subject} ist angehalten: er nimmt keine Aufrufe vom Webhook „{hook}“ an, weil seine Freigabe abgelaufen ist",
+  "overview.reason.execution_authority_exhaustedHook":
+    "{subject} ist angehalten: er nimmt keine Aufrufe vom Webhook „{hook}“ an, weil die freigegebene Anzahl an Runs aufgebraucht ist",
+  "overview.reason.execution_authority_revokedHook":
+    "{subject} ist angehalten: er nimmt keine Aufrufe vom Webhook „{hook}“ an, weil seine Freigabe widerrufen wurde",
+  "overview.reason.execution_authority_changedHook":
+    "{subject} ist angehalten: er nimmt keine Aufrufe vom Webhook „{hook}“ an, weil er seit der Freigabe geändert wurde",
   "overview.reason.version_awaiting_approval":
     "{subject} hat eine neue Version {version}, die auf Freigabe wartet – der nächste geplante Start wird sonst abgelehnt",
   "overview.reason.version_awaiting_approvalHook":
@@ -475,6 +521,9 @@ export const overviewDe: Record<keyof typeof overviewEn, string> = {
     "{subject} fehlt eine Systemberechtigung für lokale Schritte",
   "overview.reason.folder_changed":
     "Ein freigegebener Ordner von {subject} wurde ersetzt; gib ihn auf dem Gerät neu frei",
+  "overview.reason.device_handover_waiting":
+    "Ein Schritt auf {subject} wartet darauf, dass du übernimmst",
+  "overview.reason.knowledge_review_due": "{subject} ist zur Prüfung fällig",
   "overview.reason.schedule_auto_paused":
     "{subject} wurde nach mehreren Fehlern in Folge automatisch pausiert",
   "overview.reason.other": "{subject} braucht dich",
@@ -532,6 +581,18 @@ export const overviewDe: Record<keyof typeof overviewEn, string> = {
   "overview.action.reviewResult": "Ergebnis prüfen",
   "overview.action.allow": "Erlauben",
   "overview.action.resume": "Fortsetzen",
+  "overview.action.addInput": "Eingabe ergänzen",
+  "overview.action.takeOver": "Übernehmen",
+  "overview.action.reviewKnowledge": "Prüfen",
+  "overview.snooze.menu": "Zurückstellen",
+  "overview.snooze.threeHours": "Für 3 Stunden",
+  "overview.snooze.tomorrow": "Bis morgen früh",
+  "overview.snooze.nextWeek": "Für eine Woche",
+  "overview.snooze.failed": "Der Eintrag ließ sich nicht zurückstellen. Versuch es noch einmal.",
+  "overview.snoozed.title": "Zurückgestellt",
+  "overview.snoozed.until": "Wieder da am {date}",
+  "overview.snoozed.showAgain": "Wieder anzeigen",
+  "overview.snoozed.failed": "Der Eintrag ließ sich nicht wieder anzeigen. Versuch es noch einmal.",
   "overview.source.conversations": "deine Rückfragen",
   "overview.source.schedules": "angehaltene Zeitpläne",
   "overview.source.freshness": "Herzschlag des Zeitplaners",
@@ -588,7 +649,11 @@ export const overviewDe: Record<keyof typeof overviewEn, string> = {
   "overview.classification.unsafe": "Unsicher",
   "overview.short.awaiting_answer": "Wartet auf deine Antwort",
   "overview.short.execution_authority_required": "Umbau nötig vor der Freigabe",
-  "overview.short.execution_authority_unavailable": "Automatische Starts warten auf Freigabe",
+  "overview.short.execution_authority_expired": "Freigabe abgelaufen",
+  "overview.short.execution_authority_exhausted": "Freigegebene Runs aufgebraucht",
+  "overview.short.execution_authority_revoked": "Freigabe widerrufen",
+  "overview.short.execution_authority_changed": "Seit der Freigabe geändert",
+  "overview.short.input_required": "Eingabe fehlt",
   "overview.short.version_awaiting_approval": "Neue Version für den Echtbetrieb",
   "overview.short.version_needs_repair.one": "1 Schritt blockiert, zuerst {step}",
   "overview.short.version_needs_repair.other": "{count} Schritte blockiert, zuerst {step}",
@@ -630,6 +695,8 @@ export const overviewDe: Record<keyof typeof overviewEn, string> = {
   "overview.short.local_confirmation_needed": "Auf deinem Gerät bestätigen",
   "overview.short.device_permission_missing": "Berechtigung fehlt",
   "overview.short.folder_changed": "Ordner geändert",
+  "overview.short.device_handover_waiting": "Wartet auf deine Übernahme",
+  "overview.short.knowledge_review_due": "Prüfung fällig",
   "overview.short.schedule_auto_paused": "Automatisch pausiert nach wiederholten Fehlern",
   "overview.short.other": "Braucht einen Blick",
   "overview.state.answer": "Wartet auf Antwort",

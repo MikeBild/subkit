@@ -36,7 +36,7 @@ import {
   RUN_ENVIRONMENT_ARG,
 } from "../lib/run-environment.ts";
 import { printRunResult } from "../lib/run-result.ts";
-import { exitCodeForTerminalStatus, tailExecution } from "../lib/tail-execution.ts";
+import { exitCodeForTerminalStatus, followExecution } from "../lib/tail-execution.ts";
 import { formatFileRef } from "../utils/file-ref.ts";
 import { makeClient } from "./command-runtime.ts";
 import { uploadPath } from "./files.ts";
@@ -370,7 +370,7 @@ const runCommand = defineCommand({
         process.stderr.write(
           `execution ${started.execution_id} started in ${environment} — following\n`,
         );
-        const terminal = await tailExecution(client, started.execution_id, process.stdout);
+        const terminal = await followExecution(client, started.execution_id, process.stderr);
         process.stderr.write(
           `\n${pc.dim("Tip:")} subkit executions get ${started.execution_id} shows the full result\n`,
         );
@@ -418,10 +418,10 @@ const runCommand = defineCommand({
           );
         }
         let mismatchHint: string | null = null;
-        const terminal = await tailExecution(
+        const terminal = await followExecution(
           client,
           queued.execution_id,
-          process.stdout,
+          process.stderr,
           (frame) => {
             mismatchHint ??= environmentMismatchHint(frame, environment);
           },

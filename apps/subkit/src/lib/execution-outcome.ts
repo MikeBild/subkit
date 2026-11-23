@@ -1,4 +1,5 @@
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
+import { heldReasonLine } from "./held-reason.ts";
 
 type ExecutionOutcome = components["schemas"]["ExecutionOutcome"];
 
@@ -22,5 +23,7 @@ export function executionOutcomeLine(outcome: ExecutionOutcome | null): string |
   );
   if (outcome.output_contract !== "none")
     parts.push(`· output contract ${outcome.output_contract}`);
+  const held = heldReasonLine(outcome.refusal_reason);
+  if (held) parts.push(`— ${held}`);
   return parts.join(" ");
 }

@@ -42,6 +42,7 @@ export const ATTENTION_REASONS = [
   "execution_authority_exhausted",
   "execution_authority_revoked",
   "execution_authority_changed",
+  "input_required",
   "version_awaiting_approval",
   "version_needs_repair",
   "approval_expiring",
@@ -75,6 +76,8 @@ export const ATTENTION_REASONS = [
   "device_offline_waiting",
   "local_confirmation_needed",
   "device_permission_missing",
+  "device_handover_waiting",
+  "knowledge_review_due",
   "folder_changed",
 ] as const;
 export type AttentionReason = (typeof ATTENTION_REASONS)[number];
@@ -93,6 +96,10 @@ export const ATTENTION_SUBJECT_KINDS = [
 export const APPROVAL_NEEDED_REASONS: ReadonlySet<AttentionReason> = new Set([
   "version_awaiting_approval",
   "execution_authority_required",
+  "execution_authority_expired",
+  "execution_authority_exhausted",
+  "execution_authority_revoked",
+  "execution_authority_changed",
   "approval_expiring",
   "task_grant_required",
   "task_grant_expiring",
@@ -100,6 +107,21 @@ export const APPROVAL_NEEDED_REASONS: ReadonlySet<AttentionReason> = new Set([
 
 export function needsApproval(item: { readonly reason: string }): boolean {
   return (APPROVAL_NEEDED_REASONS as ReadonlySet<string>).has(item.reason);
+}
+
+const HELD_ATTENTION_REASONS: ReadonlySet<string> = new Set<AttentionReason>([
+  "execution_authority_required",
+  "execution_authority_expired",
+  "execution_authority_exhausted",
+  "execution_authority_revoked",
+  "execution_authority_changed",
+  "input_required",
+]);
+
+export function heldAttentionReason(reason_code: string | null | undefined): AttentionReason {
+  return reason_code && HELD_ATTENTION_REASONS.has(reason_code)
+    ? (reason_code as AttentionReason)
+    : "execution_authority_required";
 }
 
 export interface AttentionAction {
@@ -157,12 +179,61 @@ export interface AttentionItem {
   actions: AttentionAction[];
 }
 
+export interface SnoozedAttentionItem extends AttentionItem {
+  attention_key: string;
+  snoozed_until: string;
+}
+
 export interface AttentionV1 {
   schema_version: typeof ATTENTION_SCHEMA_VERSION;
   generated_at: string;
   sources: Record<AttentionSource, AttentionSourceState>;
   status: { health_state: HealthState; next_run_at: string | null } | null;
   items: AttentionItem[];
+  snoozed: SnoozedAttentionItem[];
+}
+
+export const SNOOZE_MAX_MS = 30 * 24 * 60 * 60 * 1000;
+export const ATTENTION_KEY_MAX = 300;
+
+export interface AttentionSnooze {
+  readonly attention_key: string;
+  readonly snoozed_until: Date;
+}
+
+export function attentionSnoozeKey(item: Pick<AttentionItem, "id" | "class" | "reason">): string {
+  return `${item.id}|${item.class}|${item.reason}`;
+}
+
+export type SnoozePlan =
+  | { readonly ok: true; readonly until: Date }
+  | { readonly ok: false; readonly reason: "snooze_in_past" | "snooze_too_long" };
+
+export function planSnooze(until: Date, at: Date): SnoozePlan {
+  if (!(until.getTime() > at.getTime())) return { ok: false, reason: "snooze_in_past" };
+  if (until.getTime() - at.getTime() > SNOOZE_MAX_MS)
+    return { ok: false, reason: "snooze_too_long" };
+  return { ok: true, until };
+}
+
+export function splitSnoozed(
+  items: readonly AttentionItem[],
+  snoozes: readonly AttentionSnooze[],
+  at: Date,
+): { items: AttentionItem[]; snoozed: SnoozedAttentionItem[] } {
+  const active = new Map<string, Date>();
+  for (const snooze of snoozes)
+    if (snooze.snoozed_until.getTime() > at.getTime())
+      active.set(snooze.attention_key, snooze.snoozed_until);
+  const kept: AttentionItem[] = [];
+  const snoozed: SnoozedAttentionItem[] = [];
+  for (const item of items) {
+    const attention_key = attentionSnoozeKey(item);
+    const until = active.get(attention_key);
+    if (until) snoozed.push({ ...item, attention_key, snoozed_until: until.toISOString() });
+    else kept.push(item);
+  }
+  return { items: kept, snoozed };
 }
 
 export function attentionAllClear(attention: AttentionV1): boolean {

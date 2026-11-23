@@ -16,6 +16,7 @@ export const RUN_STATUSES = [
   "aborted",
   "timed_out",
   "waiting_for_device",
+  "uncertain",
 ] as const;
 
 export const REQUEST_SOURCES = [

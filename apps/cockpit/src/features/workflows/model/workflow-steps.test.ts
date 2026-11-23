@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   definitionKind,
   readStepDefinition,
+  requestProtocol,
   stepDefinitionsOf,
   stepEssenceText,
   stepKindKey,
@@ -121,18 +122,22 @@ describe("request steps", () => {
 
   test("retries, effect, time limit and error handling are facts", () => {
     expect(read(step).facts).toEqual([
+      { labelKey: "workflow.fact.protocol", valueKey: "workflow.via.http" },
       { labelKey: "workflow.fact.retries", value: "2" },
       { labelKey: "catalog.sideEffects", valueKey: "sideEffects.write" },
       { labelKey: "workflow.fact.timeout", value: "30 s" },
       { labelKey: "workflow.fact.onError", valueKey: "workflow.fact.onErrorContinue" },
     ]);
-    expect(read({ id: "a", kind: "request", path: "/x", on_error: "fail" }).facts).toEqual([]);
+    expect(read({ id: "a", kind: "request", path: "/x", on_error: "fail" }).facts).toEqual([
+      { labelKey: "workflow.fact.protocol", valueKey: "workflow.via.http" },
+    ]);
   });
 
   test("a SQL request names its statement and shows it whole", () => {
     const sql = {
       id: "load",
       kind: "request",
+      protocol: "sql",
       method: "SELECT",
       connector_id: UUID,
       sql: { query: "\n  SELECT id, name\n  FROM customers\n  WHERE id = $1", params: [42] },
@@ -149,6 +154,7 @@ describe("request steps", () => {
     const graphql = {
       id: "issues",
       kind: "request",
+      protocol: "graphql",
       connector_id: UUID,
       graphql: { operation: "query", query: "query Issues { issues { id } }", variables: { n: 5 } },
     };
@@ -171,6 +177,7 @@ describe("request steps", () => {
     const graphql = {
       id: "project_items",
       kind: "request",
+      protocol: "graphql",
       method: "GET",
       path: "/graphql",
       connector_id: UUID,
@@ -190,6 +197,7 @@ describe("request steps", () => {
     const s3 = {
       id: "store",
       kind: "request",
+      protocol: "s3",
       method: "PUT",
       connector_id: UUID,
       s3: { key: "reports/latest.json" },
@@ -202,6 +210,7 @@ describe("request steps", () => {
     const mcp = {
       id: "notify",
       kind: "request",
+      protocol: "mcp",
       connector_id: UUID,
       mcp: { operation: "call_tool", tool: "send_message", arguments: { channel: "ops" } },
     };
@@ -242,26 +251,41 @@ describe("control-flow steps", () => {
     );
   });
 
-  test("a loop says what it iterates over and which steps it runs", () => {
-    expect(
-      essence({ id: "each", kind: "loop", over: "fetch.data.items", body: ["send", "log"] }),
-    ).toBe("für jedes Element aus fetch.data.items: send, log");
-    const selector = read({
-      id: "each",
-      kind: "loop",
-      data_selector: "(sourceData) => sourceData.fetch.data",
-      body: ["send"],
-      fail_fast: true,
-    });
-    expect(selector.essence).toEqual({
-      kind: "loop",
-      over: "(sourceData) => sourceData.fetch.data",
-      body: ["send"],
-    });
-    expect(selector.facts).toEqual([
-      { labelKey: "workflow.fact.failFast", valueKey: "common.yes" },
-    ]);
-    expect(block(selector.blocks, "workflow.block.selector")).toBeUndefined();
+  test("a step of the removed loop kind is shown as an unknown step", () => {
+    const loop = read({ id: "each", kind: "loop", over: "fetch.data.items", body: ["send"] });
+    expect(loop.essence).toEqual({ kind: "other" });
+    expect(stepKindKey({ kind: "loop" })).toBe("workflow.stepType");
+  });
+
+  test("a model step shows its instruction, the answer shape and its limit", () => {
+    const model = {
+      id: "summarise",
+      kind: "model",
+      prompt: "\nSummarise the ticket in two sentences.\nKeep names.",
+      system: "You write for support agents.",
+      input: { ticket: reference("fetch.data") },
+      output_schema: { type: "object", properties: { summary: { type: "string" } } },
+      max_output_tokens: 400,
+    };
+    const definition = read(model);
+    expect(definition.essence).toEqual({ kind: "model", prompt: model.prompt });
+    expect(essence(model)).toBe("Summarise the ticket in two sentences.");
+    expect(essence({ id: "m", kind: "model" })).toBe("KI fragen");
+    expect(stepKindKey({ kind: "model" })).toBe("workflow.kind.askAi");
+    expect(definition.facts).toEqual([{ labelKey: "workflow.fact.maxOutputTokens", value: "400" }]);
+    expect(block(definition.blocks, "workflow.block.prompt")?.code).toBe(model.prompt);
+    expect(block(definition.blocks, "workflow.block.system")?.code).toBe(model.system);
+    expect(block(definition.blocks, "workflow.block.input")?.language).toBe("json");
+    expect(block(definition.blocks, "workflow.block.outputSchema")?.code).toContain("summary");
+    expect(read({ id: "m", kind: "model", prompt: "x" }).facts).toEqual([]);
+  });
+
+  test("the protocol of a request decides how it is read, not the blocks it carries", () => {
+    expect(requestProtocol({ protocol: "sql" })).toBe("sql");
+    expect(requestProtocol({ protocol: "ftp" })).toBe("http");
+    expect(requestProtocol({ sql: { query: "select 1" } })).toBe("http");
+    const stray = read({ id: "a", kind: "request", path: "/x", sql: { query: "select 1" } });
+    expect(stray.essence).toEqual({ kind: "request", via: "http", verb: "GET", target: "/x" });
   });
 
   test("inline iteration on any step is shown as written", () => {

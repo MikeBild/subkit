@@ -27,6 +27,12 @@ export interface ChatApproval {
   decidedByOthers?: boolean;
   binding?: ApprovalBinding;
   device?: DeviceConfirmation;
+  changes?: { label: string; preview?: string }[];
+}
+
+export interface ChatApprovalOptions {
+  output?: { confirmed: boolean; partial?: boolean; approved_indices?: number[] };
+  followUp?: string;
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -100,6 +106,9 @@ export function chatApproval(
     ...(decidedByOthers ? { decidedByOthers } : {}),
     ...(binding ? { binding } : {}),
     ...(device ? { device } : {}),
+    ...(pending.prompt?.kind === "partial_diff_approval" && pending.prompt.diffs?.length
+      ? { changes: pending.prompt.diffs }
+      : {}),
     ...(pending.prompt?.subjects?.length ? { subjects: pending.prompt.subjects } : {}),
     ...(pending.prompt?.transfer_bytes ? { transferBytes: pending.prompt.transfer_bytes } : {}),
     savesInactiveWorkflow: intent.kind === "save_workflow_draft",

@@ -32,3 +32,44 @@ test("CLI sends the reviewed digest and accepts a confirmed applied version", as
     workflow_version_id: "version",
   });
 });
+
+test("CLI sends the accepted changes with a partial approval and a partial dry run", async () => {
+  const digest = "b".repeat(64);
+  const seen: Array<{ url: string; body: unknown }> = [];
+  const client = new EngineClient({
+    engine_url: "https://engine.example.test",
+    api_key: "test-key",
+    fetchImpl: async (input, init) => {
+      seen.push({ url: String(input), body: JSON.parse(String(init?.body)) });
+      return Response.json({ applied: true, workflow_version_id: "version" });
+    },
+  });
+  await client.dryRunPatchCandidate("candidate", [0, 2]);
+  await client.approvePatchCandidate("candidate", digest, [0, 2]);
+  expect(seen).toEqual([
+    {
+      url: "https://engine.example.test/v1/patch-candidates/candidate/dry-run",
+      body: { accepted_operations: [0, 2] },
+    },
+    {
+      url: "https://engine.example.test/v1/patch-candidates/candidate/approve",
+      body: { expected_review_digest: digest, accepted_operations: [0, 2] },
+    },
+  ]);
+});
+
+test("CLI sends an interrupted write's outcome to resolve-write", async () => {
+  const client = new EngineClient({
+    engine_url: "https://engine.example.test",
+    api_key: "test-key",
+    fetchImpl: async (input, init) => {
+      expect(String(input)).toBe("https://engine.example.test/v1/executions/ex-1/resolve-write");
+      expect(init?.method).toBe("POST");
+      expect(JSON.parse(String(init?.body))).toEqual({ step_key: "send", outcome: "arrived" });
+      return Response.json({ execution_id: "ex-1", status: "queued" });
+    },
+  });
+  expect(
+    await client.resolveExecutionWrite("ex-1", { step_key: "send", outcome: "arrived" }),
+  ).toEqual({ execution_id: "ex-1", status: "queued" });
+});

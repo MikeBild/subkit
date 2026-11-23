@@ -25,7 +25,7 @@ const payload = {
       severity: "critical",
       kind: "workflow",
       subject: { kind: "workflow", id: "42", name: "Monatsabschluss" },
-      reason: "execution_authority_unavailable",
+      reason: "execution_authority_expired",
       actions: [
         { verb: "open_runs", href: "/workflows/42/runs", primary: false, permission: "x" },
         { verb: "review", href: "/workflows/42", primary: true, permission: "x" },
@@ -81,7 +81,7 @@ describe("toNotification", () => {
     expect(toNotification(workflow, "de")).toEqual({
       id: "workflow:42",
       title: "„Monatsabschluss“ wurde angehalten",
-      body: "Die Freigabe ist abgelaufen, aufgebraucht oder widerrufen, automatische Starts warten. Prüf die Änderung und entscheide.",
+      body: "Die Freigabe für diesen Workflow ist abgelaufen. Gib ihn erneut frei, damit er wieder läuft. Prüf die Änderung und entscheide.",
       href: "/workflows/42",
       urgency: "critical",
       silent: false,
@@ -104,7 +104,7 @@ describe("toNotification", () => {
     if (!workflow) throw new Error("fixture incomplete");
     expect(toNotification(workflow, "en")).toMatchObject({
       title: "“Monatsabschluss” was stopped",
-      body: "The approval expired, is used up or was revoked, so automatic starts wait. Review the change and decide.",
+      body: "The approval for this workflow has expired. Approve it again to let it run. Review the change and decide.",
     });
   });
 
@@ -138,6 +138,28 @@ describe("toNotification", () => {
       toNotification({ ...workflow, reason: "device_permission_missing" }, "de").onDevice,
     ).toBe("permissions");
     expect("onDevice" in toNotification(workflow, "de")).toBe(false);
+  });
+
+  test("a waiting browser handover names the device and opens the live window", () => {
+    const [workflow] = items();
+    if (!workflow) throw new Error("fixture incomplete");
+    const handover = {
+      ...workflow,
+      id: "device_handover:d1",
+      class: "decide" as const,
+      severity: "urgent" as const,
+      subjectName: "Studio Mac",
+      reason: "device_handover_waiting",
+    };
+    expect(toNotification(handover, "en")).toMatchObject({
+      body: "A browser step is waiting for you on Studio Mac. Take over, finish it, then hand back.",
+      onDevice: "handover",
+      urgency: "normal",
+      silent: false,
+    });
+    expect(toNotification({ ...handover, subjectName: null }, "en").body).toBe(
+      "A browser step is waiting for you on this device. Take over, finish it, then hand back.",
+    );
   });
 
   test("the text never comes from the server's own sentence", () => {

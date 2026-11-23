@@ -37,6 +37,7 @@ function attention(items: AttentionItem[] = []): AttentionV1 {
     sources: { ...SOURCES },
     status: null,
     items,
+    snoozed: [],
   };
 }
 

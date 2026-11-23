@@ -1,4 +1,9 @@
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
+import {
+  snoozeAttentionOperation,
+  toHonoRoute,
+  unsnoozeAttentionOperation,
+} from "../../../api/index.ts";
 import { buildAttention } from "../../../operator/attention.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
@@ -10,7 +15,7 @@ const route = createRoute({
   tags: ["operator"],
   summary: "What needs the caller's attention now",
   description:
-    "One list of everything a person has to act on — own waiting conversations, held schedules and webhooks, failing scheduled workflows with their open fixes, connectors and connections needing sign-in, prepared secret versions, skill proposals, a workspace without its own AI key, a critical budget or risk signal — filtered per item by the caller's permissions.",
+    "One list of everything a person has to act on — own waiting conversations, held schedules and webhooks, failing scheduled workflows with their open fixes, connectors and connections needing sign-in, prepared secret versions, skill proposals, a workspace without its own AI key, a critical budget or risk signal — filtered per item by the caller's permissions. Items the caller snoozed are listed under `snoozed` instead of `items` until their snooze ends.",
   security: [{ bearerAuth: [] }],
   responses: {
     200: {
@@ -25,4 +30,6 @@ export function registerAttentionRoute(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     return c.json(await buildAttention(c.get("db"), principal), 200);
   });
+  toHonoRoute(app, snoozeAttentionOperation);
+  toHonoRoute(app, unsnoozeAttentionOperation);
 }

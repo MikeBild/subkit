@@ -27,7 +27,12 @@ import {
   workflowRunKind,
 } from "@/lib/tool-presentation";
 import { type ConversationAttachment, splitFileSentinels } from "../api/attachments";
-import { type ChatApproval, recordedDecisionKey, withWorkflowName } from "../model/approval";
+import {
+  type ChatApproval,
+  type ChatApprovalOptions,
+  recordedDecisionKey,
+  withWorkflowName,
+} from "../model/approval";
 import { bubbleSide } from "../model/bubble-model";
 import type { ChatChoice } from "../model/choice";
 import { answerSources } from "../model/citations";
@@ -108,7 +113,7 @@ export function ChatMessage({
   answersQuestion?: boolean;
   approvalBusy: boolean;
   approvalError: boolean;
-  onApproval: (id: string, approved: boolean) => void;
+  onApproval: (id: string, approved: boolean, options?: ChatApprovalOptions) => void;
   onDecision: (toolCallId: string, approved: boolean) => void;
   onReauth: (action: ChatReauth) => void;
   onAutomationAdjust: (workflowId: string) => void;

@@ -40,6 +40,7 @@ const TONES: Partial<Record<string, BadgeTone>> = {
   running: "warn",
   queued: "warn",
   waiting_budget: "warn",
+  uncertain: "warn",
   processing: "warn",
   uploading: "warn",
   scanning: "warn",

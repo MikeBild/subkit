@@ -309,7 +309,9 @@ const REFUSAL_WORDS: Record<string, TranslationKey> = {
   repair_loop_detected: "tool.refusal.repeatedFailure",
   input_schema_violation: "tool.refusal.input",
   execution_authority_required: "tool.refusal.approval",
-  execution_authority_unavailable: "tool.refusal.approval",
+  execution_authority_expired: "tool.refusal.approval",
+  execution_authority_exhausted: "tool.refusal.approval",
+  execution_authority_revoked: "tool.refusal.approval",
   execution_authority_changed: "tool.refusal.approval",
   task_run_use_workflow_tool: "tool.refusal.ownTool",
 };

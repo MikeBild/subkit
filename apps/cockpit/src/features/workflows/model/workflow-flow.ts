@@ -45,8 +45,8 @@ export function stepPhrase(
       return { key: TRANSFORM_KEYS[essence.language] ?? "workflowFlow.step.transform" };
     case "branch":
       return { key: "workflowFlow.step.branch" };
-    case "loop":
-      return { key: "workflowFlow.step.loop" };
+    case "model":
+      return { key: "workflowFlow.step.model" };
     case "parallel":
       return { key: "workflowFlow.step.parallel", values: { count: essence.branches.length } };
     case "call":

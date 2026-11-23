@@ -26,6 +26,8 @@ export const AuditAction = {
   USER_SETUP_UPDATED: "user.setup_updated",
   USER_NOTIFICATIONS_PAUSED: "user.notifications_paused",
   USER_NOTIFICATIONS_RESUMED: "user.notifications_resumed",
+  ATTENTION_SNOOZED: "attention.snoozed",
+  ATTENTION_UNSNOOZED: "attention.unsnoozed",
   USER_INVITE_DELIVERY: "user.invite_delivery",
   WORKSPACE_APPROVAL_POLICY_CHANGED: "workspace.approval_policy_changed",
   WORKSPACE_SPEND_LIMIT_CHANGED: "workspace.spend_limit_changed",

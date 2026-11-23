@@ -10,6 +10,7 @@ import {
   respondToChatApproval,
   respondToChatChoice,
   respondToChatForm,
+  respondToChatSelection,
   respondToToolCall,
   sendConversationTurn,
 } from "@/api/client";
@@ -25,6 +26,7 @@ import {
   type PendingAttachment,
   pendingKey,
 } from "../api/attachments";
+import type { ChatApprovalOptions } from "../model/approval";
 import { asStreamedDiff, type RestoreComposer, type StreamedDiff } from "../model/labels";
 import { applyLiveCall, type LiveCall, reduceLiveCall } from "../model/live-calls";
 import { openQuestionOf } from "../model/open-question";
@@ -393,6 +395,7 @@ export function useChatTurn({
       toolCallId,
       elicitationId,
       approved,
+      approvalOutput,
       choiceValue,
       formOutput,
       operation,
@@ -403,6 +406,8 @@ export function useChatTurn({
       toolCallId?: string;
       elicitationId?: string;
       approved?: boolean;
+      approvalOutput?: ChatApprovalOptions["output"];
+      followUp?: string;
       choiceValue?: string;
       formOutput?: Record<string, unknown>;
     }) => {
@@ -424,7 +429,9 @@ export function useChatTurn({
           ? respondToChatForm(conversationId, elicitationId, formOutput, onEvent)
           : choiceValue !== undefined
             ? respondToChatChoice(conversationId, elicitationId, choiceValue, onEvent)
-            : respondToChatApproval(conversationId, elicitationId, approved === true, onEvent)
+            : approvalOutput
+              ? respondToChatSelection(conversationId, elicitationId, approvalOutput, onEvent)
+              : respondToChatApproval(conversationId, elicitationId, approved === true, onEvent)
         : respondToToolCall(conversationId, toolCallId ?? "", approved === true);
     },
     onSuccess: async (_result, variables) => {
@@ -437,7 +444,7 @@ export function useChatTurn({
     },
     onError: (_error, variables) =>
       queryClient.invalidateQueries({ queryKey: ["conversation", variables.conversationId] }),
-    onSettled: async (_data, _error, variables) => {
+    onSettled: async (_data, error, variables) => {
       try {
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ["conversations"] }),
@@ -447,10 +454,15 @@ export function useChatTurn({
       } finally {
         if (decisionLock.current === variables.operation) decisionLock.current = null;
       }
+      if (!error && variables.followUp) void submitTurn(variables.followUp);
     },
   });
   const decidePending = decide.isPending && decide.variables?.operation.session === sessionKey;
-  const submitApproval = (elicitationId: string, approved: boolean) => {
+  const submitApproval = (
+    elicitationId: string,
+    approved: boolean,
+    options: ChatApprovalOptions = {},
+  ) => {
     if (
       (decisionLock.current && ownsOperation(decisionLock.current)) ||
       sendPending ||
@@ -462,6 +474,8 @@ export function useChatTurn({
     decide.mutate({
       elicitationId,
       approved,
+      ...(options.output ? { approvalOutput: options.output } : {}),
+      ...(options.followUp ? { followUp: options.followUp } : {}),
       conversationId: activeId ?? "",
       operation,
     });

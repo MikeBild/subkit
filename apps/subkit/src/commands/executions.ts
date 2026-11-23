@@ -13,7 +13,13 @@ import { EngineClient, type ExecutionCost } from "../engine-client.ts";
 import { executionOutcomeLine } from "../lib/execution-outcome.ts";
 import { heldRunBlock } from "../lib/held-run.ts";
 import { pickId } from "../lib/pick.ts";
-import { exitCodeForTerminalStatus, tailExecution } from "../lib/tail-execution.ts";
+import { exitCodeForTerminalStatus, followExecution } from "../lib/tail-execution.ts";
+import {
+  ResolveWriteBodySchema,
+  statusText,
+  uncertainWriteBlock,
+  WRITE_OUTCOMES,
+} from "../lib/uncertain-write.ts";
 import {
   computeStepBottlenecks,
   executionDurationMs,
@@ -29,7 +35,7 @@ const fetchExecutionRows = async (client: EngineClient) => {
   return items.map((r) => ({
     id: r.id,
     name: r.workflow_id,
-    detail: r.status,
+    detail: statusText(r.status),
   }));
 };
 
@@ -200,6 +206,8 @@ const getCommand = defineCommand({
           if (outcomeLine) process.stderr.write(`\n${pc.dim("outcome:")} ${outcomeLine}\n`);
           const held = heldRunBlock(client, execution, steps);
           if (held) process.stderr.write(`\n${pc.bold(pc.yellow(held))}\n`);
+          const uncertain = uncertainWriteBlock(id, execution, steps);
+          if (uncertain) process.stderr.write(`\n${pc.bold(pc.yellow(uncertain))}\n`);
           if (execution.status === "failed") {
             printFailedStepErrors(steps);
           }
@@ -239,8 +247,10 @@ const resultCommand = defineCommand({
           return;
         }
         const held = heldRunBlock(client, execution, steps);
-        process.stdout.write(`execution ${id} · ${execution.status}\n`);
+        process.stdout.write(`execution ${id} · ${statusText(execution.status)}\n`);
         if (held) process.stderr.write(`\n${pc.bold(pc.yellow(held))}\n`);
+        const uncertain = uncertainWriteBlock(id, execution, steps);
+        if (uncertain) process.stderr.write(`\n${pc.bold(pc.yellow(uncertain))}\n`);
         if (output === null || output === undefined) {
           const uri = last?.result_storage_uri;
           process.stdout.write(uri ? `  result offloaded to ${uri}\n` : "  (no output recorded)\n");
@@ -371,6 +381,48 @@ const abortCommand = defineCommand({
   },
 });
 
+const resolveWriteCommand = defineCommand({
+  meta: {
+    name: "resolve-write",
+    description:
+      "Say whether an interrupted change arrived, so a run with an unknown outcome can go on",
+  },
+  args: {
+    id: { type: "positional", required: true, description: "Execution id" },
+    step: {
+      type: "string",
+      required: true,
+      description: "Key of the step whose change is unclear",
+    },
+    outcome: {
+      type: "string",
+      required: true,
+      description:
+        "arrived: the change reached its target, the step counts as done. not_arrived: it did not, the step is sent again.",
+    },
+  },
+  async run({ args }) {
+    const body = ResolveWriteBodySchema.safeParse({ step_key: args.step, outcome: args.outcome });
+    if (!body.success) {
+      process.stderr.write(
+        `${pc.red("error")}: --step needs a step key and --outcome one of ${WRITE_OUTCOMES.join(", ")}\n`,
+      );
+      process.exit(1);
+    }
+    const { engine_url, api_key, active_tenant_id } = resolveProfile();
+    const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
+    return withCommandErrors(async () => {
+      await client.resolveExecutionWrite(args.id, body.data);
+      process.stdout.write(
+        body.data.outcome === "arrived"
+          ? `${pc.green("recorded")}: the change arrived, the run goes on after this step\n`
+          : `${pc.green("recorded")}: the change did not arrive, the step is sent again\n`,
+      );
+      process.stderr.write(`${pc.dim("Tip:")} subkit executions tail ${args.id} follows the run\n`);
+    });
+  },
+});
+
 const rerunCommand = defineCommand({
   meta: {
     name: "rerun",
@@ -415,7 +467,7 @@ const rerunCommand = defineCommand({
       const result = await client.rerunExecution(id, body);
       if (args.follow) {
         process.stderr.write(`execution ${result.execution_id} queued — following\n`);
-        const terminal = await tailExecution(client, result.execution_id);
+        const terminal = await followExecution(client, result.execution_id);
         process.exitCode = exitCodeForTerminalStatus(terminal);
         return;
       }
@@ -441,7 +493,7 @@ const tailCommand = defineCommand({
         argValue: args.id,
         fetch: () => fetchExecutionRows(client),
       });
-      const terminal = await tailExecution(client, id);
+      const terminal = await followExecution(client, id);
       process.exitCode = exitCodeForTerminalStatus(terminal);
     } catch (err) {
       process.stderr.write(
@@ -461,6 +513,7 @@ export const executionsCommand = defineCommand({
     steps: stepsCommand,
     abort: abortCommand,
     tail: tailCommand,
+    "resolve-write": resolveWriteCommand,
     rerun: rerunCommand,
   },
 });

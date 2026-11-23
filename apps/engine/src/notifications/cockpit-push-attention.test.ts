@@ -12,6 +12,8 @@ import type {
   AttentionV1,
 } from "../operator/attention.ts";
 import type { Candidate } from "../operator/attention-readers.ts";
+import { snoozeAttention, unsnoozeAttention } from "../operator/attention-snooze.ts";
+import { attentionSnoozeKey } from "../operator/core/attention.ts";
 import { spendCandidates } from "../operator/spend-attention.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
@@ -101,6 +103,22 @@ describe("attention-driven cockpit push", () => {
     expect(await dispatch(fixture, [conversation])).toBe(0);
     expect(await dispatch(fixture, [conversation, authority])).toBe(1);
     expect(await dispatch(fixture, [conversation, item("wf-1", "failing", "failing")])).toBe(1);
+  });
+
+  test("a snoozed item raises no push until its snooze ends", async () => {
+    const owner = { tenant_id: fixture.tenantId, user_id: fixture.userId };
+    const key = attentionSnoozeKey(failing);
+    await snoozeAttention(
+      ctx.db,
+      owner,
+      { attention_key: key, until: new Date(at.getTime() + 3_600_000) },
+      at,
+    );
+    expect(await dispatch(fixture, [failing])).toBe(0);
+    expect(await dispatch(fixture, [conversation, failing])).toBe(1);
+    expect(await dispatch(fixture, [conversation, failing])).toBe(0);
+    expect(await unsnoozeAttention(ctx.db, owner, key)).toBe(true);
+    expect(await dispatch(fixture, [conversation, failing])).toBe(1);
   });
 
   test("each task reason wakes the person once, and again only when it changes", async () => {

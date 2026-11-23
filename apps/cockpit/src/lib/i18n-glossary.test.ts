@@ -272,7 +272,6 @@ describe("redesign glossary", () => {
     expect(CATALOGS.de["workflow.kind.request"]).toBe("Dienst abfragen");
     expect(CATALOGS.de["workflow.kind.call"]).toBe("Workflow starten");
     expect(CATALOGS.de["workflow.kind.parallel"]).toBe("Gleichzeitig");
-    expect(CATALOGS.de["workflow.kind.loop"]).toBe("Wiederholen");
     expect(CATALOGS.en["workflow.kind.request"]).not.toBe(CATALOGS.en["workflow.kind.call"]);
   });
 
@@ -352,7 +351,7 @@ describe("one word per stop", () => {
     "chat.schedule.pending",
     "pwa.notify.title.stopped",
     "operations.cause.held_for_review",
-    "overview.reason.execution_authority_unavailable",
+    "overview.reason.execution_authority_expired",
   ] as const;
 
   test("what a person paused is paused", () => {

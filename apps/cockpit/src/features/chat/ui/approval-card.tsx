@@ -7,11 +7,18 @@ import { useEffect, useState } from "react";
 import { listDevices } from "@/api/devices";
 import { contextualHref } from "@/app/installation-context";
 import { Button, ContextHelp } from "@/components/cockpit/patterns";
-import { WorkflowReview } from "@/features/workflows";
+import {
+  ChangeReview,
+  ChangeReviewActions,
+  chatApprovalOutput,
+  promptReviewChanges,
+  useChangeReview,
+  WorkflowReview,
+} from "@/features/workflows";
 import { formatDateTime, LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
-import { approvalLine, type ChatApproval } from "../model/approval";
+import { approvalLine, type ChatApproval, type ChatApprovalOptions } from "../model/approval";
 import { deviceApprovalRows, deviceLabelOf } from "../model/device-approval";
 import { actionFacts } from "../model/policy";
 import { ApprovalBinding } from "./policy";
@@ -27,7 +34,7 @@ export function ChatApprovalCard({
   approval: ChatApproval;
   busy: boolean;
   error: boolean;
-  onDecision: (id: string, approved: boolean) => void;
+  onDecision: (id: string, approved: boolean, options?: ChatApprovalOptions) => void;
   testId: string;
   conversationId?: string;
 }) {
@@ -78,6 +85,13 @@ export function ChatApprovalCard({
       : [];
   const details = approval.description ?? (approval.singleRun ? approval.question : null);
   const pending = !approval.decidedByOthers && !expired && !busy;
+  const changes = approval.changes ?? [];
+  const changeReview = useChangeReview({ total: changes.length, digestRequired: false });
+  const acceptChanges = (followUp?: string) =>
+    onDecision(approval.id, true, {
+      output: chatApprovalOutput(changeReview.selection, changes.length),
+      ...(followUp ? { followUp } : {}),
+    });
   return (
     <>
       <ToolApprovalCard
@@ -129,6 +143,26 @@ export function ChatApprovalCard({
             >
               {t("chat.taskRun.decidedByOthers")}
             </p>
+          ) : changes.length > 0 ? (
+            <>
+              <ChangeReviewActions
+                review={changeReview}
+                busy={busy}
+                blocked={expired}
+                onAccept={() => acceptChanges()}
+                onAcceptAndSave={() => acceptChanges(t("changeReview.savePrompt"))}
+                testId={testId}
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy || expired}
+                onClick={() => onDecision(approval.id, false)}
+                data-testid={`${testId}-decline`}
+              >
+                {t("chat.approval.decline")}
+              </Button>
+            </>
           ) : undefined
         }
         footnote={
@@ -154,6 +188,14 @@ export function ChatApprovalCard({
           </p>
         )}
         {binding ? <ApprovalBinding binding={binding} testId={testId} /> : null}
+        {changes.length > 0 ? (
+          <ChangeReview
+            changes={promptReviewChanges(changes)}
+            review={changeReview}
+            disabled={busy || expired}
+            testId={`${testId}-changes`}
+          />
+        ) : null}
         {approval.authorizationUrl && !expired && (
           <Button asChild variant="outline" className="w-fit">
             <a

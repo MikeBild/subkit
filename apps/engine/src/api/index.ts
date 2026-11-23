@@ -93,6 +93,10 @@ export {
   renewApprovalRuleOperation,
   revokeApprovalRuleOperation,
 } from "./operations/approval-rules.ts";
+export {
+  snoozeAttentionOperation,
+  unsnoozeAttentionOperation,
+} from "./operations/attention-snooze.ts";
 export { chatComposerOperations } from "./operations/chat-composer.ts";
 export type { ResolveCockpitPushContext } from "./operations/cockpit-push.ts";
 export { cockpitPushOperations } from "./operations/cockpit-push.ts";

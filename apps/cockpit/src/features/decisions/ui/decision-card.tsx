@@ -5,7 +5,7 @@ import { Button } from "@ui/atoms/button";
 import { Textarea } from "@ui/atoms/textarea";
 import { cn } from "@ui/lib/utils";
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   dryRunPatchCandidate,
@@ -17,7 +17,16 @@ import {
 import { absolute, runHref } from "@/app/links";
 import { ActionMenu, type ActionMenuItem, DataState } from "@/components/cockpit/patterns";
 import { diagnosisCauseKey } from "@/features/grants/model";
-import { ChangeSummary, DiffCard } from "@/features/workflows";
+import {
+  ChangeReview,
+  ChangeReviewActions,
+  ChangeSummary,
+  candidateReviewOperations,
+  DiffCard,
+  stepReviewChanges,
+  testCandidateChange,
+  useChangeReview,
+} from "@/features/workflows";
 import { reportFailure } from "@/lib/action-failure";
 import type { Translate } from "@/lib/i18n";
 import { pluralKey, type TranslationKey } from "@/lib/i18n";
@@ -436,7 +445,7 @@ interface DecisionCardProps {
   canDecide: boolean;
   busy: boolean;
   compact?: boolean;
-  onApprove: (item: DecisionItem, reviewDigest?: string) => void;
+  onApprove: (item: DecisionItem, reviewDigest?: string, acceptedOperations?: number[]) => void;
   onReject: (item: DecisionItem, reason: string) => void;
   testIdPrefix?: string;
   names?: NameIndex;
@@ -517,6 +526,32 @@ export function DecisionCard({
     evidence?.workflowStepId ??
     null;
   const cause = evidence ? gateCause(evidence, t) : null;
+  const operations = useMemo(
+    () => (item.kind === "patch" && preview.data ? candidateReviewOperations(preview.data) : []),
+    [item.kind, preview.data],
+  );
+  const reviewing = inSheet && item.kind === "patch" && operations.length > 0;
+  const candidate = preview.data;
+  const changeReview = useChangeReview({
+    total: operations.length,
+    digestRequired: true,
+    fullDigest: candidate?.review_digest,
+    onTest:
+      reviewing && candidate
+        ? (accepted) =>
+            testCandidateChange({
+              candidateId: item.id,
+              workflowId: candidate.workflow_id,
+              baseVersionId: candidate.base_version_id,
+              stepId: candidate.before_step.id || candidate.after_step.id || null,
+              before: candidate.before_step,
+              operations,
+              accepted,
+              partial: accepted.length < operations.length,
+              fixtureAvailable: candidate.fixture_available === true,
+            })
+        : undefined,
+  });
   const changeKey = evidence
     ? (fixerKey(evidence.fixer) ??
       proposalKindKey(evidence.proposalKind) ??
@@ -575,6 +610,23 @@ export function DecisionCard({
     >
       {primaryLabel}
     </Button>
+  ) : reviewing ? (
+    <>
+      <ActionMenu size="sm" testId={`${testId}-more`} items={[rejectItem]} />
+      <ChangeReviewActions
+        review={changeReview}
+        busy={busy}
+        blocked={!approvable}
+        onAcceptAndSave={() =>
+          onApprove(
+            item,
+            changeReview.digest ?? undefined,
+            changeReview.partial ? changeReview.accepted : undefined,
+          )
+        }
+        testId={testId}
+      />
+    </>
   ) : (
     <>
       <ActionMenu size="sm" testId={`${testId}-more`} items={[rejectItem]} />
@@ -655,7 +707,17 @@ export function DecisionCard({
         {t(KIND_EFFECT[item.kind])}
       </p>
 
-      {inSheet && facts.length > 0 ? (
+      {reviewing ? (
+        <>
+          <ChangeSummary facts={[]} step={step} cause={cause} testId={`${testId}-change`} />
+          <ChangeReview
+            changes={stepReviewChanges(operations, t)}
+            review={changeReview}
+            disabled={busy || !canDecide}
+            testId={`${testId}-review`}
+          />
+        </>
+      ) : inSheet && facts.length > 0 ? (
         <ChangeSummary facts={facts} step={step} cause={cause} testId={`${testId}-change`} />
       ) : null}
 
@@ -683,7 +745,17 @@ export function DecisionCard({
           </div>
         )}
       </div>
-      {inSheet ? blocked : null}
+      {inSheet
+        ? (blocked ??
+          (reviewing && changeReview.blockedKey && !busy && !rejecting ? (
+            <span
+              className="text-xs text-muted-foreground"
+              data-testid={`${testId}-accept-blocked`}
+            >
+              {t(changeReview.blockedKey)}
+            </span>
+          ) : null))
+        : null}
       {inSheet && actionsSlot
         ? createPortal(
             <span className="flex flex-wrap items-center gap-2" data-testid={`${testId}-actions`}>

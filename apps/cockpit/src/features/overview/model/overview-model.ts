@@ -25,7 +25,11 @@ export type HealthState = NonNullable<Attention["status"]>["health_state"];
 const REASON_KEYS = {
   awaiting_answer: "overview.reason.awaiting_answer",
   execution_authority_required: "overview.reason.execution_authority_required",
-  execution_authority_unavailable: "overview.reason.execution_authority_unavailable",
+  execution_authority_expired: "overview.reason.execution_authority_expired",
+  execution_authority_exhausted: "overview.reason.execution_authority_exhausted",
+  execution_authority_revoked: "overview.reason.execution_authority_revoked",
+  execution_authority_changed: "overview.reason.execution_authority_changed",
+  input_required: "overview.reason.input_required",
   version_awaiting_approval: "overview.reason.version_awaiting_approval",
   version_needs_repair: "overview.reason.version_needs_repair",
   approval_expiring: "overview.reason.approval_expiring",
@@ -59,8 +63,25 @@ const REASON_KEYS = {
   device_offline_waiting: "overview.reason.device_offline_waiting",
   local_confirmation_needed: "overview.reason.local_confirmation_needed",
   device_permission_missing: "overview.reason.device_permission_missing",
+  device_handover_waiting: "overview.reason.device_handover_waiting",
+  knowledge_review_due: "overview.reason.knowledge_review_due",
   folder_changed: "overview.reason.folder_changed",
 } as const satisfies Record<AttentionItem["reason"], TranslationKey>;
+
+const HELD_HOOK_KEYS = {
+  execution_authority_required: "overview.reason.execution_authority_requiredHook",
+  execution_authority_expired: "overview.reason.execution_authority_expiredHook",
+  execution_authority_exhausted: "overview.reason.execution_authority_exhaustedHook",
+  execution_authority_revoked: "overview.reason.execution_authority_revokedHook",
+  execution_authority_changed: "overview.reason.execution_authority_changedHook",
+} as const satisfies Partial<Record<AttentionItem["reason"], TranslationKey>>;
+
+const REAPPROVAL_REASONS: ReadonlySet<AttentionItem["reason"]> = new Set([
+  "execution_authority_expired",
+  "execution_authority_exhausted",
+  "execution_authority_revoked",
+  "execution_authority_changed",
+]);
 
 export const PAIR_WAITING_KIND = "pair_approval_waiting";
 
@@ -175,19 +196,17 @@ export function attentionSentence(
 
   switch (item.reason) {
     case "execution_authority_required":
-    case "execution_authority_unavailable": {
+    case "execution_authority_expired":
+    case "execution_authority_exhausted":
+    case "execution_authority_revoked":
+    case "execution_authority_changed": {
       if (item.reason === "execution_authority_required" && item.repair?.step_id)
         return { lead: heldRepairSentence(item, subject, t), machine: null, since };
       const hook = item.trigger?.kind === "inbound_hook" ? item.trigger.name : null;
       const held = hook
-        ? t(
-            item.reason === "execution_authority_required"
-              ? "overview.reason.execution_authority_requiredHook"
-              : "overview.reason.execution_authority_unavailableHook",
-            { subject, hook },
-          )
+        ? t(HELD_HOOK_KEYS[item.reason], { subject, hook })
         : t(reasonKey, { subject });
-      const detail = attentionDetail(item, t);
+      const detail = REAPPROVAL_REASONS.has(item.reason) ? null : attentionDetail(item, t);
       return {
         lead: detail ? t("overview.withCause", { sentence: held, cause: detail.text }) : held,
         machine: null,
@@ -406,11 +425,11 @@ export function actionLabelKey(action: AttentionAction, item: AttentionItem): Tr
       if (item.reason === "task_grant_required") return "overview.action.allow";
       if (item.reason === "task_owner_unavailable") return "overview.action.resume";
       if (item.subject?.kind === "task") return "overview.action.openTask";
-      if (
-        item.reason === "version_awaiting_approval" ||
-        item.reason === "execution_authority_unavailable"
-      )
+      if (item.reason === "version_awaiting_approval" || REAPPROVAL_REASONS.has(item.reason))
         return "overview.action.approve";
+      if (item.reason === "input_required") return "overview.action.addInput";
+      if (item.reason === "device_handover_waiting") return "overview.action.takeOver";
+      if (item.reason === "knowledge_review_due") return "overview.action.reviewKnowledge";
       if (item.reason === "version_needs_repair" || item.reason === "execution_authority_required")
         return item.repair?.remedy_kind === "prepare"
           ? "overview.action.prepare"
@@ -536,7 +555,11 @@ export function reviewNavigation(history: ReviewHistory, href: (review: string |
 const SHORT_REASON_KEYS = {
   awaiting_answer: "overview.short.awaiting_answer",
   execution_authority_required: "overview.short.execution_authority_required",
-  execution_authority_unavailable: "overview.short.execution_authority_unavailable",
+  execution_authority_expired: "overview.short.execution_authority_expired",
+  execution_authority_exhausted: "overview.short.execution_authority_exhausted",
+  execution_authority_revoked: "overview.short.execution_authority_revoked",
+  execution_authority_changed: "overview.short.execution_authority_changed",
+  input_required: "overview.short.input_required",
   version_awaiting_approval: "overview.short.version_awaiting_approval",
   approval_expiring: "overview.short.approval_expiring",
   schedule_auto_paused: "overview.short.schedule_auto_paused",
@@ -565,6 +588,8 @@ const SHORT_REASON_KEYS = {
   device_offline_waiting: "overview.short.device_offline_waiting",
   local_confirmation_needed: "overview.short.local_confirmation_needed",
   device_permission_missing: "overview.short.device_permission_missing",
+  device_handover_waiting: "overview.short.device_handover_waiting",
+  knowledge_review_due: "overview.short.knowledge_review_due",
   folder_changed: "overview.short.folder_changed",
 } as const satisfies Partial<Record<AttentionItem["reason"], TranslationKey>>;
 
@@ -579,7 +604,11 @@ const COUNTED_SHORT_REASON_KEYS = {
 const STATE_OF_REASON: Record<AttentionItem["reason"], { state: string; label: TranslationKey }> = {
   awaiting_answer: { state: "pending", label: "overview.state.answer" },
   execution_authority_required: { state: "needs_attention", label: "automation.state.repair" },
-  execution_authority_unavailable: { state: "pending", label: "workflowStrip.state.grant" },
+  execution_authority_expired: { state: "pending", label: "workflowStrip.state.grant" },
+  execution_authority_exhausted: { state: "pending", label: "workflowStrip.state.grant" },
+  execution_authority_revoked: { state: "pending", label: "workflowStrip.state.grant" },
+  execution_authority_changed: { state: "pending", label: "workflowStrip.state.grant" },
+  input_required: { state: "needs_attention", label: "automation.state.repair" },
   version_awaiting_approval: { state: "pending", label: "workflowStrip.state.grant" },
   version_needs_repair: { state: "needs_attention", label: "automation.state.repair" },
   approval_expiring: { state: "expiring", label: "workflowStrip.state.expiring" },
@@ -613,6 +642,8 @@ const STATE_OF_REASON: Record<AttentionItem["reason"], { state: string; label: T
   device_offline_waiting: { state: "pending", label: "settings.status.waiting" },
   local_confirmation_needed: { state: "pending", label: "overview.state.decide" },
   device_permission_missing: { state: "needs_attention", label: "automation.state.repair" },
+  device_handover_waiting: { state: "pending", label: "overview.state.decide" },
+  knowledge_review_due: { state: "pending", label: "overview.state.decide" },
   folder_changed: { state: "needs_attention", label: "automation.state.repair" },
 };
 

@@ -38,6 +38,23 @@ describe("executionOutcomeLine", () => {
     expect(line).not.toContain("succeeded");
   });
 
+  test("a held reason ends with its plain sentence", () => {
+    const line = executionOutcomeLine({
+      kind: "failed",
+      failed_step: null,
+      cause_class: null,
+      error_code: null,
+      refusal_reason: "execution_authority_expired" as never,
+      connector: null,
+      steps: { total: 0, succeeded: 0, failed: 0, held: 0, skipped: 0 },
+      output_contract: "none",
+      rerun_safety: { mode: "prepare_only", reason: "fixture" },
+    });
+    expect(line).toEndWith(
+      "— The approval for this workflow has expired. Approve it again to let it run.",
+    );
+  });
+
   test("no outcome prints nothing", () => {
     expect(executionOutcomeLine(null)).toBeNull();
   });

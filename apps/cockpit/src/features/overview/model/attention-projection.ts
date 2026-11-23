@@ -1,8 +1,15 @@
 import type { components } from "@cli-core/engine-api/openapi";
 
-export type Attention = components["schemas"]["AttentionV1"];
+import type { Attention, AttentionItem } from "../api/attention-contract";
+
+export type {
+  Attention,
+  AttentionItem,
+  AttentionReason,
+  SnoozedAttentionItem,
+} from "../api/attention-contract";
+
 type AttentionAction = components["schemas"]["AttentionAction"];
-export type AttentionItem = components["schemas"]["AttentionItem"];
 export type AttentionSource = keyof Attention["sources"];
 export type HiddenEntries = ReadonlyMap<string, string>;
 export const NO_HIDDEN: HiddenEntries = new Map();

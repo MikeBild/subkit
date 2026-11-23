@@ -291,3 +291,19 @@ test("a device step past its deadline says nothing was sent and offers no answer
   expect(de).not.toContain("approval-pending");
   expect(render(expired, "en")).toContain("Nothing was sent or changed.");
 });
+
+test("a workflow patch offers each change on its own, then Accept or Accept and save", () => {
+  const patch: ChatApproval = {
+    ...approval,
+    externalTool: undefined,
+    changes: [{ label: "Rename the first step" }, { label: "Add a retry", preview: "retry: 3" }],
+  };
+  const html = render(patch, "en");
+  expect(html).toContain("Rename the first step");
+  expect(html.match(/role="checkbox"/g)?.length).toBe(2);
+  expect(html.match(/data-testid="approval-accept"/g)?.length).toBe(1);
+  expect(html.match(/data-testid="approval-accept-save"/g)?.length).toBe(1);
+  expect(html.match(/data-testid="approval-decline"/g)?.length).toBe(1);
+  expect(html).not.toContain("approval-approve");
+  expect(html).not.toContain("approval-test-first");
+});

@@ -74,11 +74,11 @@ describe("sentences the engine writes, said by the Cockpit", () => {
   test("known codes read in the person's language", () => {
     expect(
       engineSentence(
-        { hold: "execution_authority_unavailable", text: "The approval has expired, …" },
+        { hold: "execution_authority_expired", text: "The approval has expired, …" },
         de,
       ),
     ).toEqual({
-      text: "Die Freigabe ist abgelaufen, aufgebraucht oder widerrufen, deshalb warten automatische Starts. Erneuere die Freigabe, dann laufen sie wieder. Seit dem Anhalten ist nichts gelaufen.",
+      text: "Die Freigabe ist abgelaufen, deshalb warten automatische Starts. Erneuere die Freigabe, dann laufen sie wieder. Seit dem Anhalten ist nichts gelaufen.",
       source: "cockpit",
     });
     expect(engineSentence({ cause_class: "auth_failed" }, en)?.text).toBe(
@@ -104,16 +104,16 @@ describe("where the Cockpit shows these sentences", () => {
     const held = attentionSentence(
       {
         ...overviewFixture(),
-        reason: "execution_authority_unavailable",
+        reason: "execution_authority_required",
         cause_class: "authority_mismatch",
         detail:
-          "The approval has expired, is used up or was revoked, so scheduled runs wait. Renew the approval to start them again. Nothing has run since the hold.",
+          "No approval covers the current version, so scheduled runs wait. Review and approve the workflow to start them again. Nothing has run since the hold.",
       },
       de,
       Date.parse("2026-09-28T12:00:00.000Z"),
     );
-    expect(held.lead).toContain("Die Freigabe ist abgelaufen, aufgebraucht oder widerrufen");
-    expect(held.lead).not.toContain("The approval has expired");
+    expect(held.lead).toContain("Für die aktuelle Version gibt es keine Freigabe");
+    expect(held.lead).not.toContain("No approval covers");
     expect(
       attentionDetail({ reason: "execution_authority_required", detail: null }, de),
     ).toBeNull();

@@ -142,5 +142,17 @@ export const AttentionV1Schema = z
       })
       .nullable(),
     items: z.array(AttentionItem),
+    snoozed: z
+      .array(
+        AttentionItem.extend({
+          attention_key: z
+            .string()
+            .describe("`<id>|<class>|<reason>`; pass it to attention.unsnooze."),
+          snoozed_until: z.string(),
+        }).openapi("SnoozedAttentionItem"),
+      )
+      .describe(
+        "Items the caller snoozed. They are not in `items`, raise no push notification, and return when the snooze ends or the item changes class or reason.",
+      ),
   })
   .openapi("AttentionV1");
