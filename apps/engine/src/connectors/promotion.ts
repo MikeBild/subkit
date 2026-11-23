@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { resolveActor } from "../audit/recorders/types.ts";
 import type { AuditActorType } from "../audit/types.ts";
@@ -103,6 +103,27 @@ function copyableCredential(value: DecryptedCredential): CredentialPlaintext {
   return value;
 }
 
+async function hasPrimaryCredential(
+  tx: Executor,
+  tenant_id: string,
+  connector_id: string,
+): Promise<boolean> {
+  const rows = await tx
+    .select({ id: vaultItems.id })
+    .from(vaultItems)
+    .where(
+      and(
+        eq(vaultItems.tenant_id, tenant_id),
+        eq(vaultItems.connector_id, connector_id),
+        eq(vaultItems.environment, "prod"),
+        ne(vaultItems.mode, "oauth2_client"),
+        isNull(vaultItems.deleted_at),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
 export async function promoteConnector(
   input: PromoteConnectorInput,
   db: Executor,
@@ -180,7 +201,12 @@ export async function promoteConnector(
         ),
       )
       .limit(1);
-    if (targetRows[0]) {
+    const existingTarget = targetRows[0];
+    if (
+      existingTarget &&
+      (input.strategy !== "copy" ||
+        (await hasPrimaryCredential(tx, input.tenant_id, existingTarget.id)))
+    ) {
       throw new ConnectorPromotionError(
         "target_exists",
         `an active PROD connector with slug "${source.slug}" already exists`,
@@ -221,48 +247,58 @@ export async function promoteConnector(
         );
       }
 
-      const inserted = await tx
-        .insert(connectors)
-        .values({
-          tenant_id: source.tenant_id,
-          slug: source.slug,
-          display_name: source.display_name,
-          driver: source.driver,
-          environment: "prod",
-          auth_type: source.auth_type,
-          config: withoutMcpTrustList(source.config),
-          base_url: source.base_url,
-          dsn: source.dsn,
-          operator_quirks: source.operator_quirks,
-          self_description: source.self_description,
-          template_slug: source.template_slug,
-          template_name: source.template_name,
-          template_source: source.template_source,
-          template_version: source.template_version,
-          template_snapshot: source.template_snapshot,
-          auto_refresh_cron: source.auto_refresh_cron,
-          last_ingested_at: source.last_ingested_at,
-          circuit_state: source.circuit_state,
-          circuit_opened_at: source.circuit_opened_at,
-          circuit_failure_count: source.circuit_failure_count,
-          circuit_threshold: source.circuit_threshold,
-          circuit_reset_ms: source.circuit_reset_ms,
-          needs_reauth: source.needs_reauth,
-          auth_failed_at: source.auth_failed_at,
-          auth_failed_reason: source.auth_failed_reason,
-          health_state: source.health_state,
-          health_reason: source.health_reason,
-          health_error_code: source.health_error_code,
-          health_changed_at: source.health_changed_at,
-          sunset_at: source.sunset_at,
-          successor_uri: source.successor_uri,
-        })
-        .returning({ id: connectors.id });
-      const target = inserted[0];
-      assertInsertRow(target, "connectors");
-      targetConnectorId = target.id;
+      if (existingTarget) {
+        targetConnectorId = existingTarget.id;
+      } else {
+        const inserted = await tx
+          .insert(connectors)
+          .values({
+            tenant_id: source.tenant_id,
+            slug: source.slug,
+            display_name: source.display_name,
+            driver: source.driver,
+            environment: "prod",
+            auth_type: source.auth_type,
+            config: withoutMcpTrustList(source.config),
+            base_url: source.base_url,
+            dsn: source.dsn,
+            operator_quirks: source.operator_quirks,
+            self_description: source.self_description,
+            template_slug: source.template_slug,
+            template_name: source.template_name,
+            template_source: source.template_source,
+            template_version: source.template_version,
+            template_snapshot: source.template_snapshot,
+            auto_refresh_cron: source.auto_refresh_cron,
+            last_ingested_at: source.last_ingested_at,
+            circuit_state: source.circuit_state,
+            circuit_opened_at: source.circuit_opened_at,
+            circuit_failure_count: source.circuit_failure_count,
+            circuit_threshold: source.circuit_threshold,
+            circuit_reset_ms: source.circuit_reset_ms,
+            needs_reauth: source.needs_reauth,
+            auth_failed_at: source.auth_failed_at,
+            auth_failed_reason: source.auth_failed_reason,
+            health_state: source.health_state,
+            health_reason: source.health_reason,
+            health_error_code: source.health_error_code,
+            health_changed_at: source.health_changed_at,
+            sunset_at: source.sunset_at,
+            successor_uri: source.successor_uri,
+          })
+          .returning({ id: connectors.id });
+        const target = inserted[0];
+        assertInsertRow(target, "connectors");
+        targetConnectorId = target.id;
+      }
 
       const primary = await getCredentialForConnector(input.tenant_id, source.id, "dev", tx);
+      if (existingTarget && !primary) {
+        throw new ConnectorPromotionError(
+          "target_exists",
+          `an active PROD connector with slug "${source.slug}" already exists and the DEV connector has no credential to copy`,
+        );
+      }
       if (primary) {
         const copied = await upsertCredential(
           {
