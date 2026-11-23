@@ -1,14 +1,14 @@
 ---
 slug: subkit-desktop
 title: SubKit Desktop
-summary: Install SubKit Desktop on your Mac or Windows PC, sign in, and on a Mac let SubKit work with your files, a browser and your apps while you watch in the live view.
+summary: Install SubKit Desktop on your Mac, sign in, and let SubKit work with your files, a browser and your apps while you watch in the live view.
 section: work
 order: 18
 audience: public
 ---
 ## SubKit Desktop
 
-This chapter is for anyone who wants SubKit on their Mac or Windows PC: to keep an eye on it all day, and on a Mac to let it work with files, websites and apps on that Mac.
+This chapter is for anyone who wants SubKit on their Mac: to keep an eye on it all day, and to let it work with files, websites and apps on that Mac.
 Afterwards you have installed SubKit Desktop, signed in, allowed what SubKit may use on your Mac, and you know how to follow and stop it in the live view.
 You can also run a workspace only on your Mac and move it to a server later.
 
@@ -31,8 +31,7 @@ The table in “Cockpit as an app” shows how it differs from the installed web
 
 ### What you need
 
-- A Mac with Apple Silicon and macOS 13 or later, or a PC with Windows 10 or 11 (64-bit, x64). Intel Macs and Linux are not supported.
-- Files, browser, apps, the live view and the local workspace exist only on the Mac. On Windows SubKit Desktop brings the Cockpit, the tray icon, notifications, the quick note, “Where should this go?” for dropped files and updates; the app says so where a Mac-only feature would be.
+- A Mac with Apple Silicon and macOS 13 or later. Intel Macs and Linux are not supported. The Windows app is coming soon.
 - For a server: a SubKit server of version @@DESKTOP_MIN_SERVER_VERSION@@ or later. Its address has to be reachable over `https://`; only `localhost` may use `http://`.
 - An account you can sign in to the Cockpit with in the browser, an invitation link from your invitation email, or a new account for a workspace of your own.
 - For a workspace only on your Mac: no server, but an API key of Anthropic, OpenAI or Google Gemini, or a model server on your Mac.
@@ -50,11 +49,7 @@ SubKit Desktop is a signed DMG file for Macs with Apple Silicon.
 
 The app updates itself, so you download it only once.
 
-On Windows SubKit Desktop is a signed installer for Windows x64.
-
-1. Download [SubKit for Windows](https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-win-x64.exe).
-2. Open the installer. It installs SubKit for your Windows account, without administrator rights.
-3. Start SubKit from the Start menu.
+The Windows app is coming soon.
 
 ### Welcome and invitation link
 
@@ -302,7 +297,7 @@ If you work with several SubKit servers, each one gets its own profile with its 
 
 ### Updates
 
-The app checks for updates at start and every six hours after that, on the Mac and on Windows alike. If **Settings** reads “Automatic updates are not enabled in this build.”, your build was made without updates. Download SubKit again as described in “Install”.
+The app checks for updates at start and every six hours after that. If **Settings** reads “Automatic updates are not enabled in this build.”, your build was made without updates. Download SubKit again as described in “Install”.
 
 | What you read | What happens |
 | --- | --- |
@@ -323,7 +318,7 @@ When the server requires a newer app, you read it while connecting. Update SubKi
 - **Local steps run only while the app is open and the Mac is awake.** A run that needs the Mac waits for it and says “A run is waiting for its device to come online.”
 - **Browser and app steps run only for the person of the Mac.** From their chat or task, a run they start, or a schedule they set up.
 - **Redaction covers password fields and fields marked as sensitive.** A secret that a page or app shows as plain text stays in the screenshot.
-- **On Windows, SubKit does not work on the PC.** Files, browser, apps, the live view and **Only on this Mac** are Mac-only for now. **Local capabilities** and the connect screen say so on Windows.
+- **SubKit Desktop runs only on the Mac for now.** The Windows app is coming soon.
 
 ### If something does not work
 

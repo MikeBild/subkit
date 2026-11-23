@@ -17,8 +17,8 @@ Afterwards you know what your server tells the app, which two settings you can s
 - An engine of version @@DESKTOP_MIN_SERVER_VERSION@@ or later. The update runs the migrations for the app’s sign-in.
 - An address with `https://`. The app only connects over `https`; it allows `http` for `localhost` alone.
 - A working way to sign in to the Cockpit in the browser. The app uses exactly this sign-in and no API key.
-- The app itself. SubKit Desktop runs on a Mac with Apple Silicon and macOS 13 or later and on Windows 10 or 11 (x64). Download it for [Mac](https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-mac-arm64.dmg) or [Windows](https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-win-x64.exe); both links always serve the newest release. To build and distribute it yourself, see below. The Cockpit as an installed web app works on every system.
-- For the local capabilities (files, browser and apps on the Mac) an engine of version @@DESKTOP_MIN_SERVER_VERSION@@ or later. On Windows the app offers no local capabilities, so the server sees no device of a Windows PC.
+- The app itself. SubKit Desktop runs on a Mac with Apple Silicon and macOS 13 or later; the Windows app is coming soon. [Download it for Mac](https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-mac-arm64.dmg); the link always serves the newest release. To build and distribute it yourself, see below. The Cockpit as an installed web app works on every system.
+- For the local capabilities (files, browser and apps on the Mac) an engine of version @@DESKTOP_MIN_SERVER_VERSION@@ or later.
 
 ### What the server tells the app
 

@@ -1,14 +1,14 @@
 ---
 slug: subkit-desktop
 title: SubKit Desktop
-summary: Installier SubKit Desktop auf deinem Mac oder Windows-PC, melde dich an und lass SubKit auf dem Mac mit deinen Dateien, einem Browser und deinen Apps arbeiten, während du in der Live-Ansicht zusiehst.
+summary: Installier SubKit Desktop auf deinem Mac, melde dich an und lass SubKit mit deinen Dateien, einem Browser und deinen Apps arbeiten, während du in der Live-Ansicht zusiehst.
 section: work
 order: 18
 audience: public
 ---
 ## SubKit Desktop
 
-Dieses Kapitel ist für alle, die SubKit auf ihrem Mac oder Windows-PC haben wollen: um es den ganzen Tag im Blick zu behalten und um es auf dem Mac mit Dateien, Websites und Apps auf diesem Mac arbeiten zu lassen.
+Dieses Kapitel ist für alle, die SubKit auf ihrem Mac haben wollen: um es den ganzen Tag im Blick zu behalten und um es mit Dateien, Websites und Apps auf diesem Mac arbeiten zu lassen.
 Danach hast du SubKit Desktop installiert, dich angemeldet und erlaubt, was SubKit auf deinem Mac nutzen darf. Du weißt, wie du es in der Live-Ansicht verfolgst und stoppst.
 Außerdem kannst du einen Arbeitsbereich nur auf deinem Mac betreiben und ihn später auf einen Server umziehen.
 
@@ -31,8 +31,7 @@ Den Unterschied zur installierten Web-App zeigt die Tabelle in „Cockpit als Ap
 
 ### Was du brauchst
 
-- Einen Mac mit Apple Silicon ab macOS 13 oder einen PC mit Windows 10 oder 11 (64 Bit, x64). Macs mit Intel-Prozessor und Linux werden nicht unterstützt.
-- Dateien, Browser, Apps, die Live-Ansicht und den lokalen Arbeitsbereich gibt es nur auf dem Mac. Unter Windows bringt SubKit Desktop das Cockpit, das Symbol im Infobereich, Benachrichtigungen, die Schnellnotiz, „Wohin damit?“ für abgelegte Dateien und Updates; wo eine Mac-Funktion stünde, sagt die App das.
+- Einen Mac mit Apple Silicon ab macOS 13. Macs mit Intel-Prozessor und Linux werden nicht unterstützt. Die App für Windows folgt.
 - Für einen Server: einen SubKit-Server ab Version @@DESKTOP_MIN_SERVER_VERSION@@. Seine Adresse muss über `https://` erreichbar sein; nur `localhost` darf `http://` nutzen.
 - Ein Konto, mit dem du dich im Browser am Cockpit anmelden kannst, einen Einladungslink aus deiner Einladungs-Mail oder ein neues Konto für einen eigenen Arbeitsbereich.
 - Für einen Arbeitsbereich nur auf deinem Mac: keinen Server, aber einen API-Schlüssel von Anthropic, OpenAI oder Google Gemini oder einen Modell-Server auf deinem Mac.
@@ -50,11 +49,7 @@ SubKit Desktop ist eine signierte DMG-Datei für Macs mit Apple Silicon.
 
 Die App aktualisiert sich selbst. Du lädst sie also nur einmal herunter.
 
-Unter Windows ist SubKit Desktop ein signiertes Installationsprogramm für Windows x64.
-
-1. Lade [SubKit für Windows](https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-win-x64.exe) herunter.
-2. Öffne das Installationsprogramm. Es installiert SubKit für dein Windows-Konto, ohne Administratorrechte.
-3. Starte SubKit aus dem Startmenü.
+Die App für Windows folgt.
 
 ### Willkommen und Einladungslink
 
@@ -302,7 +297,7 @@ Arbeitest du mit mehreren SubKit-Servern, bekommt jeder ein eigenes Profil mit e
 
 ### Updates
 
-Die App sucht beim Start und danach alle sechs Stunden nach Updates, auf dem Mac wie unter Windows. Steht unter **Einstellungen** „Automatische Updates sind in diesem Build nicht aktiv.“, wurde dein Build ohne Updates gebaut. Lade SubKit neu herunter, wie unter „Installieren“ beschrieben.
+Die App sucht beim Start und danach alle sechs Stunden nach Updates. Steht unter **Einstellungen** „Automatische Updates sind in diesem Build nicht aktiv.“, wurde dein Build ohne Updates gebaut. Lade SubKit neu herunter, wie unter „Installieren“ beschrieben.
 
 | Was du liest | Was passiert |
 | --- | --- |
@@ -323,7 +318,7 @@ Verlangt der Server eine neuere App, liest du das beim Verbinden. Aktualisiere d
 - **Lokale Schritte laufen nur, solange die App offen und der Mac wach ist.** Ein Run, der den Mac braucht, wartet auf ihn und sagt „Ein Run wartet, bis sein Gerät online ist.“
 - **Browser- und App-Schritte laufen nur für die Person des Macs.** Aus ihrem Chat oder ihrer Aufgabe, aus einem Run, den sie startet, oder aus einem Zeitplan, den sie eingerichtet hat.
 - **Geschwärzt werden Passwortfelder und als vertraulich markierte Felder.** Ein Geheimnis, das eine Seite oder App als Klartext zeigt, bleibt im Bildschirmfoto.
-- **Unter Windows arbeitet SubKit nicht auf dem PC.** Dateien, Browser, Apps, die Live-Ansicht und **Nur auf diesem Mac** gibt es vorerst nur auf dem Mac. **Lokale Fähigkeiten** und der Verbindungsbildschirm sagen das unter Windows.
+- **SubKit Desktop läuft vorerst nur auf dem Mac.** Die App für Windows folgt.
 
 ### Wenn etwas nicht klappt
 

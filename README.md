@@ -37,7 +37,7 @@
   <img alt="Runs in the cloud, self-hosted or on your computer" src="https://img.shields.io/badge/runs-cloud_·_self--hosted_·_desktop-1E4FD6?style=flat-square&labelColor=141414" />
   <img alt="Works with MCP clients" src="https://img.shields.io/badge/MCP-server_and_client-1E4FD6?style=flat-square&labelColor=141414" />
   <img alt="Interface languages: English and German" src="https://img.shields.io/badge/languages-EN_·_DE-1E4FD6?style=flat-square&labelColor=141414" />
-  <img alt="Desktop app: macOS 13 or later on Apple Silicon, Windows x64" src="https://img.shields.io/badge/desktop-macOS_13+_·_Apple_Silicon_·_Windows_x64-1E4FD6?style=flat-square&labelColor=141414" />
+  <img alt="Desktop app: macOS 13 or later on Apple Silicon, Windows coming soon" src="https://img.shields.io/badge/desktop-macOS_13+_·_Apple_Silicon_·_Windows_coming_soon-1E4FD6?style=flat-square&labelColor=141414" />
   <a href="https://subkit-cloud.mikebild.dev"><img alt="Status: SubKit Cloud is in Preview with self-service sign-up" src="https://img.shields.io/badge/cloud-preview_·_self--service_sign--up-1E4FD6?style=flat-square&labelColor=141414" /></a>
 </p>
 
@@ -161,7 +161,7 @@
   </tr>
 </table>
 
-<p align="center"><sub>SubKit Desktop runs on macOS 13+ with Apple Silicon and on Windows x64; files, browser and apps work on the Mac.</sub></p>
+<p align="center"><sub>SubKit Desktop runs on macOS 13+ with Apple Silicon. The Windows app is coming soon.</sub></p>
 
 <br />
 
@@ -375,7 +375,7 @@ SubKit is in Preview. [Sign up for SubKit Cloud](#sign-up-for-subkit-cloud) your
     <td width="50%" valign="top"><strong>Your own engine</strong><br />Engine with Cockpit, PostgreSQL and an object store, started with Docker Compose.<br /><br /><a href="https://github.com/MikeBild/subkit/releases/latest/download/docker-compose.yml">Download <code>docker-compose.yml</code></a> · <a href="https://subkit.mikebild.dev/en/documentation/run-the-engine/">How self-hosting works</a></td>
   </tr>
   <tr>
-    <td width="50%" valign="top"><a name="subkit-desktop"></a><strong>SubKit Desktop</strong><br />Your Cockpit as a desktop app, plus files, browser and computer use.<br /><sub>macOS 13+ on Apple Silicon, Windows x64</sub><br /><br /><a href="https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-mac-arm64.dmg">Download for Mac</a> · <a href="https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-win-x64.exe">Download for Windows</a> · <a href="https://subkit.mikebild.dev/en/documentation/subkit-desktop/">How to get SubKit Desktop</a></td>
+    <td width="50%" valign="top"><a name="subkit-desktop"></a><strong>SubKit Desktop</strong><br />Your Cockpit as a desktop app, plus files, browser and computer use.<br /><sub>macOS 13+ on Apple Silicon, Windows coming soon</sub><br /><br /><a href="https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-mac-arm64.dmg">Download for Mac</a> · <a href="https://subkit.mikebild.dev/en/documentation/subkit-desktop/">How to get SubKit Desktop</a></td>
     <td width="50%" valign="top"><strong>Fully local workspace</strong><br />A whole workspace on your computer, with backups and your own AI key or local model. No server needed.<br /><sub>Inside SubKit Desktop</sub><br /><br /><a href="https://subkit.mikebild.dev/en/documentation/subkit-desktop/">Set up a local workspace</a></td>
   </tr>
 </table>
