@@ -1,4 +1,5 @@
 import type { Executor } from "../db/client.ts";
+import { connectorGapGuidance } from "./connector-gap.ts";
 import type { WorkflowEffectManifest } from "./effect-manifest.ts";
 import { previewWorkflowAuthority } from "./execution-authorities.ts";
 import { resolveWorkflowReviewEnvironment } from "./execution-environment.ts";
@@ -51,13 +52,19 @@ export async function reviewAutomationEnvironment(
       issues: preview?.manifest.issues ?? [],
       unavailable_steps: preview?.unavailable_steps ?? [],
       preview_evidence: held,
-      repair_guidance: repairGuidanceForIssues(
-        preview?.manifest.issues ?? [],
-        preview?.manifest.effects ?? [],
-        preview?.storage_refusals ?? [],
-        preview?.request_refusals ?? [],
-        diagnosis,
-      ),
+      repair_guidance: [
+        ...repairGuidanceForIssues(
+          preview?.manifest.issues ?? [],
+          preview?.manifest.effects ?? [],
+          preview?.storage_refusals ?? [],
+          preview?.request_refusals ?? [],
+          diagnosis,
+        ),
+        ...connectorGapGuidance(diagnosis?.diagnoses ?? []).map((entry) => ({
+          ...entry,
+          remedy_kind: "reconnect" as const,
+        })),
+      ],
     };
   } catch {
     return { workflow_version_id: version_id, verification_unavailable: true };

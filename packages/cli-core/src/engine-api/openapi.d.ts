@@ -30305,9 +30305,27 @@ export interface components {
                     content_type: "text/plain" | "text/html" | "multipart/alternative";
                 };
                 binding?: components["schemas"]["MissingBindingEvidence"];
+                connector?: {
+                    /** Format: uuid */
+                    connector_id: string;
+                    connector_slug: string;
+                    connector_name: string;
+                    /** @enum {string} */
+                    environment: "dev" | "prod";
+                    /** @enum {string} */
+                    reason: "disabled" | "needs_reauth" | "credential_unavailable";
+                };
             };
             /** @enum {string} */
             remedy_kind: "patch" | "prepare" | "declare" | "reconnect" | "author";
+            reconnect?: {
+                /** Format: uuid */
+                connector_id: string;
+                /** @enum {string} */
+                environment: "dev" | "prod";
+                /** @enum {string} */
+                section: "credentials";
+            };
             /** @enum {string} */
             fixer?: "use_utf8_encoder" | "declare_report_delivery";
             /** Format: uuid */
