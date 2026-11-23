@@ -23,6 +23,7 @@ const GENERIC_TEMPLATES = new Set([
   "http",
   "jina-reader",
   "oauth2-generic",
+  "sftp",
   "web-scraper",
   "xray-cloud",
 ]);

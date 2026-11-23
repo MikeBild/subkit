@@ -29,6 +29,7 @@ describe("StepSchema — retired `tool` step is rejected", () => {
     expect(kinds).toEqual([
       "branch",
       "call",
+      "model",
       "parallel",
       "request",
       "transform",

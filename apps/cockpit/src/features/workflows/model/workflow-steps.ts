@@ -363,6 +363,7 @@ function readKind(
           ...json("workflow.block.settings", raw.readability),
           ...json("workflow.block.settings", raw.markdown),
           ...json("workflow.block.settings", raw.structured_data),
+          ...json("workflow.block.settings", raw.file),
         ],
       };
     }
@@ -469,6 +470,7 @@ const TRANSFORM_LANGUAGES: Record<string, string> = {
   readability: "Readability",
   "html-to-markdown": "HTML → Markdown",
   "structured-data": "Structured Data",
+  "parse-file": "Parse File",
 };
 
 export function joinStepsWithLastRun(

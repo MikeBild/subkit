@@ -181,7 +181,7 @@ describe("extractor transforms", () => {
   ].map((match) => match[1] ?? "");
 
   test("the engine's extractor config blocks are read", () => {
-    expect(configs).toEqual(["readability", "markdown", "structured_data"]);
+    expect(configs).toEqual(["readability", "markdown", "structured_data", "file"]);
   });
 
   test("every extractor's configuration is shown", () => {
@@ -199,6 +199,19 @@ describe("extractor transforms", () => {
         JSON.stringify({ marker: name }, null, 2),
       );
     }
+  });
+
+  test("a parse-file transform names itself and shows its file settings", () => {
+    const step = {
+      id: "read_invoice",
+      kind: "transform",
+      language: "parse-file",
+      file: { source: "download.data", format: "xlsx", sheet: "Items" },
+    };
+    expect(essence(step)).toBe("Parse File");
+    expect(block(read(step).blocks, "workflow.block.settings")?.code).toBe(
+      JSON.stringify(step.file, null, 2),
+    );
   });
 
   test("an html-to-markdown transform shows its markdown settings", () => {
