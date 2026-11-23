@@ -54,6 +54,8 @@ export const engineSentenceEn = {
     "Paging stopped at its configured limit, so the result of this step is incomplete.",
   "engine.code.skipped_dependency_held":
     "This step was skipped because an earlier writing step was held in the trial run.",
+  "engine.code.skipped":
+    "This step was skipped by the workflow’s control flow or after an earlier step failed.",
   "engine.code.caller_saved_workflow_required":
     "This caller can run only a saved workflow version, not a draft.",
   "engine.code.engine_stopped_during_write":
@@ -119,6 +121,8 @@ export const engineSentenceDe: Record<keyof typeof engineSentenceEn, string> = {
     "Das Blättern hat an seinem eingestellten Limit gestoppt, das Ergebnis dieses Schritts ist deshalb unvollständig.",
   "engine.code.skipped_dependency_held":
     "Dieser Schritt wurde übersprungen, weil ein früherer schreibender Schritt im Probe-Run angehalten wurde.",
+  "engine.code.skipped":
+    "Dieser Schritt wurde durch den Ablauf des Workflows oder nach einem fehlgeschlagenen früheren Schritt übersprungen.",
   "engine.code.caller_saved_workflow_required":
     "Dieser Aufrufer kann nur eine gespeicherte Workflow-Version ausführen, keinen Entwurf.",
   "engine.code.engine_stopped_during_write":
