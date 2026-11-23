@@ -3,7 +3,7 @@ export type ReleaseNotes = { version: string; notes: string[]; highlights: strin
 export type PendingNotes = { version: string | null; notes: string[]; highlights: string[] | null };
 
 export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: PendingNotes } = {
-  "source": "41659a42e52f3c6107ccdbed991e0b771903235b",
+  "source": "87b10c310a27b65bd668629135cbdb357940ab3f",
   "releases": [
     {
       "version": "v1.0.0",
