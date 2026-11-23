@@ -272,6 +272,7 @@ export async function saveConnectorAtomic(p: SaveConnectorAtomicParams): Promise
       connector.driver === "graphql" ||
       connector.driver === "postgres" ||
       connector.driver === "s3" ||
+      connector.driver === "sftp" ||
       connector.driver === "mcp");
   const requiresCredential =
     connector.auth_type !== undefined &&

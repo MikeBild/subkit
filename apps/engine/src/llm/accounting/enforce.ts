@@ -1,3 +1,8 @@
+import { getConfig } from "../../config/loader.ts";
+import { isLlmProviderHost, type LlmCallUsage } from "../core/provider-call.ts";
+
+export type { LlmCallUsage };
+
 export class LlmBudgetExceededError extends Error {
   readonly code = "llm_budget_exceeded";
   readonly running_total: number;
@@ -13,14 +18,6 @@ export class LlmBudgetExceededError extends Error {
     this.estimated_call_tokens = params.estimated_call_tokens;
     this.cap = params.cap;
   }
-}
-
-export interface LlmCallUsage {
-  prompt_tokens: number;
-  completion_tokens: number;
-  total_tokens: number;
-  cache_read_tokens: number;
-  cache_creation_tokens: number;
 }
 
 export class RunLlmBudget {
@@ -45,4 +42,12 @@ export class RunLlmBudget {
   account(usage: LlmCallUsage): void {
     this.running += Math.max(0, usage.total_tokens);
   }
+}
+
+export function isLlmProviderUrl(url: URL): boolean {
+  let extra: readonly string[] = [];
+  try {
+    extra = getConfig().egress.provider_hosts_extra ?? [];
+  } catch {}
+  return isLlmProviderHost(url.hostname, extra);
 }

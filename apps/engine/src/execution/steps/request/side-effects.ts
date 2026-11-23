@@ -51,6 +51,7 @@ export function classifyRequestStepSideEffects(
       ? { query: step.sql.query, ...(step.sql.also ? { also: step.sql.also } : {}) }
       : null,
     s3: Boolean(step.s3) || driver === "s3",
+    sftp: Boolean(step.sftp) || driver === "sftp",
     mcp: step.mcp ? { operation: step.mcp.operation } : null,
     target: step.url ?? step.path ?? null,
     body: step.body,

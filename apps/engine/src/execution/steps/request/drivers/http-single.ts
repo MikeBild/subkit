@@ -2,6 +2,7 @@ import { redactKnownValues } from "@shared/redaction.ts";
 import { filenameFromResponse } from "../../../../connectors/drivers/file-promotion.ts";
 import { extractCreatedResourceId, withEgressAudit } from "../../../../connectors/egress.ts";
 import { classifyConnectorHealth } from "../../../../connectors/health.ts";
+import { isLlmProviderUrl } from "../../../../llm/index.ts";
 import { logger } from "../../../../logging/index.ts";
 import { inspectContentRevisionResponse } from "../../../../workflows/content-publication-boundary.ts";
 import { applyResponseFilters, ResponseFilterFailError } from "../../../response-filter.ts";
@@ -18,6 +19,7 @@ import {
   recordHttpShape,
   settleConnectorHealth,
 } from "./http-exchange.ts";
+import { accountProviderCall, providerCallRefusal } from "./provider-call.ts";
 
 export async function runHttpSinglePage(x: HttpExchange): Promise<StepResult> {
   const { d, base_url: baseUrl } = x;
@@ -34,6 +36,11 @@ export async function runHttpSinglePage(x: HttpExchange): Promise<StepResult> {
         url: redactKnownValues(recordedUrl(baseUrl, x.masked_query_keys), d.own_credentials),
       }
     : null;
+  const providerCall = isLlmProviderUrl(baseUrl);
+  if (providerCall) {
+    const refusal = await providerCallRefusal(x);
+    if (refusal) return refusal;
+  }
   const callDoOnePage = () =>
     doOnePage({
       ...attemptParams(x, {
@@ -62,6 +69,7 @@ export async function runHttpSinglePage(x: HttpExchange): Promise<StepResult> {
         body: res.body,
       })
     : null;
+  if (providerCall) await accountProviderCall(x, res.body);
   let body = res.body;
   if (res.body_raw === undefined) {
     try {

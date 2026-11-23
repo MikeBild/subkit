@@ -40,7 +40,9 @@ function displayTarget(value: string | null): string | null {
   if (!value) return null;
   try {
     const url = new URL(value);
-    if (!url.protocol.startsWith("http") || url.username || url.password) return null;
+    if (url.username || url.password) return null;
+    if (url.protocol === "sftp:") return `sftp://${url.host}${url.pathname}`;
+    if (!url.protocol.startsWith("http")) return null;
     return `${url.origin}${url.pathname}`;
   } catch {
     return null;

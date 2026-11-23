@@ -75,6 +75,7 @@ export const SkillActivationSchema = z
           .array(
             z.enum([
               "request",
+              "model",
               "transform",
               "call",
               "wait",

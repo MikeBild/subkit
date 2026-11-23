@@ -185,6 +185,17 @@ export type RequestMeta =
       extras?: Record<string, unknown>;
     }
   | {
+      driver: "sftp";
+      method: string;
+      status?: number;
+      path: string;
+      entry_count?: number;
+      bytes_in?: number;
+      bytes_out?: number;
+      connector: ConnectorResolutionSummary;
+      extras?: Record<string, unknown>;
+    }
+  | {
       driver: "mcp";
       operation: string;
       bytes_in: number;

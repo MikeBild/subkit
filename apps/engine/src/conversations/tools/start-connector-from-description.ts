@@ -66,11 +66,13 @@ export const startConnectorFromDescriptionTool: ConversationTool = {
       args.driver ??
       (args.dsn
         ? "postgres"
-        : /graphql/i.test(args.base_url ?? "") || /graphql/i.test(args.description ?? "")
-          ? "graphql"
-          : /\bs3\b|\bbucket\b|\bobject storage\b/i.test(args.description ?? "")
-            ? "s3"
-            : "http");
+        : /^sftp:\/\//i.test(args.base_url ?? "")
+          ? "sftp"
+          : /graphql/i.test(args.base_url ?? "") || /graphql/i.test(args.description ?? "")
+            ? "graphql"
+            : /\bs3\b|\bbucket\b|\bobject storage\b/i.test(args.description ?? "")
+              ? "s3"
+              : "http");
     const descriptionForMatching = [args.name, args.description]
       .filter((value): value is string => typeof value === "string" && value.length > 0)
       .join(" ");

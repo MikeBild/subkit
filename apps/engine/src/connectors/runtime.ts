@@ -3,7 +3,14 @@ import { AuditAction } from "../audit/types.ts";
 import type { Executor } from "../db/client.ts";
 import { auditLog, connectorMcpSessions } from "../db/schema/index.ts";
 
-const RECORDED_DRIVERS: ReadonlySet<string> = new Set(["http", "graphql", "s3", "postgres", "mcp"]);
+const RECORDED_DRIVERS: ReadonlySet<string> = new Set([
+  "http",
+  "graphql",
+  "s3",
+  "sftp",
+  "postgres",
+  "mcp",
+]);
 
 type ConnectorFailureClass = "auth_failed" | "timeout" | "aborted" | "driver_error";
 

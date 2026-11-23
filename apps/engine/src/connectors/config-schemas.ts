@@ -17,6 +17,17 @@ const S3ConnectorConfigSchema = z.object({
 
 const PostgresConnectorConfigSchema = z.object({});
 
+const SftpConnectorConfigSchema = z
+  .object({
+    host_key_sha256: z
+      .string()
+      .regex(
+        /^(SHA256:)?[A-Za-z0-9+/]{43}=?$/,
+        "host_key_sha256 must be a SHA256 host key fingerprint",
+      ),
+  })
+  .strict();
+
 const DeviceConnectorConfigSchema = z.object({ device_id: z.string().uuid() }).strict();
 
 export const McpConnectorConfigSchema = z
@@ -36,6 +47,7 @@ export const CONNECTOR_CONFIG_SCHEMAS: Record<DriverName, z.ZodType> = {
   http: HttpConnectorConfig,
   graphql: GraphQLConnectorConfigSchema,
   s3: S3ConnectorConfigSchema,
+  sftp: SftpConnectorConfigSchema,
   postgres: PostgresConnectorConfigSchema,
   mcp: McpConnectorConfigSchema,
   local_files: DeviceConnectorConfigSchema,

@@ -19,6 +19,8 @@ describe("DRIVERS", () => {
     expect(DRIVERS.postgres.retryPolicy(step)).toBeNull();
     expect(DRIVERS.s3.capabilities.retry).toBe("none");
     expect(DRIVERS.postgres.capabilities.retry).toBe("none");
+    expect(DRIVERS.sftp.retryPolicy(step)).toBeNull();
+    expect(DRIVERS.sftp.capabilities.retry).toBe("none");
   });
 
   test("response filters run on the mcp result and on every http page only", () => {
@@ -31,6 +33,7 @@ describe("DRIVERS", () => {
       graphql: "none",
       mcp: "result",
       s3: "none",
+      sftp: "none",
       postgres: "none",
       local_files: "none",
       local_browser: "none",
@@ -52,6 +55,13 @@ describe("DRIVERS", () => {
       "write",
     );
     expect(DRIVERS.s3.classifySideEffects({ ...step, method: "PUT" } as RequestStep)).toBe("write");
+    for (const [method, effect] of [
+      ["LIST", "read"],
+      ["GET", "read"],
+      ["PUT", "write"],
+      ["DELETE", "write"],
+    ] as const)
+      expect(DRIVERS.sftp.classifySideEffects({ ...step, method } as RequestStep)).toBe(effect);
   });
 
   test("device drivers classify by the action their step names and never retry", () => {

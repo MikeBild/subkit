@@ -71,6 +71,7 @@ export function validateConnectorDraft(
     connector.driver === "http" ||
     connector.driver === "graphql" ||
     connector.driver === "s3" ||
+    connector.driver === "sftp" ||
     connector.driver === "mcp"
   ) {
     if (!connector.base_url) missing_fields.push("base_url");

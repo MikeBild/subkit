@@ -238,7 +238,8 @@ export const saveConnectorDraftTool: ConversationTool = {
       (connector?.driver === "http" ||
         connector?.driver === "graphql" ||
         connector?.driver === "postgres" ||
-        connector?.driver === "s3");
+        connector?.driver === "s3" ||
+        connector?.driver === "sftp");
     const probeFailed = Boolean(connector) && requiresProbe && connector?.latest_probe?.ok !== true;
 
     let atomicResult: ToolResult;

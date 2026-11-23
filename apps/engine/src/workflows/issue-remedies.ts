@@ -9,6 +9,7 @@ type Driver =
   | "graphql"
   | "postgres"
   | "s3"
+  | "sftp"
   | "mcp"
   | "local_files"
   | "local_browser"

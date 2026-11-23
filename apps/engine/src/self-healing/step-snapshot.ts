@@ -41,6 +41,8 @@ export function endpointKeyFromRequestMeta(
       return `S3 ${meta.method} ${meta.prefix ?? meta.key ?? "/"}`;
     case "postgres":
       return `SQL ${meta.query_preview.slice(0, 80)}`;
+    case "sftp":
+      return `SFTP ${meta.method} ${meta.path}`;
     default:
       return null;
   }

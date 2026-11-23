@@ -198,7 +198,9 @@ export function deriveExecutionOutcome<
 
 export function fixedPlannedSteps(steps: readonly OutcomeDefinitionStep[]): number | null {
   return steps.length > 0 &&
-    steps.every((step) => step.kind === "request" || step.kind === "transform")
+    steps.every(
+      (step) => step.kind === "request" || step.kind === "transform" || step.kind === "model",
+    )
     ? steps.length
     : null;
 }

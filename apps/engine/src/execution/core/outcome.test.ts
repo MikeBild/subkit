@@ -120,6 +120,16 @@ test("ordinary request metadata without extras is not a held row", () => {
   expect(result.steps).toEqual({ total: 1, succeeded: 1, failed: 0, held: 0, skipped: 0 });
 });
 
+test("model steps count toward a fixed planned step count", () => {
+  expect(
+    fixedPlannedSteps([
+      { id: "read", kind: "request" },
+      { id: "draft", kind: "model" },
+      { id: "shape", kind: "transform" },
+    ]),
+  ).toBe(3);
+});
+
 test("mixed fixed and dynamic steps do not advertise a fixed planned count", () => {
   expect(
     fixedPlannedSteps([

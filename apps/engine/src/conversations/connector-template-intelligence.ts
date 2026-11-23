@@ -166,6 +166,7 @@ export function inferTemplateRequiredFields(template: ConnectorTemplate): string
     required.add("bucket");
     required.add("region");
   }
+  if (template.driver === "sftp") required.add("host_key_sha256");
   return [...required];
 }
 

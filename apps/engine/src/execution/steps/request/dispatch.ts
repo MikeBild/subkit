@@ -283,6 +283,9 @@ async function resolveRequestParts(
   const s3PrefixRes = p.step.s3?.prefix
     ? await resolveStringPlaceholders(p.step.s3.prefix, resolverCtx)
     : null;
+  const sftpPathRes = p.step.sftp?.path
+    ? await resolveStringPlaceholders(p.step.sftp.path, resolverCtx)
+    : null;
   let sqlParams: unknown[] | undefined;
   if (p.step.sql && Array.isArray(p.step.sql.params)) {
     sqlParams = [];
@@ -325,6 +328,7 @@ async function resolveRequestParts(
     body,
     s3_key: s3KeyRes?.value ?? p.step.s3?.key,
     s3_prefix: s3PrefixRes?.value ?? p.step.s3?.prefix,
+    sftp_path: sftpPathRes?.value ?? p.step.sftp?.path,
     sql_params: sqlParams,
     mcp_target: mcpTargetRes,
     mcp_arguments: mcpArgsRes,

@@ -116,6 +116,20 @@ const S3RequestMetaSchema = z
   })
   .openapi("S3RequestMeta");
 
+const SftpRequestMetaSchema = z
+  .object({
+    driver: z.literal("sftp"),
+    method: z.string(),
+    status: z.number().int().optional(),
+    path: z.string(),
+    entry_count: z.number().int().nonnegative().optional(),
+    bytes_in: z.number().int().nonnegative().optional(),
+    bytes_out: z.number().int().nonnegative().optional(),
+    connector: ConnectorResolutionSummarySchema,
+    extras: z.record(z.string(), z.unknown()).optional(),
+  })
+  .openapi("SftpRequestMeta");
+
 const McpRequestMetaSchema = z
   .object({
     driver: z.literal("mcp"),
@@ -182,6 +196,7 @@ export const RequestMetaSchema = z
     GraphqlRequestMetaSchema,
     PostgresRequestMetaSchema,
     S3RequestMetaSchema,
+    SftpRequestMetaSchema,
     McpRequestMetaSchema,
     ConnectorlessRequestMetaSchema,
     ErrorRequestMetaSchema,

@@ -133,7 +133,12 @@ export function computeConnectorMissingFields(connector: ConnectorDraftDocument 
   if (!connector.name) missing.push("name");
   if (!connector.driver) missing.push("driver");
   if (!connector.environment) missing.push("environment");
-  if (connector.driver === "http" || connector.driver === "graphql" || connector.driver === "s3") {
+  if (
+    connector.driver === "http" ||
+    connector.driver === "graphql" ||
+    connector.driver === "s3" ||
+    connector.driver === "sftp"
+  ) {
     if (!connector.base_url) {
       missing.push("base_url");
     } else {

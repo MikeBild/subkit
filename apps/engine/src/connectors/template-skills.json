@@ -614,6 +614,24 @@
     ],
     "doc_refs": ["https://docs.digitalocean.com/reference/api/"]
   },
+  "sftp-basics": {
+    "title": "SFTP Basics",
+    "body": "An SFTP connector reaches one SSH file server. Its address is sftp://host:port/folder; every step path stays inside that folder and `..` is refused. The server's host key is pinned in config.host_key_sha256 (the SHA256 fingerprint that ssh-keyscan host | ssh-keygen -lf - prints); a different key is refused before anything is sent. Steps use protocol \"sftp\" with sftp.path: LIST returns the folder entries, GET returns the file as a run file, PUT uploads the step body or a file reference, DELETE removes one file. PUT and DELETE are writes and need approval like any other write.",
+    "examples": [
+      "LIST with sftp.path \"reports\" — name, type, size and modified time of each entry",
+      "GET with sftp.path \"reports/2026-11.csv\" — the file as a run file for a parse-file transform",
+      "PUT with sftp.path \"outbox/${input.name}\" and body {\"$file\": \"...\"} — upload a run file"
+    ],
+    "best_practices": [
+      "Pin the host key from a trusted channel, not from the first connection",
+      "Read downloaded CSV or XLSX files with a parse-file transform instead of parsing text by hand"
+    ],
+    "pitfalls": [
+      "A changed server key stops every step until the pinned fingerprint is updated",
+      "DELETE takes no body and removes exactly one file; remove several files with for_each"
+    ],
+    "doc_refs": []
+  },
   "postgres-basics": {
     "title": "PostgreSQL Database Basics",
     "body": "Connect using a PostgreSQL DSN: postgres://user:password@host:5432/database or postgresql://user:password@host:5432/database. The engine introspects tables, columns, and relationships via information_schema. Parameterized queries prevent SQL injection. Health check uses SELECT 1.",
@@ -835,7 +853,7 @@
   },
   "anthropic-basics": {
     "title": "Anthropic Claude API Basics",
-    "body": "Authenticate with the API key in the x-api-key header (not a bearer token) and send anthropic-version: 2023-06-01 on every request. All requests go to https://api.anthropic.com/v1. POST /messages takes model, max_tokens and a messages array; the answer is in content[] as blocks, read the text blocks. Set max_llm_tokens_per_run on every workflow that calls Claude: SubKit counts each call against that per-run budget and stops the run before it is exceeded.",
+    "body": "Authenticate with the API key in the x-api-key header (not a bearer token) and send anthropic-version: 2023-06-01 on every request. All requests go to https://api.anthropic.com/v1. POST /messages takes model, max_tokens and a messages array; the answer is in content[] as blocks, read the text blocks. Inside a workflow, use a model step instead of calling this API directly: it runs on the workspace AI model and returns a structured answer. Raw calls to this API are also capped and accounted: SubKit counts them against max_llm_tokens_per_run and the workspace spend limit and stops the run before either is exceeded.",
     "examples": [
       "GET /v1/models — list the models this key can call",
       "POST /v1/messages with {model, max_tokens, messages:[{role:'user', content:'...'}]} — one answer",

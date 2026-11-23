@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { apiKeys, executionSteps, executions, users } from "../../db/schema/index.ts";
+import { apiKeys, executionSteps, executions, llmUsage, users } from "../../db/schema/index.ts";
 import { seedBuiltinRolesAndPermissions } from "../../rbac/seed.ts";
 import { createDeterministicHexFactory, waitFor } from "../../test-helpers/determinism/index.ts";
 import {
@@ -84,6 +84,7 @@ test(
     const fixture = await processFixture("crash-journey", {
       config: {
         queue: { crash_recovery_threshold_ms: 1 },
+        egress: { provider_hosts_extra: ["127.0.0.1"] },
         llm: {
           provider: "openai",
           model: MODEL,
@@ -149,6 +150,12 @@ test(
       expect(recovered.status).toBe("timed_out");
       expect(recovered.failure?.error_code).toBe("engine_crash_recovery");
       expect(model.calls()).toBe(2);
+
+      const usage = await fixture.db.db
+        .select({ total: llmUsage.total_tokens })
+        .from(llmUsage)
+        .where(and(eq(llmUsage.tenant_id, tenantId), eq(llmUsage.execution_id, running)));
+      expect(usage).toEqual([{ total: 60 }]);
 
       const violations = await journeyInvariantViolations({
         db: fixture.db.db,
