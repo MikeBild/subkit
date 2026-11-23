@@ -23,7 +23,7 @@ transform beats N detail calls on every axis: fewer steps, fewer failure
 modes, no rate-limit pressure, and the recorded sample covers the whole
 shape.
 
-## `for_each` — per-step iteration
+## `for_each` — inline per-step iteration
 
 Any step (request, transform, call, wait) can declare a `for_each` field
 on `baseStep`. It is the only way to iterate: there is no `loop` step

@@ -372,7 +372,7 @@ Walk-through:
 3. `totals_by_lifecycle` groups + sums in a JS `reduce`.
 4. `output_transform` builds the public payload with a row count sibling.
 
-## `for_each` — per-step iteration (JS)
+## `for_each` — inline per-step iteration (JS)
 
 A step iterates by declaring `for_each` (a JS arrow-function string).
 The selector receives `sourceData` (the full scope) and returns an

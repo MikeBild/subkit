@@ -162,6 +162,7 @@ describe("runAuthoringPipeline — grounding", () => {
       expect(prompt).toContain('language: "javascript"');
       expect(prompt).toContain("ONE bulk list endpoint over a nested per-item loop");
       expect(prompt).toContain("There is no `loop` step kind");
+      expect(prompt).toContain("`item_var` is retired");
       expect(fetchCalls).toBe(0);
     },
   );
