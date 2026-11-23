@@ -45,6 +45,9 @@ export interface DeviceToolSpec {
   readonly input: z.ZodObject;
 }
 
+const CHECK_BEFORE_REPEAT =
+  " If a step fails with delivery_uncertain, the input may have reached the page or app: read it (snapshot or extract) before you repeat the step, never repeat it blindly.";
+
 function spec(
   name: string,
   capability: DeviceCapability,
@@ -78,7 +81,8 @@ export const DEVICE_TOOL_SPECS: readonly DeviceToolSpec[] = [
     "browser",
     "browser.press",
     "browser",
-    "Click a control (action click, with ref and snapshot_id), press a key (action key) or scroll (action scroll).",
+    "Click a control (action click, with ref and snapshot_id), press a key (action key) or scroll (action scroll)." +
+      CHECK_BEFORE_REPEAT,
     {
       action: z.enum(["click", "key", "scroll"]),
       ref: BROWSER_REF.optional(),
@@ -96,7 +100,8 @@ export const DEVICE_TOOL_SPECS: readonly DeviceToolSpec[] = [
     "browser",
     "browser.fill",
     "browser",
-    "Type text into a field, or choose options in a select field. SubKit never types into password, one-time code or card fields.",
+    "Type text into a field, or choose options in a select field. SubKit never types into password, one-time code or card fields." +
+      CHECK_BEFORE_REPEAT,
     {
       ref: BROWSER_REF,
       snapshot_id: SNAPSHOT_ID,
@@ -179,7 +184,7 @@ export const DEVICE_TOOL_SPECS: readonly DeviceToolSpec[] = [
     "computer",
     "computer.press",
     "computer",
-    "Press a control in the window.",
+    `Press a control in the window.${CHECK_BEFORE_REPEAT}`,
     { ref: COMPUTER_REF, because: BECAUSE_FIELD },
   ),
   spec("computer_focus", "computer", "computer.focus", "computer", "Focus a control.", {
@@ -190,7 +195,7 @@ export const DEVICE_TOOL_SPECS: readonly DeviceToolSpec[] = [
     "computer",
     "computer.select",
     "computer",
-    "Choose an option in a control.",
+    `Choose an option in a control.${CHECK_BEFORE_REPEAT}`,
     { ref: COMPUTER_REF, option: z.string().min(1).max(500), because: BECAUSE_FIELD },
   ),
   spec(
@@ -198,20 +203,28 @@ export const DEVICE_TOOL_SPECS: readonly DeviceToolSpec[] = [
     "computer",
     "computer.set_value",
     "computer",
-    "Set the value of a field.",
+    `Set the value of a field.${CHECK_BEFORE_REPEAT}`,
     { ref: COMPUTER_REF, value: z.string().max(131_072), because: BECAUSE_FIELD },
   ),
-  spec("computer_type", "computer", "computer.type", "computer", "Type text into a field.", {
-    ref: COMPUTER_REF,
-    text: z.string().max(10_000),
-    because: BECAUSE_FIELD,
-  }),
+  spec(
+    "computer_type",
+    "computer",
+    "computer.type",
+    "computer",
+    `Type text into a field.${CHECK_BEFORE_REPEAT}`,
+    {
+      ref: COMPUTER_REF,
+      text: z.string().max(10_000),
+      because: BECAUSE_FIELD,
+    },
+  ),
   spec(
     "computer_key",
     "computer",
     "computer.key",
     "computer",
-    "Press a key combination in the window of the latest snapshot, like cmd+s.",
+    "Press a key combination in the window of the latest snapshot, like cmd+s." +
+      CHECK_BEFORE_REPEAT,
     { window_id: WINDOW_ID, keys: z.string().min(1).max(64), because: BECAUSE_FIELD },
   ),
   spec("computer_scroll", "computer", "computer.scroll", "computer", "Scroll inside a control.", {

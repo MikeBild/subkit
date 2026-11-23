@@ -69,7 +69,10 @@ export function successData(tool: string, output: unknown, call_id: string): Bag
   }
 }
 
-const CHANGED_UNKNOWN = new Set(["device_lost_during_write"]);
+const CHANGED_UNKNOWN = new Set(["device_lost_during_write", "delivery_uncertain"]);
+
+export const CHECK_FIRST =
+  "The input may have reached the page or app. Read the page or app (snapshot or extract) before you repeat this step; never repeat it blindly.";
 
 export function deviceToolOutput(
   tool: string,
@@ -87,6 +90,7 @@ export function deviceToolOutput(
     data: {
       status: outcome.status,
       ...(CHANGED_UNKNOWN.has(code) ? {} : { nothing_changed: NOTHING_CHANGED }),
+      ...(code === "delivery_uncertain" ? { check_first: CHECK_FIRST } : {}),
       ...(code === "blocked_app" && message.includes(FILE_DIALOG_REFUSAL.en)
         ? { refusal: FILE_DIALOG_REFUSAL }
         : {}),
