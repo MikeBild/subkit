@@ -30,7 +30,6 @@ import {
   demoApprovedWorkflow,
   demoFiles,
   demoHistory,
-  demoMonthlyBudgetTokens,
   demoTemplateConnectors,
 } from "./lib/cockpit-demo-seed.ts";
 import { dockerAvailableKiB, dockerStorageProblem } from "./lib/cockpit-demo-storage.ts";
@@ -384,20 +383,6 @@ async function seedDemoHistory(tenantId: string, state: DemoState): Promise<void
     content_type: "text/markdown",
     content_base64: Buffer.from(demoHistory.file.content).toString("base64"),
   });
-  const month = new Date();
-  const bucket = month.getUTCFullYear() * 100 + month.getUTCMonth() + 1;
-  const tokens = JSON.parse(
-    sql(
-      `SELECT json_build_object('used',coalesce(sum(total_tokens) FILTER (WHERE month_bucket=${bucket}),0),'seven',coalesce(sum(total_tokens) FILTER (WHERE created_at>now()-interval '7 days'),0)) FROM llm_usage WHERE tenant_id='${tenantId}';`,
-    ),
-  ) as { used: number; seven: number };
-  const budget = demoMonthlyBudgetTokens({
-    usedTokens: Number(tokens.used),
-    lastSevenDaysTokens: Number(tokens.seven),
-    now: new Date(),
-  });
-  if (budget !== null)
-    await api(`/v1/settings/tokens.monthly_budget?tenant=${tenantId}`, "PUT", { value: budget });
   state.historyReady = true;
   save(STATE_FILE, state);
 }

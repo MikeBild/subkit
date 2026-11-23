@@ -230,18 +230,6 @@ function demoExtraUsage(now: Date): DemoUsage[] {
   ];
 }
 
-export function demoMonthlyBudgetTokens(input: {
-  usedTokens: number;
-  lastSevenDaysTokens: number;
-  now: Date;
-}): number | null {
-  const perDay = input.lastSevenDaysTokens / 7;
-  if (perDay <= 0) return null;
-  const monthEnd = new Date(input.now.getFullYear(), input.now.getMonth() + 1, 1);
-  const remainingDays = (monthEnd.getTime() - input.now.getTime()) / 86_400_000;
-  return Math.ceil(input.usedTokens + Math.max(perDay * remainingDays * 0.6, perDay * 0.25));
-}
-
 interface DemoIntakeItem {
   key: string;
   origin: "capture" | "note" | "session";

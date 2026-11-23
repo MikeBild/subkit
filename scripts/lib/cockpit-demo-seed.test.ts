@@ -16,7 +16,6 @@ import {
   createCockpitDemoSeedSql,
   demoAiRuns,
   demoApprovedWorkflow,
-  demoMonthlyBudgetTokens,
   demoTemplateConnectors,
 } from "./cockpit-demo-seed.ts";
 
@@ -335,18 +334,12 @@ test("platform files and starter workflows lose mock catalog text after the plat
   }
 }, 60_000);
 
-test("the AI workflow's runs and the budget forecast are anchored to now", () => {
+test("the AI workflow's runs are anchored to now", () => {
   const now = new Date(2026, 9, 23, 12);
   const runs = demoAiRuns(now);
   expect(runs.filter((run) => run.key.startsWith("ai-run-now"))).toHaveLength(3);
   for (const run of runs.filter((r) => r.key.startsWith("ai-run-before")))
     expect(now.getTime() - run.startedAt.getTime()).toBeGreaterThan(7 * 86_400_000);
-  const budget = demoMonthlyBudgetTokens({ usedTokens: 100_000, lastSevenDaysTokens: 70_000, now });
-  expect(budget).not.toBeNull();
-  const remainingDays = (new Date(2026, 10, 1).getTime() - now.getTime()) / 86_400_000;
-  expect(budget as number).toBeGreaterThan(100_000);
-  expect(budget as number).toBeLessThan(100_000 + 10_000 * remainingDays);
-  expect(demoMonthlyBudgetTokens({ usedTokens: 1, lastSevenDaysTokens: 0, now })).toBeNull();
 });
 
 test("one workflow carries an open-ended production approval for its read and write effects", async () => {
