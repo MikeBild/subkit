@@ -37,7 +37,12 @@ describe("the spending limit boundary", () => {
   test("the shared budget check carries the dollar limit", () => {
     const budget = readFileSync(join(SRC, "llm/accounting/budget.ts"), "utf8");
     expect(budget).toContain("spendVerdict(");
+    const providerCall = readFileSync(
+      join(SRC, "execution/steps/request/drivers/provider-call.ts"),
+      "utf8",
+    );
+    expect(providerCall).toContain("spendVerdict(");
     const step = readFileSync(join(SRC, "execution/steps/request/drivers/http-single.ts"), "utf8");
-    expect(step).toContain("spendVerdict(");
+    expect(step).toContain("providerCallRefusal(");
   });
 });
