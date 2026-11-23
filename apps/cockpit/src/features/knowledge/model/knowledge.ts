@@ -6,6 +6,7 @@ import type {
   SourceSection,
 } from "@/features/knowledge/model/knowledge-sources-model";
 import { computeLineDiff } from "@/lib/line-diff";
+import { entryGroupKey } from "./inbox-bulk";
 
 type IntakeItem = components["schemas"]["IntakeItem"];
 type IntakeSnapshot = components["schemas"]["IntakeItemSnapshot"];
@@ -89,6 +90,7 @@ export interface EntryView {
   state: IntakeItem["state"];
   source: "clip" | "note" | "session";
   version: number;
+  group: string | null;
 }
 
 export interface EntryAttachment {
@@ -190,6 +192,7 @@ export function entryView(item: IntakeItem, proposals: readonly IntakeProposal[]
     state: item.state,
     source: snap.origin === "session" || snap.origin === "note" ? snap.origin : "clip",
     version: item.version,
+    group: entryGroupKey(item),
   };
 }
 

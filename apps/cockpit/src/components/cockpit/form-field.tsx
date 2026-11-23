@@ -75,7 +75,7 @@ export function TextField({
   value: string;
   onChange(value: string): void;
   help?: string;
-  type?: "text" | "url" | "password" | "time" | "email";
+  type?: "text" | "url" | "password" | "time" | "email" | "date";
   placeholder?: string;
   required?: boolean;
   invalid?: boolean;

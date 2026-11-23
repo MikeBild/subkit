@@ -281,6 +281,9 @@ export function IntakeDefaultCategoryDialog({
   open,
   onOpenChange,
   onSave,
+  title,
+  submitLabel,
+  testId = "intake-default-category",
 }: {
   category: string | undefined;
   initialCategory: string | undefined;
@@ -288,6 +291,9 @@ export function IntakeDefaultCategoryDialog({
   open: boolean;
   onOpenChange(open: boolean): void;
   onSave(category: string): void;
+  title?: string;
+  submitLabel?: string;
+  testId?: string;
 }) {
   const { t } = useI18n();
   const [choice, setChoice] = useState(initialCategory ?? category ?? "");
@@ -306,19 +312,19 @@ export function IntakeDefaultCategoryDialog({
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
-      title={t("intake.makeDefault")}
+      title={title ?? t("intake.makeDefault")}
       submit={{
-        label: t("common.save"),
+        label: submitLabel ?? t("common.save"),
         disabled: !selected || selected === category,
-        testId: "intake-default-category-save",
+        testId: `${testId}-save`,
       }}
       onSubmit={() => {
         if (selected && selected !== category) onSave(selected);
       }}
-      testId="intake-default-category-dialog"
+      testId={`${testId}-dialog`}
     >
       <SelectField
-        id="intake-default-category-input"
+        id={`${testId}-input`}
         label={t("intake.category")}
         value={choice}
         onChange={setChoice}
@@ -332,7 +338,7 @@ export function IntakeDefaultCategoryDialog({
       />
       {choice === NEW_CATEGORY ? (
         <TextField
-          id="intake-default-category-new"
+          id={`${testId}-new`}
           label={t("catalogMeta.newCategoryName")}
           value={fresh}
           onChange={setFresh}

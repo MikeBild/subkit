@@ -43,6 +43,7 @@ export interface IntakeItemView {
   admitted_target_kind: IntakeTargetKind | null;
   admitted_target_id: string | null;
   attachment: IntakeAttachmentFacts | null;
+  group_key: string | null;
   created_at: string;
   updated_at: string;
 }

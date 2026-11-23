@@ -41,6 +41,10 @@ export const KnowledgeSourceSchema = z
     refresh_strategy: KnowledgeSourceRefreshSchema,
     refresh_cron: z.string().nullable(),
     last_refreshed_at: z.string().nullable(),
+    review_due_at: z
+      .string()
+      .nullable()
+      .describe("When a person should check that this source is still correct; null for never."),
     created_at: z.string(),
     updated_at: z.string(),
   })
@@ -115,6 +119,12 @@ export const UpdateKnowledgeSourceSchema = z
     status: z.enum(["active", "inactive"]).optional(),
     refresh_strategy: z.enum(["manual", "scheduled"]).optional(),
     refresh_cron: z.string().nullable().optional(),
+    review_due_at: z
+      .string()
+      .datetime({ offset: true })
+      .nullable()
+      .optional()
+      .describe("When a person should check this source again; null clears the date."),
   })
   .refine(descriptionAcceptanceValid, {
     message: "accept_description requires the exact nonempty description",

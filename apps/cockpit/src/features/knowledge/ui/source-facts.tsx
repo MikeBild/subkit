@@ -1,6 +1,7 @@
 import { formatBytes } from "@shared/file-kinds.ts";
 import { CopyField } from "@/components/cockpit/patterns/copy-field";
 import type { SourceView } from "@/features/knowledge/model/knowledge";
+import { isReviewDue, reviewDateText, reviewDueAt } from "@/features/knowledge/model/review-date";
 import { sourceSizeText } from "@/features/knowledge/model/source-detail-model";
 import { SOURCE_KIND_KEY } from "@/features/knowledge/model/source-list-model";
 import { humanizeCategory } from "@/features/workflows/model";
@@ -13,7 +14,9 @@ export function sourceFacts(
   src: KnowledgeSource,
   v: SourceView,
   { t, dateTime, locale }: Pick<I18nValue, "t" | "dateTime" | "locale">,
+  now: Date = new Date(),
 ): DetailFact[] {
+  const review = reviewDueAt(src);
   return [
     { label: t("kn.fact.ref"), value: `@source:${src.slug}`, mono: true },
     ...(v.url
@@ -37,6 +40,14 @@ export function sourceFacts(
     {
       label: t("kn.col.category"),
       value: humanizeCategory(src.category, t("catalog.categoryOther")),
+    },
+    {
+      label: t("kn.fact.review"),
+      value: !review
+        ? t("kn.fact.reviewNone")
+        : isReviewDue(review, now)
+          ? t("kn.fact.reviewOverdue", { date: reviewDateText(review, locale) })
+          : reviewDateText(review, locale),
     },
     { label: t("kn.fact.created"), value: dateTime(src.created_at) },
     { label: t("kn.fact.id"), value: src.id, mono: true },

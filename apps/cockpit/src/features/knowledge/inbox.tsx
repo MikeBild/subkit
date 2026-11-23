@@ -25,7 +25,6 @@ import {
   Plus,
   Sparkles,
   StickyNote,
-  Trash2,
   XCircle,
 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -74,6 +73,7 @@ import { useSearchParamState } from "@/lib/use-search-param-state";
 import { IntakeDefaultCategoryDialog, IntakeEditDialog, IntakeNoteDialog } from "./intake-dialogs";
 import { ProposalCard } from "./intake-proposal";
 import { categoryCounts, sortRows, sortValueOf, withCategory } from "./list-model";
+import { type BulkAction, groupLabel, isSelectable, runBulk } from "./model/inbox-bulk";
 import {
   INTAKE_ORIGINS,
   INTAKE_STATES,
@@ -105,6 +105,7 @@ import {
   usePageMenu,
   useRel,
 } from "./shell";
+import { InboxBulkBar } from "./ui/inbox-bulk-bar";
 
 export const ORIGIN_ICON: Record<Origin, LucideIcon> = {
   browser: Globe,
@@ -217,6 +218,7 @@ export function InboxPage() {
   const [choosing, setChoosing] = useState(false);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [doomed, setDoomed] = useState<EntryView[]>([]);
+  const [moving, setMoving] = useState(false);
   const menu = usePageMenu({ categories: "intake" });
   const { query, views } = useEntryViews();
   const items = sortRows(
@@ -238,14 +240,16 @@ export function InboxPage() {
         ? (e: EntryView) => t(STATUS_KEY[e.status])
         : st.group === "origin"
           ? (e: EntryView) => t(ORIGIN_KEY[e.origin])
-          : null;
+          : st.group === "topic"
+            ? (e: EntryView) => groupLabel(e.group, t("kn.groups.topicNone"))
+            : null;
   const open = views.filter(isOpenEntry).length;
-  const discarded = items.filter((e) => e.state === "discarded");
+  const selectable = items.filter(isSelectable);
   const awaiting = awaitingAssistantReview(
     views.filter((e) => st.cat === "all" || e.category === st.cat),
   );
   const head: Head[] = [
-    ...(canWrite && discarded.length ? [""] : []),
+    ...(canWrite && selectable.length ? [""] : []),
     { label: t("kn.inbox.col.source"), sort: "title" },
     { label: t("kn.inbox.col.from"), id: "from", priority: "low" },
     { label: t("kn.col.category"), sort: "category" },
@@ -254,7 +258,7 @@ export function InboxPage() {
   ];
   const columns = useColumnChoice(head);
   const prompts = PROMPTS.map((k) => t(k));
-  const chosen = discarded.filter((e) => selected.has(e.id));
+  const chosen = selectable.filter((e) => selected.has(e.id));
   const setDefault = useMutation({
     mutationFn: (category: string) => setIntakeDefaultCategory(category),
     onSuccess: (_r, category) => {
@@ -286,6 +290,39 @@ export function InboxPage() {
     },
     onError: (error) => reportFailure(t("common.actionFailed"), error),
   });
+  const bulk = useMutation({
+    mutationFn: ({ list, category }: { list: EntryView[]; category?: string }) =>
+      runBulk(
+        list,
+        (e) =>
+          category
+            ? updateIntakeClip(e.id, { category, expected_version: e.version })
+            : setIntakeClipState(e.id, { state: "discarded", expected_version: e.version }),
+        (error) => error instanceof ApiError && error.status === 409,
+      ),
+    onSuccess: ({ conflicts }, { category }) => {
+      if (conflicts) toast.error(t("intake.bulk.conflict", { count: conflicts }));
+      else toast.success(t(category ? "intake.bulk.moved" : "intake.bulk.discarded"));
+      setSelected(new Set());
+      setMoving(false);
+      void client.invalidateQueries({ queryKey: ["intake"] });
+    },
+    onError: (error) => reportFailure(t("common.actionFailed"), error),
+  });
+  const onBulk = (action: BulkAction) => {
+    if (action === "remove") setDoomed(chosen);
+    else if (action === "move") setMoving(true);
+    else if (action === "discard") bulk.mutate({ list: chosen });
+    else
+      void navigate(
+        routerTarget(
+          chatNewHref({
+            prompt: t("kn.inbox.prompt.prepare"),
+            intakeItemIds: chosen.map((e) => e.id),
+          }),
+        ),
+      );
+  };
   const toggle = (id: string, on: boolean) =>
     setSelected((s) => {
       const next = new Set(s);
@@ -372,7 +409,7 @@ export function InboxPage() {
           <>
             <Toolbar
               st={st}
-              groups={["category", "status", "origin"]}
+              groups={["category", "status", "origin", "topic"]}
               categories={withCategory(categoryCounts(views), st.cat)}
               columns={columns}
               onReset={reset}
@@ -415,33 +452,13 @@ export function InboxPage() {
                 ) : null,
               ]}
             />
-            {canWrite && chosen.length > 0 && (
-              <section
-                aria-label={t("kn.skills.cand.selection")}
-                data-testid="kn-inbox-bulk"
-                className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-sm"
-              >
-                <span className="mr-auto">{t("kn.skills.cand.chosen", { n: chosen.length })}</span>
-                <Button
-                  data-testid="kn-inbox-bulk-clear"
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setSelected(new Set())}
-                >
-                  {t("intake.clearDeletionSelection")}
-                </Button>
-                <Button
-                  data-testid="kn-inbox-bulk-delete"
-                  size="sm"
-                  variant="outline"
-                  className="text-destructive-ink"
-                  disabled={remove.isPending}
-                  onClick={() => setDoomed(chosen)}
-                >
-                  <Trash2 className="size-4" aria-hidden />
-                  {t("intake.deleteSelected", { count: chosen.length })}
-                </Button>
-              </section>
+            {canWrite && (
+              <InboxBulkBar
+                chosen={chosen}
+                pending={bulk.isPending || remove.isPending}
+                onClear={() => setSelected(new Set())}
+                onAction={onBulk}
+              />
             )}
             {items.length ? (
               <GroupedTable
@@ -458,12 +475,12 @@ export function InboxPage() {
                       onOpen={() => void navigate({ to: recordHref("intake", e.id) })}
                       label={e.title}
                     >
-                      {canWrite && discarded.length > 0 && (
+                      {canWrite && selectable.length > 0 && (
                         <td className="w-10">
-                          {e.state === "discarded" && (
+                          {isSelectable(e) && (
                             <Checkbox
                               data-testid="kn-inbox-select"
-                              aria-label={t("intake.selectDiscarded", { title: e.title })}
+                              aria-label={t("intake.selectEntry", { title: e.title })}
                               checked={selected.has(e.id)}
                               onClick={(ev) => ev.stopPropagation()}
                               onCheckedChange={(v) => toggle(e.id, v === true)}
@@ -527,6 +544,19 @@ export function InboxPage() {
           open={choosing}
           onOpenChange={setChoosing}
           onSave={(category) => setDefault.mutate(category)}
+        />
+      )}
+      {canWrite && (
+        <IntakeDefaultCategoryDialog
+          category={undefined}
+          initialCategory={undefined}
+          categories={cats.values}
+          open={moving}
+          onOpenChange={setMoving}
+          onSave={(category) => bulk.mutate({ list: chosen, category })}
+          title={t("intake.bulk.moveTitle", { count: chosen.length })}
+          submitLabel={t("intake.bulk.move")}
+          testId="kn-inbox-bulk-move"
         />
       )}
       <ConfirmDialog
@@ -853,7 +883,7 @@ function EntryDetail({ clip, proposals }: { clip: Clip; proposals: Proposal[] })
               <div className="flex flex-col gap-4">
                 {e.attachment && <AttachmentCard attachment={e.attachment} />}
                 <MarkdownDocument text={e.body} underTitle={e.title} />
-                {snapshot && (evidence.length > 0 || snapshot.evidence_excerpt.trim()) && (
+                {(evidence.length > 0 || snapshot?.evidence_excerpt.trim()) && (
                   <CollapsibleSection
                     label={t("intake.session.evidence")}
                     count={evidence.length || undefined}
@@ -871,7 +901,7 @@ function EntryDetail({ clip, proposals }: { clip: Clip; proposals: Proposal[] })
                         ))
                       ) : (
                         <MarkdownDocument
-                          text={snapshot.evidence_excerpt}
+                          text={snapshot?.evidence_excerpt ?? ""}
                           toolbar={false}
                           toc={false}
                         />

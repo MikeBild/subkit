@@ -26,13 +26,14 @@ export function confirmIntakeProposal(
 }
 
 export function createClip(overrides: Partial<Parameters<typeof createIntakeItem>[0]> = {}) {
+  const client_request_id = overrides.client_request_id ?? nextUuid();
   return createIntakeItem(
     {
       tenant_id: ctx.tenantId,
       actor,
-      client_request_id: nextUuid(),
+      client_request_id,
       title: "Tape recording idea",
-      source_url: "https://example.test/tape",
+      source_url: `https://example.test/tape/${client_request_id}`,
       source_author: "Author",
       published_at: "Spring issue",
       captured_at: "2026-10-10T07:00:00.000Z",

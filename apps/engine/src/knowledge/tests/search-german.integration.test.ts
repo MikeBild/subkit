@@ -94,8 +94,9 @@ describe.skipIf(skip)("knowledge search in the workspace language", () => {
   });
 
   test("a long document is stored in chunks within the small target", async () => {
-    const paragraph = Array.from({ length: 120 }, (_, i) => `word${i}`).join(" ");
-    const body = Array.from({ length: 40 }, () => paragraph).join("\n\n");
+    const paragraph = (n: number) =>
+      Array.from({ length: 120 }, (_, i) => `word${n}x${i}`).join(" ");
+    const body = Array.from({ length: 40 }, (_, n) => paragraph(n)).join("\n\n");
     const source = await addNote(germanTenantId, "long", `# Long\n\n${body}`);
     const rows = await ctx.testDb.db
       .select({ byte_size: knowledgeChunks.byte_size })

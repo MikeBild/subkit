@@ -35,7 +35,7 @@ describe.skipIf(skip)("knowledge intake", () => {
     expect(repeated.id).toBe(first.id);
     expect(first.original_snapshot).toMatchObject({
       title: "Tape recording idea",
-      source_url: "https://example.test/tape",
+      source_url: expect.stringMatching(/^https:\/\/example\.test\/tape\//),
       published_at: "Spring issue",
       origin: "capture",
     });
@@ -185,7 +185,7 @@ describe.skipIf(skip)("knowledge intake", () => {
     expect(item.original_snapshot.body).toBe(item.body);
     expect(item.original_snapshot).toMatchObject({
       title: item.title,
-      source_url: "https://example.test/tape",
+      source_url: expect.stringMatching(/^https:\/\/example\.test\/tape\//),
       source_author: "Author",
       captured_at: "2026-10-10T07:00:00.000Z",
       redactions: 4,

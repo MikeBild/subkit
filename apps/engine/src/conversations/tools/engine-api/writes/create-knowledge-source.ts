@@ -10,6 +10,7 @@ import {
   type IntakeCollector,
   IntakeConflictError,
   intakeFileBody,
+  intakeItemByRequestId,
 } from "../../../../knowledge/index.ts";
 import { now } from "../../../../utils/index.ts";
 import { connectorActorFromToolContext } from "../../audit-actor.ts";
@@ -160,26 +161,30 @@ export const createKnowledgeSourceTool: ConversationTool = {
       body = args.content as string;
     }
 
+    const client_request_id = assistantIntakeRequestId([
+      ctx.conversation_id,
+      args.mode,
+      title,
+      attachment?.file_id ?? body,
+    ]);
     try {
-      const item = await createIntakeItem(
-        {
-          tenant_id: ctx.tenant_id,
-          actor: intakeCollector(ctx),
-          client_request_id: assistantIntakeRequestId([
-            ctx.conversation_id,
-            args.mode,
+      const replayed = await intakeItemByRequestId(ctx.db, ctx.tenant_id, client_request_id);
+      const item =
+        replayed ??
+        (await createIntakeItem(
+          {
+            tenant_id: ctx.tenant_id,
+            actor: intakeCollector(ctx),
+            client_request_id,
             title,
-            attachment?.file_id ?? body,
-          ]),
-          title,
-          body,
-          captured_at: new Date(now()).toISOString(),
-          ...(args.mode === "inline" && args.source_uri ? { source_url: args.source_uri } : {}),
-          ...(args.description !== undefined ? { note: args.description } : {}),
-          ...(attachment ? { attachment } : {}),
-        },
-        ctx.db,
-      );
+            body,
+            captured_at: new Date(now()).toISOString(),
+            ...(args.mode === "inline" && args.source_uri ? { source_url: args.source_uri } : {}),
+            ...(args.description !== undefined ? { note: args.description } : {}),
+            ...(attachment ? { attachment } : {}),
+          },
+          ctx.db,
+        ));
       return {
         ok: true,
         data: {

@@ -74,6 +74,7 @@ function makeKnowledge(n: number): KnowledgeSourceView {
     refresh_strategy: "manual",
     refresh_cron: null,
     last_refreshed_at: null,
+    review_due_at: null,
     created_at: "2026-01-01T00:00:00.000Z",
     updated_at: "2026-01-01T00:00:00.000Z",
   };

@@ -4,6 +4,7 @@ import {
   listKnowledgeSourcesOperation,
 } from "../../../api/operations/knowledge-sources.ts";
 import { toConversationTool } from "../../../api/operations/tool.ts";
+import { availableTags, emptySearchHint } from "../../../knowledge/index.ts";
 import type { ConversationTool } from "../index.ts";
 
 const SearchInput = z
@@ -39,7 +40,12 @@ const searchKnowledgeTool: ConversationTool = {
       ...(args.tags !== undefined ? { tags: args.tags } : {}),
       limit: args.limit ?? SEARCH_KNOWLEDGE_DEFAULT_LIMIT,
     });
-    return { ok: true, data: { hits } };
+    if (hits.length > 0) return { ok: true, data: { hits } };
+    const tags = availableTags(await ctx.engineClient.knowledgeSources.list(), workflowId);
+    return {
+      ok: true,
+      data: { hits, hint: emptySearchHint(tags, args.tags), available_tags: tags },
+    };
   },
 };
 

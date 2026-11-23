@@ -75,7 +75,7 @@ export const findSkillTool: ConversationTool = {
   category: "tenant_read",
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
-    const all = await listSkills({ tenant_id: ctx.tenant_id }, ctx.db);
+    const all = await listSkills({ tenant_id: ctx.tenant_id, status: "active" }, ctx.db);
     const filtered = args.scope ? all.filter((s) => s.scope === args.scope) : all;
     const summaries = filtered.map(summarize);
     return {

@@ -8,8 +8,10 @@ export { knowledgePreloadPlan, withinTokenBudget } from "./core/grounding.ts";
 export { assistantIntakeRequestId } from "./core/intake-policy.ts";
 export { bestPassage } from "./core/passage.ts";
 export { fuseByReciprocalRank } from "./core/rank-fusion.ts";
+export { availableTags, emptySearchHint } from "./core/search-hint.ts";
 export * from "./errors.ts";
 export * from "./intake.ts";
+export { type IntakeEmbedder, intakeItemByRequestId } from "./intake-dedupe.ts";
 export * from "./intake-errors.ts";
 export { checkIntakeFile, intakeFileBody } from "./intake-file.ts";
 export { collectorAuditActor, INTAKE_ITEM_ORIGIN_FILTERS } from "./intake-rows.ts";
@@ -22,6 +24,7 @@ export {
 } from "./intake-targets.ts";
 export * from "./intake-types.ts";
 export { resetKnowledgeFtsConfig } from "./persistence/chunks.ts";
+export { type DueKnowledgeReviews, listDueKnowledgeReviews } from "./review-due.ts";
 export * from "./service.ts";
 export * from "./tags.ts";
 export * from "./types.ts";

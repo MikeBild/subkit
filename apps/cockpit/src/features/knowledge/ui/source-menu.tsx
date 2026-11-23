@@ -1,5 +1,5 @@
 import { DropdownMenuItem } from "@ui/molecules/dropdown-menu";
-import { Link2, Pencil, Power, Trash2 } from "lucide-react";
+import { CalendarClock, Link2, Pencil, Power, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useI18n } from "@/lib/i18n-context";
 import { ChatMenu } from "../shell";
@@ -12,6 +12,7 @@ export function SourceMenu({
   onAddress,
   onEditText,
   onToggle,
+  onReview,
   onDelete,
 }: {
   sourceId: string;
@@ -21,6 +22,7 @@ export function SourceMenu({
   onAddress: () => void;
   onEditText: () => void;
   onToggle: () => void;
+  onReview: () => void;
   onDelete: () => void;
 }) {
   const { t } = useI18n();
@@ -43,6 +45,12 @@ export function SourceMenu({
               <DropdownMenuItem data-testid="kn-sources-editText" onSelect={onEditText}>
                 <Pencil className="size-4" aria-hidden />
                 {t("kn.sources.editText")}
+              </DropdownMenuItem>
+            )}
+            {can.write && (
+              <DropdownMenuItem data-testid="kn-sources-review" onSelect={onReview}>
+                <CalendarClock className="size-4" aria-hidden />
+                {t("kn.sources.reviewDate")}
               </DropdownMenuItem>
             )}
             {can.write && (

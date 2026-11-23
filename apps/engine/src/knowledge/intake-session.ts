@@ -11,6 +11,12 @@ import {
   intakeItems,
 } from "../db/schema/intake.ts";
 import { ensureNamedSystemAccount } from "../identity/service.ts";
+import { intakeGroupKey } from "./core/intake-dedupe.ts";
+import {
+  appendToOpenDuplicate,
+  type IntakeDedupeDeps,
+  similarOpenIntakeItem,
+} from "./intake-dedupe.ts";
 import { requestDigest } from "./intake-digest.ts";
 import {
   defaultIntakeCategory,
@@ -134,15 +140,21 @@ function learningSnapshot(
 export async function createSessionIntakeItem(
   p: CreateSessionIntakeItemParams,
   exec?: Executor,
+  deps: IntakeDedupeDeps = {},
 ): Promise<SessionIntakeItemResult> {
   const db = exec ?? getDb();
+  const client_request_id = sessionIntakeRequestId({
+    tenant_id: p.tenant_id,
+    session_id: p.session.session_id,
+    title: p.title,
+  });
+  const similar_id = await similarOpenIntakeItem(
+    db,
+    { ...p, exclude_request_id: client_request_id },
+    deps.embedder,
+  );
   return (db as Db).transaction(async (tx) => {
     const collector = await sessionCollector(tx, p.tenant_id, p.actor);
-    const client_request_id = sessionIntakeRequestId({
-      tenant_id: p.tenant_id,
-      session_id: p.session.session_id,
-      title: p.title,
-    });
     const replayed = await tx
       .select()
       .from(intakeItems)
@@ -192,6 +204,19 @@ export async function createSessionIntakeItem(
         );
       return { item: intakeItemView(duplicate), outcome: "evidence_appended" as const };
     }
+    const related = await appendToOpenDuplicate(tx, {
+      tenant_id: p.tenant_id,
+      actor: collector,
+      source_url: p.source_url,
+      similar_id,
+      agent: p.session.agent,
+      session_id: p.session.session_id,
+      repo: p.session.repo ?? null,
+      excerpt: p.session.evidence_excerpt,
+      captured_at: p.captured_at,
+      request_source: p.request_source,
+    });
+    if (related) return { item: related, outcome: "evidence_appended" as const };
     const original_snapshot: IntakeSessionSnapshot = {
       title: p.title,
       ...(p.source_url ? { source_url: p.source_url } : {}),
@@ -222,6 +247,11 @@ export async function createSessionIntakeItem(
         body: p.body,
         collected_by_type: collector.kind,
         collected_by_id: collector.id,
+        group_key: intakeGroupKey({
+          source_url: p.source_url,
+          repo: p.session.repo,
+          tags: p.learning?.tags,
+        }),
       })
       .returning();
     if (!row) throw new Error("session intake item insertion failed");

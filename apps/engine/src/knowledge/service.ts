@@ -385,6 +385,8 @@ export async function updateKnowledgeSource(
     if (p.patch.status !== undefined) updates.status = p.patch.status;
     if (p.patch.refresh_strategy !== undefined) updates.refresh_strategy = p.patch.refresh_strategy;
     if (p.patch.refresh_cron !== undefined) updates.refresh_cron = p.patch.refresh_cron;
+    if (p.patch.review_due_at !== undefined)
+      updates.review_due_at = p.patch.review_due_at && new Date(p.patch.review_due_at);
 
     const [updated] = await tx
       .update(knowledgeSources)

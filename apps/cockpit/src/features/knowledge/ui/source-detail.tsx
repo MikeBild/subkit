@@ -20,6 +20,7 @@ import {
 import { useI18n } from "@/lib/i18n-context";
 import { type KnowledgeSource, useSourceHistory } from "../hooks/use-source";
 import { useSourceActions } from "../hooks/use-source-actions";
+import { reviewDueAt } from "../model/review-date";
 import { KEYS } from "../queries";
 import {
   ConfirmDelete,
@@ -31,6 +32,7 @@ import {
 } from "../shell";
 import { useRecordUses } from "../uses";
 import { AddressDialog } from "./address-dialog";
+import { ReviewDateDialog } from "./review-date-dialog";
 import { SourceContent } from "./source-content";
 import { sourceFacts } from "./source-facts";
 import { SOURCE_KIND_ICON } from "./source-kind-icon";
@@ -64,8 +66,12 @@ export function SourceDetail({
   const [addr, setAddr] = useState(false);
   const [editing, setEditing] = useState(false);
   const [del, setDel] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
   const on = v.status !== "off";
-  const { ingest, toggle, remove, restore, saved } = useSourceActions(src, { on, onRemoved });
+  const { ingest, toggle, remove, restore, saved, review } = useSourceActions(src, {
+    on,
+    onRemoved,
+  });
   const history = useSourceHistory(src.id);
   const uses = useRecordUses({
     binding: { scope: src.scope, workflowId: src.workflow_id },
@@ -127,6 +133,7 @@ export function SourceDetail({
             onAddress={() => setAddr(true)}
             onEditText={() => setEditing(true)}
             onToggle={() => toggle.mutate()}
+            onReview={() => setReviewing(true)}
             onDelete={() => setDel(true)}
           />
         }
@@ -156,6 +163,16 @@ export function SourceDetail({
       {editable && <AddressDialog open={addr} onOpenChange={setAddr} src={src} onSaved={saved} />}
       {v.kind === "text" && <TextDialog open={editing} onOpenChange={setEditing} src={src} />}
       {canWrite && meta.dialog}
+      {canWrite && (
+        <ReviewDateDialog
+          name={src.name}
+          current={reviewDueAt(src)}
+          open={reviewing}
+          pending={review.isPending}
+          onOpenChange={setReviewing}
+          onSave={(at) => review.mutate(at, { onSuccess: () => setReviewing(false) })}
+        />
+      )}
       <ConfirmDelete
         open={del}
         onOpenChange={setDel}

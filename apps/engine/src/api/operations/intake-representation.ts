@@ -54,6 +54,12 @@ export const ItemSchema = z
     attachment: IntakeAttachmentSchema.nullable().describe(
       "The file this item was collected from; null for text clips and notes. Download it through the files API.",
     ),
+    group_key: z
+      .string()
+      .nullable()
+      .describe(
+        "Groups related items in the inbox: `site:<host>` for the source address, `repo:<name>` for a work session, `tag:<tag>` otherwise; null when nothing groups the item.",
+      ),
     created_at: z.string().datetime(),
     updated_at: z.string().datetime(),
   })
