@@ -5242,6 +5242,644 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/identity/me/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the signed-in person's own personal notes
+         * @description Personal notes are private: only the person they belong to reads them. No other member and no administrator can, and no request names another person. API keys, exchanged tokens and system accounts have no notes.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description mentioned_once: said once. learned: said in several conversations. confirmed: the person confirmed or wrote it. */
+                    status?: "mentioned_once" | "learned" | "confirmed";
+                    /** @description true lists archived notes instead of the active ones. */
+                    archived?: "true" | "false";
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PersonalNoteList"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description person_required — personal notes belong to a signed-in person */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity/me/notes/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export the person's own active notes as Markdown, with the quotes they came from
+         * @description Grouped by status and area. The export is recorded in the audit log without any note text.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ExportPersonalNotesBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PersonalNotesExport"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description person_required — personal notes belong to a signed-in person; human_confirmation_required — only the person in the browser changes their notes */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity/me/notes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read one of the person's own notes with its sources and earlier versions
+         * @description A note of another person answers 404, for administrators too.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PersonalNoteDetail"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description person_required — personal notes belong to a signed-in person */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        /**
+         * Rewrite one of the person's own notes; the old text stays as an earlier version
+         * @description The new text becomes a confirmed note under a new id; the old one is archived as superseded and listed under earlier_versions.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["UpdatePersonalNoteBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PersonalNote"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description person_required — personal notes belong to a signed-in person; human_confirmation_required — only the person in the browser changes their notes */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description version_conflict — the note changed in the meantime; already_archived */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description secret_in_text — the text looks like a password, key or token */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        /**
+         * Delete one of the person's own notes for good, with all its earlier versions
+         * @description Deletes the note, the texts it replaced and every stored quote. This cannot be undone. The audit log keeps only that a note was forgotten, never its text.
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PersonalNoteForgotten"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description person_required — personal notes belong to a signed-in person; human_confirmation_required — only the person in the browser changes their notes */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity/me/notes/{id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm one of the person's own notes as correct */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PersonalNote"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description person_required — personal notes belong to a signed-in person; human_confirmation_required — only the person in the browser changes their notes */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description already_archived — restore the note first */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity/me/notes/{id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive one of the person's own notes; it is no longer used in answers */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PersonalNote"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description person_required — personal notes belong to a signed-in person; human_confirmation_required — only the person in the browser changes their notes */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description already_archived */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity/me/notes/{id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore an archived note of the person */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PersonalNote"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description person_required — personal notes belong to a signed-in person; human_confirmation_required — only the person in the browser changes their notes */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description not_archived; address_taken — a newer note on the same subject is active; note_limit */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/identity/me/notes/{id}/share": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Share one of the person's own notes with the team as an intake item
+         * @description Copies the note's text and the person's quotes into the team's intake, where a person reviews it before it becomes knowledge. The note itself stays private. Needs the person's explicit confirmation and intake:write. Sharing the same note twice returns the same item.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["SharePersonalNoteBody"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PersonalNoteShared"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description person_required — personal notes belong to a signed-in person; human_confirmation_required — only the person in the browser changes their notes */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description already_archived; already_shared */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/identity/provider-identities/migration": {
         parameters: {
             query?: never;
@@ -9421,7 +10059,7 @@ export interface paths {
                                 environment: "prod";
                                 admission_hold: {
                                     /** @enum {string} */
-                                    reason_code: "execution_authority_required" | "execution_authority_unavailable";
+                                    reason_code: "execution_authority_expired" | "execution_authority_exhausted" | "execution_authority_revoked" | "execution_authority_changed" | "execution_authority_required";
                                     observed_at: string;
                                 } | null;
                                 last_refused_at: string | null;
@@ -12112,7 +12750,7 @@ export interface paths {
                         "application/json": components["schemas"]["ExecutionRunResponse"];
                     };
                 };
-                /** @description Run queued */
+                /** @description Run queued or started. A single step (`source: "step"`) always answers 202 with `execution_id` as soon as the run has started; read the result from `GET /v1/executions/{id}` and stop it with `POST /v1/executions/{id}/cancel`. */
                 202: {
                     headers: {
                         [name: string]: unknown;
@@ -12563,6 +13201,69 @@ export interface paths {
                 };
                 /** @description Not found */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/executions/{id}/resolve-write": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Say whether an interrupted change reached its target
+         * @description A run turns `uncertain` when the engine stopped while a step was sending a change: the change may or may not have reached the target, and the engine never sends it again by itself. Check the target system, then answer per step. The run continues from the queue once every uncertain step is answered. To give up instead, cancel the run.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ExecutionResolveWriteBody"];
+                };
+            };
+            responses: {
+                /** @description Answer recorded */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ExecutionResolveWriteResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The run or the step is not uncertain */
+                409: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -20691,7 +21392,7 @@ export interface paths {
                     "multipart/form-data": {
                         /** @description The user's message */
                         message: string;
-                        /** @description Attached files (1-10); each is auto-ingested as a Knowledge Source scoped to the conversation's target workflow (or global) */
+                        /** @description Attached files (1-10); each stays a file of this conversation and never becomes team knowledge by itself */
                         files?: string[];
                         /** @description Optional SUBKIT.md content */
                         memory?: string;
@@ -23596,6 +24297,7 @@ export interface paths {
                 content: {
                     "application/json": {
                         expected_review_digest: string;
+                        accepted_operations?: number[];
                     };
                 };
             };
@@ -23788,7 +24490,11 @@ export interface paths {
                 };
                 cookie?: never;
             };
-            requestBody?: never;
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["DryRunPatchCandidateBody"];
+                };
+            };
             responses: {
                 /** @description Dry-run ran */
                 200: {
@@ -24000,7 +24706,7 @@ export interface paths {
         };
         /**
          * What needs the caller's attention now
-         * @description One list of everything a person has to act on — own waiting conversations, held schedules and webhooks, failing scheduled workflows with their open fixes, connectors and connections needing sign-in, prepared secret versions, skill proposals, a workspace without its own AI key, a critical budget or risk signal — filtered per item by the caller's permissions.
+         * @description One list of everything a person has to act on — own waiting conversations, held schedules and webhooks, failing scheduled workflows with their open fixes, connectors and connections needing sign-in, prepared secret versions, skill proposals, a workspace without its own AI key, a critical budget or risk signal — filtered per item by the caller's permissions. Items the caller snoozed are listed under `snoozed` instead of `items` until their snooze ends.
          */
         get: {
             parameters: {
@@ -24024,6 +24730,137 @@ export interface paths {
         };
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/attention/snooze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Hide one attention item for the signed-in person until a chosen time
+         * @description Moves the item from `items` to `snoozed` in the attention list of this person only, and holds back its push notification. Other people still see it. The item returns by itself at `until`, or earlier when its class or reason changes. Snoozing again replaces the end.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["SnoozeAttentionBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AttentionSnooze"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description person_required — only a person snoozes an attention item */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description snooze_in_past or snooze_too_long — the end lies in the past or more than 30 days ahead */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/attention/unsnooze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Show a snoozed attention item again for the signed-in person
+         * @description Ends the snooze at once. Answers the same way when the item was not snoozed.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["UnsnoozeAttentionBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AttentionSnooze"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description person_required — only a person snoozes an attention item */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -28840,6 +29677,8 @@ export interface components {
             critical_breakthrough: boolean;
             first_job: string | null;
             services: string[];
+            /** @description Whether new personal notes are learned from the person's own chat messages. On unless switched off. Personal notes are readable only by the person. */
+            save_new_notes: boolean;
             /** @description Choices the person has not made yet; their values are the recommended ones. */
             unset: ("default_environment" | "approver" | "notifications")[];
             recommended: {
@@ -28951,6 +29790,8 @@ export interface components {
             critical_breakthrough?: boolean;
             first_job?: string | null;
             services?: string[];
+            /** @description Whether SubKit keeps learning personal notes from what the person writes in chats. Switching it off stops new notes; existing notes stay until the person forgets them. */
+            save_new_notes?: boolean;
             /** @description How many US dollars SubKit may spend on AI per month in this workspace; 0 means no limit. Sets the workspace's monthly AI budget and needs identity:write. */
             monthly_spend_usd?: number;
         };
@@ -29075,6 +29916,167 @@ export interface components {
         PutSpendLimitBody: {
             /** @description New monthly limit in US dollars. 0 means no limit. */
             limit_usd: number;
+        };
+        PersonalNoteList: {
+            notes: components["schemas"]["PersonalNote"][];
+            total: number;
+        };
+        PersonalNote: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            area: "about" | "preferences" | "people" | "routines" | "lessons";
+            slug: string;
+            /**
+             * @description stated: the person said it outright. inferred: concluded from what they wrote.
+             * @enum {string}
+             */
+            origin: "stated" | "inferred";
+            /** @enum {string} */
+            fact_kind: "fact" | "preference" | "plan" | "event";
+            text: string;
+            abstract: string | null;
+            /**
+             * @description mentioned_once: said once. learned: said in several conversations. confirmed: the person confirmed or wrote it.
+             * @enum {string}
+             */
+            status: "mentioned_once" | "learned" | "confirmed";
+            confirmed_at: string | null;
+            version: number;
+            archived_at: string | null;
+            /** @description Why the note is archived: superseded by a newer text, or manual. */
+            archive_reason: string | null;
+            /** @description In how many different conversations the person said this. */
+            source_count: number;
+            created_at: string;
+            updated_at: string;
+        };
+        PersonalNotesExport: {
+            markdown: string;
+            count: number;
+        };
+        ExportPersonalNotesBody: {
+            labels?: components["schemas"]["PersonalNotesExportLabels"];
+        };
+        /** @description The headings of the export in the person's language. English when left out. */
+        PersonalNotesExportLabels: {
+            title: string;
+            empty: string;
+            /** @description The words in front of each quote, such as: You wrote */
+            quote: string;
+            status: {
+                confirmed: string;
+                learned: string;
+                mentioned_once: string;
+            };
+            area: {
+                about: string;
+                preferences: string;
+                people: string;
+                routines: string;
+                lessons: string;
+            };
+        };
+        PersonalNoteDetail: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            area: "about" | "preferences" | "people" | "routines" | "lessons";
+            slug: string;
+            /**
+             * @description stated: the person said it outright. inferred: concluded from what they wrote.
+             * @enum {string}
+             */
+            origin: "stated" | "inferred";
+            /** @enum {string} */
+            fact_kind: "fact" | "preference" | "plan" | "event";
+            text: string;
+            abstract: string | null;
+            /**
+             * @description mentioned_once: said once. learned: said in several conversations. confirmed: the person confirmed or wrote it.
+             * @enum {string}
+             */
+            status: "mentioned_once" | "learned" | "confirmed";
+            confirmed_at: string | null;
+            version: number;
+            archived_at: string | null;
+            /** @description Why the note is archived: superseded by a newer text, or manual. */
+            archive_reason: string | null;
+            /** @description In how many different conversations the person said this. */
+            source_count: number;
+            created_at: string;
+            updated_at: string;
+            sources: components["schemas"]["PersonalNoteSource"][];
+            /** @description Texts this note replaced, nearest first, each with the reason it was archived. */
+            earlier_versions: components["schemas"]["PersonalNoteVersion"][];
+        };
+        PersonalNoteSource: {
+            /** Format: uuid */
+            id: string;
+            /** @description The person's own words the note came from. */
+            quote: string;
+            /** Format: uuid */
+            message_id: string | null;
+            /**
+             * Format: uuid
+             * @description The conversation the words were written in; null once it was deleted.
+             */
+            conversation_id: string | null;
+            /** @description Where the conversation took place. */
+            channel: string | null;
+            created_at: string;
+        };
+        PersonalNoteVersion: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            area: "about" | "preferences" | "people" | "routines" | "lessons";
+            slug: string;
+            /**
+             * @description stated: the person said it outright. inferred: concluded from what they wrote.
+             * @enum {string}
+             */
+            origin: "stated" | "inferred";
+            /** @enum {string} */
+            fact_kind: "fact" | "preference" | "plan" | "event";
+            text: string;
+            abstract: string | null;
+            /**
+             * @description mentioned_once: said once. learned: said in several conversations. confirmed: the person confirmed or wrote it.
+             * @enum {string}
+             */
+            status: "mentioned_once" | "learned" | "confirmed";
+            confirmed_at: string | null;
+            version: number;
+            archived_at: string | null;
+            /** @description Why the note is archived: superseded by a newer text, or manual. */
+            archive_reason: string | null;
+            /** @description In how many different conversations the person said this. */
+            source_count: number;
+            created_at: string;
+            updated_at: string;
+            sources: components["schemas"]["PersonalNoteSource"][];
+        };
+        UpdatePersonalNoteBody: {
+            text: string;
+            /** @description The version the person was looking at; a newer one answers 409. */
+            expected_version: number;
+        };
+        PersonalNoteForgotten: {
+            /** @description How many versions were deleted. */
+            forgotten: number;
+        };
+        PersonalNoteShared: {
+            /** Format: uuid */
+            intake_item_id: string;
+            category: string;
+        };
+        SharePersonalNoteBody: {
+            /**
+             * @description The person's explicit yes to showing this note's text to the team.
+             * @enum {boolean}
+             */
+            confirm: true;
         };
         ProviderIdentityBinding: {
             /** Format: uuid */
@@ -30121,7 +31123,7 @@ export interface components {
             iterations: {
                 step_id: string;
                 /** @enum {string} */
-                kind: "loop" | "for_each";
+                kind: "for_each";
                 body_step_ids: string[];
                 call_path?: string[];
             }[];
@@ -30549,7 +31551,7 @@ export interface components {
             output_transform?: string;
             output_transform_function?: string;
             response_filters?: components["schemas"]["ResponseFilter"][];
-            steps: (components["schemas"]["RequestStepOutput"] | components["schemas"]["TransformStepOutput"] | components["schemas"]["CallStepOutput"] | components["schemas"]["WaitStepOutput"] | components["schemas"]["WaitForEventStepOutput"] | components["schemas"]["BranchStepOutput"] | components["schemas"]["ParallelStepOutput"] | components["schemas"]["LoopStepOutput"])[];
+            steps: (components["schemas"]["RequestStepOutput"] | components["schemas"]["TransformStepOutput"] | components["schemas"]["CallStepOutput"] | components["schemas"]["WaitStepOutput"] | components["schemas"]["WaitForEventStepOutput"] | components["schemas"]["BranchStepOutput"] | components["schemas"]["ParallelStepOutput"])[];
             timeout_ms?: number;
             /** @enum {string} */
             device_offline?: "wait" | "fail";
@@ -30570,12 +31572,1509 @@ export interface components {
             /** @enum {string} */
             scope?: "FIELD" | "ITEM" | "ENTRY";
         };
-        RequestStep: {
+        RequestStep: components["schemas"]["HttpRequestStep"] | components["schemas"]["GraphqlRequestStep"] | components["schemas"]["SqlRequestStep"] | components["schemas"]["S3RequestStep"] | components["schemas"]["McpRequestStep"];
+        RequestStepOutput: components["schemas"]["HttpRequestStepOutput"] | components["schemas"]["GraphqlRequestStepOutput"] | components["schemas"]["SqlRequestStepOutput"] | components["schemas"]["S3RequestStepOutput"] | components["schemas"]["McpRequestStepOutput"];
+        HttpRequestStep: {
+            /** @enum {string} */
+            kind: "request";
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
+            protocol: "http";
+            id: string;
+            /**
+             * @default fail
+             * @enum {string}
+             */
+            on_error?: "fail" | "continue";
+            data_selector?: string;
+            timeout_ms?: number;
+            for_each?: string;
+            for_each_concurrency?: number;
+            /**
+             * @default GET
+             * @enum {string}
+             */
+            method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
+            /** @enum {string} */
+            side_effects?: "read" | "write";
+            url?: string;
+            path?: string;
+            /** Format: uuid */
+            connector_id?: string;
+            boundary?: {
+                variables: {
+                    [key: string]: {
+                        enum: string[];
+                    } | {
+                        /** @enum {string} */
+                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                    } | {
+                        /** @enum {boolean} */
+                        caller_bound: true;
+                    };
+                };
+                max_body_bytes: number;
+                max_calls: number;
+                /** @enum {boolean} */
+                destructive?: true;
+            };
+            report_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_report";
+                to: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain" | "text/html" | "multipart/alternative";
+            };
+            transactional_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_transactional";
+                /** @enum {string} */
+                webhook_verifier?: "standard" | "hmac";
+                /**
+                 * Format: uuid
+                 * @description Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden
+                 */
+                webhook_id: string;
+                /** @description The single allowed event type configured on the signed binding */
+                event_type: string;
+                /** @description Reviewed event type field inside the signed body, equal to event_type; webhook-type alone is not signed */
+                event_type_input: string;
+                /** @description Reviewed dot path in the original admitted input, for example body.applicant.email; never a step output or caller-supplied routing override */
+                recipient_input: string;
+                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID. */
+                request_id_input: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain";
+                /** @description Maximum UTF-8 serialized Gmail JSON request bytes; derive from bounded template inputs */
+                max_body_bytes: number;
+            };
+            outbox_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_outbox";
+                /** @description Earlier GET request step of this workflow that reads exactly one queued message from a fixed, approved address; the recipient is only ever taken from its response in the same run */
+                source_step_id: string;
+                /** @description Dot path inside the source step's response data that holds the one recipient address, for example email or item.email */
+                recipient_field: string;
+                /** @description Dot path inside the source step's response data that identifies the queued message; one dispatch attempt per workflow and item */
+                item_id_field: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain";
+                /** @description Maximum UTF-8 serialized Gmail JSON request bytes */
+                max_body_bytes: number;
+                /** @description Most messages this workflow may send within any 24 hours */
+                max_per_day: number;
+            };
+            headers?: {
+                [key: string]: string;
+            } | string;
+            query?: {
+                [key: string]: string | number | boolean;
+            };
+            body?: components["schemas"]["WorkflowJsonValue"];
+            response_filters?: components["schemas"]["ResponseFilter"][];
+            pagination?: components["schemas"]["Pagination"];
+            max_retries?: number;
+            retry_backoff_ms?: number;
+            retry_on_status?: number[];
+            /**
+             * @default none
+             * @enum {string}
+             */
+            error_policy?: "none" | "all";
+            body_schema?: {
+                [key: string]: unknown;
+            };
+            response_schema?: {
+                [key: string]: unknown;
+            };
+            expected_statuses?: number[];
+            expected_row_count?: number | [
+                number,
+                number
+            ] | {
+                min?: number;
+                max?: number;
+            };
+            idempotency_key?: string;
+            outputs?: {
+                [key: string]: {
+                    secret?: boolean;
+                };
+            };
+            state_read?: {
+                key: string;
+                into_var: string;
+                default_value?: unknown;
+            };
+            state_write?: {
+                key: string;
+                value_path: string;
+            };
+            multipart?: components["schemas"]["MultipartPart"][];
+            xml?: {
+                body: components["schemas"]["WorkflowJsonValue"];
+                declaration?: boolean;
+            };
+            graphql?: null;
+            sql?: null;
+            s3?: null;
+            mcp?: null;
+        };
+        HttpRequestStepOutput: {
+            /** @enum {string} */
             kind: "request";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            protocol: "http";
+            id: string;
+            /**
+             * @default fail
+             * @enum {string}
+             */
+            on_error: "fail" | "continue";
+            data_selector?: string;
+            timeout_ms?: number;
+            for_each?: string;
+            for_each_concurrency?: number;
+            /**
+             * @default GET
+             * @enum {string}
+             */
+            method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
+            /** @enum {string} */
+            side_effects?: "read" | "write";
+            url?: string;
+            path?: string;
+            /** Format: uuid */
+            connector_id?: string;
+            boundary?: {
+                variables: {
+                    [key: string]: {
+                        enum: string[];
+                    } | {
+                        /** @enum {string} */
+                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                    } | {
+                        /** @enum {boolean} */
+                        caller_bound: true;
+                    };
+                };
+                max_body_bytes: number;
+                max_calls: number;
+                /** @enum {boolean} */
+                destructive?: true;
+            };
+            report_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_report";
+                to: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain" | "text/html" | "multipart/alternative";
+            };
+            transactional_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_transactional";
+                /** @enum {string} */
+                webhook_verifier?: "standard" | "hmac";
+                /**
+                 * Format: uuid
+                 * @description Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden
+                 */
+                webhook_id: string;
+                /** @description The single allowed event type configured on the signed binding */
+                event_type: string;
+                /** @description Reviewed event type field inside the signed body, equal to event_type; webhook-type alone is not signed */
+                event_type_input: string;
+                /** @description Reviewed dot path in the original admitted input, for example body.applicant.email; never a step output or caller-supplied routing override */
+                recipient_input: string;
+                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID. */
+                request_id_input: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain";
+                /** @description Maximum UTF-8 serialized Gmail JSON request bytes; derive from bounded template inputs */
+                max_body_bytes: number;
+            };
+            outbox_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_outbox";
+                /** @description Earlier GET request step of this workflow that reads exactly one queued message from a fixed, approved address; the recipient is only ever taken from its response in the same run */
+                source_step_id: string;
+                /** @description Dot path inside the source step's response data that holds the one recipient address, for example email or item.email */
+                recipient_field: string;
+                /** @description Dot path inside the source step's response data that identifies the queued message; one dispatch attempt per workflow and item */
+                item_id_field: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain";
+                /** @description Maximum UTF-8 serialized Gmail JSON request bytes */
+                max_body_bytes: number;
+                /** @description Most messages this workflow may send within any 24 hours */
+                max_per_day: number;
+            };
+            headers?: {
+                [key: string]: string;
+            } | string;
+            query?: {
+                [key: string]: string | number | boolean;
+            };
+            body?: components["schemas"]["WorkflowJsonValue"];
+            response_filters?: components["schemas"]["ResponseFilter"][];
+            pagination?: components["schemas"]["PaginationOutput"];
+            max_retries?: number;
+            retry_backoff_ms?: number;
+            retry_on_status?: number[];
+            /**
+             * @default none
+             * @enum {string}
+             */
+            error_policy: "none" | "all";
+            body_schema?: {
+                [key: string]: unknown;
+            };
+            response_schema?: {
+                [key: string]: unknown;
+            };
+            expected_statuses?: number[];
+            expected_row_count?: number | [
+                number,
+                number
+            ] | {
+                min?: number;
+                max?: number;
+            };
+            idempotency_key?: string;
+            outputs?: {
+                [key: string]: {
+                    secret?: boolean;
+                };
+            };
+            state_read?: {
+                key: string;
+                into_var: string;
+                default_value?: unknown;
+            };
+            state_write?: {
+                key: string;
+                value_path: string;
+            };
+            multipart?: components["schemas"]["MultipartPart"][];
+            xml?: {
+                body: components["schemas"]["WorkflowJsonValue"];
+                declaration?: boolean;
+            };
+            graphql?: null;
+            sql?: null;
+            s3?: null;
+            mcp?: null;
+        };
+        Pagination: {
+            /** @enum {string} */
+            strategy: "offset";
+            /** @default 100 */
+            page_size?: number;
+            /** @default offset */
+            offset_param?: string;
+            /** @default limit */
+            limit_param?: string;
+            /** @enum {string} */
+            parameter_location?: "query" | "body";
+            /** @enum {string} */
+            output_mode?: "items" | "pages";
+            items_path?: string;
+            stop_when_empty_path?: string;
+            max_pages?: number;
+            max_items?: number;
+            /** @enum {string} */
+            on_limit?: "fail" | "truncate";
+            unique_by?: string;
+            /** @description JavaScript arrow `(page, info) => boolean`, evaluated after each page; `info` has `page` (1-based), `pages` and `items`. Returning true ends the pagination as complete. */
+            stop_when?: string;
+        } | {
+            /** @enum {string} */
+            strategy: "page";
+            /** @default 100 */
+            page_size?: number;
+            /** @default page */
+            page_param?: string;
+            /** @default page_size */
+            limit_param?: string;
+            /** @default 1 */
+            start_page?: number;
+            /** @enum {string} */
+            parameter_location?: "query" | "body";
+            /** @enum {string} */
+            output_mode?: "items" | "pages";
+            items_path?: string;
+            max_pages?: number;
+            max_items?: number;
+            /** @enum {string} */
+            on_limit?: "fail" | "truncate";
+            unique_by?: string;
+            /** @description JavaScript arrow `(page, info) => boolean`, evaluated after each page; `info` has `page` (1-based), `pages` and `items`. Returning true ends the pagination as complete. */
+            stop_when?: string;
+        } | {
+            /** @enum {string} */
+            strategy: "cursor";
+            cursor_request_param: string;
+            cursor_response_path: string;
+            page_size?: number;
+            limit_param?: string;
+            /** @enum {string} */
+            parameter_location?: "query" | "body";
+            /** @enum {string} */
+            output_mode?: "items" | "pages";
+            items_path?: string;
+            max_pages?: number;
+            max_items?: number;
+            /** @enum {string} */
+            on_limit?: "fail" | "truncate";
+            unique_by?: string;
+            /** @description JavaScript arrow `(page, info) => boolean`, evaluated after each page; `info` has `page` (1-based), `pages` and `items`. Returning true ends the pagination as complete. */
+            stop_when?: string;
+        } | {
+            /** @enum {string} */
+            strategy: "link";
+            link_params: string[];
+            page_size?: number;
+            limit_param?: string;
+            items_path?: string;
+            /** @enum {string} */
+            output_mode?: "items" | "pages";
+            max_pages?: number;
+            max_items?: number;
+            /** @enum {string} */
+            on_limit?: "fail" | "truncate";
+            unique_by?: string;
+            /** @description JavaScript arrow `(page, info) => boolean`, evaluated after each page; `info` has `page` (1-based), `pages` and `items`. Returning true ends the pagination as complete. */
+            stop_when?: string;
+        };
+        PaginationOutput: {
+            /** @enum {string} */
+            strategy: "offset";
+            /** @default 100 */
+            page_size: number;
+            /** @default offset */
+            offset_param: string;
+            /** @default limit */
+            limit_param: string;
+            /** @enum {string} */
+            parameter_location?: "query" | "body";
+            /** @enum {string} */
+            output_mode?: "items" | "pages";
+            items_path?: string;
+            stop_when_empty_path?: string;
+            max_pages?: number;
+            max_items?: number;
+            /** @enum {string} */
+            on_limit?: "fail" | "truncate";
+            unique_by?: string;
+            /** @description JavaScript arrow `(page, info) => boolean`, evaluated after each page; `info` has `page` (1-based), `pages` and `items`. Returning true ends the pagination as complete. */
+            stop_when?: string;
+        } | {
+            /** @enum {string} */
+            strategy: "page";
+            /** @default 100 */
+            page_size: number;
+            /** @default page */
+            page_param: string;
+            /** @default page_size */
+            limit_param: string;
+            /** @default 1 */
+            start_page: number;
+            /** @enum {string} */
+            parameter_location?: "query" | "body";
+            /** @enum {string} */
+            output_mode?: "items" | "pages";
+            items_path?: string;
+            max_pages?: number;
+            max_items?: number;
+            /** @enum {string} */
+            on_limit?: "fail" | "truncate";
+            unique_by?: string;
+            /** @description JavaScript arrow `(page, info) => boolean`, evaluated after each page; `info` has `page` (1-based), `pages` and `items`. Returning true ends the pagination as complete. */
+            stop_when?: string;
+        } | {
+            /** @enum {string} */
+            strategy: "cursor";
+            cursor_request_param: string;
+            cursor_response_path: string;
+            page_size?: number;
+            limit_param?: string;
+            /** @enum {string} */
+            parameter_location?: "query" | "body";
+            /** @enum {string} */
+            output_mode?: "items" | "pages";
+            items_path?: string;
+            max_pages?: number;
+            max_items?: number;
+            /** @enum {string} */
+            on_limit?: "fail" | "truncate";
+            unique_by?: string;
+            /** @description JavaScript arrow `(page, info) => boolean`, evaluated after each page; `info` has `page` (1-based), `pages` and `items`. Returning true ends the pagination as complete. */
+            stop_when?: string;
+        } | {
+            /** @enum {string} */
+            strategy: "link";
+            link_params: string[];
+            page_size?: number;
+            limit_param?: string;
+            items_path?: string;
+            /** @enum {string} */
+            output_mode?: "items" | "pages";
+            max_pages?: number;
+            max_items?: number;
+            /** @enum {string} */
+            on_limit?: "fail" | "truncate";
+            unique_by?: string;
+            /** @description JavaScript arrow `(page, info) => boolean`, evaluated after each page; `info` has `page` (1-based), `pages` and `items`. Returning true ends the pagination as complete. */
+            stop_when?: string;
+        };
+        MultipartPart: {
+            name: string;
+            file?: components["schemas"]["FileRef"] | string;
+            value?: string;
+            filename?: string;
+            content_type?: string;
+        };
+        GraphqlRequestStep: {
+            /** @enum {string} */
+            kind: "request";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            protocol: "graphql";
+            id: string;
+            /**
+             * @default fail
+             * @enum {string}
+             */
+            on_error?: "fail" | "continue";
+            data_selector?: string;
+            timeout_ms?: number;
+            for_each?: string;
+            for_each_concurrency?: number;
+            /**
+             * @default GET
+             * @enum {string}
+             */
+            method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
+            /** @enum {string} */
+            side_effects?: "read" | "write";
+            url?: string;
+            path?: string;
+            /** Format: uuid */
+            connector_id?: string;
+            boundary?: {
+                variables: {
+                    [key: string]: {
+                        enum: string[];
+                    } | {
+                        /** @enum {string} */
+                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                    } | {
+                        /** @enum {boolean} */
+                        caller_bound: true;
+                    };
+                };
+                max_body_bytes: number;
+                max_calls: number;
+                /** @enum {boolean} */
+                destructive?: true;
+            };
+            report_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_report";
+                to: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain" | "text/html" | "multipart/alternative";
+            };
+            transactional_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_transactional";
+                /** @enum {string} */
+                webhook_verifier?: "standard" | "hmac";
+                /**
+                 * Format: uuid
+                 * @description Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden
+                 */
+                webhook_id: string;
+                /** @description The single allowed event type configured on the signed binding */
+                event_type: string;
+                /** @description Reviewed event type field inside the signed body, equal to event_type; webhook-type alone is not signed */
+                event_type_input: string;
+                /** @description Reviewed dot path in the original admitted input, for example body.applicant.email; never a step output or caller-supplied routing override */
+                recipient_input: string;
+                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID. */
+                request_id_input: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain";
+                /** @description Maximum UTF-8 serialized Gmail JSON request bytes; derive from bounded template inputs */
+                max_body_bytes: number;
+            };
+            outbox_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_outbox";
+                /** @description Earlier GET request step of this workflow that reads exactly one queued message from a fixed, approved address; the recipient is only ever taken from its response in the same run */
+                source_step_id: string;
+                /** @description Dot path inside the source step's response data that holds the one recipient address, for example email or item.email */
+                recipient_field: string;
+                /** @description Dot path inside the source step's response data that identifies the queued message; one dispatch attempt per workflow and item */
+                item_id_field: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain";
+                /** @description Maximum UTF-8 serialized Gmail JSON request bytes */
+                max_body_bytes: number;
+                /** @description Most messages this workflow may send within any 24 hours */
+                max_per_day: number;
+            };
+            headers?: {
+                [key: string]: string;
+            } | string;
+            query?: {
+                [key: string]: string | number | boolean;
+            };
+            body?: components["schemas"]["WorkflowJsonValue"];
+            response_filters?: components["schemas"]["ResponseFilter"][];
+            pagination?: components["schemas"]["Pagination"];
+            max_retries?: number;
+            retry_backoff_ms?: number;
+            retry_on_status?: number[];
+            /**
+             * @default none
+             * @enum {string}
+             */
+            error_policy?: "none" | "all";
+            body_schema?: {
+                [key: string]: unknown;
+            };
+            response_schema?: {
+                [key: string]: unknown;
+            };
+            expected_statuses?: number[];
+            expected_row_count?: number | [
+                number,
+                number
+            ] | {
+                min?: number;
+                max?: number;
+            };
+            idempotency_key?: string;
+            outputs?: {
+                [key: string]: {
+                    secret?: boolean;
+                };
+            };
+            state_read?: {
+                key: string;
+                into_var: string;
+                default_value?: unknown;
+            };
+            state_write?: {
+                key: string;
+                value_path: string;
+            };
+            multipart?: components["schemas"]["MultipartPart"][];
+            graphql: {
+                /** @enum {string} */
+                operation?: "query" | "mutation" | "subscription";
+                query: string;
+                variables?: {
+                    [key: string]: unknown;
+                };
+                cursor_pagination?: {
+                    connection_path: string;
+                    cursor_variable: string;
+                    /**
+                     * @default nodes
+                     * @enum {string}
+                     */
+                    items_field?: "nodes" | "edges";
+                    required_connection_paths?: string[];
+                    max_pages: number;
+                    max_items: number;
+                    expected_items?: {
+                        min?: number;
+                        max?: number;
+                    };
+                    reread_on_empty?: number;
+                };
+            } | string;
+            xml?: null;
+            sql?: null;
+            s3?: null;
+            mcp?: null;
+        };
+        GraphqlRequestStepOutput: {
+            /** @enum {string} */
+            kind: "request";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            protocol: "graphql";
+            id: string;
+            /**
+             * @default fail
+             * @enum {string}
+             */
+            on_error: "fail" | "continue";
+            data_selector?: string;
+            timeout_ms?: number;
+            for_each?: string;
+            for_each_concurrency?: number;
+            /**
+             * @default GET
+             * @enum {string}
+             */
+            method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
+            /** @enum {string} */
+            side_effects?: "read" | "write";
+            url?: string;
+            path?: string;
+            /** Format: uuid */
+            connector_id?: string;
+            boundary?: {
+                variables: {
+                    [key: string]: {
+                        enum: string[];
+                    } | {
+                        /** @enum {string} */
+                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                    } | {
+                        /** @enum {boolean} */
+                        caller_bound: true;
+                    };
+                };
+                max_body_bytes: number;
+                max_calls: number;
+                /** @enum {boolean} */
+                destructive?: true;
+            };
+            report_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_report";
+                to: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain" | "text/html" | "multipart/alternative";
+            };
+            transactional_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_transactional";
+                /** @enum {string} */
+                webhook_verifier?: "standard" | "hmac";
+                /**
+                 * Format: uuid
+                 * @description Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden
+                 */
+                webhook_id: string;
+                /** @description The single allowed event type configured on the signed binding */
+                event_type: string;
+                /** @description Reviewed event type field inside the signed body, equal to event_type; webhook-type alone is not signed */
+                event_type_input: string;
+                /** @description Reviewed dot path in the original admitted input, for example body.applicant.email; never a step output or caller-supplied routing override */
+                recipient_input: string;
+                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID. */
+                request_id_input: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain";
+                /** @description Maximum UTF-8 serialized Gmail JSON request bytes; derive from bounded template inputs */
+                max_body_bytes: number;
+            };
+            outbox_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_outbox";
+                /** @description Earlier GET request step of this workflow that reads exactly one queued message from a fixed, approved address; the recipient is only ever taken from its response in the same run */
+                source_step_id: string;
+                /** @description Dot path inside the source step's response data that holds the one recipient address, for example email or item.email */
+                recipient_field: string;
+                /** @description Dot path inside the source step's response data that identifies the queued message; one dispatch attempt per workflow and item */
+                item_id_field: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain";
+                /** @description Maximum UTF-8 serialized Gmail JSON request bytes */
+                max_body_bytes: number;
+                /** @description Most messages this workflow may send within any 24 hours */
+                max_per_day: number;
+            };
+            headers?: {
+                [key: string]: string;
+            } | string;
+            query?: {
+                [key: string]: string | number | boolean;
+            };
+            body?: components["schemas"]["WorkflowJsonValue"];
+            response_filters?: components["schemas"]["ResponseFilter"][];
+            pagination?: components["schemas"]["PaginationOutput"];
+            max_retries?: number;
+            retry_backoff_ms?: number;
+            retry_on_status?: number[];
+            /**
+             * @default none
+             * @enum {string}
+             */
+            error_policy: "none" | "all";
+            body_schema?: {
+                [key: string]: unknown;
+            };
+            response_schema?: {
+                [key: string]: unknown;
+            };
+            expected_statuses?: number[];
+            expected_row_count?: number | [
+                number,
+                number
+            ] | {
+                min?: number;
+                max?: number;
+            };
+            idempotency_key?: string;
+            outputs?: {
+                [key: string]: {
+                    secret?: boolean;
+                };
+            };
+            state_read?: {
+                key: string;
+                into_var: string;
+                default_value?: unknown;
+            };
+            state_write?: {
+                key: string;
+                value_path: string;
+            };
+            multipart?: components["schemas"]["MultipartPart"][];
+            graphql: {
+                /** @enum {string} */
+                operation?: "query" | "mutation" | "subscription";
+                query: string;
+                variables?: {
+                    [key: string]: unknown;
+                };
+                cursor_pagination?: {
+                    connection_path: string;
+                    cursor_variable: string;
+                    /**
+                     * @default nodes
+                     * @enum {string}
+                     */
+                    items_field: "nodes" | "edges";
+                    required_connection_paths?: string[];
+                    max_pages: number;
+                    max_items: number;
+                    expected_items?: {
+                        min?: number;
+                        max?: number;
+                    };
+                    reread_on_empty?: number;
+                };
+            } | string;
+            xml?: null;
+            sql?: null;
+            s3?: null;
+            mcp?: null;
+        };
+        SqlRequestStep: {
+            /** @enum {string} */
+            kind: "request";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            protocol: "sql";
+            id: string;
+            /**
+             * @default fail
+             * @enum {string}
+             */
+            on_error?: "fail" | "continue";
+            data_selector?: string;
+            timeout_ms?: number;
+            for_each?: string;
+            for_each_concurrency?: number;
+            /**
+             * @default GET
+             * @enum {string}
+             */
+            method?: "GET" | "SELECT" | "INSERT" | "UPDATE" | "DELETE" | "CALL";
+            /** @enum {string} */
+            side_effects?: "read" | "write";
+            url?: string;
+            path?: string;
+            /** Format: uuid */
+            connector_id?: string;
+            boundary?: {
+                variables: {
+                    [key: string]: {
+                        enum: string[];
+                    } | {
+                        /** @enum {string} */
+                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                    } | {
+                        /** @enum {boolean} */
+                        caller_bound: true;
+                    };
+                };
+                max_body_bytes: number;
+                max_calls: number;
+                /** @enum {boolean} */
+                destructive?: true;
+            };
+            report_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_report";
+                to: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain" | "text/html" | "multipart/alternative";
+            };
+            transactional_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_transactional";
+                /** @enum {string} */
+                webhook_verifier?: "standard" | "hmac";
+                /**
+                 * Format: uuid
+                 * @description Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden
+                 */
+                webhook_id: string;
+                /** @description The single allowed event type configured on the signed binding */
+                event_type: string;
+                /** @description Reviewed event type field inside the signed body, equal to event_type; webhook-type alone is not signed */
+                event_type_input: string;
+                /** @description Reviewed dot path in the original admitted input, for example body.applicant.email; never a step output or caller-supplied routing override */
+                recipient_input: string;
+                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID. */
+                request_id_input: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain";
+                /** @description Maximum UTF-8 serialized Gmail JSON request bytes; derive from bounded template inputs */
+                max_body_bytes: number;
+            };
+            outbox_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_outbox";
+                /** @description Earlier GET request step of this workflow that reads exactly one queued message from a fixed, approved address; the recipient is only ever taken from its response in the same run */
+                source_step_id: string;
+                /** @description Dot path inside the source step's response data that holds the one recipient address, for example email or item.email */
+                recipient_field: string;
+                /** @description Dot path inside the source step's response data that identifies the queued message; one dispatch attempt per workflow and item */
+                item_id_field: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain";
+                /** @description Maximum UTF-8 serialized Gmail JSON request bytes */
+                max_body_bytes: number;
+                /** @description Most messages this workflow may send within any 24 hours */
+                max_per_day: number;
+            };
+            headers?: {
+                [key: string]: string;
+            } | string;
+            query?: {
+                [key: string]: string | number | boolean;
+            };
+            body?: components["schemas"]["WorkflowJsonValue"];
+            response_filters?: components["schemas"]["ResponseFilter"][];
+            pagination?: components["schemas"]["Pagination"];
+            max_retries?: number;
+            retry_backoff_ms?: number;
+            retry_on_status?: number[];
+            /**
+             * @default none
+             * @enum {string}
+             */
+            error_policy?: "none" | "all";
+            body_schema?: {
+                [key: string]: unknown;
+            };
+            response_schema?: {
+                [key: string]: unknown;
+            };
+            expected_statuses?: number[];
+            expected_row_count?: number | [
+                number,
+                number
+            ] | {
+                min?: number;
+                max?: number;
+            };
+            idempotency_key?: string;
+            outputs?: {
+                [key: string]: {
+                    secret?: boolean;
+                };
+            };
+            state_read?: {
+                key: string;
+                into_var: string;
+                default_value?: unknown;
+            };
+            state_write?: {
+                key: string;
+                value_path: string;
+            };
+            multipart?: components["schemas"]["MultipartPart"][];
+            sql: {
+                query: string;
+                params?: unknown[];
+                also?: {
+                    query: string;
+                    params?: unknown[];
+                    expected_row_count?: number | [
+                        number,
+                        number
+                    ] | {
+                        min?: number;
+                        max?: number;
+                    };
+                }[];
+                transaction?: boolean;
+                cursor?: {
+                    /** @default 1000 */
+                    fetch_size?: number;
+                };
+            };
+            xml?: null;
+            graphql?: null;
+            s3?: null;
+            mcp?: null;
+        };
+        SqlRequestStepOutput: {
+            /** @enum {string} */
+            kind: "request";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            protocol: "sql";
+            id: string;
+            /**
+             * @default fail
+             * @enum {string}
+             */
+            on_error: "fail" | "continue";
+            data_selector?: string;
+            timeout_ms?: number;
+            for_each?: string;
+            for_each_concurrency?: number;
+            /**
+             * @default GET
+             * @enum {string}
+             */
+            method: "GET" | "SELECT" | "INSERT" | "UPDATE" | "DELETE" | "CALL";
+            /** @enum {string} */
+            side_effects?: "read" | "write";
+            url?: string;
+            path?: string;
+            /** Format: uuid */
+            connector_id?: string;
+            boundary?: {
+                variables: {
+                    [key: string]: {
+                        enum: string[];
+                    } | {
+                        /** @enum {string} */
+                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                    } | {
+                        /** @enum {boolean} */
+                        caller_bound: true;
+                    };
+                };
+                max_body_bytes: number;
+                max_calls: number;
+                /** @enum {boolean} */
+                destructive?: true;
+            };
+            report_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_report";
+                to: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain" | "text/html" | "multipart/alternative";
+            };
+            transactional_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_transactional";
+                /** @enum {string} */
+                webhook_verifier?: "standard" | "hmac";
+                /**
+                 * Format: uuid
+                 * @description Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden
+                 */
+                webhook_id: string;
+                /** @description The single allowed event type configured on the signed binding */
+                event_type: string;
+                /** @description Reviewed event type field inside the signed body, equal to event_type; webhook-type alone is not signed */
+                event_type_input: string;
+                /** @description Reviewed dot path in the original admitted input, for example body.applicant.email; never a step output or caller-supplied routing override */
+                recipient_input: string;
+                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID. */
+                request_id_input: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain";
+                /** @description Maximum UTF-8 serialized Gmail JSON request bytes; derive from bounded template inputs */
+                max_body_bytes: number;
+            };
+            outbox_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_outbox";
+                /** @description Earlier GET request step of this workflow that reads exactly one queued message from a fixed, approved address; the recipient is only ever taken from its response in the same run */
+                source_step_id: string;
+                /** @description Dot path inside the source step's response data that holds the one recipient address, for example email or item.email */
+                recipient_field: string;
+                /** @description Dot path inside the source step's response data that identifies the queued message; one dispatch attempt per workflow and item */
+                item_id_field: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain";
+                /** @description Maximum UTF-8 serialized Gmail JSON request bytes */
+                max_body_bytes: number;
+                /** @description Most messages this workflow may send within any 24 hours */
+                max_per_day: number;
+            };
+            headers?: {
+                [key: string]: string;
+            } | string;
+            query?: {
+                [key: string]: string | number | boolean;
+            };
+            body?: components["schemas"]["WorkflowJsonValue"];
+            response_filters?: components["schemas"]["ResponseFilter"][];
+            pagination?: components["schemas"]["PaginationOutput"];
+            max_retries?: number;
+            retry_backoff_ms?: number;
+            retry_on_status?: number[];
+            /**
+             * @default none
+             * @enum {string}
+             */
+            error_policy: "none" | "all";
+            body_schema?: {
+                [key: string]: unknown;
+            };
+            response_schema?: {
+                [key: string]: unknown;
+            };
+            expected_statuses?: number[];
+            expected_row_count?: number | [
+                number,
+                number
+            ] | {
+                min?: number;
+                max?: number;
+            };
+            idempotency_key?: string;
+            outputs?: {
+                [key: string]: {
+                    secret?: boolean;
+                };
+            };
+            state_read?: {
+                key: string;
+                into_var: string;
+                default_value?: unknown;
+            };
+            state_write?: {
+                key: string;
+                value_path: string;
+            };
+            multipart?: components["schemas"]["MultipartPart"][];
+            sql: {
+                query: string;
+                params?: unknown[];
+                also?: {
+                    query: string;
+                    params?: unknown[];
+                    expected_row_count?: number | [
+                        number,
+                        number
+                    ] | {
+                        min?: number;
+                        max?: number;
+                    };
+                }[];
+                transaction?: boolean;
+                cursor?: {
+                    /** @default 1000 */
+                    fetch_size: number;
+                };
+            };
+            xml?: null;
+            graphql?: null;
+            s3?: null;
+            mcp?: null;
+        };
+        S3RequestStep: {
+            /** @enum {string} */
+            kind: "request";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            protocol: "s3";
+            id: string;
+            /**
+             * @default fail
+             * @enum {string}
+             */
+            on_error?: "fail" | "continue";
+            data_selector?: string;
+            timeout_ms?: number;
+            for_each?: string;
+            for_each_concurrency?: number;
+            /**
+             * @default GET
+             * @enum {string}
+             */
+            method?: "GET" | "PUT" | "HEAD" | "DELETE" | "LIST";
+            /** @enum {string} */
+            side_effects?: "read" | "write";
+            url?: string;
+            path?: string;
+            /** Format: uuid */
+            connector_id?: string;
+            boundary?: {
+                variables: {
+                    [key: string]: {
+                        enum: string[];
+                    } | {
+                        /** @enum {string} */
+                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                    } | {
+                        /** @enum {boolean} */
+                        caller_bound: true;
+                    };
+                };
+                max_body_bytes: number;
+                max_calls: number;
+                /** @enum {boolean} */
+                destructive?: true;
+            };
+            report_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_report";
+                to: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain" | "text/html" | "multipart/alternative";
+            };
+            transactional_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_transactional";
+                /** @enum {string} */
+                webhook_verifier?: "standard" | "hmac";
+                /**
+                 * Format: uuid
+                 * @description Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden
+                 */
+                webhook_id: string;
+                /** @description The single allowed event type configured on the signed binding */
+                event_type: string;
+                /** @description Reviewed event type field inside the signed body, equal to event_type; webhook-type alone is not signed */
+                event_type_input: string;
+                /** @description Reviewed dot path in the original admitted input, for example body.applicant.email; never a step output or caller-supplied routing override */
+                recipient_input: string;
+                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID. */
+                request_id_input: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain";
+                /** @description Maximum UTF-8 serialized Gmail JSON request bytes; derive from bounded template inputs */
+                max_body_bytes: number;
+            };
+            outbox_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_outbox";
+                /** @description Earlier GET request step of this workflow that reads exactly one queued message from a fixed, approved address; the recipient is only ever taken from its response in the same run */
+                source_step_id: string;
+                /** @description Dot path inside the source step's response data that holds the one recipient address, for example email or item.email */
+                recipient_field: string;
+                /** @description Dot path inside the source step's response data that identifies the queued message; one dispatch attempt per workflow and item */
+                item_id_field: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain";
+                /** @description Maximum UTF-8 serialized Gmail JSON request bytes */
+                max_body_bytes: number;
+                /** @description Most messages this workflow may send within any 24 hours */
+                max_per_day: number;
+            };
+            headers?: {
+                [key: string]: string;
+            } | string;
+            query?: {
+                [key: string]: string | number | boolean;
+            };
+            body?: components["schemas"]["WorkflowJsonValue"];
+            response_filters?: components["schemas"]["ResponseFilter"][];
+            pagination?: components["schemas"]["Pagination"];
+            max_retries?: number;
+            retry_backoff_ms?: number;
+            retry_on_status?: number[];
+            /**
+             * @default none
+             * @enum {string}
+             */
+            error_policy?: "none" | "all";
+            body_schema?: {
+                [key: string]: unknown;
+            };
+            response_schema?: {
+                [key: string]: unknown;
+            };
+            expected_statuses?: number[];
+            expected_row_count?: number | [
+                number,
+                number
+            ] | {
+                min?: number;
+                max?: number;
+            };
+            idempotency_key?: string;
+            outputs?: {
+                [key: string]: {
+                    secret?: boolean;
+                };
+            };
+            state_read?: {
+                key: string;
+                into_var: string;
+                default_value?: unknown;
+            };
+            state_write?: {
+                key: string;
+                value_path: string;
+            };
+            multipart?: components["schemas"]["MultipartPart"][];
+            s3: {
+                scope?: {
+                    key_prefix: string;
+                    max_bytes: number;
+                    max_deletes?: number;
+                    principal_bound?: boolean;
+                };
+                key?: string;
+                prefix?: string;
+                /** @enum {string} */
+                parse_as?: "json" | "text" | "base64" | "bytes";
+                max_keys?: number;
+                content_type?: string;
+                metadata?: {
+                    [key: string]: string;
+                };
+                paginate?: boolean;
+                multipart?: boolean;
+                multipart_threshold_mb?: number;
+                range?: string;
+                presign?: {
+                    /** @default 900 */
+                    expires_in_s?: number;
+                };
+            };
+            xml?: null;
+            graphql?: null;
+            sql?: null;
+            mcp?: null;
+        };
+        S3RequestStepOutput: {
+            /** @enum {string} */
+            kind: "request";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            protocol: "s3";
+            id: string;
+            /**
+             * @default fail
+             * @enum {string}
+             */
+            on_error: "fail" | "continue";
+            data_selector?: string;
+            timeout_ms?: number;
+            for_each?: string;
+            for_each_concurrency?: number;
+            /**
+             * @default GET
+             * @enum {string}
+             */
+            method: "GET" | "PUT" | "HEAD" | "DELETE" | "LIST";
+            /** @enum {string} */
+            side_effects?: "read" | "write";
+            url?: string;
+            path?: string;
+            /** Format: uuid */
+            connector_id?: string;
+            boundary?: {
+                variables: {
+                    [key: string]: {
+                        enum: string[];
+                    } | {
+                        /** @enum {string} */
+                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                    } | {
+                        /** @enum {boolean} */
+                        caller_bound: true;
+                    };
+                };
+                max_body_bytes: number;
+                max_calls: number;
+                /** @enum {boolean} */
+                destructive?: true;
+            };
+            report_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_report";
+                to: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain" | "text/html" | "multipart/alternative";
+            };
+            transactional_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_transactional";
+                /** @enum {string} */
+                webhook_verifier?: "standard" | "hmac";
+                /**
+                 * Format: uuid
+                 * @description Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden
+                 */
+                webhook_id: string;
+                /** @description The single allowed event type configured on the signed binding */
+                event_type: string;
+                /** @description Reviewed event type field inside the signed body, equal to event_type; webhook-type alone is not signed */
+                event_type_input: string;
+                /** @description Reviewed dot path in the original admitted input, for example body.applicant.email; never a step output or caller-supplied routing override */
+                recipient_input: string;
+                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID. */
+                request_id_input: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain";
+                /** @description Maximum UTF-8 serialized Gmail JSON request bytes; derive from bounded template inputs */
+                max_body_bytes: number;
+            };
+            outbox_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_outbox";
+                /** @description Earlier GET request step of this workflow that reads exactly one queued message from a fixed, approved address; the recipient is only ever taken from its response in the same run */
+                source_step_id: string;
+                /** @description Dot path inside the source step's response data that holds the one recipient address, for example email or item.email */
+                recipient_field: string;
+                /** @description Dot path inside the source step's response data that identifies the queued message; one dispatch attempt per workflow and item */
+                item_id_field: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain";
+                /** @description Maximum UTF-8 serialized Gmail JSON request bytes */
+                max_body_bytes: number;
+                /** @description Most messages this workflow may send within any 24 hours */
+                max_per_day: number;
+            };
+            headers?: {
+                [key: string]: string;
+            } | string;
+            query?: {
+                [key: string]: string | number | boolean;
+            };
+            body?: components["schemas"]["WorkflowJsonValue"];
+            response_filters?: components["schemas"]["ResponseFilter"][];
+            pagination?: components["schemas"]["PaginationOutput"];
+            max_retries?: number;
+            retry_backoff_ms?: number;
+            retry_on_status?: number[];
+            /**
+             * @default none
+             * @enum {string}
+             */
+            error_policy: "none" | "all";
+            body_schema?: {
+                [key: string]: unknown;
+            };
+            response_schema?: {
+                [key: string]: unknown;
+            };
+            expected_statuses?: number[];
+            expected_row_count?: number | [
+                number,
+                number
+            ] | {
+                min?: number;
+                max?: number;
+            };
+            idempotency_key?: string;
+            outputs?: {
+                [key: string]: {
+                    secret?: boolean;
+                };
+            };
+            state_read?: {
+                key: string;
+                into_var: string;
+                default_value?: unknown;
+            };
+            state_write?: {
+                key: string;
+                value_path: string;
+            };
+            multipart?: components["schemas"]["MultipartPart"][];
+            s3: {
+                scope?: {
+                    key_prefix: string;
+                    max_bytes: number;
+                    max_deletes?: number;
+                    principal_bound?: boolean;
+                };
+                key?: string;
+                prefix?: string;
+                /** @enum {string} */
+                parse_as?: "json" | "text" | "base64" | "bytes";
+                max_keys?: number;
+                content_type?: string;
+                metadata?: {
+                    [key: string]: string;
+                };
+                paginate?: boolean;
+                multipart?: boolean;
+                multipart_threshold_mb?: number;
+                range?: string;
+                presign?: {
+                    /** @default 900 */
+                    expires_in_s: number;
+                };
+            };
+            xml?: null;
+            graphql?: null;
+            sql?: null;
+            mcp?: null;
+        };
+        McpRequestStep: {
+            /** @enum {string} */
+            kind: "request";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            protocol: "mcp";
             id: string;
             /**
              * @default fail
@@ -30675,86 +33174,42 @@ export interface components {
             max_retries?: number;
             retry_backoff_ms?: number;
             retry_on_status?: number[];
-            graphql?: {
-                /** @enum {string} */
-                operation?: "query" | "mutation" | "subscription";
-                query: string;
-                variables?: {
-                    [key: string]: unknown;
-                };
-                cursor_pagination?: {
-                    connection_path: string;
-                    cursor_variable: string;
-                    /**
-                     * @default nodes
-                     * @enum {string}
-                     */
-                    items_field?: "nodes" | "edges";
-                    required_connection_paths?: string[];
-                    max_pages: number;
-                    max_items: number;
-                    expected_items?: {
-                        min?: number;
-                        max?: number;
-                    };
-                    reread_on_empty?: number;
-                };
-            } | string;
             /**
              * @default none
              * @enum {string}
              */
             error_policy?: "none" | "all";
-            xml?: {
-                body: components["schemas"]["WorkflowJsonValue"];
-                declaration?: boolean;
+            body_schema?: {
+                [key: string]: unknown;
             };
-            sql?: {
-                query: string;
-                params?: unknown[];
-                also?: {
-                    query: string;
-                    params?: unknown[];
-                    expected_row_count?: number | [
-                        number,
-                        number
-                    ] | {
-                        min?: number;
-                        max?: number;
-                    };
-                }[];
-                transaction?: boolean;
-                cursor?: {
-                    /** @default 1000 */
-                    fetch_size?: number;
+            response_schema?: {
+                [key: string]: unknown;
+            };
+            expected_statuses?: number[];
+            expected_row_count?: number | [
+                number,
+                number
+            ] | {
+                min?: number;
+                max?: number;
+            };
+            idempotency_key?: string;
+            outputs?: {
+                [key: string]: {
+                    secret?: boolean;
                 };
             };
-            s3?: {
-                scope?: {
-                    key_prefix: string;
-                    max_bytes: number;
-                    max_deletes?: number;
-                    principal_bound?: boolean;
-                };
-                key?: string;
-                prefix?: string;
-                /** @enum {string} */
-                parse_as?: "json" | "text" | "base64" | "bytes";
-                max_keys?: number;
-                content_type?: string;
-                metadata?: {
-                    [key: string]: string;
-                };
-                paginate?: boolean;
-                multipart?: boolean;
-                multipart_threshold_mb?: number;
-                range?: string;
-                presign?: {
-                    /** @default 900 */
-                    expires_in_s?: number;
-                };
+            state_read?: {
+                key: string;
+                into_var: string;
+                default_value?: unknown;
             };
-            mcp?: {
+            state_write?: {
+                key: string;
+                value_path: string;
+            };
+            multipart?: components["schemas"]["MultipartPart"][];
+            mcp: {
                 /**
                  * @default call_tool
                  * @enum {string}
@@ -30792,43 +33247,19 @@ export interface components {
                     };
                 };
             };
-            body_schema?: {
-                [key: string]: unknown;
-            };
-            response_schema?: {
-                [key: string]: unknown;
-            };
-            expected_statuses?: number[];
-            expected_row_count?: number | [
-                number,
-                number
-            ] | {
-                min?: number;
-                max?: number;
-            };
-            idempotency_key?: string;
-            outputs?: {
-                [key: string]: {
-                    secret?: boolean;
-                };
-            };
-            state_read?: {
-                key: string;
-                into_var: string;
-                default_value?: unknown;
-            };
-            state_write?: {
-                key: string;
-                value_path: string;
-            };
-            multipart?: components["schemas"]["MultipartPart"][];
+            xml?: null;
+            graphql?: null;
+            sql?: null;
+            s3?: null;
         };
-        RequestStepOutput: {
+        McpRequestStepOutput: {
+            /** @enum {string} */
+            kind: "request";
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            kind: "request";
+            protocol: "mcp";
             id: string;
             /**
              * @default fail
@@ -30928,86 +33359,42 @@ export interface components {
             max_retries?: number;
             retry_backoff_ms?: number;
             retry_on_status?: number[];
-            graphql?: {
-                /** @enum {string} */
-                operation?: "query" | "mutation" | "subscription";
-                query: string;
-                variables?: {
-                    [key: string]: unknown;
-                };
-                cursor_pagination?: {
-                    connection_path: string;
-                    cursor_variable: string;
-                    /**
-                     * @default nodes
-                     * @enum {string}
-                     */
-                    items_field: "nodes" | "edges";
-                    required_connection_paths?: string[];
-                    max_pages: number;
-                    max_items: number;
-                    expected_items?: {
-                        min?: number;
-                        max?: number;
-                    };
-                    reread_on_empty?: number;
-                };
-            } | string;
             /**
              * @default none
              * @enum {string}
              */
             error_policy: "none" | "all";
-            xml?: {
-                body: components["schemas"]["WorkflowJsonValue"];
-                declaration?: boolean;
+            body_schema?: {
+                [key: string]: unknown;
             };
-            sql?: {
-                query: string;
-                params?: unknown[];
-                also?: {
-                    query: string;
-                    params?: unknown[];
-                    expected_row_count?: number | [
-                        number,
-                        number
-                    ] | {
-                        min?: number;
-                        max?: number;
-                    };
-                }[];
-                transaction?: boolean;
-                cursor?: {
-                    /** @default 1000 */
-                    fetch_size: number;
+            response_schema?: {
+                [key: string]: unknown;
+            };
+            expected_statuses?: number[];
+            expected_row_count?: number | [
+                number,
+                number
+            ] | {
+                min?: number;
+                max?: number;
+            };
+            idempotency_key?: string;
+            outputs?: {
+                [key: string]: {
+                    secret?: boolean;
                 };
             };
-            s3?: {
-                scope?: {
-                    key_prefix: string;
-                    max_bytes: number;
-                    max_deletes?: number;
-                    principal_bound?: boolean;
-                };
-                key?: string;
-                prefix?: string;
-                /** @enum {string} */
-                parse_as?: "json" | "text" | "base64" | "bytes";
-                max_keys?: number;
-                content_type?: string;
-                metadata?: {
-                    [key: string]: string;
-                };
-                paginate?: boolean;
-                multipart?: boolean;
-                multipart_threshold_mb?: number;
-                range?: string;
-                presign?: {
-                    /** @default 900 */
-                    expires_in_s: number;
-                };
+            state_read?: {
+                key: string;
+                into_var: string;
+                default_value?: unknown;
             };
-            mcp?: {
+            state_write?: {
+                key: string;
+                value_path: string;
+            };
+            multipart?: components["schemas"]["MultipartPart"][];
+            mcp: {
                 /**
                  * @default call_tool
                  * @enum {string}
@@ -31045,189 +33432,10 @@ export interface components {
                     };
                 };
             };
-            body_schema?: {
-                [key: string]: unknown;
-            };
-            response_schema?: {
-                [key: string]: unknown;
-            };
-            expected_statuses?: number[];
-            expected_row_count?: number | [
-                number,
-                number
-            ] | {
-                min?: number;
-                max?: number;
-            };
-            idempotency_key?: string;
-            outputs?: {
-                [key: string]: {
-                    secret?: boolean;
-                };
-            };
-            state_read?: {
-                key: string;
-                into_var: string;
-                default_value?: unknown;
-            };
-            state_write?: {
-                key: string;
-                value_path: string;
-            };
-            multipart?: components["schemas"]["MultipartPart"][];
-        };
-        Pagination: {
-            /** @enum {string} */
-            strategy: "offset";
-            /** @default 100 */
-            page_size?: number;
-            /** @default offset */
-            offset_param?: string;
-            /** @default limit */
-            limit_param?: string;
-            /** @enum {string} */
-            parameter_location?: "query" | "body";
-            /** @enum {string} */
-            output_mode?: "items" | "pages";
-            items_path?: string;
-            stop_when_empty_path?: string;
-            max_pages?: number;
-            max_items?: number;
-            /** @enum {string} */
-            on_limit?: "fail" | "truncate";
-            unique_by?: string;
-        } | {
-            /** @enum {string} */
-            strategy: "page";
-            /** @default 100 */
-            page_size?: number;
-            /** @default page */
-            page_param?: string;
-            /** @default page_size */
-            limit_param?: string;
-            /** @default 1 */
-            start_page?: number;
-            /** @enum {string} */
-            parameter_location?: "query" | "body";
-            /** @enum {string} */
-            output_mode?: "items" | "pages";
-            items_path?: string;
-            max_pages?: number;
-            max_items?: number;
-            /** @enum {string} */
-            on_limit?: "fail" | "truncate";
-            unique_by?: string;
-        } | {
-            /** @enum {string} */
-            strategy: "cursor";
-            cursor_request_param: string;
-            cursor_response_path: string;
-            page_size?: number;
-            limit_param?: string;
-            /** @enum {string} */
-            parameter_location?: "query" | "body";
-            /** @enum {string} */
-            output_mode?: "items" | "pages";
-            items_path?: string;
-            max_pages?: number;
-            max_items?: number;
-            /** @enum {string} */
-            on_limit?: "fail" | "truncate";
-            unique_by?: string;
-        } | {
-            /** @enum {string} */
-            strategy: "link";
-            link_params: string[];
-            page_size?: number;
-            limit_param?: string;
-            items_path?: string;
-            /** @enum {string} */
-            output_mode?: "items" | "pages";
-            max_pages?: number;
-            max_items?: number;
-            /** @enum {string} */
-            on_limit?: "fail" | "truncate";
-            unique_by?: string;
-        };
-        PaginationOutput: {
-            /** @enum {string} */
-            strategy: "offset";
-            /** @default 100 */
-            page_size: number;
-            /** @default offset */
-            offset_param: string;
-            /** @default limit */
-            limit_param: string;
-            /** @enum {string} */
-            parameter_location?: "query" | "body";
-            /** @enum {string} */
-            output_mode?: "items" | "pages";
-            items_path?: string;
-            stop_when_empty_path?: string;
-            max_pages?: number;
-            max_items?: number;
-            /** @enum {string} */
-            on_limit?: "fail" | "truncate";
-            unique_by?: string;
-        } | {
-            /** @enum {string} */
-            strategy: "page";
-            /** @default 100 */
-            page_size: number;
-            /** @default page */
-            page_param: string;
-            /** @default page_size */
-            limit_param: string;
-            /** @default 1 */
-            start_page: number;
-            /** @enum {string} */
-            parameter_location?: "query" | "body";
-            /** @enum {string} */
-            output_mode?: "items" | "pages";
-            items_path?: string;
-            max_pages?: number;
-            max_items?: number;
-            /** @enum {string} */
-            on_limit?: "fail" | "truncate";
-            unique_by?: string;
-        } | {
-            /** @enum {string} */
-            strategy: "cursor";
-            cursor_request_param: string;
-            cursor_response_path: string;
-            page_size?: number;
-            limit_param?: string;
-            /** @enum {string} */
-            parameter_location?: "query" | "body";
-            /** @enum {string} */
-            output_mode?: "items" | "pages";
-            items_path?: string;
-            max_pages?: number;
-            max_items?: number;
-            /** @enum {string} */
-            on_limit?: "fail" | "truncate";
-            unique_by?: string;
-        } | {
-            /** @enum {string} */
-            strategy: "link";
-            link_params: string[];
-            page_size?: number;
-            limit_param?: string;
-            items_path?: string;
-            /** @enum {string} */
-            output_mode?: "items" | "pages";
-            max_pages?: number;
-            max_items?: number;
-            /** @enum {string} */
-            on_limit?: "fail" | "truncate";
-            unique_by?: string;
-        };
-        MultipartPart: {
-            name: string;
-            file?: components["schemas"]["FileRef"] | string;
-            value?: string;
-            filename?: string;
-            content_type?: string;
+            xml?: null;
+            graphql?: null;
+            sql?: null;
+            s3?: null;
         };
         TransformStep: {
             /**
@@ -31504,46 +33712,6 @@ export interface components {
             for_each_concurrency?: number;
             branches: string[][];
         };
-        LoopStep: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            kind: "loop";
-            id: string;
-            /**
-             * @default fail
-             * @enum {string}
-             */
-            on_error?: "fail" | "continue";
-            data_selector?: string;
-            timeout_ms?: number;
-            for_each?: string;
-            for_each_concurrency?: number;
-            over?: string;
-            body: string[];
-            fail_fast?: boolean;
-        };
-        LoopStepOutput: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            kind: "loop";
-            id: string;
-            /**
-             * @default fail
-             * @enum {string}
-             */
-            on_error: "fail" | "continue";
-            data_selector?: string;
-            timeout_ms?: number;
-            for_each?: string;
-            for_each_concurrency?: number;
-            over?: string;
-            body: string[];
-            fail_fast?: boolean;
-        };
         WorkflowRuntime: {
             stdlib_version?: string;
         };
@@ -31738,7 +33906,7 @@ export interface components {
             output_transform?: string;
             output_transform_function?: string;
             response_filters?: components["schemas"]["ResponseFilter"][];
-            steps: (components["schemas"]["RequestStep"] | components["schemas"]["TransformStep"] | components["schemas"]["CallStep"] | components["schemas"]["WaitStep"] | components["schemas"]["WaitForEventStep"] | components["schemas"]["BranchStep"] | components["schemas"]["ParallelStep"] | components["schemas"]["LoopStep"])[];
+            steps: (components["schemas"]["RequestStep"] | components["schemas"]["TransformStep"] | components["schemas"]["CallStep"] | components["schemas"]["WaitStep"] | components["schemas"]["WaitForEventStep"] | components["schemas"]["BranchStep"] | components["schemas"]["ParallelStep"])[];
             timeout_ms?: number;
             /** @enum {string} */
             device_offline?: "wait" | "fail";
@@ -31773,7 +33941,7 @@ export interface components {
             output_transform?: string;
             output_transform_function?: string;
             response_filters?: components["schemas"]["ResponseFilter"][];
-            steps: (components["schemas"]["RequestStepOutput"] | components["schemas"]["TransformStepOutput"] | components["schemas"]["CallStepOutput"] | components["schemas"]["WaitStepOutput"] | components["schemas"]["WaitForEventStepOutput"] | components["schemas"]["BranchStepOutput"] | components["schemas"]["ParallelStepOutput"] | components["schemas"]["LoopStepOutput"])[];
+            steps: (components["schemas"]["RequestStepOutput"] | components["schemas"]["TransformStepOutput"] | components["schemas"]["CallStepOutput"] | components["schemas"]["WaitStepOutput"] | components["schemas"]["WaitForEventStepOutput"] | components["schemas"]["BranchStepOutput"] | components["schemas"]["ParallelStepOutput"])[];
             timeout_ms?: number;
             /** @enum {string} */
             device_offline?: "wait" | "fail";
@@ -31950,7 +34118,7 @@ export interface components {
             execution_mode: "dev" | "prod";
             admission_hold: {
                 /** @enum {string} */
-                reason_code: "execution_authority_required" | "execution_authority_unavailable" | "input_required";
+                reason_code: "execution_authority_expired" | "execution_authority_exhausted" | "execution_authority_revoked" | "execution_authority_changed" | "execution_authority_required" | "input_required";
                 observed_at: string;
             } | null;
             /** @enum {string} */
@@ -32055,9 +34223,10 @@ export interface components {
             workflow_id: string;
             admission_hold: {
                 /** @enum {string} */
-                reason_code: "execution_authority_required" | "execution_authority_unavailable" | "input_required";
+                reason_code: "execution_authority_expired" | "execution_authority_exhausted" | "execution_authority_revoked" | "execution_authority_changed" | "execution_authority_required" | "input_required";
                 /** Format: date-time */
                 observed_at: string;
+                refusals?: number;
             } | null;
             input_error: {
                 /** Format: uuid */
@@ -32179,7 +34348,7 @@ export interface components {
              * @enum {string}
              */
             state: "ran" | "ran_late" | "skipped" | "held";
-            /** @description Why: late_start, merged_missed, calendar_weekend, calendar_skip_date, failure_backoff, repeated_failures, input_required, execution_authority_required, execution_authority_unavailable, or a task admission reason such as grant_required, grant_expired, previous_run_active. Null for a run on time. */
+            /** @description Why: late_start, merged_missed, calendar_weekend, calendar_skip_date, failure_backoff, repeated_failures, input_required, execution_authority_required, execution_authority_expired, execution_authority_exhausted, execution_authority_revoked, execution_authority_changed, or a task admission reason such as grant_required, grant_expired, previous_run_active. Null for a run on time. */
             reason_code: string | null;
             /** @description Due occurrences without a run of their own: for skipped and held rows every occurrence the row stands for, for ran_late the earlier occurrences this run stood in for. */
             skipped_count: number;
@@ -32365,7 +34534,7 @@ export interface components {
             complete: boolean;
             truncated: boolean;
             /** @enum {string|null} */
-            limit: "max_pages" | "max_items" | "max_bytes" | null;
+            limit: "max_pages" | "max_items" | "max_bytes" | "duplicate_page" | null;
             rereads?: number;
         };
         GraphqlRequestMeta: {
@@ -32815,6 +34984,22 @@ export interface components {
             }[];
             /** @enum {string} */
             rates_basis: "current";
+        };
+        ExecutionResolveWriteResponse: {
+            /** Format: uuid */
+            execution_id: string;
+            /** @enum {string} */
+            status: "queued" | "uncertain";
+            remaining_step_keys: string[];
+        };
+        ExecutionResolveWriteBody: {
+            /** @description The step whose change may or may not have reached the target, exactly as the run reports it. A for_each iteration is named with its index, for example `send[3]`. */
+            step_key: string;
+            /**
+             * @description `arrived`: the change is in the target system; the step counts as done and is not sent again. `not_arrived`: the change is missing; the step is sent again.
+             * @enum {string}
+             */
+            outcome: "arrived" | "not_arrived";
         };
         ExecutionSignalResponse: {
             /** Format: uuid */
@@ -35156,6 +37341,8 @@ export interface components {
             /** Format: uuid */
             admitted_target_id: string | null;
             attachment: (components["schemas"]["IntakeAttachment"] & unknown) | null;
+            /** @description Groups related items in the inbox: `site:<host>` for the source address, `repo:<name>` for a work session, `tag:<tag>` otherwise; null when nothing groups the item. */
+            group_key: string | null;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -35531,6 +37718,8 @@ export interface components {
             refresh_strategy: "manual" | "scheduled" | "webhook";
             refresh_cron: string | null;
             last_refreshed_at: string | null;
+            /** @description When a person should check that this source is still correct; null for never. */
+            review_due_at: string | null;
             created_at: string;
             updated_at: string;
         };
@@ -35625,6 +37814,11 @@ export interface components {
             /** @enum {string} */
             refresh_strategy?: "manual" | "scheduled";
             refresh_cron?: string | null;
+            /**
+             * Format: date-time
+             * @description When a person should check this source again; null clears the date.
+             */
+            review_due_at?: string | null;
         };
         AnalyzeKnowledgeSourceResponse: {
             analyzed: boolean;
@@ -36161,6 +38355,14 @@ export interface components {
             created_at: string;
             /** @enum {string} */
             origin?: "task_run_continuation";
+            citations?: components["schemas"]["Citation"][];
+        };
+        Citation: {
+            /** @enum {string} */
+            source_type: "knowledge_chunk" | "connector_doc" | "product_doc" | "knowledge_source" | "skill";
+            id: string;
+            source_name?: string;
+            excerpt?: string;
         };
         ConversationToolCall: {
             id: string;
@@ -36193,6 +38395,8 @@ export interface components {
                 } | null;
                 /** Format: uuid */
                 rule_id: string | null;
+                /** @description The person's own words the rule was created from, when it was stated in chat. */
+                rule_quote?: string | null;
                 /** @description Why the action asked instead of running, as a stable code. */
                 ask_reason: string | null;
                 /** @description What exactly was missing, in plain words, when the action asked. */
@@ -36369,7 +38573,7 @@ export interface components {
             };
         };
         ConversationUploadRunOutcome: components["schemas"]["ConversationRunOutcome"] & {
-            ingested_knowledge_source_ids: string[];
+            attached_file_ids: string[];
         };
         RespondElicitationBody: {
             output?: unknown;
@@ -37136,12 +39340,26 @@ export interface components {
             closed_reason: string | null;
             closed_against_version_id: string | null;
             closed_at: string | null;
+            accepted_operations: number[] | null;
+            accepted_digest: string | null;
+            interaction_log?: components["schemas"]["PatchInteraction"][];
             created_at: string;
             updated_at: string;
             reviewable?: boolean;
             review_reason?: string | null;
             review_digest?: string | null;
             base_version_id?: string | null;
+        };
+        PatchInteraction: {
+            at: string;
+            /** @enum {string} */
+            event: "tested" | "accepted" | "accepted_partly" | "declined";
+            actor_type: string;
+            actor_id: string | null;
+            ok: boolean | null;
+            accepted_operations: number[] | null;
+            declined_operations: number[] | null;
+            reason: string | null;
         };
         PatchCandidatePreview: {
             candidate_id: string;
@@ -37159,6 +39377,9 @@ export interface components {
             before_step: components["schemas"]["PatchCandidateStepShape"];
             after_step: components["schemas"]["PatchCandidateStepShape"];
             changed_paths: string[];
+            operations: components["schemas"]["PatchOperation"][];
+            accepted_operations: number[] | null;
+            accepted_digest: string | null;
             reviewable: boolean;
             review_reason: string | null;
             review_digest: string | null;
@@ -37190,15 +39411,31 @@ export interface components {
                 content_type: "text/plain" | "text/html" | "multipart/alternative";
             };
         } | null;
+        PatchOperation: {
+            index: number;
+            path: string;
+            line: number | null;
+            /** @enum {string} */
+            change: "added" | "removed" | "changed";
+            before?: unknown;
+            after?: unknown;
+            description_key: string;
+        };
         PatchCandidateDryRunResponse: {
             ok: boolean;
             error: string | null;
             value_preview?: unknown;
             /** @enum {string} */
             fixture_source: "recorded" | "synthesized";
+            accepted_operations: number[] | null;
+            review_digest: string | null;
+        };
+        DryRunPatchCandidateBody: {
+            accepted_operations?: number[];
         };
         ApprovePatchCandidateBody: {
             expected_review_digest: string;
+            accepted_operations?: number[];
             execution_authority?: {
                 /** Format: uuid */
                 workflow_version_id: string;
@@ -37303,6 +39540,8 @@ export interface components {
                 /** @enum {string} */
                 intake: "answered" | "failed" | "not_permitted";
                 /** @enum {string} */
+                knowledge: "answered" | "failed" | "not_permitted";
+                /** @enum {string} */
                 budget: "answered" | "failed" | "not_permitted";
                 /** @enum {string} */
                 ai_access: "answered" | "failed" | "not_permitted";
@@ -37317,6 +39556,8 @@ export interface components {
                 next_run_at: string | null;
             } | null;
             items: components["schemas"]["AttentionItem"][];
+            /** @description Items the caller snoozed. They are not in `items`, raise no push notification, and return when the snooze ends or the item changes class or reason. */
+            snoozed: components["schemas"]["SnoozedAttentionItem"][];
         };
         AttentionItem: {
             /** @description Stable id: workflow:<id>, conversation:<id>, connector:<id>, connection:<id>, secret-approval:<name>@<version>, skills, budget, freshness:<source>, risk:<kind>, task:<id>. */
@@ -37328,7 +39569,7 @@ export interface components {
             kind: string;
             subject: {
                 /** @enum {string} */
-                kind: "workflow" | "conversation" | "connector" | "connection" | "secret" | "settings" | "task" | "device";
+                kind: "workflow" | "conversation" | "connector" | "connection" | "secret" | "settings" | "task" | "device" | "knowledge";
                 id: string;
                 name: string | null;
                 /**
@@ -37338,7 +39579,7 @@ export interface components {
                 environment?: "dev" | "prod";
             } | null;
             /** @enum {string} */
-            reason: "awaiting_answer" | "execution_authority_required" | "execution_authority_unavailable" | "version_awaiting_approval" | "version_needs_repair" | "approval_expiring" | "schedule_auto_paused" | "scheduler_stale" | "failing" | "patch_proposed" | "needs_reauth" | "needs_update" | "degraded" | "unhealthy" | "refresh_refused" | "refresh_failed" | "expired_no_refresh" | "secret_unreadable" | "secret_prepared" | "skills_proposed" | "intake_collected" | "spend_warning" | "spend_limit_reached" | "spend_limit_unset" | "ai_access_missing" | "model_tools_missing" | "risk_critical" | "task_run_failed" | "task_result_ready" | "task_grant_required" | "task_grant_expiring" | "task_owner_unavailable" | "pair_approval_requested" | "device_offline_waiting" | "local_confirmation_needed" | "device_permission_missing" | "folder_changed";
+            reason: "awaiting_answer" | "execution_authority_required" | "execution_authority_expired" | "execution_authority_exhausted" | "execution_authority_revoked" | "execution_authority_changed" | "input_required" | "version_awaiting_approval" | "version_needs_repair" | "approval_expiring" | "schedule_auto_paused" | "scheduler_stale" | "failing" | "patch_proposed" | "needs_reauth" | "needs_update" | "degraded" | "unhealthy" | "refresh_refused" | "refresh_failed" | "expired_no_refresh" | "secret_unreadable" | "secret_prepared" | "skills_proposed" | "intake_collected" | "spend_warning" | "spend_limit_reached" | "spend_limit_unset" | "ai_access_missing" | "model_tools_missing" | "risk_critical" | "task_run_failed" | "task_result_ready" | "task_grant_required" | "task_grant_expiring" | "task_owner_unavailable" | "pair_approval_requested" | "device_offline_waiting" | "local_confirmation_needed" | "device_permission_missing" | "device_handover_waiting" | "knowledge_review_due" | "folder_changed";
             /** @description What starts the workflow. Null unless it is held or the item is about its approval. */
             trigger: {
                 /** @enum {string} */
@@ -37383,6 +39624,8 @@ export interface components {
                 }[];
                 /** @description Items awaiting review in categories beyond those listed in intake_by_category. */
                 intake_categories_omitted?: number;
+                /** @description Knowledge sources whose review date has passed. */
+                knowledge_reviews?: number;
             };
             since: string | null;
             deadline: string | null;
@@ -37404,6 +39647,29 @@ export interface components {
             primary: boolean;
             /** @description The permission acting here needs. */
             permission: string;
+        };
+        SnoozedAttentionItem: components["schemas"]["AttentionItem"] & {
+            /** @description `<id>|<class>|<reason>`; pass it to attention.unsnooze. */
+            attention_key: string;
+            snoozed_until: string;
+        };
+        AttentionSnooze: {
+            attention_key: string;
+            snoozed: boolean;
+            until: string | null;
+        };
+        SnoozeAttentionBody: {
+            /** @description The item to hide: `<id>|<class>|<reason>` of an attention item. When the item changes class or reason it shows again. */
+            attention_key: string;
+            /**
+             * Format: date-time
+             * @description When the item shows again.
+             */
+            until: string;
+        };
+        UnsnoozeAttentionBody: {
+            /** @description The item to hide: `<id>|<class>|<reason>` of an attention item. When the item changes class or reason it shows again. */
+            attention_key: string;
         };
         OperationalOverviewV1: {
             /** @enum {string} */
@@ -37938,6 +40204,8 @@ export interface components {
             uses_today: number;
             /** @description The only recipients the rule covers. Empty: actions without a recipient. */
             recipients: string[];
+            /** @description The person's own words the rule was created from, when it was stated in chat. */
+            source_quote: string | null;
             /** @description How often the person approved this exact action. */
             approvals_count: number;
             /** @description How often the rule let an action run. */

@@ -143,6 +143,7 @@ const knowledgeSource = {
   refresh_strategy: "manual",
   refresh_cron: null,
   last_refreshed_at: null,
+  review_due_at: null,
   created_at: STAMP,
   updated_at: STAMP,
 } satisfies Schemas["KnowledgeSource"];

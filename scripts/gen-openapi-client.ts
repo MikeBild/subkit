@@ -1,16 +1,18 @@
 import { mkdtempSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "../apps/engine/src/config/loader.ts";
 import { createDbFromUrl } from "../apps/engine/src/db/client.ts";
 import { createApp } from "../apps/engine/src/http/server.ts";
+import { completeDiscriminatorMappings, type JsonObject } from "./lib/openapi-discriminators.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const outDir = resolve(__dirname, "../packages/cli-core/src/engine-api");
 const jsonPath = resolve(outDir, "openapi.json");
 const typesPath = resolve(outDir, "openapi.d.ts");
+const UNVERSIONED = "0.0.0-dev";
 
 async function run(): Promise<void> {
   await mkdir(outDir, { recursive: true });
@@ -26,12 +28,10 @@ async function run(): Promise<void> {
   if (!res.ok) {
     throw new Error(`engine /openapi.json returned ${res.status}`);
   }
-  const doc = (await res.json()) as { info?: { version?: string } };
-  const packageJson = JSON.parse(await readFile(resolve(__dirname, "../package.json"), "utf8")) as {
-    version: string;
-  };
-  if (doc.info) doc.info.version = packageJson.version;
-  await writeFile(jsonPath, `${JSON.stringify(doc)}\n`, "utf8");
+  const doc = (await res.json()) as JsonObject & { info?: { version?: string } };
+  if (doc.info) doc.info.version = UNVERSIONED;
+  completeDiscriminatorMappings(doc);
+  await writeFile(jsonPath, `${JSON.stringify(doc, null, 2)}\n`, "utf8");
   console.log(`wrote ${jsonPath}`);
 
   const { default: openapiTS, astToString } = await import("openapi-typescript");

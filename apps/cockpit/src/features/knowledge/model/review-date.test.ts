@@ -13,7 +13,7 @@ describe("review date", () => {
       "2026-12-01T00:00:00.000Z",
     );
     expect(reviewDueAt({ review_due_at: "soon" })).toBeNull();
-    expect(reviewDueAt({})).toBeNull();
+    expect(reviewDueAt({ review_due_at: null })).toBeNull();
   });
 
   it("fills the date input from the stored time", () => {

@@ -317,7 +317,7 @@ const patchCommand = defineCommand({
       throw new Error(msg);
     }
     return withCommandErrors(async () => {
-      const body: Schemas["UpdateKnowledgeSourceBody"] & { review_due_at?: string | null } = {
+      const body: Schemas["UpdateKnowledgeSourceBody"] = {
         ...catalogMetadataBody(args),
       };
       if (args.name) body.name = args.name;

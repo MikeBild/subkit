@@ -1,7 +1,6 @@
-import { z } from "zod";
-import { apiCall, resolveApiPath } from "@/api/call";
+import type { components } from "@cli-core/engine-api/openapi";
+import { apiCall } from "@/api/call";
 import { ApiError } from "@/api/client";
-import { apiRequest } from "@/api/transport";
 import { fetchCurrentVersionDag } from "@/features/admin";
 import {
   applyAccepted,
@@ -12,63 +11,24 @@ import {
 } from "../model/change-review";
 import { workflowPreviewDefinition, workflowPreviewRequest } from "../model/workflow-preview";
 
-export const PatchOperationSchema = z.looseObject({
-  index: z.number().int().nonnegative(),
-  path: z.string(),
-  description_key: z.string().optional(),
-});
-export type PatchOperation = z.infer<typeof PatchOperationSchema>;
+type PatchCandidatePreview = components["schemas"]["PatchCandidatePreview"];
 
-export const PatchCandidateReviewExtensionSchema = z.looseObject({
-  operations: z.array(PatchOperationSchema).optional(),
-  accepted_operations: z.array(z.number().int().nonnegative()).nullable().optional(),
-  accepted_digest: z.string().nullable().optional(),
-});
-
-export const DryRunAcceptedBodySchema = z.object({
-  accepted_operations: z.array(z.number().int().nonnegative()).optional(),
-});
-
-export const DryRunAcceptedResponseSchema = z.looseObject({
-  ok: z.boolean(),
-  error: z.string().nullable(),
-  review_digest: z.string().nullable().optional(),
-});
-
-export const ApproveAcceptedBodySchema = z.object({
-  expected_review_digest: z.string(),
-  accepted_operations: z.array(z.number().int().nonnegative()).optional(),
-});
-
-export const ApproveAcceptedResponseSchema = z.looseObject({
-  applied: z.boolean(),
-  workflow_version_id: z.string().nullable(),
-});
-
-export function listedOperationPaths(preview: unknown): string[] | null {
-  const parsed = PatchCandidateReviewExtensionSchema.safeParse(preview);
-  const operations = parsed.success ? parsed.data.operations : undefined;
+export function listedOperationPaths(
+  operations: PatchCandidatePreview["operations"] | undefined,
+): string[] | null {
   if (!operations?.length) return null;
   return [...operations].sort((a, b) => a.index - b.index).map((operation) => operation.path);
 }
 
-export function candidateReviewOperations(preview: {
-  before_step: unknown;
-  after_step: unknown;
-  changed_paths?: readonly string[] | null;
-}): StepOperation[] {
+export function candidateReviewOperations(
+  preview: Pick<PatchCandidatePreview, "before_step" | "after_step" | "changed_paths"> & {
+    operations?: PatchCandidatePreview["operations"];
+  },
+): StepOperation[] {
   return stepOperations(
     preview.before_step,
     preview.after_step,
-    listedOperationPaths(preview) ?? preview.changed_paths,
-  );
-}
-
-function post<T>(template: string, id: string, body: unknown): Promise<T> {
-  return apiRequest<T>(
-    resolveApiPath(template, { id }, undefined),
-    { method: "POST", body: JSON.stringify(body) },
-    {},
+    listedOperationPaths(preview.operations) ?? preview.changed_paths,
   );
 }
 
@@ -76,14 +36,14 @@ export async function dryRunAcceptedOperations(
   id: string,
   accepted: readonly number[] | undefined,
 ): Promise<ChangeTestResult> {
-  const body = DryRunAcceptedBodySchema.parse(accepted ? { accepted_operations: accepted } : {});
-  const result = DryRunAcceptedResponseSchema.parse(
-    await post<unknown>("/v1/patch-candidates/{id}/dry-run", id, body),
-  );
+  const result = await apiCall("post", "/v1/patch-candidates/{id}/dry-run", {
+    path: { id },
+    body: accepted ? { accepted_operations: [...accepted] } : {},
+  });
   return {
     ok: result.ok,
     error: result.error,
-    digest: result.ok ? (result.review_digest ?? null) : null,
+    digest: result.ok ? result.review_digest : null,
   };
 }
 
@@ -91,14 +51,11 @@ export async function approveAcceptedOperations(
   id: string,
   expected_review_digest: string,
   accepted: readonly number[] | undefined,
-): Promise<{ applied: boolean; workflow_version_id: string | null }> {
-  const body = ApproveAcceptedBodySchema.parse({
-    expected_review_digest,
-    ...(accepted ? { accepted_operations: accepted } : {}),
+): Promise<{ applied: boolean; workflow_version_id: string }> {
+  const result = await apiCall("post", "/v1/patch-candidates/{id}/approve", {
+    path: { id },
+    body: { expected_review_digest, ...(accepted ? { accepted_operations: [...accepted] } : {}) },
   });
-  const result = ApproveAcceptedResponseSchema.parse(
-    await post<unknown>("/v1/patch-candidates/{id}/approve", id, body),
-  );
   if (!result.applied || !result.workflow_version_id)
     throw new ApiError(409, { code: "patch_not_applicable" }, null);
   return { applied: result.applied, workflow_version_id: result.workflow_version_id };

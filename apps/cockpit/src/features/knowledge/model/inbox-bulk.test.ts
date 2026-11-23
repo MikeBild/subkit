@@ -49,8 +49,7 @@ describe("group keys", () => {
   it("reads only a nonempty string", () => {
     expect(entryGroupKey({ group_key: "site:example.com" })).toBe("site:example.com");
     expect(entryGroupKey({ group_key: " " })).toBeNull();
-    expect(entryGroupKey({ group_key: 3 })).toBeNull();
-    expect(entryGroupKey(null)).toBeNull();
+    expect(entryGroupKey({ group_key: null })).toBeNull();
   });
 
   it("labels sites, repositories and tags", () => {

@@ -248,6 +248,7 @@ describe("sources and skills", () => {
       refresh_strategy: "scheduled",
       refresh_cron: "0 6 * * 1",
       last_refreshed_at: null,
+      review_due_at: null,
       created_at: "c",
       updated_at: "u",
       status: "active",
