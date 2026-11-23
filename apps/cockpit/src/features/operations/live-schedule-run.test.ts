@@ -3,8 +3,10 @@ import { type TranslationKey, translate } from "@/lib/i18n";
 import { liveRunSentence } from "./LiveScheduleRun";
 import { isLiveOccurrence, liveRunStep, toOccurrence } from "./schedule-model";
 
-const de = (key: TranslationKey, params?: Record<string, string>) => translate("de", key, params);
-const en = (key: TranslationKey, params?: Record<string, string>) => translate("en", key, params);
+const de = (key: TranslationKey, params?: Record<string, string | number>) =>
+  translate("de", key, params);
+const en = (key: TranslationKey, params?: Record<string, string | number>) =>
+  translate("en", key, params);
 
 const step = (
   step_key: string,
