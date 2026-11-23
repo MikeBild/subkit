@@ -120,7 +120,6 @@ apps/cockpit/src/features/overview/model/overview-model.tasks.test.ts           
 apps/cockpit/src/features/overview/model/overview-model.test.ts                               29
 apps/cockpit/src/features/overview/model/overview-start-steps.test.ts                         2
 apps/cockpit/src/features/pwa/install-guide.test.ts                                           2
-apps/cockpit/src/features/pwa/release-notes.test.ts                                           2
 apps/cockpit/src/features/pwa/ui/installation-dialogs.test.ts                                 6
 apps/cockpit/src/features/pwa/worker-notify.test.ts                                           6
 apps/cockpit/src/features/rules/ask-first-switch.test.tsx                                     1

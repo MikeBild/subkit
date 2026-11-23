@@ -368,7 +368,8 @@ export const shellDe: Record<keyof typeof shellEn, string> = {
   "docs.choice.hosting": "Cloud nutzen oder selbst betreiben",
   "releaseNotes.menu": "Neuigkeiten",
   "releaseNotes.title": "Neuigkeiten",
-  "releaseNotes.description": "Was in den einzelnen Versionen enthalten ist.",
+  "releaseNotes.description":
+    "Was in den einzelnen Versionen enthalten ist. Die Versionshinweise gibt es nur auf Englisch.",
   "releaseNotes.unpublished": "Noch nicht veröffentlicht",
   "releaseNotes.empty": "Keine Kurznotizen hinterlegt.",
   "releaseNotes.showAll": "Alle Versionen zeigen",

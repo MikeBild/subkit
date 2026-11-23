@@ -5,7 +5,6 @@ export const GERMAN_TEXT_HOMES: readonly RegExp[] = [
   /^packages\/shared\/src\/error-catalog\.ts$/,
   /^apps\/engine\/src\/http\/reference\/[^/]+\.de\.md$/,
   /^apps\/engine\/src\/http\/llms\//,
-  /^apps\/cockpit\/src\/app\/release-notes\.generated\.ts$/,
   /^(vendor|patches)\//,
   /^apps\/engine\/scripts\/(audit\/german-text|__tests__\/german-text\.test)\.ts$/,
 ];

@@ -15,6 +15,7 @@ import {
 import {
   HIGHLIGHTS_FLAG,
   highlightsFromBody,
+  otherHighlightsHeading,
   releaseBody,
   splitHighlightsFlag,
 } from "./lib/release-highlights.ts";
@@ -73,7 +74,12 @@ require_(draft === null || draft.isDraft, `${tag} already has a published releas
 const highlightSource = highlightsFlag.path
   ? readFileSync(resolve(highlightsFlag.path), "utf8")
   : (draft?.body ?? "");
-const highlights = highlightsFromBody(highlightSource).en ?? [];
+const foreignHighlights = otherHighlightsHeading(highlightSource);
+require_(
+  foreignHighlights === null,
+  `highlights are English only — remove "${foreignHighlights}" from the highlights`,
+);
+const highlights = highlightsFromBody(highlightSource);
 require_(
   highlights.length > 0,
   `no reviewed English highlights for ${version} — pass ` +

@@ -11,10 +11,10 @@ export function ReleaseNotesDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   const [showAll, setShowAll] = useState(false);
   const pending = RELEASE_HISTORY.unpublished;
-  const pendingNotes = releaseNotesFor(pending, locale).notes;
+  const pendingNotes = releaseNotesFor(pending).notes;
   const hasNotes = pendingNotes.length > 0 || RELEASE_HISTORY.releases.length > 0;
   const releases = [...RELEASE_HISTORY.releases].reverse();
   const visibleReleases = showAll ? releases : releases.slice(0, 5);
@@ -39,7 +39,7 @@ export function ReleaseNotesDialog({
           <ReleaseNotesSection
             key={release.version}
             title={release.version}
-            notes={releaseNotesFor(release, locale).notes}
+            notes={releaseNotesFor(release).notes}
             empty={t("releaseNotes.empty")}
           />
         ))}
@@ -72,7 +72,7 @@ function ReleaseNotesSection({
   return (
     <Section label={title}>
       {notes.length > 0 ? (
-        <ul className="flex list-disc flex-col gap-1 pl-4 text-sm text-muted-foreground">
+        <ul lang="en" className="flex list-disc flex-col gap-1 pl-4 text-sm text-muted-foreground">
           {notes.map((note) => (
             <li key={note}>{note}</li>
           ))}

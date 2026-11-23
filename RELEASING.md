@@ -18,14 +18,13 @@ image and the binaries. The desktop app follows with its own workflow, see
    the minor and patch updates that the version ranges allow. It holds exact pins, patched packages,
    overrides, local files and new majors and says why; update those by hand. `--check` only
    reports. Run `bun run verify static` and commit the updates on their own.
-3. Write the reviewed highlights in a file outside the repository, with a
-   `## Highlights (en)` and a `## Highlights (de)` section of five to seven plain-language
-   bullets each: effects for the people who use SubKit, no internal names. German uses the informal
-   address, German quotation marks and DIN 5008 (`typografie-de`, `du-sie-check`, `microcopy-ux`); English uses US spelling
-   and curly quotes. Only the English section goes into the GitHub release description; the
-   German one stays in the file and in the generated release notes, never on GitHub. The
-   Cockpit shows them under “What’s new”, falling back to the `feat(user)` and `fix(user)`
-   subjects.
+3. Write the reviewed highlights in a file outside the repository, with one
+   `## Highlights (en)` section of five to seven plain-language bullets: effects for the people
+   who use SubKit, no internal names, US spelling and curly quotes. Release notes are English
+   only: `--highlights` refuses a file with a highlights section in any other language, and the
+   German Cockpit shows the same English notes inside its German interface. The section goes into
+   the GitHub release description and into the generated release notes. The Cockpit shows them
+   under “What’s new”, falling back to the `feat(user)` and `fix(user)` subjects.
 4. Bump the version and regenerate the release notes with the highlights:
 
    ```sh
@@ -34,8 +33,11 @@ image and the binaries. The desktop app follows with its own workflow, see
    ```
 
    Commit the bump and the generated notes together. The generator keeps every highlight it
-   committed before, takes the German highlights of this release from `--highlights` and reads
-   only English highlights from published GitHub releases.
+   committed before, takes the highlights of this release from `--highlights` and reads the
+   English highlights of published GitHub releases. `bun run gen release-notes --check` fails
+   when the committed notes differ from a fresh run at their recorded source commit. Historic
+   commit subjects that were not written in English get an English text in
+   `scripts/lib/release-subjects.ts`, keyed by commit hash.
 5. Produce the mutation evidence for this commit. It runs long and is only needed once per commit:
 
    ```sh

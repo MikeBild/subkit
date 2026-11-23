@@ -8,8 +8,8 @@ if (!existingPath || !notesPath) {
   console.error("usage: bun run scripts/release-body.ts <existing-body> <notes>");
   process.exit(2);
 }
-const en = highlightsFromBody(readFileSync(existingPath, "utf8")).en;
-if (!en?.length) {
+const en = highlightsFromBody(readFileSync(existingPath, "utf8"));
+if (en.length === 0) {
   console.error(`${existingPath} has no English highlights`);
   process.exit(1);
 }

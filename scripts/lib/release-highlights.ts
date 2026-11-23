@@ -1,9 +1,7 @@
-export type HighlightLanguage = "en" | "de";
-export type Highlights = Record<HighlightLanguage, string[]>;
-
 export const HIGHLIGHTS_FLAG = "--highlights";
 
-const HEADING = /^##\s+Highlights\s+\((de|en)\)\s*$/i;
+const HEADING = /^##\s+Highlights\s+\(en\)\s*$/i;
+const ANY_HEADING = /^##\s+Highlights\b/i;
 const SECTION_END = /^#{1,2}\s/;
 
 export function bareVersion(version: string): string {
@@ -17,31 +15,32 @@ export function parseHighlights(markdown: string): string[] {
     .filter((bullet): bullet is string => bullet !== null && bullet.length > 0);
 }
 
-export function highlightsFromBody(body: string): Partial<Highlights> {
-  const found: Partial<Highlights> = {};
-  let language: HighlightLanguage | null = null;
+export function highlightsFromBody(body: string): string[] {
+  const found: string[] = [];
+  let inside = false;
   let lines: string[] = [];
   const close = () => {
-    if (language === null) return;
-    const bullets = parseHighlights(lines.join("\n"));
-    if (bullets.length > 0) found[language] = bullets;
+    if (inside) found.push(...parseHighlights(lines.join("\n")));
   };
   for (const line of body.split(/\r?\n/)) {
-    const heading = HEADING.exec(line);
+    const heading = HEADING.test(line);
     if (heading || SECTION_END.test(line)) {
       close();
-      language = heading ? (heading[1]?.toLowerCase() as HighlightLanguage) : null;
+      inside = heading;
       lines = [];
-    } else if (language !== null) lines.push(line);
+    } else if (inside) lines.push(line);
   }
   close();
   return found;
 }
 
-export function completeHighlights(found: Partial<Highlights> | undefined): Highlights | null {
-  if (!found) return null;
-  const { de, en } = found;
-  return de?.length && en?.length ? { en, de } : null;
+export function otherHighlightsHeading(body: string): string | null {
+  return (
+    body
+      .split(/\r?\n/)
+      .find((line) => ANY_HEADING.test(line) && !HEADING.test(line))
+      ?.trim() ?? null
+  );
 }
 
 export function renderHighlights(en: readonly string[]): string {
@@ -52,7 +51,7 @@ export function withoutHighlights(body: string): string {
   const kept: string[] = [];
   let skipping = false;
   for (const line of body.split(/\r?\n/)) {
-    if (HEADING.test(line)) skipping = true;
+    if (ANY_HEADING.test(line)) skipping = true;
     else if (SECTION_END.test(line)) skipping = false;
     if (!skipping) kept.push(line);
   }
@@ -70,12 +69,12 @@ export type PublishedRelease = { tag_name: string; body: string | null; draft: b
 
 export function highlightsFromReleases(
   releases: readonly PublishedRelease[],
-): Record<string, Partial<Highlights>> {
-  const byVersion: Record<string, Partial<Highlights>> = {};
+): Record<string, string[]> {
+  const byVersion: Record<string, string[]> = {};
   for (const release of releases) {
     if (release.draft) continue;
-    const en = highlightsFromBody(release.body ?? "").en;
-    if (en?.length) byVersion[bareVersion(release.tag_name)] = { en };
+    const highlights = highlightsFromBody(release.body ?? "");
+    if (highlights.length > 0) byVersion[bareVersion(release.tag_name)] = highlights;
   }
   return byVersion;
 }

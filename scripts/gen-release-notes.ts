@@ -6,24 +6,24 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   bareVersion,
-  completeHighlights,
-  type Highlights,
   highlightsFromBody,
   highlightsFromReleases,
+  otherHighlightsHeading,
   type PublishedRelease,
   splitHighlightsFlag,
 } from "./lib/release-highlights.ts";
+import { englishSubject } from "./lib/release-subjects.ts";
 
 export type ReleaseNotes = {
   version: string;
   notes: string[];
-  highlights: Highlights | null;
+  highlights: string[] | null;
 };
 
 export type PendingNotes = {
   version: string | null;
   notes: string[];
-  highlights: Highlights | null;
+  highlights: string[] | null;
 };
 
 export type ReleaseHistory = {
@@ -48,10 +48,12 @@ export function releaseHistoryFromRanges(input: {
   source: string;
   releases: Array<{ version: string; subjects: string[] }>;
   unpublished: { version: string | null; subjects: string[] };
-  highlights: Record<string, Partial<Highlights>>;
+  highlights: Record<string, string[]>;
 }): ReleaseHistory {
-  const highlightsOf = (version: string | null) =>
-    version === null ? null : completeHighlights(input.highlights[bareVersion(version)]);
+  const highlightsOf = (version: string | null) => {
+    const found = version === null ? undefined : input.highlights[bareVersion(version)];
+    return found?.length ? found : null;
+  };
   return {
     source: input.source,
     releases: input.releases.map(({ version, subjects }) => ({
@@ -67,8 +69,8 @@ export function releaseHistoryFromRanges(input: {
   };
 }
 
-export function knownHighlights(history: ReleaseHistory): Record<string, Highlights> {
-  const known: Record<string, Highlights> = {};
+export function knownHighlights(history: ReleaseHistory): Record<string, string[]> {
+  const known: Record<string, string[]> = {};
   for (const release of history.releases)
     if (release.highlights) known[bareVersion(release.version)] = release.highlights;
   const pending = history.unpublished;
@@ -78,12 +80,12 @@ export function knownHighlights(history: ReleaseHistory): Record<string, Highlig
 }
 
 export function mergeHighlights(
-  ...sources: Array<Record<string, Partial<Highlights>> | null>
-): Record<string, Partial<Highlights>> {
-  const merged: Record<string, Partial<Highlights>> = {};
+  ...sources: Array<Record<string, string[]> | null>
+): Record<string, string[]> {
+  const merged: Record<string, string[]> = {};
   for (const source of sources)
     for (const [version, highlights] of Object.entries(source ?? {}))
-      merged[version] = { ...merged[version], ...highlights };
+      if (highlights.length > 0) merged[version] = highlights;
   return merged;
 }
 
@@ -99,7 +101,10 @@ function git(repo: string, args: string[]): string {
 
 function subjects(repo: string, range: string): string[] {
   if (!range) return [];
-  return git(repo, ["log", "--no-merges", "--format=%s", range]).split("\n").filter(Boolean);
+  return git(repo, ["log", "--no-merges", "--format=%H %s", range])
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => englishSubject(line.slice(0, 40), line.slice(41)));
 }
 
 function releaseTags(repo: string, target: string): string[] {
@@ -110,11 +115,9 @@ function releaseTags(repo: string, target: string): string[] {
 
 export function renderReleaseHistory(history: ReleaseHistory): string {
   return [
-    "export type Highlights = { de: string[]; en: string[] };",
+    "export type ReleaseNotes = { version: string; notes: string[]; highlights: string[] | null };",
     "",
-    "export type ReleaseNotes = { version: string; notes: string[]; highlights: Highlights | null };",
-    "",
-    "export type PendingNotes = { version: string | null; notes: string[]; highlights: Highlights | null };",
+    "export type PendingNotes = { version: string | null; notes: string[]; highlights: string[] | null };",
     "",
     `export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: PendingNotes } = ${JSON.stringify(history, null, 2)};`,
     "",
@@ -128,7 +131,7 @@ function packageVersionOf(repo: string, target: string): string {
 export function generateReleaseHistory(
   repo: string,
   target: string,
-  highlights: Record<string, Partial<Highlights>> = {},
+  highlights: Record<string, string[]> = {},
 ): ReleaseHistory {
   const source = git(repo, ["rev-parse", target]);
   const tags = releaseTags(repo, target);
@@ -205,11 +208,12 @@ if (import.meta.main) {
   if (!target || !repo || !output)
     throw new Error("--release, --repo and --output require a value");
   const published = offline ? null : await publishedReleases();
-  const given = flags.path
-    ? completeHighlights(highlightsFromBody(readFileSync(resolve(flags.path), "utf8")))
-    : null;
-  if (flags.path && !given)
-    throw new Error(`${flags.path} needs ## Highlights (en) and ## Highlights (de) with bullets`);
+  const file = flags.path ? readFileSync(resolve(flags.path), "utf8") : null;
+  const foreign = file === null ? null : otherHighlightsHeading(file);
+  if (foreign) throw new Error(`${flags.path}: highlights are English only, remove "${foreign}"`);
+  const given = file === null ? [] : highlightsFromBody(file);
+  if (flags.path && given.length === 0)
+    throw new Error(`${flags.path} needs ## Highlights (en) with bullets`);
   const version = bareVersion(packageVersionOf(repo, target));
   const history = generateReleaseHistory(
     repo,
@@ -217,7 +221,7 @@ if (import.meta.main) {
     mergeHighlights(
       committed ? knownHighlights(committed) : null,
       published ? highlightsFromReleases(published) : null,
-      given ? { [version]: given } : null,
+      given.length > 0 ? { [version]: given } : null,
     ),
   );
   const content = renderReleaseHistory(history);

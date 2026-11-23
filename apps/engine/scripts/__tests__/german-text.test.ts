@@ -88,6 +88,7 @@ describe("isGermanTextScope", () => {
       ".github/ISSUE_TEMPLATE/bug.yml",
       "README.md",
       "scripts/check-docs.ts",
+      "apps/cockpit/src/app/release-notes.generated.ts",
     ])
       expect(isGermanTextScope(path)).toBe(true);
   });
@@ -99,7 +100,6 @@ describe("isGermanTextScope", () => {
       "packages/ui/src/i18n/de.ts",
       "apps/engine/src/http/reference/subkit-desktop.de.md",
       "apps/engine/src/http/llms/docs.json",
-      "apps/cockpit/src/app/release-notes.generated.ts",
       "vendor/notices/manifest.json",
       "bun.lock",
       "apps/cockpit/public/favicon.png",

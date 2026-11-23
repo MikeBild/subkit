@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
   bareVersion,
-  completeHighlights,
   highlightsFromBody,
   highlightsFromReleases,
+  otherHighlightsHeading,
   parseHighlights,
   releaseBody,
   renderHighlights,
@@ -21,7 +21,7 @@ const body = [
   "",
   "## Highlights (de)",
   "",
-  "- Neu",
+  "- another language",
   "",
   "## Changes",
   "",
@@ -37,23 +37,21 @@ describe("release highlights", () => {
     ]);
   });
 
-  test("reads both marked sections of a release body and nothing after them", () => {
-    expect(highlightsFromBody(body)).toEqual({ en: ["New", "Second"], de: ["Neu"] });
-    expect(highlightsFromBody("## highlights (EN)\n- New\n")).toEqual({ en: ["New"] });
-    expect(highlightsFromBody("- loose bullet\n## Changes\n- other")).toEqual({});
-  });
-
-  test("a version counts only with highlights in both languages", () => {
-    expect(completeHighlights({ de: ["Neu"], en: ["New"] })).toEqual({ en: ["New"], de: ["Neu"] });
-    expect(completeHighlights({ en: ["New"] })).toBeNull();
-    expect(completeHighlights({ en: ["New"], de: [] })).toBeNull();
-    expect(completeHighlights(undefined)).toBeNull();
+  test("reads only the English section of a release body and nothing after it", () => {
+    expect(highlightsFromBody(body)).toEqual(["New", "Second"]);
+    expect(highlightsFromBody("## highlights (EN)\n- New\n")).toEqual(["New"]);
+    expect(highlightsFromBody("- loose bullet\n## Changes\n- other")).toEqual([]);
     expect(bareVersion("v12.1.0")).toBe("12.1.0");
   });
 
-  test("renders only the English section so that it reads back unchanged", () => {
+  test("names a highlights section in any other language", () => {
+    expect(otherHighlightsHeading(body)).toBe("## Highlights (de)");
+    expect(otherHighlightsHeading(renderHighlights(["New"]))).toBeNull();
+  });
+
+  test("renders the English section so that it reads back unchanged", () => {
     expect(renderHighlights(["New"])).toBe("## Highlights (en)\n\n- New\n");
-    expect(highlightsFromBody(renderHighlights(["New"]))).toEqual({ en: ["New"] });
+    expect(highlightsFromBody(renderHighlights(["New"]))).toEqual(["New"]);
   });
 
   test("a release body puts the English highlights first and drops every older section", () => {
@@ -74,7 +72,7 @@ describe("release highlights", () => {
         { tag_name: "v12.0.0", body: "## Highlights (en)\n- Only English", draft: false },
         { tag_name: "v11.0.0", body: null, draft: false },
       ]),
-    ).toEqual({ "12.1.0": { en: ["New", "Second"] }, "12.0.0": { en: ["Only English"] } });
+    ).toEqual({ "12.1.0": ["New", "Second"], "12.0.0": ["Only English"] });
   });
 
   test("splits the highlights file off the other arguments", () => {

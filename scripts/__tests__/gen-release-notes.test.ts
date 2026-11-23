@@ -12,6 +12,7 @@ import {
   releaseNotesFromSubjects,
   renderReleaseHistory,
 } from "../gen-release-notes.ts";
+import { ENGLISH_SUBJECTS, englishSubject } from "../lib/release-subjects.ts";
 
 function git(repo: string, ...args: string[]): string {
   return execFileSync("git", args, { cwd: repo, encoding: "utf8" }).trim();
@@ -67,8 +68,7 @@ describe("release notes generator", () => {
     });
   });
 
-  test("attaches reviewed highlights in both languages to released and pending versions", () => {
-    const both = { de: ["Neu"], en: ["New"] };
+  test("attaches reviewed English highlights to released and pending versions", () => {
     const history = releaseHistoryFromRanges({
       source: "abc123",
       releases: [
@@ -76,38 +76,49 @@ describe("release notes generator", () => {
         { version: "v1.2.3", subjects: [] },
       ],
       unpublished: { version: "1.3.0", subjects: ["feat(user): next"] },
-      highlights: { "1.2.2": both, "1.2.3": { de: ["Only de"] }, "1.3.0": both },
+      highlights: { "1.2.2": ["New"], "1.2.3": [], "1.3.0": ["Next"] },
     });
-    expect(history.releases.map((r) => r.highlights)).toEqual([both, null]);
-    expect(history.unpublished).toEqual({ version: "1.3.0", notes: ["next"], highlights: both });
+    expect(history.releases.map((r) => r.highlights)).toEqual([["New"], null]);
+    expect(history.unpublished).toEqual({
+      version: "1.3.0",
+      notes: ["next"],
+      highlights: ["Next"],
+    });
   });
 
   test("keeps the highlights it generated before, later sources win", () => {
-    const both = { de: ["Neu"], en: ["New"] };
     const known = knownHighlights({
       source: "abc123",
       releases: [
-        { version: "v1.2.2", notes: [], highlights: both },
+        { version: "v1.2.2", notes: [], highlights: ["New"] },
         { version: "v1.2.3", notes: [], highlights: null },
       ],
-      unpublished: { version: "1.3.0", notes: [], highlights: both },
+      unpublished: { version: "1.3.0", notes: [], highlights: ["Next"] },
     });
-    expect(known).toEqual({ "1.2.2": both, "1.3.0": both });
-    const fresh = { de: ["Fresh (de)"], en: ["Fresh"] };
-    expect(mergeHighlights(known, null, { "1.3.0": fresh })).toEqual({
-      "1.2.2": both,
-      "1.3.0": fresh,
+    expect(known).toEqual({ "1.2.2": ["New"], "1.3.0": ["Next"] });
+    expect(mergeHighlights(known, { "1.2.2": ["New, edited"] }, { "1.3.0": ["Fresh"] })).toEqual({
+      "1.2.2": ["New, edited"],
+      "1.3.0": ["Fresh"],
     });
+    expect(mergeHighlights(known, { "1.2.2": [] }, null)["1.2.2"]).toEqual(["New"]);
   });
 
-  test("a published body with only English keeps the committed German highlights", () => {
-    const committed = { "1.2.2": { de: ["Neu"], en: ["New"] } };
-    expect(mergeHighlights(committed, { "1.2.2": { en: ["New, edited"] } }, null)).toEqual({
-      "1.2.2": { de: ["Neu"], en: ["New, edited"] },
+  test("the generated notes declare English-only highlights", () => {
+    const rendered = renderReleaseHistory({
+      source: "abc123",
+      releases: [],
+      unpublished: { version: null, notes: [], highlights: null },
     });
-    expect(mergeHighlights(null, { "1.2.3": { en: ["Only en"] } }, null)).toEqual({
-      "1.2.3": { en: ["Only en"] },
-    });
+    expect(rendered).toContain("highlights: string[] | null");
+    expect(rendered).not.toContain("de:");
+  });
+
+  test("historic subjects get their English text by commit hash", () => {
+    const [hash, english] = Object.entries(ENGLISH_SUBJECTS)[0] as [string, string];
+    expect(englishSubject(hash, "fix(user): original")).toBe(english);
+    expect(englishSubject("0".repeat(40), "fix(user): keep")).toBe("fix(user): keep");
+    for (const subject of Object.values(ENGLISH_SUBJECTS))
+      expect(subject).toMatch(/^(feat|fix)\(user\): [\x20-\x7e]+$/);
   });
 
   test("the package version is pending only while its tag does not exist", () => {
@@ -127,16 +138,14 @@ describe("release notes generator", () => {
       git(repo, "tag", "v1.0.0");
       commit(repo, "fix(user): keep local changes");
       const source = git(repo, "rev-parse", "HEAD");
-      const history = generateReleaseHistory(repo, source, {
-        "1.1.0": { de: ["Neu"], en: ["New"] },
-      });
+      const history = generateReleaseHistory(repo, source, { "1.1.0": ["New"] });
       expect(history).toEqual({
         source,
         releases: [{ version: "v1.0.0", notes: ["first short note"], highlights: null }],
         unpublished: {
           version: "1.1.0",
           notes: ["keep local changes"],
-          highlights: { de: ["Neu"], en: ["New"] },
+          highlights: ["New"],
         },
       });
       writeFileSync(output, renderReleaseHistory(history));
