@@ -15,8 +15,8 @@ import {
   type FilterSelect,
   GroupingChoice,
   Page,
-  PageHeader,
   StatusBadge,
+  TopPageHeader,
 } from "@/components/cockpit/patterns";
 import { tableColumns } from "@/components/cockpit/table-columns";
 import { ForbiddenState } from "@/components/failure-state";
@@ -327,7 +327,7 @@ export function CatalogPage({ permissions }: { permissions: readonly string[] })
         surface="collection"
         testId="catalog-workflows"
         scroll="page"
-        header={<PageHeader title={title} />}
+        header={<TopPageHeader title={title} />}
       >
         <ForbiddenState />
       </Page>
@@ -384,6 +384,7 @@ export function CatalogPage({ permissions }: { permissions: readonly string[] })
       </Button>
     );
 
+  const showSummary = !onboarding && (query.isPending || rows.length > 0 || hasActiveFilters);
   return (
     <Page
       kind="list"
@@ -398,9 +399,19 @@ export function CatalogPage({ permissions }: { permissions: readonly string[] })
         collectionId: "data-table",
       })}
       header={
-        <PageHeader
+        <TopPageHeader
           title={title}
-          purpose={t("catalog.lead")}
+          summary={
+            showSummary ? (
+              <CatalogSummary
+                loading={query.isPending}
+                text={catalogCountLine(t, total)}
+                kind="workflow"
+                testId="catalog-summary"
+              />
+            ) : undefined
+          }
+          help={t("catalog.help")}
           action={
             showsZeroStateAction && !onboarding
               ? undefined
@@ -425,14 +436,6 @@ export function CatalogPage({ permissions }: { permissions: readonly string[] })
         />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col gap-3">
-          {query.isPending || rows.length > 0 || hasActiveFilters ? (
-            <CatalogSummary
-              loading={query.isPending}
-              text={catalogCountLine(t, total)}
-              kind="workflow"
-              testId="catalog-summary"
-            />
-          ) : null}
           <DataTable
             columns={columns}
             data={rows}

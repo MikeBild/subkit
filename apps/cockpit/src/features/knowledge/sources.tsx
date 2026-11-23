@@ -1,12 +1,12 @@
 import { useNavigate } from "@tanstack/react-router";
 import { listPageFailure } from "@ui/lib/errors";
 import { ErrorState } from "@ui/molecules/error-notice";
-import { PageHeader } from "@ui/molecules/page-header";
 import { Plus } from "lucide-react";
 import { useState } from "react";
 import { recordHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { Button } from "@/components/cockpit/patterns/controls";
+import { TopPageHeader } from "@/components/cockpit/patterns/page-header";
 import { usePageFailure } from "@/components/cockpit/patterns/use-error-detail";
 import type { AddMode } from "@/features/knowledge/model/add-source-model";
 import { SOURCE_PROMPTS } from "@/features/knowledge/model/source-list-model";
@@ -48,10 +48,10 @@ export function SourcesPage() {
   if (failure) return <ErrorState {...failure} heading="h1" />;
   return (
     <div>
-      <PageHeader
-        title={t("kn.sources.title")}
-        lead={t("kn.sources.lead")}
-        actions={
+      <TopPageHeader
+        title={t("nav.knowledgeSources")}
+        help={t("kn.sources.help")}
+        action={
           <div className="flex items-center gap-2">
             <ChatMenu items={menu.items} prompts={SOURCE_PROMPTS.map((k) => t(k))} />
             {canWrite && (

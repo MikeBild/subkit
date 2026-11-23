@@ -13,7 +13,14 @@ export function Screen({
 }) {
   return (
     <Page kind="workspace" scroll="page" testId={testId} header={null}>
-      <div className={cn("mx-auto w-full px-4 pt-6 sm:px-8", pageColumn(kind))}>{children}</div>
+      <div
+        className={cn(
+          "mx-auto w-full px-4 pt-6 sm:px-8 has-[[data-slot=page-header]]:pt-0",
+          pageColumn(kind),
+        )}
+      >
+        {children}
+      </div>
     </Page>
   );
 }

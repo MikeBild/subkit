@@ -34,7 +34,6 @@ import {
   ActionMenu,
   DataState,
   Page,
-  PageHeader,
   RecordSheet,
   RowsSkeleton,
   Section,
@@ -42,6 +41,7 @@ import {
   SummaryLine,
   SummaryParts,
   TileSkeleton,
+  TopPageHeader,
 } from "@/components/cockpit/patterns";
 import { ForbiddenState } from "@/components/failure-state";
 import { connectorSignIn, signInFailure } from "@/features/connectors";
@@ -510,7 +510,7 @@ export function OverviewPage() {
         kind="list"
         scroll="page"
         testId="resource-permission-denied"
-        header={<PageHeader title={title} />}
+        header={<TopPageHeader title={title} />}
       >
         <ForbiddenState />
       </Page>
@@ -536,8 +536,25 @@ export function OverviewPage() {
       testId="attention-page"
       scroll="page"
       header={
-        <PageHeader
+        <TopPageHeader
           title={title}
+          summary={
+            <SummaryLine
+              text={
+                <SummaryParts
+                  parts={[
+                    summary,
+                    repairRequired && repairRequired > 0 ? (
+                      <RepairRequiredHint key="repair" count={repairRequired} />
+                    ) : null,
+                  ]}
+                />
+              }
+              helpLabel={summary ?? undefined}
+              help={summary && operations.allowed ? t("overview.countHelp") : undefined}
+              testId="overview-summary"
+            />
+          }
           secondary={
             canRuns ? (
               <ActionButton onClick={sheets.all} testId="overview-all-runs">
@@ -562,37 +579,22 @@ export function OverviewPage() {
       }
     >
       <div className="flex flex-col gap-8">
-        <div className="flex flex-col gap-3">
-          <SummaryLine
-            text={
-              <SummaryParts
-                parts={[
-                  summary,
-                  repairRequired && repairRequired > 0 ? (
-                    <RepairRequiredHint key="repair" count={repairRequired} />
-                  ) : null,
-                ]}
+        <div className="flex flex-col gap-3 empty:hidden">
+          {operations.allowed ? (
+            <div className="flex min-w-0 justify-end" data-slot="operations-window-row">
+              <SegmentedControl
+                label={t("overview.window")}
+                value={bounds.window}
+                onValueChange={(next) => setBounds(windowBounds(next as StatsWindow))}
+                testId="operations-window"
+                options={STATS_WINDOWS.map((window) => ({
+                  value: window,
+                  label: t(`overview.operations.windowOption.${window}` as TranslationKey),
+                  testId: `operations-window-${window}`,
+                }))}
               />
-            }
-            helpLabel={summary ?? undefined}
-            help={summary && operations.allowed ? t("overview.countHelp") : undefined}
-            testId="overview-summary"
-            aside={
-              operations.allowed ? (
-                <SegmentedControl
-                  label={t("overview.window")}
-                  value={bounds.window}
-                  onValueChange={(next) => setBounds(windowBounds(next as StatsWindow))}
-                  testId="operations-window"
-                  options={STATS_WINDOWS.map((window) => ({
-                    value: window,
-                    label: t(`overview.operations.windowOption.${window}` as TranslationKey),
-                    testId: `operations-window-${window}`,
-                  }))}
-                />
-              ) : undefined
-            }
-          />
+            </div>
+          ) : null}
           {operations.allowed ? (
             operations.pending ? (
               <div className="@container">

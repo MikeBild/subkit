@@ -23,7 +23,7 @@ export const tasksEn = {
   "tasks.summary.scheduled.other": "{count} scheduled",
   "tasks.summary.total.one": "{count} task",
   "tasks.summary.total.other": "{count} tasks",
-  "tasks.lead":
+  "tasks.help":
     "A task is a goal that SubKit works through step by step. It asks before it changes anything.",
   "tasks.empty.lead":
     "Set a goal. SubKit works through it step by step and asks before it changes anything.",
@@ -336,7 +336,7 @@ export const tasksDe: Record<keyof typeof tasksEn, string> = {
   "tasks.summary.scheduled.other": "{count} geplant",
   "tasks.summary.total.one": "{count} Aufgabe",
   "tasks.summary.total.other": "{count} Aufgaben",
-  "tasks.lead":
+  "tasks.help":
     "Eine Aufgabe ist ein Ziel, das SubKit Schritt für Schritt erledigt. Es fragt nach, bevor es etwas verändert.",
   "tasks.empty.lead":
     "Gib ein Ziel vor. SubKit erledigt es Schritt für Schritt und fragt nach, bevor es etwas verändert.",

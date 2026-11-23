@@ -245,6 +245,8 @@ export const CONNECT_SCENARIOS: ConnectScenario[] = [
     name: "device-registered",
     patch: SIGNED_IN_PROFILE,
   },
+  { name: "settings", patch: { ...SIGNED_IN_PROFILE, view: "settings" } },
+  { name: "local-capabilities", patch: { ...SIGNED_IN_PROFILE, view: "local" } },
 ];
 
 export function connectState(scenario: ConnectScenario, locale: Locale): ConnectState {

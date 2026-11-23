@@ -8,7 +8,6 @@ import { DropZone } from "@ui/molecules/drop-zone";
 import { DropdownMenuItem } from "@ui/molecules/dropdown-menu";
 import { ErrorNotice, ErrorState } from "@ui/molecules/error-notice";
 import { IconButton } from "@ui/molecules/icon-button";
-import { PageHeader } from "@ui/molecules/page-header";
 import {
   Dialog,
   DialogContent,
@@ -34,6 +33,7 @@ import { useSession } from "@/app/session";
 import type { ActionMenuItem } from "@/components/cockpit/patterns/action-menu";
 import { CodeBlock as PatternCode } from "@/components/cockpit/patterns/code-block";
 import { Button } from "@/components/cockpit/patterns/controls";
+import { TopPageHeader } from "@/components/cockpit/patterns/page-header";
 import { SectionHeading } from "@/components/cockpit/patterns/section";
 import { usePageFailure } from "@/components/cockpit/patterns/use-error-detail";
 import { CatalogPurpose, fileOtherLinkCard } from "@/features/catalog";
@@ -437,10 +437,10 @@ export function FilesPage() {
   if (failure) return <ErrorState {...failure} heading="h1" />;
   return (
     <div>
-      <PageHeader
-        title={t("kn.files.title")}
-        lead={t("kn.files.help")}
-        actions={
+      <TopPageHeader
+        title={t("nav.files")}
+        help={t("kn.files.help")}
+        action={
           <div className="flex items-center gap-2">
             <ChatMenu items={[...stageItems, ...menu.items]} prompts={PROMPTS.map((k) => t(k))} />
             {canWrite && <UploadButton inputRef={picker} onFiles={up.add} />}

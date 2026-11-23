@@ -5,7 +5,9 @@ import { cn } from "@ui/lib/utils";
 import { ChevronLeft } from "lucide-react";
 import type { ReactNode } from "react";
 import { absolute } from "@/app/links";
+import { useI18n } from "@/lib/i18n-context";
 import { type ActionSpec, renderAction } from "./action-button";
+import { ContextHelp } from "./context-help";
 import { listReturnHref, readListReturn } from "./list-return";
 import { useReportPageTitle } from "./side-details";
 
@@ -144,6 +146,80 @@ export function PageHeader({
           ) : null}
         </div>
       )}
+    </header>
+  );
+}
+
+export function TopPageTitle({ title }: { title: string }) {
+  useReportPageTitle(title);
+  return <h1 className="sr-only">{title}</h1>;
+}
+
+export function TopPageHeader({
+  title,
+  summary,
+  help,
+  action,
+  secondary,
+  menu,
+  testId,
+}: {
+  title: string;
+  summary?: ReactNode;
+  help?: ReactNode;
+  action?: ReactNode | ActionSpec;
+  secondary?: ReactNode;
+  menu?: ReactNode;
+  testId?: string;
+}) {
+  const { t } = useI18n();
+  const actions = secondary || menu || action;
+  const lead = summary || help;
+  return (
+    <header
+      data-sk-slot="page-header"
+      data-slot="page-header"
+      data-header-level="top"
+      data-testid={testId}
+      className={cn("@container", (lead || actions) && "pt-6 pb-4")}
+    >
+      <TopPageTitle title={title} />
+      {lead || actions ? (
+        <div
+          className={cn(
+            "flex min-h-10 gap-x-4 gap-y-2",
+            summary ? "flex-col @xl:flex-row @xl:items-center" : "items-center",
+          )}
+          data-slot="page-header-grid"
+        >
+          {lead ? (
+            <div
+              className={cn("flex min-w-0 items-center gap-2", summary && "@xl:flex-1")}
+              data-slot="page-summary"
+            >
+              {summary}
+              {help ? (
+                <ContextHelp label={t("page.help", { page: title })} testId="page-help">
+                  {help}
+                </ContextHelp>
+              ) : null}
+            </div>
+          ) : null}
+          {actions ? (
+            <div
+              data-slot="page-actions"
+              className={cn(
+                "flex min-h-10 flex-wrap items-center gap-2 @xl:ml-auto @xl:justify-end",
+                summary ? "max-sm:[&>*:not([data-size^=icon])]:flex-1" : "ml-auto justify-end",
+              )}
+            >
+              {secondary}
+              {renderAction(action)}
+              {menu}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </header>
   );
 }

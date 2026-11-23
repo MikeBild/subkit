@@ -5,7 +5,6 @@ import { Panel } from "@ui/atoms/pill";
 import { PageSkeleton } from "@ui/atoms/skeleton";
 import { useUi } from "@ui/lib/ui-context";
 import { ErrorNotice } from "@ui/molecules/error-notice";
-import { PageHeader } from "@ui/molecules/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@ui/molecules/tabs";
 import { Coins } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -14,6 +13,7 @@ import { apiCall } from "@/api/call";
 import { absolute, settingsHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { ActionMenu } from "@/components/cockpit/patterns/action-menu";
+import { TopPageHeader } from "@/components/cockpit/patterns/page-header";
 import { Screen } from "@/components/cockpit/patterns/screen";
 import { SectionHeading } from "@/components/cockpit/patterns/section";
 import { ForbiddenState } from "@/components/failure-state";
@@ -153,10 +153,9 @@ function UsageScreen() {
   const perDay = t(view?.measure === "tokens" ? "us.perDayTokens" : "us.perDay");
   return (
     <Screen testId="usage-page">
-      <PageHeader
-        title={t("us.title")}
-        lead={t("us.lead")}
-        actions={
+      <TopPageHeader
+        title={t("nav.usage")}
+        action={
           <ActionMenu
             alwaysMenu
             testId="usage-settings-menu"

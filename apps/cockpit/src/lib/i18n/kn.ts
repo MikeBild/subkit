@@ -109,8 +109,6 @@ export const knEn = {
   "kn.someone": "Someone",
 
   "kn.inbox.title": "Inbox",
-  "kn.inbox.lead":
-    "What you collect on the go lands here. SubKit reviews it and suggests what it should become.",
   "kn.inbox.flowLabel": "How collected items become knowledge",
   "kn.inbox.flow.collect": "You collect",
   "kn.inbox.flow.suggest": "SubKit reviews and suggests",
@@ -156,7 +154,7 @@ export const knEn = {
   "kn.inbox.event.discarded": "Discarded",
 
   "kn.skills.title": "Skills",
-  "kn.skills.lead": "Skills are short rules that the chat and workflow drafts follow.",
+  "kn.skills.help": "Skills are short rules that the chat and workflow drafts follow.",
   "kn.skills.prompt.derive": "Derive a skill from this chat",
   "kn.skills.prompt.contradictions": "Check skills for contradictions",
   "kn.skills.prompt.summarize": "Summarize skill suggestions",
@@ -212,7 +210,7 @@ export const knEn = {
   "kn.skills.saved": "“{name}” saved as version {n}",
 
   "kn.sources.title": "Sources",
-  "kn.sources.lead": "Reference knowledge SubKit uses in chat and tasks.",
+  "kn.sources.help": "Reference knowledge SubKit uses in chat and tasks.",
   "kn.sources.prompt.stale": "Check sources for outdated content",
   "kn.sources.prompt.ask": "Ask about this source",
   "kn.sources.prompt.summarize": "Summarize all sources",
@@ -321,7 +319,7 @@ export const knEn = {
   "kn.up.chooseOther": "Choose another file",
 
   "cn.title": "Connectors",
-  "cn.lead": "Connections to the services your workflows use.",
+  "cn.help": "Connections to the services your workflows use.",
   "cn.empty": "No connectors yet",
   "cn.health.healthy": "Healthy",
   "cn.health.degraded": "Limited",
@@ -347,8 +345,6 @@ export const knEn = {
   "cn.filter": "Show",
   "cn.filter.attention": "Needs attention",
 
-  "us.title": "Usage",
-  "us.lead": "LLM cost and token budget for this workspace.",
   "us.perDay": "LLM cost per day (last 30 days)",
   "us.perDayTokens": "Tokens per day (last 30 days)",
   "us.spend": "AI budget this month",
@@ -494,8 +490,6 @@ export const knDe: Record<keyof typeof knEn, string> = {
   "kn.someone": "Jemand",
 
   "kn.inbox.title": "Eingang",
-  "kn.inbox.lead":
-    "Was du unterwegs sammelst, landet hier. SubKit prüft es und schlägt vor, was daraus wird.",
   "kn.inbox.flowLabel": "So wird Gesammeltes zu Wissen",
   "kn.inbox.flow.collect": "Du sammelst",
   "kn.inbox.flow.suggest": "SubKit prüft und schlägt vor",
@@ -541,7 +535,7 @@ export const knDe: Record<keyof typeof knEn, string> = {
   "kn.inbox.event.discarded": "Verworfen",
 
   "kn.skills.title": "Skills",
-  "kn.skills.lead": "Skills sind kurze Regeln, die der Chat und Workflow-Entwürfe befolgen.",
+  "kn.skills.help": "Skills sind kurze Regeln, die der Chat und Workflow-Entwürfe befolgen.",
   "kn.skills.prompt.derive": "Skill aus diesem Chat ableiten",
   "kn.skills.prompt.contradictions": "Skills auf Widersprüche prüfen",
   "kn.skills.prompt.summarize": "Skill-Vorschläge zusammenfassen",
@@ -598,7 +592,7 @@ export const knDe: Record<keyof typeof knEn, string> = {
   "kn.skills.saved": "„{name}“ als Version {n} gespeichert",
 
   "kn.sources.title": "Quellen",
-  "kn.sources.lead": "Nachschlagewissen, das SubKit im Chat und in Aufgaben nutzt.",
+  "kn.sources.help": "Nachschlagewissen, das SubKit im Chat und in Aufgaben nutzt.",
   "kn.sources.prompt.stale": "Quellen auf veraltete Inhalte prüfen",
   "kn.sources.prompt.ask": "Frage zu dieser Quelle stellen",
   "kn.sources.prompt.summarize": "Alle Quellen zusammenfassen",
@@ -707,7 +701,7 @@ export const knDe: Record<keyof typeof knEn, string> = {
   "kn.up.chooseOther": "Andere Datei wählen",
 
   "cn.title": "Connectors",
-  "cn.lead": "Verbindungen zu den Diensten, die deine Workflows nutzen.",
+  "cn.help": "Verbindungen zu den Diensten, die deine Workflows nutzen.",
   "cn.empty": "Noch keine Connectors",
   "cn.health.healthy": "Gesund",
   "cn.health.degraded": "Eingeschränkt",
@@ -733,8 +727,6 @@ export const knDe: Record<keyof typeof knEn, string> = {
   "cn.filter": "Anzeigen",
   "cn.filter.attention": "Braucht dich",
 
-  "us.title": "Nutzung",
-  "us.lead": "LLM-Kosten und Token-Budget für diesen Arbeitsbereich.",
   "us.perDay": "LLM-Kosten pro Tag (letzte 30 Tage)",
   "us.perDayTokens": "Tokens pro Tag (letzte 30 Tage)",
   "us.spend": "KI-Budget diesen Monat",

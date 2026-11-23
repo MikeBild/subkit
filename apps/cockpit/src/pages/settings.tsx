@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter, useRouterState } from "@tanstack/react-router";
+import { cn } from "@ui/lib/utils";
 import { RotateCw } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -22,6 +23,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  TopPageHeader,
 } from "@/components/cockpit/patterns";
 import { LoadFailed, queryView } from "@/components/failure-state";
 import { PeopleArea } from "@/features/admin";
@@ -476,12 +478,12 @@ export function SettingsPage() {
       purpose={`${t("settings.all.purpose")} ${t("settings.all.hint")}`}
     />
   ) : (
-    <PageHeader title={t("resource.settings.title")} />
+    <TopPageHeader title={t("nav.settings")} />
   );
 
   return (
     <Page kind="settings" scroll="page" testId="admin-settings" header={header}>
-      <div className="grid gap-4 pb-20" data-testid="settings-system">
+      <div className={cn("grid gap-4 pb-20", !all && "pt-6")} data-testid="settings-system">
         {canReadEngine && (level.kind === "all" || !personalArea) ? (
           <PreparedChanges canDecide={canWrite} />
         ) : null}

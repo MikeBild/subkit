@@ -11,7 +11,6 @@ import {
   IconTile,
   OnboardingFrame,
   Page,
-  PageHeader,
   RowName,
   SegmentedControl,
   StatusBadge,
@@ -19,6 +18,7 @@ import {
   SummaryParts,
   TemplateCard,
   TemplateGrid,
+  TopPageHeader,
 } from "@/components/cockpit/patterns";
 import { tableColumns } from "@/components/cockpit/table-columns";
 import { ForbiddenState } from "@/components/failure-state";
@@ -166,7 +166,7 @@ export function TasksPage({ permissions }: { permissions: readonly string[] }) {
         surface="collection"
         scroll="page"
         testId="tasks-page"
-        header={<PageHeader title={title} />}
+        header={<TopPageHeader title={title} />}
       >
         <ForbiddenState />
       </Page>
@@ -197,9 +197,22 @@ export function TasksPage({ permissions }: { permissions: readonly string[] }) {
         collectionId: "tasks",
       })}
       header={
-        <PageHeader
+        <TopPageHeader
           title={title}
-          purpose={empty ? undefined : t("tasks.lead")}
+          summary={
+            empty ? undefined : (
+              <SummaryLine
+                loading={pending}
+                text={
+                  <SummaryParts
+                    parts={summaryParts(taskCounts(all)).map((part) => tn(part.key, part.count))}
+                  />
+                }
+                testId="tasks-summary"
+              />
+            )
+          }
+          help={empty ? undefined : t("tasks.help")}
           action={
             canWrite ? (
               <Button onClick={() => open()} data-testid="tasks-new">
@@ -226,15 +239,6 @@ export function TasksPage({ permissions }: { permissions: readonly string[] }) {
         />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col gap-3">
-          <SummaryLine
-            loading={pending}
-            text={
-              <SummaryParts
-                parts={summaryParts(taskCounts(all)).map((part) => tn(part.key, part.count))}
-              />
-            }
-            testId="tasks-summary"
-          />
           <DataTable
             columns={columns}
             data={rows}

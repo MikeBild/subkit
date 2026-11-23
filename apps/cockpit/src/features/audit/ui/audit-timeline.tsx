@@ -14,7 +14,6 @@ import {
   FactList,
   FilterSheet,
   Page,
-  PageHeader,
   RecordSheet,
   SectionHeading,
   Select,
@@ -24,6 +23,7 @@ import {
   SelectValue,
   Skeleton,
   StatusBadge,
+  TopPageHeader,
 } from "@/components/cockpit/patterns";
 import { ForbiddenState } from "@/components/failure-state";
 import { API_KEYS_QUERY } from "@/features/admin";
@@ -944,7 +944,7 @@ export function AuditTimelinePage() {
         surface="audit"
         testId="resource-audit"
         scroll="page"
-        header={<PageHeader title={t("nav.audit")} purpose={t("audit.lead")} />}
+        header={<TopPageHeader title={t("nav.audit")} />}
       >
         <ForbiddenState />
       </Page>
@@ -955,12 +955,9 @@ export function AuditTimelinePage() {
       surface="audit"
       testId="resource-audit"
       scroll="content"
-      header={<PageHeader title={t("nav.audit")} purpose={t("audit.lead")} />}
+      header={<TopPageHeader title={t("nav.audit")} />}
     >
-      <div
-        className="flex min-h-0 min-w-0 flex-1 overflow-hidden border-t"
-        data-testid="audit-workspace"
-      >
+      <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden" data-testid="audit-workspace">
         <aside
           className="hidden w-[280px] shrink-0 overflow-y-auto border-r bg-muted/10 min-[1600px]:block min-[1920px]:w-[320px]"
           aria-label={t("audit.timeline.filters")}
@@ -1081,6 +1078,9 @@ export function AuditTimelinePage() {
                   <p className="text-sm">
                     {t(active ? "audit.timeline.filteredEmpty" : "audit.timeline.empty")}
                   </p>
+                  {active ? null : (
+                    <p className="mt-1 text-sm text-muted-foreground">{t("audit.emptyHelp")}</p>
+                  )}
                   {active && (
                     <Button
                       variant="outline"

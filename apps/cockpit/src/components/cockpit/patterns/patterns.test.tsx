@@ -20,7 +20,7 @@ import {
   KpiTile,
 } from "./kpi-tile";
 import { Page, READING_COLUMN } from "./page";
-import { PageHeader } from "./page-header";
+import { PageHeader, TopPageHeader } from "./page-header";
 import { searchWithTab, tabFromSearch } from "./page-tabs";
 import { sheetWidthClass } from "./record-sheet";
 import { CollapsibleSection, Section } from "./section";
@@ -114,6 +114,37 @@ describe("P2 PageHeader", () => {
     expect(html).toContain('data-slot="page-eyebrow"');
     expect(html.indexOf("Wissen")).toBeLessThan(html.indexOf("<h1"));
     expect(count(html, /<h[1-6]/g)).toBe(1);
+  });
+});
+
+describe("P2 TopPageHeader", () => {
+  test("names the menu item only for screen readers and puts summary left, actions right", async () => {
+    const html = await renderInRouter(
+      <TopPageHeader
+        title="Workflows"
+        summary={<span data-x="summary">17 Workflows</span>}
+        help="Wozu"
+        action={
+          <button type="button" data-testid="x">
+            Erstellen
+          </button>
+        }
+      />,
+    );
+    expect(count(html, /<h1/g)).toBe(1);
+    expect(html).toContain('<h1 class="sr-only">Workflows</h1>');
+    expect(html.indexOf('data-slot="page-summary"')).toBeLessThan(
+      html.indexOf('data-slot="page-actions"'),
+    );
+    expect(html).toContain('data-testid="page-help"');
+    expect(html).not.toContain('data-slot="page-purpose"');
+    expect(html).not.toContain('data-slot="page-title-row"');
+  });
+
+  test("without summary or actions it renders only the hidden h1", async () => {
+    const html = await renderInRouter(<TopPageHeader title="Einstellungen" />);
+    expect(count(html, /<h[1-6]/g)).toBe(1);
+    expect(html).not.toContain('data-slot="page-header-grid"');
   });
 });
 

@@ -2,7 +2,7 @@ import { RUN_STATE_WORDS_DE, RUN_STATE_WORDS_EN } from "../task-run-words";
 
 export const auditEn = {
   "audit.timeline.group": "Group by",
-  "audit.lead": "Every approval and every run is recorded here.",
+  "audit.emptyHelp": "Every approval and every run is recorded here.",
   "audit.timeline.day": "Day",
   "audit.timeline.actor": "Actor",
   "audit.timeline.access": "Access",
@@ -523,7 +523,7 @@ export const auditEn = {
 
 export const auditDe: Record<keyof typeof auditEn, string> = {
   "audit.timeline.group": "Gruppieren nach",
-  "audit.lead": "Jede Freigabe und jeder Run wird hier festgehalten.",
+  "audit.emptyHelp": "Jede Freigabe und jeder Run wird hier festgehalten.",
   "audit.timeline.day": "Tag",
   "audit.timeline.actor": "Akteur",
   "audit.timeline.access": "Zugang",

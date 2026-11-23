@@ -16,7 +16,6 @@ import {
 } from "@ui/molecules/dropdown-menu";
 import { EmptyState } from "@ui/molecules/empty-state";
 import { IconButton } from "@ui/molecules/icon-button";
-import { PageHeader } from "@ui/molecules/page-header";
 import { StatusStrip } from "@ui/molecules/status-strip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@ui/molecules/tabs";
 import { ConfirmDialog } from "@ui/organisms/confirm-dialog";
@@ -88,7 +87,7 @@ import {
 } from "./list-model";
 import type { UseRow } from "./uses-model";
 
-export { PageHeader, Panel };
+export { Panel };
 
 export function useRel() {
   const { locale } = useI18n();

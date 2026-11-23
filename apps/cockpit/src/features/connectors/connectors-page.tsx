@@ -6,7 +6,6 @@ import { ConnectionGraphic } from "@ui/molecules/connection-graphic";
 import { EmptyState } from "@ui/molecules/empty-state";
 import { EnvChip } from "@ui/molecules/env-chip";
 import { ErrorNotice } from "@ui/molecules/error-notice";
-import { PageHeader } from "@ui/molecules/page-header";
 import { StatusStrip } from "@ui/molecules/status-strip";
 import { Bot, KeyRound, LockKeyhole, Plug, UserRound } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -15,6 +14,7 @@ import { absolute, chatNewHref, connectorHref } from "@/app/links";
 import { subscribeLiveFrames } from "@/app/live-events";
 import { useSession } from "@/app/session";
 import { Button } from "@/components/cockpit/patterns/controls";
+import { TopPageHeader } from "@/components/cockpit/patterns/page-header";
 import { Screen } from "@/components/cockpit/patterns/screen";
 import { SectionHeading } from "@/components/cockpit/patterns/section";
 import { ForbiddenState } from "@/components/failure-state";
@@ -169,10 +169,10 @@ function ConnectorsScreen() {
   ) : null;
   return (
     <Screen testId="connectors-cards">
-      <PageHeader
-        title={t("cn.title")}
-        lead={t("cn.lead")}
-        actions={
+      <TopPageHeader
+        title={t("nav.connectors")}
+        help={t("cn.help")}
+        action={
           <div className="flex items-center gap-2">
             <ChatMenu items={menu.items} prompts={[]} />
             {create}

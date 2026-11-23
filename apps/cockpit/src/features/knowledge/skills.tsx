@@ -7,7 +7,6 @@ import { cn } from "@ui/lib/utils";
 import { DropdownMenuItem } from "@ui/molecules/dropdown-menu";
 import { EmptyState } from "@ui/molecules/empty-state";
 import { ErrorNotice, ErrorState, FieldError } from "@ui/molecules/error-notice";
-import { PageHeader } from "@ui/molecules/page-header";
 import { StatusStrip } from "@ui/molecules/status-strip";
 import { ConfirmDialog } from "@ui/organisms/confirm-dialog";
 import {
@@ -38,6 +37,7 @@ import { useSession } from "@/app/session";
 import { useDirtyGuard } from "@/app/version-notice";
 import { Button, Input, Label } from "@/components/cockpit/patterns/controls";
 import { Measured } from "@/components/cockpit/patterns/measure";
+import { PageHeader, TopPageHeader } from "@/components/cockpit/patterns/page-header";
 import { tabFromSearch } from "@/components/cockpit/patterns/page-tabs";
 import { usePageFailure } from "@/components/cockpit/patterns/use-error-detail";
 import { CatalogPurpose } from "@/features/catalog";
@@ -236,10 +236,10 @@ export function SkillsPage({ creating = false }: { creating?: boolean }) {
   if (failure) return <ErrorState {...failure} heading="h1" />;
   return (
     <div>
-      <PageHeader
-        title={t("kn.skills.title")}
-        lead={t("kn.skills.lead")}
-        actions={
+      <TopPageHeader
+        title={t("nav.skills")}
+        help={t("kn.skills.help")}
+        action={
           <div className="flex items-center gap-2">
             <ChatMenu items={menu.items} prompts={PROMPTS.map((k) => t(k))} />
             {canWrite && (
@@ -447,7 +447,7 @@ export function SkillCandidatesPage() {
         <ArrowLeft className="size-4" aria-hidden />
         {t("kn.skills.title")}
       </Button>
-      <PageHeader title={t("kn.skills.candidates")} lead={t("kn.skills.candidatesLead")} />
+      <PageHeader title={t("kn.skills.candidates")} purpose={t("kn.skills.candidatesLead")} />
       {summary && (
         <StatusStrip tone={summary.skipped ? "warning" : "success"}>
           {t(

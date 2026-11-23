@@ -1,5 +1,5 @@
 import { cn } from "@ui/lib/utils";
-import { Button, PageHeader } from "@/components/cockpit/patterns";
+import { Button, TopPageTitle } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
 import { conversationExcerpt } from "@/lib/presentation";
 import { actionLabel } from "../model/labels";
@@ -27,10 +27,13 @@ export function ChatListPanel({
       )}
       data-testid="chat-list-panel"
     >
-      <div className={cn(horizontal && "-mx-4 h-18 border-b px-4 sm:-mx-8 sm:px-8")}>
-        <PageHeader testId="chat-header" title={t("nav.chat")} />
-      </div>
-      <div className={cn(horizontal && "pt-2")}>
+      <TopPageTitle title={t("nav.chat")} />
+      <div
+        className={cn(
+          "flex items-center",
+          horizontal ? "-mx-4 h-18 border-b px-4 sm:-mx-8 sm:px-8" : "col-start-2 py-4",
+        )}
+      >
         <Button
           variant="default"
           onClick={onNew}

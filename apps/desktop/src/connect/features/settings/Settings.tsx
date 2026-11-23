@@ -22,7 +22,7 @@ export function Settings() {
   const { update } = model;
   return (
     <div className="settings-view flex flex-col gap-2">
-      <h1 className="text-2xl font-semibold">{t("settings.title")}</h1>
+      <h1 className="sr-only">{t("settings.title")}</h1>
       {model.servers.length > 0 && (
         <Panel className="px-3 py-2">
           <h2 className="text-sm font-semibold">{t("profiles.title")}</h2>

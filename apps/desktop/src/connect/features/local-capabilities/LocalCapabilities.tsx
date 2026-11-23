@@ -56,7 +56,7 @@ function MacOnlyCapabilities() {
   const { t } = useSignIn();
   return (
     <div className="flex flex-col gap-4" data-testid="local-capabilities-mac-only">
-      <h1 className="text-2xl font-semibold">{t("local.title")}</h1>
+      <h1 className="sr-only">{t("local.title")}</h1>
       <EmptyState
         icon={Laptop}
         title={t("local.macOnly.title")}
@@ -103,7 +103,7 @@ function SupportedCapabilities({ device, signedIn }: { device: string; signedIn:
   );
   return (
     <div className="flex flex-col gap-4" data-testid="local-capabilities">
-      <h1 className="text-2xl font-semibold">{t("local.title")}</h1>
+      <h1 className="sr-only">{t("local.title")}</h1>
       <Panel className="px-3 py-1">
         <SettingsRow id="local-on" icon={Cpu} label={t("local.toggle")} hint={t("local.explain")}>
           <Switch

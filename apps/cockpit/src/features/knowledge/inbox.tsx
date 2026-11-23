@@ -8,7 +8,6 @@ import { listPageFailure } from "@ui/lib/errors";
 import { FILE_ICON } from "@ui/lib/files";
 import { DropdownMenuItem } from "@ui/molecules/dropdown-menu";
 import { ErrorState } from "@ui/molecules/error-notice";
-import { PageHeader } from "@ui/molecules/page-header";
 import { ConfirmDialog } from "@ui/organisms/confirm-dialog";
 import { dialogFailure } from "@ui/organisms/dialog-frame";
 import { MarkdownDocument } from "@ui/organisms/markdown-document";
@@ -51,6 +50,7 @@ import { chatNewHref, conversationHref, recordHref, routerTarget } from "@/app/l
 import { useSession } from "@/app/session";
 import { Button } from "@/components/cockpit/patterns/controls";
 import { Measured } from "@/components/cockpit/patterns/measure";
+import { TopPageHeader } from "@/components/cockpit/patterns/page-header";
 import { searchWithTab, tabFromSearch } from "@/components/cockpit/patterns/page-tabs";
 import { CollapsibleSection } from "@/components/cockpit/patterns/section";
 import { usePageFailure } from "@/components/cockpit/patterns/use-error-detail";
@@ -318,10 +318,9 @@ export function InboxPage() {
   if (failure) return <ErrorState {...failure} heading="h1" />;
   return (
     <div>
-      <PageHeader
-        title={t("kn.inbox.title")}
-        lead={t("kn.inbox.lead")}
-        actions={
+      <TopPageHeader
+        title={t("nav.inbox")}
+        action={
           <div className="flex items-center gap-2">
             <ChatMenu
               label={t("kn.inbox.reviewInChat")}

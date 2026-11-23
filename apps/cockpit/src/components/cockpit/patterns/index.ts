@@ -82,7 +82,7 @@ export {
   pageGutter,
   READING_COLUMN,
 } from "./page";
-export { BackLink, PageHeader } from "./page-header";
+export { BackLink, PageHeader, TopPageHeader, TopPageTitle } from "./page-header";
 export { type PageTab, PageTabs, searchWithTab, tabFromSearch } from "./page-tabs";
 export { PageTitle } from "./page-title";
 export {

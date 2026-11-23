@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { absolute, settingsHref, usageHref } from "@/app/links";
-import { IconTile, SectionHeading } from "@/components/cockpit/patterns";
+import { SectionHeading } from "@/components/cockpit/patterns";
 import {
   Select,
   SelectContent,
@@ -142,7 +142,6 @@ export function SettingsAreaFrame({
   children: ReactNode;
 }) {
   const { t } = useI18n();
-  const Current = AREA_ICON[area];
   return (
     <div className="@container/settings min-w-0" data-testid="settings-area-frame">
       <div className="flex flex-col gap-4 @min-[760px]/settings:flex-row">
@@ -227,19 +226,12 @@ export function SettingsAreaFrame({
           ) : null}
         </nav>
         <div className="flex min-w-0 flex-1 flex-col gap-4">
-          <div className="flex min-h-10 items-center gap-3">
-            <IconTile size="lg">
-              <Current />
-            </IconTile>
-            <SectionHeading className="flex flex-wrap items-baseline gap-x-2 text-xl font-semibold">
-              {t(AREA_TITLE[area])}
-              {area === "operations" ? (
-                <span className="text-xs font-normal text-muted-foreground">
-                  {t("settings.area.operations.audience")}
-                </span>
-              ) : null}
-            </SectionHeading>
-          </div>
+          <SectionHeading className="sr-only">{t(AREA_TITLE[area])}</SectionHeading>
+          {area === "operations" ? (
+            <p className="text-xs text-muted-foreground" data-testid="settings-area-audience">
+              {t("settings.area.operations.audience")}
+            </p>
+          ) : null}
           {children}
           {expert ? (
             <div className="border-t pt-4 @min-[760px]/settings:hidden">

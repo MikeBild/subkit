@@ -88,7 +88,9 @@ describe("task list", () => {
     expect(markup).toContain("2 warten auf dich");
     expect(markup).toContain("2 geplant");
     expect(count(markup, 'data-testid="tasks-new"')).toBe(1);
-    expect(markup).toContain('data-slot="page-purpose"');
+    expect(markup).toContain('<h1 class="sr-only">Aufgaben</h1>');
+    expect(markup).not.toContain('data-slot="page-purpose"');
+    expect(markup).toContain('data-testid="page-help"');
     for (const index of [0, 1, 2, 3]) expect(has(markup, `tasks-row-link-${index}`)).toBe(true);
     expect(markup).toContain(`/tasks/${TASK_ID}"`);
     for (const words of [
