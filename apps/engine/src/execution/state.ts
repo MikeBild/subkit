@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import { AuditAction, type AuditActorType, auditAwait } from "../audit/index.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
@@ -199,7 +199,7 @@ export async function markExecutionRunning(
   await db.transaction(async (tx) => {
     const rows = await tx
       .update(executions)
-      .set({ status: "running", started_at })
+      .set({ status: "running", started_at, heartbeat_at: new Date() })
       .where(
         and(
           eq(executions.tenant_id, tenant_id),
@@ -226,6 +226,106 @@ export async function markExecutionRunning(
     execution_id,
   });
   return true;
+}
+
+export async function touchExecutionHeartbeat(
+  db: Executor,
+  tenant_id: string,
+  execution_id: string,
+  now: Date,
+): Promise<boolean> {
+  const rows = await db
+    .update(executions)
+    .set({ heartbeat_at: now })
+    .where(
+      and(
+        eq(executions.tenant_id, tenant_id),
+        eq(executions.id, execution_id),
+        eq(executions.status, "running"),
+      ),
+    )
+    .returning({ id: executions.id });
+  return rows.length > 0;
+}
+
+export async function claimStaleRunning(
+  db: Executor,
+  tenant_id: string,
+  execution_id: string,
+  lease_ms: number,
+  now: Date = new Date(),
+): Promise<number | null> {
+  const [row] = await db
+    .update(executions)
+    .set({ heartbeat_at: now, attempt: sql`${executions.attempt} + 1` })
+    .where(
+      and(
+        eq(executions.tenant_id, tenant_id),
+        eq(executions.id, execution_id),
+        eq(executions.status, "running"),
+        isNull(executions.abort_requested_at),
+        lt(executions.heartbeat_at, new Date(now.getTime() - lease_ms)),
+      ),
+    )
+    .returning({ attempt: executions.attempt });
+  return row?.attempt ?? null;
+}
+
+export async function markWriteDispatched(
+  db: Executor,
+  tenant_id: string,
+  step_row_id: string,
+  now: Date,
+): Promise<void> {
+  await db
+    .update(executionSteps)
+    .set({ write_dispatched_at: now })
+    .where(
+      and(
+        eq(executionSteps.tenant_id, tenant_id),
+        eq(executionSteps.id, step_row_id),
+        eq(executionSteps.status, "running"),
+        isNull(executionSteps.write_dispatched_at),
+      ),
+    );
+}
+
+export async function markExecutionUncertain(
+  db: Executor,
+  params: { tenant_id: string; execution_id: string; failure: ExecutionFailureDetail },
+): Promise<boolean> {
+  const rows = await db
+    .update(executions)
+    .set({ status: "uncertain", failure: params.failure })
+    .where(
+      and(
+        eq(executions.tenant_id, params.tenant_id),
+        eq(executions.id, params.execution_id),
+        inArray(executions.status, transitionSources("uncertain")),
+      ),
+    )
+    .returning({ id: executions.id });
+  return rows.length > 0;
+}
+
+export async function requeueUncertainExecution(
+  db: Executor,
+  tenant_id: string,
+  execution_id: string,
+): Promise<boolean> {
+  const rows = await db
+    .update(executions)
+    .set({ status: "queued", failure: null })
+    .where(
+      and(
+        eq(executions.tenant_id, tenant_id),
+        eq(executions.id, execution_id),
+        eq(executions.status, "uncertain"),
+        isNull(executions.abort_requested_at),
+      ),
+    )
+    .returning({ id: executions.id });
+  return rows.length > 0;
 }
 
 interface RequestExecutionAbortParams {

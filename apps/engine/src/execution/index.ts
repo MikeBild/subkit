@@ -31,6 +31,7 @@ export {
   productReadiness,
 } from "./product-status.ts";
 export * from "./read-service.ts";
+export { planResume, type ResumePlan } from "./recovery.ts";
 export * from "./request-meta-schema.ts";
 export * from "./resolve-definition.ts";
 export * from "./response-filter.ts";

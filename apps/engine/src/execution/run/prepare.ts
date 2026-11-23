@@ -25,9 +25,19 @@ import {
 import { validateAgainstJsonSchema } from "../engine/envelope.ts";
 import { capturePreparedWorkflowReferences } from "../prepared-workflow-references.ts";
 import { type RunExecutionSource, resolveDefinition } from "../resolve-definition.ts";
-import { createExecution, markExecutionRunning } from "../state.ts";
+import {
+  createExecution,
+  markExecutionRunning,
+  markWriteDispatched,
+  touchExecutionHeartbeat,
+} from "../state.ts";
 import { rateLimitNow } from "../steps/request/rate-limit.ts";
-import { MAX_CALL_DEPTH, WORKFLOW_TIMEOUT_DEFAULT_MS } from "../timeouts.ts";
+import { classifyRequestStepSideEffects } from "../steps/request/side-effects.ts";
+import {
+  MAX_CALL_DEPTH,
+  RUN_HEARTBEAT_INTERVAL_MS,
+  WORKFLOW_TIMEOUT_DEFAULT_MS,
+} from "../timeouts.ts";
 import { preparedApprovalClock } from "../tool-approval-dispatch.ts";
 import type { RequestAuthoritySnapshot, RequestSource, RunOptions, RunResult } from "../types.ts";
 import type { CallStepRunner, RunEnv } from "./env.ts";
@@ -39,6 +49,8 @@ export interface RunExecutionParams {
   input: unknown;
   options?: RunOptions;
   refusal_answered_to_caller?: boolean;
+  on_started?: (execution_id: string) => void;
+  heartbeat_interval_ms?: number;
   clock?: Clock;
   ids?: IdGen;
 }
@@ -187,6 +199,8 @@ export async function prepareRun(
   const beforeExternalRequest =
     (step_key: string) => async (snapshot: RequestAuthoritySnapshot) => {
       const policy = await assertExecutionAuthorityCurrent(db, tenant_id, execution_id, snapshot);
+      if (snapshot.step_row_id && dispatchesWrite(def.steps, step_key, snapshot.request?.method))
+        await markWriteDispatched(db, tenant_id, snapshot.step_row_id, new Date(clock.now()));
       if (billableSteps.has(step_key))
         await markBillableDispatch(db, {
           tenant_id,
@@ -214,12 +228,9 @@ export async function prepareRun(
   );
   const signal = combineSignals([ctrl.signal, totalTimeoutCtrl.signal]);
 
-  const started = await markExecutionRunning(
-    db,
-    tenant_id,
-    execution_id,
-    execution_started_at_date,
-  );
+  const started =
+    opts.crash_claimed === true ||
+    (await markExecutionRunning(db, tenant_id, execution_id, execution_started_at_date));
   if (!started) {
     ctrl.abort("cancelled");
     clearTimeout(totalTimer);
@@ -235,6 +246,9 @@ export async function prepareRun(
       },
     };
   }
+
+  startHeartbeat(db, tenant_id, execution_id, p.heartbeat_interval_ms ?? RUN_HEARTBEAT_INTERVAL_MS);
+  p.on_started?.(execution_id);
 
   await auditAwait(
     {
@@ -297,6 +311,36 @@ export async function prepareRun(
       runCall,
     },
   };
+}
+
+function dispatchesWrite(
+  steps: RunEnv["def"]["steps"],
+  step_key: string,
+  method: string | undefined,
+): boolean {
+  const step = steps.find((candidate) => candidate.id === step_key);
+  if (step?.kind !== "request") return false;
+  try {
+    return classifyRequestStepSideEffects(step, undefined, method) === "write";
+  } catch {
+    return true;
+  }
+}
+
+function startHeartbeat(
+  db: Db,
+  tenant_id: string,
+  execution_id: string,
+  interval_ms: number,
+): void {
+  const timer = setInterval(() => {
+    touchExecutionHeartbeat(db, tenant_id, execution_id, new Date())
+      .then((running) => {
+        if (!running) clearInterval(timer);
+      })
+      .catch(() => clearInterval(timer));
+  }, interval_ms);
+  timer.unref();
 }
 
 async function runsUnderExecutionAuthority(

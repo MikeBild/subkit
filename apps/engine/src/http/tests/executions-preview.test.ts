@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { apiKeys, roles, users, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../execution/tests/setup.ts";
 import { grantResource } from "../../rbac/grants.ts";
+import { waitForJson } from "../../test-helpers/determinism/wait.ts";
 import { RunResponseSchema } from "../routes/executions/schemas.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
@@ -33,6 +34,34 @@ async function post(body: Record<string, unknown>, authenticated = true) {
     },
     body: JSON.stringify(body),
   });
+}
+
+function get(path: string) {
+  return fetch(`${ctx.baseUrl}${path}`, { headers: { authorization: `Bearer ${ctx.apiKey}` } });
+}
+
+async function started(response: Response): Promise<string> {
+  expect(response.status).toBe(202);
+  const body = RunResponseSchema.parse(await response.json());
+  expect(body.status).toBe("running");
+  expect(body.output).toBeUndefined();
+  return body.execution_id;
+}
+
+function finished(execution_id: string) {
+  return waitForJson<{ status: string }>(
+    () => get(`/v1/executions/${execution_id}`),
+    (body) => !["queued", "running"].includes(body.status),
+    { label: "single-step run finished" },
+  );
+}
+
+async function stepRows(execution_id: string) {
+  const response = await get(`/v1/executions/${execution_id}/steps`);
+  const body = (await response.json()) as {
+    items: Array<{ step_key: string; held: boolean; output_preview?: unknown }>;
+  };
+  return body.items;
 }
 
 describe("HTTP temporary execution previews", () => {
@@ -99,36 +128,132 @@ describe("HTTP temporary execution previews", () => {
     }
   });
 
-  for (const source of ["draft", "step"] as const) {
-    test(`${source} preview holds POST without touching the upstream`, async () => {
-      const step = {
-        id: "send",
-        kind: "request",
-        method: "POST",
-        url: `${upstream.baseUrl}/${source}`,
-        body: { message: "preview only" },
-      };
-      const response = await post({
-        source,
-        hold_writes: true,
-        ...(source === "draft" ? { definition: { name: "Preview", steps: [step] } } : { step }),
-      });
-      expect(response.status).toBe(200);
-      const result = RunResponseSchema.parse(await response.json());
-      expect(result.status).toBe("succeeded");
-      expect(result.steps?.find((entry) => entry.step_key === "send")?.held).toBe(true);
-      expect(hits).not.toContain(`/${source}`);
-    });
-  }
-
-  test("preview permits a read against the real upstream", async () => {
+  test("draft preview holds POST without touching the upstream", async () => {
+    const step = {
+      id: "send",
+      kind: "request",
+      method: "POST",
+      url: `${upstream.baseUrl}/draft`,
+      body: { message: "preview only" },
+    };
     const response = await post({
-      source: "step",
+      source: "draft",
       hold_writes: true,
-      step: { id: "read", kind: "request", method: "GET", url: `${upstream.baseUrl}/read` },
+      definition: { name: "Preview", steps: [step] },
     });
     expect(response.status).toBe(200);
-    expect(RunResponseSchema.parse(await response.json()).status).toBe("succeeded");
+    const result = RunResponseSchema.parse(await response.json());
+    expect(result.status).toBe("succeeded");
+    expect(result.steps?.find((entry) => entry.step_key === "send")?.held).toBe(true);
+    expect(hits).not.toContain("/draft");
+  });
+
+  test("step preview holds POST without touching the upstream", async () => {
+    const execution_id = await started(
+      await post({
+        source: "step",
+        hold_writes: true,
+        step: {
+          id: "send",
+          kind: "request",
+          method: "POST",
+          url: `${upstream.baseUrl}/step`,
+          body: { message: "preview only" },
+        },
+      }),
+    );
+    expect((await finished(execution_id)).status).toBe("succeeded");
+    expect((await stepRows(execution_id)).find((entry) => entry.step_key === "send")?.held).toBe(
+      true,
+    );
+    expect(hits).not.toContain("/step");
+  });
+
+  test("a single step answers before it has finished and can be stopped", async () => {
+    let release: () => void = () => undefined;
+    const reached = new Promise<void>((resolve) => {
+      upstream.setHandler((req, res) => {
+        hits.push(req.url ?? "");
+        if (req.url !== "/slow") return jsonResponse(res, 200, { ok: true });
+        resolve();
+        return new Promise<void>((done) => {
+          release = () => {
+            jsonResponse(res, 200, { ok: true });
+            done();
+          };
+        });
+      });
+    });
+    const execution_id = await started(
+      await post({
+        source: "step",
+        hold_writes: true,
+        step: { id: "read", kind: "request", method: "GET", url: `${upstream.baseUrl}/slow` },
+      }),
+    );
+    await reached;
+    const running = (await (await get(`/v1/executions/${execution_id}`)).json()) as {
+      status: string;
+    };
+    expect(running.status).toBe("running");
+    const cancel = await fetch(`${ctx.baseUrl}/v1/executions/${execution_id}/cancel`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${ctx.apiKey}` },
+    });
+    expect(cancel.status).toBe(202);
+    expect((await finished(execution_id)).status).toBe("aborted");
+    release();
+  });
+
+  test("a single step sees the scope it was given and keeps to its time limit", async () => {
+    const withScope = await started(
+      await post({
+        source: "step",
+        hold_writes: true,
+        scope: { earlier: { data: { n: 41 } } },
+        step: {
+          id: "next",
+          kind: "transform",
+          language: "javascript",
+          expression: "return input.scope.earlier.data.n + 1;",
+        },
+      }),
+    );
+    expect((await finished(withScope)).status).toBe("succeeded");
+    expect((await stepRows(withScope))[0]?.output_preview).toBe(42);
+
+    let release: () => void = () => undefined;
+    upstream.setHandler((req, res) => {
+      hits.push(req.url ?? "");
+      if (req.url !== "/late") return jsonResponse(res, 200, { ok: true });
+      return new Promise<void>((done) => {
+        release = () => {
+          jsonResponse(res, 200, { ok: true });
+          done();
+        };
+      });
+    });
+    const limited = await started(
+      await post({
+        source: "step",
+        hold_writes: true,
+        timeout_ms: 200,
+        step: { id: "read", kind: "request", method: "GET", url: `${upstream.baseUrl}/late` },
+      }),
+    );
+    expect(["timed_out", "aborted"]).toContain((await finished(limited)).status);
+    release();
+  });
+
+  test("preview permits a read against the real upstream", async () => {
+    const execution_id = await started(
+      await post({
+        source: "step",
+        hold_writes: true,
+        step: { id: "read", kind: "request", method: "GET", url: `${upstream.baseUrl}/read` },
+      }),
+    );
+    expect((await finished(execution_id)).status).toBe("succeeded");
     expect(hits.filter((path) => path === "/read")).toHaveLength(1);
   });
 
@@ -211,6 +336,14 @@ describe("HTTP temporary execution previews", () => {
         source,
         ...(source === "step" ? { step } : { definition: { name: "Default held", steps: [step] } }),
       });
+      if (source === "step") {
+        const execution_id = await started(response);
+        expect((await finished(execution_id)).status).toBe("succeeded");
+        expect(
+          (await stepRows(execution_id)).find((entry) => entry.step_key === "send")?.held,
+        ).toBe(true);
+        continue;
+      }
       expect(response.status).toBe(200);
       expect(
         RunResponseSchema.parse(await response.json()).steps?.find(

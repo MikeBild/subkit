@@ -14,6 +14,7 @@ import {
   runExecution,
   runWorkflow,
 } from "../../../execution/index.ts";
+import { logger } from "../../../logging/index.ts";
 import type { RequestSource } from "../../../observability/index.ts";
 import { getBoss } from "../../../queue/index.ts";
 import { normalizeWorkflowRunInput } from "../../../workflows/index.ts";
@@ -46,7 +47,8 @@ const runExecutionRoute = createRoute({
       content: { "application/json": { schema: RunResponseSchema } },
     },
     202: {
-      description: "Run queued",
+      description:
+        'Run queued or started. A single step (`source: "step"`) always answers 202 with `execution_id` as soon as the run has started; read the result from `GET /v1/executions/{id}` and stop it with `POST /v1/executions/{id}/cancel`.',
       content: { "application/json": { schema: RunResponseSchema } },
     },
     400: {
@@ -75,6 +77,23 @@ const runExecutionRoute = createRoute({
     },
   },
 });
+
+function startInBackground(run: Parameters<typeof runExecution>[0]): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    runExecution({ ...run, on_started: resolve }).then(
+      (result) => resolve(result.execution_id),
+      (error: unknown) => {
+        reject(error);
+        logger.warn({
+          module: "execution",
+          action: "execution.step_run_failed",
+          msg: "a single-step run ended with an error",
+          error: error instanceof Error ? error.message : String(error),
+        });
+      },
+    );
+  });
+}
 
 export async function enforceSavedWorkflowAllowlist(
   principal: ResolvedPrincipal,
@@ -328,11 +347,12 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
         kind: "step",
         step: body.step,
         ...(body.workflow_slug ? { workflow_slug: body.workflow_slug } : {}),
+        ...(body.timeout_ms !== undefined ? { timeout_ms: body.timeout_ms } : {}),
       };
     }
 
     try {
-      const result = await runExecution({
+      const run = {
         db,
         tenant_id: principal.tenant_id,
         source,
@@ -348,8 +368,14 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
           idempotency_key: null,
           hold_writes: true,
           self_healing: { enabled: false },
+          ...(body.source === "step" && body.scope ? { initial_scope: body.scope } : {}),
         },
-      });
+      };
+      if (body.source === "step") {
+        const execution_id = await startInBackground(run);
+        return c.json({ execution_id, hold_writes: true, status: "running" }, 202);
+      }
+      const result = await runExecution(run);
       return c.json(
         {
           execution_id: result.execution_id,

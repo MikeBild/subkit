@@ -18,6 +18,8 @@ import { isBudgetPark } from "../../execution/core/budget-pause.ts";
 import { runExecution } from "../../execution/engine.ts";
 import {
   captureWorkflowPermission,
+  planResume,
+  type ResumePlan,
   recordStartingWorkflowPermission,
 } from "../../execution/index.ts";
 import { finalizeExecution, GOVERNANCE_REFUSALS } from "../../execution/state.ts";
@@ -210,6 +212,28 @@ async function handleOne(
   if (data.execution_id) runOptions.existing_execution_id = data.execution_id;
   if (data.execution_mode) runOptions.execution_mode = data.execution_mode;
   try {
+    const resume: ResumePlan = data.execution_id
+      ? await planResume(db, { tenant_id: data.tenant_id, execution_id: data.execution_id })
+      : { kind: "start" };
+    if (resume.kind === "skip" || resume.kind === "settled") {
+      logger.info({
+        module: "queue",
+        action: "execution.run.not_started",
+        msg:
+          resume.kind === "skip"
+            ? "execution.run job left the run alone"
+            : `execution.run job settled a stopped run as ${resume.status}`,
+        queue,
+        job_id: job.id,
+        execution_id: data.execution_id ?? null,
+        ...(resume.kind === "skip" ? { reason: resume.reason } : { status: resume.status }),
+      });
+      return;
+    }
+    if (resume.kind === "run") {
+      runOptions.crash_resume = resume.crash_resume;
+      runOptions.crash_claimed = resume.claimed;
+    }
     const [boundary] = data.execution_id
       ? await db
           .select({
@@ -320,9 +344,9 @@ async function handleOne(
     }
     runOptions.resume_authorized = true;
     if (data.budget_resume || boundary.budget_park) {
-      const resume = await budgetResumeOptions(db, data, boundary, boss);
-      if (!resume) return;
-      runOptions.budget_resume = resume;
+      const parked = await budgetResumeOptions(db, data, boundary, boss);
+      if (!parked) return;
+      runOptions.budget_resume = parked;
     }
     const result = await runExecution({
       db,

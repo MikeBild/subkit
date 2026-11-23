@@ -230,6 +230,11 @@ export async function runForEachStep(
   let forEachFailure: RunStepOutcome | null = null;
 
   const runIteration = async (itemIdx: number): Promise<void> => {
+    const resumed = env.opts.crash_resume?.[`${step.id}[${itemIdx}]`];
+    if (resumed !== undefined) {
+      slots[itemIdx] = { [step.id]: resumed };
+      return;
+    }
     const item = items[itemIdx];
     const childScope = buildLoopChildScope(state.scope, item, itemIdx);
     const iterStepRowId = await insertStepRow(env.db, {

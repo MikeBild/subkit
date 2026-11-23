@@ -6,6 +6,7 @@ import {
   getSensitiveExecutionResultOperation,
   listExecutionStepsOperation,
   listExecutionsOperation,
+  resolveExecutionWriteOperation,
 } from "../../../api/operations/executions.ts";
 import { toHonoRoute } from "../../../api/operations/hono.ts";
 import type { AppEnv } from "../../openapi.ts";
@@ -26,5 +27,6 @@ export function registerExecutionRoutes(app: OpenAPIHono<AppEnv>): void {
   registerExecutionStreamRoute(app);
   toHonoRoute(app, getExecutionCostOperation);
   toHonoRoute(app, cancelExecutionOperation);
+  toHonoRoute(app, resolveExecutionWriteOperation);
   registerSignalRoute(app);
 }
