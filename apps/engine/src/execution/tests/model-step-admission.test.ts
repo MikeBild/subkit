@@ -102,3 +102,44 @@ test("an approved model-only workflow runs under its authority", async () => {
     { id: admitted.execution_id, authority: authority?.id ?? null },
   ]);
 });
+
+test("a parent whose called child has a model step does not run without an approval", async () => {
+  const child = await createWorkflowRow(ctx, { name: "model child", steps: modelOnly });
+  const parent = await createWorkflowRow(ctx, {
+    name: "calls the model child",
+    steps: [{ id: "sub", kind: "call", workflow_id: child.workflow_id }],
+  });
+  const preview = await previewWorkflowAuthority(
+    {
+      tenant_id: ctx.tenantId,
+      workflow_id: parent.workflow_id,
+      workflow_version_id: parent.version_id,
+      execution_environment: "dev",
+    },
+    ctx.testDb.db,
+  );
+  expect(preview.manifest.model_calls).toMatchObject([{ step_id: "classify", call_path: ["sub"] }]);
+  await expect(admit(parent.workflow_id)).rejects.toMatchObject({
+    code: "execution_authority_required",
+    message: expect.stringContaining("sub/classify"),
+  });
+  await expect(admit(parent.workflow_id, true)).rejects.toMatchObject({
+    code: "execution_authority_required",
+  });
+  expect(await runs(parent.workflow_id)).toEqual([]);
+});
+
+test("a parent whose called child has no model step still gets a held preparation", async () => {
+  const child = await createWorkflowRow(ctx, {
+    name: "plain child",
+    steps: [{ id: "shape", kind: "transform", language: "javascript", expression: "return 1;" }],
+  });
+  const parent = await createWorkflowRow(ctx, {
+    name: "calls the plain child",
+    steps: [{ id: "sub", kind: "call", workflow_id: child.workflow_id }],
+  });
+  expect(await admit(parent.workflow_id, true)).toMatchObject({
+    hold_writes: true,
+    execution_authority_id: null,
+  });
+});
