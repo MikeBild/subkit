@@ -9,6 +9,7 @@ import {
   ANONYMOUS_COLLECTOR,
   collectorAuditActor,
   type IntakeCollector,
+  IntakeConflictError,
 } from "../knowledge/index.ts";
 import { createIntakeItem } from "../knowledge/intake.ts";
 import { operatorTenantId } from "../rbac/index.ts";
@@ -233,6 +234,7 @@ export async function submitFeedback(db: Db, p: SubmitFeedbackParams): Promise<S
     });
   } catch (error) {
     for (const id of created) await removeStoredFile(db, p.tenant_id, id).catch(() => {});
+    if (error instanceof IntakeConflictError) throw new FeedbackRefusedError("report_id_taken");
     throw error;
   }
 }
