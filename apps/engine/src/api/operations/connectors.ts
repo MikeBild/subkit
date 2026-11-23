@@ -86,7 +86,7 @@ const ListConnectorsToolInput = z
     driver: z
       .string()
       .optional()
-      .describe("Only connectors of this driver (http, graphql, postgres, s3, mcp)."),
+      .describe("Only connectors of this driver (http, graphql, postgres, s3, sftp, mcp)."),
   })
   .openapi("ListConnectorsToolInput");
 

@@ -60,7 +60,7 @@ const listCommand = defineCommand({
     driver: {
       type: "string",
       description:
-        "Only this driver: http, graphql, postgres, s3, mcp, local_files, local_browser, local_computer",
+        "Only this driver: http, graphql, postgres, s3, sftp, mcp, local_files, local_browser, local_computer",
     },
     flat: { type: "boolean", description: "One flat table instead of grouped blocks" },
     json: { type: "boolean", description: "JSON output" },
