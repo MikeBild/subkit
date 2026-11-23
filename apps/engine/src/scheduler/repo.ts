@@ -1,3 +1,4 @@
+import { INVALID_TIMEZONE } from "@shared/error-taxonomy.ts";
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { resolveActor } from "../audit/recorders/types.ts";
@@ -13,13 +14,23 @@ import { personalDefaultEnvironment } from "../identity/setup-preferences.ts";
 import { emitResourceChange } from "../pubsub/resource-changes.ts";
 import { normalizeWorkflowRunInput } from "../workflows/run-input.ts";
 import type { ScheduleTrigger } from "../workflows/types.ts";
-import { WorkflowDefSchema } from "../workflows/types.ts";
+import { isIanaTimeZone, WorkflowDefSchema } from "../workflows/types.ts";
 import { stripCalendarGates } from "./calendar-gates.ts";
 import { parseCronExpression } from "./cron.ts";
 import {
   type ScheduleInputVersions,
   scheduleInputMismatchError,
 } from "./schedule-input-mismatch.ts";
+
+function assertTimeZone(timezone: string | undefined): void {
+  if (timezone === undefined || isIanaTimeZone(timezone)) return;
+  throw Object.assign(
+    new Error(
+      `timezone "${timezone}" is not a known IANA time zone; use a name such as Europe/Berlin or UTC`,
+    ),
+    { code: INVALID_TIMEZONE, field: "timezone" },
+  );
+}
 
 function canonicalJson(value: unknown): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
@@ -214,6 +225,7 @@ export async function createScheduleLocked(
       reason: parsed.reason,
     });
   }
+  assertTimeZone(input.timezone);
   const wf = await db
     .select({ id: workflows.id, lifecycle: workflows.lifecycle })
     .from(workflows)
@@ -392,6 +404,7 @@ async function updateScheduleLocked(
       });
     }
   }
+  assertTimeZone(patch.timezone);
   const existing = await getSchedule(db, tenant_id, id);
   if (!existing) return null;
   const nextInput = patch.input === undefined ? existing.input : patch.input;

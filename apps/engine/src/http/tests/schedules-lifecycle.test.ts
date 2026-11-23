@@ -163,6 +163,45 @@ describe("schedules HTTP write surface", () => {
     ).toBeNull();
   });
 
+  test("a time zone that cannot be formatted is a 400 naming the field", async () => {
+    const wf = await createWorkflow("sched-timezone");
+    for (const timezone of ["Mars/Olympus", "", "Europe/Atlantis"]) {
+      const bad = await fetch(`${ctx.baseUrl}/v1/schedules`, {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify({ workflow_id: wf.id, cron: "0 8 * * *", timezone }),
+      });
+      expect(bad.status).toBe(400);
+      const body = (await bad.json()) as { code: string; details?: { field?: string } };
+      expect(body.code).toBe("invalid_timezone");
+      expect(body.details?.field).toBe("timezone");
+    }
+    const created = await fetch(`${ctx.baseUrl}/v1/schedules`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify({ workflow_id: wf.id, cron: "0 8 * * *", timezone: "Europe/Berlin" }),
+    });
+    expect(created.status).toBeLessThan(300);
+    const row = (await created.json()) as { id: string; timezone: string };
+    expect(row.timezone).toBe("Europe/Berlin");
+
+    const toUtc = await fetch(`${ctx.baseUrl}/v1/schedules/${row.id}`, {
+      method: "PUT",
+      headers: headers(),
+      body: JSON.stringify({ timezone: "UTC" }),
+    });
+    expect(toUtc.status).toBe(200);
+    expect(((await toUtc.json()) as { timezone: string }).timezone).toBe("UTC");
+
+    const badUpdate = await fetch(`${ctx.baseUrl}/v1/schedules/${row.id}`, {
+      method: "PUT",
+      headers: headers(),
+      body: JSON.stringify({ timezone: "Not/AZone" }),
+    });
+    expect(badUpdate.status).toBe(400);
+    expect(((await badUpdate.json()) as { code: string }).code).toBe("invalid_timezone");
+  });
+
   test("POST with invalid cron is 400, unknown workflow is 404", async () => {
     const wf = await createWorkflow("sched-invalid");
     const bad = await fetch(`${ctx.baseUrl}/v1/schedules`, {

@@ -11575,7 +11575,7 @@ export interface paths {
                         "application/json": components["schemas"]["ScheduleUpsertResponse"];
                     };
                 };
-                /** @description Invalid cron */
+                /** @description Invalid cron, or invalid_timezone when timezone is not a known IANA time zone */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -11643,7 +11643,7 @@ export interface paths {
                         "application/json": components["schemas"]["ScheduleWriteResponse"];
                     };
                 };
-                /** @description Invalid cron */
+                /** @description Invalid cron, or invalid_timezone when timezone is not a known IANA time zone */
                 400: {
                     headers: {
                         [name: string]: unknown;
