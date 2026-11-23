@@ -24,7 +24,7 @@ Every run is recorded.
 
 You work in the Cockpit in the browser, as an installed app or in the SubKit Desktop program, with the `subkit` command line, or from AI clients such as Claude Code over MCP; the Web Clipper also collects web pages into your inbox.
 
-![Overview with key figures for runs, success rate, connector health and cost, the "Needs you" list with open decisions and the latest failed runs](/docs-images/intro-overview.en.webp?v=8dfed08b2c2d)
+![Overview with key figures for runs, success rate, connector health and cost, the "Needs you" list with open decisions and the latest failed runs](/docs-images/intro-overview.en.webp?v=f859011b9367)
 
 The **Overview** shows at a glance what ran, what failed and what is waiting for your decision.
 How to track cost and the AI budget is in "Keep track of usage and costs".
@@ -1293,7 +1293,7 @@ The note carries the origin **Note**. It has no **Open original page** link, bec
 
 1. In the Cockpit, open **Inbox**.
 
-   ![Inbox with seven collected items of origin "Note", "Browser", "Claude Code", "Chat" and "Codex" in category Inbox, status "Collected", and the hint that three entries from your AI assistants are waiting for your review](/docs-images/collect-ideas-and-turn-them-into-knowledge-or-skills-inbox.en.webp?v=147e1f8a806b)
+   ![Inbox with seven collected items of origin "Note", "Browser", "Claude Code", "Chat" and "Codex" in category Inbox, status "Collected", and the hint that three entries from your AI assistants are waiting for your review](/docs-images/collect-ideas-and-turn-them-into-knowledge-or-skills-inbox.en.webp?v=b353c9612377)
 
 2. Optional: above the list, click the hint, for example "3 entries from your AI assistants are waiting for your review". You then only see items from your AI assistants. The filter **Origin: AI assistant** appears next to the search; click it to clear it.
 3. Click an item. On the **Content** tab, one sentence names the origin, such as "Collected by Chat in the session … · for … · …". **Open conversation** takes you to the chat conversation, **Open original page** to the collected page.
@@ -2042,7 +2042,7 @@ This chapter is for anyone who works in the Cockpit every day and does not want 
 1. Open the Cockpit in the browser and sign in.
 2. Open the workspace menu in the sidebar and choose **Install this workspace**.
 
-   ![Open workspace menu with the current workspace checked and the "Install this workspace" entry highlighted](/docs-images/cockpit-app-install.en.webp?v=7303d96df379)
+   ![Open workspace menu with the current workspace checked and the "Install this workspace" entry highlighted](/docs-images/cockpit-app-install.en.webp?v=2af57cfe9359)
 
 3. Check the name and icon in the install dialog and select **Install app**.
 4. The Cockpit moves to this workspace's own address and shows the dialog again. Select **Install app** once more.
@@ -2125,7 +2125,7 @@ Each app has its own sign-in. Your sign-in in the regular Cockpit stays untouche
 2. Under **App icon (1:1)**, upload a square PNG with at least 512 pixels per side.
 3. Under **Color palette**, choose **Standard**, **Indigo** or **Teal**.
 
-   ![Workspace branding settings of the fictional workspace Brennwerk with the organization name Brennwerk, the subtitle Logistik, the dark teal app icon with an orange flame, the light and dark logo, and the Teal palette selected; the sidebar shows the same logo and wordmark](/docs-images/cockpit-app-branding.en.webp?v=7146710ec87d)
+   ![Workspace branding settings of the fictional workspace Brennwerk with the organization name Brennwerk, the subtitle Logistics, the dark teal app icon with an orange flame, the light and dark logo, and the Teal palette selected; the sidebar shows the same logo and wordmark](/docs-images/cockpit-app-branding.en.webp?v=8cb19518463b)
 
 4. Check the preview and select **Save changes**.
 

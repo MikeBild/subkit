@@ -52,33 +52,33 @@ export interface EmbeddedDocsImage {
 export const DOCS_IMAGES: Readonly<Record<string, EmbeddedDocsImage>> = {
   "cockpit-app-branding.de.webp": {
     path: image0CockpitAppBrandingDe,
-    sha256: "c5e5bbfda5b24ee2da2e1d1293fe86b5508642bd1aa4f07c30dfc830f04e5d8e",
-    bytes: 54320,
+    sha256: "a4a525823fddb0c0bedab65cf95e5f213768f50fc8648140ac8a4901e4c3e399",
+    bytes: 51518,
   },
   "cockpit-app-branding.en.webp": {
     path: image1CockpitAppBrandingEn,
-    sha256: "7146710ec87d579e0f24ab4074b911b14c3113504fb274ea79af4e5b43936e3a",
-    bytes: 37956,
+    sha256: "8cb19518463bce9e0596d2c16183d9aff573dc9e727d11dc0992a5bb052f29e4",
+    bytes: 45062,
   },
   "cockpit-app-install.de.webp": {
     path: image2CockpitAppInstallDe,
-    sha256: "adf8567cc2bb59e61b7c88ef08dfcc7967023b2f95a0a8856213c78dbb35569e",
-    bytes: 59284,
+    sha256: "c9be3771861a089846b74ff91837ac1c2ed3183ea2c59a69e19c5d9e054c48f0",
+    bytes: 53926,
   },
   "cockpit-app-install.en.webp": {
     path: image3CockpitAppInstallEn,
-    sha256: "7303d96df379f35bc39ce058f13cf1af90bf3a05861efcf0fe6c9388df87641d",
-    bytes: 54736,
+    sha256: "2af57cfe9359f1aff128b2639b72123e7194f2c77351c20b278860a0273e171a",
+    bytes: 48532,
   },
   "collect-ideas-and-turn-them-into-knowledge-or-skills-inbox.de.webp": {
     path: image4CollectIdeasAndTurnThemIntoKnowledgeOrSkillsInboxDe,
-    sha256: "4fb88b30b4f83cdbdb77f0bf1d7a8c4cb1eb504d95f3fbc9e9040c1d473176b8",
-    bytes: 45298,
+    sha256: "f28a576dac8c013bf280c328438795ad602c0b3e1531ebc8243ba83a9336fcce",
+    bytes: 59652,
   },
   "collect-ideas-and-turn-them-into-knowledge-or-skills-inbox.en.webp": {
     path: image5CollectIdeasAndTurnThemIntoKnowledgeOrSkillsInboxEn,
-    sha256: "147e1f8a806b7ed701ac6c753323a4f691a5f26591c452dc79cebf9ee3053175",
-    bytes: 44288,
+    sha256: "b353c96123779892dbf6a34538152e0d1717e967093c80ce0595a0658325c28a",
+    bytes: 56996,
   },
   "first-workflow-approval.de.webp": {
     path: image6FirstWorkflowApprovalDe,
@@ -112,13 +112,13 @@ export const DOCS_IMAGES: Readonly<Record<string, EmbeddedDocsImage>> = {
   },
   "intro-overview.de.webp": {
     path: image12IntroOverviewDe,
-    sha256: "24a2727bea035c4d4b095b89d3546b79c4476b9a55372c16b72291441338721e",
-    bytes: 58186,
+    sha256: "a382fc3f1d4896b3921c2e7cc1d7159832aefc4236490a309e9c6c266ea56e97",
+    bytes: 52146,
   },
   "intro-overview.en.webp": {
     path: image13IntroOverviewEn,
-    sha256: "8dfed08b2c2d8241ea6802e29bdd2bd5a0049a9f1ba790a02ff809592147190a",
-    bytes: 53504,
+    sha256: "f859011b93675b7075c62d3bbff6377e5e89c8e18a1ac71382e826e4eb3c32ff",
+    bytes: 46762,
   },
   "web-clipper-api-key.de.webp": {
     path: image14WebClipperApiKeyDe,
