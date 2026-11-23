@@ -228,4 +228,69 @@ describe("a run taken over by another copy", () => {
       });
     }
   });
+
+  test("a stalled copy starts no child run after the takeover", async () => {
+    await createWorkflowRow(ctx, {
+      name: "fence-child",
+      slug: "fence-child",
+      steps: [{ id: "done", kind: "transform", language: "javascript", expression: "return 1;" }],
+    });
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "fence-parent",
+      slug: "fence-parent",
+      steps: [
+        { id: "first", kind: "request", method: "GET", path: "/first", connector_id: connectorId },
+        { id: "child", kind: "call", workflow_slug: "fence-child" },
+      ],
+    });
+    let release: () => void = () => undefined;
+    let reading = false;
+    upstream.setHandler(async (req, res) => {
+      hits.push(`${req.method} ${req.url}`);
+      reading = true;
+      await new Promise<void>((done) => {
+        release = done;
+      });
+      jsonResponse(res, 200, { ok: true });
+    });
+    try {
+      let execution_id = "";
+      const stalled = runExecution({
+        db: ctx.testDb.db,
+        tenant_id: ctx.tenantId,
+        source: { kind: "saved", workflow_id },
+        input: null,
+        on_started: (id) => {
+          execution_id = id;
+        },
+      });
+      await waitFor(async () => (reading ? true : null), {
+        tries: 500,
+        sleepMs: 10,
+        label: "stalled copy is reading",
+      });
+      await ctx.testDb.db
+        .update(executions)
+        .set({ attempt: 1 })
+        .where(and(eq(executions.tenant_id, ctx.tenantId), eq(executions.id, execution_id)));
+      release();
+      const result = await stalled;
+      expect(result.error?.code).toBe("execution_superseded");
+      const children = await ctx.testDb.db
+        .select({ id: executions.id })
+        .from(executions)
+        .where(
+          and(
+            eq(executions.tenant_id, ctx.tenantId),
+            eq(executions.parent_execution_id, execution_id),
+          ),
+        );
+      expect(children).toEqual([]);
+    } finally {
+      upstream.setHandler((req, res) => {
+        hits.push(`${req.method} ${req.url}`);
+        jsonResponse(res, 200, { ok: true, path: req.url });
+      });
+    }
+  });
 });
