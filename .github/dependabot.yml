@@ -40,3 +40,7 @@ updates:
       - dependency-name: jsdom
       - dependency-name: pg-boss
       - dependency-name: xlsx
+      - dependency-name: onnxruntime-web
+      - dependency-name: "@huggingface/transformers"
+      - dependency-name: pdfjs-dist
+      - dependency-name: "@opentelemetry/*"
