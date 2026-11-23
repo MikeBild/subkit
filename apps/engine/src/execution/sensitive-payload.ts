@@ -90,6 +90,7 @@ const safeFailureCodes = new Set([
   "caller_required",
   "caller_saved_workflow_required",
   "skipped_dependency_held",
+  "skipped",
   "caller_tenant_mismatch",
   "caller_product_mismatch",
   "caller_kind_mismatch",
@@ -115,6 +116,7 @@ const safeFailureCodes = new Set([
 ]);
 
 const SAFE_FAILURE_MESSAGES: Readonly<Record<string, string>> = {
+  skipped: "This step was skipped by the workflow's control flow or after an earlier step failed.",
   mcp_timeout_during_write:
     "A tool did not answer in time while it was sending a change. It may have reached the target; check there before you run it again.",
   engine_stopped_during_write:

@@ -23,6 +23,13 @@ describe("sensitive failures keep a class a person can act on", () => {
     );
   });
 
+  test("a step skipped by control flow stays skipped and never reads as a failure", () => {
+    const failure = sensitiveFailure("skipped", "branch not taken for customer jane@example.com");
+    expect(failure.code).toBe("skipped");
+    expect(failure.message).toContain("skipped");
+    expect(failure.message).not.toContain("jane@example.com");
+  });
+
   test("a disabled connector keeps its code", () => {
     expect(sensitiveFailure("connector_disabled", "Connector x is disabled").code).toBe(
       "connector_disabled",
