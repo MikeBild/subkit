@@ -27,6 +27,7 @@ import {
   rhythmToCron,
   validTime,
 } from "@/features/workflows/model/schedule-rhythm";
+import { ScheduleCostPreview, ScheduleCostValue } from "@/features/workflows/ui/schedule-cost";
 import { reportFailure } from "@/lib/action-failure";
 import { LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
@@ -130,6 +131,14 @@ function ScheduleDialog({
         items={[{ label: t("schedule.zone"), value: zone, help: t("schedule.zoneHelp") }]}
       />
       <ScheduleFields value={value} onChange={setValue} invalid={Boolean(error)} />
+      {validTime(value.time) ? (
+        <ScheduleCostPreview
+          workflowId={workflowId}
+          cron={rhythmToCron(value)}
+          timezone={zone}
+          enabled={open}
+        />
+      ) : null}
       <SchemaForm
         fields={fields}
         values={filled}
@@ -324,6 +333,16 @@ export function WorkflowScheduleSection({
                 testId: "schedule-next-fact",
               },
               { label: t("schedule.zone"), value: schedule.timezone },
+              {
+                label: t("schedule.cost.label"),
+                value: (
+                  <ScheduleCostValue
+                    projection={schedule.cost_projection}
+                    testId="schedule-cost-fact"
+                  />
+                ),
+                help: t("schedule.cost.help"),
+              },
             ]}
           />
         </div>

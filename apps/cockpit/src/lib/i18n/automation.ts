@@ -185,6 +185,20 @@ export const automationEn = {
   "schedule.deleteConsequence": "{name} then no longer starts on its own.",
   "schedule.inputInvalid": "Complete the scheduled input before saving.",
   "schedule.inputRequired": "This schedule needs updated input: {issue}",
+  "schedule.cost.label": "Estimated cost",
+  "schedule.cost.amount": "≈ {amount} / month",
+  "schedule.cost.basis.version.one": "from {count} run, current model prices",
+  "schedule.cost.basis.version.other": "from {count} runs, current model prices",
+  "schedule.cost.basis.workflow.one":
+    "from {count} run of an earlier version, current model prices",
+  "schedule.cost.basis.workflow.other":
+    "from {count} runs of earlier versions, current model prices",
+  "schedule.cost.unpriced": "Models without a price are left out.",
+  "schedule.cost.none": "No estimate yet",
+  "schedule.cost.noneBasis": "The estimate appears after the first finished run.",
+  "schedule.cost.unknown": "No estimate for this rhythm",
+  "schedule.cost.help":
+    "Average model cost per run times runs per month. Other costs are not included.",
   "cron.everySeconds.one": "every second",
   "cron.everySeconds.other": "every {count} seconds",
   "cron.everyMinutes.one": "every minute",
@@ -392,6 +406,20 @@ export const automationDe: Record<keyof typeof automationEn, string> = {
   "schedule.deleteConsequence": "{name} startet dann nicht mehr automatisch.",
   "schedule.inputInvalid": "Vervollständige die Eingaben für den Zeitplan, bevor du speicherst.",
   "schedule.inputRequired": "Dieser Zeitplan braucht aktualisierte Eingaben: {issue}",
+  "schedule.cost.label": "Geschätzte Kosten",
+  "schedule.cost.amount": "≈ {amount} / Monat",
+  "schedule.cost.basis.version.one": "aus {count} Run, aktuelle Modellpreise",
+  "schedule.cost.basis.version.other": "aus {count} Runs, aktuelle Modellpreise",
+  "schedule.cost.basis.workflow.one":
+    "aus {count} Run einer früheren Version, aktuelle Modellpreise",
+  "schedule.cost.basis.workflow.other":
+    "aus {count} Runs früherer Versionen, aktuelle Modellpreise",
+  "schedule.cost.unpriced": "Modelle ohne Preis sind nicht eingerechnet.",
+  "schedule.cost.none": "Noch keine Schätzung",
+  "schedule.cost.noneBasis": "Die Schätzung erscheint nach dem ersten abgeschlossenen Run.",
+  "schedule.cost.unknown": "Für diesen Rhythmus gibt es keine Schätzung",
+  "schedule.cost.help":
+    "Durchschnittliche Modellkosten pro Run mal Runs pro Monat. Andere Kosten sind nicht enthalten.",
   "cron.everySeconds.one": "jede Sekunde",
   "cron.everySeconds.other": "alle {count} Sekunden",
   "cron.everyMinutes.one": "jede Minute",

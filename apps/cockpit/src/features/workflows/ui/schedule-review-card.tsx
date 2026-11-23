@@ -4,6 +4,7 @@ import { Button } from "@ui/atoms/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@ui/molecules/card";
 import { ArrowRight, Clock3 } from "lucide-react";
 import type { HeldSchedule } from "@/api/decisions";
+import { ScheduleCostValue } from "@/features/workflows/ui/schedule-cost";
 import { useI18n } from "@/lib/i18n-context";
 
 export function ScheduleReviewCard({ schedule }: { schedule: HeldSchedule }) {
@@ -36,6 +37,13 @@ export function ScheduleReviewCard({ schedule }: { schedule: HeldSchedule }) {
                     : "schedules.held.authorityShort",
               )}
             </CardDescription>
+            <p className="text-sm">
+              <span className="sr-only">{t("schedule.cost.label")}: </span>
+              <ScheduleCostValue
+                projection={schedule.cost_projection}
+                testId="schedule-admission-cost"
+              />
+            </p>
             {schedule.admission_hold?.observed_at && (
               <p className="text-muted-foreground text-xs" data-testid="schedule-admission-since">
                 {t("schedules.held.since", {
