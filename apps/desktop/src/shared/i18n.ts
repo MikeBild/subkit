@@ -155,6 +155,10 @@ const MESSAGES = {
     de: "Version {version} ist geladen. Starte SubKit neu, um sie zu installieren.",
     en: "Version {version} is downloaded. Restart SubKit to install it.",
   },
+  "updates.state.installing": {
+    de: "Version {version} wird installiert. SubKit startet gleich neu.",
+    en: "Installing version {version}. SubKit restarts shortly.",
+  },
   "updates.state.failed.check": {
     de: "Die Suche nach Updates ist fehlgeschlagen. Prüf deine Internetverbindung und versuch es noch einmal.",
     en: "Checking for updates failed. Check your internet connection and try again.",
@@ -174,6 +178,10 @@ const MESSAGES = {
   "updates.menu.restart": {
     de: "Neu starten und Update installieren",
     en: "Restart and install update",
+  },
+  "updates.menu.installing": {
+    de: "Update wird installiert …",
+    en: "Installing update…",
   },
 
   "notify.title.stopped.named": { de: "„{name}“ wurde angehalten", en: "“{name}” was stopped" },
