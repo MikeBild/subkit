@@ -128,7 +128,7 @@ Jede Zeile sagt, was du bekommst, und verlinkt das Kapitel, das sie erklärt.
 
 | Funktion | Was du bekommst | Gilt | Mehr |
 | --- | --- | --- | --- |
-| SubKit Desktop | Das Cockpit deines Servers als App für Macs mit Apple Silicon (ab macOS 13) und für Windows 10 und 11 (x64), mit Symbol in der Menüleiste oder im Infobereich, Benachrichtigungen und Start bei der Anmeldung. | Überall | [SubKit Desktop](setup.md#subkit-desktop) |
+| SubKit Desktop | Das Cockpit deines Servers als App für Macs mit Apple Silicon (ab macOS 13), mit Symbol in der Menüleiste, Benachrichtigungen und Start bei der Anmeldung. Die App für Windows folgt. | Überall | [SubKit Desktop](setup.md#subkit-desktop) |
 | Willkommen und Einladungslink | Der erste Start erklärt, was SubKit tut, und öffnet den Einladungslink aus deiner E-Mail, sodass du in wenigen Schritten einem Arbeitsbereich beitrittst. | Überall | [SubKit Desktop](setup.md#subkit-desktop) |
 | Anmeldung über den Browser | Die App meldet sich über deinen Browser an; jeder Computer ist ein eigenes Gerät, das du widerrufen kannst. | Überall | [SubKit Desktop](setup.md#subkit-desktop) |
 | Mehrere Server | SubKit Desktop merkt sich ein Profil pro Server. | Überall | [SubKit Desktop](setup.md#subkit-desktop) |
@@ -141,7 +141,7 @@ Jede Zeile sagt, was du bekommst, und verlinkt das Kapitel, das sie erklärt.
 
 ### SubKit auf deinem Mac
 
-Diese Funktionen brauchen SubKit Desktop auf einem Mac mit Apple Silicon; unter Windows gibt es sie vorerst nicht. Auf deinem Mac läuft nichts, bevor du es unter **Lokale Fähigkeiten** einschaltest.
+Diese Funktionen brauchen SubKit Desktop auf einem Mac mit Apple Silicon. Auf deinem Mac läuft nichts, bevor du es unter **Lokale Fähigkeiten** einschaltest.
 
 | Funktion | Was du bekommst | Gilt | Mehr |
 | --- | --- | --- | --- |

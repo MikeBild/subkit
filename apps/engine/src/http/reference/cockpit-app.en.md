@@ -65,18 +65,18 @@ The app needs your server. It only keeps its program files, no data.
 
 ### Web app or SubKit Desktop
 
-Besides the installed web app there is SubKit Desktop, an app for Macs with Apple Silicon and for Windows x64. Both show the same Cockpit of your server. Only SubKit Desktop on a Mac can also work with files, a browser and apps on that Mac, and only when you allow it.
+Besides the installed web app there is SubKit Desktop, an app for Macs with Apple Silicon; the Windows app is coming soon. Both show the same Cockpit of your server. Only SubKit Desktop can also work with files, a browser and apps on your Mac, and only when you allow it.
 
 | | Installed web app | SubKit Desktop |
 | --- | --- | --- |
 | Installation | From the browser, one app per workspace | One program, one profile per server |
-| Devices | Computer and phone | Mac with Apple Silicon (macOS 13 or later), Windows 10 or 11 (x64) |
+| Devices | Computer and phone | Mac with Apple Silicon (macOS 13 or later); Windows coming soon |
 | Notifications | Push through the browser | Notifications of the operating system while the program runs |
 | Quiet hours | Under **Settings › Setup** | In the settings of the program |
 | Icon in the menu bar or the notification area | No | Yes, with the number of open items |
 | Launch when you log in to your computer | No | Yes |
 | Share content from other apps | Yes | Drop files on the app or its icon |
-| Files, browser and apps on your device | No | On a Mac: yes, what you allow. On Windows: no |
+| Files, browser and apps on your device | No | Yes, what you allow |
 | Updates | Come with the server | The program’s own updates |
 
 More in “SubKit Desktop”.

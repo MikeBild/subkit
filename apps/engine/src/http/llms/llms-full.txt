@@ -2085,18 +2085,18 @@ The app needs your server. It only keeps its program files, no data.
 
 ### Web app or SubKit Desktop
 
-Besides the installed web app there is SubKit Desktop, an app for Macs with Apple Silicon and for Windows x64. Both show the same Cockpit of your server. Only SubKit Desktop on a Mac can also work with files, a browser and apps on that Mac, and only when you allow it.
+Besides the installed web app there is SubKit Desktop, an app for Macs with Apple Silicon; the Windows app is coming soon. Both show the same Cockpit of your server. Only SubKit Desktop can also work with files, a browser and apps on your Mac, and only when you allow it.
 
 | | Installed web app | SubKit Desktop |
 | --- | --- | --- |
 | Installation | From the browser, one app per workspace | One program, one profile per server |
-| Devices | Computer and phone | Mac with Apple Silicon (macOS 13 or later), Windows 10 or 11 (x64) |
+| Devices | Computer and phone | Mac with Apple Silicon (macOS 13 or later); Windows coming soon |
 | Notifications | Push through the browser | Notifications of the operating system while the program runs |
 | Quiet hours | Under **Settings › Setup** | In the settings of the program |
 | Icon in the menu bar or the notification area | No | Yes, with the number of open items |
 | Launch when you log in to your computer | No | Yes |
 | Share content from other apps | Yes | Drop files on the app or its icon |
-| Files, browser and apps on your device | No | On a Mac: yes, what you allow. On Windows: no |
+| Files, browser and apps on your device | No | Yes, what you allow |
 | Updates | Come with the server | The program’s own updates |
 
 More in “SubKit Desktop”.
@@ -5093,7 +5093,7 @@ Each line says what you get and links to the chapter that explains it.
 
 | Feature | What you get | Where | More |
 | --- | --- | --- | --- |
-| SubKit Desktop | Your server's Cockpit as an app for Macs with Apple Silicon (macOS 13 or later) and for Windows 10 and 11 (x64), with an icon in the menu bar or the notification area, notifications and launch at login. | All | [SubKit Desktop](setup.md#subkit-desktop) |
+| SubKit Desktop | Your server's Cockpit as an app for Macs with Apple Silicon (macOS 13 or later), with an icon in the menu bar, notifications and launch at login. The Windows app is coming soon. | All | [SubKit Desktop](setup.md#subkit-desktop) |
 | Welcome and invitation link | The first start explains what SubKit does and opens the invitation link from your email, so you join a workspace in a few steps. | All | [SubKit Desktop](setup.md#subkit-desktop) |
 | Sign in through the browser | The app signs in through your browser; every computer is a device you can revoke. | All | [SubKit Desktop](setup.md#subkit-desktop) |
 | Several servers | SubKit Desktop keeps one profile per server. | All | [SubKit Desktop](setup.md#subkit-desktop) |
@@ -5106,7 +5106,7 @@ Each line says what you get and links to the chapter that explains it.
 
 ### SubKit on your Mac
 
-These features need SubKit Desktop on a Mac with Apple Silicon; Windows does not offer them for now. Nothing runs on your Mac until you turn it on under **Local capabilities**.
+These features need SubKit Desktop on a Mac with Apple Silicon. Nothing runs on your Mac until you turn it on under **Local capabilities**.
 
 | Feature | What you get | Where | More |
 | --- | --- | --- | --- |
