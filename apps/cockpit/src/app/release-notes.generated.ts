@@ -3,7 +3,7 @@ export type ReleaseNotes = { version: string; notes: string[]; highlights: strin
 export type PendingNotes = { version: string | null; notes: string[]; highlights: string[] | null };
 
 export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: PendingNotes } = {
-  "source": "ff843f534b5aacf4953f10ceabad15260a191b18",
+  "source": "a176ebe749e82a4401bb7ef2423088d7f7d9c51f",
   "releases": [
     {
       "version": "v1.0.0",
@@ -2336,15 +2336,21 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
       "version": "v12.1.5",
       "notes": [],
       "highlights": [
-        "Actions under “Needs you” in SubKit Desktop and installed Cockpit apps open the right page again instead of “This page does not exist”.",
-        "A new release becomes “latest” only once its desktop files are attached, so downloads and desktop updates never point at a release without them.",
-        "SubKit Desktop reports “You're on the latest version” when no update is published yet, instead of a network error, and logs the checked address."
+        "SubKit Desktop and the Cockpit no longer show “Server offline” while connected: the live event stream works for every signed-in workspace.",
+        "Connected and offline now come from one source, so the status in the top bar and the notice on a page always agree.",
+        "“Report a problem” in the Cockpit attaches the redacted diagnostics and the trace id of the failing request, and confirms that the report arrived.",
+        "SubKit Desktop asks macOS for screen recording and accessibility before it opens System Settings, so SubKit now appears in both lists.",
+        "After the first setup, SubKit Desktop shows your connected server, permissions and device status at a glance, and back and close always lead where you came from."
       ]
     }
   ],
   "unpublished": {
-    "version": null,
+    "version": "12.1.6",
     "notes": [],
-    "highlights": null
+    "highlights": [
+      "Actions under “Needs you” in SubKit Desktop and installed Cockpit apps open the right page again instead of “This page does not exist”.",
+      "A new release becomes “latest” only once its desktop files are attached, so downloads and desktop updates never point at a release without them.",
+      "SubKit Desktop reports “You're on the latest version” when no update is published yet, instead of a network error, and logs the checked address."
+    ]
   }
 };
