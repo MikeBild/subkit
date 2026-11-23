@@ -70,15 +70,16 @@ A step with `kind: "model"` asks the AI model configured for your workspace one 
 
 | Field | Meaning |
 | --- | --- |
-| `prompt` | The instruction. Placeholders are filled in before the call. |
-| `system` | Optional system prompt. Without it the step uses a short neutral default. |
+| `prompt` | The instruction. Placeholders are filled in before the call; each filled-in value is framed as untrusted data. |
+| `system` | Optional system prompt. It is added after the workflow step guard, which always stays in place. |
 | `input` | Data handed to the model next to the prompt, always as data and never as instructions. |
 | `output_schema` | JSON Schema the answer must match. |
 | `max_output_tokens` | Upper bound for the answer, at most 32,000. Default 1,024. |
 
-- The step's output is the parsed answer. If the answer is no valid JSON, the step fails with `model_output_invalid`; if it does not match the schema, with `model_output_schema_invalid`.
-- A model step uses only `input`, `scope`, `item`, `state` and `caller` values. Credentials, secrets and connector settings are refused with `model_step_secret_placeholder`, because they would reach the model provider.
+- The step's output is the parsed answer. If the answer is no valid JSON or does not match the schema, the step fails with `model_output_invalid`. `model_output_schema_invalid` means the `output_schema` itself is not a usable JSON Schema; saving the workflow already refuses such a schema.
+- A model step uses only `input`, `scope`, `item`, `state` and `caller` values. Credentials, secrets and connector settings are refused when you save the workflow and, at run time, with `model_step_secret_placeholder`, because they would reach the model provider.
 - Each call counts against your workspace's AI budget. When the monthly limit is reached, the step does not run and the run says so.
+- The approval review lists each model step as an AI model effect: it sends step data to the workspace AI model, names the data paths it sends, the output token cap per call, and whether it runs once per item. A new version that adds a model step, raises its `max_output_tokens`, runs it per item or sends new data paths needs a new approval. A change to the prompt wording alone keeps the existing approval.
 
 ### Read files with parse-file
 
@@ -118,8 +119,8 @@ A file may be at most 25 MB. The step does not accept an `expression`; everythin
 | `sftp_host_key_missing` | The connector has no host key fingerprint. |
 | `sftp_host_key_mismatch` | The server presented a different host key. |
 | `sftp_path_outside_root` | The path leads outside the connector's folder. |
-| `model_output_invalid` | The model's answer is no valid JSON. |
-| `model_output_schema_invalid` | The answer does not match `output_schema`. |
+| `model_output_invalid` | The model's answer is no valid JSON or does not match `output_schema`. |
+| `model_output_schema_invalid` | `output_schema` is not a usable JSON Schema. |
 | `model_step_secret_placeholder` | The model step uses a credential, secret or connector setting. |
 | `parse_file_source_missing` | No file was found at `source`. |
 | `parse_file_unsupported_format` | The file type is not one of the five formats. |
