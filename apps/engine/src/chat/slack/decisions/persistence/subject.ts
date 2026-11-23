@@ -1,13 +1,13 @@
 import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
-import type { Executor } from "../../../db/client.ts";
 import {
   conversationElicitations,
+  type Executor,
   taskRuns,
   tasks,
   tenants,
   toolApprovals,
   users,
-} from "../../../db/schema/index.ts";
+} from "../../../../db/index.ts";
 
 export interface HeldTaskRun {
   task_id: string;
