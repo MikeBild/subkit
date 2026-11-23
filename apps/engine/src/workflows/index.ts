@@ -42,6 +42,7 @@ export {
   contentPublicationLabels,
 } from "./content-publication-proposal.ts";
 export { isOpenEnded, remainingRuns } from "./core/authority.ts";
+export { modelStepPlaceholderRefusal, modelStepPlaceholders } from "./core/model-step-checks.ts";
 export { type PlaceholderKind, parsePlaceholders } from "./core/placeholder-parser.ts";
 export {
   carriedSpecColumns,

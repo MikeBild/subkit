@@ -3,17 +3,20 @@ import {
   LlmBudgetExceededError,
   LlmError,
   LlmSpendLimitReached,
-  resolvePlaceholders,
   resolvePlaceholdersTypePreserving,
 } from "../../llm/index.ts";
-import { type ModelStep, parsePlaceholders, walkStrings } from "../../workflows/index.ts";
+import {
+  type ModelStep,
+  modelStepPlaceholderRefusal,
+  modelStepPlaceholders,
+  parsePlaceholders,
+} from "../../workflows/index.ts";
 import { combineSignals } from "../abort.ts";
 import { SYSTEM_CLOCK } from "../clock.ts";
 import {
   type ModelStepFailure,
-  type ModelStepPlaceholder,
+  modelStepFrameText,
   modelStepOutcome,
-  modelStepPlaceholderRefusal,
   modelStepTokenEstimate,
   modelStepUserText,
 } from "../core/model-step.ts";
@@ -42,13 +45,16 @@ function failed(start: number, now: number, failure: ModelStepFailure): StepResu
   };
 }
 
-function placeholdersOf(step: ModelStep): ModelStepPlaceholder[] {
-  const found: ModelStepPlaceholder[] = [];
-  walkStrings({ prompt: step.prompt, system: step.system, input: step.input }, (text, path) => {
-    for (const token of parsePlaceholders(text).tokens)
-      found.push({ field: path.slice(1), kind: token.kind, token: token.raw });
-  });
-  return found;
+function parseErrorsOf(texts: ReadonlyArray<string | undefined>) {
+  return texts.flatMap((text) =>
+    text === undefined
+      ? []
+      : parsePlaceholders(text).errors.map((error) => ({
+          token: text.slice(error.span.start, error.span.end),
+          code: "parse_error" as const,
+          message: `${error.code}: ${error.message}`,
+        })),
+  );
 }
 
 function invokeFailure(err: unknown): ModelStepFailure | null {
@@ -83,7 +89,8 @@ function invokeFailure(err: unknown): ModelStepFailure | null {
 export async function runModelStep(p: RunModelStepParams): Promise<StepResult> {
   const clock = p.ctx.clock ?? SYSTEM_CLOCK;
   const start = clock.now();
-  const refusal = modelStepPlaceholderRefusal(placeholdersOf(p.step));
+  const placeholders = modelStepPlaceholders(p.step);
+  const refusal = modelStepPlaceholderRefusal(placeholders);
   if (refusal) return failed(start, clock.now(), refusal);
 
   const scope = await resolveScopeForJsonata(p.ctx.db, p.ctx.tenant_id, p.scope, p.ctx.signal);
@@ -95,12 +102,18 @@ export async function runModelStep(p: RunModelStepParams): Promise<StepResult> {
     scope,
     ...(p.ctx.principal ? { principal: p.ctx.principal } : {}),
   };
-  const texts = await resolvePlaceholders(
-    { prompt: p.step.prompt, system: p.step.system },
+  const tokens = [
+    ...new Set(
+      placeholders
+        .filter((placeholder) => placeholder.field === "prompt" || placeholder.field === "system")
+        .map((placeholder) => placeholder.token),
+    ),
+  ];
+  const data = await resolvePlaceholdersTypePreserving(
+    { tokens, input: p.step.input },
     resolverCtx,
   );
-  const data = await resolvePlaceholdersTypePreserving({ input: p.step.input }, resolverCtx);
-  const unresolved = [...texts.unresolved, ...data.unresolved];
+  const unresolved = [...parseErrorsOf([p.step.prompt, p.step.system]), ...data.unresolved];
   if (unresolved.length > 0) {
     return failed(start, clock.now(), {
       code: "placeholder_unresolved",
@@ -110,8 +123,11 @@ export async function runModelStep(p: RunModelStepParams): Promise<StepResult> {
       details: { unresolved },
     });
   }
-  const resolved = { value: { ...texts.value, input: data.value.input } };
-  const userText = modelStepUserText(resolved.value.prompt, resolved.value.input);
+  const values = new Map(tokens.map((token, index) => [token, data.value.tokens[index]]));
+  const frame = (template: string) =>
+    modelStepFrameText(template, parsePlaceholders(template).tokens, values);
+  const system = p.step.system ? frame(p.step.system) : undefined;
+  const userText = modelStepUserText(frame(p.step.prompt), data.value.input);
   const timeout = new AbortController();
   const timer =
     p.step.timeout_ms !== undefined
@@ -119,14 +135,14 @@ export async function runModelStep(p: RunModelStepParams): Promise<StepResult> {
       : undefined;
   try {
     p.ctx.llm_budget.checkPreCall(
-      modelStepTokenEstimate([resolved.value.system, userText], p.step.max_output_tokens),
+      modelStepTokenEstimate([system, userText], p.step.max_output_tokens),
     );
     const answer = await invoke(
       {
         flow: "workflow_step",
         tenant_id: p.ctx.tenant_id,
         user_turns: [{ role: "user", content: userText }],
-        ...(resolved.value.system ? { system: resolved.value.system } : {}),
+        ...(system ? { system } : {}),
         ...(p.step.max_output_tokens !== undefined
           ? { max_output_tokens: p.step.max_output_tokens }
           : {}),
