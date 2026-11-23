@@ -4,8 +4,7 @@ import type { ValidationError } from "./validator.ts";
 
 type TransformStep = Extract<StepDef, { kind: "transform" }>;
 
-const RUN_ROOTS = new Set(["$input", "$state"]);
-const LOOP_ITEM_ROOT = "$item";
+const RUN_ROOTS = new Set(["$input", "$state", "$item"]);
 
 export function parseFileValidationErrors(
   step: TransformStep,
@@ -17,15 +16,6 @@ export function parseFileValidationErrors(
   const path = `steps.${step.id}.file.source`;
   const head = source.split(".")[0] ?? "";
   if (RUN_ROOTS.has(head)) return [];
-  if (head === LOOP_ITEM_ROOT) {
-    if (step.for_each !== undefined) return [];
-    return [
-      {
-        path,
-        message: `\`${source}\` reads the loop item, but this step has no \`for_each\`. Add \`for_each\` or point \`file.source\` at an earlier step or \`$input\`.`,
-      },
-    ];
-  }
   if (head === step.id) {
     return [
       {

@@ -95,7 +95,7 @@ Ein Transform-Step mit `language: "parse-file"` liest eine Datei aus dem Run und
 
 | Feld | Bedeutung |
 | --- | --- |
-| `source` | Wo die Datei im Run liegt, als Punkt-Pfad: die Ausgabe eines früheren Steps wie `download.data` oder eine Run-Eingabe wie `$input.invoice`. Beim Speichern wird geprüft, dass der Pfad mit `$input`, `$state`, `$item` (nur in einem Step mit `for_each`) oder der ID eines anderen Steps beginnt. |
+| `source` | Wo die Datei im Run liegt, als Punkt-Pfad: die Ausgabe eines früheren Steps wie `download.data` oder eine Run-Eingabe wie `$input.invoice`. Beim Speichern wird geprüft, dass der Pfad mit `$input`, `$state`, `$item` (das Element einer `for_each`-Schleife) oder der ID eines anderen Steps beginnt. |
 | `format` | `csv`, `xlsx`, `pdf`, `docx` oder `zip`. Ohne Angabe liest der Step den Typ aus der Datei selbst. |
 | `sheet` | Tabellenblatt, das gelesen wird. Ohne Angabe das erste. |
 | `max_rows` | Obergrenze für Tabellenzeilen aus einer CSV- oder Tabellendatei, höchstens 10.000. |

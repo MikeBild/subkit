@@ -30,7 +30,7 @@ describe("parseFileValidationErrors", () => {
     expect(parseFileValidationErrors(step, ids, false)).toEqual([]);
   });
 
-  test("the loop item is accepted only inside for_each", () => {
+  test("the loop item is accepted, also in a step an iterating parent contains", () => {
     expect(
       parseFileValidationErrors(
         reader("$item.file", { for_each: "(s) => s.download.data.items" }),
@@ -38,10 +38,7 @@ describe("parseFileValidationErrors", () => {
         false,
       ),
     ).toEqual([]);
-    const errors = parseFileValidationErrors(reader("$item.file"), ids, false);
-    expect(errors).toHaveLength(1);
-    expect(errors[0]?.path).toBe("steps.read.file.source");
-    expect(errors[0]?.message).toContain("no `for_each`");
+    expect(parseFileValidationErrors(reader("$item.file"), ids, false)).toEqual([]);
   });
 
   test("a step cannot read its own output", () => {

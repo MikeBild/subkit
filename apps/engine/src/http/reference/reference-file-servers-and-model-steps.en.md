@@ -95,7 +95,7 @@ A transform step with `language: "parse-file"` reads a file from the run and ret
 
 | Field | Meaning |
 | --- | --- |
-| `source` | Where the file sits in the run, as a dot path: an earlier step's output such as `download.data` or a run input such as `$input.invoice`. Saving checks that the path starts with `$input`, `$state`, `$item` (only in a step with `for_each`) or the id of another step. |
+| `source` | Where the file sits in the run, as a dot path: an earlier step's output such as `download.data` or a run input such as `$input.invoice`. Saving checks that the path starts with `$input`, `$state`, `$item` (the item of a `for_each` loop) or the id of another step. |
 | `format` | `csv`, `xlsx`, `pdf`, `docx` or `zip`. Without it the type is read from the file itself. |
 | `sheet` | Spreadsheet sheet to read. Without it the first sheet is read. |
 | `max_rows` | Upper bound for table rows from a CSV or spreadsheet file, at most 10,000. |
