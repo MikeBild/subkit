@@ -44,7 +44,14 @@ export const intakeEn = {
   "intake.deleteSuccess": "Discarded entry deleted.",
   "intake.deleteSelectedSuccess": "Discarded entries deleted.",
   "intake.deleteConflict": "This entry has changed. Reload the list before deleting it.",
-  "intake.selectDiscarded": "Select {title} for permanent deletion",
+  "intake.selectEntry": "Select {title}",
+  "intake.bulk.move": "Move to category",
+  "intake.bulk.moveTitle": "Move {count} entries",
+  "intake.bulk.propose": "Prepare a suggestion",
+  "intake.bulk.moved": "Entries moved.",
+  "intake.bulk.discarded": "Entries discarded. You can restore them at any time.",
+  "intake.bulk.conflict":
+    "{count} entries changed in the meantime and stayed as they were. Reload the list to see them.",
   "intake.clearDeletionSelection": "Clear selection",
   "intake.editItem": "Edit item",
   "intake.editConflict":
@@ -175,7 +182,14 @@ export const intakeDe: Record<keyof typeof intakeEn, string> = {
   "intake.deleteSuccess": "Verworfener Eintrag gelöscht.",
   "intake.deleteSelectedSuccess": "Verworfene Einträge gelöscht.",
   "intake.deleteConflict": "Dieser Eintrag hat sich geändert. Lade die Liste vor dem Löschen neu.",
-  "intake.selectDiscarded": "{title} zum endgültigen Löschen auswählen",
+  "intake.selectEntry": "{title} auswählen",
+  "intake.bulk.move": "In Kategorie verschieben",
+  "intake.bulk.moveTitle": "{count} Einträge verschieben",
+  "intake.bulk.propose": "Vorschlag vorbereiten",
+  "intake.bulk.moved": "Einträge verschoben.",
+  "intake.bulk.discarded": "Einträge verworfen. Du kannst sie jederzeit wiederherstellen.",
+  "intake.bulk.conflict":
+    "{count} Einträge haben sich zwischenzeitlich geändert und sind unverändert geblieben. Lade die Liste neu, um sie zu sehen.",
   "intake.clearDeletionSelection": "Auswahl aufheben",
   "intake.editItem": "Eintrag bearbeiten",
   "intake.editConflict":

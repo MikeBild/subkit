@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { apiCall } from "@/api/call";
+import { type ApiRequestBody, apiCall } from "@/api/call";
 import { reportFailure } from "@/lib/action-failure";
 import { useI18n } from "@/lib/i18n-context";
 import { KEYS, useRefreshKnowledge } from "../queries";
@@ -59,5 +59,18 @@ export function useSourceActions(
     },
     onError: fail,
   });
-  return { ingest, toggle, remove, restore, saved };
+  const review = useMutation({
+    mutationFn: (review_due_at: string | null) => {
+      const body: ApiRequestBody<"/v1/knowledge-sources/{id}", "patch"> & {
+        review_due_at: string | null;
+      } = { review_due_at };
+      return apiCall("patch", "/v1/knowledge-sources/{id}", { path: { id: src.id }, body });
+    },
+    onSuccess: (n) => {
+      toast.success(t("kn.sources.reviewSaved", { name: src.name }));
+      saved(n);
+    },
+    onError: fail,
+  });
+  return { ingest, toggle, remove, restore, saved, review };
 }

@@ -25,6 +25,7 @@ export function knowledgeSourceRowToView(
     refresh_strategy: row.refresh_strategy,
     refresh_cron: row.refresh_cron,
     last_refreshed_at: row.last_refreshed_at?.toISOString() ?? null,
+    review_due_at: row.review_due_at?.toISOString() ?? null,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
   };

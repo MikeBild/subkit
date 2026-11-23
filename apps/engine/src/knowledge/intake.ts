@@ -11,6 +11,13 @@ import {
   intakeProposals,
 } from "../db/schema/intake.ts";
 import { redactSecretShapes } from "../logging/scrub-secrets.ts";
+import { intakeGroupKey } from "./core/intake-dedupe.ts";
+import {
+  appendToOpenDuplicate,
+  collectedEvidenceExcerpt,
+  type IntakeDedupeDeps,
+  similarOpenIntakeItem,
+} from "./intake-dedupe.ts";
 import { proposalDigest, requestDigest } from "./intake-digest.ts";
 import { IntakeConflictError, IntakeProposalConflictError } from "./intake-errors.ts";
 import {
@@ -194,8 +201,17 @@ export async function setIntakeDefaultCategory(
 export async function createIntakeItem(
   p: CreateIntakeItemParams,
   exec: Executor,
+  deps: IntakeDedupeDeps = {},
 ): Promise<IntakeItemView> {
   const db = exec;
+  const similar_id =
+    p.actor.kind === "anonymous"
+      ? null
+      : await similarOpenIntakeItem(
+          exec,
+          { ...p, exclude_request_id: p.client_request_id },
+          deps.embedder,
+        );
   return (db as Db).transaction(async (tx) => {
     const intakeCategory = p.category
       ? parseIntakeCategory(p.category)
@@ -219,6 +235,22 @@ export async function createIntakeItem(
         throw new IntakeConflictError("item request id was already used with different content");
       return intakeItemView(previous[0]);
     }
+    const collected = snapshot(clean, redactions);
+    const duplicate =
+      p.actor.kind === "anonymous"
+        ? null
+        : await appendToOpenDuplicate(tx, {
+            tenant_id: p.tenant_id,
+            actor: p.actor,
+            source_url: collected.source_url,
+            similar_id,
+            agent: collected.origin,
+            session_id: p.client_request_id,
+            repo: null,
+            excerpt: collectedEvidenceExcerpt(collected.source_url, clean.body),
+            captured_at: p.captured_at,
+          });
+    if (duplicate) return duplicate;
     const inserted = await tx
       .insert(intakeItems)
       .values({
@@ -226,11 +258,12 @@ export async function createIntakeItem(
         category: intakeCategory,
         client_request_id: p.client_request_id,
         creation_request_digest: digest,
-        original_snapshot: snapshot(clean, redactions),
+        original_snapshot: collected,
         title: clean.title,
         body: clean.body,
         note: clean.note ?? "",
         attachment_file_id: p.attachment?.file_id ?? null,
+        group_key: intakeGroupKey({ source_url: collected.source_url }),
         collected_by_type: p.actor.kind,
         collected_by_id: p.actor.id,
       })

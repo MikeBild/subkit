@@ -206,7 +206,15 @@ export function OnboardingCard({
   );
 }
 
-export type GroupKey = "all" | "category" | "status" | "kind" | "origin" | "scope" | "date";
+export type GroupKey =
+  | "all"
+  | "category"
+  | "status"
+  | "kind"
+  | "origin"
+  | "scope"
+  | "date"
+  | "topic";
 const GROUP_VALUES: readonly GroupKey[] = [
   "all",
   "category",
@@ -215,6 +223,7 @@ const GROUP_VALUES: readonly GroupKey[] = [
   "origin",
   "scope",
   "date",
+  "topic",
 ];
 const isGroup = (v: string): v is GroupKey => (GROUP_VALUES as readonly string[]).includes(v);
 const isOrder = (v: string): v is SortOrder => v === "asc" || v === "desc";
@@ -268,6 +277,7 @@ const GROUP_KEYS = {
   origin: "kn.groups.origin",
   scope: "kn.groups.scope",
   date: "kn.groups.date",
+  topic: "kn.groups.topic",
 } as const;
 
 const CREATED_KEYS = {

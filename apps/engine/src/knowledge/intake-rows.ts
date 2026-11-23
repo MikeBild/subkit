@@ -60,6 +60,7 @@ export function intakeItemView(row: typeof intakeItems.$inferSelect): IntakeItem
     admitted_target_id: row.admitted_target_id,
     attachment:
       row.original_snapshot.origin === "note" ? (row.original_snapshot.attachment ?? null) : null,
+    group_key: row.group_key,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
   };

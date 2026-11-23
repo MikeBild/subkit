@@ -15,6 +15,7 @@ import {
   shortDescription,
 } from "../lib/catalog-metadata.ts";
 import { sanitizePathInput } from "../lib/path-input.ts";
+import { reviewDueValue } from "../lib/review-due.ts";
 import { renderIntent, renderSummary, renderTaskList } from "../render/index.ts";
 import type { KnowledgeSourceIntent, KnowledgeSourceSummary, PlanStep } from "../render/types.ts";
 import { detectMime } from "../utils/mime.ts";
@@ -295,6 +296,10 @@ const patchCommand = defineCommand({
     ...catalogMetadataArgs,
     tags: { type: "string", description: "Comma-separated tags (replaces existing)" },
     status: { type: "string", description: "Status: active | inactive" },
+    "review-due": {
+      type: "string",
+      description: "When a person should check the source again: YYYY-MM-DD, ISO time, or none",
+    },
   },
   async run({ args }) {
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
@@ -303,17 +308,22 @@ const patchCommand = defineCommand({
       !args.name &&
       args.tags === undefined &&
       !args.status &&
+      args["review-due"] === undefined &&
       Object.keys(catalogMetadataBody(args)).length === 0
     ) {
-      const msg = "at least one of --name, --description, --category, --tags, --status is required";
+      const msg =
+        "at least one of --name, --description, --category, --tags, --status, --review-due is required";
       process.stderr.write(`${pc.red("error")}: ${msg}\n`);
       throw new Error(msg);
     }
     return withCommandErrors(async () => {
-      const body: Schemas["UpdateKnowledgeSourceBody"] = { ...catalogMetadataBody(args) };
+      const body: Schemas["UpdateKnowledgeSourceBody"] & { review_due_at?: string | null } = {
+        ...catalogMetadataBody(args),
+      };
       if (args.name) body.name = args.name;
       if (args.tags !== undefined) body.tags = tagList(args.tags);
       if (args.status) body.status = knowledgeStatus(args.status);
+      if (args["review-due"] !== undefined) body.review_due_at = reviewDueValue(args["review-due"]);
       const ks = await client.patchKnowledgeSource(args.id, body);
       printJson(ks);
     });
