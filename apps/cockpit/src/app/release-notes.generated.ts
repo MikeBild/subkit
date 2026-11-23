@@ -3,7 +3,7 @@ export type ReleaseNotes = { version: string; notes: string[]; highlights: strin
 export type PendingNotes = { version: string | null; notes: string[]; highlights: string[] | null };
 
 export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: PendingNotes } = {
-  "source": "287f6a21d3824b9883fbd67efaa1d89b6d2259e8",
+  "source": "cd48549f62597e7425ddfffbca29578b6a7b1bd6",
   "releases": [
     {
       "version": "v1.0.0",
@@ -2347,20 +2347,24 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
       "version": "v12.1.6",
       "notes": [],
       "highlights": [
-        "ChatGPT, Claude and other MCP clients that accept every offered scope keep full access for admins again; vault, connector and role tools deny consistently under a narrow grant.",
-        "Connector credentials name their environment: `subkit vault attach <slug> --env prod`, a diagnosis that opens the right credentials form, and promote fills an existing production connector.",
-        "Live progress: chat shows the current step, retries and the last steps; running schedules show their step.",
-        "Every schedule shows its projected monthly cost before you approve it.",
-        "Run results link to the changed record in GitHub, Notion, Stripe, Google and more.",
-        "Held runs can be approved or declined from Slack, checked and audited per click.",
-        "Clearer failures: the limit that stopped a step, the field a schedule refused, the step a preparation failed at, and long attachment ids accepted by request boundaries.",
-        "Desktop keeps one queued restart while an update installs; old `sk` agent hooks are migrated to `subkit`."
+        "Actions under “Needs you” in SubKit Desktop and installed Cockpit apps open the right page again instead of “This page does not exist”.",
+        "A new release becomes “latest” only once its desktop files are attached, so downloads and desktop updates never point at a release without them.",
+        "SubKit Desktop reports “You're on the latest version” when no update is published yet, instead of a network error, and logs the checked address."
       ]
     }
   ],
   "unpublished": {
-    "version": null,
+    "version": "12.1.7",
     "notes": [],
-    "highlights": null
+    "highlights": [
+      "ChatGPT, Claude and other MCP clients that accept every offered scope keep full access for admins again; vault, connector and role tools deny consistently under a narrow grant.",
+      "Connector credentials name their environment: `subkit vault attach <slug> --env prod`, a diagnosis that opens the right credentials form, and promote fills an existing production connector.",
+      "Live progress: chat shows the current step, retries and the last steps; running schedules show their step.",
+      "Every schedule shows its projected monthly cost before you approve it.",
+      "Run results link to the changed record in GitHub, Notion, Stripe, Google and more.",
+      "Held runs can be approved or declined from Slack, checked and audited per click.",
+      "Clearer failures: the limit that stopped a step, the field a schedule refused, the step a preparation failed at, and long attachment ids accepted by request boundaries.",
+      "Desktop keeps one queued restart while an update installs; old `sk` agent hooks are migrated to `subkit`."
+    ]
   }
 };
