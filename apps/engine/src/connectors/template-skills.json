@@ -835,7 +835,7 @@
   },
   "anthropic-basics": {
     "title": "Anthropic Claude API Basics",
-    "body": "Authenticate with the API key in the x-api-key header (not a bearer token) and send anthropic-version: 2023-06-01 on every request. All requests go to https://api.anthropic.com/v1. POST /messages takes model, max_tokens and a messages array; the answer is in content[] as blocks, read the text blocks. Set max_llm_tokens_per_run on every workflow that calls Claude: SubKit counts each call against that per-run budget and stops the run before it is exceeded.",
+    "body": "Authenticate with the API key in the x-api-key header (not a bearer token) and send anthropic-version: 2023-06-01 on every request. All requests go to https://api.anthropic.com/v1. POST /messages takes model, max_tokens and a messages array; the answer is in content[] as blocks, read the text blocks. Inside a workflow, use a model step instead of calling this API directly: it runs on the workspace AI model and returns a structured answer. Raw calls to this API are also capped and accounted: SubKit counts them against max_llm_tokens_per_run and the workspace spend limit and stops the run before either is exceeded.",
     "examples": [
       "GET /v1/models — list the models this key can call",
       "POST /v1/messages with {model, max_tokens, messages:[{role:'user', content:'...'}]} — one answer",

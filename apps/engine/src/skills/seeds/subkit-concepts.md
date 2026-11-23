@@ -59,20 +59,21 @@ Each **step** has at minimum:
 ```
 
 - `id` — unique within the workflow, snake_case. Referenced by downstream steps.
-- `kind` — one of the seven kinds listed below.
+- `kind` — one of the eight kinds listed below.
 - request-step fields are **flattened**: `connector_id`, `method`, `path`, `query`,
   `headers`, `body`, and `graphql` live at the top level. Do not wrap them in `config`.
 - `data_selector` — optional JSONata that trims the envelope's `data` before downstream steps see it.
 - `on_error` — behavior when the step fails.
 
-## The 7 step kinds
+## The 8 step kinds
 
 Any step can carry `for_each` and then runs once per element; the element is `$item` (JSONata) / `${item.…}` (strings).
 
 | Kind | Purpose | One-line config example |
 |---|---|---|
 | `request` | Call an external connector boundary via a connector (http / graphql / s3) | `{ "connector_id": "00000000-0000-0000-0000-000000000001", "method": "GET", "path": "/crm/v3/objects/contacts" }` |
-| `transform` | Reshape data with sandboxed JavaScript (JS-only — JSONata is not a transform language), no I/O | `{ "language": "javascript", "expression": "return input.scope.list_orders.data.results.filter(r => r.amount > 100);" }` |
+| `transform` | Reshape data with sandboxed JavaScript (JS-only — JSONata is not a transform language), no I/O; `language: "parse-file"` reads a CSV, XLSX, PDF, DOCX or ZIP file into rows or text | `{ "language": "javascript", "expression": "return input.scope.list_orders.data.results.filter(r => r.amount > 100);" }` |
+| `model` | Ask the workspace AI model; the answer must match `output_schema`. Use it instead of a raw provider call | `{ "prompt": "Classify ${input.text}", "output_schema": { "type": "object", "required": ["label"], "properties": { "label": { "type": "string" } } } }` |
 | `wait` | Pause for a duration | `{ "duration_ms": 30000 }` |
 | `branch` | Conditional routing by step id | `{ "when": "$scope.classify.data.tier = 'gold'", "then_steps": ["notify_gold"], "else_steps": ["notify_standard"] }` |
 | `parallel` | Run child step ids concurrently | `{ "branches": [["write_pg"], ["write_s3"]] }` |

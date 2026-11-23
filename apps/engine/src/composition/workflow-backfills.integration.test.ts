@@ -3,6 +3,7 @@ import { inArray } from "drizzle-orm";
 import { dataMigrations } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { LOOP_TO_FOR_EACH_V2_BACKFILL_NAME } from "../workflows/backfills/loop-to-for-each-v2.ts";
+import { MODEL_STEP_V1_BACKFILL_NAME } from "../workflows/backfills/model-step-v1.ts";
 import { REQUEST_PROTOCOL_V1_BACKFILL_NAME } from "../workflows/backfills/request-protocol-v1.ts";
 import { runWorkflowBackfillsFromUrl } from "./workflow-backfills.ts";
 
@@ -17,7 +18,11 @@ afterAll(async () => {
 }, 30_000);
 
 test("the boot step runs every workflow backfill once and records its marker", async () => {
-  const names = [LOOP_TO_FOR_EACH_V2_BACKFILL_NAME, REQUEST_PROTOCOL_V1_BACKFILL_NAME];
+  const names = [
+    LOOP_TO_FOR_EACH_V2_BACKFILL_NAME,
+    REQUEST_PROTOCOL_V1_BACKFILL_NAME,
+    MODEL_STEP_V1_BACKFILL_NAME,
+  ];
   const markers = () =>
     ctx.db
       .select({ name: dataMigrations.name })
@@ -27,5 +32,5 @@ test("the boot step runs every workflow backfill once and records its marker", a
   await runWorkflowBackfillsFromUrl(ctx.url);
   expect((await markers()).map((row) => row.name).sort()).toEqual([...names].sort());
   await runWorkflowBackfillsFromUrl(ctx.url);
-  expect(await markers()).toHaveLength(2);
+  expect(await markers()).toHaveLength(3);
 });

@@ -1080,7 +1080,9 @@ const _baseWorkflowDefSchema = z.object({
   steps: z.array(StepSchema).min(1).max(WORKFLOW_MAX_STEPS),
   timeout_ms: z.number().int().positive().optional(),
   device_offline: z.enum(["wait", "fail"]).optional(),
-  max_llm_tokens_per_run: z.number().int().positive().optional(),
+  max_llm_tokens_per_run: z.number().int().positive().optional().openapi({
+    description: "cap for all model steps and provider calls in one run",
+  }),
   runtime: WorkflowRuntimeSchema.optional(),
   trigger: TriggerSchema.optional(),
   execution_guards: ExecutionGuardsSchema.optional(),

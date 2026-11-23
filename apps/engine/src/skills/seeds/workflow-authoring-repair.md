@@ -164,8 +164,10 @@ These controls live at the workflow root, beside `steps`; they are not step
 parameters and must not be hidden in `description`:
 
 - **`max_llm_tokens_per_run`** — positive integer cap for cumulative prompt
-  plus completion tokens across all LLM-provider calls in one run. Use it for
-  every model-backed workflow whose safe cost ceiling is known.
+  plus completion tokens across all model steps and provider calls in one run.
+  Use a `model` step for model work; raw request steps to a model provider are
+  also capped and accounted against this limit and the workspace spend limit.
+  Set it on every model-backed workflow whose safe cost ceiling is known.
 - **`timeout_ms`** — positive integer wall-clock timeout for the workflow run.
 - **`validation_function`** / **`validation_expression`** — fail-closed final
   output invariants. Pick the JavaScript or JSONata form, not both.

@@ -99,6 +99,14 @@ Three places to reshape data — pick the smallest one that fits:
 
 See `data-handling.md` for full examples.
 
+## Reading files: `parse-file`
+
+A transform with `language: "parse-file"` reads a file and takes no `expression`. Point `file.source` at the file as a dot path: an earlier step's file result such as `download.data` or a run input such as `$input.invoice` (a `{ $file }` reference). `file.format` (`csv`, `xlsx`, `pdf`, `docx`, `zip`) is optional; without it the type is read from the file. CSV and XLSX return `rows` with `row_count` and `truncated` (`file.max_rows` caps the rows, `file.sheet` picks a sheet); PDF returns `text` and `pages`; DOCX returns `text`; ZIP returns the `text` of readable entries and their `entries` list.
+
+```json
+{ "id": "read_invoice", "kind": "transform", "language": "parse-file", "file": { "source": "download.data", "max_rows": 500 } }
+```
+
 ## `input_schema` vs `input_schema_sample`
 
 - **`input_schema`** — JSON Schema, enforced at runtime. Use for stable contracts (another workflow, a known webhook).

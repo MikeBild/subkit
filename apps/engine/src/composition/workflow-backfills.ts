@@ -1,10 +1,15 @@
 import { createDbFromUrl } from "../db/index.ts";
 import { errorFields, logger } from "../logging/index.ts";
-import { runLoopToForEachV2Backfill, runRequestProtocolV1Backfill } from "../workflows/index.ts";
+import {
+  runLoopToForEachV2Backfill,
+  runModelStepV1Backfill,
+  runRequestProtocolV1Backfill,
+} from "../workflows/index.ts";
 
 const BACKFILLS = [
   { name: "loop to for_each", run: runLoopToForEachV2Backfill },
   { name: "request protocol", run: runRequestProtocolV1Backfill },
+  { name: "model step", run: runModelStepV1Backfill },
 ] as const;
 
 export async function runWorkflowBackfillsFromUrl(url: string): Promise<void> {
