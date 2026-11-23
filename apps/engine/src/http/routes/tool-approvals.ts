@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { cockpitInstallationIdFromPath, signLoginState } from "../../auth/index.ts";
 import { getConfig } from "../../config/loader.ts";
 import { completeApprovalBackedElicitation } from "../../conversations/public/authoring.ts";
 import {
@@ -19,6 +18,7 @@ import {
   resolveApprovalPortalToken,
 } from "../../tools/index.ts";
 import type { AppEnv } from "../openapi.ts";
+import { redirectToSignIn } from "./browser-sign-in.ts";
 import {
   deriveSessionSecret,
   parseFormBody,
@@ -105,28 +105,6 @@ async function resolveApprovalApprover(
   return null;
 }
 
-async function redirectToSignIn(
-  grant: string,
-  publicBaseUrl: string,
-  requestPath: string,
-): Promise<Response> {
-  const installationId = cockpitInstallationIdFromPath(requestPath);
-  const apiPrefix = installationId ? `/cockpit/i/${installationId}/api` : "";
-  const back = new URL(`${apiPrefix}${APPROVAL_PORTAL_PATH}`, publicBaseUrl);
-  back.searchParams.set("grant", grant);
-  const loginUrl = new URL(
-    installationId ? `${apiPrefix}/v1/identity/cockpit-login` : "/v1/identity/login/start",
-    publicBaseUrl,
-  );
-  if (installationId) loginUrl.searchParams.set("return_to", `${back.pathname}${back.search}`);
-  else
-    loginUrl.searchParams.set(
-      "login_state",
-      await signLoginState({ redirect_to: back.toString() }),
-    );
-  return Response.redirect(loginUrl.toString(), 302);
-}
-
 function taskRunRefusalCopy(refusal: TaskRunApprovalRefusal, locale: string): string {
   if (refusal === "owner_or_admin")
     return locale === "de"
@@ -162,7 +140,7 @@ export function registerToolApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
 
     const approver = await resolveApprovalApprover(c, db, view.tenant_id);
     if (!approver) {
-      return await redirectToSignIn(grant, publicBaseUrl(), c.req.path);
+      return await redirectToSignIn(APPROVAL_PORTAL_PATH, { grant }, publicBaseUrl(), c.req.path);
     }
     const refusal = await taskRunApprovalRefusal(db, {
       tenant_id: view.tenant_id,

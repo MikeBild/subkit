@@ -24608,6 +24608,63 @@ export interface paths {
         };
         trace?: never;
     };
+    "/v1/chat/slack/interactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Slack interactivity endpoint (buttons, modals, decision cards)
+         * @description Configure this URL as the Slack app's Interactivity Request URL. The raw form body (`payload=<json>`) is verified with the Slack signing secret and a five-minute timestamp window before anything is read; replays of the same action are ignored. Decision buttons (`sk_decide:*`) decide in SubKit as the linked SubKit person after a permission check at click time.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Acknowledged */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ChatAck"];
+                    };
+                };
+                /** @description Signature missing, invalid or outside the timestamp window */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ChatRefusal"];
+                    };
+                };
+                /** @description No Slack adapter is registered */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ChatRefusal"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/chat/workspaces": {
         parameters: {
             query?: never;
@@ -24841,6 +24898,96 @@ export interface paths {
                 };
             };
         };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/integrations/slack/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Browser page that links the clicking Slack account to the signed-in SubKit person
+         * @description Opened from the one-time link in a Slack decision message. Requires a signed-in Cockpit session in the same workspace; shows which Slack account will be linked and asks for confirmation.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    token?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Confirmation page (HTML) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                    };
+                };
+                /** @description Not signed in: redirect to sign-in and back */
+                302: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Link expired, invalid or for another workspace (HTML) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Confirm the Slack account link for the signed-in SubKit person */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/x-www-form-urlencoded": components["schemas"]["SlackLinkForm"];
+                };
+            };
+            responses: {
+                /** @description Linked (HTML) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                    };
+                };
+                /** @description Link refused; nothing changed (HTML) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                    };
+                };
+            };
+        };
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -37891,6 +38038,15 @@ export interface components {
             description?: string;
             enabled?: boolean;
         };
+        ChatAck: {
+            /** @enum {boolean} */
+            ok: true;
+        } & {
+            [key: string]: unknown;
+        };
+        ChatRefusal: {
+            error: string;
+        };
         ChatWorkspace: {
             /** Format: uuid */
             id: string;
@@ -37935,6 +38091,12 @@ export interface components {
             platform_user_id: string;
             /** Format: uuid */
             user_id: string;
+        };
+        SlackLinkForm: {
+            /** @default  */
+            token?: string;
+            /** @default  */
+            csrf_token?: string;
         };
         PendingChatSpaceListResponse: {
             items: components["schemas"]["PendingChatSpace"][];
