@@ -428,7 +428,6 @@ Every root command groups one concern: `gen`, `build`, `test`, `verify`, `qualit
 | One vault for workspace, personal and device secrets | 12.1.0 |
 | A monthly AI budget in US dollars | 12.1.0 |
 | “Always ask first” for every write | 12.1.0 |
-| SubKit Desktop for Windows x64 | 12.1.0 |
 | SubKit Desktop | 11.2.0 |
 | Tasks: a goal, a plan and limits | 11.0.0 |
 | SubKit Cloud | 10.1.4 |

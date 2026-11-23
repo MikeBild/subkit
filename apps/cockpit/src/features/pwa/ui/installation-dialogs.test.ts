@@ -147,9 +147,9 @@ describe("what the install dialog says about the desktop app", () => {
   test("it points at the latest release for the desktop app without a link of its own", () => {
     const de = translate("de", "installation.desktopLater");
     expect(de).toContain("als Web-App");
-    expect(de).toContain("SubKit Desktop für Mac und Windows findest du im neuesten Release");
+    expect(de).toContain("SubKit Desktop für den Mac findest du im neuesten Release");
     const en = translate("en", "installation.desktopLater");
-    expect(en).toContain("SubKit Desktop for Mac and Windows is in the latest release");
+    expect(en).toContain("SubKit Desktop for Mac is in the latest release");
     for (const text of [de, en]) expect(text).not.toMatch(/https?:|download|herunterladen/i);
   });
 

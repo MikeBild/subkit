@@ -199,7 +199,7 @@ export const shellEn = {
   "installation.installHint":
     "This option is available in browsers that support web app installation.",
   "installation.desktopLater":
-    "This installs the Cockpit as a web app. SubKit Desktop for Mac and Windows is in the latest release.",
+    "This installs the Cockpit as a web app. SubKit Desktop for Mac is in the latest release; the Windows app is coming soon.",
   "installation.unavailableTitle": "Installation unavailable",
   "installation.unavailable":
     "Installation is not currently available in this browser. You can continue using the Cockpit in the browser.",
@@ -437,7 +437,7 @@ export const shellDe: Record<keyof typeof shellEn, string> = {
   "installation.installHint":
     "Diese Option ist in Browsern verfügbar, die die Installation von Web-Apps unterstützen.",
   "installation.desktopLater":
-    "Damit installierst du das Cockpit als Web-App. SubKit Desktop für Mac und Windows findest du im neuesten Release.",
+    "Damit installierst du das Cockpit als Web-App. SubKit Desktop für den Mac findest du im neuesten Release; die App für Windows folgt.",
   "installation.unavailableTitle": "Installation nicht möglich",
   "installation.unavailable":
     "Die Installation ist in diesem Browser derzeit nicht verfügbar. Du kannst das Cockpit weiterhin im Browser verwenden.",
