@@ -184,6 +184,10 @@
       "hash": "17bc149d105d7224d954b10d817417d2ac52e8cb7070098f64010eb271f1808e",
       "proven_at": "2026-11-22"
     },
+    "personal-notes-writer": {
+      "hash": "46c61275a9d3e84062afdf073617b95b6e1ab683f3d2f4ce01e208080335a709",
+      "proven_at": "2026-11-23"
+    },
     "provider-error-classifier": {
       "hash": "37cc35aeda734ad68c589324a2d2638ec270072fa4e47dc28b17023127f31e66",
       "proven_at": "2026-11-22"

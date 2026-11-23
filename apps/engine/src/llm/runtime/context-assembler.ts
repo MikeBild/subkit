@@ -7,6 +7,7 @@ import {
   recordAuthoringContextSkillsUsed,
   recordLlmContextAssembled,
 } from "../../observability/instrumentation.ts";
+import { loadPersonalNotesBlock } from "../../personal-notes/index.ts";
 import { loadActiveConventions, NO_CONVENTIONS } from "../../skills/conventions.ts";
 import { retrieveApplicableSkills } from "../../skills/service.ts";
 import { type Skill, skillOfferedTo } from "../../skills/types.ts";
@@ -161,7 +162,8 @@ export async function assembleEnhancedPrompt(
 
   const query = buildQuery(p.user_turns, p.retrieval_query);
 
-  const preEmbedCorpus = p.flow !== "converse" && p.flow !== "summarize";
+  const preEmbedCorpus =
+    p.flow !== "converse" && p.flow !== "summarize" && p.flow !== "personal_notes";
   const knowledgeChunks: IncludedKnowledgeChunk[] = [];
   const chunks: IncludedChunk[] = [];
   const knowledgePreload = knowledgePreloadPlan({
@@ -211,6 +213,13 @@ export async function assembleEnhancedPrompt(
     }
   }
 
+  let personalNotesBlock =
+    p.flow === "converse" && p.principal
+      ? await loadPersonalNotesBlock(
+          { tenant_id: p.tenant_id, principal: p.principal, query, context_cap: cap },
+          db,
+        )
+      : null;
   let failures = p.prior_failures ?? [];
   let userMemory = typeof p.user_memory === "string" ? p.user_memory.trim() : "";
   let authoringContext = typeof p.authoring_context === "string" ? p.authoring_context.trim() : "";
@@ -395,6 +404,7 @@ export async function assembleEnhancedPrompt(
       if (knowledgePreload) vol(formatKnowledgeChunk(kc));
       else sections.push(formatKnowledgeChunk(kc));
     }
+    if (personalNotesBlock) vol(personalNotesBlock);
     if (userMemory) vol(formatUserMemory(userMemory));
     for (const c of chunks) sections.push(formatChunk(c));
     if (connectorSchemaBlock) sections.push(connectorSchemaBlock);
@@ -464,6 +474,9 @@ export async function assembleEnhancedPrompt(
     } else if (knowledgeChunks.length > 0) {
       knowledgeChunks.pop();
       trimmed.push("knowledge");
+    } else if (personalNotesBlock) {
+      personalNotesBlock = null;
+      trimmed.push("personal_notes");
     } else if (userMemory) {
       userMemory = "";
       trimmed.push("user_memory");

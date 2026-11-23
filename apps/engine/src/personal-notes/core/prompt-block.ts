@@ -1,3 +1,4 @@
+import { wrapUntrusted } from "@shared/untrusted-content.ts";
 import type { NoteArea } from "./apply-proposals.ts";
 
 export const PERSONAL_NOTES_MAX = 12;
@@ -23,7 +24,7 @@ function line(note: PromptNote): string {
 
 export function formatPersonalNotes(notes: readonly PromptNote[]): string {
   if (notes.length === 0) return "";
-  return [HEADING, RULES, ...notes.map(line)].join("\n");
+  return [HEADING, RULES, wrapUntrusted("notes", notes.map(line).join("\n"))].join("\n");
 }
 
 export function personalNotesBudget(context_cap: number): number {
