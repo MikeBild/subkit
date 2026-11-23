@@ -20,7 +20,7 @@
       "!**/bun.lockb",
       "!packages/cli-core/src/engine-api/openapi.d.ts",
       "!packages/cli-core/src/engine-api/openapi.json",
-      "!assets/cockpit",
+      "!assets",
       "!apps/cockpit/src/app/release-notes.generated.ts",
       "!apps/cockpit/src/lib/service-icons.generated.ts",
       "!apps/cockpit/src/lib/service-icon-marks.generated.ts",
@@ -30,7 +30,6 @@
       "!apps/engine/src/db/migrations/embedded.ts",
       "!apps/engine/eval/out",
       "!.agent-prime.json",
-      "!assets/clipper",
       "!apps/engine/src/sandboxes/quickjs/stdlib/helpers/*.js"
     ]
   },

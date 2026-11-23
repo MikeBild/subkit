@@ -111,7 +111,10 @@ rotate together with a release.
 
 Every release attaches the Web Clipper as `subkit-clipper.zip`, so
 `https://github.com/MikeBild/subkit/releases/latest/download/subkit-clipper.zip` always serves the
-newest version. `bun run release bump` renders the version into its manifest.
+newest version. The repository holds only its source in `apps/clipper`: every engine, `subkit` and
+image build runs `bun run build clipper` first, which writes the archive with the version from
+`package.json` to the ignored `assets/clipper/`. The release takes the asset from the image it
+ships, so it is byte for byte the archive the engine serves at `/install/clipper.zip`.
 
 The Web Clipper is published in the Chrome Web Store as
 [`odefbnmjeehgfbanpaajiaocliccldma`](https://chromewebstore.google.com/detail/odefbnmjeehgfbanpaajiaocliccldma).

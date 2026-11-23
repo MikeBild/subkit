@@ -166,8 +166,8 @@ function generate(name: string, check: boolean): Step[] {
   return [gen.run, diff(`${gen.run.label} --check`, ...(gen.outputs ?? []))];
 }
 
-function buildClipper(check: boolean): Step[] {
-  return [bun("build clipper", "scripts/build-clipper.ts", ...(check ? ["--check"] : []))];
+function buildClipper(): Step[] {
+  return [bun("build clipper", "scripts/build-clipper.ts")];
 }
 
 function buildCockpit(check: boolean): Step[] {
@@ -183,7 +183,7 @@ function buildCockpit(check: boolean): Step[] {
 
 function buildAssets(): Step[] {
   return [
-    ...buildClipper(false),
+    ...buildClipper(),
     ...buildCockpit(false),
     bun("fetch embedding assets", "scripts/fetch-embedding-assets.ts"),
   ];
@@ -212,7 +212,7 @@ function buildEngine(ctx: Context, args: Args): Step[] {
 function buildSk(ctx: Context, args: Args): Step[] {
   const outfile = args.options.get("--outfile") ?? "dist/subkit";
   return [
-    ...(args.flags.has("--skip-deps") ? [] : buildClipper(false)),
+    ...(args.flags.has("--skip-deps") ? [] : buildClipper()),
     step(
       "compile subkit",
       compileCommand({
@@ -342,9 +342,9 @@ export const GATE: readonly Check[] = [
   },
   {
     id: "clipper",
-    summary: "clipper archive is current",
+    summary: "clipper archive builds",
     profiles: [S, F, R],
-    steps: () => buildClipper(true),
+    steps: () => buildClipper(),
   },
   {
     id: "cockpit",
@@ -584,8 +584,8 @@ export const CONCERNS: Readonly<Record<string, Concern>> = {
   build: {
     assets: { summary: "clipper, cockpit and embedding assets", plan: () => buildAssets() },
     clipper: {
-      summary: "clipper archive [--check]",
-      plan: (_ctx, args) => buildClipper(args.flags.has("--check")),
+      summary: "clipper archive",
+      plan: () => buildClipper(),
     },
     cockpit: {
       summary: "icons, cockpit bundle and its embed [--check]",

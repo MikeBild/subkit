@@ -1,5 +1,5 @@
 import { defineCommand } from "citty";
-import { clipperArchiveManifest, clipperArchivePath } from "../clipper-assets.ts";
+import { loadClipperAssets } from "../clipper-assets.ts";
 import { installClipper, openChromeExtensions } from "../clipper-install.ts";
 
 const installCommand = defineCommand({
@@ -15,8 +15,7 @@ const installCommand = defineCommand({
   },
   async run({ args }) {
     const targetDir = await installClipper({
-      archivePath: clipperArchivePath,
-      manifest: clipperArchiveManifest,
+      ...(await loadClipperAssets()),
       ...(typeof args.dir === "string" ? { targetDir: args.dir } : {}),
       ...(typeof args["engine-url"] === "string" ? { engineUrl: args["engine-url"] } : {}),
     });

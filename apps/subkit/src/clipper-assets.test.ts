@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { clipperArchiveManifest, clipperArchivePath } from "./clipper-assets.ts";
+import { loadClipperAssets } from "./clipper-assets.ts";
 import { installClipper } from "./clipper-install.ts";
 
 const directories: string[] = [];
@@ -19,14 +19,14 @@ describe("embedded clipper archive", () => {
     directories.push(directory);
     const targetDir = path.join(directory, "installed");
 
+    const assets = await loadClipperAssets();
     await installClipper({
-      archivePath: clipperArchivePath,
-      manifest: clipperArchiveManifest,
+      ...assets,
       targetDir,
       engineUrl: "https://engine.example.test",
     });
 
-    for (const file of clipperArchiveManifest.files) {
+    for (const file of assets.manifest.files) {
       expect(await fs.stat(path.join(targetDir, file))).toBeDefined();
     }
     expect(

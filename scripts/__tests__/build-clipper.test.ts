@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import sharp from "sharp";
 import { fromBuffer } from "yauzl";
-import { chromeScriptSource, createClipperArchive } from "../build-clipper.ts";
+import { chromeScriptSource, createClipperArchive, produceClipper } from "../build-clipper.ts";
 
 async function readArchive(archive: Buffer): Promise<Map<string, Buffer>> {
   return new Promise((resolve, reject) => {
@@ -51,7 +52,13 @@ describe("clipper release archive", () => {
 
   test("shipped extension includes decodable-size icons and their source license", async () => {
     const root = join(import.meta.dir, "../..");
-    const files = await readArchive(await readFile(join(root, "assets/clipper/clipper.zip")));
+    const clipper = await produceClipper();
+    const files = await readArchive(clipper.archive);
+    expect(createHash("sha256").update(clipper.archive).digest("hex")).toBe(clipper.sha256);
+    expect(JSON.parse(clipper.manifest)).toEqual({
+      sha256: clipper.sha256,
+      files: [...files.keys()].sort(),
+    });
     const manifestBytes = files.get("manifest.json");
     if (!manifestBytes) throw new Error("Shipped extension manifest missing");
     const manifest = JSON.parse(manifestBytes.toString("utf8")) as {

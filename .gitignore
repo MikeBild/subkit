@@ -42,7 +42,7 @@ docs/
 AGENTS.md
 CLAUDE.md
 /SKILLS.md
-/assets/cockpit/
+/assets/
 /apps/engine/src/http/cockpit-embedded.ts
 .stryker-tmp*/
 /.reports/

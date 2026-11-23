@@ -42,7 +42,7 @@ describe("GET /install/clipper.zip", () => {
       createHash("sha256")
         .update(await response.bytes())
         .digest("hex"),
-    ).toBe(_internal.clipperManifest.sha256);
+    ).toBe((await _internal.verifyArchive()).sha256);
   });
 
   test("serves the embedded archive with its verified checksum", async () => {
@@ -52,12 +52,11 @@ describe("GET /install/clipper.zip", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("application/zip");
     expect(response.headers.get("content-disposition")).toBe('attachment; filename="clipper.zip"');
-    expect(response.headers.get("x-subkit-sha256")).toBe(_internal.clipperManifest.sha256);
+    const { sha256 } = await _internal.verifyArchive();
+    expect(response.headers.get("x-subkit-sha256")).toBe(sha256);
 
     const archive = new Uint8Array(await response.arrayBuffer());
     expect(response.headers.get("content-length")).toBe(String(archive.byteLength));
-    expect(createHash("sha256").update(archive).digest("hex")).toBe(
-      _internal.clipperManifest.sha256,
-    );
+    expect(createHash("sha256").update(archive).digest("hex")).toBe(sha256);
   });
 });

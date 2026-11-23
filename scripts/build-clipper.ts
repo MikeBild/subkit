@@ -34,7 +34,13 @@ async function staticFiles(directory: string, files: Map<string, Uint8Array>): P
   }
 }
 
-export async function buildClipper(check = false): Promise<string> {
+export interface ClipperBuild {
+  archive: Buffer;
+  sha256: string;
+  manifest: string;
+}
+
+export async function produceClipper(): Promise<ClipperBuild> {
   const files = new Map<string, Uint8Array>();
   await staticFiles(join(app, "public"), files);
   const icon = await readFile(join(root, "apps/cockpit/public/favicon.svg"));
@@ -118,23 +124,18 @@ export async function buildClipper(check = false): Promise<string> {
   const archive = createClipperArchive(files);
   const sha256 = createHash("sha256").update(archive).digest("hex");
   const manifest = `${JSON.stringify({ sha256, files: [...files.keys()].sort() }, null, 2)}\n`;
-  if (check) {
-    const [existing, metadata] = await Promise.all([
-      readFile(join(output, "clipper.zip")),
-      readFile(join(output, "manifest.json"), "utf8"),
-    ]);
-    if (!archive.equals(existing) || metadata !== manifest) {
-      throw new Error("Clipper archive is stale; run bun run build clipper");
-    }
-  } else {
-    await mkdir(output, { recursive: true });
-    await writeFile(join(output, "clipper.zip"), archive);
-    await writeFile(join(output, "manifest.json"), manifest);
-  }
+  return { archive, sha256, manifest };
+}
+
+export async function buildClipper(): Promise<string> {
+  const { archive, sha256, manifest } = await produceClipper();
+  await mkdir(output, { recursive: true });
+  await writeFile(join(output, "clipper.zip"), archive);
+  await writeFile(join(output, "manifest.json"), manifest);
   return sha256;
 }
 
 if (import.meta.main) {
-  const sha = await buildClipper(process.argv.includes("--check"));
+  const sha = await buildClipper();
   process.stdout.write(`SubKit Clipper ${sha}\n`);
 }

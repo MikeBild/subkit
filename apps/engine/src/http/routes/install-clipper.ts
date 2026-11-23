@@ -1,7 +1,5 @@
 import { createHash } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import clipperArchivePath from "../../../../../assets/clipper/clipper.zip" with { type: "file" };
-import clipperManifestJson from "../../../../../assets/clipper/manifest.json" with { type: "json" };
 import type { AppEnv } from "../openapi.ts";
 
 const ClipperManifestSchema = z.object({
@@ -9,21 +7,33 @@ const ClipperManifestSchema = z.object({
   files: z.array(z.string().min(1)).min(1),
 });
 
-const clipperManifest = ClipperManifestSchema.parse(clipperManifestJson);
-let archiveVerification: Promise<{ size: number }> | null = null;
-
-async function verifyArchive(): Promise<{ size: number }> {
-  const archive = Bun.file(clipperArchivePath);
-  const buffer = await archive.arrayBuffer();
-  const sha256 = createHash("sha256").update(new Uint8Array(buffer)).digest("hex");
-  if (sha256 !== clipperManifest.sha256) {
-    throw new Error("clipper archive checksum verification failed");
-  }
-  return { size: buffer.byteLength };
+interface VerifiedArchive {
+  path: string;
+  sha256: string;
+  size: number;
 }
 
-function getArchiveVerification(): Promise<{ size: number }> {
-  archiveVerification ??= verifyArchive();
+let archiveVerification: Promise<VerifiedArchive> | null = null;
+
+async function verifyArchive(): Promise<VerifiedArchive> {
+  const [{ default: path }, { default: manifestJson }] = await Promise.all([
+    import("../../../../../assets/clipper/clipper.zip", { with: { type: "file" } }),
+    import("../../../../../assets/clipper/manifest.json", { with: { type: "json" } }),
+  ]);
+  const manifest = ClipperManifestSchema.parse(manifestJson);
+  const buffer = await Bun.file(path).arrayBuffer();
+  const sha256 = createHash("sha256").update(new Uint8Array(buffer)).digest("hex");
+  if (sha256 !== manifest.sha256) {
+    throw new Error("clipper archive checksum verification failed");
+  }
+  return { path, sha256, size: buffer.byteLength };
+}
+
+function getArchiveVerification(): Promise<VerifiedArchive> {
+  archiveVerification ??= verifyArchive().catch((error: unknown) => {
+    archiveVerification = null;
+    throw error;
+  });
   return archiveVerification;
 }
 
@@ -53,13 +63,13 @@ const route = createRoute({
 export function registerInstallClipperRoute(app: OpenAPIHono<AppEnv>): void {
   app.openapi(route, async (c) => {
     try {
-      const { size } = await getArchiveVerification();
-      return c.body(Bun.file(clipperArchivePath).stream(), 200, {
+      const { path, sha256, size } = await getArchiveVerification();
+      return c.body(Bun.file(path).stream(), 200, {
         "cache-control": "public, max-age=3600",
         "content-disposition": 'attachment; filename="clipper.zip"',
         "content-length": String(size),
         "content-type": "application/zip",
-        "x-subkit-sha256": clipperManifest.sha256,
+        "x-subkit-sha256": sha256,
       });
     } catch {
       return c.text("clipper archive unavailable\n", 503, { "cache-control": "no-store" });
@@ -71,6 +81,5 @@ export const _internal = {
   clearArchiveVerification: () => {
     archiveVerification = null;
   },
-  clipperManifest,
   verifyArchive,
 };

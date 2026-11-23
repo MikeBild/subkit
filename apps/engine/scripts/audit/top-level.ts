@@ -2,7 +2,6 @@ export const TOP_LEVEL_DIRECTORIES: Readonly<Record<string, string>> = {
   ".githooks": "git hooks",
   ".github": "CI workflows",
   apps: "the products",
-  assets: "built bundles the binaries embed",
   docker:
     "container entrypoint scripts, the image source offer and the test and demo compose files",
   packages: "code shared between apps",

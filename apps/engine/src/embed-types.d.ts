@@ -52,3 +52,8 @@ declare module "*.sh" {
   const content: string;
   export default content;
 }
+
+declare module "*/clipper/manifest.json" {
+  const manifest: unknown;
+  export default manifest;
+}

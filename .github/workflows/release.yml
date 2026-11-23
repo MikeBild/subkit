@@ -150,9 +150,14 @@ jobs:
           MASTER_KEY: "00000000000000000000000000000000000000000000000000000000000000aa"
           SUBKIT_IMAGE: subkit:release
         run: |
+          set -euo pipefail
           docker compose -p subkit-release -f docker-compose.yml up --detach --wait --wait-timeout 360
           curl --fail --silent --show-error http://127.0.0.1:3000/health
           curl --fail --silent --show-error http://127.0.0.1:3000/ready
+          curl --fail --silent --show-error --dump-header "$RUNNER_TEMP/clipper.headers" --output "$RUNNER_TEMP/subkit-clipper.zip" http://127.0.0.1:3000/install/clipper.zip
+          expected=$(awk 'tolower($1) == "x-subkit-sha256:" { print $2 }' "$RUNNER_TEMP/clipper.headers" | tr -d '\r')
+          [[ "$expected" =~ ^[0-9a-f]{64}$ ]] || { echo "served clipper archive has no checksum header" >&2; exit 1; }
+          [ "$(sha256sum "$RUNNER_TEMP/subkit-clipper.zip" | awk '{print $1}')" = "$expected" ] || { echo "served clipper archive differs from its checksum" >&2; exit 1; }
 
       - name: Compose logs and cleanup
         if: always()
@@ -175,7 +180,7 @@ jobs:
           cp subkit.config.example.json assets/subkit.config.example.json
           cp scripts/install.sh assets/install.sh
           cp LICENSE assets/LICENSE
-          cp assets/clipper/clipper.zip assets/subkit-clipper.zip
+          cp "$RUNNER_TEMP/subkit-clipper.zip" assets/subkit-clipper.zip
           rm -f assets/SHA256SUMS
           for a in engine_linux_x64 subkit-darwin-arm64 subkit-linux-arm64 subkit-linux-x64 subkit-windows-x64.exe docker-compose.yml subkit.config.example.json install.sh subkit-clipper.zip LICENSE THIRD_PARTY_NOTICES.txt; do
             test -s "assets/$a"
