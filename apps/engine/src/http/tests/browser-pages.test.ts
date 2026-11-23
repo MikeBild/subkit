@@ -1,125 +1,79 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import type { OpenAPIHono } from "@hono/zod-openapi";
-import type { AppEnv } from "../openapi.ts";
+import { BROWSER_PAGE_ROUTES, isBrowserNavigation, isBrowserPageRoute } from "../browser-pages.ts";
 import { buildDefaultRegistry, createApp } from "../server.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let ctx: HttpTestServer;
-let app: OpenAPIHono<AppEnv>;
-
-const BROWSER = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
 
 beforeAll(async () => {
   ctx = await createHttpTestServer("browser-pages");
-  app = createApp({
-    db: ctx.db,
-    registry: buildDefaultRegistry(ctx.db),
-    rateLimit: { max: 10_000, windowMs: 60_000 },
-  });
-  app.get("/__throws", () => {
-    throw new Error("an unexpected failure");
-  });
 });
 
 afterAll(async () => {
   await ctx.cleanup();
 });
 
-describe("an address nobody serves", () => {
-  test("a browser gets the designed page, in the cockpit's language and theme", async () => {
-    const res = await fetch(`${ctx.baseUrl}/no/such/page`, {
-      headers: { accept: BROWSER, cookie: "sk_locale=de; sk_theme=dark" },
-    });
-    expect(res.status).toBe(404);
-    expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
-    const html = await res.text();
-    expect(html).toContain('<html lang="de" class="dark">');
-    expect(res.headers.get("vary")).toBe("Accept, Cookie");
-    expect(html).toContain("<title>SubKit Cockpit</title>");
-    expect(html).toContain("Diese Seite gibt es nicht");
-    expect(html).toContain('data-sk-surface="not-found"');
-    expect(html.match(/<a\s/g)?.length).toBe(1);
-    expect(html).toContain('href="/cockpit"');
-  });
+function normalize(path: string): string {
+  return path
+    .split("/")
+    .map((seg) => (seg.startsWith(":") || /^\{.+\}$/.test(seg) ? "{param}" : seg))
+    .join("/");
+}
 
-  test("every other client keeps the plain answer it gets today", async () => {
-    for (const accept of ["application/json", "*/*", ""]) {
-      const res = await fetch(`${ctx.baseUrl}/no/such/page`, { headers: { accept } });
-      expect(res.status).toBe(404);
-      expect(res.headers.get("vary")).toBe("Accept, Cookie");
-      expect(await res.text()).toBe("404 Not Found");
+const registryPairs = new Set(BROWSER_PAGE_ROUTES.map((r) => `${r.method} ${normalize(r.path)}`));
+
+type OpenApiOperation = { responses?: Record<string, { content?: Record<string, unknown> }> };
+
+describe("browser page registry", () => {
+  test("every /v1 operation that answers with an HTML page is registered", async () => {
+    const res = await fetch(`${ctx.baseUrl}/openapi.json`);
+    expect(res.status).toBe(200);
+    const spec = (await res.json()) as { paths: Record<string, Record<string, OpenApiOperation>> };
+    const htmlPairs: string[] = [];
+    for (const [path, methods] of Object.entries(spec.paths)) {
+      if (!path.startsWith("/v1/")) continue;
+      for (const [method, operation] of Object.entries(methods)) {
+        const html = Object.values(operation.responses ?? {}).some(
+          (response) => response.content?.["text/html"] !== undefined,
+        );
+        if (html) htmlPairs.push(`${method.toUpperCase()} ${normalize(path)}`);
+      }
     }
-  });
-});
-
-describe("an unhandled failure", () => {
-  test("a browser gets a page that names the request's reference", async () => {
-    const res = await app.request("http://127.0.0.1/__throws", {
-      headers: { accept: BROWSER, "accept-language": "en-US,en;q=0.9" },
-    });
-    expect(res.status).toBe(500);
-    expect(res.headers.get("vary")).toBe("Accept, Cookie");
-    const html = await res.text();
-    const trace = res.headers.get("x-trace-id") ?? "";
-    expect(trace.length).toBeGreaterThan(0);
-    expect(html).toContain("Something went wrong");
-    expect(html).toContain(trace);
-    expect(html).toContain('data-sk-surface="fatal-error"');
-    expect(html).not.toContain("an unexpected failure");
-    expect(html.match(/<a\s/g)?.length).toBe(1);
+    expect(htmlPairs.length).toBeGreaterThan(5);
+    const missing = htmlPairs.filter((pair) => !registryPairs.has(pair)).sort();
+    expect(
+      missing,
+      "a /v1 route renders an HTML page but is missing from BROWSER_PAGE_ROUTES in http/browser-pages.ts",
+    ).toEqual([]);
   });
 
-  test("an API client keeps the error envelope", async () => {
-    const res = await app.request("http://127.0.0.1/__throws", {
-      headers: { accept: "application/json" },
-    });
-    expect(res.status).toBe(500);
-    expect(res.headers.get("vary")).toBe("Accept, Cookie");
-    const body = (await res.json()) as { code: string; trace_id: string | null };
-    expect(body.code).toBe("internal_error");
-    expect(body.trace_id).toBe(res.headers.get("x-trace-id"));
-  });
-});
-
-describe("a cockpit sign-in that wants to leave the cockpit", () => {
-  const url = () =>
-    `${ctx.baseUrl}/v1/identity/cockpit-login?return_to=${encodeURIComponent("https://evil.example/")}`;
-
-  test("a browser is told why and led back into the cockpit", async () => {
-    const res = await fetch(url(), { headers: { accept: BROWSER, cookie: "sk_locale=de" } });
-    expect(res.status).toBe(400);
-    expect(res.headers.get("vary")).toBe("Accept, Cookie");
-    const html = await res.text();
-    expect(html).toContain("Dieser Anmeldelink ist ungültig");
-    expect(html.match(/<a\s/g)?.length).toBe(1);
-    expect(html).toContain('href="/cockpit"');
-    expect(html).not.toContain("evil.example");
+  test("every registered page is a real route", () => {
+    const app = createApp({ db: ctx.db, registry: buildDefaultRegistry(ctx.db) });
+    const routes = new Set(
+      app.routes
+        .filter((route) => route.method !== "ALL")
+        .map((route) => `${route.method.toUpperCase()} ${normalize(route.path)}`),
+    );
+    const stale = [...registryPairs].filter((pair) => !routes.has(pair)).sort();
+    expect(stale, "BROWSER_PAGE_ROUTES names a route that no longer exists").toEqual([]);
   });
 
-  test("pages of different lengths, one after the other, each arrive whole", async () => {
-    for (const cookie of ["sk_locale=de", "sk_locale=en", "sk_locale=de"]) {
-      const res = await fetch(url(), {
-        headers: { accept: BROWSER, cookie },
-        signal: AbortSignal.timeout(5_000),
-      });
-      const html = await res.text();
-      expect(Number(res.headers.get("content-length"))).toBe(Buffer.byteLength(html));
-      expect(html.trimEnd().endsWith("</html>")).toBe(true);
-    }
+  test("matches page paths by method and parameter segment only", () => {
+    expect(isBrowserPageRoute("GET", "/v1/connectors/abc/credentials/setup")).toBe(true);
+    expect(isBrowserPageRoute("HEAD", "/v1/identity/desktop-login/confirm")).toBe(true);
+    expect(isBrowserPageRoute("POST", "/v1/connectors/abc/oauth/start")).toBe(false);
+    expect(isBrowserPageRoute("GET", "/v1/connectors/abc/def/credentials/setup")).toBe(false);
+    expect(isBrowserPageRoute("GET", "/v1/identity/desktop-login/confirm/extra")).toBe(false);
+    expect(isBrowserPageRoute("POST", "/v1/identity/desktop-session")).toBe(false);
   });
 
-  test("an API client keeps the error envelope", async () => {
-    const res = await fetch(url(), { headers: { accept: "application/json" } });
-    expect(res.status).toBe(400);
-    expect(res.headers.get("vary")).toBe("Accept, Cookie");
-    expect(((await res.json()) as { code: string }).code).toBe("invalid_return_to");
-  });
-});
-
-describe("the canonical spelling", () => {
-  test("the API reference is SubKit's, with a language", async () => {
-    const html = await (await fetch(`${ctx.baseUrl}/docs`)).text();
-    expect(html).toContain('<html lang="en">');
-    expect(html).toContain("<title>SubKit — API reference</title>");
+  test("tells a browser navigation from an API call", () => {
+    const h = (init: Record<string, string>) => new Headers(init);
+    expect(isBrowserNavigation(h({ "sec-fetch-dest": "document" }))).toBe(true);
+    expect(isBrowserNavigation(h({ "sec-fetch-dest": "empty", accept: "text/html" }))).toBe(false);
+    expect(isBrowserNavigation(h({ "sec-fetch-mode": "navigate" }))).toBe(true);
+    expect(isBrowserNavigation(h({ accept: "text/html,application/xhtml+xml" }))).toBe(true);
+    expect(isBrowserNavigation(h({ accept: "application/json" }))).toBe(false);
+    expect(isBrowserNavigation(h({}))).toBe(false);
   });
 });

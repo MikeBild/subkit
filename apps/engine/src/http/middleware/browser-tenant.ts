@@ -3,6 +3,7 @@ import type { MiddlewareHandler } from "hono";
 import { browserSessionForPrincipal, canonicalBrowserPath } from "../../auth/browser-session.ts";
 import { sessions } from "../../db/schema/index.ts";
 import { logger } from "../../logging/index.ts";
+import { isBrowserPageRoute } from "../browser-pages.ts";
 import type { AppEnv } from "../openapi.ts";
 
 const IDENTITY_PATHS = new Set([
@@ -24,7 +25,7 @@ export function browserTenantMiddleware(): MiddlewareHandler<AppEnv> {
     if (
       IDENTITY_PATHS.has(path) ||
       path.startsWith("/v1/identity/login/") ||
-      path.startsWith("/v1/identity/desktop-login/") ||
+      isBrowserPageRoute(c.req.method, path) ||
       path.startsWith("/v1/oauth/") ||
       path.startsWith("/v1/tool-approvals/")
     ) {
