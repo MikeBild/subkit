@@ -1,7 +1,7 @@
-import { and, eq, isNull, lte, min, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, isNull, lte, min, sql } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
-import { deviceRunners, deviceWaits, executions } from "../db/schema/index.ts";
+import { deviceCommands, deviceRunners, deviceWaits, executions } from "../db/schema/index.ts";
 import {
   DEVICE_ONLINE_WINDOW_MS,
   WAIT_ATTENTION_AFTER_MS,
@@ -10,6 +10,12 @@ import { type ComputerPermission, missingPermissions } from "../devices/core/per
 import { hasBuiltinAdminRole } from "../rbac/index.ts";
 import type { TenantFacts } from "./attention-readers.ts";
 import { type AttentionItem, compareAttentionItems } from "./core/attention.ts";
+import {
+  HANDOVER_COMMAND_KINDS,
+  handoverAttentionItem,
+  projectHandovers,
+  type WaitingHandover,
+} from "./core/device-handover.ts";
 import { cockpitRunsHref } from "./operating-figures.ts";
 
 export interface WaitingDevice {
@@ -157,23 +163,63 @@ export async function permissionGaps(db: Db, tenant_id: string): Promise<Permiss
   });
 }
 
+export async function waitingHandovers(
+  db: Db,
+  tenant_id: string,
+  now: Date,
+): Promise<WaitingHandover[]> {
+  const rows = await db
+    .select({
+      device_id: deviceCommands.device_id,
+      device_label: deviceRunners.device_label,
+      owner_user_id: deviceRunners.owner_user_id,
+      claimed_at: deviceCommands.claimed_at,
+      deadline_at: deviceCommands.deadline_at,
+      execution_id: deviceCommands.execution_id,
+      conversation_id: deviceCommands.conversation_id,
+    })
+    .from(deviceCommands)
+    .innerJoin(
+      deviceRunners,
+      and(
+        eq(deviceRunners.tenant_id, deviceCommands.tenant_id),
+        eq(deviceRunners.id, deviceCommands.device_id),
+      ),
+    )
+    .where(
+      and(
+        eq(deviceCommands.tenant_id, tenant_id),
+        eq(deviceCommands.state, "claimed"),
+        inArray(deviceCommands.kind, [...HANDOVER_COMMAND_KINDS]),
+        isNotNull(deviceCommands.claimed_at),
+        gt(deviceCommands.deadline_at, now),
+        isNull(deviceRunners.revoked_at),
+      ),
+    )
+    .limit(100);
+  return projectHandovers(
+    rows.flatMap((row) => (row.claimed_at ? [{ ...row, claimed_at: row.claimed_at }] : [])),
+  );
+}
+
 export async function withDeviceFacts(
   db: Db,
   tenantId: string,
   facts: TenantFacts,
   now: Date,
 ): Promise<TenantFacts> {
-  const [device_waits, device_permissions] = await Promise.all([
+  const [device_waits, device_permissions, device_handovers] = await Promise.all([
     waitingDevices(db, tenantId, now).catch(() => facts.device_waits ?? []),
     permissionGaps(db, tenantId).catch(() => facts.device_permissions ?? []),
+    waitingHandovers(db, tenantId, now).catch(() => facts.device_handovers ?? []),
   ]);
-  return { ...facts, device_waits, device_permissions };
+  return { ...facts, device_waits, device_permissions, device_handovers };
 }
 
 export function withDeviceAttention(
   principal: ResolvedPrincipal,
   items: readonly AttentionItem[],
-  facts: Pick<TenantFacts, "device_waits" | "device_permissions">,
+  facts: Pick<TenantFacts, "device_waits" | "device_permissions" | "device_handovers">,
 ): AttentionItem[] {
   if (principal.kind !== "user") return [...items];
   const admin = hasBuiltinAdminRole(principal);
@@ -183,6 +229,9 @@ export function withDeviceAttention(
   const gaps = (facts.device_permissions ?? [])
     .filter((gap) => gap.owner_user_id === principal.id)
     .map(permissionGapAttentionItem);
-  if (waits.length === 0 && gaps.length === 0) return [...items];
-  return [...items, ...waits, ...gaps].sort(compareAttentionItems);
+  const handovers = (facts.device_handovers ?? [])
+    .filter((handover) => handover.owner_user_id === principal.id)
+    .map(handoverAttentionItem);
+  if (waits.length === 0 && gaps.length === 0 && handovers.length === 0) return [...items];
+  return [...items, ...waits, ...gaps, ...handovers].sort(compareAttentionItems);
 }

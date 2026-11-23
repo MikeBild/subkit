@@ -29,6 +29,7 @@ describe("step form", () => {
     const stored = {
       id: "send-mail",
       kind: "request",
+      protocol: "http",
       connector_id: CONNECTOR,
       method: "POST",
       path: "/messages/send",
@@ -72,6 +73,7 @@ describe("step form", () => {
     const stored = {
       id: "search",
       kind: "request",
+      protocol: "http",
       connector_id: CONNECTOR,
       method: "POST",
       path: "/search",
@@ -91,6 +93,7 @@ describe("step form", () => {
     const stored = {
       id: "search",
       kind: "request",
+      protocol: "http",
       connector_id: CONNECTOR,
       method: "GET",
       path: "/search",
@@ -103,6 +106,7 @@ describe("step form", () => {
       step: {
         id: "search",
         kind: "request",
+        protocol: "http",
         connector_id: CONNECTOR,
         method: "GET",
         path: "/search",
@@ -133,6 +137,7 @@ describe("step form", () => {
     const stored = {
       id: "fetch",
       kind: "request",
+      protocol: "http",
       connector_id: CONNECTOR,
       method: "GET",
       path: "/users",
@@ -221,7 +226,19 @@ describe("step form", () => {
       false,
     );
     expect(isFormStep({ id: "a", kind: "transform", language: "readability" })).toBe(false);
-    expect(isFormStep({ id: "a", kind: "loop", over: "x", body: [] })).toBe(false);
+    expect(isFormStep({ id: "a", kind: "model", prompt: "x" })).toBe(false);
+    expect(
+      isFormStep({
+        id: "a",
+        kind: "request",
+        protocol: "http",
+        connector_id: CONNECTOR,
+        path: "/x",
+      }),
+    ).toBe(true);
+    expect(isFormStep({ id: "a", kind: "request", protocol: "sql", connector_id: CONNECTOR })).toBe(
+      false,
+    );
   });
 
   test("a name with spaces becomes one with dashes", () => {

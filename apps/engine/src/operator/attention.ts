@@ -20,9 +20,11 @@ import {
   type AttentionV1,
   needsApproval,
   projectAttentionItems,
+  splitSnoozed,
 } from "./core/attention.ts";
 import { withDeviceAttention, withDeviceFacts } from "./device-attention.ts";
 import { withPairApprovals, withPendingPairRequests } from "./pair-approval-attention.ts";
+import { activeSnoozes } from "./persistence/attention-snoozes.ts";
 import { withPausedSchedules } from "./schedule-pause-attention.ts";
 import {
   readTaskAttention,
@@ -211,12 +213,18 @@ export async function buildAttention(
     () => waited,
   );
   const projectedItems = withDeviceAttention(principal, paired, facts);
+  const snoozes =
+    principal.kind === "user" && projectedItems.length > 0
+      ? await activeSnoozes(db, { tenant_id: tenantId, user_id: principal.id }, now).catch(() => [])
+      : [];
+  const split = splitSnoozed(projectedItems, snoozes, now);
 
   return {
     schema_version: ATTENTION_SCHEMA_VERSION,
     generated_at: now.toISOString(),
     sources,
     status: (await gateFor({ permission: "stats:read" })).any ? facts.status : null,
-    items: projectedItems,
+    items: split.items,
+    snoozed: split.snoozed,
   };
 }

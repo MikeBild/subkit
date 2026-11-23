@@ -25,8 +25,10 @@ import {
   StatusBadge,
   TopPageHeader,
 } from "@/components/cockpit/patterns";
+import { Receipt } from "@/components/cockpit/receipt";
 import { ForbiddenState } from "@/components/failure-state";
 import { API_KEYS_QUERY } from "@/features/admin";
+import { auditReceiptQuote } from "@/features/audit/api/receipt";
 import {
   actorTypeLabel,
   auditActionLabel,
@@ -411,6 +413,7 @@ function AuditDetail({
           testId="audit-detail-stale"
         />
       )}
+      <Receipt quote={auditReceiptQuote(current)} testId="audit-detail-receipt" />
       <div
         className={`rounded-lg border p-4 ${current.result === "denied" || current.result === "error" ? "border-destructive/30 bg-destructive/5 text-destructive-ink" : "border-success/40 bg-success/10 text-success-ink"}`}
       >

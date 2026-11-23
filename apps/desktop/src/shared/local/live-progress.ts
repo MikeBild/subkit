@@ -163,6 +163,7 @@ const SESSION_END_EVENTS: ReadonlySet<string> = new Set([
   "execution.failed",
   "execution.aborted",
   "execution.timed_out",
+  "execution.uncertain",
 ]);
 
 export function endsSession(name: string, data: string, session: string | null): boolean {

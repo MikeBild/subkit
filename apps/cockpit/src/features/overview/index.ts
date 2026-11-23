@@ -38,4 +38,5 @@ export {
   waitingOnName,
 } from "./model/overview-model";
 export { startSteps } from "./model/overview-start-steps";
+export { SnoozedList, SnoozeMenu } from "./ui/attention-snooze";
 export { WaitingOnApprover, WaitingOnLine } from "./ui/waiting-on";

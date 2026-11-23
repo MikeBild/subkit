@@ -105,7 +105,7 @@ describe("connector dots", () => {
 
 describe("needs you", () => {
   test("a stopped workflow is red, an expiring approval amber, a proposal blue", () => {
-    expect(needVisual("execution_authority_unavailable")).toEqual({
+    expect(needVisual("execution_authority_expired")).toEqual({
       tone: "danger",
       icon: "approval",
     });

@@ -88,7 +88,11 @@ export type NeedIcon =
 const NEED_VISUAL: Record<AttentionReason, { tone: Tone; icon: NeedIcon }> = {
   awaiting_answer: { tone: "info", icon: "answer" },
   execution_authority_required: { tone: "danger", icon: "approval" },
-  execution_authority_unavailable: { tone: "danger", icon: "approval" },
+  execution_authority_expired: { tone: "danger", icon: "approval" },
+  execution_authority_exhausted: { tone: "danger", icon: "approval" },
+  execution_authority_revoked: { tone: "danger", icon: "approval" },
+  execution_authority_changed: { tone: "danger", icon: "approval" },
+  input_required: { tone: "danger", icon: "approval" },
   version_awaiting_approval: { tone: "info", icon: "approval" },
   version_needs_repair: { tone: "warning", icon: "failed" },
   approval_expiring: { tone: "warning", icon: "expiry" },
@@ -122,6 +126,8 @@ const NEED_VISUAL: Record<AttentionReason, { tone: Tone; icon: NeedIcon }> = {
   device_offline_waiting: { tone: "warning", icon: "paused" },
   local_confirmation_needed: { tone: "info", icon: "approval" },
   device_permission_missing: { tone: "warning", icon: "key" },
+  device_handover_waiting: { tone: "warning", icon: "paused" },
+  knowledge_review_due: { tone: "warning", icon: "paused" },
   folder_changed: { tone: "warning", icon: "failed" },
 };
 

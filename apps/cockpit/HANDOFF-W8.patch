@@ -1,0 +1,251 @@
+diff --git a/apps/cockpit/src/features/chat/hooks/turn.ts b/apps/cockpit/src/features/chat/hooks/turn.ts
+index 7fb0c8a8a..8eb47cc9d 100644
+--- a/apps/cockpit/src/features/chat/hooks/turn.ts
++++ b/apps/cockpit/src/features/chat/hooks/turn.ts
+@@ -10,6 +10,7 @@ import {
+   respondToChatApproval,
+   respondToChatChoice,
+   respondToChatForm,
++  respondToChatSelection,
+   respondToToolCall,
+   sendConversationTurn,
+ } from "@/api/client";
+@@ -25,6 +26,7 @@ import {
+   type PendingAttachment,
+   pendingKey,
+ } from "../api/attachments";
++import type { ChatApprovalOptions } from "../model/approval";
+ import { asStreamedDiff, type RestoreComposer, type StreamedDiff } from "../model/labels";
+ import { applyLiveCall, type LiveCall, reduceLiveCall } from "../model/live-calls";
+ import { openQuestionOf } from "../model/open-question";
+@@ -393,6 +395,7 @@ export function useChatTurn({
+       toolCallId,
+       elicitationId,
+       approved,
++      approvalOutput,
+       choiceValue,
+       formOutput,
+       operation,
+@@ -403,6 +406,8 @@ export function useChatTurn({
+       toolCallId?: string;
+       elicitationId?: string;
+       approved?: boolean;
++      approvalOutput?: ChatApprovalOptions["output"];
++      followUp?: string;
+       choiceValue?: string;
+       formOutput?: Record<string, unknown>;
+     }) => {
+@@ -424,7 +429,9 @@ export function useChatTurn({
+           ? respondToChatForm(conversationId, elicitationId, formOutput, onEvent)
+           : choiceValue !== undefined
+             ? respondToChatChoice(conversationId, elicitationId, choiceValue, onEvent)
+-            : respondToChatApproval(conversationId, elicitationId, approved === true, onEvent)
++            : approvalOutput
++              ? respondToChatSelection(conversationId, elicitationId, approvalOutput, onEvent)
++              : respondToChatApproval(conversationId, elicitationId, approved === true, onEvent)
+         : respondToToolCall(conversationId, toolCallId ?? "", approved === true);
+     },
+     onSuccess: async (_result, variables) => {
+@@ -437,7 +444,7 @@ export function useChatTurn({
+     },
+     onError: (_error, variables) =>
+       queryClient.invalidateQueries({ queryKey: ["conversation", variables.conversationId] }),
+-    onSettled: async (_data, _error, variables) => {
++    onSettled: async (_data, error, variables) => {
+       try {
+         await Promise.all([
+           queryClient.invalidateQueries({ queryKey: ["conversations"] }),
+@@ -447,10 +454,15 @@ export function useChatTurn({
+       } finally {
+         if (decisionLock.current === variables.operation) decisionLock.current = null;
+       }
++      if (!error && variables.followUp) void submitTurn(variables.followUp);
+     },
+   });
+   const decidePending = decide.isPending && decide.variables?.operation.session === sessionKey;
+-  const submitApproval = (elicitationId: string, approved: boolean) => {
++  const submitApproval = (
++    elicitationId: string,
++    approved: boolean,
++    options: ChatApprovalOptions = {},
++  ) => {
+     if (
+       (decisionLock.current && ownsOperation(decisionLock.current)) ||
+       sendPending ||
+@@ -462,6 +474,8 @@ export function useChatTurn({
+     decide.mutate({
+       elicitationId,
+       approved,
++      ...(options.output ? { approvalOutput: options.output } : {}),
++      ...(options.followUp ? { followUp: options.followUp } : {}),
+       conversationId: activeId ?? "",
+       operation,
+     });
+diff --git a/apps/cockpit/src/features/chat/model/approval.ts b/apps/cockpit/src/features/chat/model/approval.ts
+index 04bf0ea70..94ca0abf7 100644
+--- a/apps/cockpit/src/features/chat/model/approval.ts
++++ b/apps/cockpit/src/features/chat/model/approval.ts
+@@ -27,6 +27,12 @@ export interface ChatApproval {
+   decidedByOthers?: boolean;
+   binding?: ApprovalBinding;
+   device?: DeviceConfirmation;
++  changes?: { label: string; preview?: string }[];
++}
++
++export interface ChatApprovalOptions {
++  output?: { confirmed: boolean; partial?: boolean; approved_indices?: number[] };
++  followUp?: string;
+ }
+ 
+ function record(value: unknown): Record<string, unknown> {
+@@ -100,6 +106,9 @@ export function chatApproval(
+     ...(decidedByOthers ? { decidedByOthers } : {}),
+     ...(binding ? { binding } : {}),
+     ...(device ? { device } : {}),
++    ...(pending.prompt?.kind === "partial_diff_approval" && pending.prompt.diffs?.length
++      ? { changes: pending.prompt.diffs }
++      : {}),
+     ...(pending.prompt?.subjects?.length ? { subjects: pending.prompt.subjects } : {}),
+     ...(pending.prompt?.transfer_bytes ? { transferBytes: pending.prompt.transfer_bytes } : {}),
+     savesInactiveWorkflow: intent.kind === "save_workflow_draft",
+diff --git a/apps/cockpit/src/features/chat/ui/approval-card.test.tsx b/apps/cockpit/src/features/chat/ui/approval-card.test.tsx
+index d7938344e..4a4041652 100644
+--- a/apps/cockpit/src/features/chat/ui/approval-card.test.tsx
++++ b/apps/cockpit/src/features/chat/ui/approval-card.test.tsx
+@@ -291,3 +291,19 @@ test("a device step past its deadline says nothing was sent and offers no answer
+   expect(de).not.toContain("approval-pending");
+   expect(render(expired, "en")).toContain("Nothing was sent or changed.");
+ });
++
++test("a workflow patch offers each change on its own, then Accept or Accept and save", () => {
++  const patch: ChatApproval = {
++    ...approval,
++    externalTool: undefined,
++    changes: [{ label: "Rename the first step" }, { label: "Add a retry", preview: "retry: 3" }],
++  };
++  const html = render(patch, "en");
++  expect(html).toContain("Rename the first step");
++  expect(html.match(/role="checkbox"/g)?.length).toBe(2);
++  expect(html.match(/data-testid="approval-accept"/g)?.length).toBe(1);
++  expect(html.match(/data-testid="approval-accept-save"/g)?.length).toBe(1);
++  expect(html.match(/data-testid="approval-decline"/g)?.length).toBe(1);
++  expect(html).not.toContain("approval-approve");
++  expect(html).not.toContain("approval-test-first");
++});
+diff --git a/apps/cockpit/src/features/chat/ui/approval-card.tsx b/apps/cockpit/src/features/chat/ui/approval-card.tsx
+index 989fee518..390cdb3fb 100644
+--- a/apps/cockpit/src/features/chat/ui/approval-card.tsx
++++ b/apps/cockpit/src/features/chat/ui/approval-card.tsx
+@@ -7,11 +7,18 @@ import { useEffect, useState } from "react";
+ import { listDevices } from "@/api/devices";
+ import { contextualHref } from "@/app/installation-context";
+ import { Button, ContextHelp } from "@/components/cockpit/patterns";
+-import { WorkflowReview } from "@/features/workflows";
++import {
++  ChangeReview,
++  ChangeReviewActions,
++  chatApprovalOutput,
++  promptReviewChanges,
++  useChangeReview,
++  WorkflowReview,
++} from "@/features/workflows";
+ import { formatDateTime, LOCALE_TAGS } from "@/lib/i18n";
+ import { useI18n } from "@/lib/i18n-context";
+ import { hideTechnicalIdentifiers } from "@/lib/presentation";
+-import { approvalLine, type ChatApproval } from "../model/approval";
++import { approvalLine, type ChatApproval, type ChatApprovalOptions } from "../model/approval";
+ import { deviceApprovalRows, deviceLabelOf } from "../model/device-approval";
+ import { actionFacts } from "../model/policy";
+ import { ApprovalBinding } from "./policy";
+@@ -27,7 +34,7 @@ export function ChatApprovalCard({
+   approval: ChatApproval;
+   busy: boolean;
+   error: boolean;
+-  onDecision: (id: string, approved: boolean) => void;
++  onDecision: (id: string, approved: boolean, options?: ChatApprovalOptions) => void;
+   testId: string;
+   conversationId?: string;
+ }) {
+@@ -78,6 +85,13 @@ export function ChatApprovalCard({
+       : [];
+   const details = approval.description ?? (approval.singleRun ? approval.question : null);
+   const pending = !approval.decidedByOthers && !expired && !busy;
++  const changes = approval.changes ?? [];
++  const changeReview = useChangeReview({ total: changes.length, digestRequired: false });
++  const acceptChanges = (followUp?: string) =>
++    onDecision(approval.id, true, {
++      output: chatApprovalOutput(changeReview.selection, changes.length),
++      ...(followUp ? { followUp } : {}),
++    });
+   return (
+     <>
+       <ToolApprovalCard
+@@ -129,6 +143,26 @@ export function ChatApprovalCard({
+             >
+               {t("chat.taskRun.decidedByOthers")}
+             </p>
++          ) : changes.length > 0 ? (
++            <>
++              <ChangeReviewActions
++                review={changeReview}
++                busy={busy}
++                blocked={expired}
++                onAccept={() => acceptChanges()}
++                onAcceptAndSave={() => acceptChanges(t("changeReview.savePrompt"))}
++                testId={testId}
++              />
++              <Button
++                size="sm"
++                variant="outline"
++                disabled={busy || expired}
++                onClick={() => onDecision(approval.id, false)}
++                data-testid={`${testId}-decline`}
++              >
++                {t("chat.approval.decline")}
++              </Button>
++            </>
+           ) : undefined
+         }
+         footnote={
+@@ -154,6 +188,14 @@ export function ChatApprovalCard({
+           </p>
+         )}
+         {binding ? <ApprovalBinding binding={binding} testId={testId} /> : null}
++        {changes.length > 0 ? (
++          <ChangeReview
++            changes={promptReviewChanges(changes)}
++            review={changeReview}
++            disabled={busy || expired}
++            testId={`${testId}-changes`}
++          />
++        ) : null}
+         {approval.authorizationUrl && !expired && (
+           <Button asChild variant="outline" className="w-fit">
+             <a
+diff --git a/apps/cockpit/src/features/chat/ui/message.tsx b/apps/cockpit/src/features/chat/ui/message.tsx
+index d5229eee8..de69da167 100644
+--- a/apps/cockpit/src/features/chat/ui/message.tsx
++++ b/apps/cockpit/src/features/chat/ui/message.tsx
+@@ -27,7 +27,12 @@ import {
+   workflowRunKind,
+ } from "@/lib/tool-presentation";
+ import { type ConversationAttachment, splitFileSentinels } from "../api/attachments";
+-import { type ChatApproval, recordedDecisionKey, withWorkflowName } from "../model/approval";
++import {
++  type ChatApproval,
++  type ChatApprovalOptions,
++  recordedDecisionKey,
++  withWorkflowName,
++} from "../model/approval";
+ import { bubbleSide } from "../model/bubble-model";
+ import type { ChatChoice } from "../model/choice";
+ import type { ChatForm } from "../model/form";
+@@ -106,7 +111,7 @@ export function ChatMessage({
+   answersQuestion?: boolean;
+   approvalBusy: boolean;
+   approvalError: boolean;
+-  onApproval: (id: string, approved: boolean) => void;
++  onApproval: (id: string, approved: boolean, options?: ChatApprovalOptions) => void;
+   onDecision: (toolCallId: string, approved: boolean) => void;
+   onReauth: (action: ChatReauth) => void;
+   onAutomationAdjust: (workflowId: string) => void;

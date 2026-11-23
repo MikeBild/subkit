@@ -36,7 +36,7 @@ import {
   RUN_ENVIRONMENT_ARG,
 } from "../lib/run-environment.ts";
 import { printRunResult } from "../lib/run-result.ts";
-import { exitCodeForTerminalStatus, tailExecution } from "../lib/tail-execution.ts";
+import { exitCodeForTerminalStatus, followExecution } from "../lib/tail-execution.ts";
 import { formatFileRef } from "../utils/file-ref.ts";
 import { makeClient } from "./command-runtime.ts";
 import { uploadPath } from "./files.ts";
@@ -410,10 +410,10 @@ const runCommand = defineCommand({
           );
         }
         let mismatchHint: string | null = null;
-        const terminal = await tailExecution(
+        const terminal = await followExecution(
           client,
           queued.execution_id,
-          process.stdout,
+          process.stderr,
           (frame) => {
             mismatchHint ??= environmentMismatchHint(frame, environment);
           },

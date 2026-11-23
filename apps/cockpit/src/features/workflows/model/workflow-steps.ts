@@ -7,12 +7,12 @@ export type ExecutionStep = components["schemas"]["ExecutionStep"];
 export type StepEssence =
   | {
       kind: "request";
-      via: "http" | "sql" | "graphql" | "s3" | "mcp";
+      via: RequestProtocol;
       verb: string | null;
       target: string | null;
     }
   | { kind: "branch"; when: string; thenSteps: string[]; elseSteps: string[] }
-  | { kind: "loop"; over: string | null; body: string[] }
+  | { kind: "model"; prompt: string | null }
   | { kind: "parallel"; branches: string[][] }
   | { kind: "call"; workflowId: string | null; slug: string | null }
   | { kind: "wait"; durationMs: number | null }
@@ -68,7 +68,7 @@ const STEP_KIND_KEYS: Record<string, TranslationKey> = {
   wait_for_event: "workflow.kind.waitForEvent",
   branch: "workflow.kind.branch",
   parallel: "workflow.kind.parallel",
-  loop: "workflow.kind.loop",
+  model: "workflow.kind.askAi",
 };
 
 export interface StepKindSource {
@@ -179,6 +179,21 @@ function headerLines(value: unknown): string | null {
   return lines.length > 0 ? lines.join("\n") : null;
 }
 
+export const REQUEST_PROTOCOLS = ["http", "graphql", "sql", "s3", "mcp"] as const;
+export type RequestProtocol = (typeof REQUEST_PROTOCOLS)[number];
+
+export function requestProtocol(raw: Record<string, unknown>): RequestProtocol {
+  return REQUEST_PROTOCOLS.find((protocol) => protocol === raw.protocol) ?? "http";
+}
+
+const PROTOCOL_KEYS: Record<RequestProtocol, TranslationKey> = {
+  http: "workflow.via.http",
+  sql: "workflow.via.sql",
+  graphql: "workflow.via.graphql",
+  s3: "workflow.via.s3",
+  mcp: "workflow.via.mcp",
+};
+
 function readRequest(raw: Record<string, unknown>): {
   essence: StepEssence;
   facts: StepFact[];
@@ -189,49 +204,52 @@ function readRequest(raw: Record<string, unknown>): {
   const blocks: StepBlock[] = [];
   let essence: StepEssence;
 
-  if (record(raw.sql)) {
-    const query = text(raw.sql.query) ?? "";
-    essence = { kind: "request", via: "sql", verb: method, target: firstLine(query) || null };
-    blocks.push(...code("workflow.block.sql", "sql", raw.sql.query));
-    blocks.push(...json("workflow.block.sqlParams", raw.sql.params));
-    blocks.push(...json("workflow.block.sqlAlso", raw.sql.also));
-  } else if (record(raw.graphql)) {
-    const query = text(raw.graphql.query) ?? "";
+  const via = requestProtocol(raw);
+  const member = record(raw[via]) ? (raw[via] as Record<string, unknown>) : {};
+  if (via === "sql") {
+    const query = text(member.query) ?? "";
+    essence = { kind: "request", via, verb: method, target: firstLine(query) || null };
+    blocks.push(...code("workflow.block.sql", "sql", member.query));
+    blocks.push(...json("workflow.block.sqlParams", member.params));
+    blocks.push(...json("workflow.block.sqlAlso", member.also));
+  } else if (via === "graphql") {
+    const query = text(member.query) ?? "";
     essence = {
       kind: "request",
-      via: "graphql",
-      verb: text(raw.graphql.operation),
+      via,
+      verb: text(member.operation),
       target: firstLine(query) || null,
     };
     const path = text(raw.path);
     if (path) blocks.push(...code("workflow.block.request", "text", `POST ${path}`));
-    blocks.push(...code("workflow.block.graphql", "graphql", raw.graphql.query));
-    blocks.push(...json("workflow.block.variables", raw.graphql.variables));
-    blocks.push(...json("workflow.block.pagination", raw.graphql.cursor_pagination));
-  } else if (record(raw.mcp)) {
+    blocks.push(...code("workflow.block.graphql", "graphql", member.query));
+    blocks.push(...json("workflow.block.variables", member.variables));
+    blocks.push(...json("workflow.block.pagination", member.cursor_pagination));
+  } else if (via === "mcp") {
     essence = {
       kind: "request",
-      via: "mcp",
-      verb: text(raw.mcp.operation) ?? "call_tool",
-      target: text(raw.mcp.tool) ?? text(raw.mcp.uri) ?? text(raw.mcp.prompt),
+      via,
+      verb: text(member.operation) ?? "call_tool",
+      target: text(member.tool) ?? text(member.uri) ?? text(member.prompt),
     };
-    blocks.push(...json("workflow.block.arguments", raw.mcp.arguments));
-  } else if (record(raw.s3)) {
+    blocks.push(...json("workflow.block.arguments", member.arguments));
+  } else if (via === "s3") {
     essence = {
       kind: "request",
-      via: "s3",
+      via,
       verb: method,
-      target: text(raw.s3.key) ?? text(raw.s3.prefix),
+      target: text(member.key) ?? text(member.prefix),
     };
     blocks.push(...json("workflow.block.storage", raw.s3));
   } else {
     essence = {
       kind: "request",
-      via: "http",
+      via,
       verb: method ?? "GET",
       target: text(raw.path) ?? text(raw.url),
     };
   }
+  facts.push({ labelKey: "workflow.fact.protocol", valueKey: PROTOCOL_KEYS[via] });
 
   if (essence.via === "http") {
     blocks.push(
@@ -275,15 +293,20 @@ function readKind(
         facts: [],
         blocks: code("workflow.block.condition", "text", raw.when),
       };
-    case "loop": {
-      const over = text(raw.over) ?? text(raw.data_selector);
+    case "model": {
+      const limit = count(raw.max_output_tokens);
       return {
-        essence: { kind: "loop", over, body: strings(raw.body) },
+        essence: { kind: "model", prompt: text(raw.prompt) },
         facts:
-          raw.fail_fast === true
-            ? [{ labelKey: "workflow.fact.failFast", valueKey: "common.yes" }]
-            : [],
-        blocks: code("workflow.block.over", "text", over),
+          limit === null
+            ? []
+            : [{ labelKey: "workflow.fact.maxOutputTokens", value: String(limit) }],
+        blocks: [
+          ...code("workflow.block.prompt", "text", raw.prompt),
+          ...code("workflow.block.system", "text", raw.system),
+          ...json("workflow.block.input", raw.input),
+          ...json("workflow.block.outputSchema", raw.output_schema),
+        ],
       };
     }
     case "parallel":
@@ -349,7 +372,7 @@ export function readStepDefinition(step: unknown, index: number): WorkflowStepDe
   const kind = text(raw.kind) ?? text(raw.type) ?? "";
   const { essence, facts, blocks } = readKind(kind, raw);
   blocks.push(...code("workflow.block.forEach", "javascript", raw.for_each));
-  if (kind !== "loop") blocks.push(...code("workflow.block.selector", "text", raw.data_selector));
+  blocks.push(...code("workflow.block.selector", "text", raw.data_selector));
   const timeout = kind === "wait_for_event" ? null : count(raw.timeout_ms);
   if (timeout !== null)
     facts.push({ labelKey: "workflow.fact.timeout", value: formatDuration(timeout) });
@@ -385,16 +408,6 @@ export function formatDuration(ms: number): string {
   return `${(ms / 1_000).toFixed(1)} s`;
 }
 
-const VIA_KEYS: Record<
-  Exclude<Extract<StepEssence, { kind: "request" }>["via"], "http">,
-  TranslationKey
-> = {
-  sql: "workflow.via.sql",
-  graphql: "workflow.via.graphql",
-  s3: "workflow.via.s3",
-  mcp: "workflow.via.mcp",
-};
-
 export function stepEssenceText(
   definition: WorkflowStepDefinition,
   t: Translate,
@@ -408,7 +421,7 @@ export function stepEssenceText(
         const head =
           essence.via === "http"
             ? [essence.verb, essence.target].filter(Boolean).join(" ")
-            : [t(VIA_KEYS[essence.via]), essence.target].filter(Boolean).join(" · ");
+            : [t(PROTOCOL_KEYS[essence.via]), essence.target].filter(Boolean).join(" · ");
         return [head, names.connector].filter(Boolean).join(" · ");
       }
       case "branch":
@@ -419,11 +432,8 @@ export function stepEssenceText(
               otherwise: list(essence.elseSteps),
             })
           : t("workflow.essence.branch", { when: essence.when, steps: list(essence.thenSteps) });
-      case "loop":
-        return t("workflow.essence.loop", {
-          over: essence.over ?? t("workflow.none"),
-          body: list(essence.body),
-        });
+      case "model":
+        return firstLine(essence.prompt ?? "") || t("workflow.kind.askAi");
       case "parallel":
         return t("workflow.essence.parallel", {
           branches: essence.branches.map((branch) => list(branch)).join(" ‖ "),

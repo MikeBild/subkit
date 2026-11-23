@@ -39,8 +39,27 @@ function attention(item: Record<string, unknown>) {
         ...item,
       },
     ],
+    snoozed: [],
   };
 }
+
+test("the attention contract lists snoozed items with their key and end", () => {
+  const base = attention({});
+  const parsed = AttentionV1Schema.parse({
+    ...base,
+    items: [],
+    snoozed: [
+      {
+        ...base.items[0],
+        attention_key: "task:11111111-1111-4111-8111-111111111111|decide|task_result_ready",
+        snoozed_until: "2026-11-20T00:00:00.000Z",
+      },
+    ],
+  });
+  expect(parsed.snoozed[0]?.snoozed_until).toBe("2026-11-20T00:00:00.000Z");
+  expect(AttentionV1Schema.safeParse({ ...base, snoozed: base.items }).success).toBe(false);
+  expect(AttentionV1Schema.safeParse({ ...base, snoozed: undefined }).success).toBe(false);
+});
 
 test("the attention contract accepts every task reason on a task subject", () => {
   for (const reason of [
@@ -76,6 +95,7 @@ test("the attention contract accepts every device reason on a device or workflow
     "device_offline_waiting",
     "local_confirmation_needed",
     "device_permission_missing",
+    "device_handover_waiting",
     "folder_changed",
   ] as const) {
     const onDevice = AttentionV1Schema.parse(

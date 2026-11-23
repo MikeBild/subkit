@@ -27,7 +27,7 @@ describe("approvalRefusal", () => {
   test("a run no approval admits is refused for that reason", () => {
     for (const code of [
       "execution_authority_required",
-      "execution_authority_unavailable",
+      "execution_authority_expired",
       "execution_authority_changed",
     ])
       expect(approvalRefusal(new ApiError(409, { code }, null))).toBe(true);

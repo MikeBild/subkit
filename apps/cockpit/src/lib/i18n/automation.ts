@@ -155,8 +155,14 @@ export const automationEn = {
     "On hold: the run is missing input. Add it in the schedule.",
   "scheduleHistory.reason.execution_authority_required":
     "On hold: this version has no approval. Approve it and the schedule runs again.",
-  "scheduleHistory.reason.execution_authority_unavailable":
-    "On hold: the approval no longer applies. Renew it and the schedule runs again.",
+  "scheduleHistory.reason.execution_authority_expired":
+    "On hold: the approval has expired. Renew it and the schedule runs again.",
+  "scheduleHistory.reason.execution_authority_exhausted":
+    "On hold: the approved number of runs is used up. Renew the approval and the schedule runs again.",
+  "scheduleHistory.reason.execution_authority_revoked":
+    "On hold: the approval was revoked. Approve it again and the schedule runs again.",
+  "scheduleHistory.reason.execution_authority_changed":
+    "On hold: the workflow changed since it was approved. Review and approve the new version.",
   "scheduleHistory.reason.grant_required":
     "On hold: the task has no standing permission. Give it and the schedule runs again.",
   "scheduleHistory.reason.grant_expired":
@@ -353,8 +359,14 @@ export const automationDe: Record<keyof typeof automationEn, string> = {
     "Angehalten: Dem Run fehlen Eingaben. Ergänze sie im Zeitplan.",
   "scheduleHistory.reason.execution_authority_required":
     "Angehalten: Für diese Version fehlt die Freigabe. Erteile sie, dann läuft der Zeitplan weiter.",
-  "scheduleHistory.reason.execution_authority_unavailable":
-    "Angehalten: Die Freigabe gilt nicht mehr. Erneuere sie, dann läuft der Zeitplan weiter.",
+  "scheduleHistory.reason.execution_authority_expired":
+    "Angehalten: Die Freigabe ist abgelaufen. Erneuere sie, dann läuft der Zeitplan weiter.",
+  "scheduleHistory.reason.execution_authority_exhausted":
+    "Angehalten: Die freigegebene Anzahl an Runs ist aufgebraucht. Erneuere die Freigabe, dann läuft der Zeitplan weiter.",
+  "scheduleHistory.reason.execution_authority_revoked":
+    "Angehalten: Die Freigabe wurde widerrufen. Erteile sie erneut, dann läuft der Zeitplan weiter.",
+  "scheduleHistory.reason.execution_authority_changed":
+    "Angehalten: Der Workflow wurde seit der Freigabe geändert. Prüfe die neue Version und gib sie frei.",
   "scheduleHistory.reason.grant_required":
     "Angehalten: Der Aufgabe fehlt die Dauererlaubnis. Erteile sie, dann läuft der Zeitplan weiter.",
   "scheduleHistory.reason.grant_expired":

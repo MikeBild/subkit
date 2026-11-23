@@ -276,6 +276,7 @@ describe("the engine stream ends a live session", () => {
       "execution.failed",
       "execution.aborted",
       "execution.timed_out",
+      "execution.uncertain",
     ])
       expect(endsSession(name, data, "e-1")).toBe(true);
   });

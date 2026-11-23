@@ -27,6 +27,8 @@ import type {
   AttentionReason,
   AttentionSource,
 } from "./attention.ts";
+import { heldAttentionReason } from "./core/attention.ts";
+import type { WaitingHandover } from "./core/device-handover.ts";
 import { heldCauseClass, heldDetail } from "./core/held-detail.ts";
 import type { PermissionGap, WaitingDevice } from "./device-attention.ts";
 import { readFailureStreaks } from "./failure-streaks.ts";
@@ -77,6 +79,7 @@ export interface TenantFacts {
   pair_requests?: readonly PendingPairRequest[];
   device_waits?: readonly WaitingDevice[];
   device_permissions?: readonly PermissionGap[];
+  device_handovers?: readonly WaitingHandover[];
 }
 
 export type TenantReader = (db: Db, tenantId: string, now: Date) => Promise<Candidate[]>;
@@ -342,9 +345,7 @@ function workflowItem(fact: WorkflowFacts): Candidate {
   const heldForRepair = fact.held?.reason_code === "execution_authority_required";
   const repair = approval?.kind === "awaiting" || heldForRepair ? fact.repair : null;
   const reason: AttentionReason = fact.held
-    ? fact.held.reason_code === "execution_authority_unavailable"
-      ? "execution_authority_unavailable"
-      : "execution_authority_required"
+    ? heldAttentionReason(fact.held.reason_code)
     : failures > 0
       ? "failing"
       : approval

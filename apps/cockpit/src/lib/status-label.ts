@@ -17,6 +17,7 @@ const STATUS_KEYS: Partial<Record<string, TranslationKey>> = {
   aborted: "status.aborted",
   timed_out: "status.timedOut",
   waiting_for_device: "status.waitingForDevice",
+  uncertain: "status.uncertain",
   approved: "status.approved",
   rejected: "status.rejected",
   proposed: "status.proposed",

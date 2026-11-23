@@ -79,6 +79,7 @@ import {
 import { useI18n } from "@/lib/i18n-context";
 import type { ServiceIdentity } from "@/lib/service-icons";
 import { useSearchParamState } from "@/lib/use-search-param-state";
+import { StepDebugger } from "./step-debugger";
 import { StepDialog, type StepDraft, stepId } from "./workflow-step-editor";
 
 type PreviewResult =
@@ -677,8 +678,6 @@ function StepSheet({
   const { definition, lastRun } = view;
   const lastResult = stepResultPreview(lastRun);
   const called = definition.essence.kind === "call" ? definition.essence : null;
-  const result = steps.results[definition.id] ?? null;
-  const running = steps.running === definition.id;
   const writes = stepWrites(definition);
   const failed = lastRun ? statusTone(lastRun.status) === "error" : false;
   const when = lastRun?.finished_at ?? lastRun?.started_at ?? null;
@@ -718,20 +717,6 @@ function StepSheet({
     })),
   ];
   const menu: ActionMenuItem[] = [
-    ...(canRun
-      ? [
-          {
-            label: t(running ? "workflow.testing" : "workflow.testStep"),
-            disabled: steps.running !== null,
-            onSelect: () =>
-              void steps.runOne(definition.id, {
-                source: "step",
-                step: { ...definition.raw, kind: definition.kind },
-              }),
-            testId: `${testId}-test`,
-          },
-        ]
-      : []),
     ...(editor?.up
       ? [{ label: t("stepEditor.up"), onSelect: editor.up, testId: `${testId}-up` }]
       : []),
@@ -835,7 +820,16 @@ function StepSheet({
         )}
       </Section>
       {facts.length > 0 ? <FactList items={facts} testId={`${testId}-facts`} /> : null}
-      {result ? <PreviewCard result={result} total={1} testId={`${testId}-test-result`} /> : null}
+      {canRun ? (
+        <StepDebugger
+          key={definition.id}
+          testId={`${testId}-test`}
+          stepId={definition.id}
+          step={{ ...definition.raw, kind: definition.kind }}
+          stepIds={steps.views.map((entry) => entry.definition.id)}
+          runSteps={steps.views.flatMap((entry) => (entry.lastRun ? [entry.lastRun] : []))}
+        />
+      ) : null}
       <TechnicalDetails testId={`${testId}-technical`}>
         <FactList
           items={[

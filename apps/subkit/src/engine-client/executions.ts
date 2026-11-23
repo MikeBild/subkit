@@ -1,6 +1,12 @@
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import type { InvokeEnvironment } from "@shared/invoke-snippet.ts";
 import type { EngineClient } from "../engine-client.ts";
+import {
+  type ResolveWriteBody,
+  ResolveWriteBodySchema,
+  type ResolveWriteResponse,
+  ResolveWriteResponseSchema,
+} from "../lib/uncertain-write.ts";
 import type { ApiBody, ApiQuery } from "./http.ts";
 
 type Schemas = components["schemas"];
@@ -55,6 +61,18 @@ export const executionsMethods = {
   },
   async abortExecution(this: EngineClient, id: string): Promise<void> {
     await this.api.POST("/v1/executions/{id}/cancel", { params: { path: { id } } });
+  },
+  async resolveExecutionWrite(
+    this: EngineClient,
+    id: string,
+    body: ResolveWriteBody,
+  ): Promise<ResolveWriteResponse> {
+    const data = await this.request(
+      "POST",
+      `/v1/executions/${encodeURIComponent(id)}/resolve-write`,
+      ResolveWriteBodySchema.parse(body),
+    );
+    return ResolveWriteResponseSchema.parse(data ?? {});
   },
   streamExecution(this: EngineClient, id: string): Promise<Response> {
     return this.stream(`/v1/executions/${encodeURIComponent(id)}/stream`);

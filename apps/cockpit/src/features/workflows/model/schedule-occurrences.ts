@@ -28,7 +28,10 @@ const REASON_KEYS: Record<string, TranslationKey> = {
   repeated_failures: "scheduleHistory.reason.repeated_failures",
   input_required: "scheduleHistory.reason.input_required",
   execution_authority_required: "scheduleHistory.reason.execution_authority_required",
-  execution_authority_unavailable: "scheduleHistory.reason.execution_authority_unavailable",
+  execution_authority_expired: "scheduleHistory.reason.execution_authority_expired",
+  execution_authority_exhausted: "scheduleHistory.reason.execution_authority_exhausted",
+  execution_authority_revoked: "scheduleHistory.reason.execution_authority_revoked",
+  execution_authority_changed: "scheduleHistory.reason.execution_authority_changed",
   grant_required: "scheduleHistory.reason.grant_required",
   grant_expired: "scheduleHistory.reason.grant_expired",
   previous_run_active: "scheduleHistory.reason.previous_run_active",
@@ -76,7 +79,10 @@ const APPROVAL_FAILURES = new Set([
   "authority_mismatch",
   "refused_before_start",
   "execution_authority_required",
-  "execution_authority_unavailable",
+  "execution_authority_expired",
+  "execution_authority_exhausted",
+  "execution_authority_revoked",
+  "execution_authority_changed",
 ]);
 
 export type AutoPauseRemedy = "renew_approval" | "resume";

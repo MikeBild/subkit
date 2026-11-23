@@ -234,7 +234,7 @@ describe("a version nobody has approved yet", () => {
     });
     await hook(wf.workflow_id, `${wf.slug}-in`);
     expect((await itemsOf(wf.workflow_id)).map((item) => item.reason)).toEqual([
-      "execution_authority_unavailable",
+      "execution_authority_required",
     ]);
   });
 

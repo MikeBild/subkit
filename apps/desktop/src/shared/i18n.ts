@@ -204,12 +204,28 @@ const MESSAGES = {
     en: "SubKit has a question for you.",
   },
   "notify.reason.execution_authority_required": {
-    de: "Für die aktuelle Version fehlt die Freigabe, automatische Starts warten.",
-    en: "The current version has no approval, so automatic starts wait.",
+    de: "Dieser Workflow braucht deine Freigabe, bevor er laufen kann.",
+    en: "This workflow needs your approval before it can run.",
   },
-  "notify.reason.execution_authority_unavailable": {
-    de: "Die Freigabe ist abgelaufen, aufgebraucht oder widerrufen, automatische Starts warten.",
-    en: "The approval expired, is used up or was revoked, so automatic starts wait.",
+  "notify.reason.execution_authority_expired": {
+    de: "Die Freigabe für diesen Workflow ist abgelaufen. Gib ihn erneut frei, damit er wieder läuft.",
+    en: "The approval for this workflow has expired. Approve it again to let it run.",
+  },
+  "notify.reason.execution_authority_exhausted": {
+    de: "Die freigegebene Anzahl an Runs ist aufgebraucht. Gib ihn erneut frei, damit er wieder läuft.",
+    en: "The approved number of runs is used up. Approve it again to let it run.",
+  },
+  "notify.reason.execution_authority_revoked": {
+    de: "Die Freigabe für diesen Workflow wurde widerrufen. Gib ihn erneut frei, damit er wieder läuft.",
+    en: "The approval for this workflow was revoked. Approve it again to let it run.",
+  },
+  "notify.reason.execution_authority_changed": {
+    de: "Der Workflow wurde seit der Freigabe geändert. Prüfe die neue Version und gib sie frei.",
+    en: "The workflow changed since it was approved. Review and approve the new version.",
+  },
+  "notify.reason.input_required": {
+    de: "Dieser Run wartet auf eine Angabe von dir.",
+    en: "This run is waiting for information from you.",
   },
   "notify.reason.version_awaiting_approval": {
     de: "Eine neue Version wartet auf deine Freigabe.",
@@ -343,6 +359,19 @@ const MESSAGES = {
     de: "Diesem Gerät fehlt eine Systemberechtigung.",
     en: "This device is missing a system permission.",
   },
+  "notify.reason.device_handover_waiting": {
+    de: "Ein Browser-Schritt wartet auf diesem Gerät auf dich.",
+    en: "A browser step is waiting for you on this device.",
+  },
+  "notify.reason.knowledge_review_due": {
+    de: "Eine Wissensquelle ist zur Durchsicht fällig.",
+    en: "A knowledge source is due for a review.",
+  },
+  "notify.handover.body": {
+    de: "Ein Browser-Schritt wartet auf {device} auf dich. Übernimm, erledige ihn und gib dann zurück.",
+    en: "A browser step is waiting for you on {device}. Take over, finish it, then hand back.",
+  },
+  "notify.handover.thisDevice": { de: "diesem Gerät", en: "this device" },
   "notify.reason.folder_changed": {
     de: "Ein freigegebener Ordner wurde ersetzt. Gib ihn neu frei.",
     en: "An allowed folder was replaced. Allow it again.",

@@ -1,5 +1,6 @@
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import { EngineError } from "@cli-core/errors.ts";
+import { z } from "zod";
 import type { EngineClient } from "../engine-client.ts";
 import type { ApiBody, ApiQuery } from "./http.ts";
 
@@ -11,6 +12,22 @@ export type SelfHealingScanListQuery = ApiQuery<"/v1/self-healing/scans", "get">
 export type SelfHealingScanRequest = ApiBody<"/v1/self-healing/scans", "post">;
 export type SelfHealingScanResponse = Schemas["SelfHealingScanResponse"];
 export type SelfHealingScanRecord = Schemas["SelfHealingScanRecord"];
+export const AcceptedOperationsSchema = z.array(z.number().int().nonnegative());
+export const PatchInteractionSchema = z
+  .object({
+    action: z.string(),
+    at: z.string().optional(),
+    accepted_operations: AcceptedOperationsSchema.nullable().optional(),
+  })
+  .passthrough();
+export const PatchCandidatePartialSchema = z
+  .object({
+    accepted_operations: AcceptedOperationsSchema.nullable().optional(),
+    accepted_digest: z.string().nullable().optional(),
+    interaction_log: z.array(PatchInteractionSchema).optional(),
+  })
+  .passthrough();
+export type PatchCandidatePartial = z.infer<typeof PatchCandidatePartialSchema>;
 type PatchApproval = { applied: boolean; workflow_version_id: string | null };
 type AppliedPatch = { applied: true; workflow_version_id: string };
 
@@ -52,16 +69,45 @@ export const selfHealingMethods = {
     });
     return data as Schemas["PatchCandidatePreview"];
   },
+  async dryRunPatchCandidate(
+    this: EngineClient,
+    id: string,
+    accepted_operations?: number[],
+  ): Promise<Schemas["PatchCandidateDryRunResponse"]> {
+    if (accepted_operations === undefined) {
+      const { data } = await this.api.POST("/v1/patch-candidates/{id}/dry-run", {
+        params: { path: { id } },
+      });
+      return data as Schemas["PatchCandidateDryRunResponse"];
+    }
+    return this.request<Schemas["PatchCandidateDryRunResponse"]>(
+      "POST",
+      `/v1/patch-candidates/${encodeURIComponent(id)}/dry-run`,
+      { accepted_operations: AcceptedOperationsSchema.parse(accepted_operations) },
+    );
+  },
   async approvePatchCandidate(
     this: EngineClient,
     id: string,
     expected_review_digest: string,
+    accepted_operations?: number[],
   ): Promise<AppliedPatch> {
-    const { data } = await this.api.POST("/v1/patch-candidates/{id}/approve", {
-      params: { path: { id } },
-      body: { expected_review_digest },
-    });
-    const result = data as PatchApproval;
+    const result =
+      accepted_operations === undefined
+        ? ((
+            await this.api.POST("/v1/patch-candidates/{id}/approve", {
+              params: { path: { id } },
+              body: { expected_review_digest },
+            })
+          ).data as PatchApproval)
+        : await this.request<PatchApproval>(
+            "POST",
+            `/v1/patch-candidates/${encodeURIComponent(id)}/approve`,
+            {
+              expected_review_digest,
+              accepted_operations: AcceptedOperationsSchema.parse(accepted_operations),
+            },
+          );
     if (result.applied !== true || !result.workflow_version_id) {
       throw new EngineError(409, {
         code: "patch_not_applicable",

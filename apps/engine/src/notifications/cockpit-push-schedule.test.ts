@@ -57,7 +57,7 @@ const stopped = item("wf-stop", {
 const stoppedTest = item("wf-stop-test", {
   class: "stopped",
   severity: "critical",
-  reason: "execution_authority_unavailable",
+  reason: "execution_authority_expired",
   subject: { kind: "workflow", id: "w2", name: "Nightly test", environment: "dev" },
 });
 const approval = item("wf-approve", {

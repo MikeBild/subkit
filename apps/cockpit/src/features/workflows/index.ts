@@ -1,5 +1,10 @@
 export { useOpenRunSheet } from "@/features/workflows/hooks/run-sheet";
 export {
+  approveAcceptedOperations,
+  candidateReviewOperations,
+  testCandidateChange,
+} from "./api/change-review";
+export {
   type PairReview,
   pairRequestedLine,
   pairReview,
@@ -8,6 +13,13 @@ export {
   workflowReviewFailure,
   workflowReviewStorageKey,
 } from "./api/workflow-review";
+export {
+  type ChangeTestResult,
+  chatApprovalOutput,
+  promptReviewChanges,
+  type ReviewChange,
+  stepReviewChanges,
+} from "./model/change-review";
 export {
   type ConnectorTemplate,
   joinNames,
@@ -25,6 +37,7 @@ export {
 } from "./model/create-template-model";
 export { triggerLabelKey, withSection } from "./model/workflows-model";
 export { useWorkflowAutomation } from "./ui/automation-panel";
+export { ChangeReview, ChangeReviewActions, useChangeReview } from "./ui/change-review";
 export { ChangeSummary } from "./ui/change-summary";
 export { CreateAction } from "./ui/create-choice";
 export {

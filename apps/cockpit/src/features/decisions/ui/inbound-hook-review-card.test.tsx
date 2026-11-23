@@ -18,7 +18,7 @@ function isolated(name: string, body: () => Promise<void>) {
   });
 }
 
-const heldHook = (reasonCode: "execution_authority_required" | "execution_authority_unavailable") =>
+const heldHook = (reasonCode: "execution_authority_required" | "execution_authority_expired") =>
   ({
     inbound_hook_id: "hook-1",
     workflow_id: "workflow-1",
@@ -69,7 +69,7 @@ isolated(
       <InboundHookReviewCard hook={heldHook("execution_authority_required")} />,
     );
     const unavailable = render(
-      <InboundHookReviewCard hook={heldHook("execution_authority_unavailable")} />,
+      <InboundHookReviewCard hook={heldHook("execution_authority_expired")} />,
     );
 
     expect(concrete).toContain(

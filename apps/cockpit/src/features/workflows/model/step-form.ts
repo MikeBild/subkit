@@ -49,6 +49,7 @@ export function isFormStep(step: unknown): boolean {
   if (!raw) return true;
   if (!isFormKind(raw.kind)) return false;
   if (raw.kind === "request") {
+    if (raw.protocol !== undefined && raw.protocol !== "http") return false;
     if (REQUEST_DRIVER_FIELDS.some((field) => raw[field] !== undefined)) return false;
     if (raw.method !== undefined && !STEP_METHODS.some((method) => method === raw.method))
       return false;
@@ -242,6 +243,7 @@ export function stepFromForm(
       ...base,
       id: name,
       kind: "request",
+      protocol: "http",
       connector_id: form.connectorId,
       method: form.method,
       path,

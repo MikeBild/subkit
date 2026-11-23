@@ -74,10 +74,11 @@ export interface NativeNotification {
   href: string | null;
   urgency: "critical" | "normal" | "low";
   silent: boolean;
-  onDevice?: "permissions";
+  onDevice?: "permissions" | "handover";
 }
 
 export const PERMISSION_REASON = "device_permission_missing";
+export const HANDOVER_REASON = "device_handover_waiting";
 
 const VERB_KEYS = {
   review: "notify.do.review",
@@ -92,7 +93,11 @@ const VERB_KEYS = {
 const REASON_KEYS = {
   awaiting_answer: "notify.reason.awaiting_answer",
   execution_authority_required: "notify.reason.execution_authority_required",
-  execution_authority_unavailable: "notify.reason.execution_authority_unavailable",
+  execution_authority_expired: "notify.reason.execution_authority_expired",
+  execution_authority_exhausted: "notify.reason.execution_authority_exhausted",
+  execution_authority_revoked: "notify.reason.execution_authority_revoked",
+  execution_authority_changed: "notify.reason.execution_authority_changed",
+  input_required: "notify.reason.input_required",
   version_awaiting_approval: "notify.reason.version_awaiting_approval",
   pair_approval_requested: "notify.reason.pair_approval_requested",
   version_needs_repair: "notify.reason.version_needs_repair",
@@ -126,6 +131,8 @@ const REASON_KEYS = {
   device_offline_waiting: "notify.reason.device_offline_waiting",
   local_confirmation_needed: "notify.reason.local_confirmation_needed",
   device_permission_missing: "notify.reason.device_permission_missing",
+  device_handover_waiting: "notify.reason.device_handover_waiting",
+  knowledge_review_due: "notify.reason.knowledge_review_due",
   folder_changed: "notify.reason.folder_changed",
 } as const;
 
@@ -216,17 +223,23 @@ export function toNotification(item: AttentionItem, locale: Locale): NativeNotif
     : t(locale, `notify.title.${item.class}.plain`);
   const verbKey =
     action && action.verb in VERB_KEYS ? VERB_KEYS[action.verb as keyof typeof VERB_KEYS] : null;
+  const handover = item.reason === HANDOVER_REASON;
   return {
     id: item.id,
     title,
-    body: [reasonLine(item.reason, locale), t(locale, verbKey ?? "notify.do.open")]
-      .filter((line) => line !== null)
-      .join(" "),
+    body: handover
+      ? t(locale, "notify.handover.body", {
+          device: name ?? t(locale, "notify.handover.thisDevice"),
+        })
+      : [reasonLine(item.reason, locale), t(locale, verbKey ?? "notify.do.open")]
+          .filter((line) => line !== null)
+          .join(" "),
     href: action ? action.href : null,
     urgency:
       item.severity === "critical" ? "critical" : item.severity === "urgent" ? "normal" : "low",
     silent: item.severity === "notice",
     ...(item.reason === PERMISSION_REASON ? { onDevice: "permissions" as const } : {}),
+    ...(handover ? { onDevice: "handover" as const } : {}),
   };
 }
 

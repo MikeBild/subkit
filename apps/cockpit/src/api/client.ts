@@ -283,6 +283,15 @@ export function respondToChatApproval(
   );
 }
 
+export function respondToChatSelection(
+  conversationId: string,
+  elicitationId: string,
+  output: { confirmed: boolean; partial?: boolean; approved_indices?: number[] },
+  onEvent?: (event: ConversationStreamEvent) => void,
+): Promise<ConversationRun> {
+  return respondToChatElicitation(conversationId, elicitationId, output, onEvent);
+}
+
 export function respondToToolCall(
   conversationId: string,
   toolCallId: string,

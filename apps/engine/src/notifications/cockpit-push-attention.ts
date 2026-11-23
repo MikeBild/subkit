@@ -14,6 +14,7 @@ import {
 import { activeApprover } from "../identity/setup-preferences.ts";
 import { type AttentionV1, buildAttention } from "../operator/attention.ts";
 import type { AttentionReaderOverrides } from "../operator/attention-readers.ts";
+import { activeSnoozes, splitSnoozed } from "../operator/index.ts";
 import { isOwnPairRequest } from "../operator/pair-approval-attention.ts";
 import { now } from "../utils/clock.ts";
 import {
@@ -276,7 +277,12 @@ export async function dispatchCockpitPushAttention(
           return (await attentionOf(viewer)).items;
         })
       ).filter((item) => !seen.has(item.id));
-      const due = [...own, ...forwarded].filter((item) => !isOwnPairRequest(item));
+      const snoozes = await activeSnoozes(db, owner, at).catch(() => []);
+      const due = splitSnoozed(
+        [...own, ...forwarded].filter((item) => !isOwnPairRequest(item)),
+        snoozes,
+        at,
+      ).items;
       const capped = await autoPauseNoticeCapped(
         db,
         tenantId,

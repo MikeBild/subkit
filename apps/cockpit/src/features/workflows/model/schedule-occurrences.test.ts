@@ -18,7 +18,10 @@ const REASONS = [
   "repeated_failures",
   "input_required",
   "execution_authority_required",
-  "execution_authority_unavailable",
+  "execution_authority_expired",
+  "execution_authority_exhausted",
+  "execution_authority_revoked",
+  "execution_authority_changed",
   "grant_required",
   "grant_expired",
   "previous_run_active",
@@ -74,7 +77,7 @@ describe("schedule occurrences", () => {
 
   test("offers renewing the approval only for approval failures", () => {
     expect(autoPauseRemedy({ failure_class: "authority_mismatch" })).toBe("renew_approval");
-    expect(autoPauseRemedy({ failure_class: "execution_authority_unavailable" })).toBe(
+    expect(autoPauseRemedy({ failure_class: "execution_authority_expired" })).toBe(
       "renew_approval",
     );
     expect(autoPauseRemedy({ failure_class: "timeout" })).toBe("resume");
