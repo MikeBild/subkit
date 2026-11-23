@@ -109,6 +109,7 @@ export const findWorkflowTool: ConversationTool = {
   ],
   inputSchema,
   category: "tenant_read",
+  permission: { action: "workflow:read", resourceType: "workflow", resourceIdArg: "id" },
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const parsed = inputSchema.parse(rawArgs);
     const lookupId = normalizeLookupId(parsed.id);
