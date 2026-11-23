@@ -96,6 +96,14 @@ export async function admitWorkflowRun(
   }
   enforce(
     decideAdmission(input, {
+      stage: "held_model_steps",
+      model_step_ids: resolved.def.steps.flatMap((step) =>
+        step.kind === "model" ? [step.id] : [],
+      ),
+    }),
+  );
+  enforce(
+    decideAdmission(input, {
       stage: "input",
       verdict: inputSchemaVerdict(normalized, resolved.def.input_schema),
     }),

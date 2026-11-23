@@ -70,6 +70,10 @@ const factsArb: fc.Arbitrary<AdmissionFacts> = fc.oneof(
     message: fc.string(),
   }),
   fc.record({
+    stage: fc.constant("held_model_steps" as const),
+    model_step_ids: fc.array(fc.string({ minLength: 1 })),
+  }),
+  fc.record({
     stage: fc.constant("input" as const),
     verdict: fc.oneof(
       fc.constant({ valid: true as const }),
@@ -234,6 +238,20 @@ describe("decideAdmission", () => {
     expect(decideAdmission({ ...base, hold_writes: true }, { stage: "binding" }).kind).toBe(
       "admitted",
     );
+  });
+
+  test("a held run never reaches a model step: it needs an approved authority", () => {
+    expect(decideAdmission(base, { stage: "held_model_steps", model_step_ids: [] })).toEqual({
+      kind: "admitted",
+    });
+    expect(
+      decideAdmission(base, { stage: "held_model_steps", model_step_ids: ["classify", "sum"] }),
+    ).toEqual({
+      kind: "rejected",
+      code: "execution_authority_required",
+      message:
+        "this workflow sends step data to the AI model (classify, sum); it runs only under an approved execution authority",
+    });
   });
 
   test("downgrades a refused authority only for an open request", () => {
