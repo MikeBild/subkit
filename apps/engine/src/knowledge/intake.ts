@@ -11,11 +11,12 @@ import {
   intakeProposals,
 } from "../db/schema/intake.ts";
 import { redactSecretShapes } from "../logging/scrub-secrets.ts";
-import { intakeGroupKey } from "./core/intake-dedupe.ts";
+import { absorbedRequestKey, intakeGroupKey } from "./core/intake-dedupe.ts";
 import {
   appendToOpenDuplicate,
   collectedEvidenceExcerpt,
   type IntakeDedupeDeps,
+  replayAbsorbedRequest,
   similarOpenIntakeItem,
 } from "./intake-dedupe.ts";
 import { proposalDigest, requestDigest } from "./intake-digest.ts";
@@ -209,7 +210,7 @@ export async function createIntakeItem(
       ? null
       : await similarOpenIntakeItem(
           exec,
-          { ...p, exclude_request_id: p.client_request_id },
+          { ...p, target: null, exclude_request_id: p.client_request_id },
           deps.embedder,
         );
   return (db as Db).transaction(async (tx) => {
@@ -220,6 +221,9 @@ export async function createIntakeItem(
         : await defaultIntakeCategory(tx, p.tenant_id, p.actor);
     const digest = itemRequestDigest(p, intakeCategory);
     const { params: clean, redactions } = redactCollected(p);
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext(${`${p.tenant_id}:intake-request:${p.client_request_id}`}))`,
+    );
     const previous = await tx
       .select()
       .from(intakeItems)
@@ -235,6 +239,12 @@ export async function createIntakeItem(
         throw new IntakeConflictError("item request id was already used with different content");
       return intakeItemView(previous[0]);
     }
+    const absorbed = await replayAbsorbedRequest(tx, {
+      tenant_id: p.tenant_id,
+      client_request_id: p.client_request_id,
+      digest,
+    });
+    if (absorbed) return absorbed;
     const collected = snapshot(clean, redactions);
     const duplicate =
       p.actor.kind === "anonymous"
@@ -242,10 +252,11 @@ export async function createIntakeItem(
         : await appendToOpenDuplicate(tx, {
             tenant_id: p.tenant_id,
             actor: p.actor,
+            target: null,
             source_url: collected.source_url,
             similar_id,
             agent: collected.origin,
-            session_id: p.client_request_id,
+            session_id: absorbedRequestKey(p.client_request_id, digest),
             repo: null,
             excerpt: collectedEvidenceExcerpt(collected.source_url, clean.body),
             captured_at: p.captured_at,

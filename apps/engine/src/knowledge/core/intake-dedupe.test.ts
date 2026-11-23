@@ -1,9 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import {
+  absorbedReplay,
+  absorbedRequestKey,
   cosine,
   intakeGroupKey,
+  intakeLearningTarget,
   mostSimilar,
   normalizeSourceUrl,
+  sameLearningTarget,
   sameSourceUrl,
   similarityText,
   sourceUrlHost,
@@ -110,5 +114,78 @@ describe("intakeGroupKey", () => {
   test("is null when nothing groups the item", () => {
     expect(intakeGroupKey({})).toBeNull();
     expect(intakeGroupKey({ source_url: "nope", repo: " ", tags: [" "] })).toBeNull();
+  });
+});
+
+describe("learning targets", () => {
+  test("an item without a scope has no learning target", () => {
+    expect(intakeLearningTarget(undefined)).toBeNull();
+    expect(intakeLearningTarget({ workflow_id: "wf-1" })).toBeNull();
+    expect(intakeLearningTarget({ scope: "workflow", workflow_id: "wf-1" })).toEqual({
+      scope: "workflow",
+      workflow_id: "wf-1",
+      connector_id: null,
+    });
+  });
+
+  test("items of the same scope and target ids share a learning target", () => {
+    expect(
+      sameLearningTarget(
+        { scope: "workflow", workflow_id: "wf-1" },
+        { scope: "workflow", workflow_id: "wf-1", connector_id: "" },
+      ),
+    ).toBe(true);
+    expect(sameLearningTarget({ scope: "global" }, { scope: "global" })).toBe(true);
+  });
+
+  test("a different workflow, connector or scope is a different learning target", () => {
+    expect(
+      sameLearningTarget(
+        { scope: "workflow", workflow_id: "wf-1" },
+        { scope: "workflow", workflow_id: "wf-2" },
+      ),
+    ).toBe(false);
+    expect(
+      sameLearningTarget(
+        { scope: "connector", connector_id: "c-1" },
+        { scope: "connector", connector_id: "c-2" },
+      ),
+    ).toBe(false);
+    expect(
+      sameLearningTarget({ scope: "global" }, { scope: "workflow", workflow_id: "wf-1" }),
+    ).toBe(false);
+  });
+
+  test("items without a learning target only match items without one, global scope included", () => {
+    expect(sameLearningTarget(null, undefined)).toBe(true);
+    expect(sameLearningTarget(null, { scope: "global" })).toBe(false);
+    expect(sameLearningTarget({ scope: "workflow", workflow_id: "wf-1" }, null)).toBe(false);
+  });
+});
+
+describe("absorbedReplay", () => {
+  const request = "0b8f5a8e-6f0e-4c1a-9a55-3f1c2d4e5f60";
+
+  test("a request id that never joined an item is not a replay", () => {
+    expect(absorbedReplay(request, "aa", [])).toEqual({ kind: "none" });
+    expect(
+      absorbedReplay(request, "aa", [{ item_id: "i-1", session_id: `${request}x:aa` }]),
+    ).toEqual({ kind: "none" });
+  });
+
+  test("the same request id with the same digest replays the item it joined", () => {
+    expect(
+      absorbedReplay(request, "aa", [
+        { item_id: "i-1", session_id: absorbedRequestKey(request, "aa") },
+      ]),
+    ).toEqual({ kind: "replayed", item_id: "i-1" });
+  });
+
+  test("the same request id with a different digest is a conflict", () => {
+    expect(
+      absorbedReplay(request, "bb", [
+        { item_id: "i-1", session_id: absorbedRequestKey(request, "aa") },
+      ]),
+    ).toEqual({ kind: "conflict" });
   });
 });

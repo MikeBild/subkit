@@ -2,11 +2,20 @@ import { type Actor, AuditAction } from "../audit/index.ts";
 import type { Executor } from "../db/index.ts";
 import { embeddingsAvailable, embedTexts } from "../embeddings/index.ts";
 import { errorFields, logger } from "../logging/index.ts";
-import { INTAKE_SIMILARITY_CANDIDATES, mostSimilar, similarityText } from "./core/intake-dedupe.ts";
+import {
+  absorbedReplay,
+  INTAKE_SIMILARITY_CANDIDATES,
+  type IntakeLearningTarget,
+  mostSimilar,
+  similarityText,
+} from "./core/intake-dedupe.ts";
+import { IntakeConflictError } from "./intake-errors.ts";
 import { intakeItemView, recordIntakeAudit } from "./intake-rows.ts";
 import type { IntakeItemView } from "./intake-types.ts";
 import {
+  absorbedRequestEvidence,
   insertIntakeEvidence,
+  intakeRowById,
   intakeRowByRequestId,
   lockOpenIntakeDuplicate,
   recentOpenIntakeTexts,
@@ -30,12 +39,19 @@ const localEmbedder: IntakeEmbedder = {
 
 export async function similarOpenIntakeItem(
   db: Executor,
-  p: { tenant_id: string; title: string; body: string; exclude_request_id?: string | undefined },
+  p: {
+    tenant_id: string;
+    target: IntakeLearningTarget | null;
+    title: string;
+    body: string;
+    exclude_request_id?: string | undefined;
+  },
   embedder: IntakeEmbedder = localEmbedder,
 ): Promise<string | null> {
   if (!(await embedder.available().catch(() => false))) return null;
   const candidates = await recentOpenIntakeTexts(db, {
     tenant_id: p.tenant_id,
+    target: p.target,
     limit: INTAKE_SIMILARITY_CANDIDATES,
     exclude_request_id: p.exclude_request_id,
   });
@@ -84,6 +100,7 @@ export async function appendToOpenDuplicate(
   p: {
     tenant_id: string;
     actor: Actor;
+    target: IntakeLearningTarget | null;
     source_url?: string | undefined;
     similar_id: string | null;
     agent: string;
@@ -96,6 +113,7 @@ export async function appendToOpenDuplicate(
 ): Promise<IntakeItemView | null> {
   const found = await lockOpenIntakeDuplicate(tx, {
     tenant_id: p.tenant_id,
+    target: p.target,
     source_url: p.source_url,
     similar_id: p.similar_id,
   });
@@ -133,5 +151,24 @@ export async function intakeItemByRequestId(
   client_request_id: string,
 ): Promise<IntakeItemView | null> {
   const row = await intakeRowByRequestId(db, tenant_id, client_request_id);
+  if (row) return intakeItemView(row);
+  const [absorbed] = await absorbedRequestEvidence(db, tenant_id, client_request_id);
+  const target = absorbed ? await intakeRowById(db, tenant_id, absorbed.item_id) : null;
+  return target ? intakeItemView(target) : null;
+}
+
+export async function replayAbsorbedRequest(
+  tx: Executor,
+  p: { tenant_id: string; client_request_id: string; digest: string },
+): Promise<IntakeItemView | null> {
+  const decision = absorbedReplay(
+    p.client_request_id,
+    p.digest,
+    await absorbedRequestEvidence(tx, p.tenant_id, p.client_request_id),
+  );
+  if (decision.kind === "none") return null;
+  if (decision.kind === "conflict")
+    throw new IntakeConflictError("item request id was already used with different content");
+  const row = await intakeRowById(tx, p.tenant_id, decision.item_id);
   return row ? intakeItemView(row) : null;
 }

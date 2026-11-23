@@ -5,6 +5,69 @@ const TRACKING_PARAM = /^(utm_[a-z0-9_]+|fbclid|gclid|dclid|msclkid|mc_cid|mc_ei
 
 export type IntakeDuplicateMatch = "source_url" | "similar";
 
+export interface IntakeLearningTarget {
+  readonly scope: string;
+  readonly workflow_id: string | null;
+  readonly connector_id: string | null;
+}
+
+interface LearningTargetFields {
+  readonly scope?: string | null | undefined;
+  readonly workflow_id?: string | null | undefined;
+  readonly connector_id?: string | null | undefined;
+}
+
+export function intakeLearningTarget(
+  fields: LearningTargetFields | null | undefined,
+): IntakeLearningTarget | null {
+  if (!fields?.scope) return null;
+  return {
+    scope: fields.scope,
+    workflow_id: fields.workflow_id || null,
+    connector_id: fields.connector_id || null,
+  };
+}
+
+export function sameLearningTarget(
+  a: LearningTargetFields | null | undefined,
+  b: LearningTargetFields | null | undefined,
+): boolean {
+  const left = intakeLearningTarget(a);
+  const right = intakeLearningTarget(b);
+  if (!left || !right) return left === right;
+  return (
+    left.scope === right.scope &&
+    left.workflow_id === right.workflow_id &&
+    left.connector_id === right.connector_id
+  );
+}
+
+export function absorbedRequestKey(client_request_id: string, digest: string): string {
+  return `${client_request_id}:${digest}`;
+}
+
+export function absorbedRequestPrefix(client_request_id: string): string {
+  return `${client_request_id}:`;
+}
+
+export type AbsorbedReplay =
+  | { readonly kind: "none" }
+  | { readonly kind: "replayed"; readonly item_id: string }
+  | { readonly kind: "conflict" };
+
+export function absorbedReplay(
+  client_request_id: string,
+  digest: string,
+  evidence: ReadonlyArray<{ readonly item_id: string; readonly session_id: string }>,
+): AbsorbedReplay {
+  const prefix = absorbedRequestPrefix(client_request_id);
+  const own = evidence.filter((e) => e.session_id.startsWith(prefix));
+  if (own.length === 0) return { kind: "none" };
+  const key = absorbedRequestKey(client_request_id, digest);
+  const same = own.find((e) => e.session_id === key);
+  return same ? { kind: "replayed", item_id: same.item_id } : { kind: "conflict" };
+}
+
 export function normalizeSourceUrl(raw: string | null | undefined): string | null {
   if (!raw) return null;
   let url: URL;

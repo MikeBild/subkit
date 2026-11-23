@@ -5,6 +5,8 @@ import { runIntakeGroupKeyBackfill } from "../backfills/intake-group-key-v1.ts";
 import {
   createIntakeItem,
   createSessionIntakeItem,
+  IntakeConflictError,
+  intakeItemByRequestId,
   listIntakeItemEvidence,
   patchIntakeItem,
 } from "../index.ts";
@@ -79,7 +81,10 @@ describe.skipIf(skip)("intake backlog dedupe", () => {
     expect(again.body).toBe(first.body);
     const evidence = await listIntakeItemEvidence(ctx.tenantId, first.id, ctx.testDb.db);
     expect(evidence).toHaveLength(1);
-    expect(evidence[0]).toMatchObject({ agent: "capture", session_id: request });
+    expect(evidence[0]).toMatchObject({
+      agent: "capture",
+      session_id: expect.stringMatching(new RegExp(`^${request}:[0-9a-f]{64}$`)),
+    });
     expect(evidence[0]?.excerpt).toContain("A second look");
     expect(await evidenceAudits(first.id)).toEqual([
       { metadata: expect.objectContaining({ match: "source_url", agent: "capture" }) },
@@ -92,6 +97,95 @@ describe.skipIf(skip)("intake backlog dedupe", () => {
     });
     expect(replay.id).toBe(first.id);
     expect(await listIntakeItemEvidence(ctx.tenantId, first.id, ctx.testDb.db)).toHaveLength(1);
+    expect((await intakeItemByRequestId(ctx.testDb.db, ctx.tenantId, request))?.id).toBe(first.id);
+  });
+
+  test("an absorbed request id replayed with different content is a conflict", async () => {
+    const first = await clipWith({ source_url: "https://dedupe-f.test/post" });
+    const request = nextUuid();
+    await clipWith({ client_request_id: request, source_url: "https://dedupe-f.test/post" });
+    await expect(
+      clipWith({
+        client_request_id: request,
+        source_url: "https://dedupe-f.test/post",
+        body: "Other content under the same request id.",
+      }),
+    ).rejects.toBeInstanceOf(IntakeConflictError);
+    await expect(
+      clipWith({ client_request_id: request, title: "Unrelated note", body: "Elsewhere." }),
+    ).rejects.toBeInstanceOf(IntakeConflictError);
+    expect(await listIntakeItemEvidence(ctx.tenantId, first.id, ctx.testDb.db)).toHaveLength(1);
+  });
+
+  test("an absorbed request replays its item after that item left the open backlog", async () => {
+    const first = await clipWith({ source_url: "https://dedupe-g.test/post" });
+    const request = nextUuid();
+    await clipWith({ client_request_id: request, source_url: "https://dedupe-g.test/post" });
+    await patchIntakeItem(
+      {
+        tenant_id: ctx.tenantId,
+        actor,
+        id: first.id,
+        expected_version: first.version,
+        state: "discarded",
+      },
+      ctx.testDb.db,
+    );
+    const replay = await clipWith({
+      client_request_id: request,
+      source_url: "https://dedupe-g.test/post",
+    });
+    expect(replay.id).toBe(first.id);
+    expect(replay.state).toBe("discarded");
+    expect(await listIntakeItemEvidence(ctx.tenantId, first.id, ctx.testDb.db)).toHaveLength(1);
+  });
+
+  test("similar session learnings join only an item with the same learning target", async () => {
+    const workflowA = nextUuid();
+    const workflowB = nextUuid();
+    const learning = (workflow_id: string) => ({
+      kind: "practice" as const,
+      scope: "workflow" as const,
+      workflow_id,
+    });
+    const first = await createSessionIntakeItem(
+      sessionInput({
+        title: "granite judge",
+        body: "granite empty",
+        learning: learning(workflowA),
+      }),
+      ctx.testDb.db,
+      { embedder },
+    );
+    const other = await createSessionIntakeItem(
+      sessionInput({ title: "basalt judge", body: "basalt empty", learning: learning(workflowB) }),
+      ctx.testDb.db,
+      { embedder },
+    );
+    expect(other.outcome).toBe("created");
+    expect(other.item.id).not.toBe(first.item.id);
+    const same = await createSessionIntakeItem(
+      sessionInput({ title: "basalt again", body: "basalt empty", learning: learning(workflowA) }),
+      ctx.testDb.db,
+      { embedder },
+    );
+    expect(same.outcome).toBe("evidence_appended");
+    expect(same.item.id).toBe(first.item.id);
+  });
+
+  test("a session learning with a target never joins a capture of the same address", async () => {
+    const capture = await clipWith({ source_url: "https://dedupe-h.test/guide" });
+    const result = await createSessionIntakeItem(
+      sessionInput({
+        title: "Workflow guide learning",
+        source_url: "https://dedupe-h.test/guide",
+        learning: { scope: "workflow", workflow_id: nextUuid() },
+      }),
+      ctx.testDb.db,
+      withoutSimilarity,
+    );
+    expect(result.outcome).toBe("created");
+    expect(result.item.id).not.toBe(capture.id);
   });
 
   test("a discarded item is never a dedupe target", async () => {

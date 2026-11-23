@@ -11,7 +11,7 @@ import {
   intakeItems,
 } from "../db/schema/intake.ts";
 import { ensureNamedSystemAccount } from "../identity/service.ts";
-import { intakeGroupKey } from "./core/intake-dedupe.ts";
+import { intakeGroupKey, intakeLearningTarget } from "./core/intake-dedupe.ts";
 import {
   appendToOpenDuplicate,
   type IntakeDedupeDeps,
@@ -148,9 +148,10 @@ export async function createSessionIntakeItem(
     session_id: p.session.session_id,
     title: p.title,
   });
+  const target = intakeLearningTarget(p.learning);
   const similar_id = await similarOpenIntakeItem(
     db,
-    { ...p, exclude_request_id: client_request_id },
+    { ...p, target, exclude_request_id: client_request_id },
     deps.embedder,
   );
   return (db as Db).transaction(async (tx) => {
@@ -207,6 +208,7 @@ export async function createSessionIntakeItem(
     const related = await appendToOpenDuplicate(tx, {
       tenant_id: p.tenant_id,
       actor: collector,
+      target,
       source_url: p.source_url,
       similar_id,
       agent: p.session.agent,

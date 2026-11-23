@@ -132,8 +132,18 @@ async function clip(title: string, category?: string) {
       ...(category ? { category } : {}),
     },
     db,
+    distinctClips,
   );
 }
+
+const distinctClips = {
+  embedder: {
+    available: async () => false,
+    embed: async (): Promise<number[][]> => {
+      throw new Error("golden clips are distinct items");
+    },
+  },
+};
 
 async function discard(id: string, expected_version: number) {
   const item = await patchIntakeItem(
