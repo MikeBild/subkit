@@ -3,6 +3,8 @@ export const GERMAN_TEXT_HOMES: readonly RegExp[] = [
   /^apps\/desktop\/src\/shared\/i18n\.ts$/,
   /^packages\/ui\/src\/i18n\//,
   /^packages\/shared\/src\/error-catalog\.ts$/,
+  /^apps\/engine\/src\/http\/i18n\//,
+  /^apps\/engine\/src\/http\/i18n\//,
   /^apps\/engine\/src\/http\/reference\/[^/]+\.de\.md$/,
   /^apps\/engine\/src\/http\/llms\//,
   /^(vendor|patches)\//,

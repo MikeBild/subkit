@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { testEnv } from "../../test-helpers/determinism/env.ts";
+import { REFUSAL_COPY } from "../i18n/browser-refusal.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let ctx: HttpTestServer;
@@ -56,7 +57,7 @@ describe("refusals on browser pages", () => {
     expect(de.status).toBe(400);
     expect(de.headers.get("content-type")).toContain("text/html");
     const deHtml = await de.text();
-    expect(deHtml).toContain("Dieses Anmeldeziel wird nicht angenommen");
+    expect(deHtml).toContain(REFUSAL_COPY.de.target_refused.title);
     expect(deHtml).toContain('data-refusal-kind="target_refused"');
     expect(deHtml).toContain("invalid_redirect_uri");
     expect(deHtml).not.toContain('"code"');
@@ -81,8 +82,8 @@ describe("refusals on browser pages", () => {
     });
     expect(response.status).toBe(403);
     const html = await response.text();
-    expect(html).toContain("Anfrage abgelehnt");
-    expect(html).toContain("Geändert wurde nichts.");
+    expect(html).toContain(REFUSAL_COPY.de.cross_site.title);
+    expect(html).toContain(REFUSAL_COPY.de.cross_site.line(null));
     expect(html).toContain("csrf_rejected");
     expect(html).not.toContain('"code"');
   });

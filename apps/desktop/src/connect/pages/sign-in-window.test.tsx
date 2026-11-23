@@ -139,10 +139,8 @@ describe.skipIf(!desktopRunner)("sign-in window page", () => {
 
   test("the German connect step names an own server in German", () => {
     const html = render(state({ defaultServer: CLOUD }, [], "de"));
-    expect(html).toContain(
-      "Eigener Server? Gib seine Adresse ein, z. B. https://subkit.deine-firma.de",
-    );
-    expect(html).toContain("Bekannte Server:");
+    expect(html).toContain(dictionary("de")["connect.ownServer"].split("{example}")[0] ?? "");
+    expect(html).toContain(dictionary("de")["connect.examples"]);
   });
 
   test("an unreachable server is the error card with one retry and SubKit Cloud", () => {
@@ -391,7 +389,7 @@ describe.skipIf(!desktopRunner)("welcome and invitation", () => {
 
   test("the report screen has a description, attached diagnostics with a preview and Send", () => {
     const html = render(state({ view: "report", report: opened }, [], "de"));
-    expect(html).toContain("Fehler melden");
+    expect(html).toContain(dictionary("de")["report.title"]);
     expect(html).toContain("Die Meldung geht an subkit-cloud.example.");
     expect(html).toContain("Was ist passiert?");
     expect(html).toContain('maxLength="5000"');
@@ -402,8 +400,8 @@ describe.skipIf(!desktopRunner)("welcome and invitation", () => {
     expect(html).toContain("App-Version");
     expect(html).toContain("12.1.5");
     expect(tagOf(html, "report-send")).toContain("report-send");
-    expect(html).toContain(">Senden<");
-    expect(html).toContain("Diagnose kopieren");
+    expect(html).toContain(`>${dictionary("de")["report.send"]}<`);
+    expect(html).toContain(dictionary("de")["report.copy"]);
     expect(html).toContain("Als Datei speichern …");
     expect(html).not.toContain('data-testid="step-next"');
   });
