@@ -265,3 +265,36 @@ describe("subkit CLI <-> engine OpenAPI contract", () => {
     ).toEqual(KNOWN_UNDOCUMENTED_ENDPOINTS);
   });
 });
+
+describe("request step discriminator in the committed openapi.json", () => {
+  const schemas = (
+    JSON.parse(readFileSync(OPENAPI_JSON_PATH, "utf8")) as {
+      components: {
+        schemas: Record<string, { discriminator?: { mapping?: Record<string, string> } }>;
+      };
+    }
+  ).components.schemas;
+  const protocols = ["http", "graphql", "sql", "s3", "sftp", "mcp"];
+  const component: Record<string, string> = {
+    http: "Http",
+    graphql: "Graphql",
+    sql: "Sql",
+    s3: "S3",
+    sftp: "Sftp",
+    mcp: "Mcp",
+  };
+
+  for (const suffix of ["", "Output"]) {
+    test(`RequestStep${suffix} maps every protocol, http included, to its component`, () => {
+      const mapping = schemas[`RequestStep${suffix}`]?.discriminator?.mapping ?? {};
+      expect(mapping).toEqual(
+        Object.fromEntries(
+          protocols.map((protocol) => [
+            protocol,
+            `#/components/schemas/${component[protocol]}RequestStep${suffix}`,
+          ]),
+        ),
+      );
+    });
+  }
+});

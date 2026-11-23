@@ -8580,6 +8580,7 @@
                     "graphql",
                     "postgres",
                     "s3",
+                    "sftp",
                     "mcp",
                     "local_files",
                     "local_browser",
@@ -11756,6 +11757,9 @@
                 },
                 {
                   "$ref": "#/components/schemas/ParallelStepOutput"
+                },
+                {
+                  "$ref": "#/components/schemas/ModelStepOutput"
                 }
               ],
               "discriminator": {
@@ -11767,7 +11771,8 @@
                   "wait": "#/components/schemas/WaitStepOutput",
                   "wait_for_event": "#/components/schemas/WaitForEventStepOutput",
                   "branch": "#/components/schemas/BranchStepOutput",
-                  "parallel": "#/components/schemas/ParallelStepOutput"
+                  "parallel": "#/components/schemas/ParallelStepOutput",
+                  "model": "#/components/schemas/ModelStepOutput"
                 }
               }
             },
@@ -11786,7 +11791,8 @@
           },
           "max_llm_tokens_per_run": {
             "type": "integer",
-            "exclusiveMinimum": 0
+            "exclusiveMinimum": 0,
+            "description": "cap for all model steps and provider calls in one run"
           },
           "runtime": {
             "$ref": "#/components/schemas/WorkflowRuntime"
@@ -11864,17 +11870,21 @@
             "$ref": "#/components/schemas/S3RequestStep"
           },
           {
+            "$ref": "#/components/schemas/SftpRequestStep"
+          },
+          {
             "$ref": "#/components/schemas/McpRequestStep"
           }
         ],
         "discriminator": {
           "propertyName": "protocol",
           "mapping": {
+            "http": "#/components/schemas/HttpRequestStep",
             "graphql": "#/components/schemas/GraphqlRequestStep",
             "sql": "#/components/schemas/SqlRequestStep",
             "s3": "#/components/schemas/S3RequestStep",
-            "mcp": "#/components/schemas/McpRequestStep",
-            "http": "#/components/schemas/HttpRequestStep"
+            "sftp": "#/components/schemas/SftpRequestStep",
+            "mcp": "#/components/schemas/McpRequestStep"
           }
         }
       },
@@ -11893,17 +11903,21 @@
             "$ref": "#/components/schemas/S3RequestStepOutput"
           },
           {
+            "$ref": "#/components/schemas/SftpRequestStepOutput"
+          },
+          {
             "$ref": "#/components/schemas/McpRequestStepOutput"
           }
         ],
         "discriminator": {
           "propertyName": "protocol",
           "mapping": {
+            "http": "#/components/schemas/HttpRequestStepOutput",
             "graphql": "#/components/schemas/GraphqlRequestStepOutput",
             "sql": "#/components/schemas/SqlRequestStepOutput",
             "s3": "#/components/schemas/S3RequestStepOutput",
-            "mcp": "#/components/schemas/McpRequestStepOutput",
-            "http": "#/components/schemas/HttpRequestStepOutput"
+            "sftp": "#/components/schemas/SftpRequestStepOutput",
+            "mcp": "#/components/schemas/McpRequestStepOutput"
           }
         }
       },
@@ -12432,6 +12446,10 @@
             "not": {}
           },
           "s3": {
+            "type": "null",
+            "not": {}
+          },
+          "sftp": {
             "type": "null",
             "not": {}
           },
@@ -12970,6 +12988,10 @@
             "not": {}
           },
           "s3": {
+            "type": "null",
+            "not": {}
+          },
+          "sftp": {
             "type": "null",
             "not": {}
           },
@@ -14246,6 +14268,10 @@
             "type": "null",
             "not": {}
           },
+          "sftp": {
+            "type": "null",
+            "not": {}
+          },
           "mcp": {
             "type": "null",
             "not": {}
@@ -14868,6 +14894,10 @@
             "type": "null",
             "not": {}
           },
+          "sftp": {
+            "type": "null",
+            "not": {}
+          },
           "mcp": {
             "type": "null",
             "not": {}
@@ -15479,6 +15509,10 @@
             "type": "null",
             "not": {}
           },
+          "sftp": {
+            "type": "null",
+            "not": {}
+          },
           "mcp": {
             "type": "null",
             "not": {}
@@ -16087,6 +16121,10 @@
             "not": {}
           },
           "s3": {
+            "type": "null",
+            "not": {}
+          },
+          "sftp": {
             "type": "null",
             "not": {}
           },
@@ -16704,6 +16742,10 @@
             "type": "null",
             "not": {}
           },
+          "sftp": {
+            "type": "null",
+            "not": {}
+          },
           "mcp": {
             "type": "null",
             "not": {}
@@ -17318,6 +17360,10 @@
             "type": "null",
             "not": {}
           },
+          "sftp": {
+            "type": "null",
+            "not": {}
+          },
           "mcp": {
             "type": "null",
             "not": {}
@@ -17328,6 +17374,1101 @@
           "protocol",
           "id",
           "s3",
+          "on_error",
+          "method",
+          "error_policy"
+        ]
+      },
+      "SftpRequestStep": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "request"
+            ]
+          },
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "sftp"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "on_error": {
+            "type": "string",
+            "enum": [
+              "fail",
+              "continue"
+            ],
+            "default": "fail"
+          },
+          "data_selector": {
+            "type": "string"
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "for_each": {
+            "type": "string"
+          },
+          "for_each_concurrency": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "LIST",
+              "GET",
+              "PUT",
+              "DELETE"
+            ],
+            "default": "GET"
+          },
+          "side_effects": {
+            "type": "string",
+            "enum": [
+              "read",
+              "write"
+            ]
+          },
+          "url": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "connector_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "boundary": {
+            "type": "object",
+            "properties": {
+              "variables": {
+                "type": "object",
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "enum": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "pattern": "^(?:[A-Za-z0-9._~:-]|%[0-9A-Fa-f]{2}){1,200}$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 50
+                        }
+                      },
+                      "required": [
+                        "enum"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "class": {
+                          "type": "string",
+                          "enum": [
+                            "identifier",
+                            "uuid",
+                            "integer",
+                            "date",
+                            "timestamp",
+                            "timestamp_range",
+                            "file_name",
+                            "path"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "class"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "caller_bound": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        }
+                      },
+                      "required": [
+                        "caller_bound"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              },
+              "max_body_bytes": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10000000
+              },
+              "max_calls": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10000
+              },
+              "destructive": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ]
+              }
+            },
+            "required": [
+              "variables",
+              "max_body_bytes",
+              "max_calls"
+            ],
+            "additionalProperties": false
+          },
+          "report_delivery": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "gmail_report"
+                ]
+              },
+              "to": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\\.[A-Za-z]{2,63}$"
+              },
+              "from": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\\.[A-Za-z]{2,63}$"
+              },
+              "content_type": {
+                "type": "string",
+                "enum": [
+                  "text/plain",
+                  "text/html",
+                  "multipart/alternative"
+                ]
+              }
+            },
+            "required": [
+              "kind",
+              "to",
+              "from",
+              "content_type"
+            ],
+            "additionalProperties": false
+          },
+          "transactional_delivery": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "gmail_transactional"
+                ]
+              },
+              "webhook_verifier": {
+                "type": "string",
+                "enum": [
+                  "standard",
+                  "hmac"
+                ]
+              },
+              "webhook_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden"
+              },
+              "event_type": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "The single allowed event type configured on the signed binding"
+              },
+              "event_type_input": {
+                "type": "string",
+                "maxLength": 128,
+                "pattern": "^body(?:\\.[A-Za-z_][A-Za-z0-9_]*){1,7}$",
+                "description": "Reviewed event type field inside the signed body, equal to event_type; webhook-type alone is not signed"
+              },
+              "recipient_input": {
+                "type": "string",
+                "maxLength": 128,
+                "pattern": "^body(?:\\.[A-Za-z_][A-Za-z0-9_]*){1,7}$",
+                "description": "Reviewed dot path in the original admitted input, for example body.applicant.email; never a step output or caller-supplied routing override"
+              },
+              "request_id_input": {
+                "type": "string",
+                "maxLength": 128,
+                "pattern": "^body(?:\\.[A-Za-z_][A-Za-z0-9_]*){1,7}$",
+                "description": "Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID."
+              },
+              "from": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\\.[A-Za-z]{2,63}$"
+              },
+              "content_type": {
+                "type": "string",
+                "enum": [
+                  "text/plain"
+                ]
+              },
+              "max_body_bytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 16384,
+                "description": "Maximum UTF-8 serialized Gmail JSON request bytes; derive from bounded template inputs"
+              }
+            },
+            "required": [
+              "kind",
+              "webhook_id",
+              "event_type",
+              "event_type_input",
+              "recipient_input",
+              "request_id_input",
+              "from",
+              "content_type",
+              "max_body_bytes"
+            ],
+            "additionalProperties": false
+          },
+          "outbox_delivery": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "gmail_outbox"
+                ]
+              },
+              "source_step_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "Earlier GET request step of this workflow that reads exactly one queued message from a fixed, approved address; the recipient is only ever taken from its response in the same run"
+              },
+              "recipient_field": {
+                "type": "string",
+                "maxLength": 128,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*){0,7}$",
+                "description": "Dot path inside the source step's response data that holds the one recipient address, for example email or item.email"
+              },
+              "item_id_field": {
+                "type": "string",
+                "maxLength": 128,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*){0,7}$",
+                "description": "Dot path inside the source step's response data that identifies the queued message; one dispatch attempt per workflow and item"
+              },
+              "from": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\\.[A-Za-z]{2,63}$"
+              },
+              "content_type": {
+                "type": "string",
+                "enum": [
+                  "text/plain"
+                ]
+              },
+              "max_body_bytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 16384,
+                "description": "Maximum UTF-8 serialized Gmail JSON request bytes"
+              },
+              "max_per_day": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 500,
+                "description": "Most messages this workflow may send within any 24 hours"
+              }
+            },
+            "required": [
+              "kind",
+              "source_step_id",
+              "recipient_field",
+              "item_id_field",
+              "from",
+              "content_type",
+              "max_body_bytes",
+              "max_per_day"
+            ],
+            "additionalProperties": false
+          },
+          "headers": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "query": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            }
+          },
+          "body": {
+            "$ref": "#/components/schemas/WorkflowJsonValue"
+          },
+          "response_filters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResponseFilter"
+            }
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/Pagination"
+          },
+          "max_retries": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 5
+          },
+          "retry_backoff_ms": {
+            "type": "integer",
+            "minimum": 50,
+            "maximum": 10000
+          },
+          "retry_on_status": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 599
+            }
+          },
+          "error_policy": {
+            "type": "string",
+            "enum": [
+              "none",
+              "all"
+            ],
+            "default": "none"
+          },
+          "body_schema": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "response_schema": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "expected_statuses": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          },
+          "expected_row_count": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "min": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "max": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            ]
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "outputs": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "secret": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "state_read": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "minLength": 1
+              },
+              "into_var": {
+                "type": "string",
+                "minLength": 1
+              },
+              "default_value": {}
+            },
+            "required": [
+              "key",
+              "into_var"
+            ]
+          },
+          "state_write": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "minLength": 1
+              },
+              "value_path": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "key",
+              "value_path"
+            ]
+          },
+          "multipart": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MultipartPart"
+            },
+            "minItems": 1
+          },
+          "sftp": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Remote path below the connector's root folder. LIST reads a folder; GET, PUT and DELETE address one file. Placeholders are filled in before the call."
+              },
+              "max_entries": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 10000,
+                "description": "Upper bound for the entries a LIST returns."
+              }
+            },
+            "required": [
+              "path"
+            ]
+          },
+          "xml": {
+            "type": "null",
+            "not": {}
+          },
+          "graphql": {
+            "type": "null",
+            "not": {}
+          },
+          "sql": {
+            "type": "null",
+            "not": {}
+          },
+          "s3": {
+            "type": "null",
+            "not": {}
+          },
+          "mcp": {
+            "type": "null",
+            "not": {}
+          }
+        },
+        "required": [
+          "kind",
+          "protocol",
+          "id",
+          "sftp"
+        ]
+      },
+      "SftpRequestStepOutput": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "request"
+            ]
+          },
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "sftp"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "on_error": {
+            "type": "string",
+            "enum": [
+              "fail",
+              "continue"
+            ],
+            "default": "fail"
+          },
+          "data_selector": {
+            "type": "string"
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "for_each": {
+            "type": "string"
+          },
+          "for_each_concurrency": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "LIST",
+              "GET",
+              "PUT",
+              "DELETE"
+            ],
+            "default": "GET"
+          },
+          "side_effects": {
+            "type": "string",
+            "enum": [
+              "read",
+              "write"
+            ]
+          },
+          "url": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "connector_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "boundary": {
+            "type": "object",
+            "properties": {
+              "variables": {
+                "type": "object",
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "enum": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "pattern": "^(?:[A-Za-z0-9._~:-]|%[0-9A-Fa-f]{2}){1,200}$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 50
+                        }
+                      },
+                      "required": [
+                        "enum"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "class": {
+                          "type": "string",
+                          "enum": [
+                            "identifier",
+                            "uuid",
+                            "integer",
+                            "date",
+                            "timestamp",
+                            "timestamp_range",
+                            "file_name",
+                            "path"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "class"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "caller_bound": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        }
+                      },
+                      "required": [
+                        "caller_bound"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              },
+              "max_body_bytes": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10000000
+              },
+              "max_calls": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10000
+              },
+              "destructive": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ]
+              }
+            },
+            "required": [
+              "variables",
+              "max_body_bytes",
+              "max_calls"
+            ],
+            "additionalProperties": false
+          },
+          "report_delivery": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "gmail_report"
+                ]
+              },
+              "to": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\\.[A-Za-z]{2,63}$"
+              },
+              "from": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\\.[A-Za-z]{2,63}$"
+              },
+              "content_type": {
+                "type": "string",
+                "enum": [
+                  "text/plain",
+                  "text/html",
+                  "multipart/alternative"
+                ]
+              }
+            },
+            "required": [
+              "kind",
+              "to",
+              "from",
+              "content_type"
+            ],
+            "additionalProperties": false
+          },
+          "transactional_delivery": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "gmail_transactional"
+                ]
+              },
+              "webhook_verifier": {
+                "type": "string",
+                "enum": [
+                  "standard",
+                  "hmac"
+                ]
+              },
+              "webhook_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden"
+              },
+              "event_type": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "The single allowed event type configured on the signed binding"
+              },
+              "event_type_input": {
+                "type": "string",
+                "maxLength": 128,
+                "pattern": "^body(?:\\.[A-Za-z_][A-Za-z0-9_]*){1,7}$",
+                "description": "Reviewed event type field inside the signed body, equal to event_type; webhook-type alone is not signed"
+              },
+              "recipient_input": {
+                "type": "string",
+                "maxLength": 128,
+                "pattern": "^body(?:\\.[A-Za-z_][A-Za-z0-9_]*){1,7}$",
+                "description": "Reviewed dot path in the original admitted input, for example body.applicant.email; never a step output or caller-supplied routing override"
+              },
+              "request_id_input": {
+                "type": "string",
+                "maxLength": 128,
+                "pattern": "^body(?:\\.[A-Za-z_][A-Za-z0-9_]*){1,7}$",
+                "description": "Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID."
+              },
+              "from": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\\.[A-Za-z]{2,63}$"
+              },
+              "content_type": {
+                "type": "string",
+                "enum": [
+                  "text/plain"
+                ]
+              },
+              "max_body_bytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 16384,
+                "description": "Maximum UTF-8 serialized Gmail JSON request bytes; derive from bounded template inputs"
+              }
+            },
+            "required": [
+              "kind",
+              "webhook_id",
+              "event_type",
+              "event_type_input",
+              "recipient_input",
+              "request_id_input",
+              "from",
+              "content_type",
+              "max_body_bytes"
+            ],
+            "additionalProperties": false
+          },
+          "outbox_delivery": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "gmail_outbox"
+                ]
+              },
+              "source_step_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "Earlier GET request step of this workflow that reads exactly one queued message from a fixed, approved address; the recipient is only ever taken from its response in the same run"
+              },
+              "recipient_field": {
+                "type": "string",
+                "maxLength": 128,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*){0,7}$",
+                "description": "Dot path inside the source step's response data that holds the one recipient address, for example email or item.email"
+              },
+              "item_id_field": {
+                "type": "string",
+                "maxLength": 128,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*){0,7}$",
+                "description": "Dot path inside the source step's response data that identifies the queued message; one dispatch attempt per workflow and item"
+              },
+              "from": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\\.[A-Za-z]{2,63}$"
+              },
+              "content_type": {
+                "type": "string",
+                "enum": [
+                  "text/plain"
+                ]
+              },
+              "max_body_bytes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 16384,
+                "description": "Maximum UTF-8 serialized Gmail JSON request bytes"
+              },
+              "max_per_day": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 500,
+                "description": "Most messages this workflow may send within any 24 hours"
+              }
+            },
+            "required": [
+              "kind",
+              "source_step_id",
+              "recipient_field",
+              "item_id_field",
+              "from",
+              "content_type",
+              "max_body_bytes",
+              "max_per_day"
+            ],
+            "additionalProperties": false
+          },
+          "headers": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "query": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            }
+          },
+          "body": {
+            "$ref": "#/components/schemas/WorkflowJsonValue"
+          },
+          "response_filters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResponseFilter"
+            }
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/PaginationOutput"
+          },
+          "max_retries": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 5
+          },
+          "retry_backoff_ms": {
+            "type": "integer",
+            "minimum": 50,
+            "maximum": 10000
+          },
+          "retry_on_status": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 599
+            }
+          },
+          "error_policy": {
+            "type": "string",
+            "enum": [
+              "none",
+              "all"
+            ],
+            "default": "none"
+          },
+          "body_schema": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "response_schema": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "expected_statuses": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          },
+          "expected_row_count": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "min": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "max": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            ]
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "outputs": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "secret": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "state_read": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "minLength": 1
+              },
+              "into_var": {
+                "type": "string",
+                "minLength": 1
+              },
+              "default_value": {}
+            },
+            "required": [
+              "key",
+              "into_var"
+            ]
+          },
+          "state_write": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "minLength": 1
+              },
+              "value_path": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "key",
+              "value_path"
+            ]
+          },
+          "multipart": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MultipartPart"
+            },
+            "minItems": 1
+          },
+          "sftp": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Remote path below the connector's root folder. LIST reads a folder; GET, PUT and DELETE address one file. Placeholders are filled in before the call."
+              },
+              "max_entries": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 10000,
+                "description": "Upper bound for the entries a LIST returns."
+              }
+            },
+            "required": [
+              "path"
+            ]
+          },
+          "xml": {
+            "type": "null",
+            "not": {}
+          },
+          "graphql": {
+            "type": "null",
+            "not": {}
+          },
+          "sql": {
+            "type": "null",
+            "not": {}
+          },
+          "s3": {
+            "type": "null",
+            "not": {}
+          },
+          "mcp": {
+            "type": "null",
+            "not": {}
+          }
+        },
+        "required": [
+          "kind",
+          "protocol",
+          "id",
+          "sftp",
           "on_error",
           "method",
           "error_policy"
@@ -18001,6 +19142,10 @@
             "not": {}
           },
           "s3": {
+            "type": "null",
+            "not": {}
+          },
+          "sftp": {
             "type": "null",
             "not": {}
           }
@@ -18685,6 +19830,10 @@
           "s3": {
             "type": "null",
             "not": {}
+          },
+          "sftp": {
+            "type": "null",
+            "not": {}
           }
         },
         "required": [
@@ -18741,7 +19890,8 @@
               "javascript",
               "readability",
               "html-to-markdown",
-              "structured-data"
+              "structured-data",
+              "parse-file"
             ]
           },
           "readability": {
@@ -18752,6 +19902,9 @@
           },
           "structured_data": {
             "$ref": "#/components/schemas/StructuredDataConfig"
+          },
+          "file": {
+            "$ref": "#/components/schemas/ParseFileConfig"
           },
           "input_schema": {
             "type": "object",
@@ -18821,7 +19974,8 @@
               "javascript",
               "readability",
               "html-to-markdown",
-              "structured-data"
+              "structured-data",
+              "parse-file"
             ]
           },
           "readability": {
@@ -18832,6 +19986,9 @@
           },
           "structured_data": {
             "$ref": "#/components/schemas/StructuredDataConfig"
+          },
+          "file": {
+            "$ref": "#/components/schemas/ParseFileConfig"
           },
           "input_schema": {
             "type": "object",
@@ -18912,6 +20069,41 @@
             "minItems": 1
           }
         }
+      },
+      "ParseFileConfig": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Where the file sits in the run, as a dot path: an earlier step's output such as `download.data` or a run input such as `$input.invoice`. The value must be a file reference (`{ $file }`) or a file result of a request step."
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "csv",
+              "xlsx",
+              "pdf",
+              "docx",
+              "zip"
+            ],
+            "description": "File type. Without it the type is read from the file itself."
+          },
+          "sheet": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Spreadsheet sheet to read. Without it the first sheet is read."
+          },
+          "max_rows": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000,
+            "description": "Upper bound for table rows returned from a CSV or spreadsheet file."
+          }
+        },
+        "required": [
+          "source"
+        ]
       },
       "CallStep": {
         "type": "object",
@@ -19489,6 +20681,153 @@
           "kind",
           "id",
           "branches",
+          "on_error"
+        ]
+      },
+      "ModelStep": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "model"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "on_error": {
+            "type": "string",
+            "enum": [
+              "fail",
+              "continue"
+            ],
+            "default": "fail"
+          },
+          "data_selector": {
+            "type": "string"
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "for_each": {
+            "type": "string"
+          },
+          "for_each_concurrency": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "prompt": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The instruction for the model. Placeholders such as ${input.x} or ${scope.step.data} are filled in before the call."
+          },
+          "system": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Optional system prompt. Without it the step uses a short neutral default."
+          },
+          "input": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowJsonValue"
+              },
+              {
+                "description": "Data handed to the model next to the prompt, as data and never as instructions."
+              }
+            ]
+          },
+          "output_schema": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "JSON Schema the model's answer must match. The step fails when it does not."
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32000
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "prompt",
+          "output_schema"
+        ]
+      },
+      "ModelStepOutput": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "model"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "on_error": {
+            "type": "string",
+            "enum": [
+              "fail",
+              "continue"
+            ],
+            "default": "fail"
+          },
+          "data_selector": {
+            "type": "string"
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "for_each": {
+            "type": "string"
+          },
+          "for_each_concurrency": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "prompt": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The instruction for the model. Placeholders such as ${input.x} or ${scope.step.data} are filled in before the call."
+          },
+          "system": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Optional system prompt. Without it the step uses a short neutral default."
+          },
+          "input": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowJsonValue"
+              },
+              {
+                "description": "Data handed to the model next to the prompt, as data and never as instructions."
+              }
+            ]
+          },
+          "output_schema": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "JSON Schema the model's answer must match. The step fails when it does not."
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32000
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "prompt",
+          "output_schema",
           "on_error"
         ]
       },
@@ -20155,6 +21494,9 @@
                 },
                 {
                   "$ref": "#/components/schemas/ParallelStep"
+                },
+                {
+                  "$ref": "#/components/schemas/ModelStep"
                 }
               ],
               "discriminator": {
@@ -20166,7 +21508,8 @@
                   "wait": "#/components/schemas/WaitStep",
                   "wait_for_event": "#/components/schemas/WaitForEventStep",
                   "branch": "#/components/schemas/BranchStep",
-                  "parallel": "#/components/schemas/ParallelStep"
+                  "parallel": "#/components/schemas/ParallelStep",
+                  "model": "#/components/schemas/ModelStep"
                 }
               }
             },
@@ -20186,7 +21529,8 @@
           },
           "max_llm_tokens_per_run": {
             "type": "integer",
-            "exclusiveMinimum": 0
+            "exclusiveMinimum": 0,
+            "description": "cap for all model steps and provider calls in one run"
           },
           "runtime": {
             "$ref": "#/components/schemas/WorkflowRuntime"
@@ -20309,6 +21653,9 @@
                 },
                 {
                   "$ref": "#/components/schemas/ParallelStepOutput"
+                },
+                {
+                  "$ref": "#/components/schemas/ModelStepOutput"
                 }
               ],
               "discriminator": {
@@ -20320,7 +21667,8 @@
                   "wait": "#/components/schemas/WaitStepOutput",
                   "wait_for_event": "#/components/schemas/WaitForEventStepOutput",
                   "branch": "#/components/schemas/BranchStepOutput",
-                  "parallel": "#/components/schemas/ParallelStepOutput"
+                  "parallel": "#/components/schemas/ParallelStepOutput",
+                  "model": "#/components/schemas/ModelStepOutput"
                 }
               }
             },
@@ -20340,7 +21688,8 @@
           },
           "max_llm_tokens_per_run": {
             "type": "integer",
-            "exclusiveMinimum": 0
+            "exclusiveMinimum": 0,
+            "description": "cap for all model steps and provider calls in one run"
           },
           "runtime": {
             "$ref": "#/components/schemas/WorkflowRuntime"
@@ -22473,6 +23822,9 @@
             "$ref": "#/components/schemas/S3RequestMeta"
           },
           {
+            "$ref": "#/components/schemas/SftpRequestMeta"
+          },
+          {
             "$ref": "#/components/schemas/McpRequestMeta"
           },
           {
@@ -22861,6 +24213,51 @@
         "required": [
           "driver",
           "method",
+          "connector"
+        ]
+      },
+      "SftpRequestMeta": {
+        "type": "object",
+        "properties": {
+          "driver": {
+            "type": "string",
+            "enum": [
+              "sftp"
+            ]
+          },
+          "method": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "path": {
+            "type": "string"
+          },
+          "entry_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "bytes_in": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "bytes_out": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "connector": {
+            "$ref": "#/components/schemas/ConnectorResolutionSummary"
+          },
+          "extras": {
+            "type": "object",
+            "additionalProperties": {}
+          }
+        },
+        "required": [
+          "driver",
+          "method",
+          "path",
           "connector"
         ]
       },
@@ -23280,7 +24677,8 @@
           },
           "max_llm_tokens_per_run": {
             "type": "integer",
-            "exclusiveMinimum": 0
+            "exclusiveMinimum": 0,
+            "description": "cap for all model steps and provider calls in one run"
           },
           "runtime": {
             "$ref": "#/components/schemas/WorkflowRuntime"
@@ -25289,6 +26687,7 @@
                     "http",
                     "postgres",
                     "s3",
+                    "sftp",
                     "graphql",
                     "mcp",
                     "local_files",
@@ -26736,6 +28135,7 @@
               "http",
               "postgres",
               "s3",
+              "sftp",
               "graphql",
               "mcp",
               "local_files",
@@ -27013,6 +28413,7 @@
               "http",
               "postgres",
               "s3",
+              "sftp",
               "graphql",
               "mcp",
               "local_files",
@@ -27460,6 +28861,7 @@
               "http",
               "postgres",
               "s3",
+              "sftp",
               "graphql",
               "mcp",
               "local_files",
@@ -27642,6 +29044,7 @@
               "http",
               "postgres",
               "s3",
+              "sftp",
               "graphql",
               "mcp",
               "local_files",
@@ -27991,6 +29394,7 @@
               "http",
               "postgres",
               "s3",
+              "sftp",
               "graphql",
               "mcp",
               "local_files",
@@ -30488,6 +31892,7 @@
               "type": "string",
               "enum": [
                 "request",
+                "model",
                 "transform",
                 "call",
                 "wait",

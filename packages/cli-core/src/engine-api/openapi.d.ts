@@ -30786,7 +30786,7 @@ export interface components {
                 /** Format: uuid */
                 connector_id: string | null;
                 /** @enum {string} */
-                driver: "http" | "graphql" | "postgres" | "s3" | "mcp" | "local_files" | "local_browser" | "local_computer";
+                driver: "http" | "graphql" | "postgres" | "s3" | "sftp" | "mcp" | "local_files" | "local_browser" | "local_computer";
                 /** @enum {string} */
                 environment: "dev" | "prod";
                 request_digest: string;
@@ -31551,10 +31551,11 @@ export interface components {
             output_transform?: string;
             output_transform_function?: string;
             response_filters?: components["schemas"]["ResponseFilter"][];
-            steps: (components["schemas"]["RequestStepOutput"] | components["schemas"]["TransformStepOutput"] | components["schemas"]["CallStepOutput"] | components["schemas"]["WaitStepOutput"] | components["schemas"]["WaitForEventStepOutput"] | components["schemas"]["BranchStepOutput"] | components["schemas"]["ParallelStepOutput"])[];
+            steps: (components["schemas"]["RequestStepOutput"] | components["schemas"]["TransformStepOutput"] | components["schemas"]["CallStepOutput"] | components["schemas"]["WaitStepOutput"] | components["schemas"]["WaitForEventStepOutput"] | components["schemas"]["BranchStepOutput"] | components["schemas"]["ParallelStepOutput"] | components["schemas"]["ModelStepOutput"])[];
             timeout_ms?: number;
             /** @enum {string} */
             device_offline?: "wait" | "fail";
+            /** @description cap for all model steps and provider calls in one run */
             max_llm_tokens_per_run?: number;
             runtime?: components["schemas"]["WorkflowRuntime"];
             trigger?: components["schemas"]["WorkflowTriggerOutput"];
@@ -31572,8 +31573,8 @@ export interface components {
             /** @enum {string} */
             scope?: "FIELD" | "ITEM" | "ENTRY";
         };
-        RequestStep: components["schemas"]["HttpRequestStep"] | components["schemas"]["GraphqlRequestStep"] | components["schemas"]["SqlRequestStep"] | components["schemas"]["S3RequestStep"] | components["schemas"]["McpRequestStep"];
-        RequestStepOutput: components["schemas"]["HttpRequestStepOutput"] | components["schemas"]["GraphqlRequestStepOutput"] | components["schemas"]["SqlRequestStepOutput"] | components["schemas"]["S3RequestStepOutput"] | components["schemas"]["McpRequestStepOutput"];
+        RequestStep: components["schemas"]["HttpRequestStep"] | components["schemas"]["GraphqlRequestStep"] | components["schemas"]["SqlRequestStep"] | components["schemas"]["S3RequestStep"] | components["schemas"]["SftpRequestStep"] | components["schemas"]["McpRequestStep"];
+        RequestStepOutput: components["schemas"]["HttpRequestStepOutput"] | components["schemas"]["GraphqlRequestStepOutput"] | components["schemas"]["SqlRequestStepOutput"] | components["schemas"]["S3RequestStepOutput"] | components["schemas"]["SftpRequestStepOutput"] | components["schemas"]["McpRequestStepOutput"];
         HttpRequestStep: {
             /** @enum {string} */
             kind: "request";
@@ -31723,6 +31724,7 @@ export interface components {
             graphql?: null;
             sql?: null;
             s3?: null;
+            sftp?: null;
             mcp?: null;
         };
         HttpRequestStepOutput: {
@@ -31874,6 +31876,7 @@ export interface components {
             graphql?: null;
             sql?: null;
             s3?: null;
+            sftp?: null;
             mcp?: null;
         };
         Pagination: {
@@ -32215,6 +32218,7 @@ export interface components {
             xml?: null;
             sql?: null;
             s3?: null;
+            sftp?: null;
             mcp?: null;
         };
         GraphqlRequestStepOutput: {
@@ -32387,6 +32391,7 @@ export interface components {
             xml?: null;
             sql?: null;
             s3?: null;
+            sftp?: null;
             mcp?: null;
         };
         SqlRequestStep: {
@@ -32554,6 +32559,7 @@ export interface components {
             xml?: null;
             graphql?: null;
             s3?: null;
+            sftp?: null;
             mcp?: null;
         };
         SqlRequestStepOutput: {
@@ -32721,6 +32727,7 @@ export interface components {
             xml?: null;
             graphql?: null;
             s3?: null;
+            sftp?: null;
             mcp?: null;
         };
         S3RequestStep: {
@@ -32893,6 +32900,7 @@ export interface components {
             xml?: null;
             graphql?: null;
             sql?: null;
+            sftp?: null;
             mcp?: null;
         };
         S3RequestStepOutput: {
@@ -33065,6 +33073,315 @@ export interface components {
             xml?: null;
             graphql?: null;
             sql?: null;
+            sftp?: null;
+            mcp?: null;
+        };
+        SftpRequestStep: {
+            /** @enum {string} */
+            kind: "request";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            protocol: "sftp";
+            id: string;
+            /**
+             * @default fail
+             * @enum {string}
+             */
+            on_error?: "fail" | "continue";
+            data_selector?: string;
+            timeout_ms?: number;
+            for_each?: string;
+            for_each_concurrency?: number;
+            /**
+             * @default GET
+             * @enum {string}
+             */
+            method?: "LIST" | "GET" | "PUT" | "DELETE";
+            /** @enum {string} */
+            side_effects?: "read" | "write";
+            url?: string;
+            path?: string;
+            /** Format: uuid */
+            connector_id?: string;
+            boundary?: {
+                variables: {
+                    [key: string]: {
+                        enum: string[];
+                    } | {
+                        /** @enum {string} */
+                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                    } | {
+                        /** @enum {boolean} */
+                        caller_bound: true;
+                    };
+                };
+                max_body_bytes: number;
+                max_calls: number;
+                /** @enum {boolean} */
+                destructive?: true;
+            };
+            report_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_report";
+                to: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain" | "text/html" | "multipart/alternative";
+            };
+            transactional_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_transactional";
+                /** @enum {string} */
+                webhook_verifier?: "standard" | "hmac";
+                /**
+                 * Format: uuid
+                 * @description Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden
+                 */
+                webhook_id: string;
+                /** @description The single allowed event type configured on the signed binding */
+                event_type: string;
+                /** @description Reviewed event type field inside the signed body, equal to event_type; webhook-type alone is not signed */
+                event_type_input: string;
+                /** @description Reviewed dot path in the original admitted input, for example body.applicant.email; never a step output or caller-supplied routing override */
+                recipient_input: string;
+                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID. */
+                request_id_input: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain";
+                /** @description Maximum UTF-8 serialized Gmail JSON request bytes; derive from bounded template inputs */
+                max_body_bytes: number;
+            };
+            outbox_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_outbox";
+                /** @description Earlier GET request step of this workflow that reads exactly one queued message from a fixed, approved address; the recipient is only ever taken from its response in the same run */
+                source_step_id: string;
+                /** @description Dot path inside the source step's response data that holds the one recipient address, for example email or item.email */
+                recipient_field: string;
+                /** @description Dot path inside the source step's response data that identifies the queued message; one dispatch attempt per workflow and item */
+                item_id_field: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain";
+                /** @description Maximum UTF-8 serialized Gmail JSON request bytes */
+                max_body_bytes: number;
+                /** @description Most messages this workflow may send within any 24 hours */
+                max_per_day: number;
+            };
+            headers?: {
+                [key: string]: string;
+            } | string;
+            query?: {
+                [key: string]: string | number | boolean;
+            };
+            body?: components["schemas"]["WorkflowJsonValue"];
+            response_filters?: components["schemas"]["ResponseFilter"][];
+            pagination?: components["schemas"]["Pagination"];
+            max_retries?: number;
+            retry_backoff_ms?: number;
+            retry_on_status?: number[];
+            /**
+             * @default none
+             * @enum {string}
+             */
+            error_policy?: "none" | "all";
+            body_schema?: {
+                [key: string]: unknown;
+            };
+            response_schema?: {
+                [key: string]: unknown;
+            };
+            expected_statuses?: number[];
+            expected_row_count?: number | [
+                number,
+                number
+            ] | {
+                min?: number;
+                max?: number;
+            };
+            idempotency_key?: string;
+            outputs?: {
+                [key: string]: {
+                    secret?: boolean;
+                };
+            };
+            state_read?: {
+                key: string;
+                into_var: string;
+                default_value?: unknown;
+            };
+            state_write?: {
+                key: string;
+                value_path: string;
+            };
+            multipart?: components["schemas"]["MultipartPart"][];
+            sftp: {
+                /** @description Remote path below the connector's root folder. LIST reads a folder; GET, PUT and DELETE address one file. Placeholders are filled in before the call. */
+                path: string;
+                /** @description Upper bound for the entries a LIST returns. */
+                max_entries?: number;
+            };
+            xml?: null;
+            graphql?: null;
+            sql?: null;
+            s3?: null;
+            mcp?: null;
+        };
+        SftpRequestStepOutput: {
+            /** @enum {string} */
+            kind: "request";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            protocol: "sftp";
+            id: string;
+            /**
+             * @default fail
+             * @enum {string}
+             */
+            on_error: "fail" | "continue";
+            data_selector?: string;
+            timeout_ms?: number;
+            for_each?: string;
+            for_each_concurrency?: number;
+            /**
+             * @default GET
+             * @enum {string}
+             */
+            method: "LIST" | "GET" | "PUT" | "DELETE";
+            /** @enum {string} */
+            side_effects?: "read" | "write";
+            url?: string;
+            path?: string;
+            /** Format: uuid */
+            connector_id?: string;
+            boundary?: {
+                variables: {
+                    [key: string]: {
+                        enum: string[];
+                    } | {
+                        /** @enum {string} */
+                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                    } | {
+                        /** @enum {boolean} */
+                        caller_bound: true;
+                    };
+                };
+                max_body_bytes: number;
+                max_calls: number;
+                /** @enum {boolean} */
+                destructive?: true;
+            };
+            report_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_report";
+                to: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain" | "text/html" | "multipart/alternative";
+            };
+            transactional_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_transactional";
+                /** @enum {string} */
+                webhook_verifier?: "standard" | "hmac";
+                /**
+                 * Format: uuid
+                 * @description Reviewed active Standard Webhooks or signed-body HMAC binding in the same tenant and workflow; unsigned ingress is forbidden
+                 */
+                webhook_id: string;
+                /** @description The single allowed event type configured on the signed binding */
+                event_type: string;
+                /** @description Reviewed event type field inside the signed body, equal to event_type; webhook-type alone is not signed */
+                event_type_input: string;
+                /** @description Reviewed dot path in the original admitted input, for example body.applicant.email; never a step output or caller-supplied routing override */
+                recipient_input: string;
+                /** @description Reviewed signed request identity equal to the normalized webhook ID: UUID for Standard Webhooks, bounded signed-body string for HMAC. One persistent dispatch attempt per workflow and identity; HMAC identities use an opaque deterministic receipt UUID. */
+                request_id_input: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain";
+                /** @description Maximum UTF-8 serialized Gmail JSON request bytes; derive from bounded template inputs */
+                max_body_bytes: number;
+            };
+            outbox_delivery?: {
+                /** @enum {string} */
+                kind: "gmail_outbox";
+                /** @description Earlier GET request step of this workflow that reads exactly one queued message from a fixed, approved address; the recipient is only ever taken from its response in the same run */
+                source_step_id: string;
+                /** @description Dot path inside the source step's response data that holds the one recipient address, for example email or item.email */
+                recipient_field: string;
+                /** @description Dot path inside the source step's response data that identifies the queued message; one dispatch attempt per workflow and item */
+                item_id_field: string;
+                from: string;
+                /** @enum {string} */
+                content_type: "text/plain";
+                /** @description Maximum UTF-8 serialized Gmail JSON request bytes */
+                max_body_bytes: number;
+                /** @description Most messages this workflow may send within any 24 hours */
+                max_per_day: number;
+            };
+            headers?: {
+                [key: string]: string;
+            } | string;
+            query?: {
+                [key: string]: string | number | boolean;
+            };
+            body?: components["schemas"]["WorkflowJsonValue"];
+            response_filters?: components["schemas"]["ResponseFilter"][];
+            pagination?: components["schemas"]["PaginationOutput"];
+            max_retries?: number;
+            retry_backoff_ms?: number;
+            retry_on_status?: number[];
+            /**
+             * @default none
+             * @enum {string}
+             */
+            error_policy: "none" | "all";
+            body_schema?: {
+                [key: string]: unknown;
+            };
+            response_schema?: {
+                [key: string]: unknown;
+            };
+            expected_statuses?: number[];
+            expected_row_count?: number | [
+                number,
+                number
+            ] | {
+                min?: number;
+                max?: number;
+            };
+            idempotency_key?: string;
+            outputs?: {
+                [key: string]: {
+                    secret?: boolean;
+                };
+            };
+            state_read?: {
+                key: string;
+                into_var: string;
+                default_value?: unknown;
+            };
+            state_write?: {
+                key: string;
+                value_path: string;
+            };
+            multipart?: components["schemas"]["MultipartPart"][];
+            sftp: {
+                /** @description Remote path below the connector's root folder. LIST reads a folder; GET, PUT and DELETE address one file. Placeholders are filled in before the call. */
+                path: string;
+                /** @description Upper bound for the entries a LIST returns. */
+                max_entries?: number;
+            };
+            xml?: null;
+            graphql?: null;
+            sql?: null;
+            s3?: null;
             mcp?: null;
         };
         McpRequestStep: {
@@ -33251,6 +33568,7 @@ export interface components {
             graphql?: null;
             sql?: null;
             s3?: null;
+            sftp?: null;
         };
         McpRequestStepOutput: {
             /** @enum {string} */
@@ -33436,6 +33754,7 @@ export interface components {
             graphql?: null;
             sql?: null;
             s3?: null;
+            sftp?: null;
         };
         TransformStep: {
             /**
@@ -33455,10 +33774,11 @@ export interface components {
             for_each_concurrency?: number;
             expression?: string;
             /** @enum {string} */
-            language?: "javascript" | "readability" | "html-to-markdown" | "structured-data";
+            language?: "javascript" | "readability" | "html-to-markdown" | "structured-data" | "parse-file";
             readability?: components["schemas"]["ReadabilityConfig"];
             markdown?: components["schemas"]["MarkdownConfig"];
             structured_data?: components["schemas"]["StructuredDataConfig"];
+            file?: components["schemas"]["ParseFileConfig"];
             input_schema?: {
                 [key: string]: unknown;
             };
@@ -33486,10 +33806,11 @@ export interface components {
             for_each_concurrency?: number;
             expression?: string;
             /** @enum {string} */
-            language?: "javascript" | "readability" | "html-to-markdown" | "structured-data";
+            language?: "javascript" | "readability" | "html-to-markdown" | "structured-data" | "parse-file";
             readability?: components["schemas"]["ReadabilityConfig"];
             markdown?: components["schemas"]["MarkdownConfig"];
             structured_data?: components["schemas"]["StructuredDataConfig"];
+            file?: components["schemas"]["ParseFileConfig"];
             input_schema?: {
                 [key: string]: unknown;
             };
@@ -33511,6 +33832,19 @@ export interface components {
         };
         StructuredDataConfig: {
             types?: ("json-ld" | "opengraph" | "microdata")[];
+        };
+        ParseFileConfig: {
+            /** @description Where the file sits in the run, as a dot path: an earlier step's output such as `download.data` or a run input such as `$input.invoice`. The value must be a file reference (`{ $file }`) or a file result of a request step. */
+            source: string;
+            /**
+             * @description File type. Without it the type is read from the file itself.
+             * @enum {string}
+             */
+            format?: "csv" | "xlsx" | "pdf" | "docx" | "zip";
+            /** @description Spreadsheet sheet to read. Without it the first sheet is read. */
+            sheet?: string;
+            /** @description Upper bound for table rows returned from a CSV or spreadsheet file. */
+            max_rows?: number;
         };
         CallStep: {
             /**
@@ -33712,6 +34046,60 @@ export interface components {
             for_each_concurrency?: number;
             branches: string[][];
         };
+        ModelStep: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "model";
+            id: string;
+            /**
+             * @default fail
+             * @enum {string}
+             */
+            on_error?: "fail" | "continue";
+            data_selector?: string;
+            timeout_ms?: number;
+            for_each?: string;
+            for_each_concurrency?: number;
+            /** @description The instruction for the model. Placeholders such as ${input.x} or ${scope.step.data} are filled in before the call. */
+            prompt: string;
+            /** @description Optional system prompt. Without it the step uses a short neutral default. */
+            system?: string;
+            input?: components["schemas"]["WorkflowJsonValue"] & unknown;
+            /** @description JSON Schema the model's answer must match. The step fails when it does not. */
+            output_schema: {
+                [key: string]: unknown;
+            };
+            max_output_tokens?: number;
+        };
+        ModelStepOutput: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "model";
+            id: string;
+            /**
+             * @default fail
+             * @enum {string}
+             */
+            on_error: "fail" | "continue";
+            data_selector?: string;
+            timeout_ms?: number;
+            for_each?: string;
+            for_each_concurrency?: number;
+            /** @description The instruction for the model. Placeholders such as ${input.x} or ${scope.step.data} are filled in before the call. */
+            prompt: string;
+            /** @description Optional system prompt. Without it the step uses a short neutral default. */
+            system?: string;
+            input?: components["schemas"]["WorkflowJsonValue"] & unknown;
+            /** @description JSON Schema the model's answer must match. The step fails when it does not. */
+            output_schema: {
+                [key: string]: unknown;
+            };
+            max_output_tokens?: number;
+        };
         WorkflowRuntime: {
             stdlib_version?: string;
         };
@@ -33906,10 +34294,11 @@ export interface components {
             output_transform?: string;
             output_transform_function?: string;
             response_filters?: components["schemas"]["ResponseFilter"][];
-            steps: (components["schemas"]["RequestStep"] | components["schemas"]["TransformStep"] | components["schemas"]["CallStep"] | components["schemas"]["WaitStep"] | components["schemas"]["WaitForEventStep"] | components["schemas"]["BranchStep"] | components["schemas"]["ParallelStep"])[];
+            steps: (components["schemas"]["RequestStep"] | components["schemas"]["TransformStep"] | components["schemas"]["CallStep"] | components["schemas"]["WaitStep"] | components["schemas"]["WaitForEventStep"] | components["schemas"]["BranchStep"] | components["schemas"]["ParallelStep"] | components["schemas"]["ModelStep"])[];
             timeout_ms?: number;
             /** @enum {string} */
             device_offline?: "wait" | "fail";
+            /** @description cap for all model steps and provider calls in one run */
             max_llm_tokens_per_run?: number;
             runtime?: components["schemas"]["WorkflowRuntime"];
             trigger?: components["schemas"]["WorkflowTrigger"];
@@ -33941,10 +34330,11 @@ export interface components {
             output_transform?: string;
             output_transform_function?: string;
             response_filters?: components["schemas"]["ResponseFilter"][];
-            steps: (components["schemas"]["RequestStepOutput"] | components["schemas"]["TransformStepOutput"] | components["schemas"]["CallStepOutput"] | components["schemas"]["WaitStepOutput"] | components["schemas"]["WaitForEventStepOutput"] | components["schemas"]["BranchStepOutput"] | components["schemas"]["ParallelStepOutput"])[];
+            steps: (components["schemas"]["RequestStepOutput"] | components["schemas"]["TransformStepOutput"] | components["schemas"]["CallStepOutput"] | components["schemas"]["WaitStepOutput"] | components["schemas"]["WaitForEventStepOutput"] | components["schemas"]["BranchStepOutput"] | components["schemas"]["ParallelStepOutput"] | components["schemas"]["ModelStepOutput"])[];
             timeout_ms?: number;
             /** @enum {string} */
             device_offline?: "wait" | "fail";
+            /** @description cap for all model steps and provider calls in one run */
             max_llm_tokens_per_run?: number;
             runtime?: components["schemas"]["WorkflowRuntime"];
             trigger?: components["schemas"]["WorkflowTriggerOutput"];
@@ -34480,7 +34870,7 @@ export interface components {
             request_meta?: components["schemas"]["RequestMeta"];
             held?: boolean;
         };
-        RequestMeta: components["schemas"]["HttpRequestMeta"] | components["schemas"]["GraphqlRequestMeta"] | components["schemas"]["PostgresRequestMeta"] | components["schemas"]["S3RequestMeta"] | components["schemas"]["McpRequestMeta"] | components["schemas"]["ConnectorlessRequestMeta"] | components["schemas"]["ErrorRequestMeta"] | components["schemas"]["SensitiveRequestMeta"] | components["schemas"]["SandboxRequestMeta"] | null;
+        RequestMeta: components["schemas"]["HttpRequestMeta"] | components["schemas"]["GraphqlRequestMeta"] | components["schemas"]["PostgresRequestMeta"] | components["schemas"]["S3RequestMeta"] | components["schemas"]["SftpRequestMeta"] | components["schemas"]["McpRequestMeta"] | components["schemas"]["ConnectorlessRequestMeta"] | components["schemas"]["ErrorRequestMeta"] | components["schemas"]["SensitiveRequestMeta"] | components["schemas"]["SandboxRequestMeta"] | null;
         HttpRequestMeta: {
             /** @enum {string} */
             driver: "http";
@@ -34571,6 +34961,20 @@ export interface components {
             refused?: true;
             key?: string;
             prefix?: string;
+            bytes_out?: number;
+            connector: components["schemas"]["ConnectorResolutionSummary"];
+            extras?: {
+                [key: string]: unknown;
+            };
+        };
+        SftpRequestMeta: {
+            /** @enum {string} */
+            driver: "sftp";
+            method: string;
+            status?: number;
+            path: string;
+            entry_count?: number;
+            bytes_in?: number;
             bytes_out?: number;
             connector: components["schemas"]["ConnectorResolutionSummary"];
             extras?: {
@@ -34725,6 +35129,7 @@ export interface components {
                 [key: string]: unknown;
             }[];
             timeout_ms?: number;
+            /** @description cap for all model steps and provider calls in one run */
             max_llm_tokens_per_run?: number;
             runtime?: components["schemas"]["WorkflowRuntime"];
             execution_guards?: components["schemas"]["ExecutionGuards"];
@@ -35205,7 +35610,7 @@ export interface components {
                 slug: string;
                 name: string;
                 /** @enum {string} */
-                driver: "http" | "postgres" | "s3" | "graphql" | "mcp" | "local_files" | "local_browser" | "local_computer";
+                driver: "http" | "postgres" | "s3" | "sftp" | "graphql" | "mcp" | "local_files" | "local_browser" | "local_computer";
                 base_url: string | null;
                 /** @enum {string} */
                 auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "signed_jwt" | "aws_sigv4";
@@ -35574,7 +35979,7 @@ export interface components {
             slug: string;
             name: string;
             /** @enum {string} */
-            driver: "http" | "postgres" | "s3" | "graphql" | "mcp" | "local_files" | "local_browser" | "local_computer";
+            driver: "http" | "postgres" | "s3" | "sftp" | "graphql" | "mcp" | "local_files" | "local_browser" | "local_computer";
             base_url: string | null;
             /** @enum {string} */
             auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "signed_jwt" | "aws_sigv4";
@@ -35638,7 +36043,7 @@ export interface components {
             slug: string;
             name: string;
             /** @enum {string} */
-            driver: "http" | "postgres" | "s3" | "graphql" | "mcp" | "local_files" | "local_browser" | "local_computer";
+            driver: "http" | "postgres" | "s3" | "sftp" | "graphql" | "mcp" | "local_files" | "local_browser" | "local_computer";
             base_url: string | null;
             /** @enum {string} */
             auth_type: "none" | "header" | "query" | "bearer" | "basic" | "oauth2" | "signed_jwt" | "aws_sigv4";
@@ -35744,7 +36149,7 @@ export interface components {
             slug: string;
             display_name: string;
             /** @enum {string} */
-            driver: "http" | "postgres" | "s3" | "graphql" | "mcp" | "local_files" | "local_browser" | "local_computer";
+            driver: "http" | "postgres" | "s3" | "sftp" | "graphql" | "mcp" | "local_files" | "local_browser" | "local_computer";
             /** @enum {string} */
             environment: "dev" | "prod";
             /** @enum {string} */
@@ -35785,7 +36190,7 @@ export interface components {
             name: string;
             slug?: string;
             /** @enum {string} */
-            driver: "http" | "postgres" | "s3" | "graphql" | "mcp" | "local_files" | "local_browser" | "local_computer";
+            driver: "http" | "postgres" | "s3" | "sftp" | "graphql" | "mcp" | "local_files" | "local_browser" | "local_computer";
             /**
              * @default dev
              * @enum {string}
@@ -35892,7 +36297,7 @@ export interface components {
             category: string;
             category_source: components["schemas"]["CatalogMetadataSource"];
             /** @enum {string} */
-            driver: "http" | "postgres" | "s3" | "graphql" | "mcp" | "local_files" | "local_browser" | "local_computer";
+            driver: "http" | "postgres" | "s3" | "sftp" | "graphql" | "mcp" | "local_files" | "local_browser" | "local_computer";
             /** @enum {string} */
             environment: "dev" | "prod";
             /** @enum {string} */
@@ -36539,7 +36944,7 @@ export interface components {
              * @enum {string}
              */
             kind: "step_kind";
-            step_kinds: ("request" | "transform" | "call" | "wait" | "wait_for_event" | "branch" | "parallel" | "loop" | "tool")[];
+            step_kinds: ("request" | "model" | "transform" | "call" | "wait" | "wait_for_event" | "branch" | "parallel" | "loop" | "tool")[];
         };
         SkillActivationDiagnosis: {
             /**
