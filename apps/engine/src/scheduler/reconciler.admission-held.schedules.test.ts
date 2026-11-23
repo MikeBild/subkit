@@ -218,6 +218,47 @@ test("a schedule refused for the same reason again and again pauses and says why
   });
 });
 
+test("a schedule waiting for its first approval keeps waiting and never pauses", async () => {
+  const { workflow_id } = await createWorkflowRow(ctx, {
+    name: "Waiting for a first approval",
+    slug: "waiting-for-first-approval",
+    steps: [{ id: "noop", kind: "transform", language: "javascript", expression: "return input;" }],
+  });
+  const hold = {
+    reason_code: "execution_authority_required" as const,
+    observed_at: "2026-05-01T00:00:00.000Z",
+  };
+  const [schedule] = await ctx.testDb.db
+    .insert(workflowsSchedules)
+    .values({
+      tenant_id: ctx.tenantId,
+      workflow_id,
+      cron: "every:60",
+      timezone: "UTC",
+      paused: false,
+      last_enqueued_at: null,
+      created_at: new Date("2026-05-01T00:00:00Z"),
+      admission_hold: hold,
+    })
+    .returning();
+  if (!schedule) throw new Error("fixture schedule missing");
+  for (let seen = 0; seen < REFUSAL_PAUSE_AFTER * 2; seen++) {
+    await fireEverySchedule(
+      ctx.testDb.db,
+      { schedule_id: schedule.id, tenant_id: ctx.tenantId, workflow_id, seconds: 60 },
+      async () => {},
+    );
+  }
+  const [after] = await ctx.testDb.db
+    .select()
+    .from(workflowsSchedules)
+    .where(
+      and(eq(workflowsSchedules.id, schedule.id), eq(workflowsSchedules.tenant_id, ctx.tenantId)),
+    );
+  expect(after).toMatchObject({ paused: false, paused_reason: null, admission_hold: hold });
+  expect(after?.admission_hold).not.toHaveProperty("refusals");
+});
+
 test("deactivating a person revokes their key while an approved schedule still runs as system", async () => {
   const [person] = await ctx.testDb.db
     .insert(users)

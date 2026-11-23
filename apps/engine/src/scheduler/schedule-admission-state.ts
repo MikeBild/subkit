@@ -105,6 +105,7 @@ export async function recordScheduleRefusal(
     const hold = schedule?.hold;
     if (!hold || hold.reason_code !== reason_code) return null;
     const counted = countRefusal(hold, reason_code);
+    if (!counted) return null;
     const { refusals: _refusals, ...standing } = hold;
     await tx
       .update(workflowsSchedules)
