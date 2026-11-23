@@ -1,6 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { AUTHORITY_REFUSAL_CODES } from "@shared/authority-refusal.ts";
-import { COST_PROJECTION_BASES, COST_PROJECTION_STATES } from "../../scheduler/cost-projection.ts";
+import { COST_PROJECTION_BASES, COST_PROJECTION_STATES } from "../../scheduler/index.ts";
 
 const ScheduleAdmissionHold = z
   .object({

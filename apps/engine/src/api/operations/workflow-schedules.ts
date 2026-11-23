@@ -9,9 +9,9 @@ import {
   getSchedule,
   listSchedules,
   type ScheduleRow,
+  scheduleCostProjection,
   updateSchedule,
-} from "../../scheduler/repo.ts";
-import { scheduleCostProjection } from "../../scheduler/schedule-cost.ts";
+} from "../../scheduler/index.ts";
 import { getWorkflow } from "../../workflows/service.ts";
 import type { WorkflowView } from "../../workflows/view.ts";
 import { IdParam } from "../common-schemas.ts";

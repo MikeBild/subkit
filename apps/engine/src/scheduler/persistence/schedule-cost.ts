@@ -1,15 +1,14 @@
 import { and, eq, type SQL, sql } from "drizzle-orm";
-import type { Db } from "../db/client.ts";
-import { workflows } from "../db/schema/index.ts";
-import { TERMINAL_EXECUTION_STATUSES } from "../execution/core/status.ts";
-import { llmCostCurrency, readLlmCost } from "../stats/index.ts";
-import { now } from "../utils/clock.ts";
+import { type Db, workflows } from "../../db/index.ts";
+import { TERMINAL_EXECUTION_STATUSES } from "../../execution/index.ts";
+import { llmCostCurrency, readLlmCost } from "../../stats/index.ts";
+import { now } from "../../utils/index.ts";
 import {
   projectScheduleCost,
   type RunCostSample,
   runsPerMonth,
   type ScheduleCostProjection,
-} from "./cost-projection.ts";
+} from "../cost-projection.ts";
 
 export const COST_SAMPLE_RUNS = 20;
 
