@@ -9,6 +9,11 @@ export {
   databasePoolOptions,
   initializeDatabaseSession,
 } from "./connection-options.ts";
+export type {
+  TenantRoleDecision,
+  TenantRoleFacts,
+  TenantRoleVerdict,
+} from "./core/tenant-scope.ts";
 export type { OutboxChannel } from "./events.ts";
 export { writeEvent } from "./events.ts";
 export type { HostedContentQuotaCode } from "./hosted-control-receipt.ts";
@@ -234,6 +239,13 @@ export {
   notTaskRunConversation,
   taskRunConversationCond,
 } from "./task-run-conversations.ts";
+export {
+  assertTenantRolePreflight,
+  readTenantRoleFacts,
+  TenantRolePreflightError,
+  tenantRolePreflight,
+} from "./tenant-role-preflight.ts";
+export { withTenantScope } from "./tenant-scope.ts";
 export { isTransientDbError, retryTransient } from "./transient.ts";
 export {
   renderVaultStockSql,
