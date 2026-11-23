@@ -462,7 +462,7 @@ describe("the language of the prompt the driver sends", () => {
       expect(sent.text).toEndWith(TASK_RUN_LANGUAGE_INSTRUCTIONS[locale]);
     }
     expect(TASK_RUN_LANGUAGE_INSTRUCTIONS.de).toContain("in German");
-    expect(TASK_RUN_LANGUAGE_INSTRUCTIONS.de).toContain("„du“");
+    expect(TASK_RUN_LANGUAGE_INSTRUCTIONS.de).toContain('"du"');
     expect(TASK_RUN_LANGUAGE_INSTRUCTIONS.en).toContain("in English");
     expect(TASK_RUN_LANGUAGE_INSTRUCTIONS.en).not.toContain("German");
   }, 240_000);
