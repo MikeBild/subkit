@@ -5,11 +5,13 @@ import { cockpitApiHref } from "@/app/installation-context";
 export class SseHttpError extends Error {
   readonly status: number;
   readonly code: string | null;
-  constructor(status: number, code: string | null = null) {
+  readonly traceId: string | null;
+  constructor(status: number, code: string | null = null, traceId: string | null = null) {
     super(`Event stream refused (${status})`);
     this.name = "SseHttpError";
     this.status = status;
     this.code = code;
+    this.traceId = traceId;
   }
 }
 
@@ -35,7 +37,7 @@ export async function readSseStream(
     const body = (await response.json().catch(() => null)) as { code?: unknown } | null;
     const code = typeof body?.code === "string" ? body.code : null;
     noticeTenantContext(response.status, code);
-    throw new SseHttpError(response.status, code);
+    throw new SseHttpError(response.status, code, response.headers.get("x-trace-id"));
   }
   options.onOpen?.();
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();

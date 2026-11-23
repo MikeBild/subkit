@@ -11,18 +11,19 @@ import {
 } from "react";
 import { noticeSessionExpiry } from "@/api/client";
 import { readSseStream, SseHttpError } from "@/lib/sse-stream";
+import { connectivity, type LiveStatus, useConnectivity } from "./connectivity";
 import { keyId, keysForEvent } from "./live-invalidation";
 
 const LIVE_STREAM_PATH = "/v1/cockpit/events/stream";
 
-export type LiveStatus = "connecting" | "live" | "reconnecting" | "offline";
+export type { LiveStatus } from "./connectivity";
 
 interface LiveContextValue {
   status: LiveStatus;
   serverVersion: string | null;
 }
 
-const LiveContext = createContext<LiveContextValue>({ status: "offline", serverVersion: null });
+const LiveContext = createContext<string | null>(null);
 
 const COALESCE_MS = 300;
 const RETRY_MAX_MS = 30_000;
@@ -46,6 +47,14 @@ export function statusAfterStreamEnd(shutdown: boolean): LiveStatus {
   return shutdown ? "offline" : "reconnecting";
 }
 
+export function streamRefusal(error: unknown): "session_expired" | "tenant_context_changed" | null {
+  if (!(error instanceof SseHttpError)) return null;
+  if (error.status === 401 || error.status === 403) return "session_expired";
+  return error.status === 409 && error.code === "tenant_context_changed"
+    ? "tenant_context_changed"
+    : null;
+}
+
 function parseJson(data: string): unknown {
   try {
     return JSON.parse(data);
@@ -64,7 +73,6 @@ export function subscribeLiveFrames(listener: FrameListener): () => void {
 
 export function LiveEventsProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
-  const [status, setStatus] = useState<LiveStatus>("connecting");
   const [serverVersion, setServerVersion] = useState<string | null>(null);
   const lastEventId = useRef<string | null>(null);
 
@@ -111,7 +119,7 @@ export function LiveEventsProvider({ children }: { children: ReactNode }) {
           }
           if (kind === "hello") {
             attempt = 0;
-            setStatus("live");
+            connectivity.stream("live", "stream_hello");
             const hello = parseJson(frame.data) as HelloFrame | null;
             if (typeof hello?.version === "string") setServerVersion(hello.version);
             if (
@@ -130,21 +138,30 @@ export function LiveEventsProvider({ children }: { children: ReactNode }) {
       })
         .then(() => retry(current, shutdown))
         .catch((error: unknown) => {
-          if (error instanceof SseHttpError && (error.status === 401 || error.status === 403)) {
-            noticeSessionExpiry(error.status, error.code);
+          const refusal = streamRefusal(error);
+          if (refusal && error instanceof SseHttpError) {
+            if (refusal === "session_expired") noticeSessionExpiry(error.status, error.code);
             if (controller === current) controller = null;
-            setStatus("offline");
+            connectivity.stream("offline", refusal, error.traceId);
             return;
           }
-          retry(current, shutdown);
+          retry(current, shutdown, error instanceof SseHttpError ? error : null);
         });
     };
 
-    const retry = (ended: AbortController, shutdown = false) => {
+    const retry = (
+      ended: AbortController,
+      shutdown = false,
+      refused: SseHttpError | null = null,
+    ) => {
       if (controller !== ended) return;
       controller = null;
       if (disposed) return;
-      setStatus(statusAfterStreamEnd(shutdown));
+      connectivity.stream(
+        statusAfterStreamEnd(shutdown),
+        shutdown ? "server_shutdown" : refused ? "stream_refused" : "stream_ended",
+        refused?.traceId ?? null,
+      );
       retryTimer = setTimeout(connect, backoffDelay(attempt, 1, { maxMs: RETRY_MAX_MS }));
       attempt += 1;
     };
@@ -168,12 +185,13 @@ export function LiveEventsProvider({ children }: { children: ReactNode }) {
     };
   }, [queryClient]);
 
-  const value = useMemo(() => ({ status, serverVersion }), [status, serverVersion]);
-  return <LiveContext.Provider value={value}>{children}</LiveContext.Provider>;
+  return <LiveContext.Provider value={serverVersion}>{children}</LiveContext.Provider>;
 }
 
 export function useLiveStatus(): LiveContextValue {
-  return useContext(LiveContext);
+  const { status } = useConnectivity();
+  const serverVersion = useContext(LiveContext);
+  return useMemo(() => ({ status, serverVersion }), [status, serverVersion]);
 }
 
 export const LIVE = true;
@@ -181,6 +199,6 @@ export const LIVE = true;
 const OFFLINE_REFRESH_MS = 60_000;
 
 export function useLiveQueryOptions(): { refetchInterval: number | false } {
-  const { status } = useLiveStatus();
-  return { refetchInterval: status === "live" ? false : OFFLINE_REFRESH_MS };
+  const { stream } = useConnectivity();
+  return { refetchInterval: stream === "live" ? false : OFFLINE_REFRESH_MS };
 }

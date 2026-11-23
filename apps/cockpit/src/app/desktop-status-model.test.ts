@@ -71,12 +71,12 @@ describe("desktop status", () => {
 
 describe("desktop notice", () => {
   test("back online: nothing is shown", () => {
-    expect(desktopNotice({ banner: null, update: null })).toBeNull();
+    expect(desktopNotice({ banner: null, update: null }, "reconnecting")).toBeNull();
   });
 
   test("offline, expired and revoked show the banner with their error code", () => {
     const parsed = parseDesktopStatus({ banner: offline });
-    expect(desktopNotice(parsed)).toEqual({
+    expect(desktopNotice(parsed, "reconnecting")).toEqual({
       type: "banner",
       banner: parsed.banner as never,
       code: "server_offline",
@@ -84,11 +84,17 @@ describe("desktop notice", () => {
     const expired = parseDesktopStatus({
       banner: { kind: "expired", tone: "danger", title: "Abgelaufen", body: "" },
     });
-    expect(desktopNotice(expired)).toMatchObject({ type: "banner", code: "auth_expired" });
+    expect(desktopNotice(expired, "reconnecting")).toMatchObject({
+      type: "banner",
+      code: "auth_expired",
+    });
     const revoked = parseDesktopStatus({
       banner: { kind: "revoked", tone: "danger", title: "Entfernt", body: "" },
     });
-    expect(desktopNotice(revoked)).toMatchObject({ type: "banner", code: "device_revoked" });
+    expect(desktopNotice(revoked, "reconnecting")).toMatchObject({
+      type: "banner",
+      code: "device_revoked",
+    });
   });
 
   test("a server that is too old shows its banner with the prepared admin message", () => {
@@ -102,17 +108,22 @@ describe("desktop notice", () => {
       },
     });
     expect(tooOld.banner?.ask).toBe("Bitte aktualisiere den SubKit-Server.");
-    expect(desktopNotice(tooOld)).toMatchObject({ type: "banner", code: "server_too_old" });
+    expect(desktopNotice(tooOld, "reconnecting")).toMatchObject({
+      type: "banner",
+      code: "server_too_old",
+    });
     expect(parseDesktopStatus({ banner: { ...offline, ask: "x" } }).banner?.ask).toBeNull();
   });
 
   test("an update shows only while no banner is up (each fact once)", () => {
-    expect(desktopNotice({ banner: null, update: { version: "11.3.0", ready: false } })).toEqual({
+    expect(
+      desktopNotice({ banner: null, update: { version: "11.3.0", ready: false } }, "live"),
+    ).toEqual({
       type: "update",
       version: "11.3.0",
       ready: false,
     });
     const both = parseDesktopStatus({ banner: offline, update: { version: "11.3.0" } });
-    expect(desktopNotice(both)?.type).toBe("banner");
+    expect(desktopNotice(both, "reconnecting")?.type).toBe("banner");
   });
 });
