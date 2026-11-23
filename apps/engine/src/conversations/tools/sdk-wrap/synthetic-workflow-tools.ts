@@ -36,7 +36,7 @@ import { hideCapabilityLinks } from "../capability-link.ts";
 import type { ToolContext } from "../index.ts";
 import { executionDataTransfer } from "./gate-subjects.ts";
 import { loadRunCoverage, workflowConfirmOverride } from "./invoke/run-coverage.ts";
-import { jsonSafeModelOutput } from "./json-safe-output.ts";
+import { toolModelOutput } from "./model-output.ts";
 import type { TurnSignals, WrappedToolOutput } from "./state.ts";
 import { taskRunMarkerOf, taskRunWorkflowRefusal } from "./task-run-guard.ts";
 
@@ -82,7 +82,7 @@ function buildOneSyntheticWorkflowTool(
 ): Tool<Record<string, unknown>, WrappedToolOutput> {
   const { entry, signals } = p;
   return tool<Record<string, unknown>, WrappedToolOutput, Record<string, unknown>>({
-    toModelOutput: jsonSafeModelOutput,
+    toModelOutput: toolModelOutput(p.name, "workflow"),
     description: `${entry.description} — perform this saved workflow now. For inspection of an existing run use read-only execution history, get_execution, inspect_execution_step or diagnose_latest_execution. For a new preview use run_workflow with execute_writes: false; this still starts a DEV run. Do not use this tool or any preview tool when the user says not to run, execute, test-run or start a workflow. This tool may pause for a one-shot live execution decision. Dispatches /workflows run ${entry.slug}. Uses a matching local execution authority when one exists and respects stricter approval settings; otherwise write steps resolve without dispatching. If it reports writes_held, nothing was written and the turn pauses for the operator. Do not re-run to bypass that decision.`,
     inputSchema: jsonSchema(entry.inputSchema as Parameters<typeof jsonSchema>[0]),
     async execute(rawArgs: Record<string, unknown>): Promise<WrappedToolOutput> {

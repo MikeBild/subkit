@@ -14,6 +14,7 @@ const TestConnectorInput = z
 
 export const testConnectorTool: ConversationTool = {
   name: "test_connector",
+  external_output: "connector",
   description:
     "Probe a saved connector's health using its registered driver. Returns {ok, latency_ms, status?, detail?}. Use after credential rotation, after a self-healing patch is approved, or before re-running a workflow that previously failed. Do NOT suggest a curl/CLI command instead.",
   use_case:

@@ -148,6 +148,7 @@ function structuredError(
 
 export const callConnectorTool: ConversationTool = {
   name: "call_connector",
+  external_output: "connector",
   description:
     "Invoke an HTTP/GraphQL/Postgres/S3 endpoint against a persisted connector. Read-only calls return a bounded response shape by default; request response_mode:sample for a few short values or response_mode:full for a confirmed full response. Writes and full responses require confirmation. Use this after saving the connector to verify actual field shapes or pagination.",
   use_case:

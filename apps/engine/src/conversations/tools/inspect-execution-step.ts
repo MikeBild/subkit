@@ -52,6 +52,7 @@ function nextBestActionsFor(kind: string, step_key: string): string[] {
 
 export const inspectExecutionStepTool: ConversationTool = {
   name: "inspect_execution_step",
+  external_output: "workflow",
   description:
     "Read the persisted output of a single step from a completed execution. Use AFTER a run when the formatted workflow output looks suspicious (empty array, missing fields the user asked for) — fetch the upstream step's actual output_preview to see the real scope shape, then fix the JSONata projection. The preferred alternative to guessing or running the workflow again with a different transform.",
   use_case:

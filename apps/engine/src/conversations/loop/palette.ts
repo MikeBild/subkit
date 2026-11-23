@@ -4,7 +4,6 @@ import {
   pendingPermittedRemedy,
 } from "../../llm/runtime/permitted-remedy.ts";
 import { logger } from "../../logging/index.ts";
-import { DEVICE_TOOL_NAMES } from "../core/device-tools/catalog.ts";
 import { hasBoundSavedWorkflowTarget } from "../core/loop.ts";
 import { turnExecutionSuppression } from "../execution-suppression.ts";
 import {
@@ -225,8 +224,7 @@ export async function resolveTurnPalette(
     tools_count: Object.keys(tools).length,
   });
 
-  if (Object.keys(tools).some((name) => DEVICE_TOOL_NAMES.has(name)))
-    appendVolatileSystemContext(prompt, UNTRUSTED_CONTENT_NOTE);
+  appendVolatileSystemContext(prompt, UNTRUSTED_CONTENT_NOTE);
 
   state.paletteSkills = loadedSkills;
   state.paletteIntakeItems = intakeReviewInProgress(state.draft);

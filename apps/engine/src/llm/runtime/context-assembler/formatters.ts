@@ -1,3 +1,4 @@
+import { neutralizeDelimiters, wrapUntrusted } from "@shared/untrusted-content.ts";
 import type { OperatorQuirkCategory, OperatorQuirks } from "../../../connectors/types.ts";
 import type { SchemaShape } from "../../../self-healing/types.ts";
 import type {
@@ -199,7 +200,7 @@ export function formatChunk(chunk: IncludedChunk): string {
     : chunk.path
       ? `## Doc: ${chunk.path}`
       : "## Doc";
-  return `${heading}${fetchedAtSuffix(chunk.fetched_at)}\n${chunk.snippet}`;
+  return `${neutralizeDelimiters(heading)}${fetchedAtSuffix(chunk.fetched_at)}\n${wrapUntrusted("web", chunk.snippet)}`;
 }
 
 export function formatKnowledgeChunk(chunk: IncludedKnowledgeChunk): string {
@@ -213,7 +214,7 @@ export function formatKnowledgeChunk(chunk: IncludedKnowledgeChunk): string {
   const aboutLine = about
     ? `\nSource is about: ${about.length > 160 ? `${about.slice(0, 159).trimEnd()}…` : about}`
     : "";
-  return `${heading}${fetchedAtSuffix(chunk.fetched_at)}${aboutLine}\n${chunk.snippet}`;
+  return `${neutralizeDelimiters(`${heading}${fetchedAtSuffix(chunk.fetched_at)}${aboutLine}`)}\n${wrapUntrusted("knowledge", chunk.snippet)}`;
 }
 
 export function formatFailure(f: PriorFailure): string {

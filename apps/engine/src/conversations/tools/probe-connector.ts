@@ -134,6 +134,7 @@ function isTimeoutError(error: unknown): boolean {
 
 export const probeConnectorTool: ConversationTool = {
   name: "probe_connector",
+  external_output: "connector",
   description:
     "Perform a one-shot authenticated HTTP call against a configured connector. The default response_mode:shape returns field paths and types without values; sample returns a few bounded values; full requires confirmation. Use this to verify an API before authoring a step.",
   use_case:
