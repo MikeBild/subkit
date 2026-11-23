@@ -20,6 +20,10 @@ export type ExecutionMode = "dev" | "prod";
 
 export type { ExecutionStatus, StepStatus } from "./core/status.ts";
 
+export type ExternalRequestAdmission = RequestAuthoritySnapshot & {
+  dispatch_effect?: "read" | "write";
+};
+
 export interface RequestAuthoritySnapshot {
   referenced_authorities?: ResolvedAuthorityReference[];
   step_row_id?: string;
@@ -30,7 +34,6 @@ export interface RequestAuthoritySnapshot {
   outbox_source?: { ok: boolean; recipient: unknown; item_id: unknown };
   principal_id?: string | null;
   request?: MaterializedRequest;
-  dispatch_effect?: "read" | "write";
   step_id: string;
   configuration_digest: string;
   credential_id: string | null;
@@ -42,7 +45,7 @@ interface ExecutionContext {
   execution_privacy?: "sensitive" | undefined;
   prepared_workflow_references?: ResolvedAuthorityReference[];
   before_external_request?: (
-    snapshot: RequestAuthoritySnapshot,
+    request: ExternalRequestAdmission,
   ) => Promise<RequestDispatchPolicy | undefined>;
   before_write_dispatch?: (step_row_id: string | undefined) => Promise<void>;
   db: Db;

@@ -40,7 +40,7 @@ import {
   WORKFLOW_TIMEOUT_DEFAULT_MS,
 } from "../timeouts.ts";
 import { preparedApprovalClock } from "../tool-approval-dispatch.ts";
-import type { RequestAuthoritySnapshot, RequestSource, RunOptions, RunResult } from "../types.ts";
+import type { ExternalRequestAdmission, RequestSource, RunOptions, RunResult } from "../types.ts";
 import type { CallStepRunner, RunEnv } from "./env.ts";
 
 export interface RunExecutionParams {
@@ -250,8 +250,9 @@ export async function prepareRun(
     await stampWrite(step_row_id);
   };
   const beforeExternalRequest =
-    (step_key: string) => async (snapshot: RequestAuthoritySnapshot) => {
-      const write = snapshot.dispatch_effect === "write";
+    (step_key: string) =>
+    async ({ dispatch_effect, ...snapshot }: ExternalRequestAdmission) => {
+      const write = dispatch_effect === "write";
       if (write) await fenceWrite();
       const policy = await assertExecutionAuthorityCurrent(db, tenant_id, execution_id, snapshot);
       if (write) await stampWrite(snapshot.step_row_id);
