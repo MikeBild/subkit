@@ -315,6 +315,13 @@ test("intersection never promotes disjoint ceilings to unrestricted credentials"
   expect(intersectExecutionAllowLists("all", ["only"])).toEqual(["only"]);
 });
 
+test("metrics:read beside an mcp marker is no ceiling when a run rehydrates its caller", () => {
+  expect(
+    intersectExecutionScopes(["mcp:admin", "metrics:read"], ["mcp:admin", "metrics:read"]),
+  ).toEqual(["mcp:admin"]);
+  expect(intersectExecutionScopes(["metrics:read"], ["metrics:read"])).toEqual(["metrics:read"]);
+});
+
 test("permission evidence is bound to the real caller and workflow and cannot replace authentication", async () => {
   const { owner, key } = await keyPrincipal("permission-proof");
   const { workflow_id } = await createWorkflowRow(ctx, {
