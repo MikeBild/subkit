@@ -28,6 +28,7 @@ function makeFixture(): string {
   if (fixture) return fixture;
   root = mkdtempSync(path.join(tmpdir(), "h1-isolated-home-project-"));
   for (const source of [
+    "apps/subkit/src/lib/path-input.ts",
     "apps/subkit/src/tests/isolated-test-home.ts",
     "apps/subkit/src/tests/setup-isolated-home.ts",
     "apps/subkit/src/tests/run-isolated-test-file.ts",

@@ -91,6 +91,8 @@ describe("no installation-specific references", () => {
       "bearertest",
       "exampleapi0000000000000000",
       "sigv4test",
+      "synthetic0001",
+      "synthetic0002",
       "x",
     ]);
     const ids = trackedMatches([".appsync-api."], "\\b[a-z0-9]+(?=\\.appsync-api\\.)");

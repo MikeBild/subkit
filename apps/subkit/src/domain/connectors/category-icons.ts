@@ -3,6 +3,7 @@ export const CATEGORY_ICON: Readonly<Record<string, string>> = Object.freeze({
   graphql: "◈",
   postgres: "◯",
   s3: "□",
+  sftp: "▥",
   mcp: "◇",
   webhook: "▶",
   local_files: "▤",
