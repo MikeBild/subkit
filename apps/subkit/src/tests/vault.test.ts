@@ -4,6 +4,7 @@ import type { CredentialBody } from "../engine-client/connectors.ts";
 
 const TENANT_ID = "5eed0001-0000-4000-8000-000000000001";
 const CONNECTOR_ID = "5eed0003-0000-4000-8000-000000000001";
+const PROD_CONNECTOR_ID = "5eed0003-0000-4000-8000-000000000002";
 const CREDENTIAL_ID = "5eed0005-0000-4000-8000-000000000001";
 const VAULT_ID = "5eed0007-0000-4000-8000-000000000001";
 const VAULT_ITEM = {
@@ -84,6 +85,18 @@ interface Seen {
 
 let server: ReturnType<typeof Bun.serve>;
 let seen: Seen[] = [];
+let prodCredentials: Array<{ id: string; mode: string; environment: string }> = [];
+
+function connectorRecord(environment: "dev" | "prod") {
+  return {
+    id: environment === "dev" ? CONNECTOR_ID : PROD_CONNECTOR_ID,
+    slug: "app-store-connect",
+    display_name: "App Store Connect",
+    environment,
+    auth_type: "bearer",
+    credentials: environment === "prod" ? prodCredentials : [],
+  };
+}
 
 beforeAll(() => {
   server = Bun.serve({
@@ -98,7 +111,21 @@ beforeAll(() => {
         body: text ? JSON.parse(text) : undefined,
       });
       const route = `${request.method} ${url.pathname}`;
-      if (route === `POST /v1/connectors/${CONNECTOR_ID}/credentials`)
+      if (route === `GET /v1/connectors/${CONNECTOR_ID}`)
+        return Response.json(connectorRecord("dev"));
+      if (route === `GET /v1/connectors/${PROD_CONNECTOR_ID}`)
+        return Response.json(connectorRecord("prod"));
+      if (route === "GET /v1/connectors") {
+        const environment = url.searchParams.get("environment");
+        const items = (["dev", "prod"] as const)
+          .filter((each) => !environment || each === environment)
+          .map(connectorRecord);
+        return Response.json({ items, total: items.length });
+      }
+      if (
+        route === `POST /v1/connectors/${CONNECTOR_ID}/credentials` ||
+        route === `POST /v1/connectors/${PROD_CONNECTOR_ID}/credentials`
+      )
         return Response.json({ id: CREDENTIAL_ID }, { status: 201 });
       if (route === `POST /v1/vault/${CREDENTIAL_ID}/refresh`)
         return Response.json({
@@ -141,25 +168,90 @@ async function subkit(args: string[], stdin?: string) {
     stdout: "pipe",
     stderr: "pipe",
   });
-  const [exitCode, stdout] = await Promise.all([child.exited, new Response(child.stdout).text()]);
-  return { exitCode, stdout, seen };
+  const [exitCode, stdout, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ]);
+  return { exitCode, stdout, stderr, seen };
 }
 
 describe("subkit vault request bodies match the engine contract", () => {
   test("attach reads the secret from stdin, posts CredentialBody and prints the created id", async () => {
+    prodCredentials = [{ id: "prod-credential", mode: "bearer", environment: "prod" }];
     const run = await subkit(
       ["attach", CONNECTOR_ID, "--mode", "bearer", "--skip-checks", "--json"],
       "t0k\n",
     );
     expect(run.exitCode).toBe(0);
-    expect(run.seen).toEqual([
+    expect(run.seen.filter((entry) => entry.method === "POST")).toEqual([
       {
         method: "POST",
         path: `/v1/connectors/${CONNECTOR_ID}/credentials`,
         body: { mode: "bearer", token: "t0k" } satisfies CredentialBody,
       },
     ]);
-    expect(JSON.parse(run.stdout)).toEqual({ id: CREDENTIAL_ID });
+    expect(JSON.parse(run.stdout)).toEqual({
+      id: CREDENTIAL_ID,
+      connector: {
+        id: CONNECTOR_ID,
+        slug: "app-store-connect",
+        name: "App Store Connect",
+        environment: "dev",
+      },
+    });
+    expect(run.stderr).not.toContain("has no credential");
+  });
+
+  test("attach by slug needs --env when both records exist", async () => {
+    const run = await subkit(["attach", "app-store-connect", "--skip-checks"], "t0k\n");
+    expect(run.exitCode).not.toBe(0);
+    expect(run.seen.filter((entry) => entry.method === "POST")).toEqual([]);
+    expect(`${run.stdout}${run.stderr}`).toContain("--env dev or --env prod");
+  });
+
+  test("attach --env prod resolves the production record and names it", async () => {
+    const run = await subkit(
+      ["attach", "app-store-connect", "--env", "prod", "--skip-checks"],
+      "t0k\n",
+    );
+    expect(run.exitCode).toBe(0);
+    expect(run.seen.filter((entry) => entry.method === "POST")).toEqual([
+      {
+        method: "POST",
+        path: `/v1/connectors/${PROD_CONNECTOR_ID}/credentials`,
+        body: { mode: "bearer", token: "t0k" },
+      },
+    ]);
+    expect(run.stdout).toContain(
+      "credential attached to App Store Connect (app-store-connect, prod)",
+    );
+  });
+
+  test("attach to dev warns when production has no credential", async () => {
+    prodCredentials = [];
+    const run = await subkit(
+      ["attach", "app-store-connect", "--env", "dev", "--skip-checks"],
+      "t0k\n",
+    );
+    expect(run.exitCode).toBe(0);
+    expect(run.seen.find((entry) => entry.method === "POST")?.path).toBe(
+      `/v1/connectors/${CONNECTOR_ID}/credentials`,
+    );
+    expect(run.stdout).toContain("(app-store-connect, dev)");
+    expect(run.stderr).toContain("production connector 'app-store-connect' has no credential");
+    expect(run.stderr).toContain("subkit vault attach app-store-connect --env prod");
+  });
+
+  test("attach an id with a different --env uses the twin record", async () => {
+    const run = await subkit(
+      ["attach", CONNECTOR_ID, "--env", "prod", "--mode", "bearer", "--skip-checks", "--json"],
+      "t0k\n",
+    );
+    expect(run.exitCode).toBe(0);
+    expect(run.seen.find((entry) => entry.method === "POST")?.path).toBe(
+      `/v1/connectors/${PROD_CONNECTOR_ID}/credentials`,
+    );
   });
 
   test("attach no longer takes a value flag", async () => {
@@ -176,7 +268,7 @@ describe("subkit vault request bodies match the engine contract", () => {
       ],
       "header-secret",
     );
-    expect(run.seen[0]?.body).toEqual({
+    expect(run.seen.find((entry) => entry.method === "POST")?.body).toEqual({
       mode: "header",
       headers: { "X-Api-Key": "header-secret" },
     });
