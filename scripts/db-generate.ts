@@ -8,10 +8,21 @@ import { staleSnapshotsIn } from "./lib/migration-snapshots.ts";
 const ROOT = path.resolve(import.meta.dir, "..");
 const MIGRATIONS = "apps/engine/src/db/migrations";
 
-export function normalizeMigrationSchema(sql: string): string {
+export function publicTypesOf(baselineSql: string): Set<string> {
+  return new Set(
+    [...baselineSql.matchAll(/^CREATE TYPE public\.(\w+) AS/gm)].map((m) => m[1] ?? ""),
+  );
+}
+
+export function normalizeMigrationSchema(
+  sql: string,
+  publicTypes: ReadonlySet<string> = new Set(),
+): string {
   return sql
     .replace(/REFERENCES "public"\./g, 'REFERENCES "subkit".')
-    .replace(/ALTER TYPE "public"\./g, 'ALTER TYPE "subkit".');
+    .replace(/ALTER TYPE "(public|subkit)"\."(\w+)"/g, (_match, _schema: string, name: string) =>
+      publicTypes.has(name) ? `ALTER TYPE "public"."${name}"` : `ALTER TYPE "subkit"."${name}"`,
+    );
 }
 
 function run(command: string, args: string[]): void {
@@ -43,12 +54,15 @@ function normalizeNewMigrations(): void {
     cwd: ROOT,
     stdio: "pipe",
   });
+  const publicTypes = publicTypesOf(
+    readFileSync(path.join(directory, "0000_baseline_v2.sql"), "utf8"),
+  );
   for (const entry of journal.entries) {
     const relative = `${MIGRATIONS}/${entry.tag}.sql`;
     if (!generated.has(relative)) continue;
     const file = path.join(ROOT, relative);
     const original = readFileSync(file, "utf8");
-    const normalized = normalizeMigrationSchema(original);
+    const normalized = normalizeMigrationSchema(original, publicTypes);
     if (normalized !== original) writeFileSync(file, normalized);
   }
 }

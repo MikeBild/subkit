@@ -1,5 +1,5 @@
 ALTER TYPE "subkit"."execution_status" ADD VALUE 'uncertain' BEFORE 'succeeded';--> statement-breakpoint
-ALTER TYPE "subkit"."scheduler_sweep_producer" ADD VALUE 'notes';--> statement-breakpoint
+ALTER TYPE "public"."scheduler_sweep_producer" ADD VALUE 'notes';--> statement-breakpoint
 CREATE TABLE "attention_snoozes" (
 	"tenant_id" uuid NOT NULL,
 	"user_id" uuid NOT NULL,
