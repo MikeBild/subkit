@@ -205,7 +205,8 @@ export const chatEn = {
   "chat.cause.tool_schema_invalid":
     "A tool input schema is incompatible with the AI provider. Its definition needs a fix.",
   "chat.cause.provider_unreachable": "The AI provider could not be reached.",
-  "chat.cause.provider_context_too_large": "The conversation is too long for the model.",
+  "chat.cause.provider_context_too_large":
+    "The conversation is too long for the model. Continue in a new conversation or choose a larger model.",
   "chat.cause.spend_limit_reached":
     "This month's AI budget is reached. An admin can raise it under Settings › Usage or continue without a limit this month.",
   "chat.spendNotice": "This run cost {amount}, more than {threshold}.",
@@ -676,7 +677,8 @@ export const chatDe: Record<keyof typeof chatEn, string> = {
   "chat.cause.tool_schema_invalid":
     "Ein Tool-Eingabeschema ist mit dem KI-Anbieter nicht kompatibel. Die Tool-Definition muss korrigiert werden.",
   "chat.cause.provider_unreachable": "Der KI-Anbieter war nicht erreichbar.",
-  "chat.cause.provider_context_too_large": "Die Unterhaltung ist zu lang für das Modell.",
+  "chat.cause.provider_context_too_large":
+    "Die Unterhaltung ist zu lang für das Modell. Mach in einer neuen Unterhaltung weiter oder wähl ein größeres Modell.",
   "chat.cause.spend_limit_reached":
     "Das KI-Budget dieses Monats ist erreicht. Ein Administrator kann es unter Einstellungen › Nutzung erhöhen oder diesen Monat ohne Grenze weitermachen.",
   "chat.spendNotice": "Dieser Run hat {amount} gekostet, mehr als {threshold}.",

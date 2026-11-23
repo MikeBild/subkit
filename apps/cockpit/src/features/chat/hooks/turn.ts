@@ -18,6 +18,7 @@ import { chatSeedFromUrl, chatTargetFromUrl } from "@/app/links";
 import { usdFormatter } from "@/features/usage";
 import { formatDateTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { expectedFailureRemedy } from "@/lib/remedy";
 import {
   addAttachments,
   createEmptyConversation,
@@ -297,6 +298,9 @@ export function useChatTurn({
           })
         : t(`chat.cause.${failureCause.kind}`)
     : null;
+  const failureRemedy = expectedFailureRemedy(
+    sendError instanceof ApiError ? sendError.code : sendError ? null : turnFailure?.code,
+  );
   const submitTurn = async (
     message: string,
     references: ConversationReference[] = [],
@@ -531,6 +535,7 @@ export function useChatTurn({
     turnFailure,
     turnFailureMessage,
     failureCauseText,
+    failureRemedy,
     submitTurn,
     retryTurn,
     cancel,
