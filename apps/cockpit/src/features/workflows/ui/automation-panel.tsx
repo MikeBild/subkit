@@ -38,6 +38,7 @@ import {
   OPENING_NOTICE_KEYS,
   recommendedAutomationEnvironment,
 } from "@/features/grants/model";
+import { LiveScheduleRun } from "@/features/operations";
 import { WaitingOnApprover } from "@/features/overview";
 import {
   failedStatusesFor,
@@ -305,6 +306,27 @@ function useRunHealth(workflowId: string, health: string | null, permissions: re
   };
 }
 
+function useScheduledRunInProgress(
+  workflowId: string,
+  permissions: readonly string[],
+): string | null {
+  const runs = useQuery({
+    queryKey: ["workflow-active-run", workflowId],
+    enabled: permissions.includes("execution:read"),
+    queryFn: () =>
+      apiCall("get", "/v1/executions", {
+        query: {
+          workflow_id: workflowId,
+          status: "running",
+          request_source: "scheduler",
+          limit: 1,
+        },
+      }),
+  });
+  const run = (runs.data?.items ?? []).filter(isExecutionRecord)[0];
+  return run && run.status === "running" ? run.id : null;
+}
+
 export function useWaitingConnector(
   steps: readonly { connectorId: string | null; connector: string | null }[],
 ): WaitingConnector | null {
@@ -347,6 +369,7 @@ export function WorkflowStatus({
   const navigate = useNavigate();
   const sheets = useOpenRunSheet();
   const runHealth = useRunHealth(automation.workflowId, health, permissions);
+  const liveRunId = useScheduledRunInProgress(automation.workflowId, permissions);
   const enable = useOptimisticAction({
     queryKey: ["catalog-detail", "workflows", automation.workflowId],
     mutationFn: () =>
@@ -550,6 +573,22 @@ export function WorkflowStatus({
           />
         )}
       </div>
+      {liveRunId ? (
+        <section
+          aria-labelledby="workflow-live-run-title"
+          className="grid gap-1 rounded-lg border border-border px-3 py-2"
+          data-testid="workflow-live-run-panel"
+        >
+          <h3 id="workflow-live-run-title" className="text-xs font-medium text-muted-foreground">
+            {t("ops.sched.live.title")}
+          </h3>
+          <LiveScheduleRun
+            executionId={liveRunId}
+            onOpenRun={(id) => sheets.run(id)}
+            testId="workflow-live-run"
+          />
+        </section>
+      ) : null}
       {state && !invalid && !disabled ? (
         <WorkflowGateDiagnosis
           workflowId={automation.workflowId}

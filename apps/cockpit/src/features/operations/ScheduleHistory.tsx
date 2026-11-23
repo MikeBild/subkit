@@ -6,7 +6,8 @@ import { CalendarClock, CalendarX2, Clock3, PauseCircle, Play } from "lucide-rea
 import { Button } from "@/components/cockpit/patterns";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
-import { occurrenceLabel, occurrenceTone } from "./schedule-model";
+import { LiveScheduleRun } from "./LiveScheduleRun";
+import { isLiveOccurrence, occurrenceLabel, occurrenceTone } from "./schedule-model";
 import { useScheduleOccurrences } from "./use-operations";
 
 const icon = { ran: Play, late: Clock3, skipped: CalendarX2, held: PauseCircle } as const;
@@ -92,6 +93,12 @@ export function ScheduleHistory({
                   </Button>
                 ) : null}
               </div>
+              {isLiveOccurrence(o) ? (
+                <LiveScheduleRun
+                  executionId={o.executionId}
+                  testId={`schedule-occurrence-live-${o.id}`}
+                />
+              ) : null}
               {o.reason ? <p className="text-sm">{o.reason}</p> : null}
             </div>
           ),
