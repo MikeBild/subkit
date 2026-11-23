@@ -6717,7 +6717,62 @@
     ],
     "aws_service": null,
     "aws_region": null,
-    "verified_at": "2026-06-27T00:00:00.000Z"
+    "verified_at": "2026-06-27T00:00:00.000Z",
+    "web_hosts": ["github.com"],
+    "record_url_patterns": [
+      {
+        "methods": ["POST"],
+        "path": "/repos/{owner}/{repo}/issues",
+        "url_field": "html_url",
+        "url_template": "https://github.com/{owner}/{repo}/issues/{number}",
+        "label": "{owner}/{repo}#{number}"
+      },
+      {
+        "methods": ["PATCH"],
+        "path": "/repos/{owner}/{repo}/issues/{issue_number}",
+        "url_field": "html_url",
+        "url_template": "https://github.com/{owner}/{repo}/issues/{issue_number}",
+        "label": "{owner}/{repo}#{issue_number}"
+      },
+      {
+        "methods": ["POST"],
+        "path": "/repos/{owner}/{repo}/issues/{issue_number}/comments",
+        "url_field": "html_url",
+        "label": "{owner}/{repo}#{issue_number}"
+      },
+      {
+        "methods": ["POST"],
+        "path": "/repos/{owner}/{repo}/pulls",
+        "url_field": "html_url",
+        "url_template": "https://github.com/{owner}/{repo}/pull/{number}",
+        "label": "{owner}/{repo}#{number}"
+      },
+      {
+        "methods": ["PATCH"],
+        "path": "/repos/{owner}/{repo}/pulls/{pull_number}",
+        "url_field": "html_url",
+        "url_template": "https://github.com/{owner}/{repo}/pull/{pull_number}",
+        "label": "{owner}/{repo}#{pull_number}"
+      },
+      {
+        "methods": ["POST"],
+        "path": "/repos/{owner}/{repo}/releases",
+        "url_field": "html_url",
+        "label": "{owner}/{repo} {tag_name}"
+      },
+      {
+        "methods": ["POST"],
+        "path": "/user/repos",
+        "url_field": "html_url",
+        "label": "{full_name}"
+      },
+      {
+        "methods": ["POST"],
+        "path": "/orgs/{org}/repos",
+        "url_field": "html_url",
+        "label": "{full_name}"
+      }
+    ]
   },
   {
     "version": 1,
@@ -7711,7 +7766,22 @@
     },
     "aws_service": null,
     "aws_region": null,
-    "verified_at": null
+    "verified_at": null,
+    "web_hosts": ["www.google.com", "calendar.google.com"],
+    "record_url_patterns": [
+      {
+        "methods": ["POST"],
+        "path": "/calendars/{calendarId}/events",
+        "url_field": "htmlLink",
+        "label": "{summary}"
+      },
+      {
+        "methods": ["PATCH", "PUT"],
+        "path": "/calendars/{calendarId}/events/{eventId}",
+        "url_field": "htmlLink",
+        "label": "{summary}"
+      }
+    ]
   },
   {
     "version": 1,
@@ -8100,7 +8170,16 @@
     },
     "aws_service": null,
     "aws_region": null,
-    "verified_at": null
+    "verified_at": null,
+    "web_hosts": ["docs.google.com"],
+    "record_url_patterns": [
+      {
+        "methods": ["POST"],
+        "path": "/documents",
+        "url_template": "https://docs.google.com/document/d/{documentId}/edit",
+        "label": "{title}"
+      }
+    ]
   },
   {
     "version": 1,
@@ -8200,7 +8279,38 @@
     },
     "aws_service": null,
     "aws_region": null,
-    "verified_at": null
+    "verified_at": null,
+    "web_hosts": ["drive.google.com", "docs.google.com"],
+    "record_url_patterns": [
+      {
+        "methods": ["POST"],
+        "path": "/files",
+        "url_field": "webViewLink",
+        "url_template": "https://drive.google.com/file/d/{id}/view",
+        "label": "{name}"
+      },
+      {
+        "methods": ["POST"],
+        "path": "/upload/drive/v3/files",
+        "url_field": "webViewLink",
+        "url_template": "https://drive.google.com/file/d/{id}/view",
+        "label": "{name}"
+      },
+      {
+        "methods": ["PATCH"],
+        "path": "/files/{fileId}",
+        "url_field": "webViewLink",
+        "url_template": "https://drive.google.com/file/d/{fileId}/view",
+        "label": "{name}"
+      },
+      {
+        "methods": ["POST"],
+        "path": "/files/{fileId}/copy",
+        "url_field": "webViewLink",
+        "url_template": "https://drive.google.com/file/d/{id}/view",
+        "label": "{name}"
+      }
+    ]
   },
   {
     "version": 1,
@@ -8400,7 +8510,17 @@
     },
     "aws_service": null,
     "aws_region": null,
-    "verified_at": null
+    "verified_at": null,
+    "web_hosts": ["docs.google.com"],
+    "record_url_patterns": [
+      {
+        "methods": ["POST"],
+        "path": "/spreadsheets",
+        "url_field": "spreadsheetUrl",
+        "url_template": "https://docs.google.com/spreadsheets/d/{spreadsheetId}/edit",
+        "label": "{properties.title}"
+      }
+    ]
   },
   {
     "version": 1,
@@ -10439,7 +10559,29 @@
     ],
     "aws_service": null,
     "aws_region": null,
-    "verified_at": null
+    "verified_at": null,
+    "web_hosts": ["linear.app"],
+    "record_url_patterns": [
+      {
+        "methods": ["POST"],
+        "url_field": "issueCreate.issue.url",
+        "label": "{issueCreate.issue.identifier}"
+      },
+      {
+        "methods": ["POST"],
+        "url_field": "issueUpdate.issue.url",
+        "label": "{issueUpdate.issue.identifier}"
+      },
+      {
+        "methods": ["POST"],
+        "url_field": "commentCreate.comment.url"
+      },
+      {
+        "methods": ["POST"],
+        "url_field": "projectCreate.project.url",
+        "label": "{projectCreate.project.name}"
+      }
+    ]
   },
   {
     "version": 1,
@@ -11782,7 +11924,30 @@
     ],
     "aws_service": null,
     "aws_region": null,
-    "verified_at": "2026-06-27T00:00:00.000Z"
+    "verified_at": "2026-06-27T00:00:00.000Z",
+    "web_hosts": ["www.notion.so", "notion.so"],
+    "record_url_patterns": [
+      {
+        "methods": ["POST"],
+        "path": "/pages",
+        "url_field": "url"
+      },
+      {
+        "methods": ["PATCH"],
+        "path": "/pages/{page_id}",
+        "url_field": "url"
+      },
+      {
+        "methods": ["POST"],
+        "path": "/databases",
+        "url_field": "url"
+      },
+      {
+        "methods": ["PATCH"],
+        "path": "/databases/{database_id}",
+        "url_field": "url"
+      }
+    ]
   },
   {
     "version": 1,
@@ -13743,7 +13908,44 @@
     ],
     "aws_service": null,
     "aws_region": null,
-    "verified_at": null
+    "verified_at": null,
+    "web_hosts": ["admin.shopify.com"],
+    "record_url_patterns": [
+      {
+        "methods": ["POST"],
+        "path": "/products.json",
+        "url_template": "https://admin.shopify.com/store/{shop}/products/{product.id}",
+        "label": "{product.title}"
+      },
+      {
+        "methods": ["PUT"],
+        "path": "/products/{product_id}.json",
+        "url_template": "https://admin.shopify.com/store/{shop}/products/{product_id}",
+        "label": "{product.title}"
+      },
+      {
+        "methods": ["POST"],
+        "path": "/orders.json",
+        "url_template": "https://admin.shopify.com/store/{shop}/orders/{order.id}",
+        "label": "{order.name}"
+      },
+      {
+        "methods": ["PUT"],
+        "path": "/orders/{order_id}.json",
+        "url_template": "https://admin.shopify.com/store/{shop}/orders/{order_id}",
+        "label": "{order.name}"
+      },
+      {
+        "methods": ["POST"],
+        "path": "/customers.json",
+        "url_template": "https://admin.shopify.com/store/{shop}/customers/{customer.id}"
+      },
+      {
+        "methods": ["PUT"],
+        "path": "/customers/{customer_id}.json",
+        "url_template": "https://admin.shopify.com/store/{shop}/customers/{customer_id}"
+      }
+    ]
   },
   {
     "version": 1,
@@ -16088,7 +16290,110 @@
     ],
     "aws_service": null,
     "aws_region": null,
-    "verified_at": null
+    "verified_at": null,
+    "web_hosts": ["dashboard.stripe.com"],
+    "record_url_patterns": [
+      {
+        "methods": ["POST"],
+        "path": "/customers",
+        "url_template": "https://dashboard.stripe.com/customers/{id}",
+        "label": "{id}",
+        "when": {
+          "field": "livemode",
+          "equals": true
+        }
+      },
+      {
+        "methods": ["POST"],
+        "path": "/customers",
+        "url_template": "https://dashboard.stripe.com/test/customers/{id}",
+        "label": "{id}",
+        "when": {
+          "field": "livemode",
+          "equals": false
+        }
+      },
+      {
+        "methods": ["POST"],
+        "path": "/invoices",
+        "url_template": "https://dashboard.stripe.com/invoices/{id}",
+        "label": "{id}",
+        "when": {
+          "field": "livemode",
+          "equals": true
+        }
+      },
+      {
+        "methods": ["POST"],
+        "path": "/invoices",
+        "url_template": "https://dashboard.stripe.com/test/invoices/{id}",
+        "label": "{id}",
+        "when": {
+          "field": "livemode",
+          "equals": false
+        }
+      },
+      {
+        "methods": ["POST"],
+        "path": "/products",
+        "url_template": "https://dashboard.stripe.com/products/{id}",
+        "label": "{id}",
+        "when": {
+          "field": "livemode",
+          "equals": true
+        }
+      },
+      {
+        "methods": ["POST"],
+        "path": "/products",
+        "url_template": "https://dashboard.stripe.com/test/products/{id}",
+        "label": "{id}",
+        "when": {
+          "field": "livemode",
+          "equals": false
+        }
+      },
+      {
+        "methods": ["POST"],
+        "path": "/payment_intents",
+        "url_template": "https://dashboard.stripe.com/payments/{id}",
+        "label": "{id}",
+        "when": {
+          "field": "livemode",
+          "equals": true
+        }
+      },
+      {
+        "methods": ["POST"],
+        "path": "/payment_intents",
+        "url_template": "https://dashboard.stripe.com/test/payments/{id}",
+        "label": "{id}",
+        "when": {
+          "field": "livemode",
+          "equals": false
+        }
+      },
+      {
+        "methods": ["POST"],
+        "path": "/subscriptions",
+        "url_template": "https://dashboard.stripe.com/subscriptions/{id}",
+        "label": "{id}",
+        "when": {
+          "field": "livemode",
+          "equals": true
+        }
+      },
+      {
+        "methods": ["POST"],
+        "path": "/subscriptions",
+        "url_template": "https://dashboard.stripe.com/test/subscriptions/{id}",
+        "label": "{id}",
+        "when": {
+          "field": "livemode",
+          "equals": false
+        }
+      }
+    ]
   },
   {
     "version": 1,

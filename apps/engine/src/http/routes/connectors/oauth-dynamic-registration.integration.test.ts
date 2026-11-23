@@ -172,6 +172,8 @@ function makeDynRegSnapshot(baseUrl: string): Record<string, unknown> {
     aws_service: null,
     aws_region: null,
     respects_robots: false,
+    web_hosts: [],
+    record_url_patterns: [],
   };
 }
 

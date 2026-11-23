@@ -45,6 +45,8 @@ const shortFormBody = {
   aws_region: null,
   verified_at: null,
   respects_robots: false,
+  web_hosts: [],
+  record_url_patterns: [],
 } satisfies ConnectorTemplateCreateBody;
 
 describe("connector-templates create builds the contract body", () => {
