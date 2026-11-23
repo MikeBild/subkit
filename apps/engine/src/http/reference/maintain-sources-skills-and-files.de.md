@@ -44,6 +44,27 @@ SubKit speichert den wiederhergestellten Inhalt als neue Version. Die bisherige 
 
 Die Liste zeigt Unterhaltungen, die die Quelle oder den Skill mit einem `@`-Verweis nennen. Bei einer Quelle zählen auch Unterhaltungen, in denen der Assistent die Quelle gelesen oder gefunden hat. Bei einem Skill zählen auch Unterhaltungen, die den Skill geladen haben. Klicke auf eine Unterhaltung, um sie zu öffnen. Gibt es noch keine, startest du mit **Im Chat fragen** eine neue.
 
+### Sehen, welche Quellen eine Antwort genutzt hat
+
+Unter einer Antwort im Chat nennt die Zeile **Quellen:** die Wissensquellen und Skills, die SubKit dafür genutzt hat. Klicke auf einen Namen, um die Quelle oder den Skill zu öffnen.
+
+- Die Zeile zeigt bis zu fünf Namen, danach „und … weitere“.
+- Dokumentation, die SubKit gelesen hat, etwa zu einem Connector, steht ohne Link da.
+- Eine Quelle ohne Namen heißt „Quelle ohne Namen“.
+- Hat SubKit für eine Antwort keine Quelle genutzt, fehlt die Zeile.
+
+### Eine Prüfung einer Quelle planen
+
+Wissen veraltet. Ein Prüfdatum erinnert dein Team daran, zu prüfen, ob eine Quelle noch stimmt.
+
+1. Öffne **Quellen** und klicke auf die Quelle.
+2. Öffne **Weitere Aktionen** und wähle **Prüfung planen**.
+3. Wähle unter **Prüfdatum** den Tag und speichere. Du liest „Prüfdatum für … gespeichert.“
+
+Ab diesem Tag steht die Quelle in der **Übersicht** unter **Braucht dich** mit dem Kennzeichen **Prüfung fällig**. Sind mehrere Quellen fällig, nennt ein Eintrag ihre Zahl, zum Beispiel „3 Wissensquellen sind zur Prüfung fällig“. Wähle den Eintrag, um die Quelle oder die Liste zu öffnen. An der Quelle zeigt **Nächste Prüfung** das Datum, nach Ablauf mit „jetzt fällig“.
+
+Um die Erinnerung zu entfernen, öffne den Dialog erneut und lass das Feld leer. Zum Setzen des Datums brauchst du `knowledge:write`. Den Eintrag unter **Braucht dich** sieht jede Person mit `knowledge:read`.
+
 ### Skill-Vorschläge entscheiden
 
 SubKit schlägt Skills vor, wenn sich ein Muster wiederholt. Du entscheidest sie auf der Seite **Skill-Kandidaten**, nicht in der Skill-Tabelle.
@@ -84,6 +105,7 @@ Gut zu wissen:
 | „Für diese Version ist kein Stand gespeichert; sie lässt sich nicht wiederherstellen.“ | Wähle eine andere Version oder ändere den Skill direkt. |
 | Der Bereich **Ersetzt** fehlt | Die Datei wurde noch nie ersetzt. Es gibt noch keine früheren Versionen. |
 | **Ersetzen** fehlt im Menü | Bitte eine Administratorin oder einen Administrator um `file:write`. |
+| **Prüfung planen** fehlt unter **Weitere Aktionen** | Bitte eine Administratorin oder einen Administrator um `knowledge:write`. |
 
 ### Dasselbe im Terminal
 
@@ -93,4 +115,11 @@ Dateien ersetzt du auch mit der Kommandozeile `subkit`. Wie du sie einrichtest, 
 subkit files replace <file-id> <path>
 subkit files versions <file-id>
 subkit files restore <file-id> <version>
+```
+
+Das Prüfdatum einer Quelle setzt oder entfernst du so:
+
+```bash
+subkit knowledge-sources patch <source-id> --review-due 2026-12-31
+subkit knowledge-sources patch <source-id> --review-due none
 ```

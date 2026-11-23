@@ -78,6 +78,24 @@ Skills, Wissensquellen, Einträge im **Eingang** und Dateien, die Markdown entha
 2. Wähle unter **Ansicht** zwischen **Darstellung** und **Markdown**. **Darstellung** zeigt den formatierten Text, **Markdown** den Quelltext zum Lesen und Kopieren.
 3. Bei längeren Dokumenten springst du über **Inhalt** zu einer Überschrift. Das Inhaltsverzeichnis erscheint ab drei Überschriften, wenn die Spalte breit genug ist.
 
+### Einen Eintrag unter Braucht dich zurückstellen
+
+Nicht jeden Eintrag unter **Braucht dich** musst du sofort erledigen. Du kannst ihn bis später ausblenden. Das ändert nur deine eigene Liste.
+
+1. Öffne die **Übersicht**.
+2. Wähle am Eintrag **Zurückstellen** und dann **Für 3 Stunden**, **Bis morgen früh** oder **Für eine Woche**.
+3. Der Eintrag wandert in den zugeklappten Bereich **Zurückgestellt**. „Wieder da am …“ nennt, wann er zurückkommt.
+
+Willst du ihn früher zurückholen, öffne **Zurückgestellt** und wähle am Eintrag **Wieder anzeigen**.
+
+Gut zu wissen:
+
+- Ein zurückgestellter Eintrag schickt dir keine Push-Benachrichtigung.
+- Er kommt von selbst zurück, wenn die Zeit um ist. Früher kommt er zurück, wenn er dich aus einem anderen Grund braucht.
+- „Bis morgen früh“ heißt morgen um 8 Uhr, „Für eine Woche“ in sieben Tagen um 8 Uhr, jeweils in der Zeit deines Geräts.
+- Über die HTTP-API stellt `POST /v1/attention/snooze` mit `attention_key` und `until` einen Eintrag höchstens 30 Tage zurück. `POST /v1/attention/unsnooze` zeigt ihn wieder an. `GET /v1/attention` listet zurückgestellte Einträge unter `snoozed`.
+- Das Audit-Log hält „Eintrag zurückgestellt“ und „Zurückstellung beendet“ fest.
+
 ### Wenn etwas nicht klappt
 
 | Was du siehst | Was du tust |
@@ -87,3 +105,5 @@ Skills, Wissensquellen, Einträge im **Eingang** und Dateien, die Markdown entha
 | „Der Verlauf konnte nicht geladen werden. Es wurde nichts geändert.“ | Öffne den Reiter erneut. Bleibt es dabei, wähle **Alles im Audit-Log anzeigen**. |
 | Der Reiter **Chat** fehlt | Du bist auf einer Chat-Seite. Dort ist die Unterhaltung schon die Seite. |
 | „Das konnte nicht geladen werden“ | Wähle **Erneut versuchen**. |
+| „Der Eintrag ließ sich nicht zurückstellen. Versuch es noch einmal.“ | Wähle erneut **Zurückstellen**. |
+| „Der Eintrag ließ sich nicht wieder anzeigen. Versuch es noch einmal.“ | Wähle erneut **Wieder anzeigen**. |

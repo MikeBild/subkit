@@ -78,6 +78,54 @@ Die Übersicht der **Einstellungen** zeigt deine Wahl in einer Zeile, zum Beispi
 - Nennst du ohne Administrator-Rolle eine unbekannte Adresse, wird sie gespeichert, aber niemand eingeladen. Sobald ein Administrator die Adresse einlädt oder anlegt, verknüpft SubKit deine Wahl von selbst; die Hinweise gehen an die Person, sobald sie beigetreten ist.
 - Wählst du **Nur zu meinen Arbeitszeiten**, gibst du neben **Von** und **Bis** deine **Arbeitstage** an. Vorbelegt sind Montag bis Freitag.
 
+### Deine persönlichen Notizen
+
+Wenn du SubKit in einem Chat sagst, wie du etwas haben möchtest, legt es eine kurze Notiz an – mit deinen eigenen Worten als Quelle. Nur du kannst diese Notizen lesen, kein Teammitglied und kein Admin. Notizen, die zu deiner Frage passen, nutzt SubKit in seinen Antworten an dich.
+
+1. Öffne im Cockpit **Notizen**.
+2. Wähle unter **Welche Notizen** zwischen **In Verwendung** und **Archiviert**.
+3. Klicke auf eine Notiz. **Woher weißt du das?** zeigt die Nachricht, in der du es geschrieben hast. **Nachricht öffnen** führt zur Unterhaltung.
+
+Jede Notiz gehört zu einem Bereich: **Über dich**, **So magst du es**, **Personen**, **Routinen** oder **Erkenntnisse**. Der Status zeigt, wie sicher SubKit ist:
+
+| Status | Bedeutung |
+| --- | --- |
+| **Von dir bestätigt** | Das hast du bestätigt oder selbst geschrieben. |
+| **Gelernt** | Das hast du in mehreren Unterhaltungen gesagt. |
+| **Einmal erwähnt** | Das hast du einmal gesagt. Bestätige, was stimmt. |
+
+### Deine Notizen aktuell halten
+
+Öffne eine Notiz, um sie zu ändern.
+
+| Aktion | Was sie bewirkt |
+| --- | --- |
+| **Bestätigen** | Markiert die Notiz als richtig. Danach gilt sie als **Von dir bestätigt**. |
+| **Bearbeiten** | Dein neuer Text ersetzt die Notiz. Der alte Text bleibt unter **Frühere Versionen**. |
+| **Archivieren** | SubKit verwendet die Notiz nicht mehr. Du findest sie unter **Archiviert**. |
+| **Wiederherstellen** | Holt eine archivierte Notiz zurück in die Verwendung. |
+| **Vergessen** | Löscht die Notiz, ihre früheren Versionen und die gespeicherten Zitate endgültig. Das lässt sich nicht rückgängig machen. |
+| **Mit dem Team teilen** | Schickt den Text und deine Zitate in den **Eingang** des Teams. Dort kann ein Teammitglied sie in Wissen übernehmen. Deine Notiz selbst bleibt privat. |
+| **Exportieren** | Lädt deine Notizen in Verwendung als Markdown-Datei herunter. |
+
+Zum Teilen brauchst du `intake:write`.
+
+### Neue Notizen abschalten
+
+1. Öffne **Einstellungen** › **Allgemein**.
+2. Schalte **Neue Notizen speichern** aus.
+
+Danach legt SubKit keine neuen Notizen mehr an. Vorhandene Notizen bleiben, bis du sie vergisst. Ab Werk ist der Schalter eingeschaltet.
+
+Gut zu wissen:
+
+- Notizen gehören einer Person. API-Schlüssel und Systemkonten haben keine Notizen.
+- Ändern kannst nur du deine Notizen, angemeldet im Cockpit.
+- Notizen speichern nie Passwörter, Schlüssel oder Tokens. Einen Text, der danach aussieht, lehnt SubKit ab.
+- In Verwendung sind höchstens 300 Notizen mit je bis zu 600 Zeichen.
+- Das Audit-Log hält fest, dass eine Notiz vergessen oder exportiert wurde, nie ihren Text.
+- Wird der ganze Arbeitsbereich gelöscht, sind auch alle Notizen darin gelöscht.
+
 ### Wenn etwas nicht klappt
 
 | Was du siehst | Was du tust |
@@ -88,6 +136,10 @@ Die Übersicht der **Einstellungen** zeigt deine Wahl in einer Zeile, zum Beispi
 | „Gib eine gültige E-Mail-Adresse ein, zum Beispiel anna@example.com.“ | Prüfe die Adresse der Person, die freigeben soll. |
 | „Wähl mindestens einen Dienst.“ | Wähle einen Dienst oder **Anderer Dienst**. |
 | Der Schritt erscheint nicht | Du hast ihn schon beantwortet oder mit **Jetzt nicht** übersprungen, oder dir fehlt `settings:write`. Deine Antworten stehen unter **Einstellungen › Einrichtung**. |
+| „Du hast die Höchstzahl an Notizen in Verwendung erreicht. Archiviere oder vergiss zuerst eine.“ | Archiviere oder vergiss eine Notiz, die du nicht mehr brauchst. |
+| „Der Text sieht aus, als enthielte er ein Passwort, einen Schlüssel oder ein Token. So etwas steht nie in Notizen.“ | Entferne das Passwort, den Schlüssel oder das Token aus dem Text. |
+| „Zu diesem Thema ist eine neuere Notiz in Verwendung. Archiviere oder vergiss zuerst diese.“ | Archiviere oder vergiss die neuere Notiz und versuch es dann erneut. |
+| „Deine Rolle darf nichts in den Eingang des Teams legen. Frag einen Admin.“ | Bitte eine Administratorin oder einen Administrator um `intake:write`. |
 
 ### Das Gleiche über die HTTP-API
 
@@ -102,3 +154,5 @@ curl -s -X PUT "$SUBKIT_URL/v1/identity/me/setup" \
 ```
 
 Alle Felder stehen in „Referenz: Desktop-App, Regeln, Zeitpläne und Fehlerberichte“.
+
+Der Schalter **Neue Notizen speichern** ist das Feld `save_new_notes`. Deine Notizen liegen unter `/v1/identity/me/notes`: `GET /v1/identity/me/notes` listet sie, `GET /v1/identity/me/notes/{id}` liest eine mit ihren Quellen und früheren Versionen, und `POST /v1/identity/me/notes/export` exportiert sie als Markdown. Ändern lässt sich eine Notiz nur angemeldet im Cockpit.

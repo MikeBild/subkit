@@ -122,6 +122,28 @@ You see **Run started**. If the button is unavailable, the hint says why, for ex
 
 3. Optional: Select **In the audit trail** to see who started and approved the run.
 
+### Try out a single step
+
+You can run one step on its own, for example after you changed it. Reads run against the real systems. Anything that writes is held back and not sent.
+
+1. On the workflow page, expand **Build** and click the step.
+2. Under **Trial run**, choose the **Input**. **From the last run** reuses what the steps before it returned in the last run. Under **Own values** you enter the earlier results as JSON: one entry per earlier step, named by its step key, with the result under `data`.
+3. Select **Trial run of this step**. To cancel it, select **Stop trial run**.
+4. Read the result. **Open Run** shows the whole run.
+
+| What you read | Meaning |
+| --- | --- |
+| “The step succeeded.” | The result appears below, with **Raw response** and **Request**. |
+| “The step writes, so it was held back. Nothing was sent.” | The step would change something in another system. In a trial run it sends nothing. |
+| “The step failed.” | The error appears below. |
+| “The trial run could not start.” | The step could not be started. |
+
+Good to know:
+
+- A trial run stops after 60 seconds at the latest.
+- The trial run is missing for confidential workflows (`execution_privacy: sensitive`) and when your role may not start the workflow.
+- Over the HTTP API, `POST /v1/executions` with `"source": "step"` and the step under `step` starts such a trial run. It needs `workflow:run`. Writes are always held back. It answers right away with `execution_id`. Read the result with `GET /v1/executions/{id}` and stop it with `POST /v1/executions/{id}/cancel`.
+
 ### If something does not work
 
 | What you see | What to do |

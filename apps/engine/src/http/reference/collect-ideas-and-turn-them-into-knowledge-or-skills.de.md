@@ -34,6 +34,8 @@ Eine Webseite sammelst du so:
 6. Wähle eine Kategorie. Deine Standardkategorie ist vorausgewählt, anfangs `inbox`.
 7. Wähle **Sammeln**.
 
+Wartet dieselbe Seite oder fast derselbe Text schon im **Eingang** auf Prüfung, legt SubKit keinen neuen Eintrag an. Es hängt das Gesammelte als Beleg an den vorhandenen Eintrag; du findest es dort unter **Beleg aus der Sitzung**. Bei der Adresse ignoriert SubKit `www.` und Tracking-Parameter wie `utm_source`. Berichte, die ohne Anmeldung gesendet wurden, werden immer ein neuer Eintrag.
+
 ### Eine Notiz hinzufügen
 
 Eine Notiz ist ein Eintrag ohne Quelladresse, etwa ein Gedanke oder eine Idee.
@@ -58,6 +60,22 @@ Die Notiz trägt die Herkunft **Notiz**. Auf ihrer Seite fehlt der Link **Urspr�
 5. Optional: Wähle **Verwerfen** oder **Wiederherstellen**.
 
 Wer was im Eingang sieht, folgt den Rechten deines Arbeitsbereichs. Kategorien sind nicht privat.
+
+### Einträge gruppieren und mehrere auf einmal bearbeiten
+
+1. Wähle im **Eingang** unter **Gruppieren nach** den Punkt **Thema**. Einträge von derselben Website, aus derselben Arbeitssitzung oder mit demselben Tag stehen dann zusammen. Eine Tag-Gruppe heißt etwa `#research`. Einträge ohne Thema stehen unter **Ohne Gruppe**.
+2. Wähle die Einträge über die Kästchen davor aus.
+3. Wähle eine Aktion für die Auswahl.
+
+| Aktion | Was sie bewirkt |
+| --- | --- |
+| **In Kategorie verschieben** | Verschiebt die Einträge in eine andere Kategorie. |
+| **Verwerfen** | Verwirft die Einträge. Du kannst sie jederzeit wiederherstellen. |
+| **Vorschlag vorbereiten** | Öffnet einen neuen Chat mit den ausgewählten Einträgen, der einen Wissenseintrag vorbereitet. Möglich für bis zu 100 Einträge. |
+| **… verworfene Einträge endgültig löschen** | Entfernt die Einträge und ihre Rohinhalte endgültig. Erscheint nur, wenn alle ausgewählten Einträge verworfen sind. |
+
+- Übernommene Einträge lassen sich nicht auswählen. Die Aktionen erscheinen, wenn alle ausgewählten Einträge gesammelt oder in Prüfung sind oder wenn alle verworfen sind. Eine gemischte Auswahl bietet keine Aktion.
+- Haben sich Einträge zwischenzeitlich geändert, bleiben sie unverändert. Du liest „… Einträge haben sich zwischenzeitlich geändert und sind unverändert geblieben. Lade die Liste neu, um sie zu sehen.“
 
 ### Im Chat prüfen
 

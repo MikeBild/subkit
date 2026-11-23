@@ -90,6 +90,29 @@ Für Zugriff von außen brauchst du HTTPS und eine Zugriffskontrolle. Gib Datenb
 Für eine Wiederherstellung brauchst du Datenbank, Objektspeicherdaten, `.env`, die passende Compose-Datei und die Image-Identität zusammen.
 Teste die Wiederherstellung in einer separaten Installation, bevor du dich auf ein Backup verlässt oder ein Upgrade machst. Die Schritte stehen unter „Backup und Wiederherstellung“.
 
+### Arbeitsbereiche in der Datenbank trennen
+
+Die Engine nutzt Row Level Security von PostgreSQL als zusätzliche Wand zwischen Arbeitsbereichen. Bei Tabellen mit besonders schutzwürdigen Daten liefert dann die Datenbank selbst nur Zeilen des Arbeitsbereichs, der gerade arbeitet. Das betrifft gespeicherte Geheimnisse, Freigaben von Tools, eingehende Webhooks, Abonnements, Chat-Arbeitsbereiche, Push-Abonnements, den Laufzustand von Workflows und die Einstellungen der Anmelde-Anbieter.
+
+Dafür braucht die Engine die Datenbankrolle `subkit_tenant`. Mit der mitgelieferten `docker-compose.yml` tust du nichts: Die Engine richtet die Rolle beim Start selbst ein.
+
+Bei einer eigenen PostgreSQL-Datenbank darf der Login der Engine womöglich keine Rollen anlegen. Dann bleibt Row Level Security aus, die Engine startet aber und arbeitet wie bisher. Den Start blockiert das nie. Das Log meldet „row security is off“ und nennt die nötigen Befehle.
+
+Zum Einschalten führt eine Datenbank-Administratorin oder ein Datenbank-Administrator einmal Folgendes aus, als Superuser oder als Rolle mit `CREATEROLE`. Ersetze `<engine login role>` durch die Rolle, mit der sich die Engine anmeldet:
+
+```sql
+CREATE ROLE subkit_tenant NOLOGIN NOBYPASSRLS;
+GRANT subkit_tenant TO "<engine login role>";
+```
+
+Starte die Engine danach neu. Beim nächsten Start findet sie die Rolle, gibt ihr Zugriff auf ihre Tabellen und schaltet Row Level Security ein. Alternativ gibst du dem Login der Engine das Recht, Rollen anzulegen (`CREATEROLE`). Dann richtet die Engine die Rolle selbst ein.
+
+Gut zu wissen:
+
+- `subkit_tenant` kann sich nicht anmelden. Es ist kein Datenbankbenutzer. Die Engine wechselt nur in diese Rolle, solange sie für einen Arbeitsbereich arbeitet.
+- Rollen gehören nicht zu einem Datenbank-Dump. Spielst du ein Backup in einen anderen Datenbankserver ein, lege die Rolle dort zuerst an, wie unter „Backup und Wiederherstellung“ beschrieben. Fehlt die Rolle trotzdem, sind gespeicherte Geheimnisse nicht lesbar, bis es sie wieder gibt. Das Log nennt diesen Fall. Führe die beiden Befehle erneut aus und starte die Engine neu.
+- Meldet das Log, dass die Rolle Superuser ist oder `BYPASSRLS` hat, schränkt Row Level Security sie nicht ein. Behebe das mit `ALTER ROLE subkit_tenant NOSUPERUSER NOBYPASSRLS;`.
+
 ### Browser-Crawling für die Connector-Discovery
 
 Das mitgelieferte Image enthält keinen Browser und kein Node.js.
@@ -156,7 +179,8 @@ networks:
    Stelle nur in dieses neue Volume wieder her:
    `docker run --rm -i --network none -v <new-object-volume>:/data --entrypoint tar oven/bun:@@BUN_VERSION@@-debian -C /data -xf - < /path/to/backup/objects.tar`.
 2. Starte die neue Datenbank mit `docker compose -p subkit-recovery up -d --wait postgres`.
-   Stelle sie mit `docker compose -p subkit-recovery exec -T postgres pg_restore --exit-on-error --clean --if-exists --no-owner -U subkit -d subkit < /path/to/backup/postgres.dump` wieder her.
+   Der Dump verweist auf die Rolle `subkit_tenant`, Rollen gehören aber nicht dazu. Lege die Rolle zuerst mit `docker compose -p subkit-recovery exec -T postgres psql -U subkit -d subkit -c 'CREATE ROLE subkit_tenant NOLOGIN NOBYPASSRLS; GRANT subkit_tenant TO subkit;'` an.
+   Stelle dann die Datenbank mit `docker compose -p subkit-recovery exec -T postgres pg_restore --exit-on-error --clean --if-exists --no-owner -U subkit -d subkit < /path/to/backup/postgres.dump` wieder her.
    Dieser Befehl ersetzt Datenbankinhalte. Verwende ihn nur gegen das neue Wiederherstellungsprojekt.
 3. Starte die wiederhergestellten Dienste mit `docker compose -p subkit-recovery up -d --wait`.
    Prüfe `/health` und `/ready` auf dem gewählten Port und melde dich mit einem bestehenden Konto an.

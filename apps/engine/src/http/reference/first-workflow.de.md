@@ -122,6 +122,28 @@ Du siehst **Run gestartet**. Ist der Button nicht verfügbar, nennt der Hinweis 
 
 3. Optional: Wähle **Im Audit-Trail**, um zu sehen, wer den Run gestartet und freigegeben hat.
 
+### Einen einzelnen Schritt ausprobieren
+
+Du kannst einen Schritt allein laufen lassen, etwa nachdem du ihn geändert hast. Lesende Zugriffe laufen gegen die echten Systeme. Alles, was schreibt, wird zurückgehalten und nicht gesendet.
+
+1. Klappe auf der Workflow-Seite **Aufbau** auf und klicke auf den Schritt.
+2. Wähle unter **Probe-Run** die **Eingabe**. **Aus dem letzten Run** nutzt, was die Schritte davor im letzten Run geliefert haben. Unter **Eigene Werte** gibst du die früheren Ergebnisse als JSON ein: ein Eintrag je früherem Schritt, benannt nach seinem Schritt-Schlüssel, mit dem Ergebnis unter `data`.
+3. Wähle **Probe-Run dieses Schritts**. Zum Abbrechen wähle **Probe-Run stoppen**.
+4. Lies das Ergebnis. **Run öffnen** zeigt den ganzen Run.
+
+| Was du liest | Bedeutung |
+| --- | --- |
+| „Der Schritt war erfolgreich.“ | Das Ergebnis steht darunter, mit **Rohantwort** und **Anfrage**. |
+| „Der Schritt schreibt und wurde deshalb zurückgehalten. Es wurde nichts gesendet.“ | Der Schritt würde etwas in einem anderen System ändern. Im Probe-Run sendet er nichts. |
+| „Der Schritt ist fehlgeschlagen.“ | Der Fehler steht darunter. |
+| „Der Probe-Run konnte nicht starten.“ | Der Schritt ließ sich nicht starten. |
+
+Gut zu wissen:
+
+- Ein Probe-Run endet spätestens nach 60 Sekunden.
+- Bei vertraulichen Workflows (`execution_privacy: sensitive`) fehlt der Probe-Run, ebenso wenn deine Rolle den Workflow nicht starten darf.
+- Über die HTTP-API startet `POST /v1/executions` mit `"source": "step"` und dem Schritt unter `step` einen solchen Probe-Run. Er braucht `workflow:run`. Schreibende Zugriffe werden immer zurückgehalten. Die Antwort kommt sofort mit `execution_id`. Das Ergebnis liest du mit `GET /v1/executions/{id}`, stoppen kannst du ihn mit `POST /v1/executions/{id}/cancel`.
+
 ### Wenn etwas nicht klappt
 
 | Was du siehst | Was du tust |

@@ -34,6 +34,8 @@ To collect a web page:
 6. Pick a category. Your default category is preselected, at first `inbox`.
 7. Select **Collect**.
 
+If the same page or nearly the same text is already waiting for review in the **Inbox**, SubKit does not create a new item. It adds what you collected to the existing item as evidence, which you find under **Evidence from the session**. For the address, SubKit ignores `www.` and tracking parameters such as `utm_source`. Reports sent without signing in always become a new item.
+
 ### Add a note
 
 A note is an item without a source address, such as a thought or an idea.
@@ -58,6 +60,22 @@ The note carries the origin **Note**. It has no **Open original page** link, bec
 5. Optional: select **Discard** or **Restore**.
 
 Who sees what in the Inbox follows the permissions of your workspace. Categories are not private.
+
+### Group items and handle several at once
+
+1. In the **Inbox**, choose **Topic** under **Group by**. Items from the same website, the same work session or with the same tag then stand together. A tag group reads like `#research`. Items without a topic stand under **Not grouped**.
+2. Select the items with the boxes in front of them.
+3. Choose an action for the selection.
+
+| Action | What it does |
+| --- | --- |
+| **Move to category** | Moves the items to another category. |
+| **Discard** | Discards the items. You can restore them at any time. |
+| **Prepare a suggestion** | Opens a new chat with the selected items that prepares a knowledge entry. Available for up to 100 items. |
+| **Delete … discarded entries** | Removes the items and their raw content for good. Appears only when every selected item is discarded. |
+
+- Admitted items cannot be selected. The actions appear when every selected item is collected or in review, or when every selected item is discarded. A mixed selection offers no action.
+- If items changed in the meantime, they stay as they were. You read “… entries changed in the meantime and stayed as they were. Reload the list to see them.”
 
 ### Review in chat
 
