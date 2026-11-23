@@ -184,4 +184,13 @@ BEGIN
  RETURN NULL;
 END $$;
 --> statement-breakpoint
-CREATE TRIGGER hosted_meter_personal_note_sources AFTER INSERT OR DELETE OR UPDATE ON subkit.personal_note_sources FOR EACH ROW EXECUTE FUNCTION subkit.hosted_meter_personal_note_sources();
+CREATE TRIGGER hosted_meter_personal_note_sources AFTER INSERT OR DELETE OR UPDATE ON subkit.personal_note_sources FOR EACH ROW EXECUTE FUNCTION subkit.hosted_meter_personal_note_sources();--> statement-breakpoint
+CREATE FUNCTION subkit.tenant_language_fts_config() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+ UPDATE subkit.knowledge_chunks SET fts_config = (CASE NEW.language WHEN 'de' THEN 'german' ELSE 'english' END)::regconfig WHERE tenant_id = NEW.id;
+ RETURN NULL;
+END $$;
+--> statement-breakpoint
+CREATE TRIGGER tenant_language_fts_config AFTER UPDATE OF language ON subkit.tenants FOR EACH ROW WHEN (OLD.language IS DISTINCT FROM NEW.language) EXECUTE FUNCTION subkit.tenant_language_fts_config();

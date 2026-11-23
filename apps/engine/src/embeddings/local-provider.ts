@@ -1,19 +1,21 @@
-import { workerEmbeddingsAvailable, workerEmbedTexts } from "./worker-client.ts";
+import { workerEmbedTexts } from "./worker-client.ts";
 
 export { EMBEDDING_MODEL } from "./local-runtime.ts";
 
-export const embeddingsAvailable = workerEmbeddingsAvailable;
-export const embedTexts = workerEmbedTexts;
+export {
+  workerEmbeddingsAvailable as embeddingsAvailable,
+  workerEmbedTexts as embedTexts,
+} from "./worker-client.ts";
 
 export async function embedText(text: string): Promise<number[] | null> {
-  const [vec] = await embedTexts([text]);
+  const [vec] = await workerEmbedTexts([text]);
   return vec ?? null;
 }
 
 async function embedChunkTexts(texts: string[]): Promise<(number[] | null)[]> {
   if (texts.length === 0) return [];
   try {
-    const vecs = await embedTexts(texts);
+    const vecs = await workerEmbedTexts(texts);
     if (vecs.length === texts.length) return vecs;
   } catch {}
   return texts.map(() => null);

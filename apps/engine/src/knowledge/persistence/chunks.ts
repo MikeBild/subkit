@@ -11,20 +11,6 @@ export async function workspaceFtsConfig(db: Executor, tenant_id: string): Promi
   return ftsConfigFor(row?.language);
 }
 
-export async function resetKnowledgeFtsConfig(
-  db: Executor,
-  tenant_id: string,
-  language: string,
-): Promise<void> {
-  const config = ftsConfigFor(language);
-  await db
-    .update(knowledgeChunks)
-    .set({ fts_config: config })
-    .where(
-      sql`${knowledgeChunks.tenant_id} = ${tenant_id} AND ${knowledgeChunks.fts_config} <> ${config}::regconfig`,
-    );
-}
-
 export interface KnowledgeChunkInput {
   title?: string | null;
   path?: string | null;

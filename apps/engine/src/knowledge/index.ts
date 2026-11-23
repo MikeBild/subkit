@@ -24,7 +24,6 @@ export {
   resolveDomainKnowledgeTarget,
 } from "./intake-targets.ts";
 export * from "./intake-types.ts";
-export { resetKnowledgeFtsConfig } from "./persistence/chunks.ts";
 export { type DueKnowledgeReviews, listDueKnowledgeReviews } from "./review-due.ts";
 export * from "./service.ts";
 export * from "./tags.ts";

@@ -1,17 +1,14 @@
 import { z } from "@hono/zod-openapi";
 import { type EndpointScore, scoreEndpoints } from "../../connectors/discovery/endpoint-scorer.ts";
 import { recognizeAuthFromSchemes } from "../../connectors/discovery/recognize-auth.ts";
-import {
-  KNOWLEDGE_SOURCE_TTL_MS as DISCOVERY_TTL_MS,
-  runDiscoveryCached,
-} from "../../connectors/discovery/service.ts";
+import { runDiscoveryCached } from "../../connectors/discovery/service.ts";
 import { DiscoveryError, type DiscoveryResult } from "../../connectors/discovery/types.ts";
 import { getConnector } from "../../connectors/service.ts";
 import { getBuiltinTemplate } from "../../connectors/templates.ts";
 import { logger } from "../../logging/index.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
-export const KNOWLEDGE_SOURCE_TTL_MS = DISCOVERY_TTL_MS;
+export { KNOWLEDGE_SOURCE_TTL_MS } from "../../connectors/discovery/service.ts";
 
 const inputSchema = z
   .object({

@@ -17,7 +17,6 @@ import {
   users,
   workflows,
 } from "../db/schema/index.ts";
-import { resetKnowledgeFtsConfig } from "../knowledge/index.ts";
 import { now } from "../utils/clock.ts";
 
 export async function updateOwnProfile(
@@ -159,7 +158,6 @@ export async function updateWorkspaceSettings(
       .where(eq(tenants.id, input.tenant_id))
       .returning();
     if (!row) return null;
-    if (languageChanged) await resetKnowledgeFtsConfig(tx, input.tenant_id, row.language);
     await auditAwait(
       {
         tenant_id: input.tenant_id,
