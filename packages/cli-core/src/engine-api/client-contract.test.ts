@@ -266,35 +266,33 @@ describe("subkit CLI <-> engine OpenAPI contract", () => {
   });
 });
 
-describe("request step discriminator in the committed openapi.json", () => {
+describe("request step union in the committed openapi.json", () => {
   const schemas = (
     JSON.parse(readFileSync(OPENAPI_JSON_PATH, "utf8")) as {
       components: {
-        schemas: Record<string, { discriminator?: { mapping?: Record<string, string> } }>;
+        schemas: Record<
+          string,
+          { discriminator?: unknown; oneOf?: { $ref?: string }[]; required?: string[] }
+        >;
       };
     }
   ).components.schemas;
-  const protocols = ["http", "graphql", "sql", "s3", "sftp", "mcp"];
-  const component: Record<string, string> = {
-    http: "Http",
-    graphql: "Graphql",
-    sql: "Sql",
-    s3: "S3",
-    sftp: "Sftp",
-    mcp: "Mcp",
-  };
+  const components = ["Http", "Graphql", "Sql", "S3", "Sftp", "Mcp"];
 
   for (const suffix of ["", "Output"]) {
-    test(`RequestStep${suffix} maps every protocol, http included, to its component`, () => {
-      const mapping = schemas[`RequestStep${suffix}`]?.discriminator?.mapping ?? {};
-      expect(mapping).toEqual(
-        Object.fromEntries(
-          protocols.map((protocol) => [
-            protocol,
-            `#/components/schemas/${component[protocol]}RequestStep${suffix}`,
-          ]),
-        ),
+    test(`RequestStep${suffix} lists every protocol without a discriminator http may omit`, () => {
+      const union = schemas[`RequestStep${suffix}`];
+      expect(union?.discriminator).toBeUndefined();
+      expect(union?.oneOf?.map((member) => member.$ref)).toEqual(
+        components.map((name) => `#/components/schemas/${name}RequestStep${suffix}`),
       );
+    });
+
+    test(`only HttpRequestStep${suffix} may omit its protocol`, () => {
+      const requiring = components.filter((name) =>
+        schemas[`${name}RequestStep${suffix}`]?.required?.includes("protocol"),
+      );
+      expect(requiring).toEqual(components.filter((name) => name !== "Http"));
     });
   }
 });
