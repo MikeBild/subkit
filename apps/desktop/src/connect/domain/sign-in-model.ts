@@ -115,7 +115,9 @@ export type Event =
   | { type: "LocalStepChanged"; step: number }
   | { type: "Navigated"; from: ConnectView; to: ConnectView }
   | { type: "NavigatedBack"; to: ConnectView }
-  | { type: "NavigatedHome" };
+  | { type: "NavigatedHome" }
+  | { type: "OtherServerOpened" }
+  | { type: "OtherServerClosed" };
 
 export type Effect =
   | { kind: "checkServer"; address: string; requestId: number }
@@ -254,6 +256,8 @@ export function decide(state: SignInState, command: Command, context: DecideCont
     case "GoBack": {
       if (state.main && isDirectView(state.main.view)) return goBack(state);
       if (screen?.kind === "local") return decideLocal(state, { type: "LocalBack" });
+      if (screen?.kind === "connect" && state.flow.otherServer)
+        return { events: [{ type: "OtherServerClosed" }], effects: [] };
       const waiting = screen?.kind === "signin" && screen.signin.phase === "waiting";
       const cancel: Effect[] = waiting ? [{ kind: "cancelLogin" }] : [];
       if (screen?.kind === "signin" && state.main && !firstSetup(state.main)) {
@@ -266,9 +270,14 @@ export function decide(state: SignInState, command: Command, context: DecideCont
       return { events: [{ type: "WentBack", to: backStep(state, screen) }], effects: cancel };
     }
     case "ConnectAnotherServer":
-      return { events: [{ type: "ReloginDismissed" }], effects: [] };
+      return {
+        events: [{ type: screen?.kind === "server" ? "OtherServerOpened" : "ReloginDismissed" }],
+        effects: [],
+      };
     case "OpenSubKit":
-      return screen?.kind === "signed-in"
+      if (screen?.kind === "signed-in" || screen?.kind === "server")
+        return only({ kind: "openProfile", profileId: screen.profileId });
+      return screen?.kind === "signin" && screen.profileId
         ? only({ kind: "openProfile", profileId: screen.profileId })
         : NOTHING;
     case "OpenServer":
@@ -573,7 +582,23 @@ export function evolve(state: SignInState, event: Event): SignInState {
     case "NavigatedBack":
       return { ...state, flow: { ...flow, nav: wentBack(flow.nav, event.to) } };
     case "NavigatedHome":
-      return { ...state, flow: { ...flow, nav: wentHome() } };
+      return { ...state, flow: { ...flow, nav: wentHome(), otherServer: false } };
+    case "OtherServerOpened":
+      return {
+        ...state,
+        flow: {
+          ...flow,
+          step: "connect",
+          otherServer: true,
+          address: "",
+          check: { phase: "idle" },
+        },
+      };
+    case "OtherServerClosed":
+      return {
+        ...state,
+        flow: { ...flow, otherServer: false, check: { phase: "idle" } },
+      };
     case "MainStateReceived": {
       const restart = Boolean(state.main?.signedIn) && !event.state.signedIn;
       const base = restart ? INITIAL_FLOW : flow;

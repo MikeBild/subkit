@@ -450,3 +450,66 @@ describe.skipIf(!desktopRunner)("welcome and invitation", () => {
     expect(html).toContain("Copy diagnostics");
   });
 });
+
+describe.skipIf(!desktopRunner)("connected state on the server step", () => {
+  const CONNECTED = {
+    defaultServer: CLOUD,
+    profiles: [
+      {
+        id: "p1",
+        label: "subkit-cloud.example",
+        serverOrigin: CLOUD,
+        signedIn: true,
+        active: true,
+        serverVersion: "12.1.5",
+      },
+    ],
+  };
+
+  for (const locale of ["de", "en"] as const) {
+    test(`a signed-in server is the primary state, the form stays folded (${locale})`, () => {
+      const html = render(state(CONNECTED, [], locale));
+      const copy = dictionary(locale);
+      expect(html).toContain('data-testid="server-overview"');
+      expect(html).toContain("subkit-cloud.example");
+      expect(html).toContain(copy["signin.connected"]);
+      expect(html).toContain(copy["chip.version"].replace("{version}", "12.1.5"));
+      expect(html).toContain(copy["relogin.other"]);
+      expect(html).toContain(copy["signin.enter"]);
+      expect(html).not.toContain('data-testid="connect-address"');
+      expect(html).not.toContain('data-testid="connect-check"');
+      expect(html).not.toContain('data-testid="connect-own-server"');
+      expect(html).not.toContain('data-testid="connect-choice-server"');
+      expect(viewOf(state(CONNECTED, [], locale))?.frame.dots.visible).toBe(false);
+    });
+  }
+
+  test("connect another server unfolds the form with a way back", () => {
+    const html = render(state(CONNECTED, [{ type: "OtherServerOpened" }], "de"));
+    expect(html).toContain('data-testid="connect-address"');
+    expect(html).not.toContain('data-testid="server-overview"');
+    expect(html).not.toMatch(/data-testid="step-back"[^>]*aria-hidden="true"/);
+  });
+
+  test("offline keeps the server on top and offers to try again", () => {
+    const html = render(
+      state({ ...CONNECTED, notice: { kind: "offline", profileId: "p1" } }, [], "de"),
+    );
+    expect(html).toContain('data-testid="server-overview"');
+    expect(html).toContain('data-testid="server-notice-action"');
+    expect(html).not.toContain(dictionary("de")["signin.connected"]);
+  });
+
+  test("signing in to the server you are already signed in to shows the signed-in state", () => {
+    const html = render(
+      state(CONNECTED, [
+        { type: "OtherServerOpened" },
+        { type: "SignInTargetChosen", origin: CLOUD, serverVersion: "12.1.5" },
+      ]),
+    );
+    expect(html).toContain('data-testid="signin-done"');
+    expect(html).not.toContain('data-testid="signin-open"');
+    expect(html).toContain("Open SubKit");
+    expect(html).not.toMatch(/data-testid="step-next"[^>]*disabled/);
+  });
+});

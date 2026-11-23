@@ -258,3 +258,23 @@ describe("entries from the main process reset the way back", () => {
     expect(viewOf(permissions)?.nav).toEqual({ back: null, later: true });
   });
 });
+
+describe("entry: the window on a completed install", () => {
+  test("the server is the home view; open SubKit is the next action", () => {
+    const state = opened(COMPLETED, "connect");
+    expect(viewOf(state)?.screen).toMatchObject({ kind: "server", profileId: "p1" });
+    expect(viewOf(state)?.nav).toBeNull();
+    expect(act(state, { type: "OpenSubKit" }).effects).toEqual([
+      { kind: "openProfile", profileId: "p1" },
+    ]);
+  });
+
+  test("another server unfolds the form, back folds it again", () => {
+    const other = act(opened(COMPLETED, "connect"), { type: "ConnectAnotherServer" }).state;
+    expect(viewOf(other)?.screen).toMatchObject({ kind: "connect", back: true, address: "" });
+    expect(viewOf(other)?.frame.dots.visible).toBe(false);
+    const back = act(other, { type: "GoBack" });
+    expect(back.events).toEqual([{ type: "OtherServerClosed" }]);
+    expect(viewOf(back.state)?.screen.kind).toBe("server");
+  });
+});

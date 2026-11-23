@@ -115,6 +115,7 @@ export interface ProfileSummary {
   serverOrigin: string;
   signedIn: boolean;
   active: boolean;
+  serverVersion?: string | null;
 }
 
 export interface SettingsView {

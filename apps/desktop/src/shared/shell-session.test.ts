@@ -73,6 +73,7 @@ describe("shell session", () => {
         serverOrigin: "https://a.example",
         signedIn: true,
         active: false,
+        serverVersion: null,
       },
       {
         id: "b",
@@ -80,6 +81,7 @@ describe("shell session", () => {
         serverOrigin: "https://b.example",
         signedIn: false,
         active: true,
+        serverVersion: null,
       },
     ]);
   });

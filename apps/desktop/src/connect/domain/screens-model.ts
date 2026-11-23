@@ -21,7 +21,11 @@ import {
 } from "../../shared/local/permission-model.ts";
 import type { PermissionView } from "../../shared/local/permission-port.ts";
 import type { DataFolderRefusal } from "../../shared/local/supervisor-model.ts";
-import { currentStep, type WorkspaceOption } from "../../shared/onboarding.ts";
+import {
+  currentStep,
+  setupComplete as firstSetupDone,
+  type WorkspaceOption,
+} from "../../shared/onboarding.ts";
 import { supports } from "../../shared/platform-capabilities.ts";
 import type { ReportView } from "../../shared/problem-report.ts";
 import { hostOf, isLoopbackHost } from "../../shared/server-address.ts";
@@ -57,6 +61,7 @@ export interface FlowUi {
   invitation: Invitation | null;
   consent: Record<ConsentTopic, boolean | null>;
   nav: NavTrail;
+  otherServer: boolean;
 }
 
 export type CheckSlot =
@@ -77,6 +82,7 @@ export const INITIAL_FLOW: FlowUi = {
   invitation: null,
   consent: { notifications: null, diagnostics: null },
   nav: EMPTY_TRAIL,
+  otherServer: false,
 };
 
 export interface Fact {
@@ -157,7 +163,23 @@ export type Screen =
       localMacOnly: boolean;
       back: boolean;
     }
-  | { kind: "signin"; origin: string; host: string; signin: SignInModel; hint: MessageKey | null }
+  | {
+      kind: "signin";
+      origin: string;
+      host: string;
+      signin: SignInModel;
+      hint: MessageKey | null;
+      profileId?: string;
+    }
+  | {
+      kind: "server";
+      profileId: string;
+      host: string;
+      label: string | null;
+      serverVersion: string | null;
+      device: string;
+      strip: StripModel | null;
+    }
   | {
       kind: "signed-in";
       profileId: string;
@@ -449,6 +471,27 @@ export function localScreenFor(state: ConnectState, ui: FlowUi): LocalSetupModel
   };
 }
 
+export function serverFor(
+  state: ConnectState,
+  ui: FlowUi,
+): Extract<Screen, { kind: "server" }> | null {
+  if (ui.otherServer || state.signedIn || (ui.step !== "connect" && ui.step !== "welcome"))
+    return null;
+  if (!firstSetupDone(state)) return null;
+  const profile = state.profiles.find((candidate) => candidate.active && candidate.signedIn);
+  if (!profile) return null;
+  const host = hostOf(profile.serverOrigin);
+  return {
+    kind: "server",
+    profileId: profile.id,
+    host,
+    label: profile.label && profile.label !== host ? profile.label : null,
+    serverVersion: profile.serverVersion ?? null,
+    device: state.deviceLabel,
+    strip: profileStrip(state),
+  };
+}
+
 export function screenFor(state: ConnectState, ui: FlowUi): Screen {
   if (state.view === "settings") return { kind: "settings" };
   if (state.view === "report") return { kind: "report", report: state.report };
@@ -501,8 +544,22 @@ export function screenFor(state: ConnectState, ui: FlowUi): Screen {
       signin: signInFor(state.login, relogin),
     };
   }
+  const server = serverFor(state, ui);
+  if (server) return server;
   if (ui.step === "signin" && ui.target) {
     const { origin } = ui.target;
+    const known = state.profiles.find(
+      (profile) => profile.signedIn && profile.serverOrigin === origin,
+    );
+    if (known && state.login.phase === "idle")
+      return {
+        kind: "signin",
+        origin,
+        host: hostOf(origin),
+        signin: { phase: "done", serverVersion: known.serverVersion ?? null },
+        hint: null,
+        profileId: known.id,
+      };
     const signin = signInFor(state.login, origin);
     return {
       kind: "signin",
@@ -528,7 +585,7 @@ export function screenFor(state: ConnectState, ui: FlowUi): Screen {
     slot,
     examples: exampleAddresses(state.profiles, state.defaultServer),
     canContinue: slot.kind === "outcome" && slot.outcome.kind === "ok",
-    back: welcomeAvailable(state),
+    back: welcomeAvailable(state) || (ui.otherServer && serverFor(state, INITIAL_FLOW) !== null),
     localAvailable: state.local.available && !state.local.configured,
     localMacOnly: !supports(state.platform, "localWorkspace"),
   };

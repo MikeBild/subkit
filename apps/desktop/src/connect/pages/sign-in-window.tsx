@@ -13,7 +13,7 @@ import {
   SignInStoreProvider,
   useSignIn,
 } from "../adapter/index.ts";
-import { Connect } from "../features/connect/index.ts";
+import { Connect, ServerOverview } from "../features/connect/index.ts";
 import { Consent, Invitation, Welcome, WorkspaceChoice } from "../features/first-run/index.ts";
 import { LocalCapabilities } from "../features/local-capabilities/index.ts";
 import { LocalSetup } from "../features/local-setup/index.ts";
@@ -75,6 +75,7 @@ function Window() {
           {screen.kind === "welcome" && <Welcome />}
           {screen.kind === "invite" && <Invitation />}
           {screen.kind === "connect" && <Connect />}
+          {screen.kind === "server" && <ServerOverview />}
           {screen.kind === "local" && <LocalSetup />}
           {screen.kind === "signin" && <SignIn />}
           {screen.kind === "workspace" && <WorkspaceChoice />}
