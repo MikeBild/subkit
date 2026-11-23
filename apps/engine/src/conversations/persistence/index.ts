@@ -33,7 +33,13 @@ import {
   TOOL_OUTPUT_VERBATIM_TURNS,
 } from "../tool-output-elision.ts";
 import type { ToolCallOutcome } from "../tools/result-payload.ts";
-import { replayedToolOutput } from "../tools/sdk-wrap/model-output.ts";
+
+function keepReplayedOutput(
+  _tool: string,
+  value: Record<string, unknown>,
+): Record<string, unknown> {
+  return value;
+}
 
 const MAX_REPLAY_MESSAGES = 24;
 const MAX_REPLAY_TOKENS = 12_000;
@@ -240,6 +246,7 @@ interface BuildModelMessagesOpts {
   conversationEnvelope?: boolean;
   conversation_id?: string;
   provider?: ProviderKind;
+  frameReplayedOutput?: (tool: string, value: Record<string, unknown>) => Record<string, unknown>;
 }
 
 function messageText(content: unknown): string {
@@ -741,7 +748,7 @@ export async function buildModelMessages(
               });
         } else {
           const truncated = truncateForLlm(augmented);
-          resultValue = replayedToolOutput(
+          resultValue = (opts.frameReplayedOutput ?? keepReplayedOutput)(
             call.tool,
             truncated.truncated
               ? {

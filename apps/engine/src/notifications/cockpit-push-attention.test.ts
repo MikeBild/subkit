@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { snoozeAttention, unsnoozeAttention } from "../attention-snoozes/index.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import { tenants } from "../db/schema/identity.ts";
 import { createHttpTestServer, type HttpTestServer } from "../http/tests/setup.ts";
@@ -12,7 +13,6 @@ import type {
   AttentionV1,
 } from "../operator/attention.ts";
 import type { Candidate } from "../operator/attention-readers.ts";
-import { snoozeAttention, unsnoozeAttention } from "../operator/attention-snooze.ts";
 import { attentionSnoozeKey } from "../operator/core/attention.ts";
 import { spendCandidates } from "../operator/spend-attention.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";

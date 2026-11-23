@@ -25,7 +25,11 @@ const deviceCommandState =
 const deviceUploadStaging =
   "Staged chunks of a file a device imports, bounded per chunk and per upload by check constraints, admitted against the file-byte quota when the upload opens and removed when it is committed, aborted or expires after an hour; the committed file is metered in files.";
 
+const attentionSnooze =
+  "Per-person snooze of an attention entry without content (a key, an instant, bounded by the primary key): must stay writable so a person at the tenant limit can still silence or restore a reminder.";
+
 export const HOSTED_METER_EXEMPTIONS: Readonly<Record<string, string>> = {
+  attention_snoozes: attentionSnooze,
   caller_budget_units: ledger,
   external_call_metering: ledger,
   hosted_tenant_usage: ledger,

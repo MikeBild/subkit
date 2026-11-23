@@ -1,3 +1,4 @@
+export { runKnowledgeRechunkBackfill } from "./backfills/rechunk-v1.ts";
 export * from "./budgets.ts";
 export * from "./bundle.ts";
 export * from "./bundle-service.ts";

@@ -7,7 +7,6 @@ import { writeEvent } from "../db/index.ts";
 import { executionSteps, executions } from "../db/schema/index.ts";
 import { clearDeviceWait } from "../devices/waiting.ts";
 import { logger } from "../logging/index.ts";
-import { enqueueHostedWork } from "../queue/index.ts";
 import { findAllJobs } from "../queue/list-all.ts";
 import { EXECUTION_RUN_DEVICE_QUEUE, EXECUTION_RUN_QUEUE } from "../queue/queues.ts";
 import { verifySignalToken } from "../workflow-signals/index.ts";
@@ -175,6 +174,7 @@ export async function resolveUncertainWrite(
     return { kind: "resolved", status: verdict === "requeue" ? "queued" : "uncertain", remaining };
   });
   if (result.kind === "resolved" && result.status === "queued" && row.workflow_id) {
+    const { enqueueHostedWork } = await import("../queue/index.ts");
     await enqueueHostedWork(db, await queueOf(request.boss), "execution", EXECUTION_RUN_QUEUE, {
       tenant_id,
       workflow_id: row.workflow_id,

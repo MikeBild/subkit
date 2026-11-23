@@ -14,7 +14,7 @@ import {
   revealVaultItem,
 } from "../../vault/service.ts";
 import { TENANT_ROLE } from "../core/tenant-scope.ts";
-import rowSecuritySql from "../rls/tenant_row_security.sql" with { type: "text" };
+import rowSecuritySql from "../migrations/0007_tenant_row_security.sql" with { type: "text" };
 import * as schema from "../schema/index.ts";
 import { vaultItems } from "../schema/index.ts";
 import { readTenantRoleFacts, tenantRolePreflight } from "../tenant-role-preflight.ts";

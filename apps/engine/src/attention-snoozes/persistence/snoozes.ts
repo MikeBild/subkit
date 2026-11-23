@@ -1,6 +1,6 @@
 import { and, eq, gt, lte } from "drizzle-orm";
 import { attentionSnoozes, type Executor } from "../../db/index.ts";
-import type { AttentionSnooze } from "../core/attention.ts";
+import type { AttentionSnooze } from "../../operator/index.ts";
 
 export interface SnoozeOwner {
   readonly tenant_id: string;

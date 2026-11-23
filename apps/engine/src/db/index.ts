@@ -2,7 +2,14 @@ export { assertInsertRow } from "./assert-insert.ts";
 export { writeAudit } from "./audit.ts";
 export { CatalogVocabularyBusyError, lockCatalogVocabulary } from "./catalog-vocabulary.ts";
 export type { Db, Executor, Transaction } from "./client.ts";
-export { closeDb, createDbFromUrl, getDb, getPool, readAdvisoryLockSnapshot } from "./client.ts";
+export {
+  closeDb,
+  createDbFromUrl,
+  createMigrationDbFromUrl,
+  getDb,
+  getPool,
+  readAdvisoryLockSnapshot,
+} from "./client.ts";
 export {
   databaseClientOptions,
   databaseConnectionSettings,

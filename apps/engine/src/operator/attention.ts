@@ -1,3 +1,4 @@
+import { activeSnoozes } from "../attention-snoozes/index.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { activeApprover } from "../identity/setup-preferences.ts";
@@ -24,7 +25,6 @@ import {
 } from "./core/attention.ts";
 import { withDeviceAttention, withDeviceFacts } from "./device-attention.ts";
 import { withPairApprovals, withPendingPairRequests } from "./pair-approval-attention.ts";
-import { activeSnoozes } from "./persistence/attention-snoozes.ts";
 import { withPausedSchedules } from "./schedule-pause-attention.ts";
 import {
   readTaskAttention,

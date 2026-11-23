@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog } from "../db/schema/index.ts";
-import { getTestNow } from "../test-helpers/determinism/clock.ts";
-import { buildAttention } from "./attention.ts";
+import { buildAttention } from "../operator/attention.ts";
 import {
   HOUR,
   otherPerson,
@@ -11,9 +10,10 @@ import {
   testDb,
   useAttentionTenant,
   wf,
-} from "./attention-fixtures.ts";
-import { snoozeAttention, unsnoozeAttention } from "./attention-snooze.ts";
-import { attentionSnoozeKey } from "./core/attention.ts";
+} from "../operator/attention-fixtures.ts";
+import { attentionSnoozeKey } from "../operator/core/attention.ts";
+import { getTestNow } from "../test-helpers/determinism/clock.ts";
+import { snoozeAttention, unsnoozeAttention } from "./service.ts";
 
 useAttentionTenant();
 
