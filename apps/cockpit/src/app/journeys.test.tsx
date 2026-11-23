@@ -481,7 +481,7 @@ async function mount(path: string, routes: Record<string, Handler> = {}) {
     expect(dead).toEqual([]);
   };
   const text = () => body().textContent ?? "";
-  return { dom, find, click, notify, at, text };
+  return { dom, find, click, notify, at, text, settle, seen };
 }
 
 function scopedNotification(href: string): string {
@@ -579,4 +579,85 @@ isolated("All runs › a run opens its detail", async () => {
   await app.click("data-table-row-link-0");
   app.at(`/runs/${RUN}`);
   expect(app.text()).toContain(runDetail.result_markdown);
+});
+
+const invocation = {
+  http: { path: "/v1/executions", body: {} },
+  mcp: {},
+  cli: {},
+  input: { sample: {} },
+  output: {},
+  authority: {},
+  visibility: { hooks: true, schedules: true },
+  webhook_input_shape: {},
+  schedules: [],
+  hooks: [],
+};
+
+function costProjection(overrides: Record<string, unknown> = {}) {
+  return {
+    state: "estimated",
+    basis: "version",
+    runs_sampled: 12,
+    runs_per_month: 30.42,
+    per_run_amount: 0.138,
+    monthly_amount: 4.2,
+    currency: "EUR",
+    unpriced_models: [],
+    rates_basis: "current",
+    ...overrides,
+  };
+}
+
+const scheduleEntry = {
+  id: "66666666-6666-4666-8666-666666666666",
+  workflow_id: WORKFLOW,
+  admission_hold: null,
+  input_error: null,
+  workflow_slug: workflow.slug,
+  workflow_name: workflow.name,
+  prepared_version_id: null,
+  cron: "0 8 * * *",
+  timezone: "Europe/Berlin",
+  execution_mode: "prod",
+  paused: false,
+  auto_pause: null,
+  input: null,
+  created_at: NOW,
+  cost_projection: costProjection(),
+};
+
+const SCHEDULE_ROUTES: Record<string, Handler> = {
+  [`/v1/workflows/${WORKFLOW}/invocation`]: () => invocation,
+  [`/v1/workflows/${WORKFLOW}/input-schema`]: () => ({ schema: null }),
+};
+
+isolated("a scheduled workflow › the schedule shows its monthly estimate", async () => {
+  const app = await mount(`/workflows/${WORKFLOW}#workflow-section-use`, {
+    ...SCHEDULE_ROUTES,
+    "/v1/schedules": () => ({ schedules: [scheduleEntry], total: 1 }),
+  });
+  await app.click("workflow-invocation-tab-schedule");
+  const fact = app.find("schedule-cost-fact")?.textContent ?? "";
+  expect(fact).toContain("≈ 4,20\u00a0€ / Monat");
+  expect(fact).toContain("aus 12 Runs, aktuelle Modellpreise");
+});
+
+isolated("a new schedule › the estimate follows the chosen rhythm", async () => {
+  const app = await mount(`/workflows/${WORKFLOW}#workflow-section-use`, {
+    ...SCHEDULE_ROUTES,
+    [`/v1/workflows/${WORKFLOW}/schedule-cost`]: (url) =>
+      costProjection({
+        runs_per_month: url.searchParams.get("cron")?.endsWith("* * *") ? 30.42 : 4.33,
+        monthly_amount: url.searchParams.get("cron")?.endsWith("* * *") ? 4.2 : 0.6,
+      }),
+  });
+  await app.click("workflow-invocation-tab-schedule");
+  await app.click("schedule-create");
+  await app.settle(80);
+  expect(app.find("schedule-cost-preview")?.textContent).toContain("≈ 4,20\u00a0€ / Monat");
+  await app.click("schedule-rhythm-weekly");
+  await app.settle(80);
+  expect(app.find("schedule-cost-preview")?.textContent).toContain("≈ 0,60\u00a0€ / Monat");
+  expect(app.seen.filter((call) => call.includes("/schedule-cost?")).length).toBeGreaterThan(1);
 });
