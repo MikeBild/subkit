@@ -215,6 +215,96 @@ describe("connector promotion", () => {
     ).toHaveLength(1);
   });
 
+  test("copy fills an existing PROD connector that has no credential", async () => {
+    const tenant_id = await seedTenant("fill");
+    const source = await seedConnector(tenant_id, "fill-api");
+    const sourceCredential = await upsertCredential(
+      {
+        tenant_id,
+        connector_id: source.id,
+        environment: "dev",
+        mode: "bearer",
+        value: { mode: "bearer", token: "fill-secret-value" },
+        actor_id: null,
+        source: "http_route",
+      },
+      ctx.db,
+    );
+    const target = await createConnector(
+      {
+        tenant_id,
+        input: {
+          name: "fill-api",
+          slug: "fill-api",
+          driver: "http",
+          environment: "prod",
+          base_url: "https://fill-api-prod.example.test",
+          auth_type: "bearer",
+          config: { timeout_ms: 4_000 },
+        },
+        actor_id: null,
+      },
+      ctx.db,
+    );
+
+    const result = await promoteConnector(
+      promoteInput(tenant_id, source.id, "copy", nextKey("fill")),
+      ctx.db,
+    );
+    expect(result.target_connector_id).toBe(target.id);
+    expect(result.credential_mappings).toEqual([
+      {
+        mode: "bearer",
+        source_credential_id: sourceCredential.id,
+        target_credential_id: expect.any(String),
+      },
+    ]);
+    expect((await getCredentialForConnector(tenant_id, target.id, "prod", ctx.db))?.value).toEqual({
+      mode: "bearer",
+      token: "fill-secret-value",
+    });
+    expect((await getConnector(tenant_id, target.id, ctx.db))?.base_url).toBe(
+      "https://fill-api-prod.example.test",
+    );
+    expect(
+      await ctx.db
+        .select()
+        .from(connectors)
+        .where(and(eq(connectors.tenant_id, tenant_id), eq(connectors.environment, "prod"))),
+    ).toHaveLength(1);
+
+    await expect(
+      promoteConnector(promoteInput(tenant_id, source.id, "copy", nextKey("fill")), ctx.db),
+    ).rejects.toMatchObject({ code: "target_exists" });
+  });
+
+  test("an existing PROD connector still refuses a move and a copy without a DEV credential", async () => {
+    const tenant_id = await seedTenant("refuse");
+    const source = await seedConnector(tenant_id, "refuse-api");
+    await createConnector(
+      {
+        tenant_id,
+        input: {
+          name: "refuse-api",
+          slug: "refuse-api",
+          driver: "http",
+          environment: "prod",
+          base_url: "https://refuse-api.example.test",
+          auth_type: "bearer",
+          config: { timeout_ms: 4_000 },
+        },
+        actor_id: null,
+      },
+      ctx.db,
+    );
+    await expect(
+      promoteConnector(promoteInput(tenant_id, source.id, "copy", nextKey("refuse")), ctx.db),
+    ).rejects.toMatchObject({ code: "target_exists" });
+    await expect(
+      promoteConnector(promoteInput(tenant_id, source.id, "move", nextKey("refuse")), ctx.db),
+    ).rejects.toMatchObject({ code: "target_exists" });
+  });
+
   test("concurrent copies with one key create one target", async () => {
     const tenant_id = await seedTenant("race");
     const source = await seedConnector(tenant_id, "race-api");
