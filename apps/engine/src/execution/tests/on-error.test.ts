@@ -254,19 +254,14 @@ describe("onError modes", () => {
     );
   });
 
-  test("a write that fails inside a loop-step body surfaces in execution final_status", async () => {
+  test("a write that fails inside a for_each step surfaces in execution final_status", async () => {
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "loop-write-fail",
       steps: [
         {
-          kind: "loop",
-          id: "each",
-          over: "$input",
-          body: ["write_it"],
-        },
-        {
           kind: "request",
           id: "write_it",
+          for_each: "(sourceData) => sourceData.$input",
           method: "POST",
           url: `${mock.baseUrl}/fail/x`,
           max_retries: 0,
@@ -280,23 +275,18 @@ describe("onError modes", () => {
       input: [1, 2],
     });
     expect(result.status).toBe("failed");
-    const container = result.steps.find((s) => s.step_key === "each");
+    const container = result.steps.find((s) => s.step_key === "write_it");
     expect(container?.status).toBe("failed");
   });
 
-  test("loop-step body failure with on_error=continue does NOT fail the execution", async () => {
+  test("for_each iteration failure with on_error=continue does NOT fail the execution", async () => {
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "loop-write-continue",
       steps: [
         {
-          kind: "loop",
-          id: "each",
-          over: "$input",
-          body: ["write_it"],
-        },
-        {
           kind: "request",
           id: "write_it",
+          for_each: "(sourceData) => sourceData.$input",
           method: "POST",
           url: `${mock.baseUrl}/fail/x`,
           on_error: "continue",
@@ -317,43 +307,5 @@ describe("onError modes", () => {
         expect.objectContaining({ code: "step_failed_continued", step_key: "write_it" }),
       ]),
     );
-  });
-
-  test("loop fail_fast stops the current body and later iterations after the first failure", async () => {
-    const { workflow_id } = await createWorkflowRow(ctx, {
-      name: "loop-fail-fast",
-      steps: [
-        {
-          kind: "loop",
-          id: "each",
-          over: "$input",
-          body: ["write_it", "must_not_run"],
-          fail_fast: true,
-        },
-        {
-          kind: "request",
-          id: "write_it",
-          method: "POST",
-          url: `${mock.baseUrl}/fail/x`,
-          max_retries: 0,
-        },
-        {
-          kind: "request",
-          id: "must_not_run",
-          method: "GET",
-          url: `${mock.baseUrl}/ok`,
-        },
-      ],
-    });
-    const result = await runExecution({
-      db: ctx.testDb.db,
-      tenant_id: ctx.tenantId,
-      source: { kind: "saved", workflow_id },
-      input: [1, 2, 3],
-    });
-    expect(result.status).toBe("failed");
-    const iterations = result.output as Array<Record<string, unknown>>;
-    expect(iterations).toHaveLength(1);
-    expect(Object.keys(iterations[0] ?? {})).toEqual(["write_it"]);
   });
 });

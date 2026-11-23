@@ -60,6 +60,7 @@ async function createGqlWorkflow(
     steps: [
       {
         kind: "request",
+        protocol: "graphql",
         id: "gql",
         method: "POST",
         connector_id: connectorId,
@@ -122,6 +123,7 @@ describe("graphql cursor collection", () => {
       steps: [
         {
           kind: "request",
+          protocol: "graphql",
           id: "gql",
           connector_id: connectorId,
           graphql: {
@@ -180,6 +182,7 @@ describe("graphql cursor collection", () => {
       steps: [
         {
           kind: "request",
+          protocol: "graphql",
           id: "gql",
           connector_id: connectorId,
           graphql: {
@@ -218,6 +221,7 @@ describe("graphql cursor collection", () => {
       steps: [
         {
           kind: "request",
+          protocol: "graphql",
           id: "gql",
           connector_id: connectorId,
           graphql: {

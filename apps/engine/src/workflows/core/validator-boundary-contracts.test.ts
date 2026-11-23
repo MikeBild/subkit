@@ -5,14 +5,20 @@ const connector = "00000000-0000-4000-8000-000000000001";
 const request = { id: "fetch", kind: "request", method: "GET", url: "https://example.test" };
 const define = (steps: unknown[]) => ({ name: "Boundary contracts", steps });
 
-test("schema failures retain numeric paths, original messages and unnamed retired-loop locations", () => {
-  const result = validateWorkflowDef(define([{ kind: "loop", item_var: "old" }]));
+test("schema failures retain numeric paths and original messages, and a retired loop names its rewrite", () => {
+  const result = validateWorkflowDef(
+    define([
+      { id: "each", kind: "loop", over: "fetch.data", body: ["fetch"] },
+      request,
+      { kind: "request" },
+    ]),
+  );
   expect(result.ok).toBe(false);
-  expect(result.errors.find((error) => error.path === "steps.0.item_var")?.message).toContain(
-    "retired",
+  expect(result.errors.find((error) => error.path === "steps.each")?.message).toBe(
+    'The `loop` step kind is retired. Set `for_each: "(sourceData) => sourceData.fetch.data"` on step "fetch" and remove this step.',
   );
   expect(result.errors).toContainEqual({
-    path: "steps.0.id",
+    path: "steps.2.id",
     message: "Invalid input: expected string, received undefined",
   });
   expect(result).not.toHaveProperty("placeholder_destinations");
@@ -45,7 +51,7 @@ test("only leading legacy references reject a for_each selector, with surroundin
   expect(valid.errors).toEqual([]);
 });
 
-test("known branch targets do not become forward references and mixed loops defer item requirements", () => {
+test("known branch targets do not become forward references", () => {
   const known = validateWorkflowDef(
     define([
       { id: "choose", kind: "branch", when: "true", then_steps: [], else_steps: ["fetch"] },
@@ -54,32 +60,28 @@ test("known branch targets do not become forward references and mixed loops defe
   );
   expect(known.errors).toEqual([]);
   expect(known).not.toHaveProperty("forward_refs");
-  const mixed = validateWorkflowDef(
-    define([{ id: "each", kind: "loop", over: "[]", body: ["fetch", "later"] }, request]),
-    { allowForwardRefs: true },
-  );
-  expect(mixed.errors).toEqual([]);
-  expect(mixed.forward_refs).toEqual([{ step_id: "each", field: "loop.body", ref: "later" }]);
-  const item = validateWorkflowDef(
-    define([
-      { id: "each", kind: "loop", over: "[]", body: ["fetch", "use_item"] },
-      request,
-      { ...request, id: "use_item", url: "https://example.test/${item.id}" },
-    ]),
-  );
-  expect(item.errors).toEqual([]);
 });
 
 test("S3 optional body and object-key boundaries distinguish read, put and delete", () => {
   for (const body of [undefined, null]) {
     const result = validateWorkflowDef(
-      define([{ ...request, method: "DELETE", connector_id: connector, s3: { key: "a" }, body }]),
+      define([
+        {
+          protocol: "s3",
+          ...request,
+          method: "DELETE",
+          connector_id: connector,
+          s3: { key: "a" },
+          body,
+        },
+      ]),
     );
     expect(result.errors).toEqual([]);
   }
   const put = validateWorkflowDef(
     define([
       {
+        protocol: "s3",
         ...request,
         method: "PUT",
         connector_id: connector,
@@ -102,6 +104,7 @@ test("malformed addressing tokens report only their exact source slice and full 
   const result = validateWorkflowDef(
     define([
       {
+        protocol: "s3",
         ...request,
         connector_id: connector,
         path: "archive/",
@@ -181,7 +184,7 @@ test("unbound item placeholders in payloads retain their step path and whitespac
   const result = validateWorkflowDef(define([{ ...request, body: "${ item.id}" }]));
   expect(result.ok).toBe(false);
   expect(result.errors.map((error) => error.path)).toEqual(["steps.fetch"]);
-  expect(result.errors[0]?.message).toContain("not contained");
+  expect(result.errors[0]?.message).toContain("has no `for_each` declared");
 });
 
 test("invalid properties shapes produce only the schema diagnostic, not invented undeclared input keys", () => {

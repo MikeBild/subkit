@@ -127,38 +127,6 @@ describe("for_each · per-step inline iteration", () => {
 });
 
 describe("static container-child exclusion", () => {
-  test("loop body steps are excluded from top-level walk", async () => {
-    const { workflow_id } = await createWorkflowRow(ctx, {
-      name: "loop-body-excluded",
-      steps: [
-        {
-          id: "source_loop",
-          kind: "loop",
-          over: "[1, 2]",
-          body: ["loop_body_step"],
-        },
-        {
-          id: "loop_body_step",
-          kind: "transform",
-          language: "javascript",
-          expression: "return input.scope.$item * 10;",
-        },
-      ],
-    });
-    const result = await runExecution({
-      db: ctx.testDb.db,
-      tenant_id: ctx.tenantId,
-      source: { kind: "saved", workflow_id },
-      input: null,
-    });
-    const topLevelBodyStep = result.steps.find(
-      (s) => s.step_key === "loop_body_step" && !s.step_key.includes("["),
-    );
-    if (topLevelBodyStep) {
-      expect(topLevelBodyStep.status).toBe("skipped");
-    }
-  });
-
   test("branch arm steps excluded from top-level walk", async () => {
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "branch-excluded",
@@ -427,9 +395,9 @@ describe("loop body request · item placeholders", () => {
             language: "javascript",
             expression: 'return [{ id: "proj-a" }, { id: "proj-b" }];',
           },
-          { id: "each_project", kind: "loop", over: "projects.data", body: ["resources"] },
           {
             id: "resources",
+            for_each: "(sourceData) => sourceData.projects.data",
             kind: "request",
             method: "GET",
             url: `${mock.baseUrl}/v2/projects/\${item.id}/resources`,

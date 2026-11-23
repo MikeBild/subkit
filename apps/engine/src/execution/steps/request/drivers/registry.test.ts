@@ -48,8 +48,10 @@ describe("DRIVERS", () => {
 
   test("side-effect classification follows the driver", () => {
     expect(DRIVERS.http.classifySideEffects(step)).toBe("read");
-    expect(DRIVERS.http.classifySideEffects({ ...step, method: "POST" })).toBe("write");
-    expect(DRIVERS.s3.classifySideEffects({ ...step, method: "PUT" })).toBe("write");
+    expect(DRIVERS.http.classifySideEffects({ ...step, method: "POST" } as RequestStep)).toBe(
+      "write",
+    );
+    expect(DRIVERS.s3.classifySideEffects({ ...step, method: "PUT" } as RequestStep)).toBe("write");
   });
 
   test("device drivers classify by the action their step names and never retry", () => {

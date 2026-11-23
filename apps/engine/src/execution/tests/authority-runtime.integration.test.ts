@@ -165,6 +165,7 @@ async function fixture(
         ? shape
         : driver === "s3"
           ? {
+              protocol: "s3",
               method: "PUT",
               body: "report",
               s3: {
@@ -174,7 +175,10 @@ async function fixture(
             }
           : driver === "http"
             ? { method: "POST", path: "/messages", body: { recipient: "reviewed@example.test" } }
-            : { graphql: { operation: "mutation", query: "mutation { sendMessage { id } }" } }),
+            : {
+                protocol: "graphql",
+                graphql: { operation: "mutation", query: "mutation { sendMessage { id } }" },
+              }),
       max_retries: 2,
       retry_backoff_ms: 50,
     })),

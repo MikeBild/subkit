@@ -12,23 +12,11 @@ interface JsonataSite {
   expression: string;
 }
 
-function isLoopSelector(over: string): boolean {
-  return over === "$" || over.startsWith("$.");
-}
-
 export function workflowJsonataSites(def: DomainWorkflowDef): JsonataSite[] {
   const sites: JsonataSite[] = [];
   for (const step of def.steps) {
     if (step.kind === "branch") {
       sites.push({ path: `steps.${step.id}.when`, expression: step.when });
-    }
-    if (
-      step.kind === "loop" &&
-      typeof step.over === "string" &&
-      step.over.length > 0 &&
-      !isLoopSelector(step.over)
-    ) {
-      sites.push({ path: `steps.${step.id}.over`, expression: step.over });
     }
   }
   if (typeof def.output_transform === "string" && def.output_transform.length > 0) {

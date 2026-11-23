@@ -105,13 +105,8 @@ describe("validateUnsupportedPlaceholders", () => {
       name: "draft",
       steps: [
         {
-          id: "loop_a",
-          kind: "loop",
-          over: "$scope.fetch.data",
-          body: ["body_step"],
-        },
-        {
           id: "body_step",
+          for_each: "(sourceData) => sourceData.fetch.data",
           kind: "request",
           method: "GET",
           url: "https://api.example.com/x/${$loop.item.id}",

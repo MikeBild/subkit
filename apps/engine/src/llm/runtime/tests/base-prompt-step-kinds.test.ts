@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import { basePromptFor } from "../context-assembler.ts";
 
-const ALL_KINDS = ["request", "transform", "call", "wait", "branch", "parallel", "loop"] as const;
+const ALL_KINDS = ["request", "transform", "call", "wait", "branch", "parallel"] as const;
 
 describe("base prompts — step-kind enumeration + cleanup facts", () => {
-  it("converse prompt (sk_interactive, workflow mode) lists all 7 kinds", async () => {
+  it("converse prompt (sk_interactive, workflow mode) lists all 6 kinds", async () => {
     const p = (
       await basePromptFor("converse", "sk_interactive", {
         mode: "workflow",
@@ -26,7 +26,7 @@ describe("base prompts — step-kind enumeration + cleanup facts", () => {
     expect(p).toContain("edit_workflow_patch");
   });
 
-  it("converse prompt (mcp, connector mode) lists all 7 kinds", async () => {
+  it("converse prompt (mcp, connector mode) lists all 6 kinds", async () => {
     const p = (
       await basePromptFor("converse", "mcp", {
         mode: "connector",
@@ -101,14 +101,14 @@ describe("base prompts — step-kind enumeration + cleanup facts", () => {
     expect(p).toContain("PLACEHOLDER RULES");
   });
 
-  it("generate prompt lists all 7 kinds", async () => {
+  it("generate prompt lists all 6 kinds", async () => {
     const p = (await basePromptFor("generate")).content;
     for (const k of ALL_KINDS) expect(p).toContain(k);
   });
 
   it("generate prompt does NOT mention the retired `tool` kind", async () => {
     const p = (await basePromptFor("generate")).content;
-    expect(p).not.toContain("loop, tool");
+    expect(p).not.toContain("parallel, tool");
   });
 
   it("converse prompt (workflow mode) warns against the wrong discriminator key", async () => {

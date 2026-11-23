@@ -50,13 +50,8 @@ describe("dry_run_workflow · warnings_banner", () => {
             expression: "return { ok: true };",
           },
           {
-            id: "iter",
-            kind: "loop",
-            over: "$scope.shape.data.bad_field",
-            body: ["body"],
-          },
-          {
             id: "body",
+            for_each: "(sourceData) => sourceData.shape.data.bad_field",
             kind: "transform",
             language: "javascript",
             expression: "return input.scope.$item;",
@@ -123,13 +118,8 @@ describe("dry_run_workflow · warnings_banner", () => {
             expression: "return { ok: true };",
           },
           {
-            id: "iter",
-            kind: "loop",
-            over: "$scope.shape.data.nonexistent",
-            body: ["body"],
-          },
-          {
             id: "body",
+            for_each: "(sourceData) => sourceData.shape.data.nonexistent",
             kind: "transform",
             language: "javascript",
             expression: "return input.scope.$item;",

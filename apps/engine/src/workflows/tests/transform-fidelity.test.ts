@@ -36,7 +36,7 @@ describe("EMAIL — Gmail read-side fidelity (recorded messages.get)", () => {
   test("the production transform decodes the base64url message body — not just the snippet", async () => {
     const scope = {
       list_messages: envelope(listResponse),
-      fetch_each: envelope([{ get_message: envelope(message) }]),
+      get_message: envelope([{ get_message: envelope(message) }]),
     };
     const out = await runTransform<
       Array<{

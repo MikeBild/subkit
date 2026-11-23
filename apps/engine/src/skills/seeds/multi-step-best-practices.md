@@ -31,19 +31,16 @@ Set `body_schema` on request steps to validate the outgoing payload before sendi
 
 For transform steps, set `input_schema` to document what must be in scope and `output_schema` to enforce what the expression must produce.
 
-## Loop step guidelines
+## Iteration guidelines
 
-- **Independent reads → `for_each`, not `loop`.** A `loop` body runs
-  strictly sequentially (no concurrency knob). A `for_each` over a read
+- **Iterate with `for_each` on the step.** A `for_each` over a read
   request fans out concurrently (bounded pool, default 8), so N independent
-  reads cost ~1 roundtrip instead of N. Only reach for `loop` when each item
-  genuinely needs multiple ordered sibling steps. Writes stay sequential by
+  reads cost ~1 roundtrip instead of N. Writes stay sequential by
   default; opt into `for_each_concurrency: <N>` only when they are truly
   independent.
-- Set `timeout_ms` per step inside the loop body (not on the loop step itself)
 - Use `data_selector` to reduce the scope size passed between steps
-- Set `max_retries: 0` for request steps inside loop bodies (fail fast per item, not retry per item)
-- Inside the body, the current item is `$item` in JSONata expressions and `${item.…}` in request placeholder strings; `$loop_index` holds the zero-based index. `item_var` is retired — declaring it is rejected at authoring time.
+- Set `max_retries: 0` for request steps with `for_each` (fail fast per item, not retry per item)
+- The current item is `$item` in JSONata expressions and `${item.…}` in request placeholder strings; `$loop_index` holds the zero-based index.
 
 ## Parallel step guidelines
 

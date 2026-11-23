@@ -344,16 +344,16 @@ describe("hold-writes · HTTP", () => {
     expect((heldStep!.held_request as HeldRequest).method).toBe("GET");
   });
 
-  test("loop bodies hold per iteration — each iteration materializes its own held_request", async () => {
+  test("for_each steps hold per iteration — each iteration materializes its own held_request", async () => {
     hits.length = 0;
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "hold-loop",
       steps: [
         { kind: "request", id: "fetch", method: "GET", url: `${mock.baseUrl}/data` },
-        { kind: "loop", id: "each", over: "$scope.fetch.data.ids", body: ["notify"] },
         {
           kind: "request",
           id: "notify",
+          for_each: "(sourceData) => sourceData.fetch.data.ids",
           method: "POST",
           url: `${mock.baseUrl}/notify`,
           body: { id: "${item.id}" },
@@ -372,7 +372,7 @@ describe("hold-writes · HTTP", () => {
     expect(hitsFor("/data")).toHaveLength(1);
     expect(hitsFor("/notify")).toHaveLength(0);
 
-    const loopStep = result.steps.find((s) => s.step_key === "each");
+    const loopStep = result.steps.find((s) => s.step_key === "notify");
     expect(loopStep?.status).toBe("succeeded");
     const iterations = loopStep?.output_preview as Array<{
       notify: { held?: boolean; held_request?: HeldRequest };

@@ -17,7 +17,11 @@ test("each MCP operation reports malformed addressing on its own public field", 
     ["get_prompt", "prompt"],
   ]) {
     const result = validateWorkflowDef(
-      define({ ...request, mcp: { operation, [field!]: "prefix/${input}/suffix" } }),
+      define({
+        protocol: "mcp",
+        ...request,
+        mcp: { operation, [field!]: "prefix/${input}/suffix" },
+      }),
     );
     expect(result.errors).toEqual([
       {
@@ -31,7 +35,11 @@ test("each MCP operation reports malformed addressing on its own public field", 
 
 test("GraphQL query interpolation reports its query path independently from document syntax", () => {
   const result = validateWorkflowDef(
-    define({ ...request, graphql: { query: "query { field(arg: ${input}) }" } }),
+    define({
+      protocol: "graphql",
+      ...request,
+      graphql: { query: "query { field(arg: ${input}) }" },
+    }),
   );
   expect(result.errors).toContainEqual({
     path: "steps.fetch.graphql.query",
@@ -44,8 +52,11 @@ test("argument walking ignores array annotations and function properties while r
   const rows = Object.assign(["${input.valid}"], { annotation: "${input}" });
   const callable = Object.assign(() => "unused", { annotation: "${input}" });
   for (const extra of [
-    { graphql: { query: "query { viewer { id } }", variables: { rows, callable } } },
-    { mcp: { operation: "call_tool", tool: "lookup", arguments: { rows } } },
+    {
+      protocol: "graphql",
+      graphql: { query: "query { viewer { id } }", variables: { rows, callable } },
+    },
+    { protocol: "mcp", mcp: { operation: "call_tool", tool: "lookup", arguments: { rows } } },
   ]) {
     expect(validateWorkflowDef(define({ ...request, ...extra })).errors).toEqual([]);
   }
@@ -53,10 +64,11 @@ test("argument walking ignores array annotations and function properties while r
 
 test("native transport blocks do not classify an unused HTTP body as their GraphQL document", () => {
   for (const extra of [
-    { graphql: { query: "query { viewer { id } }" } },
-    { method: "SELECT", sql: { query: "select 1" } },
-    { mcp: { operation: "call_tool", tool: "lookup" } },
+    { protocol: "graphql", graphql: { query: "query { viewer { id } }" } },
+    { protocol: "sql", method: "SELECT", sql: { query: "select 1" } },
+    { protocol: "mcp", mcp: { operation: "call_tool", tool: "lookup" } },
     {
+      protocol: "s3",
       method: "GET",
       url: "https://example.test/graphql?query=" + encodeURIComponent("mutation { change { id } }"),
       s3: { key: "object" },
@@ -109,15 +121,6 @@ test("transform syntax rejects redeclaring its input parameter, and syntax error
   );
 });
 
-test("empty loop bodies accept their own JavaScript selector syntax and do not require an item reference", () => {
-  expect(
-    validateWorkflowDef({
-      name: "Empty loop",
-      steps: [{ id: "loop", kind: "loop", data_selector: "(sourceData) => []", body: [] }],
-    }).errors,
-  ).toEqual([]);
-});
-
 test("plain HTTP writes do not acquire S3-specific key requirements", () => {
   expect(
     validateWorkflowDef(define({ ...request, method: "PUT", body: "content" })).errors,
@@ -156,7 +159,12 @@ test("plain requests do not acquire GraphQL driver requirements from connector f
     }).errors,
   ).toEqual([]);
   const fallback = validateWorkflowDef(
-    define({ ...request, connector_id: undefined, graphql: { query: "query { viewer { id } }" } }),
+    define({
+      protocol: "graphql",
+      ...request,
+      connector_id: undefined,
+      graphql: { query: "query { viewer { id } }" },
+    }),
     { connectorGraphqlTargets: new Map([["", [{ driver: "postgres" }]]]) },
   );
   expect(fallback.errors.map((error) => error.path)).toEqual(["steps.fetch.graphql"]);

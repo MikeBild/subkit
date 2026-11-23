@@ -63,6 +63,7 @@ function briefingDag(): Dag {
       {
         id: "items",
         kind: "request",
+        protocol: "graphql",
         connector_id: connector,
         method: "POST",
         graphql: {

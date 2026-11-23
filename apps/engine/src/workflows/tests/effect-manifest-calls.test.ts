@@ -4,6 +4,7 @@ import {
   compileWorkflowEffectManifest,
   type ResolvedEffectBinding,
 } from "../core/effect-manifest.ts";
+import { requestDigest } from "../core/request-protocol.ts";
 import { GMAIL_SEND_TARGET } from "../report-delivery-boundary.ts";
 import { WorkflowDefSchema } from "../types.ts";
 
@@ -35,7 +36,7 @@ function binding(
     connector_id: connector,
     driver: "http",
     environment: "dev",
-    request_digest: workflowJsonDigest(step),
+    request_digest: requestDigest(step),
     target,
     configuration_digest: "a".repeat(64),
     credential_binding_digest: "b".repeat(64),

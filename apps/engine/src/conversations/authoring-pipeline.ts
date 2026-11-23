@@ -86,7 +86,7 @@ export const JSONATA_ARGMAX_IDIOM =
   '($t := $scope.forecast.data.daily.temperature_2m_max; $m := $max($t); $idx := ($t#$i[$ = $m].$i)[0]; { "hottest_day": $scope.forecast.data.daily.time[$idx], "max_temp": $m })';
 
 const JSONATA_CONTRACT_LINES: ReadonlyArray<string> = [
-  "## JSONata contract — `loop.over`, `branch.when`, `output_transform`, `validation_expression`",
+  "## JSONata contract — `branch.when`, `output_transform`, `validation_expression`",
   "- JSONata has NO JavaScript array/string methods — `$indexOf`, `$find`, `$includes`, `$slice`, `$toFixed` do not exist and throw at runtime. Only the built-ins below and functions bound with `$name := function($x) { … }` are callable; the validator rejects every other `$name(...)` call.",
   `- Built-ins: ${[...JSONATA_BUILTIN_FUNCTIONS].map((name) => `$${name}`).join(" ")}.`,
   `- JavaScript idiom → JSONata: ${Object.entries(JSONATA_FUNCTION_SUGGESTIONS)
@@ -257,11 +257,12 @@ export function buildGenerationPrompt(args: {
     "",
     "## Step shape contract",
     "- Execution trust is general workflow behavior, not specific to AI: authenticated caller identity identifies the initiator; connector credentials authenticate the engine to an external service; permissions authorize access; human approval allows reviewed effects for an environment. None substitutes for another. Preserve the original caller through child calls and resume; the approver is separate. A client-supplied context or object ID still needs an authoritative access check.",
-    "- `steps` is a flat array of `{ id, kind, … }`; kinds: `request`, `transform`, `call`, `wait`, `branch`, `parallel`, `loop`.",
+    "- `steps` is a flat array of `{ id, kind, … }`; kinds: `request`, `transform`, `call`, `wait`, `branch`, `parallel`.",
     "- Request steps are FLATTENED: `connector_id`, `method`, `path` (or absolute `url`), `query`, `headers`, `body` live directly on the step — never inside a `config` wrapper.",
-    '- Loop: `{ "id": "...", "kind": "loop", "over": "<JSONata over $scope.<step_id>.data…>", "body": ["<sibling_step_id>", …] }`. `body` is an ARRAY of sibling step ids (the body steps live in the same top-level `steps` array). `item_var` is retired — never emit it.',
-    "- JSONata sites (`loop.over`, `branch.when`, `output_transform`): address upstream steps ONLY as `$scope.<step_id>.data…`, the workflow input as `$input`, the current loop item ONLY as `$item` (plus `$loop_index`). Bare item names are rejected. (Transforms are NOT JSONata — see the Transform contract below.)",
-    "- String placeholders in request fields (`path` / `url` / `headers` / `query` / `body`): `${input.<path>}`, `${scope.<step_id>.data.<path>}`, `${item.<path>}` (inside a loop body), `${caller.<field>}`, `${cred.<slug>.<field>}`, `${connector.<slug>.base_url}`. Mustache `{{…}}` and `${$caller.*}` are rejected.",
+    '- A request step speaks one protocol. Plain HTTP needs nothing extra; every other step sets `protocol` to `"graphql"`, `"sql"`, `"s3"` or `"mcp"` and carries the block of the same name. A block without its `protocol` is rejected.',
+    '- Iteration: put `"for_each": "(sourceData) => sourceData.<step_id>.data.<array_path>"` on the step that should run once per element. There is no `loop` step kind and no `body` array; a step that needs several actions per element is a `call` step with `for_each` that runs a child workflow.',
+    "- JSONata sites (`branch.when`, `output_transform`): address upstream steps ONLY as `$scope.<step_id>.data…`, the workflow input as `$input`, the current for_each item ONLY as `$item` (plus `$loop_index`). Bare item names are rejected. (Transforms are NOT JSONata — see the Transform contract below.)",
+    "- String placeholders in request fields (`path` / `url` / `headers` / `query` / `body`): `${input.<path>}`, `${scope.<step_id>.data.<path>}`, `${item.<path>}` (on a step with `for_each`), `${caller.<field>}`, `${cred.<slug>.<field>}`, `${connector.<slug>.base_url}`. Mustache `{{…}}` and `${$caller.*}` are rejected.",
     "- Trusted identity is immutable `$caller` in JSONata, `input.scope.$caller` in JavaScript, and `${caller.<field>}` in request strings. It is null for trusted callerless system runs; otherwise `{ tenantId: string (UUID), principalId: string (normally UUID; generic portal users may have opaque refs), principalKind: 'user' | 'system_account', provider: string (open nonempty provider id), productId: string | null }`. All authenticated generic workflows receive it too. Never infer identity from workflow input, role, email or provider name; no input or fixture can fabricate caller. Step IDs `$caller` and `$input` are reserved.",
     "- Header `product_id` requires matching authenticated product and saved-workflow execution only; declaring it cannot authorize a draft or standalone step. `required_caller_kind` requires user or system_account; callerless schedules/webhooks cannot meet it. Product S3 scope is literal products/<product-id>/ with principal_bound:true and reviewed limits; key suffix starts ${caller.principalKind}/${caller.principalId}/. Queue, loops and children retain the original caller.",
     "- Header execution_privacy:'sensitive' refuses live chat execution, payload inspection, persistent state, event waits/signals, persistent pagination and prepared fixture replay. dry_run_workflow on a sensitive draft runs encrypted with writes held and returns only metadata (step statuses, held steps, safe failure codes, item counts, validation/output_schema verdicts, declared output field types); you never see values, so never guess or describe them. Bounded read-only GraphQL cursor collection within one request step is allowed when every page passes completeness checks. Do not invent caller fixtures/private sample data or claim live verification in chat; permitted live verification uses direct MCP or the public execution/result API with the original caller. An ordinary parent cannot call a sensitive child. Keep integrations on public APIs, never another product's private database/files/queues.",
@@ -272,7 +273,7 @@ export function buildGenerationPrompt(args: {
     ...renderScopeShapeContract(),
     ...renderSandboxGlobalsContract(),
     ...renderReportDeliveryContract(),
-    "JSONata is NOT a programmable transform language: use it in `loop.over`, `branch.when`, `output_transform` and selector expressions. Request `${…}` string placeholders use the separate placeholder grammar above.",
+    "JSONata is NOT a programmable transform language: use it in `branch.when`, `output_transform` and selector expressions. Request `${…}` string placeholders use the separate placeholder grammar above.",
     "",
     ...JSONATA_CONTRACT_LINES,
     "",

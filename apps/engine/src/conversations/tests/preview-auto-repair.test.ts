@@ -98,8 +98,7 @@ function loopShapedFailedRun(): RunResult {
     error: { code: "output_transform_failed", message: "output_transform threw: T0410" },
     steps: [
       summary("list", 0, "transform", "succeeded", LOOP_ITEMS),
-      summary("each", 1, "loop", "succeeded", LOOP_RESULTS),
-      summary("detail", 2, "transform", "skipped"),
+      summary("detail", 1, "transform", "succeeded", LOOP_RESULTS),
     ],
     warnings: [],
   };
@@ -163,7 +162,7 @@ describe("previewAutoRepairTrigger", () => {
     expect(previewAutoRepairTrigger(succeededRun(), def)).toBeNull();
   });
 
-  test("skipped summaries of a loop body or an untaken branch arm do not block the trigger", () => {
+  test("a for_each step or the skipped summary of an untaken branch arm do not block the trigger", () => {
     expect(
       previewAutoRepairTrigger(
         loopShapedFailedRun(),
@@ -242,10 +241,10 @@ describe("buildStepOutputFixtures and previewOutputRoot", () => {
     });
   });
 
-  test("the root is the last top-level succeeded step's preview, never a loop body child", () => {
+  test("the root is the last top-level succeeded step's preview, never a parallel branch child", () => {
     const def = definition({ output_transform: "$" }, [
       { id: "list", kind: "transform", language: "javascript", expression: "return [1, 2];" },
-      { id: "each", kind: "loop", over: "$scope.list.data", body: ["child"] },
+      { id: "each", kind: "parallel", branches: [["child"]] },
       { id: "child", kind: "transform", language: "javascript", expression: "return input;" },
     ]);
     const run = succeededRun({ stepKey: "list", stepOutput: [1, 2] });
@@ -253,7 +252,7 @@ describe("buildStepOutputFixtures and previewOutputRoot", () => {
       {
         step_key: "each",
         step_index: 1,
-        kind: "loop",
+        kind: "parallel",
         status: "succeeded",
         duration_ms: 1,
         retry_count: 0,
@@ -383,7 +382,7 @@ describe("attemptPreviewAutoRepair", () => {
     expect(getMockProvider().calls).toHaveLength(0);
   });
 
-  test("a loop preview is repaired from the top-level fixtures; the skipped body step needs none", async () => {
+  test("a for_each preview is repaired from the step fixtures", async () => {
     getMockProvider().generateOverrides.repair = () => ({ expression: '{ "count": $count($) }' });
     const rerunCalls: Array<Record<string, unknown>> = [];
     const outcome = await attemptPreviewAutoRepair({
@@ -398,8 +397,8 @@ describe("attemptPreviewAutoRepair", () => {
       },
     });
     expect(outcome.repaired).toBe(true);
-    expect(Object.keys(rerunCalls[0] ?? {}).sort()).toEqual(["each", "list"]);
-    expect(rerunCalls[0]?.each).toEqual({ data: LOOP_RESULTS, duration_ms: 1, error: null });
+    expect(Object.keys(rerunCalls[0] ?? {}).sort()).toEqual(["detail", "list"]);
+    expect(rerunCalls[0]?.detail).toEqual({ data: LOOP_RESULTS, duration_ms: 1, error: null });
   });
 
   test("a branch preview is repaired against the taken arm's output; the untaken arm needs no fixture", async () => {

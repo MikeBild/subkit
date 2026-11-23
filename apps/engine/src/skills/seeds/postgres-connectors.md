@@ -28,13 +28,14 @@ postgres://${cred.warehouse.user}:${cred.warehouse.password}@${connector.warehou
 ```
 
 The `base_url` field is reused for the DSN by convention. In practice you
-reference the connector once per step and pass SQL via the `sql` block on
-the request step:
+reference the connector once per step, set `"protocol": "sql"` and pass SQL
+via the `sql` block on the request step:
 
 ```json
 {
   "id": "count_users",
   "kind": "request",
+  "protocol": "sql",
   "method": "SELECT",
   "connector_id": "<warehouse_connector_id>",
   "sql": {
@@ -65,6 +66,7 @@ Zod schema rejects mixing them). Four shapes:
 {
   "id": "delete_one",
   "kind": "request",
+  "protocol": "sql",
   "method": "DELETE",
   "connector_id": "<warehouse_connector_id>",
   "sql": {
@@ -83,6 +85,7 @@ statement and the object form on the follow-up to show all the shapes:
 {
   "id": "transfer_strict",
   "kind": "request",
+  "protocol": "sql",
   "method": "UPDATE",
   "connector_id": "<ledger_db_connector_id>",
   "sql": {
@@ -111,6 +114,7 @@ values via `sql.params`:
 {
   "id": "find_user",
   "kind": "request",
+  "protocol": "sql",
   "method": "SELECT",
   "connector_id": "<warehouse_connector_id>",
   "sql": {
@@ -132,6 +136,7 @@ impossible as long as you keep variable substitution out of `sql.query`.
 {
   "id": "list_open_tickets",
   "kind": "request",
+  "protocol": "sql",
   "method": "SELECT",
   "connector_id": "<support_db_connector_id>",
   "sql": {
@@ -149,6 +154,7 @@ Envelope: `data` is an array of row objects. `status_code` is 200 on success.
 {
   "id": "create_order",
   "kind": "request",
+  "protocol": "sql",
   "method": "INSERT",
   "connector_id": "<shop_db_connector_id>",
   "sql": {
@@ -169,6 +175,7 @@ INSERT/UPDATE/DELETE that didn't `RETURNING`).
 {
   "id": "mark_paid",
   "kind": "request",
+  "protocol": "sql",
   "method": "UPDATE",
   "connector_id": "<shop_db_connector_id>",
   "sql": {
@@ -184,6 +191,7 @@ INSERT/UPDATE/DELETE that didn't `RETURNING`).
 {
   "id": "purge_expired",
   "kind": "request",
+  "protocol": "sql",
   "method": "DELETE",
   "connector_id": "<cache_db_connector_id>",
   "sql": {
@@ -198,6 +206,7 @@ INSERT/UPDATE/DELETE that didn't `RETURNING`).
 {
   "id": "rebalance",
   "kind": "request",
+  "protocol": "sql",
   "method": "CALL",
   "connector_id": "<billing_db_connector_id>",
   "sql": {
@@ -219,6 +228,7 @@ transactions across multiple steps remain unsupported.
 {
   "id": "transfer_atomically",
   "kind": "request",
+  "protocol": "sql",
   "method": "UPDATE",
   "connector_id": "<ledger_db_connector_id>",
   "sql": {
@@ -246,6 +256,7 @@ count, omit `sql.cursor`.
 {
   "id": "stream_audits",
   "kind": "request",
+  "protocol": "sql",
   "method": "SELECT",
   "connector_id": "<warehouse_connector_id>",
   "sql": {
@@ -272,6 +283,7 @@ Example: atomic debit+credit using a CTE in one step:
 {
   "id": "transfer",
   "kind": "request",
+  "protocol": "sql",
   "method": "CALL",
   "connector_id": "<ledger_db_connector_id>",
   "sql": {

@@ -25,11 +25,6 @@ const Input = z
 
 function nextBestActionsFor(kind: string, step_key: string): string[] {
   switch (kind) {
-    case "loop":
-      return [
-        "When iterating over a loop output, the canonical scope path is `$scope.<loop_id>.data[i].<body_step_id>.data.<field>`. Look at output_preview[0] to see the body_step_id keys for this loop.",
-        "dry_run_transform — author + test the next projection expression against this real shape before saving.",
-      ];
     case "request":
       return [
         `The request body is at \`$scope.${step_key}.data\`; status / headers live on the same envelope. Use this when authoring downstream transforms.`,

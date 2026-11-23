@@ -112,6 +112,7 @@ async function scenario() {
     step: {
       id: "call",
       kind: "request",
+      protocol: "mcp",
       connector_id: server.id,
       mcp: {
         operation: "call_tool",

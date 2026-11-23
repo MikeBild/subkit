@@ -14,6 +14,7 @@ const base = "https://store.example.test/bucket/";
 const step = RequestStepSchema.parse({
   id: "store",
   kind: "request",
+  protocol: "s3",
   connector_id: "00000000-0000-4000-8000-000000000001",
   method: "PUT",
   body: "${scope.report.data}",
@@ -89,6 +90,7 @@ test("unsupported storage options never become reusable authority", () => {
 const deleteStep = RequestStepSchema.parse({
   id: "purge",
   kind: "request",
+  protocol: "s3",
   connector_id: "00000000-0000-4000-8000-000000000001",
   method: "DELETE",
   s3: {

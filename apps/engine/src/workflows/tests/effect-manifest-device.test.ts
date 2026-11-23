@@ -8,6 +8,7 @@ import {
   deviceTarget,
   manifestDeviceIds,
 } from "../core/effect-manifest.ts";
+import { requestDigest } from "../core/request-protocol.ts";
 import { WorkflowDefSchema } from "../types.ts";
 
 const TENANT = "00000000-0000-4000-8000-000000000001";
@@ -41,9 +42,7 @@ function compile(binding: Record<string, unknown>, steps: unknown[] = [step]) {
         connector_id: CONNECTOR,
         driver: "local_files",
         environment: "prod",
-        request_digest: workflowJsonDigest(
-          WorkflowDefSchema.parse({ name: "local", steps }).steps[0],
-        ),
+        request_digest: requestDigest(WorkflowDefSchema.parse({ name: "local", steps }).steps[0]),
         target: `device:${DEVICE}/files`,
         configuration_digest: "d".repeat(64),
         credential_binding_digest: null,
@@ -98,7 +97,7 @@ describe("a request step on a device connector", () => {
   });
 
   test("a local driver on a graphql step is a mismatch", () => {
-    const graphqlStep = { ...step, graphql: { query: "mutation { write }" } };
+    const graphqlStep = { ...step, protocol: "graphql", graphql: { query: "mutation { write }" } };
     expect(compile({}, [graphqlStep]).manifest.issues).toContainEqual({
       step_id: "write",
       code: "binding_mismatch",

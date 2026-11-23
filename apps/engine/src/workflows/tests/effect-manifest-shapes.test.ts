@@ -4,6 +4,7 @@ import {
   compileWorkflowEffectManifest,
   type ResolvedEffectBinding,
 } from "../core/effect-manifest.ts";
+import { requestDigest } from "../core/request-protocol.ts";
 import { mcpBoundary, mcpBoundaryTarget, mcpToolDescriptorPin } from "../mcp-boundary.ts";
 import {
   type ConnectorQuery,
@@ -38,7 +39,7 @@ function fixture(request: Record<string, unknown>, own?: ConnectorQuery) {
     connector_id: connector,
     driver: "http",
     environment: "dev",
-    request_digest: workflowJsonDigest(step),
+    request_digest: requestDigest(step),
     target: requestBoundaryTarget(boundary),
     configuration_digest: "a".repeat(64),
     credential_binding_digest: "b".repeat(64),
@@ -181,6 +182,7 @@ function toolFixture(boundary: Record<string, unknown> | null, bind = true) {
           {
             id: "call",
             kind: "request",
+            protocol: "mcp",
             connector_id: connector,
             max_retries: 0,
             mcp: {
@@ -215,7 +217,7 @@ function toolFixture(boundary: Record<string, unknown> | null, bind = true) {
     connector_id: connector,
     driver: "mcp",
     environment: "dev",
-    request_digest: workflowJsonDigest(step),
+    request_digest: requestDigest(step),
     target: compiled ? mcpBoundaryTarget(compiled) : null,
     configuration_digest: "a".repeat(64),
     credential_binding_digest: "b".repeat(64),

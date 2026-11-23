@@ -16,8 +16,7 @@ export type WorkflowStepKind =
   | "wait"
   | "wait_for_event"
   | "branch"
-  | "parallel"
-  | "loop";
+  | "parallel";
 
 export interface DomainStepBase {
   id: string;
@@ -31,6 +30,7 @@ export interface DomainStepBase {
 
 export interface DomainRequestStep extends DomainStepBase {
   kind: "request";
+  protocol?: "http" | "graphql" | "sql" | "s3" | "mcp" | undefined;
   method?:
     | "GET"
     | "POST"
@@ -93,13 +93,6 @@ export interface DomainParallelStep extends DomainStepBase {
   branches: string[][];
 }
 
-export interface DomainLoopStep extends DomainStepBase {
-  kind: "loop";
-  over?: string | undefined;
-  body: string[];
-  fail_fast?: boolean | undefined;
-}
-
 export type DomainStepDef =
   | DomainRequestStep
   | DomainTransformStep
@@ -107,8 +100,7 @@ export type DomainStepDef =
   | DomainWaitStep
   | DomainWaitForEventStep
   | DomainBranchStep
-  | DomainParallelStep
-  | DomainLoopStep;
+  | DomainParallelStep;
 
 export interface DomainWorkflowRuntime {
   stdlib_version?: string | undefined;

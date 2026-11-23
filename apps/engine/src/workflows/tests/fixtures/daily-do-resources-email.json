@@ -11,14 +11,8 @@
       "connector_id": "aaaaaaaa-aaaa-4aaa-8aaa-000000000001"
     },
     {
-      "id": "projects_loop",
-      "body": ["fetch_resources", "collect_project"],
-      "kind": "loop",
-      "over": "$scope.fetch_projects.data.projects",
-      "on_error": "fail"
-    },
-    {
       "id": "fetch_resources",
+      "for_each": "(sourceData) => sourceData.fetch_projects.data.projects",
       "kind": "request",
       "path": "/v2/projects/${item.id}/resources",
       "method": "GET",
@@ -27,17 +21,18 @@
     },
     {
       "id": "collect_project",
+      "for_each": "(sourceData) => sourceData.fetch_projects.data.projects",
       "kind": "transform",
       "language": "javascript",
       "on_error": "fail",
-      "expression": "const item = input.scope.$item; return { name: item.name, purpose: item.purpose, environment: item.environment, resources: input.scope.fetch_resources.data.resources };"
+      "expression": "const item = input.scope.$item; return { name: item.name, purpose: item.purpose, environment: item.environment, resources: input.scope.fetch_resources.data[input.scope.$loop_index].fetch_resources.data.resources };"
     },
     {
       "id": "format_email_html",
       "kind": "transform",
       "language": "javascript",
       "on_error": "fail",
-      "expression": "const blocks = (input.scope.projects_loop.data || []).map((it) => it.collect_project.data); const body = '<html><body><h2>Daily DigitalOcean Resources Summary</h2><p>Date: ' + new Date().toISOString() + '</p>' + blocks.map((b) => { const resources = b.resources || []; return '<h3>Project: ' + b.name + '</h3>' + '<ul>' + '<li>Environment: ' + (b.environment !== '' ? b.environment : 'n/a') + '</li>' + '<li>Purpose: ' + b.purpose + '</li>' + '<li>Resource count: ' + String(resources.length) + '</li>' + '</ul>' + (resources.length > 0 ? '<ul>' + resources.map((r) => '<li>' + r.urn + ' (' + r.status + ')</li>').join('') + '</ul>' : '<p><em>No resources</em></p>'); }).join('') + '</body></html>'; return { html: body, subject: 'Daily DigitalOcean Resources Summary' };"
+      "expression": "const blocks = (input.scope.collect_project.data || []).map((it) => it.collect_project.data); const body = '<html><body><h2>Daily DigitalOcean Resources Summary</h2><p>Date: ' + new Date().toISOString() + '</p>' + blocks.map((b) => { const resources = b.resources || []; return '<h3>Project: ' + b.name + '</h3>' + '<ul>' + '<li>Environment: ' + (b.environment !== '' ? b.environment : 'n/a') + '</li>' + '<li>Purpose: ' + b.purpose + '</li>' + '<li>Resource count: ' + String(resources.length) + '</li>' + '</ul>' + (resources.length > 0 ? '<ul>' + resources.map((r) => '<li>' + r.urn + ' (' + r.status + ')</li>').join('') + '</ul>' : '<p><em>No resources</em></p>'); }).join('') + '</body></html>'; return { html: body, subject: 'Daily DigitalOcean Resources Summary' };"
     },
     {
       "id": "encode_email",

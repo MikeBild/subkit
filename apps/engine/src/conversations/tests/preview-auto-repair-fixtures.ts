@@ -34,9 +34,9 @@ export const OUTPUT_SCHEMA = {
 
 export const LOOP_STEPS = [
   { id: "list", kind: "transform", language: "javascript", expression: "return [{x:1},{x:2}];" },
-  { id: "each", kind: "loop", over: "$scope.list.data", body: ["detail"] },
   {
     id: "detail",
+    for_each: "(sourceData) => sourceData.list.data",
     kind: "transform",
     language: "javascript",
     expression: "return { x: input.scope.$item.x * 10 };",

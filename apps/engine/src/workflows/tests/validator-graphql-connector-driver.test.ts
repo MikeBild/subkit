@@ -12,6 +12,7 @@ const definition = (step: Record<string, unknown> = {}) => ({
     {
       id: "project_items",
       kind: "request",
+      protocol: "graphql",
       connector_id: connectorId,
       method: "GET",
       graphql: {

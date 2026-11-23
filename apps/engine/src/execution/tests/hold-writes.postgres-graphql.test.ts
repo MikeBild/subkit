@@ -108,6 +108,7 @@ describe("hold-writes · postgres", () => {
       steps: [
         {
           kind: "request",
+          protocol: "sql",
           id: "select_function",
           connector_id: pgConnectorId,
           side_effects: "read",
@@ -147,6 +148,7 @@ describe("hold-writes · postgres", () => {
       steps: [
         {
           kind: "request",
+          protocol: "sql",
           id: "insert",
           connector_id: pgConnectorId,
           side_effects: "read",
@@ -175,6 +177,7 @@ describe("hold-writes · postgres", () => {
       steps: [
         {
           kind: "request",
+          protocol: "sql",
           id: "count",
           method: "SELECT",
           connector_id: pgConnectorId,
@@ -182,6 +185,7 @@ describe("hold-writes · postgres", () => {
         },
         {
           kind: "request",
+          protocol: "sql",
           id: "ins",
           method: "INSERT",
           connector_id: pgConnectorId,
@@ -235,6 +239,7 @@ describe("hold-writes · graphql", () => {
       .returning();
     const step = (connector_id: string) => ({
       kind: "request",
+      protocol: "graphql",
       id: "project_items",
       connector_id,
       method: "GET",
@@ -288,6 +293,7 @@ describe("hold-writes · graphql", () => {
     const steps = [
       {
         kind: "request",
+        protocol: "graphql",
         id: "list",
         connector_id: http!.id,
         method: "GET",
@@ -296,6 +302,7 @@ describe("hold-writes · graphql", () => {
       },
       {
         kind: "request",
+        protocol: "graphql",
         id: "add",
         connector_id: http!.id,
         path: "/graphql",
@@ -335,7 +342,14 @@ describe("hold-writes · graphql", () => {
     const base = "https://api.github.com";
     const query = { operation: "query" as const, query: "query List { things { id } }" };
     const step = (extra: Record<string, unknown>) =>
-      ({ kind: "request", id: "list", method: "GET", graphql: query, ...extra }) as RequestStep;
+      ({
+        kind: "request",
+        protocol: "graphql",
+        id: "list",
+        method: "GET",
+        graphql: query,
+        ...extra,
+      }) as RequestStep;
     expect(requestRequiresPreparationHold(step({ path: "/graphql" }))).toBe(false);
     expect(requestRequiresPreparationHold(step({ path: "/graphql" }), "http", base)).toBe(false);
     expect(requestRequiresPreparationHold(step({}), "http", base)).toBe(true);
@@ -348,7 +362,11 @@ describe("hold-writes · graphql", () => {
     expect(requestRequiresPreparationHold(step({ path: "/graphql" }), "postgres", base)).toBe(true);
     expect(
       requestRequiresPreparationHold(
-        step({ path: "/graphql", graphql: { query: "mutation M { add { id } }" } }),
+        step({
+          protocol: "graphql",
+          path: "/graphql",
+          graphql: { query: "mutation M { add { id } }" },
+        }),
         "http",
         base,
       ),
@@ -367,6 +385,7 @@ describe("hold-writes · graphql", () => {
       name: "hold-gql-mislabelled",
       steps: queries.map((query, index) => ({
         kind: "request",
+        protocol: "graphql",
         id: `unsafe${index}`,
         connector_id: gqlConnectorId,
         side_effects: "read",
@@ -393,12 +412,14 @@ describe("hold-writes · graphql", () => {
       steps: [
         {
           kind: "request",
+          protocol: "graphql",
           id: "list",
           connector_id: gqlConnectorId,
           graphql: { query: "{ things { id } }" },
         },
         {
           kind: "request",
+          protocol: "graphql",
           id: "add",
           connector_id: gqlConnectorId,
           graphql: {

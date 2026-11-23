@@ -171,6 +171,7 @@ function steps(commitsExtra: Record<string, unknown> = {}) {
     {
       id: "project",
       kind: "request",
+      protocol: "graphql",
       connector_id: connectorId,
       method: "POST",
       path: "/graphql",

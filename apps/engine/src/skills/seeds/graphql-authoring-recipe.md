@@ -157,6 +157,7 @@ selections in a single query can:
 {
   "id": "fetch_items",
   "kind": "request",
+  "protocol": "graphql",
   "connector_id": "<gql_connector_id>",
   "graphql": {
     "query": "query ListItems($first: Int!) { items(first: $first) { edges { node { id } } } }",

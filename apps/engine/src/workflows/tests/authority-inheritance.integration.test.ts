@@ -286,6 +286,7 @@ const items = (
 ): Step => ({
   id: "items",
   kind: "request",
+  protocol: "graphql",
   connector_id,
   method: "POST",
   path: "/graphql",

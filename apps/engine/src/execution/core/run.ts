@@ -132,7 +132,6 @@ export function skippedAfterFailure(
 
 interface ContainerStep {
   branches?: ReadonlyArray<readonly string[] | undefined> | undefined;
-  body?: readonly string[] | undefined;
 }
 
 export function containerChildStepIds(steps: ReadonlyArray<{ kind: string }>): Set<string> {
@@ -142,8 +141,6 @@ export function containerChildStepIds(steps: ReadonlyArray<{ kind: string }>): S
       for (const branch of (s as ContainerStep).branches ?? []) {
         for (const id of branch ?? []) ids.add(id);
       }
-    } else if (s.kind === "loop") {
-      for (const id of (s as ContainerStep).body ?? []) ids.add(id);
     }
   }
   return ids;
@@ -364,27 +361,6 @@ export function forEachBodyEmptyWarning(stepId: string, iterations: number): Run
       iterations,
       productive_iterations: 0,
       scope_shape: `$scope.${stepId}.data is an array of ${iterations} iteration objects`,
-    },
-  };
-}
-
-export function loopBodyEmptyWarning(stepId: string, iterations: readonly unknown[]): RunWarning {
-  const sample = iterations[0];
-  const bodyKeys = sample && typeof sample === "object" ? Object.keys(sample) : [];
-  return {
-    code: "loop_body_empty",
-    identifier: stepId,
-    message: `loop "${stepId}" ran ${iterationsLabel(iterations.length)} but no iteration produced productive body output — the body steps ran without errors but every result was null / [] / {}`,
-    step_key: stepId,
-    details: {
-      iterations: iterations.length,
-      productive_iterations: 0,
-      body_step_ids: bodyKeys,
-      scope_shape: `$scope.${stepId}.data is an array of ${iterations.length} iteration objects, each shaped { ${bodyKeys.map((k) => `${k}: { data, error, duration_ms }`).join(", ")} }`,
-      example_path:
-        bodyKeys.length > 0
-          ? `$scope.${stepId}.data[0].${bodyKeys[0]}.data`
-          : `$scope.${stepId}.data`,
     },
   };
 }

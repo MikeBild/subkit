@@ -39,6 +39,7 @@ import {
 } from "../transactional-delivery-boundary.ts";
 import { type CallStep, JsonValueSchema, type RequestStep, WorkflowDefSchema } from "../types.ts";
 import { deviceListsCanonical } from "./device-uses.ts";
+import { definitionDigest, requestDigest, requestProtocolDriver } from "./request-protocol.ts";
 import { stepVaultUses, VAULT_USES_MAX } from "./vault-uses.ts";
 
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
@@ -283,7 +284,7 @@ export function compileWorkflowEffectManifest(raw: unknown): {
     tenant_id: input.tenant_id,
     workflow_id: input.workflow_id,
     workflow_version_id: input.workflow_version_id,
-    workflow_digest: workflowJsonDigest(input.definition),
+    workflow_digest: definitionDigest(input.definition),
     execution_environment: input.execution_environment,
     execution_options_digest: input.execution_options_digest,
     effects: [],
@@ -349,15 +350,7 @@ export function compileWorkflowEffectManifest(raw: unknown): {
       issue("missing_binding");
       continue;
     }
-    const declaredDriver = step.mcp
-      ? "mcp"
-      : step.sql
-        ? "postgres"
-        : step.graphql
-          ? "graphql"
-          : step.s3
-            ? "s3"
-            : "http";
+    const declaredDriver = requestProtocolDriver(step);
     const graphqlOnHttp =
       declaredDriver === "graphql" &&
       binding.driver === "http" &&
@@ -368,7 +361,7 @@ export function compileWorkflowEffectManifest(raw: unknown): {
       binding.tenant_id !== input.tenant_id ||
       binding.connector_id !== (step.connector_id ?? null) ||
       (binding.driver !== declaredDriver && !graphqlOnHttp && !localOnRequest) ||
-      binding.request_digest !== workflowJsonDigest(step)
+      binding.request_digest !== requestDigest(step)
     )
       issue("binding_mismatch");
     if (deviceBindingMismatch(binding)) issue("binding_mismatch");

@@ -250,397 +250,454 @@ const baseStep = {
   for_each_concurrency: z.number().int().min(1).optional(),
 };
 
-export const RequestStepSchema = z
-  .object({
-    kind: z.literal("request"),
-    ...baseStep,
-    method: z
-      .enum([
-        "GET",
-        "POST",
-        "PUT",
-        "PATCH",
-        "DELETE",
-        "HEAD",
-        "OPTIONS",
-        "LIST",
-        "SELECT",
-        "INSERT",
-        "UPDATE",
-        "CALL",
-      ])
-      .optional()
-      .default("GET"),
-    side_effects: z.enum(["read", "write"]).optional(),
-    url: z.string().optional(),
-    path: z.string().optional(),
-    connector_id: z.string().uuid().optional(),
-    boundary: RequestBoundaryScopeSchema.optional(),
-    report_delivery: ReportDeliveryBoundarySchema.optional(),
-    transactional_delivery: TransactionalDeliveryBoundarySchema.optional(),
-    outbox_delivery: OutboxDeliveryBoundarySchema.optional(),
-    headers: z
-      .union([
-        z.record(z.string(), z.string()),
-        z.string().transform((raw, zctx) => {
-          const parsed = parseHeaderLines(raw);
-          if (!parsed) {
-            zctx.addIssue({
-              code: "custom",
-              message: `headers string must be one or more "Name: Value" lines`,
-            });
-            return z.NEVER;
-          }
-          return parsed;
-        }),
-      ])
-      .optional(),
-    query: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
-    body: JsonValueSchema.optional(),
-    response_filters: z.array(ResponseFilterSchema).optional(),
-    pagination: PaginationSchema.optional(),
-    max_retries: z.number().int().min(0).max(5).optional(),
-    retry_backoff_ms: z.number().int().min(50).max(10_000).optional(),
-    retry_on_status: z.array(z.number().int().min(100).max(599)).optional(),
-    graphql: GraphQLConfigSchema.optional(),
-    error_policy: errorPolicy.optional(),
-    xml: z
-      .object({
-        body: JsonValueSchema,
-        declaration: z.boolean().optional(),
-      })
-      .optional(),
-    sql: z
-      .object({
+const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"] as const;
+const S3_METHODS = ["GET", "PUT", "HEAD", "DELETE", "LIST"] as const;
+const SQL_METHODS = ["GET", "SELECT", "INSERT", "UPDATE", "DELETE", "CALL"] as const;
+const MCP_METHODS = [
+  "GET",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "HEAD",
+  "OPTIONS",
+  "LIST",
+  "SELECT",
+  "INSERT",
+  "UPDATE",
+  "CALL",
+] as const;
+
+const XmlBodySchema = z.object({
+  body: JsonValueSchema,
+  declaration: z.boolean().optional(),
+});
+
+const SqlBlockSchema = z.object({
+  query: z.string().min(1),
+  params: z.array(z.unknown()).optional(),
+  also: z
+    .array(
+      z.object({
         query: z.string().min(1),
         params: z.array(z.unknown()).optional(),
-        also: z
-          .array(
-            z.object({
-              query: z.string().min(1),
-              params: z.array(z.unknown()).optional(),
-              expected_row_count: z
-                .union([
-                  z.number().int().min(0),
-                  z.tuple([z.number().int().min(0), z.number().int().min(0)]),
-                  z
-                    .object({
-                      min: z.number().int().min(0).optional(),
-                      max: z.number().int().min(0).optional(),
-                    })
-                    .refine((v) => v.min !== undefined || v.max !== undefined, {
-                      message: "expected_row_count requires `min` and/or `max`",
-                    }),
-                ])
-                .optional(),
-            }),
-          )
+        expected_row_count: z
+          .union([
+            z.number().int().min(0),
+            z.tuple([z.number().int().min(0), z.number().int().min(0)]),
+            z
+              .object({
+                min: z.number().int().min(0).optional(),
+                max: z.number().int().min(0).optional(),
+              })
+              .refine((v) => v.min !== undefined || v.max !== undefined, {
+                message: "expected_row_count requires `min` and/or `max`",
+              }),
+          ])
           .optional(),
-        transaction: z.boolean().optional(),
-        cursor: z
-          .object({
-            fetch_size: z.number().int().positive().max(10_000).default(1000),
-          })
-          .optional(),
-      })
-      .optional(),
-    s3: z
-      .object({
-        scope: StorageScopeSchema.optional(),
-        key: z.string().optional(),
-        prefix: z.string().optional(),
-        parse_as: z.enum(["json", "text", "base64", "bytes"]).optional(),
-        max_keys: z.number().int().positive().max(10_000).optional(),
-        content_type: z.string().optional(),
-        metadata: z.record(z.string(), z.string()).optional(),
-        paginate: z.boolean().optional(),
-        multipart: z.boolean().optional(),
-        multipart_threshold_mb: z.number().positive().max(1024).optional(),
-        range: z.string().optional(),
-        presign: z
-          .object({
-            expires_in_s: z
-              .number()
-              .int()
-              .positive()
-              .max(7 * 24 * 3600)
-              .default(900),
-          })
-          .optional(),
-      })
-      .optional(),
-    mcp: z
-      .object({
-        operation: z.enum(["call_tool", "read_resource", "get_prompt"]).default("call_tool"),
-        tool: z.string().min(1).optional(),
-        uri: z.string().min(1).optional(),
-        prompt: z.string().min(1).optional(),
-        arguments: z.record(z.string(), JsonValueSchema).optional(),
-        boundary: McpBoundaryScopeSchema.optional(),
-      })
-      .superRefine((m, ctx) => {
-        if (m.boundary !== undefined && m.operation !== "call_tool") {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ["boundary"],
-            message:
-              "mcp.boundary bounds a tool call; it is only accepted with operation call_tool",
-          });
-        }
-        const required = {
-          call_tool: "tool",
-          read_resource: "uri",
-          get_prompt: "prompt",
-        } as const;
-        const field = required[m.operation];
-        if (m[field] === undefined) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: [field],
-            message: `mcp.operation "${m.operation}" requires mcp.${field}`,
-          });
-        }
-        for (const [other, forOp] of Object.entries(required) as Array<
-          [keyof typeof required, (typeof required)[keyof typeof required]]
-        >) {
-          if (other === m.operation) continue;
-          if (m[forOp] !== undefined) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              path: [forOp],
-              message: `mcp.${forOp} belongs to operation "${other}", not "${m.operation}"`,
-            });
-          }
-        }
-        if (m.operation === "read_resource" && m.arguments !== undefined) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ["arguments"],
-            message: "mcp.arguments is not accepted by read_resource — a resource is named by uri",
-          });
-        }
-      })
-      .optional(),
-    body_schema: z.record(z.string(), z.unknown()).optional(),
-    response_schema: z.record(z.string(), z.unknown()).optional(),
-    expected_statuses: z.array(z.number().int()).optional(),
-    expected_row_count: z
-      .union([
-        z.number().int().min(0),
-        z.tuple([z.number().int().min(0), z.number().int().min(0)]),
-        z
-          .object({
-            min: z.number().int().min(0).optional(),
-            max: z.number().int().min(0).optional(),
-          })
-          .refine((v) => v.min !== undefined || v.max !== undefined, {
-            message: "expected_row_count object must set at least one of `min` or `max`",
-          }),
-      ])
-      .optional(),
-    idempotency_key: z.string().optional(),
-    outputs: z.record(z.string().min(1), z.object({ secret: z.boolean().optional() })).optional(),
-    state_read: z
-      .object({
-        key: z.string().min(1),
-        into_var: z.string().min(1),
-        default_value: z.unknown().optional(),
-      })
-      .optional(),
-    state_write: z
-      .object({
-        key: z.string().min(1),
-        value_path: z.string().min(1),
-      })
-      .optional(),
-    multipart: z.array(MultipartPartSchema).min(1).optional(),
+      }),
+    )
+    .optional(),
+  transaction: z.boolean().optional(),
+  cursor: z
+    .object({
+      fetch_size: z.number().int().positive().max(10_000).default(1000),
+    })
+    .optional(),
+});
+
+const S3BlockSchema = z.object({
+  scope: StorageScopeSchema.optional(),
+  key: z.string().optional(),
+  prefix: z.string().optional(),
+  parse_as: z.enum(["json", "text", "base64", "bytes"]).optional(),
+  max_keys: z.number().int().positive().max(10_000).optional(),
+  content_type: z.string().optional(),
+  metadata: z.record(z.string(), z.string()).optional(),
+  paginate: z.boolean().optional(),
+  multipart: z.boolean().optional(),
+  multipart_threshold_mb: z.number().positive().max(1024).optional(),
+  range: z.string().optional(),
+  presign: z
+    .object({
+      expires_in_s: z
+        .number()
+        .int()
+        .positive()
+        .max(7 * 24 * 3600)
+        .default(900),
+    })
+    .optional(),
+});
+
+const McpBlockSchema = z
+  .object({
+    operation: z.enum(["call_tool", "read_resource", "get_prompt"]).default("call_tool"),
+    tool: z.string().min(1).optional(),
+    uri: z.string().min(1).optional(),
+    prompt: z.string().min(1).optional(),
+    arguments: z.record(z.string(), JsonValueSchema).optional(),
+    boundary: McpBoundaryScopeSchema.optional(),
   })
-  .refine((s) => s.url !== undefined || s.connector_id !== undefined || s.sql !== undefined, {
+  .superRefine((m, ctx) => {
+    if (m.boundary !== undefined && m.operation !== "call_tool") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["boundary"],
+        message: "mcp.boundary bounds a tool call; it is only accepted with operation call_tool",
+      });
+    }
+    const required = {
+      call_tool: "tool",
+      read_resource: "uri",
+      get_prompt: "prompt",
+    } as const;
+    const field = required[m.operation];
+    if (m[field] === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [field],
+        message: `mcp.operation "${m.operation}" requires mcp.${field}`,
+      });
+    }
+    for (const [other, forOp] of Object.entries(required) as Array<
+      [keyof typeof required, (typeof required)[keyof typeof required]]
+    >) {
+      if (other === m.operation) continue;
+      if (m[forOp] !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [forOp],
+          message: `mcp.${forOp} belongs to operation "${other}", not "${m.operation}"`,
+        });
+      }
+    }
+    if (m.operation === "read_resource" && m.arguments !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["arguments"],
+        message: "mcp.arguments is not accepted by read_resource — a resource is named by uri",
+      });
+    }
+  });
+
+type RequestBlock = "graphql" | "sql" | "s3" | "mcp";
+
+function foreignBlock(block: RequestBlock) {
+  return z
+    .never({
+      error: `the \`${block}\` block needs \`protocol: "${block}"\` on the step — a step speaks exactly one protocol`,
+    })
+    .optional();
+}
+
+function httpOnlyXml(protocol: RequestBlock) {
+  return z
+    .never({
+      error: `\`xml\` is an HTTP body encoding and is not accepted on a step with \`protocol: "${protocol}"\``,
+    })
+    .optional();
+}
+
+const requestStepBase = {
+  side_effects: z.enum(["read", "write"]).optional(),
+  url: z.string().optional(),
+  path: z.string().optional(),
+  connector_id: z.string().uuid().optional(),
+  boundary: RequestBoundaryScopeSchema.optional(),
+  report_delivery: ReportDeliveryBoundarySchema.optional(),
+  transactional_delivery: TransactionalDeliveryBoundarySchema.optional(),
+  outbox_delivery: OutboxDeliveryBoundarySchema.optional(),
+  headers: z
+    .union([
+      z.record(z.string(), z.string()),
+      z.string().transform((raw, zctx) => {
+        const parsed = parseHeaderLines(raw);
+        if (!parsed) {
+          zctx.addIssue({
+            code: "custom",
+            message: `headers string must be one or more "Name: Value" lines`,
+          });
+          return z.NEVER;
+        }
+        return parsed;
+      }),
+    ])
+    .optional(),
+  query: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
+  body: JsonValueSchema.optional(),
+  response_filters: z.array(ResponseFilterSchema).optional(),
+  pagination: PaginationSchema.optional(),
+  max_retries: z.number().int().min(0).max(5).optional(),
+  retry_backoff_ms: z.number().int().min(50).max(10_000).optional(),
+  retry_on_status: z.array(z.number().int().min(100).max(599)).optional(),
+  error_policy: errorPolicy.optional(),
+  body_schema: z.record(z.string(), z.unknown()).optional(),
+  response_schema: z.record(z.string(), z.unknown()).optional(),
+  expected_statuses: z.array(z.number().int()).optional(),
+  expected_row_count: z
+    .union([
+      z.number().int().min(0),
+      z.tuple([z.number().int().min(0), z.number().int().min(0)]),
+      z
+        .object({
+          min: z.number().int().min(0).optional(),
+          max: z.number().int().min(0).optional(),
+        })
+        .refine((v) => v.min !== undefined || v.max !== undefined, {
+          message: "expected_row_count object must set at least one of `min` or `max`",
+        }),
+    ])
+    .optional(),
+  idempotency_key: z.string().optional(),
+  outputs: z.record(z.string().min(1), z.object({ secret: z.boolean().optional() })).optional(),
+  state_read: z
+    .object({
+      key: z.string().min(1),
+      into_var: z.string().min(1),
+      default_value: z.unknown().optional(),
+    })
+    .optional(),
+  state_write: z
+    .object({
+      key: z.string().min(1),
+      value_path: z.string().min(1),
+    })
+    .optional(),
+  multipart: z.array(MultipartPartSchema).min(1).optional(),
+};
+
+interface RowCountChecked {
+  expected_row_count?: unknown;
+}
+
+function checkRowCountExpectation(
+  val: unknown,
+  path: (string | number)[],
+  ctx: z.RefinementCtx,
+): void {
+  if (Array.isArray(val) && val.length === 2) {
+    const [lo, hi] = val as [number, number];
+    if (lo > hi) {
+      ctx.addIssue({
+        code: "custom",
+        path,
+        message: `expected_row_count tuple [${lo}, ${hi}] has lo > hi (unsatisfiable)`,
+      });
+    }
+  } else if (val && typeof val === "object" && !Array.isArray(val)) {
+    const obj = val as { min?: number; max?: number };
+    if (obj.min !== undefined && obj.max !== undefined && obj.min > obj.max) {
+      ctx.addIssue({
+        code: "custom",
+        path,
+        message: `expected_row_count { min: ${obj.min}, max: ${obj.max} } has min > max (unsatisfiable)`,
+      });
+    }
+  }
+}
+
+function checkAddressed(
+  s: { url?: string | undefined; connector_id?: string | undefined },
+  ctx: z.RefinementCtx,
+): void {
+  if (s.url !== undefined || s.connector_id !== undefined) return;
+  ctx.addIssue({
+    code: "custom",
     message:
-      "request step must specify either url, connector_id, or sql (postgres connectors are routed via the sql block)",
+      'request step must specify either url or connector_id (a postgres step with `protocol: "sql"` is addressed by its sql block)',
+  });
+}
+
+function checkReadOverride(
+  s: { side_effects?: "read" | "write" | undefined; method: string },
+  ctx: z.RefinementCtx,
+): void {
+  if (s.side_effects !== "read" || !["PUT", "PATCH", "DELETE"].includes(s.method)) return;
+  ctx.addIssue({
+    code: "custom",
+    path: ["side_effects"],
+    message: `side_effects:"read" cannot downgrade mutating method ${s.method}`,
+  });
+}
+
+function rejectRowCount(s: RowCountChecked, ctx: z.RefinementCtx, message: string): void {
+  if (s.expected_row_count === undefined) return;
+  ctx.addIssue({ code: "custom", path: ["expected_row_count"], message });
+}
+
+export const HttpRequestStepSchema = z
+  .object({
+    kind: z.literal("request"),
+    protocol: z.literal("http").optional(),
+    ...baseStep,
+    method: z.enum(HTTP_METHODS).optional().default("GET"),
+    ...requestStepBase,
+    xml: XmlBodySchema.optional(),
+    graphql: foreignBlock("graphql"),
+    sql: foreignBlock("sql"),
+    s3: foreignBlock("s3"),
+    mcp: foreignBlock("mcp"),
   })
   .superRefine((s, ctx) => {
-    const HTTP_VERBS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
-    const S3_VERBS = new Set(["GET", "PUT", "HEAD", "DELETE", "LIST"]);
-    const SQL_VERBS = new Set(["SELECT", "INSERT", "UPDATE", "DELETE", "CALL"]);
+    checkAddressed(s, ctx);
+    checkReadOverride(s, ctx);
+    rejectRowCount(s, ctx, "expected_row_count is postgres-only; HTTP steps use expected_statuses");
+  })
+  .openapi("HttpRequestStep");
 
-    if (
-      s.side_effects === "read" &&
-      s.graphql === undefined &&
-      s.sql === undefined &&
-      s.mcp === undefined &&
-      ["PUT", "PATCH", "DELETE"].includes(s.method ?? "GET")
-    ) {
+export const GraphqlRequestStepSchema = z
+  .object({
+    kind: z.literal("request"),
+    protocol: z.literal("graphql"),
+    ...baseStep,
+    method: z.enum(HTTP_METHODS).optional().default("GET"),
+    ...requestStepBase,
+    graphql: GraphQLConfigSchema,
+    xml: httpOnlyXml("graphql"),
+    sql: foreignBlock("sql"),
+    s3: foreignBlock("s3"),
+    mcp: foreignBlock("mcp"),
+  })
+  .superRefine((s, ctx) => {
+    checkAddressed(s, ctx);
+    checkRowCountExpectation(s.expected_row_count, ["expected_row_count"], ctx);
+  })
+  .openapi("GraphqlRequestStep");
+
+export const SqlRequestStepSchema = z
+  .object({
+    kind: z.literal("request"),
+    protocol: z.literal("sql"),
+    ...baseStep,
+    method: z.enum(SQL_METHODS).optional().default("GET"),
+    ...requestStepBase,
+    sql: SqlBlockSchema,
+    xml: httpOnlyXml("sql"),
+    graphql: foreignBlock("graphql"),
+    s3: foreignBlock("s3"),
+    mcp: foreignBlock("mcp"),
+  })
+  .superRefine((s, ctx) => {
+    checkRowCountExpectation(s.expected_row_count, ["expected_row_count"], ctx);
+    s.sql.also?.forEach((stmt, idx) => {
+      checkRowCountExpectation(
+        stmt.expected_row_count,
+        ["sql", "also", idx, "expected_row_count"],
+        ctx,
+      );
+    });
+    if (s.expected_statuses !== undefined) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["side_effects"],
-        message: `side_effects:"read" cannot downgrade mutating method ${s.method}`,
-      });
-    }
-
-    if (s.s3 !== undefined) {
-      if (s.method !== undefined && !S3_VERBS.has(s.method)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["method"],
-          message: `s3 step requires method ∈ ${[...S3_VERBS].join("|")}, got ${s.method}`,
-        });
-      }
-      const effective = (s.method ?? "GET") as string;
-      if (effective === "LIST" && !s.s3.prefix) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["s3", "prefix"],
-          message: "s3 LIST requires a prefix",
-        });
-      }
-      if (effective !== "LIST" && !s.s3.key && !s.path) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["s3", "key"],
-          message: `s3 ${effective} requires either s3.key or step.path`,
-        });
-      }
-    }
-
-    const validateExpectation = (val: unknown, path: (string | number)[]): void => {
-      if (Array.isArray(val) && val.length === 2) {
-        const [lo, hi] = val as [number, number];
-        if (lo > hi) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path,
-            message: `expected_row_count tuple [${lo}, ${hi}] has lo > hi (unsatisfiable)`,
-          });
-        }
-      } else if (val && typeof val === "object" && !Array.isArray(val)) {
-        const obj = val as { min?: number; max?: number };
-        if (obj.min !== undefined && obj.max !== undefined && obj.min > obj.max) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path,
-            message: `expected_row_count { min: ${obj.min}, max: ${obj.max} } has min > max (unsatisfiable)`,
-          });
-        }
-      }
-    };
-    if (s.expected_row_count !== undefined) {
-      validateExpectation(s.expected_row_count, ["expected_row_count"]);
-    }
-    if (s.sql?.also) {
-      s.sql.also.forEach((stmt, idx) => {
-        if (stmt.expected_row_count !== undefined) {
-          validateExpectation(stmt.expected_row_count, ["sql", "also", idx, "expected_row_count"]);
-        }
-      });
-    }
-
-    if (s.sql !== undefined && s.expected_statuses !== undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         path: ["expected_statuses"],
         message: "expected_statuses is HTTP/S3 only; postgres steps use expected_row_count",
       });
     }
-    if (s.s3 !== undefined && s.expected_row_count !== undefined) {
+    if (s.sql.transaction === false && s.sql.also && s.sql.also.length > 0) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["expected_row_count"],
-        message: "expected_row_count is postgres-only; s3 steps use expected_statuses",
+        code: "custom",
+        path: ["sql", "transaction"],
+        message: "sql.transaction cannot be false when sql.also is set",
       });
     }
-    if (
-      s.s3 === undefined &&
-      s.sql === undefined &&
-      s.graphql === undefined &&
-      s.mcp === undefined &&
-      s.expected_row_count !== undefined
-    ) {
+    if (s.sql.cursor !== undefined && s.sql.also !== undefined && s.sql.also.length > 0) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["expected_row_count"],
-        message: "expected_row_count is postgres-only; HTTP steps use expected_statuses",
-      });
-    }
-
-    if (s.sql !== undefined) {
-      const methodStr: string | undefined = s.method;
-      if (
-        methodStr !== undefined &&
-        !SQL_VERBS.has(methodStr) &&
-        methodStr !== "GET" &&
-        HTTP_VERBS.has(methodStr)
-      ) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["method"],
-          message: `sql step requires method ∈ ${[...SQL_VERBS].join("|")}, got ${methodStr}`,
-        });
-      }
-      if (s.sql.transaction === false && s.sql.also && s.sql.also.length > 0) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["sql", "transaction"],
-          message: "sql.transaction cannot be false when sql.also is set",
-        });
-      }
-      if (s.sql.cursor !== undefined && s.sql.also !== undefined && s.sql.also.length > 0) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["sql", "cursor"],
-          message:
-            "sql.cursor cannot be combined with sql.also (the cursor opens its own transaction)",
-        });
-      }
-    }
-
-    if (s.mcp !== undefined) {
-      if (s.connector_id === undefined) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["connector_id"],
-          message: "mcp step requires connector_id — an MCP server is addressed as a connector",
-        });
-      }
-      if (s.expected_statuses !== undefined) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["expected_statuses"],
-          message: "expected_statuses is HTTP/S3 only; an MCP call has no HTTP status",
-        });
-      }
-      if (s.expected_row_count !== undefined) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["expected_row_count"],
-          message: "expected_row_count is postgres-only; an MCP call returns content, not rows",
-        });
-      }
-      if (s.timeout_ms !== undefined) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["timeout_ms"],
-          message:
-            "timeout_ms does not bound an mcp step; the deadline for a remote call is the connector's `config.mcp.remote_tool_call_timeout_ms` (tenant default: `connectors.mcp.remote_tool_call_timeout_ms`, ceiling 300000ms)",
-        });
-      }
-    }
-
-    if (
-      s.s3 === undefined &&
-      s.sql === undefined &&
-      s.graphql === undefined &&
-      s.mcp === undefined &&
-      s.method !== undefined &&
-      !HTTP_VERBS.has(s.method)
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["method"],
-        message: `http request step requires method ∈ ${[...HTTP_VERBS].join("|")}, got ${s.method}; add an \`s3\`, \`sql\` or \`mcp\` block to dispatch through those drivers`,
+        code: "custom",
+        path: ["sql", "cursor"],
+        message:
+          "sql.cursor cannot be combined with sql.also (the cursor opens its own transaction)",
       });
     }
   })
+  .openapi("SqlRequestStep");
+
+export const S3RequestStepSchema = z
+  .object({
+    kind: z.literal("request"),
+    protocol: z.literal("s3"),
+    ...baseStep,
+    method: z.enum(S3_METHODS).optional().default("GET"),
+    ...requestStepBase,
+    s3: S3BlockSchema,
+    xml: httpOnlyXml("s3"),
+    graphql: foreignBlock("graphql"),
+    sql: foreignBlock("sql"),
+    mcp: foreignBlock("mcp"),
+  })
+  .superRefine((s, ctx) => {
+    checkAddressed(s, ctx);
+    checkReadOverride(s, ctx);
+    rejectRowCount(s, ctx, "expected_row_count is postgres-only; s3 steps use expected_statuses");
+    if (s.method === "LIST" && !s.s3.prefix) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["s3", "prefix"],
+        message: "s3 LIST requires a prefix",
+      });
+    }
+    if (s.method !== "LIST" && !s.s3.key && !s.path) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["s3", "key"],
+        message: `s3 ${s.method} requires either s3.key or step.path`,
+      });
+    }
+  })
+  .openapi("S3RequestStep");
+
+export const McpRequestStepSchema = z
+  .object({
+    kind: z.literal("request"),
+    protocol: z.literal("mcp"),
+    ...baseStep,
+    method: z.enum(MCP_METHODS).optional().default("GET"),
+    ...requestStepBase,
+    mcp: McpBlockSchema,
+    xml: httpOnlyXml("mcp"),
+    graphql: foreignBlock("graphql"),
+    sql: foreignBlock("sql"),
+    s3: foreignBlock("s3"),
+  })
+  .superRefine((s, ctx) => {
+    if (s.connector_id === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["connector_id"],
+        message: "mcp step requires connector_id — an MCP server is addressed as a connector",
+      });
+    }
+    if (s.expected_statuses !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["expected_statuses"],
+        message: "expected_statuses is HTTP/S3 only; an MCP call has no HTTP status",
+      });
+    }
+    rejectRowCount(
+      s,
+      ctx,
+      "expected_row_count is postgres-only; an MCP call returns content, not rows",
+    );
+    if (s.timeout_ms !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["timeout_ms"],
+        message:
+          "timeout_ms does not bound an mcp step; the deadline for a remote call is the connector's `config.mcp.remote_tool_call_timeout_ms` (tenant default: `connectors.mcp.remote_tool_call_timeout_ms`, ceiling 300000ms)",
+      });
+    }
+  })
+  .openapi("McpRequestStep");
+
+export const RequestStepSchema = z
+  .discriminatedUnion("protocol", [
+    HttpRequestStepSchema,
+    GraphqlRequestStepSchema,
+    SqlRequestStepSchema,
+    S3RequestStepSchema,
+    McpRequestStepSchema,
+  ])
   .openapi("RequestStep");
 
 export const TransformStepSchema = z
@@ -773,22 +830,6 @@ export const ParallelStepSchema = z
   })
   .openapi("ParallelStep");
 
-export const LoopStepSchema = z
-  .object({
-    kind: z.literal("loop"),
-    ...baseStep,
-    over: z.string().optional(),
-    data_selector: z.string().optional(),
-    body: z.array(z.string()),
-    fail_fast: z.boolean().optional(),
-  })
-  .refine((s) => Boolean(s.over) !== Boolean(s.data_selector), {
-    message:
-      "Loop step must set exactly one of `over` (path/JSONata) or `data_selector` (JS expression).",
-    path: ["over"],
-  })
-  .openapi("LoopStep");
-
 export const StepSchema = z.discriminatedUnion("kind", [
   RequestStepSchema,
   TransformStepSchema,
@@ -797,7 +838,6 @@ export const StepSchema = z.discriminatedUnion("kind", [
   WaitForEventStepSchema,
   BranchStepSchema,
   ParallelStepSchema,
-  LoopStepSchema,
 ]);
 
 export const WorkflowRuntimeSchema = z
@@ -1062,5 +1102,4 @@ export type WaitStep = z.infer<typeof WaitStepSchema>;
 export type WaitForEventStep = z.infer<typeof WaitForEventStepSchema>;
 export type BranchStep = z.infer<typeof BranchStepSchema>;
 export type ParallelStep = z.infer<typeof ParallelStepSchema>;
-export type LoopStep = z.infer<typeof LoopStepSchema>;
 export type ResponseFilter = z.infer<typeof ResponseFilterSchema>;

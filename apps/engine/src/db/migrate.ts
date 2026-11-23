@@ -4,11 +4,11 @@ import type pg from "pg";
 import { z } from "zod";
 import { errorFields, logger } from "../logging/index.ts";
 import { cutOverLearningCandidates } from "../skill-candidates/learning-cutover.ts";
+import { runLoopToForEachV2Backfill } from "../workflows/index.ts";
 import { createMigrationDbFromUrl, type Db } from "./client.ts";
 import { runContextNoteFactsBackfill } from "./migrations/context-note-facts-backfill.ts";
 import { EMBEDDED_MIGRATIONS, type EmbeddedMigration } from "./migrations/embedded.ts";
 import { runInboxNonActionablePurge } from "./migrations/inbox-nonactionable-purge.ts";
-import { runLoopToForEachBackfill } from "./migrations/loop-to-for-each-backfill.ts";
 import { runMetricsScopeBackfill } from "./migrations/metrics-scope-backfill.ts";
 import * as schema from "./schema/index.ts";
 
@@ -300,7 +300,7 @@ async function applyMigrations(
     });
   }
   try {
-    await runLoopToForEachBackfill(db);
+    await runLoopToForEachV2Backfill(db);
   } catch (err) {
     logger.error({
       module: "db",

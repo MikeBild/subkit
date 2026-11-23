@@ -117,7 +117,7 @@ describe("connectorReferencesForDefinition", () => {
   });
 });
 
-test("collects request steps referenced by loop, branch and parallel control flow", () => {
+test("collects request steps referenced by branch and parallel control flow", () => {
   const connector = {
     id: "connector",
     slug: "nested",
@@ -128,12 +128,11 @@ test("collects request steps referenced by loop, branch and parallel control flo
     {
       steps: [
         { id: "request", kind: "request", connector_id: connector.id },
-        { id: "loop", kind: "loop", over: "$input.items", body: ["request"] },
         {
           id: "branch",
           kind: "branch",
           when: "true",
-          then_steps: ["loop"],
+          then_steps: ["request"],
           else_steps: ["request"],
         },
         { id: "parallel", kind: "parallel", branches: [["branch"], ["request"]] },

@@ -101,21 +101,6 @@ describe("buildStepDag", () => {
     expect(dag.edges).toContainEqual({ from: "b", to: "fan", reason: "parallel_branch" });
   });
 
-  test("loop body steps depend on the loop step", () => {
-    const dag = buildStepDag(
-      wf([
-        {
-          id: "iter",
-          kind: "loop",
-          over: "$input",
-          body: ["work"],
-        },
-        { id: "work", kind: "transform", language: "javascript", expression: "return 1;" },
-      ]),
-    );
-    expect(dag.edges).toContainEqual({ from: "work", to: "iter", reason: "loop_body" });
-  });
-
   test("references to unknown step ids are dropped silently", () => {
     const dag = buildStepDag(
       wf([

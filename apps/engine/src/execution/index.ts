@@ -22,6 +22,7 @@ export { executionVisibilityFilter, executionVisibleToPrincipal } from "./execut
 export { compileJsonSchemaContract } from "./json-schema-contract.ts";
 export * from "./jsonata-engine.ts";
 export * from "./list.ts";
+export { buildLoopChildScope, resolveForEachCollection } from "./loop-scope.ts";
 export * from "./outcome.ts";
 export {
   type ProductContext,

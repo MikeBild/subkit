@@ -28,12 +28,10 @@ test("review uses runtime retry defaults and honors zero and explicit retries", 
   expect(result.run_limit_is_request_limit).toBe(false);
 });
 
-test("review identifies nested loops and inline iteration without executing selectors", () => {
+test("review identifies inline iteration without executing selectors", () => {
   const definition = WorkflowDefSchema.parse({
     name: "Loops",
     steps: [
-      { id: "outer", kind: "loop", over: "input.items", body: ["inner"] },
-      { id: "inner", kind: "loop", over: "input.other", body: ["send"] },
       {
         id: "send",
         kind: "request",
@@ -47,8 +45,6 @@ test("review identifies nested loops and inline iteration without executing sele
     { step_id: "send", driver: "http", target: null },
   ]);
   expect(result.iterations).toEqual([
-    { step_id: "outer", kind: "loop", body_step_ids: ["inner"] },
-    { step_id: "inner", kind: "loop", body_step_ids: ["send"] },
     { step_id: "send", kind: "for_each", body_step_ids: ["send"] },
   ]);
   expect(JSON.stringify(result)).not.toContain("must not execute");

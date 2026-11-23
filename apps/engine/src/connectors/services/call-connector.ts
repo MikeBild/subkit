@@ -86,7 +86,7 @@ export function callConnectorDriverRefusal(driver: string): {
   if (driver === "mcp") {
     return {
       message:
-        'an mcp connector is not called with method+path — an MCP call names a tool and its arguments. Author a request step with an `mcp` block: { connector_id, mcp: { operation: "call_tool", tool, arguments } }.',
+        'an mcp connector is not called with method+path — an MCP call names a tool and its arguments. Author a request step with `protocol: "mcp"` and an `mcp` block: { connector_id, protocol: "mcp", mcp: { operation: "call_tool", tool, arguments } }.',
       next_best_actions: ["author_workflow"],
     };
   }

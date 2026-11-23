@@ -235,7 +235,7 @@ test("a held chat approval replays its exact prepared version once", async () =>
   expect(remote.callCount()).toBe(before + 1);
 });
 
-for (const container of [undefined, "loop", "parallel"] as const) {
+for (const container of [undefined, "parallel"] as const) {
   for (const changed of [false, true]) {
     test(`held approval ${changed ? "rejects a changed" : "accepts an unchanged"} recipient from a live lookup (${container ?? "direct"})`, async () => {
       let recipient = "reviewed@example.test";
@@ -489,9 +489,9 @@ test("a parent one-shot approval cannot escape through an unbound child workflow
   expect(denials).toHaveLength(1);
 });
 
-for (const inlineEach of [false, true]) {
+{
   for (const scenario of ["unchanged", "swapped", "duplicate", "partially_changed"] as const) {
-    test(`${inlineEach ? "for_each" : "loop"} approvals bind occurrence order (${scenario})`, async () => {
+    test(`for_each approvals bind occurrence order (${scenario})`, async () => {
       let recipients = [
         { recipient: "first@example.test" },
         { recipient: scenario === "duplicate" ? "first@example.test" : "second@example.test" },
@@ -505,7 +505,7 @@ for (const inlineEach of [false, true]) {
         const f = await fixture({
           lookupRecipient: true,
           loopRecipients: true,
-          ...(inlineEach ? { inlineEach: true } : { container: "loop" }),
+          inlineEach: true,
         });
         await f.runTool("synthetic");
         expect(writes).toBe(0);

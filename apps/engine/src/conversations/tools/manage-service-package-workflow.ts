@@ -1,6 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { getConnector } from "../../connectors/service.ts";
-import { workflowJsonDigest } from "../../workflows/canonical-json.ts";
+import { definitionDigest } from "../../workflows/core/request-protocol.ts";
 import { loadWorkflowHead } from "../../workflows/lookup.ts";
 import { updateWorkflowMetadata } from "../../workflows/service.ts";
 import { findPackageWorkflowProvenance } from "../../workflows/service-package-provenance.ts";
@@ -153,7 +153,7 @@ export const manageServicePackageWorkflowTool: ConversationTool = {
         data: { workflow_id: workflow.id },
       };
     }
-    if (workflowJsonDigest(head.dag) !== provenance.installed_hash) {
+    if (definitionDigest(head.dag) !== provenance.installed_hash) {
       return {
         ok: false,
         error_code: "service_package_workflow_local_changes",

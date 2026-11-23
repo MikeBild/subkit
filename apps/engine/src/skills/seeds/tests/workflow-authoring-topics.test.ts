@@ -55,11 +55,19 @@ describe("workflow-authoring core and topic skills", () => {
     for (const topic of topics) expect(topic.body).not.toContain("returns metadata only");
   });
 
-  test("a loop step in a patch loads the structures skill next to the core", () => {
+  test("a for_each step in a patch loads the structures skill next to the core", () => {
     const loaded = autoloadForToolCall(
       {
         tool: "edit_workflow_patch",
-        input: { patches: [{ op: "add", path: "/steps/-", value: { id: "each", kind: "loop" } }] },
+        input: {
+          patches: [
+            {
+              op: "add",
+              path: "/steps/-",
+              value: { id: "each", kind: "request", for_each: "() => []" },
+            },
+          ],
+        },
       },
       seeds.skills,
       [],

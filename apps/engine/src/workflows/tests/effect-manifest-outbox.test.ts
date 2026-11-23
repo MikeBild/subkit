@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
-import { workflowJsonDigest } from "../canonical-json.ts";
 import {
   compileWorkflowEffectManifest,
   type ResolvedEffectBinding,
 } from "../core/effect-manifest.ts";
+import { requestDigest } from "../core/request-protocol.ts";
 import { mcpBoundary, mcpBoundaryTarget } from "../mcp-boundary.ts";
 import { GMAIL_SEND_TARGET } from "../report-delivery-boundary.ts";
 import { WorkflowDefSchema } from "../types.ts";
@@ -44,7 +44,9 @@ function fixture(
               connector_id: connector,
               method: options.sourceMethod ?? "GET",
               url: "https://queue.example.test/next",
-              ...(options.sourceGraphql ? { graphql: options.sourceGraphql } : {}),
+              ...(options.sourceGraphql
+                ? { protocol: "graphql", graphql: options.sourceGraphql }
+                : {}),
             },
           ]),
       {
@@ -66,7 +68,7 @@ function fixture(
     driver: options.sourceGraphql && step.id === "next_mail" ? "graphql" : "http",
     environment: "dev",
     request_digest:
-      options.sourceIssue && step.id === "next_mail" ? "0".repeat(64) : workflowJsonDigest(step),
+      options.sourceIssue && step.id === "next_mail" ? "0".repeat(64) : requestDigest(step),
     target: step.id === "next_mail" ? "https://queue.example.test/next" : GMAIL_SEND_TARGET,
     configuration_digest: "a".repeat(64),
     credential_binding_digest: "b".repeat(64),
@@ -224,7 +226,7 @@ test("a called child's same-named source issue cannot invalidate this manifest's
     connector_id: connector,
     driver: "http",
     environment: "dev",
-    request_digest: workflowJsonDigest(childStep),
+    request_digest: requestDigest(childStep),
     target: "https://queue.example.test/mail",
     configuration_digest: "a".repeat(64),
     credential_binding_digest: "b".repeat(64),
@@ -261,7 +263,7 @@ test("outbox selects its reviewed read source even after an unrelated write effe
   const unrelated: ResolvedEffectBinding = {
     ...input.bindings[0]!,
     step_id: "unrelated",
-    request_digest: workflowJsonDigest(definition.steps[0]),
+    request_digest: requestDigest(definition.steps[0]),
     target: "https://queue.example.test/write",
   };
   const result = compileWorkflowEffectManifest({
@@ -296,6 +298,7 @@ test("a tool call stated as a read is never an outbox source", () => {
       {
         id: "next_mail",
         kind: "request",
+        protocol: "mcp",
         connector_id: connector,
         mcp: {
           operation: "call_tool",
@@ -330,7 +333,7 @@ test("a tool call stated as a read is never an outbox source", () => {
     connector_id: connector,
     driver: step.id === "next_mail" ? "mcp" : "http",
     environment: "dev",
-    request_digest: workflowJsonDigest(step),
+    request_digest: requestDigest(step),
     target: step.id === "next_mail" ? mcpBoundaryTarget(tool) : GMAIL_SEND_TARGET,
     configuration_digest: "a".repeat(64),
     credential_binding_digest: "b".repeat(64),

@@ -51,7 +51,7 @@ describe("request + transform", () => {
     expect(result.output).toEqual(["a", "b"]);
   });
 
-  test("loop body transform sees `$item` and `$loop_index` bindings", async () => {
+  test("for_each transform sees `$item` and `$loop_index` bindings", async () => {
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "loop-bindings",
       steps: [
@@ -61,10 +61,10 @@ describe("request + transform", () => {
           language: "javascript",
           expression: "return ['a', 'b', 'c'];",
         },
-        { kind: "loop", id: "iter", over: "letters.data", body: ["tag"] },
         {
           kind: "transform",
           id: "tag",
+          for_each: "(sourceData) => sourceData.letters.data",
           language: "javascript",
           expression: "return { index: input.scope.$loop_index, letter: input.scope.$item };",
         },
@@ -84,7 +84,7 @@ describe("request + transform", () => {
     expect(out[2]?.tag.data).toEqual({ index: 2, letter: "c" });
   });
 
-  test("loop with N iterations but no productive body emits loop_body_empty warning", async () => {
+  test("for_each with N iterations but no productive output emits loop_body_empty warning", async () => {
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "empty-loop-body",
       steps: [
@@ -94,8 +94,13 @@ describe("request + transform", () => {
           language: "javascript",
           expression: "return ['a', 'b', 'c'];",
         },
-        { kind: "loop", id: "iter", over: "items.data", body: ["empty"] },
-        { kind: "transform", id: "empty", language: "javascript", expression: "return [];" },
+        {
+          kind: "transform",
+          id: "empty",
+          for_each: "(sourceData) => sourceData.items.data",
+          language: "javascript",
+          expression: "return [];",
+        },
       ],
     });
     const result = await runExecution({
@@ -108,19 +113,55 @@ describe("request + transform", () => {
     const warnings = result.warnings ?? [];
     const empty = warnings.find((w) => w.code === "loop_body_empty");
     expect(empty).toBeDefined();
-    expect(empty?.identifier).toBe("iter");
+    expect(empty?.identifier).toBe("empty");
     const details = empty?.details as
-      | {
-          iterations: number;
-          productive_iterations: number;
-          body_step_ids: string[];
-          example_path: string;
-        }
+      | { iterations: number; productive_iterations: number; scope_shape: string }
       | undefined;
     expect(details?.iterations).toBe(3);
     expect(details?.productive_iterations).toBe(0);
-    expect(details?.body_step_ids).toEqual(["empty"]);
-    expect(details?.example_path).toBe("$scope.iter.data[0].empty.data");
+    expect(details?.scope_shape).toBe("$scope.empty.data is an array of 3 iteration objects");
+  });
+
+  test("crash_resume replays a finished step from its stored envelope and runs only the rest", async () => {
+    let fetchCount = 0;
+    const counterMock = await createMockServer((_, res) => {
+      fetchCount++;
+      return jsonResponse(res, 200, [{ name: "from_origin" }]);
+    });
+    try {
+      const { workflow_id } = await createWorkflowRow(ctx, {
+        name: "crash-resume-replay",
+        steps: [
+          { kind: "request", id: "users", method: "GET", url: `${counterMock.baseUrl}/users` },
+          {
+            kind: "transform",
+            id: "names",
+            language: "javascript",
+            expression: "return (input.scope.users.data || []).map((u) => u.name);",
+          },
+        ],
+      });
+      const resumed = await runExecution({
+        db: ctx.testDb.db,
+        tenant_id: ctx.tenantId,
+        source: { kind: "saved", workflow_id },
+        input: null,
+        options: {
+          crash_resume: {
+            users: { data: [{ name: "before_crash" }], duration_ms: 3, error: null },
+          },
+        },
+      });
+      expect(resumed.status).toBe("succeeded");
+      expect(resumed.output).toEqual(["before_crash"]);
+      expect(fetchCount).toBe(0);
+      expect(resumed.steps.map((s) => [s.step_key, s.status])).toEqual([
+        ["users", "succeeded"],
+        ["names", "succeeded"],
+      ]);
+    } finally {
+      await counterMock.close();
+    }
   });
 
   test("step_output_fixtures short-circuits the upstream and feeds downstream from cached envelope", async () => {
@@ -177,7 +218,7 @@ describe("request + transform", () => {
     }
   });
 
-  test("loop with at least one productive iteration does not emit loop_body_empty", async () => {
+  test("for_each with at least one productive iteration does not emit loop_body_empty", async () => {
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "productive-loop-body",
       steps: [
@@ -187,10 +228,10 @@ describe("request + transform", () => {
           language: "javascript",
           expression: "return ['a', 'b', 'c'];",
         },
-        { kind: "loop", id: "iter", over: "items.data", body: ["pick"] },
         {
           kind: "transform",
           id: "pick",
+          for_each: "(sourceData) => sourceData.items.data",
           language: "javascript",
           expression: "return input.scope.$item;",
         },

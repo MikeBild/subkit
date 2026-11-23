@@ -157,7 +157,7 @@ describe("renderAuthoringContextBlock — Document Analysis section", () => {
 });
 
 describe("renderAuthoringContextBlock — scope manifest (P4)", () => {
-  it("emits a typed scope manifest for a workflow with a loop step", () => {
+  it("emits a typed scope manifest for a workflow with a for_each step", () => {
     const out = renderAuthoringContextBlock({
       draft: {
         mode: "workflow_authoring",
@@ -172,13 +172,8 @@ describe("renderAuthoringContextBlock — scope manifest (P4)", () => {
               expression: "fetch_projects.data.projects",
             },
             {
-              id: "fetch_resources",
-              kind: "loop",
-              over: "extract_projects.data",
-              body: ["get_project_resources"],
-            },
-            {
               id: "get_project_resources",
+              for_each: "(sourceData) => sourceData.extract_projects.data",
               kind: "request",
               method: "GET",
               url: "/v2/projects/{project_id}/resources",
@@ -193,11 +188,11 @@ describe("renderAuthoringContextBlock — scope manifest (P4)", () => {
     expect(out!).toContain("### Scope manifest");
     expect(out!).toContain("$scope.fetch_projects.data");
     expect(out!).toContain("$scope.extract_projects.data");
-    expect(out!).toContain("$scope.fetch_resources.data");
+    expect(out!).toContain("$scope.get_project_resources.data");
     expect(out!).toContain("$item");
     expect(out!).toContain("flat access across all iterations");
-    expect(out!).toContain("$scope.fetch_resources.data.get_project_resources.data");
-    expect(out!).toContain("$scope.fetch_resources.data[0].get_project_resources.data");
+    expect(out!).toContain("$scope.get_project_resources.data.get_project_resources.data");
+    expect(out!).toContain("$scope.get_project_resources.data[0].get_project_resources.data");
   });
 
   it("omits the manifest section when the draft is empty", () => {
@@ -226,13 +221,8 @@ describe("renderAuthoringContextBlock — scope manifest (P4)", () => {
               url: "/v2/projects",
             },
             {
-              id: "fetch_resources",
-              kind: "loop",
-              over: "$scope.list_projects.data.projects",
-              body: ["get_project_resources"],
-            },
-            {
               id: "get_project_resources",
+              for_each: "(sourceData) => sourceData.list_projects.data.projects",
               kind: "request",
               method: "GET",
               url: "/v2/projects/{project_id}/resources",
@@ -312,7 +302,7 @@ describe("renderAuthoringContextBlock — scope manifest (P4)", () => {
     expect(out!).not.toContain("chargers.edges[0]");
   });
 
-  it("hints to run dry_run_workflow when the loop source has no recorded preview", () => {
+  it("hints to run dry_run_workflow when the for_each source has no recorded preview", () => {
     const out = renderAuthoringContextBlock({
       draft: {
         mode: "workflow_authoring",
@@ -322,13 +312,8 @@ describe("renderAuthoringContextBlock — scope manifest (P4)", () => {
           steps: [
             { id: "list_projects", kind: "request", method: "GET", url: "/v2/projects" },
             {
-              id: "fetch_resources",
-              kind: "loop",
-              over: "$scope.list_projects.data.projects",
-              body: ["get_project_resources"],
-            },
-            {
               id: "get_project_resources",
+              for_each: "(sourceData) => sourceData.list_projects.data.projects",
               kind: "request",
               method: "GET",
               url: "/v2/projects/{project_id}/resources",
@@ -343,7 +328,7 @@ describe("renderAuthoringContextBlock — scope manifest (P4)", () => {
     expect(out!).toContain("run `dry_run_workflow`");
   });
 
-  it("handles data_selector form (sourceData.<step>.…)", () => {
+  it("handles the for_each selector form (sourceData.<step>.…)", () => {
     const out = renderAuthoringContextBlock({
       draft: {
         mode: "workflow_authoring",
@@ -353,13 +338,8 @@ describe("renderAuthoringContextBlock — scope manifest (P4)", () => {
           steps: [
             { id: "list_messages", kind: "request", method: "GET", url: "/messages" },
             {
-              id: "fetch_each",
-              kind: "loop",
-              data_selector: "(sourceData) => sourceData.list_messages.data.messages",
-              body: ["get_message"],
-            },
-            {
               id: "get_message",
+              for_each: "(sourceData) => sourceData.list_messages.data.messages",
               kind: "request",
               method: "GET",
               url: "/messages/{id}",

@@ -6,6 +6,7 @@ test("masks GraphQL literal arguments, nested input secrets and indirectly named
   const step = RequestStepSchema.parse({
     id: "graphql",
     kind: "request",
+    protocol: "graphql",
     method: "POST",
     url: "https://example.test",
     graphql: {
@@ -28,6 +29,7 @@ test("does not expose an invalid GraphQL document as a raw fallback", () => {
   const step = RequestStepSchema.parse({
     id: "invalid",
     kind: "request",
+    protocol: "graphql",
     method: "POST",
     url: "https://example.test",
     graphql: { query: 'mutation { password: "do-not-display"' },

@@ -6,6 +6,7 @@ const CONNECTOR_ID = "11111111-2222-4333-8444-555555555555";
 function parse(mcp: Record<string, unknown>, extra: Record<string, unknown> = {}) {
   return RequestStepSchema.safeParse({
     kind: "request",
+    protocol: "mcp",
     id: "s",
     connector_id: CONNECTOR_ID,
     mcp,
@@ -19,7 +20,7 @@ function messages(res: ReturnType<typeof parse>): string {
     : res.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("\n");
 }
 
-describe("mcp is a sub-block of request, not a step kind", () => {
+describe("mcp is a protocol of the request step, not a step kind", () => {
   test('there is no { kind: "mcp" } step', () => {
     const res = StepSchema.safeParse({ kind: "mcp", id: "s", tool: "search" });
     expect(res.success).toBe(false);
@@ -28,6 +29,7 @@ describe("mcp is a sub-block of request, not a step kind", () => {
   test("a request step carrying an mcp block parses as kind request", () => {
     const res = StepSchema.safeParse({
       kind: "request",
+      protocol: "mcp",
       id: "s",
       connector_id: CONNECTOR_ID,
       mcp: { operation: "call_tool", tool: "search" },
@@ -78,6 +80,7 @@ describe("an mcp step is bound to a connector and asserts nothing HTTP-shaped", 
   test("a url-only mcp step is refused", () => {
     const res = RequestStepSchema.safeParse({
       kind: "request",
+      protocol: "mcp",
       id: "s",
       url: "https://remote.example.com/mcp",
       mcp: { operation: "call_tool", tool: "search" },

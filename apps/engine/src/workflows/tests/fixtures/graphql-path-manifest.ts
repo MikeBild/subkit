@@ -1,4 +1,5 @@
 import { workflowJsonDigest } from "../../canonical-json.ts";
+import { requestDigest } from "../../core/request-protocol.ts";
 import type { ResolvedEffectBinding } from "../../effect-manifest.ts";
 import { WorkflowDefSchema } from "../../types.ts";
 
@@ -33,7 +34,7 @@ function manifestInput(step: Record<string, unknown>, binding: Partial<ResolvedE
     connector_id: connector,
     driver: "http",
     environment: "prod",
-    request_digest: workflowJsonDigest(definition.steps[0]),
+    request_digest: requestDigest(definition.steps[0]),
     target: "https://api.github.com/graphql",
     configuration_digest: "a".repeat(64),
     credential_binding_digest: "b".repeat(64),
@@ -53,7 +54,13 @@ function manifestInput(step: Record<string, unknown>, binding: Partial<ResolvedE
 
 export const graphqlDriverProjectItems = () =>
   manifestInput(
-    { kind: "request", connector_id: connector, method: "POST", graphql: projectItemsGraphql },
+    {
+      kind: "request",
+      protocol: "graphql",
+      connector_id: connector,
+      method: "POST",
+      graphql: projectItemsGraphql,
+    },
     { driver: "graphql" },
   );
 
@@ -61,6 +68,7 @@ export const httpProjectItems = (step: Record<string, unknown> = {}) =>
   manifestInput(
     {
       kind: "request",
+      protocol: "graphql",
       connector_id: connector,
       method: "POST",
       path: "/graphql",

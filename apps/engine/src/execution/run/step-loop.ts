@@ -28,7 +28,6 @@ import {
   settleStepVerdict,
 } from "./env.ts";
 import { runForEachStep } from "./for-each.ts";
-import { runLoopBody } from "./loop-body.ts";
 import { runParallelBranches } from "./parallel.ts";
 
 function skipUntakenArm(state: RunState, branchStep: BranchStep, output: unknown): void {
@@ -130,14 +129,11 @@ async function dispatchStep(
   if (step.kind === "branch" && outcome.result.status === "succeeded") {
     skipUntakenArm(state, step as BranchStep, outcome.result.output);
   }
-  if (step.kind === "loop" && outcome.result.status === "succeeded") {
-    outcome = await runLoopBody(env, plan, state, frame, outcome);
-  }
   if (step.kind === "parallel" && outcome.result.status === "succeeded") {
     outcome = await runParallelBranches(env, plan, state, frame, outcome);
   }
   let outputPreview: unknown = outcome.result.output;
-  if (step.kind === "loop" || step.kind === "parallel") {
+  if (step.kind === "parallel") {
     const wrapped = state.scope[step.id] as { data?: unknown } | undefined;
     if (wrapped && typeof wrapped === "object" && "data" in wrapped) {
       outputPreview = previewOffloadRefs(wrapped.data);

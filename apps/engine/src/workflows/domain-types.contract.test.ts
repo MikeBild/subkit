@@ -26,7 +26,6 @@ test("rich domain step variants remain accepted by the Zod/OpenAPI boundary", ()
       { id: "event", kind: "wait_for_event", event_name: "done", timeout_ms: 1000 },
       { id: "branch", kind: "branch", when: "true", then_steps: [] },
       { id: "parallel", kind: "parallel", branches: [[]] },
-      { id: "loop", kind: "loop", over: "items", body: [] },
     ],
   } satisfies DomainWorkflowDef;
 
@@ -54,9 +53,9 @@ test("domain topology preserves request verbs before and after boundary parsing"
     const connector_id = "00000000-0000-4000-8000-000000000123";
     const driver =
       method === "LIST"
-        ? { s3: { prefix: "records/" } }
+        ? { protocol: "s3" as const, s3: { prefix: "records/" } }
         : ["SELECT", "INSERT", "UPDATE", "CALL"].includes(method)
-          ? { sql: { query: "SELECT 1" } }
+          ? { protocol: "sql" as const, sql: { query: "SELECT 1" } }
           : {};
     const definition = {
       name: "method-contract",

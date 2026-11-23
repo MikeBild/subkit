@@ -161,7 +161,14 @@ test("a storage step is given the deepest folder that holds everything it touche
     environment: "prod",
     viewer: viewer(tenant_id),
     definition: definition([
-      { id: "store", kind: "request", connector_id: STORAGE, method: "PUT", s3: { key: "x" } },
+      {
+        id: "store",
+        kind: "request",
+        protocol: "s3",
+        connector_id: STORAGE,
+        method: "PUT",
+        s3: { key: "x" },
+      },
     ]),
   });
   expect(proposals[0]?.s3_scope?.key_prefix).toBe("v1/facts/year=2026/");
@@ -427,6 +434,7 @@ test("a folder the step's own writes contradict is corrected, one it fits is not
     {
       id: "store",
       kind: "request",
+      protocol: "s3",
       connector_id: STORAGE,
       method: "PUT",
       s3: { key: "x", scope: { key_prefix, max_bytes: 4096 } },

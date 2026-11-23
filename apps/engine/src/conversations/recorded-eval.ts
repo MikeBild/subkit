@@ -20,11 +20,6 @@ import { enumerateScopePaths, summarizeScopeShape } from "../workflows/scope-sha
 import { checkJsBodySyntax, evaluateJsBody } from "./js-transform-eval.ts";
 import { fingerprintsById } from "./step-fingerprint.ts";
 import {
-  describeLoopGateBlock,
-  evaluateLoopAuthoringGate,
-  type LoopGateBlock,
-} from "./tools/loop-authoring-gate.ts";
-import {
   describeTransformGateBlock,
   evaluateTransformAuthoringGate,
   isHandRolledCodecBlock,
@@ -90,7 +85,6 @@ export interface RecordedEvalReport {
   expressions: RecordedEvalExpressionFinding[];
   scope_refs: RecordedEvalScopeRef[];
   gates: {
-    loop: { ok: boolean; blocks: LoopGateBlock[] };
     transform: { ok: boolean; blocks: TransformGateBlock[] };
   };
   missing_evidence: RecordedEvalMissingEvidence[];
@@ -137,8 +131,7 @@ function collectControlFlowChildIds(steps: ReadonlyArray<Record<string, unknown>
   };
   for (const step of steps) {
     const kind = step.kind;
-    if (kind !== "loop" && kind !== "branch" && kind !== "parallel") continue;
-    collect((step as { body?: unknown }).body);
+    if (kind !== "branch" && kind !== "parallel") continue;
     collect((step as { then_steps?: unknown }).then_steps);
     collect((step as { else_steps?: unknown }).else_steps);
     const branches = (step as { branches?: unknown }).branches;
@@ -169,7 +162,8 @@ function collectExpressionSites(workflow: WorkflowLike): ExpressionSite[] {
     const id = typeof step.id === "string" ? step.id : null;
     if (!id) continue;
     const kind = typeof step.kind === "string" ? step.kind : "";
-    const inControlFlowBody = controlFlowChildren.has(id);
+    const inControlFlowBody =
+      controlFlowChildren.has(id) || (typeof step.for_each === "string" && step.for_each !== "");
     if (kind === "transform") {
       const language = typeof step.language === "string" ? step.language : "javascript";
       if (
@@ -193,15 +187,6 @@ function collectExpressionSites(workflow: WorkflowLike): ExpressionSite[] {
         language: "jsonata",
         expression: step.when,
         evaluable: false,
-      });
-    }
-    if (kind === "loop" && typeof step.over === "string" && step.over) {
-      sites.push({
-        site: `steps.${id}.over`,
-        step_id: id,
-        language: "jsonata",
-        expression: step.over,
-        evaluable: !inControlFlowBody,
       });
     }
   }
@@ -356,7 +341,7 @@ export async function evaluateJsonataSite(
       step_id: site.step_id,
       status: "eval_error",
       message:
-        `loop-body JSONata references the iteration item as bare ${names} — the runtime binds the current item as \`$item\` only` +
+        `for_each JSONata references the iteration item as bare ${names} — the runtime binds the current item as \`$item\` only` +
         (rewrites[0] !== undefined ? `; did you mean: \`${rewrites[0]}\`` : ""),
       ...(rewrites.length > 0 ? { path_candidates: rewrites } : {}),
     };
@@ -638,11 +623,6 @@ export async function runRecordedEval(
   }
 
   const gateOptions = { probedConnectorSlugs: evidence.probedConnectorSlugs ?? new Set<string>() };
-  const loopGate = evaluateLoopAuthoringGate(
-    { steps },
-    evidence.latest_preview ?? null,
-    gateOptions,
-  );
   const transformGate = evaluateTransformAuthoringGate(
     { steps },
     evidence.latest_preview ?? null,
@@ -650,13 +630,6 @@ export async function runRecordedEval(
   );
 
   const missingByStep = new Map<string, RecordedEvalMissingEvidence>();
-  for (const b of loopGate.blocks) {
-    missingByStep.set(b.referenced_step_id, {
-      step_id: b.referenced_step_id,
-      reason: describeLoopGateBlock(b),
-      next_action: MISSING_EVIDENCE_NEXT_ACTIONS.PREVIEW_GAP,
-    });
-  }
   for (const b of transformGate.blocks) {
     const isCodec = isHandRolledCodecBlock(b);
     const key = isCodec ? b.transform_step_id : b.referenced_step_id;
@@ -684,7 +657,7 @@ export async function runRecordedEval(
     (f) => f.status === "empty_result" && f.against_truncated_evidence === true,
   );
   const hasJsonataEmptyResults = blockingEmptyResults.some((f) => languageOf(f) === "jsonata");
-  const gatesOk = loopGate.ok && transformGate.ok;
+  const gatesOk = transformGate.ok;
 
   const repairedCount = expressions.filter((f) => f.repair?.repaired === true).length;
 
@@ -700,8 +673,7 @@ export async function runRecordedEval(
     next_actions.push("dry_run_transform");
   }
   const hasCodecBlock = transformGate.blocks.some(isHandRolledCodecBlock);
-  const hasPreviewGap =
-    !loopGate.ok || transformGate.blocks.some((b) => !isHandRolledCodecBlock(b));
+  const hasPreviewGap = transformGate.blocks.some((b) => !isHandRolledCodecBlock(b));
   if (hasCodecBlock) {
     next_actions.push("edit_workflow_patch");
   }
@@ -730,9 +702,7 @@ export async function runRecordedEval(
   if (hasEmptyResults) problems.push("empty result(s) over recorded evidence");
   if (!gatesOk) {
     const codecBlocks = transformGate.blocks.filter(isHandRolledCodecBlock);
-    const previewBlocks =
-      loopGate.blocks.length +
-      transformGate.blocks.filter((b) => !isHandRolledCodecBlock(b)).length;
+    const previewBlocks = transformGate.blocks.filter((b) => !isHandRolledCodecBlock(b)).length;
     if (previewBlocks > 0) {
       problems.push(
         `${previewBlocks} step(s) reference data with no recorded preview — run dry_run_workflow once to record the shape`,
@@ -764,7 +734,6 @@ export async function runRecordedEval(
     expressions,
     scope_refs,
     gates: {
-      loop: { ok: loopGate.ok, blocks: loopGate.blocks },
       transform: { ok: transformGate.ok, blocks: transformGate.blocks },
     },
     missing_evidence,
@@ -779,9 +748,6 @@ export function emitRecordedEvalSignals(args: {
   report: RecordedEvalReport;
 }): void {
   const { report } = args;
-  if (!report.gates.loop.ok) {
-    recordAuthoringGateBlock({ code: "loop_authoring_requires_inspect", tool: args.tool });
-  }
   if (!report.gates.transform.ok) {
     const hasCodec = report.gates.transform.blocks.some(isHandRolledCodecBlock);
     const hasInspect = report.gates.transform.blocks.some((b) => !isHandRolledCodecBlock(b));
@@ -805,7 +771,6 @@ export function emitRecordedEvalSignals(args: {
       empty_results: report.expressions.filter((f) => f.status === "empty_result").length,
       repairs_proposed: report.expressions.filter((f) => f.repair?.repaired === true).length,
       repairs_failed: report.expressions.filter((f) => f.repair?.repaired === false).length,
-      loop_blocks: report.gates.loop.blocks.length,
       transform_blocks: report.gates.transform.blocks.length,
       missing_evidence: report.missing_evidence.map((m) => m.step_id),
     });

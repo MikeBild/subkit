@@ -49,7 +49,7 @@ const RECIPE_CATEGORY_ENUM = new Set([
   "other",
 ]);
 
-const STEP_KINDS = ["request", "transform", "call", "wait", "branch", "parallel", "loop"] as const;
+const STEP_KINDS = ["request", "transform", "call", "wait", "branch", "parallel"] as const;
 
 const WORKFLOW_FEATURE_KINDS = ["webhook", "schedule", "budgeted-llm"] as const;
 
@@ -249,7 +249,6 @@ function lintPrimitiveCoverage(templates: Template[]): Violation[] {
     branch: 1,
     parallel: 1,
     wait: 1,
-    loop: 1,
     call: 0,
     webhook: 1,
     schedule: 1,

@@ -145,6 +145,7 @@ describe("GraphQL documents that are not a pure query keep the strict rule", () 
         {
           id: "read",
           kind: "request",
+          protocol: "graphql",
           connector_id: connector,
           method: "POST",
           graphql: {

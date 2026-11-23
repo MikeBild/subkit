@@ -80,12 +80,9 @@ describe("workflow-authoring skills · field coverage", () => {
   test("references propose_schema_migration in the repair flow", () => {
     expect(body).toContain("propose_schema_migration");
   });
-  test("documents the loop.over and branch.when JSONata bindings (`$scope`/`$input`)", () => {
-    expect(body).toMatch(/loop\.over.*\$scope|branch\.when.*\$scope/s);
+  test("documents the branch.when JSONata bindings (`$scope`/`$input`)", () => {
+    expect(body).toMatch(/branch\.when.*\$scope/s);
     expect(body).toContain("$input");
-  });
-  test("documents the inspect-before-loop authoring gate", () => {
-    expect(body).toContain("loop_authoring_requires_inspect");
   });
   test("documents the inspect-before-transform authoring gate", () => {
     expect(body).toContain("transform_authoring_requires_inspect");
@@ -123,16 +120,16 @@ describe("workflow-authoring skills · field coverage", () => {
     expect(body).toMatch(/fingerprint-keyed/i);
     expect(body).toMatch(/unchanged steps keep their evidence/i);
   });
-  test("documents the inside-a-loop-body addressing table ($item-only)", () => {
-    expect(body).toContain("Inside a loop body — addressing table");
+  test("documents the for_each addressing table ($item-only) and that no loop kind exists", () => {
+    expect(body).toContain("Inside a `for_each` step — addressing table");
+    expect(body).toContain("there is no `loop` step");
+    expect(body).not.toMatch(/"kind": "loop"/);
     expect(body).toContain(`\${item.name}`);
     expect(body).toContain("$item.name");
-    expect(body).toMatch(/`item_var` is retired/);
-    expect(body).not.toMatch(/"item_var":/);
+    expect(body).not.toMatch(/item_var/);
     expect(body).toMatch(/\$item.*always bound|ALWAYS bound/is);
     expect(body).toContain("$loop_index");
-    expect(body).toContain("$scope.<body_step_id>.data");
-    expect(body).toContain("$scope.<loop_id>.data.<body_step_id>.data");
+    expect(body).toContain("$scope.<step_id>.data.<step_id>.data");
     expect(body).toContain(`\${item.full_name}`);
     expect(body).toContain("input.scope.fetch_languages.data");
   });
@@ -163,10 +160,6 @@ describe("workflow-authoring skills · field coverage", () => {
       /full-live preview.*explicit confirmation|explicit confirmation machinery/is,
     );
   });
-  test("documents that loop.body is an ARRAY of step ids", () => {
-    expect(body).toMatch(/`body` is an ARRAY of step ids/);
-    expect(body).toContain("expected array, received string");
-  });
   test("documents the JSONata flavour rules (:= blocks, dynamic keys, & concatenation)", () => {
     expect(body).toContain("JSONata flavour rules");
     expect(body).toContain("( $t := $sum(items.price);");
@@ -177,9 +170,9 @@ describe("workflow-authoring skills · field coverage", () => {
 
 describe("data-handling.md · $item-only loop contract + JS-first transforms", () => {
   const body = read("data-handling.md");
-  test("documents the $item-only loop iteration contract (item_var retired)", () => {
-    expect(body).toMatch(/`item_var` is RETIRED/);
-    expect(body).not.toMatch(/"item_var":/);
+  test("documents the $item-only for_each iteration contract", () => {
+    expect(body).not.toMatch(/item_var/);
+    expect(body).not.toMatch(/"kind": "loop"/);
     expect(body).toContain(`\${item.id}`);
     expect(body).toContain("$item.name");
     expect(body).toContain("$loop_index");
@@ -204,12 +197,11 @@ describe("subkit-concepts.md / multi-step-best-practices.md · item_var retired"
     expect(body).toContain("$item");
     expect(body).toContain(`\${item.`);
   });
-  test(`multi-step-best-practices teaches $item / \${item.…} and rejects item_var`, () => {
+  test(`multi-step-best-practices teaches $item / \${item.…}`, () => {
     const body = read("multi-step-best-practices.md");
     expect(body).not.toMatch(/"item_var":/);
     expect(body).toContain("$item");
     expect(body).toContain("$loop_index");
-    expect(body).toMatch(/`item_var` is retired/);
   });
 });
 

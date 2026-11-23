@@ -7,6 +7,7 @@ const steps = [
   {
     id: "store",
     kind: "request",
+    protocol: "s3",
     method: "PUT",
     connector_id: "00000000-0000-4000-8000-000000000001",
     s3: { key: "k", scope: { key_prefix: "v1/guess/", max_bytes: 10 } },

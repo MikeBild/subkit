@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { workflowJsonDigest } from "./canonical-json.ts";
+import { requestDigest } from "./core/request-protocol.ts";
 import { compileWorkflowEffectManifest } from "./effect-manifest.ts";
 import { GMAIL_SEND_TARGET } from "./report-delivery-boundary.ts";
 import {
@@ -177,7 +178,7 @@ test("manifest requires a matching reviewed transactional profile and sensitive 
     connector_id: null,
     driver: "http",
     environment: "prod",
-    request_digest: workflowJsonDigest(step),
+    request_digest: requestDigest(step),
     target: GMAIL_SEND_TARGET,
     configuration_digest: "a".repeat(64),
     credential_binding_digest: null,

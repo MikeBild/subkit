@@ -27,9 +27,7 @@ type RunStep = RunResult["steps"][number];
 function containerChildIds(definition: WorkflowDef): Set<string> {
   const children = new Set<string>();
   for (const step of definition.steps) {
-    if (step.kind === "loop") {
-      for (const id of step.body ?? []) children.add(id);
-    } else if (step.kind === "parallel") {
+    if (step.kind === "parallel") {
       for (const branch of step.branches ?? []) for (const id of branch ?? []) children.add(id);
     }
   }

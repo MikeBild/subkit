@@ -126,6 +126,7 @@ const QUERY =
 function projectStep(extra: Record<string, unknown> = {}, graphql: Record<string, unknown> = {}) {
   return {
     kind: "request",
+    protocol: "graphql",
     id: "project_items",
     connector_id: connectorId,
     method: "GET",

@@ -348,14 +348,9 @@ describe("loop body offload — iterationResults hold references", () => {
           expression: "return [1, 2];",
         },
         {
-          kind: "loop",
-          id: "each",
-          over: "$scope.items.data",
-          body: ["fetch_blob"],
-        },
-        {
           kind: "request",
           id: "fetch_blob",
+          for_each: "(sourceData) => sourceData.items.data",
           method: "GET",
           url: `${mock.baseUrl}/big`,
         },

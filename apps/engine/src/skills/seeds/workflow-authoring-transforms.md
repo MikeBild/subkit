@@ -77,15 +77,15 @@ workflow-level output transform (mutually exclusive with the JSONata
 
 A `transform` step is JavaScript-ONLY. JSONata is not a valid transform
 language — `language: "jsonata"` on a `transform` step is rejected by the
-schema. JSONata survives only in `data_selector`, `loop.over`,
+schema. JSONata survives only in `data_selector`,
 `branch.when`, `output_transform`, and `${scope.x.data}` string
 interpolation. When you write JSONata in one of THOSE slots, the
 addressing contract is strict:
 
 - Upstream steps: `$scope.<step_id>.data…` (bare `<step_id>.data` also
   resolves). Workflow input: `$input`.
-- Inside a loop body the current item is **`$item` ONLY** (plus
-  `$loop_index`). `item_var` is retired: declaring it is rejected, and a
+- On a step with `for_each` the current item is **`$item` ONLY** (plus
+  `$loop_index`). A
   bare item name (`project.name`) is rejected at authoring time with a
   `did_you_mean: "$item.name"` rewrite.
 

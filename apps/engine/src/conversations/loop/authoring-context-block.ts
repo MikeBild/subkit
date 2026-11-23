@@ -411,15 +411,12 @@ function renderScopeManifestLines(
     const id = typeof step.id === "string" ? step.id : null;
     const kind = typeof step.kind === "string" ? step.kind : null;
     if (!id || !kind) continue;
-    if (kind === "loop") {
-      const body = Array.isArray(step.body) ? (step.body as unknown[]) : [];
-      const bodyIds = body.filter((b): b is string => typeof b === "string");
-      const firstBodyId = bodyIds[0] ?? null;
+    if (typeof step.for_each === "string" && step.for_each.length > 0) {
       lines.push(
-        `  - $scope.${id}.data: array — one entry per iteration; each entry is { ${bodyIds.join(", ") || "<no body steps>"} } where each body key is a ScopeEnvelope { data, error, duration_ms }`,
+        `  - $scope.${id}.data: array — one entry per for_each iteration; each entry is { ${id} } where ${id} is a ScopeEnvelope { data, error, duration_ms }`,
       );
-      lines.push(`    - inside the loop body, $item is the current item (no envelope)`);
-      const itemShape = describeLoopItemShape(step, tracesById);
+      lines.push(`    - inside the step, $item is the current item (no envelope)`);
+      const itemShape = describeLoopItemShape(step.for_each, tracesById);
       if (itemShape.keys.length > 0) {
         const shown = itemShape.keys.slice(0, 12);
         const more = itemShape.keys.length > 12 ? `, … +${itemShape.keys.length - 12} more` : "";
@@ -435,12 +432,8 @@ function renderScopeManifestLines(
           `    - $item shape unknown — run \`dry_run_workflow\` to record a sample of \`${itemShape.source}\``,
         );
       }
-      if (firstBodyId) {
-        lines.push(
-          `    - flat access across all iterations: $scope.${id}.data.${firstBodyId}.data`,
-        );
-        lines.push(`    - one iteration: $scope.${id}.data[0].${firstBodyId}.data`);
-      }
+      lines.push(`    - flat access across all iterations: $scope.${id}.data.${id}.data`);
+      lines.push(`    - one iteration: $scope.${id}.data[0].${id}.data`);
     } else {
       lines.push(
         `  - $scope.${id}.data: ${describeStepDataType(kind, step)} (envelope at $scope.${id})`,
@@ -473,18 +466,11 @@ interface LoopItemShape {
 }
 
 function describeLoopItemShape(
-  loop: Record<string, unknown>,
+  sourceExpr: string,
   tracesById: Map<string, WorkflowDraftStepPreview>,
 ): LoopItemShape {
-  const over = typeof loop.over === "string" ? loop.over : null;
-  const dataSelector = typeof loop.data_selector === "string" ? loop.data_selector : null;
-  const sourceExpr = over ?? dataSelector ?? "";
   const refs = extractStepIdReferences(sourceExpr);
-  let sourceStep = refs[0] ?? null;
-  if (!sourceStep && dataSelector) {
-    const m = /sourceData\.([a-zA-Z_][\w-]*)/.exec(dataSelector);
-    sourceStep = m?.[1] ?? null;
-  }
+  const sourceStep = refs[0] ?? /sourceData\.([a-zA-Z_][\w-]*)/.exec(sourceExpr)?.[1] ?? null;
   if (!sourceStep) {
     return { source: null, keys: [], primitive: null, previewed: false };
   }

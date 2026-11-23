@@ -4,7 +4,9 @@ import { join } from "node:path";
 import { StepSchema } from "../../../workflows/types.ts";
 
 const SKILLS_DIR = join(import.meta.dir, "..");
-const KNOWN_KINDS = StepSchema.options.map((s) => (s.shape.kind as { value: string }).value);
+const KNOWN_KINDS = StepSchema.options.map(
+  (s) => (("options" in s ? s.options[0] : s).shape.kind as { value: string }).value,
+);
 
 interface Block {
   file: string;

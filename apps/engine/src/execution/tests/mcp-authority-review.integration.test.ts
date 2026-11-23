@@ -143,6 +143,7 @@ async function fixture(
       {
         id: "call",
         kind: "request",
+        protocol: "mcp",
         connector_id: connectorId,
         mcp: {
           operation: "call_tool",
@@ -365,6 +366,7 @@ test("the chat review compares the pin before it writes an approval, and only fo
       {
         id: "call",
         kind: "request",
+        protocol: "mcp",
         connector_id: connectorId,
         mcp: {
           operation: "call_tool",
@@ -466,6 +468,7 @@ test("the pin is compared with the server of the environment the approval is for
         {
           id: "call",
           kind: "request",
+          protocol: "mcp",
           connector_id: connectorId,
           mcp: {
             operation: "call_tool",

@@ -254,24 +254,6 @@ export function validateStepReferences(def: DomainWorkflowDef): ReferenceValidat
   };
 
   for (const step of def.steps) {
-    if (step.kind === "loop") {
-      const loop = step as { over?: string; data_selector?: string };
-      const over = loop.over;
-      if (over) {
-        collectReferences(over, stepIds, (ref) => emit(step.id, "over", ref, over));
-        collectBarePathReferences(over, stepIds, (ref) => emit(step.id, "over", ref, over));
-      }
-      const data_selector = loop.data_selector;
-      if (data_selector) {
-        collectReferences(data_selector, stepIds, (ref) =>
-          emit(step.id, "data_selector", ref, data_selector),
-        );
-        collectBarePathReferences(data_selector, stepIds, (ref) =>
-          emit(step.id, "data_selector", ref, data_selector),
-        );
-      }
-      continue;
-    }
     if (step.kind === "branch") {
       const when = (step as { when?: string }).when;
       if (when) {
@@ -359,27 +341,9 @@ export function validateBareIterationIdentifiers(
   steps: ReadonlyArray<Record<string, unknown>>,
 ): ReferenceValidationError[] {
   const errors: ReferenceValidationError[] = [];
-  const byId = new Map<string, Record<string, unknown>>();
-  for (const s of steps) {
-    if (typeof s.id === "string") byId.set(s.id, s);
-  }
-  const parentLoop = new Map<string, Record<string, unknown>>();
-  for (const s of steps) {
-    if (s.kind !== "loop" || !Array.isArray(s.body)) continue;
-    for (const bodyId of s.body) {
-      if (typeof bodyId === "string" && !parentLoop.has(bodyId)) parentLoop.set(bodyId, s);
-    }
-  }
-
   const jsonataSite = (step: Record<string, unknown>): { field: string; text: string } | null => {
-    if (step.kind === "transform") {
-      return null;
-    }
     if (step.kind === "branch" && typeof step.when === "string" && step.when) {
       return { field: "when", text: step.when };
-    }
-    if (step.kind === "loop" && typeof step.over === "string" && step.over) {
-      return { field: "over", text: step.over };
     }
     return null;
   };
@@ -387,8 +351,7 @@ export function validateBareIterationIdentifiers(
   for (const step of steps) {
     const id = typeof step.id === "string" ? step.id : null;
     if (!id) continue;
-    const loop = parentLoop.get(id);
-    if (!loop) continue;
+    if (typeof step.for_each !== "string" || step.for_each.length === 0) continue;
     const site = jsonataSite(step);
     if (!site) continue;
     const names = new Set<string>(["item"]);
@@ -451,11 +414,6 @@ export function validateUnsupportedPlaceholders(
   };
 
   for (const step of def.steps) {
-    if (step.kind === "loop") {
-      const loop = step as { over?: string; data_selector?: string };
-      if (loop.over) visit(step.id, "over", loop.over);
-      continue;
-    }
     if (step.kind === "branch") {
       const br = step as { when?: string };
       if (br.when) visit(step.id, "when", br.when);

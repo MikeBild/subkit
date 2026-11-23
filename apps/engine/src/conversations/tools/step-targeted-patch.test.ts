@@ -4,7 +4,7 @@ import { resolveStepPatches, StepPatchSchema } from "./step-targeted-patch.ts";
 
 const scope = { key_prefix: "reports/daily/", max_bytes: 1000000 };
 const patch = { step_id: "store_report", op: "add" as const, path: "/s3/scope", value: scope };
-const store = { id: "store_report", s3: { key: "reports/daily/file.json" } };
+const store = { protocol: "s3", id: "store_report", s3: { key: "reports/daily/file.json" } };
 test("stable target survives a reordered draft and preserves existing request fields", () => {
   for (const steps of [
     [store, { id: "build" }],

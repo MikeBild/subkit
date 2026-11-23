@@ -3,6 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import { executions, workflowExecutionAuthorities } from "../../db/schema/index.ts";
 import { databaseNow } from "../../test-helpers/database-clock.ts";
 import { workflowJsonDigest } from "../../workflows/canonical-json.ts";
+import { requestDigest } from "../../workflows/core/request-protocol.ts";
 import { compileWorkflowEffectManifest } from "../../workflows/effect-manifest.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "../../workflows/types.ts";
 import { assertExecutionAuthorityCurrent } from "../authority-admission.ts";
@@ -67,7 +68,7 @@ async function fixture() {
     connector_id: null,
     driver: "http" as const,
     environment: "dev" as const,
-    request_digest: workflowJsonDigest(definition.steps.find((s) => s.id === step_id)),
+    request_digest: requestDigest(definition.steps.find((s) => s.id === step_id)),
     target,
     configuration_digest: "a".repeat(64),
     credential_binding_digest: null,

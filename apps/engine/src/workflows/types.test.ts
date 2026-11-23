@@ -18,15 +18,17 @@ describe("StepSchema — retired `tool` step is rejected", () => {
     const options = (StepSchema as unknown as { options: ReadonlyArray<unknown> }).options;
     const kinds = options
       .map((o) => {
-        const shape = (o as { shape?: { kind?: { value?: string } } }).shape;
-        return shape?.kind?.value ?? null;
+        const member = o as {
+          shape?: { kind?: { value?: string } };
+          options?: ReadonlyArray<{ shape?: { kind?: { value?: string } } }>;
+        };
+        return (member.options?.[0] ?? member).shape?.kind?.value ?? null;
       })
       .filter((k): k is string => typeof k === "string")
       .sort();
     expect(kinds).toEqual([
       "branch",
       "call",
-      "loop",
       "parallel",
       "request",
       "transform",
@@ -50,7 +52,6 @@ describe("StepSchema — retired `tool` step is rejected", () => {
         then_steps: ["a"],
       },
       { ...baseFields, kind: "parallel", branches: [["a"], ["b"]] },
-      { ...baseFields, kind: "loop", over: "$.list", body: ["b"] },
     ];
     for (const s of samples) {
       const result = StepSchema.safeParse(s);
@@ -62,6 +63,7 @@ describe("StepSchema — retired `tool` step is rejected", () => {
 test("GraphQL pagination accepts valid required nested connection paths", () => {
   const step = {
     kind: "request",
+    protocol: "graphql",
     id: "read",
     url: "https://api.example.com/graphql",
     graphql: {
@@ -104,6 +106,7 @@ test("GraphQL pagination validates the empty-read guard", () => {
   const withGuard = (guard: Record<string, unknown>) =>
     StepSchema.safeParse({
       kind: "request",
+      protocol: "graphql",
       id: "read",
       url: "https://api.example.com/graphql",
       graphql: {
@@ -337,34 +340,6 @@ describe("validateWorkflowDef — W3a retirement enforcement", () => {
           id: "shape",
           kind: "transform",
           expression: "return 1;",
-        },
-      ],
-    });
-    expect(res.ok).toBe(true);
-    expect(res.errors).toHaveLength(0);
-  });
-
-  test("accepts kind:'loop' — still valid at the validation layer for backwards compat", () => {
-    const res = validateWorkflowDef({
-      name: "loop-ok",
-      steps: [
-        {
-          id: "fetch",
-          kind: "request",
-          method: "GET",
-          url: "https://api.example.com/items",
-        },
-        {
-          id: "iter",
-          kind: "loop",
-          over: "$scope.fetch.data",
-          body: ["process"],
-        },
-        {
-          id: "process",
-          kind: "request",
-          method: "GET",
-          url: "https://api.example.com/items/${item.id}",
         },
       ],
     });

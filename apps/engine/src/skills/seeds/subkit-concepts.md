@@ -59,13 +59,15 @@ Each **step** has at minimum:
 ```
 
 - `id` — unique within the workflow, snake_case. Referenced by downstream steps.
-- `kind` — one of the eight kinds listed below.
+- `kind` — one of the seven kinds listed below.
 - request-step fields are **flattened**: `connector_id`, `method`, `path`, `query`,
   `headers`, `body`, and `graphql` live at the top level. Do not wrap them in `config`.
 - `data_selector` — optional JSONata that trims the envelope's `data` before downstream steps see it.
 - `on_error` — behavior when the step fails.
 
-## The 8 step kinds
+## The 7 step kinds
+
+Any step can carry `for_each` and then runs once per element; the element is `$item` (JSONata) / `${item.…}` (strings).
 
 | Kind | Purpose | One-line config example |
 |---|---|---|
@@ -74,7 +76,6 @@ Each **step** has at minimum:
 | `wait` | Pause for a duration | `{ "duration_ms": 30000 }` |
 | `branch` | Conditional routing by step id | `{ "when": "$scope.classify.data.tier = 'gold'", "then_steps": ["notify_gold"], "else_steps": ["notify_standard"] }` |
 | `parallel` | Run child step ids concurrently | `{ "branches": [["write_pg"], ["write_s3"]] }` |
-| `loop` | Iterate over an array and run a child step body by id; the current item is `$item` (JSONata) / `${item.…}` (strings) | `{ "over": "$scope.list_orders.data.results", "body": ["process_order"] }` |
 | `call` | Invoke another workflow as a subroutine | `{ "workflow_slug": "send_receipt", "input": { "order_id": "${scope.lookup.data.id}" } }` |
 | `tool` | Invoke a sandboxed container step | `{ "image": "ghcr.io/example/uuid:1.0", "cmd": ["generate"] }` |
 
@@ -117,19 +118,19 @@ resolves them at step-start time:
 | `${input.<path>}` | Workflow input, validated against `input_schema` | `${input.week}` |
 | `${caller.<field>}` | Immutable authenticated execution identity, never workflow input | `${caller.principalId}` |
 | `${scope.<step_id>.<path>}` | Envelope field from a prior step (scope form) | `${scope.list_orders.data.total}` |
-| `${item.<path>}` | Current loop iteration item (only valid inside a loop body) | `${item.id}` |
+| `${item.<path>}` | Current `for_each` item (only valid on a step that declares `for_each`) | `${item.id}` |
 
 Caller is `{ tenantId, principalId, principalKind, provider, productId }` or `null` for trusted callerless system runs. `principalKind` is `user` or `system_account`; an authenticated system account has a caller. `provider` is an open string and `productId` is a string or null. JavaScript transforms read `input.scope.$caller`; JSONata reads `$caller`. Neither caller-shaped input nor a child workflow can replace this identity. Product principals run matching saved workflows only; declaring a product on an inline definition does not authorize it. See workflow-authoring for exact field types, header constraints, owner storage boundaries and sensitive execution limitations.
 
 `${scope...}` and `$scope...` are two interchangeable forms for the same scope
 access. Use `${scope.foo.data.x}` inside string-interpolated configs (URLs, headers,
 SQL text), and `$scope.foo.data.x` inside JSONata expressions (data_selector,
-loop.over, branch.when, output_transform). Inside a JavaScript `transform`
+branch.when, output_transform). Inside a JavaScript `transform`
 expression the same data is `input.scope.foo.data.x`.
 
 ## JSONata basics
 
-`data_selector`, `loop.over`, `branch.when`, `output_transform`, and
+`data_selector`, `branch.when`, `output_transform`, and
 `${scope.x.data}` string interpolation use JSONata. `transform` steps are
 JavaScript-ONLY: the expression is a function body with exactly one global,
 `input` (`input.scope.<step_id>.data…` for upstream steps, `input.input` for
@@ -201,8 +202,7 @@ long as connector slugs match and required credentials exist in the prod env.
 - **Cross-env assumptions.** A dev credential does not resolve in prod. Test with
   `probe_connector` per environment before committing.
 - **Shadowing step ids.** Two steps with the same `id` inside one workflow silently
-  shadow each other in `$scope`; the validator now rejects this, but nested
-  `loop.body` ids must also be unique.
+  shadow each other in `$scope`; the validator rejects this.
 - **Treating `wait.seconds` as async.** A `wait` step blocks the run; use it only
   for short pauses (backoff, rate-limit cooldowns). For long delays, split into
   two workflows triggered by a scheduler.

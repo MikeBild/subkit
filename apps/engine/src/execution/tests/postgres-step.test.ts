@@ -45,6 +45,7 @@ describe("request step · postgres connector dispatch", () => {
         {
           id: "list",
           kind: "request",
+          protocol: "sql",
           method: "SELECT",
           connector_id: pgConnectorId,
           sql: { query: "SELECT id, name FROM public.pg_step_widgets ORDER BY id" },
@@ -71,6 +72,7 @@ describe("request step · postgres connector dispatch", () => {
         {
           id: "find",
           kind: "request",
+          protocol: "sql",
           method: "SELECT",
           connector_id: pgConnectorId,
           sql: {
@@ -101,6 +103,7 @@ describe("request step · postgres connector dispatch", () => {
         {
           id: "find",
           kind: "request",
+          protocol: "sql",
           method: "SELECT",
           connector_id: pgConnectorId,
           sql: {
@@ -133,6 +136,7 @@ describe("request step · postgres connector dispatch", () => {
         {
           id: "transfer",
           kind: "request",
+          protocol: "sql",
           method: "UPDATE",
           connector_id: pgConnectorId,
           sql: {
@@ -177,6 +181,7 @@ describe("request step · postgres connector dispatch", () => {
         {
           id: "tx",
           kind: "request",
+          protocol: "sql",
           method: "INSERT",
           connector_id: pgConnectorId,
           sql: {
@@ -216,6 +221,7 @@ describe("request step · postgres connector dispatch", () => {
         {
           id: "stream",
           kind: "request",
+          protocol: "sql",
           method: "SELECT",
           connector_id: pgConnectorId,
           sql: {
@@ -249,6 +255,7 @@ describe("request step · postgres connector dispatch", () => {
         {
           id: "flip",
           kind: "request",
+          protocol: "sql",
           method: "UPDATE",
           connector_id: pgConnectorId,
           sql: {
@@ -282,6 +289,7 @@ describe("request step · postgres connector dispatch", () => {
         {
           id: "purge",
           kind: "request",
+          protocol: "sql",
           method: "DELETE",
           connector_id: pgConnectorId,
           sql: { query: "DELETE FROM public.pg_step_atmost" },
@@ -310,6 +318,7 @@ describe("request step · postgres connector dispatch", () => {
         {
           id: "fetch",
           kind: "request",
+          protocol: "sql",
           method: "SELECT",
           connector_id: pgConnectorId,
           sql: { query: "SELECT id FROM public.pg_step_atleast" },
@@ -341,6 +350,7 @@ describe("request step · postgres connector dispatch", () => {
         {
           id: "tx",
           kind: "request",
+          protocol: "sql",
           method: "UPDATE",
           connector_id: pgConnectorId,
           sql: {

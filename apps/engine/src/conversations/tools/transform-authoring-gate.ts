@@ -150,14 +150,13 @@ export function evaluateTransformAuthoringGate(
   const controlFlowChildIds = new Set<string>();
   for (const step of workflow.steps) {
     const kind = (step as { kind?: unknown }).kind;
-    if (kind !== "loop" && kind !== "branch" && kind !== "parallel") continue;
+    if (kind !== "branch" && kind !== "parallel") continue;
     const id = (step as { id?: unknown }).id;
     if (typeof id === "string") controlFlowStepIds.add(id);
     const collect = (arr: unknown): void => {
       if (!Array.isArray(arr)) return;
       for (const child of arr) if (typeof child === "string") controlFlowChildIds.add(child);
     };
-    collect((step as { body?: unknown }).body);
     collect((step as { then_steps?: unknown }).then_steps);
     collect((step as { else_steps?: unknown }).else_steps);
     const branches = (step as { branches?: unknown }).branches;

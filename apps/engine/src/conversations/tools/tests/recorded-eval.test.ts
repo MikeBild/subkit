@@ -144,9 +144,9 @@ describe("runRecordedEval — bare-iteration-identifier lint", () => {
       {
         steps: [
           fetch,
-          { id: "iter", kind: "loop", over: "$scope.fetch.data.items", body: ["gate"] },
           {
             id: "gate",
+            for_each: "(sourceData) => sourceData.fetch.data.items",
             kind: "branch",
             when: "item.active = true",
             then_steps: [],
@@ -163,15 +163,15 @@ describe("runRecordedEval — bare-iteration-identifier lint", () => {
     expect(report.next_actions).toContain("edit_workflow_patch");
   });
 
-  test("a JavaScript loop-body transform is unaffected by the JSONata lint", async () => {
+  test("a JavaScript for_each transform is unaffected by the JSONata lint", async () => {
     const fetch = fetchStep();
     const report = await runRecordedEval(
       {
         steps: [
           fetch,
-          { id: "iter", kind: "loop", over: "$scope.fetch.data.items", body: ["shape"] },
           {
             id: "shape",
+            for_each: "(sourceData) => sourceData.fetch.data.items",
             kind: "transform",
             language: "javascript",
             expression: "const item = input.item; return item;",
@@ -186,38 +186,15 @@ describe("runRecordedEval — bare-iteration-identifier lint", () => {
 });
 
 describe("runRecordedEval — gate verdicts as outcomes", () => {
-  test("loop referencing un-previewed step yields gate blocks + missing_evidence + dry_run next action", async () => {
-    const report = await runRecordedEval(
-      {
-        steps: [
-          fetchStep(),
-          { id: "iter", kind: "loop", over: "$scope.fetch.data", body: ["b"] },
-          {
-            id: "b",
-            kind: "transform",
-            language: "javascript",
-            expression: "return input.scope.$item;",
-          },
-        ],
-      },
-      { latest_preview: null },
-    );
-    expect(report.ok).toBe(false);
-    expect(report.gates.loop.ok).toBe(false);
-    expect(report.missing_evidence.map((m) => m.step_id)).toContain("fetch");
-    expect(report.missing_evidence[0]?.next_action).toBe("dry_run_workflow");
-    expect(report.next_actions).toContain("dry_run_workflow");
-  });
-
-  test("loop-body transforms are compile-only (no $item context to evaluate against)", async () => {
+  test("for_each transforms are compile-only (no $item context to evaluate against)", async () => {
     const fetch = fetchStep();
     const report = await runRecordedEval(
       {
         steps: [
           fetch,
-          { id: "iter", kind: "loop", over: "$scope.fetch.data.items", body: ["b"] },
           {
             id: "b",
+            for_each: "(sourceData) => sourceData.fetch.data.items",
             kind: "transform",
             language: "javascript",
             expression:
@@ -229,7 +206,5 @@ describe("runRecordedEval — gate verdicts as outcomes", () => {
     );
     const finding = report.expressions.find((f) => f.site === "steps.b.expression");
     expect(finding?.status).toBe("not_evaluated");
-    const over = report.expressions.find((f) => f.site === "steps.iter.over");
-    expect(over?.status).toBe("ok");
   });
 });

@@ -1,4 +1,5 @@
 import { classifyHttpSideEffect, type SideEffect } from "@shared/index.ts";
+import { requestProtocolDriver } from "@shared/request-protocol.ts";
 import { resolveGraphqlStepEndpoint } from "../../../connectors/drivers/graphql-endpoint.ts";
 import { scrubString, scrubStringsDeep } from "../../../logging/scrub-secrets.ts";
 import { now } from "../../../utils/clock.ts";
@@ -14,15 +15,7 @@ export function requestRequiresPreparationHold(
   driver?: string,
   baseUrl?: string | null,
 ): boolean {
-  const declaredDriver = step.mcp
-    ? "mcp"
-    : step.sql
-      ? "postgres"
-      : step.graphql
-        ? "graphql"
-        : step.s3
-          ? "s3"
-          : "http";
+  const declaredDriver = requestProtocolDriver(step);
   const graphqlOnHttp =
     declaredDriver === "graphql" &&
     driver === "http" &&

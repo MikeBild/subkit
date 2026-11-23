@@ -83,7 +83,7 @@ describe("authenticated execution caller", () => {
     expect(after).toHaveLength(before.length);
   });
 
-  for (const iteration of ["loop", "for_each"]) {
+  for (const iteration of ["for_each"]) {
     test(`${iteration} iterations preserve the authenticated caller despite item spoofing`, async () => {
       const owner = principal("00000000-0000-4000-8000-000000000015");
       const { workflow_id } = await createWorkflowRow(ctx, {
@@ -98,9 +98,6 @@ describe("authenticated execution caller", () => {
             expression:
               "return [{ $caller: { principalId: 'foreign' } }, { principalId: 'foreign' }];",
           },
-          ...(iteration === "loop"
-            ? [{ id: "iterate", kind: "loop", over: "source.data", body: ["observe"] }]
-            : []),
           {
             id: "observe",
             kind: "transform",

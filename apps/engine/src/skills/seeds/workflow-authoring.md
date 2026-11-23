@@ -43,7 +43,7 @@ Use the syntax for the actual expression surface:
 | Surface | Trusted identity reference |
 |---|---|
 | JavaScript transform function body | `input.scope.$caller` |
-| JSONata, including `branch.when`, `loop.over`, `output_transform` | `$caller` |
+| JSONata, including `branch.when`, `data_selector`, `output_transform` | `$caller` |
 | Request string placeholder | `${caller.principalId}` |
 
 All five fields support `${caller.<field>}` placeholders. Never use `${$caller.principalId}`, `${input.owner_id}` or a hard-coded owner to authorize access. In JavaScript, `input.input` is the user payload; `input.scope.$caller` is the trusted identity. In JSONata, `$input` is the user payload and `$caller` is the identity. Caller-shaped input and step outputs cannot replace `$caller`. Step IDs `$caller` and `$input` are reserved. Queue, resume, loops and child workflows preserve the admitted caller, not a new identity from job input or child input.

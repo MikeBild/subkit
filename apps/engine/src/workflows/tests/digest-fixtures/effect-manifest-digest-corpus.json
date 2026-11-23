@@ -423,6 +423,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "next_mail",
               "on_error": "fail",
               "method": "GET",
@@ -1332,6 +1333,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "mcp",
               "id": "next_mail",
               "on_error": "fail",
               "method": "GET",
@@ -1478,6 +1480,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "s3",
               "id": "store_manifest",
               "on_error": "fail",
               "method": "PUT",
@@ -1535,6 +1538,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "s3",
               "id": "store_manifest",
               "on_error": "fail",
               "method": "PUT",
@@ -1592,6 +1596,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "s3",
               "id": "store_manifest",
               "on_error": "fail",
               "method": "PUT",
@@ -1643,6 +1648,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "s3",
               "id": "store_manifest",
               "on_error": "fail",
               "method": "PUT",
@@ -2848,6 +2854,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "send",
               "on_error": "fail",
               "method": "POST",
@@ -2886,6 +2893,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "send",
               "on_error": "fail",
               "method": "POST",
@@ -2924,6 +2932,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "sql",
               "id": "send",
               "on_error": "fail",
               "method": "SELECT",
@@ -2962,6 +2971,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "sql",
               "id": "send",
               "on_error": "fail",
               "method": "SELECT",
@@ -3000,6 +3010,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "mcp",
               "id": "send",
               "on_error": "fail",
               "method": "GET",
@@ -3038,6 +3049,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "mcp",
               "id": "send",
               "on_error": "fail",
               "method": "GET",
@@ -3194,6 +3206,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "mcp",
               "id": "send",
               "on_error": "fail",
               "method": "GET",
@@ -3232,6 +3245,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "send",
               "on_error": "fail",
               "method": "POST",
@@ -3272,6 +3286,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "send",
               "on_error": "fail",
               "method": "POST",
@@ -3311,6 +3326,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "s3",
               "id": "send",
               "on_error": "fail",
               "method": "GET",
@@ -3349,6 +3365,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "s3",
               "id": "send",
               "on_error": "fail",
               "method": "PUT",
@@ -3387,6 +3404,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "s3",
               "id": "send",
               "on_error": "fail",
               "method": "DELETE",
@@ -5641,6 +5659,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "effect",
               "on_error": "fail",
               "method": "POST",
@@ -5679,6 +5698,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "effect",
               "on_error": "fail",
               "method": "POST",
@@ -5717,6 +5737,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "mcp",
               "id": "effect",
               "on_error": "fail",
               "method": "POST",
@@ -5755,6 +5776,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "mcp",
               "id": "effect",
               "on_error": "fail",
               "method": "GET",
@@ -5793,6 +5815,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "mcp",
               "id": "effect",
               "on_error": "fail",
               "method": "GET",
@@ -5831,6 +5854,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "sql",
               "id": "effect",
               "on_error": "fail",
               "method": "SELECT",
@@ -5869,6 +5893,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "s3",
               "id": "effect",
               "on_error": "fail",
               "method": "DELETE",
@@ -5983,6 +6008,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "mcp",
               "id": "effect",
               "on_error": "fail",
               "method": "POST",
@@ -6021,6 +6047,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "s3",
               "id": "effect",
               "on_error": "fail",
               "method": "LIST",
@@ -6059,6 +6086,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "effect",
               "on_error": "fail",
               "method": "DELETE",
@@ -6098,6 +6126,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "effect",
               "on_error": "fail",
               "method": "POST",
@@ -6137,6 +6166,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "effect",
               "on_error": "fail",
               "method": "POST",
@@ -6175,6 +6205,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "mcp",
               "id": "effect",
               "on_error": "fail",
               "method": "POST",
@@ -6213,6 +6244,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "effect",
               "on_error": "fail",
               "method": "POST",
@@ -6251,6 +6283,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "effect",
               "on_error": "fail",
               "method": "POST",
@@ -6289,6 +6322,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "effect",
               "on_error": "fail",
               "method": "DELETE",
@@ -6327,6 +6361,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "mcp",
               "id": "effect",
               "on_error": "fail",
               "method": "DELETE",
@@ -6883,6 +6918,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "mcp",
               "id": "call",
               "on_error": "fail",
               "method": "GET",
@@ -6950,6 +6986,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "mcp",
               "id": "call",
               "on_error": "fail",
               "method": "GET",
@@ -7017,6 +7054,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "mcp",
               "id": "call",
               "on_error": "fail",
               "method": "GET",
@@ -7083,6 +7121,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "mcp",
               "id": "call",
               "on_error": "fail",
               "method": "GET",
@@ -7126,6 +7165,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "mcp",
               "id": "call",
               "on_error": "fail",
               "method": "GET",
@@ -7178,6 +7218,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "mcp",
               "id": "call",
               "on_error": "fail",
               "method": "GET",
@@ -7245,6 +7286,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "mcp",
               "id": "call",
               "on_error": "fail",
               "method": "GET",
@@ -7312,6 +7354,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "mcp",
               "id": "call",
               "on_error": "fail",
               "method": "GET",
@@ -7379,6 +7422,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "mcp",
               "id": "call",
               "on_error": "fail",
               "method": "GET",
@@ -7445,6 +7489,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "mcp",
               "id": "call",
               "on_error": "fail",
               "method": "GET",
@@ -7512,6 +7557,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "mcp",
               "id": "call",
               "on_error": "fail",
               "method": "GET",
@@ -7579,6 +7625,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "mcp",
               "id": "call",
               "on_error": "fail",
               "method": "GET",
@@ -8177,6 +8224,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "s3",
               "id": "send",
               "on_error": "fail",
               "method": "PUT",
@@ -8228,6 +8276,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "s3",
               "id": "send",
               "on_error": "fail",
               "method": "PUT",
@@ -8279,6 +8328,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "s3",
               "id": "send",
               "on_error": "fail",
               "method": "PUT",
@@ -9209,6 +9259,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "send",
               "on_error": "fail",
               "method": "GET",
@@ -9249,6 +9300,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "sql",
               "id": "send",
               "on_error": "fail",
               "method": "SELECT",
@@ -9287,6 +9339,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "sql",
               "id": "send",
               "on_error": "fail",
               "method": "SELECT",
@@ -9325,6 +9378,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "sql",
               "id": "send",
               "on_error": "fail",
               "method": "SELECT",
@@ -9364,6 +9418,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "sql",
               "id": "send",
               "on_error": "fail",
               "method": "SELECT",
@@ -9403,6 +9458,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "items",
               "on_error": "fail",
               "method": "POST",
@@ -9452,6 +9508,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "items",
               "on_error": "fail",
               "method": "POST",
@@ -9503,6 +9560,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "items",
               "on_error": "fail",
               "method": "POST",
@@ -9544,6 +9602,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "items",
               "on_error": "fail",
               "method": "POST",
@@ -9584,6 +9643,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "items",
               "on_error": "fail",
               "method": "POST",
@@ -9634,6 +9694,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "items",
               "on_error": "fail",
               "method": "POST",
@@ -9685,6 +9746,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "items",
               "on_error": "fail",
               "method": "POST",
@@ -9737,6 +9799,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "items",
               "on_error": "fail",
               "method": "POST",
@@ -9788,6 +9851,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "items",
               "on_error": "fail",
               "method": "POST",
@@ -9839,6 +9903,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "items",
               "on_error": "fail",
               "method": "POST",
@@ -9890,6 +9955,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "items",
               "on_error": "fail",
               "method": "POST",
@@ -10592,6 +10658,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "sql",
               "id": "send",
               "on_error": "fail",
               "method": "SELECT",
@@ -10633,6 +10700,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "mcp",
               "id": "send",
               "on_error": "fail",
               "method": "GET",
@@ -10711,6 +10779,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "send",
               "on_error": "fail",
               "method": "POST",
@@ -11086,6 +11155,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "s3",
               "id": "send",
               "on_error": "fail",
               "method": "PUT",
@@ -11138,6 +11208,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "s3",
               "id": "send",
               "on_error": "fail",
               "method": "PUT",
@@ -11191,6 +11262,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "s3",
               "id": "send",
               "on_error": "fail",
               "method": "PUT",
@@ -11243,6 +11315,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "s3",
               "id": "send",
               "on_error": "fail",
               "method": "PUT",
@@ -11295,6 +11368,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "s3",
               "id": "send",
               "on_error": "fail",
               "method": "PUT",
@@ -11347,6 +11421,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "s3",
               "id": "send",
               "on_error": "fail",
               "method": "DELETE",
@@ -11398,6 +11473,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "s3",
               "id": "send",
               "on_error": "fail",
               "method": "DELETE",

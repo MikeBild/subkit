@@ -95,6 +95,7 @@ afterAll(async () => {
 describe("a successful MCP call is an ordinary request step", () => {
   test("call_tool returns the remote content in the versioned envelope", async () => {
     const result = await run("mcp-call-tool-ok", {
+      protocol: "mcp",
       mcp: { operation: "call_tool", tool: "search", arguments: { q: "invoices" } },
       max_retries: 0,
     });
@@ -124,6 +125,7 @@ describe("a successful MCP call is an ordinary request step", () => {
       steps: [
         {
           kind: "request",
+          protocol: "mcp",
           id: "mcp",
           connector_id: connectorId,
           mcp: {
@@ -147,6 +149,7 @@ describe("a successful MCP call is an ordinary request step", () => {
 
   test("read_resource and get_prompt reach their own MCP methods", async () => {
     const read = await run("mcp-read-resource", {
+      protocol: "mcp",
       mcp: { operation: "read_resource", uri: "file:///reports/q3.md" },
       max_retries: 0,
     });
@@ -158,6 +161,7 @@ describe("a successful MCP call is an ordinary request step", () => {
     expect(readMeta.tool_name).toBeUndefined();
 
     const prompt = await run("mcp-get-prompt", {
+      protocol: "mcp",
       mcp: { operation: "get_prompt", prompt: "summarise", arguments: { tone: "terse" } },
       max_retries: 0,
     });
@@ -169,6 +173,7 @@ describe("a successful MCP call is an ordinary request step", () => {
   test("response_filters run on the step output, as on every other driver", async () => {
     remote.content = { secret: "shhh", keep: "yes" };
     const result = await run("mcp-response-filter", {
+      protocol: "mcp",
       mcp: { operation: "call_tool", tool: "search" },
       response_filters: [{ target: "KEYS", action: "REMOVE", pattern: "^secret$" }],
       max_retries: 0,
@@ -183,6 +188,7 @@ describe("the output shape belongs to the operation, not to the reply", () => {
     remote.hasStructured = true;
     remote.structured = { invoices: 3, currency: "EUR" };
     const result = await run("mcp-structured", {
+      protocol: "mcp",
       mcp: { operation: "call_tool", tool: "search" },
       max_retries: 0,
     });
@@ -195,6 +201,7 @@ describe("the output shape belongs to the operation, not to the reply", () => {
 
   test("a tool that sends none gets the SAME shape with a null typed half", async () => {
     const result = await run("mcp-unstructured", {
+      protocol: "mcp",
       mcp: { operation: "call_tool", tool: "search" },
       max_retries: 0,
     });
@@ -210,6 +217,7 @@ describe("the output shape belongs to the operation, not to the reply", () => {
     remote.hasStructured = true;
     remote.structured = { partial: true };
     const result = await run("mcp-structured-tolerated", {
+      protocol: "mcp",
       mcp: { operation: "call_tool", tool: "search" },
       error_policy: "all",
       max_retries: 0,
@@ -223,12 +231,14 @@ describe("the output shape belongs to the operation, not to the reply", () => {
 
   test("read_resource and get_prompt have no typed half and are not enveloped", async () => {
     const read = await run("mcp-shape-read-resource", {
+      protocol: "mcp",
       mcp: { operation: "read_resource", uri: "file:///reports/q3.md" },
       max_retries: 0,
     });
     expect(read.output).toEqual([{ uri: "file:///reports/q3.md", text: "resource body" }]);
 
     const prompt = await run("mcp-shape-get-prompt", {
+      protocol: "mcp",
       mcp: { operation: "get_prompt", prompt: "summarise" },
       max_retries: 0,
     });
@@ -242,6 +252,7 @@ describe("retry is for reaching the server, not for what it said", () => {
   test("a transport failure is retried and the step then succeeds", async () => {
     remote.throwTimes = 2;
     const result = await run("mcp-retry-transport", {
+      protocol: "mcp",
       mcp: { operation: "call_tool", tool: "search" },
       max_retries: 3,
       retry_backoff_ms: 50,
@@ -261,6 +272,7 @@ describe("retry is for reaching the server, not for what it said", () => {
     expect(before.circuit_failure_count).toBe(0);
 
     const result = await run("mcp-remote-error", {
+      protocol: "mcp",
       mcp: { operation: "call_tool", tool: "search" },
       max_retries: 3,
       retry_backoff_ms: 50,
@@ -282,6 +294,7 @@ describe("retry is for reaching the server, not for what it said", () => {
     remote.isError = true;
     remote.content = [{ type: "text", text: "partial: 2 of 3 pages" }];
     const result = await run("mcp-error-policy-all", {
+      protocol: "mcp",
       mcp: { operation: "call_tool", tool: "search" },
       error_policy: "all",
       max_retries: 0,
@@ -300,6 +313,7 @@ describe("retry is for reaching the server, not for what it said", () => {
     )[0]!;
     remote.throwTimes = 99;
     const result = await run("mcp-breaker-per-step", {
+      protocol: "mcp",
       connector_id: countedConnectorId,
       mcp: { operation: "call_tool", tool: "search" },
       max_retries: 3,
@@ -321,6 +335,7 @@ describe("retry is for reaching the server, not for what it said", () => {
 describe("how long a remote call may run is decided inside the tenant", () => {
   test("the connector's own bound is the deadline the remote is actually given", async () => {
     const result = await run("mcp-connector-bound", {
+      protocol: "mcp",
       connector_id: boundedConnectorId,
       mcp: { operation: "call_tool", tool: "search" },
       max_retries: 0,
@@ -331,6 +346,7 @@ describe("how long a remote call may run is decided inside the tenant", () => {
 
   test("a connector that sets none gets the flat default", async () => {
     const result = await run("mcp-default-bound", {
+      protocol: "mcp",
       mcp: { operation: "call_tool", tool: "search" },
       max_retries: 0,
     });

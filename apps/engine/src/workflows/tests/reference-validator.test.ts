@@ -41,23 +41,6 @@ describe("validateStepReferences", () => {
     expect(errors[0]?.field).toBe("expression");
   });
 
-  test("flags unknown step in loop.over", () => {
-    const draft = wf([
-      { id: "fetch_projects", kind: "request", method: "GET", url: "https://x/y" },
-      {
-        id: "iter",
-        kind: "loop",
-        over: "$scope.fetch_projets.data.items",
-        body: ["fetch_projects"],
-      },
-    ]);
-    const errors = validateStepReferences(draft);
-    expect(errors).toHaveLength(1);
-    expect(errors[0]?.bad_reference).toBe("fetch_projets");
-    expect(errors[0]?.field).toBe("over");
-    expect(errors[0]?.did_you_mean).toContain("fetch_projects");
-  });
-
   test("flags unknown step in branch.when", () => {
     const draft = wf([
       { id: "approval", kind: "request", method: "GET", url: "https://x/y" },

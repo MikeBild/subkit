@@ -58,7 +58,7 @@ async function executeMcp(d: RequestDispatch): Promise<StepResult> {
     return failedStep(d, {
       code: "missing_mcp",
       message:
-        "request step against an mcp connector requires an `mcp` block naming the operation (call_tool | read_resource | get_prompt)",
+        'request step against an mcp connector requires `protocol: "mcp"` and an `mcp` block naming the operation (call_tool | read_resource | get_prompt)',
     });
   }
   const { mcp_target: mcpTargetRes, mcp_arguments: mcpArgsRes } = d.parts;

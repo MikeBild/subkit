@@ -54,6 +54,7 @@ describe("RequestStepSchema graphql — JSON-encoded string guard", () => {
     const r = RequestStepSchema.safeParse({
       id: "s",
       kind: "request",
+      protocol: "graphql",
       method: "POST",
       url: "https://example.com",
       graphql: { query: "{ me { id } }" },
@@ -65,6 +66,7 @@ describe("RequestStepSchema graphql — JSON-encoded string guard", () => {
     const r = RequestStepSchema.safeParse({
       id: "s",
       kind: "request",
+      protocol: "graphql",
       method: "POST",
       url: "https://example.com",
       graphql: "{ me { id } }",
@@ -79,6 +81,7 @@ describe("RequestStepSchema graphql — JSON-encoded string guard", () => {
     const r = RequestStepSchema.safeParse({
       id: "s",
       kind: "request",
+      protocol: "graphql",
       method: "POST",
       url: "https://example.com",
       graphql: '{"query":"{ me { id } }"}',
@@ -90,6 +93,7 @@ describe("RequestStepSchema graphql — JSON-encoded string guard", () => {
     const r = RequestStepSchema.safeParse({
       id: "s",
       kind: "request",
+      protocol: "graphql",
       method: "POST",
       url: "https://example.com",
       graphql: '[{"query":"x"}]',
