@@ -30,7 +30,7 @@ export interface ShellIpcHost {
   openProfile(id: string): void;
   removeServer(id: string): Promise<void>;
   showView(view: ConnectView): void;
-  checkPermissions(): void;
+  checkPermissions(): Promise<void>;
   openPermissionSettings(key: PermissionKey): Promise<void>;
   restartApp(): void;
   checkUpdates(): Promise<void>;

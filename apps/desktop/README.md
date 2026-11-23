@@ -16,6 +16,24 @@ On a Mac with Apple Silicon it also runs on the Mac what the person allows:
 - **Local workspace.** “Only on this Mac” starts a bundled PostgreSQL 18 and the engine on the
   Mac, with backups, restore, a move to a server and removal.
 
+### macOS permissions: which app System Settings lists
+
+macOS lists an app under Privacy & Security only after that app has asked once. The helper
+`Contents/Helpers/agent-desktop/agent-desktop` runs as a child of SubKit's utility process and
+takes screenshots through `/usr/sbin/screencapture` without disclaiming responsibility, so macOS
+attributes both Screen Recording and Accessibility to SubKit itself (`dev.mikebild.subkit.desktop`,
+same Team ID). The helper never needs its own entry.
+
+- “Open System Settings” first asks from SubKit's main process: `AXIsProcessTrustedWithOptions`
+  with the prompt for Accessibility, `desktopCapturer.getSources` (ScreenCaptureKit) for Screen
+  Recording. Then it opens the pane. Turning on local use for the first time does the same once
+  per launch.
+- “Check again” also runs `agent-desktop permissions` in a fresh process, because a running
+  process keeps seeing the Screen Recording state it had at launch. A grant it sees but SubKit
+  does not yet shows “Restart SubKit”.
+- `permissions.requested` and `permissions.checked` in the app log record the state before and
+  after, the requesting process path and the result.
+
 ## Platforms
 
 | | macOS on Apple Silicon | Windows x64 |
