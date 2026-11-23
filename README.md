@@ -1,6 +1,5 @@
 <p align="center">
-  <a href="https://subkit.mikebild.dev/en/#gh-dark-mode-only"><img src=".github/readme/hero-dark.webp" alt="SubKit: the AI assistant your team can trust. Design. Review. Approve. Run. Cloud, self-hosted or on your computer." width="100%" /></a>
-  <a href="https://subkit.mikebild.dev/en/#gh-light-mode-only"><img src=".github/readme/hero.webp" alt="SubKit: the AI assistant your team can trust. Design. Review. Approve. Run. Cloud, self-hosted or on your computer." width="100%" /></a>
+  <a href="https://subkit.mikebild.dev/en/"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/hero-dark.webp" /><img src=".github/readme/hero.webp" alt="SubKit: the AI assistant your team can trust. Design. Review. Approve. Run. Cloud, self-hosted or on your computer." width="100%" /></picture></a>
 </p>
 
 <p align="center">
@@ -9,12 +8,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-mac-arm64.dmg"><img src=".github/readme/button-mac-dark.webp#gh-dark-mode-only" alt="Download for Mac" width="260" /></a>
-  <a href="https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-mac-arm64.dmg"><img src=".github/readme/button-mac.webp#gh-light-mode-only" alt="Download for Mac" width="260" /></a>
-  <a href="https://subkit-cloud.mikebild.dev"><img src=".github/readme/button-cloud-dark.webp#gh-dark-mode-only" alt="Sign up for SubKit Cloud" width="260" /></a>
-  <a href="https://subkit-cloud.mikebild.dev"><img src=".github/readme/button-cloud.webp#gh-light-mode-only" alt="Sign up for SubKit Cloud" width="260" /></a>
-  <a href="https://github.com/MikeBild/subkit/releases/latest/download/docker-compose.yml"><img src=".github/readme/button-selfhost-dark.webp#gh-dark-mode-only" alt="Self-host with Docker" width="260" /></a>
-  <a href="https://github.com/MikeBild/subkit/releases/latest/download/docker-compose.yml"><img src=".github/readme/button-selfhost.webp#gh-light-mode-only" alt="Self-host with Docker" width="260" /></a>
+  <a href="https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-mac-arm64.dmg"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/button-mac-dark.webp" /><img src=".github/readme/button-mac.webp" alt="Download for Mac" width="260" /></picture></a>
+  <a href="https://subkit-cloud.mikebild.dev"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/button-cloud-dark.webp" /><img src=".github/readme/button-cloud.webp" alt="Sign up for SubKit Cloud" width="260" /></picture></a>
+  <a href="https://github.com/MikeBild/subkit/releases/latest/download/docker-compose.yml"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/button-selfhost-dark.webp" /><img src=".github/readme/button-selfhost.webp" alt="Self-host with Docker" width="260" /></picture></a>
 </p>
 
 <p align="center">
@@ -70,15 +66,13 @@
 <br />
 
 <p align="center">
-  <img src=".github/readme/heading-approval-dark.webp#gh-dark-mode-only" alt="In your words, on your approval" width="100%" />
-  <img src=".github/readme/heading-approval.webp#gh-light-mode-only" alt="In your words, on your approval" width="100%" />
+  <picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/heading-approval-dark.webp" /><img src=".github/readme/heading-approval.webp" alt="In your words, on your approval" width="100%" /></picture>
 </p>
 
 <p align="center">The AI helps you design. It never decides what a workflow may do.<br />A person does, in writing, before the first run.</p>
 
 <p align="center">
-  <img src=".github/readme/lifecycle-dark.webp#gh-dark-mode-only" alt="Four steps: Design, describe the task in your own words and the AI drafts a workflow. Review, read every step and what it reads or writes. Approve, a person approves the environment, the validity and the boundary. Run, fixed steps with only the approved permissions, and every run is recorded." width="100%" />
-  <img src=".github/readme/lifecycle.webp#gh-light-mode-only" alt="Four steps: Design, describe the task in your own words and the AI drafts a workflow. Review, read every step and what it reads or writes. Approve, a person approves the environment, the validity and the boundary. Run, fixed steps with only the approved permissions, and every run is recorded." width="100%" />
+  <picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/lifecycle-dark.webp" /><img src=".github/readme/lifecycle.webp" alt="Four steps: Design, describe the task in your own words and the AI drafts a workflow. Review, read every step and what it reads or writes. Approve, a person approves the environment, the validity and the boundary. Run, fixed steps with only the approved permissions, and every run is recorded." width="100%" /></picture>
 </p>
 
 [![Approval dialog for the workflow “Invoice export v1”: environment Test, validity until revoked, 1 read, 0 writes, 1 service, with the sentence “Only reads from report at Sales reporting API. Changes nothing.”](.github/readme/cockpit-approval.webp)](https://subkit.mikebild.dev/en/documentation/first-workflow/)
@@ -90,15 +84,13 @@
 <a name="hands-the-recurring-work-over"></a>
 
 <p align="center">
-  <img src=".github/readme/heading-recurring-dark.webp#gh-dark-mode-only" alt="Hand over the recurring ones" width="100%" />
-  <img src=".github/readme/heading-recurring.webp#gh-light-mode-only" alt="Hand over the recurring ones" width="100%" />
+  <picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/heading-recurring-dark.webp" /><img src=".github/readme/heading-recurring.webp" alt="Hand over the recurring ones" width="100%" /></picture>
 </p>
 
 <p align="center">The jobs that come back daily, weekly or with every order.<br />SubKit does them, the same way every time.</p>
 
 <p align="center">
-  <img src=".github/readme/use-cases-dark.webp#gh-dark-mode-only" alt="Six examples: file the invoices from Gmail to Google Drive, mail the daily numbers from Google Analytics, sum up the week, list your open Jira tickets, watch a price page and mail every change, unlock paid access after a Stripe checkout." width="100%" />
-  <img src=".github/readme/use-cases.webp#gh-light-mode-only" alt="Six examples: file the invoices from Gmail to Google Drive, mail the daily numbers from Google Analytics, sum up the week, list your open Jira tickets, watch a price page and mail every change, unlock paid access after a Stripe checkout." width="100%" />
+  <picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/use-cases-dark.webp" /><img src=".github/readme/use-cases.webp" alt="Six examples: file the invoices from Gmail to Google Drive, mail the daily numbers from Google Analytics, sum up the week, list your open Jira tickets, watch a price page and mail every change, unlock paid access after a Stripe checkout." width="100%" /></picture>
 </p>
 
 <table>
@@ -129,8 +121,7 @@
 <a name="your-teams-second-brain"></a>
 
 <p align="center">
-  <img src=".github/readme/heading-knowledge-dark.webp#gh-dark-mode-only" alt="Your team’s second brain" width="100%" />
-  <img src=".github/readme/heading-knowledge.webp#gh-light-mode-only" alt="Your team’s second brain" width="100%" />
+  <picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/heading-knowledge-dark.webp" /><img src=".github/readme/heading-knowledge.webp" alt="Your team’s second brain" width="100%" /></picture>
 </p>
 
 <p align="center">Explain how your team works once. Everyone with the right permissions reuses it.</p>
@@ -153,8 +144,7 @@
 <a name="works-on-your-computer"></a>
 
 <p align="center">
-  <img src=".github/readme/heading-desktop-dark.webp#gh-dark-mode-only" alt="Works on your computer" width="100%" />
-  <img src=".github/readme/heading-desktop.webp#gh-light-mode-only" alt="Works on your computer" width="100%" />
+  <picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/heading-desktop-dark.webp" /><img src=".github/readme/heading-desktop.webp" alt="Works on your computer" width="100%" /></picture>
 </p>
 
 <p align="center">SubKit Desktop does the work that lives on your computer.<br />Nothing runs there until you turn it on.</p>
@@ -181,8 +171,7 @@
 <a name="reach-it-from-anywhere"></a>
 
 <p align="center">
-  <img src=".github/readme/heading-anywhere-dark.webp#gh-dark-mode-only" alt="Reach it from anywhere" width="100%" />
-  <img src=".github/readme/heading-anywhere.webp#gh-light-mode-only" alt="Reach it from anywhere" width="100%" />
+  <picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/heading-anywhere-dark.webp" /><img src=".github/readme/heading-anywhere.webp" alt="Reach it from anywhere" width="100%" /></picture>
 </p>
 
 <p align="center">One assistant, the same permissions, wherever your team works.</p>
@@ -201,8 +190,7 @@
 <br />
 
 <p align="center">
-  <img src=".github/readme/heading-boundaries-dark.webp#gh-dark-mode-only" alt="Your engine. Your model. Your boundaries." width="100%" />
-  <img src=".github/readme/heading-boundaries.webp#gh-light-mode-only" alt="Your engine. Your model. Your boundaries." width="100%" />
+  <picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/heading-boundaries-dark.webp" /><img src=".github/readme/heading-boundaries.webp" alt="Your engine. Your model. Your boundaries." width="100%" /></picture>
 </p>
 
 - **SubKit Cloud, your server or your computer.** Self-hosted, your data, files and keys stay with you.
@@ -221,8 +209,7 @@
 <br />
 
 <p align="center">
-  <img src=".github/readme/heading-engine-dark.webp#gh-dark-mode-only" alt="Inside the engine" width="100%" />
-  <img src=".github/readme/heading-engine.webp#gh-light-mode-only" alt="Inside the engine" width="100%" />
+  <picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/heading-engine-dark.webp" /><img src=".github/readme/heading-engine.webp" alt="Inside the engine" width="100%" /></picture>
 </p>
 
 <p align="center">One engine binary with the Cockpit built in, PostgreSQL and an object store.</p>
@@ -297,8 +284,7 @@ stateDiagram-v2
 <br />
 
 <p align="center">
-  <img src=".github/readme/heading-proven-dark.webp#gh-dark-mode-only" alt="Proven by tests, not by promises" width="100%" />
-  <img src=".github/readme/heading-proven.webp#gh-light-mode-only" alt="Proven by tests, not by promises" width="100%" />
+  <picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/heading-proven-dark.webp" /><img src=".github/readme/heading-proven.webp" alt="Proven by tests, not by promises" width="100%" /></picture>
 </p>
 
 <p align="center">Every release passes the same gate. The numbers come from this repository.</p>
@@ -319,8 +305,7 @@ stateDiagram-v2
 <br />
 
 <p align="center">
-  <img src=".github/readme/heading-answers-dark.webp#gh-dark-mode-only" alt="Plain answers" width="100%" />
-  <img src=".github/readme/heading-answers.webp#gh-light-mode-only" alt="Plain answers" width="100%" />
+  <picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/heading-answers-dark.webp" /><img src=".github/readme/heading-answers.webp" alt="Plain answers" width="100%" /></picture>
 </p>
 
 <details>
@@ -376,8 +361,7 @@ SubKit is in Preview. [Sign up for SubKit Cloud](#sign-up-for-subkit-cloud) your
 <a name="run-subkit"></a>
 
 <p align="center">
-  <img src=".github/readme/heading-run-dark.webp#gh-dark-mode-only" alt="Run SubKit" width="100%" />
-  <img src=".github/readme/heading-run.webp#gh-light-mode-only" alt="Run SubKit" width="100%" />
+  <picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/heading-run-dark.webp" /><img src=".github/readme/heading-run.webp" alt="Run SubKit" width="100%" /></picture>
 </p>
 
 <p align="center">Use SubKit Cloud, your own server or your computer.</p>
@@ -458,12 +442,9 @@ Every root command groups one concern: `gen`, `build`, `test`, `verify`, `qualit
 <br />
 
 <p align="center">
-  <a href="https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-mac-arm64.dmg"><img src=".github/readme/button-mac-dark.webp#gh-dark-mode-only" alt="Download for Mac" width="260" /></a>
-  <a href="https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-mac-arm64.dmg"><img src=".github/readme/button-mac.webp#gh-light-mode-only" alt="Download for Mac" width="260" /></a>
-  <a href="https://subkit-cloud.mikebild.dev"><img src=".github/readme/button-cloud-dark.webp#gh-dark-mode-only" alt="Sign up for SubKit Cloud" width="260" /></a>
-  <a href="https://subkit-cloud.mikebild.dev"><img src=".github/readme/button-cloud.webp#gh-light-mode-only" alt="Sign up for SubKit Cloud" width="260" /></a>
-  <a href="https://github.com/MikeBild/subkit/releases/latest/download/docker-compose.yml"><img src=".github/readme/button-selfhost-dark.webp#gh-dark-mode-only" alt="Self-host with Docker" width="260" /></a>
-  <a href="https://github.com/MikeBild/subkit/releases/latest/download/docker-compose.yml"><img src=".github/readme/button-selfhost.webp#gh-light-mode-only" alt="Self-host with Docker" width="260" /></a>
+  <a href="https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-mac-arm64.dmg"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/button-mac-dark.webp" /><img src=".github/readme/button-mac.webp" alt="Download for Mac" width="260" /></picture></a>
+  <a href="https://subkit-cloud.mikebild.dev"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/button-cloud-dark.webp" /><img src=".github/readme/button-cloud.webp" alt="Sign up for SubKit Cloud" width="260" /></picture></a>
+  <a href="https://github.com/MikeBild/subkit/releases/latest/download/docker-compose.yml"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/button-selfhost-dark.webp" /><img src=".github/readme/button-selfhost.webp" alt="Self-host with Docker" width="260" /></picture></a>
 </p>
 
 <p align="center">
