@@ -38,7 +38,7 @@ const ids = (value: unknown): string[] =>
 const pretty = (value: unknown): string =>
   value === undefined ? "" : JSON.stringify(value, null, 2);
 
-const REQUEST_DRIVER_FIELDS = ["url", "sql", "graphql", "mcp", "s3"] as const;
+const REQUEST_DRIVER_FIELDS = ["url", "sql", "graphql", "mcp", "s3", "sftp"] as const;
 
 function isFormKind(kind: unknown): kind is StepFormKind {
   return kind === "request" || kind === "transform" || kind === "wait" || kind === "branch";

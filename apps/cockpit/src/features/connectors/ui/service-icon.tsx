@@ -1,5 +1,5 @@
 import { cn } from "@ui/lib/utils";
-import { Bot, Plug, Workflow } from "lucide-react";
+import { Bot, FolderSync, type LucideIcon, Plug, Workflow } from "lucide-react";
 import type { CSSProperties } from "react";
 import { useSyncExternalStore } from "react";
 import { IconTile, type IconTileSize } from "@/components/cockpit/patterns";
@@ -11,6 +11,8 @@ import {
   serviceMarksReady,
   serviceNameOf,
 } from "@/lib/service-icons";
+
+const DRIVER_GLYPHS: Record<string, LucideIcon> = { mcp: Bot, sftp: FolderSync };
 
 const GLYPH: Record<IconTileSize, string> = {
   sm: "size-4",
@@ -59,7 +61,8 @@ function Glyph({ service, size }: { service: ServiceIdentity; size: string }) {
         className={cn("inline-block shrink-0 object-contain", size)}
       />
     );
-  const Fallback = service.kind === "generic" && service.driver === "mcp" ? Bot : Plug;
+  const Fallback =
+    (service.kind === "generic" && service.driver && DRIVER_GLYPHS[service.driver]) || Plug;
   return (
     <Fallback
       aria-hidden="true"

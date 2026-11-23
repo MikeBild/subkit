@@ -20,6 +20,7 @@ describe("label maps", () => {
     expect(driverLabel("mcp", de)).toBe("MCP-Server");
     expect(driverLabel("postgres", de)).toBe("PostgreSQL-Datenbank");
     expect(driverLabel("s3", de)).toBe("Objektspeicher (S3)");
+    expect(driverLabel("sftp", de)).toBe("Dateiserver (SFTP)");
     expect(transportLabel("http", de)).toBe("Streamable HTTP");
     expect(transportLabel("sse", de)).toBe("Server-Sent Events");
     expect(transportLabel("stdio", de)).toBe("Lokaler Prozess");

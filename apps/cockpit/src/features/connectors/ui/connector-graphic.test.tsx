@@ -4,6 +4,7 @@ import { loadServiceMarks } from "@/lib/service-icons";
 import { EMPTY_OAUTH_CLIENT } from "../model/create-connector-model";
 import { ConnectionGraphic } from "./connector-graphic";
 import { ConnectorSignInFields } from "./connector-sign-in-fields";
+import { ServiceIcon } from "./service-icon";
 
 function graphic(tone: "ok" | "warn" | "error") {
   return render(
@@ -66,5 +67,15 @@ describe("sign-in fields inside the wizard", () => {
     );
     expect(html).not.toContain('data-testid="signin"');
     expect(html).toContain('id="wizard-secret"');
+  });
+});
+
+describe("service icon without a brand", () => {
+  test("a file server shows a folder glyph, an unknown driver the plug", async () => {
+    await loadServiceMarks();
+    const sftp = render(<ServiceIcon service={{ kind: "generic", driver: "sftp" }} />);
+    expect(sftp).toContain("lucide-folder-sync");
+    const other = render(<ServiceIcon service={{ kind: "generic", driver: "http" }} />);
+    expect(other).toContain("lucide-plug");
   });
 });

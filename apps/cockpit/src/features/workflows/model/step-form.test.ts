@@ -222,6 +222,7 @@ describe("step form", () => {
     expect(isFormStep({ id: "a", kind: "branch", when: "true", then_steps: ["b"] })).toBe(true);
     expect(isFormStep({ id: "a", kind: "request", sql: { query: "select 1" } })).toBe(false);
     expect(isFormStep({ id: "a", kind: "request", url: "https://example.com" })).toBe(false);
+    expect(isFormStep({ id: "a", kind: "request", sftp: { path: "inbox/" } })).toBe(false);
     expect(isFormStep({ id: "a", kind: "request", connector_id: CONNECTOR, method: "HEAD" })).toBe(
       false,
     );

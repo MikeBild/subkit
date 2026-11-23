@@ -179,7 +179,7 @@ function headerLines(value: unknown): string | null {
   return lines.length > 0 ? lines.join("\n") : null;
 }
 
-export const REQUEST_PROTOCOLS = ["http", "graphql", "sql", "s3", "mcp"] as const;
+export const REQUEST_PROTOCOLS = ["http", "graphql", "sql", "s3", "sftp", "mcp"] as const;
 export type RequestProtocol = (typeof REQUEST_PROTOCOLS)[number];
 
 export function requestProtocol(raw: Record<string, unknown>): RequestProtocol {
@@ -191,6 +191,7 @@ const PROTOCOL_KEYS: Record<RequestProtocol, TranslationKey> = {
   sql: "workflow.via.sql",
   graphql: "workflow.via.graphql",
   s3: "workflow.via.s3",
+  sftp: "workflow.via.sftp",
   mcp: "workflow.via.mcp",
 };
 
@@ -241,6 +242,9 @@ function readRequest(raw: Record<string, unknown>): {
       target: text(member.key) ?? text(member.prefix),
     };
     blocks.push(...json("workflow.block.storage", raw.s3));
+  } else if (via === "sftp") {
+    essence = { kind: "request", via, verb: method ?? "GET", target: text(member.path) };
+    blocks.push(...json("workflow.block.fileServer", raw.sftp));
   } else {
     essence = {
       kind: "request",

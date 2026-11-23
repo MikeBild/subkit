@@ -206,6 +206,25 @@ describe("request steps", () => {
     expect(block(read(s3).blocks, "workflow.block.storage")?.code).toContain("reports/latest.json");
   });
 
+  test("a file-server request names its path and shows its settings", () => {
+    const sftp = {
+      id: "pull",
+      kind: "request",
+      protocol: "sftp",
+      method: "LIST",
+      connector_id: UUID,
+      sftp: { path: "inbox/", max_entries: 50 },
+    };
+    expect(essence(sftp)).toBe("Dateiserver · inbox/");
+    expect(read(sftp).facts).toContainEqual({
+      labelKey: "workflow.fact.protocol",
+      valueKey: "workflow.via.sftp",
+    });
+    expect(block(read(sftp).blocks, "workflow.block.fileServer")?.code).toContain(
+      '"max_entries": 50',
+    );
+  });
+
   test("a tool call on a remote server names the tool and shows its arguments", () => {
     const mcp = {
       id: "notify",

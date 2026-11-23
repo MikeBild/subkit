@@ -6,6 +6,7 @@ const DRIVER_KEYS: Record<string, TranslationKey> = {
   mcp: "connectorLabel.driver.mcp",
   postgres: "connectorLabel.driver.postgres",
   s3: "connectorLabel.driver.s3",
+  sftp: "connectorLabel.driver.sftp",
 };
 
 const TRANSPORT_KEYS: Record<string, TranslationKey> = {
