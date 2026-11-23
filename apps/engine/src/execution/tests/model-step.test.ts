@@ -132,6 +132,34 @@ describe("model step", () => {
     );
   });
 
+  test("a model step per item frames each item value in its own call", async () => {
+    getMockProvider().generateOverrides.workflow_step = () => ({ category: "billing" });
+    const result = await run([
+      {
+        id: "list",
+        kind: "transform",
+        language: "javascript",
+        expression: "return { items: [{ text: 'first' }, { text: 'second' }] };",
+      },
+      {
+        id: "classify",
+        kind: "model",
+        for_each: "(sourceData) => sourceData.list.data.items",
+        prompt: "Classify ${item.text}",
+        output_schema: verdict,
+      },
+    ]);
+    expect(result.status).toBe("succeeded");
+    expect(
+      getMockProvider()
+        .calls.map((call) => call.last_user)
+        .sort(),
+    ).toEqual([
+      "Classify ⟦untrusted:workflow⟧\nfirst\n⟦/untrusted⟧",
+      "Classify ⟦untrusted:workflow⟧\nsecond\n⟦/untrusted⟧",
+    ]);
+  });
+
   test("an unknown placeholder kind in the prompt fails before any call", async () => {
     const result = await run([
       { id: "classify", kind: "model", prompt: "Use ${bogus.value}", output_schema: verdict },
