@@ -7760,10 +7760,11 @@ Add a secret or a login. The token or password is read from stdin or a hidden pr
 
 #### `subkit vault attach`
 
-Attach a connector's credential as a vault item. The secret comes from stdin or a hidden prompt, never from arguments: the token, the header or query value, the password, the PEM key, or for aws_sigv4 the secret access key and an optional session token on a second line.
+Attach a connector's credential as a vault item. Name the connector by slug or id and choose its record with --env; each environment keeps its own credential. The secret comes from stdin or a hidden prompt, never from arguments: the token, the header or query value, the password, the PEM key, or for aws_sigv4 the secret access key and an optional session token on a second line.
 
-- `<connector-id>` (positional, required) — Connector id
-- `--mode` (string, required) — bearer | header | query | basic | aws_sigv4 | signed_jwt | none
+- `<connector-id>` (positional, required) — Connector slug or id
+- `--env` (string) — dev | prod: the connector record to attach to; required when the slug has both
+- `--mode` (string) — bearer | header | query | basic | aws_sigv4 | signed_jwt | none (default: the connector's auth type)
 - `--header` (string) — header mode: the header name; without it stdin holds Name=Value lines
 - `--query` (string) — query mode: the parameter name; without it stdin holds name=value lines
 - `--username` (string) — basic mode username
