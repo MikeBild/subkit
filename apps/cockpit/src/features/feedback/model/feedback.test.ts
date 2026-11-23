@@ -378,4 +378,20 @@ describe("diagnostics attachment", () => {
       }).attachments,
     ).toBeUndefined();
   });
+
+  test("the trace id survives cleaning the diagnostics", () => {
+    const cleaned = buildFeedbackDiagnostics({
+      clientKind: "desktop",
+      appVersion: "12.1.4",
+      platform: "darwin",
+      serverVersion: "12.1.4",
+      connection: "live",
+      route: "/cockpit",
+      errors: diagnostics.recent_errors,
+      removed: "[removed]",
+    });
+    const file = diagnosticsAttachment(cleaned, { traceId: null, connectionCause: null });
+    const content = JSON.parse(Buffer.from(file.content_base64, "base64").toString("utf8"));
+    expect(content.trace_id).toBe("4bf92f3577b34da6a3ce929d0e0e4736");
+  });
 });

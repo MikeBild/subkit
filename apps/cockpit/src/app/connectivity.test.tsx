@@ -1,12 +1,13 @@
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import { noticeResponse } from "@/api/transport";
 import { render } from "@/components/cockpit/patterns/test-utils";
+import { translate } from "@/lib/i18n";
 import { SseHttpError } from "@/lib/sse-stream";
-import { connectivity, createConnectivity } from "./connectivity";
+import { connectivity, createConnectivity, useConnectivity } from "./connectivity";
 import { DesktopStatusView } from "./desktop-status";
 import { parseDesktopStatus } from "./desktop-status-model";
-import { streamRefusal } from "./live-events";
-import { LiveIndicator } from "./live-indicator";
+import { streamRefusal, useLiveStatus } from "./live-events";
+import { LIVE_LABEL, LiveIndicator } from "./live-indicator";
 
 const TRACE = "4bf92f3577b34da6a3ce929d0e0e4736";
 
@@ -19,42 +20,45 @@ const DESKTOP_OFFLINE = parseDesktopStatus({
   },
 });
 
-function screen(store: ReturnType<typeof createConnectivity>) {
-  const connection = store.get();
-  return {
-    banner: render(
-      <DesktopStatusView status={DESKTOP_OFFLINE} connection={connection} bridge={null} />,
-    ),
-    badge: render(<LiveIndicator status={connection.status} />),
-  };
+function Screen() {
+  const connection = useConnectivity();
+  const { status } = useLiveStatus();
+  return (
+    <>
+      <DesktopStatusView status={DESKTOP_OFFLINE} connection={connection} bridge={null} />
+      <LiveIndicator status={status} />
+    </>
+  );
 }
 
+const CONNECTED = translate("de", LIVE_LABEL.live);
+
 describe("connected or offline: one source of truth", () => {
+  beforeEach(() => connectivity.stream("connecting", "starting"));
+
   test("offline, then a successful request: the banner is gone and the badge says connected", () => {
-    const store = createConnectivity(() => new Date("2026-11-23T07:17:00.000Z"));
-    store.stream("live", "stream_hello");
-    store.stream("reconnecting", "stream_refused", TRACE);
+    connectivity.stream("live", "stream_hello");
+    connectivity.stream("reconnecting", "stream_refused", TRACE);
 
-    const lost = screen(store);
-    expect(lost.banner).toContain('data-testid="desktop-status-offline"');
-    expect(lost.badge).toContain('data-live-status="reconnecting"');
-    expect(lost.badge).not.toContain("Verbunden");
+    const lost = render(<Screen />);
+    expect(lost).toContain('data-testid="desktop-status-offline"');
+    expect(lost).toContain('data-live-status="reconnecting"');
+    expect(lost).not.toContain(CONNECTED);
 
-    store.reachable();
+    noticeResponse(200, null);
 
-    const back = screen(store);
-    expect(back.banner).toBe("");
-    expect(back.badge).toContain('data-live-status="live"');
-    expect(back.badge).toContain("Verbunden");
-    expect(store.get().stream).toBe("reconnecting");
+    const back = render(<Screen />);
+    expect(back).not.toContain('data-testid="desktop-status');
+    expect(back).toContain('data-live-status="live"');
+    expect(back).toContain(CONNECTED);
+    expect(connectivity.get().stream).toBe("reconnecting");
   });
 
   test("the banner never shows next to a green badge, whatever the desktop app reports", () => {
-    const store = createConnectivity();
-    store.stream("live", "stream_hello");
-    const { banner, badge } = screen(store);
-    expect(badge).toContain("Verbunden");
-    expect(banner).toBe("");
+    connectivity.stream("live", "stream_hello");
+    const html = render(<Screen />);
+    expect(html).toContain(CONNECTED);
+    expect(html).not.toContain('data-testid="desktop-status');
   });
 
   test("the log records going offline and the recovery with their cause", () => {
