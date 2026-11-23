@@ -742,6 +742,7 @@ function AllSettings({
         all: true,
       }),
     );
+    if (window.location.pathname !== href.split(/[?#]/)[0]) return;
     if (`${window.location.pathname}${window.location.search}` !== href)
       window.history.replaceState(window.history.state, "", href);
   }, [leaf, activeSection, filter]);
