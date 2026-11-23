@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import { DEFAULT_SERVER } from "../shared/app-identity.ts";
 import type { ReportInput } from "../shared/ipc.ts";
 import {
-  attachByDefault,
   CLOSED_REPORT,
+  deliverReport,
   FEEDBACK_PATH,
   type ReportAnswer,
   type ReportBody,
@@ -60,7 +60,6 @@ export class ReportFlow {
       ...CLOSED_REPORT,
       host: target ? hostOf(target.origin) : null,
       signedIn: target?.signedIn ?? false,
-      attachDefault: attachByDefault(core.store.data.settings),
       preview,
       ...(target ? {} : { phase: "failed", failure: "no_server" }),
     };
@@ -100,24 +99,19 @@ export class ReportFlow {
     }
   }
 
-  private async deliver(target: ReportTarget, body: ReportBody): Promise<ReportAnswer | null> {
-    if (target.signedIn) {
-      const api = this.core.sessions.workspaceApi();
-      const { device_id: _device, ...signed } = body;
-      const answer = api
-        ? await api.send("POST", FEEDBACK_PATH, JSON.stringify(signed)).catch(() => null)
-        : null;
-      if (answer && answer.status !== 401) return answer;
-    }
-    return this.anonymous(target.origin, body);
-  }
-
-  private async anonymous(origin: string, body: ReportBody): Promise<ReportAnswer | null> {
-    const check = await checkAddress(origin);
-    if (check.result.status === "unreachable") return null;
-    const path = check.descriptor?.desktop?.anonymousFeedbackPath;
-    if (!path) return { status: 503, json: null, traceId: null };
-    return sendAnonymousReport(origin, path, body);
+  private deliver(target: ReportTarget, body: ReportBody): Promise<ReportAnswer | null> {
+    const api = this.core.sessions.workspaceApi();
+    return deliverReport(target, body, {
+      signed: api ? (signed) => api.send("POST", FEEDBACK_PATH, JSON.stringify(signed)) : null,
+      anonymousPath: async (origin) => {
+        const check = await checkAddress(origin);
+        return {
+          reachable: check.result.status !== "unreachable",
+          path: check.descriptor?.desktop?.anonymousFeedbackPath ?? null,
+        };
+      },
+      anonymous: sendAnonymousReport,
+    });
   }
 
   async save(): Promise<void> {

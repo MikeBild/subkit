@@ -408,7 +408,7 @@ describe.skipIf(!desktopRunner)("welcome and invitation", () => {
     expect(html).not.toContain('data-testid="step-next"');
   });
 
-  test("a declined diagnostics consent leaves the box unchecked and hides the preview", () => {
+  test("an unchecked box hides the preview", () => {
     const html = render(state({ view: "report", report: { ...opened, attachDefault: false } }));
     expect(html).toMatch(
       /data-testid="report-attach"[^>]*aria-checked="false"|aria-checked="false"[^>]*data-testid="report-attach"/,

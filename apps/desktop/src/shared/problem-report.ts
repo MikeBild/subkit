@@ -208,9 +208,24 @@ export function reportTarget(
   return fallback ? { origin: fallback, signedIn: false, deviceId: undefined } : null;
 }
 
-export function attachByDefault(settings: {
-  shareDiagnostics: boolean;
-  diagnosticsAsked: boolean;
-}): boolean {
-  return settings.shareDiagnostics || !settings.diagnosticsAsked;
+export interface ReportPorts {
+  signed: ((body: ReportBody) => Promise<ReportAnswer | null>) | null;
+  anonymousPath: (origin: string) => Promise<{ reachable: boolean; path: string | null }>;
+  anonymous: (origin: string, path: string, body: ReportBody) => Promise<ReportAnswer | null>;
+}
+
+export async function deliverReport(
+  target: ReportTarget,
+  body: ReportBody,
+  ports: ReportPorts,
+): Promise<ReportAnswer | null> {
+  if (target.signedIn && ports.signed) {
+    const { device_id: _device, ...signed } = body;
+    const answer = await ports.signed(signed).catch(() => null);
+    if (answer && answer.status !== 401) return answer;
+  }
+  const found = await ports.anonymousPath(target.origin);
+  if (!found.reachable) return null;
+  if (!found.path) return { status: 503, json: null, traceId: null };
+  return ports.anonymous(target.origin, found.path, body);
 }

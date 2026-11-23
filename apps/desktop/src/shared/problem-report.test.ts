@@ -2,9 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { buildDiagnostics } from "./diagnostics.ts";
 import {
   ATTACHMENT_MAX_BYTES,
-  attachByDefault,
   DIAGNOSTICS_FILENAME,
+  deliverReport,
   diagnosticsFile,
+  type ReportAnswer,
+  type ReportBody,
+  type ReportPorts,
   reportBody,
   reportOutcome,
   reportPreview,
@@ -224,10 +227,61 @@ describe("reportTarget", () => {
   });
 });
 
-describe("attachByDefault", () => {
-  test("attaches unless the person said no in the first-run question", () => {
-    expect(attachByDefault({ shareDiagnostics: false, diagnosticsAsked: false })).toBe(true);
-    expect(attachByDefault({ shareDiagnostics: true, diagnosticsAsked: true })).toBe(true);
-    expect(attachByDefault({ shareDiagnostics: false, diagnosticsAsked: true })).toBe(false);
+describe("deliverReport", () => {
+  const sent: ReportAnswer = { status: 201, json: { id: "r1" }, traceId: null };
+  const target = { origin: "https://work.example", signedIn: true, deviceId: DEVICE };
+  const report = (): ReportBody => body();
+
+  function ports(patch: Partial<ReportPorts> = {}) {
+    const calls: string[] = [];
+    const base: ReportPorts = {
+      signed: async (payload) => {
+        calls.push(`signed:${"device_id" in payload}`);
+        return sent;
+      },
+      anonymousPath: async () => {
+        calls.push("descriptor");
+        return { reachable: true, path: "/v1/feedback/anonymous" };
+      },
+      anonymous: async (_origin, path, payload) => {
+        calls.push(`anonymous:${path}:${payload.device_id}`);
+        return sent;
+      },
+    };
+    return { calls, ports: { ...base, ...patch } };
+  }
+
+  test("a signed-in report goes to the feedback endpoint without the device", async () => {
+    const { calls, ports: p } = ports();
+    expect(await deliverReport(target, report(), p)).toEqual(sent);
+    expect(calls).toEqual(["signed:false"]);
+  });
+
+  test("an expired sign-in or a failed request falls back to the anonymous path", async () => {
+    const expired = ports({
+      signed: async () => ({ status: 401, json: null, traceId: null }),
+    });
+    await deliverReport(target, report(), expired.ports);
+    expect(expired.calls).toEqual(["descriptor", `anonymous:/v1/feedback/anonymous:${DEVICE}`]);
+    const broken = ports({ signed: async () => Promise.reject(new Error("csrf")) });
+    await deliverReport(target, report(), broken.ports);
+    expect(broken.calls).toEqual(["descriptor", `anonymous:/v1/feedback/anonymous:${DEVICE}`]);
+  });
+
+  test("a signed-in server error is shown, not resent anonymously", async () => {
+    const failing = ports({ signed: async () => ({ status: 500, json: null, traceId: "t" }) });
+    expect(await deliverReport(target, report(), failing.ports)).toMatchObject({ status: 500 });
+    expect(failing.calls).toEqual([]);
+  });
+
+  test("an unreachable server is offline, one without the anonymous path unavailable", async () => {
+    const anon = { ...target, signedIn: false };
+    const offline = ports({ anonymousPath: async () => ({ reachable: false, path: null }) });
+    expect(await deliverReport(anon, report(), offline.ports)).toBeNull();
+    const closed = ports({ anonymousPath: async () => ({ reachable: true, path: null }) });
+    expect(reportOutcome(await deliverReport(anon, report(), closed.ports))).toMatchObject({
+      failure: "unavailable",
+    });
+    expect(closed.calls).toEqual([]);
   });
 });
