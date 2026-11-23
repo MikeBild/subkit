@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { BROWSER_PAGE_ROUTES } from "../browser-pages.ts";
 import { buildDefaultRegistry, createApp } from "../server.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
@@ -29,9 +30,11 @@ function canonicalFacadePair(pair: string): string {
     : pair;
 }
 
+const BROWSER_PAGES = new Set<string>(
+  BROWSER_PAGE_ROUTES.map((route) => `${route.method} ${normalizeSegments(route.path)}`),
+);
+
 const EXCLUDED_ROUTES = new Set<string>([
-  "GET /v1/identity/desktop-login/confirm",
-  "POST /v1/identity/desktop-login/confirm",
   "GET /docs",
   "GET /openapi.json",
   "GET /metrics",
@@ -181,6 +184,7 @@ describe("openapi route coverage", () => {
     const missing = [...registeredPairs]
       .filter((pair) => !COCKPIT_WEB_SURFACE.has(pair))
       .filter((pair) => !EXCLUDED_ROUTES.has(pair))
+      .filter((pair) => !BROWSER_PAGES.has(pair))
       .filter((pair) => !specPairs.has(pair))
       .sort();
 
