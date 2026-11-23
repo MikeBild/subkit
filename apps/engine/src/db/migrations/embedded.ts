@@ -22,6 +22,8 @@ import sql0001WorkspaceLanguage from "./0001_workspace_language.sql" with { type
 import sql0002ConnectionStartOwner from "./0002_connection_start_owner.sql" with { type: "text" };
 import sql0003TaskSourceMessage from "./0003_task_source_message.sql" with { type: "text" };
 import sql0004IntakeAnonymousCollector from "./0004_intake_anonymous_collector.sql" with { type: "text" };
+import sql0005SecondBrainContract from "./0005_second_brain_contract.sql" with { type: "text" };
+import sql0006KnowledgeReviewDue from "./0006_knowledge_review_due.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -51,6 +53,8 @@ const SQL_BY_TAG: Record<string, string> = {
   "0002_connection_start_owner": sql0002ConnectionStartOwner,
   "0003_task_source_message": sql0003TaskSourceMessage,
   "0004_intake_anonymous_collector": sql0004IntakeAnonymousCollector,
+  "0005_second_brain_contract": sql0005SecondBrainContract,
+  "0006_knowledge_review_due": sql0006KnowledgeReviewDue,
 };
 
 const journal = journalMeta as unknown as Journal;

@@ -33,6 +33,12 @@ export const knowledgeSourceRefreshEnum = pgEnum("knowledge_source_refresh", [
   "webhook",
 ]);
 
+const regconfig = customType<{ data: string; driverData: string }>({
+  dataType() {
+    return "regconfig";
+  },
+});
+
 const tsvector = customType<{ data: string; driverData: string }>({
   dataType() {
     return "tsvector";
@@ -61,8 +67,8 @@ export const knowledgeSources = pgTable(
     chunk_count: integer("chunk_count").notNull().default(0),
     refresh_strategy: knowledgeSourceRefreshEnum("refresh_strategy").notNull().default("manual"),
     refresh_cron: text("refresh_cron"),
-    refresh_webhook_secret: text("refresh_webhook_secret"),
     last_refreshed_at: timestamp("last_refreshed_at", { withTimezone: true }),
+    review_due_at: timestamp("review_due_at", { withTimezone: true }),
     ...timestamps,
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
   },
@@ -92,8 +98,9 @@ export const knowledgeChunks = pgTable(
     content: text("content").notNull(),
     byte_size: integer("byte_size").notNull(),
     fingerprint: text("fingerprint").notNull(),
+    fts_config: regconfig("fts_config").notNull().default(sql`'english'::regconfig`),
     tsv: tsvector("tsv").generatedAlwaysAs(
-      sql`to_tsvector('english', (COALESCE(title, '') || ' ') || content)`,
+      sql`to_tsvector(fts_config, (COALESCE(title, '') || ' ') || content)`,
     ),
     embedding: real("embedding").array(),
     embedding_model: text("embedding_model"),

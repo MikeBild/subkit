@@ -37,6 +37,8 @@ export const userSetupPreferences = pgTable(
     notifications_paused_at: timestamp("notifications_paused_at", { withTimezone: true }),
     notifications_paused_until: timestamp("notifications_paused_until", { withTimezone: true }),
     first_job: text("first_job"),
+    save_new_notes: boolean("save_new_notes").notNull().default(true),
+    notes_learned_through: timestamp("notes_learned_through", { withTimezone: true }),
     services: jsonb("services").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     ...timestamps,
   },

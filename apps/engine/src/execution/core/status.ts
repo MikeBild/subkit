@@ -2,6 +2,7 @@ export const EXECUTION_STATUSES = [
   "queued",
   "waiting_for_device",
   "running",
+  "uncertain",
   "succeeded",
   "failed",
   "aborted",
@@ -18,6 +19,7 @@ export const NON_TERMINAL_EXECUTION_STATUSES = [
   "queued",
   "waiting_for_device",
   "running",
+  "uncertain",
 ] as const satisfies readonly ExecutionStatus[];
 
 export type NonTerminalExecutionStatus = (typeof NON_TERMINAL_EXECUTION_STATUSES)[number];
@@ -43,9 +45,10 @@ export const BEFORE_START_EXECUTION_STATUSES = [
 ] as const satisfies readonly NonTerminalExecutionStatus[];
 
 export function canTransition(from: ExecutionStatus, to: ExecutionStatus): boolean {
-  if (from === "queued") return to !== "queued";
+  if (from === "queued") return to !== "queued" && to !== "uncertain";
   if (from === "waiting_for_device") return to === "queued" || to === "failed" || to === "aborted";
-  return from === "running" && isTerminalExecutionStatus(to);
+  if (from === "uncertain") return to === "queued" || to === "failed" || to === "aborted";
+  return from === "running" && (to === "uncertain" || isTerminalExecutionStatus(to));
 }
 
 export function transitionSources(

@@ -11,6 +11,7 @@ export const schedulerSweepProducerEnum = pgEnum("scheduler_sweep_producer", [
   "knowledge",
   "skill",
   "task",
+  "notes",
 ]);
 
 export type SchedulerSweepProducer = (typeof schedulerSweepProducerEnum.enumValues)[number];

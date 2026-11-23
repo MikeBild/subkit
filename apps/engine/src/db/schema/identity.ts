@@ -58,6 +58,7 @@ export const tenants = pgTable(
     timezone: text("timezone").default("UTC").notNull(),
     language: text("language").$type<WorkspaceLanguage>().default("en").notNull(),
     last_proactive_scan_at: timestamp("last_proactive_scan_at", { withTimezone: true }),
+    last_personal_notes_scan_at: timestamp("last_personal_notes_scan_at", { withTimezone: true }),
     last_skill_candidate_analyze_at: timestamp("last_skill_candidate_analyze_at", {
       withTimezone: true,
     }),

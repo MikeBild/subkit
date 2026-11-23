@@ -36,6 +36,20 @@
       "when": 1795333884842,
       "tag": "0004_intake_anonymous_collector",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795408395809,
+      "tag": "0005_second_brain_contract",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795408396200,
+      "tag": "0006_knowledge_review_due",
+      "breakpoints": true
     }
   ]
 }

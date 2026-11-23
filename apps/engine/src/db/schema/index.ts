@@ -1,5 +1,6 @@
 export * from "./_common.ts";
 export * from "./approval-rules.ts";
+export * from "./attention-snoozes.ts";
 export * from "./audit.ts";
 export * from "./caller-budget.ts";
 export * from "./catalog_categories.ts";
@@ -39,6 +40,7 @@ export * from "./mcp_tasks.ts";
 export * from "./notifications.ts";
 export * from "./packages.ts";
 export * from "./pair-approvals.ts";
+export * from "./personal-notes.ts";
 export * from "./rbac.ts";
 export * from "./request_hooks.ts";
 export * from "./runtime_config.ts";

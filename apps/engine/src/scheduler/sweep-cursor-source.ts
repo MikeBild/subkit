@@ -13,6 +13,7 @@ export const SWEEP_CADENCE_MS = {
   reauth: 60 * 60 * 1000,
   "endpoint-contract": 6 * 60 * 60 * 1000,
   skill: 6 * 60 * 60 * 1000,
+  notes: 60 * 60 * 1000,
 } as const;
 
 export type SweepCadenceProducer = keyof typeof SWEEP_CADENCE_MS;
@@ -20,6 +21,7 @@ export type SweepCadenceProducer = keyof typeof SWEEP_CADENCE_MS;
 export function sweepSource(producer: SchedulerSweepProducer): SQL {
   switch (producer) {
     case "task":
+    case "notes":
     case "catalog":
     case "drift":
     case "reauth":
@@ -58,5 +60,7 @@ export function sweepCadenceColumn(producer: SweepCadenceProducer) {
       return tenants.last_endpoint_contract_scan_at;
     case "skill":
       return tenants.last_skill_candidate_analyze_at;
+    case "notes":
+      return tenants.last_personal_notes_scan_at;
   }
 }

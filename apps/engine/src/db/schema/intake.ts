@@ -142,9 +142,11 @@ export const intakeItems = subkit.table(
     admitted_target_kind: text("admitted_target_kind").$type<IntakeTargetKind>(),
     admitted_target_id: uuid("admitted_target_id"),
     attachment_file_id: uuid("attachment_file_id"),
+    group_key: text("group_key"),
     ...timestamps,
   },
   (t) => [
+    index("intake_items_tenant_group_idx").on(t.tenant_id, t.group_key),
     uniqueIndex("intake_items_tenant_request_key").on(t.tenant_id, t.client_request_id),
     index("intake_items_tenant_category_updated_idx").on(t.tenant_id, t.category, t.updated_at),
     index("intake_items_tenant_state_updated_idx").on(t.tenant_id, t.state, t.updated_at),

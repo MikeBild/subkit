@@ -1,6 +1,6 @@
 {
-  "id": "90445de4-3fae-4b13-8af2-a06fae7effd1",
-  "prevId": "d777afda-17a5-48a7-bd9f-2438ee045156",
+  "id": "81535e8a-2706-4578-a6c3-ec6c28d636bc",
+  "prevId": "165a9be4-d8af-42fd-9dec-9061fb187fa1",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -99,6 +99,12 @@
         },
         "content_hash": {
           "name": "content_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_quote": {
+          "name": "source_quote",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -252,6 +258,10 @@
           "name": "tool_approval_rules_content_hash_check",
           "value": "\"tool_approval_rules\".\"content_hash\" IS NULL OR \"tool_approval_rules\".\"content_hash\" ~ '^[0-9a-f]{64}$'"
         },
+        "tool_approval_rules_source_quote_check": {
+          "name": "tool_approval_rules_source_quote_check",
+          "value": "\"tool_approval_rules\".\"source_quote\" IS NULL OR char_length(\"tool_approval_rules\".\"source_quote\") BETWEEN 1 AND 400"
+        },
         "tool_approval_rules_daily_check": {
           "name": "tool_approval_rules_daily_check",
           "value": "\"tool_approval_rules\".\"daily_limit\" BETWEEN 1 AND 500 AND \"tool_approval_rules\".\"uses_on_day\" >= 0"
@@ -261,6 +271,96 @@
           "value": "(\"tool_approval_rules\".\"state\" = 'revoked') = (\"tool_approval_rules\".\"revoked_at\" IS NOT NULL)"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.attention_snoozes": {
+      "name": "attention_snoozes",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "attention_key": {
+          "name": "attention_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "snoozed_until": {
+          "name": "snoozed_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "attention_snoozes_until_idx": {
+          "name": "attention_snoozes_until_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "snoozed_until",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "attention_snoozes_tenant_id_tenants_id_fk": {
+          "name": "attention_snoozes_tenant_id_tenants_id_fk",
+          "tableFrom": "attention_snoozes",
+          "tableTo": "tenants",
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "attention_snoozes_user_id_users_id_fk": {
+          "name": "attention_snoozes_user_id_users_id_fk",
+          "tableFrom": "attention_snoozes",
+          "tableTo": "users",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "attention_snoozes_tenant_id_user_id_attention_key_pk": {
+          "name": "attention_snoozes_tenant_id_user_id_attention_key_pk",
+          "columns": ["tenant_id", "user_id", "attention_key"]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.audit_log": {
@@ -8058,6 +8158,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
+        },
+        "write_dispatched_at": {
+          "name": "write_dispatched_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -8296,6 +8402,19 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
+        },
+        "heartbeat_at": {
+          "name": "heartbeat_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attempt": {
+          "name": "attempt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
         },
         "idempotency_key": {
           "name": "idempotency_key",
@@ -8756,6 +8875,18 @@
         "closed_at": {
           "name": "closed_at",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "accepted_operations": {
+          "name": "accepted_operations",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "accepted_digest": {
+          "name": "accepted_digest",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -11192,6 +11323,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "last_personal_notes_scan_at": {
+          "name": "last_personal_notes_scan_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "last_skill_candidate_analyze_at": {
           "name": "last_skill_candidate_analyze_at",
           "type": "timestamp with time zone",
@@ -12318,6 +12455,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "group_key": {
+          "name": "group_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -12334,6 +12477,27 @@
         }
       },
       "indexes": {
+        "intake_items_tenant_group_idx": {
+          "name": "intake_items_tenant_group_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "group_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "intake_items_tenant_request_key": {
           "name": "intake_items_tenant_request_key",
           "columns": [
@@ -12881,13 +13045,20 @@
           "primaryKey": false,
           "notNull": true
         },
+        "fts_config": {
+          "name": "fts_config",
+          "type": "regconfig",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'english'::regconfig"
+        },
         "tsv": {
           "name": "tsv",
           "type": "tsvector",
           "primaryKey": false,
           "notNull": false,
           "generated": {
-            "as": "to_tsvector('english', (COALESCE(title, '') || ' ') || content)",
+            "as": "to_tsvector(fts_config, (COALESCE(title, '') || ' ') || content)",
             "type": "stored"
           }
         },
@@ -13279,14 +13450,14 @@
           "primaryKey": false,
           "notNull": false
         },
-        "refresh_webhook_secret": {
-          "name": "refresh_webhook_secret",
-          "type": "text",
+        "last_refreshed_at": {
+          "name": "last_refreshed_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },
-        "last_refreshed_at": {
-          "name": "last_refreshed_at",
+        "review_due_at": {
+          "name": "review_due_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
@@ -16136,6 +16307,445 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.personal_note_sources": {
+      "name": "personal_note_sources",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "note_id": {
+          "name": "note_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "message_id": {
+          "name": "message_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "quote_ciphertext": {
+          "name": "quote_ciphertext",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "quote_iv": {
+          "name": "quote_iv",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "quote_auth_tag": {
+          "name": "quote_auth_tag",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "personal_note_sources_note_message_key": {
+          "name": "personal_note_sources_note_message_key",
+          "columns": [
+            {
+              "expression": "note_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "message_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "personal_note_sources_tenant_note_idx": {
+          "name": "personal_note_sources_tenant_note_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "note_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "personal_note_sources_tenant_id_tenants_id_fk": {
+          "name": "personal_note_sources_tenant_id_tenants_id_fk",
+          "tableFrom": "personal_note_sources",
+          "tableTo": "tenants",
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "personal_note_sources_note_id_personal_notes_id_fk": {
+          "name": "personal_note_sources_note_id_personal_notes_id_fk",
+          "tableFrom": "personal_note_sources",
+          "tableTo": "personal_notes",
+          "columnsFrom": ["note_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "personal_note_sources_message_id_conversation_messages_id_fk": {
+          "name": "personal_note_sources_message_id_conversation_messages_id_fk",
+          "tableFrom": "personal_note_sources",
+          "tableTo": "conversation_messages",
+          "columnsFrom": ["message_id"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "personal_note_sources_conversation_id_conversations_id_fk": {
+          "name": "personal_note_sources_conversation_id_conversations_id_fk",
+          "tableFrom": "personal_note_sources",
+          "tableTo": "conversations",
+          "columnsFrom": ["conversation_id"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.personal_notes": {
+      "name": "personal_notes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "area": {
+          "name": "area",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "origin": {
+          "name": "origin",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fact_kind": {
+          "name": "fact_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'fact'"
+        },
+        "text_ciphertext": {
+          "name": "text_ciphertext",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "text_iv": {
+          "name": "text_iv",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "text_auth_tag": {
+          "name": "text_auth_tag",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "abstract_ciphertext": {
+          "name": "abstract_ciphertext",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "abstract_iv": {
+          "name": "abstract_iv",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "abstract_auth_tag": {
+          "name": "abstract_auth_tag",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "confirmed_at": {
+          "name": "confirmed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "valid_from": {
+          "name": "valid_from",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "valid_until": {
+          "name": "valid_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "archive_reason": {
+          "name": "archive_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "replaced_by": {
+          "name": "replaced_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "personal_notes_owner_address_key": {
+          "name": "personal_notes_owner_address_key",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "area",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "slug",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"personal_notes\".\"archived_at\" IS NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "personal_notes_owner_idx": {
+          "name": "personal_notes_owner_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "archived_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "personal_notes_replaced_by_idx": {
+          "name": "personal_notes_replaced_by_idx",
+          "columns": [
+            {
+              "expression": "replaced_by",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "personal_notes_tenant_id_tenants_id_fk": {
+          "name": "personal_notes_tenant_id_tenants_id_fk",
+          "tableFrom": "personal_notes",
+          "tableTo": "tenants",
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "personal_notes_user_id_users_id_fk": {
+          "name": "personal_notes_user_id_users_id_fk",
+          "tableFrom": "personal_notes",
+          "tableTo": "users",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "personal_notes_replaced_by_personal_notes_id_fk": {
+          "name": "personal_notes_replaced_by_personal_notes_id_fk",
+          "tableFrom": "personal_notes",
+          "tableTo": "personal_notes",
+          "columnsFrom": ["replaced_by"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "personal_notes_area_check": {
+          "name": "personal_notes_area_check",
+          "value": "\"personal_notes\".\"area\" IN ('about', 'preferences', 'people', 'routines', 'lessons')"
+        },
+        "personal_notes_slug_check": {
+          "name": "personal_notes_slug_check",
+          "value": "\"personal_notes\".\"slug\" ~ '^[a-z0-9][a-z0-9-]{0,79}$'"
+        },
+        "personal_notes_origin_check": {
+          "name": "personal_notes_origin_check",
+          "value": "\"personal_notes\".\"origin\" IN ('stated', 'inferred')"
+        },
+        "personal_notes_fact_kind_check": {
+          "name": "personal_notes_fact_kind_check",
+          "value": "\"personal_notes\".\"fact_kind\" IN ('fact', 'preference', 'plan', 'event')"
+        },
+        "personal_notes_archive_check": {
+          "name": "personal_notes_archive_check",
+          "value": "(\"personal_notes\".\"archived_at\" IS NULL) = (\"personal_notes\".\"archive_reason\" IS NULL) AND (\"personal_notes\".\"archive_reason\" IS NULL OR \"personal_notes\".\"archive_reason\" IN ('superseded', 'merged', 'expired', 'stale', 'contradicted', 'manual'))"
+        },
+        "personal_notes_abstract_check": {
+          "name": "personal_notes_abstract_check",
+          "value": "(\"personal_notes\".\"abstract_ciphertext\" IS NULL) = (\"personal_notes\".\"abstract_iv\" IS NULL) AND (\"personal_notes\".\"abstract_ciphertext\" IS NULL) = (\"personal_notes\".\"abstract_auth_tag\" IS NULL)"
+        },
+        "personal_notes_version_check": {
+          "name": "personal_notes_version_check",
+          "value": "\"personal_notes\".\"version\" >= 1"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.workflow_authority_pair_requests": {
       "name": "workflow_authority_pair_requests",
       "schema": "",
@@ -18096,6 +18706,19 @@
         "first_job": {
           "name": "first_job",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "save_new_notes": {
+          "name": "save_new_notes",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "notes_learned_through": {
+          "name": "notes_learned_through",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },
@@ -22098,7 +22721,7 @@
           "typeSchema": "public",
           "primaryKey": false,
           "notNull": true,
-          "default": "'safe-patches'"
+          "default": "'never-auto'"
         },
         "created_at": {
           "name": "created_at",
@@ -23421,6 +24044,7 @@
         "queued",
         "waiting_for_device",
         "running",
+        "uncertain",
         "succeeded",
         "failed",
         "aborted",
@@ -23526,7 +24150,8 @@
         "endpoint-contract",
         "knowledge",
         "skill",
-        "task"
+        "task",
+        "notes"
       ]
     },
     "public.skill_candidate_confidence": {

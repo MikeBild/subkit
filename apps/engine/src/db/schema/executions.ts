@@ -82,6 +82,8 @@ export const executions = pgTable(
     result_storage_uri: text("result_storage_uri"),
     result_sha256: text("result_sha256"),
     abort_requested_at: timestamp("abort_requested_at", { withTimezone: true }),
+    heartbeat_at: timestamp("heartbeat_at", { withTimezone: true }),
+    attempt: integer("attempt").default(0).notNull(),
     idempotency_key: text("idempotency_key"),
     failure: jsonb("failure").$type<{
       step_id: string | null;
@@ -204,6 +206,7 @@ export const executionSteps = pgTable(
     started_at: timestamp("started_at", { withTimezone: true }),
     finished_at: timestamp("finished_at", { withTimezone: true }),
     held: boolean("held").default(false).notNull(),
+    write_dispatched_at: timestamp("write_dispatched_at", { withTimezone: true }),
   },
   (t) => [
     check(
@@ -266,6 +269,8 @@ export const patchCandidates = pgTable(
     closed_reason: text("closed_reason"),
     closed_against_version_id: uuid("closed_against_version_id"),
     closed_at: timestamp("closed_at", { withTimezone: true }),
+    accepted_operations: jsonb("accepted_operations").$type<number[] | null>(),
+    accepted_digest: text("accepted_digest"),
     ...timestamps,
   },
   (t) => [

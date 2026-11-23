@@ -74,10 +74,14 @@ describe("canTransition", () => {
       "waiting_for_device>queued",
       "waiting_for_device>failed",
       "waiting_for_device>aborted",
+      "running>uncertain",
       "running>succeeded",
       "running>failed",
       "running>aborted",
       "running>timed_out",
+      "uncertain>queued",
+      "uncertain>failed",
+      "uncertain>aborted",
     ]);
   });
 
@@ -95,6 +99,7 @@ describe("canTransition", () => {
       queued: 0,
       waiting_for_device: 1,
       running: 1,
+      uncertain: 1.5,
       succeeded: 2,
       failed: 2,
       aborted: 2,
@@ -102,7 +107,9 @@ describe("canTransition", () => {
     };
     fc.assert(
       fc.property(statusArb, statusArb, (from, to) => {
-        if (canTransition(from, to) && !(from === "waiting_for_device" && to === "queued")) {
+        const returnsToQueue =
+          (from === "waiting_for_device" || from === "uncertain") && to === "queued";
+        if (canTransition(from, to) && !returnsToQueue) {
           expect(rank[to]).toBeGreaterThan(rank[from]);
           expect(to).not.toBe("queued");
         }
@@ -114,9 +121,15 @@ describe("canTransition", () => {
 
 describe("transitionSources", () => {
   test("defaults to every status that may reach the target", () => {
-    expect(transitionSources("failed")).toEqual(["queued", "waiting_for_device", "running"]);
+    expect(transitionSources("failed")).toEqual([
+      "queued",
+      "waiting_for_device",
+      "running",
+      "uncertain",
+    ]);
+    expect(transitionSources("uncertain")).toEqual(["running"]);
     expect(transitionSources("running")).toEqual(["queued"]);
-    expect(transitionSources("queued")).toEqual(["waiting_for_device"]);
+    expect(transitionSources("queued")).toEqual(["waiting_for_device", "uncertain"]);
     expect(transitionSources("waiting_for_device")).toEqual(["queued"]);
   });
 
@@ -303,13 +316,13 @@ describe("outcomeTransition", () => {
       },
       {
         status: "failed",
-        sources: ["queued", "waiting_for_device", "running"],
+        sources: ["queued", "waiting_for_device", "running", "uncertain"],
         refused: false,
         event_type: "execution.failed",
       },
       {
         status: "aborted",
-        sources: ["queued", "waiting_for_device", "running"],
+        sources: ["queued", "waiting_for_device", "running", "uncertain"],
         refused: false,
         event_type: "execution.aborted",
       },
@@ -381,6 +394,7 @@ describe("settledOutcome", () => {
 
   test("a non-terminal status settles as failed", () => {
     expect(NON_TERMINAL_EXECUTION_STATUSES.map(settledOutcome)).toEqual([
+      { type: "failed" },
       { type: "failed" },
       { type: "failed" },
       { type: "failed" },

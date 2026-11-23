@@ -228,7 +228,7 @@ export const workflowAutohealPolicies = pgTable(
     workflow_id: uuid("workflow_id")
       .notNull()
       .references(() => workflows.id, { onDelete: "cascade" }),
-    policy: autohealPolicyEnum("policy").notNull().default("safe-patches"),
+    policy: autohealPolicyEnum("policy").notNull().default("never-auto"),
     ...timestamps,
   },
   (t) => [

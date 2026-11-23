@@ -1,4 +1,7 @@
 export const ERASED_TENANT_TABLES = [
+  "attention_snoozes",
+  "personal_note_sources",
+  "personal_notes",
   "cockpit_push_subscriptions",
   "cockpit_push_keys",
   "device_upload_chunks",

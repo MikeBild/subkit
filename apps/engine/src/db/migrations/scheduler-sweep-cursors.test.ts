@@ -20,6 +20,7 @@ const expected: typeof schedulerSweepProducerEnum.enumValues = [
   "knowledge",
   "skill",
   "task",
+  "notes",
 ];
 let ctx: TestDb;
 

@@ -61,6 +61,7 @@ export const toolApprovalRules = pgTable(
       .notNull()
       .default("no_content"),
     content_hash: text("content_hash"),
+    source_quote: text("source_quote"),
     expires_at: timestamp("expires_at", { withTimezone: true }),
     daily_limit: integer("daily_limit").notNull().default(20),
     uses_day: date("uses_day"),
@@ -91,6 +92,10 @@ export const toolApprovalRules = pgTable(
     check(
       "tool_approval_rules_content_hash_check",
       sql`${t.content_hash} IS NULL OR ${t.content_hash} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "tool_approval_rules_source_quote_check",
+      sql`${t.source_quote} IS NULL OR char_length(${t.source_quote}) BETWEEN 1 AND 400`,
     ),
     check(
       "tool_approval_rules_daily_check",

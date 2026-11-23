@@ -12,7 +12,7 @@ import {
   sweepSource,
 } from "./sweep-cursor-source.ts";
 
-const cadenceSchema = z.enum(["drift", "reauth", "endpoint-contract", "skill"]);
+const cadenceSchema = z.enum(["drift", "reauth", "endpoint-contract", "skill", "notes"]);
 const expectationSchema = z
   .string()
   .max(40)
