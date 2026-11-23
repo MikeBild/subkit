@@ -43,6 +43,7 @@ export const SPEND_LIMIT_REACHED = "llm_spend_limit_reached";
 export const PROVIDER_QUOTA_EXHAUSTED = "llm_provider_quota_exhausted";
 export const PROVIDER_LIMITED = "llm_provider_limited";
 export const REGEX_UNSAFE = "regex_unsafe";
+export const INVALID_TIMEZONE = "invalid_timezone";
 
 export interface ErrorClass {
   cause: ErrorCause;
@@ -57,6 +58,7 @@ export const ERROR_CODES = {
   [PROVIDER_LIMITED]: entry("rate_limited", "wait"),
   llm_budget_exceeded: entry("budget_exhausted", "patch"),
   [REGEX_UNSAFE]: entry("payload_invalid", "patch"),
+  [INVALID_TIMEZONE]: entry("payload_invalid", null),
   connector_not_found: entry("connector_missing", "author"),
   connector_disabled: entry("connector_unavailable", "reconnect"),
   prepared_credential_unavailable: entry("connector_unavailable", "reconnect"),

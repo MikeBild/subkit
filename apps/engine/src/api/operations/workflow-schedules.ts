@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { INVALID_TIMEZONE } from "@shared/error-taxonomy.ts";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { Db } from "../../db/client.ts";
@@ -75,6 +76,14 @@ function scheduleRejection(err: unknown): Rejection {
   const code = (err as { code?: string } | null)?.code;
   if (code === "invalid_cron") {
     return reject.badRequest(err instanceof Error ? err.message : "invalid cron");
+  }
+  if (code === INVALID_TIMEZONE) {
+    return reject.status(
+      400,
+      INVALID_TIMEZONE,
+      err instanceof Error ? err.message : "timezone is not a known IANA time zone",
+      { field: "timezone" },
+    );
   }
   if (code === "input_schema_violation") {
     const details = (err as { details?: unknown } | null)?.details;
@@ -212,7 +221,11 @@ export const createScheduleOperation = defineOperation<ScheduleCreate, ScheduleU
       { status: 201, description: "Schedule created" },
     ],
     statusFor: (result) => (result.created ? 201 : 200),
-    errors: { 400: "Invalid cron", 404: "Workflow not found", 409: "Workflow is archived" },
+    errors: {
+      400: "Invalid cron, or invalid_timezone when timezone is not a known IANA time zone",
+      404: "Workflow not found",
+      409: "Workflow is archived",
+    },
     toInput: ({ json }) => json as ScheduleCreate,
     toBody: (result) => result.body,
   },
@@ -284,7 +297,10 @@ export const updateScheduleOperation = defineOperation<
     params: IdParam,
     body: ScheduleUpdateBody,
     response: ScheduleWriteResponse,
-    errors: { 400: "Invalid cron", 404: "Schedule not found" },
+    errors: {
+      400: "Invalid cron, or invalid_timezone when timezone is not a known IANA time zone",
+      404: "Schedule not found",
+    },
     toInput: ({ param, json }) => ({
       id: (param as { id: string }).id,
       patch: json as ScheduleUpdate,
