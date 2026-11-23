@@ -188,6 +188,18 @@ export const runsEn = {
   "runs.outcome.truncated.items": "{step}: item limit reached, result incomplete.",
   "runs.outcome.truncated.bytes": "{step}: size limit reached, result incomplete.",
   "runs.outcome.truncated.unknown": "{step}: paging stopped early, result incomplete.",
+  "runs.outcome.limit.time":
+    "Step “{step}” stopped after its {limit} limit. To give it more time, raise timeout_ms on this step in the workflow.",
+  "runs.outcome.limit.timeCeiling":
+    "Step “{step}” stopped after {limit}, the operator ceiling for transform steps. An operator can raise sandbox.max_transform_wall_ms.",
+  "runs.outcome.limit.pages":
+    "Step “{step}” stopped at its limit of {limit} pages. To read more, raise max_pages in the step’s pagination.",
+  "runs.outcome.limit.items":
+    "Step “{step}” stopped at its limit of {limit} items. To read more, raise max_items in the step’s pagination.",
+  "runs.outcome.limit.response":
+    "Step “{step}” stopped because the response passed its {limit} size limit. To allow larger responses, raise max_response_bytes in the connector’s settings.",
+  "runs.outcome.limit.memory":
+    "Step “{step}” stopped at the {limit} memory limit for paged results. Narrow the request or set a lower max_items.",
   "runs.detail.preview": "Trial run result — not written",
   "runs.outcome.statusOnly": "This run ended as “{status}”; the engine reported no cause with it.",
   "runs.rerun.refused.versionUnavailable":
@@ -476,6 +488,18 @@ export const runsDe: Record<keyof typeof runsEn, string> = {
   "runs.outcome.truncated.items": "{step}: Eintragslimit erreicht, Ergebnis unvollständig.",
   "runs.outcome.truncated.bytes": "{step}: Größenlimit erreicht, Ergebnis unvollständig.",
   "runs.outcome.truncated.unknown": "{step}: Abruf vorzeitig beendet, Ergebnis unvollständig.",
+  "runs.outcome.limit.time":
+    "Der Schritt „{step}“ wurde nach seinem Limit von {limit} gestoppt. Wenn er mehr Zeit braucht, erhöhe timeout_ms an diesem Schritt im Workflow.",
+  "runs.outcome.limit.timeCeiling":
+    "Der Schritt „{step}“ wurde nach {limit} gestoppt, der Obergrenze des Betreibers für Transform-Schritte. Der Betreiber kann sandbox.max_transform_wall_ms erhöhen.",
+  "runs.outcome.limit.pages":
+    "Der Schritt „{step}“ hat bei seinem Limit von {limit} Seiten gestoppt. Wenn du mehr lesen willst, erhöhe max_pages beim Blättern des Schritts.",
+  "runs.outcome.limit.items":
+    "Der Schritt „{step}“ hat bei seinem Limit von {limit} Einträgen gestoppt. Wenn du mehr lesen willst, erhöhe max_items beim Blättern des Schritts.",
+  "runs.outcome.limit.response":
+    "Der Schritt „{step}“ wurde gestoppt, weil die Antwort sein Größenlimit von {limit} überschritten hat. Für größere Antworten erhöhe max_response_bytes in den Einstellungen des Connectors.",
+  "runs.outcome.limit.memory":
+    "Der Schritt „{step}“ hat beim Speicherlimit von {limit} für geblätterte Ergebnisse gestoppt. Grenze die Anfrage ein oder setz ein kleineres max_items.",
   "runs.detail.preview": "Ergebnis des Probe-Runs – nicht geschrieben",
   "runs.outcome.statusOnly":
     "Dieser Run endete als „{status}“; eine Ursache hat die Engine nicht mitgeliefert.",

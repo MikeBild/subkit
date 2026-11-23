@@ -1,4 +1,6 @@
 import type { components } from "@cli-core/engine-api/openapi";
+import { formatBytes } from "@shared/file-kinds.ts";
+import { formatLimitDuration, type StepLimit, stepLimitOf } from "@shared/step-limit.ts";
 import type { ReactNode } from "react";
 import { type ActorDirectory, actorDirectoryName } from "@/app/actor-directory-model";
 import { auditHref } from "@/app/links";
@@ -350,6 +352,37 @@ export function runTruncationSentence(
     )
     .join(" ");
   return { lead: plain, cause: null, tail: "", plain };
+}
+
+function stepLimitText(limit: StepLimit, locale: Locale): { key: TranslationKey; limit: string } {
+  const tag = LOCALE_TAGS[locale];
+  const count = (value: number) => new Intl.NumberFormat(tag).format(value);
+  switch (limit.kind) {
+    case "time":
+      return {
+        key: limit.ceiling ? "runs.outcome.limit.timeCeiling" : "runs.outcome.limit.time",
+        limit: formatLimitDuration(limit.ms, tag),
+      };
+    case "pages":
+      return { key: "runs.outcome.limit.pages", limit: count(limit.count) };
+    case "items":
+      return { key: "runs.outcome.limit.items", limit: count(limit.count) };
+    case "response":
+      return { key: "runs.outcome.limit.response", limit: formatBytes(limit.bytes, tag) };
+    case "memory":
+      return { key: "runs.outcome.limit.memory", limit: formatBytes(limit.bytes, tag) };
+  }
+}
+
+export function stepLimitSentence(
+  step: Pick<StepLike, "step_key" | "error"> | null,
+  t: Translate,
+  locale: Locale,
+): string | null {
+  const limit = step ? stepLimitOf(step.error) : null;
+  if (!step || !limit) return null;
+  const text = stepLimitText(limit, locale);
+  return t(text.key, { step: step.step_key, limit: text.limit });
 }
 
 export function runStatusSentence(statusWord: string, t: Translate): OutcomeSentence {
