@@ -3,7 +3,7 @@ export type ReleaseNotes = { version: string; notes: string[]; highlights: strin
 export type PendingNotes = { version: string | null; notes: string[]; highlights: string[] | null };
 
 export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: PendingNotes } = {
-  "source": "5e80e66fc9de2c6d62874a50167c56e52b239891",
+  "source": "408b6fca128db200013ac71de6f81c5ce9e70743",
   "releases": [
     {
       "version": "v1.0.0",
@@ -2314,6 +2314,7 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
   "unpublished": {
     "version": "12.1.4",
     "notes": [
+      "show browser page refusals as a page, not JSON",
       "open every browser page while signed in to the Cockpit",
       "let the desktop sign-in page open in a signed-in browser",
       "say which files a storage step may access"
