@@ -20,6 +20,7 @@ import {
   diagnosisFix,
   diagnosisNote,
   type RepairStatus,
+  reconnectLink,
 } from "@/features/grants/model";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
@@ -367,6 +368,20 @@ function DiagnosisFixAction({
             disabled: prepare.pending,
             onSelect: prepare.run,
             testId: `${testId}-prepare`,
+          },
+        ]}
+      />
+    );
+  const reconnect = fix === "reconnect" ? reconnectLink(entry) : null;
+  if (reconnect)
+    return (
+      <ActionMenu
+        size="sm"
+        items={[
+          {
+            label: t(reconnect.labelKey),
+            onSelect: () => void navigate(routerTarget(reconnect.href)),
+            testId: `${testId}-reconnect`,
           },
         ]}
       />

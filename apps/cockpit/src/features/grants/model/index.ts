@@ -63,6 +63,7 @@ export {
   diagnosisNote,
   diagnosisRepairable,
   type RepairStatus,
+  reconnectLink,
 } from "./gate-diagnosis";
 export {
   existingGrant,

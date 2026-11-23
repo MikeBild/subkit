@@ -3,6 +3,7 @@ import { approvalChoice } from "@shared/approval-choice.ts";
 import { render } from "@/components/cockpit/patterns/test-utils";
 import { approvalRemedyLink, reviewedEnvironment } from "@/features/grants/model/grant-decision";
 import type { WorkflowAuthorityPreview } from "@/features/grants/model/workflow-authorities";
+import { translate } from "@/lib/i18n";
 import { GrantEnvironmentDecision } from "./grant-environment";
 
 type Environments = WorkflowAuthorityPreview["environments"];
@@ -79,6 +80,28 @@ describe("one possible environment", () => {
       ),
     );
     expect(html).toContain("SubKit Support Admin muss im Echtbetrieb neu angemeldet werden.");
+  });
+
+  test("a production connector without a credential offers to open that connector", () => {
+    const html = show(
+      preview(
+        { dev: open, prod: blocked(support("connector_without_sign_in")) },
+        { environment: "dev", reason: "only_possible" },
+      ),
+    );
+    expect(checked(html, "dev")).toBe(true);
+    expect(html.match(/authority-decision-single-remedy/g)?.length).toBe(1);
+    expect(html).toContain(translate("de", "run.openConnector"));
+    expect(html).toContain("/connectors/11111111-1111-4111-8111-111111111111");
+  });
+
+  test("a reason other than a blocked environment offers no connector", () => {
+    const html = show(
+      preview({ dev: open, prod: open }, { environment: "prod", reason: "schedule" }),
+      "de",
+      "prod",
+    );
+    expect(html).not.toContain("authority-decision-single-remedy");
   });
 
   test("the schedule names when it starts", () => {

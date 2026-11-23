@@ -78,20 +78,31 @@ function SingleReason({
   const schedules = preview.schedules.map((schedule) =>
     cronWords(schedule.cron, t, LOCALE_TAGS[locale]),
   );
+  const blocked = preview.environments[other(environment)].reasons.map((block) => ({
+    ...block,
+    environment: other(environment),
+  }));
+  const link = reason === "only_possible" ? approvalRemedyLink(approvalRemedy(blocked)) : null;
   const why =
     reason === "only_possible"
-      ? sentences(
-          preview.environments[other(environment)].reasons.map((block) => ({
-            ...block,
-            environment: other(environment),
-          })),
-        ).join(" ")
+      ? sentences(blocked).join(" ")
       : reason === "schedule"
         ? schedules.length === 1
           ? t("authority.decision.reason.scheduleWhen", { when: schedules[0] ?? "" })
           : t("authority.decision.reason.schedule")
         : t(`authority.decision.reason.${reason}`);
-  return <span data-testid="authority-decision-single">{why}</span>;
+  return (
+    <span className="flex flex-col gap-2">
+      <span data-testid="authority-decision-single">{why}</span>
+      {link && (
+        <Button asChild size="sm" className="w-fit">
+          <a href={absolute(link.href)} data-testid="authority-decision-single-remedy">
+            {t(link.labelKey)}
+          </a>
+        </Button>
+      )}
+    </span>
+  );
 }
 
 function GrantEnvironmentChoice({
