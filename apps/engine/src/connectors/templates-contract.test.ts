@@ -21,7 +21,6 @@ const CONTRACTS = join(import.meta.dir, "contracts");
 const templates = loadBuiltinTemplates();
 
 const KNOWN_GAPS: Readonly<Record<string, readonly ContractIssueCode[]>> = {
-  "appsync-iam": ["auth_misplaced"],
   jira: ["probe_path_repeats_base"],
   salesforce: ["probe_path_repeats_base"],
 };
