@@ -45,5 +45,6 @@ export {
   stepLimitSentence,
 } from "./model/runs-model";
 export { RunOverlays, useRun } from "./ui/run-overlays";
+export { RunRecordsCard, RunResultCard } from "./ui/run-result-card";
 export { RerunAction, RunDetail } from "./ui/runs-detail";
 export { isStoppableRun, StopRunAction } from "./ui/runs-stop";

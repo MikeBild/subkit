@@ -94,6 +94,7 @@ import {
   RESOLVE_WRITE_PERMISSION,
   uncertainStepKeys,
 } from "../model/uncertain-write";
+import { RunRecordsCard } from "./run-result-card";
 import { UncertainWrite } from "./uncertain-write";
 
 type Execution = components["schemas"]["Execution"];
@@ -488,6 +489,12 @@ export function RunDetail({ run, page = false }: { run: Execution; page?: boolea
               testId="run-detail-graph"
             />
           ) : null}
+          <RunRecordsCard
+            detail={detail.data}
+            title={verdict.label}
+            duration={duration}
+            testId="run-detail-result-card"
+          />
           <RunResultDocument
             result={runResultMarkdown(detail.data)}
             empty={

@@ -289,6 +289,15 @@ const runDetail = {
   },
   result_markdown: "Invite sent",
   result_markdown_truncated: false,
+  record_links: [
+    {
+      label: "acme/app#42",
+      url: "https://github.com/acme/app/issues/42",
+      connector: "github",
+      connector_name: "GitHub",
+      step_key: "send",
+    },
+  ],
 };
 
 const BASE_ROUTES: Record<string, Handler> = {
@@ -660,4 +669,17 @@ isolated("a new schedule › the estimate follows the chosen rhythm", async () =
   await app.settle(80);
   expect(app.find("schedule-cost-preview")?.textContent).toContain("≈ 0,60\u00a0€ / Monat");
   expect(app.seen.filter((call) => call.includes("/schedule-cost?")).length).toBeGreaterThan(1);
+});
+
+isolated("A run result › the changed record opens in its source system", async () => {
+  const app = await mount(`/runs/${RUN}`);
+  app.at(`/runs/${RUN}`);
+  const open = app.find("run-detail-result-card-open-0");
+  expect(open?.textContent).toContain(translate("de", "runs.result.view", { system: "GitHub" }));
+  expect(open?.getAttribute("href")).toBe("https://github.com/acme/app/issues/42");
+  expect(open?.getAttribute("target")).toBe("_blank");
+  expect(open?.getAttribute("rel")).toContain("noopener");
+  expect(app.find("run-detail-result-card-details")).toBeNull();
+  await app.click("run-detail-result-card-details-toggle");
+  expect(app.find("run-detail-result-card-record-0")?.textContent).toContain("acme/app#42");
 });

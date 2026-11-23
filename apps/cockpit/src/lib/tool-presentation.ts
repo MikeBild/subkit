@@ -318,6 +318,12 @@ const REFUSAL_WORDS: Record<string, TranslationKey> = {
 
 export type WorkflowResultLink = { url: string; expiresAt: string };
 
+export function liveRunExecutionId(output: unknown): string | null {
+  if (workflowRunKind(output) !== "live") return null;
+  const id = runPayload(output)?.execution_id;
+  return typeof id === "string" && id ? id : null;
+}
+
 export function workflowResultLink(output: unknown): WorkflowResultLink | null {
   const result = runPayload(output)?.output;
   if (result === null || typeof result !== "object" || Array.isArray(result)) return null;
