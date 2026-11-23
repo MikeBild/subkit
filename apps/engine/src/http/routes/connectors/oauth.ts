@@ -14,6 +14,7 @@ import {
 import * as credsvc from "../../../credentials/index.ts";
 import {
   buildOAuthRedirectUri,
+  CredentialRequestError,
   completeAuthorizationCode,
   isOAuthProviderError,
 } from "../../../credentials/index.ts";
@@ -394,6 +395,13 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         connector_id: stateRow.connector_id,
         state_prefix: stateRow.state.slice(0, 8),
         error: message,
+        ...(err instanceof CredentialRequestError
+          ? {
+              status: err.status,
+              provider_error: err.error,
+              provider_error_description: err.error_description,
+            }
+          : {}),
       });
       await publishCallbackFailed(db, {
         tenant_id: stateRow.tenant_id,

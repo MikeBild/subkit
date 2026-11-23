@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   auditLog,
@@ -8,6 +8,7 @@ import {
   conversations,
   events,
 } from "../../../db/schema/index.ts";
+import { logger } from "../../../logging/index.ts";
 import { now } from "../../../utils/clock.ts";
 import {
   auditActions,
@@ -414,6 +415,34 @@ describe("GET /v1/oauth/callback", () => {
     expect(res.status).toBe(400);
     expect(body).not.toContain("alert(1)");
     expect(body).not.toContain("Provider code");
+  });
+
+  test("a refused token exchange logs the status and the provider's error, never the code", async () => {
+    const state = "state-exchange-refused";
+    await seedStateRow(state);
+    const code = "code-canary-exchange";
+    const logs: Record<string, unknown>[] = [];
+    const warn = spyOn(logger, "warn").mockImplementation((fields) => {
+      logs.push(fields as Record<string, unknown>);
+    });
+    mock.setTokenError({
+      status: 400,
+      body: { error: "invalid_grant", error_description: `Code ${code} has expired` },
+    });
+    try {
+      const res = await callback(`state=${state}&code=${code}`);
+      expect(res.status).toBe(400);
+    } finally {
+      mock.setTokenError(null);
+      warn.mockRestore();
+    }
+    const failure = logs.find((entry) => entry.action === "oauth.callback.exchange_failed");
+    expect(failure).toMatchObject({
+      status: 400,
+      provider_error: "invalid_grant",
+      provider_error_description: "Code [redacted] has expired",
+    });
+    expect(JSON.stringify(logs)).not.toContain(code);
   });
 
   test("state replay: second callback with the same state returns the not-found page", async () => {

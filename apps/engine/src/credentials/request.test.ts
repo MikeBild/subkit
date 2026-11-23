@@ -10,6 +10,7 @@ import {
   runCognitoUserPasswordGrant,
   runRefreshTokenGrant,
 } from "./oauth2/client.ts";
+import { CredentialRequestError } from "./request.ts";
 import { runTokenMintGrant } from "./token-mint/client.ts";
 
 const canary =
@@ -35,10 +36,22 @@ const jsonGrant = {
   token_response_ttl_ms: 1000,
 };
 
+function authorizationCode(code: string) {
+  return {
+    cfg,
+    state: "fixture",
+    code_verifier: "a".repeat(64),
+    current_url: new URL(`https://engine.example.test/callback?state=fixture&code=${code}`),
+  };
+}
+
 function fakeFetch(response: () => Response): typeof fetch {
   return Object.assign(async () => response(), { preconnect: () => {} }) as typeof fetch;
 }
-async function expectSafe(run: () => Promise<unknown>) {
+async function expectSafe(
+  run: () => Promise<unknown>,
+  markers = ["url-canary", "body-canary", "token-canary", "callback-query-canary"],
+) {
   let caught: unknown;
   try {
     await run();
@@ -46,7 +59,7 @@ async function expectSafe(run: () => Promise<unknown>) {
     caught = error;
   }
   expect(caught).toBeInstanceOf(Error);
-  for (const marker of ["url-canary", "body-canary", "token-canary", "callback-query-canary"]) {
+  for (const marker of markers) {
     expect((caught as Error).message).not.toContain(marker);
     expect(JSON.stringify(caught)).not.toContain(marker);
   }
@@ -116,7 +129,7 @@ test("runtime network exceptions never expose their raw message through credenti
   );
 });
 
-test("OAuth library errors and refresh logs discard arbitrary error values and callback queries", async () => {
+test("OAuth library errors keep no secret, code or URL and refresh logs no provider words", async () => {
   const logs: unknown[] = [];
   const warn = spyOn(logger, "warn").mockImplementation((...args) => {
     logs.push(args);
@@ -125,20 +138,17 @@ test("OAuth library errors and refresh logs discard arbitrary error values and c
     await _withDriverFetchForTests(
       fakeFetch(() => Response.json({ error: canary, error_description: canary }, { status: 400 })),
       async () => {
-        await expectSafe(() => runClientCredentialsGrant(cfg, context));
-        await expectSafe(() => runRefreshTokenGrant(cfg, "token-canary", context));
-        await expectSafe(() =>
-          completeAuthorizationCode(
-            {
-              cfg,
-              state: "fixture",
-              code_verifier: "a".repeat(64),
-              current_url: new URL(
-                "https://engine.example.test/callback?state=fixture&code=callback-query-canary",
-              ),
-            },
-            context,
-          ),
+        await expectSafe(
+          () => runClientCredentialsGrant(cfg, context),
+          ["url-canary", "token-canary"],
+        );
+        await expectSafe(
+          () => runRefreshTokenGrant(cfg, "token-canary", context),
+          ["url-canary", "token-canary"],
+        );
+        await expectSafe(
+          () => completeAuthorizationCode(authorizationCode("callback-query-canary"), context),
+          ["url-canary", "token-canary", "callback-query-canary"],
         );
       },
     );
@@ -147,6 +157,48 @@ test("OAuth library errors and refresh logs discard arbitrary error values and c
   } finally {
     warn.mockRestore();
   }
+});
+
+test("a refused token exchange carries the status and the provider's error code and words", async () => {
+  await _withDriverFetchForTests(
+    fakeFetch(() =>
+      Response.json(
+        { error: "invalid_grant", error_description: "Code expired for code-canary-4711" },
+        { status: 400 },
+      ),
+    ),
+    async () => {
+      const caught = await completeAuthorizationCode(
+        authorizationCode("code-canary-4711"),
+        context,
+      ).catch((error: unknown) => error);
+      expect(caught).toBeInstanceOf(CredentialRequestError);
+      expect(caught).toMatchObject({
+        message: "credential_request_failed: http_400",
+        status: 400,
+        error: "invalid_grant",
+        error_description: "Code expired for [redacted]",
+      });
+    },
+  );
+});
+
+test("a provider error code outside the error-code shape is not carried", async () => {
+  await _withDriverFetchForTests(
+    fakeFetch(() =>
+      Response.json(
+        { error: "<b>bad</b>", error_description: `see\n${cfg.token_endpoint} now` },
+        { status: 401 },
+      ),
+    ),
+    async () => {
+      const caught = await runClientCredentialsGrant(cfg, context).catch((error: unknown) => error);
+      expect(caught).toBeInstanceOf(CredentialRequestError);
+      expect((caught as CredentialRequestError).status).toBe(401);
+      expect((caught as CredentialRequestError).error).toBeUndefined();
+      expect((caught as CredentialRequestError).error_description).toBe("see [url] now");
+    },
+  );
 });
 
 test("connection and dynamic registration failures retain only fixed status diagnostics", async () => {

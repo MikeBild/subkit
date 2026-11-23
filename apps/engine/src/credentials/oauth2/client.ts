@@ -209,8 +209,9 @@ export async function completeAuthorizationCode(
   if (p.cfg.use_pkce !== false && p.code_verifier) {
     grantOpts.pkceCodeVerifier = p.code_verifier;
   }
-  const res = await credentialOperation(() =>
-    oauth.authorizationCodeGrant(configuration, p.current_url, grantOpts),
+  const res = await credentialOperation(
+    () => oauth.authorizationCodeGrant(configuration, p.current_url, grantOpts),
+    [p.current_url.searchParams.get("code"), p.code_verifier, p.cfg.client_secret],
   );
   return credentialOperation(() => toBundle(res, p.cfg.issuer_url));
 }
@@ -223,7 +224,10 @@ export async function runClientCredentialsGrant(
   const params: Record<string, string> = {};
   if (cfg.scope) params.scope = cfg.scope;
   if (cfg.audience) params.audience = cfg.audience;
-  const res = await credentialOperation(() => oauth.clientCredentialsGrant(configuration, params));
+  const res = await credentialOperation(
+    () => oauth.clientCredentialsGrant(configuration, params),
+    [cfg.client_secret],
+  );
   return credentialOperation(() => toBundle(res, cfg.issuer_url));
 }
 
@@ -241,8 +245,9 @@ export async function runPasswordGrant(
   });
   if (cfg.scope) params.set("scope", cfg.scope);
   if (cfg.audience) params.set("audience", cfg.audience);
-  const res = await credentialOperation(() =>
-    oauth.genericGrantRequest(configuration, "password", params),
+  const res = await credentialOperation(
+    () => oauth.genericGrantRequest(configuration, "password", params),
+    [password, cfg.client_secret],
   );
   return credentialOperation(() => toBundle(res, cfg.issuer_url));
 }
@@ -576,8 +581,9 @@ export async function runRefreshTokenGrant(
   const params: Record<string, string> = {};
   if (cfg.scope) params.scope = cfg.scope;
   try {
-    const res = await credentialOperation(() =>
-      oauth.refreshTokenGrant(configuration, refresh_token, params),
+    const res = await credentialOperation(
+      () => oauth.refreshTokenGrant(configuration, refresh_token, params),
+      [refresh_token, cfg.client_secret],
     );
     return credentialOperation(() => toBundle(res, cfg.issuer_url));
   } catch (err) {

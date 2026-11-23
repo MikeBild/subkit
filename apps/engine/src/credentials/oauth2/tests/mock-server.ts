@@ -9,6 +9,12 @@ export interface MockOAuthServer {
   setExpiresIn: (seconds: number) => void;
   setGrantedScope: (scope: string | null) => void;
   setSubject: (subject: string | null) => void;
+  setTokenError: (failure: MockTokenError | null) => void;
+}
+
+export interface MockTokenError {
+  status: number;
+  body: Record<string, string>;
 }
 
 async function readBody(req: IncomingMessage): Promise<string> {
@@ -30,6 +36,7 @@ export async function startMockOAuthServer(): Promise<MockOAuthServer> {
   let expiresIn = 3600;
   let grantedScope: string | null = null;
   let subject: string | null = null;
+  let tokenError: MockTokenError | null = null;
 
   const server: Server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
@@ -57,6 +64,12 @@ export async function startMockOAuthServer(): Promise<MockOAuthServer> {
         const raw = await readBody(req);
         const form = parseForm(raw);
         lastGrant = form.grant_type ?? null;
+        if (tokenError) {
+          res.statusCode = tokenError.status;
+          res.setHeader("content-type", "application/json");
+          res.end(JSON.stringify(tokenError.body));
+          return;
+        }
         issued += 1;
         const access = `at-${issued}-${Math.random().toString(36).slice(2, 10)}`;
         const refresh = `rt-${issued}-${Math.random().toString(36).slice(2, 10)}`;
@@ -107,6 +120,9 @@ export async function startMockOAuthServer(): Promise<MockOAuthServer> {
     },
     setSubject: (value: string | null) => {
       subject = value;
+    },
+    setTokenError: (failure: MockTokenError | null) => {
+      tokenError = failure;
     },
     close: () =>
       new Promise<void>((resolve) => {
