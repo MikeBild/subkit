@@ -1,6 +1,11 @@
 import { z } from "@hono/zod-openapi";
 import { HttpError } from "../http/errors.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "../workflows/types.ts";
+import {
+  RecordUrlPatternSchema,
+  RecordWebHostSchema,
+  recordUrlPatternIssues,
+} from "./record-url-patterns.ts";
 import templateSkillsJson from "./template-skills.json" with { type: "json" };
 import builtinJson from "./templates.json" with { type: "json" };
 import { DriverEnum, OperatorQuirksSchema } from "./types.ts";
@@ -382,8 +387,13 @@ export const ConnectorTemplateSchema = z
     aws_region: z.string().min(1).nullable().default(null),
     verified_at: z.string().datetime().nullable().default(null),
     respects_robots: z.boolean().default(false),
+    web_hosts: z.array(RecordWebHostSchema).default([]),
+    record_url_patterns: z.array(RecordUrlPatternSchema).default([]),
   })
   .superRefine((t, ctx) => {
+    for (const issue of recordUrlPatternIssues(t)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: issue.path, message: issue.message });
+    }
     const mixesWithOauth = t.oauth !== null && t.auth_type !== "oauth2";
     if (mixesWithOauth && t.auth_options.length < 2) {
       ctx.addIssue({

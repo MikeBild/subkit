@@ -31824,7 +31824,7 @@ export interface components {
                         enum: string[];
                     } | {
                         /** @enum {string} */
-                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
@@ -31973,7 +31973,7 @@ export interface components {
                         enum: string[];
                     } | {
                         /** @enum {string} */
-                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
@@ -32291,7 +32291,7 @@ export interface components {
                         enum: string[];
                     } | {
                         /** @enum {string} */
-                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
@@ -32461,7 +32461,7 @@ export interface components {
                         enum: string[];
                     } | {
                         /** @enum {string} */
-                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
@@ -32631,7 +32631,7 @@ export interface components {
                         enum: string[];
                     } | {
                         /** @enum {string} */
-                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
@@ -32796,7 +32796,7 @@ export interface components {
                         enum: string[];
                     } | {
                         /** @enum {string} */
-                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
@@ -32961,7 +32961,7 @@ export interface components {
                         enum: string[];
                     } | {
                         /** @enum {string} */
-                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
@@ -33131,7 +33131,7 @@ export interface components {
                         enum: string[];
                     } | {
                         /** @enum {string} */
-                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
@@ -33301,7 +33301,7 @@ export interface components {
                         enum: string[];
                     } | {
                         /** @enum {string} */
-                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
@@ -33452,7 +33452,7 @@ export interface components {
                         enum: string[];
                     } | {
                         /** @enum {string} */
-                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
@@ -35829,6 +35829,10 @@ export interface components {
                 verified_at: string | null;
                 /** @default false */
                 respects_robots: boolean;
+                /** @default [] */
+                web_hosts: string[];
+                /** @default [] */
+                record_url_patterns: components["schemas"]["ConnectorTemplateRecordUrlPattern"][];
                 /** @enum {string} */
                 source: "builtin" | "tenant";
                 id: string | null;
@@ -36138,6 +36142,22 @@ export interface components {
             placeholder: string;
             template: string;
         };
+        ConnectorTemplateRecordUrlPattern: {
+            methods: ("POST" | "PUT" | "PATCH")[];
+            /** @description Request path after the connector base path, with {name} placeholders. Omitted for GraphQL templates. */
+            path?: string;
+            /** @description Dotted path to a web URL in the response. */
+            url_field?: string;
+            /** @description Web URL built from path placeholders, host placeholders of the base URL, or dotted response fields. */
+            url_template?: string;
+            /** @description Language-neutral record label with the same placeholders, for example {key}. */
+            label?: string;
+            when?: components["schemas"]["ConnectorTemplateRecordUrlCondition"];
+        };
+        ConnectorTemplateRecordUrlCondition: {
+            field: string;
+            equals: string | number | boolean;
+        };
         ConnectorTemplateRow: {
             version: number;
             slug: string;
@@ -36198,6 +36218,10 @@ export interface components {
             verified_at: string | null;
             /** @default false */
             respects_robots: boolean;
+            /** @default [] */
+            web_hosts: string[];
+            /** @default [] */
+            record_url_patterns: components["schemas"]["ConnectorTemplateRecordUrlPattern"][];
             id: string;
             /** @enum {string} */
             source: "tenant";
@@ -36262,6 +36286,10 @@ export interface components {
             verified_at?: string | null;
             /** @default false */
             respects_robots?: boolean;
+            /** @default [] */
+            web_hosts?: string[];
+            /** @default [] */
+            record_url_patterns?: components["schemas"]["ConnectorTemplateRecordUrlPattern"][];
         };
         ConnectorTemplateRecipeListResponse: {
             template_slug: string;

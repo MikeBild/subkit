@@ -149,6 +149,8 @@ function template(overrides: Partial<ConnectorTemplate>): ConnectorTemplate {
     aws_region: null,
     verified_at: null,
     respects_robots: false,
+    web_hosts: [],
+    record_url_patterns: [],
     source: "builtin",
     id: null,
     ...overrides,
