@@ -23,6 +23,7 @@ import { sensitiveFailure } from "../sensitive-payload.ts";
 import { TRANSFORM_TIMEOUT_DEFAULT_MS, TRANSFORM_WALL_CEILING_DEFAULT_MS } from "../timeouts.ts";
 import type { RequestMeta, StepResult, StepRunContext } from "../types.ts";
 import { buildStepErrorDetail } from "./error-detail.ts";
+import { runParseFile } from "./parse-file.ts";
 import { detectTransformWarnings } from "./transform-warnings.ts";
 import { runHtmlToMarkdown, runReadability, runStructuredData } from "./transform-web-scraper.ts";
 
@@ -126,6 +127,10 @@ async function runTransformStepInner(p: RunTransformParams): Promise<StepResult>
   if (language === "structured-data") {
     clearTimeout(timer);
     return runStructuredData({ ctx: p.ctx, step: p.step, input: p.input });
+  }
+  if (language === "parse-file") {
+    clearTimeout(timer);
+    return runParseFile({ ctx: p.ctx, step: p.step, scope: p.scope, input: p.input });
   }
   if (!p.step.expression) {
     clearTimeout(timer);

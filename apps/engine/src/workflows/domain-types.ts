@@ -16,7 +16,8 @@ export type WorkflowStepKind =
   | "wait"
   | "wait_for_event"
   | "branch"
-  | "parallel";
+  | "parallel"
+  | "model";
 
 export interface DomainStepBase {
   id: string;
@@ -59,7 +60,13 @@ export interface DomainRequestStep extends DomainStepBase {
 export interface DomainTransformStep extends DomainStepBase {
   kind: "transform";
   expression?: string | undefined;
-  language?: "javascript" | "readability" | "html-to-markdown" | "structured-data" | undefined;
+  language?:
+    | "javascript"
+    | "readability"
+    | "html-to-markdown"
+    | "structured-data"
+    | "parse-file"
+    | undefined;
 }
 
 export interface DomainCallStep extends DomainStepBase {
@@ -67,6 +74,15 @@ export interface DomainCallStep extends DomainStepBase {
   workflow_id?: string | undefined;
   workflow_slug?: string | undefined;
   input?: JsonValue | undefined;
+}
+
+export interface DomainModelStep extends DomainStepBase {
+  kind: "model";
+  prompt: string;
+  system?: string | undefined;
+  input?: JsonValue | undefined;
+  output_schema: Record<string, unknown>;
+  max_output_tokens?: number | undefined;
 }
 
 export interface DomainWaitStep extends DomainStepBase {
@@ -100,7 +116,8 @@ export type DomainStepDef =
   | DomainWaitStep
   | DomainWaitForEventStep
   | DomainBranchStep
-  | DomainParallelStep;
+  | DomainParallelStep
+  | DomainModelStep;
 
 export interface DomainWorkflowRuntime {
   stdlib_version?: string | undefined;

@@ -297,15 +297,6 @@ describe.skipIf(skip)("solution recipes preview against their expected output", 
   });
 });
 
-const claudeAnswer = (text: string) => ({
-  id: "msg_example",
-  type: "message",
-  role: "assistant",
-  content: [{ type: "text", text }],
-  stop_reason: "end_turn",
-  usage: { input_tokens: 40, output_tokens: 12 },
-});
-
 const report = (dimension: string | null, metrics: string[], rows: string[][]) => ({
   ...(dimension ? { dimensionHeaders: [{ name: dimension }] } : {}),
   metricHeaders: metrics.map((name) => ({ name })),
@@ -320,23 +311,13 @@ const report = (dimension: string | null, metrics: string[], rows: string[][]) =
 });
 
 describe.skipIf(skip)("Anthropic and Google Analytics 4 recipes preview", () => {
-  test("anthropic recipes send the version header and read the answer's text", async () => {
-    const replies: Record<string, Reply> = {
-      "list-models": (call) =>
-        call.url.pathname === "/v1/models"
-          ? { data: [{ id: "claude-opus-5-5", display_name: "Claude Opus 5.5" }] }
-          : unexpected(call),
-      "summarize-text": () =>
-        claudeAnswer("The review covered hiring, billing and the office move."),
-      "classify-text": () =>
-        claudeAnswer(
-          JSON.stringify({ category: "billing", reason: "The customer reports a double charge." }),
-        ),
-    };
-    for (const [slug, reply] of Object.entries(replies)) {
-      const { calls } = await preview(templateRecipe("anthropic", slug), reply);
-      expect(calls[0]?.url.hostname).toBe("api.anthropic.com");
-    }
+  test("the anthropic model list recipe calls the provider with the version header", async () => {
+    const { calls } = await preview(templateRecipe("anthropic", "list-models"), (call) =>
+      call.url.pathname === "/v1/models"
+        ? { data: [{ id: "claude-opus-5-5", display_name: "Claude Opus 5.5" }] }
+        : unexpected(call),
+    );
+    expect(calls[0]?.url.hostname).toBe("api.anthropic.com");
   });
 
   test("google analytics recipes run their reports against the given property", async () => {

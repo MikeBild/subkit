@@ -708,17 +708,39 @@ export const RequestStepSchema = z
   ])
   .openapi("RequestStep");
 
+export const PARSE_FILE_FORMATS = ["csv", "xlsx", "pdf", "docx", "zip"] as const;
+export const PARSE_FILE_MAX_ROWS = 10_000;
+
+export const ParseFileConfigSchema = z
+  .object({
+    source: z.string().min(1).openapi({
+      description:
+        "Where the file sits in the run, as a dot path: an earlier step's output such as `download.data` or a run input such as `$input.invoice`. The value must be a file reference (`{ $file }`) or a file result of a request step.",
+    }),
+    format: z.enum(PARSE_FILE_FORMATS).optional().openapi({
+      description: "File type. Without it the type is read from the file itself.",
+    }),
+    sheet: z.string().min(1).optional().openapi({
+      description: "Spreadsheet sheet to read. Without it the first sheet is read.",
+    }),
+    max_rows: z.number().int().min(1).max(PARSE_FILE_MAX_ROWS).optional().openapi({
+      description: "Upper bound for table rows returned from a CSV or spreadsheet file.",
+    }),
+  })
+  .openapi("ParseFileConfig");
+
 export const TransformStepSchema = z
   .object({
     kind: z.literal("transform"),
     ...baseStep,
     expression: z.string().optional(),
     language: z
-      .enum(["javascript", "readability", "html-to-markdown", "structured-data"])
+      .enum(["javascript", "readability", "html-to-markdown", "structured-data", "parse-file"])
       .optional(),
     readability: ReadabilityConfigSchema.optional(),
     markdown: MarkdownConfigSchema.optional(),
     structured_data: StructuredDataConfigSchema.optional(),
+    file: ParseFileConfigSchema.optional(),
     input_schema: z.record(z.string(), z.unknown()).optional(),
     output_schema: z.record(z.string(), z.unknown()).optional(),
     silence_warnings: z
@@ -758,6 +780,28 @@ export const TransformStepSchema = z
         code: z.ZodIssueCode.custom,
         path: ["markdown"],
         message: 'markdown config is only valid when language="html-to-markdown"',
+      });
+    }
+    if (language === "parse-file" && s.expression !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["expression"],
+        message:
+          "transform.language=parse-file does not accept an expression; configure via the `file` block",
+      });
+    }
+    if (language === "parse-file" && s.file === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["file"],
+        message: "transform.language=parse-file requires a `file` block with a `source`",
+      });
+    }
+    if (s.file !== undefined && language !== "parse-file") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["file"],
+        message: 'file config is only valid when language="parse-file"',
       });
     }
     if (s.structured_data !== undefined && language !== "structured-data") {
@@ -838,6 +882,30 @@ export const ParallelStepSchema = z
   })
   .openapi("ParallelStep");
 
+export const MODEL_STEP_MAX_OUTPUT_TOKENS = 32_000;
+
+export const ModelStepSchema = z
+  .object({
+    kind: z.literal("model"),
+    ...baseStep,
+    prompt: z.string().min(1).openapi({
+      description:
+        "The instruction for the model. Placeholders such as ${input.x} or ${scope.step.data} are filled in before the call.",
+    }),
+    system: z.string().min(1).optional().openapi({
+      description: "Optional system prompt. Without it the step uses a short neutral default.",
+    }),
+    input: JsonValueSchema.optional().openapi({
+      description:
+        "Data handed to the model next to the prompt, as data and never as instructions.",
+    }),
+    output_schema: z.record(z.string(), z.unknown()).openapi({
+      description: "JSON Schema the model's answer must match. The step fails when it does not.",
+    }),
+    max_output_tokens: z.number().int().min(1).max(MODEL_STEP_MAX_OUTPUT_TOKENS).optional(),
+  })
+  .openapi("ModelStep");
+
 export const StepSchema = z.discriminatedUnion("kind", [
   RequestStepSchema,
   TransformStepSchema,
@@ -846,6 +914,7 @@ export const StepSchema = z.discriminatedUnion("kind", [
   WaitForEventStepSchema,
   BranchStepSchema,
   ParallelStepSchema,
+  ModelStepSchema,
 ]);
 
 export const WorkflowRuntimeSchema = z
@@ -1105,6 +1174,7 @@ export const WORKFLOW_DEF_FIELD_KEYS = Object.keys(_baseWorkflowDefSchema.shape)
 export type StepDef = z.infer<typeof StepSchema>;
 export type RequestStep = z.infer<typeof RequestStepSchema>;
 export type TransformStep = z.infer<typeof TransformStepSchema>;
+export type ModelStep = z.infer<typeof ModelStepSchema>;
 export type CallStep = z.infer<typeof CallStepSchema>;
 export type WaitStep = z.infer<typeof WaitStepSchema>;
 export type WaitForEventStep = z.infer<typeof WaitForEventStepSchema>;

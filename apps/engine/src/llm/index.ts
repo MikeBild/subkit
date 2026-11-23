@@ -40,4 +40,8 @@ export * from "./runtime/invoke.ts";
 export * from "./runtime/model-init.ts";
 export * from "./runtime/workspace-access.ts";
 export * from "./runtime-context.ts";
+export {
+  resolvePlaceholders,
+  resolvePlaceholdersTypePreserving,
+} from "./substitution/resolver.ts";
 export * from "./types.ts";
