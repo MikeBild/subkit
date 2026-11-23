@@ -1,10 +1,10 @@
 <p align="center">
-  <a href="https://subkit.mikebild.dev/en/"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/hero-dark.webp" /><img src=".github/readme/hero.webp" alt="SubKit: the AI assistant your team can trust. Design. Review. Approve. Run. Cloud, self-hosted or on your computer." width="100%" /></picture></a>
+  <a href="https://subkit.mikebild.dev/en/"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/hero-dark.webp" /><img src=".github/readme/hero.webp" alt="SubKit. Design. Review. Approve. Run. Describe recurring work in your own words. AI drafts the workflow, a person approves what it may touch." width="100%" /></picture></a>
 </p>
 
 <p align="center">
   <strong>The AI assistant your team can trust.</strong><br />
-  It takes over the tasks your team does over and over. You decide what it can access, and you can look up every run in the history.
+  It takes over the work your team repeats, and every run is on record.
 </p>
 
 <p align="center">
@@ -13,53 +13,33 @@
   <a href="https://github.com/MikeBild/subkit/releases/latest/download/docker-compose.yml"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/button-selfhost-dark.webp" /><img src=".github/readme/button-selfhost.webp" alt="Self-host with Docker" width="260" /></picture></a>
 </p>
 
-<p align="center">
-  <sub>macOS 13+ on Apple Silicon · Windows coming soon · CLI: <code>curl -fsSL https://github.com/MikeBild/subkit/releases/latest/download/install.sh | bash</code> · <a href="https://chromewebstore.google.com/detail/odefbnmjeehgfbanpaajiaocliccldma">Web Clipper in the Chrome Web Store</a> · Free and open source (<a href="LICENSE">Apache 2.0</a>)</sub>
-</p>
+<p align="center"><sub>macOS 13+ on Apple Silicon · Windows coming soon</sub></p>
 
 <p align="center">
-  <a href="https://subkit.mikebild.dev/en/"><strong>Website</strong></a> ·
   <a href="https://subkit.mikebild.dev/en/documentation/"><strong>Documentation</strong></a> ·
   <a href="https://subkit.mikebild.dev/en/use-cases/"><strong>Use cases</strong></a> ·
-  <a href="#sign-up-for-subkit-cloud"><strong>Sign up</strong></a> ·
-  <a href="#run-subkit"><strong>Run SubKit</strong></a> ·
-  <a href="#subkit-desktop"><strong>Desktop app</strong></a>
+  <a href="#run-subkit"><strong>Run SubKit</strong></a>
 </p>
 
 <p align="center">
   <a href="https://github.com/MikeBild/subkit/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/MikeBild/subkit?style=flat-square&labelColor=141414&color=1E4FD6&label=release" /></a>
-  <a href="https://github.com/MikeBild/subkit/releases/latest"><img alt="Release date of the latest release" src="https://img.shields.io/github/release-date/MikeBild/subkit?style=flat-square&labelColor=141414&color=1E4FD6&label=released" /></a>
   <a href="https://github.com/MikeBild/subkit/releases/latest"><img alt="Downloads of the latest release" src="https://img.shields.io/github/downloads/MikeBild/subkit/latest/total?style=flat-square&labelColor=141414&color=1E4FD6&label=downloads" /></a>
-  <a href="https://github.com/MikeBild/subkit/actions/workflows/quality.yml"><img alt="Workflow status: quality" src="https://github.com/MikeBild/subkit/actions/workflows/quality.yml/badge.svg" /></a>
-  <a href="https://github.com/MikeBild/subkit/actions/workflows/security.yml"><img alt="Workflow status: security" src="https://github.com/MikeBild/subkit/actions/workflows/security.yml/badge.svg" /></a>
-  <a href="https://github.com/MikeBild/subkit/actions/workflows/release.yml"><img alt="Workflow status: release" src="https://github.com/MikeBild/subkit/actions/workflows/release.yml/badge.svg" /></a>
-  <a href="https://github.com/MikeBild/subkit/actions/workflows/desktop-release.yml"><img alt="Workflow status: desktop-release" src="https://github.com/MikeBild/subkit/actions/workflows/desktop-release.yml/badge.svg" /></a>
-  <a href="https://github.com/MikeBild/subkit/commits/main"><img alt="Last commit" src="https://img.shields.io/github/last-commit/MikeBild/subkit?style=flat-square&labelColor=141414&color=1E4FD6" /></a>
-  <a href="https://github.com/MikeBild/subkit/graphs/commit-activity"><img alt="Commit activity per month" src="https://img.shields.io/github/commit-activity/m/MikeBild/subkit?style=flat-square&labelColor=141414&color=1E4FD6" /></a>
-  <a href="https://github.com/MikeBild/subkit/issues"><img alt="Open issues" src="https://img.shields.io/github/issues/MikeBild/subkit?style=flat-square&labelColor=141414&color=1E4FD6" /></a>
-</p>
-
-<p align="center">
+  <a href="https://github.com/MikeBild/subkit/actions/workflows/quality.yml"><img alt="Workflow status: quality" src="https://img.shields.io/github/actions/workflow/status/MikeBild/subkit/quality.yml?branch=main&style=flat-square&labelColor=141414&label=quality" /></a>
+  <a href="https://github.com/MikeBild/subkit/actions/workflows/security.yml"><img alt="Workflow status: security" src="https://img.shields.io/github/actions/workflow/status/MikeBild/subkit/security.yml?branch=main&style=flat-square&labelColor=141414&label=security" /></a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/MikeBild/subkit"><img alt="OpenSSF Scorecard" src="https://img.shields.io/ossf-scorecard/github.com/MikeBild/subkit?style=flat-square&labelColor=141414&label=openssf%20scorecard" /></a>
   <a href="LICENSE"><img alt="License: Apache 2.0" src="https://img.shields.io/badge/license-Apache_2.0-1E4FD6?style=flat-square&labelColor=141414" /></a>
-  <img alt="Top language" src="https://img.shields.io/github/languages/top/MikeBild/subkit?style=flat-square&labelColor=141414&color=1E4FD6" />
-  <img alt="Code size" src="https://img.shields.io/github/languages/code-size/MikeBild/subkit?style=flat-square&labelColor=141414&color=1E4FD6&label=code%20size" />
-  <img alt="Runs in the cloud, self-hosted or on your computer" src="https://img.shields.io/badge/runs-cloud_·_self--hosted_·_desktop-1E4FD6?style=flat-square&labelColor=141414" />
-  <img alt="Works with MCP clients" src="https://img.shields.io/badge/MCP-server_and_client-1E4FD6?style=flat-square&labelColor=141414" />
-  <img alt="Interface languages: English and German" src="https://img.shields.io/badge/languages-EN_·_DE-1E4FD6?style=flat-square&labelColor=141414" />
-  <img alt="Desktop app: macOS 13 or later on Apple Silicon, Windows coming soon" src="https://img.shields.io/badge/desktop-macOS_13+_·_Apple_Silicon_·_Windows_coming_soon-1E4FD6?style=flat-square&labelColor=141414" />
-  <a href="https://subkit-cloud.mikebild.dev"><img alt="Status: SubKit Cloud is in Preview with self-service sign-up" src="https://img.shields.io/badge/cloud-preview_·_self--service_sign--up-1E4FD6?style=flat-square&labelColor=141414" /></a>
 </p>
 
 <br />
 
 <table>
   <tr>
-    <td width="50%" valign="top"><strong>Hands the recurring work over.</strong><br />Approved workflows run on demand, on a schedule or on a webhook.<br /><a href="#hands-the-recurring-work-over">The work</a></td>
-    <td width="50%" valign="top"><strong>Your team’s second brain.</strong><br />Shared knowledge and skills that teach it your house rules.<br /><a href="#your-teams-second-brain">Knowledge</a></td>
+    <td width="50%" valign="top"><a href="#hands-the-recurring-work-over"><strong>Hands the recurring work over.</strong></a><br />Workflows and tasks for the jobs that keep coming back.</td>
+    <td width="50%" valign="top"><a href="#your-teams-second-brain"><strong>Your team’s second brain.</strong></a><br />What your team knows, collected and reviewed in one place.</td>
   </tr>
   <tr>
-    <td valign="top"><strong>Works on your computer.</strong><br />Files, browser and apps, only where you allow it.<br /><a href="#works-on-your-computer">Desktop</a></td>
-    <td valign="top"><strong>Reach it from anywhere.</strong><br />Cockpit, Slack, Google Chat, MCP clients and the terminal.<br /><a href="#reach-it-from-anywhere">Access</a></td>
+    <td valign="top"><a href="#works-on-your-computer"><strong>Works on your computer.</strong></a><br />Files, browser and apps, only where you allow it.</td>
+    <td valign="top"><a href="#reach-it-from-anywhere"><strong>Reach it from anywhere.</strong></a><br />Cockpit, Slack, Google Chat, MCP clients and the terminal.</td>
   </tr>
 </table>
 
@@ -164,8 +144,6 @@
   </tr>
 </table>
 
-<p align="center"><sub>SubKit Desktop runs on macOS 13+ with Apple Silicon. The Windows app is coming soon.</sub></p>
-
 <br />
 
 <a name="reach-it-from-anywhere"></a>
@@ -178,7 +156,7 @@
 
 <table>
   <tr>
-    <td width="50%" valign="top"><strong>Cockpit, in the browser.</strong><br />Design, approve and follow workflows. No code. English and German.</td>
+    <td width="50%" valign="top"><strong>Cockpit, in the browser.</strong><br />Design, approve and follow workflows. English and German.</td>
     <td width="50%" valign="top"><strong>Chat, where your team works.</strong><br />Ask and start approved workflows from Slack or Google Chat.</td>
   </tr>
   <tr>
@@ -193,7 +171,7 @@
   <picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/heading-boundaries-dark.webp" /><img src=".github/readme/heading-boundaries.webp" alt="Your engine. Your model. Your boundaries." width="100%" /></picture>
 </p>
 
-- **SubKit Cloud, your server or your computer.** Self-hosted, your data, files and keys stay with you.
+- **SubKit Cloud, your server or your computer.** You choose where it runs and can move later.
 - **Your model.** Anthropic, OpenAI, Google Gemini, Azure, Amazon Bedrock or Vertex AI, with your own key.
 - **The approved boundary.** An approval names environment, validity, reads, writes and the vault items it uses.
 - **One vault for every secret.** Workspace, personal and device secrets. Values reach only approved runs and their connector, never the model.
@@ -312,7 +290,7 @@ stateDiagram-v2
 <summary><strong>What does it cost?</strong></summary>
 <br />
 
-SubKit is open source under the Apache License 2.0. Your model provider bills you directly. [Usage](https://subkit.mikebild.dev/en/documentation/usage-and-costs/) shows the AI cost, and your monthly budget in US dollars caps it.
+SubKit itself is free and open source. Your model provider bills you directly. [Usage](https://subkit.mikebild.dev/en/documentation/usage-and-costs/) shows the AI cost, and your monthly budget caps it.
 
 </details>
 
@@ -320,7 +298,7 @@ SubKit is open source under the Apache License 2.0. Your model provider bills yo
 <summary><strong>Does the AI act on its own while a workflow runs?</strong></summary>
 <br />
 
-No. The AI helps you design. At run time the workflow follows its fixed steps. A model step can summarize or classify, but it cannot add steps, reach other systems or widen its permissions.
+No. At run time the workflow follows its fixed steps. A model step can summarize or classify, but it cannot add steps, reach other systems or widen its permissions.
 
 </details>
 
@@ -352,7 +330,7 @@ No. Design, approve and run workflows in the Cockpit. If you prefer files and re
 <summary><strong>Is it ready for my team?</strong></summary>
 <br />
 
-SubKit is in Preview. [Sign up for SubKit Cloud](#sign-up-for-subkit-cloud) yourself, no invitation needed. Everything for self-hosting, from the Compose file to SubKit Desktop, is in the [latest release](https://github.com/MikeBild/subkit/releases/latest). The Web Clipper works in Chrome only.
+SubKit is in Preview. Everything for self-hosting, from the Compose file to SubKit Desktop, is in the [latest release](https://github.com/MikeBild/subkit/releases/latest).
 
 </details>
 
@@ -364,30 +342,31 @@ SubKit is in Preview. [Sign up for SubKit Cloud](#sign-up-for-subkit-cloud) your
   <picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/heading-run-dark.webp" /><img src=".github/readme/heading-run.webp" alt="Run SubKit" width="100%" /></picture>
 </p>
 
-<p align="center">Use SubKit Cloud, your own server or your computer.</p>
-
 <table>
   <tr>
-    <td width="50%" valign="top"><strong>SubKit Cloud</strong><br />SubKit runs for you. Create an account and set up your workspace in the browser. Preview, open to everyone.<br /><br /><a href="https://subkit-cloud.mikebild.dev">Sign up for SubKit Cloud</a> · <a href="https://subkit.mikebild.dev/en/documentation/subkit-cloud/">How SubKit Cloud works</a></td>
-    <td width="50%" valign="top"><strong>Your own engine</strong><br />Engine with Cockpit, PostgreSQL and an object store, started with Docker Compose.<br /><br /><a href="https://github.com/MikeBild/subkit/releases/latest/download/docker-compose.yml">Download <code>docker-compose.yml</code></a> · <a href="https://subkit.mikebild.dev/en/documentation/run-the-engine/">How self-hosting works</a></td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top"><a name="subkit-desktop"></a><strong>SubKit Desktop</strong><br />Your Cockpit as a desktop app, plus files, browser and computer use.<br /><sub>macOS 13+ on Apple Silicon, Windows coming soon</sub><br /><br /><a href="https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-mac-arm64.dmg">Download for Mac</a> · <a href="https://subkit.mikebild.dev/en/documentation/subkit-desktop/">How to get SubKit Desktop</a></td>
-    <td width="50%" valign="top"><strong>Fully local workspace</strong><br />A whole workspace on your computer, with backups and your own AI key or local model. No server needed.<br /><sub>Inside SubKit Desktop</sub><br /><br /><a href="https://subkit.mikebild.dev/en/documentation/subkit-desktop/">Set up a local workspace</a></td>
+    <td width="33%" valign="top"><strong>SubKit Cloud</strong><br />SubKit runs for you. Set up your workspace in the browser.<br /><br /><a href="https://subkit.mikebild.dev/en/documentation/subkit-cloud/">How SubKit Cloud works</a></td>
+    <td width="33%" valign="top"><strong>Your own server</strong><br />The engine and everything it needs, started with Docker Compose.<br /><br /><a href="https://subkit.mikebild.dev/en/documentation/run-the-engine/">How self-hosting works</a></td>
+    <td width="33%" valign="top"><strong>SubKit Desktop</strong><br />The Cockpit as an app on your Mac, with or without a server.<br /><br /><a href="https://subkit.mikebild.dev/en/documentation/subkit-desktop/">How to get SubKit Desktop</a></td>
   </tr>
 </table>
 
 <a name="sign-up-for-subkit-cloud"></a>
 
-**Sign up for SubKit Cloud** in three steps:
+**Sign up for SubKit Cloud** in three steps, no invitation needed:
 
 1. Open [subkit-cloud.mikebild.dev](https://subkit-cloud.mikebild.dev) and select **Sign in with work account**.
 2. Select **Create an account** and confirm your email address with the link you receive.
 3. Sign in, name your workspace and add the API key of your AI provider.
 
-<p align="center">Then connect your tools: <code>subkit</code> in the terminal,<br />Claude Code, Codex and other AI clients over MCP.</p>
+**Then connect your tools.** Install the `subkit` CLI for the terminal ([guide](https://subkit.mikebild.dev/en/documentation/use-the-subkit-cli-on-your-machine/)):
 
-<p align="center">Collect pages from Chrome with the Web Clipper: <a href="https://chromewebstore.google.com/detail/odefbnmjeehgfbanpaajiaocliccldma">add it from the Chrome Web Store</a>, where it updates itself. For offline setups, <a href="https://github.com/MikeBild/subkit/releases/latest/download/subkit-clipper.zip">download the ZIP file</a> and follow the <a href="https://subkit.mikebild.dev/en/documentation/web-clipper/">install guide</a>.</p>
+```bash
+curl -fsSL https://github.com/MikeBild/subkit/releases/latest/download/install.sh | bash
+```
+
+[Connect Claude Code, Codex and other AI clients](https://subkit.mikebild.dev/en/documentation/mcp-clients/) over MCP.
+
+**Collect pages from Chrome** with the Web Clipper: [add it from the Chrome Web Store](https://chromewebstore.google.com/detail/odefbnmjeehgfbanpaajiaocliccldma), where it updates itself. For offline setups, [download the ZIP file](https://github.com/MikeBild/subkit/releases/latest/download/subkit-clipper.zip) and follow the [install guide](https://subkit.mikebild.dev/en/documentation/web-clipper/).
 
 <details>
 <summary><strong>Develop from source</strong></summary>
@@ -409,7 +388,7 @@ Every root command groups one concern: `gen`, `build`, `test`, `verify`, `qualit
 </details>
 
 <p align="center">
-  <a href="https://subkit.mikebild.dev/en/documentation/run-the-engine/">Run the engine</a> · <a href="https://subkit.mikebild.dev/en/documentation/first-run-setup/">First-run setup</a> · <a href="https://subkit.mikebild.dev/en/documentation/first-workflow/">Your first workflow</a> · <a href="https://subkit.mikebild.dev/en/documentation/mcp-clients/">Connect AI clients</a>
+  <a href="https://subkit.mikebild.dev/en/documentation/first-run-setup/">First-run setup</a> · <a href="https://subkit.mikebild.dev/en/documentation/first-workflow/">Your first workflow</a>
 </p>
 
 <br />
