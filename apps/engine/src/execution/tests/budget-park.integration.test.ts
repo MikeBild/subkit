@@ -3,10 +3,9 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { and, eq } from "drizzle-orm";
-import { _resetConfigForTests, loadConfig, setConfigKey } from "../../config/loader.ts";
+import { _resetConfigForTests, loadConfig } from "../../config/loader.ts";
 import {
   auditLog,
-  connectors,
   executionSteps,
   executions,
   llmUsage,
@@ -14,6 +13,7 @@ import {
   workflowExecutionAuthorities,
 } from "../../db/schema/index.ts";
 import { currentMonthBucket } from "../../llm/accounting/index.ts";
+import { getMockProvider } from "../../llm/mock-provider.ts";
 import { databaseNow } from "../../test-helpers/database-clock.ts";
 import { now } from "../../utils/clock.ts";
 import { previewWorkflowAuthority } from "../../workflows/execution-authorities.ts";
@@ -21,35 +21,14 @@ import { admitAuthorizedWorkflowExecution } from "../authority-admission.ts";
 import { resumeBudgetParkedRuns } from "../budget-park.ts";
 import { isBudgetPark } from "../core/budget-pause.ts";
 import { runExecution } from "../engine.ts";
-import {
-  createEngineCtx,
-  createMockServer,
-  createWorkflowRow,
-  type EngineTestCtx,
-  jsonResponse,
-  type MockServer,
-} from "./setup.ts";
+import { createEngineCtx, createWorkflowRow, type EngineTestCtx } from "./setup.ts";
 
 let ctx: EngineTestCtx;
-let model: MockServer;
 let configDir: string;
 let workflowId: string;
 
-async function connector(slug: string, base_url: string): Promise<string> {
-  const [row] = await ctx.testDb.db
-    .insert(connectors)
-    .values({
-      tenant_id: ctx.tenantId,
-      slug,
-      display_name: slug,
-      driver: "http",
-      auth_type: "none",
-      environment: "dev",
-      base_url,
-    })
-    .returning();
-  if (!row) throw new Error("connector fixture missing");
-  return row.id;
+function modelCalls(): number {
+  return getMockProvider().calls.filter((call) => call.flow === "workflow_step").length;
 }
 
 beforeAll(async () => {
@@ -57,18 +36,11 @@ beforeAll(async () => {
   configDir = mkdtempSync(join(tmpdir(), "subkit-budget-park-"));
   _resetConfigForTests();
   await loadConfig({
-    env: { NODE_ENV: "test", DATABASE_URL: ctx.testDb.url },
+    env: { NODE_ENV: "test", DATABASE_URL: ctx.testDb.url, LLM_PROVIDER: "mock" },
     configPathOverride: join(configDir, "subkit.config.json"),
   });
-  await setConfigKey("egress.provider_hosts_extra", ["127.0.0.1"], { force: true });
-  model = await createMockServer((_, res) =>
-    jsonResponse(res, 200, {
-      model: "gpt-4.1-mini",
-      output_text: "ok",
-      usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
-    }),
-  );
-  const modelId = await connector("model", model.baseUrl);
+  getMockProvider().reset();
+  getMockProvider().generateOverrides.workflow_step = () => ({ summary: "ok" });
   const workflow = await createWorkflowRow(ctx, {
     name: "budget park",
     slug: "budget-park",
@@ -76,11 +48,13 @@ beforeAll(async () => {
       { id: "prepare", kind: "transform", language: "javascript", expression: "return { n: 1 };" },
       {
         id: "ask",
-        kind: "request",
-        connector_id: modelId,
-        method: "POST",
-        path: "/v1/responses",
-        body: { model: "gpt-4.1-mini", input: "summarize" },
+        kind: "model",
+        prompt: "Summarize ${scope.prepare.data.n}",
+        output_schema: {
+          type: "object",
+          required: ["summary"],
+          properties: { summary: { type: "string" } },
+        },
       },
     ],
   });
@@ -122,7 +96,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await model?.close();
+  getMockProvider().reset();
   await ctx?.cleanup();
   _resetConfigForTests();
   rmSync(configDir, { recursive: true, force: true });
@@ -177,7 +151,7 @@ describe("a workflow run at the AI budget", () => {
     expect(parked.status).toBe("queued");
     expect(parked.error?.code).toBe("llm_spend_limit_reached");
     expect(await stepRows(admitted.execution_id, "prepare")).toBe(1);
-    expect(model.callCount()).toBe(0);
+    expect(modelCalls()).toBe(0);
     const waiting = await row(admitted.execution_id);
     expect(waiting?.status).toBe("queued");
     const park = waiting?.budget_park;
@@ -206,6 +180,6 @@ describe("a workflow run at the AI budget", () => {
     });
     expect(resumed.status).toBe("succeeded");
     expect(await stepRows(admitted.execution_id, "prepare")).toBe(1);
-    expect(model.callCount()).toBe(1);
+    expect(modelCalls()).toBe(1);
   });
 });

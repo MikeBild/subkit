@@ -1,11 +1,12 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { and, eq } from "drizzle-orm";
-import { _resetConfigForTests, getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
+import { _resetConfigForTests, loadConfig } from "../../config/loader.ts";
 import { auditLog, llmUsage, tenants } from "../../db/schema/index.ts";
 import { currentMonthBucket } from "../../llm/accounting/index.ts";
+import { getMockProvider } from "../../llm/mock-provider.ts";
 import { now } from "../../utils/clock.ts";
 import { runExecution } from "../engine.ts";
 import {
@@ -18,37 +19,53 @@ import {
 } from "./setup.ts";
 
 let ctx: EngineTestCtx;
-let mock: MockServer;
+let upstream: MockServer;
 let configDir: string;
-let previousProviderHosts: string[];
+
+const answer = { type: "object", required: ["ok"], properties: { ok: { type: "boolean" } } };
+
+function modelStep(id: string, prompt: string) {
+  return { kind: "model", id, prompt, output_schema: answer, max_output_tokens: 40 } as const;
+}
+
+function workflowStepCalls(): number {
+  return getMockProvider().calls.filter((call) => call.flow === "workflow_step").length;
+}
+
+async function completedAudit(execution_id: string): Promise<Record<string, unknown>> {
+  const rows = await ctx.testDb.db
+    .select()
+    .from(auditLog)
+    .where(and(eq(auditLog.tenant_id, ctx.tenantId), eq(auditLog.action, "execution.completed")));
+  const row = rows.find((r) => (r.resource_id as string | null) === execution_id);
+  return (row?.metadata ?? {}) as Record<string, unknown>;
+}
+
+async function usageTotal(execution_id: string): Promise<number> {
+  const rows = await ctx.testDb.db
+    .select({ prompt: llmUsage.prompt_tokens, completion: llmUsage.completion_tokens })
+    .from(llmUsage)
+    .where(and(eq(llmUsage.tenant_id, ctx.tenantId), eq(llmUsage.execution_id, execution_id)));
+  return rows.reduce((sum, row) => sum + Number(row.prompt) + Number(row.completion), 0);
+}
 
 beforeAll(async () => {
   ctx = await createEngineCtx("llm-budget");
   configDir = mkdtempSync(join(tmpdir(), "subkit-llm-budget-"));
   _resetConfigForTests();
   await loadConfig({
-    env: { NODE_ENV: "test", DATABASE_URL: ctx.testDb.url },
+    env: { NODE_ENV: "test", DATABASE_URL: ctx.testDb.url, LLM_PROVIDER: "mock" },
     configPathOverride: join(configDir, "subkit.config.json"),
   });
-  mock = await createMockServer((_, res) => {
-    jsonResponse(res, 200, {
-      id: "resp_test",
-      model: "gpt-4.1-mini",
-      output_text: "ok",
-      usage: {
-        prompt_tokens: 40,
-        completion_tokens: 20,
-        total_tokens: 60,
-      },
-    });
-  });
-  previousProviderHosts = [...getConfig().egress.provider_hosts_extra];
-  await setConfigKey("egress.provider_hosts_extra", ["127.0.0.1"], { force: true });
+  upstream = await createMockServer((_, res) => jsonResponse(res, 200, { ok: true }));
+});
+
+afterEach(() => {
+  getMockProvider().reset();
 });
 
 afterAll(async () => {
-  await setConfigKey("egress.provider_hosts_extra", previousProviderHosts, { force: true });
-  await mock.close();
+  await upstream.close();
   await ctx.cleanup();
   _resetConfigForTests();
   rmSync(configDir, { recursive: true, force: true });
@@ -56,90 +73,35 @@ afterAll(async () => {
 
 describe("execution · per-run LLM token budget", () => {
   test("fails with llm_budget_exceeded when cumulative usage would exceed cap", async () => {
+    getMockProvider().generateOverrides.workflow_step = () => ({ ok: true });
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "llm-budget-test",
-      max_llm_tokens_per_run: 100,
-      steps: [
-        {
-          kind: "request",
-          id: "first_call",
-          method: "POST",
-          url: `${mock.baseUrl}/responses`,
-          body: { model: "gpt-4.1-mini", input: "hi" },
-        },
-        {
-          kind: "request",
-          id: "second_call",
-          method: "POST",
-          url: `${mock.baseUrl}/responses`,
-          body: { model: "gpt-4.1-mini", input: "again" },
-        },
-      ],
+      max_llm_tokens_per_run: 80,
+      steps: [modelStep("first_call", "hi"), modelStep("second_call", "again")],
     });
-    const callsBefore = mock.callCount();
     const result = await runExecution({
       db: ctx.testDb.db,
       tenant_id: ctx.tenantId,
       source: { kind: "saved", workflow_id },
       input: null,
     });
-    const callsAfter = mock.callCount();
 
     expect(result.status).toBe("failed");
     expect(result.error?.code).toBe("llm_budget_exceeded");
-    expect(callsAfter - callsBefore).toBe(1);
-
-    const auditRows = await ctx.testDb.db
-      .select()
-      .from(auditLog)
-      .where(and(eq(auditLog.tenant_id, ctx.tenantId), eq(auditLog.action, "external_write")));
-    expect(auditRows.length).toBeGreaterThan(0);
-    const llmAudit = auditRows.find((r) => {
-      const meta = r.metadata as Record<string, unknown> | null;
-      return meta && (meta.provider as string)?.startsWith("127.0.0.1");
-    });
-    expect(llmAudit).toBeTruthy();
-    const llmMeta = llmAudit?.metadata as Record<string, unknown>;
-    expect(llmMeta.prompt_tokens).toBe(40);
-    expect(llmMeta.completion_tokens).toBe(20);
-    expect(llmMeta.total_tokens).toBe(60);
-    expect(llmMeta.run_total_tokens).toBe(60);
-    expect(llmMeta.model).toBe("gpt-4.1-mini");
-
-    const execAudits = await ctx.testDb.db
-      .select()
-      .from(auditLog)
-      .where(and(eq(auditLog.tenant_id, ctx.tenantId), eq(auditLog.action, "execution.completed")));
-    const execAudit = execAudits.find(
-      (r) => (r.resource_id as string | null) === result.execution_id,
-    );
-    expect(execAudit).toBeTruthy();
-    const execMeta = execAudit?.metadata as Record<string, unknown>;
-    expect(execMeta.total_llm_tokens).toBe(60);
-    expect(execMeta.max_llm_tokens_per_run).toBe(100);
+    expect(workflowStepCalls()).toBe(1);
+    const spent = await usageTotal(result.execution_id);
+    expect(spent).toBeGreaterThan(0);
+    const meta = await completedAudit(result.execution_id);
+    expect(meta.total_llm_tokens).toBe(spent);
+    expect(meta.max_llm_tokens_per_run).toBe(80);
   });
 
   test("uncapped run accumulates total_llm_tokens without enforcing", async () => {
+    getMockProvider().generateOverrides.workflow_step = () => ({ ok: true });
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "llm-budget-uncapped",
-      steps: [
-        {
-          kind: "request",
-          id: "call_a",
-          method: "POST",
-          url: `${mock.baseUrl}/responses`,
-          body: { model: "gpt-4.1-mini", input: "a" },
-        },
-        {
-          kind: "request",
-          id: "call_b",
-          method: "POST",
-          url: `${mock.baseUrl}/responses`,
-          body: { model: "gpt-4.1-mini", input: "b" },
-        },
-      ],
+      steps: [modelStep("call_a", "a"), modelStep("call_b", "b")],
     });
-    const callsBefore = mock.callCount();
     const result = await runExecution({
       db: ctx.testDb.db,
       tenant_id: ctx.tenantId,
@@ -147,19 +109,10 @@ describe("execution · per-run LLM token budget", () => {
       input: null,
     });
     expect(result.status).toBe("succeeded");
-    expect(mock.callCount() - callsBefore).toBe(2);
-
-    const execAudits = await ctx.testDb.db
-      .select()
-      .from(auditLog)
-      .where(and(eq(auditLog.tenant_id, ctx.tenantId), eq(auditLog.action, "execution.completed")));
-    const execAudit = execAudits.find(
-      (r) => (r.resource_id as string | null) === result.execution_id,
-    );
-    expect(execAudit).toBeTruthy();
-    const execMeta = execAudit?.metadata as Record<string, unknown>;
-    expect(execMeta.total_llm_tokens).toBe(120);
-    expect(execMeta.max_llm_tokens_per_run).toBeUndefined();
+    expect(workflowStepCalls()).toBe(2);
+    const meta = await completedAudit(result.execution_id);
+    expect(meta.total_llm_tokens).toBe(await usageTotal(result.execution_id));
+    expect(meta.max_llm_tokens_per_run).toBeUndefined();
   });
 
   test("a reached AI budget stops the model step before the call, other steps still run", async () => {
@@ -182,22 +135,11 @@ describe("execution · per-run LLM token budget", () => {
       const { workflow_id } = await createWorkflowRow(ctx, {
         name: "llm-budget-spend",
         steps: [
-          {
-            kind: "request",
-            id: "plain_call",
-            method: "GET",
-            url: `${mock.baseUrl.replace("127.0.0.1", "localhost")}/plain`,
-          },
-          {
-            kind: "request",
-            id: "model_call",
-            method: "POST",
-            url: `${mock.baseUrl}/responses`,
-            body: { model: "gpt-4.1-mini", input: "hi" },
-          },
+          { kind: "request", id: "plain_call", method: "GET", url: `${upstream.baseUrl}/plain` },
+          modelStep("model_call", "hi"),
         ],
       });
-      const callsBefore = mock.callCount();
+      const callsBefore = upstream.callCount();
       const result = await runExecution({
         db: ctx.testDb.db,
         tenant_id: ctx.tenantId,
@@ -206,7 +148,8 @@ describe("execution · per-run LLM token budget", () => {
       });
       expect(result.status).toBe("failed");
       expect(result.error?.code).toBe("llm_spend_limit_reached");
-      expect(mock.callCount() - callsBefore).toBe(1);
+      expect(upstream.callCount() - callsBefore).toBe(1);
+      expect(workflowStepCalls()).toBe(0);
     } finally {
       await ctx.testDb.db
         .update(tenants)

@@ -3,7 +3,7 @@ import { budgetPause, isBudgetPark, parkedScope } from "./budget-pause.ts";
 
 const base = {
   error_code: "llm_spend_limit_reached",
-  step_kind: "request",
+  step_kind: "model",
   for_each: false,
   authorized: true,
   child: false,
@@ -18,6 +18,7 @@ describe("budgetPause", () => {
   });
 
   test("anything else that hits the budget keeps failing with the remedy", () => {
+    expect(budgetPause({ ...base, step_kind: "request" })).toBe("fail");
     expect(budgetPause({ ...base, step_kind: "branch" })).toBe("fail");
     expect(budgetPause({ ...base, step_kind: "parallel" })).toBe("fail");
     expect(budgetPause({ ...base, for_each: true })).toBe("fail");

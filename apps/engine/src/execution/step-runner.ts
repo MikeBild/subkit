@@ -12,6 +12,7 @@ import { maybeOffload, previewOf } from "./offload.ts";
 import { applySelector } from "./selectors.ts";
 import { finalizeStepRow } from "./state.ts";
 import { runBranchStep } from "./steps/branch.ts";
+import { runModelStep } from "./steps/model.ts";
 import { runParallelStep } from "./steps/parallel.ts";
 import { runRequestStep } from "./steps/request.ts";
 import { runTransformStep } from "./steps/transform.ts";
@@ -260,6 +261,9 @@ export async function runStep(
       break;
     case "parallel":
       result = await runParallelStep({ ctx, step });
+      break;
+    case "model":
+      result = await runModelStep({ ctx, step, scope });
       break;
     case "call":
       result =

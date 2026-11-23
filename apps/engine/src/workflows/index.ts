@@ -41,11 +41,13 @@ export {
   contentPublicationLabels,
 } from "./content-publication-proposal.ts";
 export { isOpenEnded, remainingRuns } from "./core/authority.ts";
+export { type PlaceholderKind, parsePlaceholders } from "./core/placeholder-parser.ts";
 export {
   carriedSpecColumns,
   type SpecCarrier,
   workflowSpecDigest,
 } from "./core/spec.ts";
+export { walkStrings } from "./core/walk-strings.ts";
 export { readDatabaseNow } from "./database-clock.ts";
 export * from "./destination-placeholders.ts";
 export * from "./draft-schemas.ts";

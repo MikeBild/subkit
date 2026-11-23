@@ -8,20 +8,6 @@ export function checkRequired(value: unknown, schema: Record<string, unknown>): 
     .map((f) => `required field '${f}' is missing`);
 }
 
-export function extractModelHint(requestBody: unknown, responseBody: unknown): string {
-  const fromReq = pickModelField(requestBody);
-  if (fromReq) return fromReq;
-  const fromRes = pickModelField(responseBody);
-  if (fromRes) return fromRes;
-  return "unknown";
-}
-
-function pickModelField(v: unknown): string | null {
-  if (!v || typeof v !== "object") return null;
-  const m = (v as Record<string, unknown>).model;
-  return typeof m === "string" && m.length > 0 ? m : null;
-}
-
 export function deriveAuthMethodFromAuthType(
   authType:
     | "none"

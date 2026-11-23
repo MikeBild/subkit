@@ -160,7 +160,8 @@ describe("GraphQL and AWS recipe coverage", () => {
       expect.arrayContaining(["list-models", "structured-extraction", "create-embedding"]),
     );
     const structured = openai.recipes.find((r) => r.slug === "structured-extraction")!;
-    expect(JSON.stringify(structured.workflow)).toContain("json_schema");
+    expect(structured.workflow.steps[0]).toMatchObject({ kind: "model", id: "extract" });
+    expect(JSON.stringify(structured.workflow.steps[0])).toContain("output_schema");
     expect(structured.workflow.output_schema).toBeDefined();
   });
 });

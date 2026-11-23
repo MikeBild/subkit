@@ -244,7 +244,10 @@ interface InvokeParams<T = unknown> {
   workflow_id?: string;
   prior_failures?: Parameters<typeof assembleContext>[0]["prior_failures"];
   user_memory?: string;
+  system?: string;
+  max_output_tokens?: number;
   schema?: ZodType<T>;
+  output_json_schema?: Record<string, unknown>;
   telemetry_metadata?: Record<string, string | number | boolean>;
   principal?: ResolvedPrincipal | null;
   route?: ModelRoute;
@@ -319,6 +322,7 @@ async function invokeInner<T = unknown>(
   if (params.retrieval_query) assembleParams.retrieval_query = params.retrieval_query;
   if (params.prior_failures) assembleParams.prior_failures = params.prior_failures;
   if (params.user_memory !== undefined) assembleParams.user_memory = params.user_memory;
+  if (params.system !== undefined) assembleParams.system = params.system;
   const assembled = await instrument({
     module: "llm",
     action: "context.assemble",
@@ -328,7 +332,7 @@ async function invokeInner<T = unknown>(
   });
 
   const actor = actorFields(params.principal);
-  const estimated = assembled.prompt.token_counts.total + 1024;
+  const estimated = assembled.prompt.token_counts.total + (params.max_output_tokens ?? 1024);
   try {
     const verdict = await checkAndDecrement(params.tenant_id, estimated, db);
     if (!verdict.ok) {
@@ -441,6 +445,7 @@ async function dispatchMock<T>(
       latency_ms: latency,
       result: "success",
       ...actorFields(params.principal),
+      ...usageAttribution(params.telemetry_metadata),
     },
     db,
   );
@@ -551,13 +556,16 @@ async function dispatchReal<T>(
   let answeredBy: SubkitLlmAnsweredBy = { model_used: route.primary, fell_back: false };
 
   try {
-    if (params.schema) {
-      const jsonSchema = zodToJson(params.schema);
+    const objectSchema = params.schema ? zodToJson(params.schema) : params.output_json_schema;
+    if (objectSchema) {
       const r = await model.generateObject<T>({
         messages,
-        schema: jsonSchema,
+        schema: objectSchema,
         temperature: 0,
         metadata: telemetryMeta,
+        ...(params.max_output_tokens !== undefined
+          ? { maxOutputTokens: params.max_output_tokens }
+          : {}),
         ...(params.signal ? { signal: params.signal } : {}),
       });
       usage = r.usage;
@@ -574,6 +582,9 @@ async function dispatchReal<T>(
       const r = await model.generateText(messages, {
         temperature: 0,
         metadata: telemetryMeta,
+        ...(params.max_output_tokens !== undefined
+          ? { maxOutputTokens: params.max_output_tokens }
+          : {}),
         ...(params.signal ? { signal: params.signal } : {}),
       });
       usage = r.usage;

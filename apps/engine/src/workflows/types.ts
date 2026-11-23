@@ -838,6 +838,30 @@ export const ParallelStepSchema = z
   })
   .openapi("ParallelStep");
 
+export const MODEL_STEP_MAX_OUTPUT_TOKENS = 32_000;
+
+export const ModelStepSchema = z
+  .object({
+    kind: z.literal("model"),
+    ...baseStep,
+    prompt: z.string().min(1).openapi({
+      description:
+        "The instruction for the model. Placeholders such as ${input.x} or ${scope.step.data} are filled in before the call.",
+    }),
+    system: z.string().min(1).optional().openapi({
+      description: "Optional system prompt. Without it the step uses a short neutral default.",
+    }),
+    input: JsonValueSchema.optional().openapi({
+      description:
+        "Data handed to the model next to the prompt, as data and never as instructions.",
+    }),
+    output_schema: z.record(z.string(), z.unknown()).openapi({
+      description: "JSON Schema the model's answer must match. The step fails when it does not.",
+    }),
+    max_output_tokens: z.number().int().min(1).max(MODEL_STEP_MAX_OUTPUT_TOKENS).optional(),
+  })
+  .openapi("ModelStep");
+
 export const StepSchema = z.discriminatedUnion("kind", [
   RequestStepSchema,
   TransformStepSchema,
@@ -846,6 +870,7 @@ export const StepSchema = z.discriminatedUnion("kind", [
   WaitForEventStepSchema,
   BranchStepSchema,
   ParallelStepSchema,
+  ModelStepSchema,
 ]);
 
 export const WorkflowRuntimeSchema = z
@@ -1105,6 +1130,7 @@ export const WORKFLOW_DEF_FIELD_KEYS = Object.keys(_baseWorkflowDefSchema.shape)
 export type StepDef = z.infer<typeof StepSchema>;
 export type RequestStep = z.infer<typeof RequestStepSchema>;
 export type TransformStep = z.infer<typeof TransformStepSchema>;
+export type ModelStep = z.infer<typeof ModelStepSchema>;
 export type CallStep = z.infer<typeof CallStepSchema>;
 export type WaitStep = z.infer<typeof WaitStepSchema>;
 export type WaitForEventStep = z.infer<typeof WaitForEventStepSchema>;

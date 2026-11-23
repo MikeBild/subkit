@@ -109,7 +109,7 @@ export interface AssembledContext {
 export { promptSkillAudience } from "./context-assembler/skill-audience.ts";
 
 export async function assembleEnhancedPrompt(
-  p: AssembleContextParams & { surface?: ConversationSurface },
+  p: AssembleContextParams & { surface?: ConversationSurface; system?: string },
   exec?: Db,
 ): Promise<
   EnhancedPrompt & {
@@ -122,7 +122,8 @@ export async function assembleEnhancedPrompt(
   const db = exec ?? getDb();
   const cap = Math.min(p.max_tokens, contextCapFor(p.model ?? "default"));
 
-  const basePrompt = await basePromptFor(p.flow, p.surface, p.authoring_hint);
+  const authorStep = p.flow === "workflow_step";
+  const basePrompt = await basePromptFor(p.flow, p.surface, p.authoring_hint, p.system);
   const baseSystem = applyRuntimeTemplate(basePrompt.content, p.runtime_context);
   const baseVolatile = basePrompt.volatile
     ? applyRuntimeTemplate(basePrompt.volatile, p.runtime_context)
@@ -131,15 +132,17 @@ export async function assembleEnhancedPrompt(
   const scopedConnectorIds = [
     ...new Set([...(p.connector_id ? [p.connector_id] : []), ...(p.connector_ids ?? [])]),
   ];
-  const skillsApplicable = await retrieveApplicableSkills(
-    {
-      tenant_id: p.tenant_id,
-      ...(scopedConnectorIds.length > 0 ? { connector_ids: scopedConnectorIds } : {}),
-      ...(p.workflow_id ? { workflow_ids: [p.workflow_id] } : {}),
-      audience,
-    },
-    db,
-  );
+  const skillsApplicable = authorStep
+    ? []
+    : await retrieveApplicableSkills(
+        {
+          tenant_id: p.tenant_id,
+          ...(scopedConnectorIds.length > 0 ? { connector_ids: scopedConnectorIds } : {}),
+          ...(p.workflow_id ? { workflow_ids: [p.workflow_id] } : {}),
+          audience,
+        },
+        db,
+      );
 
   const generating = p.flow === "generate";
   const skillIndexMode = generating ? "guidance" : "interactive";
@@ -163,7 +166,7 @@ export async function assembleEnhancedPrompt(
   const query = buildQuery(p.user_turns, p.retrieval_query);
 
   const preEmbedCorpus =
-    p.flow !== "converse" && p.flow !== "summarize" && p.flow !== "personal_notes";
+    !authorStep && p.flow !== "converse" && p.flow !== "summarize" && p.flow !== "personal_notes";
   const knowledgeChunks: IncludedKnowledgeChunk[] = [];
   const chunks: IncludedChunk[] = [];
   const knowledgePreload = knowledgePreloadPlan({
@@ -633,7 +636,7 @@ export async function assembleEnhancedPrompt(
 }
 
 export async function assembleContext(
-  params: AssembleContextParams,
+  params: AssembleContextParams & { system?: string },
   exec?: Db,
 ): Promise<AssembledContext> {
   const prompt = await assembleEnhancedPrompt(params, exec);

@@ -558,8 +558,8 @@
       },
       {
         "slug": "summarize-text",
-        "title": "Summarize text with Claude",
-        "description": "Sends a text to Claude and returns a short summary. The workflow carries a per-run token budget, so one run can never spend more than the cap.",
+        "title": "Summarize text with the workspace model",
+        "description": "Asks the workspace's AI model for a short summary of a text. The workflow carries a per-run token budget, so one run can never spend more than the cap.",
         "intent_keywords": ["claude summary", "summarise document", "condense text", "tl;dr"],
         "derived_from_skill": null,
         "category": "ai",
@@ -580,7 +580,7 @@
         "deprecated": null,
         "workflow": {
           "name": "anthropic-summarize-text",
-          "description": "Summarize a text with Claude within a per-run token budget.",
+          "description": "Summarize a text with the workspace's AI model within a per-run token budget.",
           "max_llm_tokens_per_run": 20000,
           "input_schema": {
             "type": "object",
@@ -603,34 +603,26 @@
           },
           "steps": [
             {
-              "kind": "request",
+              "kind": "model",
               "id": "summarize",
-              "method": "POST",
-              "url": "${connector.anthropic.base_url}/messages",
-              "headers": {
-                "Content-Type": "application/json",
-                "anthropic-version": "2023-06-01"
-              },
-              "side_effects": "read",
-              "body": {
-                "model": "claude-opus-5-5",
-                "max_tokens": 4096,
-                "output_config": {
-                  "effort": "low"
-                },
-                "messages": [
-                  {
-                    "role": "user",
-                    "content": "Summarize the following text in at most five sentences. Answer with the summary only.\n\n${input.text}"
+              "prompt": "Summarize the following text in at most five sentences.\n\n${input.text}",
+              "output_schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["summary"],
+                "properties": {
+                  "summary": {
+                    "type": "string"
                   }
-                ]
-              }
+                }
+              },
+              "max_output_tokens": 1024
             },
             {
               "kind": "transform",
               "id": "result",
               "language": "javascript",
-              "expression": "const blocks = (input.scope.summarize.data && input.scope.summarize.data.content) || []; const text = blocks.filter((b) => b.type === 'text').map((b) => b.text).join(''); return { summary: text };"
+              "expression": "return { summary: input.scope.summarize.data.summary };"
             }
           ]
         }
@@ -638,7 +630,7 @@
       {
         "slug": "classify-text",
         "title": "Classify text into one of your categories",
-        "description": "Asks Claude to put a text into exactly one of the categories you list and returns the category with a one-sentence reason as structured JSON. Bounded by a per-run token budget.",
+        "description": "Asks the workspace's AI model to put a text into exactly one of the categories you list and returns the category with a one-sentence reason as structured JSON. Bounded by a per-run token budget.",
         "intent_keywords": [
           "ticket triage",
           "categorize message",
@@ -666,7 +658,7 @@
         "deprecated": null,
         "workflow": {
           "name": "anthropic-classify-text",
-          "description": "Classify a text into one of the given categories with structured output.",
+          "description": "Classify a text into one of the given categories with the workspace's AI model.",
           "max_llm_tokens_per_run": 20000,
           "input_schema": {
             "type": "object",
@@ -696,50 +688,29 @@
           },
           "steps": [
             {
-              "kind": "request",
+              "kind": "model",
               "id": "classify",
-              "method": "POST",
-              "url": "${connector.anthropic.base_url}/messages",
-              "headers": {
-                "Content-Type": "application/json",
-                "anthropic-version": "2023-06-01"
+              "prompt": "Put the text into exactly one of these categories: ${input.categories}. Give the category and a one-sentence reason.\n\n${input.text}",
+              "output_schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["category", "reason"],
+                "properties": {
+                  "category": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                }
               },
-              "side_effects": "read",
-              "body": {
-                "model": "claude-opus-5-5",
-                "max_tokens": 4096,
-                "output_config": {
-                  "effort": "low",
-                  "format": {
-                    "type": "json_schema",
-                    "schema": {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": ["category", "reason"],
-                      "properties": {
-                        "category": {
-                          "type": "string"
-                        },
-                        "reason": {
-                          "type": "string"
-                        }
-                      }
-                    }
-                  }
-                },
-                "messages": [
-                  {
-                    "role": "user",
-                    "content": "Put the text into exactly one of these categories: ${input.categories}. Give the category and a one-sentence reason.\n\n${input.text}"
-                  }
-                ]
-              }
+              "max_output_tokens": 1024
             },
             {
               "kind": "transform",
               "id": "result",
               "language": "javascript",
-              "expression": "const blocks = (input.scope.classify.data && input.scope.classify.data.content) || []; const text = blocks.filter((b) => b.type === 'text').map((b) => b.text).join(''); const parsed = JSON.parse(text || '{}'); return { category: String(parsed.category || ''), reason: String(parsed.reason || '') };"
+              "expression": "return { category: input.scope.classify.data.category, reason: input.scope.classify.data.reason };"
             }
           ]
         }
@@ -12335,8 +12306,8 @@
       },
       {
         "slug": "structured-extraction",
-        "title": "Structured extraction with Responses API",
-        "description": "Extract people from text using a JSON schema response format.",
+        "title": "Structured extraction with the workspace model",
+        "description": "Extract people from text as JSON that matches a schema, using the workspace's AI model.",
         "intent_keywords": ["openai structured output", "extract json", "responses json schema"],
         "derived_from_skill": null,
         "category": "ai",
@@ -12353,7 +12324,7 @@
         "deprecated": null,
         "workflow": {
           "name": "openai-structured-extraction",
-          "description": "Extract structured people records from text.",
+          "description": "Extract structured people records from text with the workspace's AI model.",
           "max_llm_tokens_per_run": 50000,
           "input_schema": {
             "type": "object",
@@ -12388,44 +12359,33 @@
           },
           "steps": [
             {
-              "kind": "request",
+              "kind": "model",
               "id": "extract",
-              "method": "POST",
-              "url": "${connector.openai.base_url}/responses",
-              "body": {
-                "model": "gpt-4.1-mini",
-                "input": "Extract people and ages from this text, sorted by name: ${input.text}",
-                "response_format": {
-                  "type": "json_schema",
-                  "json_schema": {
-                    "name": "people_result",
-                    "strict": true,
-                    "schema": {
+              "prompt": "Extract people and ages from this text, sorted by name: ${input.text}",
+              "output_schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["people"],
+                "properties": {
+                  "people": {
+                    "type": "array",
+                    "items": {
                       "type": "object",
                       "additionalProperties": false,
-                      "required": ["people"],
+                      "required": ["name", "age"],
                       "properties": {
-                        "people": {
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": ["name", "age"],
-                            "properties": {
-                              "name": {
-                                "type": "string"
-                              },
-                              "age": {
-                                "type": "number"
-                              }
-                            }
-                          }
+                        "name": {
+                          "type": "string"
+                        },
+                        "age": {
+                          "type": "number"
                         }
                       }
                     }
                   }
                 }
-              }
+              },
+              "max_output_tokens": 2048
             }
           ]
         }

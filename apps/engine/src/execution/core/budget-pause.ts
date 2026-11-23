@@ -15,7 +15,7 @@ export type BudgetPause = "park" | "fail" | "none";
 
 export function budgetPause(facts: BudgetPauseFacts): BudgetPause {
   if (facts.error_code !== SPEND_LIMIT_REACHED) return "none";
-  const topLevelModelStep = facts.step_kind === "request" && !facts.for_each;
+  const topLevelModelStep = facts.step_kind === "model" && !facts.for_each;
   const resumable =
     facts.authorized && !facts.child && facts.persisted && !facts.held && !facts.sensitive;
   return topLevelModelStep && resumable ? "park" : "fail";
