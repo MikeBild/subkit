@@ -49,13 +49,16 @@ export function checkJsonSchemaContract(
     ok: true,
     valid: false,
     violations: (validate.errors ?? []).map((error) => {
-      const missing =
-        error.keyword === "required" &&
-        typeof (error.params as { missingProperty?: unknown }).missingProperty === "string"
-          ? `/${(error.params as { missingProperty: string }).missingProperty}`
-          : "";
+      const params = error.params as { missingProperty?: unknown; additionalProperty?: unknown };
+      const named =
+        error.keyword === "required"
+          ? params.missingProperty
+          : error.keyword === "additionalProperties"
+            ? params.additionalProperty
+            : undefined;
+      const field = typeof named === "string" ? `/${named}` : "";
       return {
-        path: `${location}${error.instancePath}${missing}`,
+        path: `${location}${error.instancePath}${field}`,
         message: error.message ?? "violates JSON schema",
       };
     }),
