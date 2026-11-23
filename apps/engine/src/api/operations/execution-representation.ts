@@ -83,6 +83,26 @@ const ExecutionOutcomeSchema = z
   })
   .openapi("ExecutionOutcome");
 
+const RecordLinkSchema = z
+  .object({
+    label: z
+      .string()
+      .nullable()
+      .describe(
+        "Short record name from the external system, such as an issue key. Null when unknown.",
+      ),
+    url: z
+      .string()
+      .url()
+      .describe(
+        "https web address of the created or changed record on the connector's known web host.",
+      ),
+    connector: z.string().describe("Slug of the built-in connector template."),
+    connector_name: z.string().describe("Display name of the external system."),
+    step_key: z.string().describe("Step that created or changed the record."),
+  })
+  .openapi("ExecutionRecordLink");
+
 export const ExecDetailSchema = ExecSchema.extend({
   trace_id: z
     .string()
@@ -100,6 +120,11 @@ export const ExecDetailSchema = ExecSchema.extend({
   result_markdown_truncated: z
     .boolean()
     .describe("True when result_markdown was cut at 64 KiB of text."),
+  record_links: z
+    .array(RecordLinkSchema)
+    .describe(
+      "Links to records that request steps created or changed in external systems, derived on read from built-in connector templates. Empty for sensitive runs, held writes, offloaded or redacted step outputs.",
+    ),
 }).openapi("ExecutionDetail");
 
 const ExecListItemSchema = ExecSchema.extend({
