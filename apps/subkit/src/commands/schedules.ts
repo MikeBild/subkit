@@ -6,17 +6,26 @@ import type {
   ScheduleWriteResponse,
 } from "../engine-client/workflows.ts";
 import { formatAutomationReadiness } from "../render/automation-readiness.ts";
+import { formatScheduleCost } from "../render/schedule-cost.ts";
 import { makeClient, withCommandErrors } from "./command-runtime.ts";
 
-const SCHEDULE_COLUMNS = ["workflow_slug", "cron", "timezone", "execution_mode", "paused", "id"];
+const SCHEDULE_COLUMNS = [
+  "workflow_slug",
+  "cron",
+  "timezone",
+  "execution_mode",
+  "paused",
+  "estimate",
+  "id",
+];
 
 function emitSchedule(json: boolean, row: ScheduleWriteResponse): void {
   if (json) {
     emitOne(json, row);
     return;
   }
-  const { automation_readiness, ...rest } = row;
-  emitOne(json, rest);
+  const { automation_readiness, cost_projection, ...rest } = row;
+  emitOne(json, { ...rest, estimate: formatScheduleCost(cost_projection) });
   process.stderr.write(formatAutomationReadiness(automation_readiness));
 }
 
@@ -32,7 +41,16 @@ const listCommand = defineCommand({
         const { schedules, total } = await makeClient().listSchedules(
           args.workflow ? { workflow_id: args.workflow } : {},
         );
-        emitList(!!args.json, SCHEDULE_COLUMNS, schedules);
+        emitList(
+          !!args.json,
+          SCHEDULE_COLUMNS,
+          args.json
+            ? schedules
+            : schedules.map((row) => ({
+                ...row,
+                estimate: formatScheduleCost(row.cost_projection),
+              })),
+        );
         if (!args.json) {
           process.stdout.write(`${total} schedule${total === 1 ? "" : "s"} total\n`);
         }
