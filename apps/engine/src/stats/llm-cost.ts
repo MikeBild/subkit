@@ -38,6 +38,10 @@ function tenantRates(tenantId: string): { prices: SourcedModelPrice[]; currency:
   };
 }
 
+export function llmCostCurrency(tenantId: string): string {
+  return tenantRates(tenantId).currency;
+}
+
 export async function readPricedTokens(
   db: Db,
   where: SQL,

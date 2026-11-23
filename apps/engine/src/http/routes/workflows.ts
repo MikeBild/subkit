@@ -11,6 +11,7 @@ import { getWorkflowInputSchemaOperation } from "../../api/operations/workflow-i
 import {
   createScheduleOperation,
   deleteScheduleOperation,
+  getScheduleCostOperation,
   listSchedulesOperation,
   updateScheduleOperation,
 } from "../../api/operations/workflow-schedules.ts";
@@ -39,6 +40,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
   toHonoRoute(app, createScheduleOperation);
   toHonoRoute(app, updateScheduleOperation);
   toHonoRoute(app, deleteScheduleOperation);
+  toHonoRoute(app, getScheduleCostOperation);
   toHonoRoute(app, listWorkflowScheduleOccurrencesOperation);
   toHonoRoute(app, createWorkflowOperation);
   toHonoRoute(app, validateWorkflowOperation);

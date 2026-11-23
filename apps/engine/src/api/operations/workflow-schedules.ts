@@ -11,12 +11,15 @@ import {
   type ScheduleRow,
   updateSchedule,
 } from "../../scheduler/repo.ts";
+import { scheduleCostProjection } from "../../scheduler/schedule-cost.ts";
 import { getWorkflow } from "../../workflows/service.ts";
 import type { WorkflowView } from "../../workflows/view.ts";
 import { IdParam } from "../common-schemas.ts";
 import { defineOperation, type Rejection, reject } from "./index.ts";
 import { automationReadinessFor } from "./workflow-automation-readiness.ts";
 import {
+  ScheduleCostProjectionSchema,
+  ScheduleCostQuery,
   ScheduleCreateBody,
   ScheduleDeleteResponse,
   ScheduleListResponse,
@@ -40,7 +43,14 @@ const preparedVersionId = (
     ? wf.draft_version_id
     : null;
 
-function scheduleEntry(row: ScheduleRow, wf: WorkflowView | null | undefined, held: boolean) {
+type CostProjection = z.infer<typeof ScheduleCostProjectionSchema>;
+
+function scheduleEntry(
+  row: ScheduleRow,
+  wf: WorkflowView | null | undefined,
+  held: boolean,
+  cost_projection: CostProjection,
+) {
   return {
     id: row.id,
     workflow_id: row.workflow_id,
@@ -64,12 +74,16 @@ function scheduleEntry(row: ScheduleRow, wf: WorkflowView | null | undefined, he
         : null,
     input: row.input ?? null,
     created_at: row.created_at.toISOString(),
+    cost_projection,
   };
 }
 
 async function serializeSchedule(db: Db, tenant_id: string, row: ScheduleRow) {
-  const wf = await getWorkflow(tenant_id, row.workflow_id, db);
-  return scheduleEntry(row, wf, !(row.paused || !wf || wf.lifecycle === "archived"));
+  const [wf, cost] = await Promise.all([
+    getWorkflow(tenant_id, row.workflow_id, db),
+    scheduleCostProjection(db, tenant_id, row),
+  ]);
+  return scheduleEntry(row, wf, !(row.paused || !wf || wf.lifecycle === "archived"), cost);
 }
 
 function scheduleRejection(err: unknown): Rejection {
@@ -127,12 +141,16 @@ export const listSchedulesOperation = defineOperation<
       ? await Promise.all(ids.map((id) => getWorkflow(scope.tenant_id, id, scope.db)))
       : [];
     const nameById = new Map(named.filter((w) => w !== null).map((w) => [w.id, w]));
+    const costs = await Promise.all(
+      rows.map((r) => scheduleCostProjection(scope.db, scope.tenant_id, r)),
+    );
     return {
-      schedules: rows.map((r) =>
+      schedules: rows.map((r, index) =>
         scheduleEntry(
           r,
           nameById.get(r.workflow_id),
           !(r.paused || !named.find((w) => w?.id === r.workflow_id && w.lifecycle !== "archived")),
+          costs[index] as CostProjection,
         ),
       ),
       total,
@@ -145,6 +163,40 @@ export const listSchedulesOperation = defineOperation<
     query: ListSchedulesQuery,
     response: ScheduleListResponse,
     toInput: ({ query }) => query as { workflow_id?: string },
+    toBody: (result) => result,
+  },
+});
+
+export const getScheduleCostOperation = defineOperation<
+  { id: string; cron: string; timezone?: string },
+  CostProjection
+>({
+  id: "schedules.cost",
+  summary: "Projected monthly model cost of a workflow at a given cron or interval",
+  permission: "workflow:read",
+  resource: { type: "workflow", param: "id" },
+  effect: "read",
+  async handler(scope, { id, cron, timezone }) {
+    const wf = await getWorkflow(scope.tenant_id, id, scope.db);
+    if (!wf) return reject.notFound("workflow");
+    return scheduleCostProjection(scope.db, scope.tenant_id, {
+      workflow_id: id,
+      cron,
+      timezone: timezone ?? "UTC",
+    });
+  },
+  http: {
+    method: "get",
+    path: "/v1/workflows/{id}/schedule-cost",
+    tags: ["workflows"],
+    params: IdParam,
+    query: ScheduleCostQuery,
+    response: ScheduleCostProjectionSchema,
+    errors: { 404: "Workflow not found" },
+    toInput: ({ param, query }) => ({
+      id: (param as { id: string }).id,
+      ...(query as { cron: string; timezone?: string }),
+    }),
     toBody: (result) => result,
   },
 });
