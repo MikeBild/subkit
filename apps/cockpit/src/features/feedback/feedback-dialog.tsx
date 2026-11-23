@@ -7,6 +7,7 @@ import { ChevronDown, Paperclip, Send, X } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { submitFeedback } from "@/api/feedback";
+import { connectivity } from "@/app/connectivity";
 import { useLiveStatus } from "@/app/live-events";
 import { useSession } from "@/app/session";
 import {
@@ -27,6 +28,7 @@ import {
   buildFeedbackDiagnostics,
   clientKindOf,
   desktopFacts,
+  diagnosticsAttachment,
   FEEDBACK_ACCEPT,
   FEEDBACK_KINDS,
   FEEDBACK_MAX_MESSAGE,
@@ -88,7 +90,7 @@ function useDiagnostics(route: string): () => Promise<FeedbackDiagnostics> {
       serverVersion: serverVersion ?? session.version,
       connection: status,
       route,
-      errors: [...(facts?.errors ?? []), ...feedbackStore().errors()],
+      errors: [...(facts?.errors ?? []), ...feedbackStore().errors(), ...connectivity.log()],
       removed,
     });
   }, [session.version, serverVersion, status, route, removed]);
@@ -197,23 +199,30 @@ function FeedbackDialog({
   async function send(): Promise<void> {
     if (sending || !draft.text.trim()) return;
     store.sending();
-    const done = (message: string) => {
+    const done = (message: string, reference?: string) => {
       store.discard();
       setProblem(null);
       setPreview(false);
-      toast.success(message);
+      toast.success(
+        message,
+        reference ? { description: t("feedback.reference", { id: reference }) } : undefined,
+      );
     };
     let body: ReturnType<typeof buildFeedbackBody> | null = null;
     try {
       const current = draft.diagnostics ? await collect() : null;
+      const link = connectivity.get();
       body = buildFeedbackBody({
         requestId,
         draft,
         diagnostics: current,
+        diagnosticsFile: current
+          ? diagnosticsAttachment(current, { traceId: link.traceId, connectionCause: link.cause })
+          : null,
         createdAt: new Date(now()).toISOString(),
       });
-      await submitFeedback(body);
-      done(t("feedback.thanks"));
+      const submitted = await submitFeedback(body);
+      done(t("feedback.thanks"), submitted.id);
     } catch (error) {
       const transient = classifyOutcome(feedbackResponse(error)).kind === "retry";
       if (body && transient && (await feedbackQueue().add(identity, requestId, body))) {

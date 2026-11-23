@@ -15,6 +15,7 @@ export const FEEDBACK_MAX_ERRORS = 10;
 export const FEEDBACK_ACCEPT = ".png,.jpg,.jpeg,.pdf,.txt,.json";
 export const FEEDBACK_DRAFT_KEY = "subkit.cockpit.feedback.draft";
 export const FEEDBACK_SEARCH_PARAM = "feedback";
+export const FEEDBACK_DIAGNOSTICS_FILENAME = "subkit-cockpit-diagnostics.json";
 
 export interface FeedbackFile {
   id: string;
@@ -204,6 +205,48 @@ export function buildFeedbackDiagnostics(input: {
   };
 }
 
+export interface FeedbackAttachment {
+  filename: string;
+  content_base64: string;
+}
+
+const TRACE_IN_CODE = /trace=([\w-]{8,64})/;
+
+export function latestTraceId(
+  traceId: string | null,
+  errors: readonly FeedbackRecentError[],
+): string | null {
+  if (traceId) return traceId;
+  const sorted = [...errors].sort((left, right) => right.at.localeCompare(left.at));
+  for (const entry of sorted) {
+    const found = TRACE_IN_CODE.exec(entry.code)?.[1];
+    if (found) return found;
+  }
+  return null;
+}
+
+function base64OfText(value: string): string {
+  let binary = "";
+  for (const byte of new TextEncoder().encode(value)) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+export function diagnosticsAttachment(
+  diagnostics: FeedbackDiagnostics,
+  facts: { traceId: string | null; connectionCause: string | null },
+): FeedbackAttachment {
+  const traceId = latestTraceId(facts.traceId, diagnostics.recent_errors ?? []);
+  const content = {
+    ...diagnostics,
+    ...(traceId ? { trace_id: traceId } : {}),
+    ...(facts.connectionCause ? { connection_cause: facts.connectionCause } : {}),
+  };
+  return {
+    filename: FEEDBACK_DIAGNOSTICS_FILENAME,
+    content_base64: base64OfText(JSON.stringify(content, null, 2)),
+  };
+}
+
 export function mergePrefill(current: string, prefill: string): string {
   if (!prefill.trim() || current.includes(prefill)) return current;
   return current.trim() ? `${current.trimEnd()}\n\n${prefill}` : prefill;
@@ -213,23 +256,26 @@ export function buildFeedbackBody(input: {
   requestId: string;
   draft: FeedbackDraft;
   diagnostics: FeedbackDiagnostics | null;
+  diagnosticsFile?: FeedbackAttachment | null;
   createdAt?: string;
 }): FeedbackBody {
   const { draft } = input;
+  const attachments = [
+    ...draft.files.map((file) => ({ filename: file.name, content_base64: file.content_base64 })),
+    ...(draft.diagnostics &&
+    input.diagnostics &&
+    input.diagnosticsFile &&
+    draft.files.length < FEEDBACK_MAX_FILES
+      ? [input.diagnosticsFile]
+      : []),
+  ];
   return {
     client_request_id: input.requestId,
     ...(input.createdAt ? { created_on_device_at: input.createdAt } : {}),
     kind: draft.kind,
     message: draft.text.trim().slice(0, FEEDBACK_MAX_MESSAGE),
     ...(draft.diagnostics && input.diagnostics ? { diagnostics: input.diagnostics } : {}),
-    ...(draft.files.length > 0
-      ? {
-          attachments: draft.files.map((file) => ({
-            filename: file.name,
-            content_base64: file.content_base64,
-          })),
-        }
-      : {}),
+    ...(attachments.length > 0 ? { attachments } : {}),
     ...(draft.screenshotIncluded && draft.screenshot
       ? { screenshot_png_base64: draft.screenshot }
       : {}),
