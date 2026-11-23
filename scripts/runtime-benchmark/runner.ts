@@ -568,7 +568,7 @@ async function correctness(
       ["helper-csv", (value) => Array.isArray(value) && value.length === 3],
       ["helper-date", (value) => value === "2024-01-02"],
       ["helper-schema", (value) => Boolean((value as { valid?: unknown })?.valid)],
-      ["helper-url", (value) => typeof value === "string" && value.includes("q=%C3%BCmlaut")],
+      ["helper-url", (value) => typeof value === "string" && value.includes("q=caf%C3%A9")],
       ["helper-xml", (value) => (value as { name?: unknown })?.name === "order"],
       ["helper-template-diff", (value) => Boolean(value)],
     ]);
