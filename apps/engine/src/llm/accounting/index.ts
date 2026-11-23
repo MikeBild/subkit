@@ -1,4 +1,9 @@
 export {
+  estimateLlmCallTokens,
+  extractModelHint,
+  parseLlmUsage,
+} from "../core/provider-call.ts";
+export {
   type AccountParams,
   type AccountResult,
   account,
@@ -27,3 +32,4 @@ export {
   type LlmCallUsage,
   RunLlmBudget,
 } from "./enforce.ts";
+export { spendRefusalDetails, spendVerdict } from "./spend.ts";

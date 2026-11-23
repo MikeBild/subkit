@@ -2,7 +2,7 @@ import { redactKnownValues } from "@shared/redaction.ts";
 import { filenameFromResponse } from "../../../../connectors/drivers/file-promotion.ts";
 import { extractCreatedResourceId, withEgressAudit } from "../../../../connectors/egress.ts";
 import { classifyConnectorHealth } from "../../../../connectors/health.ts";
-import { isLlmProviderUrl } from "../../../../llm/accounting/enforce.ts";
+import { isLlmProviderUrl } from "../../../../llm/index.ts";
 import { logger } from "../../../../logging/index.ts";
 import { inspectContentRevisionResponse } from "../../../../workflows/content-publication-boundary.ts";
 import { applyResponseFilters, ResponseFilterFailError } from "../../../response-filter.ts";
