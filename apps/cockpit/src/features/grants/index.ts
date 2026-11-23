@@ -17,6 +17,7 @@ export {
   type UnavailableConnector,
 } from "./api/run-availability";
 export { OPENS_APPROVAL } from "./model/opens-approval";
+export { preparationFailureLine } from "./model/preparation-failure";
 export { ApprovalExpiryNote, useTaskGrantExpiry } from "./ui/approval-expiry-note";
 export {
   authorityValidity,

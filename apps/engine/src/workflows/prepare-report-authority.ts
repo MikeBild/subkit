@@ -121,11 +121,10 @@ export async function prepareReportAuthority(
       principal,
       self_healing: { enabled: false },
     },
+  }).catch((error: unknown) => {
+    throw preparationRefusal(error, executionId);
   });
-  if (result.status !== "succeeded")
-    throw Object.assign(new Error("The preparation did not complete; external writes were held"), {
-      code: "authority_preparation_failed",
-    });
+  if (result.status !== "succeeded") throw preparationFailure(result);
   const diagnosis = await diagnoseWorkflow(
     db,
     input.tenant_id,
@@ -144,6 +143,53 @@ export async function prepareReportAuthority(
   return diagnoses.length > 0
     ? { prepared: true as const, diagnoses }
     : { prepared: true as const };
+}
+
+function preparationRefusal(error: unknown, execution_id: string): unknown {
+  if (typeof error !== "object" || error === null) return error;
+  const facts = error as { code?: unknown; details?: unknown };
+  if (facts.code !== "input_schema_violation") return error;
+  const issues = Array.isArray(facts.details)
+    ? facts.details.flatMap((entry) => {
+        if (typeof entry !== "string") return [];
+        const separator = entry.indexOf(": ");
+        return separator === -1
+          ? [{ path: "$input", message: entry }]
+          : [{ path: entry.slice(0, separator), message: entry.slice(separator + 2) }];
+      })
+    : [];
+  return Object.assign(error, { details: { execution_id, issues } });
+}
+
+function stepFailure(error: unknown): { code: string | null; reason: string | null } {
+  if (typeof error !== "object" || error === null) return { code: null, reason: null };
+  const facts = error as { code?: unknown; message?: unknown };
+  return {
+    code: typeof facts.code === "string" ? facts.code : null,
+    reason: typeof facts.message === "string" ? facts.message : null,
+  };
+}
+
+function preparationFailure(result: Awaited<ReturnType<typeof runExecution>>): Error {
+  const failed = result.steps.find((step) => step.status === "failed");
+  const step = failed ? stepFailure(failed.error) : { code: null, reason: null };
+  const code = step.code ?? result.error?.code ?? null;
+  const reason = step.reason ?? result.error?.message ?? null;
+  const where = failed ? ` at step ${failed.step_key}` : "";
+  const why = reason ? `: ${reason}` : code ? `: ${code}` : "";
+  return Object.assign(
+    new Error(`The preparation did not complete${where}${why}; external writes were held`),
+    {
+      code: "authority_preparation_failed",
+      details: {
+        execution_id: result.execution_id,
+        status: result.status,
+        ...(failed ? { step_id: failed.step_key } : {}),
+        ...(code ? { step_code: code } : {}),
+        ...(reason ? { reason } : {}),
+      },
+    },
+  );
 }
 
 async function refusedRunInput(

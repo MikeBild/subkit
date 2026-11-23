@@ -1148,6 +1148,7 @@ export function GrantWorkflowAuthority({
         )}
         {prepare.error && sampleRefused === null && (
           <GrantLoadFailed
+            error={prepare.error}
             onRetry={() => {
               const last = prepare.variables;
               grant.reset();

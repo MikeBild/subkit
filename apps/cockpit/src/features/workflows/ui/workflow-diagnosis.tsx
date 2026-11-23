@@ -9,7 +9,11 @@ import { ActionMenu, ContextHelp, DataState } from "@/components/cockpit/pattern
 import { RecordTable } from "@/components/cockpit/record-table";
 import { RefusalReasonLine } from "@/components/cockpit/refusal-reason";
 import { tableColumns } from "@/components/cockpit/table-columns";
-import { AUTOMATION_REFRESH_MS, invalidateWorkflowAutomation } from "@/features/grants";
+import {
+  AUTOMATION_REFRESH_MS,
+  invalidateWorkflowAutomation,
+  preparationFailureLine,
+} from "@/features/grants";
 import {
   type DiagnosisFix,
   diagnosisCauseKey,
@@ -196,6 +200,7 @@ export function WorkflowGateDiagnosis({
         <div className="flex flex-wrap items-center gap-2" role="status">
           <p className="text-sm text-muted-foreground" data-testid="workflow-diagnosis-prepared">
             {t(prepare.result)}
+            {prepare.detail ? ` ${prepare.detail}` : null}
           </p>
           {prepare.result === "diagnosis.prepareNeedsSample" && onOpenApproval ? (
             <ActionMenu
@@ -269,6 +274,7 @@ function DiagnosisReason({
 interface Prepare {
   pending: boolean;
   result: TranslationKey | null;
+  detail: string | null;
   run(): void;
 }
 
@@ -277,7 +283,9 @@ function usePrepare(
   environment: "dev" | "prod" | null,
 ): Prepare {
   const client = useQueryClient();
+  const { t } = useI18n();
   const [result, setResult] = useState<TranslationKey | null>(null);
+  const [detail, setDetail] = useState<string | null>(null);
   const workflowId = diagnosis?.workflow_id ?? "";
   const prepare = useMutation({
     mutationFn: () => {
@@ -290,11 +298,15 @@ function usePrepare(
 
     onSuccess: (response) => {
       setResult(preparedKey(response));
+      setDetail(null);
       void invalidateWorkflowAutomation(client, workflowId);
     },
-    onError: () => setResult("diagnosis.prepareFailed"),
+    onError: (error) => {
+      setResult("diagnosis.prepareFailed");
+      setDetail(preparationFailureLine(error, t));
+    },
   });
-  return { pending: prepare.isPending, result, run: () => prepare.mutate() };
+  return { pending: prepare.isPending, result, detail, run: () => prepare.mutate() };
 }
 
 function DiagnosisFixAction({
