@@ -73,6 +73,7 @@ export const findSkillTool: ConversationTool = {
   ],
   inputSchema,
   category: "tenant_read",
+  permission: { action: "skill:read", resourceType: "skill" },
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     const all = await listSkills({ tenant_id: ctx.tenant_id }, ctx.db);
