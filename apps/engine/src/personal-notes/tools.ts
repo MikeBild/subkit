@@ -26,6 +26,7 @@ export interface NotesTool {
   readonly inputSchema: z.ZodTypeAny;
   readonly category: "tenant_read" | "tenant_write";
   readonly visible_when_readonly?: boolean;
+  readonly chat_only: true;
   readonly use_case?: string;
   readonly important_notes?: readonly string[];
   readonly example_input?: Readonly<Record<string, unknown>>;
@@ -65,6 +66,7 @@ const rememberInput = z
 
 export const rememberForMeTool: NotesTool = {
   name: "remember_for_me",
+  chat_only: true,
   description:
     "Keep something the person just asked you to remember about themselves (a preference, a routine, a person they work with) as a personal note that only they can read. Call it only when the person's latest message asks for it. You do not write the note: a separate step reads the person's latest message and keeps their own words. Not for team knowledge or rules of the business: use save_learning for those.",
   inputSchema: rememberInput,
@@ -122,6 +124,7 @@ const findInput = z
 
 export const findMyNotesTool: NotesTool = {
   name: "find_my_notes",
+  chat_only: true,
   description:
     "Search the personal notes of the person you are talking to: things they said about themselves, how they like things done, people they work with, routines. Returns short abstracts with ids; read one in full with read_my_note. Only the person's own notes are searched; nobody else's exist for you.",
   inputSchema: findInput,
@@ -160,6 +163,7 @@ const readInput = z
 
 export const readMyNoteTool: NotesTool = {
   name: "read_my_note",
+  chat_only: true,
   description:
     "Read one personal note of the person you are talking to in full, with the words of theirs it came from. Takes an id from find_my_notes.",
   inputSchema: readInput,
