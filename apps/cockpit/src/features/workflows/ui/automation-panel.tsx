@@ -14,7 +14,12 @@ import {
   routerTarget,
   WORKFLOW_AUTOMATION_ANCHOR,
 } from "@/app/links";
-import { type ActionSpec, StatusStrip } from "@/components/cockpit/patterns";
+import {
+  type ActionSpec,
+  SECTION_LABEL,
+  SectionSubheading,
+  StatusStrip,
+} from "@/components/cockpit/patterns";
 import { useConnectorRecords } from "@/features/connectors";
 import { fixerKey, patchDecision } from "@/features/decisions";
 import {
@@ -579,9 +584,9 @@ export function WorkflowStatus({
           className="grid gap-1 rounded-lg border border-border px-3 py-2"
           data-testid="workflow-live-run-panel"
         >
-          <h3 id="workflow-live-run-title" className="text-xs font-medium text-muted-foreground">
+          <SectionSubheading id="workflow-live-run-title" className={SECTION_LABEL}>
             {t("ops.sched.live.title")}
-          </h3>
+          </SectionSubheading>
           <LiveScheduleRun
             executionId={liveRunId}
             onOpenRun={(id) => sheets.run(id)}

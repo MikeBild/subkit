@@ -1,6 +1,6 @@
 import { cn } from "@ui/lib/utils";
 import { Sparkles } from "lucide-react";
-import { chipClass } from "@/components/cockpit/patterns";
+import { chipClass, SectionSubheading } from "@/components/cockpit/patterns";
 import type { ReviewModelCall } from "@/features/grants/model/authority-review-model";
 import { useI18n } from "@/lib/i18n-context";
 
@@ -53,7 +53,9 @@ export function ModelCallGroup({ calls }: { calls: readonly ReviewModelCall[] })
     <section className="rounded-md border" data-testid="authority-model-calls">
       <div className="flex min-h-11 flex-wrap items-center gap-x-2 gap-y-1 border-b px-3 py-2">
         <Sparkles aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-        <h3 className="font-medium">{t("authority.review.model.group")}</h3>
+        <SectionSubheading className="font-medium">
+          {t("authority.review.model.group")}
+        </SectionSubheading>
         <span className="min-w-0 flex-1 text-xs text-muted-foreground">
           {t("authority.review.model.budget")}
         </span>

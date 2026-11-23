@@ -22,13 +22,19 @@ export function SectionHeading({
 }
 
 export function SectionSubheading({
+  id,
   className = "text-sm font-medium",
   children,
 }: {
+  id?: string;
   className?: string;
   children: ReactNode;
 }) {
-  return <h3 className={className}>{children}</h3>;
+  return (
+    <h3 id={id} className={className}>
+      {children}
+    </h3>
+  );
 }
 
 export function Section({
