@@ -1,6 +1,9 @@
 import Papa from "papaparse";
 
 const MAX_REPORTED_ERRORS = 5;
+const CSV_DELIMITERS = [",", ";", "\t", "|"] as const;
+const DELIMITER_SAMPLE_CHARS = 65_536;
+const DELIMITER_SAMPLE_LINES = 10;
 
 export interface CsvRowError {
   code: string;
@@ -12,14 +15,45 @@ export type CsvRowsResult =
   | { ok: true; rows: Record<string, string>[]; row_count: number; truncated: boolean }
   | { ok: false; message: string; errors: CsvRowError[] };
 
+export function decodeCsvText(bytes: Uint8Array): string {
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    text = new TextDecoder("windows-1252").decode(bytes);
+  }
+  return text.replace(/^\uFEFF/, "");
+}
+
+export function detectCsvDelimiter(text: string): string {
+  const head = text.slice(0, DELIMITER_SAMPLE_CHARS);
+  const lastBreak = head.lastIndexOf("\n");
+  const sample = text.length > head.length && lastBreak > 0 ? head.slice(0, lastBreak) : head;
+  let best = ",";
+  let bestFields = 1;
+  for (const delimiter of CSV_DELIMITERS) {
+    const parsed = Papa.parse<string[]>(sample, {
+      delimiter,
+      preview: DELIMITER_SAMPLE_LINES,
+      skipEmptyLines: "greedy",
+    });
+    const first = parsed.data[0]?.length ?? 0;
+    if (first > bestFields && parsed.data.every((row) => row.length === first)) {
+      best = delimiter;
+      bestFields = first;
+    }
+  }
+  return best;
+}
+
 export function parseCsvRows(bytes: Uint8Array, options: { max_rows: number }): CsvRowsResult {
-  const text = new TextDecoder("utf-8").decode(bytes).replace(/^﻿/, "");
+  const text = decodeCsvText(bytes);
   const rows: Record<string, string>[] = [];
   const errors: CsvRowError[] = [];
   let rowCount = 0;
   Papa.parse<Record<string, string>>(text, {
     header: true,
-    delimiter: ",",
+    delimiter: detectCsvDelimiter(text),
     skipEmptyLines: "greedy",
     step(result, parser) {
       rowCount += 1;
@@ -40,33 +74,4 @@ export function parseCsvRows(bytes: Uint8Array, options: { max_rows: number }): 
     };
   }
   return { ok: true, rows, row_count: rowCount, truncated: rowCount > options.max_rows };
-}
-
-export type PackedCsvRows =
-  | { ok: true; fields: string[]; rows_json: string; row_count: number; truncated: boolean }
-  | { ok: false; message: string; errors: CsvRowError[] };
-
-export function packCsvRows(result: CsvRowsResult): PackedCsvRows {
-  if (!result.ok) return result;
-  const fields = Object.keys(result.rows[0] ?? {});
-  return {
-    ok: true,
-    fields,
-    rows_json: JSON.stringify(result.rows.map((row) => fields.map((field) => row[field] ?? ""))),
-    row_count: result.row_count,
-    truncated: result.truncated,
-  };
-}
-
-export function unpackCsvRows(packed: PackedCsvRows): CsvRowsResult {
-  if (!packed.ok) return packed;
-  const values = JSON.parse(packed.rows_json) as string[][];
-  return {
-    ok: true,
-    rows: values.map((row) =>
-      Object.fromEntries(packed.fields.map((field, i) => [field, row[i] ?? ""])),
-    ),
-    row_count: packed.row_count,
-    truncated: packed.truncated,
-  };
 }

@@ -370,9 +370,11 @@ type SandboxWorkerJob =
       signal?: AbortSignal;
     }
   | {
-      op: "parse_csv";
+      op: "parse_table";
+      format: "csv" | "xlsx";
       buffer: string;
       max_rows: number;
+      sheet?: string;
       wall_ms: number;
       priority?: "default" | "hook";
       signal?: AbortSignal;
@@ -530,7 +532,7 @@ class WorkerLane {
     opts: Pick<RunJsOptions, "limits" | "signal">,
   ): Promise<T> {
     const workerConfig = workerLimits();
-    const carriesFile = body.op === "parse_binary" || body.op === "parse_csv";
+    const carriesFile = body.op === "parse_binary" || body.op === "parse_table";
     if (
       carriesFile &&
       typeof body.buffer === "string" &&

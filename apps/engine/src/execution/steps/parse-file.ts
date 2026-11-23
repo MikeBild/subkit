@@ -1,18 +1,19 @@
-import { detectBinaryFormat, parseBinaryFile, parseCsvFile } from "../../docs-ingestion/index.ts";
+import { detectBinaryFormat, parseBinaryFile, parseTableFile } from "../../docs-ingestion/index.ts";
 import type { ResolvedFile } from "../../files/index.ts";
 import type { TransformStep } from "../../workflows/index.ts";
 import { SYSTEM_CLOCK } from "../clock.ts";
 import {
   PARSE_FILE_FAILED,
   type ParsedFile,
+  type ParseFileDecision,
   type ParseFileFailure,
   type ParseFileFormat,
-  parseFileCsvFailure,
   parseFileFormat,
   parseFileOutput,
   parseFileRowLimit,
   parseFileSizeRefusal,
   parseFileSource,
+  parseFileTable,
 } from "../core/parse-file.ts";
 import type { StepResult, StepRunContext } from "../types.ts";
 
@@ -32,17 +33,13 @@ async function readAll(file: ResolvedFile): Promise<Buffer> {
 async function parse(
   format: ParseFileFormat,
   bytes: Buffer,
-  maxRows: number,
-  signal: AbortSignal,
-): Promise<ParsedFile | ParseFileFailure> {
-  if (format === "csv") {
-    const csv = await parseCsvFile(bytes, { max_rows: maxRows, signal });
-    if (!csv.ok) return parseFileCsvFailure(csv);
-    return { format, rows: csv.rows, row_count: csv.row_count, truncated: csv.truncated };
+  table: { max_rows: number; sheet: string | undefined; signal: AbortSignal },
+): Promise<ParseFileDecision<ParsedFile>> {
+  if (format === "csv" || format === "xlsx") {
+    return parseFileTable(await parseTableFile(bytes, { format, ...table }), table.sheet);
   }
   const parsed = await parseBinaryFile(bytes, format);
-  if (parsed.format === "xls") throw new Error("legacy xls is not supported; save it as xlsx");
-  return parsed as ParsedFile;
+  return { ok: true, value: parsed as ParsedFile };
 }
 
 export async function runParseFile(p: RunParseFileParams): Promise<StepResult> {
@@ -80,16 +77,14 @@ export async function runParseFile(p: RunParseFileParams): Promise<StepResult> {
       detected: config.format ? null : await detectBinaryFormat(bytes),
     });
     if (!format.ok) return failed(format.failure);
-    const parsed = await parse(
-      format.value,
-      bytes,
-      parseFileRowLimit(config.max_rows),
-      p.ctx.signal,
-    );
-    if (!("format" in parsed)) return failed(parsed);
-    const output = parseFileOutput(parsed, {
-      filename: resolved.filename,
+    const parsed = await parse(format.value, bytes, {
+      max_rows: parseFileRowLimit(config.max_rows),
       sheet: config.sheet,
+      signal: p.ctx.signal,
+    });
+    if (!parsed.ok) return failed(parsed.failure);
+    const output = parseFileOutput(parsed.value, {
+      filename: resolved.filename,
       max_rows: config.max_rows,
     });
     if (!output.ok) return failed(output.failure);

@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { runJs } from "../../sandboxes/quickjs/runtime.ts";
-import { parseBinaryFile, parseCsvFile } from "./index.ts";
+import { buildXlsxFixture } from "../../test-helpers/binary-fixtures.ts";
+import { parseBinaryFile, parseTableFile } from "./index.ts";
 
 test("the existing file ceiling reaches parser validation through worker IPC", async () => {
   const buffer = Buffer.alloc(25 * 1024 * 1024, 0x20);
@@ -34,11 +35,26 @@ test("a wide CSV comes back through worker IPC with every row and column", async
   const lines = [columns.join(",")];
   for (let r = 0; r < 12_000; r += 1)
     lines.push(columns.map((_, c) => `${r % 97}${c % 10}`).join(","));
-  const result = await parseCsvFile(Buffer.from(lines.join("\n")), { max_rows: 10_000 });
+  const result = await parseTableFile(Buffer.from(lines.join("\n")), {
+    format: "csv",
+    max_rows: 10_000,
+  });
   expect(result.ok).toBe(true);
   if (!result.ok) return;
   expect(result.rows).toHaveLength(10_000);
   expect(result.row_count).toBe(12_000);
   expect(result.truncated).toBe(true);
   expect(result.rows[9_999]?.column_name_number_119).toBe(`${9_999 % 97}9`);
+}, 60_000);
+
+test("a long spreadsheet comes back through worker IPC cut at max_rows with its real length", async () => {
+  const rows = Array.from({ length: 12_000 }, (_, i) => ({ id: i + 1, name: `row ${i + 1}` }));
+  const result = await parseTableFile(buildXlsxFixture({ Data: rows }), {
+    format: "xlsx",
+    max_rows: 10_000,
+  });
+  expect(result).toMatchObject({ ok: true, sheet: "Data", row_count: 12_000, truncated: true });
+  if (!result.ok) return;
+  expect(result.rows).toHaveLength(10_000);
+  expect(result.rows[9_999]).toEqual({ id: 10_000, name: "row 10000" });
 }, 60_000);

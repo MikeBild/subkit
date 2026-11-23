@@ -6,12 +6,12 @@ import {
   PARSE_FILE_SOURCE_MISSING,
   PARSE_FILE_TOO_LARGE,
   PARSE_FILE_UNSUPPORTED_FORMAT,
-  parseFileCsvFailure,
   parseFileFormat,
   parseFileOutput,
   parseFileRowLimit,
   parseFileSizeRefusal,
   parseFileSource,
+  parseFileTable,
 } from "./parse-file.ts";
 
 describe("parse-file source", () => {
@@ -100,15 +100,27 @@ describe("parse-file output", () => {
     });
   });
 
-  test("the first sheet is the default and an unknown sheet is refused", () => {
-    const parsed = { format: "xlsx" as const, sheets: { One: [{ a: 1 }], Two: [] } };
-    expect(parseFileOutput(parsed, { filename: "s.xlsx" })).toMatchObject({
+  test("a spreadsheet keeps its sheet names and is bounded like a CSV", () => {
+    const parsed = {
+      format: "xlsx" as const,
+      sheet: "One",
+      sheets: ["One", "Two"],
+      rows: [{ a: 1 }, { a: 2 }],
+      row_count: 300,
+      truncated: true,
+    };
+    expect(parseFileOutput(parsed, { filename: "s.xlsx", max_rows: 1 })).toEqual({
       ok: true,
-      value: { sheet: "One", sheets: ["One", "Two"], rows: [{ a: 1 }] },
+      value: {
+        format: "xlsx",
+        filename: "s.xlsx",
+        sheet: "One",
+        sheets: ["One", "Two"],
+        rows: [{ a: 1 }],
+        row_count: 300,
+        truncated: true,
+      },
     });
-    const missing = parseFileOutput(parsed, { filename: "s.xlsx", sheet: "Three" });
-    expect(missing.ok).toBe(false);
-    if (!missing.ok) expect(missing.failure.code).toBe(PARSE_FILE_SHEET_MISSING);
   });
 
   test("documents become text", () => {
@@ -130,13 +142,77 @@ describe("parse-file row limit", () => {
   });
 });
 
-describe("parse-file csv failure", () => {
+describe("parse-file table", () => {
+  test("a parsed CSV or spreadsheet becomes a parsed file", () => {
+    expect(
+      parseFileTable(
+        { ok: true, format: "csv", rows: [], row_count: 0, truncated: false },
+        undefined,
+      ),
+    ).toEqual({
+      ok: true,
+      value: { format: "csv", rows: [], row_count: 0, truncated: false },
+    });
+    expect(
+      parseFileTable(
+        {
+          ok: true,
+          format: "xlsx",
+          sheet: "S",
+          sheets: ["S"],
+          rows: [{ a: 1 }],
+          row_count: 1,
+          truncated: false,
+        },
+        "S",
+      ),
+    ).toEqual({
+      ok: true,
+      value: {
+        format: "xlsx",
+        sheet: "S",
+        sheets: ["S"],
+        rows: [{ a: 1 }],
+        row_count: 1,
+        truncated: false,
+      },
+    });
+    expect(
+      parseFileTable(
+        { ok: true, format: "xlsx", rows: [], row_count: 0, truncated: false },
+        undefined,
+      ),
+    ).toMatchObject({ ok: true, value: { sheet: "", sheets: [] } });
+  });
+
   test("a malformed CSV fails with its parser errors as details", () => {
     const errors = [{ code: "MissingQuotes", row: 2, message: "Quoted field unterminated" }];
-    expect(parseFileCsvFailure({ message: "The CSV file is malformed.", errors })).toEqual({
-      code: PARSE_FILE_FAILED,
-      message: "The CSV file is malformed.",
-      details: { errors },
+    expect(
+      parseFileTable(
+        { ok: false, reason: "malformed", message: "The CSV file is malformed.", errors },
+        undefined,
+      ),
+    ).toEqual({
+      ok: false,
+      failure: {
+        code: PARSE_FILE_FAILED,
+        message: "The CSV file is malformed.",
+        details: { errors },
+      },
     });
+  });
+
+  test("a missing sheet names the sheets that exist", () => {
+    const missing = parseFileTable({ ok: false, reason: "sheet_missing", sheets: ["A"] }, "B");
+    expect(missing).toEqual({
+      ok: false,
+      failure: {
+        code: PARSE_FILE_SHEET_MISSING,
+        message: 'The spreadsheet has no sheet named "B".',
+        details: { sheets: ["A"] },
+      },
+    });
+    const empty = parseFileTable({ ok: false, reason: "sheet_missing", sheets: [] }, undefined);
+    if (!empty.ok) expect(empty.failure.message).toBe("The spreadsheet has no sheets.");
   });
 });

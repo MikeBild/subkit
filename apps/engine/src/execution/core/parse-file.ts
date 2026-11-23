@@ -21,7 +21,14 @@ export type ParseFileDecision<T> =
 
 export type ParsedFile =
   | { format: "csv"; rows: unknown[]; row_count: number; truncated: boolean }
-  | { format: "xlsx"; sheets: Record<string, Array<Record<string, unknown>>> }
+  | {
+      format: "xlsx";
+      sheet: string;
+      sheets: string[];
+      rows: unknown[];
+      row_count: number;
+      truncated: boolean;
+    }
   | { format: "pdf"; text: string; pages: number }
   | { format: "docx"; markdown: string }
   | {
@@ -114,46 +121,77 @@ function limitRows<T>(rows: T[], maxRows: number | undefined) {
   return { rows: rows.slice(0, limit), row_count: rows.length, truncated: rows.length > limit };
 }
 
-export function parseFileCsvFailure(csv: {
-  message: string;
-  errors: ReadonlyArray<{ code: string; row: number; message: string }>;
-}): ParseFileFailure {
-  return { code: PARSE_FILE_FAILED, message: csv.message, details: { errors: csv.errors } };
+export type ParsedTable =
+  | {
+      ok: true;
+      format: "csv" | "xlsx";
+      rows: unknown[];
+      row_count: number;
+      truncated: boolean;
+      sheet?: string | undefined;
+      sheets?: string[] | undefined;
+    }
+  | {
+      ok: false;
+      reason: "malformed";
+      message: string;
+      errors: ReadonlyArray<{ code: string; row: number; message: string }>;
+    }
+  | { ok: false; reason: "sheet_missing"; sheets: string[] };
+
+export function parseFileTable(
+  table: ParsedTable,
+  requestedSheet: string | undefined,
+): ParseFileDecision<ParsedFile> {
+  if (!table.ok) {
+    if (table.reason === "malformed")
+      return fail(PARSE_FILE_FAILED, table.message, { errors: table.errors });
+    return fail(
+      PARSE_FILE_SHEET_MISSING,
+      requestedSheet === undefined
+        ? "The spreadsheet has no sheets."
+        : `The spreadsheet has no sheet named "${requestedSheet}".`,
+      { sheets: table.sheets },
+    );
+  }
+  const rows = { rows: table.rows, row_count: table.row_count, truncated: table.truncated };
+  if (table.format === "csv") return { ok: true, value: { format: "csv", ...rows } };
+  return {
+    ok: true,
+    value: { format: "xlsx", sheet: table.sheet ?? "", sheets: table.sheets ?? [], ...rows },
+  };
+}
+
+function limitTable(
+  parsed: { rows: unknown[]; row_count: number; truncated: boolean },
+  maxRows: number | undefined,
+) {
+  const limited = limitRows(parsed.rows, maxRows);
+  return {
+    rows: limited.rows,
+    row_count: Math.max(parsed.row_count, limited.row_count),
+    truncated: parsed.truncated || limited.truncated,
+  };
 }
 
 export function parseFileOutput(
   parsed: ParsedFile,
-  options: { filename: string; sheet?: string | undefined; max_rows?: number | undefined },
+  options: { filename: string; max_rows?: number | undefined },
 ): ParseFileDecision<Record<string, unknown>> {
   const base = { format: parsed.format, filename: options.filename };
   switch (parsed.format) {
-    case "csv": {
-      const limited = limitRows(parsed.rows, options.max_rows);
+    case "csv":
+      return { ok: true, value: { ...base, ...limitTable(parsed, options.max_rows) } };
+    case "xlsx":
       return {
         ok: true,
         value: {
           ...base,
-          rows: limited.rows,
-          row_count: Math.max(parsed.row_count, limited.row_count),
-          truncated: parsed.truncated || limited.truncated,
+          sheet: parsed.sheet,
+          sheets: parsed.sheets,
+          ...limitTable(parsed, options.max_rows),
         },
       };
-    }
-    case "xlsx": {
-      const names = Object.keys(parsed.sheets);
-      const sheet = options.sheet ?? names[0];
-      const rows = sheet === undefined ? undefined : parsed.sheets[sheet];
-      if (!rows)
-        return fail(
-          PARSE_FILE_SHEET_MISSING,
-          `The spreadsheet has no sheet named "${options.sheet ?? ""}".`,
-          { sheets: names },
-        );
-      return {
-        ok: true,
-        value: { ...base, sheet, sheets: names, ...limitRows(rows, options.max_rows) },
-      };
-    }
     case "pdf":
       return { ok: true, value: { ...base, text: parsed.text, pages: parsed.pages } };
     case "docx":

@@ -69,3 +69,43 @@ function buildStrategy(format: XlsxFormat): FileParsingStrategy<XlsxParseOutput>
 
 export const xlsxStrategy = buildStrategy("xlsx");
 export const xlsStrategy = buildStrategy("xls");
+
+export type XlsxTableResult =
+  | {
+      ok: true;
+      sheet: string;
+      sheets: string[];
+      rows: Array<Record<string, unknown>>;
+      row_count: number;
+      truncated: boolean;
+    }
+  | { ok: false; sheets: string[] };
+
+export function parseXlsxTable(
+  buffer: Buffer,
+  options: { sheet?: string | undefined; max_rows: number },
+): XlsxTableResult {
+  const sheets = XLSX.read(buffer, { type: "buffer", bookSheets: true }).SheetNames;
+  const name = options.sheet ?? sheets[0];
+  if (name === undefined || !sheets.includes(name)) return { ok: false, sheets };
+  const sheet = XLSX.read(buffer, { type: "buffer", cellDates: true, sheets: name }).Sheets[name];
+  const ref = sheet?.["!ref"];
+  if (!sheet || !ref)
+    return { ok: true, sheet: name, sheets, rows: [], row_count: 0, truncated: false };
+  const full = XLSX.utils.decode_range(ref);
+  const available = full.e.r - full.s.r;
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+    defval: null,
+    raw: true,
+    range: { s: full.s, e: { c: full.e.c, r: Math.min(full.e.r, full.s.r + options.max_rows) } },
+  });
+  const truncated = available > options.max_rows;
+  return {
+    ok: true,
+    sheet: name,
+    sheets,
+    rows,
+    row_count: truncated ? available : rows.length,
+    truncated,
+  };
+}

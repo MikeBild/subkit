@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { packCsvRows, parseCsvRows, unpackCsvRows } from "./csv.ts";
+import { decodeCsvText, detectCsvDelimiter, parseCsvRows } from "./csv.ts";
 
 const encode = (text: string) => new TextEncoder().encode(text);
 
@@ -119,25 +119,56 @@ describe("parseCsvRows", () => {
   });
 });
 
-describe("packed CSV rows", () => {
-  test("rows survive the round trip without repeating the header per row", () => {
-    const result = parseCsvRows(encode('id,note\n1,"a, b"\n2,x\n3,y\n'), { max_rows: 2 });
-    const packed = packCsvRows(result);
-    expect(packed).toEqual({
-      ok: true,
-      fields: ["id", "note"],
-      rows_json: '[["1","a, b"],["2","x"]]',
-      row_count: 3,
-      truncated: true,
-    });
-    expect(unpackCsvRows(packed)).toEqual(result);
+describe("detectCsvDelimiter", () => {
+  test("comma, semicolon, tab and pipe are recognised from the first lines", () => {
+    expect(detectCsvDelimiter("a,b,c\n1,2,3\n")).toBe(",");
+    expect(detectCsvDelimiter("date;amount;note\n01.02.2026;1,50;bread, milk\n")).toBe(";");
+    expect(detectCsvDelimiter("a\tb\n1\t2\n")).toBe("\t");
+    expect(detectCsvDelimiter("a|b\n1|2\n")).toBe("|");
   });
 
-  test("an empty file and a failure pass through unchanged", () => {
-    const empty = parseCsvRows(encode(""), { max_rows: 5 });
-    expect(unpackCsvRows(packCsvRows(empty))).toEqual(empty);
-    const broken = parseCsvRows(encode("a,b\n1\n"), { max_rows: 5 });
-    expect(broken.ok).toBe(false);
-    expect(unpackCsvRows(packCsvRows(broken))).toEqual(broken);
+  test("quoted delimiters do not count", () => {
+    expect(detectCsvDelimiter('"a;b",c\n"1;2",3\n')).toBe(",");
+  });
+
+  test("a single column or an inconsistent sample falls back to a comma", () => {
+    expect(detectCsvDelimiter("name\nAda\n")).toBe(",");
+    expect(detectCsvDelimiter("a;b\n1;2;3\n")).toBe(",");
+    expect(detectCsvDelimiter("")).toBe(",");
+  });
+
+  test("only the start of a long file is sampled, cut at a line break", () => {
+    const line = "a;b;c\n";
+    const text = line.repeat(20_000);
+    expect(text.length).toBeGreaterThan(65_536);
+    expect(detectCsvDelimiter(text)).toBe(";");
+  });
+});
+
+describe("decodeCsvText", () => {
+  test("valid UTF-8 is read as UTF-8 without its byte order mark", () => {
+    expect(decodeCsvText(new Uint8Array([0xef, 0xbb, 0xbf, ...encode("café")]))).toBe("café");
+  });
+
+  test("bytes that are not UTF-8 are read as Windows-1252", () => {
+    expect(decodeCsvText(new Uint8Array([0x63, 0x61, 0x66, 0xe9, 0x20, 0x80]))).toBe("café €");
+  });
+});
+
+describe("parseCsvRows with a regional Excel export", () => {
+  test("semicolons and Windows-1252 yield proper columns", () => {
+    const bytes = new Uint8Array([
+      ...encode("name;caf"),
+      0xe9,
+      ...encode(";amount\nRen"),
+      0xe9,
+      ...encode("e;Main St 1;12,50\n"),
+    ]);
+    expect(parseCsvRows(bytes, { max_rows: 10 })).toEqual({
+      ok: true,
+      rows: [{ name: "Renée", café: "Main St 1", amount: "12,50" }],
+      row_count: 1,
+      truncated: false,
+    });
   });
 });

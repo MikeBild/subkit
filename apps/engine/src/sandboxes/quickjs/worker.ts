@@ -40,9 +40,11 @@ const WorkerRequestSchema = z.discriminatedUnion("op", [
     buffer: z.string(),
   }),
   z.object({
-    op: z.literal("parse_csv"),
+    op: z.literal("parse_table"),
+    format: z.enum(["csv", "xlsx"]),
     buffer: z.string(),
     max_rows: z.number().int().positive(),
+    sheet: z.string().min(1).optional(),
   }),
 ]);
 
@@ -78,7 +80,7 @@ async function handleRequest(input: unknown): Promise<void> {
     }
     const request = WorkerRequestSchema.parse(envelope?.body);
     if (
-      (request.op === "parse_binary" || request.op === "parse_csv") &&
+      (request.op === "parse_binary" || request.op === "parse_table") &&
       Buffer.from(request.buffer, "base64").byteLength > MAX_WORKER_MESSAGE_BYTES
     ) {
       throw new Error("parser input exceeds 32 MiB decoded worker limit");
@@ -100,7 +102,7 @@ async function handleRequest(input: unknown): Promise<void> {
                   }
                 : null,
             })
-          : request.op === "parse_binary" || request.op === "parse_csv"
+          : request.op === "parse_binary" || request.op === "parse_table"
             ? await parseFileInCurrentProcess(request)
             : (() => {
                 throw new Error("invalid sandbox worker request");
@@ -120,13 +122,17 @@ async function handleRequest(input: unknown): Promise<void> {
 }
 
 async function parseFileInCurrentProcess(
-  request: Extract<WorkerRequest, { op: "parse_binary" | "parse_csv" }>,
+  request: Extract<WorkerRequest, { op: "parse_binary" | "parse_table" }>,
 ): Promise<unknown> {
   const parsers = await import("../../docs-ingestion/parsers/index.ts");
   const buffer = Buffer.from(request.buffer, "base64");
   return request.op === "parse_binary"
     ? parsers.parseBinaryFileInCurrentProcess(buffer, request.format)
-    : parsers.parseCsvFileInCurrentProcess(buffer, { max_rows: request.max_rows });
+    : parsers.parseTableInCurrentProcess(buffer, {
+        format: request.format,
+        max_rows: request.max_rows,
+        sheet: request.sheet,
+      });
 }
 
 function workerRunOptions(opts: {

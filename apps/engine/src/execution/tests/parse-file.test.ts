@@ -118,6 +118,18 @@ describe("transform language parse-file", () => {
     expect(result.error?.message).toStartWith("The CSV file is malformed:");
   });
 
+  test("a regional Excel export with semicolons and Windows-1252 yields columns", async () => {
+    const bytes = new Uint8Array([
+      ...new TextEncoder().encode("customer;amount\nRen"),
+      0xe9,
+      ...new TextEncoder().encode("e;12,50\n"),
+    ]);
+    const doc = await upload("export.csv", "text/csv", bytes);
+    const result = await parse({ source: "$input.doc" }, { doc });
+    expect(result.status).toBe("succeeded");
+    expect(result.output).toMatchObject({ rows: [{ customer: "Renée", amount: "12,50" }] });
+  });
+
   test("a spreadsheet is read sheet by sheet", async () => {
     const doc = await upload(
       "report.xlsx",
