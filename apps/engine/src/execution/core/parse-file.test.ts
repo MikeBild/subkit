@@ -1,12 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import {
+  PARSE_FILE_FAILED,
   PARSE_FILE_MAX_BYTES,
   PARSE_FILE_SHEET_MISSING,
   PARSE_FILE_SOURCE_MISSING,
   PARSE_FILE_TOO_LARGE,
   PARSE_FILE_UNSUPPORTED_FORMAT,
+  parseFileCsvFailure,
   parseFileFormat,
   parseFileOutput,
+  parseFileRowLimit,
   parseFileSizeRefusal,
   parseFileSource,
 } from "./parse-file.ts";
@@ -65,7 +68,7 @@ describe("parse-file size", () => {
 describe("parse-file output", () => {
   test("table rows are bounded and say when they were cut", () => {
     const out = parseFileOutput(
-      { format: "csv", rows: [{ a: 1 }, { a: 2 }, { a: 3 }] },
+      { format: "csv", rows: [{ a: 1 }, { a: 2 }, { a: 3 }], row_count: 3, truncated: false },
       { filename: "a.csv", max_rows: 2 },
     );
     expect(out).toEqual({
@@ -75,6 +78,23 @@ describe("parse-file output", () => {
         filename: "a.csv",
         rows: [{ a: 1 }, { a: 2 }],
         row_count: 3,
+        truncated: true,
+      },
+    });
+  });
+
+  test("a CSV cut by the parser keeps the full row count", () => {
+    const out = parseFileOutput(
+      { format: "csv", rows: [{ a: 1 }, { a: 2 }], row_count: 20_000, truncated: true },
+      { filename: "big.csv", max_rows: 2 },
+    );
+    expect(out).toEqual({
+      ok: true,
+      value: {
+        format: "csv",
+        filename: "big.csv",
+        rows: [{ a: 1 }, { a: 2 }],
+        row_count: 20_000,
         truncated: true,
       },
     });
@@ -99,6 +119,24 @@ describe("parse-file output", () => {
     expect(parseFileOutput({ format: "pdf", text: "x", pages: 2 }, { filename: "p.pdf" })).toEqual({
       ok: true,
       value: { format: "pdf", filename: "p.pdf", text: "x", pages: 2 },
+    });
+  });
+});
+
+describe("parse-file row limit", () => {
+  test("max_rows wins and the default is 10,000", () => {
+    expect(parseFileRowLimit(5)).toBe(5);
+    expect(parseFileRowLimit(undefined)).toBe(10_000);
+  });
+});
+
+describe("parse-file csv failure", () => {
+  test("a malformed CSV fails with its parser errors as details", () => {
+    const errors = [{ code: "MissingQuotes", row: 2, message: "Quoted field unterminated" }];
+    expect(parseFileCsvFailure({ message: "The CSV file is malformed.", errors })).toEqual({
+      code: PARSE_FILE_FAILED,
+      message: "The CSV file is malformed.",
+      details: { errors },
     });
   });
 });

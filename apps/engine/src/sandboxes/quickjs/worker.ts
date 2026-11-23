@@ -39,7 +39,14 @@ const WorkerRequestSchema = z.discriminatedUnion("op", [
     format: z.enum(["pdf", "docx", "xlsx", "xls", "pptx", "zip", "gzip"]),
     buffer: z.string(),
   }),
+  z.object({
+    op: z.literal("parse_csv"),
+    buffer: z.string(),
+    max_rows: z.number().int().positive(),
+  }),
 ]);
+
+type WorkerRequest = z.infer<typeof WorkerRequestSchema>;
 
 export async function runSandboxWorker(): Promise<void> {
   routeLogsToStderr();
@@ -71,7 +78,7 @@ async function handleRequest(input: unknown): Promise<void> {
     }
     const request = WorkerRequestSchema.parse(envelope?.body);
     if (
-      request.op === "parse_binary" &&
+      (request.op === "parse_binary" || request.op === "parse_csv") &&
       Buffer.from(request.buffer, "base64").byteLength > MAX_WORKER_MESSAGE_BYTES
     ) {
       throw new Error("parser input exceeds 32 MiB decoded worker limit");
@@ -93,13 +100,8 @@ async function handleRequest(input: unknown): Promise<void> {
                   }
                 : null,
             })
-          : request.op === "parse_binary"
-            ? await (
-                await import("../../docs-ingestion/parsers/index.ts")
-              ).parseBinaryFileInCurrentProcess(
-                Buffer.from(request.buffer, "base64"),
-                request.format,
-              )
+          : request.op === "parse_binary" || request.op === "parse_csv"
+            ? await parseFileInCurrentProcess(request)
             : (() => {
                 throw new Error("invalid sandbox worker request");
               })();
@@ -115,6 +117,16 @@ async function handleRequest(input: unknown): Promise<void> {
           };
     writeResponse({ id, ok: false, error });
   }
+}
+
+async function parseFileInCurrentProcess(
+  request: Extract<WorkerRequest, { op: "parse_binary" | "parse_csv" }>,
+): Promise<unknown> {
+  const parsers = await import("../../docs-ingestion/parsers/index.ts");
+  const buffer = Buffer.from(request.buffer, "base64");
+  return request.op === "parse_binary"
+    ? parsers.parseBinaryFileInCurrentProcess(buffer, request.format)
+    : parsers.parseCsvRows(buffer, { max_rows: request.max_rows });
 }
 
 function workerRunOptions(opts: {

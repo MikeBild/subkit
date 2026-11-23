@@ -20,7 +20,7 @@ export type ParseFileDecision<T> =
   | { ok: false; failure: ParseFileFailure };
 
 export type ParsedFile =
-  | { format: "csv"; rows: unknown[] }
+  | { format: "csv"; rows: unknown[]; row_count: number; truncated: boolean }
   | { format: "xlsx"; sheets: Record<string, Array<Record<string, unknown>>> }
   | { format: "pdf"; text: string; pages: number }
   | { format: "docx"; markdown: string }
@@ -105,9 +105,20 @@ export function parseFileSizeRefusal(sizeBytes: number): ParseFileFailure | null
   };
 }
 
+export function parseFileRowLimit(maxRows: number | undefined): number {
+  return maxRows ?? DEFAULT_MAX_ROWS;
+}
+
 function limitRows<T>(rows: T[], maxRows: number | undefined) {
-  const limit = maxRows ?? DEFAULT_MAX_ROWS;
+  const limit = parseFileRowLimit(maxRows);
   return { rows: rows.slice(0, limit), row_count: rows.length, truncated: rows.length > limit };
+}
+
+export function parseFileCsvFailure(csv: {
+  message: string;
+  errors: ReadonlyArray<{ code: string; row: number; message: string }>;
+}): ParseFileFailure {
+  return { code: PARSE_FILE_FAILED, message: csv.message, details: { errors: csv.errors } };
 }
 
 export function parseFileOutput(
@@ -116,8 +127,18 @@ export function parseFileOutput(
 ): ParseFileDecision<Record<string, unknown>> {
   const base = { format: parsed.format, filename: options.filename };
   switch (parsed.format) {
-    case "csv":
-      return { ok: true, value: { ...base, ...limitRows(parsed.rows, options.max_rows) } };
+    case "csv": {
+      const limited = limitRows(parsed.rows, options.max_rows);
+      return {
+        ok: true,
+        value: {
+          ...base,
+          rows: limited.rows,
+          row_count: Math.max(parsed.row_count, limited.row_count),
+          truncated: parsed.truncated || limited.truncated,
+        },
+      };
+    }
     case "xlsx": {
       const names = Object.keys(parsed.sheets);
       const sheet = options.sheet ?? names[0];

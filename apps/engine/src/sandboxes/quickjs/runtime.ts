@@ -368,6 +368,14 @@ type SandboxWorkerJob =
       wall_ms: number;
       priority?: "default" | "hook";
       signal?: AbortSignal;
+    }
+  | {
+      op: "parse_csv";
+      buffer: string;
+      max_rows: number;
+      wall_ms: number;
+      priority?: "default" | "hook";
+      signal?: AbortSignal;
     };
 
 export async function runSandboxWorkerJob<T>(request: SandboxWorkerJob): Promise<T> {
@@ -522,15 +530,15 @@ class WorkerLane {
     opts: Pick<RunJsOptions, "limits" | "signal">,
   ): Promise<T> {
     const workerConfig = workerLimits();
+    const carriesFile = body.op === "parse_binary" || body.op === "parse_csv";
     if (
-      body.op === "parse_binary" &&
+      carriesFile &&
       typeof body.buffer === "string" &&
       Buffer.byteLength(body.buffer, "base64") > workerConfig.ipc_max_bytes
     ) {
       throw new SandboxError("parser input exceeds decoded worker transport limit", "marshal");
     }
-    const requestLimit =
-      body.op === "parse_binary" ? MAX_BINARY_WORKER_WIRE_BYTES : workerConfig.ipc_max_bytes;
+    const requestLimit = carriesFile ? MAX_BINARY_WORKER_WIRE_BYTES : workerConfig.ipc_max_bytes;
     assertBoundedWorkerValue(body, requestLimit);
     const request = JSON.stringify(body);
     if (Buffer.byteLength(request) > requestLimit) {

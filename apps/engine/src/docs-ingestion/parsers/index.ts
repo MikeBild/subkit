@@ -3,6 +3,7 @@ import { getMetrics, METRIC_NAMES } from "../../observability/metrics.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import { runSandboxWorkerJob } from "../../sandboxes/quickjs/runtime.ts";
 import { type ArchiveParseOutput, makeArchiveStrategies } from "./archive.ts";
+import { type CsvRowsResult, parseCsvRows } from "./csv.ts";
 import { type DocxParseOutput, docxStrategy } from "./docx.ts";
 import { type PdfParseOutput, pdfStrategy } from "./pdf.ts";
 import { type PptxParseOutput, pptxStrategy } from "./pptx.ts";
@@ -19,6 +20,8 @@ export type {
   ArchiveParseOutput,
   ArchiveSkip,
 } from "./archive.ts";
+export type { CsvRowError, CsvRowsResult } from "./csv.ts";
+export { parseCsvRows } from "./csv.ts";
 export type { DocxParseOutput } from "./docx.ts";
 export type { PdfParseOutput } from "./pdf.ts";
 export { PDF_PAGE_SEPARATOR } from "./pdf.ts";
@@ -162,4 +165,25 @@ async function parseBinaryFileInWorker<F extends BinaryFormat>(
       { cause: err },
     );
   }
+}
+
+export const CSV_PARSER_TIMEOUT_MS = 60_000;
+
+export async function parseCsvFile(
+  buffer: Buffer,
+  options: { max_rows: number; signal?: AbortSignal },
+): Promise<CsvRowsResult> {
+  if (process.argv.includes("--sandbox-worker")) {
+    return parseCsvRows(buffer, { max_rows: options.max_rows });
+  }
+  if (buffer.byteLength > 32 * 1024 * 1024) {
+    throw new Error("csv: parser input exceeds worker transport limit");
+  }
+  return runSandboxWorkerJob<CsvRowsResult>({
+    op: "parse_csv",
+    buffer: buffer.toString("base64"),
+    max_rows: options.max_rows,
+    wall_ms: CSV_PARSER_TIMEOUT_MS,
+    ...(options.signal ? { signal: options.signal } : {}),
+  });
 }

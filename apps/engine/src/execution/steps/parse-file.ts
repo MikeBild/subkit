@@ -1,6 +1,5 @@
-import { detectBinaryFormat, parseBinaryFile } from "../../docs-ingestion/index.ts";
+import { detectBinaryFormat, parseBinaryFile, parseCsvFile } from "../../docs-ingestion/index.ts";
 import type { ResolvedFile } from "../../files/index.ts";
-import { runJs } from "../../sandboxes/index.ts";
 import type { TransformStep } from "../../workflows/index.ts";
 import { SYSTEM_CLOCK } from "../clock.ts";
 import {
@@ -8,8 +7,10 @@ import {
   type ParsedFile,
   type ParseFileFailure,
   type ParseFileFormat,
+  parseFileCsvFailure,
   parseFileFormat,
   parseFileOutput,
+  parseFileRowLimit,
   parseFileSizeRefusal,
   parseFileSource,
 } from "../core/parse-file.ts";
@@ -22,8 +23,6 @@ interface RunParseFileParams {
   input: unknown;
 }
 
-const CSV_PARSE = "return sk.csv.parse(input.text, { header: true });";
-
 async function readAll(file: ResolvedFile): Promise<Buffer> {
   const chunks: Uint8Array[] = [];
   for await (const chunk of await file.openRead()) chunks.push(chunk);
@@ -33,16 +32,13 @@ async function readAll(file: ResolvedFile): Promise<Buffer> {
 async function parse(
   format: ParseFileFormat,
   bytes: Buffer,
+  maxRows: number,
   signal: AbortSignal,
-): Promise<ParsedFile> {
+): Promise<ParsedFile | ParseFileFailure> {
   if (format === "csv") {
-    const { output } = await runJs<unknown[]>({
-      code: CSV_PARSE,
-      input: { text: new TextDecoder().decode(bytes) },
-      clock: null,
-      signal,
-    });
-    return { format, rows: Array.isArray(output) ? output : [] };
+    const csv = await parseCsvFile(bytes, { max_rows: maxRows, signal });
+    if (!csv.ok) return parseFileCsvFailure(csv);
+    return { format, rows: csv.rows, row_count: csv.row_count, truncated: csv.truncated };
   }
   const parsed = await parseBinaryFile(bytes, format);
   if (parsed.format === "xls") throw new Error("legacy xls is not supported; save it as xlsx");
@@ -84,7 +80,13 @@ export async function runParseFile(p: RunParseFileParams): Promise<StepResult> {
       detected: config.format ? null : await detectBinaryFormat(bytes),
     });
     if (!format.ok) return failed(format.failure);
-    const parsed = await parse(format.value, bytes, p.ctx.signal);
+    const parsed = await parse(
+      format.value,
+      bytes,
+      parseFileRowLimit(config.max_rows),
+      p.ctx.signal,
+    );
+    if (!("format" in parsed)) return failed(parsed);
     const output = parseFileOutput(parsed, {
       filename: resolved.filename,
       sheet: config.sheet,

@@ -10,11 +10,16 @@ import {
   buildXlsxFixture,
   buildZipFixture,
 } from "../../test-helpers/binary-fixtures.ts";
+import {
+  type MemoryOffloadStorage,
+  useMemoryOffloadStorage,
+} from "../../test-helpers/offload-storage.ts";
 import { runExecution } from "../engine.ts";
 import { createEngineCtx, createWorkflowRow, type EngineTestCtx } from "./setup.ts";
 
 let ctx: EngineTestCtx;
 let configDir: string;
+let storage: MemoryOffloadStorage;
 
 beforeAll(async () => {
   ctx = await createEngineCtx("parse-file");
@@ -24,9 +29,11 @@ beforeAll(async () => {
     env: { NODE_ENV: "test", DATABASE_URL: ctx.testDb.url },
     configPathOverride: join(configDir, "subkit.config.json"),
   });
+  storage = await useMemoryOffloadStorage();
 });
 
 afterAll(async () => {
+  await storage.restore();
   await ctx.cleanup();
   _resetConfigForTests();
   rmSync(configDir, { recursive: true, force: true });
@@ -75,6 +82,40 @@ describe("transform language parse-file", () => {
       row_count: 3,
       truncated: true,
     });
+  });
+
+  test("a CSV past the row limit is cut and still reports every row", async () => {
+    const lines = ["id,name"];
+    for (let i = 1; i <= 20_000; i += 1) lines.push(`${i},row ${i}`);
+    const doc = await upload("big.csv", "text/csv", new TextEncoder().encode(lines.join("\n")));
+    const result = await parse({ source: "$input.doc" }, { doc });
+    expect(result.status).toBe("succeeded");
+    const output = result.output as { rows: unknown[]; row_count: number; truncated: boolean };
+    expect(output.rows).toHaveLength(10_000);
+    expect(output.rows[9_999]).toEqual({ id: "10000", name: "row 10000" });
+    expect(output.row_count).toBe(20_000);
+    expect(output.truncated).toBe(true);
+  }, 60_000);
+
+  test("a CSV over one megabyte parses", async () => {
+    const filler = "x".repeat(200);
+    const lines = ["id,text"];
+    for (let i = 0; i < 6_000; i += 1) lines.push(`${i},${filler}`);
+    const bytes = new TextEncoder().encode(lines.join("\n"));
+    expect(bytes.byteLength).toBeGreaterThan(1024 * 1024);
+    const doc = await upload("wide.csv", "text/csv", bytes);
+    const result = await parse({ source: "$input.doc", max_rows: 5 }, { doc });
+    expect(result.status).toBe("succeeded");
+    expect(result.output).toMatchObject({ row_count: 6_000, truncated: true });
+    expect((result.output as { rows: unknown[] }).rows).toHaveLength(5);
+  }, 60_000);
+
+  test("a malformed CSV fails with the parser's reason", async () => {
+    const doc = await upload("bad.csv", "text/csv", new TextEncoder().encode('a,b\n1,"open\n'));
+    const result = await parse({ source: "$input.doc" }, { doc });
+    expect(result.status).toBe("failed");
+    expect(result.error?.code).toBe("parse_file_failed");
+    expect(result.error?.message).toStartWith("The CSV file is malformed:");
   });
 
   test("a spreadsheet is read sheet by sheet", async () => {
