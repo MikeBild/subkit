@@ -17,6 +17,7 @@ export function DataState({
   action,
   onRetry,
   error,
+  body,
   testId,
   className,
   scope = "section",
@@ -27,11 +28,12 @@ export function DataState({
   action?: ReactNode;
   onRetry?: () => void;
   error?: unknown;
+  body?: ReactNode;
   testId?: string;
   className?: string;
 }) {
   const { t } = useI18n();
-  const notice = useErrorNotice({ error });
+  const notice = useErrorNotice({ error, body });
   const page = usePageFailure(
     state === "error" && scope === "page" && onRetry
       ? {
