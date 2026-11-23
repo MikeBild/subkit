@@ -94,7 +94,7 @@ export const demoTemplateConnectors = [
   {
     key: "connector-gmail",
     slug: "gmail-dispatch",
-    name: "Gmail Disposition",
+    name: "Gmail dispatch",
     template: "google-gmail",
     templateName: "Google Gmail",
     baseUrl: "https://gmail.brennwerk.invalid/gmail/v1",
@@ -107,7 +107,7 @@ export const demoTemplateConnectors = [
   {
     key: "connector-slack",
     slug: "slack-ops",
-    name: "Slack Leitstand",
+    name: "Slack control room",
     template: "slack",
     templateName: "Slack",
     baseUrl: "https://slack.brennwerk.invalid/api",
@@ -259,8 +259,8 @@ function demoIntakeItems(now: Date): DemoIntakeItem[] {
       body: "From next quarter, shipments to Switzerland need an electronic export declaration before pickup. Carriers turn away shipments without one at the gate.",
       note: "Check for the carrier handbook.",
       capturedAt: at(5),
-      sourceUrl: "https://zoll.example/news/ausfuhr-schweiz",
-      author: "Zollnachrichten",
+      sourceUrl: "https://customs.example/news/export-switzerland",
+      author: "Customs News",
     },
     {
       key: "intake-capture-1",
@@ -275,11 +275,11 @@ function demoIntakeItems(now: Date): DemoIntakeItem[] {
     {
       key: "intake-capture-2",
       origin: "capture",
-      title: "Retourenquote im Onlinehandel sinkt",
+      title: "Return rates in online retail are falling",
       body: "An industry survey shows that clear size information and photos cut the return rate by up to a fifth.",
       note: "Maybe relevant for the returns skill.",
       capturedAt: at(50),
-      sourceUrl: "https://handel.example/studien/retourenquote",
+      sourceUrl: "https://retail.example/studies/return-rate",
     },
     {
       key: "intake-note-0",

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const cockpitDemoBrandName = "Brennwerk";
-const cockpitDemoBrandSubtitle = "Logistik";
+const cockpitDemoBrandSubtitle = "Logistics";
 const cockpitDemoBrandPalette = "teal" as const;
 
 const directory = fileURLToPath(new URL("./demo-brand/", import.meta.url));

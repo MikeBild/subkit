@@ -169,7 +169,7 @@ test("demo brand assets satisfy the branding image rules and apply once per cont
     await import("./cockpit-demo-branding.ts");
   const update = cockpitDemoBrandingUpdate(3);
   expect(update.display_name).toBe("Brennwerk");
-  expect(update.subtitle).toBe("Logistik");
+  expect(update.subtitle).toBe("Logistics");
   expect(update.palette).toBe("teal");
   for (const logo of [update.logos.light, update.logos.dark]) {
     expect(Buffer.from(logo.content_base64, "base64").length).toBeLessThanOrEqual(2 * 1024 * 1024);
