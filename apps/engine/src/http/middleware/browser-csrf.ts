@@ -18,6 +18,7 @@ const EXEMPT_PREFIXES = [
   "/v1/identity/onboarding",
   "/v1/oauth/",
   "/v1/tool-approvals/",
+  "/v1/integrations/slack/link",
   "/v1/setup",
 ];
 const GRANT_FORM_PATHS = [

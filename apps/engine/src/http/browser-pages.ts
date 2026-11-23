@@ -24,6 +24,8 @@ export const BROWSER_PAGE_ROUTES: readonly BrowserPageRoute[] = [
   { method: "POST", path: "/v1/connector-drafts/{id}/credentials/setup" },
   { method: "GET", path: "/v1/tool-approvals/decide" },
   { method: "POST", path: "/v1/tool-approvals/decide" },
+  { method: "GET", path: "/v1/integrations/slack/link" },
+  { method: "POST", path: "/v1/integrations/slack/link" },
   { method: "GET", path: "/v1/feedback/anonymous/form" },
   { method: "POST", path: "/v1/feedback/anonymous/form" },
 ];
