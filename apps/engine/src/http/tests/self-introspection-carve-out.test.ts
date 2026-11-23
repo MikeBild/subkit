@@ -23,6 +23,7 @@ const FILE_TO_SLUG: Record<string, string> = {
   "workspace.ts": "identity-workspace",
   "local-session.ts": "identity-local-launcher",
   "local-workspace.ts": "identity-local-launcher",
+  "personal-notes.ts": "identity-personal-notes",
 };
 
 const TOP_LEVEL_FILE_TO_SLUG: Record<string, string> = {
@@ -115,6 +116,7 @@ describe("self-introspection carve-out is a contract, not just a comment", () =>
       "identity-onboarding",
       "identity-owned-tenant",
       "identity-permissions",
+      "identity-personal-notes",
       "identity-providers",
       "identity-sessions",
       "identity-workspace",
