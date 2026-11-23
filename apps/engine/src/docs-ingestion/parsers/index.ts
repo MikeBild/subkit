@@ -3,7 +3,13 @@ import { getMetrics, METRIC_NAMES } from "../../observability/metrics.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import { runSandboxWorkerJob } from "../../sandboxes/quickjs/runtime.ts";
 import { type ArchiveParseOutput, makeArchiveStrategies } from "./archive.ts";
-import { type CsvRowsResult, parseCsvRows } from "./csv.ts";
+import {
+  type CsvRowsResult,
+  type PackedCsvRows,
+  packCsvRows,
+  parseCsvRows,
+  unpackCsvRows,
+} from "./csv.ts";
 import { type DocxParseOutput, docxStrategy } from "./docx.ts";
 import { type PdfParseOutput, pdfStrategy } from "./pdf.ts";
 import { type PptxParseOutput, pptxStrategy } from "./pptx.ts";
@@ -20,7 +26,7 @@ export type {
   ArchiveParseOutput,
   ArchiveSkip,
 } from "./archive.ts";
-export type { CsvRowError, CsvRowsResult } from "./csv.ts";
+export type { CsvRowError, CsvRowsResult, PackedCsvRows } from "./csv.ts";
 export { parseCsvRows } from "./csv.ts";
 export type { DocxParseOutput } from "./docx.ts";
 export type { PdfParseOutput } from "./pdf.ts";
@@ -179,11 +185,19 @@ export async function parseCsvFile(
   if (buffer.byteLength > 32 * 1024 * 1024) {
     throw new Error("csv: parser input exceeds worker transport limit");
   }
-  return runSandboxWorkerJob<CsvRowsResult>({
+  const packed = await runSandboxWorkerJob<PackedCsvRows>({
     op: "parse_csv",
     buffer: buffer.toString("base64"),
     max_rows: options.max_rows,
     wall_ms: CSV_PARSER_TIMEOUT_MS,
     ...(options.signal ? { signal: options.signal } : {}),
   });
+  return unpackCsvRows(packed);
+}
+
+export function parseCsvFileInCurrentProcess(
+  buffer: Buffer,
+  options: { max_rows: number },
+): PackedCsvRows {
+  return packCsvRows(parseCsvRows(buffer, options));
 }

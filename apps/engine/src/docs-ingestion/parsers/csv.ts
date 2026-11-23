@@ -41,3 +41,32 @@ export function parseCsvRows(bytes: Uint8Array, options: { max_rows: number }): 
   }
   return { ok: true, rows, row_count: rowCount, truncated: rowCount > options.max_rows };
 }
+
+export type PackedCsvRows =
+  | { ok: true; fields: string[]; rows_json: string; row_count: number; truncated: boolean }
+  | { ok: false; message: string; errors: CsvRowError[] };
+
+export function packCsvRows(result: CsvRowsResult): PackedCsvRows {
+  if (!result.ok) return result;
+  const fields = Object.keys(result.rows[0] ?? {});
+  return {
+    ok: true,
+    fields,
+    rows_json: JSON.stringify(result.rows.map((row) => fields.map((field) => row[field] ?? ""))),
+    row_count: result.row_count,
+    truncated: result.truncated,
+  };
+}
+
+export function unpackCsvRows(packed: PackedCsvRows): CsvRowsResult {
+  if (!packed.ok) return packed;
+  const values = JSON.parse(packed.rows_json) as string[][];
+  return {
+    ok: true,
+    rows: values.map((row) =>
+      Object.fromEntries(packed.fields.map((field, i) => [field, row[i] ?? ""])),
+    ),
+    row_count: packed.row_count,
+    truncated: packed.truncated,
+  };
+}

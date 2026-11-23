@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseCsvRows } from "./csv.ts";
+import { packCsvRows, parseCsvRows, unpackCsvRows } from "./csv.ts";
 
 const encode = (text: string) => new TextEncoder().encode(text);
 
@@ -116,5 +116,28 @@ describe("parseCsvRows", () => {
     expect(result.rows).toHaveLength(200);
     expect(Object.keys(result.rows[199] ?? {})).toHaveLength(1_000);
     expect(result.rows[199]?.c999).toBe("199-999");
+  });
+});
+
+describe("packed CSV rows", () => {
+  test("rows survive the round trip without repeating the header per row", () => {
+    const result = parseCsvRows(encode('id,note\n1,"a, b"\n2,x\n3,y\n'), { max_rows: 2 });
+    const packed = packCsvRows(result);
+    expect(packed).toEqual({
+      ok: true,
+      fields: ["id", "note"],
+      rows_json: '[["1","a, b"],["2","x"]]',
+      row_count: 3,
+      truncated: true,
+    });
+    expect(unpackCsvRows(packed)).toEqual(result);
+  });
+
+  test("an empty file and a failure pass through unchanged", () => {
+    const empty = parseCsvRows(encode(""), { max_rows: 5 });
+    expect(unpackCsvRows(packCsvRows(empty))).toEqual(empty);
+    const broken = parseCsvRows(encode("a,b\n1\n"), { max_rows: 5 });
+    expect(broken.ok).toBe(false);
+    expect(unpackCsvRows(packCsvRows(broken))).toEqual(broken);
   });
 });

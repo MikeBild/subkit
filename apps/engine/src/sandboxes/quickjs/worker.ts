@@ -126,7 +126,7 @@ async function parseFileInCurrentProcess(
   const buffer = Buffer.from(request.buffer, "base64");
   return request.op === "parse_binary"
     ? parsers.parseBinaryFileInCurrentProcess(buffer, request.format)
-    : parsers.parseCsvRows(buffer, { max_rows: request.max_rows });
+    : parsers.parseCsvFileInCurrentProcess(buffer, { max_rows: request.max_rows });
 }
 
 function workerRunOptions(opts: {
