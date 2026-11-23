@@ -15,6 +15,16 @@ export const authorityEn = {
   "authority.review.tile.risky": "Delete or unclear",
   "authority.review.readOnly": "Only reads from {scope} at {service}. Changes nothing.",
   "authority.review.writes": "Writes to {service}.",
+  "authority.review.model.only":
+    "Sends step data to the workspace AI model. Each call counts against the AI budget.",
+  "authority.review.model.also":
+    "Also sends step data to the workspace AI model. Each call counts against the AI budget.",
+  "authority.review.model.group": "AI model",
+  "authority.review.model.budget": "Counts against the AI budget",
+  "authority.review.model.tokens": "At most {count} output tokens per call",
+  "authority.review.model.tokensPerItem": "At most {count} output tokens per call, once per item",
+  "authority.review.model.data": "Sends: {paths}",
+  "authority.review.model.noData": "Sends the prompt only, no run data",
   "authority.review.compared": "Compared with {version}:",
   "authority.review.comparedUnapproved": "Compared with {version} (not approved):",
   "authority.review.change.added": "{count} new",
@@ -441,6 +451,17 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
   "authority.review.tile.risky": "Löschen oder unklar",
   "authority.review.readOnly": "Liest nur aus {scope} bei {service}. Ändert nichts.",
   "authority.review.writes": "Schreibt an {service}.",
+  "authority.review.model.only":
+    "Schickt Daten aus Schritten an das KI-Modell deines Workspaces. Jeder Aufruf zählt gegen dein KI-Budget.",
+  "authority.review.model.also":
+    "Schickt außerdem Daten aus Schritten an das KI-Modell deines Workspaces. Jeder Aufruf zählt gegen dein KI-Budget.",
+  "authority.review.model.group": "KI-Modell",
+  "authority.review.model.budget": "Zählt gegen dein KI-Budget",
+  "authority.review.model.tokens": "Höchstens {count} Ausgabe-Tokens pro Aufruf",
+  "authority.review.model.tokensPerItem":
+    "Höchstens {count} Ausgabe-Tokens pro Aufruf, einmal pro Eintrag",
+  "authority.review.model.data": "Schickt: {paths}",
+  "authority.review.model.noData": "Schickt nur den Prompt, keine Run-Daten",
   "authority.review.compared": "Gegenüber {version}:",
   "authority.review.comparedUnapproved": "Gegenüber {version} (nicht freigegeben):",
   "authority.review.change.added": "{count} neu",

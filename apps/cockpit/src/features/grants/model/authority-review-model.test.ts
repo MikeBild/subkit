@@ -454,3 +454,101 @@ test("the review names every vault item the workflow uses, once and sorted, neve
   ).toEqual(["billing", "crm-token", "me.erp"]);
   expect(model([first, second])).toEqual([]);
 });
+
+const modelCall = (step_id: string, fields: Record<string, unknown> = {}) => ({
+  step_id,
+  flow: "workflow_step" as const,
+  effect: "read" as const,
+  max_output_tokens: 1024,
+  repeated: false,
+  data_paths: ["input.text"],
+  ...fields,
+});
+
+function withModelCalls(
+  base: AuthorityReviewPreview,
+  model_calls: ReturnType<typeof modelCall>[],
+  extra: Partial<AuthorityReviewPreview> = {},
+): AuthorityReviewPreview {
+  return { ...base, manifest: { ...base.manifest, model_calls }, ...extra };
+}
+
+const reviewOf = (input: AuthorityReviewPreview) =>
+  authorityReviewModel({
+    preview: input,
+    connectorNames: names,
+    automation: quiet,
+    activation: false,
+    carryOver: false,
+  });
+
+test("a workflow with only model steps names the AI model instead of no effects", () => {
+  const model = reviewOf(
+    withModelCalls(preview([]), [
+      modelCall("classify", { repeated: true, max_output_tokens: 200 }),
+    ]),
+  );
+  expect(model.sentence).toEqual({ kind: "model" });
+  expect(model.tiles).toEqual({ read: 1, write: 0, services: 1, risky: 0 });
+  expect(model.groups).toEqual([]);
+  expect(model.modelCalls).toEqual([
+    {
+      key: JSON.stringify(["classify", []]),
+      step_id: "classify",
+      callStep: null,
+      change: null,
+      maxOutputTokens: 200,
+      repeated: true,
+      dataPaths: ["input.text"],
+    },
+  ]);
+  expect(translate("en", "authority.review.model.only")).toStartWith(
+    "Sends step data to the workspace AI model.",
+  );
+  expect(translate("de", "authority.review.model.only")).not.toBe(
+    translate("en", "authority.review.model.only"),
+  );
+});
+
+test("a new model step is growth even without connector effects", () => {
+  const model = reviewOf(
+    withModelCalls(preview([]), [modelCall("classify")], {
+      boundary_growth: [
+        {
+          kind: "new_model_call",
+          connector_id: null,
+          target: null,
+          effect: "read",
+          item: "classify",
+        },
+      ],
+    }),
+  );
+  expect(model.sentence).toEqual({ kind: "growth" });
+});
+
+test("a mixed workflow keeps its connector sentence and lists each model call with its change", () => {
+  const model = reviewOf(
+    withModelCalls(readOnly, [modelCall("summarize", { call_path: ["sub"] })], {
+      effect_changes: [
+        ...(readOnly.effect_changes ?? []),
+        {
+          step_id: "summarize",
+          call_path: ["sub"],
+          change: "added",
+          effect: "read",
+          subject: null,
+          model_call: true,
+        },
+      ],
+    }),
+  );
+  expect(model.sentence.kind).toBe("readOnly");
+  expect(model.groups.flatMap((group) => group.rows.map((row) => row.step_id))).not.toContain(
+    "summarize",
+  );
+  expect(model.modelCalls).toMatchObject([
+    { step_id: "summarize", callStep: "sub", change: "added" },
+  ]);
+  expect(model.tiles.services).toBe(2);
+});

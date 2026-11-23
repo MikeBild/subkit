@@ -20,6 +20,7 @@ export type AuthorityReviewPreview = Pick<
   >;
 
 type Effect = AuthorityReviewPreview["manifest"]["effects"][number];
+type ModelCall = NonNullable<AuthorityReviewPreview["manifest"]["model_calls"]>[number];
 type EffectChange = NonNullable<AuthorityReviewPreview["effect_changes"]>[number];
 export type ReviewRisk = "risky" | "write" | "read";
 
@@ -44,6 +45,16 @@ export interface ReviewRow {
   source: Effect;
 }
 
+export interface ReviewModelCall {
+  key: string;
+  step_id: string;
+  callStep: string | null;
+  change: EffectChange["change"] | null;
+  maxOutputTokens: number;
+  repeated: boolean;
+  dataPaths: string[];
+}
+
 export interface ReviewGroup {
   key: string;
   name: string;
@@ -58,6 +69,7 @@ export type ReviewSentence =
   | { kind: "readOnly"; scope: string; service: string }
   | { kind: "writes"; service: string }
   | { kind: "growth" }
+  | { kind: "model" }
   | { kind: "none" };
 
 export interface AuthorityReviewModel {
@@ -72,6 +84,7 @@ export interface AuthorityReviewModel {
     removed: number;
   } | null;
   groups: ReviewGroup[];
+  modelCalls: ReviewModelCall[];
   secrets: string[];
   requiresWriteCheck: boolean;
   blocked: boolean;
@@ -190,7 +203,28 @@ export function authorityReviewModel(input: {
   const effects = preview.manifest.effects;
   const changes = preview.effect_changes;
   const changeFor = new Map(
-    (changes ?? []).map((entry) => [keyOf(entry.step_id, entry.call_path), entry]),
+    (changes ?? [])
+      .filter((entry) => !entry.model_call)
+      .map((entry) => [keyOf(entry.step_id, entry.call_path), entry]),
+  );
+  const modelChangeFor = new Map(
+    (changes ?? [])
+      .filter((entry) => entry.model_call)
+      .map((entry) => [keyOf(entry.step_id, entry.call_path), entry]),
+  );
+  const modelCalls = (preview.manifest.model_calls ?? []).map(
+    (call: ModelCall): ReviewModelCall => {
+      const key = keyOf(call.step_id, call.call_path);
+      return {
+        key,
+        step_id: call.step_id,
+        callStep: call.call_path?.[0] ?? null,
+        change: modelChangeFor.get(key)?.change ?? null,
+        maxOutputTokens: call.max_output_tokens,
+        repeated: call.repeated,
+        dataPaths: call.data_paths,
+      };
+    },
   );
   const rows = effects.map((effect): ReviewRow => {
     const key = keyOf(effect.step_id, effect.call_path);
@@ -272,27 +306,29 @@ export function authorityReviewModel(input: {
         row.change === "widened"),
   );
   const sentence: ReviewSentence =
-    effects.length === 0
+    effects.length === 0 && modelCalls.length === 0
       ? { kind: "none" }
       : (preview.boundary_growth?.length ?? 0) > 0
         ? { kind: "growth" }
-        : rows.every((row) => row.risk === "read")
-          ? {
-              kind: "readOnly",
-              scope:
-                commonPrefix(rows.map((row) => staticParts(row.source)))
-                  .slice(-2)
-                  .join("/") || groups.map((group) => group.scope).join(", "),
-              service: services,
-            }
-          : { kind: "writes", service: services };
+        : effects.length === 0
+          ? { kind: "model" }
+          : rows.every((row) => row.risk === "read")
+            ? {
+                kind: "readOnly",
+                scope:
+                  commonPrefix(rows.map((row) => staticParts(row.source)))
+                    .slice(-2)
+                    .join("/") || groups.map((group) => group.scope).join(", "),
+                service: services,
+              }
+            : { kind: "writes", service: services };
   const count = (kind: EffectChange["change"]) =>
     (changes ?? []).filter((entry) => entry.change === kind).length;
   return {
     tiles: {
-      read: rows.filter((row) => row.risk === "read").length,
+      read: rows.filter((row) => row.risk === "read").length + modelCalls.length,
       write: rows.filter((row) => row.risk === "write").length,
-      services: groups.length,
+      services: groups.length + (modelCalls.length > 0 ? 1 : 0),
       risky: rows.filter((row) => row.risk === "risky").length,
     },
     sentence,
@@ -307,6 +343,7 @@ export function authorityReviewModel(input: {
         }
       : null,
     groups,
+    modelCalls,
     secrets: [...new Set(effects.flatMap((effect) => effect.secrets ?? []))].sort(),
     requiresWriteCheck,
     blocked:
