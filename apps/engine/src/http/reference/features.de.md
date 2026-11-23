@@ -41,7 +41,7 @@ Jede Zeile sagt, was du bekommst, und verlinkt das Kapitel, das sie erklärt.
 
 | Funktion | Was du bekommst | Gilt | Mehr |
 | --- | --- | --- | --- |
-| Freigeben, was er berühren darf | Eine Person gibt Umgebung, Gültigkeit sowie Lese- und Schreibzugriffe und Dienste vor dem ersten echten Run frei. | Überall | [Dein erster Workflow](setup.md#dein-erster-workflow) |
+| Freigeben, worauf er zugreifen darf | Eine Person gibt Umgebung, Gültigkeit sowie Lese- und Schreibzugriffe und Dienste vor dem ersten echten Run frei. | Überall | [Dein erster Workflow](setup.md#dein-erster-workflow) |
 | Freigabe bis auf Widerruf | Eine Freigabe gilt bis auf Widerruf oder endet an einem Datum oder nach einer Zahl von Runs. | Überall | [Dein erster Workflow](setup.md#dein-erster-workflow) |
 | Freigabe folgt neuer Version | Eine neue Version braucht keine neue Freigabe, solange sie nicht weiter reicht; sonst nennt SubKit den Unterschied. | Überall | [KI-Clients per MCP anbinden](setup.md#ki-clients-per-mcp-anbinden) |
 | Vor dem Ende verlängern | SubKit meldet eine Freigabe drei Tage vor ihrem Ende, und du verlängerst sie. | Überall | [Zeitpläne im Blick behalten](setup.md#zeitpläne-im-blick-behalten) |

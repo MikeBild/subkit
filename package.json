@@ -6,7 +6,7 @@
     "apps/cockpit"
   ],
   "type": "module",
-  "description": "Describe recurring work in your own words. AI drafts the workflow, a person approves what it may touch, and it runs in fixed steps with every run on record.",
+  "description": "Describe recurring work in your own words. AI drafts the workflow, you decide what it can access, and it runs in fixed steps with every run in the history.",
   "license": "Apache-2.0",
   "author": "Mike Bild",
   "homepage": "https://github.com/mikebild/subkit#readme",

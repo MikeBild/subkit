@@ -10,7 +10,7 @@ audience: public
 
 SubKit runs recurring business tasks that span several systems and today depend on one person or a fragile script.
 It is for teams that want such routine work to run reliably without writing software for it.
-You describe the task in your own words, the AI drafts a workflow from it, and a person checks it and approves what it may touch.
+You describe the task in your own words, the AI drafts a workflow from it, and a person checks it and approves what it may access.
 After that it runs in fixed steps, with only the approved permissions.
 Every run is recorded.
 

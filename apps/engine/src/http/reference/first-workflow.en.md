@@ -49,7 +49,7 @@ Saving starts nothing. The workflow now appears under **Workflows**.
 
 Without the chat, you create a workflow under **Workflows** with **Create workflow**. The wizard guides you through **How**, **What**, **When** and **Check**.
 
-### Approve what it may touch
+### Approve what it may access
 
 A new version does not touch anything outside SubKit until a person approves it.
 Without an approval, a run starts only as a trial run without effects.
@@ -126,7 +126,7 @@ You see **Run started**. If the button is unavailable, the hint says why, for ex
 
 | What you see | What to do |
 | --- | --- |
-| The run result is headed **Trial run result — not written** | The version has no approval yet. Follow "Approve what it may touch". |
+| The run result is headed **Trial run result — not written** | The version has no approval yet. Follow "Approve what it may access". |
 | "Not started (…): no valid approval covers this run." | The approval is missing, expired or used up. Approve again or extend it. |
 | "… must be reconnected" | Open the connector under **Connectors** and select **Sign in again**. |
 | **You may not start this workflow.** | Ask your administrator for a role that may run workflows. |

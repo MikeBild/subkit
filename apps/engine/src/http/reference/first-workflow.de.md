@@ -49,7 +49,7 @@ Speichern startet nichts. Der Workflow erscheint jetzt unter **Workflows**.
 
 Ohne Chat legst du einen Workflow unter **Workflows** mit **Workflow erstellen** an. Der Assistent führt dich durch **Wie**, **Was**, **Wann** und **Prüfen**.
 
-### Freigeben, was er berühren darf
+### Freigeben, worauf er zugreifen darf
 
 Eine neue Version berührt nichts außerhalb von SubKit, bis ein Mensch sie freigibt.
 Ohne Freigabe startet ein Run nur als Probe-Run ohne Wirkung.
@@ -126,7 +126,7 @@ Du siehst **Run gestartet**. Ist der Button nicht verfügbar, nennt der Hinweis 
 
 | Was du siehst | Was du tust |
 | --- | --- |
-| Das Ergebnis des Runs ist mit **Ergebnis des Probe-Runs – nicht geschrieben** überschrieben | Die Version ist noch nicht freigegeben. Folge „Freigeben, was er berühren darf“. |
+| Das Ergebnis des Runs ist mit **Ergebnis des Probe-Runs – nicht geschrieben** überschrieben | Die Version ist noch nicht freigegeben. Folge „Freigeben, worauf er zugreifen darf“. |
 | „Nicht gestartet (…): Für diesen Run gibt es keine gültige Freigabe.“ | Die Freigabe fehlt, ist abgelaufen oder aufgebraucht. Gib erneut frei oder verlängere sie. |
 | „… muss neu verbunden werden“ | Öffne den Connector unter **Connectors** und wähle **Neu anmelden**. |
 | **Du darfst diesen Workflow nicht starten.** | Bitte eine Administratorin oder einen Administrator um eine Rolle, die Workflows starten darf. |

@@ -18,7 +18,7 @@
 
 SubKit runs recurring business tasks that span several systems and today depend on one person or a fragile script.
 It is for teams that want such routine work to run reliably without writing software for it.
-You describe the task in your own words, the AI drafts a workflow from it, and a person checks it and approves what it may touch.
+You describe the task in your own words, the AI drafts a workflow from it, and a person checks it and approves what it may access.
 After that it runs in fixed steps, with only the approved permissions.
 Every run is recorded.
 
@@ -470,7 +470,7 @@ Saving starts nothing. The workflow now appears under **Workflows**.
 
 Without the chat, you create a workflow under **Workflows** with **Create workflow**. The wizard guides you through **How**, **What**, **When** and **Check**.
 
-### Approve what it may touch
+### Approve what it may access
 
 A new version does not touch anything outside SubKit until a person approves it.
 Without an approval, a run starts only as a trial run without effects.
@@ -547,7 +547,7 @@ You see **Run started**. If the button is unavailable, the hint says why, for ex
 
 | What you see | What to do |
 | --- | --- |
-| The run result is headed **Trial run result — not written** | The version has no approval yet. Follow "Approve what it may touch". |
+| The run result is headed **Trial run result — not written** | The version has no approval yet. Follow "Approve what it may access". |
 | "Not started (…): no valid approval covers this run." | The approval is missing, expired or used up. Approve again or extend it. |
 | "… must be reconnected" | Open the connector under **Connectors** and select **Sign in again**. |
 | **You may not start this workflow.** | Ask your administrator for a role that may run workflows. |
@@ -5011,7 +5011,7 @@ Each line says what you get and links to the chapter that explains it.
 
 | Feature | What you get | Where | More |
 | --- | --- | --- | --- |
-| Approve what it may touch | A person approves the environment, the validity and the reads, writes and services before the first real run. | All | [Your first workflow](setup.md#your-first-workflow) |
+| Approve what it may access | A person approves the environment, the validity and the reads, writes and services before the first real run. | All | [Your first workflow](setup.md#your-first-workflow) |
 | Approval until revoked | An approval can stand until revoked or end at a date or after a number of runs. | All | [Your first workflow](setup.md#your-first-workflow) |
 | Approval follows a new version | A new version needs no new approval as long as it reaches no further; otherwise SubKit names the difference. | All | [Connect AI clients via MCP](setup.md#connect-ai-clients-via-mcp) |
 | Renew before it ends | SubKit reports an approval three days before it ends, and you can renew it. | All | [Keep an eye on schedules](setup.md#keep-an-eye-on-schedules) |

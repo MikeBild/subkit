@@ -5,7 +5,7 @@
 
 <p align="center">
   <strong>The AI assistant your team can trust.</strong><br />
-  It does the recurring work. A person approves what it may touch. Every run is on record.
+  It takes over the tasks your team does over and over. You decide what it can access, and you can look up every run in the history.
 </p>
 
 <p align="center">

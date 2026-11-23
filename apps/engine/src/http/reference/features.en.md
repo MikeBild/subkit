@@ -41,7 +41,7 @@ Each line says what you get and links to the chapter that explains it.
 
 | Feature | What you get | Where | More |
 | --- | --- | --- | --- |
-| Approve what it may touch | A person approves the environment, the validity and the reads, writes and services before the first real run. | All | [Your first workflow](setup.md#your-first-workflow) |
+| Approve what it may access | A person approves the environment, the validity and the reads, writes and services before the first real run. | All | [Your first workflow](setup.md#your-first-workflow) |
 | Approval until revoked | An approval can stand until revoked or end at a date or after a number of runs. | All | [Your first workflow](setup.md#your-first-workflow) |
 | Approval follows a new version | A new version needs no new approval as long as it reaches no further; otherwise SubKit names the difference. | All | [Connect AI clients via MCP](setup.md#connect-ai-clients-via-mcp) |
 | Renew before it ends | SubKit reports an approval three days before it ends, and you can renew it. | All | [Keep an eye on schedules](setup.md#keep-an-eye-on-schedules) |

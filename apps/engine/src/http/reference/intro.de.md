@@ -10,7 +10,7 @@ audience: public
 
 SubKit übernimmt wiederkehrende Geschäftsaufgaben, die mehrere Systeme berühren und heute an einer Person oder einem anfälligen Skript hängen.
 Es ist für Teams gedacht, die solche Routine verlässlich laufen lassen wollen, ohne dafür Software zu entwickeln.
-Du beschreibst die Aufgabe in eigenen Worten, die KI entwirft daraus einen Workflow, und eine Person prüft ihn und gibt frei, was er berühren darf.
+Du beschreibst die Aufgabe in eigenen Worten, die KI entwirft daraus einen Workflow, und eine Person prüft ihn und gibt frei, worauf er zugreifen darf.
 Danach läuft er in festen Schritten, nur mit den freigegebenen Rechten.
 Jeder Run wird aufgezeichnet.
 
