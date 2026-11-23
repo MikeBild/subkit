@@ -69,6 +69,7 @@ const SOURCE_GATES: Record<AttentionSource, SourceGate> = {
   secret_approvals: { permission: "settings:read:global" },
   skills: { permission: "skill:read" },
   intake: { permission: "intake:read" },
+  knowledge: { permission: "knowledge:read", resource_type: "knowledge" },
   budget: { permission: "stats:read" },
   ai_access: { permission: "identity:write" },
   risk: { permission: "stats:read" },

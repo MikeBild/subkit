@@ -102,6 +102,7 @@ const SUBJECT_KEYS = {
   settings: "overview.subject.settings",
   task: "overview.subject.task",
   device: "overview.subject.device",
+  knowledge: "overview.subject.knowledge",
 } as const satisfies Record<NonNullable<AttentionItem["subject"]>["kind"], TranslationKey>;
 
 const HEARTBEAT_KEYS: Record<string, TranslationKey> = {
@@ -316,6 +317,17 @@ export function attentionSentence(
         machine: null,
         since,
       };
+    case "knowledge_review_due":
+      return {
+        lead: t(
+          (item.counts.knowledge_reviews ?? 1) > 1
+            ? "overview.reason.knowledge_review_dueCount"
+            : reasonKey,
+          { subject, count: item.counts.knowledge_reviews ?? 1 },
+        ),
+        machine: null,
+        since,
+      };
     case "skills_proposed":
       return {
         lead: t(
@@ -481,6 +493,7 @@ const SOURCE_KEYS = {
   connectors: "overview.source.connectors",
   connections: "overview.source.connections",
   secret_approvals: "overview.source.secret_approvals",
+  knowledge: "overview.source.knowledge",
   skills: "overview.source.skills",
   intake: "overview.source.intake",
   budget: "overview.source.budget",
@@ -692,11 +705,13 @@ export function attentionRow(item: AttentionItem, t: Translate): AttentionRow {
       ? t("overview.object.skills")
       : item.reason === "intake_collected"
         ? t("overview.object.intake")
-        : item.reason === "spend_warning" ||
-            item.reason === "spend_limit_reached" ||
-            item.reason === "spend_limit_unset"
-          ? t("overview.object.budget")
-          : t("overview.unnamed"));
+        : item.reason === "knowledge_review_due"
+          ? t("overview.object.knowledge")
+          : item.reason === "spend_warning" ||
+              item.reason === "spend_limit_reached" ||
+              item.reason === "spend_limit_unset"
+            ? t("overview.object.budget")
+            : t("overview.unnamed"));
   const version = item.approval ? ` v${item.approval.version}` : "";
 
   const badge = isPairWaiting(item)

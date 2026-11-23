@@ -6,7 +6,12 @@ import {
   attentionSources,
   operatorDigest,
 } from "../tests/_helpers/operator-digest-fixtures.ts";
-import { digestAsContext, fetchOperatorDigest, riskSummaryLine } from "./operator-digest.ts";
+import {
+  attentionItemLine,
+  digestAsContext,
+  fetchOperatorDigest,
+  riskSummaryLine,
+} from "./operator-digest.ts";
 
 function digest(overrides: Partial<OperatorHealthDigest> = {}): OperatorHealthDigest {
   return operatorDigest({ headline: "Needs attention: 1 item (1 failing).", ...overrides });
@@ -79,5 +84,30 @@ describe("subkit login risk line", () => {
 
   test("the REPL's startup digest still stays away when nothing needs attention", async () => {
     expect(await fetchOperatorDigest(clientReturning(digest({ all_clear: true })))).toBeNull();
+  });
+});
+
+describe("attention item line", () => {
+  test("a knowledge review entry counts the due knowledge sources", () => {
+    expect(
+      attentionItemLine(
+        attentionItem({
+          class: "decide",
+          kind: "knowledge_review",
+          reason: "knowledge_review_due",
+          counts: { knowledge_reviews: 2 },
+          actions: [
+            {
+              verb: "review",
+              href: "/cockpit/knowledge",
+              primary: true,
+              permission: "knowledge:read",
+            },
+          ],
+        }),
+      ),
+    ).toBe(
+      "[decide] knowledge review: knowledge review due (2 knowledge sources due for review) → review at /cockpit/knowledge",
+    );
   });
 });

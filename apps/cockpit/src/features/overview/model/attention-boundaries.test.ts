@@ -42,6 +42,7 @@ test("a mixed attention list is stopped when any entry is stopped", () => {
       connectors: "answered",
       connections: "answered",
       secret_approvals: "answered",
+      knowledge: "answered",
       skills: "answered",
       intake: "answered",
       budget: "answered",

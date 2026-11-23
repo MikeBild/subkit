@@ -51,6 +51,7 @@ test("attention schema publishes its stable sources, reasons, and subject kinds"
     "secret_approvals",
     "skills",
     "intake",
+    "knowledge",
     "budget",
     "ai_access",
     "risk",
@@ -110,6 +111,7 @@ test("attention schema publishes its stable sources, reasons, and subject kinds"
     "settings",
     "task",
     "device",
+    "knowledge",
   ]);
 });
 
