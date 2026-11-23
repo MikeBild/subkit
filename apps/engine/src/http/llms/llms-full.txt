@@ -5547,7 +5547,7 @@ The `requires` column names the permission that shows a command in
 
 | command | requires | description | subcommands |
 | ------- | -------- | ----------- | ----------- |
-| `subkit agent` | `skill:read` | Coding-agent integration: session briefings and hook setup | `briefing`, `capture`, `init` |
+| `subkit agent` | `skill:read` | Coding-agent integration: session briefings and hook setup | `briefing`, `capture`, `init`, `migrate-hooks` |
 | `subkit apikeys` | `api_key:read` | Manage API keys | `create`, `list`, `revoke`, `rotate` |
 | `subkit apps` | `settings:read` | The apps that sign their users in and call SubKit (products settings, sign-in providers, workflows, users, budget); erase-user removes one app user's SubKit data | `erase-user`, `list`, `show` |
 | `subkit attach` | `file:write` | Upload a file and link it to a conversation (shortcut) | — |
@@ -5644,6 +5644,12 @@ Set up automatic SubKit briefings for this repository in Claude Code and Codex
 - `--budget` (string) — Optional token budget for each briefing
 - `--skip-claude` (default: false) — Do not touch ~/.claude/settings.json
 - `--skip-codex` (default: false) — Do not touch ~/.codex/hooks.json
+
+#### `subkit agent migrate-hooks`
+
+Rewrite Claude Code and Codex hooks installed for the former `sk` binary to `subkit`
+
+_No arguments._
 
 
 ### `subkit apikeys`

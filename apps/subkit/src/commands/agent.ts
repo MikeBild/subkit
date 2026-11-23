@@ -25,14 +25,25 @@ import {
 } from "../domain/agent/agent-file.ts";
 import { EngineClient, type FetchLike } from "../engine-client.ts";
 import { cockpitIntakeUrl } from "../lib/intake-review.ts";
-import { wireClaudeHooks, wireCodexHooks, writeJsonFilesAtomically } from "./agent-hook-config.ts";
+import {
+  CLAUDE_SETTINGS_RELPATH,
+  CODEX_HOOKS_RELPATH,
+  migrateLegacyAgentHookFiles,
+  wireClaudeHooks,
+  wireCodexHooks,
+  writeJsonFilesAtomically,
+} from "./agent-hook-config.ts";
 import { withCommandErrors } from "./command-runtime.ts";
 
-export { wireClaudeHooks, wireCodexHooks } from "./agent-hook-config.ts";
+export {
+  legacyAgentHookFiles,
+  migrateLegacyAgentHookFiles,
+  migrateLegacyHookCommands,
+  wireClaudeHooks,
+  wireCodexHooks,
+} from "./agent-hook-config.ts";
 
 export const AGENT_FILE_RELPATH = join(".subkit", "agent.json");
-const CLAUDE_SETTINGS_RELPATH = join(".claude", "settings.json");
-const CODEX_HOOKS_RELPATH = join(".codex", "hooks.json");
 const TRANSCRIPT_MAX_CHARS = 1_000_000;
 const PROMPT_MAX_CHARS = 2_000;
 const HOOK_REQUEST_TIMEOUT_MS = 4_000;
@@ -534,6 +545,7 @@ const briefingCommand = defineCommand({
   async run({ args }) {
     return withCommandErrors(
       async () => {
+        if (args.hook) migrateLegacyHooksQuietly();
         const payload = args.hook ? readHookPayload() : null;
         if (args.hook) {
           const output = await getBriefingHookOutput(
@@ -637,6 +649,7 @@ const captureCommand = defineCommand({
   },
   async run({ args }) {
     try {
+      if (args.hook) migrateLegacyHooksQuietly();
       if (args.hook && args.detach) {
         launchDetachedCapture();
         return;
@@ -702,6 +715,15 @@ const captureCommand = defineCommand({
 
 function userHome(): string {
   return process.env.HOME || homedir();
+}
+
+export function migrateLegacyHooksQuietly(home: string = userHome()): string[] {
+  try {
+    return migrateLegacyAgentHookFiles(home);
+  } catch (err) {
+    debugLog("agent.legacy_hook_migration_failed", { error: String(err) });
+    return [];
+  }
 }
 
 function readJsonFile(path: string): Record<string, unknown> {
@@ -902,6 +924,29 @@ const initCommand = defineCommand({
   },
 });
 
+const migrateHooksCommand = defineCommand({
+  meta: {
+    name: "migrate-hooks",
+    description:
+      "Rewrite Claude Code and Codex hooks installed for the former `sk` binary to `subkit`",
+  },
+  async run() {
+    return withCommandErrors(
+      async () => {
+        const migrated = migrateLegacyAgentHookFiles(userHome());
+        if (migrated.length === 0) {
+          process.stdout.write(`${pc.dim("•")} no hooks of the former \`sk\` binary found\n`);
+          return;
+        }
+        for (const path of migrated) {
+          process.stdout.write(`${pc.green("✓")} migrated \`sk agent\` hooks in ${path}\n`);
+        }
+      },
+      { json: false },
+    );
+  },
+});
+
 export const agentCommand = defineCommand({
   meta: {
     name: "agent",
@@ -911,5 +956,6 @@ export const agentCommand = defineCommand({
     briefing: briefingCommand,
     capture: captureCommand,
     init: initCommand,
+    "migrate-hooks": migrateHooksCommand,
   },
 });
