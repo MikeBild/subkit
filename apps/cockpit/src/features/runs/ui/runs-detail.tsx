@@ -87,6 +87,7 @@ import {
   stepConnectorId,
   stepCredentialSnapshots,
   stepGuidance,
+  stepLimitSentence,
 } from "../model/runs-model";
 import {
   isUncertainRun,
@@ -201,6 +202,7 @@ export function RunDetail({ run, page = false }: { run: Execution; page?: boolea
   const deviceSteps = useDeviceSteps(run.id);
   const failing = stoppingStep(stepItems, outcome);
   const errorEvidence = failing ? previewText(failing.error) : null;
+  const limitSentence = stepLimitSentence(failing, t, locale);
   const payload = payloadEvidence(stepItems, current.status, outcome);
   const statusWord = (status: string) => statusLabel(t, status);
   const truncated = truncatedSteps(stepItems);
@@ -360,6 +362,11 @@ export function RunDetail({ run, page = false }: { run: Execution; page?: boolea
                 testId="run-detail-refusal-reason"
                 className="block text-xs"
               />
+              {limitSentence ? (
+                <span className="text-xs" data-testid="run-detail-limit">
+                  {limitSentence}
+                </span>
+              ) : null}
               {stepGuidance(failing) ? (
                 <span className="text-xs">{stepGuidance(failing)}</span>
               ) : null}
