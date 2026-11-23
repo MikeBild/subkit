@@ -27,7 +27,7 @@ describe("followExecution", () => {
       {
         streamExecution: stream(sse),
         getExecution: async () =>
-          ({ status: "uncertain", error: { step_id: "send_mail" } }) as never,
+          ({ status: "uncertain", failure: { step_id: "send_mail" } }) as never,
         executionSteps: async () => ({ items: [] }) as never,
       },
       "e1",

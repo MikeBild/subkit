@@ -23,7 +23,7 @@ export function executionOutcomeLine(outcome: ExecutionOutcome | null): string |
   );
   if (outcome.output_contract !== "none")
     parts.push(`· output contract ${outcome.output_contract}`);
-  const held = heldReasonLine(outcome.refusal_reason);
+  const held = heldReasonLine(outcome.error_code);
   if (held) parts.push(`— ${held}`);
   return parts.join(" ");
 }

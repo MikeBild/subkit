@@ -28,34 +28,33 @@ function record(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-function keysOf(value: unknown): string[] {
+function eventKeys(value: unknown): string[] {
   const source = record(value);
-  if (!source) return [];
-  const many = Array.isArray(source.step_keys) ? source.step_keys : [];
-  const keys = many.filter((key): key is string => typeof key === "string" && key.length > 0);
-  if (keys.length > 0) return keys;
-  for (const field of ["step_key", "step_id"]) {
-    const one = source[field];
-    if (typeof one === "string" && one.length > 0) return [one];
-  }
-  return [];
+  const many = source && Array.isArray(source.step_keys) ? source.step_keys : [];
+  return many.filter((key): key is string => typeof key === "string" && key.length > 0);
+}
+
+function failureKeys(value: unknown): string[] {
+  const stepId = record(value)?.step_id;
+  return typeof stepId === "string" && stepId.length > 0 ? [stepId] : [];
 }
 
 export interface UncertainSource {
   status?: string;
-  error?: unknown;
+  failure?: unknown;
+  step_keys?: readonly string[];
 }
 
 export function uncertainStepKeys(
   source: UncertainSource,
   steps: readonly Record<string, unknown>[] = [],
 ): string[] {
-  const named = keysOf(source.error);
-  if (named.length > 0) return named;
-  return steps
-    .filter((step) => step.status === UNCERTAIN_STATUS || step.status === "running")
+  const marked = steps
+    .filter((step) => step.status === UNCERTAIN_STATUS)
     .map((step) => (typeof step.step_key === "string" ? step.step_key : ""))
     .filter((key) => key.length > 0);
+  if (source.step_keys && source.step_keys.length > 0) return [...new Set(source.step_keys)];
+  return [...new Set([...failureKeys(source.failure), ...marked])];
 }
 
 export function uncertainWriteBlock(
@@ -94,21 +93,17 @@ export async function uncertainWriteBlockForExecution(
   executionId: string,
   eventPayload: unknown = null,
 ): Promise<string> {
-  const fromEvent = keysOf(eventPayload);
+  const step_keys = eventKeys(eventPayload);
   try {
-    const execution = (await client.getExecution(executionId)) as UncertainSource;
+    const execution = record(await client.getExecution(executionId));
     const { items } = await client.executionSteps(executionId);
     const source: UncertainSource = {
       status: UNCERTAIN_STATUS,
-      error: fromEvent.length > 0 ? { step_keys: fromEvent } : execution.error,
+      step_keys,
+      failure: execution?.failure,
     };
     return uncertainWriteBlock(executionId, source, items) ?? "";
   } catch {
-    return (
-      uncertainWriteBlock(executionId, {
-        status: UNCERTAIN_STATUS,
-        error: { step_keys: fromEvent },
-      }) ?? ""
-    );
+    return uncertainWriteBlock(executionId, { status: UNCERTAIN_STATUS, step_keys }) ?? "";
   }
 }

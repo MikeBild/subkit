@@ -1,11 +1,11 @@
 import { z } from "zod";
 
 const Quote = z.string().trim().min(1).max(400);
+const OptionalQuote = Quote.nullish().catch(null);
 
 export const AuditReceiptSchema = z.object({
-  source_quote: Quote.nullish().catch(null),
   metadata: z
-    .object({ source_quote: Quote.nullish().catch(null) })
+    .object({ source_quote: OptionalQuote, rule_quote: OptionalQuote, because: OptionalQuote })
     .nullish()
     .catch(null),
 });
@@ -13,5 +13,6 @@ export const AuditReceiptSchema = z.object({
 export function auditReceiptQuote(entry: unknown): string | null {
   const parsed = AuditReceiptSchema.safeParse(entry);
   if (!parsed.success) return null;
-  return parsed.data.source_quote ?? parsed.data.metadata?.source_quote ?? null;
+  const metadata = parsed.data.metadata;
+  return metadata?.source_quote ?? metadata?.rule_quote ?? metadata?.because ?? null;
 }

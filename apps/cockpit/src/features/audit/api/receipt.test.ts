@@ -1,32 +1,35 @@
 import { describe, expect, test } from "bun:test";
 import { auditReceiptQuote } from "@/features/audit/api/receipt";
-import { runReceiptQuote } from "@/features/runs/api/receipt";
 
-describe("receipt quote sources", () => {
-  test("an audit entry carries the quote at the top or in its metadata", () => {
-    expect(auditReceiptQuote({ source_quote: "always send the report" })).toBe(
-      "always send the report",
-    );
+describe("audit receipt", () => {
+  test("an accepted rule shows the words it was created from", () => {
     expect(auditReceiptQuote({ metadata: { source_quote: " send it " } })).toBe("send it");
-    expect(auditReceiptQuote({ source_quote: "top", metadata: { source_quote: "nested" } })).toBe(
-      "top",
+  });
+
+  test("a call that ran on a rule shows the rule's words", () => {
+    expect(
+      auditReceiptQuote({ metadata: { rule_quote: "always send the report", because: null } }),
+    ).toBe("always send the report");
+  });
+
+  test("a call that ran on the person's request shows their words", () => {
+    expect(auditReceiptQuote({ metadata: { because: "send the invoice to Anna" } })).toBe(
+      "send the invoice to Anna",
     );
   });
 
-  test("an entry without a usable quote has no receipt", () => {
+  test("the rule's own words come before the request's words", () => {
+    expect(auditReceiptQuote({ metadata: { source_quote: "rule", because: "asked" } })).toBe(
+      "rule",
+    );
+  });
+
+  test("nothing readable shows nothing", () => {
     expect(auditReceiptQuote({ metadata: {} })).toBeNull();
     expect(auditReceiptQuote({ metadata: { source_quote: 7 } })).toBeNull();
-    expect(auditReceiptQuote({ source_quote: "   " })).toBeNull();
-    expect(auditReceiptQuote({ source_quote: "x".repeat(401) })).toBeNull();
+    expect(auditReceiptQuote({ metadata: { because: "   " } })).toBeNull();
+    expect(auditReceiptQuote({ metadata: { rule_quote: "x".repeat(401) } })).toBeNull();
+    expect(auditReceiptQuote({ source_quote: "top level is not an engine field" })).toBeNull();
     expect(auditReceiptQuote(null)).toBeNull();
-  });
-
-  test("a run carries the quote at the top", () => {
-    expect(runReceiptQuote({ id: "r", source_quote: "run it every Monday" })).toBe(
-      "run it every Monday",
-    );
-    expect(runReceiptQuote({ id: "r" })).toBeNull();
-    expect(runReceiptQuote({ id: "r", source_quote: null })).toBeNull();
-    expect(runReceiptQuote(undefined)).toBeNull();
   });
 });

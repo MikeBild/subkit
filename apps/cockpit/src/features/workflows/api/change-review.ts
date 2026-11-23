@@ -33,7 +33,6 @@ export const DryRunAcceptedResponseSchema = z.looseObject({
   ok: z.boolean(),
   error: z.string().nullable(),
   review_digest: z.string().nullable().optional(),
-  accepted_digest: z.string().nullable().optional(),
 });
 
 export const ApproveAcceptedBodySchema = z.object({
@@ -84,7 +83,7 @@ export async function dryRunAcceptedOperations(
   return {
     ok: result.ok,
     error: result.error,
-    digest: result.ok ? (result.review_digest ?? result.accepted_digest ?? null) : null,
+    digest: result.ok ? (result.review_digest ?? null) : null,
   };
 }
 

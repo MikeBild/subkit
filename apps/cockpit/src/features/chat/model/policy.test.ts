@@ -182,6 +182,14 @@ describe("the bound action", () => {
     expect(ran?.quote).toBe("Schick bitte eine Mail an anna@firma.de");
     const byRule = ranWithoutAsking({ ...policy, rule: "standing_rule", because: null });
     expect(byRule && ranLine(byRule, en)).toBe("Send: Messages to anna@firma.de, per your rule");
+    expect(byRule?.quote).toBeNull();
+    const ruleWithWords = {
+      ...policy,
+      rule: "standing_rule" as const,
+      because: null,
+      rule_quote: " always mail anna@firma.de ",
+    };
+    expect(ranWithoutAsking(ruleWithWords)?.quote).toBe("always mail anna@firma.de");
     expect(ranWithoutAsking({ ...policy, ran_without_asking: false })).toBeNull();
     expect(ranWithoutAsking(null)).toBeNull();
     expect(actionLine({ verb: "save", target: null, account: null, recipients: [] }, de)).toBe(

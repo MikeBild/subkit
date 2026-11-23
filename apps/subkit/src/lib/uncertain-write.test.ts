@@ -8,26 +8,26 @@ import {
 } from "./uncertain-write.ts";
 
 describe("uncertainStepKeys", () => {
-  test("the run's own notice names the step", () => {
-    expect(uncertainStepKeys({ error: { step_id: "send_mail" } })).toEqual(["send_mail"]);
-    expect(uncertainStepKeys({ error: { step_keys: ["a", "b[2]"] } })).toEqual(["a", "b[2]"]);
+  test("the run's failure names the step, the stream frame names all of them", () => {
+    expect(uncertainStepKeys({ failure: { step_id: "send_mail" } })).toEqual(["send_mail"]);
+    expect(uncertainStepKeys({ step_keys: ["a", "b[2]", "a"] })).toEqual(["a", "b[2]"]);
   });
 
-  test("without a notice the steps still in flight are the candidates", () => {
+  test("the step rows the engine marked uncertain are candidates, running ones are not", () => {
     expect(
-      uncertainStepKeys({ error: null }, [
+      uncertainStepKeys({ failure: null }, [
         { step_key: "load", status: "succeeded" },
         { step_key: "send_mail", status: "running" },
         { step_key: "post", status: "uncertain" },
       ]),
-    ).toEqual(["send_mail", "post"]);
+    ).toEqual(["post"]);
   });
 });
 
 describe("uncertainWriteBlock", () => {
   test("names the step and both exact commands", () => {
     expect(
-      uncertainWriteBlock("ex-1", { status: "uncertain", error: { step_id: "send_mail" } }),
+      uncertainWriteBlock("ex-1", { status: "uncertain", failure: { step_id: "send_mail" } }),
     ).toBe(
       [
         "Outcome unknown: the run stopped while a change was being sent.",
@@ -46,7 +46,9 @@ describe("uncertainWriteBlock", () => {
   });
 
   test("any other status has no block", () => {
-    expect(uncertainWriteBlock("ex-1", { status: "running", error: { step_id: "a" } })).toBeNull();
+    expect(
+      uncertainWriteBlock("ex-1", { status: "running", failure: { step_id: "a" } }),
+    ).toBeNull();
     expect(uncertainWriteBlock("ex-1", { status: "failed" })).toBeNull();
   });
 });
@@ -55,7 +57,7 @@ describe("uncertainWriteBlockForExecution", () => {
   test("the stream frame's step wins over the stored notice", async () => {
     const block = await uncertainWriteBlockForExecution(
       {
-        getExecution: async () => ({ status: "uncertain", error: { step_id: "old" } }) as never,
+        getExecution: async () => ({ status: "uncertain", failure: { step_id: "old" } }) as never,
         executionSteps: async () => ({ items: [] }) as never,
       },
       "ex-1",
@@ -63,6 +65,17 @@ describe("uncertainWriteBlockForExecution", () => {
     );
     expect(block).toContain("--step send_mail --outcome arrived");
     expect(block).not.toContain("old");
+  });
+
+  test("without a stream frame the stored failure names the step", async () => {
+    const block = await uncertainWriteBlockForExecution(
+      {
+        getExecution: async () => ({ status: "uncertain", failure: { step_id: "send" } }) as never,
+        executionSteps: async () => ({ items: [] }) as never,
+      },
+      "ex-1",
+    );
+    expect(block).toContain("--step send --outcome arrived");
   });
 
   test("a read failure still prints the command", async () => {

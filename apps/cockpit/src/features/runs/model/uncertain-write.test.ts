@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { isUncertainRun, uncertainStepKeys } from "./uncertain-write";
+import { isUncertainRun, RESOLVE_WRITE_PERMISSION, uncertainStepKeys } from "./uncertain-write";
 
 test("only the uncertain status asks whether a write arrived", () => {
   expect(isUncertainRun("uncertain")).toBe(true);
@@ -9,32 +9,34 @@ test("only the uncertain status asks whether a write arrived", () => {
 
 test("a run that is not uncertain names no step", () => {
   expect(
-    uncertainStepKeys({ status: "running", error: { step_keys: ["send"] } }, [
-      { step_key: "send", status: "running" },
+    uncertainStepKeys({ status: "running", failure: { step_id: "send" } }, [
+      { step_key: "send", status: "uncertain" },
     ]),
   ).toEqual([]);
 });
 
-test("the steps the engine names win over the step rows", () => {
+test("the step the engine names in the run's failure comes first", () => {
   expect(
-    uncertainStepKeys({ status: "uncertain", error: { step_keys: ["send[2]", "send[2]", ""] } }, [
-      { step_key: "other", status: "running" },
+    uncertainStepKeys({ status: "uncertain", failure: { step_id: "send", error_code: "x" } }, [
+      { step_key: "send", status: "uncertain" },
+      { step_key: "post", status: "uncertain" },
     ]),
-  ).toEqual(["send[2]"]);
-  expect(uncertainStepKeys({ status: "uncertain", error: { step_id: "send" } }, [])).toEqual([
-    "send",
-  ]);
+  ).toEqual(["send", "post"]);
 });
 
-test("without named steps the interrupted step rows are asked about", () => {
+test("the step rows the engine marked uncertain are asked about, running ones are not", () => {
   expect(
-    uncertainStepKeys({ status: "uncertain", error: null }, [
+    uncertainStepKeys({ status: "uncertain", failure: null }, [
       { step_key: "read", status: "succeeded" },
       { step_key: "send", status: "running" },
       { step_key: "post", status: "uncertain" },
-      { step_key: null, status: "running" },
+      { step_key: null, status: "uncertain" },
     ]),
-  ).toEqual(["send", "post"]);
-  expect(uncertainStepKeys({ status: "uncertain", error: { step_keys: [7] } }, [])).toEqual([]);
-  expect(uncertainStepKeys({ status: "uncertain", error: "x" }, [])).toEqual([]);
+  ).toEqual(["post"]);
+  expect(uncertainStepKeys({ status: "uncertain", failure: { step_id: 7 } }, [])).toEqual([]);
+  expect(uncertainStepKeys({ status: "uncertain", failure: "x" }, [])).toEqual([]);
+});
+
+test("resolving a write needs the same permission as on the engine", () => {
+  expect(RESOLVE_WRITE_PERMISSION).toBe("execution:abort");
 });
