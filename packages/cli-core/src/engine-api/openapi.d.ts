@@ -30902,7 +30902,7 @@ export interface components {
                             enum: string[];
                         } | {
                             /** @enum {string} */
-                            class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                            class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
                         } | {
                             /** @enum {boolean} */
                             caller_bound: true;
@@ -30946,7 +30946,7 @@ export interface components {
                             enum: string[];
                         } | {
                             /** @enum {string} */
-                            class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                            class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
                         } | {
                             /** @enum {boolean} */
                             caller_bound: true;
@@ -33386,7 +33386,7 @@ export interface components {
                         enum: string[];
                     } | {
                         /** @enum {string} */
-                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
@@ -33513,7 +33513,7 @@ export interface components {
                             enum: string[];
                         } | {
                             /** @enum {string} */
-                            class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                            class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
                         } | {
                             /** @enum {boolean} */
                             caller_bound: true;
@@ -33569,7 +33569,7 @@ export interface components {
                         enum: string[];
                     } | {
                         /** @enum {string} */
-                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
@@ -33696,7 +33696,7 @@ export interface components {
                             enum: string[];
                         } | {
                             /** @enum {string} */
-                            class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                            class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
                         } | {
                             /** @enum {boolean} */
                             caller_bound: true;
