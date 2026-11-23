@@ -1,3 +1,4 @@
+export { runIntakeGroupKeyBackfill } from "./backfills/intake-group-key-v1.ts";
 export { runKnowledgeRechunkBackfill } from "./backfills/rechunk-v1.ts";
 export * from "./budgets.ts";
 export * from "./bundle.ts";

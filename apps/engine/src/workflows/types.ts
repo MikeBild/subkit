@@ -396,6 +396,7 @@ function foreignBlock(block: RequestBlock) {
     .never({
       error: `the \`${block}\` block needs \`protocol: "${block}"\` on the step — a step speaks exactly one protocol`,
     })
+    .openapi({ type: "null", not: {} })
     .optional();
 }
 
@@ -404,6 +405,7 @@ function httpOnlyXml(protocol: RequestBlock) {
     .never({
       error: `\`xml\` is an HTTP body encoding and is not accepted on a step with \`protocol: "${protocol}"\``,
     })
+    .openapi({ type: "null", not: {} })
     .optional();
 }
 

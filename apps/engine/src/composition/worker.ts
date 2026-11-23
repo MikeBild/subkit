@@ -13,7 +13,7 @@ import {
 } from "../execution/recovery.ts";
 import { reapOrphanedWaits } from "../execution/wait-reaper.ts";
 import type { LocalWorkspace } from "../identity/local-workspace.ts";
-import { runKnowledgeRechunkBackfill } from "../knowledge/index.ts";
+import { runIntakeGroupKeyBackfill, runKnowledgeRechunkBackfill } from "../knowledge/index.ts";
 import { seedKnowledgeAtBoot } from "../knowledge/seed.ts";
 import { errorFields, logger } from "../logging/index.ts";
 import {
@@ -272,6 +272,11 @@ export async function runBootSeeds(db: Db, { lifetime, seedSkills }: BootSeedDep
           await diagnoseOperation({
             action: "boot.knowledge_rechunk",
             fn: () => runKnowledgeRechunkBackfill(db),
+          });
+        if (!lifetime.stopping)
+          await diagnoseOperation({
+            action: "boot.intake_group_key",
+            fn: () => runIntakeGroupKeyBackfill(db),
           });
         if (!lifetime.stopping) await prewarmSandbox();
       }

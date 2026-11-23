@@ -217,6 +217,7 @@ apps/engine/src/connectors/core/http-request.test.ts                            
 apps/engine/src/connectors/drivers/file-promotion.test.ts                                     1
 apps/engine/src/connectors/drivers/tests/graphql.test.ts                                      2
 apps/engine/src/conversations/agent/skills/content/turn-rhythm-and-language.md                1
+apps/engine/src/conversations/approval-rules/core/spoken-rule.ts                              3
 apps/engine/src/conversations/approval-rules/tests/scope.test.ts                              4
 apps/engine/src/conversations/approval-rules/tests/store.int.test.ts                          1
 apps/engine/src/conversations/authoring-pipeline.ts                                           1

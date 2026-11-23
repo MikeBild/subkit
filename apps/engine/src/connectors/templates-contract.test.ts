@@ -20,10 +20,7 @@ import { loadBuiltinTemplates } from "./templates.ts";
 const CONTRACTS = join(import.meta.dir, "contracts");
 const templates = loadBuiltinTemplates();
 
-const KNOWN_GAPS: Readonly<Record<string, readonly ContractIssueCode[]>> = {
-  jira: ["probe_path_repeats_base"],
-  salesforce: ["probe_path_repeats_base"],
-};
+const KNOWN_GAPS: Readonly<Record<string, readonly ContractIssueCode[]>> = {};
 
 function readFixture(slug: string): unknown {
   return JSON.parse(readFileSync(join(CONTRACTS, `${slug}.json`), "utf8"));
