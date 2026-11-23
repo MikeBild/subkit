@@ -1,14 +1,16 @@
 import {
   absoluteLink,
+  heldTaskRun,
   type PendingDecisionCard,
   pendingDecisionBlocks,
   type SlackBlock,
   safeCockpitPath,
-} from "../chat/slack/decisions/blocks.ts";
-import { heldTaskRun, tenantLanguage } from "../chat/slack/decisions/subject.ts";
-import { getConfig } from "../config/loader.ts";
-import type { Db } from "../db/client.ts";
-import { slackDecisionCopy } from "../http/i18n/slack-decisions.ts";
+  slackDecisionText,
+  tenantLanguage,
+} from "../chat/index.ts";
+import { getConfig } from "../config/index.ts";
+import type { Db } from "../db/index.ts";
+import type { SlackDecisionCopy } from "../http/index.ts";
 import type { NotificationEvent } from "./matcher.ts";
 
 const CARD_EVENTS = new Set([
@@ -42,7 +44,7 @@ type CardFacts = Omit<PendingDecisionCard, "copy" | "link">;
 async function cardFacts(
   db: Db,
   event: NotificationEvent,
-  copy: ReturnType<typeof slackDecisionCopy>,
+  copy: SlackDecisionCopy,
 ): Promise<CardFacts | null> {
   const payload = event.payload ?? null;
   const taskRunId = field(payload, "task_run_id");
@@ -101,7 +103,7 @@ export async function slackDecisionBlocks(
   publicBaseUrl: string = configuredBaseUrl(),
 ): Promise<SlackBlock[] | null> {
   if (!CARD_EVENTS.has(event.type)) return null;
-  const copy = slackDecisionCopy(await tenantLanguage(db, event.tenant_id));
+  const copy = await slackDecisionText(await tenantLanguage(db, event.tenant_id));
   const facts = await cardFacts(db, event, copy);
   if (!facts) return null;
   return pendingDecisionBlocks({

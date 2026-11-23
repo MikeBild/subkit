@@ -1,25 +1,22 @@
-import { and, eq } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../../../audit/index.ts";
-import { getConfig } from "../../../config/loader.ts";
-import { completeApprovalBackedElicitation } from "../../../conversations/public/authoring.ts";
-import {
-  inTaskRunApprovalTrace,
-  taskRunApprovalRefusal,
-} from "../../../conversations/public/lifecycle.ts";
-import type { Db } from "../../../db/client.ts";
-import { chatIdentities, chatWorkspaces } from "../../../db/schema/index.ts";
-import { slackDecisionCopy } from "../../../http/i18n/slack-decisions.ts";
+import { getConfig } from "../../../config/index.ts";
+import type { Db } from "../../../db/index.ts";
 import { errorFields, logger } from "../../../logging/index.ts";
 import { enqueueApprovalElicitationResume, getBoss } from "../../../queue/index.ts";
-import { principalHolds } from "../../../rbac/evaluator.ts";
+import { principalHolds } from "../../../rbac/index.ts";
 import {
   type ApprovalDecisionDenialCode,
   declineApproval,
+  findActiveApproverEmail,
   grantApproval,
-} from "../../../tools/approval.ts";
-import { findActiveApproverEmail } from "../../../tools/approval-portal.ts";
-import { now } from "../../../utils/clock.ts";
+} from "../../../tools/index.ts";
+import { now } from "../../../utils/index.ts";
 import { markChatEventSeen } from "../../dedup.ts";
+import {
+  completeApprovalBackedElicitation,
+  inTaskRunApprovalTrace,
+  taskRunApprovalRefusal,
+} from "../../elicit-routing.ts";
 import { requiresHostedChatOwnership } from "../../hosted-ownership.ts";
 import { resolveChatPrincipal } from "../../principal.ts";
 import type { ChatEvent } from "../../types.ts";
@@ -34,8 +31,10 @@ import {
   type SlackBlock,
   safeCockpitPath,
 } from "./blocks.ts";
+import { slackDecisionText } from "./copy.ts";
 import { signSlackLinkToken, slackLinkUrl } from "./link-token.ts";
-import { grantedByName, personName, tenantLanguage } from "./subject.ts";
+import { findSlackIdentity, findSlackWorkspace } from "./persistence/lookups.ts";
+import { grantedByName, personName, tenantLanguage } from "./persistence/subject.ts";
 
 export interface SlackDecisionClient {
   update(p: { channel: string; ts: string; text: string; blocks: SlackBlock[] }): Promise<void>;
@@ -102,7 +101,7 @@ function slackOrigin(event: ChatEvent): Record<string, string> {
 }
 
 async function notify(deps: SlackDecisionDeps, ctx: ClickContext, text: string, extra = {}) {
-  const copy = slackDecisionCopy(ctx.locale);
+  const copy = await slackDecisionText(ctx.locale);
   await deps.client.ephemeral({
     channel: ctx.event.channel_id,
     user: ctx.event.user_id,
@@ -120,7 +119,7 @@ async function notify(deps: SlackDecisionDeps, ctx: ClickContext, text: string, 
 
 async function showOutcome(deps: SlackDecisionDeps, ctx: ClickContext, outcome: DecisionOutcome) {
   if (!ctx.message_ts) return;
-  const copy = slackDecisionCopy(ctx.locale);
+  const copy = await slackDecisionText(ctx.locale);
   await deps.client.update({
     channel: ctx.event.channel_id,
     ts: ctx.message_ts,
@@ -176,32 +175,21 @@ async function linkPrompt(deps: SlackDecisionDeps, ctx: ClickContext, reason: st
     team_id: ctx.event.workspace_id,
     slack_user_id: ctx.event.user_id,
   });
-  await notify(deps, ctx, slackDecisionCopy(ctx.locale).notLinked, {
+  await notify(deps, ctx, (await slackDecisionText(ctx.locale)).notLinked, {
     link_account_url: slackLinkUrl(baseUrl(deps), token),
   });
 }
 
 async function decide(deps: SlackDecisionDeps, ctx: ClickContext): Promise<void> {
   const { db } = deps;
-  const copy = slackDecisionCopy(ctx.locale);
+  const copy = await slackDecisionText(ctx.locale);
   if (await requiresHostedChatOwnership(db, ctx.tenant_id)) {
     await auditRefusal(deps, ctx, null, "hosted_ownership_proof_required");
     await notify(deps, ctx, copy.ownership);
     return;
   }
 
-  // tenant-filter:exempt — platform user-identity lookup pre-tenant (mirrors dispatcher.ts)
-  const [identity] = await db
-    .select({ user_id: chatIdentities.user_id, tenant_id: chatIdentities.tenant_id })
-    .from(chatIdentities)
-    .where(
-      and(
-        eq(chatIdentities.platform, "slack"),
-        eq(chatIdentities.workspace_id, ctx.event.workspace_id),
-        eq(chatIdentities.platform_user_id, ctx.event.user_id),
-      ),
-    )
-    .limit(1);
+  const identity = await findSlackIdentity(db, ctx.event.workspace_id, ctx.event.user_id);
   if (!identity) return await linkPrompt(deps, ctx, "identity_not_linked");
   if (identity.tenant_id !== ctx.tenant_id)
     return await linkPrompt(deps, ctx, "identity_tenant_mismatch");
@@ -295,17 +283,7 @@ export async function handleSlackDecisionInteraction(
   const raw = rawPayload(event);
   let ctx: ClickContext | null = null;
   try {
-    // tenant-filter:exempt — platform/workspace_id lookup pre-tenant (mirrors dispatcher.ts)
-    const [workspace] = await deps.db
-      .select({ id: chatWorkspaces.id, tenant_id: chatWorkspaces.tenant_id })
-      .from(chatWorkspaces)
-      .where(
-        and(
-          eq(chatWorkspaces.platform, "slack"),
-          eq(chatWorkspaces.workspace_id, event.workspace_id),
-        ),
-      )
-      .limit(1);
+    const workspace = await findSlackWorkspace(deps.db, event.workspace_id);
     if (!workspace) {
       logger.warn({
         module: "chat",
@@ -345,7 +323,7 @@ export async function handleSlackDecisionInteraction(
     });
     if (ctx) {
       try {
-        await notify(deps, ctx, slackDecisionCopy(ctx.locale).failed);
+        await notify(deps, ctx, (await slackDecisionText(ctx.locale)).failed);
       } catch {}
     }
   }

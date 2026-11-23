@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { signLoginState, verifyLoginState } from "../../../auth/browser-session.ts";
+import { signLoginState, verifyLoginState } from "../../../auth/index.ts";
 
 export const SLACK_LINK_PATH = "/v1/integrations/slack/link";
 const PURPOSE = "slack_identity_link";

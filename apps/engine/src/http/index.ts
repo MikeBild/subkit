@@ -8,6 +8,11 @@ export {
   UnprocessableEntityError,
 } from "./errors.ts";
 export { setHealthState } from "./health-state.ts";
+export {
+  type SlackDecisionCopy,
+  type SlackDecisionLocale,
+  slackDecisionCopy,
+} from "./i18n/slack-decisions.ts";
 export { engineServeOptions } from "./listen-hostname.ts";
 export { requireAuth, requireSignedInPerson } from "./middleware/auth.ts";
 export { errorMiddleware, mapKnownErrorResponse } from "./middleware/error.ts";

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import type { ResolvedPrincipal } from "../../auth/types.ts";
+import type { ResolvedPrincipal } from "../../auth/index.ts";
 import {
   assertChatWorkspaceOwnershipAvailable,
   ChatIdentityLinkRefusedError,
@@ -9,8 +9,8 @@ import {
   type SlackLinkClaims,
   verifySlackLinkToken,
 } from "../../chat/index.ts";
-import { getConfig } from "../../config/loader.ts";
-import type { Db } from "../../db/client.ts";
+import { getConfig } from "../../config/index.ts";
+import type { Db } from "../../db/index.ts";
 import { logger } from "../../logging/index.ts";
 import { findActiveApproverEmail } from "../../tools/index.ts";
 import { slackDecisionCopy } from "../i18n/slack-decisions.ts";

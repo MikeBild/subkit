@@ -1,4 +1,4 @@
-import type { SlackDecisionCopy } from "../../../http/i18n/slack-decisions.ts";
+import type { SlackDecisionCopy } from "../../../http/index.ts";
 import { type DecisionKind, decisionActionId, openActionId } from "./action.ts";
 
 export interface SlackBlock {
