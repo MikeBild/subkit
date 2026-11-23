@@ -6,6 +6,7 @@ import {
   resolvePlaceholdersTypePreserving,
 } from "../../llm/index.ts";
 import {
+  MODEL_STEP_DEFAULT_OUTPUT_TOKENS,
   type ModelStep,
   modelStepPlaceholderRefusal,
   modelStepPlaceholders,
@@ -128,24 +129,21 @@ export async function runModelStep(p: RunModelStepParams): Promise<StepResult> {
     modelStepFrameText(template, parsePlaceholders(template).tokens, values);
   const system = p.step.system ? frame(p.step.system) : undefined;
   const userText = modelStepUserText(frame(p.step.prompt), data.value.input);
+  const maxOutputTokens = p.step.max_output_tokens ?? MODEL_STEP_DEFAULT_OUTPUT_TOKENS;
   const timeout = new AbortController();
   const timer =
     p.step.timeout_ms !== undefined
       ? setTimeout(() => timeout.abort("timeout"), p.step.timeout_ms)
       : undefined;
   try {
-    p.ctx.llm_budget.checkPreCall(
-      modelStepTokenEstimate([system, userText], p.step.max_output_tokens),
-    );
+    p.ctx.llm_budget.checkPreCall(modelStepTokenEstimate([system, userText], maxOutputTokens));
     const answer = await invoke(
       {
         flow: "workflow_step",
         tenant_id: p.ctx.tenant_id,
         user_turns: [{ role: "user", content: userText }],
         ...(system ? { system } : {}),
-        ...(p.step.max_output_tokens !== undefined
-          ? { max_output_tokens: p.step.max_output_tokens }
-          : {}),
+        max_output_tokens: maxOutputTokens,
         output_json_schema: p.step.output_schema,
         principal: p.ctx.principal ?? null,
         telemetry_metadata: {

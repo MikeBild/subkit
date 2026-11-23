@@ -3,7 +3,6 @@ import { checkJsonSchemaContract } from "../json-schema-contract.ts";
 
 export const MODEL_OUTPUT_INVALID = "model_output_invalid";
 export const MODEL_OUTPUT_SCHEMA_INVALID = "model_output_schema_invalid";
-export const MODEL_STEP_DEFAULT_OUTPUT_TOKENS = 1024;
 
 const CHARS_PER_TOKEN = 4;
 const MAX_REPORTED_VIOLATIONS = 20;
@@ -56,10 +55,10 @@ export function modelStepUserText(prompt: string, input: unknown): string {
 
 export function modelStepTokenEstimate(
   texts: ReadonlyArray<string | undefined>,
-  maxOutputTokens: number | undefined,
+  maxOutputTokens: number,
 ): number {
   const chars = texts.reduce((sum, text) => sum + (text?.length ?? 0), 0);
-  return Math.ceil(chars / CHARS_PER_TOKEN) + (maxOutputTokens ?? MODEL_STEP_DEFAULT_OUTPUT_TOKENS);
+  return Math.ceil(chars / CHARS_PER_TOKEN) + maxOutputTokens;
 }
 
 export function modelStepOutcome(

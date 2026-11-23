@@ -25,6 +25,8 @@ function keyOf(entry: BoundaryGrowth): TranslationKey {
       return "authority.growth.newApp";
     case "new_secret":
       return "authority.growth.newSecret";
+    case "new_model_call":
+      return "authority.growth.newModelCall";
     case "wider_effect":
       return entry.effect === "destructive"
         ? "authority.growth.deletes"

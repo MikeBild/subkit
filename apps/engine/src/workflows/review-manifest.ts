@@ -3,6 +3,7 @@ import { connectorSystemKey, loadConnectorSystems } from "../connectors/system.t
 import type { Executor } from "../db/client.ts";
 import { workflows } from "../db/schema/index.ts";
 import { workflowJsonDigest } from "./canonical-json.ts";
+import type { ModelCallEffect } from "./core/model-call-effect.ts";
 import type { WorkflowEffectManifest } from "./effect-manifest.ts";
 import { previewWorkflowAuthority } from "./execution-authorities.ts";
 import { loadWorkflowReadFacts, type WorkflowReadFacts } from "./read-facts.ts";
@@ -63,6 +64,22 @@ function candidateHistory(
   };
 }
 
+export function modelCallReviewEffect(call: ModelCallEffect): WorkflowReviewEffect {
+  return {
+    step_id: call.step_id,
+    connector_name: "AI model",
+    connector_slug: null,
+    effect: "read",
+    target: "workspace AI model",
+    details: [
+      "Sends step data to the workspace AI model",
+      `At most ${call.max_output_tokens} output tokens per call${call.repeated ? ", once per item" : ""}`,
+      "Counts against the AI budget",
+      ...(call.data_paths.length ? [`Data paths: ${call.data_paths.join(", ")}`] : []),
+    ],
+  };
+}
+
 export function workflowReviewBoundaryDigest(manifest: WorkflowEffectManifest): string {
   return workflowJsonDigest({
     execution_environment: manifest.execution_environment,
@@ -74,6 +91,7 @@ export function workflowReviewBoundaryDigest(manifest: WorkflowEffectManifest): 
       ({ workflow_id: _workflow_id, workflow_version_id: _workflow_version_id, ...call }) => call,
     ),
     caller_guards: manifest.caller_guards,
+    ...(manifest.model_calls ? { model_calls: manifest.model_calls } : {}),
   });
 }
 
@@ -177,7 +195,7 @@ export async function resolveWorkflowReviewManifest(
     db,
     { facts, report_boundaries: {}, content_boundaries: {} },
   );
-  const effects = resolved.manifest.effects.map((effect) => {
+  const effects: WorkflowReviewEffect[] = resolved.manifest.effects.map((effect) => {
     const connector = effect.connector_id
       ? facts.connectors.get(connectorSystemKey(effect.connector_id, effect.environment))?.connector
       : null;
@@ -227,6 +245,7 @@ export async function resolveWorkflowReviewManifest(
       ...(details.length ? { details } : {}),
     };
   });
+  effects.push(...(resolved.manifest.model_calls ?? []).map(modelCallReviewEffect));
   const trigger = definition.trigger;
   const affected_triggers =
     trigger?.kind === "schedule"

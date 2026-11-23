@@ -31019,6 +31019,20 @@ export interface components {
                 workflow_digest: string;
                 execution_options_digest: string;
             }[];
+            /** @description Each model step: the run sends step data to the workspace AI model and spends tokens. */
+            model_calls?: {
+                step_id: string;
+                call_path?: string[];
+                /** @enum {string} */
+                flow: "workflow_step";
+                /** @enum {string} */
+                effect: "read";
+                max_output_tokens: number;
+                /** @description True when the step runs once per item of a for_each, so the model is called once per item. */
+                repeated: boolean;
+                /** @description The run data the step sends to the model, by placeholder path; never values. */
+                data_paths: string[];
+            }[];
             caller_guards?: {
                 execution_guards?: components["schemas"]["WorkflowJsonValue"];
                 /** @enum {string} */
@@ -31139,7 +31153,7 @@ export interface components {
         };
         AuthorityBoundaryGrowth: {
             /** @enum {string} */
-            kind: "new_connector" | "new_target" | "wider_effect" | "changed_boundary" | "new_device" | "new_folder" | "wider_folder_access" | "new_site" | "private_site" | "new_app" | "new_secret";
+            kind: "new_connector" | "new_target" | "wider_effect" | "changed_boundary" | "new_device" | "new_folder" | "wider_folder_access" | "new_site" | "private_site" | "new_app" | "new_secret" | "new_model_call";
             connector_id: string | null;
             connector_name?: string | null;
             target: string | null;
@@ -31147,7 +31161,7 @@ export interface components {
             effect: "read" | "write" | "unknown" | "destructive";
             /** Format: uuid */
             device_id?: string;
-            /** @description The folder id, website origin or app id that a device growth adds, or the vault handle a new_secret growth adds. */
+            /** @description The folder id, website origin or app id that a device growth adds, the vault handle a new_secret growth adds, or the model step a new_model_call growth adds or widens. */
             item?: string;
         };
         AuthorityEffectChange: {
@@ -31158,6 +31172,11 @@ export interface components {
             /** @enum {string} */
             effect: "read" | "write" | "unknown" | "destructive";
             subject: string | null;
+            /**
+             * @description Set when the change is a model step that sends step data to the AI model.
+             * @enum {boolean}
+             */
+            model_call?: true;
             previous?: {
                 /** @enum {string} */
                 effect: "read" | "write" | "unknown" | "destructive";
@@ -33989,7 +34008,7 @@ export interface components {
             for_each_concurrency?: number;
             /** @description The instruction for the model. Placeholders such as ${input.x} or ${scope.step.data} are filled in before the call. */
             prompt: string;
-            /** @description Optional system prompt. Without it the step uses a short neutral default. */
+            /** @description Optional system prompt. It is added after the workflow step guard, which always stays in place. */
             system?: string;
             input?: components["schemas"]["WorkflowJsonValue"] & unknown;
             /** @description JSON Schema the model's answer must match. The step fails when it does not. */
@@ -34013,7 +34032,7 @@ export interface components {
             for_each_concurrency?: number;
             /** @description The instruction for the model. Placeholders such as ${input.x} or ${scope.step.data} are filled in before the call. */
             prompt: string;
-            /** @description Optional system prompt. Without it the step uses a short neutral default. */
+            /** @description Optional system prompt. It is added after the workflow step guard, which always stays in place. */
             system?: string;
             input?: components["schemas"]["WorkflowJsonValue"] & unknown;
             /** @description JSON Schema the model's answer must match. The step fails when it does not. */

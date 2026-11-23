@@ -145,3 +145,29 @@ test("identical manifests report every effect unchanged", () => {
   expect(changes.every((entry) => entry.change === "unchanged")).toBe(true);
   expect(changes).toHaveLength(base.effects.length);
 });
+
+test("a new model step leaves every request effect as it was", () => {
+  const withModel: WorkflowEffectManifest = {
+    ...base,
+    model_calls: [
+      {
+        step_id: "summarize",
+        flow: "workflow_step",
+        effect: "read",
+        max_output_tokens: 1024,
+        repeated: false,
+        data_paths: [],
+      },
+    ],
+  };
+  const changes = effectChanges(base, withModel);
+  expect(changes.filter((entry) => !entry.model_call).map((entry) => entry.change)).toEqual([
+    "unchanged",
+    "unchanged",
+    "unchanged",
+    "unchanged",
+  ]);
+  expect(changes.filter((entry) => entry.model_call).map((entry) => entry.change)).toEqual([
+    "added",
+  ]);
+});

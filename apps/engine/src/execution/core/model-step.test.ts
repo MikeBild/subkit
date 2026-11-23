@@ -70,7 +70,7 @@ describe("model step frame text", () => {
 describe("model step token estimate", () => {
   test("counts four characters per token plus the output allowance", () => {
     expect(modelStepTokenEstimate(["abcd", "abcdefgh"], 100)).toBe(103);
-    expect(modelStepTokenEstimate([undefined, "a"], undefined)).toBe(1025);
+    expect(modelStepTokenEstimate([undefined, "a"], 1024)).toBe(1025);
   });
 });
 

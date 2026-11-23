@@ -144,3 +144,41 @@ test("an MCP tool call shows its tool, the effect as stated, its ceiling and its
     },
   ]);
 });
+
+test("a model step appears in the review as an AI model effect", async () => {
+  const review = await resolveWorkflowReviewManifest(
+    {
+      tenant_id: tenantId,
+      definition: {
+        name: "Sort messages",
+        steps: [
+          {
+            id: "classify",
+            kind: "model",
+            prompt: "Sort ${input.text}",
+            output_schema: { type: "object" },
+            max_output_tokens: 300,
+          },
+        ],
+      },
+      environment: "dev",
+    },
+    testDb.db,
+  );
+  expect(review.manifest.model_calls?.map((call) => call.step_id)).toEqual(["classify"]);
+  expect(review.effects).toEqual([
+    {
+      step_id: "classify",
+      connector_name: "AI model",
+      connector_slug: null,
+      effect: "read",
+      target: "workspace AI model",
+      details: [
+        "Sends step data to the workspace AI model",
+        "At most 300 output tokens per call",
+        "Counts against the AI budget",
+        "Data paths: input.text",
+      ],
+    },
+  ]);
+});

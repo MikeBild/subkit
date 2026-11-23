@@ -1,5 +1,10 @@
 import { z } from "@hono/zod-openapi";
 import { boundaryGrowth } from "./authority-inheritance.ts";
+import {
+  type ModelCallEffect,
+  modelCallMatch,
+  modelCallWidened,
+} from "./core/model-call-effect.ts";
 import type { WorkflowEffectManifest } from "./effect-manifest.ts";
 
 type Effect = WorkflowEffectManifest["effects"][number];
@@ -13,6 +18,10 @@ export const AuthorityEffectChangeSchema = z
     change: z.enum(["added", "widened", "unchanged", "removed"]),
     effect: EffectKindSchema,
     subject: z.string().nullable(),
+    model_call: z
+      .literal(true)
+      .optional()
+      .describe("Set when the change is a model step that sends step data to the AI model."),
     previous: z
       .object({
         effect: EffectKindSchema,
@@ -56,7 +65,7 @@ function effectSubject(effect: Effect): string | null {
 }
 
 const single = (manifest: WorkflowEffectManifest, effect: Effect): WorkflowEffectManifest => {
-  const { caller_guards: _guards, ...rest } = manifest;
+  const { caller_guards: _guards, model_calls: _models, ...rest } = manifest;
   return { ...rest, effects: [effect] };
 };
 
@@ -93,6 +102,18 @@ const describe = (
     : {}),
 });
 
+const describeModelCall = (
+  call: ModelCallEffect,
+  change: AuthorityEffectChange["change"],
+): AuthorityEffectChange => ({
+  step_id: call.step_id,
+  ...(call.call_path ? { call_path: [...call.call_path] } : {}),
+  change,
+  effect: call.effect,
+  subject: null,
+  model_call: true,
+});
+
 export function effectChanges(
   base: WorkflowEffectManifest,
   next: WorkflowEffectManifest,
@@ -110,6 +131,14 @@ export function effectChanges(
     ...base.effects
       .filter((effect) => !current.has(keyOf(effect)))
       .map((effect) => describe(effect, "removed")),
+    ...(next.model_calls ?? []).map((call) => {
+      const from = modelCallMatch(base.model_calls, call);
+      if (!from) return describeModelCall(call, "added");
+      return describeModelCall(call, modelCallWidened(call, from) ? "widened" : "unchanged");
+    }),
+    ...(base.model_calls ?? [])
+      .filter((call) => !modelCallMatch(next.model_calls, call))
+      .map((call) => describeModelCall(call, "removed")),
   ];
   const sortKey = (entry: AuthorityEffectChange) =>
     JSON.stringify([entry.step_id, entry.call_path ?? []]);
