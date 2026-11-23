@@ -123,7 +123,8 @@ describe("connector templates", () => {
     expect(drivers.has("graphql")).toBe(true);
     expect(drivers.has("postgres")).toBe(true);
     expect(drivers.has("s3")).toBe(true);
-    expect(drivers).toEqual(new Set(["http", "graphql", "postgres", "s3"]));
+    expect(drivers.has("sftp")).toBe(true);
+    expect(drivers).toEqual(new Set(["http", "graphql", "postgres", "s3", "sftp"]));
   });
 
   test("github-graphql ships alongside github REST", () => {
