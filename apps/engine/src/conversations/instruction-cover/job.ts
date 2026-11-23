@@ -2,6 +2,9 @@ import type { DeviceCapability } from "@shared/device/protocol.ts";
 import { originAllowedPersonal, type PersonalSiteOptions } from "@shared/local-policy/addresses.ts";
 import type { AlwaysAskClass, BrowserActionClass } from "@shared/local-policy/commit-classifier.ts";
 import { type PersonalPathOptions, pathAllowedPersonal } from "@shared/local-policy/paths.ts";
+import { ownWords, requestWords } from "@shared/own-words.ts";
+import { checkQuote, normalizeForQuote } from "@shared/quote-text.ts";
+import { asksForWork, checkRequest, holdsBack } from "@shared/request-words.ts";
 import { localAgenticRefusal, taskRunSource } from "../../devices/core/run-source.ts";
 import { ownerWroteGoal } from "../../tasks/core/goal-editor.ts";
 import { contentHash } from "../approval-rules/scope.ts";
@@ -14,9 +17,6 @@ import {
   INSTRUCTION_WINDOW,
   type UserSegment,
 } from "./decide.ts";
-import { checkQuote, normalizeForQuote } from "./normalize.ts";
-import { ownWords, requestWords } from "./own-words.ts";
-import { asksForWork, checkRequest, holdsBack } from "./request.ts";
 import { spokenFacts } from "./spoken.ts";
 
 export const CHAT_JOB_LIFETIME_MS = 2 * 60 * 60 * 1000;

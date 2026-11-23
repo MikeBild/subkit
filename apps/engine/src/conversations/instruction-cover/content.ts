@@ -1,5 +1,5 @@
+import { normalizeForQuote, occursBounded } from "@shared/quote-text.ts";
 import { isContentKey } from "./bound-action.ts";
-import { normalizeForQuote, occursBounded } from "./normalize.ts";
 import { canonicalNumber, numberCandidates, type SpokenFacts } from "./spoken.ts";
 
 export const MAX_GIVEN_CONTENT_CHARS = 1200;

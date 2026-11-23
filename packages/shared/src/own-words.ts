@@ -1,5 +1,5 @@
-import { normalizeForQuote } from "./normalize.ts";
-import { namesRequest } from "./request.ts";
+import { normalizeForQuote } from "./quote-text.ts";
+import { namesRequest } from "./request-words.ts";
 
 export const PASTED_MIN_LINES = 5;
 export const PASTED_MIN_CHARS = 800;
@@ -111,10 +111,16 @@ function withoutPastedBlock(paragraphs: readonly string[]): readonly string[] {
   return shaped && asksForSomething(instruction) ? [instruction] : paragraphs;
 }
 
-const OPENING_MARK = '["„“«»]';
+const OPENING_MARK = '["\\u201E\\u201C\\u00AB\\u00BB]';
 const CLOSING_MARK = '["“”«»]';
-const QUOTED_SPAN = new RegExp(`${OPENING_MARK}([^"„“”«»]{1,4000})${CLOSING_MARK}`, "gu");
-const OPEN_QUOTE_AFTER_COLON = new RegExp(`:\\s*${OPENING_MARK}[^"„“”«»]*$`, "u");
+const QUOTED_SPAN = new RegExp(
+  `${OPENING_MARK}([^"\\u201E\\u201C\\u201D\\u00AB\\u00BB]{1,4000})${CLOSING_MARK}`,
+  "gu",
+);
+const OPEN_QUOTE_AFTER_COLON = new RegExp(
+  `:\\s*${OPENING_MARK}[^"\\u201E\\u201C\\u201D\\u00AB\\u00BB]*$`,
+  "u",
+);
 
 function wordsIn(text: string): number {
   return text.split(/\s+/u).filter((word) => /[\p{L}\p{N}]/u.test(word)).length;

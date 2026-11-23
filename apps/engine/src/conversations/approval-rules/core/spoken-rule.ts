@@ -1,5 +1,6 @@
-import type { ActionVerb, BoundAction } from "../../instruction-cover/bound-action.ts";
-import { normalizeForQuote, occursBounded } from "../../instruction-cover/normalize.ts";
+import { normalizeForQuote, occursBounded } from "@shared/quote-text.ts";
+import type { ActionVerb } from "@shared/request-words.ts";
+import type { BoundAction } from "../../instruction-cover/bound-action.ts";
 import { type RuleScope, ruleEligible, scopeOf } from "./rule-scope.ts";
 
 const STANDING_WORDS: readonly string[] = [

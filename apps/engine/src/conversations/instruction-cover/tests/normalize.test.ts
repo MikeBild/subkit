@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { checkQuote, normalizeForQuote } from "../normalize.ts";
+import { checkQuote, normalizeForQuote } from "@shared/quote-text.ts";
 
 describe("quote normalisation", () => {
   test("case, whitespace, quote marks, dashes and diacritics do not matter", () => {

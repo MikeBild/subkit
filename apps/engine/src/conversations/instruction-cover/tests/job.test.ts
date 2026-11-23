@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { asksForWork, holdsBack } from "@shared/request-words.ts";
 import { FROZEN_NOW } from "../../../test-helpers/determinism/index.ts";
 import {
   boundaryRefusal,
@@ -17,7 +18,6 @@ import {
   taskJob,
   taskRequest,
 } from "../job.ts";
-import { asksForWork, holdsBack } from "../request.ts";
 
 const NOW = new Date(FROZEN_NOW);
 const TZ = "Europe/Berlin";

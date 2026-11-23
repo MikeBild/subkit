@@ -1,6 +1,6 @@
+import { normalizeForQuote, occursBounded } from "@shared/quote-text.ts";
 import { isContentKey } from "./bound-action.ts";
 import { SAFE_HEADERS } from "./effect-vocabulary.ts";
-import { normalizeForQuote, occursBounded } from "./normalize.ts";
 import { canonicalNumber, localParts, numberCandidates, type SpokenFacts } from "./spoken.ts";
 import { equivalentValues } from "./translations.ts";
 

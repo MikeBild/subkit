@@ -5,7 +5,7 @@ import {
   PASTED_MIN_CHARS,
   PASTED_MIN_LINES,
   requestWords,
-} from "../own-words.ts";
+} from "@shared/own-words.ts";
 
 describe("what counts as the person's own words", () => {
   test("a plain instruction stays as written", () => {

@@ -1,4 +1,4 @@
-import type { ActionVerb } from "./bound-action.ts";
+export type ActionVerb = "send" | "create" | "update" | "run" | "save" | "other";
 
 type RequestVerb = Exclude<ActionVerb, "other">;
 

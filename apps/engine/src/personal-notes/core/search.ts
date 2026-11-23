@@ -1,4 +1,4 @@
-import { normalizeForQuote } from "../../conversations/instruction-cover/normalize.ts";
+import { normalizeForQuote } from "@shared/quote-text.ts";
 
 export interface SearchableNote {
   readonly id: string;

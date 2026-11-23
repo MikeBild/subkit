@@ -1,12 +1,13 @@
 const PROTECTED_SOURCE = [
-  "https?:\\/\\/[^\\s<>\"'„“”‚‘’»«]+",
+  "https?:\\/\\/[^\\s<>\"'\\u201E\\u201C\\u201D\\u201A\\u2018\\u2019\\u00BB\\u00AB]+",
   "[\\p{L}\\p{N}._%+-]+@[\\p{L}\\p{N}-]+(?:\\.[\\p{L}\\p{N}-]+)+",
   "(?<![\\p{L}\\p{N}])[@#][\\p{L}\\p{N}_][\\p{L}\\p{N}_.-]*",
   "(?<![\\p{L}\\p{N}_-])(?=[\\p{L}\\p{N}_-]*\\p{N})(?=[\\p{L}\\p{N}_-]*[\\p{L}_-])[\\p{L}\\p{N}][\\p{L}\\p{N}_-]*",
 ].join("|");
 
 const TRAILING_PUNCTUATION = /[.,;:!?)\]}]+$/u;
-const QUOTE_MARKS = /["'`«»‘’‚‛“”„‟‹›]/gu;
+const QUOTE_MARKS =
+  /["'`\u00AB\u00BB\u2018\u2019\u201A\u201B\u201C\u201D\u201E\u201F\u2039\u203A]/gu;
 const DASHES = /[‐‑‒–—―−]/gu;
 const WORD_CHAR = /[\p{L}\p{N}]/u;
 
@@ -18,7 +19,7 @@ function foldPlain(text: string): string {
   return text
     .normalize("NFKD")
     .replace(/\p{M}+/gu, "")
-    .replace(/ß/g, "ss")
+    .replace(/\u00DF/g, "ss")
     .replace(QUOTE_MARKS, '"')
     .replace(DASHES, "-")
     .toLowerCase();

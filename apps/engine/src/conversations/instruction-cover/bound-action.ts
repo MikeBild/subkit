@@ -1,4 +1,4 @@
-export type ActionVerb = "send" | "create" | "update" | "run" | "save" | "other";
+import type { ActionVerb } from "@shared/request-words.ts";
 
 export type EffectClass =
   | "ordinary"
