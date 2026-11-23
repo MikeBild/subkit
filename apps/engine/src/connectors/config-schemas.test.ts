@@ -3,12 +3,16 @@ import {
   CONNECTOR_CONFIG_SCHEMAS,
   MCP_ONLY_AUTH_TYPES,
   mcpAuthKindForType,
-  validateConnectorAuthType,
   validateConnectorConfig,
   validateConnectorConfigOrThrow,
   validateMcpAuthConsistency,
   withMcpConfigDefaults,
 } from "./config-schemas.ts";
+import { validateConnectorAuthType } from "./core/config-policy.ts";
+import {
+  validateConnectorAuthType as validateConnectorAuthTypeFromEntry,
+  validateSftpAuthConsistency,
+} from "./index.ts";
 import { AuthTypeEnum, DriverEnum } from "./types.ts";
 
 describe("every driver has a config schema", () => {
@@ -212,13 +216,16 @@ describe("auth kinds are scoped to the driver that can honour them", () => {
         const issues = validateConnectorAuthType(driver, auth_type);
         expect(issues.length).toBe(1);
         expect(issues[0]?.path).toBe("auth_type");
-        expect(issues[0]?.message).toContain(auth_type);
+        if (driver !== "sftp" && !driver.startsWith("local_"))
+          expect(issues[0]?.message).toContain(auth_type);
       });
     }
   }
 
-  test("every other auth kind stays valid on non-MCP drivers", () => {
-    for (const driver of DriverEnum.options.filter((candidate) => candidate !== "mcp")) {
+  test("every other auth kind stays valid on the http, graphql, postgres and s3 drivers", () => {
+    for (const driver of DriverEnum.options.filter(
+      (candidate) => candidate !== "mcp" && candidate !== "sftp" && !candidate.startsWith("local_"),
+    )) {
       for (const auth_type of AuthTypeEnum.options) {
         if (
           MCP_ONLY_AUTH_TYPES.includes(auth_type) ||
@@ -252,5 +259,39 @@ describe("auth kinds are scoped to the driver that can honour them", () => {
   test("an absent auth_type is not an issue", () => {
     expect(validateConnectorAuthType("http", undefined)).toEqual([]);
     expect(validateConnectorAuthType("http", null)).toEqual([]);
+  });
+});
+
+describe("one auth-type policy for every caller", () => {
+  test("the connectors entry exports the core policy itself", () => {
+    expect(validateConnectorAuthTypeFromEntry).toBe(validateConnectorAuthType);
+  });
+
+  test("sftp accepts basic and none and refuses every other auth kind", () => {
+    for (const auth_type of AuthTypeEnum.options) {
+      const issues = validateConnectorAuthType("sftp", auth_type);
+      if (auth_type === "basic" || auth_type === "none") expect(issues).toEqual([]);
+      else expect(issues).toEqual([expect.objectContaining({ path: "auth_type" })]);
+    }
+  });
+
+  test("sftp pairs none with an SSH key and basic with a password", () => {
+    const key = {
+      auth: { method: "private_key", username: "deploy", private_key_item: "sftp-key" },
+    };
+    expect(validateSftpAuthConsistency("sftp", "none", key)).toEqual([]);
+    expect(validateSftpAuthConsistency("sftp", "basic", {})).toEqual([]);
+    expect(
+      validateConnectorConfig("sftp", { host_key_sha256: `SHA256:${"A".repeat(43)}`, ...key }),
+    ).toEqual([]);
+  });
+
+  test("a device connector takes no credentials", () => {
+    for (const driver of DriverEnum.options.filter((candidate) => candidate.startsWith("local_"))) {
+      expect(validateConnectorAuthType(driver, "none")).toEqual([]);
+      expect(validateConnectorAuthType(driver, "basic")).toEqual([
+        expect.objectContaining({ path: "auth_type" }),
+      ]);
+    }
   });
 });

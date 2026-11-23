@@ -474,3 +474,50 @@ describe("PATCH /v1/connectors/{id} oauth scope", () => {
     expect((await row(id))?.needs_reauth).toBe(false);
   });
 });
+
+describe("sftp sign-in kinds", () => {
+  const pin = `SHA256:${"A".repeat(43)}`;
+  const key = {
+    method: "private_key",
+    username: "deploy",
+    private_key_item: "sftp-deploy-key",
+  };
+  const definition = (auth_type: string, config: Record<string, unknown>) => ({
+    name: `Files ${auth_type}`,
+    driver: "sftp",
+    base_url: "sftp://files.example.test/inbox",
+    auth_type,
+    config: { host_key_sha256: pin, ...config },
+  });
+  const verdict = async (body: unknown) =>
+    (await (await post("/v1/connectors/validate", body)).json()) as {
+      ok: boolean;
+      issues: { path: string }[];
+    };
+
+  test("validate accepts a password and an SSH key from the vault", async () => {
+    expect((await verdict(definition("basic", {}))).ok).toBe(true);
+    expect((await verdict(definition("none", { auth: key }))).ok).toBe(true);
+  });
+
+  test("validate refuses other auth kinds and a mismatched pairing", async () => {
+    const bearer = await verdict(definition("bearer", {}));
+    expect(bearer.issues.some((i) => i.path === "auth_type")).toBe(true);
+    const keyless = await verdict(definition("none", {}));
+    expect(keyless.issues.some((i) => i.path === "config.auth")).toBe(true);
+    const mixed = await verdict(definition("basic", { auth: key }));
+    expect(mixed.issues.some((i) => i.path === "auth_type")).toBe(true);
+  });
+
+  test("create stores a key connector and refuses one without a key", async () => {
+    const created = await post("/v1/connectors", definition("none", { auth: key }));
+    expect(created.status).toBe(201);
+    const before = await connectorCount();
+    const refused = await post("/v1/connectors", {
+      ...definition("none", {}),
+      name: "Files keyless",
+    });
+    expect(refused.status).toBe(400);
+    expect(await connectorCount()).toBe(before);
+  });
+});

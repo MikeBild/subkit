@@ -4,8 +4,6 @@ import { type McpAuthConfig, McpAuthConfigSchema } from "../mcp/client/registry.
 import { SftpAuthConfigSchema } from "./core/sftp-auth.ts";
 import { type AuthType, type DriverName, HttpConnectorConfig } from "./types.ts";
 
-export { validateSftpAuthConsistency } from "./core/config-policy.ts";
-
 const GraphQLConnectorConfigSchema = z.object({
   default_headers: z.record(z.string(), z.string()).optional(),
   signed_jwt: SignedJwtConfigSchema.optional(),
@@ -104,38 +102,6 @@ export function withMcpConfigDefaults(
 interface ConnectorConfigIssue {
   path: string;
   message: string;
-}
-
-export function validateConnectorAuthType(
-  driver: DriverName,
-  auth_type: AuthType | undefined | null,
-): ConnectorConfigIssue[] {
-  if (!auth_type) return [];
-  if (driver === "mcp") {
-    if (mcpAuthKindForType(auth_type)) return [];
-    return [
-      {
-        path: "auth_type",
-        message: `auth_type '${auth_type}' is not supported by the mcp transport — use none, bearer, basic, header, oauth2, oauth2_client, or oauth2_private_key`,
-      },
-    ];
-  }
-  if (auth_type === "signed_jwt") {
-    if (driver === "http" || driver === "graphql") return [];
-    return [
-      {
-        path: "auth_type",
-        message: "auth_type 'signed_jwt' is supported only by http and graphql connectors",
-      },
-    ];
-  }
-  if (!MCP_ONLY_AUTH_TYPES.includes(auth_type)) return [];
-  return [
-    {
-      path: "auth_type",
-      message: `auth_type '${auth_type}' is only declarable by an mcp connector — it identifies an OAuth2 client to a token endpoint and is never applied to a ${driver} request`,
-    },
-  ];
 }
 
 export function validateSignedJwtAuthConfig(

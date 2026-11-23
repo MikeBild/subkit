@@ -1,9 +1,8 @@
 import {
-  validateConnectorAuthType,
   validateConnectorConfig,
   validateMcpAuthConsistency,
-  validateSftpAuthConsistency,
 } from "../connectors/config-schemas.ts";
+import { validateConnectorAuthType, validateSftpAuthConsistency } from "../connectors/index.ts";
 import type { ConnectorTemplate } from "../connectors/templates.ts";
 import { getBuiltinTemplate } from "../connectors/templates.ts";
 import type { CreateConnectorInput } from "../connectors/types.ts";
