@@ -60,8 +60,8 @@ async function heldModelSteps(
   );
   return {
     model_step_ids: (preview.manifest.model_calls ?? []).map(modelCallLabel),
-    unresolved_call_ids: preview.manifest.issues.flatMap((issue) =>
-      issue.code === "unbound_workflow_call" ? [issue.step_id] : [],
+    unresolved_call_ids: preview.call_refusals.flatMap((refusal) =>
+      refusal.reason === "child_unavailable" ? [] : [refusal.step_id],
     ),
   };
 }

@@ -154,7 +154,7 @@ test("a parent whose called workflow cannot be resolved does not run without an 
   });
   await expect(admit(parent.workflow_id, true)).rejects.toMatchObject({
     code: "execution_authority_required",
-    message: expect.stringContaining("(dynamic, missing)"),
+    message: expect.stringContaining("(dynamic)"),
   });
   await expect(admit(parent.workflow_id)).rejects.toMatchObject({
     code: "execution_authority_required",
