@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { utils } from "ssh2";
+import { redact } from "./redact.ts";
 import {
   referencesKeyMaterialPath,
   SECRET_PATTERNS,
@@ -309,5 +311,38 @@ describe("referencesKeyMaterialPath", () => {
 
   test.each(ordinary)("leaves %p alone", (text) => {
     expect(referencesKeyMaterialPath(text)).toBe(false);
+  });
+});
+
+describe("SSH private keys", () => {
+  const openssh = utils.generateKeyPairSync("ed25519").private;
+  const body = openssh.split("\n")[1] as string;
+
+  test("scrubString hides an OpenSSH private key block", () => {
+    const out = scrubString(`key was ${openssh} end`);
+    expect(out).not.toContain(body);
+    expect(out).not.toContain("BEGIN OPENSSH PRIVATE KEY");
+    expect(out).toContain("end");
+  });
+
+  test("scrubSecrets hides a key nested in an object", () => {
+    const out = JSON.stringify(scrubSecrets({ detail: { text: openssh } }));
+    expect(out).not.toContain(body);
+  });
+
+  test("redact masks private_key and passphrase values but keeps vault item names", () => {
+    const out = redact({
+      auth: {
+        method: "private_key",
+        private_key: openssh,
+        passphrase: "synthetic-passphrase",
+        private_key_item: "sftp-deploy-key",
+        passphrase_item: "sftp-deploy-key-passphrase",
+      },
+    }) as { auth: Record<string, unknown> };
+    expect(JSON.stringify(out)).not.toContain(body);
+    expect(JSON.stringify(out)).not.toContain("synthetic-passphrase");
+    expect(out.auth.private_key_item).toBe("sftp-deploy-key");
+    expect(out.auth.passphrase_item).toBe("sftp-deploy-key-passphrase");
   });
 });

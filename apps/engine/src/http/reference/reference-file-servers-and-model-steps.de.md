@@ -17,11 +17,33 @@ Ein SFTP-Connector verbindet SubKit mit genau einem Ordner auf einem Dateiserver
 
 - **Adresse:** `sftp://host:22/ordner`. Der Port ist optional, ohne Angabe gilt 22. Die Adresse enthält nur Host, Port und Ordner; Benutzername und Passwort gehören nie hinein.
 - **Host-Key:** `config.host_key_sha256` enthält den SHA256-Fingerabdruck des Host-Keys des Servers, zum Beispiel aus `ssh-keyscan host | ssh-keygen -lf -`. Fehlt er, lehnt SubKit jeden Aufruf mit `sftp_host_key_missing` ab. Zeigt der Server einen anderen Schlüssel, stoppt der Aufruf mit `sftp_host_key_mismatch`, bevor etwas gesendet wird.
-- **Anmeldung:** Benutzername und Passwort, gespeichert als Zugangsdaten des Connectors.
+- **Anmeldung:** entweder Benutzername und Passwort, gespeichert als Zugangsdaten des Connectors (`auth_type: "basic"`), oder ein privater SSH-Key aus dem Tresor (`auth_type: "none"` und `config.auth`, siehe unten).
 - **Ordner:** Jeder Pfad, den ein Workflow nutzt, bleibt in dem Ordner aus der Adresse. Ein Pfad, der hinausführt, wird mit `sftp_path_outside_root` abgelehnt.
 - **Netzwerk:** Die Verbindung läuft durch dieselben Egress-Regeln wie bei jedem anderen Connector. Private Adressen bleiben also gesperrt, solange die Einstellungen deiner Engine sie nicht freigeben.
 
 Der Test des Connectors listet den Ordner mit einem Eintrag. Damit sind Adresse, Host-Key und Anmeldung bestätigt.
+
+### Anmeldung mit einem SSH-Key aus dem Tresor
+
+Der private Schlüssel bleibt im Tresor. Der Connector kennt nur die Namen der Tresor-Einträge, nie den Schlüssel selbst.
+
+1. Speichere den Schlüssel als Workspace-Secret im Tresor, in der Umgebung des Connectors, zum Beispiel mit `subkit vault add sftp-deploy-key --env prod < deploy_key`. Unterstützt werden OpenSSH (`-----BEGIN OPENSSH PRIVATE KEY-----`), RSA- und EC-PEM. Einen PKCS#8-Schlüssel (`-----BEGIN PRIVATE KEY-----`) wandelst du vorher mit `ssh-keygen -p -f deploy_key` um.
+2. Ist der Schlüssel verschlüsselt, speichere seine Passphrase als zweites Secret, zum Beispiel `sftp-deploy-key-passphrase`.
+3. Setze am Connector `auth_type: "none"` und verweise in `config.auth` auf die Einträge:
+
+```json
+{
+  "host_key_sha256": "SHA256:…",
+  "auth": {
+    "method": "private_key",
+    "username": "deploy",
+    "private_key_item": "sftp-deploy-key",
+    "passphrase_item": "sftp-deploy-key-passphrase"
+  }
+}
+```
+
+SubKit liest den Schlüssel erst beim Verbinden aus dem Tresor deines Workspace, nach der Prüfung des Host-Keys. Jede Nutzung steht ohne den Schlüssel in der Aktivität des Tresor-Eintrags. Ein Connector in einem anderen Workspace kann deine Einträge nicht nutzen, auch nicht bei gleichem Namen.
 
 ### SFTP-Steps
 
@@ -118,6 +140,12 @@ Eine Datei darf höchstens 25 MB groß sein. Der Step nimmt keine `expression`; 
 | `sftp_host_key_missing` | Der Connector hat keinen Fingerabdruck des Host-Keys. |
 | `sftp_host_key_mismatch` | Der Server hat einen anderen Host-Key gezeigt. |
 | `sftp_path_outside_root` | Der Pfad führt aus dem Connector-Ordner hinaus. |
+| `sftp_key_item_missing` | Im Tresor gibt es in der Umgebung des Connectors kein Workspace-Secret mit diesem Namen. |
+| `sftp_key_not_private_key` | Der Tresor-Eintrag enthält keinen privaten SSH-Key. |
+| `sftp_key_format_unsupported` | Der Schlüssel liegt als PKCS#8 oder in einem anderen Format vor; speichere ihn als OpenSSH-, RSA- oder EC-PEM. |
+| `sftp_key_passphrase_required` | Der Schlüssel ist verschlüsselt, und `passphrase_item` fehlt. |
+| `sftp_key_passphrase_wrong` | Die Passphrase öffnet den Schlüssel nicht. |
+| `sftp_key_rejected` | Der Server hat den Schlüssel für diesen Benutzernamen abgelehnt. |
 | `model_output_invalid` | Die Antwort des Modells ist kein gültiges JSON. |
 | `model_output_schema_invalid` | Die Antwort passt nicht zu `output_schema`. |
 | `model_step_secret_placeholder` | Der Model-Step nutzt Zugangsdaten, ein Secret oder eine Connector-Einstellung. |

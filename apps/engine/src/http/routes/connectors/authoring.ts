@@ -8,6 +8,7 @@ import {
   validateConnectorAuthType,
   validateConnectorConfig,
   validateMcpAuthConsistency,
+  validateSftpAuthConsistency,
   withMcpConfigDefaults,
 } from "../../../connectors/index.ts";
 import {
@@ -59,6 +60,7 @@ const validateConnectorOperation = defineOperation<
       ...validateConnectorConfig(body.driver as DriverName, effectiveConfig),
       ...validateConnectorAuthType(body.driver as DriverName, body.auth_type),
       ...validateMcpAuthConsistency(body.driver as DriverName, body.auth_type, effectiveConfig),
+      ...validateSftpAuthConsistency(body.driver as DriverName, body.auth_type, effectiveConfig),
     ];
     return { ok: issues.length === 0, issues };
   },

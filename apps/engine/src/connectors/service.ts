@@ -29,6 +29,7 @@ import {
   mcpAuthConsistencyIssue,
   metadataPatchOf,
   oauthScopeOf,
+  sftpAuthConsistencyIssue,
   signedJwtAuthConfigIssue,
   slugify as slugStem,
   templateWasRebound,
@@ -66,6 +67,16 @@ function assertMcpAuthConfigConsistent(
   config: Record<string, unknown> | undefined,
 ): void {
   const first = mcpAuthConsistencyIssue(driver, auth_type, config);
+  if (!first) return;
+  throw new BadRequestError(first.message, { field: first.path, driver });
+}
+
+function assertSftpAuthConfigConsistent(
+  driver: DriverName,
+  auth_type: ConnectorView["auth_type"],
+  config: Record<string, unknown> | undefined,
+): void {
+  const first = sftpAuthConsistencyIssue(driver, auth_type, config);
   if (!first) return;
   throw new BadRequestError(first.message, { field: first.path, driver });
 }
@@ -190,6 +201,7 @@ export async function createConnector(
     assertAuthTypeAllowedForDriver(effective.driver, auth_type);
     validateConnectorConfigOrThrow(effective.driver, effective.config);
     assertMcpAuthConfigConsistent(effective.driver, auth_type, effective.config);
+    assertSftpAuthConfigConsistent(effective.driver, auth_type, effective.config);
     assertSignedJwtAuthConfig(auth_type, effective.config);
     const existingRows = await tx
       .select()
@@ -699,6 +711,11 @@ export async function updateConnector(
       set.config as Record<string, unknown>,
     );
     assertMcpAuthConfigConsistent(
+      prior.driver as DriverName,
+      (set.auth_type ?? prior.auth_type) as ConnectorView["auth_type"],
+      (set.config ?? prior.config ?? {}) as Record<string, unknown>,
+    );
+    assertSftpAuthConfigConsistent(
       prior.driver as DriverName,
       (set.auth_type ?? prior.auth_type) as ConnectorView["auth_type"],
       (set.config ?? prior.config ?? {}) as Record<string, unknown>,

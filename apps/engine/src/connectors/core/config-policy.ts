@@ -1,4 +1,5 @@
 import { SignedJwtConfigSchema } from "../../credentials/core/signed-jwt-config.ts";
+import { sftpAuthConsistencyIssue, sftpAuthTypeIssue } from "./sftp-auth.ts";
 
 type DriverName =
   | "http"
@@ -71,13 +72,8 @@ export function validateConnectorAuthType(
     ];
   }
   if (driver === "sftp") {
-    if (auth_type === "basic") return [];
-    return [
-      {
-        path: "auth_type",
-        message: "an sftp connector signs in with a username and password — use auth_type 'basic'",
-      },
-    ];
+    const issue = sftpAuthTypeIssue(auth_type);
+    return issue ? [issue] : [];
   }
   if (driver === "mcp") {
     if (mcpAuthKindForType(auth_type)) return [];
@@ -104,6 +100,16 @@ export function validateConnectorAuthType(
       message: `auth_type '${auth_type}' is only declarable by an mcp connector — it identifies an OAuth2 client to a token endpoint and is never applied to a ${driver} request`,
     },
   ];
+}
+
+export function validateSftpAuthConsistency(
+  driver: DriverName,
+  auth_type: AuthType | undefined | null,
+  config: Record<string, unknown> | undefined | null,
+): ConnectorConfigIssue[] {
+  if (driver !== "sftp" || !auth_type) return [];
+  const issue = sftpAuthConsistencyIssue(auth_type, config);
+  return issue ? [issue] : [];
 }
 
 export function validateSignedJwtAuthConfig(

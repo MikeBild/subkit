@@ -3,6 +3,7 @@ import type { AuthType, DriverName, Environment } from "../types.ts";
 import {
   validateConnectorAuthType,
   validateMcpAuthConsistency,
+  validateSftpAuthConsistency,
   validateSignedJwtAuthConfig,
 } from "./config-policy.ts";
 
@@ -24,6 +25,14 @@ export function mcpAuthConsistencyIssue(
   config: Record<string, unknown> | undefined,
 ): ConnectorConfigIssue | null {
   return validateMcpAuthConsistency(driver, authType, config)[0] ?? null;
+}
+
+export function sftpAuthConsistencyIssue(
+  driver: DriverName,
+  authType: AuthType,
+  config: Record<string, unknown> | undefined,
+): ConnectorConfigIssue | null {
+  return validateSftpAuthConsistency(driver, authType, config)[0] ?? null;
 }
 
 export function signedJwtAuthConfigIssue(

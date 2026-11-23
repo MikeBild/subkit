@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { SignedJwtConfigSchema } from "../credentials/signed-jwt.ts";
 import { type McpAuthConfig, McpAuthConfigSchema } from "../mcp/client/registry.ts";
+import { SftpAuthConfigSchema } from "./core/sftp-auth.ts";
 import { type AuthType, type DriverName, HttpConnectorConfig } from "./types.ts";
+
+export { validateSftpAuthConsistency } from "./core/config-policy.ts";
 
 const GraphQLConnectorConfigSchema = z.object({
   default_headers: z.record(z.string(), z.string()).optional(),
@@ -25,6 +28,7 @@ const SftpConnectorConfigSchema = z
         /^(SHA256:)?[A-Za-z0-9+/]{43}=?$/,
         "host_key_sha256 must be a SHA256 host key fingerprint",
       ),
+    auth: SftpAuthConfigSchema.optional(),
   })
   .strict();
 

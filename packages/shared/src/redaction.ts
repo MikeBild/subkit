@@ -67,7 +67,7 @@ export const SECRET_PATTERNS: ReadonlyArray<SecretPattern> = [
   {
     kind: "generic",
     regex:
-      /-----BEGIN (?:RSA |EC |ENCRYPTED )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |ENCRYPTED )?PRIVATE KEY-----/g,
+      /-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----/g,
   },
   { kind: "pat", regex: /\bdop_v1_[A-Za-z0-9]{32,}/g },
   { kind: "pat", regex: /\bghp_[A-Za-z0-9]{30,}/g },
