@@ -38,8 +38,8 @@ describe("formatMoney", () => {
 describe("scheduleCostWords", () => {
   test("names the monthly estimate and its basis in German", () => {
     expect(words(estimated, "de")).toEqual({
-      amount: "≈ 4,20 € / Monat",
-      basis: "aus 12 Runs, aktuelle Modellpreise",
+      amount: translate("de", "schedule.cost.amount", { amount: formatMoney("de", 4.2, "EUR") }),
+      basis: translatePlural("de", "schedule.cost.basis.version", 12),
       estimated: true,
     });
   });
@@ -54,7 +54,7 @@ describe("scheduleCostWords", () => {
 
   test("says the estimate comes from earlier versions when the current one has not run", () => {
     expect(words({ ...estimated, basis: "workflow", runs_sampled: 3 }, "de").basis).toBe(
-      "aus 3 Runs früherer Versionen, aktuelle Modellpreise",
+      translatePlural("de", "schedule.cost.basis.workflow", 3),
     );
   });
 
@@ -78,8 +78,8 @@ describe("scheduleCostWords", () => {
         "de",
       ),
     ).toEqual({
-      amount: "Noch keine Schätzung",
-      basis: "Die Schätzung erscheint nach dem ersten abgeschlossenen Run.",
+      amount: translate("de", "schedule.cost.none"),
+      basis: translate("de", "schedule.cost.noneBasis"),
       estimated: false,
     });
   });
