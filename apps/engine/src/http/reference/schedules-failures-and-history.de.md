@@ -35,6 +35,17 @@ Ein gescheiterter Run zeigt einen Hinweis mit drei Teilen: was passiert ist, ein
 
 Für vertrauliche Workflows (`execution_privacy: sensitive`) speichert SubKit keine Fehlerdetails. Seit dieser Version behält ein solcher Run trotzdem seine Ursache und einen festen Satz, der sagt, was zu tun ist. Beispiel: „The connected service rejected the sign-in. Reconnect the connector, then run again. Nothing was changed by this step.“ Erkennt SubKit keine Ursache, bleibt es bei „Sensitive execution failed.“ Diese Sätze schreibt die Engine auf Englisch. Das Cockpit sagt sie in deiner Sprache, wo es die Ursache, den Grund eines Anhaltens oder den Fehlercode kennt: in der Übersicht bei angehaltenen und scheiternden Workflows, bei einem abgelehnten erneuten Start und in Fehlerhinweisen. Das Beispiel oben liest du dort als „Der verbundene Dienst hat die Anmeldung abgelehnt. Verbinde den Connector neu und starte den Run noch einmal. Dieser Schritt hat nichts verändert.“ In den technischen Angaben eines Runs, über die HTTP-API und in `subkit` steht weiter der englische Satz der Engine. Auch SubKit Desktop benachrichtigt in deiner Sprache.
 
+### Sehen, was ein Zeitplan kostet
+
+Bevor du einen Zeitplan anlegst oder änderst, und an jedem Zeitplan zeigt SubKit eine Schätzung wie „≈ 4,20 € / Monat“ mit ihrer Grundlage, zum Beispiel „aus 12 Runs, aktuelle Modellpreise“.
+
+- SubKit nimmt die durchschnittlichen Modellkosten der letzten abgeschlossenen Runs der aktuellen Version und multipliziert sie mit den Runs pro Monat, die der Rhythmus ergibt.
+- Hat die aktuelle Version noch keinen Run abgeschlossen, nimmt SubKit die Runs früherer Versionen und sagt das dazu.
+- Ohne abgeschlossenen Run liest du „Noch keine Schätzung“.
+- Die Preise sind die aktuellen Modellpreise in der Währung, die unter **Nutzung** eingestellt ist. Andere Kosten, etwa für externe Dienste, sind nicht enthalten.
+
+Die Schätzung folgt dem Rhythmus, während du ihn änderst. Du siehst sie auch an einem Zeitplan, der in der **Übersicht** auf eine Freigabe wartet.
+
 ### Warum ein Zeitplan wartet
 
 Ein gehaltener Zeitplan startet keinen Run, verliert aber nichts. Sobald du den Grund behebst, läuft er weiter. Der Grund steht am Workflow, in der **Übersicht** und im **Zeitplan-Verlauf**.
@@ -151,13 +162,15 @@ subkit schedules pause <schedule-id>
 subkit schedules resume <schedule-id>
 ```
 
-`subkit schedules resume` setzt auch einen automatisch pausierten Zeitplan fort und zählt die Fehler neu. Für den Verlauf gibt es keinen `subkit`-Befehl.
+`subkit schedules resume` setzt auch einen automatisch pausierten Zeitplan fort und zählt die Fehler neu. `subkit schedules list` zeigt die monatliche Schätzung in der Spalte `estimate`. Für den Verlauf gibt es keinen `subkit`-Befehl.
 
 | Route | Bewirkt |
 | --- | --- |
 | `GET /v1/workflows/{id}/schedule-occurrences` | Liest den Verlauf eines Workflows, neueste zuerst. Braucht `workflow:read`. |
 | `GET /v1/tasks/{id}/schedule-occurrences` | Liest den Verlauf einer Aufgabe. Braucht `task:read`, und du musst die Aufgabe sehen dürfen. |
 | `PUT /v1/schedules/{id}` mit `{"paused": false}` | Setzt einen Zeitplan fort. Braucht `workflow:write`. |
+| `GET /v1/schedules` | Listet die Zeitpläne, jeden mit `cost_projection`. Braucht `workflow:read`. |
+| `GET /v1/workflows/{id}/schedule-cost?cron=…&timezone=…` | Schätzt die monatlichen Kosten für einen Rhythmus, bevor du ihn speicherst. Braucht `workflow:read`. |
 | `POST /v1/executions/{id}/cancel` | Stoppt einen laufenden Run. |
 
 Die Felder der Antworten, die Ereignisse und die Gründe stehen in „Referenz: Desktop-App, Regeln, Zeitpläne und Fehlerberichte“.
