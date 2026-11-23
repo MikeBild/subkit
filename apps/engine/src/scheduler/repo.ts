@@ -16,6 +16,10 @@ import type { ScheduleTrigger } from "../workflows/types.ts";
 import { WorkflowDefSchema } from "../workflows/types.ts";
 import { stripCalendarGates } from "./calendar-gates.ts";
 import { parseCronExpression } from "./cron.ts";
+import {
+  type ScheduleInputVersions,
+  scheduleInputMismatchError,
+} from "./schedule-input-mismatch.ts";
 
 function canonicalJson(value: unknown): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
@@ -123,11 +127,70 @@ export async function validateScheduleInput(
     : { checked_version_id: row.version_id, issues: scheduleInputIssues(check.errors) };
 }
 
-function invalidScheduleInput(input_error: ScheduleInputError): never {
-  throw Object.assign(new Error("schedule input does not match the active workflow"), {
-    code: "input_schema_violation",
-    details: input_error,
-  });
+function inputFitsVersion(dag: unknown, input: unknown): boolean {
+  const parsed = WorkflowDefSchema.safeParse(dag);
+  if (!parsed.success) return false;
+  const schema = parsed.data.input_schema;
+  if (!schema) return true;
+  return validateAgainstJsonSchema(
+    normalizeWorkflowRunInput(stripCalendarGates(input), schema),
+    schema,
+    "$input",
+  ).valid;
+}
+
+async function scheduleInputVersions(
+  db: Executor,
+  tenant_id: string,
+  workflow_id: string,
+  input: unknown,
+): Promise<ScheduleInputVersions> {
+  const [wf] = await db
+    .select({ current: workflows.current_version_id, draft: workflows.draft_version_id })
+    .from(workflows)
+    .where(and(eq(workflows.tenant_id, tenant_id), eq(workflows.id, workflow_id)))
+    .limit(1);
+  const version = async (id: string | null | undefined) => {
+    if (!id) return null;
+    const [row] = await db
+      .select({
+        id: workflowVersions.id,
+        version: workflowVersions.version,
+        dag: workflowVersions.dag,
+      })
+      .from(workflowVersions)
+      .where(
+        and(
+          eq(workflowVersions.tenant_id, tenant_id),
+          eq(workflowVersions.workflow_id, workflow_id),
+          eq(workflowVersions.id, id),
+        ),
+      )
+      .limit(1);
+    return row ?? null;
+  };
+  const active = await version(wf?.current);
+  const draft = wf?.draft && wf.draft !== wf.current ? await version(wf.draft) : null;
+  return {
+    active_version: active?.version ?? null,
+    prepared:
+      draft && inputFitsVersion(draft.dag, input) ? { id: draft.id, version: draft.version } : null,
+  };
+}
+
+async function invalidScheduleInput(
+  db: Executor,
+  tenant_id: string,
+  workflow_id: string,
+  input: unknown,
+  input_error: ScheduleInputError,
+  kept_existing_input: boolean,
+): Promise<never> {
+  throw scheduleInputMismatchError(
+    input_error,
+    await scheduleInputVersions(db, tenant_id, workflow_id, input),
+    kept_existing_input,
+  );
 }
 
 export async function createSchedule(
@@ -195,7 +258,15 @@ export async function createScheduleLocked(
     input.workflow_id,
     scheduleInput,
   );
-  if (input_error) invalidScheduleInput(input_error);
+  if (input_error)
+    await invalidScheduleInput(
+      db,
+      input.tenant_id,
+      input.workflow_id,
+      scheduleInput,
+      input_error,
+      input.input === undefined && prior !== undefined,
+    );
   if (prior) {
     const updated = await db
       .update(workflowsSchedules)
@@ -325,7 +396,15 @@ async function updateScheduleLocked(
   if (!existing) return null;
   const nextInput = patch.input === undefined ? existing.input : patch.input;
   const input_error = await validateScheduleInput(db, tenant_id, existing.workflow_id, nextInput);
-  if (input_error) invalidScheduleInput(input_error);
+  if (input_error)
+    await invalidScheduleInput(
+      db,
+      tenant_id,
+      existing.workflow_id,
+      nextInput,
+      input_error,
+      patch.input === undefined,
+    );
   const set: Record<string, unknown> = {
     updated_at: new Date(),
     input_error: null,

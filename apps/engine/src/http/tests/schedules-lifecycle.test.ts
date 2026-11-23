@@ -1,7 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { auditLog, workflowsSchedules } from "../../db/schema/index.ts";
+import {
+  auditLog,
+  workflows,
+  workflowsSchedules,
+  workflowVersions,
+} from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let ctx: HttpTestServer;
@@ -199,6 +204,93 @@ describe("schedules HTTP write surface", () => {
       .from(workflowsSchedules)
       .where(eq(workflowsSchedules.workflow_id, wf.id));
     expect(schedules).toHaveLength(0);
+  });
+
+  async function addVersion(
+    workflow_id: string,
+    input_schema: Record<string, unknown>,
+    activate: boolean,
+  ): Promise<string> {
+    const [current] = await ctx.db
+      .select({ dag: workflowVersions.dag })
+      .from(workflowVersions)
+      .where(eq(workflowVersions.workflow_id, workflow_id));
+    const [version] = await ctx.db
+      .insert(workflowVersions)
+      .values({
+        tenant_id: ctx.tenantId,
+        workflow_id,
+        version: 2,
+        dag: { ...(current?.dag as Record<string, unknown>), input_schema },
+      })
+      .returning({ id: workflowVersions.id });
+    if (!version) throw new Error("version insert failed");
+    await ctx.db
+      .update(workflows)
+      .set(activate ? { current_version_id: version.id } : { draft_version_id: version.id })
+      .where(eq(workflows.id, workflow_id));
+    return version.id;
+  }
+
+  const sinceContract = {
+    type: "object",
+    required: ["since"],
+    properties: { since: { type: "string" } },
+    additionalProperties: false,
+  };
+
+  test("a schedule kept across a new version names the field the active version needs", async () => {
+    const wf = await createWorkflow("sched-input-v2", {
+      type: "object",
+      properties: { account_id: { type: "string" } },
+    });
+    const first = await fetch(`${ctx.baseUrl}/v1/schedules`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify({
+        workflow_id: wf.id,
+        cron: "0 8 * * *",
+        input: { account_id: "a-1" },
+      }),
+    });
+    expect(first.status).toBe(201);
+    await addVersion(wf.id, sinceContract, true);
+    const again = await fetch(`${ctx.baseUrl}/v1/schedules`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify({ workflow_id: wf.id, cron: "0 9 * * *" }),
+    });
+    expect(again.status).toBe(400);
+    const body = (await again.json()) as { message: string; details?: Record<string, unknown> };
+    expect(body.message).toContain("(version 2)");
+    expect(body.message).toContain("$input/since: must have required property 'since'");
+    expect(body.message).toContain("$input/account_id: must NOT have additional properties");
+    expect(body.message).toContain("kept from the existing schedule");
+    expect(body.details).toMatchObject({ checked_version: 2, kept_existing_input: true });
+  });
+
+  test("input written for a prepared version says that version is not active yet", async () => {
+    const wf = await createWorkflow("sched-input-prepared", {
+      type: "object",
+      required: ["account_id"],
+      properties: { account_id: { type: "string" } },
+    });
+    const prepared = await addVersion(wf.id, sinceContract, false);
+    const res = await fetch(`${ctx.baseUrl}/v1/schedules`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify({
+        workflow_id: wf.id,
+        cron: "0 8 * * *",
+        input: { since: "2026-11-01" },
+      }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { message: string; details?: Record<string, unknown> };
+    expect(body.message).toContain("(version 1)");
+    expect(body.message).toContain("$input/account_id");
+    expect(body.message).toContain("matches the prepared version 2, which is not active yet");
+    expect(body.details).toMatchObject({ prepared_version_id: prepared, prepared_version: 2 });
   });
 
   test("schedule updates and resume keep an invalid persisted input held for correction", async () => {
