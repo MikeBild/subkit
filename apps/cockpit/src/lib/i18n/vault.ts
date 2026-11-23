@@ -39,6 +39,8 @@ export const vaultEn = {
   "vault.field.environment": "Environment",
   "vault.field.description": "Description (optional)",
   "vault.field.token": "API key or token",
+  "vault.field.tokenHelp":
+    "Paste multi-line values such as an SSH private key as they are. Line breaks are kept.",
   "vault.field.username": "Username",
   "vault.field.password": "Password",
   "vault.name.empty": "Enter a name, for example crm-token.",
@@ -141,6 +143,8 @@ export const vaultDe: Record<keyof typeof vaultEn, string> = {
   "vault.field.environment": "Umgebung",
   "vault.field.description": "Beschreibung (optional)",
   "vault.field.token": "API-Key oder Token",
+  "vault.field.tokenHelp":
+    "Mehrzeilige Werte wie einen privaten SSH-Key fügst du unverändert ein. Die Zeilenumbrüche bleiben erhalten.",
   "vault.field.username": "Benutzername",
   "vault.field.password": "Passwort",
   "vault.name.empty": "Gib einen Namen ein, zum Beispiel crm-token.",

@@ -395,7 +395,7 @@ export function VaultDetail({
   );
 }
 
-function ValueFields({
+export function ValueFields({
   idPrefix,
   draft,
   onChange,
@@ -409,14 +409,16 @@ function ValueFields({
   const { t } = useI18n();
   if (draft.kind === "secret")
     return (
-      <TextField
+      <TextAreaField
         id={`${idPrefix}-token`}
         label={t("vault.field.token")}
-        type="password"
+        help={t("vault.field.tokenHelp")}
         value={draft.token}
         onChange={(token) => onChange({ token })}
         error={error}
+        rows={4}
         required
+        masked
         mono
       />
     );

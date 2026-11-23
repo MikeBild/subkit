@@ -128,6 +128,8 @@ export function TextAreaField({
   help,
   rows = 6,
   mono,
+  masked,
+  required,
   placeholder,
   error,
 }: {
@@ -138,6 +140,8 @@ export function TextAreaField({
   help?: string;
   rows?: number;
   mono?: boolean;
+  masked?: boolean;
+  required?: boolean;
   placeholder?: string;
   error?: string | null;
 }) {
@@ -148,10 +152,20 @@ export function TextAreaField({
         rows={rows}
         value={value}
         placeholder={placeholder}
+        required={required}
         aria-invalid={Boolean(error) || undefined}
         spellCheck={false}
+        autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize="off"
+        data-masked={masked || undefined}
         onChange={(event) => onChange(event.target.value)}
-        className={cn(CONTROL, "py-2", mono && "font-mono text-xs md:text-xs")}
+        className={cn(
+          CONTROL,
+          "py-2",
+          mono && "font-mono text-xs md:text-xs",
+          masked && "[-webkit-text-security:disc]",
+        )}
         data-testid={id}
       />
     </Shell>
