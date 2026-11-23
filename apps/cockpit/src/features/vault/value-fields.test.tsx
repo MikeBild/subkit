@@ -3,6 +3,7 @@ import { JSDOM } from "jsdom";
 import { act, useState } from "react";
 import type { Root } from "react-dom/client";
 import { render } from "@/components/cockpit/patterns/test-utils";
+import { translate } from "@/lib/i18n";
 import { I18nContext } from "@/lib/i18n-context";
 import { createBody, emptyDraft, rotateBody, type VaultDraft } from "./model/vault";
 import { ValueFields } from "./page";
@@ -33,7 +34,7 @@ test("the secret value is a masked monospace text area without autocomplete or s
   expect(field).toContain('autoComplete="off"');
   expect(field).toContain('spellCheck="false"');
   expect(field).toContain("required");
-  expect(html).toContain("Die Zeilenumbrüche bleiben erhalten.");
+  expect(html).toContain(translate("de", "vault.field.tokenHelp"));
   const en = render(
     <ValueFields idPrefix="vault-add" draft={draft} onChange={() => {}} error={null} />,
     "en",
