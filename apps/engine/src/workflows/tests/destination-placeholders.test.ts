@@ -60,6 +60,7 @@ describe("detectPlaceholderDestinations · scanned sites and path names", () => 
     {
       name: "graphql.variables",
       def: requestWith({
+        protocol: "graphql",
         graphql: {
           query: "query($email: String) { user(email: $email) { id } }",
           variables: { email: "test@acme.com" },

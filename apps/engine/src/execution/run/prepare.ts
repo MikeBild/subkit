@@ -250,9 +250,8 @@ export async function prepareRun(
     await stampWrite(step_row_id);
   };
   const beforeExternalRequest =
-    (step_key: string) =>
-    async ({ dispatch_effect, ...snapshot }: ExternalRequestAdmission) => {
-      const write = dispatch_effect === "write";
+    (step_key: string) => async (snapshot: ExternalRequestAdmission) => {
+      const write = snapshot.dispatch_effect === "write";
       if (write) await fenceWrite();
       const policy = await assertExecutionAuthorityCurrent(db, tenant_id, execution_id, snapshot);
       if (write) await stampWrite(snapshot.step_row_id);

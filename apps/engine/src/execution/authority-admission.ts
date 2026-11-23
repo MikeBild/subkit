@@ -76,7 +76,7 @@ import {
   reserveTransactionalMail,
   transactionalWebhookAvailable,
 } from "./transactional-mail.ts";
-import type { RequestAuthoritySnapshot } from "./types.ts";
+import type { ExternalRequestAdmission, RequestAuthoritySnapshot } from "./types.ts";
 
 const requestSnapshotSchema = z
   .object({
@@ -372,12 +372,20 @@ export function admitSystemWorkflowExecution(
   return admitAuthorizedWorkflowExecution(raw, db, null, null, "trusted_system", verifiedWebhookId);
 }
 
+function withoutDispatchEffect({
+  dispatch_effect: _effect,
+  ...snapshot
+}: ExternalRequestAdmission): RequestAuthoritySnapshot {
+  return snapshot;
+}
+
 export async function assertExecutionAuthorityCurrent(
   db: Db,
   tenant_id: string,
   execution_id: string,
-  snapshot?: RequestAuthoritySnapshot,
+  admission?: ExternalRequestAdmission,
 ): Promise<RequestDispatchPolicy | undefined> {
+  const snapshot = admission && withoutDispatchEffect(admission);
   await assertTenantActive(tenant_id, db);
   const [execution] = await db
     .select()

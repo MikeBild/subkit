@@ -113,6 +113,7 @@ export function authorityAdmissionFixtures(state: { readonly ctx: TestDb }) {
               body: { recipient: "reviewed@example.test" },
               ...(request?.driver === "graphql"
                 ? {
+                    protocol: "graphql",
                     graphql: { operation: "mutation", query: "mutation { sendReport { id } }" },
                   }
                 : {}),

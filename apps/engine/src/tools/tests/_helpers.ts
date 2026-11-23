@@ -63,6 +63,7 @@ export function makeStubDb(): { db: Db; capture: StubDbCapture } {
   };
   const db: Record<string, unknown> = {
     transaction: async (fn: (tx: unknown) => unknown) => fn(db),
+    execute: async () => ({ rows: [{ previous_role: "none", previous_tenant: null }] }),
     select: (...args: Parameters<Db["select"]>) => policyFixture.db.select(...args),
     update: () => emptyUpdate,
     insert: () => ({
