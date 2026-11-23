@@ -708,17 +708,39 @@ export const RequestStepSchema = z
   ])
   .openapi("RequestStep");
 
+export const PARSE_FILE_FORMATS = ["csv", "xlsx", "pdf", "docx", "zip"] as const;
+export const PARSE_FILE_MAX_ROWS = 10_000;
+
+export const ParseFileConfigSchema = z
+  .object({
+    source: z.string().min(1).openapi({
+      description:
+        "Where the file sits in the run, as a dot path: an earlier step's output such as `download.data` or a run input such as `$input.invoice`. The value must be a file reference (`{ $file }`) or a file result of a request step.",
+    }),
+    format: z.enum(PARSE_FILE_FORMATS).optional().openapi({
+      description: "File type. Without it the type is read from the file itself.",
+    }),
+    sheet: z.string().min(1).optional().openapi({
+      description: "Spreadsheet sheet to read. Without it the first sheet is read.",
+    }),
+    max_rows: z.number().int().min(1).max(PARSE_FILE_MAX_ROWS).optional().openapi({
+      description: "Upper bound for table rows returned from a CSV or spreadsheet file.",
+    }),
+  })
+  .openapi("ParseFileConfig");
+
 export const TransformStepSchema = z
   .object({
     kind: z.literal("transform"),
     ...baseStep,
     expression: z.string().optional(),
     language: z
-      .enum(["javascript", "readability", "html-to-markdown", "structured-data"])
+      .enum(["javascript", "readability", "html-to-markdown", "structured-data", "parse-file"])
       .optional(),
     readability: ReadabilityConfigSchema.optional(),
     markdown: MarkdownConfigSchema.optional(),
     structured_data: StructuredDataConfigSchema.optional(),
+    file: ParseFileConfigSchema.optional(),
     input_schema: z.record(z.string(), z.unknown()).optional(),
     output_schema: z.record(z.string(), z.unknown()).optional(),
     silence_warnings: z
@@ -758,6 +780,28 @@ export const TransformStepSchema = z
         code: z.ZodIssueCode.custom,
         path: ["markdown"],
         message: 'markdown config is only valid when language="html-to-markdown"',
+      });
+    }
+    if (language === "parse-file" && s.expression !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["expression"],
+        message:
+          "transform.language=parse-file does not accept an expression; configure via the `file` block",
+      });
+    }
+    if (language === "parse-file" && s.file === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["file"],
+        message: "transform.language=parse-file requires a `file` block with a `source`",
+      });
+    }
+    if (s.file !== undefined && language !== "parse-file") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["file"],
+        message: 'file config is only valid when language="parse-file"',
       });
     }
     if (s.structured_data !== undefined && language !== "structured-data") {
