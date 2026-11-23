@@ -3,7 +3,6 @@ import { parseResourceUsage } from "../render/helpers.ts";
 import type {
   ConnectorIntent,
   ConnectorSummary,
-  KnowledgeSourceSummary,
   WorkflowIntent,
   WorkflowSummary,
   WorkflowTrigger,
@@ -130,32 +129,19 @@ export function extractConnectorSummary(call: ToolCallState): ConnectorSummary |
   return { kind: "connector", id, slug, template_slug: templateSlug, ...(usage ? { usage } : {}) };
 }
 
-export function extractKnowledgeSourceSummary(call: ToolCallState): KnowledgeSourceSummary | null {
+export interface CollectedItem {
+  id: string;
+  title: string;
+  category: string | null;
+}
+
+export function extractCollectedItem(call: ToolCallState): CollectedItem | null {
   const d = unwrapData(call);
-  if (!d) return null;
-  const ks = asRecord(d.knowledge_source);
-  if (!ks) return null;
-  const id = typeof ks.id === "string" ? ks.id : null;
-  const name = typeof ks.name === "string" ? ks.name : null;
-  if (!id || !name) return null;
-  const bytes_total = typeof ks.bytes_total === "number" ? ks.bytes_total : 0;
-  const args = asRecord(call.args) ?? {};
-  const argMime = typeof args.mime_type === "string" ? args.mime_type : null;
-  const argFileId = typeof args.file_id === "string" ? args.file_id : null;
-  const resMime = typeof ks.mime_type === "string" && ks.mime_type.length > 0 ? ks.mime_type : null;
-  const argMimeNonEmpty = argMime && argMime.length > 0 ? argMime : null;
-  const mime_type =
-    resMime ??
-    argMimeNonEmpty ??
-    (args.mode === "inline" ? "text/markdown" : "application/octet-stream");
-  const usage = parseResourceUsage(d.usage);
-  return {
-    kind: "knowledge_source",
-    id,
-    name,
-    mime_type,
-    size_bytes: bytes_total,
-    ...(argFileId ? { file_id: argFileId } : {}),
-    ...(usage ? { usage } : {}),
-  };
+  if (d?.collected !== true) return null;
+  const item = asRecord(d.intake_item);
+  if (!item) return null;
+  const id = typeof item.id === "string" ? item.id : null;
+  const title = typeof item.title === "string" ? item.title : null;
+  if (!id || !title) return null;
+  return { id, title, category: typeof item.category === "string" ? item.category : null };
 }

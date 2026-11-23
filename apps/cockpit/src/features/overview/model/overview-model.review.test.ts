@@ -46,6 +46,7 @@ function attention(overrides: Partial<Attention> = {}): Attention {
     sources: ANSWERED,
     status: { health_state: "healthy", next_run_at: "2026-09-28T13:00:00.000Z" },
     items: [],
+    snoozed: [],
     ...overrides,
   };
 }

@@ -7,10 +7,22 @@ export interface RefusalHold {
   readonly refusals?: number | undefined;
 }
 
+const PAUSING_REFUSALS: readonly string[] = [
+  "execution_authority_expired",
+  "execution_authority_exhausted",
+  "execution_authority_revoked",
+  "execution_authority_changed",
+];
+
+export function refusalCountsTowardPause(reason_code: string): boolean {
+  return PAUSING_REFUSALS.includes(reason_code);
+}
+
 export function countRefusal(
   hold: RefusalHold | null | undefined,
   reason_code: string,
-): { refusals: number; pause: boolean } {
+): { refusals: number; pause: boolean } | null {
+  if (!refusalCountsTowardPause(reason_code)) return null;
   const before = hold?.reason_code === reason_code ? Math.max(0, hold.refusals ?? 0) : 0;
   const refusals = before + 1;
   return { refusals, pause: refusals >= REFUSAL_PAUSE_AFTER };

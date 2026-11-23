@@ -13,6 +13,7 @@ import { registerEventFanoutHandler } from "./event-fanout.ts";
 import { registerExecutionRunHandler } from "./execution-run.ts";
 import { registerIngestDocsHandler } from "./ingest-docs.ts";
 import { registerIngestKnowledgeHandler } from "./ingest-knowledge.ts";
+import { registerPersonalNotesLearnHandler } from "./personal-notes-learn.ts";
 import { registerSkillCandidateAnalyzeHandler } from "./skill-candidate-analyze.ts";
 import { registerTaskRunTurnHandler } from "./task-run-turn.ts";
 import { registerTaskRunTurnDlqHandler } from "./task-run-turn-dlq.ts";
@@ -36,6 +37,7 @@ interface RegisteredHandlers {
   ingestDocsWorkerId: string;
   ingestKnowledgeWorkerId: string;
   skillCandidateAnalyzeWorkerId: string;
+  personalNotesLearnWorkerId: string;
   catalogDescribeWorkerId: string;
   agentSessionAnalyzeWorkerId: string;
   workflowRepairWorkerId: string;
@@ -81,6 +83,10 @@ export async function registerAllHandlers(
     boss: opts.boss,
     db: opts.db,
   });
+  const personalNotesLearnWorkerId = await registerPersonalNotesLearnHandler({
+    boss: opts.boss,
+    db: opts.db,
+  });
   const catalogDescribeWorkerId = await registerCatalogDescribeHandler({
     boss: opts.boss,
     db: opts.db,
@@ -123,6 +129,7 @@ export async function registerAllHandlers(
     ingest_docs_worker_id: ingestDocsWorkerId,
     ingest_knowledge_worker_id: ingestKnowledgeWorkerId,
     skill_candidate_analyze_worker_id: skillCandidateAnalyzeWorkerId,
+    personal_notes_learn_worker_id: personalNotesLearnWorkerId,
     catalog_describe_worker_id: catalogDescribeWorkerId,
     agent_session_analyze_worker_id: agentSessionAnalyzeWorkerId,
     workflow_repair_worker_id: workflowRepairWorkerId,
@@ -142,6 +149,7 @@ export async function registerAllHandlers(
     ingestDocsWorkerId,
     ingestKnowledgeWorkerId,
     skillCandidateAnalyzeWorkerId,
+    personalNotesLearnWorkerId,
     catalogDescribeWorkerId,
     agentSessionAnalyzeWorkerId,
     workflowRepairWorkerId,

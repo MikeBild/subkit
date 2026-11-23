@@ -238,9 +238,6 @@ apps/engine/src/conversations/handoff-summary.test.ts                           
 apps/engine/src/conversations/handoff-summary.ts                                              13
 apps/engine/src/conversations/instruction-cover/content.ts                                    8
 apps/engine/src/conversations/instruction-cover/grounding.ts                                  1
-apps/engine/src/conversations/instruction-cover/normalize.ts                                  3
-apps/engine/src/conversations/instruction-cover/own-words.ts                                  7
-apps/engine/src/conversations/instruction-cover/request.ts                                    8
 apps/engine/src/conversations/instruction-cover/spoken.ts                                     1
 apps/engine/src/conversations/instruction-cover/tests/content.test.ts                         10
 apps/engine/src/conversations/instruction-cover/tests/gate-hardening.int.test.ts              13
@@ -435,6 +432,8 @@ packages/shared/src/local-policy/commit-classifier.cases.ts                     
 packages/shared/src/local-policy/commit-classifier.ts                                         22
 packages/shared/src/local-policy/paths.cases.ts                                               2
 packages/shared/src/local-policy/proxy-decision.test.ts                                       3
+packages/shared/src/own-words.ts                                                              4
+packages/shared/src/request-words.ts                                                          8
 packages/shared/src/tests/invoke-snippet.test.ts                                              2
 packages/shared/src/typed-reply.test.ts                                                       2
 packages/shared/src/typed-reply.ts                                                            2

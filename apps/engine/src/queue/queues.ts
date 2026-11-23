@@ -10,6 +10,7 @@ export type QueueName =
   | "connector.ingest-docs"
   | "knowledge.ingest"
   | "skill-candidate.analyze"
+  | "personal-notes.learn"
   | "catalog.describe"
   | "agent-session.analyze"
   | "workflow.repair"
@@ -27,6 +28,7 @@ export const QUEUE_NAMES: QueueName[] = [
   "connector.ingest-docs",
   "knowledge.ingest",
   "skill-candidate.analyze",
+  "personal-notes.learn",
   "catalog.describe",
   "agent-session.analyze",
   "workflow.repair",
@@ -119,6 +121,14 @@ export const QUEUE_DEFINITIONS: Record<QueueName, QueueConfig> = {
     queue: {
       retryLimit: 3,
       retryDelay: 5,
+      retryBackoff: true,
+    },
+  },
+  "personal-notes.learn": {
+    name: "personal-notes.learn",
+    queue: {
+      retryLimit: 2,
+      retryDelay: 30,
       retryBackoff: true,
     },
   },

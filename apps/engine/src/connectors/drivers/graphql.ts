@@ -3,6 +3,7 @@ import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
 import { errorFields, logger } from "../../logging/index.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
+import { resolveSigV4Target } from "../core/http-request.ts";
 import { injectTraceContext } from "../egress.ts";
 import { fetchWithEgressGuard } from "../egress-fetch.ts";
 import { assertEgressAllowedResolved } from "../egress-guard.ts";
@@ -10,6 +11,7 @@ import { requestUsedStoredCredential } from "../reauth.ts";
 import { connectorMaskedQueryKeys, recordedUrl } from "../recorded-url.ts";
 import { connectorHeaderPolicy, requestHeaderViolations } from "../request-header-policy.ts";
 import type { ConnectorView } from "../types.ts";
+import { signSigV4Request } from "./aws-sigv4.ts";
 import { getDriverFetch } from "./fetch-seam.ts";
 import { GRAPHQL_PATH_INVALID_MESSAGE, sameOriginEndpoint } from "./graphql-endpoint.ts";
 import {
@@ -213,6 +215,19 @@ export async function executeGraphQLRequest(p: {
     await assertEgressAllowedResolved(url, { tenant_id: p.tenant_id, exec: p.db });
     signedJwtToken = await applySignedJwtAuth(p.connector, credential, url, headers);
   }
+  const body = JSON.stringify({ query: p.op.query, variables: p.op.variables ?? {} });
+  if (credential?.mode === "aws_sigv4") {
+    const target = resolveSigV4Target(p.connector.config, p.connector.id);
+    signSigV4Request({
+      method: "POST",
+      url,
+      headers,
+      body,
+      region: target.region,
+      service: target.service,
+      credential,
+    });
+  }
   const res = await instrument({
     module: "connector",
     action: "driver.graphql.request",
@@ -231,7 +246,7 @@ export async function executeGraphQLRequest(p: {
           ...(dispatchPolicy ? { redirect: dispatchPolicy.redirect } : {}),
           method: "POST",
           headers,
-          body: JSON.stringify({ query: p.op.query, variables: p.op.variables ?? {} }),
+          body,
           signal: AbortSignal.timeout(FETCH_DEADLINE_MS),
         },
         { tenant_id: p.tenant_id, exec: p.db },

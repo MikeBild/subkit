@@ -19,7 +19,7 @@ describe("cockpit navigation contract", () => {
     const permissions = ["stats:read", "conversation:read", "workflow:read", "audit:read"];
     expect(
       visibleSidebarNavigation(permissions).map((group) => group.items.map((item) => item.path)),
-    ).toEqual([["/", "/chat"], ["/workflows"], ["/usage", "/audit", "/settings"]]);
+    ).toEqual([["/", "/chat", "/notes"], ["/workflows"], ["/usage", "/audit", "/settings"]]);
     expect(navigationItem("/")?.labelKey).toBe("nav.overview");
   });
 
@@ -40,6 +40,7 @@ describe("cockpit navigation contract", () => {
     expect(groups.flatMap((group) => group.items).map((item) => item.labelKey)).toEqual([
       "nav.overview",
       "nav.chat",
+      "nav.notes",
       "nav.workflows",
       "nav.settings",
     ]);
@@ -54,12 +55,12 @@ describe("cockpit navigation contract", () => {
     const home = NAVIGATION[0];
     expect(home?.id).toBe("home");
     expect(home?.labelKey).toBeUndefined();
-    expect(home?.items.map((item) => item.path)).toEqual(["/", "/chat"]);
+    expect(home?.items.map((item) => item.path)).toEqual(["/", "/chat", "/notes"]);
   });
 
   test("the groups are the decided information architecture, in order", () => {
     expect(NAVIGATION.map((group) => group.items.map((item) => item.path))).toEqual([
-      ["/", "/chat"],
+      ["/", "/chat", "/notes"],
       ["/workflows", "/tasks", "/connectors"],
       ["/intake", "/knowledge", "/skills", "/files"],
       ["/usage", "/audit", "/api-access", "/settings"],
@@ -92,9 +93,9 @@ describe("cockpit navigation contract", () => {
     expect(navigationItem("/knowledge/abc")?.labelKey).toBe("nav.knowledgeSources");
     expect(navigationItem("/skills/abc")?.labelKey).toBe("nav.skills");
     expect(navigationItem("/files")?.labelKey).toBe("nav.files");
-    expect(paths(["skill:read"])).toEqual(["/", "/skills", "/settings"]);
-    expect(paths(["file:read"])).toEqual(["/files", "/settings"]);
-    expect(paths(["intake:read"])).toEqual(["/", "/intake", "/settings"]);
+    expect(paths(["skill:read"])).toEqual(["/", "/notes", "/skills", "/settings"]);
+    expect(paths(["file:read"])).toEqual(["/notes", "/files", "/settings"]);
+    expect(paths(["intake:read"])).toEqual(["/", "/notes", "/intake", "/settings"]);
     const icons = NAVIGATION.flatMap((group) => group.items).map((item) => item.icon);
     expect(new Set(icons).size).toBe(icons.length);
   });
@@ -104,24 +105,24 @@ describe("cockpit navigation contract", () => {
     expect(navigationItem("/tasks/abc")).toBe(navigationItem("/tasks"));
     expect(navigationItem("/tasks")?.permission).toBe("task:read");
     expect(navigationItem("/tasks")?.api).toContain("GET /v1/tasks");
-    expect(paths(["task:read"])).toEqual(["/tasks", "/settings"]);
+    expect(paths(["task:read"])).toEqual(["/notes", "/tasks", "/settings"]);
     expect(paths(["workflow:read", "connector:read"])).not.toContain("/tasks");
     expect(
       visibleSidebarNavigation(["workflow:read", "connector:read", "task:read"]).flatMap((group) =>
         group.items.map((item) => item.path),
       ),
-    ).toEqual(["/", "/workflows", "/tasks", "/connectors", "/settings"]);
+    ).toEqual(["/", "/notes", "/workflows", "/tasks", "/connectors", "/settings"]);
     expect(translate("de", "nav.tasks")).toBe("Aufgaben");
     expect(translate("en", "nav.tasks")).toBe("Tasks");
   });
 
-  test("Einstellungen shows for every signed-in person, because everybody has a profile", () => {
-    expect(paths([])).toEqual(["/settings"]);
+  test("Notes and Einstellungen show for every signed-in person, because everybody has a profile", () => {
+    expect(paths([])).toEqual(["/notes", "/settings"]);
     expect(paths(["settings:read"])).toContain("/settings");
     expect(paths(["workflow:run"])).toContain("/settings");
     expect(
       visibleSidebarNavigation([]).flatMap((group) => group.items.map((item) => item.path)),
-    ).toEqual(["/settings"]);
+    ).toEqual(["/notes", "/settings"]);
   });
 
   test("keeps the API contract next to each route", () => {

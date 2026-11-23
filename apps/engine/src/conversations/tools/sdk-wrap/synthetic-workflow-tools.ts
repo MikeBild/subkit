@@ -198,7 +198,7 @@ async function executeSyntheticRun(
     ctx.onLog?.("info", `running workflow ${entry.slug} in env=${environment}`);
     const policies = taskRun ? taskRunToolPolicies(p.toolPolicies ?? {}) : (p.toolPolicies ?? {});
     const specificPolicy = policies[name] ?? policies.run_workflow;
-    const askBeforeWriting = !taskRun && ctx.ask_before_writing === true;
+    const askBeforeWriting = ctx.ask_before_writing === true;
     const transfersExecutionData =
       (await executionDataTransfer(workflowInput, ctx.tenant_id, db)) !== null;
     const coverage = await loadRunCoverage(db, askBeforeWriting, () =>

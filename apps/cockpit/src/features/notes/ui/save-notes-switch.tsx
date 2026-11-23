@@ -1,7 +1,7 @@
 import { Panel } from "@ui/atoms/pill";
 import { SwitchField } from "@/components/cockpit/patterns";
 import { useNotesText } from "@/features/notes/hooks/use-notes-text";
-import { useSaveNotes } from "@/features/settings/use-save-notes";
+import { useSaveNotes } from "@/features/settings";
 import { reportFailure } from "@/lib/action-failure";
 
 export function SaveNotesSwitch() {

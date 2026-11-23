@@ -210,6 +210,7 @@ describe("authoring tool palette — inert proposals", () => {
 
   test("only tools that file a review-queue proposal carry the flag", () => {
     expect(proposals.map((t) => t.name).sort()).toEqual([
+      "propose_approval_rule",
       "propose_workflow_repair",
       "save_learning",
     ]);

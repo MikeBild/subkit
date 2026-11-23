@@ -53,6 +53,7 @@ test("a mixed attention list is stopped when any entry is stopped", () => {
       item({ id: "stop", subject: null, class: "stopped" }),
       item({ id: "decide", subject: null, class: "decide" }),
     ],
+    snoozed: [],
   };
   expect(attentionBadge(attention)).toEqual({ count: 2, stopped: true });
 });

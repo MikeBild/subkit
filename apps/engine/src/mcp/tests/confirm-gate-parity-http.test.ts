@@ -14,6 +14,7 @@ import {
   conversationMessages,
   conversations,
   conversationToolCalls,
+  intakeItems,
   knowledgeSources,
   mcpTasks,
   toolApprovals,
@@ -498,6 +499,18 @@ describe("confirm gate parity through the real MCP route — create_knowledge_so
       );
   }
 
+  async function collectedRows(title: string) {
+    return suite.http.db
+      .select({ id: intakeItems.id, state: intakeItems.state })
+      .from(intakeItems)
+      .where(and(eq(intakeItems.tenant_id, suite.http.tenantId), eq(intakeItems.title, title)));
+  }
+
+  async function expectCollectedOnly(title: string) {
+    expect(await collectedRows(title)).toEqual([{ id: expect.any(String), state: "collected" }]);
+    expect(await sourceRows(title)).toHaveLength(0);
+  }
+
   test("loop on web and sk_headless: the preparation write runs with no approval row", async () => {
     for (const surface of ["web", "sk_headless"] as const) {
       const { value, delta } = await decisionDelta(() =>
@@ -505,7 +518,7 @@ describe("confirm gate parity through the real MCP route — create_knowledge_so
       );
       expect(value.result).toMatchObject({ ok: true });
       expect(delta).toEqual({ [`${PROCEED_DECISION}|${surface}`]: 1 });
-      expect(await sourceRows(sourceName(surface))).toHaveLength(1);
+      await expectCollectedOnly(sourceName(surface));
     }
     expect(await approvalsFor("create_knowledge_source")).toHaveLength(0);
   });
@@ -516,11 +529,12 @@ describe("confirm gate parity through the real MCP route — create_knowledge_so
     );
     expect(value.isError).toBeFalsy();
     expect(parseEnvelope(value)).toMatchObject({
-      created: true,
-      knowledge_source: { name: sourceName("mcp") },
+      collected: true,
+      admitted: false,
+      intake_item: { title: sourceName("mcp"), state: "collected" },
     });
     expect(delta).toEqual({ [`${PROCEED_DECISION}|mcp`]: 1 });
-    expect(await sourceRows(sourceName("mcp"))).toHaveLength(1);
+    await expectCollectedOnly(sourceName("mcp"));
     expect(await approvalsFor("create_knowledge_source")).toHaveLength(0);
   });
 
@@ -542,7 +556,7 @@ describe("confirm gate parity through the real MCP route — create_knowledge_so
     });
     expect(value.isError).toBe(false);
     expect(delta).toEqual({ [`${PROCEED_DECISION}|mcp`]: 1 });
-    expect(await sourceRows(sourceName("conversation"))).toHaveLength(1);
+    await expectCollectedOnly(sourceName("conversation"));
     expect(await approvalsFor("create_knowledge_source")).toHaveLength(0);
     expect(approvalRequests).toBe(1);
 

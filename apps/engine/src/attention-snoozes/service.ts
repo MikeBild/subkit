@@ -25,16 +25,19 @@ export async function snoozeAttention(
     { attention_key: input.attention_key, snoozed_until: plan.until },
     at,
   );
-  await auditAwait({
-    tenant_id: owner.tenant_id,
-    actor_type: "user",
-    actor_id: owner.user_id,
-    action: AuditAction.ATTENTION_SNOOZED,
-    resource_type: "attention",
-    resource_id: null,
-    result: "success",
-    metadata: { attention_key: input.attention_key, until: plan.until.toISOString() },
-  });
+  await auditAwait(
+    {
+      tenant_id: owner.tenant_id,
+      actor_type: "user",
+      actor_id: owner.user_id,
+      action: AuditAction.ATTENTION_SNOOZED,
+      resource_type: "attention",
+      resource_id: null,
+      result: "success",
+      metadata: { attention_key: input.attention_key, until: plan.until.toISOString() },
+    },
+    db,
+  );
   return plan;
 }
 
@@ -45,15 +48,18 @@ export async function unsnoozeAttention(
 ): Promise<boolean> {
   const removed = await deleteSnooze(db, owner, attention_key);
   if (removed)
-    await auditAwait({
-      tenant_id: owner.tenant_id,
-      actor_type: "user",
-      actor_id: owner.user_id,
-      action: AuditAction.ATTENTION_UNSNOOZED,
-      resource_type: "attention",
-      resource_id: null,
-      result: "success",
-      metadata: { attention_key },
-    });
+    await auditAwait(
+      {
+        tenant_id: owner.tenant_id,
+        actor_type: "user",
+        actor_id: owner.user_id,
+        action: AuditAction.ATTENTION_UNSNOOZED,
+        resource_type: "attention",
+        resource_id: null,
+        result: "success",
+        metadata: { attention_key },
+      },
+      db,
+    );
   return removed;
 }

@@ -1,6 +1,6 @@
+import { normalizeForQuote, occursBounded } from "@shared/quote-text.ts";
 import { isContentKey } from "./bound-action.ts";
 import { SAFE_HEADERS } from "./effect-vocabulary.ts";
-import { normalizeForQuote, occursBounded } from "./normalize.ts";
 import { canonicalNumber, localParts, numberCandidates, type SpokenFacts } from "./spoken.ts";
 import { equivalentValues } from "./translations.ts";
 
@@ -159,6 +159,7 @@ interface Walk {
   readonly recipients: Set<string>;
   failure: GroundingResult["failure"];
   nodes: number;
+  readonly collect_all: boolean;
 }
 
 function fail(walk: Walk, reason: GroundingReason, detail: string): void {
@@ -221,7 +222,7 @@ function checkString(walk: Walk, key: string, value: string): void {
 }
 
 function visit(walk: Walk, key: string, value: unknown, depth: number): void {
-  if (walk.failure) return;
+  if (walk.failure && !walk.collect_all) return;
   walk.nodes += 1;
   if (walk.nodes > MAX_NODES || depth > 8) {
     fail(walk, "undecidable", "arguments too large to check");
@@ -316,8 +317,15 @@ export function groundArguments(
   tool: string,
   args: Record<string, unknown>,
   ctx: GroundingContext,
+  options: { collect_all?: boolean } = {},
 ): GroundingResult {
-  const walk: Walk = { ctx, recipients: new Set(), failure: null, nodes: 0 };
+  const walk: Walk = {
+    ctx,
+    recipients: new Set(),
+    failure: null,
+    nodes: 0,
+    collect_all: options.collect_all === true,
+  };
   if (tool === "call_connector") {
     if (typeof args.path === "string") checkPath(walk, args.path);
     for (const [key, value] of Object.entries(args)) {

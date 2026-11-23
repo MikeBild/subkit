@@ -17,6 +17,7 @@ import { feedbackDe, feedbackEn } from "./i18n/feedback";
 import { intakeDe, intakeEn } from "./i18n/intake";
 import { knDe, knEn } from "./i18n/kn";
 import { knowledgeDe, knowledgeEn } from "./i18n/knowledge";
+import { notesDe, notesEn } from "./i18n/notes";
 import { notificationsDe, notificationsEn } from "./i18n/notifications";
 import { onboardingDe, onboardingEn } from "./i18n/onboarding";
 import { operationsDe, operationsEn } from "./i18n/operations";
@@ -71,6 +72,7 @@ const EN = {
   ...intakeEn,
   ...knEn,
   ...knowledgeEn,
+  ...notesEn,
   ...notificationsEn,
   ...onboardingEn,
   ...operationsEn,
@@ -122,6 +124,7 @@ const DE: Record<TranslationKey, string> = {
   ...intakeDe,
   ...knDe,
   ...knowledgeDe,
+  ...notesDe,
   ...notificationsDe,
   ...onboardingDe,
   ...operationsDe,

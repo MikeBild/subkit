@@ -1,4 +1,4 @@
-import { normalizeForQuote } from "./normalize.ts";
+import { normalizeForQuote } from "@shared/quote-text.ts";
 
 export interface SpokenFacts {
   readonly text: string;

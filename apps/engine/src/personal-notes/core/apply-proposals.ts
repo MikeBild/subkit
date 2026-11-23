@@ -1,6 +1,6 @@
+import { ownWords } from "@shared/own-words.ts";
+import { checkQuote, normalizeForQuote } from "@shared/quote-text.ts";
 import { findSecretSpans } from "@shared/redaction.ts";
-import { checkQuote, normalizeForQuote } from "../../conversations/instruction-cover/normalize.ts";
-import { ownWords } from "../../conversations/instruction-cover/own-words.ts";
 
 export const MAX_ACTIVE_NOTES = 300;
 export const MAX_NOTE_TEXT_CHARS = 600;

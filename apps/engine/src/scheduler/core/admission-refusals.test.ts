@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { countRefusal, holdStillStands, REFUSAL_PAUSE_AFTER } from "./admission-refusals.ts";
+import {
+  countRefusal,
+  holdStillStands,
+  REFUSAL_PAUSE_AFTER,
+  refusalCountsTowardPause,
+} from "./admission-refusals.ts";
 
 describe("refused starts count toward the schedule pause", () => {
   test("the first refusal of a reason counts one", () => {
@@ -17,7 +22,7 @@ describe("refused starts count toward the schedule pause", () => {
     for (let seen = 1; seen < REFUSAL_PAUSE_AFTER; seen++) {
       const next = countRefusal(hold, "execution_authority_revoked");
       expect(next).toEqual({ refusals: seen, pause: false });
-      hold = { ...hold, refusals: next.refusals };
+      hold = { ...hold, refusals: next?.refusals ?? 0 };
     }
     expect(countRefusal(hold, "execution_authority_revoked")).toEqual({
       refusals: REFUSAL_PAUSE_AFTER,
@@ -36,8 +41,32 @@ describe("refused starts count toward the schedule pause", () => {
 
   test("a damaged count never goes below one", () => {
     expect(
-      countRefusal({ reason_code: "input_required", refusals: -7 }, "input_required").refusals,
+      countRefusal(
+        { reason_code: "execution_authority_changed", refusals: -7 },
+        "execution_authority_changed",
+      )?.refusals,
     ).toBe(1);
+  });
+
+  test("waiting for a first approval or for input never counts toward the pause", () => {
+    for (const reason of ["execution_authority_required", "input_required"]) {
+      expect(refusalCountsTowardPause(reason)).toBe(false);
+      for (const refusals of [0, REFUSAL_PAUSE_AFTER - 1, REFUSAL_PAUSE_AFTER * 3]) {
+        expect(countRefusal({ reason_code: reason, refusals }, reason)).toBeNull();
+      }
+    }
+  });
+
+  test("only an ended or changed approval counts toward the pause", () => {
+    for (const reason of [
+      "execution_authority_expired",
+      "execution_authority_exhausted",
+      "execution_authority_revoked",
+      "execution_authority_changed",
+    ]) {
+      expect(refusalCountsTowardPause(reason)).toBe(true);
+    }
+    expect(refusalCountsTowardPause("constructor")).toBe(false);
   });
 });
 

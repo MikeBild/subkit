@@ -278,13 +278,18 @@ export interface RanWithoutAsking {
   action: BoundAction;
 }
 
+function ruleQuote(policy: ToolCallPolicy): string | null {
+  const raw = (policy as { rule_quote?: unknown }).rule_quote;
+  return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
+}
+
 export function ranWithoutAsking(
   policy: ToolCallPolicy | null | undefined,
 ): RanWithoutAsking | null {
   if (!policy?.ran_without_asking || !policy.rule) return null;
   const action = boundActionOf(policy.bound_action);
   if (!action) return null;
-  return { quote: policy.because?.quote ?? null, rule: policy.rule, action };
+  return { quote: policy.because?.quote ?? ruleQuote(policy), rule: policy.rule, action };
 }
 
 export function ranLine(ran: RanWithoutAsking, t: Translate): string {

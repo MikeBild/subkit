@@ -1,3 +1,4 @@
+import { ownWords } from "@shared/own-words.ts";
 import { sql } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
@@ -29,7 +30,6 @@ import {
   taskJob,
   taskRequest,
 } from "./job.ts";
-import { ownWords } from "./own-words.ts";
 import { interactivePersonRefusal } from "./session.ts";
 import { type SpokenFacts, spokenFacts } from "./spoken.ts";
 
@@ -101,13 +101,18 @@ export function boundActionView(
 
 export function describeForCard(tool: string, args: Record<string, unknown>): BoundActionView {
   const facts = spokenFacts([], new Date(0), "UTC");
-  const grounded = groundArguments(tool, args, {
-    window: facts,
-    addressees: facts,
-    evidence: NO_EVIDENCE,
-    now: new Date(0),
-    timezone: "UTC",
-  });
+  const grounded = groundArguments(
+    tool,
+    args,
+    {
+      window: facts,
+      addressees: facts,
+      evidence: NO_EVIDENCE,
+      now: new Date(0),
+      timezone: "UTC",
+    },
+    { collect_all: true },
+  );
   return boundActionView(describeBoundAction(tool, args, grounded.recipients), args);
 }
 

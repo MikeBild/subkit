@@ -35,7 +35,6 @@ import {
   useSheetDocked,
   useSideDetailsAvailable,
 } from "@/components/cockpit/patterns";
-import { Receipt } from "@/components/cockpit/receipt";
 import { RefusalReasonLine } from "@/components/cockpit/refusal-reason";
 import { MISSING } from "@/components/cockpit/table-columns";
 import { connectorService, useConnectorRecords } from "@/features/connectors";
@@ -61,7 +60,6 @@ import { LabelText } from "@/lib/machine-label";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
 import { remedyFor } from "@/lib/remedy";
 import { statusLabel } from "@/lib/status-label";
-import { runReceiptQuote } from "../api/receipt";
 import {
   payloadEvidence,
   runDurationMs,
@@ -90,7 +88,11 @@ import {
   stepCredentialSnapshots,
   stepGuidance,
 } from "../model/runs-model";
-import { isUncertainRun, uncertainStepKeys } from "../model/uncertain-write";
+import {
+  isUncertainRun,
+  RESOLVE_WRITE_PERMISSION,
+  uncertainStepKeys,
+} from "../model/uncertain-write";
 import { UncertainWrite } from "./uncertain-write";
 
 type Execution = components["schemas"]["Execution"];
@@ -392,7 +394,7 @@ export function RunDetail({ run, page = false }: { run: Execution; page?: boolea
         <UncertainWrite
           runId={current.id}
           stepKeys={uncertainStepKeys(current, stepItems)}
-          canResolve={session.permissions.includes("workflow:run")}
+          canResolve={session.permissions.includes(RESOLVE_WRITE_PERMISSION)}
         />
       ) : isLive(current.status) ? (
         <StatusStrip
@@ -488,7 +490,6 @@ export function RunDetail({ run, page = false }: { run: Execution; page?: boolea
             }
             testId="run-detail-result"
           />
-          <Receipt quote={runReceiptQuote(detail.data)} testId="run-detail-receipt" />
           <Section label={t("runs.detail.steps")} testId="run-detail-steps">
             <RunStepChain
               steps={stepItems}

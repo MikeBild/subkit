@@ -1,10 +1,10 @@
 import { z } from "@hono/zod-openapi";
+import { ownWords } from "@shared/own-words.ts";
+import { checkQuote } from "@shared/quote-text.ts";
 import { describeBoundAction } from "../instruction-cover/bound-action.ts";
 import { collectContent } from "../instruction-cover/content.ts";
 import { connectorTemplateSlug } from "../instruction-cover/evidence.ts";
 import { describeForCard, isCoverCandidate } from "../instruction-cover/gate.ts";
-import { checkQuote } from "../instruction-cover/normalize.ts";
-import { ownWords } from "../instruction-cover/own-words.ts";
 import type { ConversationTool, ToolResult } from "../tools/index.ts";
 import { ruleFromWords } from "./core/spoken-rule.ts";
 import { contentHash } from "./scope.ts";

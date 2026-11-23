@@ -38,6 +38,7 @@ import { runNotificationInboxRetention } from "../notifications/scheduled/notifi
 import { diagnoseOperation, runtimeDiagnosticEvent } from "../observability/runtime-diagnostics.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
 import { runRiskSignalEdges } from "../operator/scheduled/risk-signal-edges-runner.ts";
+import { enqueuePersonalNotesForTenant } from "../personal-notes/index.ts";
 import { enqueueApprovalElicitationResume } from "../queue/approval-resume.ts";
 import { enqueueGateDiagnosis } from "../queue/handlers/workflow-repair.ts";
 import type { ExecutionRunJob } from "../queue/queues.ts";
@@ -341,6 +342,18 @@ export class SchedulerReconciler {
           });
         }),
       ),
+      this.runProducerPass("notes", () =>
+        retryTransient(() => this.reconcilePersonalNotes(), {
+          label: "personal_notes_learn",
+        }).catch((err) => {
+          logger.error({
+            module: "scheduler",
+            action: "personal_notes_learn_failed",
+            msg: "scheduler personal notes pass failed",
+            ...errorFields(err),
+          });
+        }),
+      ),
       this.runProducerPass("task", () =>
         retryTransient(() => runTaskSweep(this.opts.db), { label: "task_schedules" }).catch(
           (err) => {
@@ -574,6 +587,23 @@ export class SchedulerReconciler {
           module: "scheduler",
           action: "oauth2_keepalive_failed",
           msg: "oauth2 refresh keep-alive sweep threw for tenant — continuing with the rest",
+          tenant_id: tenantId,
+          ...errorFields(err),
+        });
+      }
+    });
+  }
+
+  async reconcilePersonalNotes(now: Date = new Date()): Promise<void> {
+    if (this.backgroundWork.deferred()) return;
+    await runTenantCadenceSweep("notes", now, this.opts.db, async (tenantId) => {
+      try {
+        await enqueuePersonalNotesForTenant(this.opts.db, this.opts.boss, tenantId);
+      } catch (err) {
+        logger.error({
+          module: "scheduler",
+          action: "personal_notes_learn_failed",
+          msg: "personal notes sweep threw for tenant — continuing with the rest",
           tenant_id: tenantId,
           ...errorFields(err),
         });

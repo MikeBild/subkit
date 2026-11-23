@@ -31,6 +31,8 @@ const DECLARED: ReadonlyArray<readonly [string, UntrustedSource]> = [
   ["inspect_execution", "workflow"],
   ["inspect_execution_step", "workflow"],
   ["preview_attachment", "file"],
+  ["find_my_notes", "notes"],
+  ["read_my_note", "notes"],
 ];
 
 function modelValue(tool: string, output: unknown): unknown {

@@ -8,6 +8,7 @@ describe("bounded auto authoring policy", () => {
     "update_workflow",
     "save_connector_draft",
     "rerun_execution",
+    "analyze_knowledge_source",
   ]) {
     test(`${tool} cannot infer an execution grant from a tool preference`, () => {
       for (const override of ["no_confirm", "confirm_after_execution"] as const) {
@@ -25,7 +26,6 @@ describe("bounded auto authoring policy", () => {
   for (const tool of [
     "save_workflow_draft",
     "create_knowledge_source",
-    "analyze_knowledge_source",
     "export_diagnostic_context",
   ]) {
     test(`${tool} remains autonomous preparation`, () => {

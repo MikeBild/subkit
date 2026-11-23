@@ -36,6 +36,8 @@ export const INTAKE_ROUTES = ["/intake", "/intake/$resourceId"] as const;
 
 export const TASK_ROUTES = ["/tasks", "/tasks/$resourceId"] as const;
 
+export const NOTES_ROUTES = ["/notes", "/notes/$resourceId"] as const;
+
 export const RUN_ROUTE = "/runs/$runId";
 
 const INSTALLATION_ROUTES = ["/incoming/files"] as const;
@@ -63,6 +65,7 @@ export const ALL_ROUTE_PATHS: readonly string[] = [
   ...CHAT_ROUTES,
   ...INTAKE_ROUTES,
   ...TASK_ROUTES,
+  ...NOTES_ROUTES,
   RUN_ROUTE,
   ...INSTALLATION_ROUTES,
   ...SKILL_CANDIDATE_ROUTES,

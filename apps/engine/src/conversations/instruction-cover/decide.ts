@@ -1,11 +1,11 @@
+import { instructionWords, ownWords, requestWords } from "@shared/own-words.ts";
+import { checkQuote, normalizeForQuote } from "@shared/quote-text.ts";
+import { checkRequest } from "@shared/request-words.ts";
 import { contentHash } from "../approval-rules/scope.ts";
 import { type ActionHints, type BoundAction, describeBoundAction } from "./bound-action.ts";
 import { checkContent, collectContent } from "./content.ts";
 import { isNeverCovered } from "./core/never-covered.ts";
 import { buildEvidence, type GroundingReason, groundArguments } from "./grounding.ts";
-import { checkQuote, normalizeForQuote } from "./normalize.ts";
-import { instructionWords, ownWords, requestWords } from "./own-words.ts";
-import { checkRequest } from "./request.ts";
 import { namesAddressee, spokenFacts } from "./spoken.ts";
 
 export const INSTRUCTION_WINDOW = 3;

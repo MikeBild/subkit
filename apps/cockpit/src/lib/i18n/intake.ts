@@ -75,6 +75,8 @@ export const intakeEn = {
     "This entry was already adopted through another proposal. There is nothing left to confirm here.",
   "intake.proposal.confirmConflict":
     "This proposal is no longer current. Reload the page and review the current state.",
+  "intake.proposal.secondPersonRequired":
+    "Someone else has to confirm this. You collected or suggested it, so a second person decides.",
   "intake.proposal.sourceAuthor": "Author: {author}",
   "intake.proposal.sourcePublished": "Published: {date}",
   "intake.proposal.category": "Category",
@@ -213,6 +215,8 @@ export const intakeDe: Record<keyof typeof intakeEn, string> = {
     "Dieser Eintrag wurde schon über einen anderen Vorschlag übernommen. Hier gibt es nichts mehr zu bestätigen.",
   "intake.proposal.confirmConflict":
     "Dieser Vorschlag ist nicht mehr aktuell. Lade die Seite neu und prüfe den aktuellen Stand.",
+  "intake.proposal.secondPersonRequired":
+    "Das muss jemand anderes bestätigen. Du hast es gesammelt oder vorgeschlagen, deshalb entscheidet eine zweite Person.",
   "intake.proposal.sourceAuthor": "Autor: {author}",
   "intake.proposal.sourcePublished": "Veröffentlicht: {date}",
   "intake.proposal.category": "Kategorie",

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
+import { normalizeForQuote } from "@shared/quote-text.ts";
 import type { ToolApprovalContentClass, ToolApprovalRuleScope } from "../../db/schema/index.ts";
 import type { BoundAction } from "../instruction-cover/bound-action.ts";
-import { normalizeForQuote } from "../instruction-cover/normalize.ts";
 import { ruleEligible } from "./core/rule-scope.ts";
 
 export const RULE_LIFETIME_DAYS = 90;

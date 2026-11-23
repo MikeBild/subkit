@@ -1,3 +1,4 @@
+import { ownWords } from "@shared/own-words.ts";
 import type { ExecutionAuthSource, ResolvedPrincipal } from "../../auth/types.ts";
 import type { ToolApprovalContentClass } from "../../db/schema/index.ts";
 import { scopeOf } from "../approval-rules/core/rule-scope.ts";
@@ -12,7 +13,6 @@ import { describeBoundAction } from "./bound-action.ts";
 import { checkContent, collectContent } from "./content.ts";
 import { type CoverDecision, decideInstructionCover, type UserSegment } from "./decide.ts";
 import { groundArguments, NO_EVIDENCE } from "./grounding.ts";
-import { ownWords } from "./own-words.ts";
 import { interactivePersonRefusal } from "./session.ts";
 import { spokenFacts } from "./spoken.ts";
 

@@ -27,6 +27,7 @@ import {
 } from "@/components/cockpit/patterns";
 import { LoadFailed, queryView } from "@/components/failure-state";
 import { PeopleArea } from "@/features/admin";
+import { SaveNotesSwitch } from "@/features/notes";
 import type { BrandingDraftHandle, GuidedContext } from "@/features/settings";
 import {
   AiArea,
@@ -500,6 +501,7 @@ export function SettingsPage() {
                 <>
                   <LaunchAtLoginRow control={desktop} />
                   <StartLayoutRows />
+                  <SaveNotesSwitch />
                 </>
               }
             />,

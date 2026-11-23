@@ -304,3 +304,16 @@ export function intakeEvents(
     events.push({ id: "discarded", kind: "discarded", at: clip.updated_at });
   return events.sort((left, right) => Date.parse(right.at) - Date.parse(left.at));
 }
+
+export type IntakeWriteFailureKey =
+  | "intake.proposal.confirmConflict"
+  | "intake.proposal.secondPersonRequired"
+  | "common.actionFailed";
+
+export function intakeWriteFailureKey(error: unknown): IntakeWriteFailureKey {
+  const record =
+    typeof error === "object" && error !== null ? (error as Record<string, unknown>) : {};
+  if (record.code === "second_person_required") return "intake.proposal.secondPersonRequired";
+  if (record.status === 409) return "intake.proposal.confirmConflict";
+  return "common.actionFailed";
+}

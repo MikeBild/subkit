@@ -29,6 +29,7 @@ export interface NotesTool {
   readonly use_case?: string;
   readonly important_notes?: readonly string[];
   readonly example_input?: Readonly<Record<string, unknown>>;
+  readonly external_output?: "notes";
   execute(ctx: NotesToolContext, args: unknown): Promise<NotesToolResult>;
 }
 
@@ -129,6 +130,7 @@ export const findMyNotesTool: NotesTool = {
     "Before answering something that depends on the person's own preferences or habits and the notes in your context do not cover it.",
   important_notes: [DATA_ONLY],
   example_input: { query: "invoice day" },
+  external_output: "notes",
   async execute(ctx, rawArgs): Promise<NotesToolResult> {
     const args = findInput.parse(rawArgs);
     const owner = ownerOf(ctx);
@@ -163,6 +165,7 @@ export const readMyNoteTool: NotesTool = {
   inputSchema: readInput,
   category: "tenant_read" as const,
   important_notes: [DATA_ONLY],
+  external_output: "notes",
   async execute(ctx, rawArgs): Promise<NotesToolResult> {
     const args = readInput.parse(rawArgs);
     const owner = ownerOf(ctx);
