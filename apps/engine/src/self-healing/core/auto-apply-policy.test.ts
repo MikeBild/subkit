@@ -26,7 +26,7 @@ test("gate repairs and never-auto policy always require review", () => {
   ).toEqual({ auto_apply: false, reason: "policy=never-auto" });
 });
 
-test("safe-patches checks classification and only demands a fixture result when present", () => {
+test("safe-patches applies a safe patch only after a fixture run passed", () => {
   for (const has_fixture of [false, true])
     for (const fixture_passed of [false, true]) {
       expect(
@@ -45,9 +45,9 @@ test("safe-patches checks classification and only demands a fixture result when 
           fixture_passed,
         }),
       ).toEqual({
-        auto_apply: !has_fixture || fixture_passed,
+        auto_apply: has_fixture && fixture_passed,
         reason: !has_fixture
-          ? "safe_no_fixture"
+          ? "no_fixture"
           : fixture_passed
             ? "safe_and_fixture_passed"
             : "fixture_failed",
@@ -105,22 +105,17 @@ test("gate review overrides every policy and preserves frozen facts", () => {
   );
 });
 
-test("default auto-healing requires safe classification and honors failed fixtures", () => {
-  expect(DEFAULT_AUTOHEAL_POLICY).toBe("safe-patches");
-  expect(
-    decideAutoApply({
-      policy: DEFAULT_AUTOHEAL_POLICY,
-      classification: "unsafe",
-      has_fixture: true,
-      fixture_passed: true,
-    }),
-  ).toEqual({ auto_apply: false, reason: "unsafe_classification" });
-  expect(
-    decideAutoApply({
-      policy: DEFAULT_AUTOHEAL_POLICY,
-      classification: "safe",
-      has_fixture: true,
-      fixture_passed: false,
-    }),
-  ).toEqual({ auto_apply: false, reason: "fixture_failed" });
+test("the default policy never applies a repair on its own", () => {
+  expect(DEFAULT_AUTOHEAL_POLICY).toBe("never-auto");
+  for (const classification of ["safe", "unsafe"] as const)
+    for (const has_fixture of [false, true])
+      for (const fixture_passed of [false, true])
+        expect(
+          decideAutoApply({
+            policy: DEFAULT_AUTOHEAL_POLICY,
+            classification,
+            has_fixture,
+            fixture_passed,
+          }),
+        ).toEqual({ auto_apply: false, reason: "policy=never-auto" });
 });

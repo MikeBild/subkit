@@ -2,10 +2,16 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { patchCandidates, workflowVersions } from "../../db/schema/index.ts";
 import { getLatestShape } from "../../schema-versions/index.ts";
+import { approvePatchCandidate } from "../candidate-decision.ts";
 import { analyzeStepFailure } from "../drift-detector.ts";
 import { processDriftSignal } from "../service.ts";
 import { signalFingerprint } from "../terminal-dedup.ts";
-import { createSelfHealingCtx, resetSeedDag, type SelfHealingTestCtx } from "./setup.ts";
+import {
+  createSelfHealingCtx,
+  resetSeedDag,
+  type SelfHealingTestCtx,
+  setAutohealPolicy,
+} from "./setup.ts";
 
 let ctx: SelfHealingTestCtx;
 
@@ -121,7 +127,8 @@ describe("processDriftSignal — proactive endpoint dedup", () => {
     expect(await endpointCandidateCount()).toBe(before);
   });
 
-  test("the scheduler tick (allowAutoApply) auto-applies the safe patch with no fixture", async () => {
+  test("the scheduler tick never applies a safe patch that no fixture run has proven", async () => {
+    await setAutohealPolicy(ctx, "safe-patches");
     const { signal } = await buildSignal();
     const { signalCtx, options } = proactiveCtx(true);
 
@@ -129,19 +136,23 @@ describe("processDriftSignal — proactive endpoint dedup", () => {
     const result = await processDriftSignal(signal, signalCtx, options, ctx.testDb.db);
 
     expect(result.candidate_id).toBe(firstCandidateId);
-    expect(result.status).toBe("applied");
-    expect(result.auto_applied).toBe(true);
+    expect(result.status).toBe("proposed");
+    expect(result.auto_applied).toBe(false);
     expect(await endpointCandidateCount()).toBe(1);
-    expect(await versionCount()).toBe(versionsBefore + 1);
+    expect(await versionCount()).toBe(versionsBefore);
 
     const [row] = await ctx.testDb.db
       .select()
       .from(patchCandidates)
       .where(eq(patchCandidates.id, firstCandidateId));
-    expect(row?.status).toBe("applied");
+    expect(row?.status).toBe("proposed");
   });
 
   test("once applied, further scans skip the endpoint — no re-apply, no version churn", async () => {
+    await approvePatchCandidate(
+      { tenant_id: ctx.tenant_id, candidate_id: firstCandidateId, actor_id: null },
+      ctx.testDb.db,
+    );
     const { signal } = await buildSignal();
     const { signalCtx, options } = proactiveCtx(true);
 
@@ -203,8 +214,14 @@ describe("processDriftSignal — new drift on a healed endpoint is NOT masked", 
       const driftB = mkSignal({ message: "gone", retry_after: 30, details: ["a", "b"] });
       expect(signalFingerprint(driftA)).not.toBe(signalFingerprint(driftB));
 
+      await setAutohealPolicy(local, "safe-patches");
       const a = await processDriftSignal(driftA, signalCtx, { allowAutoApply: true }, db);
-      expect(a.status).toBe("applied");
+      expect(a.status).toBe("proposed");
+      expect(a.auto_applied).toBe(false);
+      await approvePatchCandidate(
+        { tenant_id: local.tenant_id, candidate_id: a.candidate_id, actor_id: null },
+        db,
+      );
 
       const countAfterA = await (async () => {
         const rows = await db

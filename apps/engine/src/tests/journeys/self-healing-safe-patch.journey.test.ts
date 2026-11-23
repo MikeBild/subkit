@@ -9,6 +9,7 @@ import {
   executions,
   patchCandidates,
   schemaVersions,
+  workflowAutohealPolicies,
   workflows,
   workflowVersions,
 } from "../../db/schema/index.ts";
@@ -146,6 +147,9 @@ afterAll(async () => {
 
 describe("self-healing safe patch", () => {
   test("AC1+AC2: loop proposes, classifies safe, dry-runs, auto-applies", async () => {
+    await ctx.db
+      .insert(workflowAutohealPolicies)
+      .values({ tenant_id: ctx.tenantId, workflow_id: workflowId, policy: "safe-patches" });
     const result = await runSelfHealingLoop(
       {
         tenant_id: ctx.tenantId,
@@ -370,6 +374,9 @@ describe("self-healing safe patch", () => {
     expect(schemaDiffSignal).not.toBeNull();
     expect(schemaDiffSignal?.kind).toBe("schema_diff");
 
+    await ctx.db
+      .insert(workflowAutohealPolicies)
+      .values({ tenant_id: ctx.tenantId, workflow_id: driftWorkflowId, policy: "safe-patches" });
     const loopResult = await runSelfHealingLoop(
       {
         tenant_id: ctx.tenantId,

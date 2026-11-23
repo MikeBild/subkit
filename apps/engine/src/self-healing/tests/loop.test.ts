@@ -20,6 +20,7 @@ import {
   resetSeedDag,
   SEED_STEP_ID,
   type SelfHealingTestCtx,
+  setAutohealPolicy,
 } from "./setup.ts";
 
 const TEST_NOW_MS = getTestNow();
@@ -37,6 +38,7 @@ afterAll(async () => {
 describe("self-healing/loop — direct call", () => {
   test("drift -> repair -> classify -> dry-run -> auto-apply safe patch", async () => {
     const db = ctx.testDb.db;
+    await setAutohealPolicy(ctx, "safe-patches");
 
     const result = await runSelfHealingLoop(
       {
