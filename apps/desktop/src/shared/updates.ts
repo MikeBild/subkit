@@ -56,9 +56,6 @@ function statusOf(error: unknown, code: string | null, message: string): number 
   return code === "ERR_UPDATER_CHANNEL_FILE_NOT_FOUND" ? 404 : null;
 }
 
-// Reads what electron-updater put into an error: which address it checked, the HTTP status
-// and whether the feed itself is missing. A missing feed (no release marked latest yet, or a
-// latest release without latest-mac.yml) is not a broken connection.
 export function classifyUpdateError(error: unknown): UpdateErrorInfo {
   const message = error instanceof Error ? error.message : String(error);
   const rawCode = (error as { code?: unknown } | null)?.code;
@@ -77,8 +74,6 @@ export function classifyUpdateError(error: unknown): UpdateErrorInfo {
   return { kind, code, status, url };
 }
 
-// A missing feed while checking means there is nothing to install right now; the same 404
-// while downloading a version the feed announced is a failed download.
 export function updateErrorEvent(
   state: UpdateState,
   info: UpdateErrorInfo,

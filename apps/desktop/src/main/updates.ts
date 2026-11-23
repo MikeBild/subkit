@@ -96,8 +96,6 @@ export class UpdateController {
     return true;
   }
 
-  // electron-updater reports one failure twice, as an "error" event and as the rejected
-  // checkForUpdates promise; handle it once.
   private fail(error: unknown): void {
     if (error === this.lastError) return;
     this.lastError = error;
