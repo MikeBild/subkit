@@ -67,12 +67,7 @@ afterAll(async () => {
       expect(removedIds.sort()).toEqual(uploaded.map((file) => file.id).sort());
       if (mutationsCompleted) {
         expect(uploadedNames).toEqual(
-          [
-            "Audit cockpit source.md",
-            "Audit HTTP source.md",
-            "audit-cli-source.md",
-            "Audit MCP source.md",
-          ].sort(),
+          ["Audit cockpit source.md", "Audit HTTP source.md", "audit-cli-source.md"].sort(),
         );
       }
     }
@@ -92,14 +87,18 @@ async function postInline(name: string, headers: Record<string, string>): Promis
   return (await response.json()) as Source;
 }
 
-async function readCreated(source: Source): Promise<AuditRow> {
+async function readCreated(
+  source: Source,
+  resourceType = "knowledge_source",
+  action = "knowledge_source.created",
+): Promise<AuditRow> {
   const response = await fetch(
-    `${suite.http.baseUrl}/v1/audit-log?resource_type=knowledge_source&resource_id=${encodeURIComponent(source.id)}&action=knowledge_source.created`,
+    `${suite.http.baseUrl}/v1/audit-log?resource_type=${resourceType}&resource_id=${encodeURIComponent(source.id)}&action=${action}`,
     { headers: { authorization: `Bearer ${suite.http.apiKey}` } },
   );
   expect(response.status).toBe(200);
   const body = (await response.json()) as { items: AuditRow[] };
-  const rows = body.items.filter((row) => row.action === "knowledge_source.created");
+  const rows = body.items.filter((row) => row.action === action);
   expect(rows).toHaveLength(1);
   const row = rows[0];
   if (!row) throw new Error(`missing audit row for ${source.id}`);
@@ -107,7 +106,7 @@ async function readCreated(source: Source): Promise<AuditRow> {
     tenant_id: suite.http.tenantId,
     actor_type: "user",
     actor_id: suite.http.userId,
-    resource_type: "knowledge_source",
+    resource_type: resourceType,
     resource_id: source.id,
     result: "success",
     ip: null,
@@ -168,20 +167,22 @@ test("browser session, HTTP, subkit over HTTP, and MCP mutations retain audit pr
     },
   });
   expect(mcpResult.isError).toBeFalsy();
-  const mcpList = await fetch(`${suite.http.baseUrl}/v1/knowledge-sources?limit=50`, {
-    headers: { authorization: `Bearer ${suite.http.apiKey}` },
-  });
-  expect(mcpList.status).toBe(200);
-  const mcpItems = (await mcpList.json()) as { items: Source[] };
-  const mcp = mcpItems.items.find((item) => item.name === "Audit MCP source");
-  if (!mcp) throw new Error("MCP fixture was not created");
+  const [mcpText] = mcpResult.content as { type: string; text: string }[];
+  const collected = JSON.parse(mcpText?.text ?? "{}") as {
+    collected?: boolean;
+    intake_item?: { id: string; title: string };
+  };
+  expect(collected.collected).toBe(true);
+  const intakeItem = collected.intake_item;
+  if (!intakeItem) throw new Error("MCP intake item was not collected");
+  const mcp: Source = { id: intakeItem.id, name: intakeItem.title };
   mutationsCompleted = true;
 
   const [cockpitAudit, httpAudit, cliAudit, mcpAudit] = await Promise.all([
     readCreated(cockpit),
     readCreated(http),
     readCreated(cli),
-    readCreated(mcp),
+    readCreated(mcp, "intake_item", "intake_item.collected"),
   ]);
   expect(cockpitAudit).toMatchObject({
     origin_source: "ui",
