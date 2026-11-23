@@ -312,6 +312,31 @@ function rewriteNullableRefs(document: JsonObject): JsonObject {
   };
 }
 
+function requiresProperty(member: JsonValue, schemas: JsonObject, property: string): boolean {
+  if (!isObject(member)) return false;
+  const name = schemaRefName(member.$ref);
+  const target = name ? schemas[name] : member;
+  return isObject(target) && Array.isArray(target.required) && target.required.includes(property);
+}
+
+function soundDiscriminator(node: JsonObject, schemas: JsonObject): JsonObject {
+  if (!isObject(node.discriminator)) return node;
+  const property = node.discriminator.propertyName;
+  const members = node.oneOf ?? node.anyOf;
+  const sound =
+    typeof property === "string" &&
+    Array.isArray(members) &&
+    members.every((member) => requiresProperty(member, schemas, property));
+  return sound ? node : without(node, "discriminator");
+}
+
+function dropUnsoundDiscriminators(document: JsonObject): JsonObject {
+  const components = objectAt(document, "components");
+  const schemas = objectAt(components, "schemas");
+  const fix = (schema: JsonValue) => mapSchema(schema, (node) => soundDiscriminator(node, schemas));
+  return { ...document, components: { ...components, schemas: mapValues(schemas, fix) } };
+}
+
 export function refineOpenApiDocument(document: JsonObject): JsonObject {
-  return splitInputOutput(rewriteNullableRefs(document));
+  return splitInputOutput(rewriteNullableRefs(dropUnsoundDiscriminators(document)));
 }

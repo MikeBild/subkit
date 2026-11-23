@@ -136,11 +136,15 @@ describe("refineOpenApiDocument nullable refs", () => {
 
 const Step: JsonObject = {
   type: "object",
-  properties: { id: { type: "string" }, on_error: { type: "string", default: "fail" } },
-  required: ["id"],
+  properties: {
+    kind: { type: "string", enum: ["step"] },
+    id: { type: "string" },
+    on_error: { type: "string", default: "fail" },
+  },
+  required: ["kind", "id"],
 };
 
-const StepOutput: JsonObject = { ...Step, required: ["id", "on_error"] };
+const StepOutput: JsonObject = { ...Step, required: ["kind", "id", "on_error"] };
 
 describe("refineOpenApiDocument input and output schemas", () => {
   test("splits a defaulted schema used by requests and responses", () => {
@@ -355,5 +359,44 @@ describe("refineOpenApiDocument properties", () => {
       }),
       { seed: 20261106, numRuns: 200 },
     );
+  });
+});
+
+describe("refineOpenApiDocument discriminators", () => {
+  const Http: JsonObject = {
+    type: "object",
+    properties: { protocol: { type: "string", enum: ["http"] } },
+    required: ["kind"],
+  };
+  const Sql: JsonObject = {
+    type: "object",
+    properties: { protocol: { type: "string", enum: ["sql"] } },
+    required: ["kind", "protocol"],
+  };
+  const union = (mapping: JsonObject): JsonObject => ({
+    oneOf: [ref("Http"), ref("Sql")],
+    discriminator: { propertyName: "protocol", mapping },
+  });
+
+  test("drops a discriminator whose property one member may omit", () => {
+    const result = refineOpenApiDocument(
+      document(
+        { Http, Sql, Step: union({ sql: "#/components/schemas/Sql" }) },
+        { requestBody: json(ref("Step")) },
+      ),
+    );
+    expect(schemaAt(result, "Step")).toEqual({ oneOf: [ref("Http"), ref("Sql")] });
+  });
+
+  test("keeps a discriminator every member requires", () => {
+    const Strict: JsonObject = { ...Http, required: ["kind", "protocol"] };
+    const step = {
+      oneOf: [ref("Strict"), ref("Sql")],
+      discriminator: { propertyName: "protocol" },
+    };
+    const result = refineOpenApiDocument(
+      document({ Strict, Sql, Step: step }, { requestBody: json(ref("Step")) }),
+    );
+    expect(schemaAt(result, "Step")).toEqual(step);
   });
 });

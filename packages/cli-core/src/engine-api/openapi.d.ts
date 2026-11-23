@@ -31578,11 +31578,8 @@ export interface components {
         HttpRequestStep: {
             /** @enum {string} */
             kind: "request";
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            protocol: "http";
+            /** @enum {string} */
+            protocol?: "http";
             id: string;
             /**
              * @default fail
@@ -31730,11 +31727,8 @@ export interface components {
         HttpRequestStepOutput: {
             /** @enum {string} */
             kind: "request";
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            protocol: "http";
+            /** @enum {string} */
+            protocol?: "http";
             id: string;
             /**
              * @default fail
@@ -32051,10 +32045,7 @@ export interface components {
         GraphqlRequestStep: {
             /** @enum {string} */
             kind: "request";
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
+            /** @enum {string} */
             protocol: "graphql";
             id: string;
             /**
@@ -32224,10 +32215,7 @@ export interface components {
         GraphqlRequestStepOutput: {
             /** @enum {string} */
             kind: "request";
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
+            /** @enum {string} */
             protocol: "graphql";
             id: string;
             /**
@@ -32397,10 +32385,7 @@ export interface components {
         SqlRequestStep: {
             /** @enum {string} */
             kind: "request";
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
+            /** @enum {string} */
             protocol: "sql";
             id: string;
             /**
@@ -32565,10 +32550,7 @@ export interface components {
         SqlRequestStepOutput: {
             /** @enum {string} */
             kind: "request";
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
+            /** @enum {string} */
             protocol: "sql";
             id: string;
             /**
@@ -32733,10 +32715,7 @@ export interface components {
         S3RequestStep: {
             /** @enum {string} */
             kind: "request";
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
+            /** @enum {string} */
             protocol: "s3";
             id: string;
             /**
@@ -32906,10 +32885,7 @@ export interface components {
         S3RequestStepOutput: {
             /** @enum {string} */
             kind: "request";
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
+            /** @enum {string} */
             protocol: "s3";
             id: string;
             /**
@@ -33079,10 +33055,7 @@ export interface components {
         SftpRequestStep: {
             /** @enum {string} */
             kind: "request";
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
+            /** @enum {string} */
             protocol: "sftp";
             id: string;
             /**
@@ -33233,10 +33206,7 @@ export interface components {
         SftpRequestStepOutput: {
             /** @enum {string} */
             kind: "request";
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
+            /** @enum {string} */
             protocol: "sftp";
             id: string;
             /**
@@ -33387,10 +33357,7 @@ export interface components {
         McpRequestStep: {
             /** @enum {string} */
             kind: "request";
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
+            /** @enum {string} */
             protocol: "mcp";
             id: string;
             /**
@@ -33573,10 +33540,7 @@ export interface components {
         McpRequestStepOutput: {
             /** @enum {string} */
             kind: "request";
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
+            /** @enum {string} */
             protocol: "mcp";
             id: string;
             /**
@@ -33757,10 +33721,7 @@ export interface components {
             sftp?: null;
         };
         TransformStep: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
+            /** @enum {string} */
             kind: "transform";
             id: string;
             /**
@@ -33789,10 +33750,7 @@ export interface components {
             silence_warnings?: "dropped_fields"[];
         };
         TransformStepOutput: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
+            /** @enum {string} */
             kind: "transform";
             id: string;
             /**
@@ -33847,10 +33805,7 @@ export interface components {
             max_rows?: number;
         };
         CallStep: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
+            /** @enum {string} */
             kind: "call";
             id: string;
             /**
@@ -33868,10 +33823,7 @@ export interface components {
             input?: components["schemas"]["WorkflowJsonValue"];
         };
         CallStepOutput: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
+            /** @enum {string} */
             kind: "call";
             id: string;
             /**
@@ -33889,10 +33841,7 @@ export interface components {
             input?: components["schemas"]["WorkflowJsonValue"];
         };
         WaitStep: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
+            /** @enum {string} */
             kind: "wait";
             id: string;
             /**
@@ -33907,10 +33856,7 @@ export interface components {
             duration_ms: number;
         };
         WaitStepOutput: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
+            /** @enum {string} */
             kind: "wait";
             id: string;
             /**
@@ -33925,10 +33871,7 @@ export interface components {
             duration_ms: number;
         };
         WaitForEventStep: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
+            /** @enum {string} */
             kind: "wait_for_event";
             id: string;
             /**
@@ -33948,10 +33891,7 @@ export interface components {
             on_timeout?: string;
         };
         WaitForEventStepOutput: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
+            /** @enum {string} */
             kind: "wait_for_event";
             id: string;
             /**
@@ -33971,10 +33911,7 @@ export interface components {
             on_timeout?: string;
         };
         BranchStep: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
+            /** @enum {string} */
             kind: "branch";
             id: string;
             /**
@@ -33991,10 +33928,7 @@ export interface components {
             else_steps?: string[];
         };
         BranchStepOutput: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
+            /** @enum {string} */
             kind: "branch";
             id: string;
             /**
@@ -34011,10 +33945,7 @@ export interface components {
             else_steps?: string[];
         };
         ParallelStep: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
+            /** @enum {string} */
             kind: "parallel";
             id: string;
             /**
@@ -34029,10 +33960,7 @@ export interface components {
             branches: string[][];
         };
         ParallelStepOutput: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
+            /** @enum {string} */
             kind: "parallel";
             id: string;
             /**
@@ -34047,10 +33975,7 @@ export interface components {
             branches: string[][];
         };
         ModelStep: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
+            /** @enum {string} */
             kind: "model";
             id: string;
             /**
@@ -34074,10 +33999,7 @@ export interface components {
             max_output_tokens?: number;
         };
         ModelStepOutput: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
+            /** @enum {string} */
             kind: "model";
             id: string;
             /**

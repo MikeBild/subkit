@@ -11761,20 +11761,7 @@
                 {
                   "$ref": "#/components/schemas/ModelStepOutput"
                 }
-              ],
-              "discriminator": {
-                "propertyName": "kind",
-                "mapping": {
-                  "request": "#/components/schemas/RequestStepOutput",
-                  "transform": "#/components/schemas/TransformStepOutput",
-                  "call": "#/components/schemas/CallStepOutput",
-                  "wait": "#/components/schemas/WaitStepOutput",
-                  "wait_for_event": "#/components/schemas/WaitForEventStepOutput",
-                  "branch": "#/components/schemas/BranchStepOutput",
-                  "parallel": "#/components/schemas/ParallelStepOutput",
-                  "model": "#/components/schemas/ModelStepOutput"
-                }
-              }
+              ]
             },
             "maxItems": 200
           },
@@ -11875,18 +11862,7 @@
           {
             "$ref": "#/components/schemas/McpRequestStep"
           }
-        ],
-        "discriminator": {
-          "propertyName": "protocol",
-          "mapping": {
-            "http": "#/components/schemas/HttpRequestStep",
-            "graphql": "#/components/schemas/GraphqlRequestStep",
-            "sql": "#/components/schemas/SqlRequestStep",
-            "s3": "#/components/schemas/S3RequestStep",
-            "sftp": "#/components/schemas/SftpRequestStep",
-            "mcp": "#/components/schemas/McpRequestStep"
-          }
-        }
+        ]
       },
       "RequestStepOutput": {
         "oneOf": [
@@ -11908,18 +11884,7 @@
           {
             "$ref": "#/components/schemas/McpRequestStepOutput"
           }
-        ],
-        "discriminator": {
-          "propertyName": "protocol",
-          "mapping": {
-            "http": "#/components/schemas/HttpRequestStepOutput",
-            "graphql": "#/components/schemas/GraphqlRequestStepOutput",
-            "sql": "#/components/schemas/SqlRequestStepOutput",
-            "s3": "#/components/schemas/S3RequestStepOutput",
-            "sftp": "#/components/schemas/SftpRequestStepOutput",
-            "mcp": "#/components/schemas/McpRequestStepOutput"
-          }
-        }
+        ]
       },
       "HttpRequestStep": {
         "type": "object",
@@ -21498,20 +21463,7 @@
                 {
                   "$ref": "#/components/schemas/ModelStep"
                 }
-              ],
-              "discriminator": {
-                "propertyName": "kind",
-                "mapping": {
-                  "request": "#/components/schemas/RequestStep",
-                  "transform": "#/components/schemas/TransformStep",
-                  "call": "#/components/schemas/CallStep",
-                  "wait": "#/components/schemas/WaitStep",
-                  "wait_for_event": "#/components/schemas/WaitForEventStep",
-                  "branch": "#/components/schemas/BranchStep",
-                  "parallel": "#/components/schemas/ParallelStep",
-                  "model": "#/components/schemas/ModelStep"
-                }
-              }
+              ]
             },
             "minItems": 1,
             "maxItems": 200
@@ -21657,20 +21609,7 @@
                 {
                   "$ref": "#/components/schemas/ModelStepOutput"
                 }
-              ],
-              "discriminator": {
-                "propertyName": "kind",
-                "mapping": {
-                  "request": "#/components/schemas/RequestStepOutput",
-                  "transform": "#/components/schemas/TransformStepOutput",
-                  "call": "#/components/schemas/CallStepOutput",
-                  "wait": "#/components/schemas/WaitStepOutput",
-                  "wait_for_event": "#/components/schemas/WaitForEventStepOutput",
-                  "branch": "#/components/schemas/BranchStepOutput",
-                  "parallel": "#/components/schemas/ParallelStepOutput",
-                  "model": "#/components/schemas/ModelStepOutput"
-                }
-              }
+              ]
             },
             "minItems": 1,
             "maxItems": 200
