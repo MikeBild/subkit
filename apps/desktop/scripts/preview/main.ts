@@ -32,6 +32,10 @@ ipcMain.handle("preview:state", () => current);
 ipcMain.handle("preview:connect-state", () => connect);
 ipcMain.handle("preview:connect-check", () => check);
 ipcMain.handle("preview:connect-invite", () => invite);
+ipcMain.handle("preview:show-view", (_event, view: unknown) => {
+  if (connect && typeof connect === "object") connect = { ...connect, view };
+  return connect;
+});
 
 function stepScript(step: PreviewStep): string {
   const target = `document.querySelector('[data-testid="${"click" in step ? step.click : step.into}"]')`;

@@ -291,21 +291,28 @@ describe("sign-in model: settings", () => {
     ).toEqual([{ kind: "showView", view: "connect" }]);
   });
 
-  test("back from the permission setup returns to the flow", () => {
+  test("back from a permission setup opened from outside returns to the setup flow", () => {
     const { events, effects } = run(ready({ view: "permissions" }), { type: "GoBack" });
-    expect(events).toEqual([]);
+    expect(events).toEqual([{ type: "NavigatedHome" }]);
     expect(effects).toEqual([{ kind: "showView", view: "connect" }]);
   });
 
   test("local capabilities open from settings as their own view and back returns to settings", () => {
     const opened = run(ready({ view: "settings" }), { type: "OpenLocalCapabilities" });
     expect(opened.effects).toEqual([{ kind: "showView", view: "local" }]);
-    const shown = ready({ view: "local" });
+    const shown = evolve(opened.state, {
+      type: "MainStateReceived",
+      state: main({ view: "local" }),
+    });
     expect(viewOf(shown)?.screen).toEqual({
       kind: "local-capabilities",
       device: "MacBook-Anna",
-      signedIn: false,
+      online: false,
       supported: true,
+      permissions: [
+        { key: "accessibility", granted: false },
+        { key: "screen", granted: false },
+      ],
     });
     expect(viewOf(shown)?.frame.settingsOpen).toBe(true);
     expect(run(shown, { type: "GoBack" }).effects).toEqual([
@@ -326,7 +333,7 @@ describe("sign-in model: settings", () => {
     });
   });
 
-  test("closing settings also closes local capabilities, so settings reopen at the top", () => {
+  test("the toggle on a view opened from outside returns to the setup flow", () => {
     expect(run(ready({ view: "local" }), { type: "ToggleSettings" }).effects).toEqual([
       { kind: "showView", view: "connect" },
     ]);
@@ -339,9 +346,10 @@ describe("sign-in model: settings", () => {
   });
 
   test("back from settings returns to the flow without changing the step", () => {
-    const { events, effects } = run(ready({ view: "settings" }), { type: "GoBack" });
-    expect(events).toEqual([]);
+    const { events, effects, state } = run(ready({ view: "settings" }), { type: "GoBack" });
+    expect(events).toEqual([{ type: "NavigatedHome" }]);
     expect(effects).toEqual([{ kind: "showView", view: "connect" }]);
+    expect(state.flow.step).toBe(ready().flow.step);
   });
 
   test("signing in to a known server goes straight to its sign-in step", () => {
@@ -372,18 +380,20 @@ describe("sign-in model: settings", () => {
         { kind: "updateSettings", patch: { launchAtLogin: true } },
       ],
       [{ type: "RunUpdateAction" }, { kind: "updateAction" }],
-      [{ type: "ReportProblem" }, { kind: "reportProblem" }],
       [{ type: "CheckPermissions" }, { kind: "checkPermissions" }],
       [
         { type: "OpenPermissionSettings", key: "screen" },
         { kind: "openPermissionSettings", key: "screen" },
       ],
       [{ type: "RestartApp" }, { kind: "restartApp" }],
-      [{ type: "ClosePermissions" }, { kind: "showView", view: "connect" }],
     ];
     for (const [command, effect] of cases) {
       expect(decide(ready(), command, CONTEXT)).toEqual({ events: [], effects: [effect] });
     }
+    expect(decide(ready(), { type: "ReportProblem" }, CONTEXT)).toEqual({
+      events: [{ type: "Navigated", from: "connect", to: "report" }],
+      effects: [{ kind: "reportProblem" }],
+    });
   });
 });
 

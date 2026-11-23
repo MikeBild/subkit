@@ -12,8 +12,13 @@ import {
 import type { AuthFailure } from "../shared/server-contract.ts";
 import { tooOldAsk } from "../shared/server-too-old.ts";
 import * as model from "../shared/shell-session.ts";
-import { type StatusNotification, statusNotification } from "../shared/status-model.ts";
+import {
+  connectionLog,
+  type StatusNotification,
+  statusNotification,
+} from "../shared/status-model.ts";
 import type { Connection } from "../shared/tray-model.ts";
+import { appLog } from "./app-log.ts";
 import { CHANNEL } from "./channel.ts";
 import { AttentionFeed } from "./feed.ts";
 import { showNotification } from "./notify.ts";
@@ -22,6 +27,7 @@ import type { ShellCore } from "./shell-core.ts";
 
 export class FeedFlow {
   private feed: AttentionFeed | null = null;
+  private cause: string | null = null;
 
   constructor(private readonly core: ShellCore) {}
 
@@ -54,7 +60,11 @@ export class FeedFlow {
       },
       onAuthFailure: (failure) => this.onAuthFailure(id, failure),
       onEvent: (name, data) => this.onEvent(name, data),
-      onError: (scope, error) => core.record(scope, error),
+      onError: (scope, error) => {
+        if (scope === "events.stream")
+          this.cause = error instanceof Error ? error.message : String(error);
+        core.record(scope, error);
+      },
     });
     this.feed.start();
     core.device.refresh();
@@ -94,6 +104,11 @@ export class FeedFlow {
   }
 
   private setConnection(next: Connection): void {
+    const log = connectionLog(this.core.state.connection, next);
+    const cause = this.cause ?? "stream_ended";
+    if (log === "connection.offline") appLog.warn(log, { cause });
+    if (log === "connection.recovered") appLog.info(log, { cause });
+    if (next === "online") this.cause = null;
     const change = model.connectionChanged(this.core.state, next);
     if (change.cameOnline) {
       void this.core.pause.load();

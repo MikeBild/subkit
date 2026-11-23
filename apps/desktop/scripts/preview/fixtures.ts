@@ -131,6 +131,24 @@ const check = (address: string): PreviewStep[] => [
   { click: "connect-check" },
 ];
 const SIGNED_IN_PROFILE = { profiles: [{ ...PROFILE, signedIn: true }], signedIn: SIGNED_IN };
+const COMPLETED = { profiles: [{ ...PROFILE, signedIn: true }], signedIn: null };
+const CONNECTED = {
+  profiles: [
+    {
+      ...PROFILE,
+      label: "Bild Consulting",
+      serverOrigin: "https://subkit-cloud.mikebild.dev",
+      signedIn: true,
+      serverVersion: "12.1.5",
+    },
+  ],
+  signedIn: null,
+};
+const SCREEN_MISSING = {
+  supported: true,
+  permissions: { accessibility: true, screen: false, restartPending: false },
+  lost: [],
+};
 
 const REPORT_OPEN: ReportView = {
   ...CLOSED_REPORT,
@@ -259,8 +277,29 @@ export const CONNECT_SCENARIOS: ConnectScenario[] = [
     name: "device-registered",
     patch: SIGNED_IN_PROFILE,
   },
-  { name: "settings", patch: { ...SIGNED_IN_PROFILE, view: "settings" } },
-  { name: "local-capabilities", patch: { ...SIGNED_IN_PROFILE, view: "local" } },
+  { name: "connected", patch: CONNECTED },
+  {
+    name: "connected-offline",
+    patch: { ...CONNECTED, notice: { kind: "offline", profileId: PROFILE.id } },
+  },
+  { name: "connected-other-server", patch: CONNECTED, steps: [{ click: "server-other" }] },
+  { name: "settings", patch: { ...COMPLETED, view: "settings" } },
+  { name: "settings-first-run", patch: { view: "settings" } },
+  { name: "local-capabilities", patch: { ...COMPLETED, view: "local" } },
+  {
+    name: "local-capabilities-partial",
+    patch: { ...COMPLETED, view: "local", permissions: SCREEN_MISSING },
+  },
+  {
+    name: "local-capabilities-from-settings",
+    patch: { ...COMPLETED, view: "settings" },
+    steps: [{ click: "settings-local-open" }],
+  },
+  { name: "permissions-missing", patch: { ...COMPLETED, view: "permissions" } },
+  {
+    name: "permissions-screen-missing",
+    patch: { ...COMPLETED, view: "permissions", permissions: SCREEN_MISSING },
+  },
   { name: "report", patch: { view: "report", report: REPORT_OPEN } },
   {
     name: "report-sent",

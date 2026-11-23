@@ -6,6 +6,7 @@ import { Label } from "@ui/atoms/label";
 import { Panel, Pill } from "@ui/atoms/pill";
 import { StatusDot } from "@ui/atoms/status-dot";
 import { Switch } from "@ui/atoms/switch";
+import { cn } from "@ui/lib/utils";
 import { EmptyState } from "@ui/molecules/empty-state";
 import { ErrorNotice, FieldError } from "@ui/molecules/error-notice";
 import {
@@ -19,8 +20,9 @@ import { SettingsRow } from "@ui/molecules/settings-row";
 import { StepFooter } from "@ui/molecules/step-footer";
 import { Tabs, TabsList, TabsTrigger } from "@ui/molecules/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@ui/molecules/toggle-group";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@ui/molecules/tooltip";
 import { ConfirmDialog } from "@ui/organisms/confirm-dialog";
-import { AppWindow, Cpu, Folder, Globe, Laptop, ShieldCheck, Trash2 } from "lucide-react";
+import { AppWindow, Cpu, Folder, Globe, Info, Laptop, ShieldCheck, Trash2 } from "lucide-react";
 import { useState } from "react";
 import {
   type AllowanceRow,
@@ -34,22 +36,55 @@ import {
   tabCounts,
 } from "../../../shared/local/capabilities-model.ts";
 import { useLocalCapabilities, useSignIn } from "../../adapter/index.ts";
-import type { Command } from "../../domain/index.ts";
+import type { Command, LocalPermission } from "../../domain/index.ts";
 
 const ROW_ICON = { folder: Folder, website: Globe, app: AppWindow } as const;
 const TAB_ICON = { folders: Folder, websites: Globe, apps: AppWindow, keepOut: ShieldCheck };
 
-export function LocalCapabilities({
-  device,
-  signedIn,
-  supported,
-}: {
+interface StatusProps {
   device: string;
-  signedIn: boolean;
-  supported: boolean;
-}) {
+  online: boolean;
+  permissions: LocalPermission[];
+}
+
+export function LocalCapabilities({ supported, ...status }: StatusProps & { supported: boolean }) {
   if (!supported) return <MacOnlyCapabilities />;
-  return <SupportedCapabilities device={device} signedIn={signedIn} />;
+  return <SupportedCapabilities {...status} />;
+}
+
+const CHIP =
+  "inline-flex min-h-6 items-center gap-2 rounded-full border bg-secondary px-2 text-xs font-medium";
+
+function LocalStatus({ device, online, permissions }: StatusProps) {
+  const { t, dispatch } = useSignIn();
+  return (
+    <ul className="flex flex-wrap items-center gap-2" data-testid="local-status">
+      <li className={CHIP} data-testid="local-status-device" data-online={online}>
+        <StatusDot tone={online ? "success" : "neutral"} />
+        <span className="break-all">{device}</span>
+        <span className="text-muted-foreground">
+          {t(online ? "signin.connected" : "tray.status.offline")}
+        </span>
+      </li>
+      {permissions.map(({ key, granted }) => (
+        <li key={key}>
+          <button
+            type="button"
+            data-testid={`local-status-${key}`}
+            data-granted={granted}
+            className={cn(CHIP, "hover:bg-accent focus-visible:outline-2")}
+            onClick={() => dispatch({ type: "OpenPermissions" } satisfies Command)}
+          >
+            <StatusDot tone={granted ? "success" : "warning"} />
+            {t(`permissions.name.${key}`)}
+            <span className={granted ? "text-muted-foreground" : "text-warning-ink"}>
+              {t(granted ? "permissions.granted" : "permissions.missing")}
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 function MacOnlyCapabilities() {
@@ -67,8 +102,8 @@ function MacOnlyCapabilities() {
   );
 }
 
-function SupportedCapabilities({ device, signedIn }: { device: string; signedIn: boolean }) {
-  const { t, dispatch } = useSignIn();
+function SupportedCapabilities(status: StatusProps) {
+  const { view, t, dispatch } = useSignIn();
   const local = useLocalCapabilities();
   const { state } = local;
   const [tab, setTab] = useState<LocalTab>("folders");
@@ -104,8 +139,30 @@ function SupportedCapabilities({ device, signedIn }: { device: string; signedIn:
   return (
     <div className="flex flex-col gap-4" data-testid="local-capabilities">
       <h1 className="sr-only">{t("local.title")}</h1>
+      <LocalStatus {...status} />
       <Panel className="px-3 py-1">
-        <SettingsRow id="local-on" icon={Cpu} label={t("local.toggle")} hint={t("local.explain")}>
+        <SettingsRow
+          id="local-on"
+          icon={Cpu}
+          label={
+            <span className="inline-flex items-center gap-1.5">
+              {t("local.toggle")}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    data-testid="local-explain"
+                    aria-label={t("local.explain")}
+                    className="inline-flex size-5 items-center justify-center rounded-full text-muted-foreground hover:text-foreground"
+                  >
+                    <Info className="size-4" aria-hidden />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>{t("local.explain")}</TooltipContent>
+              </Tooltip>
+            </span>
+          }
+        >
           <Switch
             data-testid="local-enabled"
             id="local-on"
@@ -114,12 +171,6 @@ function SupportedCapabilities({ device, signedIn }: { device: string; signedIn:
             onCheckedChange={(checked) => local.setPersonalEnabled(checked)}
           />
         </SettingsRow>
-        <div className="pb-3">
-          <span className="inline-flex min-h-6 items-center gap-2 rounded-full border bg-secondary px-2 text-xs font-medium">
-            <StatusDot tone={signedIn ? "success" : "neutral"} />
-            {device}
-          </span>
-        </div>
       </Panel>
       <Tabs
         value={tab}
@@ -146,7 +197,7 @@ function SupportedCapabilities({ device, signedIn }: { device: string; signedIn:
             primary={{ label: t("err.retry"), onClick: local.reload }}
           />
         ) : rows.length === 0 && phase === "ready" ? (
-          <EmptyState icon={TAB_ICON[tab]} title={t("local.empty")} />
+          <EmptyState inline icon={TAB_ICON[tab]} title={t("local.empty")} testId="local-empty" />
         ) : (
           <Panel className="divide-y px-3 py-1">
             {rows.map((row) => (
@@ -333,8 +384,9 @@ function SupportedCapabilities({ device, signedIn }: { device: string; signedIn:
       </div>
       <StepFooter
         backOnly
+        testId="local"
         back={() => dispatch({ type: "GoBack" } satisfies Command)}
-        backLabel={t("common.back")}
+        backLabel={t(view?.nav?.back ?? "common.back")}
         nextLabel={t("common.next")}
       />
     </div>

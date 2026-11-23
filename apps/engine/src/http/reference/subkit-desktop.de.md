@@ -175,14 +175,14 @@ Sobald du eine Fähigkeit einschaltest, legt SubKit dafür einen Connector an, z
 
 ### macOS-Berechtigungen
 
-Für **Apps** muss macOS SubKit zwei Dinge erlauben. **Berechtigungen prüfen** unter **Lokale Fähigkeiten** zeigt beide mit **Erteilt** oder **Fehlt**.
+Für **Apps** muss macOS SubKit zwei Dinge erlauben. Oben unter **Lokale Fähigkeiten** steht jede mit **Erteilt** oder **Fehlt**. **Berechtigungen prüfen** zeigt nur, was noch fehlt.
 
 | Berechtigung | Wofür SubKit sie braucht |
 | --- | --- |
 | **Bedienungshilfen** | SubKit liest und bedient Knöpfe und Felder in den Apps, die du erlaubt hast. |
 | **Bildschirmaufnahme** | SubKit macht Bildschirmfotos des App-Fensters, auf denen Passwortfelder geschwärzt sind. |
 
-1. Wähle neben einer fehlenden Berechtigung **Systemeinstellungen öffnen**.
+1. Wähle neben einer fehlenden Berechtigung **Systemeinstellungen öffnen**. SubKit fragt macOS zuerst selbst, damit es in der Liste erscheint, und öffnet dann die Einstellungen.
 2. Schalte SubKit unter **Datenschutz & Sicherheit** ein.
 3. Wähle zurück in SubKit **Erneut prüfen**. Verlangt macOS es, wähle **SubKit neu starten**.
 

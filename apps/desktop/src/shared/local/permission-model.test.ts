@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
+  helperProbeFrom,
   isPermissionKey,
   type MediaAccess,
+  mergeProbes,
   NO_PERMISSIONS,
   type PermissionProbe,
   type Permissions,
@@ -85,5 +87,42 @@ describe("settings links", () => {
     expect(isPermissionKey("screen")).toBe(true);
     expect(isPermissionKey("camera")).toBe(false);
     expect(isPermissionKey(undefined)).toBe(false);
+  });
+});
+
+describe("helperProbeFrom", () => {
+  test("reads the nested states of agent-desktop permissions", () => {
+    expect(
+      helperProbeFrom({
+        accessibility: { state: "granted" },
+        automation: { state: "unknown" },
+        screen_recording: { state: "not_determined" },
+      }),
+    ).toEqual({ accessibility: true, screen: "not-determined" });
+    expect(helperProbeFrom({ screen_recording: { state: "denied" } })).toEqual({
+      accessibility: false,
+      screen: "denied",
+    });
+    expect(helperProbeFrom({ screen_recording: { state: "odd" } })?.screen).toBe("unknown");
+  });
+
+  test("anything else is no answer", () => {
+    for (const data of [null, "granted", 3, {}, { other: true }])
+      expect(helperProbeFrom(data)).toBeNull();
+  });
+});
+
+describe("mergeProbes", () => {
+  test("only a helper grant lifts a screen status the process cannot see yet", () => {
+    expect(mergeProbes(probe(true, "denied"), probe(false, "granted"))).toEqual(
+      probe(true, "granted"),
+    );
+    expect(mergeProbes(probe(true, "denied"), probe(true, "denied"))).toEqual(
+      probe(true, "denied"),
+    );
+    expect(mergeProbes(probe(false, "granted"), probe(true, "denied"))).toEqual(
+      probe(false, "granted"),
+    );
+    expect(mergeProbes(probe(false, "denied"), null)).toEqual(probe(false, "denied"));
   });
 });

@@ -3,7 +3,7 @@ export type ReleaseNotes = { version: string; notes: string[]; highlights: strin
 export type PendingNotes = { version: string | null; notes: string[]; highlights: string[] | null };
 
 export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: PendingNotes } = {
-  "source": "408b6fca128db200013ac71de6f81c5ce9e70743",
+  "source": "866aa5e88c56d17b744d876f4f5302319283d2b3",
   "releases": [
     {
       "version": "v1.0.0",
@@ -2309,24 +2309,39 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
         "SubKit Desktop for Mac is signed, notarized and checked with a launch test before every release.",
         "Fresh screenshots in the docs show the vault, the AI budget, “Always ask first”, the live view and local permissions."
       ]
+    },
+    {
+      "version": "v12.1.4",
+      "notes": [
+        "show browser page refusals as a page, not JSON",
+        "open every browser page while signed in to the Cockpit",
+        "let the desktop sign-in page open in a signed-in browser",
+        "say which files a storage step may access"
+      ],
+      "highlights": [
+        "SubKit Desktop signs in even when the browser is already signed in to the Cockpit, and every browser page of SubKit opens without a workspace error.",
+        "“Report a problem” in SubKit Desktop now sends the report, with redacted diagnostics attached, even before you sign in.",
+        "SubKit Desktop starts with SubKit Cloud prefilled, and the installer window stays clean even when Finder shows hidden files.",
+        "Top-level pages in the Cockpit and in SubKit Desktop no longer repeat the menu name as a big heading.",
+        "Skipped steps read as skipped, not as failures, and failed sign-ins to connectors log the provider's reason.",
+        "SubKit is open source: contributing guide, code of conduct, issue forms and private security reports on GitHub.",
+        "The README, the documentation and the website describe SubKit in the same words.",
+        "show browser page refusals as a page, not JSON",
+        "open every browser page while signed in to the Cockpit",
+        "let the desktop sign-in page open in a signed-in browser",
+        "say which files a storage step may access"
+      ]
     }
   ],
   "unpublished": {
-    "version": "12.1.4",
-    "notes": [
-      "show browser page refusals as a page, not JSON",
-      "open every browser page while signed in to the Cockpit",
-      "let the desktop sign-in page open in a signed-in browser",
-      "say which files a storage step may access"
-    ],
+    "version": "12.1.5",
+    "notes": [],
     "highlights": [
-      "SubKit Desktop signs in even when the browser is already signed in to the Cockpit, and every browser page of SubKit opens without a workspace error.",
-      "“Report a problem” in SubKit Desktop now sends the report, with redacted diagnostics attached, even before you sign in.",
-      "SubKit Desktop starts with SubKit Cloud prefilled, and the installer window stays clean even when Finder shows hidden files.",
-      "Top-level pages in the Cockpit and in SubKit Desktop no longer repeat the menu name as a big heading.",
-      "Skipped steps read as skipped, not as failures, and failed sign-ins to connectors log the provider's reason.",
-      "SubKit is open source: contributing guide, code of conduct, issue forms and private security reports on GitHub.",
-      "The README, the documentation and the website describe SubKit in the same words."
+      "SubKit Desktop and the Cockpit no longer show “Server offline” while connected: the live event stream works for every signed-in workspace.",
+      "Connected and offline now come from one source, so the status in the top bar and the notice on a page always agree.",
+      "“Report a problem” in the Cockpit attaches the redacted diagnostics and the trace id of the failing request, and confirms that the report arrived.",
+      "SubKit Desktop asks macOS for screen recording and accessibility before it opens System Settings, so SubKit now appears in both lists.",
+      "After the first setup, SubKit Desktop shows your connected server, permissions and device status at a glance, and back and close always lead where you came from."
     ]
   }
 };

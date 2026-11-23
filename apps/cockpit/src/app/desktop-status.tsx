@@ -2,6 +2,7 @@ import { ErrorNotice } from "@ui/molecules/error-notice";
 import { useEffect, useState } from "react";
 import { StatusStrip } from "@/components/cockpit/patterns/status-strip";
 import { useI18n } from "@/lib/i18n-context";
+import { type Connectivity, useConnectivity } from "./connectivity";
 import {
   type DesktopBanner,
   type DesktopStatus,
@@ -43,10 +44,12 @@ function useDesktopStatus(): { status: DesktopStatus; bridge: DesktopStatusBridg
 function BannerNotice({
   banner,
   code,
+  traceId,
   bridge,
 }: {
   banner: DesktopBanner;
   code: string;
+  traceId: string | null;
   bridge: DesktopStatusBridge | null;
 }) {
   const { t } = useI18n();
@@ -60,7 +63,10 @@ function BannerNotice({
         tone={banner.tone}
         title={banner.title}
         body={banner.body}
-        rows={[[t("error.code"), code]]}
+        rows={[
+          [t("error.code"), code],
+          ...(traceId ? [[t("errorRows.request"), traceId] as [string, string]] : []),
+        ]}
         testId={testId}
         primary={
           ask
@@ -100,8 +106,21 @@ function BannerNotice({
 
 export function DesktopStatusBanner() {
   const { status, bridge } = useDesktopStatus();
+  const connection = useConnectivity();
+  return <DesktopStatusView status={status} connection={connection} bridge={bridge} />;
+}
+
+export function DesktopStatusView({
+  status,
+  connection,
+  bridge,
+}: {
+  status: DesktopStatus;
+  connection: Connectivity;
+  bridge: DesktopStatusBridge | null;
+}) {
   const { t } = useI18n();
-  const notice = desktopNotice(status);
+  const notice = desktopNotice(status, connection.status);
   if (!notice) return null;
   return (
     <div
@@ -109,7 +128,12 @@ export function DesktopStatusBanner() {
       data-testid="desktop-status"
     >
       {notice.type === "banner" ? (
-        <BannerNotice banner={notice.banner} code={notice.code} bridge={bridge} />
+        <BannerNotice
+          banner={notice.banner}
+          code={notice.code}
+          traceId={connection.traceId}
+          bridge={bridge}
+        />
       ) : (
         <StatusStrip
           tone="info"

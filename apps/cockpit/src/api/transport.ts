@@ -1,4 +1,5 @@
 import type { components } from "@cli-core/engine-api/openapi";
+import { connectivity } from "@/app/connectivity";
 import { cockpitApiHref } from "@/app/installation-context";
 import { acceptTenantContext, noticeTenantContext, tenantContextHeaders } from "./tenant-context";
 
@@ -56,6 +57,11 @@ export function retryQuery(failures: number, error: unknown): boolean {
   if (failures >= 3) return false;
   if (!(error instanceof ApiError)) return true;
   return error.status >= 500 || RETRYABLE_CLIENT_STATUSES.has(error.status);
+}
+
+export function noticeResponse(status: number, traceId: string | null): void {
+  if (status < 500) connectivity.reachable();
+  else connectivity.failed(traceId);
 }
 
 export function failure(status: number, body: unknown, traceId: string | null): ApiError {
@@ -118,6 +124,7 @@ export async function apiRequest<T>(
     credentials: "same-origin",
     headers,
   });
+  noticeResponse(response.status, response.headers.get("x-trace-id"));
   const body = response.status === 204 ? null : await response.json().catch(() => null);
   signal?.throwIfAborted();
   if (
@@ -152,6 +159,7 @@ export function apiUpload<T>(
       if (event.lengthComputable && event.total > 0) onProgress(event.loaded / event.total);
     };
     request.onload = () => {
+      noticeResponse(request.status, request.getResponseHeader("x-trace-id"));
       let parsed: unknown = null;
       try {
         parsed = request.responseText ? JSON.parse(request.responseText) : null;
@@ -172,6 +180,7 @@ export async function apiText(path: string): Promise<string> {
   const headers = new Headers({ accept: "text/plain", "x-subkit-client": "cockpit" });
   for (const [key, value] of Object.entries(tenantContextHeaders())) headers.set(key, value);
   const response = await fetch(cockpitApiHref(path), { credentials: "same-origin", headers });
+  noticeResponse(response.status, response.headers.get("x-trace-id"));
   if (!response.ok) {
     const body = await response.json().catch(() => null);
     throw failure(response.status, body, response.headers.get("x-trace-id"));

@@ -75,9 +75,10 @@ export function SignIn() {
         </>
       )}
       <StepFooter
-        disabled
-        label={t("common.next")}
-        back={signin.phase === "done" ? undefined : a.back}
+        disabled={!s.profileId}
+        next={s.profileId ? a.enter : undefined}
+        label={t(s.profileId ? "signin.enter" : "common.next")}
+        back={signin.phase === "done" && !s.profileId ? undefined : a.back}
         backLabel={t("common.back")}
         nextLabel={t("common.next")}
       />

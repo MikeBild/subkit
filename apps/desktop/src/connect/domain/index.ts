@@ -13,6 +13,7 @@ export {
   type FlowUi,
   hostOf,
   INITIAL_FLOW,
+  type LocalPermission,
   type LocalSetupModel,
   type NoticeAction,
   type Outcome,

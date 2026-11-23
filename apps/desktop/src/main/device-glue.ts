@@ -63,7 +63,7 @@ const RUNNER_ENDED: ReadonlySet<RunnerState | "crashed" | "given_up"> = new Set(
 ]);
 
 export class DeviceGlue {
-  readonly permissions = new MacPermissions(electronPermissionSystem());
+  readonly permissions = new MacPermissions(electronPermissionSystem(() => this.computerHelper()));
   private readonly userData = app.getPath("userData");
   private readonly browserHost = createBrowserHost({
     dataDir: join(this.userData, "browser"),
@@ -157,8 +157,8 @@ export class DeviceGlue {
     this.local.sync();
   }
 
-  permissionsChecked(): void {
-    this.permissions.check();
+  async permissionsChecked(): Promise<void> {
+    await this.permissions.refresh();
     this.runner.computerChanged();
   }
 
@@ -226,7 +226,11 @@ export class DeviceGlue {
     const permissions = this.permissions.check().permissions;
     const ready =
       permissionGranted(permissions, "accessibility") && permissionGranted(permissions, "screen");
-    if (!ready && this.computerHelper() !== null) this.options.showPermissions();
+    if (ready || this.computerHelper() === null) return;
+    this.options.showPermissions();
+    void this.permissions
+      .requestMissingOnce()
+      .catch((error) => this.options.onError("permissions.request", error));
   }
 
   private async loadAsks(deviceId: string): Promise<void> {

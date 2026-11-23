@@ -37,7 +37,7 @@ export interface FrameModel {
   settingsOpen: boolean;
 }
 
-export function frameFor(screen: Screen, path: FlowPath = "server"): FrameModel {
+export function frameFor(screen: Screen, path: FlowPath = "server", wizard = true): FrameModel {
   if (screen.kind === "local")
     return {
       dots: { visible: !screen.starting, current: screen.step, total: LOCAL_SETUP_STEPS.length },
@@ -45,7 +45,11 @@ export function frameFor(screen: Screen, path: FlowPath = "server"): FrameModel 
     };
   const index = stepIndex(screen, path);
   return {
-    dots: { visible: index !== null, current: index ?? 0, total: PATH_STEPS[path].length },
+    dots: {
+      visible: wizard && index !== null,
+      current: index ?? 0,
+      total: PATH_STEPS[path].length,
+    },
     settingsOpen: screen.kind === "settings" || screen.kind === "local-capabilities",
   };
 }

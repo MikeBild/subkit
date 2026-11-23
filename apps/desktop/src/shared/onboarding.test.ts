@@ -3,9 +3,11 @@ import {
   chooseWorkspace,
   completeStep,
   currentStep,
+  firstSetup,
   NO_ONBOARDING,
   onboardingSteps,
   parseMemberships,
+  setupComplete,
   startOnboarding,
   tenantSessionBody,
   workspaceFailed,
@@ -76,5 +78,35 @@ describe("memberships from the server", () => {
     ).toEqual([{ tenantId: "t1", name: "Bild Consulting", role: "admin", owner: true }]);
     expect(parseMemberships(null)).toEqual([]);
     expect(tenantSessionBody("t1")).toBe('{"tenant_id":"t1"}');
+  });
+});
+
+describe("setup complete", () => {
+  const signedIn = { id: "p1", signedIn: true };
+  const signedOut = { id: "p1", signedIn: false };
+
+  test("a fresh install runs the first setup", () => {
+    expect(firstSetup({ profiles: [], signedIn: null })).toBe(true);
+    expect(firstSetup({ profiles: [signedOut], signedIn: null })).toBe(true);
+  });
+
+  test("the first sign-in of this session finishes the first setup", () => {
+    expect(firstSetup({ profiles: [signedIn], signedIn: { profileId: "p1" } })).toBe(true);
+  });
+
+  test("an install with a signed-in server is complete, also right after an upgrade", () => {
+    expect(setupComplete({ profiles: [signedIn], signedIn: null })).toBe(true);
+    expect(
+      setupComplete({ profiles: [signedOut, { id: "p2", signedIn: true }], signedIn: null }),
+    ).toBe(true);
+  });
+
+  test("signing in to a second server does not restart the first setup", () => {
+    expect(
+      setupComplete({
+        profiles: [signedIn, { id: "p2", signedIn: true }],
+        signedIn: { profileId: "p2" },
+      }),
+    ).toBe(true);
   });
 });

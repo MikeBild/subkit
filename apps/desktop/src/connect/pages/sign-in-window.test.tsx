@@ -450,3 +450,118 @@ describe.skipIf(!desktopRunner)("welcome and invitation", () => {
     expect(html).toContain("Copy diagnostics");
   });
 });
+
+describe.skipIf(!desktopRunner)("connected state on the server step", () => {
+  const CONNECTED = {
+    defaultServer: CLOUD,
+    profiles: [
+      {
+        id: "p1",
+        label: "subkit-cloud.example",
+        serverOrigin: CLOUD,
+        signedIn: true,
+        active: true,
+        serverVersion: "12.1.5",
+      },
+    ],
+  };
+
+  for (const locale of ["de", "en"] as const) {
+    test(`a signed-in server is the primary state, the form stays folded (${locale})`, () => {
+      const html = render(state(CONNECTED, [], locale));
+      const copy = dictionary(locale);
+      expect(html).toContain('data-testid="server-overview"');
+      expect(html).toContain("subkit-cloud.example");
+      expect(html).toContain(copy["signin.connected"]);
+      expect(html).toContain(copy["chip.version"].replace("{version}", "12.1.5"));
+      expect(html).toContain(copy["relogin.other"]);
+      expect(html).toContain(copy["signin.enter"]);
+      expect(html).not.toContain('data-testid="connect-address"');
+      expect(html).not.toContain('data-testid="connect-check"');
+      expect(html).not.toContain('data-testid="connect-own-server"');
+      expect(html).not.toContain('data-testid="connect-choice-server"');
+      expect(viewOf(state(CONNECTED, [], locale))?.frame.dots.visible).toBe(false);
+    });
+  }
+
+  test("connect another server unfolds the form with a way back", () => {
+    const html = render(state(CONNECTED, [{ type: "OtherServerOpened" }], "de"));
+    expect(html).toContain('data-testid="connect-address"');
+    expect(html).not.toContain('data-testid="server-overview"');
+    expect(html).not.toMatch(/data-testid="step-back"[^>]*aria-hidden="true"/);
+  });
+
+  test("offline keeps the server on top and offers to try again", () => {
+    const html = render(
+      state({ ...CONNECTED, notice: { kind: "offline", profileId: "p1" } }, [], "de"),
+    );
+    expect(html).toContain('data-testid="server-overview"');
+    expect(html).toContain('data-testid="server-notice-action"');
+    expect(html).not.toContain(dictionary("de")["signin.connected"]);
+  });
+
+  test("signing in to the server you are already signed in to shows the signed-in state", () => {
+    const html = render(
+      state(CONNECTED, [
+        { type: "OtherServerOpened" },
+        { type: "SignInTargetChosen", origin: CLOUD, serverVersion: "12.1.5" },
+      ]),
+    );
+    expect(html).toContain('data-testid="signin-done"');
+    expect(html).not.toContain('data-testid="signin-open"');
+    expect(html).toContain("Open SubKit");
+    expect(html).not.toMatch(/data-testid="step-next"[^>]*disabled/);
+  });
+});
+
+describe.skipIf(!desktopRunner)("local capabilities status at a glance", () => {
+  const SIGNED_IN_PROFILE = {
+    id: "p1",
+    label: "work",
+    serverOrigin: "https://work.example.com",
+    signedIn: true,
+    active: true,
+  };
+  const PARTIAL = {
+    view: "local" as const,
+    profiles: [SIGNED_IN_PROFILE],
+    permissions: {
+      supported: true,
+      permissions: { accessibility: true, screen: false, restartPending: false },
+      lost: [],
+    },
+  };
+
+  test("the device is green while online and each permission shows its state", () => {
+    const html = render(state(PARTIAL, [], "de"));
+    expect(html).toMatch(/data-testid="local-status-device" data-online="true"/);
+    expect(html).toMatch(/data-testid="local-status-accessibility" data-granted="true"/);
+    expect(html).toMatch(/data-testid="local-status-screen" data-granted="false"/);
+    const de = dictionary("de");
+    expect(html).toContain(de["permissions.name.screen"]);
+    expect(html).toContain(de["permissions.missing"]);
+    expect(html).toContain(de["permissions.granted"]);
+  });
+
+  test("the device turns grey while the server is offline", () => {
+    const html = render(
+      state({ ...PARTIAL, notice: { kind: "offline", profileId: "p1" } }, [], "de"),
+    );
+    expect(html).toMatch(/data-testid="local-status-device" data-online="false"/);
+  });
+
+  test("the long explanation moved into the info button, not into the row", () => {
+    const html = render(state(PARTIAL, [], "de"));
+    const explain = dictionary("de")["local.explain"];
+    expect(html).toContain(`aria-label="${explain}"`);
+    expect(count(html, explain)).toBe(1);
+  });
+
+  test("without permission support only the device is shown", () => {
+    const html = render(
+      state({ ...PARTIAL, permissions: { ...PARTIAL.permissions, supported: false } }, [], "en"),
+    );
+    expect(html).toContain('data-testid="local-status-device"');
+    expect(html).not.toContain('data-testid="local-status-screen"');
+  });
+});

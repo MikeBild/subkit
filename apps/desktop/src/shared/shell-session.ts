@@ -35,6 +35,7 @@ export function profileSummaries(data: StoreData): ProfileSummary[] {
     serverOrigin: profile.serverOrigin,
     signedIn: isSignedIn(profile),
     active: profile.id === data.activeProfileId,
+    serverVersion: profile.serverVersion,
   }));
 }
 

@@ -24,12 +24,14 @@ export function shellIpcHost(core: ShellCore): ShellIpcHost {
       profiles.activate(id);
     },
     removeServer: (id) => profiles.removeServer(id),
-    checkPermissions: () => {
-      device.permissionsChecked();
+    checkPermissions: async () => {
+      await device.permissionsChecked();
       core.render();
     },
     openPermissionSettings: async (key) => {
       await device.permissions.open(key);
+      await device.permissionsChecked();
+      core.render();
     },
     restartApp: () => {
       if (device.permissions.relaunch()) core.quit();

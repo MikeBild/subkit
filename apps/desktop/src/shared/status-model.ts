@@ -16,6 +16,14 @@ export function statusNotice(previous: Connection, next: Connection): StatusNoti
   return null;
 }
 
+export type ConnectionLog = "connection.offline" | "connection.recovered";
+
+export function connectionLog(previous: Connection, next: Connection): ConnectionLog | null {
+  if (previous === next) return null;
+  if (next === "offline") return "connection.offline";
+  return next === "online" && previous === "offline" ? "connection.recovered" : null;
+}
+
 export interface StatusNotification {
   notification: NativeNotification;
   target: ShellTarget;

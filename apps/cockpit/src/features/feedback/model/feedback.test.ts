@@ -8,10 +8,13 @@ import {
   clientErrorCode,
   clientKindOf,
   desktopFacts,
+  diagnosticsAttachment,
+  FEEDBACK_DIAGNOSTICS_FILENAME,
   FEEDBACK_DRAFT_KEY,
   feedbackFailure,
   feedbackResponse,
   hasFeedbackDraft,
+  latestTraceId,
   mergePrefill,
   newFeedbackDraft,
   readStoredDraft,
@@ -271,7 +274,10 @@ describe("feedback copy", () => {
     expect(CATALOGS.en["feedback.entry"]).toBe("Report a bug");
     expect(CATALOGS.de["feedback.send"]).toBe("Feedback senden");
     expect(CATALOGS.de["feedback.discard"]).toBe("Entwurf verwerfen");
-    expect(CATALOGS.de["feedback.thanks"]).toBe("Danke für dein Feedback!");
+    expect(CATALOGS.de["feedback.thanks"]).toBe("Danke, dein Bericht ist angekommen");
+    expect(CATALOGS.de["feedback.reference"]).toBe("Meldungs-ID: {id}");
+    expect(CATALOGS.en["feedback.thanks"]).toBe("Thanks, your report has arrived");
+    expect(CATALOGS.en["feedback.reference"]).toBe("Report ID: {id}");
     expect(CATALOGS.de["feedback.screenshot"]).toBe("Bildschirmfoto des Fensters");
     expect(CATALOGS.de["feedback.diagnostics"]).toBe("Diagnosebericht anhängen");
     expect(CATALOGS.de["feedback.redact"]).toBe(
@@ -325,5 +331,67 @@ describe("reports written offline", () => {
       status: 429,
       retry_after_seconds: 90,
     });
+  });
+});
+
+describe("diagnostics attachment", () => {
+  const diagnostics = {
+    client_kind: "desktop" as const,
+    connection: "live",
+    recent_errors: [
+      { code: "events.stream: Error: event stream answered 409", at: "2026-11-23T07:17:01.000Z" },
+      {
+        code: "events.stream: Error: event stream answered 409 code=tenant_context_changed trace=4bf92f3577b34da6a3ce929d0e0e4736",
+        at: "2026-11-23T07:17:05.000Z",
+      },
+    ],
+  };
+
+  test("the report names the trace id of the latest failing request", () => {
+    expect(latestTraceId(null, diagnostics.recent_errors)).toBe("4bf92f3577b34da6a3ce929d0e0e4736");
+    expect(latestTraceId("abcdef0123456789", diagnostics.recent_errors)).toBe("abcdef0123456789");
+    expect(latestTraceId(null, [])).toBeNull();
+  });
+
+  test("the cleaned diagnostics travel as a JSON file next to the summary", () => {
+    const file = diagnosticsAttachment(diagnostics, {
+      traceId: null,
+      connectionCause: "request_ok",
+    });
+    expect(file.filename).toBe(FEEDBACK_DIAGNOSTICS_FILENAME);
+    const content = JSON.parse(Buffer.from(file.content_base64, "base64").toString("utf8"));
+    expect(content).toMatchObject({
+      client_kind: "desktop",
+      trace_id: "4bf92f3577b34da6a3ce929d0e0e4736",
+      connection_cause: "request_ok",
+    });
+    const draft = { ...newFeedbackDraft(), text: "Server offline" };
+    expect(
+      buildFeedbackBody({ requestId: "r", draft, diagnostics, diagnosticsFile: file }).attachments,
+    ).toEqual([file]);
+    expect(
+      buildFeedbackBody({
+        requestId: "r",
+        draft: { ...draft, diagnostics: false },
+        diagnostics,
+        diagnosticsFile: file,
+      }).attachments,
+    ).toBeUndefined();
+  });
+
+  test("the trace id survives cleaning the diagnostics", () => {
+    const cleaned = buildFeedbackDiagnostics({
+      clientKind: "desktop",
+      appVersion: "12.1.4",
+      platform: "darwin",
+      serverVersion: "12.1.4",
+      connection: "live",
+      route: "/cockpit",
+      errors: diagnostics.recent_errors,
+      removed: "[removed]",
+    });
+    const file = diagnosticsAttachment(cleaned, { traceId: null, connectionCause: null });
+    const content = JSON.parse(Buffer.from(file.content_base64, "base64").toString("utf8"));
+    expect(content.trace_id).toBe("4bf92f3577b34da6a3ce929d0e0e4736");
   });
 });

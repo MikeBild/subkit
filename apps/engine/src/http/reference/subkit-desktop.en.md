@@ -175,14 +175,14 @@ Once you turn a capability on, SubKit creates a connector for it, for example â€
 
 ### macOS permissions
 
-For **Apps**, macOS has to allow SubKit two things. **Check permissions** under **Local capabilities** shows both with **Granted** or **Missing**.
+For **Apps**, macOS has to allow SubKit two things. The top of **Local capabilities** shows each one with **Granted** or **Missing**. **Check permissions** shows only what is still missing.
 
 | Permission | Why SubKit needs it |
 | --- | --- |
 | **Accessibility** | SubKit reads and uses buttons and fields in the apps you have allowed. |
 | **Screen Recording** | SubKit takes screenshots of the app window with password fields blacked out. |
 
-1. Select **Open System Settings** next to a missing permission.
+1. Select **Open System Settings** next to a missing permission. SubKit first asks macOS itself, so it shows up in the list, and then opens the settings.
 2. Switch SubKit on in **Privacy & Security**.
 3. Back in SubKit, select **Check again**. When macOS asks for it, select **Restart SubKit**.
 

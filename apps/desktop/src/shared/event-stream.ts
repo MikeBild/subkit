@@ -8,7 +8,17 @@ export interface StreamResponse {
   status: number;
   ok: boolean;
   body: ReadableStream<Uint8Array> | null;
+  headers?: { get(name: string): string | null };
   json(): Promise<unknown>;
+}
+
+export function refusalMessage(status: number, body: unknown, traceId: string | null): string {
+  const code =
+    body && typeof body === "object" ? (body as Record<string, unknown>).code : undefined;
+  const parts = [`event stream answered ${status}`];
+  if (typeof code === "string" && /^[\w.-]{1,80}$/.test(code)) parts.push(`code=${code}`);
+  if (traceId && /^[\w-]{8,64}$/.test(traceId)) parts.push(`trace=${traceId}`);
+  return parts.join(" ");
 }
 
 export interface StreamDeps {
@@ -78,15 +88,15 @@ export async function runEventStream(options: StreamOptions): Promise<AuthFailur
       if (lastEventId) headers["last-event-id"] = lastEventId;
       const response = await deps.fetch(options.url, { headers, signal: connection.signal });
       if (!response.ok) {
-        const failure = classifyAuthFailure(
-          response.status,
-          await response.json().catch(() => null),
-        );
+        const body = await response.json().catch(() => null);
+        const failure = classifyAuthFailure(response.status, body);
         if (failure) {
           report(failure);
           return failure;
         }
-        throw new Error(`event stream answered ${response.status}`);
+        throw new Error(
+          refusalMessage(response.status, body, response.headers?.get("x-trace-id") ?? null),
+        );
       }
       if (!response.body) throw new Error("event stream has no body");
       report("online");

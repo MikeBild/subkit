@@ -1,3 +1,5 @@
+import type { LiveStatus } from "./connectivity";
+
 export const DESKTOP_STATUS_PROTOCOL = 6;
 
 export type DesktopBannerKind = "offline" | "expired" | "revoked" | "server-too-old";
@@ -84,9 +86,9 @@ const CODE: Record<DesktopBannerKind, string> = {
   "server-too-old": "server_too_old",
 };
 
-export function desktopNotice(status: DesktopStatus): DesktopNotice {
-  if (status.banner)
-    return { type: "banner", banner: status.banner, code: CODE[status.banner.kind] };
+export function desktopNotice(status: DesktopStatus, connection: LiveStatus): DesktopNotice {
+  const banner = status.banner?.kind === "offline" && connection === "live" ? null : status.banner;
+  if (banner) return { type: "banner", banner, code: CODE[banner.kind] };
   if (status.update) return { type: "update", ...status.update };
   return null;
 }

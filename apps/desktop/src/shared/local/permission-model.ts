@@ -61,3 +61,32 @@ export function samePermissions(a: Permissions, b: Permissions): boolean {
     a.restartPending === b.restartPending
   );
 }
+
+const HELPER_STATES: Readonly<Record<string, MediaAccess>> = {
+  granted: "granted",
+  denied: "denied",
+  not_determined: "not-determined",
+  "not-determined": "not-determined",
+  restricted: "restricted",
+};
+
+function helperState(section: unknown): MediaAccess {
+  if (typeof section !== "object" || section === null) return "unknown";
+  const state = (section as { state?: unknown }).state;
+  return typeof state === "string" ? (HELPER_STATES[state] ?? "unknown") : "unknown";
+}
+
+export function helperProbeFrom(data: unknown): PermissionProbe | null {
+  if (typeof data !== "object" || data === null) return null;
+  const record = data as { accessibility?: unknown; screen_recording?: unknown };
+  if (record.accessibility === undefined && record.screen_recording === undefined) return null;
+  return {
+    accessibility: helperState(record.accessibility) === "granted",
+    screen: helperState(record.screen_recording),
+  };
+}
+
+export function mergeProbes(own: PermissionProbe, helper: PermissionProbe | null): PermissionProbe {
+  if (helper === null || own.screen === "granted" || helper.screen !== "granted") return own;
+  return { ...own, screen: "granted" };
+}

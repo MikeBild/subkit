@@ -13,6 +13,7 @@ const BINARY_SUFFIXES = [
   ".jpeg",
   ".ico",
   ".icns",
+  ".tiff",
   ".pdf",
   ".woff",
   ".woff2",
