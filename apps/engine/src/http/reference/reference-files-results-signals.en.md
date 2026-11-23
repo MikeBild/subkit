@@ -84,6 +84,15 @@ A workflow provides the result in one of two ways:
 - Secrets are removed before it is stored: tokens, keys and passwords become `***redacted***`, and so do credentials in links. Confidential workflows never keep a result.
 - At most 64 KiB of text is kept. A longer text is cut and `result_markdown_truncated` is `true`.
 
+### Links to changed records
+
+`GET /v1/executions/{id}`, the MCP tool `get_execution` and `subkit executions show` carry `record_links`: one entry per record that a request step created or changed in an external system, with `label`, `url`, `connector`, `connector_name` and `step_key`. The Cockpit shows them as buttons such as “View in GitHub” that open in a new tab.
+
+- Built-in connector templates declare which requests lead to a record (`record_url_patterns`) and which web hosts are allowed (`web_hosts`). A web address the response already contains is preferred.
+- Only `https` addresses on a known web host count. Connectors without a built-in template get no links.
+- Confidential runs, held writes and step outputs that were redacted or stored as a file get no links.
+- At most 20 links per run, in step order, each address once.
+
 ### Outcome of a scheduled run
 
 Every entry of the schedule history (`GET /v1/workflows/{id}/schedule-occurrences`, `GET /v1/tasks/{id}/schedule-occurrences`) now carries `run_outcome`:

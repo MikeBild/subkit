@@ -10,7 +10,7 @@ import type {
   ExecutionStep,
 } from "../engine-client/executions.ts";
 import { EngineClient, type ExecutionCost } from "../engine-client.ts";
-import { executionOutcomeLine, stepLimitLine } from "../lib/execution-outcome.ts";
+import { executionOutcomeLine, recordLinkLines, stepLimitLine } from "../lib/execution-outcome.ts";
 import { heldRunBlock } from "../lib/held-run.ts";
 import { pickId } from "../lib/pick.ts";
 import { exitCodeForTerminalStatus, followExecution } from "../lib/tail-execution.ts";
@@ -204,6 +204,8 @@ const getCommand = defineCommand({
           printStepBottlenecks(steps);
           const outcomeLine = executionOutcomeLine(execution.outcome);
           if (outcomeLine) process.stderr.write(`\n${pc.dim("outcome:")} ${outcomeLine}\n`);
+          for (const line of recordLinkLines(execution.record_links))
+            process.stderr.write(`${pc.dim("record:")} ${line}\n`);
           const held = heldRunBlock(client, execution, steps);
           if (held) process.stderr.write(`\n${pc.bold(pc.yellow(held))}\n`);
           const uncertain = uncertainWriteBlock(id, execution, steps);
@@ -513,6 +515,7 @@ export const executionsCommand = defineCommand({
   subCommands: {
     list: listCommand,
     get: getCommand,
+    show: getCommand,
     result: resultCommand,
     steps: stepsCommand,
     abort: abortCommand,

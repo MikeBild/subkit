@@ -51,3 +51,11 @@ export function stepLimitLine(step: { step_key: string; error?: unknown }): stri
   const limit = stepLimitOf(step.error);
   return limit ? `step ${step.step_key} ${limitPhrase(limit)}` : null;
 }
+
+type ExecutionRecordLink = components["schemas"]["ExecutionRecordLink"];
+
+export function recordLinkLines(links: readonly ExecutionRecordLink[] | undefined): string[] {
+  return (links ?? []).map((link) =>
+    [link.connector_name, link.label, link.url].filter(Boolean).join(" · "),
+  );
+}
