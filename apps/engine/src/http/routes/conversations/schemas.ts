@@ -113,6 +113,21 @@ export const ConversationListResponse = z
   .object({ items: z.array(ConversationSchema), total: z.number().int().nonnegative() })
   .openapi("ConversationListResponse");
 
+export const CitationSchema = z
+  .object({
+    source_type: z.enum([
+      "knowledge_chunk",
+      "connector_doc",
+      "product_doc",
+      "knowledge_source",
+      "skill",
+    ]),
+    id: z.string(),
+    source_name: z.string().optional(),
+    excerpt: z.string().optional(),
+  })
+  .openapi("Citation");
+
 const UIMessageSchema = z
   .object({
     id: z.string(),
@@ -121,6 +136,7 @@ const UIMessageSchema = z
     model: z.string().nullable(),
     created_at: z.string(),
     origin: z.enum(["task_run_continuation"]).optional(),
+    citations: z.array(CitationSchema).optional(),
   })
   .openapi("UIMessage");
 
@@ -306,15 +322,6 @@ export const AppendMessageBody = z
       .optional(),
   })
   .openapi("AppendConversationMessageBody");
-
-export const CitationSchema = z
-  .object({
-    source_type: z.enum(["knowledge_chunk", "connector_doc", "product_doc"]),
-    id: z.string(),
-    source_name: z.string().optional(),
-    excerpt: z.string().optional(),
-  })
-  .openapi("Citation");
 
 export const CitationsEventSchema = z
   .object({

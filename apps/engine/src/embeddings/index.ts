@@ -5,4 +5,9 @@ export {
   embeddingsAvailable,
   embedTexts,
 } from "./local-provider.ts";
-export { fuseVectorFirst, vectorScoreCandidates } from "./vector-rerank.ts";
+export {
+  embedQuery,
+  type QueryEmbedder,
+  VECTOR_MIN_COSINE,
+  vectorScoreCandidates,
+} from "./vector-rerank.ts";

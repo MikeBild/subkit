@@ -319,3 +319,58 @@ test("a text answer is not labelled as an execution approval", () => {
     "confirmation_state",
   );
 });
+
+describe("buildMessages — citations", () => {
+  const hits = { hits: [{ id: "k1", source_name: "Payments Guide", snippet: "take a payment" }] };
+
+  test("the answer of a turn carries the sources its tools read", () => {
+    const ui = buildMessages(
+      [
+        msg({ id: "u1", role: "user", content: "how do payments work?" }),
+        msg({ id: "a1", role: "assistant", content: null }),
+        msg({ id: "a2", role: "assistant", content: "Payments are taken by card." }),
+        msg({ id: "u2", role: "user", content: "thanks" }),
+        msg({ id: "a3", role: "assistant", content: "You are welcome." }),
+      ],
+      [
+        call({
+          id: "c1",
+          tool: "search_knowledge",
+          created_at: "2026-01-01T00:00:01.000Z",
+          parent_message_id: "a1",
+          output: hits,
+        }),
+      ],
+    );
+    expect(ui.find((m) => m.id === "a2")?.citations).toEqual([
+      {
+        source_type: "knowledge_chunk",
+        id: "k1",
+        source_name: "Payments Guide",
+        excerpt: "take a payment",
+      },
+    ]);
+    for (const id of ["u1", "a1", "u2", "a3"]) {
+      expect(Object.hasOwn(ui.find((m) => m.id === id) ?? {}, "citations")).toBe(false);
+    }
+  });
+
+  test("a turn that never produced text shows no sources", () => {
+    const ui = buildMessages(
+      [
+        msg({ id: "u1", role: "user", content: "search" }),
+        msg({ id: "a1", role: "assistant", content: null }),
+      ],
+      [
+        call({
+          id: "c1",
+          tool: "search_knowledge",
+          created_at: "2026-01-01T00:00:01.000Z",
+          parent_message_id: "a1",
+          output: hits,
+        }),
+      ],
+    );
+    expect(ui.every((m) => !Object.hasOwn(m, "citations"))).toBe(true);
+  });
+});

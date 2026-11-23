@@ -61,12 +61,30 @@ afterAll(async () => {
 }, 30_000);
 
 describe.skipIf(skip)("converse pipeline — non-regression contract", () => {
-  test("converse flow loads zero pre-embedded knowledge chunks", async () => {
+  test("a converse question pre-loads a few knowledge hits in the volatile part", async () => {
     const prompt = await assembleEnhancedPrompt(
       {
         tenant_id: ctx.tenant_id,
         flow: "converse",
         user_turns: [{ role: "user", content: "how should pagination work?" }],
+        max_tokens: 12000,
+        model: "mock",
+      },
+      ctx.testDb.db,
+    );
+    expect(prompt.included_knowledge_chunks.length).toBeGreaterThan(0);
+    expect(prompt.included_knowledge_chunks.length).toBeLessThanOrEqual(3);
+    expect(prompt.token_counts.knowledge).toBeLessThanOrEqual(Math.floor(12000 * 0.03));
+    const section = prompt.system_sections?.find((s) => s.text.includes("Pagination Rules"));
+    expect(section?.volatile).toBe(true);
+  });
+
+  test("a short converse message pre-loads no knowledge", async () => {
+    const prompt = await assembleEnhancedPrompt(
+      {
+        tenant_id: ctx.tenant_id,
+        flow: "converse",
+        user_turns: [{ role: "user", content: "pagination please" }],
         max_tokens: 12000,
         model: "mock",
       },

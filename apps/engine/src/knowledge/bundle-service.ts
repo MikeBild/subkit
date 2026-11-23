@@ -6,6 +6,7 @@ import { knowledgeChunks } from "../db/schema/knowledge_sources.ts";
 import { retryTransient } from "../db/transient.ts";
 import { canonicalBundleSerialization, normalizeBundlePath, parseBundle } from "./bundle.ts";
 import { getKnowledgeSource } from "./catalog.ts";
+import { redactBundleFiles } from "./core/redact.ts";
 import { KnowledgeSourceSlugTakenError } from "./errors.ts";
 import {
   createKnowledgeSource,
@@ -81,8 +82,9 @@ async function upsertKnowledgeBundleInner(
   db: Executor,
   retriedAfterConflict: boolean,
 ): Promise<KnowledgeBundleUpsertResult> {
-  const parsed = parseBundle(p.files);
-  const canonical = canonicalBundleSerialization(p.files);
+  const { files } = redactBundleFiles(p.files);
+  const parsed = parseBundle(files);
+  const canonical = canonicalBundleSerialization(files);
   const version = createHash("sha256").update(canonical).digest("hex").slice(0, 32);
   const derivedSlug = p.input.slug ?? toSlug(p.input.name);
   const slug =

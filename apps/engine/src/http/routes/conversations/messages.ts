@@ -5,7 +5,7 @@ import {
   z,
 } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
-import { actorOf } from "../../../audit/index.ts";
+import { isRejection, storeConversationAttachment } from "../../../api/index.ts";
 import {
   type AppendMessageResult,
   appendUserMessage,
@@ -27,7 +27,6 @@ import {
   registerConversationAbort,
   unregisterConversationAbort,
 } from "../../../conversations/public/lifecycle.ts";
-import { analyzeKnowledgeSource, createKnowledgeSource } from "../../../knowledge/index.ts";
 import { logger } from "../../../logging/index.ts";
 import { HttpError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
@@ -67,7 +66,7 @@ const appendRoute = createRoute({
 const UploadErrorSchema = z.object({ error: z.string() });
 
 const UploadRunOutcomeSchema = RunOutcomeSchema.extend({
-  ingested_knowledge_source_ids: z.array(z.string()),
+  attached_file_ids: z.array(z.string()),
 }).openapi("ConversationUploadRunOutcome");
 
 const uploadRoute = createRoute({
@@ -91,7 +90,7 @@ const uploadRoute = createRoute({
                 type: "array",
                 items: { type: "string", format: "binary" },
                 description:
-                  "Attached files (1-10); each is auto-ingested as a Knowledge Source scoped to the conversation's target workflow (or global)",
+                  "Attached files (1-10); each stays a file of this conversation and never becomes team knowledge by itself",
               },
               memory: { type: "string", description: "Optional SUBKIT.md content" },
             },
@@ -258,69 +257,38 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
       actor_id: principal.id,
       principal,
     });
-    const targetWorkflowId = conv.conversation.target_workflow_id;
 
     const turnAbortCtrl = await registerConversationAbort(principal.tenant_id, id, db);
     try {
-      const ingestedSources: string[] = [];
+      const attachedFileIds: string[] = [];
+      const attachmentTokens: string[] = [];
       for (const file of files) {
         if (!(file instanceof File)) continue;
-        try {
-          const buffer = Buffer.from(await file.arrayBuffer());
-          const source = await createKnowledgeSource(
-            {
-              tenant_id: principal.tenant_id,
-              input: {
-                name: file.name.replace(/\.[^.]+$/, "").replace(/[_-]/g, " "),
-                scope: targetWorkflowId ? "workflow" : "global",
-                ...(targetWorkflowId ? { workflow_id: targetWorkflowId } : {}),
-              },
-              upload: {
-                buffer,
-                filename: file.name,
-                ...(file.type ? { mime: file.type } : {}),
-              },
-              actor: actorOf(principal),
-            },
-            db,
-          );
-          ingestedSources.push(source.id);
-          if (source.description === null || source.tags.length === 0) {
-            try {
-              await analyzeKnowledgeSource(
-                {
-                  tenant_id: principal.tenant_id,
-                  id: source.id,
-                  actor_id: principal.id,
-                  actor: actorOf(principal),
-                },
-                db,
-              );
-            } catch (enrichErr) {
-              logger.warn({
-                module: "conversations",
-                action: "file_attachment.analyze_skipped",
-                msg: `Failed to auto-analyze knowledge source: ${source.id}`,
-                error: enrichErr instanceof Error ? enrichErr.message : String(enrichErr),
-                knowledge_source_id: source.id,
-              });
-            }
-          }
-        } catch (err) {
+        const stored = await storeConversationAttachment(
+          { db, tenant_id: principal.tenant_id, principal, request_source: "api" },
+          id,
+          {
+            filename: file.name,
+            ...(file.type ? { content_type: file.type } : {}),
+            content_base64: Buffer.from(await file.arrayBuffer()).toString("base64"),
+          },
+        );
+        if (isRejection(stored)) {
           logger.warn({
             module: "conversations",
-            action: "file_attachment.ingest_failed",
-            msg: `Failed to ingest file attachment: ${file.name}`,
-            error: err instanceof Error ? err.message : String(err),
+            action: "file_attachment.store_failed",
+            msg: "a chat attachment could not be stored",
             filename: file.name,
+            code: stored.code,
           });
+          continue;
         }
+        attachedFileIds.push(stored.id);
+        attachmentTokens.push(`@attachment:${stored.slug}`);
       }
 
       const enrichedMessage =
-        ingestedSources.length > 0
-          ? `${message}\n\n[Attached ${ingestedSources.length} file(s) as knowledge sources]`
-          : message;
+        attachmentTokens.length > 0 ? `${message}\n\n${attachmentTokens.join(" ")}` : message;
 
       const appended = await appendUserMessage(
         {
@@ -351,7 +319,7 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
       );
 
       const serialized = serializeConversation(outcome);
-      return c.json({ ...serialized, ingested_knowledge_source_ids: ingestedSources }, 200);
+      return c.json({ ...serialized, attached_file_ids: attachedFileIds }, 200);
     } finally {
       await unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
     }

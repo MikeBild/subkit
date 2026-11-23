@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { humanMetadataWrite, metadataChange } from "../api/catalog-metadata.ts";
 import { type Actor, auditActor } from "../audit/actor.ts";
@@ -20,16 +20,15 @@ import { invoke } from "../llm/runtime/invoke.ts";
 import { errorFields, log, logger } from "../logging/index.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
 import { emitResourceChange } from "../pubsub/resource-changes.ts";
-import { TtlCache } from "../utils/ttl-cache.ts";
 import { describeOne } from "../workflows/catalog-describe.ts";
 import {
   assertTenantKnowledgeBudget,
   KNOWLEDGE_SOURCE_MAX_BYTES,
   KnowledgeBudgetExceededError,
 } from "./budgets.ts";
+import { KNOWLEDGE_CHUNK_TARGET_BYTES } from "./core/chunking.ts";
 import { assessSourceSize, decodeUpload, toSlug } from "./core/content.ts";
 import { prepareKnowledgeChunks } from "./core/ingestion-plan.ts";
-import { knowledgeSearchCacheKey } from "./core/search-key.ts";
 import { dedupeTags, mergeStructuralTags } from "./core/tags.ts";
 import {
   isKnowledgeSlugViolation,
@@ -45,16 +44,14 @@ import {
   persistKnowledgeFile,
 } from "./file-persist.ts";
 import { detectFormat, parseFileToChunks } from "./parsers.ts";
-import { domainTaggedSourceIds, runKnowledgeFts } from "./search-fts.ts";
-import { fuseKnowledgeWithVectors } from "./search-vectors.ts";
+import { insertKnowledgeChunks } from "./persistence/chunks.ts";
+import { invalidateKnowledgeCache } from "./search.ts";
 import type {
   AnalyzeKnowledgeSourceParams,
   CreateKnowledgeSourceParams,
   IngestKnowledgeSourceParams,
   KnowledgeIngestResult,
-  KnowledgeSearchHit,
   KnowledgeSourceView,
-  SearchKnowledgeParams,
   UpdateKnowledgeSourceParams,
 } from "./types.ts";
 import {
@@ -69,6 +66,12 @@ import {
 import { knowledgeSourceRowToView } from "./view.ts";
 
 export { countKnowledgeSources, getKnowledgeSource, listKnowledgeSources } from "./catalog.ts";
+export {
+  getKnowledgeSearchCacheStats,
+  invalidateKnowledgeCache,
+  searchKnowledge,
+  setKnowledgeSearchCachePublishHookForTests,
+} from "./search.ts";
 export { knowledgeSourceRowToView } from "./view.ts";
 
 function knowledgeAuditActor(
@@ -149,7 +152,7 @@ function parseKnowledgeCreate(p: CreateKnowledgeSourceParams): ParsedKnowledgeCr
   assertSourceSize(content);
   const format = detectFormat(p.upload.filename, p.upload.mime);
   const rawChunks = p.parsed_chunks ?? parseFileToChunks(content, p.upload.filename, format);
-  const fingerprinted = fingerprintChunks(rawChunks);
+  const fingerprinted = fingerprintChunks(rawChunks, { splitBudget: KNOWLEDGE_CHUNK_TARGET_BYTES });
   const { accepted, skipped, total_bytes } = prepareKnowledgeChunks(
     fingerprinted,
     Boolean(p.parsed_chunks),
@@ -235,20 +238,7 @@ export async function applyKnowledgeCreate(
     });
   }
 
-  if (accepted.length > 0) {
-    await tx.insert(knowledgeChunks).values(
-      accepted.map((c, i) => ({
-        tenant_id: p.tenant_id,
-        knowledge_source_id: row.id,
-        ordinal: i,
-        title: c.title ?? null,
-        path: c.path ?? null,
-        content: c.content,
-        byte_size: c.byte_size,
-        fingerprint: c.fingerprint,
-      })),
-    );
-  }
+  await insertKnowledgeChunks(tx, p.tenant_id, row.id, accepted);
 
   await recordKnowledgeVersion(tx, {
     tenant_id: p.tenant_id,
@@ -633,7 +623,7 @@ async function parseKnowledgeIngest(
     },
     fn: () => p.parsed_chunks ?? parseFileToChunks(content, p.upload.filename, format),
   });
-  const fingerprinted = fingerprintChunks(rawChunks);
+  const fingerprinted = fingerprintChunks(rawChunks, { splitBudget: KNOWLEDGE_CHUNK_TARGET_BYTES });
   const { accepted, skipped, total_bytes } = prepareKnowledgeChunks(
     fingerprinted,
     Boolean(p.parsed_chunks),
@@ -745,20 +735,7 @@ export async function applyKnowledgeIngest(
       ),
     );
 
-  if (accepted.length > 0) {
-    await tx.insert(knowledgeChunks).values(
-      accepted.map((c, i) => ({
-        tenant_id: p.tenant_id,
-        knowledge_source_id: p.knowledge_source_id,
-        ordinal: i,
-        title: c.title ?? null,
-        path: c.path ?? null,
-        content: c.content,
-        byte_size: c.byte_size,
-        fingerprint: c.fingerprint,
-      })),
-    );
-  }
+  await insertKnowledgeChunks(tx, p.tenant_id, p.knowledge_source_id, accepted);
 
   await tx
     .update(knowledgeSources)
@@ -886,83 +863,4 @@ export async function ingestKnowledgeSource(
       content_version: applied?.version ?? null,
     };
   });
-}
-
-const knowledgeSearchCache = new TtlCache<KnowledgeSearchHit[]>({
-  maxEntries: 256,
-  ttlMs: 60_000,
-});
-let knowledgeSearchCacheToken = {};
-let beforeKnowledgeSearchCachePublish: (() => Promise<void>) | undefined;
-
-export function setKnowledgeSearchCachePublishHookForTests(
-  hook: (() => Promise<void>) | undefined,
-): void {
-  beforeKnowledgeSearchCachePublish = hook;
-}
-
-export function invalidateKnowledgeCache(tenant_id: string): void {
-  knowledgeSearchCacheToken = {};
-  knowledgeSearchCache.invalidatePrefix(`${tenant_id}:`);
-}
-
-export function getKnowledgeSearchCacheStats(): { hits: number; misses: number; size: number } {
-  return knowledgeSearchCache.stats();
-}
-
-export async function searchKnowledge(
-  p: SearchKnowledgeParams,
-  db: Executor,
-): Promise<KnowledgeSearchHit[]> {
-  const limit = Math.min(Math.max(1, p.limit ?? 10), 50);
-
-  const cacheKey = knowledgeSearchCacheKey(p);
-  const cached = knowledgeSearchCache.get(cacheKey);
-  if (cached) return cached;
-
-  if (!p.query || p.query.trim().length === 0) return [];
-
-  const cacheToken = knowledgeSearchCacheToken;
-
-  let scopeFilter = sql`AND ks.deleted_at IS NULL AND ks.status = 'active'`;
-
-  if (p.knowledge_source_ids && p.knowledge_source_ids.length > 0) {
-    const ids = p.knowledge_source_ids.map((id) => sql`${id}`);
-    scopeFilter = sql`${scopeFilter} AND kc.knowledge_source_id IN (${sql.join(ids, sql`, `)})`;
-  } else if (p.workflow_id) {
-    scopeFilter = sql`${scopeFilter} AND (ks.scope = 'global' OR (ks.scope = 'workflow' AND ks.workflow_id = ${p.workflow_id}))`;
-  } else if (p.scope) {
-    scopeFilter = sql`${scopeFilter} AND ks.scope = ${p.scope}`;
-  }
-
-  if (p.tags && p.tags.length > 0) {
-    const tagLiterals = p.tags.map((t) => sql`${t}`);
-    scopeFilter = sql`${scopeFilter} AND ks.tags && ARRAY[${sql.join(tagLiterals, sql`, `)}]::text[]`;
-  }
-
-  const allTermsQuery = sql`plainto_tsquery('english', ${p.query})`;
-  let hits = await runKnowledgeFts(db, p.tenant_id, allTermsQuery, scopeFilter, limit, []);
-  if (hits.length === 0) {
-    const anyTermQuery = sql`regexp_replace(${allTermsQuery}::text, ' & ', ' | ', 'g')::tsquery`;
-    const domainIds = await domainTaggedSourceIds(db, p.tenant_id, anyTermQuery);
-    hits = await runKnowledgeFts(db, p.tenant_id, anyTermQuery, scopeFilter, limit, domainIds);
-  }
-
-  const fused = await fuseKnowledgeWithVectors(db, p, hits, scopeFilter, limit);
-
-  log.knowledge.searched({
-    tenant_id: p.tenant_id,
-    query_length: p.query.length,
-    scope: p.scope ?? null,
-    workflow_id: p.workflow_id ?? null,
-    hit_count: fused.length,
-    top_match_id: fused[0]?.id ?? null,
-    top_rank: fused[0]?.rank ?? null,
-    limit,
-  });
-
-  const beforePublish = beforeKnowledgeSearchCachePublish;
-  if (beforePublish) await beforePublish();
-  if (cacheToken === knowledgeSearchCacheToken) knowledgeSearchCache.set(cacheKey, fused);
-  return fused;
 }

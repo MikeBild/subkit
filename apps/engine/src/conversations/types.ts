@@ -603,6 +603,7 @@ export interface UIMessage {
   model: string | null;
   created_at: string;
   origin?: "task_run_continuation";
+  citations?: Citation[];
 }
 
 export type { GateOutcome, GateRecord } from "./confirmation.ts";

@@ -29,6 +29,15 @@ export class IntakeProposalConflictError extends IntakeConflictError {
   }
 }
 
+export class IntakeSecondPersonRequiredError extends Error {
+  constructor() {
+    super(
+      "this workspace asks for a second person: someone other than the author must confirm this proposal",
+    );
+    this.name = "IntakeSecondPersonRequiredError";
+  }
+}
+
 export class IntakeConfirmationActorError extends Error {
   constructor(message: string) {
     super(message);

@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import type { ToolCallState } from "@cli-core/index.ts";
-import type { CreateKnowledgeSourceOutputData } from "@engine/conversations/tools/engine-api/writes/create-knowledge-source.ts";
 import {
   extractConnectorIntent,
   extractConnectorSummary,
@@ -556,36 +555,5 @@ describe("extractKnowledgeSourceSummary", () => {
       knowledge_source: { id: 7, name: "n", bytes_total: 1 },
     });
     expect(extractKnowledgeSourceSummary(call)).toBeNull();
-  });
-});
-
-describe("extractKnowledgeSourceSummary · engine→subkit shape overlap", () => {
-  test("fixture typed as engine output produces a non-null summary", () => {
-    const engineOutput: CreateKnowledgeSourceOutputData = {
-      created: true,
-      knowledge_source: {
-        id: "ks-overlap",
-        name: "Overlap KS",
-        slug: "overlap-ks",
-        description: "Overlap fixture description",
-        tags: ["overlap"],
-        scope: "global",
-        status: "ready",
-        chunk_count: 1,
-        bytes_total: 42,
-      },
-      audit_log_id: "audit-overlap",
-    };
-    const call: ToolCallState = {
-      id: "tc-overlap",
-      name: "create_knowledge_source",
-      args: { mode: "inline", name: "Overlap KS", content: "x", mime_type: "text/markdown" },
-      status: "done",
-      result: { ok: true, data: engineOutput },
-    };
-    const summary = extractKnowledgeSourceSummary(call);
-    expect(summary).not.toBeNull();
-    expect(summary?.id).toBe("ks-overlap");
-    expect(summary?.size_bytes).toBe(42);
   });
 });

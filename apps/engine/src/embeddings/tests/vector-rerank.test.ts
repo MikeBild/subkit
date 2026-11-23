@@ -1,34 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { fuseVectorFirst, type QueryEmbedder, vectorScoreCandidates } from "../vector-rerank.ts";
+import { type QueryEmbedder, vectorScoreCandidates } from "../vector-rerank.ts";
 
 const stub = (q: number[]): QueryEmbedder => ({
   available: async () => true,
   embed: async () => q,
-});
-
-describe("fuseVectorFirst", () => {
-  test("vector hits lead, FTS fills the remainder, dedup by id", () => {
-    const fts = [{ id: "a" }, { id: "b" }, { id: "c" }];
-    const vector = [
-      { item: { id: "c" }, cosine: 0.9 },
-      { item: { id: "d" }, cosine: 0.8 },
-    ];
-    const out = fuseVectorFirst({ fts, vector, idOf: (h) => h.id, limit: 4 });
-    expect(out.map((h) => h.id)).toEqual(["c", "d", "a", "b"]);
-  });
-
-  test("empty vector → FTS order unchanged (today's behaviour)", () => {
-    const fts = [{ id: "a" }, { id: "b" }];
-    const out = fuseVectorFirst({ fts, vector: [], idOf: (h) => h.id, limit: 10 });
-    expect(out.map((h) => h.id)).toEqual(["a", "b"]);
-  });
-
-  test("respects the limit", () => {
-    const fts = [{ id: "a" }, { id: "b" }];
-    const vector = [{ item: { id: "z" }, cosine: 0.9 }];
-    const out = fuseVectorFirst({ fts, vector, idOf: (h) => h.id, limit: 2 });
-    expect(out.map((h) => h.id)).toEqual(["z", "a"]);
-  });
 });
 
 describe("vectorScoreCandidates", () => {

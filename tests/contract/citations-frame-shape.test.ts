@@ -18,7 +18,18 @@ describe("contract · citations frame engine↔cli-core lockstep", () => {
     expect(CitationSchema.safeParse(connectorDoc).success).toBe(true);
   });
 
-  test("source_type is the exact final union — no third value slips through", () => {
+  test("a whole knowledge source and a loaded skill are citable in both packages", () => {
+    const source: Citation = {
+      source_type: "knowledge_source",
+      id: "ks-1",
+      source_name: "Runbook",
+    };
+    const skill: Citation = { source_type: "skill", id: "skill-1", source_name: "Refunds" };
+    expect(CitationSchema.safeParse(source).success).toBe(true);
+    expect(CitationSchema.safeParse(skill).success).toBe(true);
+  });
+
+  test("source_type is the exact final union — no further value slips through", () => {
     expect(CitationSchema.safeParse({ source_type: "execution_ref", id: "x" }).success).toBe(false);
   });
 

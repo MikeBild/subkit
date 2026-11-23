@@ -19,13 +19,10 @@ import type { Executor } from "../db/client.ts";
 import { hostedQuotaError } from "../db/hosted-quota-errors.ts";
 import { connectorDocumentChunks, connectorDocuments, connectors } from "../db/schema/index.ts";
 import { isTransientDbError } from "../db/transient.ts";
-import {
-  embeddingsAvailable,
-  fuseVectorFirst,
-  vectorScoreCandidates,
-} from "../embeddings/index.ts";
+import { embeddingsAvailable, vectorScoreCandidates } from "../embeddings/index.ts";
 import { withTenantWork } from "../execution/index.ts";
 import { getTenant, lockActiveTenant, SelfServiceIdentityError } from "../identity/index.ts";
+import { bestPassage, fuseByReciprocalRank } from "../knowledge/index.ts";
 import { parseGoogleDiscoveryDocument } from "../llm/flows/document-parsers/google-discovery.ts";
 import { log, logger } from "../logging/index.ts";
 import { TtlCache } from "../utils/ttl-cache.ts";
@@ -776,7 +773,7 @@ async function fuseDocsWithVectors(
       document_id: s.item.document_id,
       title: s.item.title,
       path: s.item.path,
-      snippet: s.item.content.slice(0, 200),
+      snippet: bestPassage(s.item.content, p.query),
       rank: s.cosine,
       match_type: "general",
       fetched_at:
@@ -788,7 +785,11 @@ async function fuseDocsWithVectors(
     };
     return { item: hit, cosine: s.cosine };
   });
-  return fuseVectorFirst({ fts: hits, vector, idOf: (h) => h.id, limit });
+  return fuseByReciprocalRank({
+    lists: [hits, vector.map((v) => v.item)],
+    idOf: (h) => h.id,
+    limit,
+  });
 }
 
 void byteLen;

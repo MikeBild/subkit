@@ -149,7 +149,10 @@ export {
   connectorRuntimeOperation,
   connectorToolConfirmationOperation,
 } from "./operations/connectors-runtime.ts";
-export { conversationAttachmentOperations } from "./operations/conversation-attachments.ts";
+export {
+  conversationAttachmentOperations,
+  storeConversationAttachment,
+} from "./operations/conversation-attachments.ts";
 export { conversationCollectionOperations } from "./operations/conversation-collection.ts";
 export { conversationDirectToolOperations } from "./operations/conversation-direct-tools.ts";
 export { conversationLifecycleOperations } from "./operations/conversation-lifecycle.ts";

@@ -30,6 +30,7 @@ import { type ConversationAttachment, splitFileSentinels } from "../api/attachme
 import { type ChatApproval, recordedDecisionKey, withWorkflowName } from "../model/approval";
 import { bubbleSide } from "../model/bubble-model";
 import type { ChatChoice } from "../model/choice";
+import { answerSources } from "../model/citations";
 import type { ChatForm } from "../model/form";
 import {
   actionLabel,
@@ -62,6 +63,7 @@ import { AttachmentChip, PatchProposalDiff, ResultLink } from "./parts";
 import { ToolPolicyNote } from "./policy";
 import { ChatReauthCard } from "./reauth-card";
 import { ChatSensitivePreviewCard } from "./sensitive-preview-card";
+import { SourcesLine } from "./sources-line";
 import { ChatTestRunCard } from "./test-run-card";
 
 export function ChatMessage({
@@ -166,6 +168,7 @@ export function ChatMessage({
     (group) => group.kind !== "part" || Boolean(textFromPart(group.part)?.trim()),
   );
   if (groups.length === 0) return null;
+  const sources = from === "assistant" ? answerSources(message) : { shown: [], more: 0 };
   return (
     <Message
       align="start"
@@ -198,6 +201,12 @@ export function ChatMessage({
           const isText = group.kind === "part" && !recordedDecisionKey(group.part);
           return isText ? node : aside(`${message.id}-aside-${group.index}`, node);
         })}
+        {sources.shown.length > 0
+          ? aside(
+              `${message.id}-sources`,
+              <SourcesLine sources={sources} testId={`chat-message-${messageIndex}-sources`} />,
+            )
+          : null}
       </MessageContent>
     </Message>
   );

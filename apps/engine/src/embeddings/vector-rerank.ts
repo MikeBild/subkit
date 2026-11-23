@@ -17,6 +17,15 @@ const localQueryEmbedder: QueryEmbedder = {
   embed: embedText,
 };
 
+export async function embedQuery(
+  query: string,
+  embedder: QueryEmbedder = localQueryEmbedder,
+): Promise<number[] | null> {
+  if (!query.trim()) return null;
+  if (!(await embedder.available())) return null;
+  return embedder.embed(query);
+}
+
 export async function vectorScoreCandidates<T>(
   query: string,
   candidates: Array<{ item: T; embedding: number[] | null }>,
@@ -24,9 +33,8 @@ export async function vectorScoreCandidates<T>(
 ): Promise<ScoredCandidate<T>[]> {
   const embedder = opts.embedder ?? localQueryEmbedder;
   const minCosine = opts.minCosine ?? VECTOR_MIN_COSINE;
-  if (!query.trim() || candidates.length === 0) return [];
-  if (!(await embedder.available())) return [];
-  const qVec = await embedder.embed(query);
+  if (candidates.length === 0) return [];
+  const qVec = await embedQuery(query, embedder);
   if (!qVec) return [];
   const scored: ScoredCandidate<T>[] = [];
   for (const c of candidates) {
@@ -36,29 +44,4 @@ export async function vectorScoreCandidates<T>(
   }
   scored.sort((a, b) => b.cosine - a.cosine);
   return scored;
-}
-
-export function fuseVectorFirst<T>(opts: {
-  fts: T[];
-  vector: ScoredCandidate<T>[];
-  idOf: (t: T) => string;
-  limit: number;
-}): T[] {
-  const seen = new Set<string>();
-  const out: T[] = [];
-  for (const v of opts.vector) {
-    const id = opts.idOf(v.item);
-    if (seen.has(id)) continue;
-    seen.add(id);
-    out.push(v.item);
-    if (out.length >= opts.limit) return out;
-  }
-  for (const f of opts.fts) {
-    const id = opts.idOf(f);
-    if (seen.has(id)) continue;
-    seen.add(id);
-    out.push(f);
-    if (out.length >= opts.limit) return out;
-  }
-  return out;
 }

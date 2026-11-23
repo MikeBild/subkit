@@ -4,6 +4,7 @@ import { assertInsertRow } from "../db/assert-insert.ts";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import type { Executor } from "../db/client.ts";
 import { knowledgeChunks, knowledgeSources } from "../db/schema/knowledge_sources.ts";
+import { insertKnowledgeChunks } from "./persistence/chunks.ts";
 import { type KnowledgeVersionContent, recordKnowledgeVersion } from "./version-record.ts";
 
 type KnowledgeSourceRow = typeof knowledgeSources.$inferSelect;
@@ -122,16 +123,15 @@ export async function upsertSingleChunkKnowledgeSource(
             eq(knowledgeChunks.knowledge_source_id, prior.id),
           ),
         );
-      await tx.insert(knowledgeChunks).values({
-        tenant_id: p.tenant_id,
-        knowledge_source_id: prior.id,
-        ordinal: 0,
-        title: p.chunk_title,
-        path: p.source_uri,
-        content: p.json,
-        byte_size: p.bytes,
-        fingerprint: p.version,
-      });
+      await insertKnowledgeChunks(tx, p.tenant_id, prior.id, [
+        {
+          title: p.chunk_title,
+          path: p.source_uri,
+          content: p.json,
+          byte_size: p.bytes,
+          fingerprint: p.version,
+        },
+      ]);
       await recordKnowledgeVersion(tx, {
         tenant_id: p.tenant_id,
         knowledge_source_id: prior.id,
@@ -164,16 +164,15 @@ export async function upsertSingleChunkKnowledgeSource(
       })
       .returning();
     assertInsertRow(inserted, "knowledge_sources");
-    await tx.insert(knowledgeChunks).values({
-      tenant_id: p.tenant_id,
-      knowledge_source_id: inserted.id,
-      ordinal: 0,
-      title: p.chunk_title,
-      path: p.source_uri,
-      content: p.json,
-      byte_size: p.bytes,
-      fingerprint: p.version,
-    });
+    await insertKnowledgeChunks(tx, p.tenant_id, inserted.id, [
+      {
+        title: p.chunk_title,
+        path: p.source_uri,
+        content: p.json,
+        byte_size: p.bytes,
+        fingerprint: p.version,
+      },
+    ]);
     await recordKnowledgeVersion(tx, {
       tenant_id: p.tenant_id,
       knowledge_source_id: inserted.id,

@@ -29,7 +29,7 @@ const searchKnowledgeTool: ConversationTool = {
   name: "search_knowledge",
   external_output: "knowledge",
   description:
-    "Search the tenant's Knowledge Sources for domain-specific notes, runbooks, compliance rules, and reference material. Call this when the request needs context beyond the tenant snapshot and the loaded skills — e.g. vendor-specific recipes, internal policy, error-code lookups. Results are chunks ranked by FTS relevance; each hit names its source via source_name. Prefer a short focused query (3–6 words). Optionally pass tags to narrow to sources carrying a topic (call list_knowledge_sources first to see available tags). If the first result does not answer the question, refine the query once and stop — do not spin.",
+    "Search the tenant's Knowledge Sources for domain-specific notes, runbooks, compliance rules, and reference material. Call this when the request needs context beyond the tenant snapshot and the loaded skills — e.g. vendor-specific recipes, internal policy, error-code lookups. Results are short passages ranked by a fusion of full-text match in the workspace language and meaning similarity; each hit names its source via source_name. Prefer a short focused query (3–6 words). Optionally pass tags to narrow to sources carrying a topic (call list_knowledge_sources first to see available tags). If the first result does not answer the question, refine the query once and stop — do not spin.",
   inputSchema: SearchInput,
   category: "tenant_read",
   async execute(ctx, args: z.infer<typeof SearchInput>) {

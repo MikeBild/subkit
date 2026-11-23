@@ -18,6 +18,7 @@ import {
   IntakeConfirmationActorError,
   IntakeConflictError,
   IntakeNotFoundError,
+  IntakeSecondPersonRequiredError,
 } from "../../knowledge/intake-errors.ts";
 import { INTAKE_ITEM_ORIGIN_FILTERS } from "../../knowledge/intake-rows.ts";
 import { readIntakeItemEvidence } from "../../knowledge/intake-session.ts";
@@ -141,6 +142,8 @@ export function intakeFailure(error: unknown): Rejection {
     });
   if (error instanceof IntakeConfirmationActorError)
     return reject.status(403, "human_confirmation_required", error.message);
+  if (error instanceof IntakeSecondPersonRequiredError)
+    return reject.status(403, "second_person_required", error.message);
   if (error instanceof IntakeConflictError)
     return reject.conflict(error.message, { reason: error.name });
   throw error;
