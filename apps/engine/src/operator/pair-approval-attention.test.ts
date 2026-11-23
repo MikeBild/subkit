@@ -38,6 +38,7 @@ describe("pair approvals in the attention list", () => {
       sources,
       status: null,
       items: [item],
+      snoozed: [],
     });
     expect(parsed.items[0]?.reason).toBe("pair_approval_requested");
   });
