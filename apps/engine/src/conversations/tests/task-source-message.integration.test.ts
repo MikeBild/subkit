@@ -1,7 +1,14 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import { conversations, roles, tasks, users } from "../../db/schema/index.ts";
+import {
+  conversationMessages,
+  conversations,
+  conversationToolCalls,
+  roles,
+  tasks,
+  users,
+} from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
 import { createEmptyDraftDocument } from "../authoring-state/index.ts";
@@ -133,6 +140,27 @@ describe("a task created in chat is bound to the message it serves", () => {
     await said(id, "What else can you do?");
     const task = await save(id, "Inbox", { held_tool_call_id: held });
     expect(await sourceOf(task)).toEqual({ conversation_id: id, message_id: asking });
+  });
+
+  test("a message and its tool call within one millisecond still bind to each other", async () => {
+    const id = await conversation();
+    const first = await said(id, "Sort my inbox every morning");
+    const second = await said(id, "And send me the weekly report");
+    const call = await asked(id);
+    await db.db
+      .update(conversationMessages)
+      .set({ created_at: sql`timestamptz '2026-01-01 00:00:00.100000+00'` })
+      .where(eq(conversationMessages.id, first));
+    await db.db
+      .update(conversationMessages)
+      .set({ created_at: sql`timestamptz '2026-01-01 00:00:00.123400+00'` })
+      .where(eq(conversationMessages.id, second));
+    await db.db
+      .update(conversationToolCalls)
+      .set({ created_at: sql`timestamptz '2026-01-01 00:00:00.123900+00'` })
+      .where(eq(conversationToolCalls.id, call));
+    const task = await save(id, "Report", { tool_call_id: call });
+    expect(await sourceOf(task)).toEqual({ conversation_id: id, message_id: second });
   });
 
   test("a task without a message from the person has no source", async () => {

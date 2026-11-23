@@ -618,6 +618,12 @@ export async function readTaskSourceOfToolCall(
         .limit(1)
     : [];
   const askedAt = call?.created_at ?? new Date();
+  const askedAtExact = scope.tool_call_id
+    ? sql`coalesce((select ${conversationToolCalls.created_at} from ${conversationToolCalls}
+        where ${conversationToolCalls.tenant_id} = ${scope.tenant_id}
+          and ${conversationToolCalls.conversation_id} = ${scope.conversation_id}
+          and ${conversationToolCalls.id} = ${scope.tool_call_id}), now())`
+    : sql`now()`;
   const messages = await db
     .select({
       id: conversationMessages.id,
@@ -630,7 +636,7 @@ export async function readTaskSourceOfToolCall(
         eq(conversationMessages.tenant_id, scope.tenant_id),
         eq(conversationMessages.conversation_id, scope.conversation_id),
         eq(conversationMessages.role, "user"),
-        lte(conversationMessages.created_at, askedAt),
+        lte(conversationMessages.created_at, askedAtExact),
       ),
     )
     .orderBy(desc(conversationMessages.created_at))
