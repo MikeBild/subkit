@@ -61,7 +61,13 @@ image and the binaries. The desktop app follows with its own workflow, see
    loud warning. The release gate status then ends in `mutation: deferred`, and the GitHub release notes
    say "Mutation evidence: deferred". Produce the evidence afterwards with `bun run quality release`.
    Without the flag nothing changes.
-7. After the `release` workflow has published, check the deployed engine:
+7. The `release` workflow publishes the release without marking it latest. `desktop-release`
+   marks it latest once the SubKit Desktop assets are attached, or with a warning when they are
+   missing, so `releases/latest/download/…` never serves a release without them (see
+   [apps/desktop/RELEASING.md](apps/desktop/RELEASING.md#when-a-release-becomes-latest)).
+   A `release` run started by hand marks the release latest at once and warns; run
+   `desktop-release` with the tag yourself.
+8. After the `release` workflow has published, check the deployed engine:
 
    ```sh
    bun run release verify --engine-url <url> --version <version>
@@ -111,7 +117,7 @@ rotate together with a release.
 
 Every release attaches the Web Clipper as `subkit-clipper.zip`, so
 `https://github.com/MikeBild/subkit/releases/latest/download/subkit-clipper.zip` always serves the
-newest version. The repository holds only its source in `apps/clipper`: every engine, `subkit` and
+newest version once that release is marked latest. The repository holds only its source in `apps/clipper`: every engine, `subkit` and
 image build runs `bun run build clipper` first, which writes the archive with the version from
 `package.json` to the ignored `assets/clipper/`. The release takes the asset from the image it
 ships, so it is byte for byte the archive the engine serves at `/install/clipper.zip`.

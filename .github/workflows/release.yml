@@ -283,10 +283,22 @@ jobs:
           RELEASE_DOWNLOAD_DIR="$download" bun -e 'import { verify } from "node:crypto"; import { readFileSync } from "node:fs"; import { RELEASE_PUBLIC_KEY } from "./packages/cli-core/src/release-public-key.ts"; const dir = process.env.RELEASE_DOWNLOAD_DIR; if (!dir || !verify(null, readFileSync(`${dir}/SHA256SUMS`), RELEASE_PUBLIC_KEY, readFileSync(`${dir}/SHA256SUMS.sig`))) throw new Error("downloaded release signature does not match the updater public key");'
           bun run scripts/release-quality-evidence.ts verify --commit "$RELEASE_COMMIT" --assets-dir "$download"
 
+      # A tag push publishes the release without marking it "latest": releases/latest/download/*
+      # keeps serving the previous release until desktop-release has attached latest-mac.yml and
+      # the DMG, then its promote job marks this release latest (also when the desktop build
+      # fails or is skipped). A run started by hand does not start desktop-release, so it marks
+      # the release latest itself.
       - name: Publish verified GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit "$TAG" --draft=false
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            gh release edit "$TAG" --draft=false --latest=false
+          else
+            echo "::warning::this release run was started by hand and does not start desktop-release, so $TAG becomes the latest release now, before its SubKit Desktop assets exist. Run desktop-release with $TAG to attach them. See apps/desktop/RELEASING.md."
+            gh release edit "$TAG" --draft=false --latest
+          fi
 
       - name: Push latest image aliases after release verification
         run: |

@@ -710,3 +710,48 @@ jobs:
           (cd "$download" && sha256sum --strict --check SHA256SUMS-desktop)
           RELEASE_DOWNLOAD_DIR="$download" bun -e 'import { verify } from "node:crypto"; import { readFileSync } from "node:fs"; import { RELEASE_PUBLIC_KEY } from "./packages/cli-core/src/release-public-key.ts"; const dir = process.env.RELEASE_DOWNLOAD_DIR; if (!dir || !verify(null, readFileSync(`${dir}/SHA256SUMS-desktop`), RELEASE_PUBLIC_KEY, readFileSync(`${dir}/SHA256SUMS-desktop.sig`))) throw new Error("downloaded desktop checksum signature does not match the updater public key");'
           bun run apps/desktop/scripts/verify-feed.ts "$download" "$VERSION" $FEEDS
+
+  # release.yml publishes a release without marking it latest. This job marks it latest once the
+  # desktop assets are attached, so releases/latest/download/latest-mac.yml and the DMG link never
+  # point at a release without them. It also runs when the desktop build failed or was skipped,
+  # then with a warning, so the CLI, install.sh and the Compose file still move on.
+  promote:
+    needs: [resolve, publish]
+    if: ${{ !cancelled() && needs.resolve.outputs.dry_run != 'true' && ((github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository) || (github.event_name == 'workflow_dispatch' && inputs.tag != '' && !inputs.unsigned_dry_run)) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ inputs.tag || github.event.workflow_run.head_branch }}
+      PUBLISH_RESULT: ${{ needs.publish.result }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Mark the release latest
+        run: |
+          set -euo pipefail
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::notice::$TAG is not a release tag; the latest release stays as it is"
+            exit 0
+          fi
+          release=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease,assets) || { echo "::warning::no release exists for $TAG; the latest release stays as it is"; exit 0; }
+          if [ "$(jq -r '.isDraft or .isPrerelease' <<<"$release")" = "true" ]; then
+            echo "::notice::the release of $TAG is a draft or a prerelease; the latest release stays as it is"
+            exit 0
+          fi
+          newest=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name' | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; } | sort -V | tail -n 1)
+          if [ "$newest" != "$TAG" ]; then
+            echo "::notice::$newest is newer than $TAG; the latest release stays as it is"
+            exit 0
+          fi
+          missing=""
+          for asset in latest-mac.yml subkit-desktop-mac-arm64.dmg; do
+            jq -e --arg name "$asset" 'any(.assets[]; .name == $name)' <<<"$release" > /dev/null || missing="$missing $asset"
+          done
+          if [ -n "$missing" ]; then
+            echo "::warning::$TAG becomes the latest release without SubKit Desktop assets:$missing (desktop publish: ${PUBLISH_RESULT:-skipped}). The desktop updater finds no update and the DMG link answers 404 until desktop-release runs again for $TAG. See apps/desktop/RELEASING.md."
+          fi
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --latest
+          latest=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name')
+          [ "$latest" = "$TAG" ] || { echo "::error::GitHub reports $latest as the latest release, expected $TAG" >&2; exit 1; }
+          echo "$TAG is the latest release"
