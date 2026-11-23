@@ -21,6 +21,8 @@ import {
   renderMessageBlocks,
   renderOpenFormBlocks,
 } from "./block-kit.ts";
+import { isSlackDecisionAction } from "./decisions/action.ts";
+import { handleSlackDecisionInteraction, type SlackDecisionClient } from "./decisions/handle.ts";
 import { parseSlackInboundPayload } from "./payloads.ts";
 import { verifySlackRequest } from "./verifier.ts";
 
@@ -289,10 +291,28 @@ export class SlackAdapter implements ChatAdapter {
     return { platform_message_id: (res.ts as string) ?? "" };
   }
 
+  private decisionClient(): SlackDecisionClient {
+    return {
+      update: async ({ channel, ts, text, blocks }) => {
+        await this.client.chat.update({ channel, ts, text, blocks });
+      },
+      ephemeral: async ({ channel, user, text, blocks }) => {
+        await this.client.chat.postEphemeral({
+          channel,
+          user,
+          text,
+          blocks,
+        });
+      },
+    };
+  }
+
   async handleSyncInteraction(args: { event: ChatEvent; db: Db }): Promise<{ handled: boolean }> {
     const { event, db } = args;
     if (event.kind !== "interaction" || !event.interaction) return { handled: false };
     const action_id = event.interaction.action_id;
+    if (isSlackDecisionAction(action_id))
+      return await handleSlackDecisionInteraction(event, { db, client: this.decisionClient() });
     const m = /^open_elicit:(.+)$/.exec(action_id);
     if (!m) return { handled: false };
     const elicitation_id = m[1]!;
