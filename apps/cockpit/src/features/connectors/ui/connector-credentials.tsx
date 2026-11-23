@@ -102,6 +102,8 @@ function CredentialSheet({
       await client.invalidateQueries({ queryKey: ["connector-credential", connectorId] });
       await client.invalidateQueries({ queryKey: ["catalog-detail", "connectors", connectorId] });
       await client.invalidateQueries({ queryKey: ["admin", "connections"] });
+      await client.invalidateQueries({ queryKey: ["workflow-diagnosis"] });
+      await client.invalidateQueries({ queryKey: ["workflow-authorities"] });
       toast.success(t("connectorPage.credentials.replaced"));
       close();
     },

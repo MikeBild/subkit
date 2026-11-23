@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import vm from "node:vm";
 import { JSDOM } from "jsdom";
 import { act } from "react";
+import { missingProdCredential, PROD_CONNECTOR } from "@/app/journey-fixtures";
 import { workerSource } from "@/features/pwa/worker-fixture";
 import { type TranslationKey, translate } from "@/lib/i18n";
 
@@ -531,6 +532,27 @@ isolated("a workflow that needs a fix › the repair view names the blocked step
   await app.click("data-table-row-link-0");
   app.at(`/workflows/${WORKFLOW}`);
   expect(app.find("workflow-diagnosis")?.textContent).toContain("send");
+});
+
+isolated("Fix › a missing production credential opens that connector's credentials", async () => {
+  const app = await mount(
+    `/workflows/${WORKFLOW}#workflow-automation`,
+    missingProdCredential(WORKFLOW, bootstrap),
+  );
+  app.at(`/workflows/${WORKFLOW}`);
+  expect(app.find("workflow-diagnosis")?.textContent).toContain("fetch_beta_group");
+  expect(app.find("workflow-diagnosis-0-reconnect")?.textContent).toBe(
+    de("connectorStrip.action.enterCredentials"),
+  );
+  expect(app.find("workflow-diagnosis-0-chat")).toBeNull();
+  await app.click("workflow-diagnosis-0-reconnect");
+  app.at(`/connectors/${PROD_CONNECTOR}`);
+  expect(app.dom.window.location.hash).toBe("#connector-credentials");
+  expect(app.text()).toContain("App Store Connect");
+  expect(app.find("connector-credentials")).not.toBeNull();
+  await app.click("connector-credential-replace");
+  expect(app.find("connector-credential-save")).not.toBeNull();
+  app.at(`/connectors/${PROD_CONNECTOR}`);
 });
 
 isolated("a notification click opens its target in the open cockpit", async () => {
