@@ -36,3 +36,26 @@ test("an eligible readiness says a person approves it and a missing one prints n
   ).toContain("a person approves them in Cockpit");
   expect(formatAutomationReadiness(undefined)).toBe("");
 });
+
+test("a connector gap names the connector, its environment and the attach command", () => {
+  const output = plain(
+    formatAutomationReadiness({
+      environment: "prod",
+      workflow_version_id: "version",
+      state: "repair_required",
+      issues: [],
+      repair_guidance: [
+        {
+          step_id: "fetch_beta_group",
+          code: "connector_unavailable",
+          instruction:
+            'The production connector "App Store Connect" (app-store-connect, prod) has no stored credential. Store it with `subkit vault attach app-store-connect --env prod`.',
+        },
+      ],
+    }),
+  );
+  expect(output).toContain("until these connectors are ready");
+  expect(output).toContain("fetch_beta_group (connector_unavailable)");
+  expect(output).toContain('"App Store Connect" (app-store-connect, prod)');
+  expect(output).toContain("subkit vault attach app-store-connect --env prod");
+});

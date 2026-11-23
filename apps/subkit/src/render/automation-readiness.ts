@@ -25,9 +25,13 @@ export function formatAutomationReadiness(readiness: AutomationReadiness | undef
       .filter((issue) => !guided.has(`${issue.step_id}:${issue.code}`))
       .map((issue) => `  - ${pc.bold(issue.step_id)} ${pc.dim(`(${issue.code})`)}`),
   ];
+  const onlyConnectors =
+    readiness.issues.length === 0 &&
+    readiness.repair_guidance.length > 0 &&
+    readiness.repair_guidance.every((entry) => entry.code === "connector_unavailable");
   return (
     `${pc.red("automation: repair required")} (${readiness.environment}) — no approval can unblock ` +
-    "scheduled or webhook runs of this version until these steps change:\n" +
+    `scheduled or webhook runs of this version until ${onlyConnectors ? "these connectors are ready" : "these steps change"}:\n` +
     `${lines.join("\n")}\n`
   );
 }
