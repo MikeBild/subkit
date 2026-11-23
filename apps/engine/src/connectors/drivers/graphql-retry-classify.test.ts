@@ -59,6 +59,30 @@ describe("GitHub GraphQL error types", () => {
     expect(graphqlRateLimited(401, { "x-ratelimit-remaining": "0" }, {})).toBe(false);
   });
 
+  test("a 403 permission error with a live budget is a permission error, not a rate limit", () => {
+    const headers = { "x-ratelimit-remaining": "4999", "x-ratelimit-reset": "1700000000" };
+    expect(
+      graphqlRateLimited(403, headers, {
+        message: "Resource not accessible by integration. See the rate limit docs for quotas.",
+      }),
+    ).toBe(false);
+    expect(
+      graphqlRateLimited(403, headers, {
+        errors: [{ type: "FORBIDDEN", message: "Rate limit settings require admin access" }],
+      }),
+    ).toBe(false);
+  });
+
+  test("a padded exhausted budget header still counts as a throttle signal", () => {
+    expect(graphqlRateLimited(403, { "x-ratelimit-remaining": " 0 " }, {})).toBe(true);
+  });
+
+  test("a RATE_LIMITED error code is rate limited on any failed status", () => {
+    expect(
+      graphqlRateLimited(403, {}, { errors: [{ type: "RATE_LIMITED", message: "slow down" }] }),
+    ).toBe(true);
+  });
+
   test("a successful response with remaining 0 is not rate limited", () => {
     expect(graphqlRateLimited(200, { "x-ratelimit-remaining": "0" }, { data: {} })).toBe(false);
   });
