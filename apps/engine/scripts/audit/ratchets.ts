@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import type ts from "typescript";
@@ -9,6 +10,7 @@ import {
   shrinkBudgets,
 } from "./budgets.ts";
 import { listFiles } from "./files.ts";
+import { germanTextLines, isGermanTextScope } from "./german-text.ts";
 import { parseTsconfigPaths } from "./import-graph.ts";
 import { collectImportsFromSource, parseSource, resolveImport } from "./imports.ts";
 import { assertCompletePureTargetInventory, discoverPureTargets } from "./pure-targets.ts";
@@ -76,6 +78,12 @@ class SourceCache {
 
   exists(rel: string): boolean {
     return existsSync(join(this.repo, rel));
+  }
+
+  tracked(predicate: (rel: string) => boolean): string[] {
+    return execFileSync("git", ["ls-files"], { cwd: this.repo, encoding: "utf8" })
+      .split("\n")
+      .filter((rel) => rel !== "" && predicate(rel) && existsSync(join(this.repo, rel)));
   }
 
   list(roots: readonly string[], predicate: (rel: string) => boolean): string[] {
@@ -297,6 +305,14 @@ export const RATCHETS: readonly Ratchet[] = [
         cache.list(["apps", "packages", "tests", "scripts"], (rel) => !/\.test\.tsx?$/.test(rel)),
         (rel) => lintSuppressionHits(cache.tree(rel)).length,
       ),
+  },
+  {
+    id: "no_german_outside_locales",
+    allowlist: "german-text.txt",
+    rule: "German text outside the locale homes in audit/german-text.ts; translate internal text to English and move text people read into the i18n catalog with an en and a de entry",
+    unit: "lines",
+    measure: (cache) =>
+      countBy(cache.tracked(isGermanTextScope), (rel) => germanTextLines(cache.text(rel)).length),
   },
 ];
 
