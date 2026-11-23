@@ -110,7 +110,7 @@ describe("conversation confirmation — no transport bypass", () => {
     );
     expect(result.ok).toBe(false);
     expect(result.pause).toBeDefined();
-    expect(result.data).not.toMatchObject({ created: true });
+    expect(result.data).not.toMatchObject({ collected: true });
     expect(events.find((event) => event.type === "elicit_request")).toBeDefined();
     expect(await pendingElicitations(conversation_id)).toHaveLength(1);
     const audits = await ctx.testDb.db
@@ -127,7 +127,7 @@ describe("conversation confirmation — no transport bypass", () => {
   });
 
   for (const surface of ["mcp", "chat"] as const) {
-    it(`preparation creates a source without an approval over ${surface}`, async () => {
+    it(`preparation collects an item for review without an approval over ${surface}`, async () => {
       const conversation_id = await newConversation();
       const { result, events } = await runGatedTool(
         conversation_id,
@@ -137,7 +137,7 @@ describe("conversation confirmation — no transport bypass", () => {
       );
       expect(result.ok).toBe(true);
       expect(result.pause).toBeUndefined();
-      expect(result.data).toMatchObject({ created: true });
+      expect(result.data).toMatchObject({ collected: true, admitted: false });
       expect(events.find((event) => event.type === "elicit_request")).toBeUndefined();
       expect(await pendingElicitations(conversation_id)).toHaveLength(0);
     });
