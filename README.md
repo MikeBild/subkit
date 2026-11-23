@@ -442,17 +442,5 @@ Every root command groups one concern: `gen`, `build`, `test`, `verify`, `qualit
 <br />
 
 <p align="center">
-  <a href="https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-mac-arm64.dmg"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/button-mac-dark.webp" /><img src=".github/readme/button-mac.webp" alt="Download for Mac" width="260" /></picture></a>
-  <a href="https://subkit-cloud.mikebild.dev"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/button-cloud-dark.webp" /><img src=".github/readme/button-cloud.webp" alt="Sign up for SubKit Cloud" width="260" /></picture></a>
-  <a href="https://github.com/MikeBild/subkit/releases/latest/download/docker-compose.yml"><picture><source media="(prefers-color-scheme: dark)" srcset=".github/readme/button-selfhost-dark.webp" /><img src=".github/readme/button-selfhost.webp" alt="Self-host with Docker" width="260" /></picture></a>
-</p>
-
-<p align="center">
-  <sub>macOS 13+ on Apple Silicon · Windows coming soon · CLI: <code>curl -fsSL https://github.com/MikeBild/subkit/releases/latest/download/install.sh | bash</code> · <a href="https://chromewebstore.google.com/detail/odefbnmjeehgfbanpaajiaocliccldma">Web Clipper in the Chrome Web Store</a> · Free and open source (<a href="LICENSE">Apache 2.0</a>)</sub>
-</p>
-
-<br />
-
-<p align="center">
   <sub>Copyright 2026 Mike Bild · <a href="LICENSE">Apache License 2.0</a> · <a href="https://subkit.mikebild.dev/en/contact/">Contact</a><br />Every release ships <code>THIRD_PARTY_NOTICES.txt</code> with the license texts of all bundled components.</sub>
 </p>
