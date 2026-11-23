@@ -11,7 +11,7 @@ import {
   engineSentence,
   engineSentenceKey,
 } from "@/lib/engine-sentence";
-import { errorSentence } from "@/lib/error-facts";
+import { errorReportable, errorSentence } from "@/lib/error-facts";
 import { type TranslationKey, translate } from "@/lib/i18n";
 import { engineSentenceDe, engineSentenceEn } from "@/lib/i18n/engine-sentence";
 
@@ -136,6 +136,11 @@ describe("where the Cockpit shows these sentences", () => {
       errorSentence({ status: 409, code: "x", details: { cause_class: "auth_failed" } }, en),
     ).toBe(en("engine.class.auth_failed"));
     expect(errorSentence({ status: 500, code: "internal" }, en)).toBeNull();
+    expect(errorSentence({ status: 413, code: "llm_context_too_large" }, en)).toBe(
+      en("chat.cause.provider_context_too_large"),
+    );
+    expect(errorReportable({ status: 413, code: "llm_context_too_large" })).toBe(false);
+    expect(errorReportable({ status: 500, code: "internal" })).toBe(true);
     expect(errorSentence(null, en)).toBeNull();
   });
 });

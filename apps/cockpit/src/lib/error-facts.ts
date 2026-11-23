@@ -3,6 +3,7 @@ import { causeClassKey } from "@/lib/cause-class";
 import { engineSentenceKey } from "@/lib/engine-sentence";
 import { failureFacts } from "@/lib/failure-remedy";
 import type { Translate, TranslationKey } from "@/lib/i18n";
+import { modelLimitExhausted, reportsFault } from "@/lib/remedy";
 
 export interface ErrorTechnicalRow {
   key: "code" | "http" | "request" | "time";
@@ -40,6 +41,10 @@ export function labelledTechnicalRows(error: unknown, at: Date, t: Translate): [
   return [[t("error.cause"), key ? t(key) : cause], ...rows];
 }
 
+export function errorReportable(error: unknown): boolean {
+  return reportsFault(failureFacts(error).code);
+}
+
 export function technicalKind(error: unknown): string {
   return errorTechnicalRows(error, new Date(0))[0]?.value ?? MISSING;
 }
@@ -47,6 +52,7 @@ export function technicalKind(error: unknown): string {
 export function errorSentence(error: unknown, t: Translate): string | null {
   if (error === undefined || error === null) return null;
   const facts = failureFacts(error);
+  if (modelLimitExhausted(facts.code)) return t("chat.cause.provider_context_too_large");
   const key = engineSentenceKey({ code: facts.code, cause_class: facts.causeClass });
   return key ? t(key) : null;
 }

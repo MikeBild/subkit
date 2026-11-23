@@ -44,6 +44,7 @@ import {
 } from "@/components/cockpit/patterns";
 import { auditActionLabel } from "@/features/audit/model";
 import { ConversationsAbout, TaskRunLine } from "@/features/chat";
+import { errorReportable } from "@/lib/error-facts";
 import type { TranslationKey } from "@/lib/i18n";
 import { formatDate } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
@@ -274,7 +275,7 @@ function PanelChat({
   const chat = useSidePanelChat(subject, context);
   const chatFailure = useErrorNotice({
     error: chat.error,
-    body: t("sidePanel.chat.failedBody"),
+    ...(errorReportable(chat.error) ? { body: t("sidePanel.chat.failedBody") } : {}),
   });
   const target = subjectTarget(subject);
   const canAsk = permissions.includes("conversation:write");

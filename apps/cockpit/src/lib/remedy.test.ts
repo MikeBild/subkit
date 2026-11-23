@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { attentionHref, chatNewHref, connectorHref, workflowAutomationHref } from "@/app/links";
-import { type Remedy, type RemedyInput, remedyFor } from "@/lib/remedy";
+import {
+  expectedFailureRemedy,
+  type Remedy,
+  type RemedyInput,
+  remedyFor,
+  reportsFault,
+} from "@/lib/remedy";
 
 const WF = "0b6f2d4e-91c3-4a7e-8d52-3f1e6a9c7b20";
 const RUN = "7d3a1c58-2e4b-4f96-b0a1-9c8e5d2f4a13";
@@ -119,6 +125,24 @@ describe("remedyFor", () => {
     for (const [, input] of cases) {
       const remedy = remedyFor(input);
       if (remedy) expect(remedy.href.startsWith("/cockpit")).toBe(false);
+    }
+  });
+});
+
+describe("an exhausted model limit is an expected failure", () => {
+  test("leads to a new conversation and offers no bug report", () => {
+    expect(expectedFailureRemedy("llm_context_too_large")).toEqual({
+      kind: "new_conversation",
+      labelKey: "chat.new",
+      href: chatNewHref(),
+    });
+    expect(reportsFault("llm_context_too_large")).toBe(false);
+  });
+
+  test("keeps the bug report for real faults", () => {
+    for (const code of ["internal", "llm_provider_unavailable", null, undefined]) {
+      expect(expectedFailureRemedy(code)).toBeNull();
+      expect(reportsFault(code)).toBe(true);
     }
   });
 });

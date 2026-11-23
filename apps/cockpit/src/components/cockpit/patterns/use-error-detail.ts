@@ -3,7 +3,12 @@ import type { PageFailureSpec } from "@ui/lib/errors";
 import { useUi } from "@ui/lib/ui-context";
 import { type ReactNode, useState } from "react";
 import { absolute } from "@/app/links";
-import { errorSentence, labelledTechnicalRows, technicalKind } from "@/lib/error-facts";
+import {
+  errorReportable,
+  errorSentence,
+  labelledTechnicalRows,
+  technicalKind,
+} from "@/lib/error-facts";
 import { useI18n } from "@/lib/i18n-context";
 
 export interface ErrorDetail {
@@ -11,6 +16,7 @@ export interface ErrorDetail {
   rows: [string, string][] | undefined;
   body: string;
   technical: boolean;
+  report: boolean;
 }
 
 export function useErrorDetail(error: unknown): ErrorDetail {
@@ -23,6 +29,7 @@ export function useErrorDetail(error: unknown): ErrorDetail {
     rows: known ? labelledTechnicalRows(error, at, t) : undefined,
     body: errorSentence(error, t) ?? t("error.unchanged"),
     technical: known,
+    report: !known || errorReportable(error),
   };
 }
 
@@ -30,6 +37,7 @@ export interface ErrorNoticeFacts {
   kind: string;
   rows: [string, string][] | undefined;
   technical: boolean;
+  report: boolean;
   body: ReactNode;
   tone: "danger" | "warning";
 }
@@ -44,6 +52,7 @@ export function useErrorNotice(input: {
     kind: detail.kind,
     rows: detail.rows,
     technical: detail.technical,
+    report: detail.report,
     body: input.body ?? detail.body,
     tone: input.tone === "warn" ? "warning" : "danger",
   };

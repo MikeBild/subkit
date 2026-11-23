@@ -36,6 +36,10 @@ describe("failure remedy", () => {
     expect(remedy(null, null, "budget_exhausted")).toBe("admin");
   });
 
+  test("an exhausted model limit leads to a new conversation, not a retry", () => {
+    expect(remedy(413, "llm_context_too_large")).toBe("new_conversation");
+  });
+
   test("a passing fault is tried again", () => {
     expect(remedy(0, null)).toBe("retry");
     expect(remedy(408, null)).toBe("retry");

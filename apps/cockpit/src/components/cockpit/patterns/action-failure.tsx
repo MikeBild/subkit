@@ -57,6 +57,8 @@ export function failureRemedyHref(
       );
     case "admin":
       return absolute(peopleHref());
+    case "new_conversation":
+      return absolute(chatNewHref());
   }
 }
 
