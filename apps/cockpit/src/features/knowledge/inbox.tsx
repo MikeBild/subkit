@@ -80,6 +80,7 @@ import {
   type IntakeOrigin,
   intakeConversationId,
   intakeEvents,
+  intakeWriteFailureKey,
   publishedDate,
   sessionLabel,
   sessionPlace,
@@ -624,15 +625,7 @@ function EntryDetail({ clip, proposals }: { clip: Clip; proposals: Proposal[] })
       void client.invalidateQueries({ queryKey: KEYS.entry(clip.id) });
       void refresh();
     },
-    onError: (error) =>
-      reportFailure(
-        t(
-          error instanceof ApiError && error.status === 409
-            ? "intake.proposal.confirmConflict"
-            : "common.actionFailed",
-        ),
-        error,
-      ),
+    onError: (error) => reportFailure(t(intakeWriteFailureKey(error)), error),
   });
   const edit = useMutation({
     mutationFn: (input: Parameters<typeof updateIntakeClip>[1]) => updateIntakeClip(clip.id, input),

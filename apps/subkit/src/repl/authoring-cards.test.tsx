@@ -2,11 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { ToolCallState } from "@cli-core/index.ts";
 import { render } from "ink-testing-library";
 import type { ReactElement } from "react";
-import {
-  extractKnowledgeSourceSummary,
-  isPolicyGatePending,
-  renderAuthoringCard,
-} from "./authoring-cards.tsx";
+import { isPolicyGatePending, renderAuthoringCard } from "./authoring-cards.tsx";
 
 function frameOf(call: ToolCallState, mode: "chat" | "inspect" = "chat"): string {
   const node = renderAuthoringCard(call, mode);
@@ -17,53 +13,19 @@ function frameOf(call: ToolCallState, mode: "chat" | "inspect" = "chat"): string
   return frame;
 }
 
-function makeKsCall(overrides: {
-  resultMimeType?: string;
-  argMimeType?: string;
-  argMode?: "inline" | "from_attachment";
-  fileId?: string;
-  includeResultMime?: boolean;
-}): ToolCallState {
-  const {
-    resultMimeType,
-    argMimeType,
-    argMode = "from_attachment",
-    fileId,
-    includeResultMime = true,
-  } = overrides;
-
-  const ksResult: Record<string, unknown> = {
-    id: "ks-001",
-    name: "OCPP-2.0.1",
-    slug: "ocpp-201",
-    scope: "global",
-    status: "ready",
-    chunk_count: 42,
-    bytes_total: 128_000,
-  };
-  if (includeResultMime && resultMimeType !== undefined) {
-    ksResult.mime_type = resultMimeType;
-  }
-
-  const args: Record<string, unknown> = {
-    mode: argMode,
-    file_id: fileId ?? "fid_00000000-0000-0000-0000-000000000001",
-  };
-  if (argMimeType !== undefined) {
-    args.mime_type = argMimeType;
-  }
-
+function makeCollectedCall(): ToolCallState {
   return {
     id: "call-ks-001",
     name: "create_knowledge_source",
-    args,
+    args: { file_id: "fid_00000000-0000-0000-0000-000000000001" },
     status: "done",
     result: {
       ok: true,
       data: {
-        created: true,
-        knowledge_source: ksResult,
-        audit_log_id: "al-001",
+        collected: true,
+        admitted: false,
+        intake_item: { id: "item-001", title: "OCPP-2.0.1", category: "inbox", state: "collected" },
+        next_action: "review",
       },
     },
   };
@@ -91,88 +53,13 @@ function makePolicyPendingCall(
   };
 }
 
-describe("extractKnowledgeSourceSummary — mime_type resolution order", () => {
-  test("engine-echoed mime_type wins over mode-derived fallback", () => {
-    const call = makeKsCall({ resultMimeType: "text/markdown", argMode: "from_attachment" });
-    const summary = extractKnowledgeSourceSummary(call);
-    expect(summary).not.toBeNull();
-    expect(summary?.mime_type).toBe("text/markdown");
-  });
-
-  test("engine-echoed mime_type wins over args.mime_type (engine is authoritative)", () => {
-    const call = makeKsCall({
-      resultMimeType: "text/markdown",
-      argMimeType: "application/pdf",
-      argMode: "from_attachment",
-    });
-    const summary = extractKnowledgeSourceSummary(call);
-    expect(summary?.mime_type).toBe("text/markdown");
-  });
-
-  test("when engine result lacks mime_type AND args has mime_type, args wins", () => {
-    const call = makeKsCall({
-      includeResultMime: false,
-      argMimeType: "text/markdown",
-      argMode: "from_attachment",
-    });
-    const summary = extractKnowledgeSourceSummary(call);
-    expect(summary?.mime_type).toBe("text/markdown");
-  });
-
-  test("when neither carries mime_type and mode=inline, fallback is text/markdown", () => {
-    const call = makeKsCall({
-      includeResultMime: false,
-      argMode: "inline",
-    });
-    const summary = extractKnowledgeSourceSummary(call);
-    expect(summary?.mime_type).toBe("text/markdown");
-  });
-
-  test("when neither carries mime_type and mode=from_attachment, fallback is application/octet-stream", () => {
-    const call = makeKsCall({
-      includeResultMime: false,
-      argMode: "from_attachment",
-    });
-    const summary = extractKnowledgeSourceSummary(call);
-    expect(summary?.mime_type).toBe("application/octet-stream");
-  });
-
-  test("args.file_id is preserved in the summary's file_id field", () => {
-    const call = makeKsCall({ fileId: "fid_unique-test-id" });
-    const summary = extractKnowledgeSourceSummary(call);
-    expect(summary?.file_id).toBe("fid_unique-test-id");
-  });
-
-  test("empty-string mime_type from engine falls through to next tier (no '' label)", () => {
-    const call = makeKsCall({
-      resultMimeType: "",
-      argMimeType: "text/markdown",
-      argMode: "from_attachment",
-    });
-    const summary = extractKnowledgeSourceSummary(call);
-    expect(summary?.mime_type).toBe("text/markdown");
-  });
-
-  test("empty-string args.mime_type also falls through (no '' label)", () => {
-    const call = makeKsCall({
-      includeResultMime: false,
-      argMimeType: "",
-      argMode: "from_attachment",
-    });
-    const summary = extractKnowledgeSourceSummary(call);
-    expect(summary?.mime_type).toBe("application/octet-stream");
-  });
-
-  test("returns null when result.knowledge_source is absent", () => {
-    const call: ToolCallState = {
-      id: "call-no-ks",
-      name: "create_knowledge_source",
-      args: { mode: "from_attachment", file_id: "fid_x" },
-      status: "done",
-      result: { ok: true, data: { created: true, audit_log_id: "al-x" } },
-    };
-    const summary = extractKnowledgeSourceSummary(call);
-    expect(summary).toBeNull();
+describe("create_knowledge_source collects an item for review", () => {
+  test("the card says the item waits for review and is not knowledge yet", () => {
+    const frame = frameOf(makeCollectedCall());
+    expect(frame).toContain("Item collected for review");
+    expect(frame).toContain("OCPP-2.0.1");
+    expect(frame).toContain("Not in knowledge yet");
+    expect(frame).not.toContain("Created knowledge source");
   });
 });
 
@@ -188,7 +75,7 @@ describe("isPolicyGatePending", () => {
   });
 
   test("returns false for a genuine success result ({created: true})", () => {
-    const call = makeKsCall({ resultMimeType: "text/markdown" });
+    const call = makeCollectedCall();
     expect(isPolicyGatePending(call)).toBe(false);
   });
 
@@ -436,7 +323,7 @@ describe("renderAuthoringCard — policy-pending short-circuit", () => {
   });
 
   test("returns non-null (SummaryCard path) for a genuine success result in chat mode", () => {
-    const call = makeKsCall({ resultMimeType: "text/markdown" });
+    const call = makeCollectedCall();
     const result = renderAuthoringCard(call, "chat");
     expect(result).not.toBeNull();
   });

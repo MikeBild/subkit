@@ -11,6 +11,7 @@ import {
   intakeNoteRequest,
   intakeOrigin,
   intakeTargetTopic,
+  intakeWriteFailureKey,
   isIntakeCategory,
   mayConfirmIntakeProposal,
   newSkillLine,
@@ -290,5 +291,22 @@ describe("intakeEvents", () => {
       ["proposed", "Vorschlag stale"],
       ["collected", null],
     ]);
+  });
+});
+
+describe("intake write failures", () => {
+  test("a confirmation by the person who collected the item asks for a second person", () => {
+    expect(intakeWriteFailureKey({ status: 403, code: "second_person_required" })).toBe(
+      "intake.proposal.secondPersonRequired",
+    );
+    expect(translate("en", "intake.proposal.secondPersonRequired")).toContain("Someone else");
+  });
+
+  test("a stale proposal and other failures keep their copy", () => {
+    expect(intakeWriteFailureKey({ status: 409, code: "conflict" })).toBe(
+      "intake.proposal.confirmConflict",
+    );
+    expect(intakeWriteFailureKey({ status: 500 })).toBe("common.actionFailed");
+    expect(intakeWriteFailureKey(null)).toBe("common.actionFailed");
   });
 });

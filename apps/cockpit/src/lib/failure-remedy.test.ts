@@ -120,3 +120,11 @@ describe("failure remedy", () => {
     expect(CATALOGS.de["remedy.admin"]).toBe("Administrator fragen");
   });
 });
+
+describe("second person required", () => {
+  test("offers no administrator, because any other person may confirm", () => {
+    expect(
+      failureRemedy({ status: 403, code: "second_person_required", causeClass: null }),
+    ).toBeNull();
+  });
+});

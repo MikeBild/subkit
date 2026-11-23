@@ -6,10 +6,11 @@ import { debugLog } from "../debug.ts";
 import { IntentCard } from "../render/intent-card.tsx";
 import { SummaryCard } from "../render/summary-card.tsx";
 import { describeConfirmationPayload } from "./approval/describe-confirmation.ts";
+import type { CollectedItem } from "./authoring-cards-extractors.ts";
 import {
+  extractCollectedItem,
   extractConnectorIntent,
   extractConnectorSummary,
-  extractKnowledgeSourceSummary,
   extractWorkflowSummary,
 } from "./authoring-cards-extractors.ts";
 import { ConnectorProbeCard, StepPreviewCard } from "./authoring-cards-previews.tsx";
@@ -27,9 +28,9 @@ import {
 } from "./authoring-cards-shared.tsx";
 
 export {
+  extractCollectedItem,
   extractConnectorIntent,
   extractConnectorSummary,
-  extractKnowledgeSourceSummary,
   extractWorkflowIntent,
   extractWorkflowSummary,
 } from "./authoring-cards-extractors.ts";
@@ -552,6 +553,20 @@ const GenericMilestoneCard: React.FC<CardProps & { label: string }> = memo(({ ca
 });
 GenericMilestoneCard.displayName = "GenericMilestoneCard";
 
+const CollectedItemCard: React.FC<{ item: CollectedItem }> = memo(({ item }) => (
+  <Box flexDirection="column" marginBottom={1}>
+    <Box>
+      {badge("ok", "Item collected for review")}
+      <Text bold>{` "${item.title}"`}</Text>
+      {item.category ? <Text dimColor>{` · ${item.category}`}</Text> : null}
+    </Box>
+    <Box marginLeft={2}>
+      <Text dimColor>Not in knowledge yet. A person confirms it in the Inbox first.</Text>
+    </Box>
+  </Box>
+));
+CollectedItemCard.displayName = "CollectedItemCard";
+
 const ApprovalCard: React.FC<CardProps> = memo(({ call }) => {
   const args = asRecord(call.args) ?? {};
   const d = unwrapData(call);
@@ -694,9 +709,9 @@ export function renderAuthoringCard(
       return <CommitResultCard key={`acc-${call.id}`} call={call} />;
     }
     case "create_knowledge_source": {
-      const summary = extractKnowledgeSourceSummary(call);
-      if (summary) return <SummaryCard key={`acc-${call.id}`} summary={summary} />;
-      return <GenericMilestoneCard key={`acc-${call.id}`} call={call} label="Knowledge source" />;
+      const item = extractCollectedItem(call);
+      if (item) return <CollectedItemCard key={`acc-${call.id}`} item={item} />;
+      return <GenericMilestoneCard key={`acc-${call.id}`} call={call} label="Item for review" />;
     }
     case "run_workflow":
     case "diagnose_latest_execution":

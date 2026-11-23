@@ -40,7 +40,8 @@ const BY_CAUSE: Record<CauseClass, FailureRemedyKind | null> = {
   unknown: "chat",
 };
 
-const BY_CODE: Record<string, FailureRemedyKind> = {
+const BY_CODE: Record<string, FailureRemedyKind | null> = {
+  second_person_required: null,
   unauthorized: "sign_in",
   installation_session_required: "sign_in",
   cockpit_installation_session_required: "sign_in",
