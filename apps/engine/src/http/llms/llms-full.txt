@@ -327,6 +327,29 @@ Access from outside needs HTTPS and access control. Never expose the database or
 A recovery needs the database, object-store data, `.env`, the matching Compose file and the image identity together.
 Test recovery in a separate installation before you rely on a backup or upgrade. The steps are under “Backup and recovery”.
 
+### Keep workspaces apart in the database
+
+The engine uses PostgreSQL row level security as an extra wall between workspaces. For tables with especially sensitive data, the database itself then returns only rows of the workspace that is currently working. This covers stored secrets, tool approvals, inbound webhooks, subscriptions, chat workspaces, push subscriptions, the run state of workflows and the settings of sign-in providers.
+
+For this, the engine needs the database role `subkit_tenant`. With the supplied `docker-compose.yml` you do nothing for a new installation: the bundled PostgreSQL creates the role on its first start. The engine itself never creates database roles.
+
+With your own PostgreSQL database, or an installation that existed before this release, the role does not exist yet. Row level security then stays off, but the engine starts and works as before. It never blocks the start because of this. The log says “row security is off” and names the statements to run.
+
+To switch it on, a database administrator runs the following once, as a superuser or as a role with `CREATEROLE`. Replace `<engine login role>` with the role the engine signs in with:
+
+```sql
+CREATE ROLE subkit_tenant NOLOGIN NOBYPASSRLS;
+GRANT subkit_tenant TO "<engine login role>";
+```
+
+Then restart the engine. At its next start, it finds the role, gives it access to its tables and switches row level security on.
+
+Good to know:
+
+- `subkit_tenant` cannot sign in. It is not a database user. The engine only switches to it while it works for one workspace.
+- Roles are not part of a database dump. When you restore a backup into another database server, create the role there first, as described under “Backup and recovery”. If the role is missing anyway, stored secrets cannot be read until it exists again. The log names this case. Run the two statements again and restart the engine.
+- If the log says the role is a superuser or has `BYPASSRLS`, row level security does not restrict it. Fix this with `ALTER ROLE subkit_tenant NOSUPERUSER NOBYPASSRLS;`.
+
 ### Browser crawling for connector discovery
 
 The supplied image contains no browser and no Node.js.
@@ -393,7 +416,8 @@ networks:
    project. Restore only into that new volume:
    `docker run --rm -i --network none -v <new-object-volume>:/data --entrypoint tar oven/bun:1.4.5-debian -C /data -xf - < /path/to/backup/objects.tar`.
 2. Start the new database with `docker compose -p subkit-recovery up -d --wait postgres`.
-   Restore it with `docker compose -p subkit-recovery exec -T postgres pg_restore --exit-on-error --clean --if-exists --no-owner -U subkit -d subkit < /path/to/backup/postgres.dump`.
+   The dump refers to the role `subkit_tenant`, but roles are not part of it. Create the role first with `docker compose -p subkit-recovery exec -T postgres psql -U subkit -d subkit -c 'CREATE ROLE subkit_tenant NOLOGIN NOBYPASSRLS; GRANT subkit_tenant TO subkit;'`.
+   Then restore the database with `docker compose -p subkit-recovery exec -T postgres pg_restore --exit-on-error --clean --if-exists --no-owner -U subkit -d subkit < /path/to/backup/postgres.dump`.
    This command replaces database contents. Use it only against the new recovery project.
 3. Start the recovered services with `docker compose -p subkit-recovery up -d --wait`.
    Check `/health` and `/ready` on the selected port and sign in with an existing account.
@@ -542,6 +566,28 @@ You see **Run started**. If the button is unavailable, the hint says why, for ex
    ![Successful run of "CRM contact sync" with one "Query a service" step, the requester "API" and the collapsed "Why it was allowed" and "Technical details" sections](/docs-images/first-workflow-run-result.en.webp?v=d6f1c5541b42)
 
 3. Optional: Select **In the audit trail** to see who started and approved the run.
+
+### Try out a single step
+
+You can run one step on its own, for example after you changed it. Reads run against the real systems. Anything that writes is held back and not sent.
+
+1. On the workflow page, expand **Build** and click the step.
+2. Under **Trial run**, choose the **Input**. **From the last run** reuses what the steps before it returned in the last run. Under **Own values** you enter the earlier results as JSON: one entry per earlier step, named by its step key, with the result under `data`.
+3. Select **Trial run of this step**. To cancel it, select **Stop trial run**.
+4. Read the result. **Open Run** shows the whole run.
+
+| What you read | Meaning |
+| --- | --- |
+| “The step succeeded.” | The result appears below, with **Raw response** and **Request**. |
+| “The step writes, so it was held back. Nothing was sent.” | The step would change something in another system. In a trial run it sends nothing. |
+| “The step failed.” | The error appears below. |
+| “The trial run could not start.” | The step could not be started. |
+
+Good to know:
+
+- A trial run stops after 60 seconds at the latest.
+- The trial run is missing for confidential workflows (`execution_privacy: sensitive`) and when your role may not start the workflow.
+- Over the HTTP API, `POST /v1/executions` with `"source": "step"` and the step under `step` starts such a trial run. It needs `workflow:run`. Writes are always held back. It answers right away with `execution_id`. Read the result with `GET /v1/executions/{id}` and stop it with `POST /v1/executions/{id}/cancel`.
 
 ### If something does not work
 
@@ -1277,6 +1323,8 @@ To collect a web page:
 6. Pick a category. Your default category is preselected, at first `inbox`.
 7. Select **Collect**.
 
+If the same page or nearly the same text is already waiting for review in the **Inbox**, SubKit does not create a new item. It adds what you collected to the existing item as evidence, which you find under **Evidence from the session**. For the address, SubKit ignores `www.` and tracking parameters such as `utm_source`. Reports sent without signing in always become a new item.
+
 ### Add a note
 
 A note is an item without a source address, such as a thought or an idea.
@@ -1301,6 +1349,22 @@ The note carries the origin **Note**. It has no **Open original page** link, bec
 5. Optional: select **Discard** or **Restore**.
 
 Who sees what in the Inbox follows the permissions of your workspace. Categories are not private.
+
+### Group items and handle several at once
+
+1. In the **Inbox**, choose **Topic** under **Group by**. Items from the same website, the same work session or with the same tag then stand together. A tag group reads like `#research`. Items without a topic stand under **Not grouped**.
+2. Select the items with the boxes in front of them.
+3. Choose an action for the selection.
+
+| Action | What it does |
+| --- | --- |
+| **Move to category** | Moves the items to another category. |
+| **Discard** | Discards the items. You can restore them at any time. |
+| **Prepare a suggestion** | Opens a new chat with the selected items that prepares a knowledge entry. Available for up to 100 items. |
+| **Delete … discarded entries** | Removes the items and their raw content for good. Appears only when every selected item is discarded. |
+
+- Admitted items cannot be selected. The actions appear when every selected item is collected or in review, or when every selected item is discarded. A mixed selection offers no action.
+- If items changed in the meantime, they stay as they were. You read “… entries changed in the meantime and stayed as they were. Reload the list to see them.”
 
 ### Review in chat
 
@@ -2194,6 +2258,27 @@ SubKit saves the restored content as a new version. The previous version stays u
 
 The list shows conversations that name the source or the skill with an `@` reference. For a source, it also counts conversations in which the assistant read or found the source. For a skill, it also counts conversations that loaded the skill. Click a conversation to open it. If there is none yet, start one with **Ask in chat**.
 
+### See which sources an answer used
+
+Under a chat answer, the line **Sources:** names the knowledge sources and skills SubKit used for it. Click a name to open the source or the skill.
+
+- The line shows up to five names, followed by “and … more”.
+- Documentation that SubKit read, for example about a connector, appears without a link.
+- A source without a name reads “Unnamed source”.
+- An answer for which SubKit used no source has no such line.
+
+### Plan a review of a source
+
+Knowledge goes out of date. A review date reminds your team to check that a source is still correct.
+
+1. Open **Sources** and click the source.
+2. Open **More actions** and choose **Plan a review**.
+3. Under **Review date**, pick the day and save. You read “Review date saved for ….”
+
+From that day on, the source appears on the **Overview** under **Needs you** with the label **Review due**. If several sources are due, one entry names their number, for example “3 knowledge sources are due for a review”. Select the entry to open the source or the list. On the source, **Next review** shows the date, with “due now” once it has passed.
+
+To remove the reminder, open the dialog again and leave the field empty. Setting the date needs `knowledge:write`. The entry under **Needs you** appears for everyone with `knowledge:read`.
+
 ### Decide skill proposals
 
 SubKit proposes skills when a pattern keeps recurring. You decide them on the **Skill candidates** page, not in the skills table.
@@ -2234,6 +2319,7 @@ Good to know:
 | "This version has no saved state, so it cannot be restored." | Choose another version, or change the skill directly. |
 | The **Replaced** section is missing | The file was never replaced. It has no earlier versions yet. |
 | **Replace** is missing in the menu | Ask an administrator for `file:write`. |
+| **Plan a review** is missing under **More actions** | Ask an administrator for `knowledge:write`. |
 
 ### The same in the terminal
 
@@ -2243,6 +2329,13 @@ You can also replace files with the `subkit` command line. How to set it up is i
 subkit files replace <file-id> <path>
 subkit files versions <file-id>
 subkit files restore <file-id> <version>
+```
+
+Set or remove the review date of a source like this:
+
+```bash
+subkit knowledge-sources patch <source-id> --review-due 2026-12-31
+subkit knowledge-sources patch <source-id> --review-due none
 ```
 ## Keep track of usage and costs
 
@@ -2787,6 +2880,54 @@ The overview of **Settings** shows your choice in one line, for example “Test 
 - If you name an unknown address without the Administrator role, it is stored but nobody is invited. As soon as an administrator invites or adds the address, SubKit links your choice by itself; the notifications go to the person once they have joined.
 - If you choose **Only during my working hours**, you enter your **Working days** besides **From** and **Until**. Monday to Friday are preset.
 
+### Your personal notes
+
+When you tell SubKit in a chat how you like things done, it keeps a short note, with your own words as the source. Only you can read these notes. No teammate and no admin can. SubKit uses the notes that fit your question in its answers to you.
+
+1. In the Cockpit, open **Notes**.
+2. Under **Which notes**, choose **In use** or **Archived**.
+3. Click a note. **Why do you know this?** shows the message you wrote it in. **Open the message** takes you to the conversation.
+
+Each note belongs to an area: **About you**, **How you like things**, **People**, **Routines** or **Lessons**. Its status shows how sure SubKit is:
+
+| Status | Meaning |
+| --- | --- |
+| **Confirmed by you** | You confirmed or wrote these yourself. |
+| **Learned** | You said these in several conversations. |
+| **Mentioned once** | You said these once. Confirm what is right. |
+
+### Keep your notes up to date
+
+Open a note to change it.
+
+| Action | What it does |
+| --- | --- |
+| **Confirm** | Marks the note as correct. It then counts as **Confirmed by you**. |
+| **Edit** | Your new text replaces the note. The old text stays under **Earlier versions**. |
+| **Archive** | SubKit no longer uses the note. You find it under **Archived**. |
+| **Restore** | Brings an archived note back into use. |
+| **Forget** | Deletes the note, its earlier versions and the stored quotes for good. This cannot be undone. |
+| **Share with the team** | Sends the text and your quotes to the team’s **Inbox**. There a teammate can turn them into knowledge. Your note itself stays private. |
+| **Export** | Downloads your notes in use as a Markdown file. |
+
+Sharing needs `intake:write`.
+
+### Stop new notes
+
+1. Open **Settings** › **General**.
+2. Switch off **Save new notes**.
+
+SubKit then stops writing new notes. Existing notes stay until you forget them. The switch is on by default.
+
+Good to know:
+
+- Notes belong to one person. API keys and system accounts have no notes.
+- Only you, signed in to the Cockpit, can change your notes.
+- Notes never keep passwords, keys or tokens. SubKit refuses a text that looks like one.
+- Up to 300 notes can be in use, each with up to 600 characters.
+- The audit log records that a note was forgotten or exported, never its text.
+- When the whole workspace is deleted, all notes in it are deleted as well.
+
 ### If something does not work
 
 | What you see | What to do |
@@ -2797,6 +2938,10 @@ The overview of **Settings** shows your choice in one line, for example “Test 
 | “Enter a valid email address, for example anna@example.com.” | Check the address of the person who should approve. |
 | “Choose at least one service.” | Choose a service or **Other service**. |
 | The step does not appear | You already answered it or skipped it with **Not now**, or you lack `settings:write`. Your answers are under **Settings › Setup**. |
+| “You have reached the limit of notes in use. Archive or forget one first.” | Archive or forget a note you no longer need. |
+| “The text looks like it contains a password, key or token. Notes never keep those.” | Remove the password, key or token from the text. |
+| “A newer note on the same subject is in use. Archive or forget that one first.” | Archive or forget the newer note, then try again. |
+| “Your role can’t add to the team’s inbox. Ask an admin.” | Ask an administrator for `intake:write`. |
 
 ### The same over the HTTP API
 
@@ -2811,6 +2956,8 @@ curl -s -X PUT "$SUBKIT_URL/v1/identity/me/setup" \
 ```
 
 Every field is listed in “Reference: desktop app, rules, schedules and problem reports”.
+
+The switch **Save new notes** is the field `save_new_notes`. Your notes are under `/v1/identity/me/notes`: `GET /v1/identity/me/notes` lists them, `GET /v1/identity/me/notes/{id}` reads one with its sources and earlier versions, and `POST /v1/identity/me/notes/export` exports them as Markdown. Changes to a note only work signed in to the Cockpit.
 ## When SubKit asks
 
 This chapter is for anyone who works in chat or with tasks and wants to know when SubKit asks before a step.
@@ -3042,6 +3189,24 @@ Skills, knowledge sources, items in the **Inbox** and files that contain Markdow
 2. Under **View**, choose between **Rendered** and **Markdown**. **Rendered** shows the formatted text, **Markdown** the source for reading and copying.
 3. In longer documents, jump to a heading through **Contents**. The table of contents appears from three headings on when the column is wide enough.
 
+### Snooze an entry under Needs you
+
+Not every entry under **Needs you** has to be handled right away. You can hide one until later. This only changes your own list.
+
+1. Open the **Overview**.
+2. On the entry, select **Snooze** and choose **For 3 hours**, **Until tomorrow morning** or **For a week**.
+3. The entry moves to the collapsed **Snoozed** section. “Back on …” says when it returns.
+
+To bring it back early, open **Snoozed** and select **Show again** on the entry.
+
+Good to know:
+
+- A snoozed entry sends you no push notification.
+- It comes back by itself when the time is up. It comes back earlier when it needs you for a different reason.
+- “Until tomorrow morning” means 8 a.m. tomorrow, “For a week” 8 a.m. in seven days, both in your device’s time.
+- Over the HTTP API, `POST /v1/attention/snooze` with `attention_key` and `until` hides an entry for at most 30 days. `POST /v1/attention/unsnooze` shows it again. `GET /v1/attention` lists snoozed entries under `snoozed`.
+- The audit log records “Entry snoozed” and “Snooze ended”.
+
 ### If something does not work
 
 | What you see | What to do |
@@ -3051,6 +3216,8 @@ Skills, knowledge sources, items in the **Inbox** and files that contain Markdow
 | “The history could not be loaded. Nothing was changed.” | Open the tab again. If it stays that way, select **Show everything in the audit log**. |
 | The **Chat** tab is missing | You are on a chat page. There the conversation already is the page. |
 | “This could not be loaded” | Select **Try again**. |
+| “The entry could not be snoozed. Try again.” | Select **Snooze** again. |
+| “The entry could not be shown again. Try again.” | Select **Show again** once more. |
 ## Notifications and quiet hours
 
 This chapter is for anyone who wants to hear from SubKit when something waits for them, but not at any hour.
@@ -3227,6 +3394,7 @@ You also know how to resume a schedule and how to renew an approval before it en
 - A workflow or a task with a schedule. “Your first workflow” and “Hand over a goal as a task” describe how to create one.
 - To read the history: `execution:read` for workflows, `task:read` for tasks.
 - To resume a schedule: `workflow:write`.
+- To accept a proposed fix: `workflow:write`.
 
 ### Read why a run failed
 
@@ -3262,11 +3430,29 @@ A held schedule starts no run but loses nothing. As soon as you fix the reason, 
 
 | What you read | What to do |
 | --- | --- |
-| “Held: this version has no approval. Approve it and the schedule runs again.” | Open the workflow, review it and give the approval. |
-| “Held: the approval no longer applies. Renew it and the schedule runs again.” | The approval has expired, is used up or was revoked. Renew it. |
-| “Held: the run is missing input. Add it in the schedule.” | Enter the missing input in the schedule. |
-| “Held: the task has no standing permission. Give it and the schedule runs again.” | Open the task and select **Allow**. |
-| “Held: the standing permission has ended. Renew it and the schedule runs again.” | Open the task and select **Allow**. |
+| “On hold: this version has no approval. Approve it and the schedule runs again.” | Open the workflow, review it and give the approval. |
+| “On hold: the approval has expired. Renew it and the schedule runs again.” | Renew the approval. |
+| “On hold: the approved number of runs is used up. Renew the approval and the schedule runs again.” | Renew the approval. |
+| “On hold: the approval was revoked. Approve it again and the schedule runs again.” | Review the workflow and approve it again. |
+| “On hold: the workflow changed since it was approved. Review and approve the new version.” | Open the new version, review it and approve it. |
+| “On hold: the run is missing input. Add it in the schedule.” | Enter the missing input in the schedule. |
+| “On hold: the task has no standing permission. Give it and the schedule runs again.” | Open the task and select **Allow**. |
+| “On hold: the standing permission has ended. Renew it and the schedule runs again.” | Open the task and select **Allow**. |
+
+### Why a workflow is on hold
+
+While a workflow is on hold, its automatic starts wait. Nothing starts automatically until you fix the reason. On the **Overview**, the item under **Needs you** names the reason with a short label and one sentence.
+
+| Short label | What the sentence says | What to do |
+| --- | --- | --- |
+| **Change needed before approval** | The schedule cannot be approved without a change to the workflow. If SubKit knows the step, the sentence names it and the cause. | Change the named step, for example with **Fix it in the chat**. Then approve the new version. |
+| **Approval expired** | The approval for its schedule has expired. | Renew the approval. |
+| **Approved runs used up** | The approved runs of its schedule are used up. | Renew the approval. |
+| **Approval revoked** | The approval for its schedule was revoked. | Approve the workflow again. |
+| **Changed since approval** | The workflow changed since its schedule was approved. | Review the new version and approve it. |
+| **Input missing** | Its schedule is missing an input. | Add the input in the schedule. |
+
+The same reasons also hold back an inbound webhook. The sentence then reads, for example: “… is on hold: it refuses calls from the webhook ‘…’ because its approval has expired”. Fix the reason in the same way.
 
 ### What happens after repeated failures
 
@@ -3293,6 +3479,22 @@ When a scheduled workflow run fails several times in a row for the same reason, 
 
 After resuming, SubKit counts failures afresh. The pause changed nothing else: workflow, approval and schedule are as they were.
 
+### Accept only part of a proposed fix
+
+When a workflow keeps failing, SubKit can propose a fix. You find it on the **Overview** under **Needs you**. A fix can consist of several changes. You can take only the ones you want.
+
+1. Open the proposed fix on the **Overview**. Each change appears as one sentence, for example “Changes the address from … to ….”
+2. Untick the changes you do not want. Changes you untick are left out. “2 of 3 selected” shows your choice.
+3. If you left out a change, select **Test first**. The test replays the failing step with your selection and writes nothing to other systems. After a passing test you read “The test ran without an error. Nothing was written to other systems.”
+4. Select **Accept and save**. SubKit applies the selected changes to the workflow.
+
+Good to know:
+
+- With every change selected, you can accept without a test.
+- Once you leave out a change, **Accept and save** only becomes available after a passing test of exactly this selection. If you change the selection after the test, test again.
+- To turn down the whole fix, open the menu next to the buttons and choose **Reject**.
+- When the chat proposes a change to a step, it lists the changes the same way. There you choose **Accept** or **Accept and save**, without a test.
+
 ### Read the schedule history
 
 The history shows what became of each scheduled time.
@@ -3309,8 +3511,8 @@ The history shows what became of each scheduled time.
 | “Skipped: this schedule does not run on weekends.” | The schedule excludes weekends. |
 | “Skipped: this day is excluded in the schedule.” | The day is among the exceptions of the schedule. |
 | “Skipped: the previous run was still going.” | A task only ever has one open run. |
-| “Not started: the schedule paused itself after the same failure repeated.” | Resume the schedule as described above. |
-| “Held: …” | The schedule waits for you. The reasons are in “Why a schedule waits”. |
+| “Not started: the schedule was paused automatically after the same failure repeated.” | Resume the schedule as described above. |
+| “On hold: …” | The schedule waits for you. The reasons are in “Why a schedule waits”. |
 
 Good to know:
 
@@ -3343,12 +3545,29 @@ The event is sent only when the end would change something: the workflow has an 
 
 The run ends right away. The schedule stays active. Steps that already reached an external system may have been carried out.
 
+### Settle a run with an unknown outcome
+
+Sometimes SubKit stops while a step is sending a change to another system, for example during a restart. Then it is unclear whether the change arrived. SubKit never sends such a change again by itself. The run gets the status **Outcome unknown** and waits for your answer.
+
+1. Open the run, for example through **Runs**. It reads “It is unclear whether the change of step ‘…’ arrived”.
+2. Check in the other system whether the change is there. For example, check whether the email went out or the record exists.
+3. Select the answer that fits.
+
+| Answer | What happens |
+| --- | --- |
+| **It arrived** | The step counts as done and is not sent again. You read “Noted. The run continues after this step.” |
+| **It did not arrive** | The run sends this step again. You read “Noted. The run sends this step again.” |
+
+- Until you answer, nothing is sent again.
+- If several steps were sending, answer for each of them. The run continues once every step has an answer.
+- A trial run of a single step can end the same way. It then reads “It is unclear whether this step went through. Open the Run to settle it.”
+
 ### Limits
 
 - **The thresholds are fixed.** The waiting periods, the pause after five failures, the 90 days of history and the announcement periods cannot be set.
 - **Missing input pauses nothing.** A schedule that lacks input is held and shows up on the **Overview**, but does not count as a failure.
 - **The cause of the pause is coarse for confidential workflows.** For them SubKit counts all failures without a recognized cause as the same cause.
-- **Some reasons for tasks have no text of their own.** When the standing permission is used up, no longer fits the changed task, the owner is missing, the AI provider is missing or the task is paused, the history only reads “Held until you act.” The task page shows the exact reason.
+- **Some reasons for tasks have no text of their own.** When the standing permission is used up, no longer fits the changed task, the owner is missing, the AI provider is missing or the task is paused, the history only reads “On hold until you act.” The task page shows the exact reason.
 - **The `subkit` inbox of existing workspaces does not get the new events by itself.** Add them to the stored rule with `subkit notifications rules`.
 
 ### If something does not work
@@ -3361,6 +3580,12 @@ The run ends right away. The schedule stays active. Steps that already reached a
 | “No scheduled time has come up yet.” | The schedule is new or paused. Entries appear only once a scheduled time was due. |
 | The **Schedule** tab is missing on the workflow | You lack `execution:read`. Ask an administrator for it. |
 | In the German Cockpit a notice names the cause in English, marked “Wortlaut der Engine” | The Cockpit does not know this code yet and therefore shows the engine’s sentence. The action next to it is translated. |
+| “Your answer could not be saved. Try again.” | Select the answer again. |
+| “You may not start this workflow, so you cannot answer this.” | Ask an administrator for the permission, or ask someone who may start the workflow to answer. |
+| “This run was interrupted while sending a change. The step is not known yet.” | Answer in the terminal. `subkit executions steps <run-id>` shows the step key. |
+| “Test this selection first.” | Select **Test first**, or select every change again. |
+| “The test did not confirm this selection, so it cannot be accepted.” | Choose another selection, or accept the whole fix. |
+| “No test is available for this change.” | Accept the fix as a whole, or reject it. |
 
 ### The same in the terminal and over the HTTP API
 
@@ -3374,6 +3599,18 @@ subkit schedules resume <schedule-id>
 
 `subkit schedules resume` also resumes an automatically paused schedule and counts failures afresh. `subkit schedules list` shows the monthly estimate in the column `estimate`. There is no `subkit` command for the history.
 
+Answer a run with an unknown outcome, and accept part of a proposed fix:
+
+```bash
+subkit executions resolve-write <run-id> --step <step-key> --outcome arrived
+subkit executions resolve-write <run-id> --step <step-key> --outcome not_arrived
+subkit patch-candidates preview <candidate-id>
+subkit patch-candidates dry-run <candidate-id> --accept 0,2
+subkit patch-candidates approve <candidate-id> --review-digest <digest> --accept 0,2
+```
+
+`subkit` shows a run with an unknown outcome as `uncertain (Outcome unknown)` and names the steps that wait for an answer. `--accept` takes the numbers of the changes, starting at 0, in the order of the preview. For part of a fix, use the `review_digest` from the dry-run of exactly that selection. Without `--accept` you take the whole fix, with the digest from `preview`.
+
 | Route | Does |
 | --- | --- |
 | `GET /v1/workflows/{id}/schedule-occurrences` | Reads the history of a workflow, newest first. Needs `workflow:read`. |
@@ -3381,7 +3618,10 @@ subkit schedules resume <schedule-id>
 | `PUT /v1/schedules/{id}` with `{"paused": false}` | Resumes a schedule. Needs `workflow:write`. |
 | `GET /v1/schedules` | Lists schedules, each with `cost_projection`. Needs `workflow:read`. |
 | `GET /v1/workflows/{id}/schedule-cost?cron=…&timezone=…` | Estimates the monthly cost for a rhythm before you save it. Needs `workflow:read`. |
-| `POST /v1/executions/{id}/cancel` | Stops a running run. |
+| `POST /v1/executions/{id}/cancel` | Stops a running run. A run with an unknown outcome ends as aborted. |
+| `POST /v1/executions/{id}/resolve-write` with `{"step_key": "<step-key>", "outcome": "arrived"}` | Answers for one step of a run with an unknown outcome: `arrived` or `not_arrived`. Needs `execution:abort`. Answers `409` when the run or the step is not waiting for an answer. |
+| `POST /v1/patch-candidates/{id}/dry-run` with `{"accepted_operations": [0, 2]}` | Tests the selected changes of a fix without changing the workflow. Needs `workflow:read`. |
+| `POST /v1/patch-candidates/{id}/approve` with `expected_review_digest` and `accepted_operations` | Applies the selected changes. Needs `workflow:write`. |
 
 The response fields, the events and the reasons are listed in “Reference: desktop app, rules, schedules and problem reports”.
 ## SubKit Desktop
@@ -4451,7 +4691,7 @@ Both are in the Cockpit under **Settings** and apply to the whole engine, withou
 
 | Setting | Shown in the Cockpit as | Default | Effect |
 | --- | --- | --- | --- |
-| `server.desktop_min_version` | **Minimum desktop app version** | `0.1.0` | Published as `clients.desktop.min_version`. Format: three numbers such as `12.1.6`. |
+| `server.desktop_min_version` | **Minimum desktop app version** | `0.1.0` | Published as `clients.desktop.min_version`. Format: three numbers such as `13.0.0`. |
 | `server.desktop_dev_callback` | **Accept desktop development builds** | `false` | Also accepts `subkit-dev://callback` as a target. Outside `NODE_ENV=production` this applies without the setting. |
 
 This is how you raise the minimum version:
@@ -4468,7 +4708,7 @@ The app and the engine both enforce the minimum version. The app checks the publ
 | Confirmation page, when shown and when submitted | The same page with `426`. No code is issued. |
 | `POST /v1/identity/desktop-session` | `426` with the code `desktop_app_outdated`. The sign-in code is not consumed. The app shows “This version of the app is too old for this server. …” |
 
-A pre-release such as `12.1.6-beta.1` counts as older than `12.1.6`. The check applies to new sign-ins: an older app that is already signed in keeps its session until it expires or you revoke the device. The app names its version itself; the limit keeps honest older apps out and does not replace access control.
+A pre-release such as `13.0.0-beta.1` counts as older than `13.0.0`. The check applies to new sign-ins: an older app that is already signed in keeps its session until it expires or you revoke the device. The app names its version itself; the limit keeps honest older apps out and does not replace access control.
 
 Leave `server.desktop_dev_callback` switched off in production. Development builds are called “SubKit Dev”, use the scheme `subkit-dev://` and are meant only for developing the app.
 
@@ -4644,7 +4884,10 @@ Query parameters of both routes: `limit` (default 50, at most 200) and `before` 
 | `repeated_failures` | `held` | The schedule paused itself. |
 | `input_required` | `held` | The schedule lacks required input. |
 | `execution_authority_required` | `held` | No approval covers the current version. |
-| `execution_authority_unavailable` | `held` | The approval expired, is used up or was revoked. |
+| `execution_authority_expired` | `held` | The approval has expired. |
+| `execution_authority_exhausted` | `held` | The approval is used up. |
+| `execution_authority_revoked` | `held` | The approval was revoked. |
+| `execution_authority_changed` | `held` | The workflow would now do something the approval does not cover. |
 | `grant_required`, `grant_expired`, `grant_exhausted`, `grant_fingerprint_mismatch` | `held` | The standing permission of the task is missing, ended, used up or no longer fits the task. |
 | `owner_unavailable`, `ai_access_missing`, `paused` | `held` | The owner of the task is unavailable, the workspace has no AI provider, or the task is paused. |
 
@@ -4730,7 +4973,7 @@ Query parameters of `GET /v1/identity/desktop-login/start`:
 | `device_id` | A UUID the app creates once per server profile. |
 | `device_label` | 1 to 64 characters without control characters. |
 | `redirect_uri` | Optional: `subkit://callback` or, where accepted, `subkit-dev://callback`. |
-| `app_version` | The version of the app such as `12.1.6`, also with a pre-release tag such as `12.1.6-beta.1`. Without it, or below `server.desktop_min_version`, the engine answers `426`. |
+| `app_version` | The version of the app such as `13.0.0`, also with a pre-release tag such as `13.0.0-beta.1`. Without it, or below `server.desktop_min_version`, the engine answers `426`. |
 
 Body of `POST /v1/identity/desktop-session`: `code` (43 characters), `code_verifier` (43 to 128 characters), `app_version` and optionally `state`. The answer is `200` with `installation_id`, `cockpit_path` and `created`, and it sets the session cookie.
 
@@ -4811,7 +5054,7 @@ An action that ran in chat without a question is written as `tool_policy.confirm
 
 | Setting | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `server.desktop_min_version` | Version such as `12.1.6` | `0.1.0` | Oldest SubKit Desktop version this engine accepts. Published as `clients.desktop.min_version` and enforced by the engine at the desktop sign-in (`426 desktop_app_outdated`). |
+| `server.desktop_min_version` | Version such as `13.0.0` | `0.1.0` | Oldest SubKit Desktop version this engine accepts. Published as `clients.desktop.min_version` and enforced by the engine at the desktop sign-in (`426 desktop_app_outdated`). |
 | `server.desktop_dev_callback` | `true` or `false` | `false` | Also accept `subkit-dev://callback` as a sign-in target, for development builds. |
 
 Both also appear in the generated settings reference. The thresholds for schedules, rules and notices are fixed and have no setting: backoff from 3 failures, pause at 5, history for 90 days, rules for 90 days with 20 runs a day, before an approval ends a notice in the overview 7 days before, with push also on devices, and a notification through channels and rules 3 days before.
@@ -5428,6 +5671,126 @@ You always manage your own “Only me” items, even without these permissions.
 
 A server backup needs the database and the `MASTER_KEY`. Without it the values cannot be opened.
 A package or a move to another workspace takes names and metadata only, never values. There is no plain-text export.
+## Reference: SFTP connectors, model steps and reading files
+
+This page describes three building blocks for workflows: a connector to an SFTP file server, a step that asks an AI model for an answer in a fixed shape, and a step that reads the content of a file.
+It is for people who write or review workflow definitions. The complete, machine-readable description of every field is at `/openapi.json` on your engine.
+
+### SFTP connector
+
+An SFTP connector connects SubKit to one folder on a file server.
+
+- **Address:** `sftp://host:22/folder`. The port is optional and defaults to 22. The address holds only host, port and folder; the username and password never go into it.
+- **Host key:** `config.host_key_sha256` holds the SHA256 fingerprint of the server's host key, for example from `ssh-keyscan host | ssh-keygen -lf -`. Without it SubKit refuses every call with `sftp_host_key_missing`. If the server presents another key, the call stops with `sftp_host_key_mismatch` before anything is sent.
+- **Sign-in:** a username and password stored as the connector's credential.
+- **Folder:** every path a workflow uses stays inside the folder from the address. A path that leads outside is refused with `sftp_path_outside_root`.
+- **Network:** the connection goes through the same egress rules as every other connector, so private addresses stay blocked unless your operator allows them.
+
+Testing the connector lists the folder with one entry. That confirms the address, the host key and the sign-in.
+
+### SFTP steps
+
+A request step with `protocol: "sftp"` works on one path below the connector's folder.
+
+```json
+{
+  "id": "list_inbox",
+  "kind": "request",
+  "protocol": "sftp",
+  "connector_id": "<connector id>",
+  "method": "LIST",
+  "sftp": { "path": "inbox/", "max_entries": 500 }
+}
+```
+
+| Method | Does | Output |
+| --- | --- | --- |
+| `LIST` | Reads a folder. | `entries` with name, path, type, size and modification time, sorted by name; `truncated: true` when `max_entries` cut the list. |
+| `GET` | Downloads one file. | A run file you hand to later steps, for example to a parse-file step. |
+| `PUT` | Uploads the step's body as one file. | The written path and the number of bytes. |
+| `DELETE` | Removes one file. | The removed path. Folders are never removed (`sftp_delete_not_a_file`), and a `DELETE` with a body is refused. |
+
+- `sftp.path` is the only way to address a file. `url` and `path` on the step are refused.
+- `PUT` and `DELETE` are writes: they need the same approval as every other write and are held in a preview.
+- Placeholders such as `${input.folder}` are filled in before the call.
+
+### Model step
+
+A step with `kind: "model"` asks the AI model configured for your workspace one question and checks the answer against a JSON Schema.
+
+```json
+{
+  "id": "classify",
+  "kind": "model",
+  "prompt": "Sort this support message into one category.",
+  "input": "${scope.fetch_message.data.body}",
+  "output_schema": {
+    "type": "object",
+    "properties": { "category": { "enum": ["billing", "shipping", "other"] } },
+    "required": ["category"]
+  },
+  "max_output_tokens": 200
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `prompt` | The instruction. Placeholders are filled in before the call. |
+| `system` | Optional system prompt. Without it the step uses a short neutral default. |
+| `input` | Data handed to the model next to the prompt, always as data and never as instructions. |
+| `output_schema` | JSON Schema the answer must match. |
+| `max_output_tokens` | Upper bound for the answer, at most 32,000. Default 1,024. |
+
+- The step's output is the parsed answer. If the answer is no valid JSON, the step fails with `model_output_invalid`; if it does not match the schema, with `model_output_schema_invalid`.
+- A model step uses only `input`, `scope`, `item`, `state` and `caller` values. Credentials, secrets and connector settings are refused with `model_step_secret_placeholder`, because they would reach the model provider.
+- Each call counts against your workspace's AI budget. When the monthly limit is reached, the step does not run and the run says so.
+
+### Read files with parse-file
+
+A transform step with `language: "parse-file"` reads a file from the run and returns its content as data.
+
+```json
+{
+  "id": "read_invoice",
+  "kind": "transform",
+  "language": "parse-file",
+  "file": { "source": "download.data", "format": "xlsx", "sheet": "Items", "max_rows": 2000 }
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `source` | Where the file sits in the run, as a dot path: an earlier step's output such as `download.data` or a run input such as `$input.invoice`. |
+| `format` | `csv`, `xlsx`, `pdf`, `docx` or `zip`. Without it the type is read from the file itself. |
+| `sheet` | Spreadsheet sheet to read. Without it the first sheet is read. |
+| `max_rows` | Upper bound for table rows from a CSV or spreadsheet file, at most 10,000. |
+
+| Format | Output |
+| --- | --- |
+| `csv` | `rows` |
+| `xlsx` | `sheets`, one list of rows per sheet |
+| `pdf` | `text` and `pages` |
+| `docx` | `markdown` |
+| `zip` | `text`, `entries` and `skipped` for files it could not read |
+
+A file may be at most 25 MB. The step does not accept an `expression`; everything is configured in the `file` block.
+
+### Error codes
+
+| Code | Meaning |
+| --- | --- |
+| `sftp_address_invalid` | The connector address is not `sftp://host[:port]/folder`. |
+| `sftp_host_key_missing` | The connector has no host key fingerprint. |
+| `sftp_host_key_mismatch` | The server presented a different host key. |
+| `sftp_path_outside_root` | The path leads outside the connector's folder. |
+| `model_output_invalid` | The model's answer is no valid JSON. |
+| `model_output_schema_invalid` | The answer does not match `output_schema`. |
+| `model_step_secret_placeholder` | The model step uses a credential, secret or connector setting. |
+| `parse_file_source_missing` | No file was found at `source`. |
+| `parse_file_unsupported_format` | The file type is not one of the five formats. |
+| `parse_file_sheet_missing` | The spreadsheet has no sheet with that name. |
+| `parse_file_too_large` | The file is larger than 25 MB. |
+| `parse_file_failed` | The file could not be read. |
 
 <!-- Source: coding-agents.md -->
 
@@ -5619,7 +5982,7 @@ The `requires` column names the permission that shows a command in
 | `subkit discovery` | `discovery:read` | Manage discovery runs and artifacts | `approve`, `artifacts`, `create`, `get`, `list`, `reject` |
 | `subkit doctor` | — | Diagnose engine connectivity, authentication, and setup. Exits 0 (ok or warn) or 2 (blocked). | — |
 | `subkit events` | `audit:read` | Query audit events | `get`, `list` |
-| `subkit executions` | `execution:read` | Manage workflow executions | `abort`, `get`, `list`, `rerun`, `result`, `show`, `steps`, `tail` |
+| `subkit executions` | `execution:read` | Manage workflow executions | `abort`, `get`, `list`, `rerun`, `resolve-write`, `result`, `show`, `steps`, `tail` |
 | `subkit extract` | `conversation:write` | Extract structured data from a file (LLM for text, native parsers for binary) | — |
 | `subkit files` | `file:read` | Manage files (upload, download, link, …) | `delete`, `download`, `get`, `link`, `list`, `patch`, `replace`, `restore`, `stats`, `upload`, `versions` |
 | `subkit health` | — | Runtime posture: liveness, token budget, failing runs, risk signals, schema drift, and process runtime. Use `subkit doctor` for connectivity/setup. | — |
@@ -5637,7 +6000,7 @@ The `requires` column names the permission that shows a command in
 | `subkit mcp` | — | Run a stdio MCP server proxied to the engine | — |
 | `subkit notifications` | `notification:read` | Manage notification channels, rules, deliveries, and the inbox | `channels`, `deliveries`, `inbox`, `rules` |
 | `subkit packages` | `package:import` | Move this workspace to another engine: export a package archive, import one with a reviewed plan, list past imports | `export`, `import`, `installs` |
-| `subkit patch-candidates` | `workflow:read` | Manage patch candidates | `approve`, `get`, `list`, `preview`, `reject` |
+| `subkit patch-candidates` | `workflow:read` | Manage patch candidates | `approve`, `dry-run`, `get`, `list`, `preview`, `reject` |
 | `subkit portal-tokens` | `portal_token:read` | Manage portal tokens | `create`, `list`, `revoke` |
 | `subkit profile` | — | Manage named profiles (environments) | `add`, `delete`, `list`, `show`, `use` |
 | `subkit rbac` | `rbac:read` | Manage RBAC roles, permissions, grants, groups, and hooks | `can`, `grants`, `groups`, `permissions`, `request-hooks`, `roles`, `users`, `whatcan` |
@@ -6122,7 +6485,7 @@ List connectors, grouped into catalog blocks
 
 - `--limit` (string, default: 50) — Max rows
 - `--category` (string) — Only this catalog block
-- `--driver` (string) — Only this driver: http, graphql, postgres, s3, mcp, local_files, local_browser, local_computer
+- `--driver` (string) — Only this driver: http, graphql, postgres, s3, sftp, mcp, local_files, local_browser, local_computer
 - `--flat` — One flat table instead of grouped blocks
 - `--json` — JSON output
 
@@ -6324,6 +6687,14 @@ Re-run a previous execution against the workflow + input it carried. Useful afte
 - `<id>` (positional) — Execution id to rerun
 - `--input` (string) — Override the original input (JSON string). Omit to reuse it verbatim.
 - `--follow` — Queue the rerun and stream its progress live (step-by-step JSON lines).
+
+#### `subkit executions resolve-write`
+
+Say whether an interrupted change arrived, so a run with an unknown outcome can go on
+
+- `<id>` (positional, required) — Execution id
+- `--step` (string, required) — Key of the step whose change is unclear
+- `--outcome` (string, required) — arrived: the change reached its target, the step counts as done. not_arrived: it did not, the step is sent again.
 
 #### `subkit executions result`
 
@@ -6714,6 +7085,7 @@ Update a knowledge source
 - `--category` (string) — Catalog block, lowercase words joined by dashes (see `subkit categories list`). "" hands it back to automatic categorisation.
 - `--tags` (string) — Comma-separated tags (replaces existing)
 - `--status` (string) — Status: active | inactive
+- `--review-due` (string) — When a person should check the source again: YYYY-MM-DD, ISO time, or none
 
 #### `subkit knowledge-sources restore`
 
@@ -6869,6 +7241,14 @@ Approve a patch candidate
 
 - `<id>` (positional, required) — Patch candidate id
 - `--review-digest` (string, required) — Digest from the reviewed candidate preview
+- `--accept` (string) — Only these changes of the repair, as zero-based numbers separated by commas (for example 0,2). Omit to take the whole repair.
+
+#### `subkit patch-candidates dry-run`
+
+Test the repair, or only some of its changes, without changing the workflow
+
+- `<id>` (positional, required) — Patch candidate id
+- `--accept` (string) — Only these changes of the repair, as zero-based numbers separated by commas (for example 0,2). Omit to take the whole repair.
 
 #### `subkit patch-candidates get`
 
@@ -7760,10 +8140,11 @@ Add a secret or a login. The token or password is read from stdin or a hidden pr
 
 #### `subkit vault attach`
 
-Attach a connector's credential as a vault item. The secret comes from stdin or a hidden prompt, never from arguments: the token, the header or query value, the password, the PEM key, or for aws_sigv4 the secret access key and an optional session token on a second line.
+Attach a connector's credential as a vault item. Name the connector by slug or id and choose its record with --env; each environment keeps its own credential. The secret comes from stdin or a hidden prompt, never from arguments: the token, the header or query value, the password, the PEM key, or for aws_sigv4 the secret access key and an optional session token on a second line.
 
-- `<connector-id>` (positional, required) — Connector id
-- `--mode` (string, required) — bearer | header | query | basic | aws_sigv4 | signed_jwt | none
+- `<connector-id>` (positional, required) — Connector slug or id
+- `--env` (string) — dev | prod: the connector record to attach to; required when the slug has both
+- `--mode` (string) — bearer | header | query | basic | aws_sigv4 | signed_jwt | none (default: the connector's auth type)
 - `--header` (string) — header mode: the header name; without it stdin holds Name=Value lines
 - `--query` (string) — query mode: the parameter name; without it stdin holds name=value lines
 - `--username` (string) — basic mode username
@@ -8311,7 +8692,7 @@ Both are bootstrap-only: they come from the environment on every start, a stored
 
 # Connector & recipe catalog
 
-Find the connector templates and recipes that ship with SubKit. There are **61 connector templates** in **16 categories**, carrying **248 recipes**: complete, runnable workflows you clone instead of starting from a blank page.
+Find the connector templates and recipes that ship with SubKit. There are **62 connector templates** in **16 categories**, carrying **250 recipes**: complete, runnable workflows you clone instead of starting from a blank page.
 
 A **template** connects a system: base URL, sign-in flow, endpoint schema and a vendor-basics skill. A **recipe** is a complete workflow built on that template. Say what you want in a conversation, and SubKit clones the closest recipe as your first draft.
 
@@ -8384,6 +8765,7 @@ A **template** connects a system: base URL, sign-in flow, endpoint schema and a 
 | -------- | ---- | ------ | ---- | ---------------- |
 | **Dropbox** | `dropbox` | http | oauth2 | Dropbox file storage API |
 | **Google Drive** | `google-drive` | http | oauth2 | Google Drive file storage API |
+| **SFTP** | `sftp` | sftp | basic | SFTP file server |
 
 ### Dev tools
 
@@ -8479,9 +8861,9 @@ Grouped by template. **Trigger** is how the workflow starts: `request` (on deman
 
 | Recipe | What it does | Trigger | Also uses |
 | ------ | ------------ | ------- | --------- |
-| `classify-text` | Asks Claude to put a text into exactly one of the categories you list and returns the category with a one-sentence reason as structured JSON. | request | — |
+| `classify-text` | Asks the workspace's AI model to put a text into exactly one of the categories you list and returns the category with a one-sentence reason as structured JSON. | request | — |
 | `list-models` | Lists the Claude models this API key can call, with their ids and display names. | request | — |
-| `summarize-text` | Sends a text to Claude and returns a short summary. | request | — |
+| `summarize-text` | Asks the workspace's AI model for a short summary of a text. | request | — |
 
 ### AWS AppSync (Cognito User-Password) (`appsync-cognito`)
 
@@ -8646,7 +9028,7 @@ Grouped by template. **Trigger** is how the workflow starts: `request` (on deman
 | `fan-out-issues-prs-releases` | Demonstrates ParallelStep — three independent GET requests run concurrently against the same repo (issues, pulls, releases) and the workflow surfaces the merged shape. | request | — |
 | `get-pr` | Fetch one PR by number. | request | — |
 | `get-repo` | Fetch a repo record by `owner/repo`. | request | — |
-| `list-all-repos-paginate-js-form` | Demonstrates LoopStep.data_selector — JS arrow form. | request | — |
+| `list-all-repos-paginate-js-form` | Demonstrates `for_each` with a JS arrow selector. | request | — |
 | `list-commits` | Page through commits on the default branch. | request | — |
 | `list-issues` | Page through open issues. | request | — |
 | `list-my-repos` | Page through the authenticated user's repos. | request | — |
@@ -8799,7 +9181,7 @@ Grouped by template. **Trigger** is how the workflow starts: `request` (on deman
 | ------ | ------------ | ------- | --------- |
 | `create-embedding` | Create one text embedding for downstream semantic matching. | request | — |
 | `list-models` | List models available to the API key. | request | — |
-| `structured-extraction` | Extract people from text using a JSON schema response format. | request | — |
+| `structured-extraction` | Extract people from text as JSON that matches a schema, using the workspace's AI model. | request | — |
 
 ### PostgreSQL (`postgres`)
 
@@ -8829,6 +9211,13 @@ Grouped by template. **Trigger** is how the workflow starts: `request` (on deman
 | `list-templates` | Page through dynamic templates. | request | — |
 | `send-from-template` | Send transactional mail using a dynamic template id and substitution data. | request | — |
 | `send-mail` | POST /v3/mail/send with from + to + subject + content. | request | — |
+
+### SFTP (`sftp`)
+
+| Recipe | What it does | Trigger | Also uses |
+| ------ | ------------ | ------- | --------- |
+| `download-file` | Download one file from the SFTP server as a run file. | request | — |
+| `list-folder` | List the files in a folder on the SFTP server. | request | — |
 
 ### Shopify (`shopify`)
 
@@ -8919,7 +9308,7 @@ Grouped by template. **Trigger** is how the workflow starts: `request` (on deman
 
 | Recipe | What it does | Trigger | Also uses |
 | ------ | ------------ | ------- | --------- |
-| `crawl-sitemap-to-markdown` | Fetch a site's sitemap.xml, loop over its <loc> entries, extract the main article of each page via Readability, and return an array of { title, url, markdown } envelopes. | request | — |
+| `crawl-sitemap-to-markdown` | Fetch a site's sitemap.xml, run one fetch per <loc> entry, extract the main article of each page via Readability, and return an array of { title, url, markdown } envelopes. | request | — |
 | `extract-main-content` | GET a URL, run Mozilla Readability to isolate the article, then convert to markdown. | request | — |
 | `fetch-url-as-markdown` | GET a single public URL and convert its HTML body to markdown. | request | — |
 
