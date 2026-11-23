@@ -1,5 +1,36 @@
 import { describe, expect, test } from "bun:test";
-import { executionOutcomeLine, stepLimitLine } from "./execution-outcome.ts";
+import { executionOutcomeLine, recordLinkLines, stepLimitLine } from "./execution-outcome.ts";
+
+describe("recordLinkLines", () => {
+  test("each record link names the system, the record and its web address", () => {
+    expect(
+      recordLinkLines([
+        {
+          label: "acme/app#42",
+          url: "https://github.com/acme/app/issues/42",
+          connector: "github",
+          connector_name: "GitHub",
+          step_key: "create_issue",
+        },
+        {
+          label: null,
+          url: "https://www.notion.so/Plan-0123",
+          connector: "notion",
+          connector_name: "Notion",
+          step_key: "page",
+        },
+      ]),
+    ).toEqual([
+      "GitHub · acme/app#42 · https://github.com/acme/app/issues/42",
+      "Notion · https://www.notion.so/Plan-0123",
+    ]);
+  });
+
+  test("a run without links prints nothing", () => {
+    expect(recordLinkLines(undefined)).toEqual([]);
+    expect(recordLinkLines([])).toEqual([]);
+  });
+});
 
 const steps = { total: 3, succeeded: 1, failed: 1, held: 0, skipped: 1 };
 
