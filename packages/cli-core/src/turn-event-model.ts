@@ -84,6 +84,7 @@ export type TurnEvent =
       type: "activity";
       phase: "tool" | "composing" | "idle";
       label: string;
+      retry?: { attempt: number; of: number };
       tool_name?: string;
       call_id?: string;
       last_completed?: {
