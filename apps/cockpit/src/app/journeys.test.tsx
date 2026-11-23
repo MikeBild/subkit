@@ -433,6 +433,7 @@ async function mount(path: string, routes: Record<string, Handler> = {}) {
   const settle = async (rounds = 20) => {
     for (let round = 0; round < rounds; round += 1)
       await act(async () => {
+        // allow-wall-clock: the mounted app settles routing and query timers between journey steps.
         await new Promise<void>((resolve) => setTimeout(resolve, 5));
       });
   };
