@@ -309,7 +309,7 @@ describe("task detail", () => {
         sleep_reason: "Zahlungseingang",
       }),
     );
-    expect(markup).toContain("Fasst offene Rechnungen nach, bis sie bezahlt sind.");
+    expect(markup).toContain("Follows up on open invoices until they are paid.");
     for (const tile of ["waiting", "next", "usage"])
       expect(has(markup, `task-tile-${tile}`)).toBe(true);
     expect(has(markup, "task-tile-now")).toBe(false);

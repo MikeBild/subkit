@@ -40,7 +40,7 @@ export const demoFiles = [
     category: "sales",
     description: "Customer contacts export with long company names",
     content:
-      "name,email,region\nJana Krüger,jana.krueger@nordhafen.example,Hamburg\nNordhafen Kühllogistik und internationale Speditionsdienste GmbH,dispo@nordhafen.example,München\n",
+      "name,email,region\nJana Kruger,jana.krueger@nordhafen.example,Hamburg\nNordhafen Cold Chain and International Freight Services GmbH,dispo@nordhafen.example,Munich\n",
   },
   {
     filename: "Orders.json",
@@ -73,7 +73,7 @@ export const demoFiles = [
     category: "demo",
     description: "Dispatch notes with special characters",
     content:
-      "Delivery address: Grüne Straße 12, Köln – 日本語 – English\nMulti-line note for search, rendering and download.\n",
+      "Delivery address: Calle Peñón 12, Montréal – 日本語 – English\nMulti-line note for search, rendering and download.\n",
   },
 ];
 
@@ -164,8 +164,7 @@ const workflowDescriptions = [
 const demoAiWorkflow = {
   slug: "demo-delivery-notice-summary",
   name: "Lieferavise zusammenfassen",
-  description:
-    "Liest offene Lieferavise und lässt die KI eine kurze Zusammenfassung für die Disposition schreiben.",
+  description: "Reads open delivery notices and has the AI write a short summary for dispatch.",
 };
 
 const HOUR_MS = 3_600_000;
@@ -268,9 +267,9 @@ function demoIntakeItems(now: Date): DemoIntakeItem[] {
     {
       key: "intake-capture-0",
       origin: "capture",
-      title: "Neue Zollregeln für Sendungen in die Schweiz",
-      body: "Ab dem nächsten Quartal brauchen Sendungen in die Schweiz eine elektronische Ausfuhranmeldung vor der Abholung. Spediteure lehnen Sendungen ohne Anmeldung am Tor ab.",
-      note: "Für das Carrier-Handbuch prüfen.",
+      title: "New customs rules for shipments to Switzerland",
+      body: "From next quarter, shipments to Switzerland need an electronic export declaration before pickup. Carriers turn away shipments without one at the gate.",
+      note: "Check for the carrier handbook.",
       capturedAt: at(5),
       sourceUrl: "https://zoll.example/news/ausfuhr-schweiz",
       author: "Zollnachrichten",
@@ -289,16 +288,16 @@ function demoIntakeItems(now: Date): DemoIntakeItem[] {
       key: "intake-capture-2",
       origin: "capture",
       title: "Retourenquote im Onlinehandel sinkt",
-      body: "Eine Branchenumfrage zeigt, dass klare Größenangaben und Fotos die Retourenquote um bis zu ein Fünftel senken.",
-      note: "Vielleicht relevant für den Retouren-Skill.",
+      body: "An industry survey shows that clear size information and photos cut the return rate by up to a fifth.",
+      note: "Maybe relevant for the returns skill.",
       capturedAt: at(50),
       sourceUrl: "https://handel.example/studien/retourenquote",
     },
     {
       key: "intake-note-0",
       origin: "note",
-      title: "Rückruf Nordhafen Kühllogistik",
-      body: "Frau Krüger bittet bei Kühlware um eine Vorabinfo per E-Mail, sobald die Sendung das Lager verlässt.",
+      title: "Callback Nordhafen Cold Chain",
+      body: "Ms. Kruger asks for an email heads-up on chilled goods as soon as the shipment leaves the warehouse.",
       note: "",
       capturedAt: at(3),
     },
@@ -319,8 +318,8 @@ function demoIntakeItems(now: Date): DemoIntakeItem[] {
     {
       key: "intake-session-1",
       origin: "session",
-      title: "Angebote immer mit Netto- und Bruttopreis nennen",
-      body: "Kunden fragen bei Angeboten regelmäßig nach dem Bruttopreis. Antworten nennen künftig beide Preise und die Währung.",
+      title: "Always quote net and gross prices",
+      body: "Customers regularly ask for the gross price on quotes. Replies now name both prices and the currency.",
       note: "",
       capturedAt: at(30),
       agent: "codex",
@@ -635,8 +634,7 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
           messages: [
             {
               role: "user",
-              content:
-                "Fasse die offenen Lieferavise in drei Sätzen zusammen. Summarize the open delivery notices in three sentences.",
+              content: "Summarize the open delivery notices in three sentences.",
             },
           ],
         },
@@ -863,7 +861,7 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       input_preview: { demo: true },
       output_preview: failed
         ? null
-        : { data: [{ id: "example", name: "Jana Krüger" }], synthetic: true },
+        : { data: [{ id: "example", name: "Jana Kruger" }], synthetic: true },
       duration_ms: 125 + i * 17,
       started_at: ago(i + 0.01),
       finished_at: ago(i),
@@ -1077,7 +1075,7 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
         "Escalation rules for delayed shipments, missing customs documents and carrier disputes",
         "Returns handling",
         "Pricing rules",
-        "Address formats for Köln, Zürich and Graz",
+        "Address formats for Cologne, Zurich and Graz",
       ][i],
       body: "# Working rule\n\nUse only the existing synthetic demo data. Explain results clearly and ask for missing details. Approval limits stay in place.",
       lifecycle: i === 5 ? "draft" : i === 6 ? "archived" : "active",
@@ -1108,7 +1106,7 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       id: id(`user-${i}`),
       tenant_id: tenantId,
       email: ["jonas@brennwerk.example", "miriam@brennwerk.example", "tobias@brennwerk.example"][i],
-      display_name: ["Jonas Weber", "Miriam Schulz", "Tobias Krüger"][i],
+      display_name: ["Jonas Weber", "Miriam Schulz", "Tobias Kruger"][i],
       role_id: id(i === 0 ? "archive-editor-role" : "reviewer-role"),
       status,
       created_at: ago(400),

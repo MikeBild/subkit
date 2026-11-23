@@ -1,7 +1,7 @@
 const contacts = [
   {
     id: "contact-jana",
-    name: "Jana Krüger",
+    name: "Jana Kruger",
     email: "jana.krueger@nordhafen.example",
     status: "active",
   },
@@ -19,7 +19,7 @@ const contacts = [
   },
 ];
 const orders = [
-  { id: "order-alpha", customer: "Jana Krüger", total: 129.5, currency: "EUR", status: "paid" },
+  { id: "order-alpha", customer: "Jana Kruger", total: 129.5, currency: "EUR", status: "paid" },
   { id: "order-beta", customer: "Tim Becker", total: 42, currency: "EUR", status: "open" },
 ];
 
@@ -58,7 +58,7 @@ Bun.serve({
             message: {
               role: "assistant",
               content:
-                "Zwei Lieferavise sind offen: Jana Krüger (129,50 EUR, bezahlt) und Tim Becker (42,00 EUR, offen). Bitte die Sendung für Tim Becker erst nach Zahlungseingang freigeben.",
+                "Two delivery notices are open: Jana Kruger (EUR 129.50, paid) and Tim Becker (EUR 42.00, open). Release the shipment for Tim Becker only after payment arrives.",
             },
           },
         ],
