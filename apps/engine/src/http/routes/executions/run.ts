@@ -383,7 +383,7 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
       if ((err as Error).message?.startsWith("workflow not found")) {
         throw new NotFoundError("workflow");
       }
-      throw err;
+      return admissionRefusal(err, { db, principal, request_source });
     }
   });
 }

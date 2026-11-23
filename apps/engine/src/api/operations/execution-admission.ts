@@ -33,6 +33,7 @@ function isRefusal(code: string | undefined): code is string {
       code.startsWith("workflow_version_") ||
       forbiddenCodes.has(code) ||
       code === "sensitive_execution_unsupported" ||
+      code === "sensitive_execution_failure" ||
       code === "workflow_archived" ||
       code === "prepared_credential_unavailable")
   );

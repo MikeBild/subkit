@@ -62,6 +62,7 @@ function isBoundaryCode(code: string): boolean {
     code.startsWith("execution_") ||
     code.startsWith("workflow_version_") ||
     code === "sensitive_execution_unsupported" ||
+    code === "sensitive_execution_failure" ||
     code === "workflow_archived"
   );
 }

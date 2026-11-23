@@ -185,6 +185,14 @@ export interface SensitiveFailure {
   error_class?: PreviewClassification;
 }
 
+export function sensitiveRunError(error: unknown): Error {
+  const code = (error as { code?: unknown } | null)?.code;
+  return Object.assign(new Error("Sensitive execution could not be resumed or run."), {
+    code:
+      typeof code === "string" && safeFailureCodes.has(code) ? code : "sensitive_execution_failure",
+  });
+}
+
 export function sensitiveFailure(code?: string, message?: string): SensitiveFailure {
   const safeCode = code && safeFailureCodes.has(code) ? code : "sensitive_execution_failure";
   if (!code || safeCode === code)
