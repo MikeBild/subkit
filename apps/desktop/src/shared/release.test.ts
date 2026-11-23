@@ -220,9 +220,10 @@ describe("desktop release workflow", () => {
   const steps = Object.values(jobs).flatMap((job) => job.steps);
   const scripts = steps.map((step) => step.run ?? "").join("\n");
 
-  test("starts by hand, or after a release only when the owner opted in, never on a schedule", () => {
+  test("starts by hand, or after every release unless the owner opted out, never on a schedule", () => {
     expect(Object.keys(workflow.on).sort()).toEqual(["workflow_dispatch", "workflow_run"]);
-    expect(jobs.resolve?.if).toContain("vars.DESKTOP_RELEASE_AUTO == 'true'");
+    expect(jobs.resolve?.if).toContain("vars.DESKTOP_RELEASE_AUTO != 'false'");
+    expect(jobs.resolve?.if).toContain("github.event.workflow_run.conclusion == 'success'");
     expect(jobs.resolve?.if).toContain("github.event_name == 'workflow_dispatch'");
   });
 

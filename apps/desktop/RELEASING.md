@@ -68,7 +68,7 @@ built.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `DESKTOP_RELEASE_AUTO` | unset | `true` starts the desktop release by itself after every successful `release` run of a tag. Unset, the desktop release starts only by hand. |
+| `DESKTOP_RELEASE_AUTO` | unset | Unset or any value but `false`, the desktop release starts by itself after every successful `release` run of a tag. `false` leaves it to a start by hand. |
 | `DESKTOP_WINDOWS_SIGNING` | `certificate` | `cloud` switches Windows to the cloud signing block. |
 
 ### Windows signing
@@ -172,13 +172,15 @@ days and publishes nothing. It needs no secret and no existing release.
    build once. An unsigned build has updates turned off, and macOS asks before it opens it.
 
 Then add the secrets and release for real: after the `release` workflow has published a tag,
-run `desktop-release` with that tag and `unsigned_dry_run` unticked. When that has worked once,
-set `DESKTOP_RELEASE_AUTO` to `true` if every server release should carry the desktop app.
+run `desktop-release` with that tag and `unsigned_dry_run` unticked. From then on every
+successful `release` run of a tag starts the desktop release by itself; set
+`DESKTOP_RELEASE_AUTO` to `false` to start it only by hand. A `release` run started by hand
+does not start it, so run `desktop-release` with that tag yourself.
 
 The server release never waits for the desktop release and cannot be blocked by it. Until the
 desktop artifacts of the newest release are uploaded, installed apps report a failed update
-check and try again later, because the newest release has no feed file yet. With
-`DESKTOP_RELEASE_AUTO` that gap is the build time of the desktop workflow.
+check and try again later, because the newest release has no feed file yet. With the
+automatic start that gap is the build time of the desktop workflow.
 
 ## What the workflow checks before it publishes
 
