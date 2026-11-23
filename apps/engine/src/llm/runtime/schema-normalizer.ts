@@ -1,3 +1,5 @@
+import { stripPropertyNames } from "@shared/json-schema.ts";
+
 interface NormalizedSchema {
   schema: Record<string, unknown>;
   wrappedInResult: boolean;
@@ -79,7 +81,7 @@ function cleanNode(node: unknown, isRoot: boolean): unknown {
 }
 
 export function normalizeSchema(schema: Record<string, unknown>): NormalizedSchema {
-  const cleaned = cleanNode(schema, true) as Record<string, unknown>;
+  const cleaned = cleanNode(stripPropertyNames(schema), true) as Record<string, unknown>;
   const wrappedInResult =
     (schema as { type?: unknown }).type === "array" && cleaned.type === "object";
   return { schema: cleaned, wrappedInResult };
