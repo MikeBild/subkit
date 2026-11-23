@@ -221,6 +221,7 @@ const RESOURCE_KEYS: Record<string, TranslationKey> = {
   skill_candidate: "decisions.kind.skill",
   connector: "resource.connectors.title",
   knowledge_source: "nav.knowledge",
+  knowledge: "nav.knowledge",
   skill: "nav.skills",
   file: "nav.files",
   catalog_category: "catalogMeta.category",
