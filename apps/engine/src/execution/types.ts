@@ -30,6 +30,7 @@ export interface RequestAuthoritySnapshot {
   outbox_source?: { ok: boolean; recipient: unknown; item_id: unknown };
   principal_id?: string | null;
   request?: MaterializedRequest;
+  dispatch_effect?: "read" | "write";
   step_id: string;
   configuration_digest: string;
   credential_id: string | null;
@@ -43,6 +44,7 @@ interface ExecutionContext {
   before_external_request?: (
     snapshot: RequestAuthoritySnapshot,
   ) => Promise<RequestDispatchPolicy | undefined>;
+  before_write_dispatch?: (step_row_id: string | undefined) => Promise<void>;
   db: Db;
   tenant_id: string;
   execution_id: string;

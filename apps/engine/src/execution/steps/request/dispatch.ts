@@ -416,22 +416,22 @@ async function dispatchRequestStep(
           { code: "execution_authority_required" },
         );
       const documentedRead = p.step.side_effects !== "write" && isDocumentedReadOperation(request);
+      const effect = documentedRead
+        ? "read"
+        : classifyRequestStepSideEffects(
+            p.step,
+            state.activeConnector?.driver,
+            request?.method,
+            state.activeConnector?.base_url,
+          );
       const policy = await p.ctx.before_external_request?.({
         ...authoritySnapshot(credential),
         ...(documentedRead ? { requires_review: false } : {}),
         ...(request ? { request } : {}),
+        dispatch_effect: effect,
       });
       await persistCredentialUse(credential.credential_snapshot);
-      recordEffect(
-        documentedRead
-          ? "read"
-          : classifyRequestStepSideEffects(
-              p.step,
-              state.activeConnector?.driver,
-              request?.method,
-              state.activeConnector?.base_url,
-            ),
-      );
+      recordEffect(effect);
       return documentedRead ? { redirect: "manual" as const } : policy;
     } catch (error) {
       throw new RequestError(

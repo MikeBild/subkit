@@ -127,6 +127,7 @@ async function executeMcp(d: RequestDispatch): Promise<StepResult> {
     const admit = async (listed: RemoteToolDescriptor | null): Promise<void> => {
       const snapshot = {
         ...d.authority_snapshot(),
+        dispatch_effect: classifyRequestStepSideEffects(p.step),
         mcp_dispatch: {
           operation: mcpSpec.operation,
           ...(mcpSpec.operation === "call_tool"

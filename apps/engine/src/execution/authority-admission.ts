@@ -491,6 +491,7 @@ export async function assertExecutionAuthorityCurrent(
       principal_id: _principal,
       referenced_authorities: referencedAuthorities,
       mcp_dispatch: _mcpDispatch,
+      dispatch_effect: _effect,
       ...authoritySnapshot
     } = snapshot as RequestAuthoritySnapshot & { mcp_dispatch?: unknown };
     const parsed = requestSnapshotSchema.safeParse(authoritySnapshot);

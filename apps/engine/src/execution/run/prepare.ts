@@ -34,7 +34,6 @@ import {
   touchExecutionHeartbeat,
 } from "../state.ts";
 import { rateLimitNow } from "../steps/request/rate-limit.ts";
-import { classifyRequestStepSideEffects } from "../steps/request/side-effects.ts";
 import {
   MAX_CALL_DEPTH,
   RUN_HEARTBEAT_INTERVAL_MS,
@@ -243,13 +242,19 @@ export async function prepareRun(
       { code: RUN_SUPERSEDED },
     );
   };
+  const stampWrite = async (step_row_id: string | undefined) => {
+    if (step_row_id) await markWriteDispatched(db, tenant_id, step_row_id, new Date(clock.now()));
+  };
+  const beforeWriteDispatch = async (step_row_id: string | undefined) => {
+    await fenceWrite();
+    await stampWrite(step_row_id);
+  };
   const beforeExternalRequest =
     (step_key: string) => async (snapshot: RequestAuthoritySnapshot) => {
-      const write = dispatchesWrite(def.steps, step_key, snapshot.request?.method);
+      const write = snapshot.dispatch_effect === "write";
       if (write) await fenceWrite();
       const policy = await assertExecutionAuthorityCurrent(db, tenant_id, execution_id, snapshot);
-      if (write && snapshot.step_row_id)
-        await markWriteDispatched(db, tenant_id, snapshot.step_row_id, new Date(clock.now()));
+      if (write) await stampWrite(snapshot.step_row_id);
       if (billableSteps.has(step_key))
         await markBillableDispatch(db, {
           tenant_id,
@@ -320,6 +325,7 @@ export async function prepareRun(
       ownConnectorCredentials,
       attempt,
       beforeExternalRequest,
+      beforeWriteDispatch,
       llmBudget: new RunLlmBudget(def.max_llm_tokens_per_run ?? null),
       abort: ctrl,
       totalTimeout: totalTimeoutCtrl,
@@ -331,20 +337,6 @@ export async function prepareRun(
       runCall,
     },
   };
-}
-
-function dispatchesWrite(
-  steps: RunEnv["def"]["steps"],
-  step_key: string,
-  method: string | undefined,
-): boolean {
-  const step = steps.find((candidate) => candidate.id === step_key);
-  if (step?.kind !== "request") return false;
-  try {
-    return classifyRequestStepSideEffects(step, undefined, method) === "write";
-  } catch {
-    return true;
-  }
 }
 
 function startHeartbeat(
