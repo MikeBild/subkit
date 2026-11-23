@@ -3,7 +3,7 @@ export type ReleaseNotes = { version: string; notes: string[]; highlights: strin
 export type PendingNotes = { version: string | null; notes: string[]; highlights: string[] | null };
 
 export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: PendingNotes } = {
-  "source": "597617d8b23790b6e6f69513ef7a7d8bd8d70a44",
+  "source": "5e80e66fc9de2c6d62874a50167c56e52b239891",
   "releases": [
     {
       "version": "v1.0.0",
@@ -2314,14 +2314,18 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
   "unpublished": {
     "version": "12.1.4",
     "notes": [
+      "open every browser page while signed in to the Cockpit",
+      "let the desktop sign-in page open in a signed-in browser",
       "say which files a storage step may access"
     ],
     "highlights": [
-      "The README, the package description and the introduction of the documentation now describe SubKit in the same words as the website: it takes over the tasks your team does over and over, you decide what it can access, and you can look up every run in the history.",
-      "The documentation says “Approve what it may access” for the approval step, in the first-workflow chapter and in the feature overview.",
-      "In the Cockpit, the message for a storage step without a reviewed folder now says which files the step “may access”.",
-      "The German introduction reads more naturally: recurring business tasks that run across several systems.",
-      "Nothing changes in how SubKit works; this release only brings the wording in line everywhere."
+      "SubKit Desktop signs in even when the browser is already signed in to the Cockpit, and every browser page of SubKit opens without a workspace error.",
+      "“Report a problem” in SubKit Desktop now sends the report, with redacted diagnostics attached, even before you sign in.",
+      "SubKit Desktop starts with SubKit Cloud prefilled, and the installer window stays clean even when Finder shows hidden files.",
+      "Top-level pages in the Cockpit and in SubKit Desktop no longer repeat the menu name as a big heading.",
+      "Skipped steps read as skipped, not as failures, and failed sign-ins to connectors log the provider's reason.",
+      "SubKit is open source: contributing guide, code of conduct, issue forms and private security reports on GitHub.",
+      "The README, the documentation and the website describe SubKit in the same words."
     ]
   }
 };
