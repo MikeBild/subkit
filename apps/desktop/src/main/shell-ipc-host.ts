@@ -39,7 +39,9 @@ export function shellIpcHost(core: ShellCore): ShellIpcHost {
       core.render();
     },
     checkUpdates: () => core.updates.check(),
-    reportProblem: () => profiles.reportProblem(),
+    reportProblem: () => core.report.open(),
+    submitReport: (input) => core.report.submit(input),
+    saveDiagnostics: () => core.report.save(),
     updateSettings: (input) => settings.change(input),
     chooseWorkspace: (tenantId) => profiles.chooseWorkspace(tenantId),
     answerNotifications: (allow) => settings.answerNotifications(allow),

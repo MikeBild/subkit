@@ -18,6 +18,7 @@ import { Consent, Invitation, Welcome, WorkspaceChoice } from "../features/first
 import { LocalCapabilities } from "../features/local-capabilities/index.ts";
 import { LocalSetup } from "../features/local-setup/index.ts";
 import { PermissionSetup } from "../features/permissions/index.ts";
+import { Report } from "../features/report/index.ts";
 import { Settings } from "../features/settings/index.ts";
 import { DeviceRegistered, Relogin, SignIn } from "../features/sign-in/index.ts";
 
@@ -41,6 +42,7 @@ function Window() {
                 data-testid="window-report"
                 variant="ghost"
                 size="sm"
+                aria-pressed={screen.kind === "report"}
                 onClick={() => dispatch({ type: "ReportProblem" })}
               >
                 <Bug className="size-4" aria-hidden />
@@ -80,6 +82,7 @@ function Window() {
           {screen.kind === "signed-in" && <DeviceRegistered />}
           {screen.kind === "relogin" && <Relogin />}
           {screen.kind === "settings" && <Settings />}
+          {screen.kind === "report" && <Report report={screen.report} />}
           {screen.kind === "permissions" && <PermissionSetup />}
           {screen.kind === "local-capabilities" && (
             <LocalCapabilities

@@ -15,9 +15,9 @@ import {
   startOnboarding,
 } from "../../shared/onboarding.ts";
 import { platformCapabilities } from "../../shared/platform-capabilities.ts";
+import { CLOSED_REPORT } from "../../shared/problem-report.ts";
 import {
   type CheckSlot,
-  EXAMPLE_ADDRESS,
   exampleAddresses,
   type FlowUi,
   factsFor,
@@ -54,8 +54,10 @@ function done(status: CheckStatus, extra: Partial<CheckResult> = {}): CheckSlot 
   return { phase: "done", result: result(status, extra) };
 }
 
+const CLOUD = "https://subkit-cloud.example";
+
 function outcome(check: CheckSlot, address = ""): Outcome {
-  const slot = slotFor(check, APP, address);
+  const slot = slotFor(check, APP, address, CLOUD);
   if (slot.kind !== "outcome") throw new Error(`expected an outcome, got ${slot.kind}`);
   return slot.outcome;
 }
@@ -103,6 +105,8 @@ function connectState(patch: Partial<ConnectState> = {}): ConnectState {
     },
     local: LOCAL_UNAVAILABLE,
     platform: platformCapabilities("darwin", "arm64"),
+    defaultServer: null,
+    report: CLOSED_REPORT,
     ...patch,
   };
 }
@@ -128,12 +132,13 @@ describe("connect flow: server check", () => {
     expect(hostOf("subkit.example.com/")).toBe("subkit.example.com");
   });
 
-  test("offers known servers and the one example address, never invented ones", () => {
-    expect(exampleAddresses([])).toEqual([EXAMPLE_ADDRESS]);
-    expect(exampleAddresses([profile, { ...profile, id: "p2" }])).toEqual([
-      "work.example.com",
-      EXAMPLE_ADDRESS,
-    ]);
+  test("offers only known servers, never localhost or the prefilled default", () => {
+    expect(exampleAddresses([])).toEqual([]);
+    expect(exampleAddresses([profile, { ...profile, id: "p2" }])).toEqual(["work.example.com"]);
+    const local = { ...profile, id: "p3", serverOrigin: "http://127.0.0.1:3480" };
+    const dev = { ...profile, id: "p4", serverOrigin: "http://localhost:3000" };
+    const cloud = { ...profile, id: "p5", serverOrigin: CLOUD };
+    expect(exampleAddresses([local, dev, cloud, profile], CLOUD)).toEqual(["work.example.com"]);
   });
 
   test("an address problem is a field error and leaves the slot empty", () => {
@@ -154,14 +159,14 @@ describe("connect flow: server check", () => {
     expect(outcome(done("compatible"))).toEqual({ kind: "ok", version: "11.2.0" });
   });
 
-  test("an unreachable server is a danger card with the host, retry and the example", () => {
+  test("an unreachable server is a danger card with the host, retry and SubKit Cloud", () => {
     const model = problem(done("unreachable"));
     expect(model).toMatchObject({
       tone: "danger",
       title: "slot.unreachable",
       body: "slot.unreachable.help",
       meta: "subkit.example.com",
-      example: EXAMPLE_ADDRESS,
+      example: CLOUD,
       ask: null,
     });
     expect(model.facts).toEqual([
@@ -170,8 +175,11 @@ describe("connect flow: server check", () => {
     ]);
   });
 
-  test("the example is not offered when the example itself did not answer", () => {
-    expect(problem(done("unreachable", { origin: "http://localhost:3000" })).example).toBeNull();
+  test("SubKit Cloud is not offered when SubKit Cloud itself did not answer", () => {
+    expect(problem(done("unreachable", { origin: CLOUD })).example).toBeNull();
+    expect(slotFor(done("unreachable"), APP, "", null)).toMatchObject({
+      outcome: { problem: { example: null } },
+    });
   });
 
   test("a server that is too old asks the admin with both versions", () => {
@@ -200,7 +208,7 @@ describe("connect flow: server check", () => {
       tone: "danger",
       title: "slot.unreachable",
       meta: "unknown.example.org",
-      example: EXAMPLE_ADDRESS,
+      example: CLOUD,
     });
   });
 

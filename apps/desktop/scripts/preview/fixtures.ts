@@ -1,3 +1,4 @@
+import { DEFAULT_SERVER } from "../../src/shared/app-identity.ts";
 import { openSheet } from "../../src/shared/browser-sheet-model.ts";
 import { openDrop, reduceDrop } from "../../src/shared/drop-model.ts";
 import { dictionary, type Locale } from "../../src/shared/i18n.ts";
@@ -10,6 +11,7 @@ import {
   startOnboarding,
 } from "../../src/shared/onboarding.ts";
 import { platformCapabilities } from "../../src/shared/platform-capabilities.ts";
+import { CLOSED_REPORT, type ReportView } from "../../src/shared/problem-report.ts";
 import { INITIAL_CAPTURE } from "../../src/shared/quick-capture-model.ts";
 import { DEFAULT_QUIET_HOURS } from "../../src/shared/quiet-hours.ts";
 import type { ShellState, ShellView } from "../../src/shared/shell-ipc.ts";
@@ -130,6 +132,18 @@ const check = (address: string): PreviewStep[] => [
 ];
 const SIGNED_IN_PROFILE = { profiles: [{ ...PROFILE, signedIn: true }], signedIn: SIGNED_IN };
 
+const REPORT_OPEN: ReportView = {
+  ...CLOSED_REPORT,
+  host: "subkit-cloud.mikebild.dev",
+  preview: [
+    { label: "report.fact.app", value: "12.1.5" },
+    { label: "report.fact.system", value: "darwin 25.1.0" },
+    { label: "report.fact.server", value: "12.1.5" },
+    { label: "report.fact.errors", value: "2" },
+    { label: "report.fact.log", value: "200" },
+  ],
+};
+
 export const CONNECT_SCENARIOS: ConnectScenario[] = [
   { name: "welcome", patch: {} },
   {
@@ -247,6 +261,26 @@ export const CONNECT_SCENARIOS: ConnectScenario[] = [
   },
   { name: "settings", patch: { ...SIGNED_IN_PROFILE, view: "settings" } },
   { name: "local-capabilities", patch: { ...SIGNED_IN_PROFILE, view: "local" } },
+  { name: "report", patch: { view: "report", report: REPORT_OPEN } },
+  {
+    name: "report-sent",
+    patch: {
+      view: "report",
+      report: { ...REPORT_OPEN, phase: "sent", reference: "0f6c2e1a-6d0b-4c55-9a4e-3b1f2a7d8c90" },
+    },
+  },
+  {
+    name: "report-failed",
+    patch: {
+      view: "report",
+      report: {
+        ...REPORT_OPEN,
+        phase: "failed",
+        failure: "unavailable",
+        reference: "4bf92f3577b34da6a3ce929d0e0e4736",
+      },
+    },
+  },
 ];
 
 export function connectState(scenario: ConnectScenario, locale: Locale): ConnectState {
@@ -276,6 +310,8 @@ export function connectState(scenario: ConnectScenario, locale: Locale): Connect
     },
     local: LOCAL_UNAVAILABLE,
     platform: platformCapabilities("darwin", "arm64"),
+    defaultServer: DEFAULT_SERVER,
+    report: CLOSED_REPORT,
     ...scenario.patch,
   };
 }

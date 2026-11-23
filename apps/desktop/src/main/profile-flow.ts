@@ -1,6 +1,4 @@
-import { randomUUID } from "node:crypto";
 import { clipboard, dialog, shell } from "electron";
-import { anonymousReportBody, anonymousReportOutcome } from "../shared/anonymous-report.ts";
 import { t } from "../shared/i18n.ts";
 import type { CheckResult } from "../shared/ipc.ts";
 import { completeStep } from "../shared/onboarding.ts";
@@ -16,15 +14,9 @@ import {
 import type { DesktopSession, ServiceDescriptor } from "../shared/server-contract.ts";
 import * as model from "../shared/shell-session.ts";
 import { appLog } from "./app-log.ts";
-import {
-  type DiagnosticsContext,
-  diagnosticsText,
-  offerDiagnostics,
-  type SendDiagnostics,
-} from "./diagnostics.ts";
+import { type DiagnosticsContext, diagnosticsText } from "./diagnostics.ts";
 import { enterWorkspace, loadOnboarding } from "./onboarding-flow.ts";
 import { checkAddress, inviteLinkOf } from "./server-checks.ts";
-import { sendAnonymousReport } from "./server-client.ts";
 import type { ShellCore } from "./shell-core.ts";
 
 export class ProfileFlow {
@@ -167,32 +159,12 @@ export class ProfileFlow {
   async reportProblem(): Promise<void> {
     const { core } = this;
     const profile = activeProfile(core.store.data);
-    if (isSignedIn(profile) && profile.feedbackPath) {
-      const delivered = await core.windows.requestFeedback(profile.id);
-      if (!delivered) core.openCockpit(profile, profile.feedbackPath);
+    if (
+      isSignedIn(profile) &&
+      profile.feedbackPath &&
+      (await core.windows.requestFeedback(profile.id))
+    )
       return;
-    }
-    const send = profile ? await this.anonymousSender(profile).catch(() => null) : null;
-    await offerDiagnostics(
-      core.windows.all()[0] ?? null,
-      await this.diagnosticsContext(profile),
-      send,
-    ).catch((error) => core.record("diagnostics", error));
-  }
-
-  private async anonymousSender(profile: Profile): Promise<SendDiagnostics | null> {
-    const check = await checkAddress(profile.serverOrigin);
-    const path = check.descriptor?.desktop?.anonymousFeedbackPath;
-    if (!path) return null;
-    const locale = this.core.locale();
-    const reportId = randomUUID();
-    return async (bundle) =>
-      anonymousReportOutcome(
-        await sendAnonymousReport(
-          profile.serverOrigin,
-          path,
-          anonymousReportBody({ bundle, deviceId: profile.deviceId, locale, reportId }),
-        ),
-      );
+    await core.report.open().catch((error) => core.record("report", error));
   }
 }

@@ -2,6 +2,7 @@ import type { Locale } from "./i18n.ts";
 
 export const COPYRIGHT = "© 2026 Mike Bild";
 export const WEBSITE = "https://subkit.mikebild.dev";
+export const DEFAULT_SERVER = "https://subkit-cloud.mikebild.dev";
 export const NOTICES_FILE = "THIRD_PARTY_NOTICES.txt";
 export const MIN_MACOS = "13.0";
 

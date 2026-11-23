@@ -3,6 +3,7 @@ import { dictionary } from "../../shared/i18n.ts";
 import { type ConnectState, LOCAL_UNAVAILABLE, type LocalView } from "../../shared/ipc.ts";
 import { NO_ONBOARDING } from "../../shared/onboarding.ts";
 import { platformCapabilities } from "../../shared/platform-capabilities.ts";
+import { CLOSED_REPORT } from "../../shared/problem-report.ts";
 import {
   type Command,
   decide,
@@ -45,6 +46,8 @@ function main(patch: Partial<LocalView> = {}): ConnectState {
     },
     local: local(patch),
     platform: platformCapabilities("darwin", "arm64"),
+    defaultServer: null,
+    report: CLOSED_REPORT,
   };
 }
 

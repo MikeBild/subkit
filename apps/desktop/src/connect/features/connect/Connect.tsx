@@ -11,7 +11,7 @@ import { StepFooter } from "@ui/molecules/step-footer";
 import { Laptop, Server } from "lucide-react";
 import { useState } from "react";
 import { useSignIn } from "../../adapter/index.ts";
-import { EXAMPLE_ADDRESS, type Problem } from "../../domain/index.ts";
+import type { Problem } from "../../domain/index.ts";
 import { factRows } from "../../lib/text.ts";
 import { adminMessage, problemCode } from "./connect-model.ts";
 import { ConnectionOk, ConnectionProblem } from "./connection-result.tsx";
@@ -185,25 +185,30 @@ export function Connect() {
         </div>
         {s.fieldError && (
           <FieldError id="server-url-error" testId="connect-address-error">
-            {t(s.fieldError, { example: EXAMPLE_ADDRESS })}
+            {t(s.fieldError, { example: t("connect.ownServer.example") })}
           </FieldError>
         )}
-        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-          <span className="text-muted-foreground">{t("connect.examples")}</span>
-          {s.examples.map((u) => (
-            <Button
-              data-testid={`connect-example-${u}`}
-              key={u}
-              variant="outline"
-              size="sm"
-              type="button"
-              onClick={() => a.check(u)}
-              className="h-6 max-w-full break-all whitespace-normal rounded-full px-2 font-mono text-xs"
-            >
-              {u}
-            </Button>
-          ))}
-        </div>
+        <p data-testid="connect-own-server" className="mt-2 text-xs text-muted-foreground">
+          {t("connect.ownServer", { example: t("connect.ownServer.example") })}
+        </p>
+        {s.examples.length > 0 && (
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-muted-foreground">{t("connect.examples")}</span>
+            {s.examples.map((u) => (
+              <Button
+                data-testid={`connect-example-${u}`}
+                key={u}
+                variant="outline"
+                size="sm"
+                type="button"
+                onClick={() => a.check(u)}
+                className="h-6 max-w-full break-all whitespace-normal rounded-full px-2 font-mono text-xs"
+              >
+                {u}
+              </Button>
+            ))}
+          </div>
+        )}
       </form>
 
       <div className="mt-2" aria-live="polite" aria-busy={s.checking}>

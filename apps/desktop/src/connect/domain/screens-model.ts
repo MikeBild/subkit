@@ -23,7 +23,8 @@ import type { PermissionView } from "../../shared/local/permission-port.ts";
 import type { DataFolderRefusal } from "../../shared/local/supervisor-model.ts";
 import { currentStep, type WorkspaceOption } from "../../shared/onboarding.ts";
 import { supports } from "../../shared/platform-capabilities.ts";
-import { hostOf } from "../../shared/server-address.ts";
+import type { ReportView } from "../../shared/problem-report.ts";
+import { hostOf, isLoopbackHost } from "../../shared/server-address.ts";
 import { REVOKED_CODE } from "../../shared/server-contract.ts";
 import { type TooOldAsk, tooOldAsk } from "../../shared/server-too-old.ts";
 import {
@@ -134,6 +135,7 @@ export interface LocalSetupModel {
 
 export type Screen =
   | { kind: "settings" }
+  | { kind: "report"; report: ReportView }
   | { kind: "permissions"; setup: PermissionSetupModel }
   | { kind: "local-capabilities"; device: string; signedIn: boolean; supported: boolean }
   | LocalSetupModel
@@ -166,16 +168,23 @@ export type Screen =
 
 const FIELD_PROBLEMS = new Set<CheckStatus>(["empty", "invalid", "insecure", "credentials"]);
 
-export const EXAMPLE_ADDRESS = "localhost:3000";
+function loopback(origin: string): boolean {
+  try {
+    return isLoopbackHost(new URL(origin).hostname);
+  } catch {
+    return false;
+  }
+}
 
-export function exampleAddresses(profiles: ProfileSummary[]): string[] {
-  const seen = new Set<string>();
+export function exampleAddresses(
+  profiles: ProfileSummary[],
+  defaultServer: string | null = null,
+): string[] {
+  const seen = new Set<string>(defaultServer ? [hostOf(defaultServer)] : []);
   const out: string[] = [];
-  for (const address of [
-    ...profiles.map((profile) => hostOf(profile.serverOrigin)),
-    EXAMPLE_ADDRESS,
-  ]) {
-    if (seen.has(address)) continue;
+  for (const profile of profiles) {
+    const address = hostOf(profile.serverOrigin);
+    if (seen.has(address) || loopback(profile.serverOrigin)) continue;
     seen.add(address);
     out.push(address);
   }
@@ -192,8 +201,8 @@ export function factsFor(error: SignInErrorCase, origin: string | null): Fact[] 
   return origin ? [code, { label: "err.url", value: origin }] : [code];
 }
 
-function exampleFor(host: string): string | null {
-  return host === EXAMPLE_ADDRESS ? null : EXAMPLE_ADDRESS;
+function exampleFor(host: string, defaultServer: string | null): string | null {
+  return defaultServer && hostOf(defaultServer) !== host ? defaultServer : null;
 }
 
 function problem(
@@ -202,6 +211,7 @@ function problem(
   origin: string | null,
   meta: string,
   extra: Fact[] = [],
+  defaultServer: string | null = null,
 ): Problem {
   const danger = error === "serverUnreachable" || error === "notSubkit";
   return {
@@ -213,7 +223,7 @@ function problem(
     error,
     facts: [...factsFor(error, origin), ...extra],
     ask: null,
-    example: danger ? exampleFor(meta) : null,
+    example: danger ? exampleFor(meta, defaultServer) : null,
   };
 }
 
@@ -221,7 +231,12 @@ function typedHost(address: string): string {
   return hostOf(address.trim()) || address.trim();
 }
 
-export function slotFor(check: CheckSlot, appVersion: string, address = ""): SlotModel {
+export function slotFor(
+  check: CheckSlot,
+  appVersion: string,
+  address = "",
+  defaultServer: string | null = null,
+): SlotModel {
   if (check.phase === "checking") return { kind: "checking" };
   if (check.phase === "idle") return { kind: "outcome", outcome: { kind: "idle" } };
   if (check.phase === "failed") {
@@ -230,7 +245,7 @@ export function slotFor(check: CheckSlot, appVersion: string, address = ""): Slo
       kind: "outcome",
       outcome: {
         kind: "problem",
-        problem: problem("serverUnreachable", "slot.unreachable", null, meta),
+        problem: problem("serverUnreachable", "slot.unreachable", null, meta, [], defaultServer),
       },
     };
   }
@@ -273,11 +288,14 @@ export function slotFor(check: CheckSlot, appVersion: string, address = ""): Slo
           problem: problem("loginUnsupported", "slot.login-unsupported", tried, meta),
         };
       case "not-subkit":
-        return { kind: "problem", problem: problem("notSubkit", "slot.not-subkit", tried, meta) };
+        return {
+          kind: "problem",
+          problem: problem("notSubkit", "slot.not-subkit", tried, meta, [], defaultServer),
+        };
       default:
         return {
           kind: "problem",
-          problem: problem("serverUnreachable", "slot.unreachable", tried, meta),
+          problem: problem("serverUnreachable", "slot.unreachable", tried, meta, [], defaultServer),
         };
     }
   })();
@@ -428,6 +446,7 @@ export function localScreenFor(state: ConnectState, ui: FlowUi): LocalSetupModel
 
 export function screenFor(state: ConnectState, ui: FlowUi): Screen {
   if (state.view === "settings") return { kind: "settings" };
+  if (state.view === "report") return { kind: "report", report: state.report };
   if (state.view === "local")
     return {
       kind: "local-capabilities",
@@ -494,7 +513,7 @@ export function screenFor(state: ConnectState, ui: FlowUi): Screen {
   if (ui.step === "welcome" && welcomeAvailable(state)) {
     return { kind: "welcome", invite: welcomeInvite(ui.invite) };
   }
-  const slot = slotFor(ui.check, state.appVersion, ui.address);
+  const slot = slotFor(ui.check, state.appVersion, ui.address, state.defaultServer);
   return {
     kind: "connect",
     address: ui.address,
@@ -502,7 +521,7 @@ export function screenFor(state: ConnectState, ui: FlowUi): Screen {
     strip: profileStrip(state),
     fieldError: fieldError(ui.check),
     slot,
-    examples: exampleAddresses(state.profiles),
+    examples: exampleAddresses(state.profiles, state.defaultServer),
     canContinue: slot.kind === "outcome" && slot.outcome.kind === "ok",
     back: welcomeAvailable(state),
     localAvailable: state.local.available && !state.local.configured,

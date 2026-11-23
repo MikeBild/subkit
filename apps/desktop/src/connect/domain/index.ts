@@ -6,7 +6,6 @@ export {
 } from "./invite-model.ts";
 export {
   type ConsentTopic,
-  EXAMPLE_ADDRESS,
   exampleAddresses,
   type Fact,
   type FlowPath,

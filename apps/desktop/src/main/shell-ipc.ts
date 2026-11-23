@@ -10,6 +10,8 @@ import {
   type ConnectView,
   type DesktopSettingsView,
   isConnectView,
+  type ReportInput,
+  reportInput,
 } from "../shared/ipc.ts";
 import { isPermissionKey, type PermissionKey } from "../shared/local/permission-model.ts";
 import type { Profile } from "../shared/profiles.ts";
@@ -33,6 +35,8 @@ export interface ShellIpcHost {
   restartApp(): void;
   checkUpdates(): Promise<void>;
   reportProblem(): Promise<void>;
+  submitReport(input: ReportInput): Promise<void>;
+  saveDiagnostics(): Promise<void>;
   updateSettings(input: Record<string, unknown>): void;
   diagnostics(profile: Profile): Promise<DesktopDiagnostics>;
   copyDiagnostics(): Promise<void>;
@@ -109,6 +113,8 @@ export function registerShellIpc(host: ShellIpcHost): void {
   handle(CONNECT_CHANNELS.updateAction, () => host.checkUpdates());
   handle(CONNECT_CHANNELS.reportProblem, () => host.reportProblem());
   handle(CONNECT_CHANNELS.copyDiagnostics, () => host.copyDiagnostics());
+  handle(CONNECT_CHANNELS.saveDiagnostics, () => host.saveDiagnostics());
+  handle(CONNECT_CHANNELS.submitReport, (input) => host.submitReport(reportInput(input)));
   handle(CONNECT_CHANNELS.openLogs, () => host.openLogs());
   registerLocalIpc(handle, host.allowances, () => host.connectWindow());
   host.registerWorkspaceIpc(handle);

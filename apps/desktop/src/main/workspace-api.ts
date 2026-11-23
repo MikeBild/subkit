@@ -64,7 +64,7 @@ export class WorkspaceApi {
     path: string,
     body?: Uint8Array<ArrayBuffer> | string,
     contentType = "application/json",
-  ): Promise<{ status: number; json: unknown }> {
+  ): Promise<{ status: number; json: unknown; traceId: string | null }> {
     for (let attempt = 0; attempt < 2; attempt++) {
       const write = method !== "GET";
       const response = await this.session.fetch(this.url(path), {
@@ -85,7 +85,7 @@ export class WorkspaceApi {
         this.csrf = null;
         continue;
       }
-      return { status: response.status, json };
+      return { status: response.status, json, traceId: response.headers.get("x-trace-id") };
     }
     throw new Error(`${path} csrf`);
   }

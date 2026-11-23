@@ -3,6 +3,7 @@ import { dictionary } from "../../shared/i18n.ts";
 import { type ConnectState, LOCAL_UNAVAILABLE } from "../../shared/ipc.ts";
 import { NO_ONBOARDING } from "../../shared/onboarding.ts";
 import { platformCapabilities } from "../../shared/platform-capabilities.ts";
+import { CLOSED_REPORT } from "../../shared/problem-report.ts";
 import { quietHoursPatch, settingsFor } from "./settings-model.ts";
 
 function main(patch: Partial<ConnectState> = {}): ConnectState {
@@ -47,6 +48,8 @@ function main(patch: Partial<ConnectState> = {}): ConnectState {
     },
     local: LOCAL_UNAVAILABLE,
     platform: platformCapabilities("darwin", "arm64"),
+    defaultServer: null,
+    report: CLOSED_REPORT,
     ...patch,
   };
 }

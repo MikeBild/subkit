@@ -4,6 +4,7 @@ import type {
   ConnectState,
   ConnectView,
   LocalFinishInput,
+  ReportInput,
   SettingsPatch,
 } from "../../shared/ipc.ts";
 import { LAST_SETUP_STEP } from "../../shared/local/local-workspace-model.ts";
@@ -48,6 +49,9 @@ export type Command =
   | { type: "RunUpdateAction" }
   | { type: "ReportProblem" }
   | { type: "CopyDiagnostics" }
+  | { type: "SaveDiagnostics" }
+  | { type: "SubmitReport"; input: ReportInput }
+  | { type: "CloseReport" }
   | { type: "OpenLogs" }
   | { type: "CheckPermissions" }
   | { type: "OpenPermissionSettings"; key: PermissionKey }
@@ -109,6 +113,8 @@ export type Effect =
   | { kind: "updateAction" }
   | { kind: "reportProblem" }
   | { kind: "copyDiagnostics" }
+  | { kind: "saveDiagnostics" }
+  | { kind: "submitReport"; input: ReportInput }
   | { kind: "openLogs" }
   | { kind: "checkPermissions" }
   | { kind: "openPermissionSettings"; key: PermissionKey }
@@ -253,6 +259,14 @@ export function decide(state: SignInState, command: Command, context: DecideCont
       return only({ kind: "reportProblem" });
     case "CopyDiagnostics":
       return only({ kind: "copyDiagnostics" });
+    case "SaveDiagnostics":
+      return only({ kind: "saveDiagnostics" });
+    case "SubmitReport":
+      return screen?.kind === "report" && screen.report.host !== null
+        ? only({ kind: "submitReport", input: command.input })
+        : NOTHING;
+    case "CloseReport":
+      return state.main?.view === "report" ? only({ kind: "showView", view: "connect" }) : NOTHING;
     case "OpenLogs":
       return only({ kind: "openLogs" });
     case "CheckPermissions":
@@ -500,7 +514,9 @@ export function evolve(state: SignInState, event: Event): SignInState {
     case "MainStateReceived": {
       const restart = Boolean(state.main?.signedIn) && !event.state.signedIn;
       const base = restart ? INITIAL_FLOW : flow;
-      return { main: event.state, flow: forcedStep(event.state, base) };
+      const fresh = (restart || !state.main) && base.address === "";
+      const prefilled = fresh ? { ...base, address: event.state.defaultServer ?? "" } : base;
+      return { main: event.state, flow: forcedStep(event.state, prefilled) };
     }
   }
 }

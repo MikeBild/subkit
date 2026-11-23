@@ -1,5 +1,6 @@
 import { hostname } from "node:os";
 import { app, globalShortcut } from "electron";
+import { DEFAULT_SERVER } from "../shared/app-identity.ts";
 import { badgeLabel } from "../shared/attention.ts";
 import { dictionary, t } from "../shared/i18n.ts";
 import { COCKPIT_CHANNELS, CONNECT_CHANNELS, type ConnectState } from "../shared/ipc.ts";
@@ -47,6 +48,8 @@ export class ShellPresenter {
       permissions: core.device.permissions.view(),
       local: core.localWorkspace.view(),
       platform: platformCapabilities(process.platform, process.arch),
+      defaultServer: DEFAULT_SERVER,
+      report: core.report.view(),
     };
   }
 

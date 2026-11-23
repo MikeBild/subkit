@@ -9,12 +9,14 @@ import {
 } from "../../shared/ipc.ts";
 import { completeStep, NO_ONBOARDING, startOnboarding } from "../../shared/onboarding.ts";
 import { platformCapabilities } from "../../shared/platform-capabilities.ts";
+import { CLOSED_REPORT } from "../../shared/problem-report.ts";
 import { createMockLocalCapabilities, type SignInStore } from "../adapter/index.ts";
 import { type Event, evolveAll, INITIAL_STATE, type SignInState, viewOf } from "../domain/index.ts";
 import { desktopRunner } from "../lib/test-runner.ts";
 import { SignInWindow } from "./sign-in-window.tsx";
 
 const ORIGIN = "https://subkit.example.com";
+const CLOUD = "https://subkit-cloud.example";
 
 function main(patch: Partial<ConnectState> = {}, locale: Locale = "en"): ConnectState {
   return {
@@ -51,6 +53,8 @@ function main(patch: Partial<ConnectState> = {}, locale: Locale = "en"): Connect
     },
     local: LOCAL_UNAVAILABLE,
     platform: platformCapabilities("darwin", "arm64"),
+    defaultServer: null,
+    report: CLOSED_REPORT,
     ...patch,
   };
 }
@@ -105,22 +109,49 @@ describe.skipIf(!desktopRunner)("sign-in window page", () => {
     expect(render(INITIAL_STATE)).toBe("");
   });
 
-  test("the connect step offers known servers and localhost as examples, and the app version", () => {
-    const html = render(state());
+  test("the connect step prefills SubKit Cloud, hints at an own server and the app version", () => {
+    const html = render(
+      state({
+        defaultServer: CLOUD,
+        profiles: [
+          ...main().profiles,
+          {
+            id: "p2",
+            label: "local",
+            serverOrigin: "http://127.0.0.1:3480",
+            signedIn: false,
+            active: false,
+          },
+        ],
+      }),
+    );
     expect(html).toContain("Connect server");
+    expect(html).toContain(`value="${CLOUD}"`);
+    expect(html).toContain(
+      "Your own server? Enter its address, e.g. https://subkit.your-company.com",
+    );
     expect(html).toContain("work.example.com");
-    expect(html).toContain("localhost:3000");
+    expect(html).not.toContain("127.0.0.1:3480");
+    expect(html).not.toContain("localhost:3000");
     expect(html).toContain("SubKit Desktop 11.2.0");
     expect(html).toContain("border-dashed");
   });
 
-  test("an unreachable server is the error card with one retry and the example", () => {
-    const html = render(state({}, checked("unreachable")));
+  test("the German connect step names an own server in German", () => {
+    const html = render(state({ defaultServer: CLOUD }, [], "de"));
+    expect(html).toContain(
+      "Eigener Server? Gib seine Adresse ein, z. B. https://subkit.deine-firma.de",
+    );
+    expect(html).toContain("Bekannte Server:");
+  });
+
+  test("an unreachable server is the error card with one retry and SubKit Cloud", () => {
+    const html = render(state({ defaultServer: CLOUD }, checked("unreachable")));
     expect(html).toContain('data-slot="error-notice"');
     expect(count(html, "Server not reachable")).toBe(1);
     expect(count(html, "No answer came from this address.")).toBe(1);
     expect(count(html, "Try again")).toBe(1);
-    expect(count(html, "Use the example")).toBe(1);
+    expect(count(html, "Use SubKit Cloud")).toBe(1);
     expect(html).toMatch(
       /data-testid="step-next"[^>]*disabled|disabled[^>]*data-testid="step-next"/,
     );
@@ -347,5 +378,77 @@ describe.skipIf(!desktopRunner)("welcome and invitation", () => {
     expect(html).toContain("Anna Schmidt hat dich in den Arbeitsbereich „Harmoniqs“ eingeladen.");
     expect(html).toContain("Einladung für m•••@example.com · gültig bis 27.11.2026");
     expect(html).toContain("Beitreten und anmelden");
+  });
+
+  const opened = {
+    ...CLOSED_REPORT,
+    host: "subkit-cloud.example",
+    preview: [
+      { label: "report.fact.app" as const, value: "12.1.5" },
+      { label: "report.fact.log" as const, value: "200" },
+    ],
+  };
+
+  test("the report screen has a description, attached diagnostics with a preview and Send", () => {
+    const html = render(state({ view: "report", report: opened }, [], "de"));
+    expect(html).toContain("Fehler melden");
+    expect(html).toContain("Die Meldung geht an subkit-cloud.example.");
+    expect(html).toContain("Was ist passiert?");
+    expect(html).toContain('maxLength="5000"');
+    expect(html).toMatch(
+      /data-testid="report-attach"[^>]*aria-checked="true"|aria-checked="true"[^>]*data-testid="report-attach"/,
+    );
+    expect(html).toContain('data-testid="report-preview"');
+    expect(html).toContain("App-Version");
+    expect(html).toContain("12.1.5");
+    expect(tagOf(html, "report-send")).toContain("report-send");
+    expect(html).toContain(">Senden<");
+    expect(html).toContain("Diagnose kopieren");
+    expect(html).toContain("Als Datei speichern …");
+    expect(html).not.toContain('data-testid="step-next"');
+  });
+
+  test("a declined diagnostics consent leaves the box unchecked and hides the preview", () => {
+    const html = render(state({ view: "report", report: { ...opened, attachDefault: false } }));
+    expect(html).toMatch(
+      /data-testid="report-attach"[^>]*aria-checked="false"|aria-checked="false"[^>]*data-testid="report-attach"/,
+    );
+    expect(html).not.toContain('data-testid="report-preview"');
+  });
+
+  test("a sent report shows the report id and only Close", () => {
+    const report = { ...opened, phase: "sent" as const, reference: "4b0c-report" };
+    const html = render(state({ view: "report", report }));
+    expect(html).toContain("Thanks, your report arrived.");
+    expect(html).toContain("Report ID:");
+    expect(html).toContain("4b0c-report");
+    expect(html).not.toContain('data-testid="report-send"');
+    expect(html).not.toContain('data-testid="report-message"');
+    expect(html).toContain(">Close<");
+  });
+
+  test("a failed report explains why, names the trace id and keeps copy and save", () => {
+    const report = {
+      ...opened,
+      phase: "failed" as const,
+      failure: "unavailable" as const,
+      reference: "trace-77",
+    };
+    const html = render(state({ view: "report", report }));
+    expect(html).toContain("This server takes no reports without sign-in.");
+    expect(html).toContain("Sign in and try again");
+    expect(html).toContain("Trace ID:");
+    expect(html).toContain("trace-77");
+    expect(html).toContain(">Send again<");
+    expect(html).toContain("Copy diagnostics");
+    expect(html).toContain("Save as file…");
+  });
+
+  test("without any server the screen offers only copy and save with a clear message", () => {
+    const report = { ...CLOSED_REPORT, phase: "failed" as const, failure: "no_server" as const };
+    const html = render(state({ view: "report", report }));
+    expect(html).toContain("No server connected yet.");
+    expect(html).not.toContain('data-testid="report-send"');
+    expect(html).toContain("Copy diagnostics");
   });
 });

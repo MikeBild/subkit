@@ -14,6 +14,12 @@ const bridge: ConnectBridge = {
   updateAction: () => ipcRenderer.invoke(CONNECT_CHANNELS.updateAction),
   reportProblem: () => ipcRenderer.invoke(CONNECT_CHANNELS.reportProblem),
   copyDiagnostics: () => ipcRenderer.invoke(CONNECT_CHANNELS.copyDiagnostics),
+  saveDiagnostics: () => ipcRenderer.invoke(CONNECT_CHANNELS.saveDiagnostics),
+  submitReport: (input) =>
+    ipcRenderer.invoke(CONNECT_CHANNELS.submitReport, {
+      message: String(input.message),
+      attach: input.attach === true,
+    }),
   openLogs: () => ipcRenderer.invoke(CONNECT_CHANNELS.openLogs),
   local: {
     pickFolder: (options) =>

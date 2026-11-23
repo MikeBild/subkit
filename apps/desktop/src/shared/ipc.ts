@@ -14,6 +14,7 @@ import type { PermissionView } from "./local/permission-port.ts";
 import type { DataFolderRefusal } from "./local/supervisor-model.ts";
 import type { Onboarding } from "./onboarding.ts";
 import type { PlatformCapabilities } from "./platform-capabilities.ts";
+import type { ReportView } from "./problem-report.ts";
 import type { QuietHours } from "./quiet-hours.ts";
 import type { AddressProblem } from "./server-address.ts";
 import type { AuthFailure, ExchangeFailure } from "./server-contract.ts";
@@ -33,6 +34,8 @@ export const CONNECT_CHANNELS = {
   updateAction: "connect:update-action",
   reportProblem: "connect:report-problem",
   copyDiagnostics: "connect:copy-diagnostics",
+  saveDiagnostics: "connect:save-diagnostics",
+  submitReport: "connect:submit-report",
   openLogs: "connect:open-logs",
   checkPermissions: "connect:check-permissions",
   openPermissionSettings: "connect:open-permission-settings",
@@ -122,7 +125,7 @@ export interface SettingsView {
   shareDiagnostics: boolean;
 }
 
-export const CONNECT_VIEWS = ["connect", "settings", "local", "permissions"] as const;
+export const CONNECT_VIEWS = ["connect", "settings", "local", "permissions", "report"] as const;
 export type ConnectView = (typeof CONNECT_VIEWS)[number];
 
 export function isConnectView(value: unknown): value is ConnectView {
@@ -197,6 +200,21 @@ export interface ConnectState {
   permissions: PermissionView;
   local: LocalView;
   platform: PlatformCapabilities;
+  defaultServer: string | null;
+  report: ReportView;
+}
+
+export interface ReportInput {
+  message: string;
+  attach: boolean;
+}
+
+export function reportInput(raw: unknown): ReportInput {
+  const value = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  return {
+    message: typeof value.message === "string" ? value.message : "",
+    attach: value.attach === true,
+  };
 }
 
 export interface SettingsPatch {
@@ -240,6 +258,8 @@ export interface ConnectBridge {
   updateAction(): Promise<void>;
   reportProblem(): Promise<void>;
   copyDiagnostics(): Promise<void>;
+  saveDiagnostics(): Promise<void>;
+  submitReport(input: ReportInput): Promise<void>;
   openLogs(): Promise<void>;
   checkPermissions(): Promise<void>;
   openPermissionSettings(key: PermissionKey): Promise<void>;

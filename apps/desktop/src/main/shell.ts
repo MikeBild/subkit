@@ -26,6 +26,7 @@ import { showNotification } from "./notify.ts";
 import { PauseFlow } from "./pause-flow.ts";
 import { ProfileFlow } from "./profile-flow.ts";
 import { ProfileSessions } from "./profile-sessions.ts";
+import { ReportFlow } from "./report-flow.ts";
 import { SettingsFlow } from "./settings-flow.ts";
 import type { ShellCore } from "./shell-core.ts";
 import { registerShellIpc } from "./shell-ipc.ts";
@@ -54,6 +55,7 @@ export class Shell implements ShellCore {
   readonly presenter: ShellPresenter = new ShellPresenter(this);
   readonly feed: FeedFlow = new FeedFlow(this);
   readonly profiles: ProfileFlow = new ProfileFlow(this);
+  readonly report: ReportFlow = new ReportFlow(this);
   readonly device = new DeviceGlue({
     vault: this.vault,
     locale: () => this.locale(),

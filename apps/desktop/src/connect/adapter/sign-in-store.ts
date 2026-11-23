@@ -77,6 +77,12 @@ export function createSignInStore(bridge: ConnectBridge, options: StoreOptions =
       case "copyDiagnostics":
         void bridge.copyDiagnostics();
         return;
+      case "saveDiagnostics":
+        void bridge.saveDiagnostics();
+        return;
+      case "submitReport":
+        void bridge.submitReport(effect.input);
+        return;
       case "openLogs":
         void bridge.openLogs();
         return;

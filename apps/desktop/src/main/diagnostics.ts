@@ -2,8 +2,7 @@ import { spawnSync } from "node:child_process";
 import { writeFile } from "node:fs/promises";
 import { homedir, release } from "node:os";
 import { dirname } from "node:path";
-import { app, type BrowserWindow, clipboard, dialog } from "electron";
-import type { AnonymousReportOutcome } from "../shared/anonymous-report.ts";
+import { app, type BrowserWindow, dialog } from "electron";
 import {
   BUNDLE_LOG_LINES,
   buildDiagnostics,
@@ -13,7 +12,7 @@ import {
   parseCodesign,
   type SigningInfo,
 } from "../shared/diagnostics.ts";
-import { type Locale, t } from "../shared/i18n.ts";
+import type { Locale } from "../shared/i18n.ts";
 import { appLog } from "./app-log.ts";
 import { crashCapture } from "./crash-capture.ts";
 
@@ -82,54 +81,13 @@ export function diagnosticsText(context: DiagnosticsContext): string {
   return `${JSON.stringify(diagnosticsBundle(context), null, 2)}\n`;
 }
 
-export type SendDiagnostics = (bundle: DesktopDiagnostics) => Promise<AnonymousReportOutcome>;
-
-async function showBox(
-  parent: BrowserWindow | null,
-  options: Electron.MessageBoxOptions,
-): Promise<Electron.MessageBoxReturnValue> {
-  return parent ? dialog.showMessageBox(parent, options) : dialog.showMessageBox(options);
-}
-
-async function saveDiagnostics(text: string): Promise<void> {
-  const target = await dialog.showSaveDialog({
+export async function saveDiagnostics(parent: BrowserWindow | null, text: string): Promise<void> {
+  const options = {
     defaultPath: `subkit-desktop-diagnostics-${new Date().toISOString().slice(0, 10)}.json`,
     filters: [{ name: "JSON", extensions: ["json"] }],
-  });
+  };
+  const target = parent
+    ? await dialog.showSaveDialog(parent, options)
+    : await dialog.showSaveDialog(options);
   if (!target.canceled && target.filePath) await writeFile(target.filePath, text, { mode: 0o600 });
-}
-
-export async function offerDiagnostics(
-  parent: BrowserWindow | null,
-  context: DiagnosticsContext,
-  send: SendDiagnostics | null = null,
-): Promise<void> {
-  const { locale } = context;
-  const actions = send
-    ? (["send", "copy", "save", "cancel"] as const)
-    : (["copy", "save", "cancel"] as const);
-  const choice = await showBox(parent, {
-    type: "info",
-    title: t(locale, "report.title"),
-    message: t(locale, "report.title"),
-    detail: t(locale, send ? "report.sendDetail" : "report.detail"),
-    buttons: actions.map((action) => t(locale, `report.${action}`)),
-    defaultId: 0,
-    cancelId: actions.length - 1,
-  });
-  const action = actions[choice.response] ?? "cancel";
-  if (action === "cancel") return;
-  const bundle = diagnosticsBundle(context);
-  const text = `${JSON.stringify(bundle, null, 2)}\n`;
-  if (action === "copy") return clipboard.writeText(text);
-  if (action === "save") return saveDiagnostics(text);
-  if (!send) return;
-  const outcome = await send(bundle);
-  await showBox(parent, {
-    type: outcome === "sent" ? "info" : "warning",
-    title: t(locale, "report.title"),
-    message: t(locale, `report.${outcome}`),
-    detail: t(locale, `report.${outcome}.detail`),
-    buttons: [t(locale, "report.close")],
-  });
 }

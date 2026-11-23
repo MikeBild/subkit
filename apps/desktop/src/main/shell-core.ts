@@ -10,6 +10,7 @@ import type { LoginController } from "./login.ts";
 import type { PauseFlow } from "./pause-flow.ts";
 import type { ProfileFlow } from "./profile-flow.ts";
 import type { ProfileSessions } from "./profile-sessions.ts";
+import type { ReportFlow } from "./report-flow.ts";
 import type { SettingsFlow } from "./settings-flow.ts";
 import type { ShellPresenter } from "./shell-presenter.ts";
 import type { ShellUi } from "./shell-ui.ts";
@@ -31,6 +32,7 @@ export interface ShellCore {
   readonly login: LoginController;
   readonly feed: FeedFlow;
   readonly profiles: ProfileFlow;
+  readonly report: ReportFlow;
   readonly presenter: ShellPresenter;
   state: ShellSession;
   locale(): Locale;

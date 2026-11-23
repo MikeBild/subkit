@@ -1,5 +1,4 @@
 import { net, type Session } from "electron";
-import type { AnonymousReportBody } from "../shared/anonymous-report.ts";
 import { type AttentionItem, parseAttention } from "../shared/attention.ts";
 import {
   INVITE_PREVIEW_PATH,
@@ -9,6 +8,7 @@ import {
   parseInvitePreview,
 } from "../shared/invite-link.ts";
 import type { CheckResult } from "../shared/ipc.ts";
+import type { ReportAnswer, ReportBody } from "../shared/problem-report.ts";
 import { normalizeServerAddress } from "../shared/server-address.ts";
 import {
   ATTENTION_PATH,
@@ -95,8 +95,8 @@ export async function checkServer(
 export async function sendAnonymousReport(
   origin: string,
   path: string,
-  body: AnonymousReportBody,
-): Promise<number | null> {
+  body: ReportBody,
+): Promise<ReportAnswer | null> {
   try {
     const response = await net.fetch(`${origin}${path}`, {
       method: "POST",
@@ -107,7 +107,11 @@ export async function sendAnonymousReport(
       cache: "no-store",
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
-    return response.status;
+    return {
+      status: response.status,
+      json: await response.json().catch(() => null),
+      traceId: response.headers.get("x-trace-id"),
+    };
   } catch {
     return null;
   }

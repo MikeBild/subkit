@@ -9,6 +9,7 @@ import {
 } from "../../shared/ipc.ts";
 import { NO_ONBOARDING } from "../../shared/onboarding.ts";
 import { platformCapabilities } from "../../shared/platform-capabilities.ts";
+import { CLOSED_REPORT } from "../../shared/problem-report.ts";
 import { INITIAL_FLOW } from "./screens-model.ts";
 import {
   type Command,
@@ -72,6 +73,8 @@ function main(patch: Partial<ConnectState> = {}): ConnectState {
     },
     local: LOCAL_UNAVAILABLE,
     platform: platformCapabilities("darwin", "arm64"),
+    defaultServer: null,
+    report: CLOSED_REPORT,
     ...patch,
   };
 }
@@ -401,5 +404,58 @@ describe("sign-in model: determinism", () => {
       return { state, events };
     };
     expect(once()).toEqual(once());
+  });
+});
+
+describe("sign-in model: default server", () => {
+  const CLOUD = "https://subkit-cloud.example";
+
+  test("the first state prefills the default server once", () => {
+    const state = ready({ defaultServer: CLOUD });
+    expect(state.flow.address).toBe(CLOUD);
+    const cleared = run(state, { type: "EditAddress", address: "" }).state;
+    const later = evolve(cleared, {
+      type: "MainStateReceived",
+      state: main({ defaultServer: CLOUD }),
+    });
+    expect(later.flow.address).toBe("");
+  });
+
+  test("without a default server the address stays empty", () => {
+    expect(ready().flow.address).toBe("");
+  });
+});
+
+describe("sign-in model: problem report", () => {
+  const open = { ...CLOSED_REPORT, host: "subkit-cloud.example" };
+
+  test("the report screen sends the description and the choice once", () => {
+    const state = ready({ view: "report", report: open });
+    expect(viewOf(state)?.screen).toEqual({ kind: "report", report: open });
+    expect(viewOf(state)?.frame.settingsOpen).toBe(false);
+    expect(viewOf(state)?.frame.dots.visible).toBe(false);
+    const input = { message: "blank window", attach: true };
+    expect(decide(state, { type: "SubmitReport", input }, CONTEXT)).toEqual({
+      events: [],
+      effects: [{ kind: "submitReport", input }],
+    });
+  });
+
+  test("Send does nothing without a server or outside the report screen", () => {
+    const input = { message: "", attach: false };
+    const nowhere = ready({ view: "report", report: CLOSED_REPORT });
+    expect(decide(nowhere, { type: "SubmitReport", input }, CONTEXT).effects).toEqual([]);
+    expect(decide(ready(), { type: "SubmitReport", input }, CONTEXT).effects).toEqual([]);
+  });
+
+  test("closing the report returns to the connect window, save asks the shell", () => {
+    const state = ready({ view: "report", report: open });
+    expect(decide(state, { type: "CloseReport" }, CONTEXT).effects).toEqual([
+      { kind: "showView", view: "connect" },
+    ]);
+    expect(decide(ready(), { type: "CloseReport" }, CONTEXT).effects).toEqual([]);
+    expect(decide(state, { type: "SaveDiagnostics" }, CONTEXT).effects).toEqual([
+      { kind: "saveDiagnostics" },
+    ]);
   });
 });

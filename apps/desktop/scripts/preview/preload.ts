@@ -25,6 +25,8 @@ const connect: ConnectBridge = {
   updateAction: async () => {},
   reportProblem: async () => {},
   copyDiagnostics: async () => {},
+  saveDiagnostics: async () => {},
+  submitReport: async () => {},
   openLogs: async () => {},
   local: {
     pickFolder: async () => ({ status: "cancelled" }),

@@ -31,24 +31,57 @@ const MESSAGES = {
   "menu.reload": { de: "Neu laden", en: "Reload" },
   "menu.reportProblem": { de: "Fehler melden …", en: "Report a problem…" },
 
-  "report.title": { de: "Diagnosedaten", en: "Diagnostics" },
-  "report.detail": {
-    de: "Die Diagnosedaten enthalten App-Version, Betriebssystem, Signatur, Server-Version, den Status von Engine und Runner, Berechtigungen, Abstürze, die letzten 10 Fehler und die letzten Log-Zeilen. Zugangsdaten, Pfade und URL-Parameter sind entfernt. Füg sie deiner Fehlermeldung bei.",
-    en: "The diagnostics contain the app version, operating system, signature, server version, engine and runner status, permissions, crashes, the last 10 errors and the latest log lines. Credentials, paths and URL parameters are removed. Add them to your problem report.",
+  "report.title": { de: "Fehler melden", en: "Report a problem" },
+  "report.lead": {
+    de: "Beschreib kurz, was passiert ist. Die Meldung geht an {host}.",
+    en: "Briefly describe what happened. The report goes to {host}.",
   },
-  "report.copy": { de: "Diagnose kopieren", en: "Copy diagnostics" },
-  "report.save": { de: "Als Datei speichern …", en: "Save as file…" },
+  "report.lead.signedIn": {
+    de: "Beschreib kurz, was passiert ist. Die Meldung geht mit deiner Anmeldung an {host}.",
+    en: "Briefly describe what happened. The report goes to {host} under your sign-in.",
+  },
+  "report.description": { de: "Was ist passiert?", en: "What happened?" },
+  "report.description.placeholder": {
+    de: "Zum Beispiel: Nach ‚Verbindung prüfen‘ passiert nichts.",
+    en: "For example: nothing happens after ‘Check connection’.",
+  },
+  "report.description.hint": {
+    de: "Optional, höchstens 5.000 Zeichen.",
+    en: "Optional, up to 5,000 characters.",
+  },
+  "report.attach": { de: "Diagnose anhängen", en: "Attach diagnostics" },
+  "report.attach.hint": {
+    de: "Zugangsdaten, Pfade und URL-Parameter sind entfernt.",
+    en: "Credentials, paths and URL parameters are removed.",
+  },
+  "report.preview": { de: "Was die Diagnose enthält", en: "What the diagnostics contain" },
+  "report.preview.more": {
+    de: "Dazu Signatur, Status von Engine und Runner und Berechtigungen.",
+    en: "Plus the signature, engine and runner status, and permissions.",
+  },
+  "report.fact.app": { de: "App-Version", en: "App version" },
+  "report.fact.system": { de: "Betriebssystem", en: "Operating system" },
+  "report.fact.server": { de: "Server-Version", en: "Server version" },
+  "report.fact.errors": { de: "Fehler und Abstürze", en: "Errors and crashes" },
+  "report.fact.log": { de: "Log-Zeilen", en: "Log lines" },
+  "report.send": { de: "Senden", en: "Send" },
+  "report.sending": { de: "Wird gesendet …", en: "Sending…" },
+  "report.retry": { de: "Noch einmal senden", en: "Send again" },
   "report.cancel": { de: "Abbrechen", en: "Cancel" },
   "report.close": { de: "Schließen", en: "Close" },
-  "report.send": { de: "An den Server senden", en: "Send to server" },
-  "report.sendDetail": {
-    de: "Die Diagnosedaten enthalten App-Version, Betriebssystem, Signatur, Server-Version, den Status von Engine und Runner, Berechtigungen, Abstürze, die letzten 10 Fehler und die letzten Log-Zeilen. Zugangsdaten, Pfade und URL-Parameter sind entfernt. Du kannst sie ohne Anmeldung an deinen Server senden oder kopieren.",
-    en: "The diagnostics contain the app version, operating system, signature, server version, engine and runner status, permissions, crashes, the last 10 errors and the latest log lines. Credentials, paths and URL parameters are removed. You can send them to your server without signing in, or copy them.",
-  },
+  "report.copy": { de: "Diagnose kopieren", en: "Copy diagnostics" },
+  "report.save": { de: "Als Datei speichern …", en: "Save as file…" },
+  "report.reference": { de: "Meldungs-ID", en: "Report ID" },
+  "report.trace": { de: "Trace-ID", en: "Trace ID" },
   "report.sent": { de: "Danke, deine Meldung ist angekommen.", en: "Thanks, your report arrived." },
   "report.sent.detail": {
-    de: "Wer deinen Server betreibt, findet sie im Eingang.",
-    en: "Whoever runs your server finds it in the inbox.",
+    de: "Wer {host} betreibt, findet sie im Eingang. Nenn bei Rückfragen die Meldungs-ID.",
+    en: "Whoever runs {host} finds it in the inbox. Mention the report ID if they ask.",
+  },
+  "report.no_server": { de: "Noch kein Server verbunden.", en: "No server connected yet." },
+  "report.no_server.detail": {
+    de: "Kopier die Diagnose oder speichere sie als Datei und schick sie an die Person, die deinen Server betreibt.",
+    en: "Copy the diagnostics or save them as a file and send them to the person who runs your server.",
   },
   "report.rate_limited": {
     de: "Gerade gehen zu viele Meldungen ein.",
@@ -58,26 +91,35 @@ const MESSAGES = {
     de: "Versuch es in ein paar Minuten noch einmal oder kopier die Diagnose.",
     en: "Try again in a few minutes or copy the diagnostics.",
   },
+  "report.rate_limited.until": {
+    de: "Versuch es ab {time} Uhr noch einmal oder kopier die Diagnose.",
+    en: "Try again after {time} or copy the diagnostics.",
+  },
   "report.refused": {
     de: "Der Server hat die Meldung nicht angenommen.",
     en: "The server didn’t accept the report.",
   },
   "report.refused.detail": {
-    de: "Kopier die Diagnose und schick sie an die Person, die deinen Server betreibt.",
-    en: "Copy the diagnostics and send them to the person who runs your server.",
+    de: "Lass die Diagnose weg und versuch es noch einmal, oder speichere sie als Datei und schick sie an die Person, die deinen Server betreibt.",
+    en: "Leave out the diagnostics and try again, or save them as a file and send them to the person who runs your server.",
   },
   "report.unavailable": {
     de: "Dieser Server nimmt keine Meldungen ohne Anmeldung an.",
     en: "This server takes no reports without sign-in.",
   },
   "report.unavailable.detail": {
-    de: "Kopier die Diagnose und schick sie an die Person, die deinen Server betreibt.",
-    en: "Copy the diagnostics and send them to the person who runs your server.",
+    de: "Melde dich an und versuch es noch einmal, oder kopier die Diagnose und schick sie an die Person, die deinen Server betreibt.",
+    en: "Sign in and try again, or copy the diagnostics and send them to the person who runs your server.",
+  },
+  "report.offline": { de: "{host} ist nicht erreichbar.", en: "{host} can’t be reached." },
+  "report.offline.detail": {
+    de: "Prüf deine Verbindung und versuch es noch einmal, oder kopier die Diagnose.",
+    en: "Check your connection and try again, or copy the diagnostics.",
   },
   "report.failed": { de: "Die Meldung wurde nicht gesendet.", en: "The report wasn’t sent." },
   "report.failed.detail": {
-    de: "Prüf deine Verbindung und versuch es noch einmal, oder kopier die Diagnose.",
-    en: "Check your connection and try again, or copy the diagnostics.",
+    de: "Versuch es noch einmal oder kopier die Diagnose. Nenn bei Rückfragen die Trace-ID.",
+    en: "Try again or copy the diagnostics. Mention the trace ID if anyone asks.",
   },
 
   "updates.title": { de: "Updates", en: "Updates" },
@@ -411,8 +453,16 @@ const MESSAGES = {
   "connect.address.label": { de: "Serveradresse", en: "Server address" },
   "connect.check": { de: "Verbindung prüfen", en: "Check connection" },
   "connect.checking": { de: "Wird geprüft …", en: "Checking…" },
-  "connect.examples": { de: "Beispiele:", en: "Examples:" },
-  "connect.useExample": { de: "Beispiel verwenden", en: "Use the example" },
+  "connect.examples": { de: "Bekannte Server:", en: "Known servers:" },
+  "connect.ownServer": {
+    de: "Eigener Server? Gib seine Adresse ein, z. B. {example}",
+    en: "Your own server? Enter its address, e.g. {example}",
+  },
+  "connect.ownServer.example": {
+    de: "https://subkit.deine-firma.de",
+    en: "https://subkit.your-company.com",
+  },
+  "connect.useExample": { de: "SubKit Cloud verwenden", en: "Use SubKit Cloud" },
 
   "field.empty": { de: "Gib eine Serveradresse ein.", en: "Enter a server address." },
   "field.invalid": {

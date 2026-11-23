@@ -8,6 +8,7 @@ import {
 } from "../../shared/ipc.ts";
 import { NO_ONBOARDING } from "../../shared/onboarding.ts";
 import { platformCapabilities } from "../../shared/platform-capabilities.ts";
+import { CLOSED_REPORT } from "../../shared/problem-report.ts";
 import { createSignInStore } from "./sign-in-store.ts";
 
 const ORIGIN = "https://subkit.example.com";
@@ -39,6 +40,8 @@ function main(patch: Partial<ConnectState> = {}): ConnectState {
     },
     local: LOCAL_UNAVAILABLE,
     platform: platformCapabilities("darwin", "arm64"),
+    defaultServer: null,
+    report: CLOSED_REPORT,
     ...patch,
   };
 }
@@ -83,6 +86,8 @@ function stubBridge(
     updateAction: record("updateAction") as ConnectBridge["updateAction"],
     reportProblem: record("reportProblem") as ConnectBridge["reportProblem"],
     copyDiagnostics: record("copyDiagnostics") as ConnectBridge["copyDiagnostics"],
+    saveDiagnostics: record("saveDiagnostics") as ConnectBridge["saveDiagnostics"],
+    submitReport: record("submitReport") as ConnectBridge["submitReport"],
     openLogs: record("openLogs") as ConnectBridge["openLogs"],
     local: {
       pickFolder: () => Promise.resolve({ status: "cancelled" }),
@@ -199,6 +204,7 @@ describe("sign-in store over the preload bridge", () => {
     store.dispatch({ type: "RunUpdateAction" });
     store.dispatch({ type: "ReportProblem" });
     store.dispatch({ type: "CopyDiagnostics" });
+    store.dispatch({ type: "SaveDiagnostics" });
     store.dispatch({ type: "OpenLogs" });
     store.dispatch({ type: "CheckPermissions" });
     store.dispatch({ type: "OpenPermissionSettings", key: "accessibility" });
@@ -212,6 +218,7 @@ describe("sign-in store over the preload bridge", () => {
       ["updateAction"],
       ["reportProblem"],
       ["copyDiagnostics"],
+      ["saveDiagnostics"],
       ["openLogs"],
       ["checkPermissions"],
       ["openPermissionSettings", "accessibility"],
