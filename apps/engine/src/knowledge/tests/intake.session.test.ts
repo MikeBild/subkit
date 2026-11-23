@@ -29,6 +29,7 @@ import {
   sessionItem,
   skip,
   useKnowledgeIntakeDb,
+  withoutSimilarity,
 } from "./intake-fixtures.ts";
 
 useKnowledgeIntakeDb();
@@ -46,6 +47,7 @@ describe.skipIf(skip)("session intake and skill targets", () => {
     const result = await createSessionIntakeItem(
       sessionInput({ title: "Session provenance item" }, { domains: ["subkit"] }),
       ctx.testDb.db,
+      withoutSimilarity,
     );
     expect(result.outcome).toBe("created");
     expect(result.item.original_snapshot).toMatchObject({
@@ -89,6 +91,7 @@ describe.skipIf(skip)("session intake and skill targets", () => {
         { domains: ["Not_A_Category", "missing-domain", "release-domain"] },
       ),
       ctx.testDb.db,
+      withoutSimilarity,
     );
     expect(inDomain.item.category).toBe("release-domain");
     const collector = { kind: "user" as const, id: nextUuid() };
@@ -102,6 +105,7 @@ describe.skipIf(skip)("session intake and skill targets", () => {
         { domains: ["missing-domain"] },
       ),
       ctx.testDb.db,
+      withoutSimilarity,
     );
     expect(fallback.item.category).toBe("collector-default");
   });
@@ -110,6 +114,7 @@ describe.skipIf(skip)("session intake and skill targets", () => {
     const first = await createSessionIntakeItem(
       sessionInput({ title: "Duplicate session learning" }),
       ctx.testDb.db,
+      withoutSimilarity,
     );
     const replay = await createSessionIntakeItem(
       sessionInput(
@@ -122,6 +127,7 @@ describe.skipIf(skip)("session intake and skill targets", () => {
         },
       ),
       ctx.testDb.db,
+      withoutSimilarity,
     );
     expect(replay).toMatchObject({ outcome: "replayed", item: { id: first.item.id } });
     const second = await createSessionIntakeItem(
@@ -130,6 +136,7 @@ describe.skipIf(skip)("session intake and skill targets", () => {
         { evidence_excerpt: "A later session repeated the learning." },
       ),
       ctx.testDb.db,
+      withoutSimilarity,
     );
     expect(second.outcome).toBe("evidence_appended");
     expect(second.item.id).toBe(first.item.id);
@@ -153,6 +160,7 @@ describe.skipIf(skip)("session intake and skill targets", () => {
     const result = await createSessionIntakeItem(
       sessionInput({ title: "Unattributed session learning", actor: null }),
       ctx.testDb.db,
+      withoutSimilarity,
     );
     const [account] = await ctx.testDb.db
       .select()
@@ -167,6 +175,7 @@ describe.skipIf(skip)("session intake and skill targets", () => {
     const again = await createSessionIntakeItem(
       sessionInput({ title: "Second unattributed learning", actor: null }),
       ctx.testDb.db,
+      withoutSimilarity,
     );
     expect(again.item.collected_by).toEqual(result.item.collected_by);
   });

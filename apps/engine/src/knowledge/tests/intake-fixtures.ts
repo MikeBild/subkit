@@ -7,6 +7,7 @@ import {
   createIntakeItem,
   createSessionIntakeItem,
 } from "../index.ts";
+import type { IntakeDedupeDeps } from "../intake-dedupe.ts";
 import type { ConfirmIntakeProposalParams } from "../intake-types.ts";
 import { createKnowledgeTestCtx, type KnowledgeTestCtx } from "./setup.ts";
 
@@ -17,6 +18,15 @@ export const nextUuid = createDeterministicUuidFactory(0x1a2b_3c4d);
 export const actor = { kind: "system_account" as const, id: nextUuid() };
 
 export let ctx: KnowledgeTestCtx;
+
+export const withoutSimilarity: IntakeDedupeDeps = {
+  embedder: {
+    available: async () => false,
+    embed: async () => {
+      throw new Error("similarity dedupe is off for this fixture");
+    },
+  },
+};
 
 export function confirmIntakeProposal(
   p: Omit<ConfirmIntakeProposalParams, "authorize">,
@@ -42,6 +52,7 @@ export function createClip(overrides: Partial<Parameters<typeof createIntakeItem
       ...overrides,
     },
     ctx.testDb.db,
+    withoutSimilarity,
   );
 }
 
@@ -78,7 +89,8 @@ export async function newSkill(title: string) {
 }
 
 export async function sessionItem(title: string) {
-  return (await createSessionIntakeItem(sessionInput({ title }), ctx.testDb.db)).item;
+  return (await createSessionIntakeItem(sessionInput({ title }), ctx.testDb.db, withoutSimilarity))
+    .item;
 }
 
 export function useKnowledgeIntakeDb(): void {

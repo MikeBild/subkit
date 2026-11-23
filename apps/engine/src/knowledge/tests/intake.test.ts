@@ -23,6 +23,7 @@ import {
   nextUuid,
   skip,
   useKnowledgeIntakeDb,
+  withoutSimilarity,
 } from "./intake-fixtures.ts";
 
 useKnowledgeIntakeDb();
@@ -137,6 +138,7 @@ describe.skipIf(skip)("knowledge intake", () => {
           },
         },
         ctx.testDb.db,
+        withoutSimilarity,
       )
     ).item;
     const ids = async (origin: "capture" | "note" | "session") => {

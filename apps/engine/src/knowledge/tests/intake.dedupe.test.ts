@@ -17,6 +17,7 @@ import {
   sessionInput,
   skip,
   useKnowledgeIntakeDb,
+  withoutSimilarity,
 } from "./intake-fixtures.ts";
 
 useKnowledgeIntakeDb();
@@ -47,7 +48,7 @@ function clipWith(overrides: Parameters<typeof createClip>[0], withEmbedder = fa
       ...overrides,
     },
     ctx.testDb.db,
-    withEmbedder ? { embedder } : {},
+    withEmbedder ? { embedder } : withoutSimilarity,
   );
 }
 
@@ -136,6 +137,7 @@ describe.skipIf(skip)("intake backlog dedupe", () => {
     const result = await createSessionIntakeItem(
       sessionInput({ title: "Guide learning", source_url: "https://dedupe-d.test/guide/" }),
       ctx.testDb.db,
+      withoutSimilarity,
     );
     expect(result.outcome).toBe("evidence_appended");
     expect(result.item.id).toBe(capture.id);
@@ -145,6 +147,7 @@ describe.skipIf(skip)("intake backlog dedupe", () => {
     const created = await createSessionIntakeItem(
       sessionInput({ title: "Separate session learning", body: "Unrelated." }),
       ctx.testDb.db,
+      withoutSimilarity,
     );
     expect(created.outcome).toBe("created");
     expect(created.item.group_key).toBe("repo:example/repo");

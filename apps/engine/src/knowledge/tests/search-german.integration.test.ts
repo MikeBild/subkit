@@ -6,7 +6,8 @@ import { updateWorkspaceSettings } from "../../identity/index.ts";
 import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
 import { KNOWLEDGE_CHUNK_TARGET_BYTES } from "../core/chunking.ts";
-import { knowledgeScopeFilter } from "../search-fts.ts";
+import { workspaceFtsConfig } from "../persistence/chunks.ts";
+import { allTermsTsQuery, knowledgeScopeFilter, runKnowledgeFts } from "../search-fts.ts";
 import { fuseKnowledgeWithVectors } from "../search-vectors.ts";
 import { createKnowledgeSource, invalidateKnowledgeCache, searchKnowledge } from "../service.ts";
 import { createKnowledgeTestCtx, type KnowledgeTestCtx } from "./setup.ts";
@@ -67,9 +68,17 @@ describe.skipIf(skip)("knowledge search in the workspace language", () => {
   });
 
   test("the same text in an English workspace does not match the other word form", async () => {
-    const hits = await searchKnowledge(
-      { tenant_id: ctx.tenantId, query: "Lieferung" },
+    const p = { tenant_id: ctx.tenantId, query: "Lieferung" };
+    const config = await workspaceFtsConfig(ctx.testDb.db, p.tenant_id);
+    expect(config).toBe("english");
+    const hits = await runKnowledgeFts(
       ctx.testDb.db,
+      p.tenant_id,
+      allTermsTsQuery(config, p.query),
+      knowledgeScopeFilter(p),
+      10,
+      [],
+      config,
     );
     expect(hits).toEqual([]);
   });
