@@ -1,4 +1,5 @@
 export * from "./catalog.ts";
+export * from "./denial.ts";
 export * from "./evaluator.ts";
 export * from "./grants.ts";
 export * from "./groups.ts";

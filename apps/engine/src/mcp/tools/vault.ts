@@ -4,6 +4,7 @@ import { actorOfPrincipal, isRejection, type OperationScope } from "../../api/op
 import { getVaultItemOperation, listVaultItemsOperation } from "../../api/operations/vault.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
+import { can, denialDetails, denialHint } from "../../rbac/index.ts";
 import type { ToolEnvelope } from "../../tools/types.ts";
 import { zodToJsonSchema7 } from "../json-schema.ts";
 
@@ -54,6 +55,26 @@ function scopeOf(ctx: { db: Db; principal: ResolvedPrincipal }): OperationScope 
   };
 }
 
+async function credentialCeilingDenial(ctx: {
+  db: Db;
+  principal: ResolvedPrincipal;
+}): Promise<ToolEnvelope | null> {
+  const decision = await can(ctx.db, {
+    tenant_id: ctx.principal.tenant_id,
+    principal: ctx.principal,
+    permission: "vault:read",
+    quiet: true,
+  });
+  if (decision.allow || decision.source !== "credential_ceiling") return null;
+  const details = denialDetails(decision.detail);
+  return {
+    status: "error",
+    error_code: "policy_denied",
+    message: denialHint(decision.detail),
+    ...(details ? { details } : {}),
+  };
+}
+
 export async function invokeListVaultItems(
   ctx: { db: Db; principal: ResolvedPrincipal },
   args: unknown,
@@ -62,6 +83,8 @@ export async function invokeListVaultItems(
   if (!parsed.success) {
     return { status: "error", error_code: "invalid_args", message: parsed.error.message };
   }
+  const denied = await credentialCeilingDenial(ctx);
+  if (denied) return denied;
   const scope = scopeOf(ctx);
   const outcome = await listVaultItemsOperation.handler(scope, {
     ...(parsed.data.scope ? { scope: parsed.data.scope } : {}),
@@ -81,6 +104,8 @@ export async function invokeGetVaultItem(
   if (!parsed.success) {
     return { status: "error", error_code: "invalid_args", message: parsed.error.message };
   }
+  const denied = await credentialCeilingDenial(ctx);
+  if (denied) return denied;
   const outcome = await getVaultItemOperation.handler(scopeOf(ctx), { id: parsed.data.id });
   if (isRejection(outcome)) {
     return { status: "error", error_code: outcome.code, message: outcome.message };
