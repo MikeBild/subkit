@@ -1,6 +1,6 @@
 export type AutohealPolicy = "safe-patches" | "never-auto" | "dry-run-gate";
 
-export const DEFAULT_AUTOHEAL_POLICY: AutohealPolicy = "safe-patches";
+export const DEFAULT_AUTOHEAL_POLICY: AutohealPolicy = "never-auto";
 
 export interface PolicyDecisionInput {
   policy: AutohealPolicy;
@@ -20,14 +20,14 @@ export function decideAutoApply(
   } else if (d.policy === "never-auto") {
     reason = "policy=never-auto";
   } else if (d.policy === "safe-patches") {
-    result = d.classification === "safe" && (!d.has_fixture || d.fixture_passed);
+    result = d.classification === "safe" && d.has_fixture && d.fixture_passed;
     reason = result
-      ? d.has_fixture
-        ? "safe_and_fixture_passed"
-        : "safe_no_fixture"
+      ? "safe_and_fixture_passed"
       : d.classification !== "safe"
         ? "unsafe_classification"
-        : "fixture_failed";
+        : d.has_fixture
+          ? "fixture_failed"
+          : "no_fixture";
   } else if (d.policy === "dry-run-gate") {
     result = d.has_fixture && d.fixture_passed;
     reason = !d.has_fixture ? "no_fixture" : d.fixture_passed ? "fixture_passed" : "fixture_failed";

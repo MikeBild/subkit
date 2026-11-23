@@ -9,6 +9,7 @@ import {
 } from "../db/schema/index.ts";
 import { PatchProposalSchema } from "../llm/flows/repair.ts";
 import { workflowJsonDigest } from "../workflows/canonical-json.ts";
+import type { PatchOperation } from "./core/patch-operations.ts";
 import { applyPatchToWorkflowDag, candidateDriftKind } from "./patch-apply.ts";
 import { isExecutionStepId, resolveCandidateStepKey } from "./step-snapshot.ts";
 
@@ -23,7 +24,7 @@ export const PatchReadinessSchema = z
 
 export type PatchReadiness = z.infer<typeof PatchReadinessSchema>;
 
-export function evaluatePatchReadiness(input: {
+interface ReadinessFacts {
   candidate_id: string;
   tenant_id: string;
   status: string;
@@ -32,11 +33,32 @@ export function evaluatePatchReadiness(input: {
   version_id: string | null;
   dag: unknown;
   drift_kind?: string | null;
-}): PatchReadiness {
+  accepted?: readonly number[] | null | undefined;
+}
+
+export interface PatchSelection {
+  readiness: PatchReadiness;
+  operations: PatchOperation[];
+  accepted: number[] | null;
+  after: Record<string, unknown> | null;
+}
+
+export function evaluatePatchReadiness(input: ReadinessFacts): PatchReadiness {
+  return evaluatePatchSelection(input).readiness;
+}
+
+export function evaluatePatchSelection(input: ReadinessFacts): PatchSelection {
   const proposal = PatchProposalSchema.safeParse(input.proposal);
   const outcome = proposal.success
-    ? applyPatchToWorkflowDag(input.dag, input.step_key, proposal.data, input.drift_kind)
+    ? applyPatchToWorkflowDag(
+        input.dag,
+        input.step_key,
+        proposal.data,
+        input.drift_kind,
+        input.accepted,
+      )
     : null;
+  const accepted = outcome?.ok ? outcome.accepted : null;
   const reason =
     input.status !== "proposed"
       ? "already_decided"
@@ -48,20 +70,26 @@ export function evaluatePatchReadiness(input: {
             ? (outcome?.reason ?? "invalid_proposal")
             : null;
   return {
-    reviewable: reason === null,
-    review_reason: reason,
-    base_version_id: input.version_id,
-    review_digest:
-      reason === null
-        ? workflowJsonDigest({
-            tenant: input.tenant_id,
-            candidate: input.candidate_id,
-            version: input.version_id,
-            dag: input.dag,
-            step: input.step_key,
-            proposal: proposal.data,
-          })
-        : null,
+    operations: outcome?.ok ? outcome.operations : [],
+    accepted,
+    after: outcome?.ok ? outcome.after : null,
+    readiness: {
+      reviewable: reason === null,
+      review_reason: reason,
+      base_version_id: input.version_id,
+      review_digest:
+        reason === null
+          ? workflowJsonDigest({
+              tenant: input.tenant_id,
+              candidate: input.candidate_id,
+              version: input.version_id,
+              dag: input.dag,
+              step: input.step_key,
+              proposal: proposal.data,
+              ...(accepted ? { accepted } : {}),
+            })
+          : null,
+    },
   };
 }
 
@@ -70,6 +98,15 @@ export async function readPatchReadiness(
   candidate: typeof patchCandidates.$inferSelect,
   db: Executor,
 ): Promise<PatchReadiness> {
+  return (await readPatchSelection(tenant_id, candidate, db)).readiness;
+}
+
+export async function readPatchSelection(
+  tenant_id: string,
+  candidate: typeof patchCandidates.$inferSelect,
+  db: Executor,
+  accepted?: readonly number[] | null,
+): Promise<PatchSelection> {
   const [version] = await db
     .select({ id: workflowVersions.id, dag: workflowVersions.dag })
     .from(workflows)
@@ -89,7 +126,7 @@ export async function readPatchReadiness(
     )
     .limit(1);
   const diff = candidate.diff as Record<string, unknown>;
-  return evaluatePatchReadiness({
+  return evaluatePatchSelection({
     candidate_id: candidate.id,
     tenant_id,
     status: candidate.status,
@@ -98,6 +135,7 @@ export async function readPatchReadiness(
     step_key: await resolveCandidateStepKey(tenant_id, diff ?? {}, db),
     version_id: version?.id ?? null,
     dag: version?.dag,
+    accepted,
   });
 }
 

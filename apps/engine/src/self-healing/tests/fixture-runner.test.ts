@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { PatchProposal } from "../../llm/flows/repair.ts";
-import { applyPatchToStep, runFixtureDryRun } from "../fixture-runner.ts";
+import { applyPatchToStep, runFixtureDryRun, runPatchedStepDryRun } from "../fixture-runner.ts";
 import type { DryRunStep } from "../types.ts";
 
 function makeProposal(patch: Record<string, unknown>): PatchProposal {
@@ -59,6 +59,27 @@ describe("self-healing/fixture-runner", () => {
     const out = await runFixtureDryRun({ step, patch, fixture });
     expect(out.ok).toBe(true);
     expect(out.value).toBe(42);
+  });
+
+  test("a partly patched step is replayed as it stands, without the proposal", async () => {
+    const fixture = {
+      request: { url: "/users/1" },
+      response: { data: { result: { id: 42, name: "Ada" } } },
+    };
+    const partly = await runPatchedStepDryRun({
+      patched: {
+        id: "step-1",
+        kind: "transform",
+        expression: '{\n  "id": data.result.id,\n  "owner": data.id\n}',
+      },
+      fixture,
+    });
+    expect(partly).toEqual({ ok: true, value: { id: 42 } });
+    const missing = await runPatchedStepDryRun({
+      patched: { id: "step-1", kind: "request", data_selector: "data.id" },
+      fixture,
+    });
+    expect(missing.ok).toBe(false);
   });
 
   test("dry-run fails when the patched selector still misses", async () => {

@@ -9,7 +9,7 @@ import { toStoredDefinition } from "../workflows/core/definition.ts";
 import { carriedSpecColumns, type VersionActor, versionAuthorColumns } from "../workflows/index.ts";
 import { lockWorkflowForVersionWrite, nextVersionNumber } from "../workflows/version-write-lock.ts";
 import { PatchDecisionError } from "./candidate-decision.ts";
-import { readPatchReadiness } from "./candidate-readiness.ts";
+import { readPatchSelection } from "./candidate-readiness.ts";
 import { applyPatchToWorkflowDag, candidateDriftKind } from "./patch-apply.ts";
 import { resolveCandidateStepKey } from "./step-snapshot.ts";
 
@@ -19,6 +19,7 @@ export async function preparePatchCandidate(
     candidate_id: string;
     actor_id: string | null;
     expected_review_digest: string;
+    accepted_operations?: number[] | undefined;
   },
   db: Db,
 ) {
@@ -35,7 +36,13 @@ export async function preparePatchCandidate(
       .limit(1);
     if (!candidate) throw new PatchDecisionError("candidate_missing");
     const workflow = await lockWorkflowForVersionWrite(tx, params.tenant_id, candidate.workflow_id);
-    const readiness = await readPatchReadiness(params.tenant_id, candidate, tx);
+    const selection = await readPatchSelection(
+      params.tenant_id,
+      candidate,
+      tx,
+      params.accepted_operations,
+    );
+    const readiness = selection.readiness;
     if (!readiness.reviewable || readiness.review_digest !== params.expected_review_digest)
       throw new PatchDecisionError(readiness.review_reason ?? "review_changed");
     const note = `repair-preparation:${candidate.id}:${readiness.review_digest}`;
@@ -72,6 +79,7 @@ export async function preparePatchCandidate(
       await resolveCandidateStepKey(params.tenant_id, diff, tx),
       proposal,
       candidateDriftKind(diff),
+      selection.accepted,
     );
     if (!patch.ok) throw new PatchDecisionError(patch.reason);
     const [version] = await tx
@@ -99,7 +107,11 @@ export async function preparePatchCandidate(
         resource_type: "patch_candidate",
         resource_id: candidate.id,
         result: "success",
-        metadata: { workflow_version_id: version.id, base_version_id: readiness.base_version_id },
+        metadata: {
+          workflow_version_id: version.id,
+          base_version_id: readiness.base_version_id,
+          accepted_operations: selection.accepted,
+        },
       },
       tx,
     );

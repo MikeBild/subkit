@@ -3,11 +3,13 @@ import {
   executionSteps,
   executions,
   schemaVersions,
+  workflowAutohealPolicies,
   workflows,
   workflowVersions,
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
+import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { testEnv } from "../../test-helpers/determinism/env.ts";
 import { seedConnector, seedTenant, seedWorkflow } from "../../test-helpers/seed.ts";
 
@@ -43,6 +45,19 @@ function buildSeedDag(label: string, connector_id: string) {
       },
     ],
   };
+}
+
+export async function setAutohealPolicy(
+  ctx: Pick<SelfHealingTestCtx, "testDb" | "tenant_id" | "workflow_id">,
+  policy: "safe-patches" | "never-auto" | "dry-run-gate",
+): Promise<void> {
+  await ctx.testDb.db
+    .insert(workflowAutohealPolicies)
+    .values({ tenant_id: ctx.tenant_id, workflow_id: ctx.workflow_id, policy })
+    .onConflictDoUpdate({
+      target: [workflowAutohealPolicies.workflow_id],
+      set: { policy, updated_at: new Date(FROZEN_NOW) },
+    });
 }
 
 export async function resetSeedDag(ctx: SelfHealingTestCtx): Promise<void> {

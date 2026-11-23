@@ -1,9 +1,9 @@
 import type { z } from "@hono/zod-openapi";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../audit/index.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
-import { patchCandidates, workflows } from "../db/schema/index.ts";
+import { auditLog, patchCandidates, workflows } from "../db/schema/index.ts";
 import {
   type GrantWorkflowAuthoritySchema,
   grantWorkflowAuthority,
@@ -12,6 +12,11 @@ import {
 } from "../workflows/execution-authorities.ts";
 import { assertToolPinsCurrent } from "../workflows/tool-pin-review.ts";
 import { approvePatchCandidate, PatchDecisionError } from "./candidate-decision.ts";
+import {
+  interactionLog,
+  PATCH_INTERACTION_ACTIONS,
+  type PatchInteraction,
+} from "./core/interaction-log.ts";
 import { preparePatchCandidate } from "./prepare-candidate.ts";
 
 export type PatchCandidateRow = typeof patchCandidates.$inferSelect;
@@ -32,6 +37,7 @@ interface ApproveReviewedInput {
   request: Request;
   candidate: PatchCandidateRow;
   expected_review_digest: string;
+  accepted_operations?: number[] | undefined;
   execution_authority?: z.infer<typeof GrantWorkflowAuthoritySchema> | undefined;
 }
 
@@ -87,6 +93,34 @@ export async function findPatchCandidate(
   return rows[0] ?? null;
 }
 
+export async function readPatchInteractionLog(
+  db: Db,
+  tenantId: string,
+  candidateId: string,
+): Promise<PatchInteraction[]> {
+  const rows = await db
+    .select({
+      ts: auditLog.ts,
+      action: auditLog.action,
+      result: auditLog.result,
+      actor_type: auditLog.actor_type,
+      actor_id: auditLog.actor_id,
+      reason: auditLog.reason,
+      metadata: auditLog.metadata,
+    })
+    .from(auditLog)
+    .where(
+      and(
+        eq(auditLog.tenant_id, tenantId),
+        eq(auditLog.resource_type, "patch_candidate"),
+        eq(auditLog.resource_id, candidateId),
+        inArray(auditLog.action, [...PATCH_INTERACTION_ACTIONS]),
+      ),
+    )
+    .orderBy(asc(auditLog.ts), asc(auditLog.id));
+  return interactionLog(rows);
+}
+
 async function comparedToolPins(
   db: Db,
   input: ApproveReviewedInput,
@@ -128,6 +162,7 @@ async function approveWithAuthority(
         actor_id: principal.id,
         actor_type: principal.kind,
         expected_review_digest: input.expected_review_digest,
+        accepted_operations: input.accepted_operations,
       },
       tx as unknown as Db,
     );
@@ -147,6 +182,7 @@ async function approveWithAuthority(
         actor_type: principal.kind,
         expected_review_digest: input.expected_review_digest,
         prepared_version_id: authority.workflow_version_id,
+        accepted_operations: input.accepted_operations,
       },
       tx as unknown as Db,
     );
@@ -169,6 +205,7 @@ export async function approveReviewedPatchCandidate(
             actor_id: principal.id,
             actor_type: principal.kind,
             expected_review_digest: input.expected_review_digest,
+            accepted_operations: input.accepted_operations,
           },
           db,
         )

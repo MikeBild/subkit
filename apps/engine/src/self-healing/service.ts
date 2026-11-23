@@ -137,7 +137,6 @@ async function refreshOrSkipExistingCandidate(
   db: Db,
   existing: typeof patchCandidates.$inferSelect,
   ctx: SignalContext,
-  options: ProcessSignalOptions,
 ): Promise<ProcessSignalResult | null> {
   const diff = (existing.diff ?? {}) as Record<string, unknown>;
   const proposal = diff.proposal as PatchProposal | undefined;
@@ -183,76 +182,15 @@ async function refreshOrSkipExistingCandidate(
     };
   }
 
-  const wouldAutoApply = shouldAutoApply({
-    policy,
-    classification: existing.classification,
-    fixture_passed: false,
-    has_fixture: false,
-  });
-  const autoApply = options.allowAutoApply && wouldAutoApply;
-
-  let closed = false;
-  const appliedVersionId = await db.transaction(async (tx) => {
-    const outcome = autoApply
-      ? await autoApplyPatch(tx, {
-          tenant_id: ctx.tenant_id,
-          workflow_id: ctx.workflow_id,
-          candidate_id: existing.id,
-          proposal,
-        })
-      : null;
-    if (!outcome?.applied) {
-      if (outcome) logPatchNotApplied(ctx, existing.id, outcome.reason, "proactive_refresh");
-      closed = await closeIfUndecidable(tx, existing, "proactive_refresh");
-      return null;
-    }
-    await auditAwait(
-      {
-        tenant_id: ctx.tenant_id,
-        actor_type: "system",
-        action: AuditAction.PATCH_CANDIDATE_AUTO_APPLIED,
-        resource_type: "patch_candidate",
-        resource_id: existing.id,
-        result: "success",
-        metadata: {
-          workflow_id: ctx.workflow_id,
-          new_workflow_version_id: outcome.version_id,
-          changed_paths: outcome.changed_paths,
-          classification: existing.classification,
-          policy,
-          source: ctx.source,
-          via: "proactive_refresh",
-        },
-      },
-      tx,
-    );
-    await writeEvent(tx, {
-      tenant_id: ctx.tenant_id,
-      channel: "notification.emitted",
-      type: "patch.applied",
-      payload: {
-        patch_candidate_id: existing.id,
-        workflow_id: ctx.workflow_id,
-        workflow_version_id: outcome.version_id,
-        changed_paths: outcome.changed_paths,
-        auto_applied: true,
-      },
-    });
-    return outcome.version_id;
-  });
-
-  const auto_applied = !!appliedVersionId;
+  const closed = await db.transaction((tx) =>
+    closeIfUndecidable(tx, existing, "proactive_refresh"),
+  );
   if (!closed)
-    recordPatchCandidate({
-      classification: existing.classification,
-      decision: auto_applied ? "auto_applied" : "parked",
-    });
+    recordPatchCandidate({ classification: existing.classification, decision: "parked" });
   logger.info({
     module: "self-healing",
-    action: auto_applied ? "patch.auto_applied" : "patch.refreshed",
-    msg: auto_applied
-      ? "self-healing auto-applied a refreshed proactive patch"
-      : "refreshed existing proactive patch candidate — no duplicate row",
+    action: "patch.refreshed",
+    msg: "refreshed existing proactive patch candidate — no duplicate row",
     tenant_id: ctx.tenant_id,
     workflow_id: ctx.workflow_id,
     patch_candidate_id: existing.id,
@@ -264,8 +202,8 @@ async function refreshOrSkipExistingCandidate(
   return {
     candidate_id: existing.id,
     classification: existing.classification,
-    status: auto_applied ? "applied" : closed ? "inapplicable" : "proposed",
-    auto_applied,
+    status: closed ? "inapplicable" : "proposed",
+    auto_applied: false,
     dry_run_passed: null,
     proposal,
     policy,
@@ -308,7 +246,7 @@ async function processDriftSignalLocked(
     workflow_step_id: ctx.workflow_step_id ?? null,
   });
   if (existing) {
-    const dedup = await refreshOrSkipExistingCandidate(db, existing, ctx, options);
+    const dedup = await refreshOrSkipExistingCandidate(db, existing, ctx);
     if (dedup) return dedup;
   }
   const terminal = await findMatchingTerminalEndpointCandidate(db, {

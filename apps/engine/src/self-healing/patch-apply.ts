@@ -2,6 +2,12 @@ import { compileSelector } from "../execution/selectors.ts";
 import type { PatchProposal } from "../llm/flows/repair.ts";
 import { workflowJsonDigest } from "../workflows/canonical-json.ts";
 import { applyGateFixOps, GateFixPatchSchema, replanGateFix } from "../workflows/gate-fix.ts";
+import {
+  applyAccepted,
+  type PatchOperation,
+  patchOperations,
+  selectAccepted,
+} from "./core/patch-operations.ts";
 
 export interface ProjectionSlots {
   data_selector?: string | undefined;
@@ -83,7 +89,9 @@ export type PatchApplyFailure =
   | "no_change"
   | "malformed_dag"
   | "gate_fix_without_gate_block"
-  | "gate_fix_mismatch";
+  | "gate_fix_mismatch"
+  | "accepted_operations_invalid"
+  | "partial_gate_fix";
 
 export type PatchApplyOutcome =
   | {
@@ -92,6 +100,8 @@ export type PatchApplyOutcome =
       before: Record<string, unknown>;
       after: Record<string, unknown>;
       changed_paths: string[];
+      operations: PatchOperation[];
+      accepted: number[] | null;
     }
   | { ok: false; reason: PatchApplyFailure };
 
@@ -112,6 +122,7 @@ export function applyPatchToWorkflowDag(
   step_key: string | null,
   patch: PatchProposal,
   drift_kind?: string | null,
+  accepted?: readonly number[] | null,
 ): PatchApplyOutcome {
   if (!step_key) return { ok: false, reason: "no_step_anchor" };
   const steps = readSteps(dag);
@@ -121,8 +132,12 @@ export function applyPatchToWorkflowDag(
   if (index < 0) return { ok: false, reason: "step_not_found" };
   const before = steps[index] as Record<string, unknown>;
 
-  if (patch.kind === "gate_fix")
-    return applyGateFix(dag, steps, index, step_key, patch, drift_kind);
+  if (patch.kind === "gate_fix") {
+    const fixed = applyGateFix(dag, steps, index, step_key, patch, drift_kind);
+    return "reason" in fixed
+      ? { ok: false, reason: fixed.reason }
+      : settle(dag, steps, index, fixed.after, accepted, true);
+  }
 
   const kind = before.kind;
   if (kind !== "request" && kind !== "transform") {
@@ -136,8 +151,25 @@ export function applyPatchToWorkflowDag(
     string,
     unknown
   >;
+  return settle(dag, steps, index, after, accepted, false);
+}
+
+function settle(
+  dag: unknown,
+  steps: Record<string, unknown>[],
+  index: number,
+  patched: Record<string, unknown>,
+  accepted: readonly number[] | null | undefined,
+  whole_only: boolean,
+): PatchApplyOutcome {
+  const before = steps[index] as Record<string, unknown>;
+  if (diffStepPaths(before, patched).length === 0) return { ok: false, reason: "no_change" };
+  const operations = patchOperations(before, patched);
+  const selection = selectAccepted(operations, accepted);
+  if (!selection) return { ok: false, reason: "accepted_operations_invalid" };
+  if (selection.partial && whole_only) return { ok: false, reason: "partial_gate_fix" };
+  const after = selection.partial ? applyAccepted(before, operations, selection.indices) : patched;
   const changed_paths = diffStepPaths(before, after);
-  if (changed_paths.length === 0) return { ok: false, reason: "no_change" };
   if (changed_paths.includes("data_selector") && !compilesAsSelector(after.data_selector))
     return { ok: false, reason: "patch_not_applicable" };
 
@@ -149,6 +181,8 @@ export function applyPatchToWorkflowDag(
     before,
     after,
     changed_paths,
+    operations,
+    accepted: selection.partial ? selection.indices : null,
   };
 }
 
@@ -159,41 +193,29 @@ function applyGateFix(
   step_key: string,
   patch: PatchProposal,
   drift_kind: string | null | undefined,
-): PatchApplyOutcome {
-  if (drift_kind !== "gate_block") return { ok: false, reason: "gate_fix_without_gate_block" };
+): { after: Record<string, unknown> } | { reason: PatchApplyFailure } {
+  if (drift_kind !== "gate_block") return { reason: "gate_fix_without_gate_block" };
   const parsed = GateFixPatchSchema.safeParse(patch.patch);
   if (!parsed.success || parsed.data.step_id !== step_key)
-    return { ok: false, reason: "patch_not_applicable" };
+    return { reason: "patch_not_applicable" };
   const plan = replanGateFix(dag, parsed.data);
   if (!plan) {
     if (parsed.data.fixer === "use_utf8_encoder" && alreadyUtf8(steps[index]))
-      return { ok: false, reason: "no_change" };
+      return { reason: "no_change" };
     if (
       parsed.data.fixer === "declare_report_delivery" &&
       workflowJsonDigest(steps[index]?.report_delivery ?? null) ===
         workflowJsonDigest(parsed.data.ops[0]?.value ?? null)
     )
-      return { ok: false, reason: "no_change" };
-    return { ok: false, reason: "gate_fix_mismatch" };
+      return { reason: "no_change" };
+    return { reason: "gate_fix_mismatch" };
   }
   if (
     plan.step_id !== step_key ||
     workflowJsonDigest(plan.ops) !== workflowJsonDigest(parsed.data.ops)
   )
-    return { ok: false, reason: "gate_fix_mismatch" };
-  const before = steps[index] as Record<string, unknown>;
-  const after = applyGateFixOps(before, plan.ops);
-  const changed_paths = diffStepPaths(before, after);
-  if (changed_paths.length === 0) return { ok: false, reason: "no_change" };
-  const nextSteps = [...steps];
-  nextSteps[index] = after;
-  return {
-    ok: true,
-    dag: { ...(dag as Record<string, unknown>), steps: nextSteps },
-    before,
-    after,
-    changed_paths,
-  };
+    return { reason: "gate_fix_mismatch" };
+  return { after: applyGateFixOps(steps[index] as Record<string, unknown>, plan.ops) };
 }
 
 function alreadyUtf8(step: Record<string, unknown> | undefined): boolean {

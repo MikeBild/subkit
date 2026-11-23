@@ -364,7 +364,16 @@ const PatchApprovalInput = IdInput.extend({
   expected_review_digest: z
     .string()
     .regex(/^[a-f0-9]{64}$/)
-    .describe("Digest from preview_patch_candidate reviewed by the human"),
+    .describe(
+      "Digest the human reviewed: from preview_patch_candidate for the whole repair, from dry_run_patch_candidate for a part of it",
+    ),
+  accepted_operations: z
+    .array(z.number().int().min(0))
+    .min(1)
+    .optional()
+    .describe(
+      "Indices of the changes the human accepted; needs a dry run of exactly these first. Omit to apply the whole repair",
+    ),
 });
 
 export const approvePatchCandidateTool: ConversationTool = {
@@ -381,6 +390,7 @@ export const approvePatchCandidateTool: ConversationTool = {
           actor_id: ctx.actor_id,
           actor_type: ctx.principal?.kind ?? (ctx.actor_id === null ? "system" : "unknown"),
           expected_review_digest: args.expected_review_digest,
+          accepted_operations: args.accepted_operations,
         },
         ctx.db,
       );

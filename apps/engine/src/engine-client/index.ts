@@ -279,14 +279,17 @@ export class EngineClient {
         .limit(1);
       return rows[0] ?? null;
     },
+    interactionLog: (id: string) =>
+      selfHealingSvc.readPatchInteractionLog(this.db, this.tenant_id, id),
     preview: (id: string) => selfHealingSvc.previewPatchCandidate(this.tenant_id, id, this.db),
-    dryRun: (id: string) =>
+    dryRun: (id: string, accepted_operations?: number[]) =>
       selfHealingSvc.dryRunPatchCandidate(
         {
           tenant_id: this.tenant_id,
           candidate_id: id,
           actor_id: this.actor_id,
           actor_type: this.actor_type,
+          accepted_operations,
         },
         this.db,
       ),

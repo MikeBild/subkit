@@ -42,6 +42,8 @@ export async function autoApplyPatch(
     candidate_id: string;
     proposal: PatchProposal;
     prepared_version_id?: string;
+    accepted_operations?: number[] | null;
+    accepted_digest?: string | null;
   },
 ): Promise<AutoApplyResult> {
   const wf = await lockWorkflowForVersionWrite(tx, params.tenant_id, params.workflow_id);
@@ -65,7 +67,13 @@ export async function autoApplyPatch(
     params.tenant_id,
     params.candidate_id,
   );
-  const patched = applyPatchToWorkflowDag(currentVersion.dag, stepKey, params.proposal, driftKind);
+  const patched = applyPatchToWorkflowDag(
+    currentVersion.dag,
+    stepKey,
+    params.proposal,
+    driftKind,
+    params.accepted_operations,
+  );
   if (!patched.ok) return { applied: false, reason: patched.reason };
 
   const newDag = {
@@ -138,6 +146,8 @@ export async function autoApplyPatch(
     .update(patchCandidates)
     .set({
       status: "applied",
+      accepted_operations: patched.accepted,
+      accepted_digest: patched.accepted ? (params.accepted_digest ?? null) : null,
       diff: sql`${patchCandidates.diff} || jsonb_build_object('applied_version_id', ${inserted.id}::text)`,
       updated_at: new Date(),
     })
