@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import vm from "node:vm";
 import { JSDOM } from "jsdom";
 import { act } from "react";
-import { missingProdCredential, PROD_CONNECTOR } from "@/app/journey-fixtures";
+import { missingProdCredential, PROD_CONNECTOR } from "@/app/credential-journey-fixtures";
 import { workerSource } from "@/features/pwa/worker-fixture";
 import { type TranslationKey, translate } from "@/lib/i18n";
 
