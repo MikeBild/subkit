@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  connectionLog,
   shellBanner,
   shellStatus,
   statusNotice,
@@ -99,5 +100,15 @@ describe("banner for the Cockpit", () => {
       },
     );
     expect(shellStatus("online", { phase: "current" }, "de", null).update).toBeNull();
+  });
+});
+
+describe("connection log", () => {
+  test("records going offline and the recovery, nothing else", () => {
+    expect(connectionLog("online", "offline")).toBe("connection.offline");
+    expect(connectionLog("connecting", "offline")).toBe("connection.offline");
+    expect(connectionLog("offline", "online")).toBe("connection.recovered");
+    expect(connectionLog("connecting", "online")).toBeNull();
+    expect(connectionLog("offline", "offline")).toBeNull();
   });
 });

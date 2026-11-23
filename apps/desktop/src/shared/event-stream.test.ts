@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  refusalMessage,
   runEventStream,
   type StreamDeps,
   type StreamResponse,
@@ -113,5 +114,17 @@ describe("runEventStream", () => {
     });
     expect(h.sleeps).toEqual([1000, 2000]);
     expect(statuses.filter((status) => status === "online")).toEqual([]);
+  });
+});
+
+describe("refusalMessage", () => {
+  test("names the status, the code and the trace id of a refused stream", () => {
+    expect(
+      refusalMessage(409, { code: "tenant_context_changed" }, "4bf92f3577b34da6a3ce929d0e0e4736"),
+    ).toBe(
+      "event stream answered 409 code=tenant_context_changed trace=4bf92f3577b34da6a3ce929d0e0e4736",
+    );
+    expect(refusalMessage(502, null, null)).toBe("event stream answered 502");
+    expect(refusalMessage(500, { code: "a b" }, "x")).toBe("event stream answered 500");
   });
 });
