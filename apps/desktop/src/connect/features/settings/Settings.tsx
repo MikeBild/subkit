@@ -11,7 +11,7 @@ import { type Command, quietHoursPatch, settingsFor } from "../../domain/index.t
 import { LocalWorkspace } from "../local-workspace/index.ts";
 
 export function Settings() {
-  const { main, t, dispatch: onCommand } = useSignIn();
+  const { main, view, t, dispatch: onCommand } = useSignIn();
   if (!main) return null;
   const model = settingsFor(main);
   const quiet = model.quietHours;
@@ -164,8 +164,9 @@ export function Settings() {
       </Panel>
       <StepFooter
         backOnly
+        testId="settings"
         back={() => onCommand({ type: "GoBack" } satisfies Command)}
-        backLabel={t("common.back")}
+        backLabel={t(view?.nav?.back ?? "common.back")}
         nextLabel={t("common.next")}
       />
     </div>

@@ -68,7 +68,7 @@ function MacOnlyCapabilities() {
 }
 
 function SupportedCapabilities({ device, signedIn }: { device: string; signedIn: boolean }) {
-  const { t, dispatch } = useSignIn();
+  const { view, t, dispatch } = useSignIn();
   const local = useLocalCapabilities();
   const { state } = local;
   const [tab, setTab] = useState<LocalTab>("folders");
@@ -333,8 +333,9 @@ function SupportedCapabilities({ device, signedIn }: { device: string; signedIn:
       </div>
       <StepFooter
         backOnly
+        testId="local"
         back={() => dispatch({ type: "GoBack" } satisfies Command)}
-        backLabel={t("common.back")}
+        backLabel={t(view?.nav?.back ?? "common.back")}
         nextLabel={t("common.next")}
       />
     </div>

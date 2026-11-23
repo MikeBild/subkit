@@ -62,7 +62,10 @@ export function PermissionSetup() {
   }, [dispatch]);
   if (view?.screen.kind !== "permissions") return null;
   const { setup } = view.screen;
-  const close = () => dispatch({ type: "ClosePermissions" });
+  const later = () => dispatch({ type: "ClosePermissions" });
+  const finish = () => dispatch({ type: "FinishPermissions" });
+  const back = () => dispatch({ type: "GoBack" });
+  const nav = view.nav ?? { back: "common.back" as const, later: false };
   const firstMissing: PermissionKey =
     setup.cards.find((card) => !card.granted)?.key ?? "accessibility";
   return (
@@ -91,11 +94,12 @@ export function PermissionSetup() {
       <StepFooter
         testId="permissions"
         label={t("permissions.done")}
-        next={close}
+        next={finish}
         disabled={!setup.done}
-        skip={close}
+        skip={nav.later ? later : undefined}
         skipLabel={t("permissions.later")}
-        backLabel={t("settings.back")}
+        back={nav.back ? back : undefined}
+        backLabel={t(nav.back ?? "common.back")}
         nextLabel={t("permissions.done")}
       />
     </div>

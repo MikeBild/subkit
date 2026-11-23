@@ -77,6 +77,7 @@ export class WindowHost {
     if (this.cockpit) {
       if (href) void this.cockpit.window.loadURL(target).catch(() => {});
       reveal(this.cockpit.window);
+      this.connectWindow?.hide();
       return false;
     }
     const window = createCockpitWindow(profile, (url) => {

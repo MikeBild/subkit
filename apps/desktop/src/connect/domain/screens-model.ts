@@ -36,6 +36,7 @@ import {
   type WelcomeInvite,
   welcomeInvite,
 } from "./invite-model.ts";
+import { EMPTY_TRAIL, type NavTrail } from "./navigation-model.ts";
 import { SIGN_IN_ERRORS, type SignInErrorCase } from "./sign-in-errors.ts";
 
 export { hostOf };
@@ -55,6 +56,7 @@ export interface FlowUi {
   invite: InviteField;
   invitation: Invitation | null;
   consent: Record<ConsentTopic, boolean | null>;
+  nav: NavTrail;
 }
 
 export type CheckSlot =
@@ -74,6 +76,7 @@ export const INITIAL_FLOW: FlowUi = {
   invite: CLOSED_INVITE,
   invitation: null,
   consent: { notifications: null, diagnostics: null },
+  nav: EMPTY_TRAIL,
 };
 
 export interface Fact {
@@ -414,13 +417,15 @@ export interface PermissionSetupModel {
 
 export function permissionSetupFor(view: PermissionView): PermissionSetupModel {
   const { permissions } = view;
+  const cards = PERMISSION_KEYS.map((key) => ({
+    key,
+    granted: permissionGranted(permissions, key),
+    restart: key === "screen" && permissions.restartPending,
+  }));
+  const missing = cards.filter((card) => !card.granted);
   return {
     supported: view.supported,
-    cards: PERMISSION_KEYS.map((key) => ({
-      key,
-      granted: permissionGranted(permissions, key),
-      restart: key === "screen" && permissions.restartPending,
-    })),
+    cards: missing.length > 0 ? missing : cards,
     done: permissionsDone(permissions),
     lost: view.lost.length > 0,
   };

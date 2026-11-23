@@ -13,6 +13,8 @@ const bridge: ShellBridge = {
 
 contextBridge.exposeInMainWorld("subkitShell", bridge);
 
+const listeners: ((state: never) => void)[] = [];
+
 const connect: ConnectBridge = {
   getState: () => ipcRenderer.invoke("preview:connect-state"),
   checkServer: () => ipcRenderer.invoke("preview:connect-check"),
@@ -21,7 +23,10 @@ const connect: ConnectBridge = {
   openProfile: async () => {},
   removeProfile: async () => {},
   updateSettings: async () => {},
-  showView: async () => {},
+  showView: async (view) => {
+    const next = await ipcRenderer.invoke("preview:show-view", view);
+    for (const listener of listeners) listener(next as never);
+  },
   updateAction: async () => {},
   reportProblem: async () => {},
   copyDiagnostics: async () => {},
@@ -54,7 +59,9 @@ const connect: ConnectBridge = {
   answerDiagnostics: async () => {},
   checkInvite: () => ipcRenderer.invoke("preview:connect-invite"),
   joinInvite: async () => null,
-  onState: () => {},
+  onState: (listener) => {
+    listeners.push(listener as (state: never) => void);
+  },
 };
 
 contextBridge.exposeInMainWorld("subkitConnect", connect);

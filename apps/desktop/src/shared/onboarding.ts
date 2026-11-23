@@ -49,6 +49,22 @@ export function currentStep(onboarding: Onboarding): OnboardingStep | null {
   return onboarding.steps.find((step) => !onboarding.done.includes(step)) ?? null;
 }
 
+export interface SetupFacts {
+  profiles: readonly { id: string; signedIn: boolean }[];
+  signedIn: { profileId: string } | null;
+}
+
+export function firstSetup({ profiles, signedIn }: SetupFacts): boolean {
+  if (profiles.some((profile) => profile.signedIn && profile.id !== signedIn?.profileId))
+    return false;
+  if (signedIn) return true;
+  return !profiles.some((profile) => profile.signedIn);
+}
+
+export function setupComplete(facts: SetupFacts): boolean {
+  return !firstSetup(facts);
+}
+
 export function completeStep(onboarding: Onboarding, step: OnboardingStep): Onboarding {
   if (!onboarding.steps.includes(step) || onboarding.done.includes(step)) return onboarding;
   return { ...onboarding, done: [...onboarding.done, step], failed: false };

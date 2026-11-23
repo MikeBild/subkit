@@ -443,10 +443,7 @@ describe("connect flow: notices from the main process", () => {
       }),
     ).toEqual({
       supported: true,
-      cards: [
-        { key: "accessibility", granted: true, restart: false },
-        { key: "screen", granted: false, restart: true },
-      ],
+      cards: [{ key: "screen", granted: false, restart: true }],
       done: false,
       lost: true,
     });

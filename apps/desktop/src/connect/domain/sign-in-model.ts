@@ -9,7 +9,18 @@ import type {
 } from "../../shared/ipc.ts";
 import { LAST_SETUP_STEP } from "../../shared/local/local-workspace-model.ts";
 import type { PermissionKey } from "../../shared/local/permission-model.ts";
+import { firstSetup } from "../../shared/onboarding.ts";
 import { CLOSED_INVITE, inviteLinkOf } from "./invite-model.ts";
+import {
+  type DirectNav,
+  directNavFor,
+  isDirectView,
+  navigated,
+  returnTarget,
+  viewChanged,
+  wentBack,
+  wentHome,
+} from "./navigation-model.ts";
 import {
   type ConsentTopic,
   type FlowStep,
@@ -57,6 +68,7 @@ export type Command =
   | { type: "OpenPermissionSettings"; key: PermissionKey }
   | { type: "RestartApp" }
   | { type: "ClosePermissions" }
+  | { type: "FinishPermissions" }
   | { type: "StartLocalSetup" }
   | { type: "LocalPickDataFolder" }
   | { type: "LocalNext" }
@@ -100,7 +112,10 @@ export type Event =
   | { type: "ConsentChosen"; topic: ConsentTopic; give: boolean }
   | { type: "MainStateReceived"; state: ConnectState }
   | { type: "LocalSetupOpened" }
-  | { type: "LocalStepChanged"; step: number };
+  | { type: "LocalStepChanged"; step: number }
+  | { type: "Navigated"; from: ConnectView; to: ConnectView }
+  | { type: "NavigatedBack"; to: ConnectView }
+  | { type: "NavigatedHome" };
 
 export type Effect =
   | { kind: "checkServer"; address: string; requestId: number }
@@ -161,6 +176,37 @@ export function screenOf(state: SignInState): Screen | null {
   return state.main ? screenFor(state.main, state.flow) : null;
 }
 
+function goTo(state: SignInState, view: ConnectView, ...effects: Effect[]): Decision {
+  const from = state.main?.view ?? "connect";
+  return {
+    events: from === view ? [] : [{ type: "Navigated", from, to: view }],
+    effects: [{ kind: "showView", view }, ...effects],
+  };
+}
+
+function goHome(state: SignInState): Decision {
+  const target = state.main ? returnTarget(state.main, { trail: [], requested: null }) : null;
+  return {
+    events: [{ type: "NavigatedHome" }],
+    effects: [
+      { kind: "showView", view: "connect" },
+      ...(target?.kind === "cockpit"
+        ? [{ kind: "openProfile" as const, profileId: target.profileId }]
+        : []),
+    ],
+  };
+}
+
+function goBack(state: SignInState): Decision {
+  if (!state.main) return NOTHING;
+  const target = returnTarget(state.main, state.flow.nav);
+  if (target.kind !== "view") return goHome(state);
+  return {
+    events: [{ type: "NavigatedBack", to: target.view }],
+    effects: [{ kind: "showView", view: target.view }],
+  };
+}
+
 function backStep(state: SignInState, screen: Screen | null): FlowStep {
   if (screen?.kind === "invite" || screen?.kind === "connect") return "welcome";
   if (screen?.kind === "signin" && state.flow.path === "invite" && state.flow.invitation)
@@ -206,16 +252,18 @@ export function decide(state: SignInState, command: Command, context: DecideCont
     case "CancelSignIn":
       return only({ kind: "cancelLogin" });
     case "GoBack": {
-      if (screen?.kind === "settings" || screen?.kind === "permissions")
-        return only({ kind: "showView", view: "connect" });
-      if (screen?.kind === "local-capabilities")
-        return only({ kind: "showView", view: "settings" });
+      if (state.main && isDirectView(state.main.view)) return goBack(state);
       if (screen?.kind === "local") return decideLocal(state, { type: "LocalBack" });
       const waiting = screen?.kind === "signin" && screen.signin.phase === "waiting";
-      return {
-        events: [{ type: "WentBack", to: backStep(state, screen) }],
-        effects: waiting ? [{ kind: "cancelLogin" }] : [],
-      };
+      const cancel: Effect[] = waiting ? [{ kind: "cancelLogin" }] : [];
+      if (screen?.kind === "signin" && state.main && !firstSetup(state.main)) {
+        const back = state.flow.nav.trail.length > 0 ? goBack(state) : NOTHING;
+        return {
+          events: [{ type: "WentBack", to: "connect" }, ...back.events],
+          effects: [...cancel, ...back.effects],
+        };
+      }
+      return { events: [{ type: "WentBack", to: backStep(state, screen) }], effects: cancel };
     }
     case "ConnectAnotherServer":
       return { events: [{ type: "ReloginDismissed" }], effects: [] };
@@ -228,9 +276,13 @@ export function decide(state: SignInState, command: Command, context: DecideCont
     case "SignInToServer": {
       const profile = state.main?.profiles.find((item) => item.id === command.profileId);
       if (!profile) return NOTHING;
+      const opened = goTo(state, "connect");
       return {
-        events: [{ type: "SignInTargetChosen", origin: profile.serverOrigin, serverVersion: null }],
-        effects: [{ kind: "showView", view: "connect" }],
+        events: [
+          { type: "SignInTargetChosen", origin: profile.serverOrigin, serverVersion: null },
+          ...opened.events,
+        ],
+        effects: opened.effects,
       };
     }
     case "RemoveServer":
@@ -242,21 +294,24 @@ export function decide(state: SignInState, command: Command, context: DecideCont
       return only({ kind: "openProfile", profileId: action.profileId });
     }
     case "ToggleSettings":
-      return only({
-        kind: "showView",
-        view:
-          state.main?.view === "settings" || state.main?.view === "local" ? "connect" : "settings",
-      });
+      return state.main?.view === "settings" || state.main?.view === "local"
+        ? goBack(state)
+        : goTo(state, "settings");
     case "OpenLocalCapabilities":
-      return screen?.kind === "settings" ? only({ kind: "showView", view: "local" }) : NOTHING;
+      return screen?.kind === "settings" ? goTo(state, "local") : NOTHING;
     case "OpenPermissions":
-      return only({ kind: "showView", view: "permissions" });
+      return goTo(state, "permissions");
     case "ChangeSettings":
       return only({ kind: "updateSettings", patch: command.patch });
     case "RunUpdateAction":
       return only({ kind: "updateAction" });
-    case "ReportProblem":
-      return only({ kind: "reportProblem" });
+    case "ReportProblem": {
+      const from = state.main?.view ?? "connect";
+      return {
+        events: from === "report" ? [] : [{ type: "Navigated", from, to: "report" }],
+        effects: [{ kind: "reportProblem" }],
+      };
+    }
     case "CopyDiagnostics":
       return only({ kind: "copyDiagnostics" });
     case "SaveDiagnostics":
@@ -266,7 +321,7 @@ export function decide(state: SignInState, command: Command, context: DecideCont
         ? only({ kind: "submitReport", input: command.input })
         : NOTHING;
     case "CloseReport":
-      return state.main?.view === "report" ? only({ kind: "showView", view: "connect" }) : NOTHING;
+      return state.main?.view === "report" ? goBack(state) : NOTHING;
     case "OpenLogs":
       return only({ kind: "openLogs" });
     case "CheckPermissions":
@@ -276,7 +331,9 @@ export function decide(state: SignInState, command: Command, context: DecideCont
     case "RestartApp":
       return only({ kind: "restartApp" });
     case "ClosePermissions":
-      return only({ kind: "showView", view: "connect" });
+      return goHome(state);
+    case "FinishPermissions":
+      return state.main?.view === "permissions" ? goBack(state) : NOTHING;
     case "ChooseWorkspace":
       return screen?.kind === "workspace" &&
         screen.workspaces.some((workspace) => workspace.tenantId === command.tenantId)
@@ -511,12 +568,19 @@ export function evolve(state: SignInState, event: Event): SignInState {
       return { ...state, flow: { ...flow, step: "local", localStep: 0 } };
     case "LocalStepChanged":
       return { ...state, flow: { ...flow, localStep: event.step } };
+    case "Navigated":
+      return { ...state, flow: { ...flow, nav: navigated(flow.nav, event.from, event.to) } };
+    case "NavigatedBack":
+      return { ...state, flow: { ...flow, nav: wentBack(flow.nav, event.to) } };
+    case "NavigatedHome":
+      return { ...state, flow: { ...flow, nav: wentHome() } };
     case "MainStateReceived": {
       const restart = Boolean(state.main?.signedIn) && !event.state.signedIn;
       const base = restart ? INITIAL_FLOW : flow;
       const fresh = (restart || !state.main) && base.address === "";
       const prefilled = fresh ? { ...base, address: event.state.defaultServer ?? "" } : base;
-      return { main: event.state, flow: forcedStep(event.state, prefilled) };
+      const nav = viewChanged(prefilled.nav, state.main?.view ?? null, event.state.view);
+      return { main: event.state, flow: forcedStep(event.state, { ...prefilled, nav }) };
     }
   }
 }
@@ -568,11 +632,18 @@ export function evolveAll(state: SignInState, events: Event[]): SignInState {
 export interface WindowView {
   screen: Screen;
   frame: FrameModel;
+  nav: DirectNav | null;
 }
 
 export function viewOf(state: SignInState): WindowView | null {
   const screen = screenOf(state);
-  return screen && state.main ? { screen, frame: frameFor(screen, state.flow.path) } : null;
+  const { main } = state;
+  if (!screen || !main) return null;
+  return {
+    screen,
+    frame: frameFor(screen, state.flow.path, firstSetup(main)),
+    nav: isDirectView(main.view) ? directNavFor(main.view, main, state.flow.nav) : null,
+  };
 }
 
 export function signInAnswered(result: CheckResult | null): Event[] {
