@@ -1,0 +1,42 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/models",
+    "headers": {
+      "anthropic-version": "2023-06-01"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "data": [
+        {
+          "id": "synthetic-model-1",
+          "type": "model",
+          "display_name": "Synthetic Model"
+        }
+      ],
+      "has_more": false
+    }
+  },
+  "expect": {
+    "url": "https://api.anthropic.com/v1/models",
+    "auth_header": {
+      "name": "x-api-key",
+      "value": "synthetic-contract-token"
+    },
+    "output": {
+      "data": [
+        {
+          "id": "synthetic-model-1",
+          "type": "model",
+          "display_name": "Synthetic Model"
+        }
+      ],
+      "has_more": false
+    }
+  }
+}

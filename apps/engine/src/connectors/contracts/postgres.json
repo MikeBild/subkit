@@ -1,0 +1,10 @@
+{
+  "connector": {
+    "dsn": "postgres://db.example.com:5432/synthetic",
+    "config": {}
+  },
+  "credential": {
+    "username": "synthetic-user",
+    "password": "synthetic-password"
+  }
+}

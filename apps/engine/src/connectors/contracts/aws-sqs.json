@@ -1,0 +1,36 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/",
+    "headers": {
+      "x-amz-target": "AmazonSQS.SendMessage",
+      "content-type": "application/x-amz-json-1.0"
+    },
+    "body": {
+      "QueueUrl": "https://sqs.us-east-1.amazonaws.com/000000000000/synthetic-queue",
+      "MessageBody": "synthetic message"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/x-amz-json-1.0"
+    },
+    "body": {
+      "MessageId": "00000000-0000-4000-8000-000000000002",
+      "MD5OfMessageBody": "0123456789abcdef0123456789abcdef"
+    }
+  },
+  "expect": {
+    "url": "https://sqs.us-east-1.amazonaws.com/",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "AWS4-HMAC-SHA256 Credential=SYNTHETICACCESSKEYID/",
+      "match": "prefix"
+    },
+    "output": {
+      "MessageId": "00000000-0000-4000-8000-000000000002",
+      "MD5OfMessageBody": "0123456789abcdef0123456789abcdef"
+    }
+  }
+}

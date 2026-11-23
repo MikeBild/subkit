@@ -1,0 +1,39 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/models"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "object": "list",
+      "data": [
+        {
+          "id": "synthetic-model-1",
+          "object": "model",
+          "owned_by": "synthetic"
+        }
+      ]
+    }
+  },
+  "expect": {
+    "url": "https://api.openai.com/v1/models",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "Bearer synthetic-contract-token"
+    },
+    "output": {
+      "object": "list",
+      "data": [
+        {
+          "id": "synthetic-model-1",
+          "object": "model",
+          "owned_by": "synthetic"
+        }
+      ]
+    }
+  }
+}

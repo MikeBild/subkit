@@ -1,0 +1,35 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/webmasters/v3/sites"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "siteEntry": [
+        {
+          "siteUrl": "sc-domain:example.com",
+          "permissionLevel": "siteOwner"
+        }
+      ]
+    }
+  },
+  "expect": {
+    "url": "https://searchconsole.googleapis.com/webmasters/v3/sites",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "Bearer synthetic-contract-token"
+    },
+    "output": {
+      "siteEntry": [
+        {
+          "siteUrl": "sc-domain:example.com",
+          "permissionLevel": "siteOwner"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/spreadsheets/synthetic-sheet-1/values/A1:B2"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "range": "Sheet1!A1:B2",
+      "majorDimension": "ROWS",
+      "values": [["name", "count"], ["synthetic", "1"]]
+    }
+  },
+  "expect": {
+    "url": "https://sheets.googleapis.com/v4/spreadsheets/synthetic-sheet-1/values/A1:B2",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "Bearer synthetic-contract-token"
+    },
+    "output": {
+      "range": "Sheet1!A1:B2",
+      "majorDimension": "ROWS",
+      "values": [["name", "count"], ["synthetic", "1"]]
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/oauth2/v3/userinfo"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "sub": "100000000000000000001",
+      "email": "user@example.com",
+      "email_verified": true
+    }
+  },
+  "expect": {
+    "url": "https://www.googleapis.com/oauth2/v3/userinfo",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "Bearer synthetic-contract-token"
+    },
+    "output": {
+      "sub": "100000000000000000001",
+      "email": "user@example.com",
+      "email_verified": true
+    }
+  }
+}

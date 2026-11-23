@@ -1,0 +1,35 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/Accounts/ACSYNTHETIC0001/Messages.json",
+    "headers": {
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    "body": "From=%2B15005550006&To=%2B15005550010&Body=Synthetic+message"
+  },
+  "response": {
+    "status": 201,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "sid": "SMSYNTHETIC0001",
+      "status": "queued",
+      "to": "+15005550010",
+      "from": "+15005550006"
+    }
+  },
+  "expect": {
+    "url": "https://api.twilio.com/2010-04-01/Accounts/ACSYNTHETIC0001/Messages.json",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "Basic c3ludGhldGljLXVzZXI6c3ludGhldGljLXBhc3N3b3Jk"
+    },
+    "output": {
+      "sid": "SMSYNTHETIC0001",
+      "status": "queued",
+      "to": "+15005550010",
+      "from": "+15005550006"
+    }
+  }
+}

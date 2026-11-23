@@ -1,0 +1,11 @@
+{
+  "connector": {
+    "base_url": "https://s3.us-east-1.amazonaws.com",
+    "config": {
+      "bucket": "synthetic-bucket"
+    }
+  },
+  "credential": {
+    "value": "synthetic-contract-token"
+  }
+}

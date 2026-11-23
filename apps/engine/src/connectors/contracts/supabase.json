@@ -1,0 +1,36 @@
+{
+  "request": {
+    "base_url": "https://syntheticref.supabase.co/rest/v1",
+    "method": "GET",
+    "path": "/items",
+    "query": {
+      "select": "id,name",
+      "limit": 1
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": [
+      {
+        "id": 1,
+        "name": "Synthetic item"
+      }
+    ]
+  },
+  "expect": {
+    "url": "https://syntheticref.supabase.co/rest/v1/items?select=id%2Cname&limit=1",
+    "auth_header": {
+      "name": "apikey",
+      "value": "synthetic-contract-token"
+    },
+    "output": [
+      {
+        "id": 1,
+        "name": "Synthetic item"
+      }
+    ]
+  }
+}

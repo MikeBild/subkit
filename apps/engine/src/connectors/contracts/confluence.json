@@ -1,0 +1,43 @@
+{
+  "request": {
+    "base_url": "https://api.atlassian.com/ex/confluence/synthetic-cloud-id/wiki/api/v2",
+    "method": "GET",
+    "path": "/spaces",
+    "query": {
+      "limit": 1
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "results": [
+        {
+          "id": "1001",
+          "key": "SYN",
+          "name": "Synthetic space"
+        }
+      ],
+      "_links": {}
+    }
+  },
+  "expect": {
+    "url": "https://api.atlassian.com/ex/confluence/synthetic-cloud-id/wiki/api/v2/spaces?limit=1",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "Bearer synthetic-contract-token"
+    },
+    "output": {
+      "results": [
+        {
+          "id": "1001",
+          "key": "SYN",
+          "name": "Synthetic space"
+        }
+      ],
+      "_links": {}
+    }
+  }
+}

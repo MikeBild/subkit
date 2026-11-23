@@ -1,0 +1,40 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v2/locations",
+    "headers": {
+      "Square-Version": "2025-01-22"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "locations": [
+        {
+          "id": "LSYNTHETIC0001",
+          "name": "Synthetic location",
+          "status": "ACTIVE"
+        }
+      ]
+    }
+  },
+  "expect": {
+    "url": "https://connect.squareup.com/v2/locations",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "Bearer synthetic-contract-token"
+    },
+    "output": {
+      "locations": [
+        {
+          "id": "LSYNTHETIC0001",
+          "name": "Synthetic location",
+          "status": "ACTIVE"
+        }
+      ]
+    }
+  }
+}

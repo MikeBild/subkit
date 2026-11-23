@@ -1,0 +1,29 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/users/me/profile"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "emailAddress": "user@example.com",
+      "messagesTotal": 3,
+      "threadsTotal": 2
+    }
+  },
+  "expect": {
+    "url": "https://gmail.googleapis.com/gmail/v1/users/me/profile",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "Bearer synthetic-contract-token"
+    },
+    "output": {
+      "emailAddress": "user@example.com",
+      "messagesTotal": 3,
+      "threadsTotal": 2
+    }
+  }
+}

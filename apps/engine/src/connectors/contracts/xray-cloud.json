@@ -1,0 +1,40 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "",
+    "body": {
+      "query": "query { __schema { queryType { name } } }"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "data": {
+        "__schema": {
+          "queryType": {
+            "name": "Query"
+          }
+        }
+      }
+    }
+  },
+  "expect": {
+    "url": "https://xray.cloud.getxray.app/api/v2/graphql",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "Bearer synthetic-contract-token"
+    },
+    "output": {
+      "data": {
+        "__schema": {
+          "queryType": {
+            "name": "Query"
+          }
+        }
+      }
+    }
+  }
+}

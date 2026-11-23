@@ -1,0 +1,44 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/files/list_folder",
+    "body": {
+      "path": ""
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "entries": [
+        {
+          ".tag": "file",
+          "name": "synthetic.txt",
+          "id": "id:synthetic1"
+        }
+      ],
+      "cursor": "synthetic-cursor",
+      "has_more": false
+    }
+  },
+  "expect": {
+    "url": "https://api.dropboxapi.com/2/files/list_folder",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "Bearer synthetic-contract-token"
+    },
+    "output": {
+      "entries": [
+        {
+          ".tag": "file",
+          "name": "synthetic.txt",
+          "id": "id:synthetic1"
+        }
+      ],
+      "cursor": "synthetic-cursor",
+      "has_more": false
+    }
+  }
+}

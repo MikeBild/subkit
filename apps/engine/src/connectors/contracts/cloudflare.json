@@ -1,0 +1,37 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/user/tokens/verify"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "success": true,
+      "errors": [],
+      "messages": [],
+      "result": {
+        "id": "synthetic-token-id",
+        "status": "active"
+      }
+    }
+  },
+  "expect": {
+    "url": "https://api.cloudflare.com/client/v4/user/tokens/verify",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "Bearer synthetic-contract-token"
+    },
+    "output": {
+      "success": true,
+      "errors": [],
+      "messages": [],
+      "result": {
+        "id": "synthetic-token-id",
+        "status": "active"
+      }
+    }
+  }
+}

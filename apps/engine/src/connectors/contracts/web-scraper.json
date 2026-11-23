@@ -1,0 +1,19 @@
+{
+  "request": {
+    "base_url": "https://www.example.com",
+    "method": "GET",
+    "path": "/pricing"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/html; charset=utf-8"
+    },
+    "body": "<html><head><title>Synthetic pricing</title></head><body><h1>Pricing</h1></body></html>"
+  },
+  "expect": {
+    "url": "https://www.example.com/pricing",
+    "auth_header": null,
+    "output": "<html><head><title>Synthetic pricing</title></head><body><h1>Pricing</h1></body></html>"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/users/me"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "data": {
+        "gid": "1000000000000001",
+        "name": "Synthetic User",
+        "email": "user@example.com"
+      }
+    }
+  },
+  "expect": {
+    "url": "https://app.asana.com/api/1.0/users/me",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "Bearer synthetic-contract-token"
+    },
+    "output": {
+      "data": {
+        "gid": "1000000000000001",
+        "name": "Synthetic User",
+        "email": "user@example.com"
+      }
+    }
+  }
+}

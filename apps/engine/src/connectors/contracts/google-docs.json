@@ -1,0 +1,27 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/documents/synthetic-document-1"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "documentId": "synthetic-document-1",
+      "title": "Synthetic document"
+    }
+  },
+  "expect": {
+    "url": "https://docs.googleapis.com/v1/documents/synthetic-document-1",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "Bearer synthetic-contract-token"
+    },
+    "output": {
+      "documentId": "synthetic-document-1",
+      "title": "Synthetic document"
+    }
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "",
+    "body": {
+      "query": "query { me { id email name } }"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "data": {
+        "me": {
+          "id": "u_synthetic_1",
+          "name": "Synthetic User",
+          "email": "user@example.com"
+        }
+      }
+    }
+  },
+  "expect": {
+    "url": "https://api.monday.com/v2",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "Bearer synthetic-contract-token"
+    },
+    "output": {
+      "data": {
+        "me": {
+          "id": "u_synthetic_1",
+          "name": "Synthetic User",
+          "email": "user@example.com"
+        }
+      }
+    }
+  }
+}

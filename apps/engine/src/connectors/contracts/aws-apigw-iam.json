@@ -1,0 +1,37 @@
+{
+  "request": {
+    "base_url": "https://synthetic0003.execute-api.us-east-1.amazonaws.com/prod",
+    "method": "GET",
+    "path": "/items"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "items": [
+        {
+          "id": "item-1",
+          "name": "Synthetic item"
+        }
+      ]
+    }
+  },
+  "expect": {
+    "url": "https://synthetic0003.execute-api.us-east-1.amazonaws.com/prod/items",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "AWS4-HMAC-SHA256 Credential=SYNTHETICACCESSKEYID/",
+      "match": "prefix"
+    },
+    "output": {
+      "items": [
+        {
+          "id": "item-1",
+          "name": "Synthetic item"
+        }
+      ]
+    }
+  }
+}

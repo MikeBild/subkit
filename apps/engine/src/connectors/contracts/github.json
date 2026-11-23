@@ -1,0 +1,29 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/user"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "login": "synthetic-user",
+      "id": 1000001,
+      "type": "User"
+    }
+  },
+  "expect": {
+    "url": "https://api.github.com/user",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "Bearer synthetic-contract-token"
+    },
+    "output": {
+      "login": "synthetic-user",
+      "id": 1000001,
+      "type": "User"
+    }
+  }
+}

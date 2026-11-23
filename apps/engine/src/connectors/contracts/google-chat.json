@@ -1,0 +1,40 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/spaces",
+    "query": {
+      "pageSize": 1
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "spaces": [
+        {
+          "name": "spaces/SYNTHETIC1",
+          "displayName": "Synthetic space",
+          "spaceType": "SPACE"
+        }
+      ]
+    }
+  },
+  "expect": {
+    "url": "https://chat.googleapis.com/v1/spaces?pageSize=1",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "Bearer synthetic-contract-token"
+    },
+    "output": {
+      "spaces": [
+        {
+          "name": "spaces/SYNTHETIC1",
+          "displayName": "Synthetic space",
+          "spaceType": "SPACE"
+        }
+      ]
+    }
+  }
+}

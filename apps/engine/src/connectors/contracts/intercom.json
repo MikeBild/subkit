@@ -1,0 +1,44 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/contacts",
+    "query": {
+      "per_page": 1
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "type": "list",
+      "data": [
+        {
+          "type": "contact",
+          "id": "synthetic-contact-1",
+          "email": "contact@example.com"
+        }
+      ],
+      "total_count": 1
+    }
+  },
+  "expect": {
+    "url": "https://api.intercom.io/contacts?per_page=1",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "Bearer synthetic-contract-token"
+    },
+    "output": {
+      "type": "list",
+      "data": [
+        {
+          "type": "contact",
+          "id": "synthetic-contact-1",
+          "email": "contact@example.com"
+        }
+      ],
+      "total_count": 1
+    }
+  }
+}

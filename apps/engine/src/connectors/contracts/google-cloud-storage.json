@@ -1,0 +1,40 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/b",
+    "query": {
+      "project": "synthetic-project"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "kind": "storage#buckets",
+      "items": [
+        {
+          "id": "synthetic-bucket",
+          "name": "synthetic-bucket"
+        }
+      ]
+    }
+  },
+  "expect": {
+    "url": "https://storage.googleapis.com/storage/v1/b?project=synthetic-project",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "Bearer synthetic-contract-token"
+    },
+    "output": {
+      "kind": "storage#buckets",
+      "items": [
+        {
+          "id": "synthetic-bucket",
+          "name": "synthetic-bucket"
+        }
+      ]
+    }
+  }
+}

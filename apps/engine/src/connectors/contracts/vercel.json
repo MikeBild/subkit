@@ -1,0 +1,46 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v10/projects",
+    "query": {
+      "limit": 1
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "projects": [
+        {
+          "id": "prj_synthetic0001",
+          "name": "synthetic-project"
+        }
+      ],
+      "pagination": {
+        "count": 1,
+        "next": null
+      }
+    }
+  },
+  "expect": {
+    "url": "https://api.vercel.com/v10/projects?limit=1",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "Bearer synthetic-contract-token"
+    },
+    "output": {
+      "projects": [
+        {
+          "id": "prj_synthetic0001",
+          "name": "synthetic-project"
+        }
+      ],
+      "pagination": {
+        "count": 1,
+        "next": null
+      }
+    }
+  }
+}

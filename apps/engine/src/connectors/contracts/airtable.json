@@ -1,0 +1,37 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/meta/bases"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "bases": [
+        {
+          "id": "appSynthetic0001",
+          "name": "Synthetic base",
+          "permissionLevel": "read"
+        }
+      ]
+    }
+  },
+  "expect": {
+    "url": "https://api.airtable.com/v0/meta/bases",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "Bearer synthetic-contract-token"
+    },
+    "output": {
+      "bases": [
+        {
+          "id": "appSynthetic0001",
+          "name": "Synthetic base",
+          "permissionLevel": "read"
+        }
+      ]
+    }
+  }
+}

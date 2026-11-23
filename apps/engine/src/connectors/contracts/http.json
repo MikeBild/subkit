@@ -1,0 +1,23 @@
+{
+  "request": {
+    "base_url": "https://api.example.com",
+    "method": "GET",
+    "path": "/status"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "status": "ok"
+    }
+  },
+  "expect": {
+    "url": "https://api.example.com/status",
+    "auth_header": null,
+    "output": {
+      "status": "ok"
+    }
+  }
+}
