@@ -24,7 +24,7 @@ export interface TenantRoleFacts {
 export type TenantRoleVerdict =
   | "ready"
   | "will_provision"
-  | "cannot_create_role"
+  | "role_missing"
   | "cannot_assume_role"
   | "scheme_incomplete"
   | "role_bypasses_row_security";
@@ -60,27 +60,20 @@ export function decideTenantRolePreflight(facts: TenantRoleFacts): TenantRoleDec
     }
     return { verdict: "ready", blocking: false, message: `role ${TENANT_ROLE} is ready` };
   }
+  if (!facts.role_exists) {
+    return {
+      verdict: "role_missing",
+      blocking: false,
+      message:
+        `row security is off: role ${TENANT_ROLE} does not exist. The engine never creates database roles; ` +
+        `let a database administrator run: ${provisioningStatements(facts.login_role)}`,
+    };
+  }
   if (facts.is_superuser) {
     return {
       verdict: "will_provision",
       blocking: false,
-      message: `role ${TENANT_ROLE} is set up by the migration`,
-    };
-  }
-  if (!facts.role_exists) {
-    if (facts.can_create_role) {
-      return {
-        verdict: "will_provision",
-        blocking: false,
-        message: `role ${TENANT_ROLE} is set up by the migration`,
-      };
-    }
-    return {
-      verdict: "cannot_create_role",
-      blocking: false,
-      message:
-        `row security is off: database role ${facts.login_role} lacks CREATEROLE and role ${TENANT_ROLE} does not exist. ` +
-        `Either run ALTER ROLE "${facts.login_role.replaceAll('"', '""')}" CREATEROLE; or let a database administrator run: ${provisioningStatements(facts.login_role)}`,
+      message: `membership in role ${TENANT_ROLE} is granted by the migration`,
     };
   }
   if (facts.can_grant_role) {

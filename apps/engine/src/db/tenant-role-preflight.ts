@@ -65,7 +65,7 @@ export async function ensureTenantRowSecurity(
   const facts = await readTenantRoleFacts(pool);
   if (facts.scheme_applied && facts.grants_present && facts.role_exists && facts.can_assume_role)
     return tenantRolePreflight(pool);
-  if (facts.role_exists || facts.can_create_role || facts.is_superuser) {
+  if (facts.role_exists) {
     await pool.query(rowSecuritySql, []);
   }
   return tenantRolePreflight(pool);

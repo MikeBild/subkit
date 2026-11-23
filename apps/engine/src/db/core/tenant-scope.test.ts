@@ -57,15 +57,15 @@ describe("decideTenantRolePreflight", () => {
       grants_present: false,
     };
     expect(decideTenantRolePreflight(facts({ ...missing, can_create_role: true })).verdict).toBe(
-      "will_provision",
+      "role_missing",
     );
     expect(
       decideTenantRolePreflight(facts({ ...missing, is_superuser: true, can_assume_role: false }))
         .verdict,
-    ).toBe("will_provision");
+    ).toBe("role_missing");
   });
 
-  test("a missing role without CREATEROLE blocks and names both remedies", () => {
+  test("a missing role degrades and names the administrator statements", () => {
     const decision = decideTenantRolePreflight(
       facts({
         role_exists: false,
@@ -74,8 +74,8 @@ describe("decideTenantRolePreflight", () => {
         grants_present: false,
       }),
     );
-    expect(decision).toMatchObject({ verdict: "cannot_create_role", blocking: false });
-    expect(decision.message).toContain("CREATEROLE");
+    expect(decision).toMatchObject({ verdict: "role_missing", blocking: false });
+    expect(decision.message).toContain("CREATE ROLE subkit_tenant");
     expect(decision.message).toContain('GRANT subkit_tenant TO "engine"');
   });
 

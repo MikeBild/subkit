@@ -1,20 +1,11 @@
 DO $$
 DECLARE
   assumable boolean;
-  may_create boolean;
   t text;
 BEGIN
-  SELECT rolsuper OR rolcreaterole INTO may_create FROM pg_catalog.pg_roles WHERE rolname = current_user;
   IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'subkit_tenant') THEN
-    IF NOT may_create THEN
-      RAISE NOTICE 'tenant row security skipped: role subkit_tenant is missing and % may not create roles', current_user;
-      RETURN;
-    END IF;
-    BEGIN
-      CREATE ROLE subkit_tenant NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
-    EXCEPTION WHEN duplicate_object OR unique_violation THEN
-      NULL;
-    END;
+    RAISE NOTICE 'tenant row security skipped: role subkit_tenant does not exist';
+    RETURN;
   END IF;
   SELECT pg_catalog.pg_has_role(current_user, r.oid, 'MEMBER') INTO assumable
     FROM pg_catalog.pg_roles r WHERE r.rolname = 'subkit_tenant';

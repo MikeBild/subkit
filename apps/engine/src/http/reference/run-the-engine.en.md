@@ -94,9 +94,9 @@ Test recovery in a separate installation before you rely on a backup or upgrade.
 
 The engine uses PostgreSQL row level security as an extra wall between workspaces. For tables with especially sensitive data, the database itself then returns only rows of the workspace that is currently working. This covers stored secrets, tool approvals, inbound webhooks, subscriptions, chat workspaces, push subscriptions, the run state of workflows and the settings of sign-in providers.
 
-For this, the engine needs the database role `subkit_tenant`. With the supplied `docker-compose.yml` you do nothing: the engine sets up the role itself when it starts.
+For this, the engine needs the database role `subkit_tenant`. With the supplied `docker-compose.yml` you do nothing for a new installation: the bundled PostgreSQL creates the role on its first start. The engine itself never creates database roles.
 
-With your own PostgreSQL database, the engine login may lack the right to create roles. Row level security then stays off, but the engine starts and works as before. It never blocks the start because of this. The log says “row security is off” and names the statements to run.
+With your own PostgreSQL database, or an installation that existed before this release, the role does not exist yet. Row level security then stays off, but the engine starts and works as before. It never blocks the start because of this. The log says “row security is off” and names the statements to run.
 
 To switch it on, a database administrator runs the following once, as a superuser or as a role with `CREATEROLE`. Replace `<engine login role>` with the role the engine signs in with:
 
@@ -105,7 +105,7 @@ CREATE ROLE subkit_tenant NOLOGIN NOBYPASSRLS;
 GRANT subkit_tenant TO "<engine login role>";
 ```
 
-Then restart the engine. At its next start, it finds the role, gives it access to its tables and switches row level security on. Instead, you can also give the engine login the right to create roles (`CREATEROLE`). The engine then sets up the role itself.
+Then restart the engine. At its next start, it finds the role, gives it access to its tables and switches row level security on.
 
 Good to know:
 

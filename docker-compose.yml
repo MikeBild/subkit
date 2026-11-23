@@ -11,6 +11,10 @@ volumes:
   subkit_object_data:
 
 configs:
+  postgres_tenant_role:
+    content: |
+      CREATE ROLE subkit_tenant NOLOGIN NOBYPASSRLS;
+      GRANT subkit_tenant TO subkit;
   object_store_identities:
     content: |
       {
@@ -38,6 +42,9 @@ services:
       - "127.0.0.1:${SUBKIT_DB_PORT:-5432}:5432"
     volumes:
       - subkit_pgdata:/var/lib/postgresql/data
+    configs:
+      - source: postgres_tenant_role
+        target: /docker-entrypoint-initdb.d/10-tenant-role.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U subkit -d subkit"]
       interval: 5s

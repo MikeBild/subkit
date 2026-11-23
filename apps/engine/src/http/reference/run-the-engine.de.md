@@ -94,9 +94,9 @@ Teste die Wiederherstellung in einer separaten Installation, bevor du dich auf e
 
 Die Engine nutzt Row Level Security von PostgreSQL als zusätzliche Wand zwischen Arbeitsbereichen. Bei Tabellen mit besonders schutzwürdigen Daten liefert dann die Datenbank selbst nur Zeilen des Arbeitsbereichs, der gerade arbeitet. Das betrifft gespeicherte Geheimnisse, Freigaben von Tools, eingehende Webhooks, Abonnements, Chat-Arbeitsbereiche, Push-Abonnements, den Laufzustand von Workflows und die Einstellungen der Anmelde-Anbieter.
 
-Dafür braucht die Engine die Datenbankrolle `subkit_tenant`. Mit der mitgelieferten `docker-compose.yml` tust du nichts: Die Engine richtet die Rolle beim Start selbst ein.
+Dafür braucht die Engine die Datenbankrolle `subkit_tenant`. Mit der mitgelieferten `docker-compose.yml` tust du bei einer neuen Installation nichts: Das mitgelieferte PostgreSQL legt die Rolle beim ersten Start an. Die Engine selbst legt nie Datenbankrollen an.
 
-Bei einer eigenen PostgreSQL-Datenbank darf der Login der Engine womöglich keine Rollen anlegen. Dann bleibt Row Level Security aus, die Engine startet aber und arbeitet wie bisher. Den Start blockiert das nie. Das Log meldet „row security is off“ und nennt die nötigen Befehle.
+Bei einer eigenen PostgreSQL-Datenbank oder einer Installation, die es schon vor diesem Release gab, fehlt die Rolle noch. Dann bleibt Row Level Security aus, die Engine startet aber und arbeitet wie bisher. Den Start blockiert das nie. Das Log meldet „row security is off“ und nennt die nötigen Befehle.
 
 Zum Einschalten führt eine Datenbank-Administratorin oder ein Datenbank-Administrator einmal Folgendes aus, als Superuser oder als Rolle mit `CREATEROLE`. Ersetze `<engine login role>` durch die Rolle, mit der sich die Engine anmeldet:
 
@@ -105,7 +105,7 @@ CREATE ROLE subkit_tenant NOLOGIN NOBYPASSRLS;
 GRANT subkit_tenant TO "<engine login role>";
 ```
 
-Starte die Engine danach neu. Beim nächsten Start findet sie die Rolle, gibt ihr Zugriff auf ihre Tabellen und schaltet Row Level Security ein. Alternativ gibst du dem Login der Engine das Recht, Rollen anzulegen (`CREATEROLE`). Dann richtet die Engine die Rolle selbst ein.
+Starte die Engine danach neu. Beim nächsten Start findet sie die Rolle, gibt ihr Zugriff auf ihre Tabellen und schaltet Row Level Security ein.
 
 Gut zu wissen:
 
