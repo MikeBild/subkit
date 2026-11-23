@@ -36,7 +36,6 @@ import { wrapEnvelope } from "./engine/envelope.ts";
 import { resolveOffloaded } from "./offload.ts";
 import { isSensitivePayload } from "./sensitive-payload.ts";
 import { claimStaleRunning, markExecutionUncertain, terminalizeExecutionRow } from "./state.ts";
-import { classifyRequestStepSideEffects } from "./steps/request/side-effects.ts";
 import { RUN_HEARTBEAT_LEASE_MS } from "./timeouts.ts";
 
 const DEFAULT_WORKFLOW_TIMEOUT_MS = 6 * 60 * 60 * 1000;
@@ -61,15 +60,6 @@ async function hasDeviceCommands(
   return Boolean(row);
 }
 
-function stepWrites(step: StepDef): boolean {
-  if (step.kind !== "request") return false;
-  try {
-    return classifyRequestStepSideEffects(step) === "write";
-  } catch {
-    return true;
-  }
-}
-
 function hasSecretOutputs(step: StepDef): boolean {
   if (step.kind !== "request") return false;
   const outputs = (step as { outputs?: Record<string, { secret?: boolean } | undefined> }).outputs;
@@ -88,7 +78,6 @@ function resumeSteps(dag: unknown): ResumeStep[] {
     kind: step.kind,
     for_each: Boolean(step.for_each),
     secret_outputs: hasSecretOutputs(step),
-    writes: stepWrites(step),
   }));
 }
 
@@ -631,10 +620,7 @@ export async function recoverCrashedExecutions(
       outcome.status === "timed_out" && (await hasDeviceCommands(db, row.tenant_id, row.id));
     const writes = interrupted
       ? []
-      : interruptedWriteKeys(
-          await loadResumeSteps(db, row.tenant_id, row.workflow_version_id),
-          await loadResumeRows(db, row.tenant_id, row.id),
-        );
+      : interruptedWriteKeys(await loadResumeRows(db, row.tenant_id, row.id));
     const writeNotice = interruptedWriteNotice(writes);
     const terminalStatus: TerminalExecutionStatus =
       interrupted || writeNotice ? "failed" : outcome.status;

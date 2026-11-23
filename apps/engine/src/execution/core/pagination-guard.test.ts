@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { pageFingerprint, repeatVerdict } from "./pagination-guard.ts";
+import { pageFingerprint, repeatVerdict, stopWhenVerdict } from "./pagination-guard.ts";
 
 describe("pageFingerprint", () => {
   test("ignores key order at every depth", () => {
@@ -38,5 +38,17 @@ describe("repeatVerdict", () => {
 
   test("judges a repeated cursor the same way", () => {
     expect(repeatVerdict(new Set(["cursor-a"]), "cursor-a")).toBe("repeated");
+  });
+});
+
+describe("stopWhenVerdict", () => {
+  test("true stops and false continues", () => {
+    expect(stopWhenVerdict(true)).toBe("stop");
+    expect(stopWhenVerdict(false)).toBe("continue");
+  });
+
+  test("anything else is not an answer", () => {
+    for (const value of [1, 0, "true", null, undefined, {}, []])
+      expect(stopWhenVerdict(value)).toBe("invalid");
   });
 });

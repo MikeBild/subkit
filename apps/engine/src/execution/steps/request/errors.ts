@@ -16,6 +16,8 @@ export class RequestError extends Error {
       | "pagination_link_unsupported"
       | "pagination_link_loop"
       | "pagination_short_page"
+      | "pagination_cursor_repeated"
+      | "pagination_stop_when_failed"
       | "upstream_rate_limited",
     public readonly status?: number,
     public readonly meta?: Record<string, unknown>,

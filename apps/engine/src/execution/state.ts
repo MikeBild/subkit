@@ -233,6 +233,7 @@ export async function touchExecutionHeartbeat(
   tenant_id: string,
   execution_id: string,
   now: Date,
+  attempt?: number,
 ): Promise<boolean> {
   const rows = await db
     .update(executions)
@@ -242,10 +243,24 @@ export async function touchExecutionHeartbeat(
         eq(executions.tenant_id, tenant_id),
         eq(executions.id, execution_id),
         eq(executions.status, "running"),
+        ...(attempt !== undefined ? [eq(executions.attempt, attempt)] : []),
       ),
     )
     .returning({ id: executions.id });
   return rows.length > 0;
+}
+
+export async function readExecutionAttempt(
+  db: Executor,
+  tenant_id: string,
+  execution_id: string,
+): Promise<number | null> {
+  const [row] = await db
+    .select({ attempt: executions.attempt })
+    .from(executions)
+    .where(and(eq(executions.tenant_id, tenant_id), eq(executions.id, execution_id)))
+    .limit(1);
+  return row?.attempt ?? null;
 }
 
 export async function claimStaleRunning(
@@ -412,6 +427,7 @@ interface TerminalizeExecutionParams {
   finished_at: Date;
   failure: ExecutionFailureDetail | null;
   expected_statuses?: readonly ExecutionStatus[];
+  attempt?: number;
   output_contract?: OutputContractVerdict;
   result_storage_uri?: string | null;
   result_sha256?: string | null;
@@ -462,6 +478,7 @@ export async function terminalizeExecutionRow(
         eq(executions.tenant_id, params.tenant_id),
         eq(executions.id, params.execution_id),
         inArray(executions.status, sources),
+        ...(params.attempt !== undefined ? [eq(executions.attempt, params.attempt)] : []),
       ),
     )
     .returning({
@@ -481,6 +498,7 @@ interface FinalizeExecutionDetails {
   output_contract?: OutputContractVerdict;
   sensitive_result?: unknown;
   result_markdown?: ResultMarkdown | null;
+  attempt?: number;
 }
 
 export function finalizeExecution(
@@ -489,7 +507,7 @@ export function finalizeExecution(
   execution_id: string,
   outcome: ExecutionOutcome,
   details: FinalizeExecutionDetails = {},
-): Promise<void> {
+): Promise<boolean> {
   return applyFinalization(db, tenant_id, execution_id, outcomeTransition(outcome), details);
 }
 
@@ -499,7 +517,7 @@ async function applyFinalization(
   execution_id: string,
   transition: OutcomeTransition,
   details: FinalizeExecutionDetails,
-): Promise<void> {
+): Promise<boolean> {
   const { status, sources: expectedStatuses, refused } = transition;
   const result_storage_uri = details.result_storage_uri ?? null;
   const output_contract = details.output_contract ?? "none";
@@ -529,6 +547,7 @@ async function applyFinalization(
       finished_at: new Date(),
       failure: failure ?? null,
       expected_statuses: expectedStatuses,
+      ...(details.attempt !== undefined ? { attempt: details.attempt } : {}),
       output_contract,
       result_storage_uri,
       result_sha256,
@@ -600,7 +619,7 @@ async function applyFinalization(
       execution_id,
       attempted_status: status,
     });
-    return;
+    return false;
   }
   logger.info({
     module: "execution",
@@ -624,6 +643,7 @@ async function applyFinalization(
       error: error instanceof Error ? error.message : String(error),
     }),
   );
+  return true;
 }
 
 export async function insertStepRow(

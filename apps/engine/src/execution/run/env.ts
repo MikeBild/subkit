@@ -51,9 +51,11 @@ export interface RunEnv {
   execution_started_at: number;
   evaluationSeed: string;
   ownConnectorCredentials: boolean;
+  attempt: number;
   beforeExternalRequest: (
     step_key: string,
   ) => NonNullable<StepRunContext["before_external_request"]>;
+  beforeWriteDispatch: NonNullable<StepRunContext["before_write_dispatch"]>;
   llmBudget: RunLlmBudget;
   abort: AbortController;
   totalTimeout: AbortController;
@@ -124,6 +126,7 @@ export function buildStepContext(
   return {
     ...(env.preparedReferences ? { prepared_workflow_references: env.preparedReferences } : {}),
     before_external_request: env.beforeExternalRequest(step.id),
+    before_write_dispatch: env.beforeWriteDispatch,
     db: env.db,
     tenant_id: env.tenant_id,
     execution_id: env.execution_id,

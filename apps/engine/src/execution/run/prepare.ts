@@ -16,6 +16,7 @@ import { markBillableDispatch } from "../caller-budget.ts";
 import { assertCallerMatches, callerFromPrincipal } from "../caller-context.ts";
 import { resolveExecutionCallerActor, resolveExecutionCallerOrigin } from "../caller-origin.ts";
 import { type Clock, type IdGen, SYSTEM_CLOCK, SYSTEM_IDS } from "../clock.ts";
+import { RUN_SUPERSEDED, runSuperseded } from "../core/resume.ts";
 import {
   allowsSensitiveMetadataPreview,
   defaultCallerOrigin,
@@ -29,10 +30,10 @@ import {
   createExecution,
   markExecutionRunning,
   markWriteDispatched,
+  readExecutionAttempt,
   touchExecutionHeartbeat,
 } from "../state.ts";
 import { rateLimitNow } from "../steps/request/rate-limit.ts";
-import { classifyRequestStepSideEffects } from "../steps/request/side-effects.ts";
 import {
   MAX_CALL_DEPTH,
   RUN_HEARTBEAT_INTERVAL_MS,
@@ -196,21 +197,6 @@ export async function prepareRun(
       ? await runsUnderExecutionAuthority(db, tenant_id, execution_id)
       : false;
   const billableSteps = new Set(def.execution_guards?.caller_daily_limit?.billable_steps ?? []);
-  const beforeExternalRequest =
-    (step_key: string) => async (snapshot: RequestAuthoritySnapshot) => {
-      const policy = await assertExecutionAuthorityCurrent(db, tenant_id, execution_id, snapshot);
-      if (snapshot.step_row_id && dispatchesWrite(def.steps, step_key, snapshot.request?.method))
-        await markWriteDispatched(db, tenant_id, snapshot.step_row_id, new Date(clock.now()));
-      if (billableSteps.has(step_key))
-        await markBillableDispatch(db, {
-          tenant_id,
-          execution_id,
-          step_key,
-          ...(snapshot.step_row_id ? { step_row_id: snapshot.step_row_id } : {}),
-        });
-      return policy;
-    };
-
   const ctrl = registerAbort(execution_id, tenant_id);
   if (opts.signal) {
     if (opts.signal.aborted) ctrl.abort("aborted");
@@ -234,7 +220,7 @@ export async function prepareRun(
   if (!started) {
     ctrl.abort("cancelled");
     clearTimeout(totalTimer);
-    unregisterAbort(execution_id);
+    unregisterAbort(execution_id, ctrl);
     return {
       kind: "not_started",
       result: {
@@ -247,7 +233,45 @@ export async function prepareRun(
     };
   }
 
-  startHeartbeat(db, tenant_id, execution_id, p.heartbeat_interval_ms ?? RUN_HEARTBEAT_INTERVAL_MS);
+  const attempt = (await readExecutionAttempt(db, tenant_id, execution_id)) ?? 0;
+  const fenceWrite = async () => {
+    if (!runSuperseded(attempt, await readExecutionAttempt(db, tenant_id, execution_id))) return;
+    ctrl.abort("aborted");
+    throw Object.assign(
+      new Error("Another copy of this run took over; this copy stops without sending."),
+      { code: RUN_SUPERSEDED },
+    );
+  };
+  const stampWrite = async (step_row_id: string | undefined) => {
+    if (step_row_id) await markWriteDispatched(db, tenant_id, step_row_id, new Date(clock.now()));
+  };
+  const beforeWriteDispatch = async (step_row_id: string | undefined) => {
+    await fenceWrite();
+    await stampWrite(step_row_id);
+  };
+  const beforeExternalRequest =
+    (step_key: string) => async (snapshot: RequestAuthoritySnapshot) => {
+      const write = snapshot.dispatch_effect === "write";
+      if (write) await fenceWrite();
+      const policy = await assertExecutionAuthorityCurrent(db, tenant_id, execution_id, snapshot);
+      if (write) await stampWrite(snapshot.step_row_id);
+      if (billableSteps.has(step_key))
+        await markBillableDispatch(db, {
+          tenant_id,
+          execution_id,
+          step_key,
+          ...(snapshot.step_row_id ? { step_row_id: snapshot.step_row_id } : {}),
+        });
+      return policy;
+    };
+
+  startHeartbeat(
+    db,
+    tenant_id,
+    execution_id,
+    attempt,
+    p.heartbeat_interval_ms ?? RUN_HEARTBEAT_INTERVAL_MS,
+  );
   p.on_started?.(execution_id);
 
   await auditAwait(
@@ -299,7 +323,9 @@ export async function prepareRun(
       execution_started_at,
       evaluationSeed,
       ownConnectorCredentials,
+      attempt,
       beforeExternalRequest,
+      beforeWriteDispatch,
       llmBudget: new RunLlmBudget(def.max_llm_tokens_per_run ?? null),
       abort: ctrl,
       totalTimeout: totalTimeoutCtrl,
@@ -313,28 +339,15 @@ export async function prepareRun(
   };
 }
 
-function dispatchesWrite(
-  steps: RunEnv["def"]["steps"],
-  step_key: string,
-  method: string | undefined,
-): boolean {
-  const step = steps.find((candidate) => candidate.id === step_key);
-  if (step?.kind !== "request") return false;
-  try {
-    return classifyRequestStepSideEffects(step, undefined, method) === "write";
-  } catch {
-    return true;
-  }
-}
-
 function startHeartbeat(
   db: Db,
   tenant_id: string,
   execution_id: string,
+  attempt: number,
   interval_ms: number,
 ): void {
   const timer = setInterval(() => {
-    touchExecutionHeartbeat(db, tenant_id, execution_id, new Date())
+    touchExecutionHeartbeat(db, tenant_id, execution_id, new Date(), attempt)
       .then((running) => {
         if (!running) clearInterval(timer);
       })

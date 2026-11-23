@@ -30,6 +30,7 @@ export interface RequestAuthoritySnapshot {
   outbox_source?: { ok: boolean; recipient: unknown; item_id: unknown };
   principal_id?: string | null;
   request?: MaterializedRequest;
+  dispatch_effect?: "read" | "write";
   step_id: string;
   configuration_digest: string;
   credential_id: string | null;
@@ -43,6 +44,7 @@ interface ExecutionContext {
   before_external_request?: (
     snapshot: RequestAuthoritySnapshot,
   ) => Promise<RequestDispatchPolicy | undefined>;
+  before_write_dispatch?: (step_row_id: string | undefined) => Promise<void>;
   db: Db;
   tenant_id: string;
   execution_id: string;
@@ -84,6 +86,7 @@ export type StepWarningCode =
   | "loop_over_unresolved"
   | "branch_when_unresolved"
   | "pagination_truncated"
+  | "pagination_duplicate_page"
   | "output_contract_violation"
   | "graphql_partial_errors"
   | "mcp_remote_error"
@@ -125,7 +128,7 @@ export interface RequestPaginationSummary {
   duplicates_dropped: number;
   complete: boolean;
   truncated: boolean;
-  limit: "max_pages" | "max_items" | "max_bytes" | null;
+  limit: "max_pages" | "max_items" | "max_bytes" | "duplicate_page" | null;
   rereads?: number;
 }
 

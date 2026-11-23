@@ -262,7 +262,8 @@ export async function runStep(
       result = await runParallelStep({ ctx, step });
       break;
     case "call":
-      result = await callRunner({ ctx, step, scope, workflowInput });
+      result =
+        (await supersededCall(ctx)) ?? (await callRunner({ ctx, step, scope, workflowInput }));
       break;
     default: {
       const _exhaustive: never = step;
@@ -435,4 +436,21 @@ export async function runStep(
     result_size_bytes: offload.size_bytes,
     result_sha256: offload.sha256,
   };
+}
+
+async function supersededCall(ctx: StepRunContext): Promise<StepResult | null> {
+  try {
+    await ctx.before_write_dispatch?.(undefined);
+    return null;
+  } catch (err) {
+    return {
+      status: "failed",
+      retry_count: 0,
+      duration_ms: 0,
+      error: {
+        code: (err as { code?: string }).code ?? "execution_superseded",
+        message: err instanceof Error ? err.message : String(err),
+      },
+    };
+  }
 }

@@ -17,7 +17,8 @@ export function registerAbort(executionId: string, tenantId: string): AbortContr
   return ctrl;
 }
 
-export function unregisterAbort(executionId: string): void {
+export function unregisterAbort(executionId: string, controller?: AbortController): void {
+  if (controller && REGISTRY.get(executionId)?.controller !== controller) return;
   REGISTRY.delete(executionId);
 }
 

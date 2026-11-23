@@ -30,6 +30,13 @@ interface SqlDispatchResult {
 
 function connectorCredentialUse(d: RequestDispatch, connector: RequestConnector) {
   return async () => {
+    const effect = classifyRequestStepSideEffects(
+      d.p.step,
+      d.state.activeConnector?.driver,
+      undefined,
+      d.state.activeConnector?.base_url,
+    );
+    if (effect === "write") await d.p.ctx.before_write_dispatch?.(d.p.ctx.step_row_id);
     await d.persist_credential_use({
       connector_id: connector.id,
       environment: connector.environment,
@@ -39,14 +46,7 @@ function connectorCredentialUse(d: RequestDispatch, connector: RequestConnector)
       access_token_version: null,
       identity: null,
     });
-    d.record_effect(
-      classifyRequestStepSideEffects(
-        d.p.step,
-        d.state.activeConnector?.driver,
-        undefined,
-        d.state.activeConnector?.base_url,
-      ),
-    );
+    d.record_effect(effect);
   };
 }
 

@@ -64,15 +64,15 @@ async function executeS3(d: RequestDispatch): Promise<StepResult> {
           : (d.parts.path ?? d.parts.url ?? "/");
     const params: Parameters<typeof executeS3Request>[0] = {
       on_credential_use: async (snapshot) => {
-        await d.persist_credential_use(snapshot);
-        d.record_effect(
-          classifyRequestStepSideEffects(
-            p.step,
-            d.state.activeConnector?.driver,
-            undefined,
-            d.state.activeConnector?.base_url,
-          ),
+        const effect = classifyRequestStepSideEffects(
+          p.step,
+          d.state.activeConnector?.driver,
+          undefined,
+          d.state.activeConnector?.base_url,
         );
+        if (effect === "write") await p.ctx.before_write_dispatch?.(p.ctx.step_row_id);
+        await d.persist_credential_use(snapshot);
+        d.record_effect(effect);
       },
       db: p.ctx.db,
       tenant_id: p.ctx.tenant_id,

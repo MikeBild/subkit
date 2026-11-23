@@ -9,13 +9,14 @@ import {
   resolvedStepState,
   resolveWriteVerdict,
   resumeDecision,
+  runSuperseded,
   storedStepOutput,
 } from "./resume.ts";
 
 const LEASE = 300_000;
 
 function step(id: string, over: Partial<ResumeStep> = {}): ResumeStep {
-  return { id, kind: "request", for_each: false, secret_outputs: false, writes: false, ...over };
+  return { id, kind: "request", for_each: false, secret_outputs: false, ...over };
 }
 
 function row(step_key: string, status: ResumeRow["status"], write_dispatched = false): ResumeRow {
@@ -102,17 +103,17 @@ describe("resumeDecision", () => {
     ).toEqual({ kind: "uncertain", step_keys: ["b"] });
   });
 
-  test("a running step declared as a write is uncertain without a dispatch mark", () => {
-    expect(
-      resumeDecision(facts({ steps: [step("a", { writes: true })], rows: [row("a", "running")] })),
-    ).toEqual({ kind: "uncertain", step_keys: ["a"] });
+  test("a running write without a dispatch mark sent nothing and runs again", () => {
+    expect(resumeDecision(facts({ steps: [step("a")], rows: [row("a", "running")] })).kind).toBe(
+      "resume",
+    );
   });
 
   test("a dispatched write inside a for_each is reported by its iteration key", () => {
     expect(
       resumeDecision(
         facts({
-          steps: [step("a"), step("send", { for_each: true, writes: true })],
+          steps: [step("a"), step("send", { for_each: true })],
           rows: [
             row("a", "succeeded"),
             row("send", "running"),
@@ -273,20 +274,18 @@ describe("resumeDecision", () => {
 
 describe("interruptedWriteKeys", () => {
   test("ignores running reads and finished writes", () => {
-    expect(
-      interruptedWriteKeys(
-        [step("read"), step("write", { writes: true })],
-        [row("read", "running"), row("write", "succeeded", true)],
-      ),
-    ).toEqual([]);
+    expect(interruptedWriteKeys([row("read", "running"), row("write", "succeeded", true)])).toEqual(
+      [],
+    );
   });
 
-  test("matches iteration rows to their step", () => {
+  test("reports the dispatched iteration, not its for_each parent", () => {
     expect(
-      interruptedWriteKeys(
-        [step("write", { writes: true, for_each: true })],
-        [row("write", "running"), row("write[0]", "succeeded"), row("write[1]", "running")],
-      ),
+      interruptedWriteKeys([
+        row("write", "running"),
+        row("write[0]", "succeeded"),
+        row("write[1]", "running", true),
+      ]),
     ).toEqual(["write[1]"]);
   });
 });
@@ -383,5 +382,19 @@ describe("resolveWriteVerdict", () => {
         step_key: "a[1]",
       }),
     ).toBe("wait");
+  });
+});
+
+describe("runSuperseded", () => {
+  test("keeps the copy whose attempt is still current", () => {
+    expect(runSuperseded(2, 2)).toBe(false);
+  });
+
+  test("stops the copy once another one claimed the run", () => {
+    expect(runSuperseded(0, 1)).toBe(true);
+  });
+
+  test("stops the copy when the run row is gone", () => {
+    expect(runSuperseded(0, null)).toBe(true);
   });
 });

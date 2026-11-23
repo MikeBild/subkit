@@ -14,7 +14,6 @@ export interface ResumeStep {
   kind: string;
   for_each: boolean;
   secret_outputs: boolean;
-  writes: boolean;
 }
 
 export interface ResumeRow {
@@ -60,22 +59,10 @@ export type ResumeDecision =
 const UNREBUILDABLE_KINDS: ReadonlySet<string> = new Set(["loop", "parallel"]);
 const FAILED_STEP_STATUSES: ReadonlySet<StepStatus> = new Set(["failed", "timed_out", "aborted"]);
 
-export function interruptedWriteKeys(
-  steps: readonly ResumeStep[],
-  rows: readonly ResumeRow[],
-): string[] {
-  const stepsById = new Map(steps.map((step) => [step.id, step] as const));
-  const declaredWrite = (step_key: string): boolean => {
-    const base = baseStepKey(step_key);
-    const step = stepsById.get(base);
-    if (!step?.writes) return false;
-    return !(step.for_each && step_key === base);
-  };
+export function interruptedWriteKeys(rows: readonly ResumeRow[]): string[] {
   const keys = rows
     .filter(
-      (row) =>
-        row.status === "uncertain" ||
-        (row.status === "running" && (row.write_dispatched || declaredWrite(row.step_key))),
+      (row) => row.status === "uncertain" || (row.status === "running" && row.write_dispatched),
     )
     .map((row) => row.step_key);
   return [...new Set(keys)];
@@ -101,7 +88,7 @@ export function resumeDecision(facts: ResumeFacts): ResumeDecision {
     return { kind: "alive" };
 
   const rows = facts.rows.filter((row) => row.status !== "skipped");
-  const interrupted_writes = interruptedWriteKeys(facts.steps, rows);
+  const interrupted_writes = interruptedWriteKeys(rows);
   const blocked = blocker(facts);
   if (blocked && (facts.status === "running" || rows.length > 0))
     return { kind: "not_resumable", reason: blocked, interrupted_writes };
@@ -220,4 +207,10 @@ export function resolveWriteVerdict(facts: {
   if (facts.status !== "uncertain") return "not_uncertain";
   if (!facts.uncertain_step_keys.includes(facts.step_key)) return "unknown_step";
   return facts.uncertain_step_keys.every((key) => key === facts.step_key) ? "requeue" : "wait";
+}
+
+export const RUN_SUPERSEDED = "execution_superseded";
+
+export function runSuperseded(own_attempt: number, current_attempt: number | null): boolean {
+  return current_attempt !== own_attempt;
 }

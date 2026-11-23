@@ -83,6 +83,9 @@ const safeFailureCodes = new Set([
   "pagination_link_loop",
   "pagination_short_page",
   "pagination_truncated",
+  "pagination_duplicate_page",
+  "pagination_cursor_repeated",
+  "pagination_stop_when_failed",
   "upstream_rate_limited",
   "graphql_endpoint_invalid",
   "graphql_path_required",
@@ -147,6 +150,12 @@ const SAFE_FAILURE_MESSAGES: Readonly<Record<string, string>> = {
     "The next-page link changed the request beyond the declared paging parameters. Check link_params before retrying.",
   pagination_link_loop:
     "The next-page link repeated an earlier page. Check the endpoint's paging before retrying.",
+  pagination_duplicate_page:
+    "A page repeated an earlier page, so pagination stopped and this step's result may be incomplete.",
+  pagination_cursor_repeated:
+    "The next-page cursor repeated an earlier one. Check the cursor path before retrying.",
+  pagination_stop_when_failed:
+    "The pagination stop_when function failed or did not return true or false. Fix it before retrying.",
   pagination_short_page:
     "The server returned fewer items than requested while more pages exist. Lower page_size to the vendor maximum.",
   upstream_rate_limited:

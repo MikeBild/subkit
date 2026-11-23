@@ -24,7 +24,7 @@ const RequestPaginationSummarySchema = z
     duplicates_dropped: z.number().int().min(0),
     complete: z.boolean(),
     truncated: z.boolean(),
-    limit: z.enum(["max_pages", "max_items", "max_bytes"]).nullable(),
+    limit: z.enum(["max_pages", "max_items", "max_bytes", "duplicate_page"]).nullable(),
     rereads: z.number().int().min(0).optional(),
   })
   .openapi("RequestPaginationSummary");

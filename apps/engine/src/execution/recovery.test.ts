@@ -110,7 +110,7 @@ describe("recoverCrashedExecutions", () => {
     expect(row?.status).toBe("timed_out");
   });
 
-  test("a write step that was running at the crash is named so the person checks the target", async () => {
+  test("a write step that had dispatched at the crash is named so the person checks the target", async () => {
     const { workflow_id, version_id } = await createWorkflowRow(ctx, {
       name: "crash-recovery-write-started",
       slug: "crash-recovery-write-started",
@@ -136,6 +136,7 @@ describe("recoverCrashedExecutions", () => {
         kind: "request",
         status: "running",
         started_at: new Date(TEST_NOW_MS - 3_000),
+        write_dispatched_at: new Date(TEST_NOW_MS - 2_000),
       })
       .returning({ id: executionSteps.id });
     if (!step) throw new Error("step insert failed");
