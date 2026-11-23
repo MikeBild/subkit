@@ -22,6 +22,13 @@ import {
   workflows,
   workflowVersions,
 } from "../db/schema/index.ts";
+import {
+  type ConnectorGap,
+  ConnectorGapSchema,
+  connectorGap,
+  type ReconnectTarget,
+  ReconnectTargetSchema,
+} from "./connector-gap.ts";
 import type { ManifestIssueCode } from "./effect-manifest.ts";
 import { previewWorkflowAuthority } from "./execution-authorities.ts";
 import { type GateFixer, GateFixerSchema } from "./gate-fix.ts";
@@ -68,8 +75,10 @@ export interface GateDiagnosis {
     execution_id?: string;
     observed?: Omit<ReportDeliveryBoundary, "kind">;
     binding?: MissingBindingEvidence;
+    connector?: ConnectorGap;
   };
   remedy_kind: GateRemedyKind;
+  reconnect?: ReconnectTarget;
   fixer?: GateFixer;
   candidate_id?: string;
 }
@@ -97,8 +106,10 @@ export const GateDiagnosisSchema = z
         })
         .optional(),
       binding: MissingBindingEvidenceSchema.optional(),
+      connector: ConnectorGapSchema.optional(),
     }),
     remedy_kind: z.enum(REPAIR_REMEDIES),
+    reconnect: ReconnectTargetSchema.optional(),
     fixer: GateFixerSchema.optional(),
     candidate_id: z.string().uuid().optional(),
   })
@@ -330,12 +341,14 @@ async function buildDiagnoses(db: Executor, input: DiagnosisInput): Promise<Gate
       remedy_kind: "author",
     });
   }
-  for (const connector of preview.unavailable_connectors) {
+  for (const unavailable of preview.unavailable_connectors) {
+    const { connector, reconnect } = connectorGap(unavailable, input.execution_environment);
     out.push({
       code: "connector_unavailable",
-      subject: { step_id: connector.step_id },
-      evidence: {},
+      subject: { step_id: unavailable.step_id },
+      evidence: { connector },
       remedy_kind: "reconnect",
+      reconnect,
     });
   }
   if (refused) {
