@@ -259,6 +259,35 @@ describe("entries from the main process reset the way back", () => {
   });
 });
 
+describe("entry: sign in again from the tray or menu", () => {
+  test("an expired session asks to sign in again, outside the wizard", () => {
+    const expired = {
+      profiles: [{ ...SIGNED_IN, signedIn: false }],
+      notice: { kind: "expired" as const, profileId: "p1" },
+    };
+    const view = viewOf(opened(expired, "connect"));
+    expect(view?.screen).toMatchObject({ kind: "relogin", origin: SIGNED_IN.serverOrigin });
+    expect(view?.frame.dots.visible).toBe(false);
+    expect(view?.nav).toBeNull();
+  });
+});
+
+describe("entry: reconnect after offline", () => {
+  test("the server stays on top and try again reopens it", () => {
+    const offline = { ...COMPLETED, notice: { kind: "offline" as const, profileId: "p1" } };
+    const state = opened(offline, "connect");
+    const screen = viewOf(state)?.screen;
+    expect(screen).toMatchObject({ kind: "server", strip: { title: "strip.offline" } });
+    expect(viewOf(state)?.frame.dots.visible).toBe(false);
+    const action = screen?.kind === "server" ? screen.strip?.action?.action : undefined;
+    expect(action).toEqual({ kind: "open-profile", profileId: "p1" });
+    if (action)
+      expect(act(state, { type: "ActOnNotice", action }).effects).toEqual([
+        { kind: "openProfile", profileId: "p1" },
+      ]);
+  });
+});
+
 describe("entry: the window on a completed install", () => {
   test("the server is the home view; open SubKit is the next action", () => {
     const state = opened(COMPLETED, "connect");
