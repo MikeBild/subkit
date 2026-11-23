@@ -375,7 +375,7 @@ export const authorityEn = {
     "The limit names different placeholders than the step actually uses.",
   "authority.refusal.not_http_step": "This kind of step cannot carry a limit yet.",
   "authority.refusal.no_scope":
-    "This storage step has no reviewed folder, so nothing says which files it may touch.",
+    "This storage step has no reviewed folder, so nothing says which files it may access.",
   "authority.refusal.scope_invalid": "The folder on this step cannot be read as written.",
   "authority.refusal.unsupported_method":
     "This storage operation cannot be reviewed for repeated runs yet.",
@@ -808,7 +808,7 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
     "Die Grenze benennt andere Platzhalter als der Schritt tatsächlich verwendet.",
   "authority.refusal.not_http_step": "Diese Art von Schritt kann noch keine Grenze tragen.",
   "authority.refusal.no_scope":
-    "Für diesen Speicher-Schritt ist kein Ordner geprüft — nichts sagt, welche Dateien er anfassen darf.",
+    "Für diesen Speicher-Schritt ist kein Ordner geprüft — nichts sagt, auf welche Dateien er zugreifen darf.",
   "authority.refusal.scope_invalid":
     "Der Ordner an diesem Schritt ist so, wie er dasteht, nicht lesbar.",
   "authority.refusal.unsupported_method":

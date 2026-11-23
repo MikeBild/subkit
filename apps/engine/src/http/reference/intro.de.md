@@ -8,7 +8,7 @@ audience: public
 ---
 ## Was ist SubKit?
 
-SubKit übernimmt wiederkehrende Geschäftsaufgaben, die mehrere Systeme berühren und heute an einer Person oder einem anfälligen Skript hängen.
+SubKit übernimmt wiederkehrende Geschäftsaufgaben, die über mehrere Systeme laufen und heute an einer Person oder einem anfälligen Skript hängen.
 Es ist für Teams gedacht, die solche Routine verlässlich laufen lassen wollen, ohne dafür Software zu entwickeln.
 Du beschreibst die Aufgabe in eigenen Worten, die KI entwirft daraus einen Workflow, und eine Person prüft ihn und gibt frei, worauf er zugreifen darf.
 Danach läuft er in festen Schritten, nur mit den freigegebenen Rechten.
