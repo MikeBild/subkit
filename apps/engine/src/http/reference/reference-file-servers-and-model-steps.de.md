@@ -89,24 +89,31 @@ Ein Transform-Step mit `language: "parse-file"` liest eine Datei aus dem Run und
   "id": "read_invoice",
   "kind": "transform",
   "language": "parse-file",
-  "file": { "source": "download.data", "format": "xlsx", "sheet": "Items", "max_rows": 2000 }
+  "file": { "source": "download.data", "format": "xlsx", "sheet": "Items", "max_rows": 100 }
 }
 ```
 
 | Feld | Bedeutung |
 | --- | --- |
-| `source` | Wo die Datei im Run liegt, als Punkt-Pfad: die Ausgabe eines früheren Steps wie `download.data` oder eine Run-Eingabe wie `$input.invoice`. |
+| `source` | Wo die Datei im Run liegt, als Punkt-Pfad: die Ausgabe eines früheren Steps wie `download.data` oder eine Run-Eingabe wie `$input.invoice`. Beim Speichern wird geprüft, dass der Pfad mit `$input`, `$state`, `$item` (nur in einem Step mit `for_each`) oder der ID eines anderen Steps beginnt. |
 | `format` | `csv`, `xlsx`, `pdf`, `docx` oder `zip`. Ohne Angabe liest der Step den Typ aus der Datei selbst. |
 | `sheet` | Tabellenblatt, das gelesen wird. Ohne Angabe das erste. |
 | `max_rows` | Obergrenze für Tabellenzeilen aus einer CSV- oder Tabellendatei, höchstens 10.000. |
 
 | Format | Ausgabe |
 | --- | --- |
-| `csv` | `rows` |
-| `xlsx` | `sheets`, je Tabellenblatt eine Liste von Zeilen |
+| `csv` | `rows`, `row_count` und `truncated` |
+| `xlsx` | `sheet` (das gelesene Tabellenblatt), `sheets` (die Namen aller Tabellenblätter), `rows`, `row_count` und `truncated` |
 | `pdf` | `text` und `pages` |
-| `docx` | `markdown` |
+| `docx` | `text`, das Dokument als Markdown |
 | `zip` | `text`, `entries` und `skipped` für Dateien, die nicht lesbar waren |
+
+Jede Ausgabe enthält außerdem `format` und `filename`.
+
+Tabellenformate liefern höchstens `max_rows` Zeilen, ohne Angabe 10.000. `row_count` ist die Zahl der gelesenen Datenzeilen, und `truncated` ist `true`, wenn Zeilen weggelassen wurden.
+
+- **CSV:** Die erste Zeile ist der Header, jede weitere Zeile wird ein Objekt mit diesen Schlüsseln und Text-Werten. Leere Zeilen werden übersprungen, das Trennzeichen ist ein Komma, und eine Byte Order Mark wird ignoriert. Der Step liest die ganze Datei, daher zählt `row_count` jede Zeile, auch über `max_rows` hinaus. Ein nicht geschlossenes Anführungszeichen oder eine Zeile mit zu wenigen oder zu vielen Feldern lässt den Step mit `parse_file_failed` scheitern; die Meldung nennt die erste fehlerhafte Zeile.
+- **XLSX:** Von jedem Tabellenblatt werden die ersten 200 Zeilen gelesen. Bei einem längeren Blatt endet `row_count` bei 200, und `truncated` meldet die Zeilen danach nicht.
 
 Eine Datei darf höchstens 25 MB groß sein. Der Step nimmt keine `expression`; alles steht im Block `file`.
 
@@ -125,4 +132,4 @@ Eine Datei darf höchstens 25 MB groß sein. Der Step nimmt keine `expression`; 
 | `parse_file_unsupported_format` | Der Dateityp ist keines der fünf Formate. |
 | `parse_file_sheet_missing` | Die Tabelle hat kein Blatt mit diesem Namen. |
 | `parse_file_too_large` | Die Datei ist größer als 25 MB. |
-| `parse_file_failed` | Die Datei ließ sich nicht lesen. |
+| `parse_file_failed` | Die Datei ließ sich nicht lesen, oder die CSV-Datei ist fehlerhaft. |

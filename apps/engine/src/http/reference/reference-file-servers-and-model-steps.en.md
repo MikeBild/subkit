@@ -89,24 +89,31 @@ A transform step with `language: "parse-file"` reads a file from the run and ret
   "id": "read_invoice",
   "kind": "transform",
   "language": "parse-file",
-  "file": { "source": "download.data", "format": "xlsx", "sheet": "Items", "max_rows": 2000 }
+  "file": { "source": "download.data", "format": "xlsx", "sheet": "Items", "max_rows": 100 }
 }
 ```
 
 | Field | Meaning |
 | --- | --- |
-| `source` | Where the file sits in the run, as a dot path: an earlier step's output such as `download.data` or a run input such as `$input.invoice`. |
+| `source` | Where the file sits in the run, as a dot path: an earlier step's output such as `download.data` or a run input such as `$input.invoice`. Saving checks that the path starts with `$input`, `$state`, `$item` (only in a step with `for_each`) or the id of another step. |
 | `format` | `csv`, `xlsx`, `pdf`, `docx` or `zip`. Without it the type is read from the file itself. |
 | `sheet` | Spreadsheet sheet to read. Without it the first sheet is read. |
 | `max_rows` | Upper bound for table rows from a CSV or spreadsheet file, at most 10,000. |
 
 | Format | Output |
 | --- | --- |
-| `csv` | `rows` |
-| `xlsx` | `sheets`, one list of rows per sheet |
+| `csv` | `rows`, `row_count` and `truncated` |
+| `xlsx` | `sheet` (the sheet that was read), `sheets` (the names of all sheets), `rows`, `row_count` and `truncated` |
 | `pdf` | `text` and `pages` |
-| `docx` | `markdown` |
+| `docx` | `text`, the document as Markdown |
 | `zip` | `text`, `entries` and `skipped` for files it could not read |
+
+Every output also carries `format` and `filename`.
+
+Table formats return at most `max_rows` rows, 10,000 if you leave it out. `row_count` is the number of data rows that were read and `truncated` is `true` when rows were left out.
+
+- **CSV:** the first line is the header, and each row is an object keyed by it with string values. Empty lines are skipped, the delimiter is a comma, and a byte order mark is ignored. The whole file is read, so `row_count` counts every row, also past `max_rows`. An unclosed quote or a row with too few or too many fields fails the step with `parse_file_failed` and names the first broken row.
+- **XLSX:** each sheet is read up to its first 200 rows. For a longer sheet `row_count` stops at 200 and `truncated` does not report the rows after it.
 
 A file may be at most 25 MB. The step does not accept an `expression`; everything is configured in the `file` block.
 
@@ -125,4 +132,4 @@ A file may be at most 25 MB. The step does not accept an `expression`; everythin
 | `parse_file_unsupported_format` | The file type is not one of the five formats. |
 | `parse_file_sheet_missing` | The spreadsheet has no sheet with that name. |
 | `parse_file_too_large` | The file is larger than 25 MB. |
-| `parse_file_failed` | The file could not be read. |
+| `parse_file_failed` | The file could not be read, or the CSV file is malformed. |
