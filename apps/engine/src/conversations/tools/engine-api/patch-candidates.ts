@@ -8,6 +8,18 @@ const ListInput = z
   })
   .openapi("ListPatchCandidatesToolInput");
 const GetInput = z.object({ id: z.string().uuid() }).openapi("GetPatchCandidateToolInput");
+const DryRunInput = z
+  .object({
+    id: z.string().uuid(),
+    accepted_operations: z
+      .array(z.number().int().min(0))
+      .min(1)
+      .optional()
+      .describe(
+        "Indices from the preview's `operations` list to test on their own; omit to test the whole repair",
+      ),
+  })
+  .openapi("DryRunPatchCandidateToolInput");
 
 const listPatchCandidatesTool: ConversationTool = {
   name: "list_patch_candidates",
@@ -44,20 +56,27 @@ const listPatchCandidatesTool: ConversationTool = {
 
 const getPatchCandidateTool: ConversationTool = {
   name: "get_patch_candidate",
-  description: "Fetch a patch candidate with full proposal body and reasoning.",
+  description:
+    "Fetch a patch candidate with full proposal body and reasoning. interaction_log lists what a person already tested, accepted partly or declined.",
   inputSchema: GetInput,
   category: "tenant_read",
   async execute(ctx, args: z.infer<typeof GetInput>) {
     const p = await ctx.engineClient.patchCandidates.get(args.id);
     if (!p) return { ok: false, data: { error: "patch_candidate_not_found" } };
-    return { ok: true, data: { candidate: p } };
+    return {
+      ok: true,
+      data: {
+        candidate: p,
+        interaction_log: await ctx.engineClient.patchCandidates.interactionLog(args.id),
+      },
+    };
   },
 };
 
 const previewPatchCandidateTool: ConversationTool = {
   name: "preview_patch_candidate",
   description:
-    "Human-readable before/after preview of a patch candidate: the affected step's current shape, the patched shape, and which paths change. Show this to the user BEFORE asking them to approve.",
+    "Human-readable before/after preview of a patch candidate: the affected step's current shape, the patched shape, which paths change, and `operations` — the single changes a person can accept one by one. Show this to the user BEFORE asking them to approve.",
   inputSchema: GetInput,
   category: "tenant_read",
   async execute(ctx, args: z.infer<typeof GetInput>) {
@@ -70,13 +89,25 @@ const previewPatchCandidateTool: ConversationTool = {
 const dryRunPatchCandidateTool: ConversationTool = {
   name: "dry_run_patch_candidate",
   description:
-    "Replay a patch candidate against a recorded (or synthesized) execution fixture WITHOUT applying it. Use to verify the patch projects cleanly before approval. Never mutates the candidate.",
-  inputSchema: GetInput,
+    "Replay a patch candidate against a recorded (or synthesized) execution fixture WITHOUT applying it. Use to verify the patch projects cleanly before approval. With `accepted_operations` it tests only those changes and returns the `review_digest` that approving exactly this part needs. Never changes the workflow.",
+  inputSchema: DryRunInput,
   category: "tenant_read",
-  async execute(ctx, args: z.infer<typeof GetInput>) {
-    const outcome = await ctx.engineClient.patchCandidates.dryRun(args.id);
+  async execute(ctx, args: z.infer<typeof DryRunInput>) {
+    const outcome = await ctx.engineClient.patchCandidates.dryRun(
+      args.id,
+      args.accepted_operations,
+    );
     if (outcome.status === "not_found") {
       return { ok: false, data: { error: "patch_candidate_not_found" } };
+    }
+    if (outcome.status === "invalid_selection") {
+      return {
+        ok: false,
+        data: {
+          error: outcome.reason,
+          hint: "pass indices from the `operations` list of preview_patch_candidate",
+        },
+      };
     }
     if (outcome.status !== "ran") {
       return {
@@ -97,6 +128,8 @@ const dryRunPatchCandidateTool: ConversationTool = {
         error: outcome.error,
         value_preview: outcome.value_preview,
         fixture_source: outcome.fixture_source,
+        accepted_operations: outcome.accepted_operations,
+        review_digest: outcome.review_digest,
       },
     };
   },

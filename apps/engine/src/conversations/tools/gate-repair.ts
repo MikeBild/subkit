@@ -1,5 +1,9 @@
 import { z } from "@hono/zod-openapi";
-import { GateRepairError, proposeGateRepair } from "../../self-healing/index.ts";
+import {
+  GateRepairError,
+  proposeGateRepair,
+  readPatchInteractionLog,
+} from "../../self-healing/index.ts";
 import { diagnoseWorkflow, GateFixerSchema } from "../../workflows/index.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
@@ -72,6 +76,11 @@ export const proposeWorkflowRepairTool: ConversationTool = {
         ok: true,
         data: {
           ...outcome,
+          interaction_log: await readPatchInteractionLog(
+            ctx.db,
+            ctx.tenant_id,
+            outcome.candidate_id,
+          ),
           next_action:
             "Tell the user a repair is waiting for review and name the step it changes. Do not claim it is applied.",
         },

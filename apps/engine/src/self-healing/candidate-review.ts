@@ -12,8 +12,13 @@ import {
 } from "../db/schema/index.ts";
 import { type PatchProposal, PatchProposalSchema } from "../llm/flows/repair.ts";
 import { ReportDeliveryBoundarySchema } from "../workflows/report-delivery-boundary.ts";
-import { type PatchReadiness, readPatchReadiness } from "./candidate-readiness.ts";
-import { runFixtureDryRun } from "./fixture-runner.ts";
+import {
+  type PatchReadiness,
+  readPatchReadiness,
+  readPatchSelection,
+} from "./candidate-readiness.ts";
+import type { PatchOperation } from "./core/patch-operations.ts";
+import { runFixtureDryRun, runPatchedStepDryRun } from "./fixture-runner.ts";
 import { applyPatchToWorkflowDag, candidateDriftKind } from "./patch-apply.ts";
 import { buildDryRunStep, loadStepSnapshot, resolveCandidateStepKey } from "./step-snapshot.ts";
 import type { DryRunStep } from "./types.ts";
@@ -85,6 +90,9 @@ export interface PatchCandidatePreview extends PatchReadiness {
   before_step: DryRunStep | null;
   after_step: DryRunStep | null;
   changed_paths: string[];
+  operations: PatchOperation[];
+  accepted_operations: number[] | null;
+  accepted_digest: string | null;
 }
 
 export async function previewPatchCandidate(
@@ -104,6 +112,7 @@ export async function previewPatchCandidate(
   let before_step: DryRunStep | null = null;
   let after_step: DryRunStep | null = null;
   let changed_paths: string[] = [];
+  let operations: PatchOperation[] = [];
   const target = await loadTargetStep(tenant_id, row.workflow_id, envelope.raw, db);
   if (target) {
     const steps = Array.isArray((target.dag as Record<string, unknown>)?.steps)
@@ -121,6 +130,7 @@ export async function previewPatchCandidate(
       if (patched.ok) {
         after_step = projectStep(patched.after);
         changed_paths = patched.changed_paths;
+        operations = patched.operations;
       }
     }
   }
@@ -138,6 +148,9 @@ export async function previewPatchCandidate(
     before_step,
     after_step,
     changed_paths,
+    operations,
+    accepted_operations: row.accepted_operations ?? null,
+    accepted_digest: row.accepted_digest ?? null,
   };
 }
 
@@ -148,7 +161,10 @@ type CandidateDryRunOutcome =
       error: string | null;
       value_preview: unknown;
       fixture_source: "recorded" | "synthesized";
+      accepted_operations: number[] | null;
+      review_digest: string | null;
     }
+  | { status: "invalid_selection"; reason: string }
   | { status: "not_found" }
   | { status: "no_proposal" }
   | { status: "no_step" }
@@ -161,6 +177,7 @@ export async function dryRunPatchCandidate(
     candidate_id: string;
     actor_id: string | null;
     actor_type?: AuditActorType;
+    accepted_operations?: number[] | undefined;
   },
   db: Db,
 ): Promise<CandidateDryRunOutcome> {
@@ -207,7 +224,33 @@ export async function dryRunPatchCandidate(
   }
   if (!fixture) return { status: "no_fixture" };
 
-  const result = await runFixtureDryRun({ step, patch: envelope.proposal, fixture });
+  const selection = await readPatchSelection(params.tenant_id, row, db, params.accepted_operations);
+  if (params.accepted_operations && !selection.readiness.reviewable)
+    return {
+      status: "invalid_selection",
+      reason: selection.readiness.review_reason ?? "accepted_operations_invalid",
+    };
+  const partial = selection.accepted && selection.after ? projectStep(selection.after) : null;
+  if (selection.accepted && !partial) return { status: "no_step" };
+  const result = partial
+    ? await runPatchedStepDryRun({ patched: partial, fixture })
+    : await runFixtureDryRun({ step, patch: envelope.proposal, fixture });
+
+  if (selection.accepted)
+    await db
+      .update(patchCandidates)
+      .set({
+        accepted_operations: selection.accepted,
+        accepted_digest: selection.readiness.review_digest,
+        updated_at: new Date(),
+      })
+      .where(
+        and(
+          eq(patchCandidates.tenant_id, params.tenant_id),
+          eq(patchCandidates.id, params.candidate_id),
+          eq(patchCandidates.status, "proposed"),
+        ),
+      );
 
   await auditAwait(
     {
@@ -221,7 +264,13 @@ export async function dryRunPatchCandidate(
       resource_type: "patch_candidate",
       resource_id: params.candidate_id,
       result: "success",
-      metadata: { ok: result.ok, fixture_source, error: result.error ?? null },
+      metadata: {
+        ok: result.ok,
+        fixture_source,
+        error: result.error ?? null,
+        accepted_operations: selection.accepted,
+        operation_count: selection.operations.length,
+      },
     },
     db,
   );
@@ -232,5 +281,7 @@ export async function dryRunPatchCandidate(
     error: result.error ?? null,
     value_preview: result.value ?? null,
     fixture_source,
+    accepted_operations: selection.accepted,
+    review_digest: selection.readiness.review_digest,
   };
 }

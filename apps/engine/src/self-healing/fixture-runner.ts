@@ -26,10 +26,24 @@ export async function runFixtureDryRun(p: FixtureRunParams): Promise<DryRunResul
   });
 }
 
-async function runFixtureDryRunImpl(p: FixtureRunParams): Promise<DryRunResult> {
-  const patched = applyPatchToStep(p.step, p.patch);
-  const body = p.fixture.response;
+export async function runPatchedStepDryRun(p: {
+  patched: DryRunStep;
+  fixture: DryRunFixture;
+}): Promise<DryRunResult> {
+  return instrument({
+    module: "self-healing",
+    action: "fixture_dry_run",
+    memory: true,
+    fields: { patch_kind: "accepted_operations", step_kind: p.patched.kind },
+    fn: () => evaluatePatchedStep(p.patched, p.fixture.response),
+  });
+}
 
+function runFixtureDryRunImpl(p: FixtureRunParams): Promise<DryRunResult> {
+  return evaluatePatchedStep(applyPatchToStep(p.step, p.patch), p.fixture.response);
+}
+
+async function evaluatePatchedStep(patched: DryRunStep, body: unknown): Promise<DryRunResult> {
   if (patched.kind === "transform") {
     const expr = patched.expression;
     if (!expr) return { ok: false, error: "transform step has no expression" };

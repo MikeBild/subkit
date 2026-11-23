@@ -8,6 +8,7 @@ import {
   getPatchCandidateWithWorkflow,
   listPatchCandidatesWithWorkflow,
   type PatchCandidateRow,
+  readPatchInteractionLog,
 } from "../../self-healing/candidate-admin.ts";
 import { PatchDecisionError, rejectPatchCandidate } from "../../self-healing/candidate-decision.ts";
 import {
@@ -28,6 +29,33 @@ import { defineOperation, type Rejection, reject } from "./index.ts";
 
 const PatchStatusSchema = z.enum(["proposed", "applied", "rejected", "superseded", "inapplicable"]);
 
+const AcceptedOperations = z.array(z.number().int().min(0)).min(1).max(500);
+
+const PatchOperationSchema = z
+  .object({
+    index: z.number().int().min(0),
+    path: z.string(),
+    line: z.number().int().positive().nullable(),
+    change: z.enum(["added", "removed", "changed"]),
+    before: z.unknown(),
+    after: z.unknown(),
+    description_key: z.string(),
+  })
+  .openapi("PatchOperation");
+
+const PatchInteractionSchema = z
+  .object({
+    at: z.string(),
+    event: z.enum(["tested", "accepted", "accepted_partly", "declined"]),
+    actor_type: z.string(),
+    actor_id: z.string().nullable(),
+    ok: z.boolean().nullable(),
+    accepted_operations: z.array(z.number().int()).nullable(),
+    declined_operations: z.array(z.number().int()).nullable(),
+    reason: z.string().nullable(),
+  })
+  .openapi("PatchInteraction");
+
 const PatchCandidateSchema = z
   .object({
     id: z.string(),
@@ -43,6 +71,9 @@ const PatchCandidateSchema = z
     closed_reason: z.string().nullable(),
     closed_against_version_id: z.string().nullable(),
     closed_at: z.string().nullable(),
+    accepted_operations: z.array(z.number().int()).nullable(),
+    accepted_digest: z.string().nullable(),
+    interaction_log: z.array(PatchInteractionSchema).optional(),
     created_at: z.string(),
     updated_at: z.string(),
     ...PatchReadinessSchema.partial().shape,
@@ -91,18 +122,29 @@ const PreviewResponse = z
     before_step: StepShapeSchema.nullable(),
     after_step: StepShapeSchema.nullable(),
     changed_paths: z.array(z.string()),
+    operations: z.array(PatchOperationSchema),
+    accepted_operations: z.array(z.number().int()).nullable(),
+    accepted_digest: z.string().nullable(),
     ...PatchReadinessSchema.shape,
   })
   .openapi("PatchCandidatePreview");
 
-const PrepareBody = z.object({ expected_review_digest: z.string().regex(/^[a-f0-9]{64}$/) });
+const PrepareBody = z.object({
+  expected_review_digest: z.string().regex(/^[a-f0-9]{64}$/),
+  accepted_operations: AcceptedOperations.optional(),
+});
 
 const ApproveBody = z
   .object({
     expected_review_digest: z.string().regex(/^[a-f0-9]{64}$/),
+    accepted_operations: AcceptedOperations.optional(),
     execution_authority: GrantWorkflowAuthoritySchema.optional(),
   })
   .openapi("ApprovePatchCandidateBody");
+
+const DryRunBody = z
+  .object({ accepted_operations: AcceptedOperations.optional() })
+  .openapi("DryRunPatchCandidateBody");
 
 const RejectBody = z.object({ reason: z.string().optional() }).openapi("RejectPatchCandidateBody");
 
@@ -112,6 +154,8 @@ const DryRunResponse = z
     error: z.string().nullable(),
     value_preview: z.unknown(),
     fixture_source: z.enum(["recorded", "synthesized"]),
+    accepted_operations: z.array(z.number().int()).nullable(),
+    review_digest: z.string().nullable(),
   })
   .openapi("PatchCandidateDryRunResponse");
 
@@ -135,6 +179,11 @@ interface IdInput {
 
 interface PrepareInput extends IdInput {
   readonly expected_review_digest: string;
+  readonly accepted_operations?: number[] | undefined;
+}
+
+interface DryRunInput extends IdInput {
+  readonly accepted_operations?: number[] | undefined;
 }
 
 interface ApproveInput extends IdInput {
@@ -149,6 +198,7 @@ interface ReviewedCandidate {
   readonly candidate: PatchCandidateRow;
   readonly workflow_name: string | null;
   readonly readiness: Readiness;
+  readonly interaction_log?: Awaited<ReturnType<typeof readPatchInteractionLog>>;
 }
 
 interface ListResult {
@@ -157,7 +207,12 @@ interface ListResult {
   readonly reviewable_total: number;
 }
 
-function serialize({ candidate: row, workflow_name, readiness }: ReviewedCandidate) {
+function serialize({
+  candidate: row,
+  workflow_name,
+  readiness,
+  interaction_log,
+}: ReviewedCandidate) {
   return {
     id: row.id,
     tenant_id: row.tenant_id,
@@ -172,6 +227,9 @@ function serialize({ candidate: row, workflow_name, readiness }: ReviewedCandida
     closed_reason: row.closed_reason ?? null,
     closed_against_version_id: row.closed_against_version_id ?? null,
     closed_at: row.closed_at?.toISOString() ?? null,
+    accepted_operations: row.accepted_operations ?? null,
+    accepted_digest: row.accepted_digest ?? null,
+    ...(interaction_log ? { interaction_log } : {}),
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
     ...readiness,
@@ -198,6 +256,7 @@ export const preparePatchCandidateOperation = defineOperation<PrepareInput, Prep
           actor_type: scope.principal.kind,
           candidate_id: input.id,
           expected_review_digest: input.expected_review_digest,
+          accepted_operations: input.accepted_operations,
         },
         scope.db,
       );
@@ -219,6 +278,7 @@ export const preparePatchCandidateOperation = defineOperation<PrepareInput, Prep
     toInput: ({ param, json }) => ({
       ...idFrom(param),
       expected_review_digest: (json as z.infer<typeof PrepareBody>).expected_review_digest,
+      accepted_operations: (json as z.infer<typeof PrepareBody>).accepted_operations,
     }),
     toBody: (prepared) => prepared,
   },
@@ -286,6 +346,7 @@ export const getPatchCandidateOperation = defineOperation<IdInput, ReviewedCandi
       candidate: row.candidate,
       workflow_name: row.workflow_name,
       readiness: await readPatchReadiness(scope.tenant_id, row.candidate, scope.db),
+      interaction_log: await readPatchInteractionLog(scope.db, scope.tenant_id, id),
     };
   },
   http: {
@@ -352,13 +413,13 @@ function approvalRejection(error: unknown): Rejection {
   );
 }
 
-export const dryRunPatchCandidateOperation = defineOperation<IdInput, DryRun>({
+export const dryRunPatchCandidateOperation = defineOperation<DryRunInput, DryRun>({
   id: "patch_candidate.dry_run",
   summary: "Replay a patch candidate against a recorded or synthesized fixture",
   permission: "workflow:read",
   effect: "write",
   audit: AuditAction.PATCH_CANDIDATE_DRY_RUN_REQUESTED,
-  async handler(scope, { id }) {
+  async handler(scope, { id, accepted_operations }) {
     if (!scope.principal) return reject.unauthorized();
     const outcome = await dryRunPatchCandidate(
       {
@@ -366,10 +427,19 @@ export const dryRunPatchCandidateOperation = defineOperation<IdInput, DryRun>({
         candidate_id: id,
         actor_id: scope.principal.id,
         actor_type: scope.principal.kind,
+        accepted_operations,
       },
       scope.db,
     );
     if (outcome.status === "not_found") return reject.notFound("patch_candidate");
+    if (outcome.status === "invalid_selection")
+      return reject.status(
+        409,
+        outcome.reason,
+        "the selected operations cannot be tested",
+        undefined,
+        "load the candidate preview and pass indices from its `operations` list",
+      );
     if (outcome.status === "no_proposal" || outcome.status === "no_step")
       return reject.status(
         409,
@@ -403,15 +473,22 @@ export const dryRunPatchCandidateOperation = defineOperation<IdInput, DryRun>({
     description:
       "Never mutates the candidate's status — this is a pre-approval check. Uses the fixture recorded at proposal time, or synthesizes one from the failing step's persisted request/response material.",
     params: IdParam,
+    body: DryRunBody,
+    bodyRequired: false,
     response: DryRunResponse,
     success: { status: 200, description: "Dry-run ran" },
     errors: { 404: "Not found", 409: "No fixture / step material to replay against" },
-    toInput: ({ param }) => idFrom(param),
+    toInput: ({ param, json }) => ({
+      ...idFrom(param),
+      accepted_operations: (json as z.infer<typeof DryRunBody> | undefined)?.accepted_operations,
+    }),
     toBody: (outcome) => ({
       ok: outcome.ok,
       error: outcome.error,
       value_preview: outcome.value_preview,
       fixture_source: outcome.fixture_source,
+      accepted_operations: outcome.accepted_operations,
+      review_digest: outcome.review_digest,
     }),
   },
 });
@@ -439,6 +516,7 @@ export const approvePatchCandidateOperation = defineOperation<ApproveInput, stri
         request: scope.request,
         candidate: row,
         expected_review_digest: body.expected_review_digest,
+        accepted_operations: body.accepted_operations,
         execution_authority: body.execution_authority,
       });
     } catch (error) {

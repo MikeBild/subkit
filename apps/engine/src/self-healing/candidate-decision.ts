@@ -12,7 +12,8 @@ import { recordPatchCandidate } from "../observability/instrumentation.ts";
 import { invalidateTenantState } from "../operator/index.ts";
 import { lockWorkflowForVersionWrite } from "../workflows/version-write-lock.ts";
 import { autoApplyPatch, logPatchNotApplied } from "./auto-apply.ts";
-import { readPatchReadiness } from "./candidate-readiness.ts";
+import { readPatchSelection } from "./candidate-readiness.ts";
+import { approvalRefusal } from "./core/approval-refusal.ts";
 import { closeIfUndecidable } from "./open-decisions.ts";
 
 export class PatchDecisionError extends Error {
@@ -29,6 +30,7 @@ export async function approvePatchCandidate(
     actor_type?: AuditActorType;
     expected_review_digest?: string;
     prepared_version_id?: string;
+    accepted_operations?: number[] | undefined;
   },
   db: Db,
 ): Promise<string | null> {
@@ -58,11 +60,30 @@ export async function approvePatchCandidate(
       .for("update")
       .limit(1);
     if (row?.status !== "proposed") return null;
-    const readiness = await readPatchReadiness(params.tenant_id, row, tx);
-    if (
-      params.expected_review_digest &&
-      readiness.review_digest !== params.expected_review_digest
-    ) {
+    const selection = await readPatchSelection(
+      params.tenant_id,
+      row,
+      tx,
+      params.accepted_operations,
+    );
+    const interaction = {
+      accepted_operations: selection.accepted,
+      declined_operations: selection.accepted
+        ? selection.operations
+            .map((operation) => operation.index)
+            .filter((index) => !selection.accepted?.includes(index))
+        : null,
+      operation_count: selection.operations.length,
+    };
+    const refusal = approvalRefusal({
+      selection_requested: params.accepted_operations !== undefined,
+      partial: selection.accepted !== null,
+      review_reason: selection.readiness.review_reason,
+      review_digest: selection.readiness.review_digest,
+      expected_review_digest: params.expected_review_digest ?? null,
+      tested_digest: row.accepted_digest ?? null,
+    });
+    if (refusal) {
       await auditAwait(
         {
           tenant_id: params.tenant_id,
@@ -71,11 +92,12 @@ export async function approvePatchCandidate(
           resource_type: "patch_candidate",
           resource_id: row.id,
           result: "error",
-          reason: readiness.review_reason ?? "review_changed",
+          reason: refusal,
+          metadata: interaction,
         },
         tx,
       );
-      return { failure: readiness.review_reason ?? "review_changed" };
+      return { failure: refusal };
     }
 
     const diff = (row.diff ?? {}) as Record<string, unknown>;
@@ -88,6 +110,8 @@ export async function approvePatchCandidate(
       candidate_id: row.id,
       proposal: proposalRaw,
       ...(params.prepared_version_id ? { prepared_version_id: params.prepared_version_id } : {}),
+      accepted_operations: selection.accepted,
+      accepted_digest: selection.accepted ? selection.readiness.review_digest : null,
     });
 
     if (!outcome.applied) {
@@ -126,6 +150,7 @@ export async function approvePatchCandidate(
           workflow_id: row.workflow_id,
           new_workflow_version_id: outcome.version_id,
           changed_paths: outcome.changed_paths,
+          ...interaction,
         },
       },
       tx,
