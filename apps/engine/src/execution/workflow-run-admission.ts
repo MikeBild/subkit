@@ -46,8 +46,9 @@ async function heldModelSteps(
   db: Db,
   input: z.infer<typeof schema>,
   resolved: { workflow_version_id: string; def: { steps: ReadonlyArray<{ kind: string }> } },
-): Promise<string[]> {
-  if (!resolved.def.steps.some((step) => step.kind === "model" || step.kind === "call")) return [];
+): Promise<{ model_step_ids: string[]; unresolved_call_ids: string[] }> {
+  if (!resolved.def.steps.some((step) => step.kind === "model" || step.kind === "call"))
+    return { model_step_ids: [], unresolved_call_ids: [] };
   const preview = await previewWorkflowAuthority(
     {
       tenant_id: input.tenant_id,
@@ -57,7 +58,12 @@ async function heldModelSteps(
     },
     db,
   );
-  return (preview.manifest.model_calls ?? []).map(modelCallLabel);
+  return {
+    model_step_ids: (preview.manifest.model_calls ?? []).map(modelCallLabel),
+    unresolved_call_ids: preview.manifest.issues.flatMap((issue) =>
+      issue.code === "unbound_workflow_call" ? [issue.step_id] : [],
+    ),
+  };
 }
 
 export async function admitWorkflowRun(
@@ -116,7 +122,7 @@ export async function admitWorkflowRun(
   enforce(
     decideAdmission(input, {
       stage: "held_model_steps",
-      model_step_ids: await heldModelSteps(db, input, resolved),
+      ...(await heldModelSteps(db, input, resolved)),
     }),
   );
   enforce(

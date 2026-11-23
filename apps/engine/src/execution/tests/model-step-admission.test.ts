@@ -143,3 +143,21 @@ test("a parent whose called child has no model step still gets a held preparatio
     execution_authority_id: null,
   });
 });
+
+test("a parent whose called workflow cannot be resolved does not run without an approval", async () => {
+  const parent = await createWorkflowRow(ctx, {
+    name: "calls an unknown workflow",
+    steps: [
+      { id: "missing", kind: "call", workflow_id: "00000000-0000-4000-8000-0000000000ff" },
+      { id: "dynamic", kind: "call", workflow_slug: "${input.target}" },
+    ],
+  });
+  await expect(admit(parent.workflow_id, true)).rejects.toMatchObject({
+    code: "execution_authority_required",
+    message: expect.stringContaining("(dynamic, missing)"),
+  });
+  await expect(admit(parent.workflow_id)).rejects.toMatchObject({
+    code: "execution_authority_required",
+  });
+  expect(await runs(parent.workflow_id)).toEqual([]);
+});
