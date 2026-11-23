@@ -940,7 +940,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * The Übersicht's operations figures over one window
+         * The Overview's operations figures over one window
          * @description Runs that started in the window and their success rate, the enabled connectors healthy now, the share of repairs decided in the window that were applied, and per LLM flow the share of prompt tokens read from the prompt cache — the cockpit's operations bar reads its run, success, connector and repair figures from here, each with the cockpit list it counts.
          */
         get: {

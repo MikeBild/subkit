@@ -369,7 +369,7 @@ async function runSet(command: VaultSetCommand, deps: VaultCliDeps): Promise<Vau
         command.bindings,
       );
       lines.push(
-        `${command.name}: prepared version ${prepared.version}; waiting for approval in the Cockpit (Einstellungen → Vorbereitete Änderungen)`,
+        `${command.name}: prepared version ${prepared.version}; waiting for approval in the Cockpit (Settings → Prepared changes)`,
       );
       lines.push(
         command.bindings.length

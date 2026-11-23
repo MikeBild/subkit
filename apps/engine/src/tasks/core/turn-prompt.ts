@@ -9,7 +9,7 @@ export const TASK_RUN_REJECTION_NOTICE =
   "The person rejected the result. It is not done yet: find out what is missing, work on it, and update the playbook before you offer the result again.";
 
 export const TASK_RUN_LANGUAGE_INSTRUCTIONS: Readonly<Record<TaskRunLanguage, string>> = {
-  de: "Language: German. Write everything the person reads in German and address them informally with „du“, never „Sie“: your summary, every question, and each result and note you record in the playbook.",
+  de: 'Language: German. Write everything the person reads in German and address them informally with "du", never "Sie": your summary, every question, and each result and note you record in the playbook.',
   en: "Language: English. Write everything the person reads in English: your summary, every question, and each result and note you record in the playbook.",
 };
 

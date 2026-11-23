@@ -65,7 +65,7 @@ export function stepKeyFromName(name: string, fallback: string, taken: readonly 
       .normalize("NFKD")
       .replace(/[̀-ͯ]/g, "")
       .toLowerCase()
-      .replace(/ß/g, "ss")
+      .replace(/\u00df/g, "ss")
       .replace(/[^a-z0-9]+/g, "_")
       .replace(/^_+|_+$/g, "")
       .slice(0, 48) || fallback;

@@ -116,7 +116,7 @@ const FENCED_CODE = /^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[^\n]*$/gm;
 
 const INLINE_CODE = /(`+)[^`]*?\1/g;
 
-const QUOTED = /„[^“”\n]*[“”]|“[^”\n]*”|"[^"\n]*"|»[^«\n]*«|«[^»\n]*»/g;
+const QUOTED = /\u201E[^“”\n]*[“”]|“[^”\n]*”|"[^"\n]*"|»[^«\n]*«|«[^»\n]*»/g;
 
 const FORMAL_POSSESSIVE =
   /(?<![\p{L}\p{N}_])(?:Ihr|Ihre|Ihnen|Ihren|Ihrem|Ihrer|Ihres)(?![\p{L}\p{N}_])/gu;

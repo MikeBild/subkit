@@ -20,8 +20,8 @@ image and the binaries. The desktop app follows with its own workflow, see
    reports. Run `bun run verify static` and commit the updates on their own.
 3. Write the reviewed highlights in a file outside the repository, with a
    `## Highlights (en)` and a `## Highlights (de)` section of five to seven plain-language
-   bullets each: effects for the people who use SubKit, no internal names. German uses „du“,
-   „…“ and DIN 5008 (`typografie-de`, `du-sie-check`, `microcopy-ux`); English uses US spelling
+   bullets each: effects for the people who use SubKit, no internal names. German uses the informal
+   address, German quotation marks and DIN 5008 (`typografie-de`, `du-sie-check`, `microcopy-ux`); English uses US spelling
    and curly quotes. Only the English section goes into the GitHub release description; the
    German one stays in the file and in the generated release notes, never on GitHub. The
    Cockpit shows them under “What’s new”, falling back to the `feat(user)` and `fix(user)`

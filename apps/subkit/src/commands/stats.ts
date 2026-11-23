@@ -366,7 +366,7 @@ const operationsCommand = defineCommand({
   meta: {
     name: "operations",
     description:
-      "The Übersicht's operations figures: runs, success rate, healthy connectors (now), applied repairs. Example: subkit stats operations --window 7d",
+      "The Overview's operations figures: runs, success rate, healthy connectors (now), applied repairs. Example: subkit stats operations --window 7d",
   },
   args: {
     window: { type: "string", description: "24h (default), 7d or 30d" },

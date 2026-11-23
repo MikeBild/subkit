@@ -29,9 +29,9 @@ export const PREFLIGHT_HELP: string =
   "        --if-unreadable          do nothing if the secret still reads,\n" +
   "                                 so the same line is safe on every deploy\n" +
   "        --pending                write the value, but do not use it yet:\n" +
-  "                                 it waits in the Cockpit (Einstellungen →\n" +
-  "                                 Vorbereitete Änderungen) until someone\n" +
-  "                                 clicks Freigeben; --bind then says what\n" +
+  "                                 it waits in the Cockpit (Settings →\n" +
+  "                                 Prepared changes) until someone\n" +
+  "                                 clicks Apply; --bind then says what\n" +
   "                                 that approval re-pins. Use it when the\n" +
   "                                 engine is running and a person should\n" +
   "                                 decide, not the deploy script\n\n" +

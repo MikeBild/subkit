@@ -24,7 +24,7 @@ On a Mac with Apple Silicon it also runs on the Mac what the person allows:
 | Cockpit window, tray, notifications, quick capture, drop sheet, updates | yes | yes |
 | Local capabilities: files, browser, computer use, permission setup | yes | no |
 | Live view | yes | no |
-| Local workspace „Only on this Mac“ | yes | no |
+| Local workspace “Only on this Mac” | yes | no |
 
 `platformCapabilities(platform, arch)` in `src/shared/platform-capabilities.ts` is the one place
 that decides this. The runner announces only the device capabilities of its platform, so a

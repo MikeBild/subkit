@@ -37,7 +37,7 @@ describe("clipper release archive", () => {
     expect(chromeScriptSource('const text = "\uffff\ufdd0\u{10ffff}";')).toBe(
       'const text = "\\uffff\\ufdd0\\udbff\\udfff";',
     );
-    expect(chromeScriptSource('const text = "Grüße 🎵";')).toBe('const text = "Grüße 🎵";');
+    expect(chromeScriptSource('const text = "Café 🎵";')).toBe('const text = "Café 🎵";');
   });
   test("preserves names and bytes in a standard ZIP independently of insertion order", async () => {
     const first = new Map([

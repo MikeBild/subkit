@@ -31,7 +31,7 @@ function skillLabel(skill: { slug: string | null; title: string }): string {
 }
 
 export function intakeMentionLabel(title: string): string {
-  return mentionLabel(title, "Eintrag");
+  return mentionLabel(title, "intake");
 }
 
 function mentionLabel(title: string, fallback: string): string {
@@ -96,7 +96,7 @@ async function seedReference(seed: ChatReferenceSeed): Promise<ConversationRefer
       return {
         type: seed.type,
         id: item.id,
-        label: mentionLabel(item.workflow_name ?? "", "Ausführung"),
+        label: mentionLabel(item.workflow_name ?? "", seed.type),
       };
     }
   }

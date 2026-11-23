@@ -46,7 +46,7 @@ describe("taskRunTurnPrompt", () => {
   test("German asks for German and du, English for English only", () => {
     expect(TASK_RUN_LANGUAGE_INSTRUCTIONS.de).toStartWith("Language: German.");
     expect(TASK_RUN_LANGUAGE_INSTRUCTIONS.de).toContain("in German");
-    expect(TASK_RUN_LANGUAGE_INSTRUCTIONS.de).toContain("„du“, never „Sie“");
+    expect(TASK_RUN_LANGUAGE_INSTRUCTIONS.de).toContain('"du", never "Sie"');
     expect(TASK_RUN_LANGUAGE_INSTRUCTIONS.en).toStartWith("Language: English.");
     expect(TASK_RUN_LANGUAGE_INSTRUCTIONS.en).toContain("in English");
     expect(TASK_RUN_LANGUAGE_INSTRUCTIONS.en).not.toContain("German");

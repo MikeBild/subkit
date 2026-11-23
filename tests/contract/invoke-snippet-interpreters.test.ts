@@ -8,7 +8,7 @@ import { invokeRunBody, renderInvokeSnippet, shellQuote } from "@shared/invoke-s
 const WORKFLOW = "3fb5fc90-1c2d-4e5f-8a6b-7c8d9e0f1a2b";
 const ENGINE = "https://engine.example.com";
 const URL_SENT = `${ENGINE}/v1/executions`;
-const HOSTILE_TEXT = 'it\'s $HOME `id` $(id) \\ back\\slash "quoted" \n tab\t ünï ✓ 😀';
+const HOSTILE_TEXT = 'it\'s $HOME `id` $(id) \\ back\\slash "quoted" \n tab\t ñï é ✓ 😀';
 const INPUT = JSON.parse(
   JSON.stringify({ note: HOSTILE_TEXT, "we'ird $key": [true, false, null, 1.5, "'"] }).replace(
     /}$/,

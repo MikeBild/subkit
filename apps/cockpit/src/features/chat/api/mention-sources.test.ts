@@ -7,6 +7,6 @@ describe("intakeMentionLabel", () => {
   });
 
   test("uses a stable fallback only when a title has no mentionable characters", () => {
-    expect(intakeMentionLabel("!!!")).toBe("Eintrag");
+    expect(intakeMentionLabel("!!!")).toBe("intake");
   });
 });

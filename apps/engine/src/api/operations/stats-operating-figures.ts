@@ -91,7 +91,7 @@ type OperatingFigures = Awaited<ReturnType<typeof readOperatingFigures>>;
 
 export const operatingFiguresOperation = defineOperation<OperatingFiguresInput, OperatingFigures>({
   id: "stats.operating_figures",
-  summary: "The Übersicht's operations figures over one window",
+  summary: "The Overview's operations figures over one window",
   permission: "stats:read",
   effect: "read",
   async handler(scope, query) {

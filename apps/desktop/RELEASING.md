@@ -94,7 +94,7 @@ credentials.
 ## Engine for local mode
 
 There is one desktop app with both modes: it connects to a server or runs a local workspace
-„Nur auf diesem Mac“. Every macOS (Apple silicon) build therefore carries the compiled engine and
+“Only on this Mac”. Every macOS (Apple silicon) build therefore carries the compiled engine and
 PostgreSQL; there is no switch and no second builder config. The Windows app carries neither for
 now: the local workspace, files, websites and apps are Mac-only (`platformCapabilities` in
 `src/shared/platform-capabilities.ts` decides this in one place).

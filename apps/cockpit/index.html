@@ -8,12 +8,11 @@
     <meta name="theme-color" content="#ffffff" />
     <meta name="cockpit-product" content="SubKit" />
     <title>SubKit Cockpit</title>
-    <!-- Konvention §6: derselbe Glyph wie die Wortmarke der Seitenleiste, als eigene
-         Datei aus apps/cockpit/public. Der href steht hier OHNE Basispfad — Vite stellt
-         `base` ("/cockpit/") beim Bauen selbst davor. Wer ihn hier hinschreibt, bekommt
-         "/cockpit/cockpit/favicon.svg", und der Cockpit-Handler beantwortet das mit der
-         SPA-Rückfalllinie: 200, text/html, ein Reiter ohne Icon. Deshalb prüft
-         cockpit-favicon.test.ts die Rechnung Quelle -> gebaute Fassung. -->
+    <!-- Convention §6: the same glyph as the sidebar wordmark, as its own file from
+         apps/cockpit/public. The href has NO base path here; Vite prepends `base`
+         ("/cockpit/") at build time. Writing it here yields "/cockpit/cockpit/favicon.svg",
+         which the Cockpit handler answers with the SPA fallback: 200, text/html, a tab
+         without an icon. cockpit-favicon.test.ts checks source against build output. -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <script>
       // BLOCKING, and in the document rather than in the bundle. The class has

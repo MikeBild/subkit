@@ -200,7 +200,7 @@ function workloads(): Workload[] {
       size: "small",
       execute: (runtime) =>
         runtime.runJs({
-          code: "return sk.url.build('https://example.test/search', { query: [['q', 'ümlaut'], ['tag', 'a'], ['tag', 'b']] });",
+          code: "return sk.url.build('https://example.test/search', { query: [['q', 'café'], ['tag', 'a'], ['tag', 'b']] });",
           input: null,
           clock,
         }),

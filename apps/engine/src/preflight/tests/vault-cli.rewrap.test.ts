@@ -38,7 +38,7 @@ describe("--vault-set --pending", () => {
     );
     expect(outcome.exitCode).toBe(0);
     expect(outcome.lines[0]).toBe(
-      "tok: prepared version 3; waiting for approval in the Cockpit (Einstellungen → Vorbereitete Änderungen)",
+      "tok: prepared version 3; waiting for approval in the Cockpit (Settings → Prepared changes)",
     );
     expect(outcome.lines[1]).toContain("bindings keep their pinned version");
     expect(state.prepared).toEqual([

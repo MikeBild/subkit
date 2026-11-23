@@ -7398,7 +7398,7 @@ MCP JSON-RPC, sessions, capacity, tasks, and SSE
 
 #### `subkit stats operations`
 
-The Übersicht's operations figures: runs, success rate, healthy connectors (now), applied repairs. Example: subkit stats operations --window 7d
+The Overview's operations figures: runs, success rate, healthy connectors (now), applied repairs. Example: subkit stats operations --window 7d
 
 - `--window` (string) — 24h (default), 7d or 30d
 - `--from` (string) — Window start (ISO-8601 or now-24h, startOfMonth)

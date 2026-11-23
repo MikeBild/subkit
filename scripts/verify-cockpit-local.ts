@@ -68,7 +68,7 @@ async function main() {
     "Workflow target is the local fixture API",
   );
 
-  const content = `# ${label}\n\nEin echter lokaler Datei-Rundlauf mit Umlauten: ÄÖÜ.\n`;
+  const content = `# ${label}\n\nA real local file round trip with accents: café, ñandú.\n`;
   const file = await request(
     "/v1/files/inline",
     "POST",
@@ -134,7 +134,7 @@ async function main() {
     {
       scope: "global",
       title: label,
-      body: "Temporäre lokale Regel: erkläre ausschließlich synthetische Demodaten.",
+      body: "Temporary local rule: explain synthetic demo data only.",
       description: "Disposable local functional journey",
       category: "demo",
       status: "draft",
