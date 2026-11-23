@@ -11,6 +11,7 @@ import {
   classifyBrowserAction,
   DELETION_TERMS_LIST,
   DESTRUCTIVE_TERMS_LIST,
+  hasCommitPath,
   isCredentialField,
   PAYMENT_TERMS_LIST,
   PREPARE_KEYS,
@@ -291,5 +292,31 @@ describe("credential fields", () => {
     expect(isCredentialField({ input_type: "text", autocomplete: "username" })).toBe(false);
     expect(isCredentialField({ input_type: null, autocomplete: null })).toBe(false);
     expect(isCredentialField({ autocomplete: "email acc-x" })).toBe(false);
+  });
+});
+
+describe("a commit path means the same for a link and for an opened address", () => {
+  test.each<[string, boolean]>([
+    ["https://shop.example/unsubscribe?t=x", true],
+    ["https://shop.example/newsletter/confirm/abc", true],
+    ["https://shop.example/account/delete", true],
+    ["https://shop.example/checkout", true],
+    ["https://shop.example/cancel-subscription", true],
+    ["https://shop.example/logout", true],
+    ["https://shop.example/order/123", true],
+    ["https://order.example.com/", true],
+    ["https://shop.example/products", false],
+    ["https://shop.example/orders-history-view", false],
+    ["https://shop.example/", false],
+  ])("%s", (url, commit) => {
+    expect(hasCommitPath(url)).toBe(commit);
+    const link = classifyBrowserAction({
+      action: "click",
+      page_url: "https://shop.example/",
+      role: "link",
+      name: "here",
+      href: url,
+    });
+    expect(link === "commit").toBe(commit);
   });
 });

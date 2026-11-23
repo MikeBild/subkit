@@ -274,6 +274,7 @@ export async function executeDeviceTool(
     page_origin: resolved.page_origin,
     app: resolved.app,
     filled: steps.flatMap((step) => step.filled ?? []),
+    named_urls: covering.facts.urls,
   });
   const partition = browserPartition(
     turn.task_id !== null

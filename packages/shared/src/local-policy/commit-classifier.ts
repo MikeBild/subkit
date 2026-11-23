@@ -337,7 +337,7 @@ function isGetMethod(method: string | null | undefined): boolean {
   return value === "" || value === "get";
 }
 
-function hasCommitPath(url: string): boolean {
+export function hasCommitPath(url: string): boolean {
   return COMMIT_PATH.test(url.toLowerCase());
 }
 
