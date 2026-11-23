@@ -298,7 +298,8 @@ needs an entry in `src/shared/app-files.ts`.
 
 ## Packaging, signing and updates
 
-`electron-builder.base.yml` targets macOS (dmg and zip, Apple silicon only) and Windows (NSIS, x64).
+`electron-builder.base.yml` targets macOS (dmg for the download, zip for updates, Apple silicon
+only) and Windows (NSIS, x64).
 `bun run package` stages what the platform of the package supports (`packagePlatform` in
 `scripts/package.ts`): only the macOS build carries the local engine, PostgreSQL,
 agent-browser and agent-desktop; the local capabilities and the local workspace exist only there. `electron-builder.yml` adds name, bundle id, scheme, artifact names,

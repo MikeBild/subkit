@@ -50,10 +50,12 @@ interface BaseConfig {
   };
   win: { icon: string };
   dmg: {
+    title: string;
     icon: string;
     background: string;
+    writeUpdateInfo: boolean;
     window: { width: number; height: number };
-    contents: { x: number; y: number; type: string; path?: string }[];
+    contents: { x: number; y: number; type: string; path?: string; name?: string }[];
   };
 }
 
@@ -255,12 +257,29 @@ describe("icons", () => {
   });
 
   test("the DMG has a background at 1x and 2x and links to Applications", () => {
-    expect(base.dmg.background).toBe("assets/dmg-background.png");
+    expect(base.dmg.background).toBe("assets/dmg-background.tiff");
     expect(base.dmg.window).toEqual({ width: DMG_WINDOW.width, height: DMG_WINDOW.height });
-    expect(base.dmg.contents).toEqual([
+    expect(base.dmg.contents.slice(0, 2)).toEqual([
       { x: DMG_WINDOW.appX, y: DMG_WINDOW.iconY, type: "file" },
       { x: DMG_WINDOW.linkX, y: DMG_WINDOW.iconY, type: "link", path: "/Applications" },
     ]);
+  });
+
+  test("the DMG keeps its hidden files out of the window and the volume name clean", () => {
+    expect(base.dmg.title).toBe(`${"$"}{productName} ${"$"}{version}`);
+    const hidden = base.dmg.contents.slice(2);
+    expect(hidden.map((entry) => [entry.name, entry.path])).toEqual([
+      [".background.tiff", base.dmg.background],
+      [".VolumeIcon.icns", base.dmg.icon],
+    ]);
+    for (const entry of hidden) {
+      expect(entry.type).toBe("file");
+      expect(entry.y).toBeGreaterThan(DMG_WINDOW.height * 2);
+    }
+  });
+
+  test("the DMG is a download only and stays out of the update feed", () => {
+    expect(base.dmg.writeUpdateInfo).toBe(false);
   });
 
   test("the committed sources come from the SubKit mark of the Cockpit", () => {

@@ -137,6 +137,14 @@ export async function generateIcons(root: string): Promise<void> {
     DMG_WINDOW.width * 2,
     DMG_WINDOW.height * 2,
   );
+  run([
+    "tiffutil",
+    "-cathidpicheck",
+    join(assets, "dmg-background.png"),
+    join(assets, "dmg-background@2x.png"),
+    "-out",
+    join(assets, "dmg-background.tiff"),
+  ]);
 
   const scratch = await mkdtemp(join(tmpdir(), "subkit-icons-"));
   try {

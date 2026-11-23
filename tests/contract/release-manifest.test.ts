@@ -142,7 +142,7 @@ describe("stable download links", () => {
   test("every linked asset is published with that name in each release", () => {
     const draft = steps[stepIndex("Create GitHub release draft")]?.run ?? "";
     for (const [asset] of links) {
-      if (asset.startsWith("subkit-desktop-")) expect(desktop).toContain('sed "s/-$VERSION-/-/"');
+      if (asset.startsWith("subkit-desktop-")) expect(desktop).toContain(`"$assets/${asset}"`);
       else expect(draft).toContain(`assets/${asset}`);
     }
   });

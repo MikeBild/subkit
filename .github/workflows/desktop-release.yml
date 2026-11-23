@@ -659,11 +659,14 @@ jobs:
               cp "$file" "$assets/"
             done
           done
-          for installer in "$assets/subkit-desktop-$VERSION-mac-arm64.dmg" "$assets/subkit-desktop-$VERSION-win-x64.exe"; do
-            [ -f "$installer" ] || continue
-            cp "$installer" "$assets/$(basename "$installer" | sed "s/-$VERSION-/-/")"
-          done
+          dmg="$assets/subkit-desktop-$VERSION-mac-arm64.dmg"
+          [ ! -f "$dmg" ] || mv "$dmg" "$assets/subkit-desktop-mac-arm64.dmg"
+          exe="$assets/subkit-desktop-$VERSION-win-x64.exe"
+          [ ! -f "$exe" ] || cp "$exe" "$assets/subkit-desktop-win-x64.exe"
+          test ! -e "$dmg"
+          if compgen -G "$assets/*.dmg.blockmap" > /dev/null; then echo "::error::a DMG block map was built; the DMG is a download only" >&2; exit 1; fi
           [ "$MACOS_RESULT" != "success" ] || test -f "$assets/subkit-desktop-mac-arm64.dmg"
+          [ "$WINDOWS_RESULT" != "success" ] || test -f "$assets/subkit-desktop-win-x64.exe"
           echo "ASSETS_DIR=$assets" >> "$GITHUB_ENV"
           echo "FEEDS=$feeds" >> "$GITHUB_ENV"
 

@@ -275,17 +275,19 @@ describe("desktop release workflow", () => {
     for (const action of actions) expect(action).toMatch(/^[\w.-]+\/[\w.-]+@[0-9a-f]{40}$/);
   });
 
-  test("adds a versionless copy of each installer for the latest download link", () => {
+  test("ships the DMG once, without version, and keeps the versioned Windows installer", () => {
     const collect = jobs.publish?.steps.find(
       (step) => step.name === "Collect the artifacts of this run",
     );
     const script = collect?.run ?? "";
-    expect(script).toContain(
-      'for installer in "$assets/subkit-desktop-$VERSION-mac-arm64.dmg" "$assets/subkit-desktop-$VERSION-win-x64.exe"; do',
-    );
-    expect(script).toContain('sed "s/-$VERSION-/-/"');
+    expect(script).toContain('dmg="$assets/subkit-desktop-$VERSION-mac-arm64.dmg"');
+    expect(script).toContain('[ ! -f "$dmg" ] || mv "$dmg" "$assets/subkit-desktop-mac-arm64.dmg"');
+    expect(script).toContain('[ ! -f "$exe" ] || cp "$exe" "$assets/subkit-desktop-win-x64.exe"');
+    expect(script).toContain('test ! -e "$dmg"');
+    expect(script).toContain('compgen -G "$assets/*.dmg.blockmap"');
     expect(script).toContain('test -f "$assets/subkit-desktop-mac-arm64.dmg"');
-    expect(script.indexOf("sed ")).toBeLessThan(script.indexOf("ASSETS_DIR="));
+    expect(script).not.toContain('cp "$dmg"');
+    expect(script.indexOf("mv ")).toBeLessThan(script.indexOf("ASSETS_DIR="));
   });
 
   test("adds to the existing release and never creates or replaces one", () => {

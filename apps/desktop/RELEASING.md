@@ -9,17 +9,22 @@ replaces an asset and publishes nothing when a signing value is missing.
 
 | Platform | Artifacts | Update feed |
 | --- | --- | --- |
-| macOS on Apple silicon (arm64) | `subkit-desktop-<version>-mac-arm64.dmg` and `.zip`, signed with Developer ID, notarized, ticket stapled | `latest-mac.yml` |
-| Windows x64 | `subkit-desktop-<version>-win-x64.exe` (NSIS), Authenticode signed with a timestamp | `latest.yml` |
-| Latest copies | `subkit-desktop-mac-arm64.dmg`, `subkit-desktop-win-x64.exe`: the same installers without the version | |
-| All | block maps, `subkit-desktop-<version>-<os>-THIRD_PARTY_NOTICES.txt`, `SHA256SUMS-desktop`, `SHA256SUMS-desktop.sig` | |
+| macOS on Apple silicon (arm64) | Download: `subkit-desktop-mac-arm64.dmg`. Update: `subkit-desktop-<version>-mac-arm64.zip` and `.zip.blockmap`. Both signed with Developer ID, notarized, ticket stapled | `latest-mac.yml` (lists only the zip) |
+| Windows x64 | Update: `subkit-desktop-<version>-win-x64.exe` (NSIS) and `.exe.blockmap`. Download: `subkit-desktop-win-x64.exe`, the same installer without the version. Authenticode signed with a timestamp | `latest.yml` |
+| All | `subkit-desktop-<version>-<os>-THIRD_PARTY_NOTICES.txt`, `SHA256SUMS-desktop`, `SHA256SUMS-desktop.sig` | |
+
+The DMG is built only for the download link. `dmg.writeUpdateInfo: false` keeps it out of
+`latest-mac.yml` and builds no `.dmg.blockmap`, because the updater on macOS installs the zip.
+The publish job renames the DMG to its versionless name instead of copying it, so each release
+carries it once. On Windows the updater downloads the versioned installer named in `latest.yml`,
+so the versionless copy stays a second file.
 
 Both platforms are first-class and independent. Each has its own engine job and its own app
 job, and no job of one platform waits for the other. The publish job ships what built: it takes
 every platform whose build succeeded, warns about the one that did not and checks only the
 feeds it ships. There is no Linux build.
 
-The latest copies keep the download links stable. They always point at the newest release:
+The versionless installers keep the download links stable. They always point at the newest release:
 
 - macOS: `https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-mac-arm64.dmg`
 - Windows: `https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-win-x64.exe`
@@ -28,7 +33,10 @@ Until the desktop artifacts of the newest release are uploaded, these links answ
 
 macOS ships for Apple silicon (arm64) only; Intel Macs get no build. `SHA256SUMS-desktop` is signed
 with the same release key as `SHA256SUMS`; the existing `SHA256SUMS` of the server release is
-not touched.
+not touched. The two stay separate files: the `release` workflow writes, signs and publishes
+`SHA256SUMS` before this workflow starts, `install.sh` and the CLI updater check against it, and
+the desktop builds can fail per platform. Merging would mean replacing a published, signed file
+afterwards, with a window in which `SHA256SUMS` and `SHA256SUMS.sig` do not match.
 
 ## Version rule
 
@@ -193,7 +201,7 @@ automatic start that gap is the build time of the desktop workflow.
   checks out exactly that commit id, never the tag or a branch name, so a tag moved during the
   run changes nothing. Setup steps run without the Actions cache.
 - macOS: `codesign --verify --deep --strict`, a Developer ID authority, the hardened runtime,
-  `spctl -a -t exec` and `xcrun stapler validate` for the app inside every zip and every dmg.
+  `spctl -a -t exec` and `xcrun stapler validate` for the app inside the zip and the dmg.
 - Windows: `signtool verify /pa /all`, a valid signature status and a timestamp for the
   installer and the app, and a publisher name in `app-update.yml`.
 - Every feed file must name the released version, carry no staged rollout percentage and list
@@ -279,9 +287,13 @@ says why SubKit needs each one.
 Icons: `assets/icon-mac.svg` (the Cockpit mark on the macOS icon grid), `assets/tray.svg` and
 `assets/dmg-background.svg` are the sources. `bun run build --icons` renders `icon.icns`
 (16 to 1024 pixels), `icon-mac.png` (dock icon of an unpackaged start), `trayTemplate.png` and
-`@2x`, and the DMG background at 1x and 2x, on a Mac with `rsvg-convert`. Notifications, the
-Dock and the About panel of the packaged app use the bundle icon. Windows keeps
-`assets/icon.png`.
+`@2x`, and the DMG background at 1x and 2x plus `dmg-background.tiff` with both, on a Mac with
+`rsvg-convert`. Notifications, the Dock and the About panel of the packaged app use the bundle
+icon. Windows keeps `assets/icon.png`.
+
+The DMG volume is called “SubKit <version>”. Its hidden `.background.tiff` and
+`.VolumeIcon.icns` are listed in `dmg.contents` with a position far below the window, so a
+Finder that shows hidden files does not draw them over the app icon and the Applications link.
 
 To check a build, here an unsigned one:
 
