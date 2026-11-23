@@ -4,13 +4,14 @@ import type pg from "pg";
 import { z } from "zod";
 import { errorFields, logger } from "../logging/index.ts";
 import { cutOverLearningCandidates } from "../skill-candidates/learning-cutover.ts";
-import { runLoopToForEachV2Backfill } from "../workflows/index.ts";
+import { runAuthorityHoldReasonsBackfill } from "./authority-hold-backfill.ts";
 import { createMigrationDbFromUrl, type Db } from "./client.ts";
 import { runContextNoteFactsBackfill } from "./migrations/context-note-facts-backfill.ts";
 import { EMBEDDED_MIGRATIONS, type EmbeddedMigration } from "./migrations/embedded.ts";
 import { runInboxNonActionablePurge } from "./migrations/inbox-nonactionable-purge.ts";
 import { runMetricsScopeBackfill } from "./migrations/metrics-scope-backfill.ts";
 import * as schema from "./schema/index.ts";
+import { assertTenantRolePreflight } from "./tenant-role-preflight.ts";
 
 interface MigrationReport {
   applied: number;
@@ -173,6 +174,7 @@ export async function runMigrationsFromUrl(
 ): Promise<MigrationReport> {
   const { pool, db } = createMigrationDbFromUrl(url);
   try {
+    await assertTenantRolePreflight(pool);
     return await runMigrations(db, migrations);
   } finally {
     await pool.end();
@@ -300,12 +302,12 @@ async function applyMigrations(
     });
   }
   try {
-    await runLoopToForEachV2Backfill(db);
+    await runAuthorityHoldReasonsBackfill(db);
   } catch (err) {
     logger.error({
       module: "db",
       action: "migrate.code_backfill_failed",
-      msg: "loop→for_each backfill failed (non-fatal; retried on next boot)",
+      msg: "authority hold reason backfill failed (non-fatal; retried on next boot)",
       ...errorFields(err),
     });
   }

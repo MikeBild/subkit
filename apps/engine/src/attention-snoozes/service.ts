@@ -1,14 +1,14 @@
 import { AuditAction, auditAwait } from "../audit/index.ts";
 import type { Db } from "../db/index.ts";
-import { planSnooze, type SnoozePlan } from "./core/attention.ts";
+import { planSnooze, type SnoozePlan } from "../operator/index.ts";
 import {
   activeSnoozes,
   deleteSnooze,
   type SnoozeOwner,
   writeSnooze,
-} from "./persistence/attention-snoozes.ts";
+} from "./persistence/snoozes.ts";
 
-export type { SnoozeOwner } from "./persistence/attention-snoozes.ts";
+export type { SnoozeOwner } from "./persistence/snoozes.ts";
 export { activeSnoozes };
 
 export async function snoozeAttention(

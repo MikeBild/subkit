@@ -7,7 +7,7 @@ import {
   rechunkSource,
   sourcesWithOversizedChunks,
 } from "../persistence/rechunk.ts";
-import { finishKnowledgeWrite } from "../service.ts";
+import { kickSourceEmbeddingBackfill } from "../service.ts";
 
 export const KNOWLEDGE_RECHUNK_BACKFILL_NAME = "knowledge_rechunk_v1";
 
@@ -20,7 +20,9 @@ export interface KnowledgeRechunkReport {
 
 export async function runKnowledgeRechunkBackfill(
   db: Executor,
-  deps: { afterSource?: (tenant_id: string, knowledge_source_id: string) => void } = {},
+  deps: {
+    afterSource?: (tenant_id: string, knowledge_source_id: string) => Promise<void> | void;
+  } = {},
 ): Promise<KnowledgeRechunkReport> {
   if (await backfillApplied(db, KNOWLEDGE_RECHUNK_BACKFILL_NAME)) {
     return { skipped: true, sources: 0, rechunked: 0, failed: 0 };
@@ -28,7 +30,7 @@ export async function runKnowledgeRechunkBackfill(
   const afterSource =
     deps.afterSource ??
     ((tenant_id: string, knowledge_source_id: string) =>
-      finishKnowledgeWrite(tenant_id, knowledge_source_id, db));
+      kickSourceEmbeddingBackfill(tenant_id, knowledge_source_id, db));
   const sources = await sourcesWithOversizedChunks(db, KNOWLEDGE_CHUNK_TARGET_BYTES);
   let rechunked = 0;
   let failed = 0;
@@ -37,7 +39,7 @@ export async function runKnowledgeRechunkBackfill(
       const result = await rechunkSource(db, { ...source, budget: KNOWLEDGE_CHUNK_TARGET_BYTES });
       if (!result) continue;
       rechunked += 1;
-      afterSource(source.tenant_id, source.knowledge_source_id);
+      await afterSource(source.tenant_id, source.knowledge_source_id);
     } catch (err) {
       failed += 1;
       logger.error({

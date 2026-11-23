@@ -6,6 +6,7 @@ import {
 import { elicitationActorType } from "../core/loop.ts";
 import { createElicitation } from "../elicitations.ts";
 import { appendMessage, buildModelMessages } from "../persistence/index.ts";
+import { replayedToolOutput } from "../tools/sdk-wrap/model-output.ts";
 import type { TurnSignals } from "../tools/sdk-wrap.ts";
 import type { TurnEvent } from "../types.ts";
 import type { AssembledPrompt, RunLoopParams } from "./types.ts";
@@ -14,6 +15,7 @@ export function conversationMessages(p: RunLoopParams) {
   return buildModelMessages(p.db, p.tenant_id, p.conversation_id, {
     conversationEnvelope: true,
     conversation_id: p.conversation_id,
+    frameReplayedOutput: replayedToolOutput,
   });
 }
 

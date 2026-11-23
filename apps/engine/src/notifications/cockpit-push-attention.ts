@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { and, eq, inArray, isNull, type SQL, sql } from "drizzle-orm";
 import type * as webpush from "web-push";
 import { z } from "zod";
+import { activeSnoozes } from "../attention-snoozes/index.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { cockpitPushSubscriptions } from "../db/schema/cockpit-push.ts";
@@ -14,7 +15,7 @@ import {
 import { activeApprover } from "../identity/setup-preferences.ts";
 import { type AttentionV1, buildAttention } from "../operator/attention.ts";
 import type { AttentionReaderOverrides } from "../operator/attention-readers.ts";
-import { activeSnoozes, splitSnoozed } from "../operator/index.ts";
+import { splitSnoozed } from "../operator/index.ts";
 import { isOwnPairRequest } from "../operator/pair-approval-attention.ts";
 import { now } from "../utils/clock.ts";
 import {

@@ -1,11 +1,7 @@
 import { z } from "@hono/zod-openapi";
+import { snoozeAttention, unsnoozeAttention } from "../../attention-snoozes/index.ts";
 import { AuditAction } from "../../audit/index.ts";
-import {
-  ATTENTION_KEY_MAX,
-  SNOOZE_MAX_MS,
-  snoozeAttention,
-  unsnoozeAttention,
-} from "../../operator/index.ts";
+import { ATTENTION_KEY_MAX, SNOOZE_MAX_MS } from "../../operator/index.ts";
 import { now } from "../../utils/index.ts";
 import { defineOperation, type OperationScope, type Rejection, reject } from "./index.ts";
 

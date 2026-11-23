@@ -47,7 +47,7 @@ export function decideTenantRolePreflight(facts: TenantRoleFacts): TenantRoleDec
       blocking: false,
       message:
         `row security is enabled in this database but role ${TENANT_ROLE} is missing, not assumable by ${facts.login_role} or lacks its grants, ` +
-        "which happens after a restore into another cluster. Stored secrets cannot be read until the statements of db/rls/tenant_row_security.sql are applied again.",
+        "which happens after a restore into another cluster. Stored secrets cannot be read until the statements of migration 0007_tenant_row_security are applied again.",
     };
   }
   if (usable) {
