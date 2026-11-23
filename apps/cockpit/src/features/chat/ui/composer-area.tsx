@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { CHAT_COLUMN } from "@/app/shell-header";
 import { PromptInputProvider } from "@/components/ai-elements/prompt-input";
-import { Spinner } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
 import {
   addAttachments,
@@ -13,6 +12,7 @@ import { useComposerTray } from "../hooks/tray";
 import type { ChatTurn } from "../hooks/turn";
 import type { AttachmentPreview, RestoreComposer } from "../model/labels";
 import type { ChatText } from "../model/text";
+import { ChatActivityLine } from "./activity-line";
 import { BudgetPill } from "./budget-pill";
 import { ChatComposer } from "./composer";
 import { ComposerTrayNotice } from "./tray-view";
@@ -33,6 +33,7 @@ export function ChatComposerArea({
   restoreComposer,
   budget,
   starters,
+  workflowNameFor,
 }: {
   turn: ChatTurn;
   activeId: string | null;
@@ -49,9 +50,10 @@ export function ChatComposerArea({
   restoreComposer: React.RefObject<RestoreComposer | null>;
   budget: "tightening" | "critical" | null;
   starters?: ReactNode;
+  workflowNameFor: (slug: string) => string | null;
 }) {
   const { t } = useI18n();
-  const { anyLive, streamedText, sessionKey, cancel, submitTurn } = turn;
+  const { sessionKey, cancel, submitTurn } = turn;
   const tray = useComposerTray(sessionKey);
   return (
     <div
@@ -60,27 +62,7 @@ export function ChatComposerArea({
       hidden={conversationFailed}
     >
       <div className={CHAT_COLUMN}>
-        {busy && (
-          <div
-            role="status"
-            aria-live="polite"
-            className={
-              anyLive ? "mb-2 flex items-center gap-2 text-sm text-muted-foreground" : "sr-only"
-            }
-            data-testid="chat-activity"
-          >
-            {anyLive ? <Spinner aria-hidden="true" aria-label={undefined} /> : null}
-            <span>
-              {t(
-                anyLive
-                  ? "chat.activity.working"
-                  : streamedText
-                    ? "chat.activity.responding"
-                    : "chat.activity.thinking",
-              )}
-            </span>
-          </div>
-        )}
+        {busy && <ChatActivityLine activity={turn.activity} workflowNameFor={workflowNameFor} />}
         <div className="mb-2 flex min-h-6 flex-wrap items-center gap-1.5" data-testid="chat-pills">
           {runScope && !conversationFailed ? (
             <p className="text-xs text-muted-foreground" data-testid="chat-task-run-scope">

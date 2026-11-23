@@ -543,6 +543,7 @@ export function ChatPage() {
             setPreview={setPreview}
             restoreComposer={restoreComposer}
             budget={budget}
+            workflowNameFor={lookups.workflowNameFor}
             starters={
               startersVisible({
                 messages: messages.length,
