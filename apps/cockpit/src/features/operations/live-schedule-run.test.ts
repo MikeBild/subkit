@@ -80,14 +80,14 @@ describe("isLiveOccurrence", () => {
 describe("liveRunSentence", () => {
   test("reads the current step in both languages", () => {
     const current = { stepKey: "summarize", attempt: 1, startedAt: null };
-    expect(liveRunSentence(de, current)).toBe("Läuft gerade: Schritt „summarize“");
+    expect(liveRunSentence(de, current)).toBe(de("ops.sched.live.step", { step: "summarize" }));
     expect(liveRunSentence(en, current)).toBe("Running now: step “summarize”");
   });
 
   test("names the attempt on a retry and covers the start", () => {
     expect(liveRunSentence(de, { stepKey: "notify", attempt: 2, startedAt: null })).toBe(
-      "Läuft gerade: Schritt „notify“, Versuch 2",
+      de("ops.sched.live.retry", { step: "notify", attempt: 2 }),
     );
-    expect(liveRunSentence(de, null)).toBe("Läuft gerade, der erste Schritt startet gleich");
+    expect(liveRunSentence(de, null)).toBe(de("ops.sched.live.starting"));
   });
 });

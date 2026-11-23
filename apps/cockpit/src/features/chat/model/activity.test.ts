@@ -80,7 +80,9 @@ describe("reduceActivity", () => {
 
   test("a workflow tool names the workflow", () => {
     const state = play([[0, { type: "tool_call_start", call_id: "w", tool: "wf_weekly-digest" }]]);
-    expect(activitySentence(de, activityLine(state, T0), names)).toBe("Führt „Weekly digest“ aus");
+    expect(activitySentence(de, activityLine(state, T0), names)).toBe(
+      de("chat.activity.step.workflow", { name: "Weekly digest" }),
+    );
   });
 
   test("tool_call_end only completes the input; the result ends the step", () => {
