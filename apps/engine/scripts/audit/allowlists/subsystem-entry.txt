@@ -483,7 +483,6 @@ apps/engine/src/conversations/tools/list-capability-gaps.ts                     
 apps/engine/src/conversations/tools/list-skill-suggestions.ts                      1
 apps/engine/src/conversations/tools/list-skills.ts                                 3
 apps/engine/src/conversations/tools/load-skill.ts                                  1
-apps/engine/src/conversations/tools/loop-authoring-gate.ts                         1
 apps/engine/src/conversations/tools/manage-service-package-skill.ts                4
 apps/engine/src/conversations/tools/manage-service-package-workflow.ts             5
 apps/engine/src/conversations/tools/match-connector-template-by-url.ts             6
@@ -568,7 +567,6 @@ apps/engine/src/db/issue-admin-key.ts                                           
 apps/engine/src/db/list-result.ts                                                  1
 apps/engine/src/db/migrate.ts                                                      1
 apps/engine/src/db/migrations/context-note-facts-backfill.ts                       3
-apps/engine/src/db/migrations/loop-to-for-each-backfill.ts                         6
 apps/engine/src/db/migrations/metrics-scope-backfill.ts                            1
 apps/engine/src/db/print-key.ts                                                    2
 apps/engine/src/db/schema/connections.ts                                           2
@@ -654,7 +652,6 @@ apps/engine/src/execution/run/checks.ts                                         
 apps/engine/src/execution/run/env.ts                                               6
 apps/engine/src/execution/run/finalize.ts                                          5
 apps/engine/src/execution/run/for-each.ts                                          3
-apps/engine/src/execution/run/loop-body.ts                                         2
 apps/engine/src/execution/run/output.ts                                            1
 apps/engine/src/execution/run/parallel.ts                                          2
 apps/engine/src/execution/run/plan.ts                                              1
@@ -665,7 +662,6 @@ apps/engine/src/execution/state.ts                                              
 apps/engine/src/execution/step-run.ts                                              3
 apps/engine/src/execution/step-runner.ts                                           4
 apps/engine/src/execution/steps/branch.ts                                          2
-apps/engine/src/execution/steps/loop.ts                                            4
 apps/engine/src/execution/steps/parallel.ts                                        1
 apps/engine/src/execution/steps/request/circuit-evidence.ts                        1
 apps/engine/src/execution/steps/request/dispatch.ts                                8

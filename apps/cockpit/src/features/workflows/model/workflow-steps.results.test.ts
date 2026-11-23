@@ -144,17 +144,19 @@ describe("step kinds", () => {
     "utf8",
   );
   const steps = source.slice(
-    source.indexOf("export const RequestStepSchema"),
+    source.indexOf("export const HttpRequestStepSchema"),
     source.indexOf("export const StepSchema"),
   );
-  const kinds = [...steps.matchAll(/^ {4}kind: z\.literal\("([a-z_]+)"\)/gm)].map(
-    (match) => match[1] ?? "",
-  );
+  const kinds = [
+    ...new Set(
+      [...steps.matchAll(/^ {4}kind: z\.literal\("([a-z_]+)"\)/gm)].map((m) => m[1] ?? ""),
+    ),
+  ];
 
   test("the engine's step schema is read", () => {
     expect(kinds).toContain("request");
     expect(kinds).toContain("wait_for_event");
-    expect(kinds.length).toBeGreaterThanOrEqual(8);
+    expect(kinds.length).toBeGreaterThanOrEqual(7);
   });
 
   test("every kind of the engine's step schema has a word and a reading", () => {

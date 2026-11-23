@@ -224,7 +224,7 @@ that rather than handing over a link the token endpoint will reject.
 CHAT palette as `mcp_<connector_slug>__<remote_tool>` — plus read-only
 `list_resources` / `list_resource_templates` / `read_resource` / `list_prompts` / `get_prompt` adapters
 where the server declared those capabilities — and a workflow reaches them
-through a `request` step carrying an `mcp` block. Over MCP you can see such a
+through a `request` step with `protocol: "mcp"` and an `mcp` block. Over MCP you can see such a
 connector and prove it handshakes; you cannot call its remote tools from here.
 Never advertise an `mcp_…` name to a caller on this surface.
 

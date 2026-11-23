@@ -68,13 +68,6 @@ describe("ERROR_CODE_ALTERNATIVES · authoring-gate recovery recipes", () => {
     expect(hint).toContain("old expected_workflow_version_id");
     expect(hint).toContain("nothing ran");
   });
-  it("loop_authoring_requires_inspect names dry_run_workflow and the evidence-survival rule", () => {
-    const hint = ERROR_CODE_ALTERNATIVES.loop_authoring_requires_inspect;
-    expect(hint).toContain("dry_run_workflow");
-    expect(hint).toMatch(/unchanged steps keep their evidence/i);
-    expect(hint).toMatch(/definition changed since the last preview/i);
-  });
-
   it("transform_authoring_requires_inspect names dry_run_workflow and the evidence-survival rule", () => {
     const hint = ERROR_CODE_ALTERNATIVES.transform_authoring_requires_inspect;
     expect(hint).toContain("dry_run_workflow");
@@ -89,10 +82,11 @@ describe("ERROR_CODE_ALTERNATIVES · authoring-gate recovery recipes", () => {
     expect(hint).toMatch(/edits to other steps do NOT invalidate/i);
   });
 
-  it("step_update_invalid teaches the loop-body array form", () => {
+  it("step_update_invalid points at the validation breakdown and the patch tool", () => {
     const hint = ERROR_CODE_ALTERNATIVES.step_update_invalid;
-    expect(hint).toContain('body: ["step_id"]');
-    expect(hint).toMatch(/ARRAY of step ids/i);
+    expect(hint).toContain("inspect_workflow_draft");
+    expect(hint).toContain("edit_workflow_patch");
+    expect(hint).not.toMatch(/loop/i);
   });
 
   it(`workflow_unsupported_placeholder teaches loop-body addressing (\${item.…} / $item)`, () => {

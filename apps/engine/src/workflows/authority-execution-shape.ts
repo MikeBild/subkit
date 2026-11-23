@@ -29,7 +29,7 @@ export const AuthorityExecutionShapeSchema = z
     iterations: z.array(
       z.object({
         step_id: z.string(),
-        kind: z.enum(["loop", "for_each"]),
+        kind: z.literal("for_each"),
         body_step_ids: z.array(z.string()),
         call_path: z.array(z.string()).optional(),
       }),

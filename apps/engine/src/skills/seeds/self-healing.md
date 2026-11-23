@@ -26,8 +26,11 @@ A `patch_candidate` is:
 - A **bounded** change. It edits a small, well-defined surface (a single step's
   config, a single JSONata expression, a single schema field). It does not
   rewrite whole workflows.
-- A **classified** proposal. Either `safe` (auto-applicable after soak) or
-  `unsafe` (requires explicit human approval via `patch:approve`).
+- A **classified** proposal. Either `safe` or `unsafe`. Every candidate is
+  proposed by default and waits for a person with `patch:approve`; only a
+  workflow set to `safe-patches` applies a `safe` one by itself, and only after
+  its fixture run passed. A reviewer may accept a candidate in part: only the
+  chosen operations apply, after a dry run of exactly that selection.
 - A **reversible** change. Every candidate stores the pre-patch state so a
   revert is a single write.
 - An **attributed** change. The repair-LLM turn that produced it is linked to
@@ -58,7 +61,7 @@ blast radius of the change:
 
 | Classification | Examples | Promotion path |
 |---|---|---|
-| `safe` | JSONata expression fix, field rename in `data_selector`, non-breaking schema widening, `onError` tuning | Auto-applied after a soak window of N successes with zero failures |
+| `safe` | JSONata expression fix, field rename in `data_selector`, non-breaking schema widening, `onError` tuning | Proposed for approval by default; auto-applied only on a workflow set to `safe-patches`, after a passed fixture run |
 | `unsafe` | Changing a step's `connector`, editing SQL that writes, removing a schema required field, altering `output_transform` shape | Requires a user with `patch:approve` to explicitly approve |
 
 The boundary is sharp: if the patch could change a value an external caller

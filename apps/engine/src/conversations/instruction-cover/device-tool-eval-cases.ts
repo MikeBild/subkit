@@ -1,3 +1,4 @@
+import { ownWords } from "@shared/own-words.ts";
 import { localAgenticRefusal } from "../../devices/core/run-source.ts";
 import { deviceToolSpec } from "../core/device-tools/catalog.ts";
 import {
@@ -26,6 +27,7 @@ import {
   OWNER,
   taskFacts,
 } from "./job-eval-cases.ts";
+import { spokenFacts } from "./spoken.ts";
 
 export interface DeviceToolEvalStep {
   readonly expect: JobEvalExpect;
@@ -115,6 +117,13 @@ export function gradeDeviceToolCase(
     ? taskJob(task)
     : chatJob({ anchor_id: segments.at(-1)?.id ?? JOB_ID, anchor_at: now });
   let job: JobState = { ...started, device: personalBoundary(allowances(item)) };
+  const facts = spokenFacts(
+    request.segments.map((segment) =>
+      segment.kind === "message" ? ownWords(segment.text) : segment.text,
+    ),
+    now,
+    input.timezone,
+  );
   const source = localAgenticRefusal(turnRunSource(turnOf(item), OWNER));
   const history: DeviceStepRecord[] = [];
   const steps: JobEvalStepOutcome[] = item.steps.map((entry, index) => {
@@ -143,6 +152,7 @@ export function gradeDeviceToolCase(
           page_origin: resolved.page_origin,
           app: resolved.app,
           filled: mine.flatMap((step) => step.filled),
+          named_urls: facts.urls,
         }),
         ask_before_writing: item.ask_before_writing === true,
         now,

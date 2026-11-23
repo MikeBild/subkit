@@ -108,12 +108,10 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "the transform references a step with no fingerprint-valid recorded preview (its definition changed since the last preview, or it was never previewed) — call dry_run_workflow ONCE to refresh the evidence, then retry the same edit; unchanged steps keep their evidence, so one dry-run suffices. Read the recorded shape via inspect_workflow_draft or inspect_execution_step(execution_id, step_key, include_full_payload: true) before re-authoring",
   transform_hand_rolled_codec:
     "the transform re-implements a base64 / base32 / hex codec using a hand-rolled alphabet literal or lookup table — use the deterministic sandbox primitives instead: sk.base64Encode, sk.base64UrlEncode, sk.base64EncodeUtf8, sk.base64UrlEncodeUtf8, sk.base64DecodeUtf8, sk.hexEncode, sk.hexDecode. These are FIPS-correct, immune to source-text corruption, and always produce valid output; a hand-rolled encoder can silently emit 'undefined' if its alphabet literal is ever redacted",
-  loop_authoring_requires_inspect:
-    "the loop's `over`/`data_selector` references a step with no fingerprint-valid recorded preview (its definition changed since the last preview, or it was never previewed) — call dry_run_workflow ONCE to refresh the evidence, then retry the same edit; unchanged steps keep their evidence, so one dry-run suffices. Read the recorded shape via suggest_jsonata_paths or inspect_workflow_draft before re-authoring",
   preview_stale_for_referenced_step:
     "the referenced step's OWN definition changed since its preview was recorded, so the evidence is stale — call dry_run_workflow once to refresh it, then retry the same edit; edits to other steps do NOT invalidate evidence, so this fires only when the step you reference actually changed",
   step_update_invalid:
-    'the current draft step is invalid — call inspect_workflow_draft to see the validation errors, then edit_workflow_patch with the corrected fields. Common case: a loop\'s `body` must be an ARRAY of step ids (body: ["step_id"]), never a string and never inline step objects',
+    "the current draft step is invalid — call inspect_workflow_draft to see the validation errors, then edit_workflow_patch with the corrected fields",
   step_invalid:
     "the step shape is wrong — call inspect_workflow_draft for the validation breakdown, then edit_workflow_patch against the failing field",
   unknown_step:
