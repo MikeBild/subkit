@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { absolute, apiAccessHref, peopleHref, settingsHref } from "@/app/links";
 import { StatusBadge } from "@/components/cockpit/patterns";
 import type { TranslationKey } from "@/lib/i18n";
@@ -171,6 +171,15 @@ function StorageQuestion({ ctx }: { ctx: GuidedContext }) {
   );
 }
 
+function inPlace(ctx: GuidedContext, href: string) {
+  return (event: MouseEvent<HTMLAnchorElement>) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+      return;
+    event.preventDefault();
+    ctx.navigate(href);
+  };
+}
+
 export function AreaList({
   area,
   ctx,
@@ -211,6 +220,7 @@ export function AreaList({
             href={absolute(peopleHref())}
             className="font-medium underline-offset-2 hover:underline"
             data-testid="settings-access-people"
+            onClick={inPlace(ctx, peopleHref())}
           >
             {t("settings.question.access.people")} →
           </a>
@@ -218,6 +228,7 @@ export function AreaList({
             href={absolute(apiAccessHref())}
             className="font-medium underline-offset-2 hover:underline"
             data-testid="settings-access-api"
+            onClick={inPlace(ctx, apiAccessHref())}
           >
             {t("settings.question.access.api")} →
           </a>
