@@ -348,7 +348,7 @@ test("the normal run API consumes a human grant and binds replay to the exact in
   expect((await request({ value: 2 }, "authority-api-second")).status).toBe(200);
   const exhausted = await request({ value: 3 }, "authority-api-third");
   expect(exhausted.status).toBe(409);
-  expect(await exhausted.json()).toMatchObject({ code: "execution_authority_unavailable" });
+  expect(await exhausted.json()).toMatchObject({ code: "execution_authority_exhausted" });
   expect(writes).toBe(2);
 });
 

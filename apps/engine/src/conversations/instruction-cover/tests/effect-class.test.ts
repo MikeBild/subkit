@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { describeBoundAction, isNeverCovered } from "../bound-action.ts";
+import { describeBoundAction } from "../bound-action.ts";
+import { isNeverCovered } from "../core/never-covered.ts";
 import { declaredEffect } from "../declared-effect.ts";
 
 function effect(method: string, path: string, body: unknown = {}, template?: string) {

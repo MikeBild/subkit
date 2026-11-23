@@ -571,7 +571,9 @@ export const GOVERNANCE_REFUSALS: ReadonlySet<string> = new Set([
   "execution_authority_changed",
   "execution_boundary_mismatch",
   "execution_authority_required",
-  "execution_authority_unavailable",
+  "execution_authority_expired",
+  "execution_authority_exhausted",
+  "execution_authority_revoked",
   "authority_redirect_denied",
 ]);
 

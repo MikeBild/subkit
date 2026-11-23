@@ -264,7 +264,7 @@ describe("a chat-drafted workflow is reviewed, approved within limits, run and a
   test("a second run after the limit is used up is refused with its reason", async () => {
     const refused = await run("chat-draft-second");
     expect(refused.status).toBe(409);
-    expect(await refused.json()).toMatchObject({ code: "execution_authority_unavailable" });
+    expect(await refused.json()).toMatchObject({ code: "execution_authority_exhausted" });
     expect(received).toHaveLength(1);
     expect(await runCount()).toBe(1);
   });

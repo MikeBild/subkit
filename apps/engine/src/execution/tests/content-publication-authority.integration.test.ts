@@ -144,7 +144,7 @@ async function fixture(loop = false) {
       execution_mode: "dev",
       input: baseInput,
       admission_hold: {
-        reason_code: "execution_authority_unavailable",
+        reason_code: "execution_authority_expired",
         observed_at: now.toISOString(),
       },
     })
@@ -257,7 +257,7 @@ test("held batch -> exact human grant -> scheduler decision resolved -> changing
     const second = await f.run({ ...f.baseInput, markdown: "# Next week's update" });
     expect(second.status, JSON.stringify(second.steps)).toBe("succeeded");
     expect(remote.publications()).toBe(2);
-    await expect(f.run()).rejects.toMatchObject({ code: "execution_authority_unavailable" });
+    await expect(f.run()).rejects.toMatchObject({ code: "execution_authority_exhausted" });
   });
 });
 

@@ -108,7 +108,6 @@ async function driveConversationTurn(
   const askBeforeWriting = await askBeforeWritingFor(exec, {
     tenant_id: p.tenant_id,
     principal: p.principal,
-    unattended: false,
   });
 
   if (p.event?.type === "request_credential_form") {
@@ -167,19 +166,19 @@ async function driveConversationTurn(
 
 type LoadedConversation = NonNullable<Awaited<ReturnType<typeof getConversation>>>;
 
-function driveTaskRunTurn(
+async function driveTaskRunTurn(
   p: RunConversationTurnParams,
   exec: Db,
   conv: LoadedConversation,
   taskRun: TaskRunMarker,
 ): Promise<ConversationTurnOutcome> {
   if (p.event) throw new TaskRunLockedError("Collecting a credential");
-  return finishLoopTurn(
-    { ...p, principal: requireTaskRunPrincipal(p.principal, taskRun) },
-    exec,
-    conv,
-    false,
-  );
+  const principal = requireTaskRunPrincipal(p.principal, taskRun);
+  const askBeforeWriting = await askBeforeWritingFor(exec, {
+    tenant_id: p.tenant_id,
+    principal,
+  });
+  return finishLoopTurn({ ...p, principal }, exec, conv, askBeforeWriting);
 }
 
 async function finishLoopTurn(

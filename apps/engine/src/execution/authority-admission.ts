@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { isAuthorityRefusalCode } from "@shared/authority-refusal.ts";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import type { RequestDispatchPolicy } from "../connectors/drivers/http.ts";
 import { loadConnectorSystem } from "../connectors/system.ts";
@@ -15,7 +16,6 @@ import { retryTransient } from "../db/transient.ts";
 import { assertTenantActive } from "../identity/self-service.ts";
 import { DomainRefusal } from "../logging/domain-refusal.ts";
 import { RequestSourceSchema } from "../observability/service-metadata.ts";
-import { authorityLive, authorityNotExpired } from "../workflows/authority-live.ts";
 import { workflowJsonDigest } from "../workflows/canonical-json.ts";
 import {
   assertContentRelease,
@@ -25,6 +25,13 @@ import {
   contentBoundariesFromManifest,
   loadContentRevisionReceipts,
 } from "../workflows/content-publication-proposal.ts";
+import {
+  type AuthorityAvailability,
+  authorityRefusal,
+  decideAuthorityAvailability,
+  lastUnavailable,
+  selectAuthority,
+} from "../workflows/core/authority-availability.ts";
 import { WorkflowEffectManifestSchema } from "../workflows/effect-manifest.ts";
 import {
   previewWorkflowAuthority,
@@ -131,18 +138,26 @@ const admissionSchema = z
   })
   .strict();
 
-const HELD_AUTHORITY_CODES = new Set([
-  "execution_authority_required",
-  "execution_authority_unavailable",
-]);
+const AUTHORITY_CANDIDATES = 50;
+
+async function databaseNow(db: Executor): Promise<Date> {
+  const clock = await db.execute<{ now: Date }>(sql`SELECT clock_timestamp() AS now`);
+  const value = clock.rows[0]?.now;
+  if (!value) throw new Error("database clock unavailable");
+  return new Date(value);
+}
 
 function fail(code: string, message: string): never {
-  if (HELD_AUTHORITY_CODES.has(code)) throw new DomainRefusal(code, message);
+  if (isAuthorityRefusalCode(code) && code !== "execution_authority_changed")
+    throw new DomainRefusal(code, message);
   throw Object.assign(new Error(message), { code });
 }
 
 function enforce(decision: AdmissionDecision): void {
-  if (decision.kind === "rejected") fail(decision.code, decision.message);
+  if (decision.kind !== "rejected") return;
+  if (isAuthorityRefusalCode(decision.code))
+    throw new DomainRefusal(decision.code, decision.message);
+  fail(decision.code, decision.message);
 }
 
 export async function admitAuthorizedWorkflowExecution(
@@ -271,32 +286,38 @@ export async function admitAuthorizedWorkflowExecution(
         const requested = input.execution_authority_id
           ? await sameBoundaryReplacement(tx, input.tenant_id, input.execution_authority_id)
           : null;
-        const [authority] = await tx
+        const candidates = await tx
           .select()
           .from(workflowExecutionAuthorities)
           .where(
             and(
               eq(workflowExecutionAuthorities.tenant_id, input.tenant_id),
               eq(workflowExecutionAuthorities.workflow_id, input.workflow_id),
-              eq(workflowExecutionAuthorities.workflow_version_id, currentVersionId),
               eq(workflowExecutionAuthorities.execution_environment, input.execution_environment),
-              requested
-                ? eq(workflowExecutionAuthorities.id, requested)
-                : eq(workflowExecutionAuthorities.effect_manifest_digest, preview.digest),
-              authorityLive(),
+              requested ? eq(workflowExecutionAuthorities.id, requested) : undefined,
             ),
           )
           .orderBy(
+            desc(sql`${workflowExecutionAuthorities.workflow_version_id} = ${currentVersionId}`),
+            desc(isNull(workflowExecutionAuthorities.revoked_at)),
             desc(workflowExecutionAuthorities.created_at),
             desc(workflowExecutionAuthorities.id),
           )
           .for("update")
-          .limit(1);
+          .limit(AUTHORITY_CANDIDATES);
+        const { authority, availability } = selectAuthority(
+          candidates.map((row) => ({ ...row, superseded: row.superseded_by !== null })),
+          {
+            now: await databaseNow(tx),
+            use: "reserve",
+            current_version_id: currentVersionId,
+            boundary_digest: preview.digest,
+          },
+        );
         enforce(
           decideAdmission(input, {
             stage: "authority",
-            authority_digest: authority?.effect_manifest_digest ?? null,
-            boundary_digest: preview.digest,
+            refusal: availability === "live" ? null : authorityRefusal(availability),
           }),
         );
         const admittedAuthorityId = (authority as { id: string }).id;
@@ -369,7 +390,7 @@ export async function assertExecutionAuthorityCurrent(
     (execution.tool_approval_id || !execution.execution_authority_id)
   )
     fail(
-      "execution_authority_unavailable",
+      "execution_authority_required",
       "Transactional email requires its reviewed recurring authority",
     );
   const mcpDispatch = (snapshot as { mcp_dispatch?: unknown } | undefined)?.mcp_dispatch;
@@ -398,7 +419,7 @@ export async function assertExecutionAuthorityCurrent(
       fail("execution_boundary_mismatch", "the approved run this one belongs to is unavailable");
     if (!root.execution_authority_id)
       fail(
-        "execution_authority_unavailable",
+        "execution_authority_required",
         "the run this one belongs to holds no execution authority",
       );
     authorityId = root.execution_authority_id;
@@ -416,6 +437,8 @@ export async function assertExecutionAuthorityCurrent(
         "the authorized execution is cancelled or already terminal",
       );
   }
+  const at = await databaseNow(db);
+  const seen: AuthorityAvailability[] = [];
   const live = async (id: string) => {
     const [row] = await db
       .select()
@@ -431,25 +454,30 @@ export async function assertExecutionAuthorityCurrent(
         and(
           eq(workflowExecutionAuthorities.tenant_id, tenant_id),
           eq(workflowExecutionAuthorities.id, id),
-          eq(workflows.lifecycle, "active"),
-          isNull(workflows.deleted_at),
-          eq(workflows.current_version_id, workflowExecutionAuthorities.workflow_version_id),
-          isNull(workflowExecutionAuthorities.revoked_at),
-          sql`${workflowExecutionAuthorities.valid_from} <= clock_timestamp()`,
-          authorityNotExpired(),
-          sql`${workflowExecutionAuthorities.reserved_runs} > 0`,
         ),
       )
       .limit(1);
-    return row;
+    const availability = decideAuthorityAvailability({
+      authority: row?.workflow_execution_authorities ?? null,
+      now: at,
+      use: "reserved",
+      current_version_id:
+        row && row.workflows.lifecycle === "active" && row.workflows.deleted_at === null
+          ? row.workflows.current_version_id
+          : null,
+    });
+    seen.push(availability);
+    return availability === "live" ? row : undefined;
   };
   const authority = await resolveLiveSuccessor(
     authorityId,
     (id) => sameBoundaryReplacement(db, tenant_id, id),
     live,
   );
-  if (!authority)
-    fail("execution_authority_unavailable", "the reserved execution authority is no longer live");
+  if (!authority) {
+    const refusal = authorityRefusal(lastUnavailable(seen));
+    fail(refusal.code, `the reserved execution authority is no longer live: ${refusal.message}`);
+  }
   const boundary = authority.workflow_execution_authorities;
   if (snapshot !== undefined) {
     const {

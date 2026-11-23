@@ -79,7 +79,7 @@ test("missing authority stays held without re-claiming; later approval admits ex
       tenant_id: ctx.tenantId,
       workflow_id,
       schedule_id: schedule.id,
-      reason_code: "execution_authority_unavailable",
+      reason_code: "execution_authority_required",
     });
     expect(
       (await ctx.testDb.db.select().from(workflowsSchedules).where(scheduleWhere))[0]
@@ -95,7 +95,7 @@ test("missing authority stays held without re-claiming; later approval admits ex
     ).toHaveLength(0);
     const held = (await ctx.testDb.db.select().from(workflowsSchedules).where(scheduleWhere))[0];
     expect(held?.admission_hold).toEqual({
-      reason_code: "execution_authority_unavailable",
+      reason_code: "execution_authority_required",
       observed_at: now.toISOString(),
     });
     invalidateOperationalOverview(ctx.tenantId);

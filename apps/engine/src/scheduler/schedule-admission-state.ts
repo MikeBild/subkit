@@ -1,3 +1,4 @@
+import type { AuthorityRefusalCode } from "@shared/authority-refusal.ts";
 import { and, eq, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -6,6 +7,7 @@ import { workflowsSchedules } from "../db/schema/index.ts";
 import { invalidateTenantState } from "../operator/index.ts";
 import { emitResourceChange } from "../pubsub/resource-changes.ts";
 import { inspectScheduleAutomation } from "./automation-status.ts";
+import { countRefusal } from "./core/admission-refusals.ts";
 import type { ScheduleInputError } from "./repo.ts";
 
 export async function recordScheduleInputRequired(
@@ -83,10 +85,46 @@ export async function recordScheduleInputRequired(
   return changedState;
 }
 
+export async function recordScheduleRefusal(
+  db: Db,
+  context: { tenant_id: string; schedule_id: string },
+  reason_code: string,
+): Promise<{ refusals: number; pause: boolean } | null> {
+  return db.transaction(async (tx) => {
+    const [schedule] = await tx
+      .select({ hold: workflowsSchedules.admission_hold })
+      .from(workflowsSchedules)
+      .where(
+        and(
+          eq(workflowsSchedules.tenant_id, context.tenant_id),
+          eq(workflowsSchedules.id, context.schedule_id),
+          eq(workflowsSchedules.paused, false),
+        ),
+      )
+      .for("update");
+    const hold = schedule?.hold;
+    if (!hold || hold.reason_code !== reason_code) return null;
+    const counted = countRefusal(hold, reason_code);
+    const { refusals: _refusals, ...standing } = hold;
+    await tx
+      .update(workflowsSchedules)
+      .set({
+        admission_hold: counted.pause ? standing : { ...standing, refusals: counted.refusals },
+      })
+      .where(
+        and(
+          eq(workflowsSchedules.tenant_id, context.tenant_id),
+          eq(workflowsSchedules.id, context.schedule_id),
+        ),
+      );
+    return counted;
+  });
+}
+
 export async function recordScheduleAdmission(
   db: Db,
   context: { tenant_id: string; schedule_id: string; claimed_at: Date },
-  reason: "execution_authority_required" | "execution_authority_unavailable" | null,
+  reason: AuthorityRefusalCode | null,
 ): Promise<boolean> {
   const changedState = await db.transaction(async (tx) => {
     if (reason) {

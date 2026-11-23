@@ -8,10 +8,9 @@ export async function askBeforeWritingFor(
   p: {
     readonly tenant_id: string;
     readonly principal?: ResolvedPrincipal | null | undefined;
-    readonly unattended: boolean;
   },
 ): Promise<boolean> {
-  if (p.unattended || p.principal?.kind !== "user") return false;
+  if (p.principal?.kind !== "user") return false;
   try {
     return await storedAskBeforeWriting(exec, {
       tenant_id: p.tenant_id,

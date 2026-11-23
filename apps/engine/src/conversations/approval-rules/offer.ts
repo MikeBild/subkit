@@ -8,7 +8,8 @@ import { describeBoundAction } from "../instruction-cover/bound-action.ts";
 import { collectContent } from "../instruction-cover/content.ts";
 import { connectorTemplateSlug } from "../instruction-cover/evidence.ts";
 import { describeForCard, isCoverCandidate } from "../instruction-cover/gate.ts";
-import { contentHash, scopeOf } from "./scope.ts";
+import { scopeOf } from "./core/rule-scope.ts";
+import { contentHash } from "./scope.ts";
 import { noteApprovedAction } from "./store.ts";
 
 export async function noteApprovalForRuleOffer(p: {

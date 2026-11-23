@@ -56,7 +56,7 @@ for (const scenario of [
         .set({ lifecycle: "active", current_version_id: f.version.id })
         .where(and(eq(workflows.tenant_id, f.workflow.tenant_id), eq(workflows.id, f.workflow.id)));
     const hold = {
-      reason_code: "execution_authority_unavailable" as const,
+      reason_code: "execution_authority_expired" as const,
       observed_at: f.input.valid_from,
     };
     const [schedule] = await ctx.db
@@ -122,7 +122,7 @@ test("a production grant releases the workflow's held inbound hook, and nothing 
     .set({ lifecycle: "active", current_version_id: f.version.id })
     .where(and(eq(workflows.tenant_id, f.workflow.tenant_id), eq(workflows.id, f.workflow.id)));
   const hold = {
-    reason_code: "execution_authority_unavailable" as const,
+    reason_code: "execution_authority_expired" as const,
     observed_at: f.input.valid_from,
   };
   const secret = { secret_ciphertext: Buffer.alloc(1), secret_iv: Buffer.alloc(1) };

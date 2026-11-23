@@ -242,7 +242,9 @@ describe("a refused dispatch reaches the audit trail", () => {
   test("the real refusal code is what the runtime reports, not a blanket one", async () => {
     for (const code of [
       "execution_authority_changed",
-      "execution_authority_unavailable",
+      "execution_authority_expired",
+      "execution_authority_exhausted",
+      "execution_authority_revoked",
       "execution_authority_required",
       "authority_redirect_denied",
     ]) {

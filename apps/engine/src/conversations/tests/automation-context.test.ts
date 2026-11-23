@@ -59,7 +59,7 @@ test("current blocked status overrides historical preview success without exposi
     cron: "0 9 * * *",
     execution_mode: "prod",
     admission_hold: {
-      reason_code: "execution_authority_unavailable",
+      reason_code: "execution_authority_expired",
       observed_at: "2026-01-01T00:00:00Z",
     },
   });

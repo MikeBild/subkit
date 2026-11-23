@@ -7,11 +7,11 @@ import { classifyError } from "./error-class.ts";
 describe("classifyError", () => {
   test("a deliberate domain refusal is a refusal; a lookalike plain error stays unknown", () => {
     const message = "no matching live execution authority has runs remaining";
-    expect(classifyError(new DomainRefusal("execution_authority_unavailable", message))).toBe(
+    expect(classifyError(new DomainRefusal("execution_authority_expired", message))).toBe(
       "refusal",
     );
     expect(
-      classifyError(Object.assign(new Error(message), { code: "execution_authority_unavailable" })),
+      classifyError(Object.assign(new Error(message), { code: "execution_authority_expired" })),
     ).toBe("unknown");
   });
 

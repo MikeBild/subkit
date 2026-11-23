@@ -81,7 +81,7 @@ test("preview -> human recurring grant -> schedule resolved -> two changing repo
     ).toString("base64url");
     expect((await f.run(next)).status).toBe("succeeded");
     expect(sends).toBe(2);
-    await expect(f.run()).rejects.toMatchObject({ code: "execution_authority_unavailable" });
+    await expect(f.run()).rejects.toMatchObject({ code: "execution_authority_exhausted" });
   });
 });
 
@@ -186,7 +186,7 @@ for (const state of ["revoked", "expired"] as const) {
       });
     }
     expect((await inspectScheduleAutomation(f.schedule, ctx.testDb.db)).ready).toBe(false);
-    await expect(f.run()).rejects.toMatchObject({ code: "execution_authority_unavailable" });
+    await expect(f.run()).rejects.toMatchObject({ code: "execution_authority_revoked" });
   });
 }
 

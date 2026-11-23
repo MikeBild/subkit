@@ -357,7 +357,7 @@ export async function readmitWaitingRun(
       {
         failure: {
           step_id: null,
-          error_code: "execution_authority_unavailable",
+          error_code: "execution_authority_required",
           error_message: "The approval for this run is gone. Nothing ran on the device.",
         },
       },

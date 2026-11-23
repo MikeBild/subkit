@@ -1,3 +1,4 @@
+import { isAuthorityRefusalCode } from "@shared/authority-refusal.ts";
 import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../audit/index.ts";
 import type { Db, Executor } from "../db/client.ts";
@@ -8,6 +9,7 @@ import { logger } from "../logging/index.ts";
 import type { ExecutionRunJob } from "../queue/queues.ts";
 import { inspectScheduleAutomation } from "./automation-status.ts";
 import { calendarGateSkipReason, readCalendarGates, stripCalendarGates } from "./calendar-gates.ts";
+import { holdStillStands } from "./core/admission-refusals.ts";
 import { isCronDue, parseCronExpression } from "./cron.ts";
 import type { EveryScheduleDefinition } from "./every-schedule-registry.ts";
 import { assessFailures } from "./failure-backoff.ts";
@@ -17,7 +19,7 @@ import {
   OCCURRENCE_RECORD_MIN_INTERVAL_MS,
 } from "./occurrence-window.ts";
 import { getSchedule, validateScheduleInput } from "./repo.ts";
-import { recordScheduleInputRequired } from "./schedule-admission-state.ts";
+import { recordScheduleInputRequired, recordScheduleRefusal } from "./schedule-admission-state.ts";
 import {
   pauseScheduleForFailures,
   readScheduledRunOutcomes,
@@ -186,23 +188,34 @@ async function restore(db: Db, row: Descriptor, now: Date): Promise<void> {
   });
 }
 
-const HELD_AUTHORITY_STATE = {
-  execution_authority_required: "repair_required",
-  execution_authority_unavailable: "approval_required",
-} as const;
+async function countScheduleRefusal(
+  db: Db,
+  row: Descriptor,
+  reason_code: string,
+  now: Date,
+): Promise<boolean> {
+  const counted = await recordScheduleRefusal(
+    db,
+    { tenant_id: row.tenant_id, schedule_id: row.id },
+    reason_code,
+  );
+  if (!counted?.pause) return false;
+  return pauseScheduleForFailures(
+    db,
+    { tenant_id: row.tenant_id, schedule_id: row.id },
+    { failure_class: reason_code, streak: counted.refusals },
+    now,
+  );
+}
 
 async function remainsAuthorityHeld(db: Db, row: Descriptor): Promise<boolean> {
   const reason_code = row.admission_hold?.reason_code;
-  if (
-    reason_code !== "execution_authority_required" &&
-    reason_code !== "execution_authority_unavailable"
-  )
-    return false;
+  if (!isAuthorityRefusalCode(reason_code)) return false;
   const inspection = await boundedTransaction(db, async (tx) => {
     const schedule = await getSchedule(tx, row.tenant_id, row.id);
     return schedule ? inspectScheduleAutomation(schedule, tx) : null;
   });
-  if (inspection?.state !== HELD_AUTHORITY_STATE[reason_code]) return false;
+  if (!holdStillStands(reason_code, inspection?.state)) return false;
   logger.debug({
     module: "scheduler",
     action: "schedule.admission_still_held",
@@ -289,7 +302,9 @@ async function fireCandidate(
     return "visited" as const;
   }
   if (await remainsAuthorityHeld(db, row)) {
-    await note({ state: "held", reason_code: row.admission_hold?.reason_code ?? null });
+    const held = row.admission_hold?.reason_code ?? null;
+    const paused = held !== null && (await countScheduleRefusal(db, row, held, now));
+    await note({ state: "held", reason_code: paused ? SCHEDULE_PAUSED_REASON : held });
     return "visited" as const;
   }
   const failures = assessFailures(
@@ -350,7 +365,12 @@ async function fireCandidate(
         "schedule.fanout_failed",
       );
     await restore(db, row, now);
-    if (isScheduleAdmissionHeldError(error)) await note({ state: "held", reason_code: error.code });
+    if (isScheduleAdmissionHeldError(error)) {
+      const paused =
+        isAuthorityRefusalCode(error.code) &&
+        (await countScheduleRefusal(db, row, error.code, now));
+      await note({ state: "held", reason_code: paused ? SCHEDULE_PAUSED_REASON : error.code });
+    }
     throw error;
   }
   return "admitted" as const;

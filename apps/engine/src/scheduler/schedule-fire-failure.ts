@@ -1,12 +1,11 @@
+import { isAuthorityRefusalCode } from "@shared/authority-refusal.ts";
 import { errorFields, logger } from "../logging/index.ts";
 
 export function isScheduleAdmissionHeldError(error: unknown): error is Error & { code: string } {
   return (
     error instanceof Error &&
     "code" in error &&
-    (error.code === "execution_authority_required" ||
-      error.code === "execution_authority_unavailable" ||
-      error.code === "input_required")
+    (isAuthorityRefusalCode(error.code) || error.code === "input_required")
   );
 }
 

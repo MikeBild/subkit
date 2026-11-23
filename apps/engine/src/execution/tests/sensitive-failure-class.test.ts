@@ -16,8 +16,10 @@ describe("sensitive failures keep a class a person can act on", () => {
   });
 
   test("an authority code stays readable and classifies as an approval that no longer fits", () => {
-    const failure = sensitiveFailure("execution_authority_unavailable", "no live authority");
-    expect(failure.code).toBe("execution_authority_unavailable");
+    const failure = sensitiveFailure("execution_authority_expired", "no live authority");
+    expect(failure.code).toBe("execution_authority_expired");
+    expect(failure.message).toContain("has expired");
+    expect(failure.message).not.toBe("Sensitive execution failed.");
     expect(classifyPersistedFailure({ status: "failed", error: failure }).classification).toBe(
       "authority_mismatch",
     );
@@ -28,6 +30,28 @@ describe("sensitive failures keep a class a person can act on", () => {
     expect(failure.code).toBe("skipped");
     expect(failure.message).toContain("skipped");
     expect(failure.message).not.toContain("jane@example.com");
+  });
+
+  test("each approval failure of a sensitive run says what happened and what to do", () => {
+    const messages = [
+      "execution_authority_required",
+      "execution_authority_expired",
+      "execution_authority_exhausted",
+      "execution_authority_revoked",
+      "execution_authority_changed",
+    ].map((code) => sensitiveFailure(code, "payload for jane@example.com").message);
+    expect(new Set(messages).size).toBe(5);
+    for (const message of messages) {
+      expect(message).not.toBe("Sensitive execution failed.");
+      expect(message).not.toContain("jane@example.com");
+    }
+  });
+
+  test("a safe code without a sentence of its own reads as its failure class", () => {
+    const failure = sensitiveFailure("connector_disabled", "Connector acme-crm is disabled");
+    expect(failure.code).toBe("connector_disabled");
+    expect(failure.message).toContain("Reconnect or enable it");
+    expect(failure.message).not.toContain("acme-crm");
   });
 
   test("a disabled connector keeps its code", () => {

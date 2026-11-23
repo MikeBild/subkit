@@ -61,7 +61,9 @@ const safeFailureCodes = new Set([
   "execution_authority_changed",
   "execution_boundary_mismatch",
   "execution_authority_required",
-  "execution_authority_unavailable",
+  "execution_authority_expired",
+  "execution_authority_exhausted",
+  "execution_authority_revoked",
   "execution_authentication_unavailable",
   "connector_disabled",
   "connector_not_found",
@@ -116,6 +118,16 @@ const safeFailureCodes = new Set([
 ]);
 
 const SAFE_FAILURE_MESSAGES: Readonly<Record<string, string>> = {
+  execution_authority_required:
+    "No approval covers this run. Review and approve the workflow, then run again. Nothing was sent by this step.",
+  execution_authority_expired:
+    "The approval for this workflow has expired. Renew the approval, then run again. Nothing was sent by this step.",
+  execution_authority_exhausted:
+    "The approval for this workflow is used up. Approve more runs, then run again. Nothing was sent by this step.",
+  execution_authority_revoked:
+    "The approval for this workflow was revoked. Approve the workflow again, then run again. Nothing was sent by this step.",
+  execution_authority_changed:
+    "The run would do something its approval does not cover. Review what changed and approve it, then run again. Nothing was sent by this step.",
   skipped: "This step was skipped by the workflow's control flow or after an earlier step failed.",
   mcp_timeout_during_write:
     "A tool did not answer in time while it was sending a change. It may have reached the target; check there before you run it again.",
@@ -187,13 +199,14 @@ export interface SensitiveFailure {
 
 export function sensitiveFailure(code?: string, message?: string): SensitiveFailure {
   const safeCode = code && safeFailureCodes.has(code) ? code : "sensitive_execution_failure";
-  if (!code || safeCode === code)
-    return { code: safeCode, message: SAFE_FAILURE_MESSAGES[safeCode] ?? PROTECTED_MESSAGE };
+  const specific = SAFE_FAILURE_MESSAGES[safeCode];
+  if (!code || specific) return { code: safeCode, message: specific ?? PROTECTED_MESSAGE };
   const error_class = classifyFailure({
     status: "failed",
     error: { code, message: message ?? "" },
   });
   const classMessage = SAFE_CLASS_MESSAGES[error_class];
+  if (safeCode === code) return { code: safeCode, message: classMessage ?? PROTECTED_MESSAGE };
   return classMessage
     ? { code: safeCode, message: classMessage, error_class }
     : { code: safeCode, message: PROTECTED_MESSAGE };

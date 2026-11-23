@@ -233,7 +233,7 @@ test("revoking the root's approval stops its child", async () => {
       connection_authority: null,
       request: { method: "POST", url: `${mock.baseUrl}/child`, headers: {}, body: null as never },
     }),
-  ).rejects.toMatchObject({ code: "execution_authority_unavailable" });
+  ).rejects.toMatchObject({ code: "execution_authority_revoked" });
 });
 
 test("cancelling the root stops its child", async () => {

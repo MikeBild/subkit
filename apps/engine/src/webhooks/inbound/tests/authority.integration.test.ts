@@ -75,7 +75,7 @@ describe("webhook execution authority admission", () => {
     const input = delivery("no-authority");
     expect(await receive(input)).toMatchObject({
       status: "denied",
-      reason: "execution_authority_unavailable",
+      reason: "execution_authority_required",
     });
     expect(await rows()).toHaveLength(0);
     expect(await seen("no-authority")).toBe(false);
@@ -85,7 +85,7 @@ describe("webhook execution authority admission", () => {
       .where(
         and(
           eq(auditLog.tenant_id, ctx.tenantId),
-          eq(auditLog.reason, "execution_authority_unavailable"),
+          eq(auditLog.reason, "execution_authority_required"),
         ),
       );
     expect(audits).toHaveLength(1);
@@ -154,10 +154,10 @@ describe("webhook execution authority admission", () => {
       )[0]?.hold;
     expect(await receive(delivery("refused-1"))).toMatchObject({
       status: "denied",
-      reason: "execution_authority_unavailable",
+      reason: "execution_authority_required",
     });
     const first = await hold();
-    expect(first?.reason_code).toBe("execution_authority_unavailable");
+    expect(first?.reason_code).toBe("execution_authority_required");
     await receive(delivery("refused-2", '{"invoice":2}', 60));
     expect(await hold()).toEqual(first);
 
@@ -175,7 +175,7 @@ describe("webhook execution authority admission", () => {
       ready: false,
       environment: "prod",
       admission_hold: first,
-      last_refused_reason: "execution_authority_unavailable",
+      last_refused_reason: "execution_authority_required",
     });
     expect(status?.last_refused_at).not.toBeNull();
 
@@ -187,7 +187,7 @@ describe("webhook execution authority admission", () => {
     const { items } = await buildAttention(ctx.db, adminPrincipal(ctx.tenantId));
     expect(items.find((item) => item.id === `workflow:${ctx.workflowId}`)).toMatchObject({
       class: "stopped",
-      reason: "execution_authority_unavailable",
+      reason: "execution_authority_required",
     });
 
     await ctx.grantAuthority("prod", 1);
@@ -201,7 +201,7 @@ describe("webhook execution authority admission", () => {
     const authority = await ctx.grantAuthority("dev", 1);
     expect(await receive(delivery("wrong-environment"))).toMatchObject({
       status: "denied",
-      reason: "execution_authority_unavailable",
+      reason: "execution_authority_required",
     });
     expect(await reserved(authority.id)).toBe(0);
     expect(await rows()).toHaveLength(0);
@@ -233,7 +233,7 @@ describe("webhook execution authority admission", () => {
     if (!expired) throw new Error("expired fixture missing");
     expect(await receive(delivery("expired"))).toMatchObject({
       status: "denied",
-      reason: "execution_authority_unavailable",
+      reason: "execution_authority_expired",
     });
     expect(await reserved(expired.id)).toBe(0);
     expect(await rows()).toHaveLength(0);
@@ -375,7 +375,7 @@ describe("webhook execution authority admission", () => {
       );
     expect(await receive(input)).toMatchObject({
       status: "denied",
-      reason: "execution_authority_unavailable",
+      reason: "execution_authority_revoked",
     });
     expect(await rows()).toHaveLength(1);
     expect(await reserved(authority.id)).toBe(1);
@@ -406,7 +406,7 @@ describe("webhook execution authority admission", () => {
       .where(and(eq(workflows.tenant_id, ctx.tenantId), eq(workflows.id, ctx.workflowId)));
     expect(await receive(delivery("changed-version"))).toMatchObject({
       status: "denied",
-      reason: "execution_authority_unavailable",
+      reason: "execution_authority_required",
     });
     expect(await reserved(authority.id)).toBe(0);
     expect(await rows()).toHaveLength(0);

@@ -424,7 +424,6 @@ async function dispatchTenantTool(
       const askBeforeWriting = await askBeforeWritingFor(deps.db, {
         tenant_id: deps.principal.tenant_id,
         principal: deps.principal,
-        unattended: false,
       });
       const gate = await runConfirmGate({
         tool: entry.descriptor.name,

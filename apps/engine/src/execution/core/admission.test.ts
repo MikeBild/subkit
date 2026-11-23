@@ -95,8 +95,13 @@ const factsArb: fc.Arbitrary<AdmissionFacts> = fc.oneof(
   fc.record({ stage: fc.constant("repeated_runs" as const), eligible: fc.boolean() }),
   fc.record({
     stage: fc.constant("authority" as const),
-    authority_digest: fc.option(fc.constantFrom("a", "b"), { nil: null }),
-    boundary_digest: fc.constantFrom("a", "b"),
+    refusal: fc.option(
+      fc.record({
+        code: fc.constantFrom("execution_authority_expired", "execution_authority_changed"),
+        message: fc.constant("refused"),
+      }),
+      { nil: null },
+    ),
   }),
 );
 
@@ -345,17 +350,14 @@ describe("decideAdmission", () => {
     expect(decideAdmission(base, { stage: "repeated_runs", eligible: true }).kind).toBe("admitted");
   });
 
-  test("requires a live authority with the current digest", () => {
+  test("admits when the approval can carry the run and passes its refusal through otherwise", () => {
+    expect(decideAdmission(base, { stage: "authority", refusal: null }).kind).toBe("admitted");
     expect(
-      decideAdmission(base, { stage: "authority", authority_digest: null, boundary_digest: "a" }),
-    ).toMatchObject({ kind: "rejected", code: "execution_authority_unavailable" });
-    expect(
-      decideAdmission(base, { stage: "authority", authority_digest: "b", boundary_digest: "a" }),
-    ).toMatchObject({ kind: "rejected", code: "execution_authority_changed" });
-    expect(
-      decideAdmission(base, { stage: "authority", authority_digest: "a", boundary_digest: "a" })
-        .kind,
-    ).toBe("admitted");
+      decideAdmission(base, {
+        stage: "authority",
+        refusal: { code: "execution_authority_revoked", message: "revoked" },
+      }),
+    ).toEqual({ kind: "rejected", code: "execution_authority_revoked", message: "revoked" });
   });
 
   test("names every rejection with its exact code and message", () => {
@@ -407,14 +409,13 @@ describe("decideAdmission", () => {
       message: "this workflow requires concrete-run review for its current effects",
     });
     expect(
-      decideAdmission(base, { stage: "authority", authority_digest: null, boundary_digest: "a" }),
-    ).toEqual({
-      kind: "rejected",
-      code: "execution_authority_unavailable",
-      message: "no matching live execution authority has runs remaining",
-    });
-    expect(
-      decideAdmission(base, { stage: "authority", authority_digest: "b", boundary_digest: "a" }),
+      decideAdmission(base, {
+        stage: "authority",
+        refusal: {
+          code: "execution_authority_changed",
+          message: "the execution authority no longer matches the current effect boundary",
+        },
+      }),
     ).toEqual({
       kind: "rejected",
       code: "execution_authority_changed",

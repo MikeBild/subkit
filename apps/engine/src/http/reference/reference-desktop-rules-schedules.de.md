@@ -64,7 +64,10 @@ Abfrage-Parameter beider Routen: `limit` (Standard 50, höchstens 200) und `befo
 | `repeated_failures` | `held` | Der Zeitplan hat sich selbst pausiert. |
 | `input_required` | `held` | Dem Zeitplan fehlen Pflichteingaben. |
 | `execution_authority_required` | `held` | Keine Freigabe deckt die aktuelle Version. |
-| `execution_authority_unavailable` | `held` | Die Freigabe ist abgelaufen, aufgebraucht oder widerrufen. |
+| `execution_authority_expired` | `held` | Die Freigabe ist abgelaufen. |
+| `execution_authority_exhausted` | `held` | Die Freigabe ist aufgebraucht. |
+| `execution_authority_revoked` | `held` | Die Freigabe wurde widerrufen. |
+| `execution_authority_changed` | `held` | Der Workflow würde jetzt etwas tun, das die Freigabe nicht abdeckt. |
 | `grant_required`, `grant_expired`, `grant_exhausted`, `grant_fingerprint_mismatch` | `held` | Die Dauererlaubnis der Aufgabe fehlt, ist abgelaufen, aufgebraucht oder passt nicht mehr zur Aufgabe. |
 | `owner_unavailable`, `ai_access_missing`, `paused` | `held` | Die Besitzerin der Aufgabe ist nicht verfügbar, der Arbeitsbereich hat keinen KI-Anbieter, oder die Aufgabe ist pausiert. |
 

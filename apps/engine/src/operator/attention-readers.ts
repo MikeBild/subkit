@@ -1,3 +1,4 @@
+import { isAuthorityRefusalCode } from "@shared/authority-refusal.ts";
 import { and, asc, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import { connectorCountsAgainstHealth } from "../connectors/health-ratio.ts";
 import { listConnections } from "../credentials/connections/index.ts";
@@ -342,8 +343,8 @@ function workflowItem(fact: WorkflowFacts): Candidate {
   const heldForRepair = fact.held?.reason_code === "execution_authority_required";
   const repair = approval?.kind === "awaiting" || heldForRepair ? fact.repair : null;
   const reason: AttentionReason = fact.held
-    ? fact.held.reason_code === "execution_authority_unavailable"
-      ? "execution_authority_unavailable"
+    ? isAuthorityRefusalCode(fact.held.reason_code)
+      ? fact.held.reason_code
       : "execution_authority_required"
     : failures > 0
       ? "failing"

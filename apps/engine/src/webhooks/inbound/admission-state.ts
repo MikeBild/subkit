@@ -1,3 +1,4 @@
+import type { AuthorityRefusalCode } from "@shared/authority-refusal.ts";
 import { and, eq, sql } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { webhooksInbound } from "../../db/schema/index.ts";
@@ -5,7 +6,7 @@ import { invalidateTenantState } from "../../operator/index.ts";
 import { emitResourceChange } from "../../pubsub/resource-changes.ts";
 import { inspectInboundHookAutomation } from "../../scheduler/automation-status.ts";
 
-export type InboundHoldReason = "execution_authority_required" | "execution_authority_unavailable";
+export type InboundHoldReason = AuthorityRefusalCode;
 
 export async function recordInboundAdmission(
   db: Db,

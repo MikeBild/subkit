@@ -42,7 +42,7 @@ export const ScheduleOccurrenceSchema = z
       .string()
       .nullable()
       .describe(
-        "Why: late_start, merged_missed, calendar_weekend, calendar_skip_date, failure_backoff, repeated_failures, input_required, execution_authority_required, execution_authority_unavailable, or a task admission reason such as grant_required, grant_expired, previous_run_active. Null for a run on time.",
+        "Why: late_start, merged_missed, calendar_weekend, calendar_skip_date, failure_backoff, repeated_failures, input_required, execution_authority_required, execution_authority_expired, execution_authority_exhausted, execution_authority_revoked, execution_authority_changed, or a task admission reason such as grant_required, grant_expired, previous_run_active. Null for a run on time.",
       ),
     skipped_count: z
       .number()

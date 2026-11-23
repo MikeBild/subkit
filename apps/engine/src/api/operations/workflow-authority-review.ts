@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { AUTHORITY_REFUSAL_CODES } from "@shared/authority-refusal.ts";
 import { REPAIR_REMEDIES } from "@shared/error-taxonomy.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { can } from "../../rbac/evaluator.ts";
@@ -45,7 +46,7 @@ const AutomationStatusSchema = z.object({
       environment: z.literal("prod"),
       admission_hold: z
         .object({
-          reason_code: z.enum(["execution_authority_required", "execution_authority_unavailable"]),
+          reason_code: z.enum(AUTHORITY_REFUSAL_CODES),
           observed_at: z.string(),
         })
         .nullable(),

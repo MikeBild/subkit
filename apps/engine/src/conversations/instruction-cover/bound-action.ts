@@ -306,7 +306,3 @@ export function describeBoundAction(
   if (tool.startsWith("mcp_")) return externalToolAction(tool, args, recipients);
   return nativeAction(tool, args, recipients);
 }
-
-export function isNeverCovered(action: BoundAction): boolean {
-  return action.effect_class !== "ordinary" || action.verbs.length === 0;
-}

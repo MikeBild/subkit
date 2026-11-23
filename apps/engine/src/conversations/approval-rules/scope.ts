@@ -1,29 +1,11 @@
 import { createHash } from "node:crypto";
 import type { ToolApprovalContentClass, ToolApprovalRuleScope } from "../../db/schema/index.ts";
-import { type BoundAction, isNeverCovered } from "../instruction-cover/bound-action.ts";
+import type { BoundAction } from "../instruction-cover/bound-action.ts";
 import { normalizeForQuote } from "../instruction-cover/normalize.ts";
+import { ruleEligible } from "./core/rule-scope.ts";
 
-export const MAX_RULE_RECIPIENTS = 20;
 export const RULE_LIFETIME_DAYS = 90;
 export const RULE_DAILY_LIMIT = 20;
-
-export function ruleEligible(action: BoundAction): boolean {
-  return (
-    !isNeverCovered(action) &&
-    action.target !== null &&
-    action.recipients.length <= MAX_RULE_RECIPIENTS
-  );
-}
-
-export function scopeOf(action: BoundAction): ToolApprovalRuleScope {
-  return {
-    tool: action.tool,
-    verb: action.verb,
-    account: action.account,
-    target: action.target,
-    recipients: [...new Set(action.recipients)].sort(),
-  };
-}
 
 export function scopeHash(scope: ToolApprovalRuleScope): string {
   return createHash("sha256")

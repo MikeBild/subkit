@@ -85,7 +85,7 @@ export type AdmissionFacts =
   | { stage: "active_version"; lifecycle: string | null; current_version_id: string | null }
   | { stage: "active_definition"; found: boolean }
   | { stage: "repeated_runs"; eligible: boolean }
-  | { stage: "authority"; authority_digest: string | null; boundary_digest: string };
+  | { stage: "authority"; refusal: { code: string; message: string } | null };
 
 export type AdmissionDecision =
   | { kind: "admitted" }
@@ -95,7 +95,9 @@ export type AdmissionDecision =
 
 export const DOWNGRADABLE_AUTHORITY_CODES: ReadonlySet<string> = new Set([
   "execution_authority_required",
-  "execution_authority_unavailable",
+  "execution_authority_expired",
+  "execution_authority_exhausted",
+  "execution_authority_revoked",
   "execution_authority_changed",
   "workflow_version_not_active",
   "execution_boundary_mismatch",
@@ -180,16 +182,6 @@ export function decideAdmission(
             "this workflow requires concrete-run review for its current effects",
           );
     case "authority":
-      if (facts.authority_digest === null)
-        return rejected(
-          "execution_authority_unavailable",
-          "no matching live execution authority has runs remaining",
-        );
-      return facts.authority_digest === facts.boundary_digest
-        ? ADMITTED
-        : rejected(
-            "execution_authority_changed",
-            "the execution authority no longer matches the current effect boundary",
-          );
+      return facts.refusal ? rejected(facts.refusal.code, facts.refusal.message) : ADMITTED;
   }
 }

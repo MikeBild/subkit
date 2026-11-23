@@ -131,7 +131,7 @@ export function reportAuthorityFixtures(state: { readonly ctx: EngineTestCtx }) 
         execution_mode: "dev",
         input: { raw, window: raw.length },
         admission_hold: {
-          reason_code: "execution_authority_unavailable",
+          reason_code: "execution_authority_expired",
           observed_at: now.toISOString(),
         },
       })

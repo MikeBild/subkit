@@ -1,11 +1,11 @@
 import type { ExecutionAuthSource, ResolvedPrincipal } from "../../auth/types.ts";
 import type { ToolApprovalContentClass } from "../../db/schema/index.ts";
+import { scopeOf } from "../approval-rules/core/rule-scope.ts";
 import {
   contentHash,
   ruleExpiry,
   ruleRefusal,
   scopeCovers,
-  scopeOf,
   usageDay,
 } from "../approval-rules/scope.ts";
 import { describeBoundAction } from "./bound-action.ts";

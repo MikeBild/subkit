@@ -224,7 +224,7 @@ describe("te-brain compatible budget over HTTP", () => {
       { workflow_id: unapproved.workflow_id },
     );
     expect(refused.status).toBe(403);
-    expect(await refused.json()).toMatchObject({ code: "execution_authority_unavailable" });
+    expect(await refused.json()).toMatchObject({ code: "execution_authority_required" });
     const held = await run(bearer, { turn_id: "held" }, { hold_writes: true });
     expect(held.status).toBe(403);
     expect(await held.json()).toMatchObject({ code: "product_preparation_forbidden" });
