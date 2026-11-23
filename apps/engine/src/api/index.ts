@@ -176,6 +176,7 @@ export {
   getSensitiveExecutionResultOperation,
   listExecutionStepsOperation,
   listExecutionsOperation,
+  resolveExecutionWriteOperation,
 } from "./operations/executions.ts";
 export { submitFeedbackOperation } from "./operations/feedback.ts";
 export {

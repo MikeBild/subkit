@@ -327,7 +327,7 @@ describe("recoverCrashedExecutions", () => {
     const first = await recoverCrashedExecutions(ctx.testDb.db, {
       now: new Date(TEST_NOW_MS),
     });
-    expect(first).toEqual({ recovered: 0, reconciled_steps: 1 });
+    expect(first).toEqual({ recovered: 0, reconciled_steps: 1, requeued: 0 });
 
     const recoveredStep = (
       await ctx.testDb.db.select().from(executionSteps).where(eq(executionSteps.id, step.id))
@@ -370,7 +370,7 @@ describe("recoverCrashedExecutions", () => {
     const second = await recoverCrashedExecutions(ctx.testDb.db, {
       now: new Date(TEST_NOW_MS + 1_000),
     });
-    expect(second).toEqual({ recovered: 0, reconciled_steps: 0 });
+    expect(second).toEqual({ recovered: 0, reconciled_steps: 0, requeued: 0 });
     const auditsAfterRetry = await ctx.testDb.db
       .select()
       .from(auditLog)

@@ -33,6 +33,10 @@ beforeAll(() => {
         captures.push((await request.json()) as Record<string, unknown>);
         return Response.json({ execution_id: workflowId, status: "succeeded", output: {} });
       }
+      if (path.endsWith("/stream"))
+        return new Response("event: execution.succeeded\ndata: {}\n\n", {
+          headers: { "content-type": "text/event-stream" },
+        });
       if (path.includes("validate")) return Response.json({ ok: true, errors: [], warnings: [] });
       return Response.json({ id: workflowId, name: "optional-object", slug: "optional-object" });
     },

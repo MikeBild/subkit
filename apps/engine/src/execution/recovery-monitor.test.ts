@@ -19,7 +19,7 @@ describe("startCrashRecoveryMonitor", () => {
       recover: async () => {
         recoverCalls += 1;
         if (recoverCalls === 1) await first;
-        return { recovered: 0, reconciled_steps: 0 };
+        return { recovered: 0, reconciled_steps: 0, requeued: 0 };
       },
     });
 
@@ -51,7 +51,7 @@ test("recovery shutdown holds the active check and refuses later admission", asy
       calls++;
       entered.resolve();
       await release.promise;
-      return { recovered: 0, reconciled_steps: 0 };
+      return { recovered: 0, reconciled_steps: 0, requeued: 0 };
     },
   });
   const checking = monitor.checkNow();

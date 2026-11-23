@@ -281,6 +281,9 @@ export interface RunOptions {
   sensitive_metadata_preview?: boolean;
   step_output_fixtures?: Record<string, unknown>;
   budget_resume?: Record<string, unknown>;
+  crash_resume?: Record<string, unknown>;
+  crash_claimed?: boolean;
+  initial_scope?: Record<string, unknown>;
 }
 
 export type SensitiveCheckVerdict = "passed" | "failed" | "not_defined" | "not_run";

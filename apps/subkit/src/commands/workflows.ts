@@ -298,7 +298,7 @@ const runCommand = defineCommand({
 
     if (args.follow && (args.draft || args.step)) {
       process.stderr.write(
-        "--follow requires a saved workflow id; draft and step runs execute inline and return their result directly\n",
+        "--follow requires a saved workflow id; a draft run returns its result directly and a step run is always followed\n",
       );
       process.exit(1);
     }
@@ -366,7 +366,15 @@ const runCommand = defineCommand({
           ...(input !== undefined ? { input } : {}),
           request_source: "cli" as const,
         };
-        printRunResult(await client.runExecution(body, { environment }), environment);
+        const started = await client.runExecution(body, { environment });
+        process.stderr.write(
+          `execution ${started.execution_id} started in ${environment} — following\n`,
+        );
+        const terminal = await tailExecution(client, started.execution_id, process.stdout);
+        process.stderr.write(
+          `\n${pc.dim("Tip:")} subkit executions get ${started.execution_id} shows the full result\n`,
+        );
+        process.exitCode = exitCodeForTerminalStatus(terminal);
         return;
       }
 

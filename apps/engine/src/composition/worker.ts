@@ -6,7 +6,11 @@ import { printIssuedKey, seedAtBoot } from "../db/seed.ts";
 import { deviceLifecycleHandler } from "../devices/waiting.ts";
 import { type EngineBootLifetime, EngineBootStoppedError } from "../engine-boot-lifetime.ts";
 import { startAbortMonitor } from "../execution/index.ts";
-import { recoverCrashedExecutions, startCrashRecoveryMonitor } from "../execution/recovery.ts";
+import {
+  recoverCrashedExecutions,
+  type StaleRunEnqueue,
+  startCrashRecoveryMonitor,
+} from "../execution/recovery.ts";
 import { reapOrphanedWaits } from "../execution/wait-reaper.ts";
 import type { LocalWorkspace } from "../identity/local-workspace.ts";
 import { seedKnowledgeAtBoot } from "../knowledge/seed.ts";
@@ -22,6 +26,7 @@ import { bossPoolCounts, startBoss, stopBoss } from "../queue/boss.ts";
 import { EVENT_FANOUT_QUEUE } from "../queue/handlers/event-fanout.ts";
 import { registerAllHandlers } from "../queue/handlers/index.ts";
 import { registerTaskRunTurnListener } from "../queue/handlers/task-run-turn.ts";
+import { EXECUTION_RUN_QUEUE, enqueueHostedWork } from "../queue/index.ts";
 import { rememberWorkerRegistration } from "../queue/worker-pause.ts";
 import { prewarmSandboxWorkers } from "../sandboxes/quickjs/runtime.ts";
 import { applySkillSeedsForAllTenants, loadEmbeddedSkillSeeds } from "../skills/seed.ts";
@@ -72,7 +77,7 @@ export async function startWorker(db: Db, deps: WorkerDeps): Promise<Worker> {
   }
 
   await hydrateChat(db, deps);
-  await recoverExecutions(db, deps);
+  await recoverExecutions(db, boss, deps);
   await reapWaits(db, boss, lifetime);
   await startEventListener(db, boss, lifetime);
   return { boss };
@@ -102,11 +107,26 @@ async function hydrateChat(db: Db, { lifetime, chatRegistry }: WorkerDeps): Prom
   }
 }
 
-async function recoverExecutions(db: Db, { lifetime, recordBootConsumer }: WorkerDeps) {
+const STALE_RUN_REQUEUE_WINDOW_SECONDS = 300;
+
+async function recoverExecutions(
+  db: Db,
+  boss: PgBoss,
+  { lifetime, recordBootConsumer }: WorkerDeps,
+) {
+  const enqueue: StaleRunEnqueue = async (job) => {
+    await enqueueHostedWork(db, boss, "execution", EXECUTION_RUN_QUEUE, job, {
+      singletonKey: `crash-resume:${job.execution_id}`,
+      singletonSeconds: STALE_RUN_REQUEUE_WINDOW_SECONDS,
+    });
+  };
   try {
     const overrideThresholdMs = getConfig().queue.crash_recovery_threshold_ms;
     const { recovered, reconciled_steps } = await lifetime.step(() =>
-      recoverCrashedExecutions(db, overrideThresholdMs > 0 ? { overrideThresholdMs } : {}),
+      recoverCrashedExecutions(db, {
+        enqueue,
+        ...(overrideThresholdMs > 0 ? { overrideThresholdMs } : {}),
+      }),
     );
     logger.info({
       module: "queue",
@@ -125,7 +145,7 @@ async function recoverExecutions(db: Db, { lifetime, recordBootConsumer }: Worke
     });
   }
   await lifetime.acquire(
-    () => startCrashRecoveryMonitor(db),
+    () => startCrashRecoveryMonitor(db, { enqueue }),
     (monitor) => monitor.stop(),
   );
   recordBootConsumer("crash-recovery");

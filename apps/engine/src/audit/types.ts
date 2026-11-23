@@ -144,6 +144,8 @@ export const AuditAction = {
   EXECUTION_ABORTED: "execution.aborted",
   EXECUTION_AUTO_RETRIED: "execution.auto_retried",
   EXECUTION_CRASH_RECOVERED: "execution.crash_recovered",
+  EXECUTION_WRITE_UNCERTAIN: "execution.write_uncertain",
+  EXECUTION_WRITE_RESOLVED: "execution.write_resolved",
 
   STATE_READ: "state.read",
   STATE_WRITE: "state.write",

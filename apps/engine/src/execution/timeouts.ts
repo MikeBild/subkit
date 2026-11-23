@@ -19,3 +19,7 @@ export const LLM_TOOL_RESULT_ERROR_BYTES = 50_000;
 export const LLM_TOOL_RESULT_ARRAY_CAP = 100;
 
 export const LLM_TOOL_RESULT_SAMPLE_DEPTH = 3;
+
+export const RUN_HEARTBEAT_INTERVAL_MS = 30_000;
+
+export const RUN_HEARTBEAT_LEASE_MS = 5 * 60_000;

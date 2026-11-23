@@ -335,6 +335,8 @@ export const ACTION_KEYS: Record<string, TranslationKey> = {
   "workspace.spend_limit_changed": "audit.action.workspaceSpendLimitChanged",
   "workspace.spend_continued": "audit.action.workspaceSpendContinued",
   "execution.budget_parked": "audit.action.executionBudgetParked",
+  "execution.write_uncertain": "audit.action.executionWriteUncertain",
+  "execution.write_resolved": "audit.action.executionWriteResolved",
   "workflow.pair_approval_requested": "audit.action.pairApprovalRequested",
   "workflow.pair_approval_approved": "audit.action.pairApprovalApproved",
   "workflow.pair_approval_declined": "audit.action.pairApprovalDeclined",

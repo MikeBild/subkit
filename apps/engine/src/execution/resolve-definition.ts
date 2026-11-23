@@ -11,7 +11,7 @@ import type { StepDef, WorkflowDef } from "../workflows/types.ts";
 export type RunExecutionSource =
   | { kind: "saved"; workflow_id: string; version_id?: string }
   | { kind: "draft"; definition: WorkflowDef | unknown; name?: string }
-  | { kind: "step"; step: StepDef | unknown; workflow_slug?: string };
+  | { kind: "step"; step: StepDef | unknown; workflow_slug?: string; timeout_ms?: number };
 
 interface ResolvedDefinition {
   def: WorkflowDef;
@@ -127,10 +127,12 @@ async function resolveStep(
   tenant_id: string,
   step: unknown,
   workflow_slug: string | undefined,
+  timeout_ms: number | undefined,
 ): Promise<ResolvedDefinition> {
   const synthetic = {
     name: workflow_slug ?? "step-run",
     steps: [step],
+    ...(timeout_ms !== undefined ? { timeout_ms } : {}),
   };
   const validation = await validateTenantWorkflowDef(synthetic, tenant_id, db);
   if (!validation.ok || !validation.workflow) {
@@ -167,6 +169,6 @@ export async function resolveDefinition(
     case "draft":
       return resolveDraft(db, tenant_id, source.definition, source.name);
     case "step":
-      return resolveStep(db, tenant_id, source.step, source.workflow_slug);
+      return resolveStep(db, tenant_id, source.step, source.workflow_slug, source.timeout_ms);
   }
 }

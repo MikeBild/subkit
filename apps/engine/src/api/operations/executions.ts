@@ -2,7 +2,7 @@ import { z } from "@hono/zod-openapi";
 import { executionStartTraceId } from "../../audit/execution-traces.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { KEYSET_CURSOR_PATTERN } from "../../db/keyset-cursor.ts";
-import { cancelExecutionRequest } from "../../execution/control-service.ts";
+import { cancelExecutionRequest, resolveUncertainWrite } from "../../execution/control-service.ts";
 import { EXECUTION_STATUSES } from "../../execution/core/status.ts";
 import { describeExecutionEvidence } from "../../execution/evidence.ts";
 import {
@@ -455,5 +455,92 @@ export const cancelExecutionOperation = defineOperation<{ readonly id: string },
     errors: { 404: "Not found" },
     toInput: ({ param }) => ({ id: (param as { id: string }).id }),
     toBody: () => null,
+  },
+});
+
+const ResolveWriteBody = z
+  .object({
+    step_key: z
+      .string()
+      .min(1)
+      .max(300)
+      .describe(
+        "The step whose change may or may not have reached the target, exactly as the run reports it. A for_each iteration is named with its index, for example `send[3]`.",
+      ),
+    outcome: z
+      .enum(["arrived", "not_arrived"])
+      .describe(
+        "`arrived`: the change is in the target system; the step counts as done and is not sent again. `not_arrived`: the change is missing; the step is sent again.",
+      ),
+  })
+  .openapi("ExecutionResolveWriteBody");
+
+const ResolveWriteResponse = z
+  .object({
+    execution_id: z.string().uuid(),
+    status: z.enum(["queued", "uncertain"]),
+    remaining_step_keys: z.array(z.string()),
+  })
+  .openapi("ExecutionResolveWriteResponse");
+
+interface ResolveWriteInput {
+  readonly id: string;
+  readonly body: z.infer<typeof ResolveWriteBody>;
+}
+
+type ResolveWriteOutput = z.infer<typeof ResolveWriteResponse>;
+
+export const resolveExecutionWriteOperation = defineOperation<
+  ResolveWriteInput,
+  ResolveWriteOutput
+>({
+  id: "executions.resolve_write",
+  summary: "Say whether an interrupted change reached its target",
+  permission: "execution:abort",
+  resource: { type: "execution", param: "id" },
+  effect: "write",
+  audit: AuditAction.EXECUTION_WRITE_RESOLVED,
+  async handler(scope, { id, body }) {
+    const principal = scope.principal;
+    if (!principal) return reject.unauthorized();
+    const result = await resolveUncertainWrite(scope.db, {
+      principal,
+      execution_id: id,
+      step_key: body.step_key,
+      outcome: body.outcome,
+      request_source: scope.request_source ?? "api",
+      boss: scope.boss,
+    });
+    if (result.kind === "not_found") return reject.notFound("execution");
+    if (result.kind === "not_uncertain")
+      return reject.conflict(
+        "The run is not waiting for an answer about an interrupted change.",
+        undefined,
+        "execution_not_uncertain",
+      );
+    if (result.kind === "unknown_step")
+      return reject.conflict(
+        "This step is not waiting for an answer about an interrupted change.",
+        { step_key: body.step_key },
+        "step_not_uncertain",
+      );
+    return { execution_id: id, status: result.status, remaining_step_keys: result.remaining };
+  },
+  http: {
+    method: "post",
+    path: "/v1/executions/{id}/resolve-write",
+    tags: ["executions"],
+    description:
+      "A run turns `uncertain` when the engine stopped while a step was sending a change: the change may or may not have reached the target, and the engine never sends it again by itself. Check the target system, then answer per step. The run continues from the queue once every uncertain step is answered. To give up instead, cancel the run.",
+    params: IdParam,
+    body: ResolveWriteBody,
+    response: ResolveWriteResponse,
+    success: { status: 200, description: "Answer recorded" },
+    errors: { 404: "Not found", 409: "The run or the step is not uncertain" },
+    toInput: ({ param, json }) => ({
+      id: (param as { id: string }).id,
+      body: json as z.infer<typeof ResolveWriteBody>,
+    }),
+    toBody: (body) => body,
   },
 });

@@ -99,7 +99,7 @@ export type StepVerdict = { status: StepStatus; error: StepResult["error"] };
 
 export function initialRunState(env: RunEnv): RunState {
   return {
-    scope: { $input: env.normalizedInput, $caller: env.caller },
+    scope: { ...env.opts.initial_scope, $input: env.normalizedInput, $caller: env.caller },
     stepSummaries: [],
     warnings: [],
     skippedStepIds: new Set<string>(),
