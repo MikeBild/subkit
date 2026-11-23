@@ -1,17 +1,15 @@
 import { expect } from "bun:test";
-import { translate } from "@/lib/i18n";
-import {
-  isolated as isolatedIn,
-  mount,
-  NOW,
-  run,
-  runDetail,
-  WORKFLOW,
-  workflow,
-} from "./journey-fixtures";
+import { type TranslationKey, translate } from "@/lib/i18n";
+import { journeys, mount, NOW, run, runDetail, WORKFLOW, workflow } from "./journey-fixtures";
 
-const isolated = (name: string, body: () => Promise<void>) =>
-  isolatedIn(import.meta.path, name, body);
+const isolated = journeys(import.meta.path);
+const de = (key: TranslationKey, values?: Record<string, string | number>) =>
+  translate("de", key, values);
+const runningStep = (step: string) => de("ops.sched.live.step", { step });
+const readingIssues = de("chat.activity.step.readsResource", {
+  resource: "Issues",
+  connector: "Tracker",
+});
 
 const CONVERSATION = "66666666-6666-4666-8666-666666666666";
 const CONNECTOR = "77777777-7777-4777-8777-777777777777";
@@ -83,18 +81,18 @@ const readIssues = (callId: string) => ({
 isolated("Chat › the activity line follows the steps of a running turn", async () => {
   const clock = frozenClock();
   const turn = sseStream();
-  const app = await mount("/chat?prompt=Offene%20Issues", chatRoutes(turn));
+  const app = await mount("/chat?prompt=Open%20issues", { routes: chatRoutes(turn) });
   await app.click("chat-composer-submit");
   const line = () => app.find("chat-activity-line");
   expect(line()?.getAttribute("role")).toBe("status");
   expect(line()?.getAttribute("aria-live")).toBe("polite");
-  expect(line()?.textContent).toBe(translate("de", "chat.activity.model"));
+  expect(line()?.textContent).toBe(de("chat.activity.model"));
   expect(app.find("chat-activity-indicator")?.dataset.motion).toBe("full");
 
   turn.frames.push("conversation_started", { conversation: { id: CONVERSATION } });
   turn.frames.push("tool_call_start", readIssues("call-1"));
   await app.settle();
-  expect(line()?.textContent).toBe("Liest Issues in Tracker");
+  expect(line()?.textContent).toBe(readingIssues);
   expect(line()?.dataset.phase).toBe("tool");
 
   turn.frames.push("tool_result", {
@@ -114,7 +112,7 @@ isolated("Chat › the activity line follows the steps of a running turn", async
   });
   await app.settle();
   expect(line()?.textContent).toBe(
-    "Liest Issues in Tracker – fehlgeschlagen, neuer Versuch (1 von 4)",
+    de("chat.activity.retry", { step: readingIssues, attempt: 1, of: 4 }),
   );
   expect(app.find("chat-activity-idle")).toBeNull();
 
@@ -130,7 +128,7 @@ isolated("Chat › the activity line follows the steps of a running turn", async
     output: { ok: true },
   });
   await app.settle();
-  expect(line()?.textContent).toBe(translate("de", "chat.activity.model"));
+  expect(line()?.textContent).toBe(de("chat.activity.model"));
 
   const toggle = app.find("chat-activity-history-toggle");
   const history = app.find("chat-activity-history");
@@ -147,14 +145,14 @@ isolated("Chat › the activity line follows the steps of a running turn", async
   ];
   expect(steps.map((step) => step.dataset.outcome)).toEqual(["failed", "ok"]);
 
-  turn.frames.push("text_delta", { type: "text_delta", text: "Drei offene Issues." });
+  turn.frames.push("text_delta", { type: "text_delta", text: "Three open issues." });
   await app.settle();
-  expect(line()?.textContent).toBe(translate("de", "chat.activity.responding"));
+  expect(line()?.textContent).toBe(de("chat.activity.responding"));
 });
 
 isolated("Chat › reduced motion keeps the activity indicator still", async () => {
   const turn = sseStream();
-  const app = await mount("/chat?prompt=Hallo", chatRoutes(turn), { reducedMotion: true });
+  const app = await mount("/chat?prompt=Hello", { routes: chatRoutes(turn), reducedMotion: true });
   await app.click("chat-composer-submit");
   const indicator = app.find("chat-activity-indicator");
   expect(indicator?.dataset.motion).toBe("reduced");
@@ -227,18 +225,15 @@ function scheduleRoutes(live: ReturnType<typeof sseStream>, steps: () => unknown
 isolated("Schedules › a running occurrence shows its current step live", async () => {
   const live = sseStream();
   let current = [step("fetch_items", 0, "running", NOW)];
-  const app = await mount(
-    `/workflows/${WORKFLOW}?tab=schedule`,
-    scheduleRoutes(live, () => current),
-  );
+  const app = await mount(`/workflows/${WORKFLOW}?tab=schedule`, {
+    routes: scheduleRoutes(live, () => current),
+  });
   expect(app.text()).toContain(workflow.name);
   const occurrenceStep = () => app.find(`schedule-occurrence-live-${OCCURRENCE}-step`);
-  expect(occurrenceStep()?.textContent).toBe("Läuft gerade: Schritt „fetch_items“");
+  expect(occurrenceStep()?.textContent).toBe(runningStep("fetch_items"));
   expect(occurrenceStep()?.getAttribute("aria-live")).toBe("polite");
   expect(app.find(`schedule-occurrence-live-${OCCURRENCE}-indicator`)?.dataset.motion).toBe("full");
-  expect(app.find("workflow-live-run-step")?.textContent).toBe(
-    "Läuft gerade: Schritt „fetch_items“",
-  );
+  expect(app.find("workflow-live-run-step")?.textContent).toBe(runningStep("fetch_items"));
 
   current = [
     step("fetch_items", 0, "succeeded", NOW),
@@ -250,8 +245,8 @@ isolated("Schedules › a running occurrence shows its current step live", async
     "41",
   );
   await app.settle(90);
-  expect(occurrenceStep()?.textContent).toBe("Läuft gerade: Schritt „summarize“");
-  expect(app.find("workflow-live-run-step")?.textContent).toBe("Läuft gerade: Schritt „summarize“");
+  expect(occurrenceStep()?.textContent).toBe(runningStep("summarize"));
+  expect(app.find("workflow-live-run-step")?.textContent).toBe(runningStep("summarize"));
 
   await app.click(`schedule-occurrence-open-${OCCURRENCE}`);
   app.at(`/runs/${LIVE_RUN}`);
@@ -259,14 +254,13 @@ isolated("Schedules › a running occurrence shows its current step live", async
 
 isolated("Schedules › the automation panel links the scheduled run in progress", async () => {
   const live = sseStream();
-  const app = await mount(
-    `/workflows/${WORKFLOW}`,
-    scheduleRoutes(live, () => [step("fetch_items", 0, "running", NOW)]),
-    { reducedMotion: true },
-  );
+  const app = await mount(`/workflows/${WORKFLOW}`, {
+    routes: scheduleRoutes(live, () => [step("fetch_items", 0, "running", NOW)]),
+    reducedMotion: true,
+  });
   const panel = app.find("workflow-live-run-panel");
   expect(panel?.getAttribute("aria-labelledby")).toBe("workflow-live-run-title");
-  expect(panel?.textContent).toContain(translate("de", "ops.sched.live.title"));
+  expect(panel?.textContent).toContain(de("ops.sched.live.title"));
   expect(app.find("workflow-live-run-indicator")?.dataset.motion).toBe("reduced");
   await app.click("workflow-live-run-open");
   app.at(`/runs/${LIVE_RUN}`);

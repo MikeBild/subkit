@@ -1,5 +1,6 @@
+import { NOW, TENANT } from "./journey-fixtures";
+
 export const PROD_CONNECTOR = "66666666-6666-4666-8666-666666666666";
-const STAMP = "2026-11-23T10:00:00.000Z";
 
 const prodConnector = {
   id: PROD_CONNECTOR,
@@ -33,23 +34,17 @@ const prodConnector = {
   auth_failed_at: null,
   auth_failed_reason: null,
   sign_in: null,
-  created_at: STAMP,
-  updated_at: STAMP,
+  tenant_id: TENANT,
+  created_at: NOW,
+  updated_at: NOW,
   last_tested_at: null,
   tools_count: null,
   credentials: [],
   credential: null,
 };
 
-export function missingProdCredential(
-  workflowId: string,
-  bootstrap: { permissions: readonly string[]; tenant: { id: string } },
-) {
+export function missingProdCredential(workflowId: string) {
   return {
-    "/v1/cockpit/bootstrap": () => ({
-      ...bootstrap,
-      permissions: [...bootstrap.permissions, "connector:write"],
-    }),
     [`/v1/workflows/${workflowId}/diagnosis`]: () => ({
       workflow_id: workflowId,
       workflow_version_id: null,
@@ -73,10 +68,7 @@ export function missingProdCredential(
         },
       ],
     }),
-    [`/v1/connectors/${PROD_CONNECTOR}`]: () => ({
-      ...prodConnector,
-      tenant_id: bootstrap.tenant.id,
-    }),
+    [`/v1/connectors/${PROD_CONNECTOR}`]: () => prodConnector,
     [`/v1/connectors/${PROD_CONNECTOR}/credential`]: () => null,
   };
 }
