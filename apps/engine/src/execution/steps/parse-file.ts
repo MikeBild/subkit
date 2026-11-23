@@ -1,5 +1,5 @@
 import { detectBinaryFormat, parseBinaryFile } from "../../docs-ingestion/index.ts";
-import { type ResolvedFile, walkAndResolve } from "../../files/index.ts";
+import type { ResolvedFile } from "../../files/index.ts";
 import { runJs } from "../../sandboxes/index.ts";
 import type { TransformStep } from "../../workflows/index.ts";
 import { SYSTEM_CLOCK } from "../clock.ts";
@@ -67,6 +67,7 @@ export async function runParseFile(p: RunParseFileParams): Promise<StepResult> {
   const source = parseFileSource({ ...p.scope, $input: p.input }, config.source);
   if (!source.ok) return failed(source.failure);
   try {
+    const { walkAndResolve } = await import("../../files/index.ts");
     const file = await walkAndResolve(
       { $file: source.value },
       { db: p.ctx.db, tenant_id: p.ctx.tenant_id, resolve_references: true },
