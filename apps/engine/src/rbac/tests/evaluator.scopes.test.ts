@@ -136,7 +136,36 @@ describe("rbac evaluator", () => {
     expect(d.source).toBe("credential_ceiling");
   });
 
-  test("a mixed scope set (mcp marker + one permission) narrows to that permission", async () => {
+  test("an mcp marker plus metrics:read is not narrowed: the role governs every other permission", async () => {
+    const principal = adminWith({ scopes: ["mcp:admin", "metrics:read"] });
+    const read = await can(db, {
+      tenant_id: tenantId,
+      principal,
+      permission: "workflow:read",
+      resource: { type: "workflow", id: workflowA },
+    });
+    expect(read.allow).toBe(true);
+    const write = await can(db, {
+      tenant_id: tenantId,
+      principal,
+      permission: "connector:write",
+      resource: { type: "connector", id: connectorNoneId },
+    });
+    expect(write.allow).toBe(true);
+  });
+
+  test("metrics:read without an mcp marker stays a narrow ceiling", async () => {
+    const d = await can(db, {
+      tenant_id: tenantId,
+      principal: adminWith({ scopes: ["metrics:read"] }),
+      permission: "workflow:read",
+      resource: { type: "workflow", id: workflowA },
+    });
+    expect(d.allow).toBe(false);
+    expect(d.reason).toBe("credential_ceiling:scope_not_granted");
+  });
+
+  test("an mcp marker plus a real permission scope still narrows to that permission", async () => {
     const principal = adminWith({ scopes: ["mcp:authoring", "workflow:read"] });
     const allowed = await can(db, {
       tenant_id: tenantId,

@@ -4,7 +4,7 @@ import { browserSessionDenyReason, sessionSlidingMs } from "../auth/browser-sess
 import { productSubjectDigest } from "../auth/identity-link.ts";
 import { clientLivenessRefusal } from "../auth/liveness.ts";
 import { resolvePrincipalFromApiKeyRow } from "../auth/providers/api-key-row.ts";
-import { isCeilingScope, isMcpModeMarkerScope } from "../auth/scopes.ts";
+import { ceilingScopes, isMcpModeMarkerScope } from "../auth/scopes.ts";
 import type { AllowList, ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import {
@@ -141,8 +141,8 @@ export function intersectExecutionScopes(
 ): string[] | undefined {
   if (captured === undefined) return current;
   if (current === undefined) return captured;
-  const originalCeiling = captured.filter(isCeilingScope);
-  const currentCeiling = current.filter(isCeilingScope);
+  const originalCeiling = ceilingScopes(captured.filter((scope) => scope !== "*"));
+  const currentCeiling = ceilingScopes(current.filter((scope) => scope !== "*"));
   const originalBroad = captured.includes("*") || originalCeiling.length === 0;
   const currentBroad = current.includes("*") || currentCeiling.length === 0;
   const ceiling = originalBroad

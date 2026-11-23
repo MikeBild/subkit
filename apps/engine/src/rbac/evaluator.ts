@@ -1,5 +1,5 @@
 import { and, eq, gt, inArray, isNull, or } from "drizzle-orm";
-import { isCeilingScope, WILDCARD_SCOPE } from "../auth/scopes.ts";
+import { ceilingScopes } from "../auth/scopes.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Executor } from "../db/client.ts";
 import {
@@ -266,8 +266,7 @@ export const PRODUCT_PERMISSIONS: ReadonlySet<string> = new Set([
 function credentialCeiling(check: PermissionCheck): Decision | null {
   const { principal } = check;
   if (principal.provider === "portal_token") return null;
-  const scopes = principal.scopes;
-  const ceiling = scopes?.includes(WILDCARD_SCOPE) ? [] : (scopes?.filter(isCeilingScope) ?? []);
+  const ceiling = ceilingScopes(principal.scopes);
   const cause = credentialCeilingCause(coreRequest(check), {
     product_limited: Boolean(principal.product_id),
     product_permission_allowed: PRODUCT_PERMISSIONS.has(check.permission),
