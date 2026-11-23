@@ -396,6 +396,23 @@ describe("toHonoRoute documentation overrides", () => {
     });
     expect(response.status).toBe(200);
   });
+
+  test("an optional body accepts a JSON request without any body as an absent body", async () => {
+    const response = await buildApp([]).request("/v1/things-unsecured", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+    });
+    expect(response.status).toBe(200);
+  });
+
+  test("an optional body still refuses a non-empty malformed JSON body", async () => {
+    const response = await buildApp([]).request("/v1/things-unsecured", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{",
+    });
+    expect(response.status).toBe(400);
+  });
 });
 
 describe("toHonoRoute validation results and response headers", () => {
