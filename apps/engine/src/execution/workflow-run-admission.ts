@@ -4,6 +4,7 @@ import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import type { Db } from "../db/client.ts";
 import { workflows } from "../db/schema/index.ts";
 import { RequestSourceSchema } from "../observability/service-metadata.ts";
+import { modelCallLabel, previewWorkflowAuthority } from "../workflows/index.ts";
 import { normalizeWorkflowRunInput } from "../workflows/run-input.ts";
 import { JsonValueSchema } from "../workflows/types.ts";
 import { inputSchemaVerdict, lockIdempotentExecution } from "./admission-facts.ts";
@@ -39,6 +40,30 @@ function fail(code: string, message: string): never {
 function enforce(decision: AdmissionDecision): AdmissionDecision {
   if (decision.kind === "rejected") fail(decision.code, decision.message);
   return decision;
+}
+
+async function heldModelSteps(
+  db: Db,
+  input: z.infer<typeof schema>,
+  resolved: { workflow_version_id: string; def: { steps: ReadonlyArray<{ kind: string }> } },
+): Promise<{ model_step_ids: string[]; unresolved_call_ids: string[] }> {
+  if (!resolved.def.steps.some((step) => step.kind === "model" || step.kind === "call"))
+    return { model_step_ids: [], unresolved_call_ids: [] };
+  const preview = await previewWorkflowAuthority(
+    {
+      tenant_id: input.tenant_id,
+      workflow_id: input.workflow_id,
+      workflow_version_id: resolved.workflow_version_id,
+      execution_environment: input.execution_environment,
+    },
+    db,
+  );
+  return {
+    model_step_ids: (preview.manifest.model_calls ?? []).map(modelCallLabel),
+    unresolved_call_ids: preview.manifest.issues.flatMap((issue) =>
+      issue.code === "unbound_workflow_call" ? [issue.step_id] : [],
+    ),
+  };
 }
 
 export async function admitWorkflowRun(
@@ -94,6 +119,12 @@ export async function admitWorkflowRun(
       if (fallback.kind !== "downgrade") throw error;
     }
   }
+  enforce(
+    decideAdmission(input, {
+      stage: "held_model_steps",
+      ...(await heldModelSteps(db, input, resolved)),
+    }),
+  );
   enforce(
     decideAdmission(input, {
       stage: "input",

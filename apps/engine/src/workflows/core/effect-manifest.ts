@@ -39,6 +39,13 @@ import {
 } from "../transactional-delivery-boundary.ts";
 import { type CallStep, JsonValueSchema, type RequestStep, WorkflowDefSchema } from "../types.ts";
 import { deviceListsCanonical } from "./device-uses.ts";
+import {
+  type ModelCallEffect,
+  ModelCallEffectSchema,
+  modelCallOf,
+  modelCallThrough,
+  sortModelCalls,
+} from "./model-call-effect.ts";
 import { definitionDigest, requestDigest, requestProtocolDriver } from "./request-protocol.ts";
 import { stepVaultUses, VAULT_USES_MAX } from "./vault-uses.ts";
 
@@ -193,6 +200,13 @@ export const WorkflowEffectManifestSchema = z
       }),
     ),
     calls: z.array(CallPinSchema).min(1).optional(),
+    model_calls: z
+      .array(ModelCallEffectSchema)
+      .min(1)
+      .optional()
+      .describe(
+        "Each model step: the run sends step data to the workspace AI model and spends tokens.",
+      ),
     caller_guards: z
       .object({
         execution_guards: JsonValueSchema.optional(),
@@ -283,6 +297,7 @@ export function compileWorkflowEffectManifest(raw: unknown): {
   }
   const call_refusals: CallRefusal[] = [];
   const pins: z.infer<typeof CallPinSchema>[] = [];
+  const modelCalls: ModelCallEffect[] = [];
   const observed = new Map(input.observed_keys?.map((seen) => [seen.step_id, seen.key]));
   const manifest: WorkflowEffectManifest = {
     schema_version: 1,
@@ -339,6 +354,9 @@ export function compileWorkflowEffectManifest(raw: unknown): {
       for (const issue of child.manifest.issues) {
         manifest.issues.push({ ...issue, call_path });
       }
+      for (const modelCall of child.manifest.model_calls ?? []) {
+        modelCalls.push(modelCallThrough(modelCall, step));
+      }
       pins.push({
         step_id: step.id,
         workflow_id: resolvedCall.workflow_id,
@@ -346,6 +364,10 @@ export function compileWorkflowEffectManifest(raw: unknown): {
         workflow_digest: child.manifest.workflow_digest,
         execution_options_digest: resolvedCall.execution_options_digest,
       });
+      continue;
+    }
+    if (step.kind === "model") {
+      modelCalls.push(modelCallOf(step));
       continue;
     }
     if (step.kind !== "request") continue;
@@ -506,6 +528,9 @@ export function compileWorkflowEffectManifest(raw: unknown): {
   }
   if (pins.length > 0) {
     manifest.calls = pins.sort((a, b) => compareText(a.step_id, b.step_id));
+  }
+  if (modelCalls.length > 0) {
+    manifest.model_calls = sortModelCalls(modelCalls);
   }
   manifest.effects.sort(
     (a, b) => comparePath(a.call_path, b.call_path) || compareText(a.step_id, b.step_id),

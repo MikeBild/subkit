@@ -14,6 +14,7 @@ export const BoundaryGrowthSchema = z
       "private_site",
       "new_app",
       "new_secret",
+      "new_model_call",
     ]),
     connector_id: z.string().nullable(),
     connector_name: z.string().nullable().optional(),
@@ -24,7 +25,7 @@ export const BoundaryGrowthSchema = z
       .string()
       .optional()
       .describe(
-        "The folder id, website origin or app id that a device growth adds, or the vault handle a new_secret growth adds.",
+        "The folder id, website origin or app id that a device growth adds, the vault handle a new_secret growth adds, or the model step a new_model_call growth adds or widens.",
       ),
   })
   .openapi("AuthorityBoundaryGrowth");

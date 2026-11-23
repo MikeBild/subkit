@@ -55,5 +55,8 @@ describe("growth inside an approved device", () => {
     );
     expect(line("new_app", "com.apple.Numbers")).toBe("Neue App: com.apple.Numbers");
     expect(line("new_secret", "crm-token")).toBe("Nutzt neu aus dem Tresor: crm-token");
+    expect(line("new_model_call", "sub/classify")).toBe(
+      "Schickt neu Daten aus Schritt sub/classify an das KI-Modell",
+    );
   });
 });

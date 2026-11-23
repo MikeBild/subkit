@@ -9661,6 +9661,65 @@
             },
             "minItems": 1
           },
+          "model_calls": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "step_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "call_path": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "flow": {
+                  "type": "string",
+                  "enum": [
+                    "workflow_step"
+                  ]
+                },
+                "effect": {
+                  "type": "string",
+                  "enum": [
+                    "read"
+                  ]
+                },
+                "max_output_tokens": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "repeated": {
+                  "type": "boolean",
+                  "description": "True when the step runs once per item of a for_each, so the model is called once per item."
+                },
+                "data_paths": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "maxItems": 200,
+                  "description": "The run data the step sends to the model, by placeholder path; never values."
+                }
+              },
+              "required": [
+                "step_id",
+                "flow",
+                "effect",
+                "max_output_tokens",
+                "repeated",
+                "data_paths"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "description": "Each model step: the run sends step data to the workspace AI model and spends tokens."
+          },
           "caller_guards": {
             "type": "object",
             "properties": {
@@ -10198,7 +10257,8 @@
               "new_site",
               "private_site",
               "new_app",
-              "new_secret"
+              "new_secret",
+              "new_model_call"
             ]
           },
           "connector_id": {
@@ -10234,7 +10294,7 @@
           },
           "item": {
             "type": "string",
-            "description": "The folder id, website origin or app id that a device growth adds, or the vault handle a new_secret growth adds."
+            "description": "The folder id, website origin or app id that a device growth adds, the vault handle a new_secret growth adds, or the model step a new_model_call growth adds or widens."
           }
         },
         "required": [
@@ -10279,6 +10339,13 @@
               "string",
               "null"
             ]
+          },
+          "model_call": {
+            "type": "boolean",
+            "enum": [
+              true
+            ],
+            "description": "Set when the change is a model step that sends step data to the AI model."
           },
           "previous": {
             "type": "object",
@@ -20772,7 +20839,7 @@
           "system": {
             "type": "string",
             "minLength": 1,
-            "description": "Optional system prompt. Without it the step uses a short neutral default."
+            "description": "Optional system prompt. It is added after the workflow step guard, which always stays in place."
           },
           "input": {
             "allOf": [
@@ -20845,7 +20912,7 @@
           "system": {
             "type": "string",
             "minLength": 1,
-            "description": "Optional system prompt. Without it the step uses a short neutral default."
+            "description": "Optional system prompt. It is added after the workflow step guard, which always stays in place."
           },
           "input": {
             "allOf": [

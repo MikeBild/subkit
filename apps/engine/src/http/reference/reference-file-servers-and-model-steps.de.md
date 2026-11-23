@@ -92,15 +92,16 @@ Ein Step mit `kind: "model"` stellt dem KI-Modell deines Workspaces genau eine F
 
 | Feld | Bedeutung |
 | --- | --- |
-| `prompt` | Die Anweisung. Platzhalter werden vor dem Aufruf ausgefüllt. |
-| `system` | Optionaler System-Prompt. Ohne ihn nutzt der Step einen kurzen, neutralen Standard. |
+| `prompt` | Die Anweisung. Platzhalter werden vor dem Aufruf ausgefüllt; jeder eingesetzte Wert ist als nicht vertrauenswürdige Daten markiert. |
+| `system` | Optionaler System-Prompt. Er kommt nach der Schutzanweisung für Workflow-Steps, die immer erhalten bleibt. |
 | `input` | Daten, die das Modell neben dem Prompt bekommt, immer als Daten und nie als Anweisung. |
 | `output_schema` | JSON-Schema, zu dem die Antwort passen muss. |
 | `max_output_tokens` | Obergrenze für die Antwort, höchstens 32.000. Standard 1.024. |
 
-- Die Ausgabe des Steps ist die gelesene Antwort. Ist die Antwort kein gültiges JSON, scheitert der Step mit `model_output_invalid`; passt sie nicht zum Schema, mit `model_output_schema_invalid`.
-- Ein Model-Step nutzt nur Werte aus `input`, `scope`, `item`, `state` und `caller`. Zugangsdaten, Secrets und Connector-Einstellungen werden mit `model_step_secret_placeholder` abgelehnt, weil sie sonst beim Modellanbieter landen.
+- Die Ausgabe des Steps ist die gelesene Antwort. Ist die Antwort kein gültiges JSON oder passt sie nicht zum Schema, scheitert der Step mit `model_output_invalid`. `model_output_schema_invalid` heißt, dass `output_schema` selbst kein brauchbares JSON-Schema ist; schon beim Speichern wird so ein Schema abgelehnt.
+- Ein Model-Step nutzt nur Werte aus `input`, `scope`, `item`, `state` und `caller`. Zugangsdaten, Secrets und Connector-Einstellungen werden beim Speichern abgelehnt und zur Laufzeit mit `model_step_secret_placeholder`, weil sie sonst beim Modellanbieter landen.
 - Jeder Aufruf zählt gegen das KI-Budget deines Workspaces. Ist das Monatslimit erreicht, läuft der Step nicht, und der Run sagt dir das.
+- Die Freigabeprüfung zeigt jeden Model-Step als Wirkung beim KI-Modell: Er schickt Step-Daten an das KI-Modell deines Workspaces. Du siehst die Datenpfade, die Obergrenze für Ausgabe-Tokens pro Aufruf und ob der Step einmal pro Eintrag läuft. Eine neue Version, die einen Model-Step hinzufügt, `max_output_tokens` erhöht, ihn pro Eintrag laufen lässt oder neue Datenpfade schickt, braucht eine neue Freigabe. Ändert sich nur der Wortlaut des Prompts, bleibt die bestehende Freigabe gültig.
 
 ### Dateien mit Parse-File lesen
 
@@ -153,8 +154,8 @@ Eine Datei darf höchstens 25 MB groß sein. Der Step nimmt keine `expression`; 
 | `sftp_key_passphrase_required` | Der Schlüssel ist verschlüsselt, und `passphrase_item` fehlt. |
 | `sftp_key_passphrase_wrong` | Die Passphrase öffnet den Schlüssel nicht. |
 | `sftp_key_rejected` | Der Server hat den Schlüssel für diesen Benutzernamen abgelehnt. |
-| `model_output_invalid` | Die Antwort des Modells ist kein gültiges JSON. |
-| `model_output_schema_invalid` | Die Antwort passt nicht zu `output_schema`. |
+| `model_output_invalid` | Die Antwort des Modells ist kein gültiges JSON oder passt nicht zu `output_schema`. |
+| `model_output_schema_invalid` | `output_schema` ist kein brauchbares JSON-Schema. |
 | `model_step_secret_placeholder` | Der Model-Step nutzt Zugangsdaten, ein Secret oder eine Connector-Einstellung. |
 | `parse_file_source_missing` | Unter `source` liegt keine Datei. |
 | `parse_file_unsupported_format` | Der Dateityp ist keines der fünf Formate. |

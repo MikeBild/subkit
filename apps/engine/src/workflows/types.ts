@@ -949,6 +949,7 @@ export const ParallelStepSchema = z
   .openapi("ParallelStep");
 
 export const MODEL_STEP_MAX_OUTPUT_TOKENS = 32_000;
+export const MODEL_STEP_DEFAULT_OUTPUT_TOKENS = 1024;
 
 export const ModelStepSchema = z
   .object({
@@ -959,7 +960,8 @@ export const ModelStepSchema = z
         "The instruction for the model. Placeholders such as ${input.x} or ${scope.step.data} are filled in before the call.",
     }),
     system: z.string().min(1).optional().openapi({
-      description: "Optional system prompt. Without it the step uses a short neutral default.",
+      description:
+        "Optional system prompt. It is added after the workflow step guard, which always stays in place.",
     }),
     input: JsonValueSchema.optional().openapi({
       description:

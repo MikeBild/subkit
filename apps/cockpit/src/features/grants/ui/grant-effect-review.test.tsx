@@ -166,3 +166,50 @@ test("a comparison with a running version that was never approved says so", () =
     "Compared with v10 (not approved):",
   );
 });
+
+const modelCall = {
+  step_id: "classify",
+  flow: "workflow_step" as const,
+  effect: "read" as const,
+  max_output_tokens: 1024,
+  repeated: true,
+  data_paths: ["input.text", "item.subject"],
+};
+
+test("a workflow with only model steps shows the AI model, not an empty review", () => {
+  const modelOnly: AuthorityReviewPreview = {
+    ...preview,
+    manifest: { ...preview.manifest, effects: [], model_calls: [modelCall] },
+    boundary_growth: [],
+    effect_changes: undefined,
+  };
+  const de = text(render("de", { preview: modelOnly }));
+  expect(de).toContain(translate("de", "authority.review.model.only"));
+  expect(de).toContain(translate("de", "authority.review.model.group"));
+  expect(de).toContain(
+    translate("de", "authority.review.model.tokensPerItem", {
+      count: new Intl.NumberFormat("de").format(1024),
+    }),
+  );
+  expect(de).toContain(
+    translate("de", "authority.review.model.data", { paths: "input.text, item.subject" }),
+  );
+  expect(de).not.toContain(translate("de", "authority.noEffects"));
+  const en = text(render("en", { preview: modelOnly }));
+  expect(en).toContain("Sends step data to the workspace AI model.");
+  expect(en).toContain("At most 1,024 output tokens per call, once per item");
+  expect(en).not.toContain("No connector effects");
+});
+
+test("a mixed workflow lists the AI model next to its connector effects", () => {
+  const mixed: AuthorityReviewPreview = {
+    ...preview,
+    manifest: { ...preview.manifest, model_calls: [{ ...modelCall, data_paths: [] }] },
+  };
+  const html = render("en", { preview: mixed });
+  expect(html).toContain('data-testid="authority-model-call-classify"');
+  expect(html).toContain('data-testid="authority-effect-row-repo"');
+  const en = text(html);
+  expect(en).toContain("Also sends step data to the workspace AI model.");
+  expect(en).toContain("Sends the prompt only, no run data");
+});

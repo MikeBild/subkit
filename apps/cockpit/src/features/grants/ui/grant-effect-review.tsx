@@ -29,6 +29,7 @@ import { presentStorageScope } from "@/features/grants/model/authority-storage";
 import { effectLabel } from "@/features/grants/model/effect-label";
 import { AUTHORITY_EFFECT_KEYS } from "@/features/grants/model/workflow-authorities";
 import { useI18n } from "@/lib/i18n-context";
+import { ModelCallGroup } from "./grant-model-calls";
 
 const ICONS: Record<ReviewRow["effect"], LucideIcon> = {
   read: BookOpen,
@@ -375,18 +376,19 @@ export function GrantEffectReview({
   const growthText = sentence.kind === "growth" ? growthLine(t, growth) : null;
   const groups = (
     <>
-      {model.groups.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t("authority.noEffects")}</p>
-      ) : (
-        model.groups.map((group) => (
-          <Group
-            key={group.key}
-            group={group}
-            toolPinsCompared={toolPinsCompared}
-            toolNotesAbove={compact}
-          />
-        ))
-      )}
+      <ModelCallGroup calls={model.modelCalls} />
+      {model.groups.length === 0
+        ? model.modelCalls.length === 0 && (
+            <p className="text-sm text-muted-foreground">{t("authority.noEffects")}</p>
+          )
+        : model.groups.map((group) => (
+            <Group
+              key={group.key}
+              group={group}
+              toolPinsCompared={toolPinsCompared}
+              toolNotesAbove={compact}
+            />
+          ))}
       {model.groups.length > 0 && (
         <p className="text-xs text-muted-foreground" data-testid="authority-review-runtime">
           {t("authority.review.runtimeValues")}
@@ -439,7 +441,14 @@ export function GrantEffectReview({
               ? t("authority.review.readOnly", { scope: sentence.scope, service: sentence.service })
               : sentence.kind === "writes"
                 ? t("authority.review.writes", { service: sentence.service })
-                : growthText}
+                : sentence.kind === "model"
+                  ? t("authority.review.model.only")
+                  : growthText}
+          </p>
+        )}
+        {model.modelCalls.length > 0 && sentence.kind !== "model" && (
+          <p className="mt-1 text-sm" data-testid="authority-review-model">
+            {t("authority.review.model.also")}
           </p>
         )}
         {model.secrets.length > 0 && (
@@ -482,7 +491,10 @@ export function GrantEffectReview({
       {compact ? (
         <CollapsibleSection
           label={t("authority.review.details")}
-          count={model.groups.reduce((sum, group) => sum + group.rows.length, 0)}
+          count={
+            model.groups.reduce((sum, group) => sum + group.rows.length, 0) +
+            model.modelCalls.length
+          }
           testId="authority-effect-details"
         >
           <div className="flex min-w-0 flex-col gap-3">

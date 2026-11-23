@@ -79,6 +79,11 @@ export type AdmissionFacts =
   | { stage: "lifecycle"; lifecycle: string | null }
   | { stage: "binding" }
   | { stage: "authority_refusal"; code: string | null; message: string }
+  | {
+      stage: "held_model_steps";
+      model_step_ids: readonly string[];
+      unresolved_call_ids: readonly string[];
+    }
   | { stage: "input"; verdict: InputSchemaVerdict }
   | { stage: "replay_candidate"; workflow_id: string | null; workflow_version_id: string | null }
   | { stage: "replay"; existing: ExecutionBoundary | null; requested: ExecutionBoundary }
@@ -148,6 +153,18 @@ export function decideAdmission(
         ? rejected(code, facts.message)
         : { kind: "downgrade" };
     }
+    case "held_model_steps":
+      if (facts.model_step_ids.length > 0)
+        return rejected(
+          "execution_authority_required",
+          `this workflow sends step data to the AI model (${facts.model_step_ids.join(", ")}); it runs only under an approved execution authority`,
+        );
+      return facts.unresolved_call_ids.length > 0
+        ? rejected(
+            "execution_authority_required",
+            `this workflow calls a workflow whose effects cannot be resolved (${facts.unresolved_call_ids.join(", ")}); it runs only under an approved execution authority`,
+          )
+        : ADMITTED;
     case "input":
       return facts.verdict.valid
         ? ADMITTED

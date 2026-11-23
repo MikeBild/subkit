@@ -27,6 +27,7 @@ import { reportDeliveryLintErrors } from "../report-delivery-lint.ts";
 import { retiredLoopIssues } from "../stored-definition.ts";
 import { type StepDef, type WorkflowDef, WorkflowDefSchema } from "../types.ts";
 import { cycleIssues } from "./definition.ts";
+import { modelStepValidationErrors } from "./model-step-checks.ts";
 import { parseFileValidationErrors } from "./parse-file-checks.ts";
 import { parsePlaceholders } from "./placeholder-parser.ts";
 
@@ -167,6 +168,9 @@ export function validateWorkflowDef(
       }
     }
     switch (step.kind) {
+      case "model":
+        errors.push(...modelStepValidationErrors(step, compileJsonSchemaContract));
+        break;
       case "transform":
         switch (step.language ?? "javascript") {
           case "javascript": {

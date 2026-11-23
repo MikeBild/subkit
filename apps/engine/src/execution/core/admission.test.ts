@@ -70,6 +70,11 @@ const factsArb: fc.Arbitrary<AdmissionFacts> = fc.oneof(
     message: fc.string(),
   }),
   fc.record({
+    stage: fc.constant("held_model_steps" as const),
+    model_step_ids: fc.array(fc.string({ minLength: 1 })),
+    unresolved_call_ids: fc.array(fc.string({ minLength: 1 })),
+  }),
+  fc.record({
     stage: fc.constant("input" as const),
     verdict: fc.oneof(
       fc.constant({ valid: true as const }),
@@ -234,6 +239,24 @@ describe("decideAdmission", () => {
     expect(decideAdmission({ ...base, hold_writes: true }, { stage: "binding" }).kind).toBe(
       "admitted",
     );
+  });
+
+  test("a held run never reaches a model step: it needs an approved authority", () => {
+    const held = (model_step_ids: string[], unresolved_call_ids: string[]) =>
+      decideAdmission(base, { stage: "held_model_steps", model_step_ids, unresolved_call_ids });
+    expect(held([], [])).toEqual({ kind: "admitted" });
+    expect(held(["classify", "sub/sum"], ["other"])).toEqual({
+      kind: "rejected",
+      code: "execution_authority_required",
+      message:
+        "this workflow sends step data to the AI model (classify, sub/sum); it runs only under an approved execution authority",
+    });
+    expect(held([], ["sub"])).toEqual({
+      kind: "rejected",
+      code: "execution_authority_required",
+      message:
+        "this workflow calls a workflow whose effects cannot be resolved (sub); it runs only under an approved execution authority",
+    });
   });
 
   test("downgrades a refused authority only for an open request", () => {

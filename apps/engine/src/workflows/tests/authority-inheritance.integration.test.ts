@@ -455,6 +455,29 @@ describe("an approval does not follow a version that reaches more", () => {
       expect.objectContaining({ kind: "wider_effect", effect: "write" }),
     ]);
   });
+
+  test("a new model step that sends step data to the AI model", async () => {
+    const f = await fixture(({ main }) => [post(main)]);
+    const model = {
+      id: "classify",
+      kind: "model",
+      prompt: "Sort ${input.text}",
+      output_schema: { type: "object" },
+    };
+    const next = await activate(f, [post(f.ids.main), model]);
+    expect(next.outcome.inherited).toEqual([]);
+    expect(next.outcome.growth.dev).toEqual([
+      {
+        kind: "new_model_call",
+        connector_id: null,
+        connector_name: null,
+        target: null,
+        effect: "read",
+        item: "classify",
+      },
+    ]);
+    expect(await grantsOf(f.workflow_id)).toHaveLength(1);
+  });
 });
 
 test("concurrent activations carry one approval exactly once", async () => {

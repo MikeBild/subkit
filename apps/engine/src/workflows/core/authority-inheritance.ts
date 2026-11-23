@@ -3,6 +3,7 @@ import type { BoundaryGrowth } from "../authority-growth.ts";
 import type { WorkflowEffectManifest } from "../effect-manifest.ts";
 import { type ReadInheritanceEvidence, readEffectInherits } from "../read-inheritance.ts";
 import { deviceGrowth } from "./device-growth.ts";
+import { modelCallLabel, modelCallMatch, modelCallWidened } from "./model-call-effect.ts";
 import { newVaultUses } from "./vault-uses.ts";
 
 type Effect = WorkflowEffectManifest["effects"][number];
@@ -140,6 +141,18 @@ export function projectBoundaryGrowth(
           ]),
         ].sort(),
       );
+  }
+  for (const call of next.model_calls ?? []) {
+    const prior = modelCallMatch(granted.model_calls, call);
+    if (prior && !modelCallWidened(call, prior)) continue;
+    const entry = {
+      kind: "new_model_call" as const,
+      connector_id: null,
+      target: null,
+      effect: "read" as const,
+      item: modelCallLabel(call),
+    };
+    growth.set(JSON.stringify(entry), entry);
   }
   if (!isDeepStrictEqual(granted.caller_guards ?? null, next.caller_guards ?? null)) {
     const entry = {
