@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ErrorNotice } from "@ui/molecules/error-notice";
 import { ToolApprovalCard } from "@ui/organisms/tool-approval-card";
 import { Clock, KeyRound, Laptop, Wrench } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { listDevices } from "@/api/devices";
 import { contextualHref } from "@/app/installation-context";
 import { Button, ContextHelp } from "@/components/cockpit/patterns";
@@ -11,7 +11,7 @@ import { WorkflowReview } from "@/features/workflows";
 import { formatDateTime, LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
-import { approvalLine, type ChatApproval } from "../model/approval";
+import { approvalLineParts, type ChatApproval, markedParts } from "../model/approval";
 import { deviceApprovalRows, deviceLabelOf } from "../model/device-approval";
 import { actionFacts } from "../model/policy";
 import { ApprovalBinding } from "./policy";
@@ -61,12 +61,18 @@ export function ChatApprovalCard({
             ? "chat.decision.saveTitle"
             : "chat.decision.title",
   );
-  const effect = approvalLine(approval, t, readable);
-  const line = approval.transferBytes
-    ? `${effect} ${t("chat.decision.transferSize", {
-        size: formatBytes(approval.transferBytes, LOCALE_TAGS[locale]),
-      })}`
-    : effect;
+  const transferBytes = approval.transferBytes;
+  const line = [
+    ...approvalLineParts(approval, t, readable),
+    ...(transferBytes
+      ? markedParts(
+          (mark) =>
+            ` ${t("chat.decision.transferSize", {
+              size: mark(formatBytes(transferBytes, LOCALE_TAGS[locale])),
+            })}`,
+        ).map((part) => ({ ...part, id: `size-${part.id}` }))
+      : []),
+  ];
   const binding = approval.binding;
   const rows = device
     ? deviceApprovalRows(device, deviceLabelOf(devices.data, device.device_id), t, testId)
@@ -150,7 +156,15 @@ export function ChatApprovalCard({
       >
         {binding || device ? null : (
           <p className="text-sm [overflow-wrap:anywhere]" data-testid={`${testId}-line`}>
-            {line}
+            {line.map((part) =>
+              part.strong ? (
+                <strong key={part.id} className="font-semibold">
+                  {part.text}
+                </strong>
+              ) : (
+                <Fragment key={part.id}>{part.text}</Fragment>
+              ),
+            )}
           </p>
         )}
         {binding ? <ApprovalBinding binding={binding} testId={testId} /> : null}
