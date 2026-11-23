@@ -1,8 +1,8 @@
 import {
-  validateConnectorAuthType,
   validateConnectorConfig,
   validateMcpAuthConsistency,
 } from "../connectors/config-schemas.ts";
+import { validateConnectorAuthType, validateSftpAuthConsistency } from "../connectors/index.ts";
 import type { ConnectorTemplate } from "../connectors/templates.ts";
 import { getBuiltinTemplate } from "../connectors/templates.ts";
 import type { CreateConnectorInput } from "../connectors/types.ts";
@@ -114,6 +114,7 @@ export function validateConnectorDraft(
       ...validateConnectorConfig(connector.driver, connector.config),
       ...validateConnectorAuthType(connector.driver, connector.auth_type),
       ...validateMcpAuthConsistency(connector.driver, connector.auth_type, connector.config),
+      ...validateSftpAuthConsistency(connector.driver, connector.auth_type, connector.config),
     );
   }
   if (connector.template_slug) {

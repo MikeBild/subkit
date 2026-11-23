@@ -17,11 +17,33 @@ An SFTP connector connects SubKit to one folder on a file server.
 
 - **Address:** `sftp://host:22/folder`. The port is optional and defaults to 22. The address holds only host, port and folder; the username and password never go into it.
 - **Host key:** `config.host_key_sha256` holds the SHA256 fingerprint of the server's host key, for example from `ssh-keyscan host | ssh-keygen -lf -`. Without it SubKit refuses every call with `sftp_host_key_missing`. If the server presents another key, the call stops with `sftp_host_key_mismatch` before anything is sent.
-- **Sign-in:** a username and password stored as the connector's credential.
+- **Sign-in:** either a username and password stored as the connector's credential (`auth_type: "basic"`), or an SSH private key from the vault (`auth_type: "none"` and `config.auth`, see below).
 - **Folder:** every path a workflow uses stays inside the folder from the address. A path that leads outside is refused with `sftp_path_outside_root`.
 - **Network:** the connection goes through the same egress rules as every other connector, so private addresses stay blocked unless your operator allows them.
 
 Testing the connector lists the folder with one entry. That confirms the address, the host key and the sign-in.
+
+### Signing in with an SSH key from the vault
+
+The private key stays in the vault. The connector holds only the names of the vault items, never the key itself.
+
+1. Store the key as a workspace secret in the vault, in the connector's environment, for example `subkit vault add sftp-deploy-key --env prod < deploy_key`. Supported formats are OpenSSH (`-----BEGIN OPENSSH PRIVATE KEY-----`), RSA and EC PEM. Convert a PKCS#8 key (`-----BEGIN PRIVATE KEY-----`) with `ssh-keygen -p -f deploy_key` first.
+2. If the key is encrypted, store its passphrase as a second secret, for example `sftp-deploy-key-passphrase`.
+3. Set `auth_type: "none"` on the connector and reference the items in `config.auth`:
+
+```json
+{
+  "host_key_sha256": "SHA256:…",
+  "auth": {
+    "method": "private_key",
+    "username": "deploy",
+    "private_key_item": "sftp-deploy-key",
+    "passphrase_item": "sftp-deploy-key-passphrase"
+  }
+}
+```
+
+SubKit reads the key from the vault of your workspace only when it connects, after the host key check. Each use is recorded in the vault item's activity without the key. A connector in another workspace can't use your items, even with the same name.
 
 ### SFTP steps
 
@@ -125,6 +147,12 @@ A file may be at most 25 MB. The step does not accept an `expression`; everythin
 | `sftp_host_key_missing` | The connector has no host key fingerprint. |
 | `sftp_host_key_mismatch` | The server presented a different host key. |
 | `sftp_path_outside_root` | The path leads outside the connector's folder. |
+| `sftp_key_item_missing` | The vault has no workspace secret with that name in the connector's environment. |
+| `sftp_key_not_private_key` | The vault item doesn't hold an SSH private key. |
+| `sftp_key_format_unsupported` | The key is in PKCS#8 or another format; store it as OpenSSH, RSA or EC PEM. |
+| `sftp_key_passphrase_required` | The key is encrypted and `passphrase_item` is missing. |
+| `sftp_key_passphrase_wrong` | The passphrase doesn't open the key. |
+| `sftp_key_rejected` | The server refused the key for that username. |
 | `model_output_invalid` | The model's answer is no valid JSON. |
 | `model_output_schema_invalid` | The answer does not match `output_schema`. |
 | `model_step_secret_placeholder` | The model step uses a credential, secret or connector setting. |

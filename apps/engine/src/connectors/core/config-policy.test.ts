@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import {
   validateConnectorAuthType,
   validateMcpAuthConsistency,
+  validateSftpAuthConsistency,
   validateSignedJwtAuthConfig,
 } from "./config-policy.ts";
 
@@ -114,14 +115,26 @@ test("a device connector takes no credentials", () => {
   }
 });
 
-test("an sftp connector signs in with a username and password only", () => {
+test("an sftp connector signs in with a password or with an SSH key from the vault", () => {
   expect(validateConnectorAuthType("sftp", "basic")).toEqual([]);
+  expect(validateConnectorAuthType("sftp", "none")).toEqual([]);
   expect(validateConnectorAuthType("sftp", undefined)).toEqual([]);
-  for (const auth of ["none", "bearer", "header"] as const)
+  for (const auth of ["bearer", "header"] as const)
     expect(validateConnectorAuthType("sftp", auth)).toEqual([
       {
         path: "auth_type",
-        message: "an sftp connector signs in with a username and password — use auth_type 'basic'",
+        message:
+          "an sftp connector signs in with a username and password (auth_type 'basic') or with an SSH key from the vault (auth_type 'none' and config.auth.method 'private_key')",
       },
     ]);
+});
+
+test("an sftp connector pairs auth_type with config.auth", () => {
+  const key = { auth: { method: "private_key", username: "deploy", private_key_item: "sftp-key" } };
+  expect(validateSftpAuthConsistency("sftp", "none", key)).toEqual([]);
+  expect(validateSftpAuthConsistency("sftp", "basic", {})).toEqual([]);
+  expect(validateSftpAuthConsistency("sftp", "basic", key)[0]?.path).toBe("auth_type");
+  expect(validateSftpAuthConsistency("sftp", "none", {})[0]?.path).toBe("config.auth");
+  expect(validateSftpAuthConsistency("sftp", undefined, key)).toEqual([]);
+  expect(validateSftpAuthConsistency("http", "none", {})).toEqual([]);
 });

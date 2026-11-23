@@ -1,5 +1,5 @@
 import { basename } from "node:path";
-import { Client, type FileEntryWithStats, type SFTPWrapper } from "ssh2";
+import { Client, type FileEntryWithStats, type ParsedKey, type SFTPWrapper, utils } from "ssh2";
 import {
   type CredentialUseSnapshot,
   type DecryptedCredential,
@@ -7,6 +7,7 @@ import {
 } from "../../credentials/index.ts";
 import type { Db } from "../../db/index.ts";
 import { errorFields, logger } from "../../logging/index.ts";
+import { resolveVaultHandle } from "../../vault/index.ts";
 import {
   assertRemovableSftpFile,
   parseSftpAddress,
@@ -15,6 +16,15 @@ import {
   SftpRefusal,
   sftpHostKeyMatches,
 } from "../core/sftp.ts";
+import {
+  classifyKeyParseFailure,
+  normalizePrivateKeyText,
+  privateKeyFormatIssue,
+  type SftpAuth,
+  type SftpKeyErrorCode,
+  sftpAuthOf,
+  sftpKeyMessage,
+} from "../core/sftp-auth.ts";
 import { openSftpSocket } from "../sftp-egress.ts";
 import type { ConnectorView } from "../types.ts";
 import type { DriverProbeResult } from "./index.ts";
@@ -27,7 +37,8 @@ export type SftpErrorCode =
   | "credential_missing"
   | "credential_mode_unsupported_for_sftp"
   | "sftp_host_key_missing"
-  | "sftp_host_key_mismatch";
+  | "sftp_host_key_mismatch"
+  | SftpKeyErrorCode;
 
 export class SftpConnectorError extends Error {
   constructor(
@@ -69,13 +80,103 @@ export interface SftpRequestParams {
   credential_override?: DecryptedCredential | null;
 }
 
+type SftpSecret =
+  | { readonly kind: "password"; readonly password: string }
+  | {
+      readonly kind: "private_key";
+      readonly item: string;
+      readonly privateKey: string;
+      readonly passphrase: string | null;
+    };
+
 interface SftpLogin {
   username: string;
-  password: string;
+  secret: SftpSecret;
   snapshot: CredentialUseSnapshot;
 }
 
+function keyError(
+  code: SftpKeyErrorCode,
+  connector: ConnectorView,
+  item: string,
+  host?: string,
+): SftpConnectorError {
+  return new SftpConnectorError(
+    sftpKeyMessage(code, {
+      item,
+      environment: connector.environment,
+      ...(host ? { host } : {}),
+    }),
+    code,
+  );
+}
+
+async function vaultSecretText(p: SftpRequestParams, item: string): Promise<string> {
+  const resolved = await resolveVaultHandle(p.db, {
+    tenant_id: p.tenant_id,
+    environment: p.connector.environment,
+    user_id: null,
+    handle: { scope: "workspace", name: item, field: "token" },
+  });
+  if (resolved.ok) return resolved.secret.value;
+  throw keyError(
+    resolved.code === "decrypt_failed" ? "sftp_key_item_unreadable" : "sftp_key_item_missing",
+    p.connector,
+    item,
+  );
+}
+
+function checkedPrivateKey(
+  connector: ConnectorView,
+  item: string,
+  raw: string,
+  passphrase: string | null,
+): string {
+  const text = normalizePrivateKeyText(raw);
+  const formatIssue = privateKeyFormatIssue(text);
+  if (formatIssue) throw keyError(formatIssue, connector, item);
+  const parsed = utils.parseKey(text, passphrase ?? undefined);
+  if (parsed instanceof Error)
+    throw keyError(classifyKeyParseFailure(parsed.message, passphrase !== null), connector, item);
+  const key = (Array.isArray(parsed) ? parsed[0] : parsed) as ParsedKey | undefined;
+  if (!key?.isPrivateKey()) throw keyError("sftp_key_not_private_key", connector, item);
+  return text;
+}
+
+async function resolveKeyLogin(
+  p: SftpRequestParams,
+  auth: Extract<SftpAuth, { method: "private_key" }>,
+): Promise<SftpLogin> {
+  const raw = await vaultSecretText(p, auth.private_key_item);
+  const passphrase = auth.passphrase_item ? await vaultSecretText(p, auth.passphrase_item) : null;
+  return {
+    username: auth.username,
+    secret: {
+      kind: "private_key",
+      item: auth.private_key_item,
+      privateKey: checkedPrivateKey(p.connector, auth.private_key_item, raw, passphrase),
+      passphrase,
+    },
+    snapshot: {
+      connector_id: p.connector.id,
+      environment: p.connector.environment,
+      credential_id: null,
+      credential_generation: null,
+      connection_id: null,
+      access_token_version: null,
+      identity: null,
+    },
+  };
+}
+
 async function resolveSftpLogin(p: SftpRequestParams): Promise<SftpLogin> {
+  const auth = sftpAuthOf(p.connector.config);
+  if (!auth)
+    throw new SftpConnectorError(
+      sftpKeyMessage("sftp_auth_invalid", { item: "", environment: p.connector.environment }),
+      "sftp_auth_invalid",
+    );
+  if (auth.method === "private_key") return resolveKeyLogin(p, auth);
   const row =
     p.credential_override !== undefined
       ? p.credential_override && {
@@ -95,7 +196,7 @@ async function resolveSftpLogin(p: SftpRequestParams): Promise<SftpLogin> {
     );
   return {
     username: row.value.username,
-    password: row.value.password,
+    secret: { kind: "password", password: row.value.password },
     snapshot: {
       connector_id: p.connector.id,
       environment: p.connector.environment,
@@ -106,6 +207,38 @@ async function resolveSftpLogin(p: SftpRequestParams): Promise<SftpLogin> {
       identity: row.row.verified_identity,
     },
   };
+}
+
+export function sftpConnectOptions(login: Pick<SftpLogin, "username" | "secret">): {
+  username: string;
+  password?: string;
+  privateKey?: string;
+  passphrase?: string;
+} {
+  if (login.secret.kind === "password")
+    return { username: login.username, password: login.secret.password };
+  return {
+    username: login.username,
+    privateKey: login.secret.privateKey,
+    ...(login.secret.passphrase !== null ? { passphrase: login.secret.passphrase } : {}),
+  };
+}
+
+function connectError(
+  err: unknown,
+  p: SftpRequestParams,
+  login: SftpLogin,
+  host: string,
+  keyRefused: boolean,
+): unknown {
+  if (keyRefused)
+    return new SftpConnectorError(
+      `the host key of ${host} does not match the pinned key; nothing was sent`,
+      "sftp_host_key_mismatch",
+    );
+  if (login.secret.kind === "private_key" && sftpAuthenticationFailed(err))
+    return keyError("sftp_key_rejected", p.connector, login.secret.item, host);
+  return err;
 }
 
 function hostKeyPin(connector: ConnectorView): string {
@@ -133,20 +266,10 @@ async function withSftpSession<T>(
   try {
     await new Promise<void>((resolve, reject) => {
       client.once("ready", () => resolve());
-      client.once("error", (err) =>
-        reject(
-          keyRefused
-            ? new SftpConnectorError(
-                `the host key of ${address.host} does not match the pinned key; nothing was sent`,
-                "sftp_host_key_mismatch",
-              )
-            : err,
-        ),
-      );
+      client.once("error", (err) => reject(connectError(err, p, login, address.host, keyRefused)));
       client.connect({
         sock,
-        username: login.username,
-        password: login.password,
+        ...sftpConnectOptions(login),
         readyTimeout: timeout,
         hostVerifier: (key: Buffer) => {
           const ok = sftpHostKeyMatches(pin, key);
@@ -269,7 +392,10 @@ export function sftpAuthenticationFailed(err: unknown): boolean {
 }
 
 function sftpProbeErrorCode(err: unknown): NonNullable<DriverProbeResult["error_code"]> {
-  if (err instanceof SftpConnectorError && err.error_code === "credential_missing")
+  if (
+    err instanceof SftpConnectorError &&
+    (err.error_code === "credential_missing" || err.error_code === "sftp_key_item_missing")
+  )
     return "credential_missing";
   if (err instanceof SftpConnectorError || err instanceof SftpRefusal) return "credential_invalid";
   if (sftpAuthenticationFailed(err)) return "credential_invalid";

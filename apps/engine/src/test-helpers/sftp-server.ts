@@ -5,6 +5,7 @@ const { OPEN_MODE, STATUS_CODE } = utils.sftp;
 
 export interface TestSftpServer {
   port: number;
+  publicKeyLogins: () => number;
   host_key_sha256: string;
   files: Map<string, Buffer>;
   sessions: () => number;
@@ -46,7 +47,23 @@ function folderEntries(files: Map<string, Buffer>, folder: string) {
   }));
 }
 
-function serveSftp(client: Connection, files: Map<string, Buffer>, credentials: [string, string]) {
+export interface TestSftpServerOptions {
+  authorizedKey?: { username: string; publicKey: string };
+}
+
+function publicKeyOf(text: string): ParsedKey {
+  const parsed = utils.parseKey(text) as ParsedKey | ParsedKey[] | Error;
+  if (parsed instanceof Error) throw parsed;
+  return (Array.isArray(parsed) ? parsed[0] : parsed) as ParsedKey;
+}
+
+function serveSftp(
+  client: Connection,
+  files: Map<string, Buffer>,
+  credentials: [string, string],
+  authorized: { username: string; key: ParsedKey } | null,
+  onPublicKeyLogin: () => void,
+) {
   client.on("authentication", (auth) => {
     if (
       auth.method === "password" &&
@@ -54,7 +71,20 @@ function serveSftp(client: Connection, files: Map<string, Buffer>, credentials: 
       auth.password === credentials[1]
     )
       return auth.accept();
-    auth.reject(["password"]);
+    if (
+      auth.method === "publickey" &&
+      authorized &&
+      auth.username === authorized.username &&
+      auth.key.algo === authorized.key.type &&
+      auth.key.data.equals(authorized.key.getPublicSSH())
+    ) {
+      if (!auth.signature || !auth.blob) return auth.accept();
+      if (authorized.key.verify(auth.blob, auth.signature, auth.hashAlgo) === true) {
+        onPublicKeyLogin();
+        return auth.accept();
+      }
+    }
+    auth.reject(authorized ? ["password", "publickey"] : ["password"]);
   });
   client.on("ready", () => {
     client.on("session", (acceptSession) => {
@@ -120,13 +150,25 @@ function serveSftp(client: Connection, files: Map<string, Buffer>, credentials: 
   client.on("error", () => {});
 }
 
-export async function startTestSftpServer(credentials: [string, string]): Promise<TestSftpServer> {
+export async function startTestSftpServer(
+  credentials: [string, string],
+  options: TestSftpServerOptions = {},
+): Promise<TestSftpServer> {
   const hostKey = utils.generateKeyPairSync("ed25519");
   const files = new Map<string, Buffer>();
+  const authorized = options.authorizedKey
+    ? {
+        username: options.authorizedKey.username,
+        key: publicKeyOf(options.authorizedKey.publicKey),
+      }
+    : null;
   let sessions = 0;
+  let publicKeyLogins = 0;
   const server = new Server({ hostKeys: [hostKey.private] }, (client) => {
     sessions += 1;
-    serveSftp(client, files, credentials);
+    serveSftp(client, files, credentials, authorized, () => {
+      publicKeyLogins += 1;
+    });
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const parsed = utils.parseKey(hostKey.public) as ParsedKey | ParsedKey[];
@@ -137,6 +179,7 @@ export async function startTestSftpServer(credentials: [string, string]): Promis
     host_key_sha256: `SHA256:${digest.replace(/=+$/, "")}`,
     files,
     sessions: () => sessions,
+    publicKeyLogins: () => publicKeyLogins,
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };
 }
