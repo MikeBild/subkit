@@ -55,6 +55,14 @@ const paginationLimits = {
   max_items: z.number().int().positive().max(1_000_000).optional(),
   on_limit: z.enum(["fail", "truncate"]).optional(),
   unique_by: z.string().min(1).max(200).optional(),
+  stop_when: z
+    .string()
+    .min(1)
+    .max(2_000)
+    .optional()
+    .describe(
+      "JavaScript arrow `(page, info) => boolean`, evaluated after each page; `info` has `page` (1-based), `pages` and `items`. Returning true ends the pagination as complete.",
+    ),
 };
 
 export const PaginationSchema = z

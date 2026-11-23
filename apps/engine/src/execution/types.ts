@@ -86,6 +86,7 @@ export type StepWarningCode =
   | "loop_over_unresolved"
   | "branch_when_unresolved"
   | "pagination_truncated"
+  | "pagination_duplicate_page"
   | "output_contract_violation"
   | "graphql_partial_errors"
   | "mcp_remote_error"
@@ -127,7 +128,7 @@ export interface RequestPaginationSummary {
   duplicates_dropped: number;
   complete: boolean;
   truncated: boolean;
-  limit: "max_pages" | "max_items" | "max_bytes" | null;
+  limit: "max_pages" | "max_items" | "max_bytes" | "duplicate_page" | null;
   rereads?: number;
 }
 

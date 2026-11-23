@@ -23,3 +23,11 @@ export type RepeatVerdict = "new" | "repeated";
 export function repeatVerdict(seen: ReadonlySet<string>, fingerprint: string): RepeatVerdict {
   return seen.has(fingerprint) ? "repeated" : "new";
 }
+
+export type StopWhenVerdict = "stop" | "continue" | "invalid";
+
+export function stopWhenVerdict(value: unknown): StopWhenVerdict {
+  if (value === true) return "stop";
+  if (value === false) return "continue";
+  return "invalid";
+}

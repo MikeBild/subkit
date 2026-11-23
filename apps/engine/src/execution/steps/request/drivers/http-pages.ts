@@ -1,6 +1,8 @@
 import { withEgressAudit } from "../../../../connectors/egress.ts";
 import { classifyConnectorHealth } from "../../../../connectors/health.ts";
 import { logger } from "../../../../logging/index.ts";
+import { runJs } from "../../../../sandboxes/quickjs/runtime.ts";
+import { pageFingerprint, repeatVerdict, stopWhenVerdict } from "../../../core/pagination-guard.ts";
 import {
   MAX_PAGES,
   makeStrategy,
@@ -43,6 +45,41 @@ function uniqueKeyOf(entry: unknown, path: string): string | undefined {
   }
   if (value === undefined || value === null) return undefined;
   return typeof value === "string" ? `s:${value}` : `j:${JSON.stringify(value)}`;
+}
+
+async function stopWhenSaysStop(
+  d: RequestDispatch,
+  stopWhen: string,
+  page: unknown,
+  info: { page: number; pages: number; items: number },
+): Promise<boolean> {
+  const { p } = d;
+  let value: unknown;
+  try {
+    const out = await runJs({
+      code: `const __stop_when__ = (${stopWhen}); return __stop_when__(input.page, input.info);`,
+      input: { page, info },
+      limits: { wall_ms: 5_000 },
+      clock: {
+        now_ms: p.ctx.started_at.getTime(),
+        seed: `${p.ctx.evaluation_seed ?? p.ctx.execution_id}:${p.step.id}:stop_when`,
+      },
+      signal: d.signal,
+    });
+    value = (out as { output: unknown }).output;
+  } catch (err) {
+    throw new RequestError(
+      `pagination stop_when failed: ${err instanceof Error ? err.message : String(err)}`,
+      "pagination_stop_when_failed",
+    );
+  }
+  const verdict = stopWhenVerdict(value);
+  if (verdict === "invalid")
+    throw new RequestError(
+      "pagination stop_when must return true or false",
+      "pagination_stop_when_failed",
+    );
+  return verdict === "stop";
 }
 
 async function noteResumableCheckpoint(d: RequestDispatch, requestSignature: string) {
@@ -90,6 +127,8 @@ export async function runHttpPages(x: HttpExchange): Promise<StepResult> {
   const strat = makeStrategy(paginationSpec, { baseUrl, baseQuery: {} });
   const acc: unknown[] = [];
   const seenKeys = new Set<string>();
+  const seenPages = new Set<string>();
+  const seenRequests = new Set<string>();
   let duplicatesDropped = 0;
   let prev: unknown = null;
   let pageIdx = 0;
@@ -136,6 +175,17 @@ export async function runHttpPages(x: HttpExchange): Promise<StepResult> {
     }
     const pageUrl = next.url;
     const pageBody = materializePaginatedBody(resolvedStepBody, next.body_parameters);
+    if (paginationSpec.strategy === "cursor") {
+      const requestPrint = pageFingerprint({ url: pageUrl, body: pageBody ?? null });
+      if (repeatVerdict(seenRequests, requestPrint) === "repeated") {
+        x.meta = { ...x.meta, pagination: paginationSummary(false, false) } as RequestMeta;
+        throw new RequestError(
+          "pagination cursor repeats an earlier page; the endpoint does not advance",
+          "pagination_cursor_repeated",
+        );
+      }
+      seenRequests.add(requestPrint);
+    }
     if (x.body_schema && pageBody !== undefined && pageBody !== null) {
       const bodyErrs = checkRequired(pageBody, x.body_schema);
       if (bodyErrs.length > 0) {
@@ -175,6 +225,14 @@ export async function runHttpPages(x: HttpExchange): Promise<StepResult> {
       }
       throw err;
     }
+    const pagePrint = pageFingerprint(body);
+    if (repeatVerdict(seenPages, pagePrint) === "repeated") {
+      lastPageHeaders = res.headers;
+      pages_fetched += 1;
+      limitHit = "duplicate_page";
+      break;
+    }
+    seenPages.add(pagePrint);
     for (const entry of strat.merge([], body)) {
       const key = pagingLimits.unique_by ? uniqueKeyOf(entry, pagingLimits.unique_by) : undefined;
       if (key !== undefined && seenKeys.has(key)) {
@@ -264,10 +322,34 @@ export async function runHttpPages(x: HttpExchange): Promise<StepResult> {
       limitHit = "max_items";
       break;
     }
+    if (
+      pagingLimits.stop_when &&
+      (await stopWhenSaysStop(d, pagingLimits.stop_when, body, {
+        page: logicalPageIdx,
+        pages: pages_fetched,
+        items: acc.length,
+      }))
+    )
+      break;
     next = paginationNext(body, pageIdx, res.headers);
   }
   const pageWarnings: StepWarning[] = [];
-  if (limitHit) {
+  if (limitHit === "duplicate_page") {
+    pageWarnings.push({
+      code: "pagination_duplicate_page",
+      message: `page ${pages_fetched} repeated an earlier page, so pagination stopped; the result holds only the pages read before it`,
+      details: { pages: pages_fetched, items: acc.length, limit: limitHit },
+    });
+    logger.warn({
+      module: "execution",
+      action: "request.pagination_duplicate_page",
+      msg: "pagination stopped at a page that repeats an earlier one; result may be incomplete",
+      execution_id: p.ctx.execution_id,
+      step_id: p.step.id,
+      pages_fetched,
+      items: acc.length,
+    });
+  } else if (limitHit) {
     const limitMessage =
       limitHit === "max_pages"
         ? `pagination reached max_pages=${maxPages} before the endpoint terminated`

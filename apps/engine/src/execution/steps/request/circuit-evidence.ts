@@ -38,6 +38,8 @@ export function requestFailureEvidence(err: unknown, step_timed_out: boolean): C
     case "pagination_link_unsupported":
     case "pagination_link_loop":
     case "pagination_short_page":
+    case "pagination_cursor_repeated":
+    case "pagination_stop_when_failed":
       return "none";
   }
 }

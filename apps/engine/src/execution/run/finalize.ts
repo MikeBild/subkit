@@ -29,7 +29,10 @@ import type { RunResult } from "../types.ts";
 import type { OutputChecks } from "./checks.ts";
 import type { RunEnv, RunState } from "./env.ts";
 
-const SENSITIVE_WARNING_CODES: ReadonlySet<string> = new Set(["pagination_truncated"]);
+const SENSITIVE_WARNING_CODES: ReadonlySet<string> = new Set([
+  "pagination_truncated",
+  "pagination_duplicate_page",
+]);
 
 function stepErrorCode(error: unknown): string | undefined {
   if (!error || typeof error !== "object") return undefined;
