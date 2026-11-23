@@ -89,7 +89,7 @@ Ein Transform-Step mit `language: "parse-file"` liest eine Datei aus dem Run und
   "id": "read_invoice",
   "kind": "transform",
   "language": "parse-file",
-  "file": { "source": "download.data", "format": "xlsx", "sheet": "Items", "max_rows": 100 }
+  "file": { "source": "download.data", "format": "xlsx", "sheet": "Items", "max_rows": 2000 }
 }
 ```
 
@@ -112,8 +112,8 @@ Jede Ausgabe enthält außerdem `format` und `filename`.
 
 Tabellenformate liefern höchstens `max_rows` Zeilen, ohne Angabe 10.000. `row_count` ist die Zahl der gelesenen Datenzeilen, und `truncated` ist `true`, wenn Zeilen weggelassen wurden.
 
-- **CSV:** Die erste Zeile ist der Header, jede weitere Zeile wird ein Objekt mit diesen Schlüsseln und Text-Werten. Leere Zeilen werden übersprungen, das Trennzeichen ist ein Komma, und eine Byte Order Mark wird ignoriert. Der Step liest die ganze Datei, daher zählt `row_count` jede Zeile, auch über `max_rows` hinaus. Ein nicht geschlossenes Anführungszeichen oder eine Zeile mit zu wenigen oder zu vielen Feldern lässt den Step mit `parse_file_failed` scheitern; die Meldung nennt die erste fehlerhafte Zeile.
-- **XLSX:** Von jedem Tabellenblatt werden die ersten 200 Zeilen gelesen. Bei einem längeren Blatt endet `row_count` bei 200, und `truncated` meldet die Zeilen danach nicht.
+- **CSV:** Die erste Zeile ist der Header, jede weitere Zeile wird ein Objekt mit diesen Schlüsseln und Text-Werten. Leere Zeilen werden übersprungen, und eine Byte Order Mark wird ignoriert. Das Trennzeichen erkennt der Step an den ersten Zeilen: Komma, Semikolon, Tab oder senkrechter Strich; passt keins, gilt das Komma. Eine Datei, die kein gültiges UTF-8 ist, liest der Step als Windows-1252. So kommt auch ein deutscher Excel-Export mit Semikolons und Umlauten mit sauberen Spalten an. Der Step liest die ganze Datei, daher zählt `row_count` jede Zeile, auch über `max_rows` hinaus. Ein nicht geschlossenes Anführungszeichen oder eine Zeile mit zu wenigen oder zu vielen Feldern lässt den Step mit `parse_file_failed` scheitern; die Meldung nennt die erste fehlerhafte Zeile.
+- **XLSX:** Der Step liest nur das gewählte Tabellenblatt, bis zu `max_rows` Zeilen. `row_count` stammt aus dem belegten Bereich des Blatts und nennt bei einem längeren Blatt die volle Länge, auch wenn nur `max_rows` Zeilen zurückkommen.
 
 Eine Datei darf höchstens 25 MB groß sein. Der Step nimmt keine `expression`; alles steht im Block `file`.
 
