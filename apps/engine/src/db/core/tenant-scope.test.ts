@@ -74,16 +74,16 @@ describe("decideTenantRolePreflight", () => {
         grants_present: false,
       }),
     );
-    expect(decision).toMatchObject({ verdict: "cannot_create_role", blocking: true });
+    expect(decision).toMatchObject({ verdict: "cannot_create_role", blocking: false });
     expect(decision.message).toContain("CREATEROLE");
     expect(decision.message).toContain('GRANT subkit_tenant TO "engine"');
   });
 
-  test("an existing role the login role may not switch to blocks unless it can grant itself", () => {
+  test("an existing role the login role may not switch to degrades unless it can grant itself", () => {
     const base = { can_assume_role: false, scheme_applied: false, grants_present: false };
     expect(decideTenantRolePreflight(facts(base))).toMatchObject({
       verdict: "cannot_assume_role",
-      blocking: true,
+      blocking: false,
     });
     expect(decideTenantRolePreflight(facts({ ...base, can_grant_role: true }))).toMatchObject({
       verdict: "will_provision",

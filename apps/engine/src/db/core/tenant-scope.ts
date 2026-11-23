@@ -77,9 +77,9 @@ export function decideTenantRolePreflight(facts: TenantRoleFacts): TenantRoleDec
     }
     return {
       verdict: "cannot_create_role",
-      blocking: true,
+      blocking: false,
       message:
-        `database role ${facts.login_role} lacks CREATEROLE and role ${TENANT_ROLE} does not exist. ` +
+        `row security is off: database role ${facts.login_role} lacks CREATEROLE and role ${TENANT_ROLE} does not exist. ` +
         `Either run ALTER ROLE "${facts.login_role.replaceAll('"', '""')}" CREATEROLE; or let a database administrator run: ${provisioningStatements(facts.login_role)}`,
     };
   }
@@ -92,9 +92,9 @@ export function decideTenantRolePreflight(facts: TenantRoleFacts): TenantRoleDec
   }
   return {
     verdict: "cannot_assume_role",
-    blocking: true,
+    blocking: false,
     message:
-      `role ${TENANT_ROLE} exists but database role ${facts.login_role} may not switch to it. ` +
+      `row security is off: role ${TENANT_ROLE} exists but database role ${facts.login_role} may not switch to it. ` +
       `Let a database administrator run: GRANT ${TENANT_ROLE} TO "${facts.login_role.replaceAll('"', '""')}";`,
   };
 }

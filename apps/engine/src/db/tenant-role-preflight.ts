@@ -58,14 +58,15 @@ export async function tenantRolePreflight(pool: Queryable): Promise<TenantRoleDe
   return decision;
 }
 
-export class TenantRolePreflightError extends Error {
-  constructor(readonly decision: TenantRoleDecision) {
-    super(decision.message);
-    this.name = "TenantRolePreflightError";
+export async function ensureTenantRowSecurity(
+  pool: Queryable,
+  rowSecuritySql: string,
+): Promise<TenantRoleDecision> {
+  const facts = await readTenantRoleFacts(pool);
+  if (facts.scheme_applied && facts.grants_present && facts.role_exists && facts.can_assume_role)
+    return tenantRolePreflight(pool);
+  if (facts.role_exists || facts.can_create_role || facts.is_superuser) {
+    await pool.query(rowSecuritySql, []);
   }
-}
-
-export async function assertTenantRolePreflight(pool: Queryable): Promise<void> {
-  const decision = await tenantRolePreflight(pool);
-  if (decision.blocking) throw new TenantRolePreflightError(decision);
+  return tenantRolePreflight(pool);
 }

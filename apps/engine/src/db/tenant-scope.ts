@@ -13,7 +13,16 @@ export async function withTenantScope<T>(
     const entered = await tx.execute<{ previous_role: string; previous_tenant: string | null }>(
       sql`SELECT current_setting('role') AS previous_role,
                  current_setting(${TENANT_SETTING}, true) AS previous_tenant,
-                 set_config('role', ${TENANT_ROLE}, true),
+                 set_config(
+                   'role',
+                   CASE WHEN EXISTS (
+                     SELECT 1 FROM pg_catalog.pg_roles r
+                     WHERE r.rolname = ${TENANT_ROLE}
+                       AND pg_catalog.pg_has_role(current_user, r.oid, 'MEMBER')
+                       AND pg_catalog.has_schema_privilege(r.oid, 'subkit', 'USAGE')
+                   ) THEN ${TENANT_ROLE} ELSE current_setting('role') END,
+                   true
+                 ),
                  set_config(${TENANT_SETTING}, ${tenant}, true)`,
     );
     const previous = entered.rows[0];

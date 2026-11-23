@@ -250,9 +250,8 @@ export {
   taskRunConversationCond,
 } from "./task-run-conversations.ts";
 export {
-  assertTenantRolePreflight,
+  ensureTenantRowSecurity,
   readTenantRoleFacts,
-  TenantRolePreflightError,
   tenantRolePreflight,
 } from "./tenant-role-preflight.ts";
 export { withTenantScope } from "./tenant-scope.ts";

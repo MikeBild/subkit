@@ -11,7 +11,7 @@ import { EMBEDDED_MIGRATIONS, type EmbeddedMigration } from "./migrations/embedd
 import { runInboxNonActionablePurge } from "./migrations/inbox-nonactionable-purge.ts";
 import { runMetricsScopeBackfill } from "./migrations/metrics-scope-backfill.ts";
 import * as schema from "./schema/index.ts";
-import { assertTenantRolePreflight } from "./tenant-role-preflight.ts";
+import { ensureTenantRowSecurity } from "./tenant-role-preflight.ts";
 
 interface MigrationReport {
   applied: number;
@@ -87,6 +87,7 @@ interface JournalRow {
   tag: string | null;
 }
 
+const TENANT_ROW_SECURITY_TAG = "0007_tenant_row_security";
 const MIGRATION_LOCK_KEY = 776_644_2026;
 
 export const SQUASHED_CHAIN_HEAD_TAG = "0023_drop_chat_mode";
@@ -174,8 +175,10 @@ export async function runMigrationsFromUrl(
 ): Promise<MigrationReport> {
   const { pool, db } = createMigrationDbFromUrl(url);
   try {
-    await assertTenantRolePreflight(pool);
-    return await runMigrations(db, migrations);
+    const report = await runMigrations(db, migrations);
+    const rowSecurity = migrations.find((m) => m.tag === TENANT_ROW_SECURITY_TAG);
+    if (rowSecurity) await ensureTenantRowSecurity(pool, rowSecurity.statements.join("\n"));
+    return report;
   } finally {
     await pool.end();
   }
