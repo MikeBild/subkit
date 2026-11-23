@@ -10,7 +10,7 @@ import {
   NOW,
   setup,
   TENANT,
-} from "./journey-fixtures";
+} from "./workspace-journey-fixtures";
 
 type Schema = {
   $ref?: string;

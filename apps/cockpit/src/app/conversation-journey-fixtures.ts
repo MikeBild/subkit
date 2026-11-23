@@ -1,5 +1,6 @@
 import { expect } from "bun:test";
-import { type Journey, NOW, TENANT, USER, WORKFLOW, workflow } from "./journey-fixtures";
+import type { Journey } from "./journey-fixtures";
+import { NOW, TENANT, USER, WORKFLOW, workflow } from "./workspace-journey-fixtures";
 
 export const CONVERSATION = "66666666-6666-4666-8666-666666666666";
 export const TURN = "99999999-9999-4999-8999-999999999999";
@@ -60,11 +61,6 @@ export function pendingApproval(id: string, callId: string, summary: string) {
     summary,
     expires_at: LATER,
   };
-}
-
-export function stream(frames: [string, unknown][]) {
-  const body = frames.map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-  return new Response(body.join(""), { headers: { "content-type": "text/event-stream" } });
 }
 
 export function outcome(conversation: unknown, status = "completed") {

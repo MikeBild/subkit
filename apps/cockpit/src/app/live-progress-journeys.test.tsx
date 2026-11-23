@@ -1,49 +1,19 @@
 import { expect } from "bun:test";
-import { type TranslationKey, translate } from "@/lib/i18n";
-import { journeys, mount, NOW, run, runDetail, WORKFLOW, workflow } from "./journey-fixtures";
+import { CONVERSATION } from "./conversation-journey-fixtures";
+import { de, journeys, type LiveStream, liveStream, mount } from "./journey-fixtures";
+import { NOW, run, runDetail, WORKFLOW, workflow } from "./workspace-journey-fixtures";
 
 const isolated = journeys(import.meta.path);
-const de = (key: TranslationKey, values?: Record<string, string | number>) =>
-  translate("de", key, values);
 const runningStep = (step: string) => de("ops.sched.live.step", { step });
 const readingIssues = de("chat.activity.step.readsResource", {
   resource: "Issues",
   connector: "Tracker",
 });
 
-const CONVERSATION = "66666666-6666-4666-8666-666666666666";
 const CONNECTOR = "77777777-7777-4777-8777-777777777777";
 const LIVE_RUN = "88888888-8888-4888-8888-888888888888";
 const OCCURRENCE = "99999999-9999-4999-8999-999999999999";
 const T0 = Date.parse(NOW);
-
-type Frames = { push(event: string, data: unknown, id?: string): void };
-
-function sseStream(): { response: () => Response; frames: Frames } {
-  const encoder = new TextEncoder();
-  let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
-  const queued: string[] = [];
-  const write = (chunk: string) => {
-    if (controller) controller.enqueue(encoder.encode(chunk));
-    else queued.push(chunk);
-  };
-  return {
-    response: () =>
-      new Response(
-        new ReadableStream<Uint8Array>({
-          start(open) {
-            controller = open;
-            for (const chunk of queued.splice(0)) open.enqueue(encoder.encode(chunk));
-          },
-        }),
-        { status: 200, headers: { "content-type": "text/event-stream" } },
-      ),
-    frames: {
-      push: (event, data, id) =>
-        write(`${id ? `id: ${id}\n` : ""}event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
-    },
-  };
-}
 
 function frozenClock(): { advance(ms: number): void } {
   let offset = 0;
@@ -63,7 +33,7 @@ const connectorRoute = {
   }),
 };
 
-function chatRoutes(turn: ReturnType<typeof sseStream>) {
+function chatRoutes(turn: LiveStream) {
   return {
     ...connectorRoute,
     "/v1/conversations": (_url: URL, init?: RequestInit) =>
@@ -80,7 +50,7 @@ const readIssues = (callId: string) => ({
 
 isolated("Chat › the activity line follows the steps of a running turn", async () => {
   const clock = frozenClock();
-  const turn = sseStream();
+  const turn = liveStream();
   const app = await mount("/chat?prompt=Open%20issues", { routes: chatRoutes(turn) });
   await app.click("chat-composer-submit");
   const line = () => app.find("chat-activity-line");
@@ -89,20 +59,20 @@ isolated("Chat › the activity line follows the steps of a running turn", async
   expect(line()?.textContent).toBe(de("chat.activity.model"));
   expect(app.find("chat-activity-indicator")?.dataset.motion).toBe("full");
 
-  turn.frames.push("conversation_started", { conversation: { id: CONVERSATION } });
-  turn.frames.push("tool_call_start", readIssues("call-1"));
+  turn.push("conversation_started", { conversation: { id: CONVERSATION } });
+  turn.push("tool_call_start", readIssues("call-1"));
   await app.settle();
   expect(line()?.textContent).toBe(readingIssues);
   expect(line()?.dataset.phase).toBe("tool");
 
-  turn.frames.push("tool_result", {
+  turn.push("tool_result", {
     type: "tool_result",
     call_id: "call-1",
     tool: "call_connector",
     output: { ok: false, error: "upstream timeout" },
   });
-  turn.frames.push("tool_call_start", readIssues("call-2"));
-  turn.frames.push("activity", {
+  turn.push("tool_call_start", readIssues("call-2"));
+  turn.push("activity", {
     type: "activity",
     phase: "tool",
     label: "call_connector",
@@ -121,7 +91,7 @@ isolated("Chat › the activity line follows the steps of a running turn", async
   expect(app.find("chat-activity-idle")?.textContent).toBe("· 3 min");
   expect(line()?.contains(app.find("chat-activity-idle"))).toBe(false);
 
-  turn.frames.push("tool_result", {
+  turn.push("tool_result", {
     type: "tool_result",
     call_id: "call-2",
     tool: "call_connector",
@@ -145,13 +115,13 @@ isolated("Chat › the activity line follows the steps of a running turn", async
   ];
   expect(steps.map((step) => step.dataset.outcome)).toEqual(["failed", "ok"]);
 
-  turn.frames.push("text_delta", { type: "text_delta", text: "Three open issues." });
+  turn.push("text_delta", { type: "text_delta", text: "Three open issues." });
   await app.settle();
   expect(line()?.textContent).toBe(de("chat.activity.responding"));
 });
 
 isolated("Chat › reduced motion keeps the activity indicator still", async () => {
-  const turn = sseStream();
+  const turn = liveStream();
   const app = await mount("/chat?prompt=Hello", { routes: chatRoutes(turn), reducedMotion: true });
   await app.click("chat-composer-submit");
   const indicator = app.find("chat-activity-indicator");
@@ -186,7 +156,7 @@ const step = (key: string, index: number, status: string, startedAt: string) => 
   finished_at: status === "running" ? null : startedAt,
 });
 
-function scheduleRoutes(live: ReturnType<typeof sseStream>, steps: () => unknown[]) {
+function scheduleRoutes(live: LiveStream, steps: () => unknown[]) {
   return {
     "/v1/cockpit/events/stream": () => live.response(),
     "/v1/executions": (url: URL) =>
@@ -223,7 +193,7 @@ function scheduleRoutes(live: ReturnType<typeof sseStream>, steps: () => unknown
 }
 
 isolated("Schedules › a running occurrence shows its current step live", async () => {
-  const live = sseStream();
+  const live = liveStream();
   let current = [step("fetch_items", 0, "running", NOW)];
   const app = await mount(`/workflows/${WORKFLOW}?tab=schedule`, {
     routes: scheduleRoutes(live, () => current),
@@ -239,11 +209,7 @@ isolated("Schedules › a running occurrence shows its current step live", async
     step("fetch_items", 0, "succeeded", NOW),
     step("summarize", 1, "running", "2026-11-23T10:00:05.000Z"),
   ];
-  live.frames.push(
-    "execution.step.started",
-    { execution_id: LIVE_RUN, workflow_id: WORKFLOW },
-    "41",
-  );
+  live.push("execution.step.started", { execution_id: LIVE_RUN, workflow_id: WORKFLOW }, "41");
   await app.settle(90);
   expect(occurrenceStep()?.textContent).toBe(runningStep("summarize"));
   expect(app.find("workflow-live-run-step")?.textContent).toBe(runningStep("summarize"));
@@ -253,7 +219,7 @@ isolated("Schedules › a running occurrence shows its current step live", async
 });
 
 isolated("Schedules › the automation panel links the scheduled run in progress", async () => {
-  const live = sseStream();
+  const live = liveStream();
   const app = await mount(`/workflows/${WORKFLOW}`, {
     routes: scheduleRoutes(live, () => [step("fetch_items", 0, "running", NOW)]),
     reducedMotion: true,

@@ -1,15 +1,14 @@
 import { expect } from "bun:test";
 import type { Locale } from "@/lib/i18n";
+import { journeys, mount } from "./journey-fixtures";
 import {
   ALL_PERMISSIONS,
   attentionItem,
   attentionWith,
   INTAKE,
   intakeEntry,
-  journeys,
-  mount,
   NOW,
-} from "./journey-fixtures";
+} from "./workspace-journey-fixtures";
 
 const isolated = journeys(import.meta.path);
 const PROPOSAL = "66666666-6666-4666-8666-666666666666";

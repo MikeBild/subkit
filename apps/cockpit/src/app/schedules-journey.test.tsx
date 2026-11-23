@@ -1,6 +1,7 @@
 import { expect } from "bun:test";
-import type { Locale } from "@/lib/i18n";
-import { ALL_PERMISSIONS, journeys, mount, NOW, WORKFLOW, workflow } from "./journey-fixtures";
+import { formatMoney, type Locale } from "@/lib/i18n";
+import { type Journey, journeys, mount } from "./journey-fixtures";
+import { ALL_PERMISSIONS, NOW, WORKFLOW, workflow } from "./workspace-journey-fixtures";
 
 const isolated = journeys(import.meta.path);
 
@@ -11,6 +12,23 @@ interface Schedule {
   cron: string;
   timezone: string;
   paused: boolean;
+}
+
+const DAILY = { cron: "0 8 * * *", timezone: "Europe/Berlin", paused: false };
+
+function costProjection(cron: string) {
+  const daily = cron.endsWith("* * *");
+  return {
+    state: "estimated",
+    basis: "version",
+    runs_sampled: 12,
+    runs_per_month: daily ? 30.42 : 4.33,
+    per_run_amount: 0.138,
+    monthly_amount: daily ? 4.2 : 0.6,
+    currency: "EUR",
+    unpriced_models: [],
+    rates_basis: "current",
+  };
 }
 
 function entry(schedule: Schedule) {
@@ -30,6 +48,7 @@ function entry(schedule: Schedule) {
     input: null,
     created_at: NOW,
     updated_at: NOW,
+    cost_projection: costProjection(schedule.cron),
   };
 }
 
@@ -72,8 +91,8 @@ function invocation(schedule: Schedule | null) {
   };
 }
 
-function scenario() {
-  let schedule: Schedule | null = null;
+function scenario(initial: Schedule | null = null) {
+  let schedule = initial;
   const bodies: unknown[] = [];
   const read = (init: RequestInit | undefined) => {
     const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
@@ -95,6 +114,8 @@ function scenario() {
     }),
     [`/v1/workflows/${WORKFLOW}/invocation`]: () => invocation(schedule),
     [`/v1/workflows/${WORKFLOW}/input-schema`]: () => ({ schema: null }),
+    [`/v1/workflows/${WORKFLOW}/schedule-cost`]: (url: URL) =>
+      costProjection(url.searchParams.get("cron") ?? ""),
     "POST /v1/schedules": (_url: URL, init: RequestInit | undefined) => {
       const body = read(init);
       schedule = { cron: String(body.cron), timezone: String(body.timezone), paused: false };
@@ -160,3 +181,30 @@ async function createPauseResume(locale: Locale) {
 isolated("Schedules (de) › create, pause and resume a schedule", () => createPauseResume("de"));
 
 isolated("Schedules (en) › create, pause and resume a schedule", () => createPauseResume("en"));
+
+const perMonth = (app: Journey, amount: number) =>
+  app.t("schedule.cost.amount", { amount: formatMoney(app.locale, amount, "EUR") });
+
+isolated("Schedules › the schedule shows its monthly estimate", async () => {
+  const app = await mount(`/workflows/${WORKFLOW}#workflow-section-use`, {
+    routes: scenario(DAILY).routes,
+  });
+  await app.click("workflow-invocation-tab-schedule");
+  const fact = app.find("schedule-cost-fact")?.textContent ?? "";
+  expect(fact).toContain(perMonth(app, 4.2));
+  expect(fact).toContain(app.t("schedule.cost.basis.version.other", { count: 12 }));
+});
+
+isolated("Schedules › the estimate of a new schedule follows the chosen rhythm", async () => {
+  const app = await mount(`/workflows/${WORKFLOW}#workflow-section-use`, {
+    routes: scenario().routes,
+  });
+  await app.click("workflow-invocation-tab-schedule");
+  await app.click("schedule-create");
+  await app.settle(80);
+  expect(app.find("schedule-cost-preview")?.textContent).toContain(perMonth(app, 4.2));
+  await app.click("schedule-rhythm-weekly");
+  await app.settle(80);
+  expect(app.find("schedule-cost-preview")?.textContent).toContain(perMonth(app, 0.6));
+  expect(app.seen.filter((call) => call.includes("/schedule-cost?")).length).toBeGreaterThan(1);
+});

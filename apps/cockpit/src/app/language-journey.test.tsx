@@ -1,16 +1,9 @@
 import { expect } from "bun:test";
 import { type Locale, translate } from "@/lib/i18n";
-import {
-  ALL_PERMISSIONS,
-  INTAKE,
-  type Journey,
-  journeys,
-  mount,
-  RUN,
-  WORKFLOW,
-} from "./journey-fixtures";
+import { type Journey, journeys, mount } from "./journey-fixtures";
 import { NAVIGATION } from "./navigation";
 import { pageRoutes } from "./page-journey-fixtures";
+import { ALL_PERMISSIONS, INTAKE, RUN, WORKFLOW } from "./workspace-journey-fixtures";
 
 const isolated = journeys(import.meta.path);
 

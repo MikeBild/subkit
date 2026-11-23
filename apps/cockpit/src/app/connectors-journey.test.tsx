@@ -1,6 +1,7 @@
 import { expect } from "bun:test";
 import type { Locale } from "@/lib/i18n";
-import { ALL_PERMISSIONS, journeys, mount, NOW, TENANT } from "./journey-fixtures";
+import { journeys, mount } from "./journey-fixtures";
+import { ALL_PERMISSIONS, NOW, TENANT } from "./workspace-journey-fixtures";
 
 const isolated = journeys(import.meta.path);
 const CONNECTOR = "88888888-8888-4888-8888-888888888888";

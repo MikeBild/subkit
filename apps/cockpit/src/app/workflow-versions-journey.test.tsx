@@ -1,15 +1,14 @@
 import { expect } from "bun:test";
 import type { Locale } from "@/lib/i18n";
+import { journeys, mount } from "./journey-fixtures";
 import {
   ALL_PERMISSIONS,
-  journeys,
-  mount,
   NOW,
   TENANT,
   USER,
   WORKFLOW,
   workflow,
-} from "./journey-fixtures";
+} from "./workspace-journey-fixtures";
 
 const isolated = journeys(import.meta.path);
 

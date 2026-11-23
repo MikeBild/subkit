@@ -1,7 +1,8 @@
 import { expect } from "bun:test";
-import { ALL_PERMISSIONS, type Journey, journeys, mount } from "./journey-fixtures";
+import { type Journey, journeys, mount } from "./journey-fixtures";
 import { NAVIGATION } from "./navigation";
 import { pageRoutes } from "./page-journey-fixtures";
+import { ALL_PERMISSIONS } from "./workspace-journey-fixtures";
 
 const isolated = journeys(import.meta.path);
 

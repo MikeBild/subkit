@@ -8,21 +8,19 @@ import {
   LATER,
   outcome,
   pendingApproval,
-  stream,
   textMessage,
   workflowTarget,
 } from "./conversation-journey-fixtures";
+import { journeys, mount, stream } from "./journey-fixtures";
 import {
   BASE_PERMISSIONS,
-  journeys,
-  mount,
   NOW,
   RUN,
   runDetail,
   USER,
   WORKFLOW,
   workflow,
-} from "./journey-fixtures";
+} from "./workspace-journey-fixtures";
 
 const isolated = journeys(import.meta.path);
 

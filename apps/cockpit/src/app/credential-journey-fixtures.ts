@@ -1,4 +1,4 @@
-import { NOW, TENANT } from "./journey-fixtures";
+import { NOW, TENANT } from "./workspace-journey-fixtures";
 
 export const PROD_CONNECTOR = "66666666-6666-4666-8666-666666666666";
 
