@@ -32,6 +32,59 @@ export function updateFailure(state: UpdateState, message: string): UpdateFailur
   return state.phase === "available" || state.phase === "downloading" ? "download" : "check";
 }
 
+export type UpdateErrorKind = "feed-missing" | "network" | "unverified" | "other";
+
+export interface UpdateErrorInfo {
+  kind: UpdateErrorKind;
+  code: string | null;
+  status: number | null;
+  url: string | null;
+}
+
+const FEED_MISSING_CODES = new Set([
+  "ERR_UPDATER_CHANNEL_FILE_NOT_FOUND",
+  "ERR_UPDATER_NO_PUBLISHED_VERSIONS",
+]);
+const NETWORK =
+  /\b(?:ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENETUNREACH|EHOSTUNREACH)\b|net::ERR_[A-Z_]+/;
+
+function statusOf(error: unknown, code: string | null, message: string): number | null {
+  const direct = (error as { statusCode?: unknown } | null)?.statusCode;
+  if (typeof direct === "number" && direct > 0) return direct;
+  const parsed = /HttpError: (\d{3})\b/.exec(message) ?? /^(\d{3}) [A-Z]/m.exec(message);
+  if (parsed?.[1]) return Number(parsed[1]);
+  return code === "ERR_UPDATER_CHANNEL_FILE_NOT_FOUND" ? 404 : null;
+}
+
+export function classifyUpdateError(error: unknown): UpdateErrorInfo {
+  const message = error instanceof Error ? error.message : String(error);
+  const rawCode = (error as { code?: unknown } | null)?.code;
+  const code = typeof rawCode === "string" ? rawCode : null;
+  const status = statusOf(error, code, message);
+  const url = /https?:\/\/[^\s)"'`,]+/.exec(message)?.[0]?.replace(/[.:;]+$/, "") ?? null;
+  let kind: UpdateErrorKind = "other";
+  if (
+    (code !== null && FEED_MISSING_CODES.has(code)) ||
+    status === 404 ||
+    /No published versions on GitHub/.test(message)
+  )
+    kind = "feed-missing";
+  else if (NETWORK.test(message) || (code !== null && NETWORK.test(code))) kind = "network";
+  else if (UNVERIFIED.test(message)) kind = "unverified";
+  return { kind, code, status, url };
+}
+
+export function updateErrorEvent(
+  state: UpdateState,
+  info: UpdateErrorInfo,
+  message: string,
+): UpdateEvent {
+  const downloading = state.phase === "available" || state.phase === "downloading";
+  return info.kind === "feed-missing" && !downloading
+    ? { type: "not-available" }
+    : { type: "error", message };
+}
+
 function percentOf(value: number): number {
   return Number.isFinite(value) ? Math.min(100, Math.max(0, Math.round(value))) : 0;
 }

@@ -29,7 +29,8 @@ The versionless installers keep the download links stable. They always point at 
 - macOS: `https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-mac-arm64.dmg`
 - Windows: `https://github.com/MikeBild/subkit/releases/latest/download/subkit-desktop-win-x64.exe`
 
-Until the desktop artifacts of the newest release are uploaded, these links answer 404.
+These links never point at a release without desktop artifacts, because a release becomes
+“latest” only after them; see “When a release becomes latest” below.
 
 macOS ships for Apple silicon (arm64) only; Intel Macs get no build. `SHA256SUMS-desktop` is signed
 with the same release key as `SHA256SUMS`; the existing `SHA256SUMS` of the server release is
@@ -185,10 +186,41 @@ successful `release` run of a tag starts the desktop release by itself; set
 `DESKTOP_RELEASE_AUTO` to `false` to start it only by hand. A `release` run started by hand
 does not start it, so run `desktop-release` with that tag yourself.
 
-The server release never waits for the desktop release and cannot be blocked by it. Until the
-desktop artifacts of the newest release are uploaded, installed apps report a failed update
-check and try again later, because the newest release has no feed file yet. With the
-automatic start that gap is the build time of the desktop workflow.
+The server release never waits for the desktop release and cannot be blocked by it.
+
+## When a release becomes latest
+
+`releases/latest/download/…` follows the release GitHub marks as “latest”. The app’s updater
+reads `releases/latest` and then `latest-mac.yml` of that release, so a latest release without
+desktop artifacts would leave every installed app without an update and the DMG link at 404.
+Therefore:
+
+1. The `release` run of a tag push publishes the release with `--latest=false`. The Docker images, the
+   versioned assets and the Chrome Web Store submission go out at once; everything behind
+   `releases/latest` (the CLI updater, `install.sh`, the Compose file, the Web Clipper ZIP, the
+   desktop updater and the DMG) still serves the previous release.
+2. `desktop-release` builds, verifies and uploads the desktop artifacts.
+3. Its last job, `promote`, marks the release latest and checks that `releases/latest` now
+   names the tag.
+
+| Time | Before | Now |
+| --- | --- | --- |
+| `release` publishes | New release is latest without desktop assets: `latest-mac.yml` and the DMG answer 404 | New release is published, not latest: all `latest` links serve the previous, complete release |
+| About 40 minutes later, `desktop-release` uploads | Desktop assets appear, the gap closes | `promote` marks the new release latest: every channel moves at once |
+| Desktop build fails or is skipped | The 404 stays until someone reruns | `promote` still marks it latest, with a warning naming the missing assets |
+
+`promote` runs whenever the `release` run came from a tag push, also when the desktop build
+failed, `DESKTOP_RELEASE_AUTO` is `false`, signing values are missing or the `release` run
+failed after publishing. It changes nothing when the release is still a draft, is a
+prerelease, or a newer release exists. A manual `desktop-release` run with a tag ends with the
+same job. A `release` run started by hand does not start `desktop-release`, so it marks the
+release latest itself, with a warning to run `desktop-release` with the tag. When the warning says desktop assets are missing, fix the cause and run
+`desktop-release` with the tag again: the updater then finds the version.
+
+When the updater finds no feed (a 404 on `releases/latest` or on `latest-mac.yml`), the app
+shows “You’re on the latest version” instead of a failed check and writes
+`update.feed_missing` with the checked URL and the HTTP status to its log. Any other failure
+writes `update.failed` with the same fields.
 
 ## What the workflow checks before it publishes
 
@@ -309,8 +341,8 @@ The app never installs an older version (`allowDowngrade` is off), and a publish
 reused. A bad desktop build is therefore withdrawn in two steps:
 
 1. Stop the rollout: delete `latest-mac.yml` and `latest.yml` from the bad
-   release (`gh release delete-asset v<version> latest-mac.yml`, and so on). Apps then report a
-   failed update check and stay on the version they have. Apps that already installed the bad
+   release (`gh release delete-asset v<version> latest-mac.yml`, and so on). Apps then find no
+   feed, report that they are on the latest version and stay on the version they have. Apps that already installed the bad
    version keep it.
 2. Fix forward: release the next version with the fix and publish its desktop artifacts. Every
    app, including those on the bad version, updates to it.

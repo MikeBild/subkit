@@ -57,6 +57,17 @@ describe("release manifest workflow", () => {
     );
   });
 
+  test("a tag push publishes without marking latest; desktop-release promotes it", () => {
+    const release = WORKFLOW.split("\n  docs:")[0] ?? "";
+    const publish = steps[stepIndex("Publish verified GitHub release")]?.run ?? "";
+    expect(publish).toMatch(
+      /if \[ "\$GITHUB_EVENT_NAME" = "push" \]; then\s+gh release edit "\$TAG" --draft=false --latest=false\s+else\s+echo "::warning::[^"]*desktop-release with \$TAG[^"]*"\s+gh release edit "\$TAG" --draft=false --latest\s+fi/,
+    );
+    expect(release.match(/--latest(?!=false)/g)?.length).toBe(1);
+    expect(release).not.toContain("make_latest");
+    expect(release).not.toContain("gh release create");
+  });
+
   test("signs complete assets, verifies the downloadable draft, then publishes latest last", () => {
     const extract = stepIndex("Extract release binaries from the image");
     const stageEvidence = stepIndex("Stage verified quality evidence in release assets");
@@ -113,7 +124,9 @@ describe("release manifest workflow", () => {
     expect(downloaded).toContain("./packages/cli-core/src/release-public-key.ts");
     expect(downloaded).toContain("verify(null,");
     expect(downloaded).toContain("release-quality-evidence.ts verify");
-    expect(steps[publish]?.run ?? "").toContain('gh release edit "$TAG" --draft=false');
+    expect(steps[publish]?.run ?? "").toContain(
+      'gh release edit "$TAG" --draft=false --latest=false',
+    );
     expect(steps[latest]?.run ?? "").toContain('"$image:latest"');
   });
 });

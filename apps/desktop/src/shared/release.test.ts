@@ -250,8 +250,11 @@ describe("desktop release workflow", () => {
   });
 
   test("every build job checks out exactly the resolved commit", () => {
-    const builds = Object.entries(jobs).filter(([name]) => name !== "resolve");
+    const builds = Object.entries(jobs).filter(
+      ([name]) => name !== "resolve" && name !== "promote",
+    );
     expect(builds.length).toBe(5);
+    expect(jobs.promote?.steps.some((step) => step.uses)).toBe(false);
     for (const [, job] of builds) {
       const checkouts = job.steps.filter((step) => step.uses?.startsWith("actions/checkout@"));
       expect(checkouts.length).toBe(1);
@@ -307,6 +310,7 @@ describe("desktop release workflow", () => {
       "macos",
       "windows",
       "publish",
+      "promote",
     ]);
     expect(jobs["engine-darwin"]?.needs).toBe("resolve");
     expect(jobs["engine-windows"]?.needs).toBe("resolve");
@@ -350,6 +354,30 @@ describe("desktop release workflow", () => {
       .filter((run) => run.includes("verify-feed.ts"));
     expect(verifies).toHaveLength(2);
     for (const run of verifies) expect(run).toMatch(/verify-feed\.ts "\$\w+" "\$VERSION" \$FEEDS/);
+  });
+
+  test("marks the release latest after the desktop assets, and also when they are missing", () => {
+    const promote = jobs.promote;
+    expect(promote?.needs).toEqual(["resolve", "publish"]);
+    const condition = promote?.if ?? "";
+    expect(condition).toContain("!cancelled()");
+    expect(condition).toContain("needs.resolve.outputs.dry_run != 'true'");
+    expect(condition).not.toContain("needs.publish.result");
+    expect(condition).not.toContain("DESKTOP_RELEASE_AUTO");
+    expect(condition).not.toContain("workflow_run.conclusion");
+    expect(condition).toContain("!inputs.unsigned_dry_run");
+    const script = promote?.steps.map((step) => step.run ?? "").join("\n") ?? "";
+    expect(script).toContain('gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --latest');
+    expect(script).toContain("isDraft or .isPrerelease");
+    expect(script).toContain("sort -V | tail -n 1");
+    expect(script).toContain("for asset in latest-mac.yml subkit-desktop-mac-arm64.dmg; do");
+    expect(script).toMatch(
+      /::warning::\$TAG becomes the latest release without SubKit Desktop assets/,
+    );
+    expect(script).toContain("releases/latest\" --jq '.tag_name'");
+    expect(script.indexOf("::warning::$TAG becomes")).toBeLessThan(script.indexOf("--latest"));
+    const publishScripts = (jobs.publish?.steps ?? []).map((step) => step.run ?? "").join("\n");
+    expect(publishScripts).not.toContain("--latest");
   });
 
   test("missing signing values of one platform skip and flag only that platform", () => {

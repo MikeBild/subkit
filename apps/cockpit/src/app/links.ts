@@ -6,10 +6,13 @@ export function absolute(path: string): string {
   const BASE = cockpitBasePath();
   if (
     BASE !== "/cockpit" &&
-    (path === "/cockpit" || (path.startsWith("/cockpit/") && !path.startsWith("/cockpit/i/")))
+    (path === "/cockpit" ||
+      /^\/cockpit[?#]/.test(path) ||
+      (path.startsWith("/cockpit/") && !path.startsWith("/cockpit/i/")))
   )
     return `${BASE}${path.slice("/cockpit".length)}`;
-  if (path === BASE || path.startsWith(`${BASE}/`) || path.startsWith(`${BASE}?`)) return path;
+  if (path === BASE || (path.startsWith(BASE) && "/?#".includes(path.charAt(BASE.length))))
+    return path;
   if (path === "/") return BASE;
   if (path.startsWith("/?")) return `${BASE}${path.slice(1)}`;
   return `${BASE}${path}`;
@@ -17,10 +20,12 @@ export function absolute(path: string): string {
 
 export function routerPath(href: string): string {
   const BASE = cockpitBasePath();
-  if (href === BASE) return "/";
-  if (href.startsWith(`${BASE}?`)) return `/${href.slice(BASE.length)}`;
-  if (href.startsWith(`${BASE}/`)) return href.slice(BASE.length);
-  return href;
+  const path = /^\/cockpit(?:$|[/?#])/.test(href) ? absolute(href) : href;
+  if (path === BASE) return "/";
+  if (path.startsWith(`${BASE}?`) || path.startsWith(`${BASE}#`))
+    return `/${path.slice(BASE.length)}`;
+  if (path.startsWith(`${BASE}/`)) return path.slice(BASE.length);
+  return path;
 }
 
 export function routerTarget(href: string): {

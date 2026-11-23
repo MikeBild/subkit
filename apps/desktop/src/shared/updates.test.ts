@@ -3,12 +3,14 @@ import { t } from "./i18n.ts";
 import {
   buildSigned,
   buildUpdates,
+  classifyUpdateError,
   initialUpdateState,
   reduceUpdate,
   type UpdateEvent,
   type UpdateState,
   updateAction,
   updateBusy,
+  updateErrorEvent,
   updateFailure,
   updateFeedProblem,
   updateMenuLabel,
@@ -98,6 +100,96 @@ describe("update flow", () => {
         { type: "error", message: "not signed" },
       ),
     ).toEqual({ phase: "failed", reason: "unverified" });
+  });
+});
+
+function updaterError(message: string, fields: Record<string, unknown> = {}): Error {
+  return Object.assign(new Error(message), fields);
+}
+
+describe("update errors", () => {
+  const feed = "https://github.com/MikeBild/subkit/releases/download/v12.1.5/latest-mac.yml";
+  const missingFeed = updaterError(
+    `Cannot find latest-mac.yml in the latest release artifacts (${feed}): HttpError: 404 \n"method: GET url: ${feed}\n\nPlease double check that your authentication token is correct."`,
+    { code: "ERR_UPDATER_CHANNEL_FILE_NOT_FOUND" },
+  );
+
+  test("a latest release without latest-mac.yml is a missing feed with its address and status", () => {
+    expect(classifyUpdateError(missingFeed)).toEqual({
+      kind: "feed-missing",
+      code: "ERR_UPDATER_CHANNEL_FILE_NOT_FOUND",
+      status: 404,
+      url: feed,
+    });
+  });
+
+  test("a 404 on the latest release lookup is a missing feed, an unreachable host is not", () => {
+    const latest = "https://github.com/MikeBild/subkit/releases/latest";
+    expect(
+      classifyUpdateError(
+        updaterError(
+          `Unable to find latest version on GitHub (${latest}), please ensure a production release exists: HttpError: 404 \n`,
+          { code: "ERR_UPDATER_LATEST_VERSION_NOT_FOUND" },
+        ),
+      ),
+    ).toEqual({
+      kind: "feed-missing",
+      code: "ERR_UPDATER_LATEST_VERSION_NOT_FOUND",
+      status: 404,
+      url: latest,
+    });
+    expect(
+      classifyUpdateError(
+        updaterError(
+          `Unable to find latest version on GitHub (${latest}), please ensure a production release exists: Error: getaddrinfo ENOTFOUND github.com`,
+          { code: "ERR_UPDATER_LATEST_VERSION_NOT_FOUND" },
+        ),
+      ),
+    ).toEqual({
+      kind: "network",
+      code: "ERR_UPDATER_LATEST_VERSION_NOT_FOUND",
+      status: null,
+      url: latest,
+    });
+    expect(classifyUpdateError(updaterError("net::ERR_INTERNET_DISCONNECTED")).kind).toBe(
+      "network",
+    );
+  });
+
+  test("keeps server errors and failed verifications apart from a missing feed", () => {
+    expect(
+      classifyUpdateError(updaterError("HTTP error: Bad Gateway", { statusCode: 502 })),
+    ).toMatchObject({ kind: "other", status: 502 });
+    expect(classifyUpdateError(updaterError("sha512 checksum mismatch")).kind).toBe("unverified");
+  });
+
+  test("a missing feed while checking means no update, not a failed check", () => {
+    const info = classifyUpdateError(missingFeed);
+    const event = updateErrorEvent({ phase: "checking" }, info, missingFeed.message);
+    expect(event).toEqual({ type: "not-available" });
+    const state = reduceUpdate({ phase: "checking" }, event);
+    expect(state).toEqual({ phase: "current" });
+    expect(updateStatus(state, "12.1.4").key).toBe("updates.state.current");
+  });
+
+  test("a 404 while downloading an announced version stays a failed download", () => {
+    const downloading: UpdateState = { phase: "downloading", version: "12.1.5", percent: 7 };
+    const error = updaterError("404 Not Found", { statusCode: 404 });
+    const event = updateErrorEvent(downloading, classifyUpdateError(error), error.message);
+    expect(reduceUpdate(downloading, event)).toEqual({ phase: "failed", reason: "download" });
+  });
+
+  test("a network error while checking still fails the check", () => {
+    const error = updaterError("net::ERR_NAME_NOT_RESOLVED");
+    const event = updateErrorEvent(
+      { phase: "checking" },
+      classifyUpdateError(error),
+      error.message,
+    );
+    expect(reduceUpdate({ phase: "checking" }, event)).toEqual({
+      phase: "failed",
+      reason: "check",
+    });
   });
 });
 
