@@ -19,6 +19,7 @@ export type { BucketUnit } from "./bucket-units.ts";
 export { BUCKET_UNITS, WINDOW_CAP_MS } from "./bucket-units.ts";
 export {
   effectiveModelRate,
+  llmCostCurrency,
   readLlmCost,
   readLlmCostByKey,
   readLlmWindowCost,

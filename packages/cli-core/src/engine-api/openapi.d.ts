@@ -12339,6 +12339,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/workflows/{id}/schedule-cost": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Projected monthly model cost of a workflow at a given cron or interval */
+        get: {
+            parameters: {
+                query: {
+                    /** @description 5-field cron or "every:<seconds>". */
+                    cron: string;
+                    /** @description IANA timezone; UTC when omitted. */
+                    timezone?: string;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ScheduleCostProjection"];
+                    };
+                };
+                /** @description Workflow not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/workflows/{id}/schedule-occurrences": {
         parameters: {
             query?: never;
@@ -34586,6 +34638,31 @@ export interface components {
             /** @description Persisted workflow input returned verbatim to workflow readers; credentials belong in connector credential storage. */
             input?: unknown;
             created_at: string;
+            cost_projection: components["schemas"]["ScheduleCostProjection"];
+        };
+        /** @description Projected model cost a month: the average priced model cost per finished run times runs a month. Prices are the current model rates. */
+        ScheduleCostProjection: {
+            /**
+             * @description estimated: monthly_amount is set. no_history: neither this version nor another version of the workflow has a finished run yet. unknown_rhythm: the cron or interval cannot be counted.
+             * @enum {string}
+             */
+            state: "estimated" | "no_history" | "unknown_rhythm";
+            /**
+             * @description version: averaged over finished runs of the current version. workflow: no run of the current version yet, averaged over finished runs of other versions.
+             * @enum {string|null}
+             */
+            basis: "version" | "workflow" | null;
+            /** @description Finished runs the average per run is taken from (the most recent ones). */
+            runs_sampled: number;
+            /** @description Runs a month from the cron or interval, averaged over the coming year. */
+            runs_per_month: number | null;
+            per_run_amount: number | null;
+            monthly_amount: number | null;
+            currency: string;
+            /** @description Models in the sampled runs without a price; the estimate leaves them out. */
+            unpriced_models: string[];
+            /** @enum {string} */
+            rates_basis: "current";
         };
         ScheduleUpsertResponse: components["schemas"]["ScheduleEntry"] & {
             /** @enum {string} */
