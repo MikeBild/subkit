@@ -3150,6 +3150,40 @@ What you read below the choice:
 | “… cannot approve with the current role. Approval notifications stay with you until an administrator changes the role.” | Ask an administrator to give the person the role **Member** or **Administrator**, or name someone else. |
 | “Invitation prepared” | You are an administrator and named an unknown address. SubKit prepared an invitation and sent no email. Pass on the **Invitation link** yourself. It is shown only once. |
 
+### Decide from Slack
+
+When a notification rule posts to a Slack channel, items that need a decision arrive as a card.
+
+| Item | Buttons in Slack |
+| --- | --- |
+| A task run waits for your approval | **Approve**, **Decline**, **Open in SubKit** |
+| The result of a task run waits for you to confirm it | **Open in SubKit** |
+| The approval of a workflow expires soon | **Open in SubKit** |
+
+Confirming a result and approving a workflow need a signed-in session in the Cockpit, so these cards link there.
+
+What happens when you select **Approve** or **Decline**:
+
+1. SubKit checks that the click comes from Slack: the signature made with the app’s signing secret and a timestamp no older than five minutes. A click that arrives twice counts once.
+2. SubKit looks up the person your Slack account is linked to. If it is not linked yet, only you see a message with **Link Slack account** and **Open in SubKit**. To link it, select **Link Slack account**, sign in, check the Slack account shown and select **Link account**. You do this once.
+3. SubKit checks at the moment of the click whether this person may decide: an active member with the permission `conversation:approve` or `workflow:write`, and for a task run its owner or an administrator. If not, only you see “You don’t have permission to decide this. Nothing was changed.”
+4. SubKit records the decision in the audit log with the source `slack`, the Slack user ID and the SubKit person.
+5. The message changes for everyone in the channel: it names the outcome, who decided and when. A later click shows the state, for example “Already approved.” or “The deadline has passed. Nothing was changed.”
+
+**Open in SubKit** always works, with or without a linked account.
+
+#### Set up the Slack app
+
+The Slack app of your chat workspace needs these settings:
+
+| Setting | Value |
+| --- | --- |
+| **Interactivity & Shortcuts › Request URL** | `https://<your SubKit address>/v1/chat/slack/interactions`, the same URL that already serves questions in chat |
+| **OAuth & Permissions › Bot token scopes** | `chat:write` to post and update cards; `chat:write.public` if SubKit posts to channels the app was not added to |
+| **Basic Information › Signing Secret** | the value of `platform.slack.signing_secret` in SubKit |
+
+SubKit builds the links from `server.public_base_url`. Without it, the cards carry no **Open in SubKit** and no **Link Slack account** button. An administrator can also link accounts with `POST /v1/chat/identities`.
+
 ### Limits
 
 - **The choice applies to push, not to the desktop app.** SubKit Desktop reads the list directly and follows the quiet hours you set in the app. More in “SubKit Desktop”.
