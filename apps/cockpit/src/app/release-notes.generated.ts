@@ -3,7 +3,7 @@ export type ReleaseNotes = { version: string; notes: string[]; highlights: strin
 export type PendingNotes = { version: string | null; notes: string[]; highlights: string[] | null };
 
 export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: PendingNotes } = {
-  "source": "a3a514e5e85d260d53e319e224e978c0ae44fb1c",
+  "source": "0ed0c08d4e4b9de9e0e4a54b47b21f40bdbbb660",
   "releases": [
     {
       "version": "v1.0.0",
@@ -2363,10 +2363,14 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
       "Personal notes: SubKit remembers what you tell it, privately for you. Only you can see them, admins included. You can switch learning off, say “remember this”, ask “How do you know this?” and edit, confirm, archive, forget or export every note.",
       "Your team’s second brain finds German questions in German sources, cites its sources under every answer and searches smaller passages more precisely. What the assistant collects lands in the intake first; duplicates are merged, related items are grouped, and you can work through them in bulk.",
       "A run interrupted by a restart resumes at the next step instead of starting over. If a write may or may not have reached the other system, the run waits as “uncertain” and you decide whether it happened.",
-      "Stopped workflows name the concrete reason: approval expired, used up, revoked or changed. “Always ask” also applies in tasks, and every confirmation shows the sentence of yours it relies on.",
+      "Stopped workflows name the concrete reason: approval expired, used up, revoked or changed. “Always ask” also applies in tasks, every confirmation shows the sentence of yours it relies on, and held runs can be approved or declined from Slack.",
+      "Model steps call your workspace AI model with structured output. The approval shows which step data goes to the model and how many tokens it may use, and a new model step always needs a new approval. Workflows that already use a model step need to be approved again after the update.",
+      "Parse files in a workflow: CSV, Excel, PDF, Word and ZIP. CSV exports with semicolons or Windows encoding are read correctly, and long files report how many rows were cut.",
+      "SFTP connectors sign in with a password or with an SSH key from the vault. The key never appears in settings, logs or answers.",
       "Self-healing now proposes instead of applying on its own. You review each change separately, test your selection first and approve only what was tested.",
-      "Workflow steps can talk to SFTP servers, and every connector template ships with a tested contract. Loops are replaced by “for each”: simple loops are converted automatically, and any other loop shows exactly how to rewrite it.",
-      "Content from websites, connectors and tool results is marked as untrusted everywhere and can never create notes or team knowledge on its own.",
+      "Every connector template ships with a tested contract, and credentials name their environment: `subkit vault attach <slug> --env prod`. Loops are replaced by “for each”: simple loops are converted automatically, any other loop shows exactly how to rewrite it.",
+      "Content from websites, connectors, files and tool results is marked as untrusted everywhere and can never create notes or team knowledge on its own.",
+      "Live progress in chat and schedules, the projected monthly cost of every schedule before you approve it, and run results that link to the changed record in GitHub, Notion, Stripe, Google and more.",
       "Cockpit, CLI and SubKit Desktop show the same run states and reasons, and you can snooze items under “Needs you”."
     ]
   }
