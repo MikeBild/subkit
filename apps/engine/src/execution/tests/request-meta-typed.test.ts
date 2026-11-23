@@ -119,6 +119,7 @@ describe("RequestMeta · driver-discriminated union", () => {
         connector: stubConnector,
       },
       { driver: "s3", method: "GET", status: 200, connector: stubConnector },
+      { driver: "sftp", method: "LIST", path: "/inbox", connector: stubConnector },
       {
         driver: "mcp",
         operation: "tools/call",
@@ -148,6 +149,7 @@ describe("RequestMeta · driver-discriminated union", () => {
         case "graphql":
         case "postgres":
         case "s3":
+        case "sftp":
         case "mcp":
         case "connectorless":
         case "error":
@@ -161,7 +163,7 @@ describe("RequestMeta · driver-discriminated union", () => {
         }
       }
     }
-    expect(count).toBe(9);
+    expect(count).toBe(10);
   });
 });
 

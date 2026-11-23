@@ -260,6 +260,7 @@ const baseStep = {
 
 const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"] as const;
 const S3_METHODS = ["GET", "PUT", "HEAD", "DELETE", "LIST"] as const;
+const SFTP_METHODS = ["LIST", "GET", "PUT", "DELETE"] as const;
 const SQL_METHODS = ["GET", "SELECT", "INSERT", "UPDATE", "DELETE", "CALL"] as const;
 const MCP_METHODS = [
   "GET",
@@ -338,6 +339,16 @@ const S3BlockSchema = z.object({
     .optional(),
 });
 
+const SftpBlockSchema = z.object({
+  path: z.string().min(1).openapi({
+    description:
+      "Remote path below the connector's root folder. LIST reads a folder; GET, PUT and DELETE address one file. Placeholders are filled in before the call.",
+  }),
+  max_entries: z.number().int().positive().max(10_000).optional().openapi({
+    description: "Upper bound for the entries a LIST returns.",
+  }),
+});
+
 const McpBlockSchema = z
   .object({
     operation: z.enum(["call_tool", "read_resource", "get_prompt"]).default("call_tool"),
@@ -389,7 +400,7 @@ const McpBlockSchema = z
     }
   });
 
-type RequestBlock = "graphql" | "sql" | "s3" | "mcp";
+type RequestBlock = "graphql" | "sql" | "s3" | "sftp" | "mcp";
 
 function foreignBlock(block: RequestBlock) {
   return z
@@ -545,6 +556,7 @@ export const HttpRequestStepSchema = z
     graphql: foreignBlock("graphql"),
     sql: foreignBlock("sql"),
     s3: foreignBlock("s3"),
+    sftp: foreignBlock("sftp"),
     mcp: foreignBlock("mcp"),
   })
   .superRefine((s, ctx) => {
@@ -565,6 +577,7 @@ export const GraphqlRequestStepSchema = z
     xml: httpOnlyXml("graphql"),
     sql: foreignBlock("sql"),
     s3: foreignBlock("s3"),
+    sftp: foreignBlock("sftp"),
     mcp: foreignBlock("mcp"),
   })
   .superRefine((s, ctx) => {
@@ -584,6 +597,7 @@ export const SqlRequestStepSchema = z
     xml: httpOnlyXml("sql"),
     graphql: foreignBlock("graphql"),
     s3: foreignBlock("s3"),
+    sftp: foreignBlock("sftp"),
     mcp: foreignBlock("mcp"),
   })
   .superRefine((s, ctx) => {
@@ -631,6 +645,7 @@ export const S3RequestStepSchema = z
     xml: httpOnlyXml("s3"),
     graphql: foreignBlock("graphql"),
     sql: foreignBlock("sql"),
+    sftp: foreignBlock("sftp"),
     mcp: foreignBlock("mcp"),
   })
   .superRefine((s, ctx) => {
@@ -654,6 +669,41 @@ export const S3RequestStepSchema = z
   })
   .openapi("S3RequestStep");
 
+export const SftpRequestStepSchema = z
+  .object({
+    kind: z.literal("request"),
+    protocol: z.literal("sftp"),
+    ...baseStep,
+    method: z.enum(SFTP_METHODS).optional().default("GET"),
+    ...requestStepBase,
+    sftp: SftpBlockSchema,
+    xml: httpOnlyXml("sftp"),
+    graphql: foreignBlock("graphql"),
+    sql: foreignBlock("sql"),
+    s3: foreignBlock("s3"),
+    mcp: foreignBlock("mcp"),
+  })
+  .superRefine((s, ctx) => {
+    checkReadOverride(s, ctx);
+    rejectRowCount(s, ctx, "expected_row_count is postgres-only; an sftp step moves files");
+    if (s.connector_id === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["connector_id"],
+        message:
+          "sftp step requires connector_id — the server and its host key live on the connector",
+      });
+    }
+    if (s.url !== undefined || s.path !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["sftp", "path"],
+        message: "an sftp step addresses its file with sftp.path, not url or path",
+      });
+    }
+  })
+  .openapi("SftpRequestStep");
+
 export const McpRequestStepSchema = z
   .object({
     kind: z.literal("request"),
@@ -666,6 +716,7 @@ export const McpRequestStepSchema = z
     graphql: foreignBlock("graphql"),
     sql: foreignBlock("sql"),
     s3: foreignBlock("s3"),
+    sftp: foreignBlock("sftp"),
   })
   .superRefine((s, ctx) => {
     if (s.connector_id === undefined) {
@@ -704,6 +755,7 @@ export const RequestStepSchema = z
     GraphqlRequestStepSchema,
     SqlRequestStepSchema,
     S3RequestStepSchema,
+    SftpRequestStepSchema,
     McpRequestStepSchema,
   ])
   .openapi("RequestStep");

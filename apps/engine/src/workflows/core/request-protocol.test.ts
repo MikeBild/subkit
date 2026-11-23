@@ -25,6 +25,7 @@ describe("requestProtocol", () => {
       "graphql",
       "postgres",
       "s3",
+      "sftp",
       "mcp",
     ]);
     expect(requestProtocolDriver({})).toBe("http");

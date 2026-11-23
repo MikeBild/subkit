@@ -1,14 +1,15 @@
-export const REQUEST_PROTOCOLS = ["http", "graphql", "sql", "s3", "mcp"] as const;
+export const REQUEST_PROTOCOLS = ["http", "graphql", "sql", "s3", "sftp", "mcp"] as const;
 
 export type RequestProtocol = (typeof REQUEST_PROTOCOLS)[number];
 
-export type RequestProtocolDriver = "http" | "graphql" | "postgres" | "s3" | "mcp";
+export type RequestProtocolDriver = "http" | "graphql" | "postgres" | "s3" | "sftp" | "mcp";
 
 const DRIVER_OF: Record<RequestProtocol, RequestProtocolDriver> = {
   http: "http",
   graphql: "graphql",
   sql: "postgres",
   s3: "s3",
+  sftp: "sftp",
   mcp: "mcp",
 };
 

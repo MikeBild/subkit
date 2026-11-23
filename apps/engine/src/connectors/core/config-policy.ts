@@ -4,6 +4,7 @@ type DriverName =
   | "http"
   | "postgres"
   | "s3"
+  | "sftp"
   | "graphql"
   | "mcp"
   | "local_files"
@@ -66,6 +67,15 @@ export function validateConnectorAuthType(
       {
         path: "auth_type",
         message: "a connector for this device takes no credentials — use auth_type 'none'",
+      },
+    ];
+  }
+  if (driver === "sftp") {
+    if (auth_type === "basic") return [];
+    return [
+      {
+        path: "auth_type",
+        message: "an sftp connector signs in with a username and password — use auth_type 'basic'",
       },
     ];
   }

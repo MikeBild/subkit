@@ -31,7 +31,7 @@ export interface DomainStepBase {
 
 export interface DomainRequestStep extends DomainStepBase {
   kind: "request";
-  protocol?: "http" | "graphql" | "sql" | "s3" | "mcp" | undefined;
+  protocol?: "http" | "graphql" | "sql" | "s3" | "sftp" | "mcp" | undefined;
   method?:
     | "GET"
     | "POST"

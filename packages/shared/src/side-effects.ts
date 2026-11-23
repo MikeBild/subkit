@@ -13,6 +13,7 @@ export interface SideEffectInput {
   graphql?: { operation?: GraphqlOperation | null; query?: string | null } | null;
   sql?: { query: string; also?: ReadonlyArray<{ query: string }> } | null;
   s3?: boolean | null;
+  sftp?: boolean | null;
   mcp?: { operation: McpOperation } | null;
   target?: string | null;
   body?: unknown;
@@ -31,7 +32,7 @@ export interface GraphqlOverHttpRequest {
   documents: Array<string | null>;
 }
 
-const S3_READ_METHODS = new Set(["GET", "HEAD", "LIST"]);
+const FILE_STORE_READ_METHODS = new Set(["GET", "HEAD", "LIST"]);
 
 const RELATIVE_TARGET_ORIGIN = "https://relative-target.invalid";
 
@@ -157,14 +158,14 @@ export function classifyHttpSideEffect(input: SideEffectInput): SideEffect {
     return statements.every(sqlIsSelect) ? "read" : "write";
   }
   const method = (input.method ?? "GET").toUpperCase();
-  if (input.s3) {
-    return S3_READ_METHODS.has(method) ? "read" : "write";
+  if (input.s3 || input.sftp) {
+    return FILE_STORE_READ_METHODS.has(method) ? "read" : "write";
   }
   return httpMethodIsRead(method) ? "read" : "write";
 }
 
 function readOverrideAllowsHttpPost(input: SideEffectInput): boolean {
-  if (input.mcp || input.graphql || input.sql || input.s3) return false;
+  if (input.mcp || input.graphql || input.sql || input.s3 || input.sftp) return false;
   return input.method?.toUpperCase() === "POST";
 }
 

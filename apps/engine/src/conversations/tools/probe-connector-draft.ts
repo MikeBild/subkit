@@ -9,6 +9,7 @@ import { executeConnectorHttpRequest } from "../../connectors/drivers/http.ts";
 import { type McpProbeManifest, probeMcpConnector } from "../../connectors/drivers/mcp.ts";
 import { probePgConnector } from "../../connectors/drivers/postgres.ts";
 import { probeS3Connector } from "../../connectors/drivers/s3.ts";
+import { probeSftpConnector } from "../../connectors/index.ts";
 import { listResolvedConnectorTemplates } from "../../connectors/template-resolver.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import { logger } from "../../logging/index.ts";
@@ -262,16 +263,40 @@ export const probeConnectorDraftTool: ConversationTool = {
       successor_uri: null,
     };
 
-    if (connector.driver === "postgres" || connector.driver === "s3") {
+    if (
+      connector.driver === "postgres" ||
+      connector.driver === "s3" ||
+      connector.driver === "sftp"
+    ) {
       const started = Date.now();
+      const sftpCredential =
+        connector.driver === "sftp" ? getDraftCredential(ctx.conversation_id) : null;
       const res =
         connector.driver === "postgres"
           ? await probePgConnector(draftView, ctx.db)
-          : await probeS3Connector({ db: ctx.db, tenant_id: ctx.tenant_id, connector: draftView });
+          : connector.driver === "sftp"
+            ? await probeSftpConnector({
+                db: ctx.db,
+                tenant_id: ctx.tenant_id,
+                connector: draftView,
+                ...(sftpCredential
+                  ? { credential_override: toDecryptedCredential(sftpCredential) }
+                  : {}),
+              })
+            : await probeS3Connector({
+                db: ctx.db,
+                tenant_id: ctx.tenant_id,
+                connector: draftView,
+              });
       const duration_ms = Date.now() - started;
       const latest_probe = {
         ok: res.ok,
-        method: connector.driver === "postgres" ? "SELECT 1" : "HEAD /",
+        method:
+          connector.driver === "postgres"
+            ? "SELECT 1"
+            : connector.driver === "sftp"
+              ? "LIST /"
+              : "HEAD /",
         path: "(driver handshake)",
         environment: draftView.environment,
         ...(typeof (res as { status?: number }).status === "number"

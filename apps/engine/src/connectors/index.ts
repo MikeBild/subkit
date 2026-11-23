@@ -1,5 +1,6 @@
 export * from "./circuit-breaker.ts";
 export * from "./config-schemas.ts";
+export { type SftpMethod, SftpRefusal } from "./core/sftp.ts";
 export * from "./credential-setup-grant.ts";
 export * from "./discovery/service.ts";
 export * from "./discovery/types.ts";
@@ -7,7 +8,13 @@ export { getDriverFetch } from "./drivers/fetch-seam.ts";
 export { FETCH_DEADLINE_MS } from "./drivers/http.ts";
 export * from "./drivers/index.ts";
 export { readBodyCapped } from "./drivers/response-body.ts";
-export { scrubUrl, urlHasInlineCredentials } from "./egress.ts";
+export {
+  executeSftpRequest,
+  SftpConnectorError,
+  type SftpResponse,
+  sftpAuthenticationFailed,
+} from "./drivers/sftp.ts";
+export { scrubUrl, urlHasInlineCredentials, withEgressAudit } from "./egress.ts";
 export { fetchWithEgressGuard, guardedFetch } from "./egress-fetch.ts";
 export {
   assertEgressAllowedResolved,

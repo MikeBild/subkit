@@ -9,6 +9,7 @@ import { probeLocalConnector } from "./local.ts";
 import { probeMcpConnector } from "./mcp.ts";
 import { probePgConnector } from "./postgres.ts";
 import { probeS3Connector } from "./s3.ts";
+import { probeSftpConnector } from "./sftp.ts";
 
 export type ProbeErrorCode =
   | "credential_missing"
@@ -82,6 +83,8 @@ async function probeWithDriver(p: {
       return probePgConnector(p.connector, p.db);
     case "s3":
       return probeS3Connector(p);
+    case "sftp":
+      return probeSftpConnector(p);
     case "graphql":
       return probeGraphQLConnector(p);
     case "mcp":
@@ -106,4 +109,5 @@ export {
   probeMcpConnector,
   probePgConnector,
   probeS3Connector,
+  probeSftpConnector,
 };

@@ -76,6 +76,7 @@ export interface ResolvedRequestParts {
   body: unknown;
   s3_key: string | undefined;
   s3_prefix: string | undefined;
+  sftp_path: string | undefined;
   sql_params: unknown[] | undefined;
   mcp_target: PlaceholderResult | null;
   mcp_arguments: ValueResult | null;

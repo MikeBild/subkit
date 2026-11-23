@@ -87,6 +87,7 @@ function pickResolvedUrl(meta: RequestMeta | null | undefined): string | undefin
   if (meta.driver === "s3") {
     return meta.key ?? meta.prefix ?? undefined;
   }
+  if (meta.driver === "sftp") return meta.path;
   return undefined;
 }
 

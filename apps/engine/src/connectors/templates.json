@@ -13017,6 +13017,153 @@
   },
   {
     "version": 1,
+    "slug": "sftp",
+    "name": "SFTP",
+    "driver": "sftp",
+    "base_url": "",
+    "auth_type": "basic",
+    "oauth": null,
+    "default_skill": "sftp-basics",
+    "ingestion_source": "unsupported",
+    "ingestion_url": null,
+    "icon": "sftp.svg",
+    "description": "SFTP file server",
+    "category": "storage",
+    "tags": ["sftp", "ssh", "files"],
+    "setup_instructions": "Enter the server address as sftp://host:22/folder, the SSH host key fingerprint (SHA256:…, from ssh-keyscan host | ssh-keygen -lf -) and a username and password. Every path a workflow uses stays inside that folder.",
+    "auth_options": [
+      {
+        "auth_type": "basic",
+        "label": "Username and password",
+        "description": "Sign in to the SFTP server with a username and password."
+      }
+    ],
+    "url_pattern": "^sftp:\\/\\/",
+    "keywords": ["sftp", "ssh", "file transfer", "upload", "download"],
+    "inline_schema": null,
+    "probe_endpoint": null,
+    "credential_hints": [
+      {
+        "field": "username",
+        "label": "SFTP user",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "password",
+        "label": "SFTP password",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    },
+    "recipes": [
+      {
+        "slug": "list-folder",
+        "title": "List a folder",
+        "description": "List the files in a folder on the SFTP server.",
+        "intent_keywords": ["sftp list", "list folder", "list files"],
+        "derived_from_skill": "sftp-basics",
+        "category": "storage",
+        "tags": [],
+        "difficulty": "intermediate",
+        "estimated_setup_minutes": 5,
+        "prerequisites": [],
+        "sample_input": null,
+        "expected_output_preview": null,
+        "required_connectors": [],
+        "version": "1.0.0",
+        "author": "subkit-builtin",
+        "last_validated_at": null,
+        "deprecated": null,
+        "workflow": {
+          "name": "sftp-list-folder",
+          "description": "List files in an SFTP folder.",
+          "input_schema": {
+            "type": "object",
+            "required": ["folder"],
+            "properties": {
+              "folder": {
+                "type": "string",
+                "description": "Folder below the connector's root"
+              }
+            }
+          },
+          "steps": [
+            {
+              "kind": "request",
+              "protocol": "sftp",
+              "id": "list",
+              "method": "LIST",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "sftp": {
+                "path": "${input.folder}",
+                "max_entries": 1000
+              }
+            }
+          ]
+        }
+      },
+      {
+        "slug": "download-file",
+        "title": "Download a file",
+        "description": "Download one file from the SFTP server as a run file.",
+        "intent_keywords": ["sftp download", "get file", "fetch file"],
+        "derived_from_skill": "sftp-basics",
+        "category": "storage",
+        "tags": [],
+        "difficulty": "intermediate",
+        "estimated_setup_minutes": 5,
+        "prerequisites": [],
+        "sample_input": null,
+        "expected_output_preview": null,
+        "required_connectors": [],
+        "version": "1.0.0",
+        "author": "subkit-builtin",
+        "last_validated_at": null,
+        "deprecated": null,
+        "workflow": {
+          "name": "sftp-download-file",
+          "description": "Download one SFTP file.",
+          "input_schema": {
+            "type": "object",
+            "required": ["path"],
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "File path below the connector's root"
+              }
+            }
+          },
+          "steps": [
+            {
+              "kind": "request",
+              "protocol": "sftp",
+              "id": "download",
+              "method": "GET",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "sftp": {
+                "path": "${input.path}"
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "aws_service": null,
+    "aws_region": null,
+    "verified_at": null
+  },
+  {
+    "version": 1,
     "slug": "salesforce",
     "name": "Salesforce",
     "driver": "http",

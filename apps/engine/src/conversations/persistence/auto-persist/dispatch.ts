@@ -40,7 +40,8 @@ export async function maybeAutoProbeForSave(ctx: ToolContext, tenant_id: string)
       connector.driver === "http" ||
       connector.driver === "graphql" ||
       connector.driver === "postgres" ||
-      connector.driver === "s3";
+      connector.driver === "s3" ||
+      connector.driver === "sftp";
     if (!requiresProbe) return;
     if (connector.latest_probe?.ok === true) return;
     if (!connector.template_slug) return;

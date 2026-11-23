@@ -71,7 +71,7 @@ Any step can carry `for_each` and then runs once per element; the element is `$i
 
 | Kind | Purpose | One-line config example |
 |---|---|---|
-| `request` | Call an external connector boundary via a connector (http / graphql / s3) | `{ "connector_id": "00000000-0000-0000-0000-000000000001", "method": "GET", "path": "/crm/v3/objects/contacts" }` |
+| `request` | Call an external connector boundary via a connector (http / graphql / sql / s3 / sftp / mcp) | `{ "connector_id": "00000000-0000-0000-0000-000000000001", "method": "GET", "path": "/crm/v3/objects/contacts" }` |
 | `transform` | Reshape data with sandboxed JavaScript (JS-only — JSONata is not a transform language), no I/O; `language: "parse-file"` reads a CSV, XLSX, PDF, DOCX or ZIP file into rows or text | `{ "language": "javascript", "expression": "return input.scope.list_orders.data.results.filter(r => r.amount > 100);" }` |
 | `model` | Ask the workspace AI model; the answer must match `output_schema`. Use it instead of a raw provider call | `{ "prompt": "Classify ${input.text}", "output_schema": { "type": "object", "required": ["label"], "properties": { "label": { "type": "string" } } } }` |
 | `wait` | Pause for a duration | `{ "duration_ms": 30000 }` |

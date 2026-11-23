@@ -233,6 +233,10 @@ const EXPECTED_INVENTORY = {
     version: 1,
     capabilities: { webhooks: false, webhook_events: [], rate_limits: null },
   },
+  sftp: {
+    version: 1,
+    capabilities: { webhooks: false, webhook_events: [], rate_limits: null },
+  },
   shopify: {
     version: 1,
     capabilities: {

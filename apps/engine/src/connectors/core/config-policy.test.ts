@@ -113,3 +113,15 @@ test("a device connector takes no credentials", () => {
       ]);
   }
 });
+
+test("an sftp connector signs in with a username and password only", () => {
+  expect(validateConnectorAuthType("sftp", "basic")).toEqual([]);
+  expect(validateConnectorAuthType("sftp", undefined)).toEqual([]);
+  for (const auth of ["none", "bearer", "header"] as const)
+    expect(validateConnectorAuthType("sftp", auth)).toEqual([
+      {
+        path: "auth_type",
+        message: "an sftp connector signs in with a username and password — use auth_type 'basic'",
+      },
+    ]);
+});

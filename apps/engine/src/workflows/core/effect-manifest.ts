@@ -80,6 +80,7 @@ export const ResolvedEffectBindingSchema = z
       "graphql",
       "postgres",
       "s3",
+      "sftp",
       "mcp",
       "local_files",
       "local_browser",
@@ -233,7 +234,10 @@ function effectOf(
       override: step.side_effects === "write" ? "write" : null,
       graphql: { operation: step.graphql.operation ?? null, query: step.graphql.query },
     });
-  if ((binding.driver === "http" || binding.driver === "s3") && step.method === "DELETE")
+  if (
+    (binding.driver === "http" || binding.driver === "s3" || binding.driver === "sftp") &&
+    step.method === "DELETE"
+  )
     return "destructive";
   return classifyHttpSideEffect({
     override: step.side_effects === "write" ? "write" : null,
@@ -243,6 +247,7 @@ function effectOf(
       : null,
     mcp: step.mcp ?? null,
     s3: binding.driver === "s3",
+    sftp: binding.driver === "sftp",
   });
 }
 

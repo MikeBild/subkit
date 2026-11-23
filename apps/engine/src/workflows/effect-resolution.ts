@@ -94,6 +94,16 @@ function displayTarget(url: URL): string | null {
   return `${url.origin}${url.pathname}`;
 }
 
+function sftpDisplayTarget(baseUrl: string | null | undefined, path: string): string | null {
+  try {
+    const url = new URL(baseUrl ?? "");
+    if (url.protocol !== "sftp:" || url.username || url.password) return null;
+    return `sftp://${url.host}${url.pathname.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
+  } catch {
+    return null;
+  }
+}
+
 function profileRefusal(
   step_id: string,
   isContent: boolean,
@@ -330,6 +340,7 @@ async function resolveBindings(
         );
       if (driver === "graphql" && connector?.base_url)
         target = displayTarget(new URL(connector.base_url));
+      if (driver === "sftp") target = sftpDisplayTarget(connector?.base_url, step.sftp?.path ?? "");
     } catch {}
     const compiledStorage =
       driver === "s3" ? compileStorageBoundary(step, storageBaseUrl(connector?.config)) : null;
