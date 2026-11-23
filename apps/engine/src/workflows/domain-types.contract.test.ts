@@ -53,9 +53,9 @@ test("domain topology preserves request verbs before and after boundary parsing"
     const connector_id = "00000000-0000-4000-8000-000000000123";
     const driver =
       method === "LIST"
-        ? { s3: { prefix: "records/" } }
+        ? { protocol: "s3" as const, s3: { prefix: "records/" } }
         : ["SELECT", "INSERT", "UPDATE", "CALL"].includes(method)
-          ? { sql: { query: "SELECT 1" } }
+          ? { protocol: "sql" as const, sql: { query: "SELECT 1" } }
           : {};
     const definition = {
       name: "method-contract",

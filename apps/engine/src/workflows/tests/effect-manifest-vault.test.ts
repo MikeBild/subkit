@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { workflowJsonDigest } from "../canonical-json.ts";
 import { compileWorkflowEffectManifest } from "../core/effect-manifest.ts";
+import { requestDigest } from "../core/request-protocol.ts";
 import { requestBoundary, requestBoundaryTarget } from "../request-boundary.ts";
 import { type RequestStep, WorkflowDefSchema } from "../types.ts";
 
@@ -38,7 +39,7 @@ function compile(headers: Record<string, string> | undefined) {
         connector_id: CONNECTOR,
         driver: "http",
         environment: "prod",
-        request_digest: workflowJsonDigest(parsed),
+        request_digest: requestDigest(parsed),
         target: requestBoundaryTarget(boundary),
         boundary,
         configuration_digest: "d".repeat(64),

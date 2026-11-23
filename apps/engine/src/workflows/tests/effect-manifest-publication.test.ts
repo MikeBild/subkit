@@ -4,6 +4,7 @@ import {
   compileWorkflowEffectManifest,
   type ResolvedEffectBinding,
 } from "../core/effect-manifest.ts";
+import { requestDigest } from "../core/request-protocol.ts";
 import { WorkflowDefSchema } from "../types.ts";
 
 const tenant = "00000000-0000-4000-8000-000000000001";
@@ -44,7 +45,7 @@ function fixture() {
     connector_id: connector,
     driver: "http",
     environment: "dev",
-    request_digest: workflowJsonDigest(step),
+    request_digest: requestDigest(step),
     configuration_digest: "a".repeat(64),
     credential_binding_digest: "b".repeat(64),
     rewrites_target: false,

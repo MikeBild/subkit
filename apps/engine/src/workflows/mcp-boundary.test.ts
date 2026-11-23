@@ -35,6 +35,7 @@ function step(mcp: Record<string, unknown> = {}, extra: Record<string, unknown> 
   return RequestStepSchema.parse({
     id: "tool",
     kind: "request",
+    protocol: "mcp",
     connector_id: CONNECTOR,
     mcp: {
       operation: "call_tool",
@@ -168,29 +169,34 @@ test("only a tool call can carry a boundary, and the step schema says so", () =>
   const base = { id: "tool", kind: "request", connector_id: CONNECTOR };
   expect(
     RequestStepSchema.safeParse({
+      protocol: "mcp",
       ...base,
       mcp: { operation: "read_resource", uri: "file:///a", boundary: scope({ variables: {} }) },
     }).success,
   ).toBe(false);
   expect(
     RequestStepSchema.safeParse({
+      protocol: "mcp",
       ...base,
       mcp: { operation: "call_tool", tool: "search", boundary: { ...scope(), max_calls: 0 } },
     }).success,
   ).toBe(false);
   expect(
     RequestStepSchema.safeParse({
+      protocol: "mcp",
       ...base,
       mcp: { operation: "call_tool", tool: "search", boundary: { ...scope(), effect: "none" } },
     }).success,
   ).toBe(false);
   expect(
     RequestStepSchema.safeParse({
+      protocol: "mcp",
       ...base,
       mcp: { operation: "call_tool", tool: "search", boundary: { ...scope(), surprise: true } },
     }).success,
   ).toBe(false);
   const resource = RequestStepSchema.parse({
+    protocol: "mcp",
     ...base,
     mcp: { operation: "read_resource", uri: "file:///a" },
   });

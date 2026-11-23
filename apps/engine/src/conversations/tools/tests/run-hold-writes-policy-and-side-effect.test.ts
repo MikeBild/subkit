@@ -198,6 +198,7 @@ it("configuration inspection stays small after a large preview and targets steps
     {
       id: "store",
       kind: "request",
+      protocol: "s3",
       method: "PUT",
       s3: { key: "reports/${input.day}" },
       body: "${input.report}",

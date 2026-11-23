@@ -12,6 +12,7 @@ const BUCKET = "reports";
 const deleteStep = RequestStepSchema.parse({
   id: "purge",
   kind: "request",
+  protocol: "s3",
   connector_id: "00000000-0000-4000-8000-000000000001",
   method: "DELETE",
   s3: {

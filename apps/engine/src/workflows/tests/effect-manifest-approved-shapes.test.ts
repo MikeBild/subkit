@@ -4,6 +4,7 @@ import {
   compileWorkflowEffectManifest,
   type ResolvedEffectBinding,
 } from "../core/effect-manifest.ts";
+import { requestDigest } from "../core/request-protocol.ts";
 import { WorkflowDefSchema } from "../types.ts";
 
 const tenant = "00000000-0000-4000-8000-000000000001";
@@ -47,7 +48,7 @@ function compiled(steps: Record<string, unknown>[], privacy?: "sensitive") {
       connector_id: connector,
       driver: "http",
       environment: "prod",
-      request_digest: workflowJsonDigest(step),
+      request_digest: requestDigest(step),
       target: `${origin}${(step as { path: string }).path}`,
       configuration_digest: "a".repeat(64),
       credential_binding_digest: "b".repeat(64),

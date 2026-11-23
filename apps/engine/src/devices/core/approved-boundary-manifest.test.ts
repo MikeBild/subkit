@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { workflowJsonDigest } from "../../workflows/canonical-json.ts";
 import { compileWorkflowEffectManifest } from "../../workflows/core/effect-manifest.ts";
+import { requestDigest } from "../../workflows/core/request-protocol.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
 import { approvedBoundary, localStepArgs } from "./step-args.ts";
 
@@ -37,7 +38,7 @@ test("the boundary is read from a manifest compiled by the approval itself", () 
     connector_id: CONNECTOR,
     driver: "local_browser" as const,
     environment: "prod" as const,
-    request_digest: workflowJsonDigest(definition.steps[index]),
+    request_digest: requestDigest(definition.steps[index]),
     target: `device:${DEVICE}/browser`,
     configuration_digest: D("d"),
     credential_binding_digest: null,

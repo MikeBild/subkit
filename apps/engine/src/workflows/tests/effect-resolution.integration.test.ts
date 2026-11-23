@@ -99,6 +99,7 @@ test("does not accept caller-supplied definitions or binding claims", async () =
 
 test("GraphQL binds its single endpoint rather than an HTTP path join", async () => {
   const f = await fixture({
+    protocol: "graphql",
     graphql: { operation: "query", query: "mutation { sendMessage { id } }" },
   });
   await ctx.db
@@ -116,6 +117,7 @@ test("GraphQL binds its single endpoint rather than an HTTP path join", async ()
 
 test("a GraphQL query on an http connector binds the fixed same-host path", async () => {
   const f = await fixture({
+    protocol: "graphql",
     method: "GET",
     path: "/graphql",
     body: undefined,
@@ -145,6 +147,7 @@ test("a GraphQL query on an http connector binds the fixed same-host path", asyn
 
 test("a GraphQL block on an http connector without a fixed path is not eligible", async () => {
   const f = await fixture({
+    protocol: "graphql",
     path: "//other.example/graphql",
     body: undefined,
     graphql: { operation: "query", query: "query { viewer { login } }" },
@@ -385,6 +388,7 @@ test("documentation placeholders do not turn a fixed request into a dynamic targ
 
 test("resolves S3 scope from the loaded connector without a network probe", async () => {
   const f = await fixture({
+    protocol: "s3",
     method: "PUT",
     path: undefined,
     body: "${input.report}",

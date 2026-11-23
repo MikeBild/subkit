@@ -45,7 +45,10 @@ function enterStep(
     aborted: env.signal.aborted,
     skipped: state.skippedStepIds.has(step.id),
     containerChild: plan.containerChildIds.has(step.id),
-    fixture: env.opts.step_output_fixtures?.[step.id] ?? env.opts.budget_resume?.[step.id],
+    fixture:
+      env.opts.step_output_fixtures?.[step.id] ??
+      env.opts.budget_resume?.[step.id] ??
+      env.opts.crash_resume?.[step.id],
     heldDependency: env.opts.hold_writes
       ? findHeldDependency(plan.dag, step.id, (sid) => state.heldOrSkippedStepIds.has(sid))
       : null,

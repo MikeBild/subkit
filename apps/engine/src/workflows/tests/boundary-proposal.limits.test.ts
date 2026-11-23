@@ -208,6 +208,7 @@ test("a storage removal gets a ceiling for the objects one run removed", async (
   const expire = {
     id: "expire",
     kind: "request",
+    protocol: "s3",
     connector_id: STORAGE,
     method: "DELETE",
     s3: { key: "x" },
@@ -248,6 +249,7 @@ test("a storage removal gets a ceiling for the objects one run removed", async (
 const store = {
   id: "store_report",
   kind: "request",
+  protocol: "s3",
   connector_id: STORAGE,
   method: "PUT",
   s3: { key: "x" },

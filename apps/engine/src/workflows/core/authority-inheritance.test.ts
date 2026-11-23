@@ -362,6 +362,7 @@ test("a tool call stated as a read gets no relaxed read inheritance", () => {
   const tool = (id: string, max_retries: number) => ({
     id,
     kind: "request",
+    protocol: "mcp",
     connector_id: connector,
     mcp: { operation: "call_tool", tool: "search", arguments: { q: "alpha" } },
     max_retries,

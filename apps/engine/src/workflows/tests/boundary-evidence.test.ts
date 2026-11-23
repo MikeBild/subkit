@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { workflowJsonDigest } from "../canonical-json.ts";
+import { requestDigest } from "../core/request-protocol.ts";
 import { compileWorkflowEffectManifest, type ResolvedEffectBinding } from "../effect-manifest.ts";
 import { remedyFor } from "../issue-remedies.ts";
 import { storageBoundary, storageTarget } from "../storage-boundary.ts";
@@ -20,6 +21,7 @@ function fixture(key_prefix: string) {
           {
             id: "store_manifest",
             kind: "request",
+            protocol: "s3",
             connector_id: connector,
             method: "PUT",
             body: "payload",
@@ -41,7 +43,7 @@ function fixture(key_prefix: string) {
     connector_id: connector,
     driver: "s3",
     environment: "dev",
-    request_digest: workflowJsonDigest(step),
+    request_digest: requestDigest(step),
     target: storageTarget(storage),
     configuration_digest: "a".repeat(64),
     credential_binding_digest: "b".repeat(64),

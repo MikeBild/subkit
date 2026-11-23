@@ -78,6 +78,7 @@ describe("detectPlaceholderDestinations · scanned sites and path names", () => 
           {
             id: "notify",
             kind: "request",
+            protocol: "mcp",
             method: "CALL",
             connector_id: CONNECTOR_ID,
             mcp: {

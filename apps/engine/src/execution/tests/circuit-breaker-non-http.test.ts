@@ -107,6 +107,7 @@ describe("circuit-breaker enforcement is driver-agnostic", () => {
       steps: [
         {
           kind: "request",
+          protocol: "graphql",
           id: "gql",
           connector_id: graphqlConnectorId,
           graphql: { query: "query { viewer { id } }" },
@@ -138,6 +139,7 @@ describe("only availability failures reach the breaker", () => {
       steps: [
         {
           kind: "request",
+          protocol: "sql",
           id: "sql",
           connector_id: pgConnectorId,
           sql: { query: "SELECT FROM WHERE" },
@@ -168,6 +170,7 @@ describe("one outcome recorder decides for every driver", () => {
       steps: [
         {
           kind: "request",
+          protocol: "graphql",
           id: "gql",
           connector_id: failingGqlConnectorId,
           graphql: { query: "query { viewer { id } }" },
@@ -203,6 +206,7 @@ describe("one outcome recorder decides for every driver", () => {
       steps: [
         {
           kind: "request",
+          protocol: "graphql",
           id: "gql",
           connector_id: answeringGqlConnectorId,
           graphql: { query: "query { nope }" },

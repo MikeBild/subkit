@@ -65,13 +65,23 @@ test("known branch targets do not become forward references", () => {
 test("S3 optional body and object-key boundaries distinguish read, put and delete", () => {
   for (const body of [undefined, null]) {
     const result = validateWorkflowDef(
-      define([{ ...request, method: "DELETE", connector_id: connector, s3: { key: "a" }, body }]),
+      define([
+        {
+          protocol: "s3",
+          ...request,
+          method: "DELETE",
+          connector_id: connector,
+          s3: { key: "a" },
+          body,
+        },
+      ]),
     );
     expect(result.errors).toEqual([]);
   }
   const put = validateWorkflowDef(
     define([
       {
+        protocol: "s3",
         ...request,
         method: "PUT",
         connector_id: connector,
@@ -94,6 +104,7 @@ test("malformed addressing tokens report only their exact source slice and full 
   const result = validateWorkflowDef(
     define([
       {
+        protocol: "s3",
         ...request,
         connector_id: connector,
         path: "archive/",

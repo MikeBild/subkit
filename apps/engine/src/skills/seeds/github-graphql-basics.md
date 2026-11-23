@@ -19,12 +19,13 @@ Prefer GraphQL over REST when a workflow reads nested data (repo → issues → 
 
 ## Step shape
 
-A request step with a `graphql` sub-object is always sent as POST. On a graphql connector the endpoint is its base_url and `path`/`method` are ignored. On an existing http connector with base_url `https://api.github.com`, keep the `graphql` block and set `"path": "/graphql"` (no `url`, no `body`): the step reuses that connector's credential and headers, keeps `cursor_pagination`, and is reviewed by its operation (a query is a read).
+A request step with `"protocol": "graphql"` and a `graphql` sub-object is always sent as POST. On a graphql connector the endpoint is its base_url and `path`/`method` are ignored. On an existing http connector with base_url `https://api.github.com`, keep the `graphql` block and set `"path": "/graphql"` (no `url`, no `body`): the step reuses that connector's credential and headers, keeps `cursor_pagination`, and is reviewed by its operation (a query is a read).
 
 ```json
 {
   "id": "project_items",
   "kind": "request",
+  "protocol": "graphql",
   "connector_id": "<github-http-connector-id>",
   "path": "/graphql",
   "graphql": {
@@ -42,6 +43,7 @@ The same block on a graphql connector:
 {
   "id": "list_open_issues",
   "kind": "request",
+  "protocol": "graphql",
   "connector_id": "<github-graphql-connector-id>",
   "graphql": {
     "operation": "query",

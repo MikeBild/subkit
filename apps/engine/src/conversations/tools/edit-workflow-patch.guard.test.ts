@@ -71,6 +71,7 @@ test("invalid paths return compact actual step guidance without the draft payloa
   const draft = draftWithOneStep();
   draft.workflow.steps[0] = {
     kind: "request",
+    protocol: "s3",
     id: "report",
     method: "PUT",
     connector_id: "00000000-0000-4000-8000-000000000001",
@@ -97,6 +98,7 @@ test("step-ID edits pass through the canonical validation and draft persistence 
     {
       id: "store",
       kind: "request",
+      protocol: "s3",
       method: "PUT",
       connector_id: "00000000-0000-4000-8000-000000000001",
       s3: { key: "reports/file.json" },
@@ -122,6 +124,7 @@ test("step-ID edits pass through the canonical validation and draft persistence 
   });
   expect(result.ok).toBe(true);
   expect(draft.workflow.steps[1]).toMatchObject({
+    protocol: "s3",
     id: "store",
     s3: { key: "reports/file.json", scope: { key_prefix: "reports/", max_bytes: 1000 } },
   });
@@ -137,6 +140,7 @@ test("a failing JSON Patch op is named by index, operation, code and the nearest
   const draft = draftWithOneStep();
   draft.workflow.steps[0] = {
     kind: "request",
+    protocol: "s3",
     id: "report",
     method: "PUT",
     connector_id: "00000000-0000-4000-8000-000000000001",

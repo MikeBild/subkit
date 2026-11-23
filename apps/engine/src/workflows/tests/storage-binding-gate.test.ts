@@ -59,6 +59,7 @@ function s3Def(slug: string, connector_id: string | undefined): unknown {
       {
         id: "get_object",
         kind: "request",
+        protocol: "s3",
         method: "GET",
         ...(connector_id ? { connector_id } : { url: "https://placeholder.example.com" }),
         s3: { key: "reports/latest.json" },

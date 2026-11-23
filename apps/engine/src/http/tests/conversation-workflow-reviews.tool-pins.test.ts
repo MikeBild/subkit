@@ -91,6 +91,7 @@ async function prepared(descriptor: Record<string, unknown>) {
             {
               id: "lookup",
               kind: "request",
+              protocol: "mcp",
               connector_id: connectorId,
               mcp: {
                 operation: "call_tool",

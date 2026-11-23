@@ -84,6 +84,7 @@ beforeAll(async () => {
       {
         id: "read",
         kind: "request",
+        protocol: "mcp",
         connector_id: connectorId,
         mcp: { operation: "read_resource", uri: "reports://latest" },
       },

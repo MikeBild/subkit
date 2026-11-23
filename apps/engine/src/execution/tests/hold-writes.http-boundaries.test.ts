@@ -275,6 +275,7 @@ describe("hold-writes · HTTP", () => {
       steps: [
         {
           kind: "request",
+          protocol: "s3",
           id: "store",
           connector_id: store!.id,
           method: "PUT",

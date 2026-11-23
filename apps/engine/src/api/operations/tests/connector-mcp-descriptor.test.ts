@@ -17,6 +17,7 @@ test("the listed descriptor is exactly what a step pins and what the server is c
   const step = RequestStepSchema.parse({
     id: "call",
     kind: "request",
+    protocol: "mcp",
     connector_id: "00000000-0000-4000-8000-000000000001",
     mcp: {
       operation: "call_tool",

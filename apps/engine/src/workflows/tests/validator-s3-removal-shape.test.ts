@@ -15,6 +15,7 @@ const messagesFor = (step: Record<string, unknown>) =>
 
 test("the production shape — DELETE at a prefix with the keys in a body — is refused on both counts", () => {
   const messages = messagesFor({
+    protocol: "s3",
     method: "DELETE",
     path: "v1/sources/",
     body: { items: "${scope.list_sources.data.items}" },
@@ -26,15 +27,18 @@ test("the production shape — DELETE at a prefix with the keys in a body — is
 });
 
 test("a PUT needs an object key too; a read may still fall back to the path", () => {
-  expect(messagesFor({ method: "PUT", path: "reports/a.json", body: "{}", s3: {} })).toEqual(
-    expect.arrayContaining([expect.stringContaining("steps.purge.s3.key:")]),
+  expect(
+    messagesFor({ protocol: "s3", method: "PUT", path: "reports/a.json", body: "{}", s3: {} }),
+  ).toEqual(expect.arrayContaining([expect.stringContaining("steps.purge.s3.key:")]));
+  expect(messagesFor({ protocol: "s3", method: "GET", path: "reports/a.json", s3: {} })).toEqual(
+    [],
   );
-  expect(messagesFor({ method: "GET", path: "reports/a.json", s3: {} })).toEqual([]);
 });
 
 test("the per-object removal the driver actually supports is valid", () => {
   expect(
     messagesFor({
+      protocol: "s3",
       method: "DELETE",
       s3: {
         key: "${input.key}",
@@ -47,7 +51,13 @@ test("the per-object removal the driver actually supports is valid", () => {
 test("the parse schema stays lenient, so a stored version of the old shape still loads", () => {
   expect(
     WorkflowDefSchema.safeParse(
-      workflow({ method: "DELETE", path: "v1/sources/", body: { items: [] }, s3: {} }),
+      workflow({
+        protocol: "s3",
+        method: "DELETE",
+        path: "v1/sources/",
+        body: { items: [] },
+        s3: {},
+      }),
     ).success,
   ).toBe(true);
 });

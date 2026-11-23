@@ -122,6 +122,48 @@ describe("request + transform", () => {
     expect(details?.scope_shape).toBe("$scope.empty.data is an array of 3 iteration objects");
   });
 
+  test("crash_resume replays a finished step from its stored envelope and runs only the rest", async () => {
+    let fetchCount = 0;
+    const counterMock = await createMockServer((_, res) => {
+      fetchCount++;
+      return jsonResponse(res, 200, [{ name: "from_origin" }]);
+    });
+    try {
+      const { workflow_id } = await createWorkflowRow(ctx, {
+        name: "crash-resume-replay",
+        steps: [
+          { kind: "request", id: "users", method: "GET", url: `${counterMock.baseUrl}/users` },
+          {
+            kind: "transform",
+            id: "names",
+            language: "javascript",
+            expression: "return (input.scope.users.data || []).map((u) => u.name);",
+          },
+        ],
+      });
+      const resumed = await runExecution({
+        db: ctx.testDb.db,
+        tenant_id: ctx.tenantId,
+        source: { kind: "saved", workflow_id },
+        input: null,
+        options: {
+          crash_resume: {
+            users: { data: [{ name: "before_crash" }], duration_ms: 3, error: null },
+          },
+        },
+      });
+      expect(resumed.status).toBe("succeeded");
+      expect(resumed.output).toEqual(["before_crash"]);
+      expect(fetchCount).toBe(0);
+      expect(resumed.steps.map((s) => [s.step_key, s.status])).toEqual([
+        ["users", "succeeded"],
+        ["names", "succeeded"],
+      ]);
+    } finally {
+      await counterMock.close();
+    }
+  });
+
   test("step_output_fixtures short-circuits the upstream and feeds downstream from cached envelope", async () => {
     let fetchCount = 0;
     const counterMock = await createMockServer((_, res) => {

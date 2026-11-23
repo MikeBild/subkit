@@ -864,6 +864,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "query",
               "method": "POST",
               "connector_id": "00000000-0000-0000-0000-000000000000",
@@ -920,6 +921,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "list",
               "method": "POST",
               "connector_id": "00000000-0000-0000-0000-000000000000",
@@ -970,6 +972,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "create",
               "method": "POST",
               "connector_id": "00000000-0000-0000-0000-000000000000",
@@ -1087,6 +1090,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "query",
               "method": "POST",
               "connector_id": "00000000-0000-0000-0000-000000000000",
@@ -1143,6 +1147,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "list",
               "method": "POST",
               "connector_id": "00000000-0000-0000-0000-000000000000",
@@ -1193,6 +1198,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "create",
               "method": "POST",
               "connector_id": "00000000-0000-0000-0000-000000000000",
@@ -4116,6 +4122,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "s3",
               "id": "list",
               "method": "LIST",
               "connector_id": "00000000-0000-0000-0000-000000000000",
@@ -4162,6 +4169,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "s3",
               "id": "get",
               "method": "GET",
               "connector_id": "00000000-0000-0000-0000-000000000000",
@@ -4215,6 +4223,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "s3",
               "id": "put",
               "method": "PUT",
               "connector_id": "00000000-0000-0000-0000-000000000000",
@@ -4261,6 +4270,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "s3",
               "id": "delete",
               "method": "DELETE",
               "connector_id": "00000000-0000-0000-0000-000000000000",
@@ -6824,6 +6834,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "query",
               "method": "POST",
               "url": "${connector.github-graphql.base_url}",
@@ -6872,6 +6883,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "query",
               "method": "POST",
               "url": "${connector.github-graphql.base_url}",
@@ -6918,6 +6930,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "project_items",
               "method": "POST",
               "url": "${connector.github-graphql.base_url}",
@@ -6984,6 +6997,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "query",
               "method": "POST",
               "url": "${connector.github-graphql.base_url}",
@@ -7046,6 +7060,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "query",
               "method": "POST",
               "url": "${connector.github-graphql.base_url}",
@@ -7100,6 +7115,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "query",
               "method": "POST",
               "url": "${connector.github-graphql.base_url}",
@@ -10115,6 +10131,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "v",
               "method": "POST",
               "url": "${connector.linear.base_url}",
@@ -10149,6 +10166,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "t",
               "method": "POST",
               "url": "${connector.linear.base_url}",
@@ -10192,6 +10210,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "i",
               "method": "POST",
               "url": "${connector.linear.base_url}",
@@ -10244,6 +10263,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "c",
               "method": "POST",
               "url": "${connector.linear.base_url}",
@@ -10292,6 +10312,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "g",
               "method": "POST",
               "url": "${connector.linear.base_url}",
@@ -10341,6 +10362,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "u",
               "method": "POST",
               "url": "${connector.linear.base_url}",
@@ -10379,6 +10401,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "p",
               "method": "POST",
               "url": "${connector.linear.base_url}",
@@ -10422,6 +10445,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "c",
               "method": "POST",
               "url": "${connector.linear.base_url}",
@@ -10933,6 +10957,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "me",
               "method": "POST",
               "url": "${connector.monday.base_url}",
@@ -10967,6 +10992,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "list",
               "method": "POST",
               "url": "${connector.monday.base_url}",
@@ -11010,6 +11036,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "get",
               "method": "POST",
               "url": "${connector.monday.base_url}",
@@ -11062,6 +11089,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "create",
               "method": "POST",
               "url": "${connector.monday.base_url}",
@@ -11119,6 +11147,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "upd",
               "method": "POST",
               "url": "${connector.monday.base_url}",
@@ -11159,6 +11188,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "list",
               "method": "POST",
               "url": "${connector.monday.base_url}",
@@ -11193,6 +11223,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "list",
               "method": "POST",
               "url": "${connector.monday.base_url}",
@@ -11227,6 +11258,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "c",
               "method": "POST",
               "url": "${connector.monday.base_url}",
@@ -12521,6 +12553,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "sql",
               "id": "tables",
               "method": "SELECT",
               "connector_id": "00000000-0000-0000-0000-000000000000",
@@ -12555,6 +12588,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "sql",
               "id": "schemas",
               "method": "SELECT",
               "connector_id": "00000000-0000-0000-0000-000000000000",
@@ -12602,6 +12636,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "sql",
               "id": "describe",
               "method": "SELECT",
               "connector_id": "00000000-0000-0000-0000-000000000000",
@@ -12650,6 +12685,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "sql",
               "id": "count",
               "method": "SELECT",
               "connector_id": "00000000-0000-0000-0000-000000000000",
@@ -12702,6 +12738,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "sql",
               "id": "rows",
               "method": "SELECT",
               "connector_id": "00000000-0000-0000-0000-000000000000",
@@ -12750,6 +12787,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "sql",
               "id": "indexes",
               "method": "SELECT",
               "connector_id": "00000000-0000-0000-0000-000000000000",
@@ -12790,6 +12828,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "sql",
               "id": "activity",
               "method": "SELECT",
               "connector_id": "00000000-0000-0000-0000-000000000000",
@@ -12824,6 +12863,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "sql",
               "id": "sizes",
               "method": "SELECT",
               "connector_id": "00000000-0000-0000-0000-000000000000",
@@ -12875,6 +12915,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "sql",
               "id": "update",
               "connector_id": "00000000-0000-0000-0000-000000000000",
               "method": "UPDATE",
@@ -12935,6 +12976,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "sql",
               "id": "tx",
               "connector_id": "00000000-0000-0000-0000-000000000000",
               "method": "UPDATE",
@@ -12993,6 +13035,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "sql",
               "id": "read",
               "connector_id": "00000000-0000-0000-0000-000000000000",
               "method": "SELECT",
@@ -17272,6 +17315,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "introspect",
               "method": "POST",
               "connector_id": "00000000-0000-0000-0000-000000000000",
@@ -17317,6 +17361,7 @@
           "steps": [
             {
               "kind": "request",
+              "protocol": "graphql",
               "id": "get_test",
               "method": "POST",
               "connector_id": "00000000-0000-0000-0000-000000000000",

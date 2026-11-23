@@ -153,6 +153,7 @@ export async function fixture(
             {
               id: "notes",
               kind: "request",
+              protocol: "mcp",
               connector_id: resourceServer.id,
               mcp: { operation: "read_resource", uri: "file:///notes" },
             },

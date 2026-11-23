@@ -32,6 +32,7 @@ export {
   inspectAutomationReadiness,
 } from "./automation-readiness.ts";
 export { runLoopToForEachV2Backfill } from "./backfills/loop-to-for-each-v2.ts";
+export { runRequestProtocolV1Backfill } from "./backfills/request-protocol-v1.ts";
 export * from "./boundary-proposal.ts";
 export * from "./catalog-view.ts";
 export * from "./connector-refs.ts";

@@ -107,6 +107,7 @@ describe("an external tool call is a WRITE", () => {
     const result = await run(
       "mcp-hold-call-tool",
       {
+        protocol: "mcp",
         mcp: { operation: "call_tool", tool: "search", arguments: { q: "invoices" } },
         max_retries: 0,
       },
@@ -125,7 +126,11 @@ describe("an external tool call is a WRITE", () => {
   test("read_resource still executes live under hold_writes", async () => {
     const result = await run(
       "mcp-hold-read-resource",
-      { mcp: { operation: "read_resource", uri: "file:///reports/q3.md" }, max_retries: 0 },
+      {
+        protocol: "mcp",
+        mcp: { operation: "read_resource", uri: "file:///reports/q3.md" },
+        max_retries: 0,
+      },
       { hold_writes: true },
     );
     expect(result.status).toBe("succeeded");
@@ -138,6 +143,7 @@ describe("an external tool call is a WRITE", () => {
     const result = await run(
       "mcp-hold-declared-read",
       {
+        protocol: "mcp",
         mcp: { operation: "call_tool", tool: "search" },
         side_effects: "read",
         max_retries: 0,
@@ -158,6 +164,7 @@ describe("for_each: one step, one call per item", () => {
       {
         id: "fetch",
         kind: "request",
+        protocol: "mcp",
         connector_id: connectorId,
         mcp: { operation: "read_resource", uri: "file:///reports/${item.name}.md" },
         for_each: "(sourceData) => sourceData.targets.data",
@@ -184,6 +191,7 @@ describe("for_each: one step, one call per item", () => {
       {
         id: "push",
         kind: "request",
+        protocol: "mcp",
         connector_id: connectorId,
         mcp: { operation: "call_tool", tool: "search", arguments: { q: "${item.name}" } },
         for_each: "(sourceData) => sourceData.targets.data",
@@ -203,6 +211,7 @@ describe("for_each: one step, one call per item", () => {
       {
         id: "push",
         kind: "request",
+        protocol: "mcp",
         connector_id: connectorId,
         mcp: { operation: "call_tool", tool: "search", arguments: { q: "${item.name}" } },
         for_each: "(sourceData) => sourceData.targets.data",
@@ -225,6 +234,7 @@ describe("for_each: one step, one call per item", () => {
       {
         id: "push",
         kind: "request",
+        protocol: "mcp",
         connector_id: connectorId,
         mcp: { operation: "call_tool", tool: "search", arguments: { q: "${item.name}" } },
         for_each: "(sourceData) => sourceData.targets.data",
@@ -251,6 +261,7 @@ describe("for_each: one step, one call per item", () => {
         {
           id: "push",
           kind: "request",
+          protocol: "mcp",
           connector_id: connectorId,
           mcp: { operation: "call_tool", tool: "search", arguments: { q: "${item.name}" } },
           for_each: "(sourceData) => sourceData.targets.data",
@@ -273,6 +284,7 @@ describe("for_each: one step, one call per item", () => {
 describe("a fault in the step itself never reaches the wire", () => {
   test("an unaddressable remote tool name fails as mcp_step_invalid", async () => {
     const result = await run("mcp-bad-tool-name", {
+      protocol: "mcp",
       mcp: { operation: "call_tool", tool: "search.v2" },
       max_retries: 2,
       retry_backoff_ms: 50,
@@ -296,6 +308,7 @@ describe("a fault in the step itself never reaches the wire", () => {
       .set({ config: { mcp: { transport: "quic" } } })
       .where(eq(connectors.id, brokenConfigConnectorId));
     const result = await run("mcp-broken-config", {
+      protocol: "mcp",
       connector_id: brokenConfigConnectorId,
       mcp: { operation: "call_tool", tool: "search" },
       max_retries: 0,
@@ -316,6 +329,7 @@ describe("stopping a run stops the outbound call", () => {
       steps: [
         {
           kind: "request",
+          protocol: "mcp",
           id: "mcp",
           connector_id: connectorId,
           mcp: { operation: "call_tool", tool: "search" },

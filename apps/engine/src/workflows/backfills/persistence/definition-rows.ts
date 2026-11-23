@@ -59,3 +59,68 @@ export async function scheduleRowCount(
     );
   return Number(rows[0]?.c ?? 0);
 }
+
+export interface VersionDefinitionRow {
+  version_id: string;
+  workflow_id: string;
+  tenant_id: string;
+  slug: string;
+  version: number;
+  current: boolean;
+  dag: unknown;
+}
+
+export async function versionDefinitionRows(db: Db): Promise<VersionDefinitionRow[]> {
+  const rows = await db
+    .select({
+      version_id: workflowVersions.id,
+      workflow_id: workflows.id,
+      tenant_id: workflows.tenant_id,
+      slug: workflows.slug,
+      version: workflowVersions.version,
+      current_version_id: workflows.current_version_id,
+      dag: workflowVersions.dag,
+    })
+    .from(workflowVersions) // tenant-filter:exempt — one-shot boot backfill walks every tenant
+    .innerJoin(
+      workflows,
+      and(
+        eq(workflows.tenant_id, workflowVersions.tenant_id),
+        eq(workflows.id, workflowVersions.workflow_id),
+      ),
+    )
+    .where(isNull(workflows.deleted_at));
+  return rows.map(({ current_version_id, ...row }) => ({
+    ...row,
+    current: current_version_id === row.version_id,
+  }));
+}
+
+const IMMUTABLE_VERSION = "23514";
+
+export async function rewriteVersionDefinition(
+  db: Db,
+  row: Pick<VersionDefinitionRow, "tenant_id" | "version_id">,
+  dag: unknown,
+): Promise<"rewritten" | "immutable"> {
+  try {
+    await db.transaction(async (tx) => {
+      await tx
+        .update(workflowVersions)
+        .set({ dag })
+        .where(
+          and(
+            eq(workflowVersions.tenant_id, row.tenant_id),
+            eq(workflowVersions.id, row.version_id),
+          ),
+        );
+    });
+    return "rewritten";
+  } catch (err) {
+    const code =
+      (err as { code?: unknown; cause?: { code?: unknown } }).code ??
+      (err as { cause?: { code?: unknown } }).cause?.code;
+    if (code === IMMUTABLE_VERSION) return "immutable";
+    throw err;
+  }
+}

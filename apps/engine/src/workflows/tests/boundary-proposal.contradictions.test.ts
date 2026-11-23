@@ -95,7 +95,14 @@ test("a write whose size was never measured gets no ceiling at all", async () =>
     environment: "prod",
     viewer: viewer(tenant_id),
     definition: definition([
-      { id: "store", kind: "request", connector_id: STORAGE, method: "PUT", s3: { key: "x" } },
+      {
+        id: "store",
+        kind: "request",
+        protocol: "s3",
+        connector_id: STORAGE,
+        method: "PUT",
+        s3: { key: "x" },
+      },
     ]),
   });
   expect(proposals).toEqual([]);
@@ -111,6 +118,7 @@ test("a ceiling the step's own writes exceed is the same contradiction as a wron
     {
       id: "store",
       kind: "request",
+      protocol: "s3",
       connector_id: STORAGE,
       method: "PUT",
       s3: { key: "x", scope: { key_prefix: "v1/radar/", max_bytes } },
@@ -145,6 +153,7 @@ test("a request that was refused is not evidence and widens nothing", async () =
     {
       id: "store",
       kind: "request",
+      protocol: "s3",
       connector_id: STORAGE,
       method: "PUT",
       s3: { key: "x", scope: { key_prefix: "v1/radar/", max_bytes: 65_536 } },
@@ -203,6 +212,7 @@ test("a listing records the folder it read, and that is evidence", async () => {
       {
         id: "list_raw",
         kind: "request",
+        protocol: "s3",
         connector_id: STORAGE,
         method: "LIST",
         s3: { key: "x" },

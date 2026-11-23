@@ -23,7 +23,7 @@ describe("preparation holds are stricter than retry hints", () => {
   test("SELECT is not proof of a side-effect-free execution", () => {
     expect(
       requestRequiresPreparationHold(
-        step({ sql: { query: "SELECT writing_function()" } }),
+        step({ protocol: "sql", sql: { query: "SELECT writing_function()" } }),
         "postgres",
       ),
     ).toBe(true);
@@ -92,6 +92,7 @@ describe("classifyRequestStepSideEffects · explicit override wins both directio
     expect(
       classifyRequestStepSideEffects(
         step({
+          protocol: "graphql",
           connector_id: CONNECTOR_ID,
           side_effects: "write",
           graphql: { operation: "query", query: "{ things { id } }" },
@@ -106,6 +107,7 @@ describe("classifyRequestStepSideEffects · GraphQL", () => {
     expect(
       classifyRequestStepSideEffects(
         step({
+          protocol: "graphql",
           connector_id: CONNECTOR_ID,
           graphql: { operation: "query", query: "query L { things { id } }" },
         }),
@@ -117,6 +119,7 @@ describe("classifyRequestStepSideEffects · GraphQL", () => {
     expect(
       classifyRequestStepSideEffects(
         step({
+          protocol: "graphql",
           connector_id: CONNECTOR_ID,
           graphql: { operation: "mutation", query: "mutation A { add { id } }" },
         }),
@@ -128,6 +131,7 @@ describe("classifyRequestStepSideEffects · GraphQL", () => {
     expect(
       classifyRequestStepSideEffects(
         step({
+          protocol: "graphql",
           connector_id: CONNECTOR_ID,
           graphql: { query: "mutation AddThing($n: String!) { add(name: $n) { id } }" },
         }),
@@ -139,6 +143,7 @@ describe("classifyRequestStepSideEffects · GraphQL", () => {
     expect(
       classifyRequestStepSideEffects(
         step({
+          protocol: "graphql",
           connector_id: CONNECTOR_ID,
           graphql: { query: "# creates a thing\nmutation { add { id } }" },
         }),
@@ -149,7 +154,11 @@ describe("classifyRequestStepSideEffects · GraphQL", () => {
   test("bare selection-set shorthand is a query → read", () => {
     expect(
       classifyRequestStepSideEffects(
-        step({ connector_id: CONNECTOR_ID, graphql: { query: "{ things { id } }" } }),
+        step({
+          protocol: "graphql",
+          connector_id: CONNECTOR_ID,
+          graphql: { query: "{ things { id } }" },
+        }),
       ),
     ).toBe("read");
   });
@@ -158,6 +167,7 @@ describe("classifyRequestStepSideEffects · GraphQL", () => {
     expect(
       classifyRequestStepSideEffects(
         step({
+          protocol: "graphql",
           connector_id: CONNECTOR_ID,
           graphql: { query: "subscription { thingAdded { id } }" },
         }),
@@ -170,7 +180,7 @@ describe("classifyRequestStepSideEffects · SQL", () => {
   test("SELECT → read", () => {
     expect(
       classifyRequestStepSideEffects(
-        step({ method: "SELECT", sql: { query: "SELECT id FROM widgets" } }),
+        step({ protocol: "sql", method: "SELECT", sql: { query: "SELECT id FROM widgets" } }),
       ),
     ).toBe("read");
   });
@@ -178,7 +188,11 @@ describe("classifyRequestStepSideEffects · SQL", () => {
   test("leading whitespace + line comment before SELECT → read", () => {
     expect(
       classifyRequestStepSideEffects(
-        step({ method: "SELECT", sql: { query: "  -- list them\n  select id from widgets" } }),
+        step({
+          protocol: "sql",
+          method: "SELECT",
+          sql: { query: "  -- list them\n  select id from widgets" },
+        }),
       ),
     ).toBe("read");
   });
@@ -186,7 +200,11 @@ describe("classifyRequestStepSideEffects · SQL", () => {
   test("INSERT → write", () => {
     expect(
       classifyRequestStepSideEffects(
-        step({ method: "INSERT", sql: { query: "INSERT INTO widgets (id) VALUES ($1)" } }),
+        step({
+          protocol: "sql",
+          method: "INSERT",
+          sql: { query: "INSERT INTO widgets (id) VALUES ($1)" },
+        }),
       ),
     ).toBe("write");
   });
@@ -194,7 +212,7 @@ describe("classifyRequestStepSideEffects · SQL", () => {
   test("UPDATE → write", () => {
     expect(
       classifyRequestStepSideEffects(
-        step({ method: "UPDATE", sql: { query: "UPDATE widgets SET name = $1" } }),
+        step({ protocol: "sql", method: "UPDATE", sql: { query: "UPDATE widgets SET name = $1" } }),
       ),
     ).toBe("write");
   });
@@ -202,7 +220,11 @@ describe("classifyRequestStepSideEffects · SQL", () => {
   test("WITH-CTE classifies write conservatively", () => {
     expect(
       classifyRequestStepSideEffects(
-        step({ method: "SELECT", sql: { query: "WITH c AS (SELECT 1) SELECT * FROM c" } }),
+        step({
+          protocol: "sql",
+          method: "SELECT",
+          sql: { query: "WITH c AS (SELECT 1) SELECT * FROM c" },
+        }),
       ),
     ).toBe("write");
   });
@@ -211,6 +233,7 @@ describe("classifyRequestStepSideEffects · SQL", () => {
     expect(
       classifyRequestStepSideEffects(
         step({
+          protocol: "sql",
           method: "SELECT",
           sql: {
             query: "SELECT id FROM widgets",
@@ -225,6 +248,7 @@ describe("classifyRequestStepSideEffects · SQL", () => {
     expect(
       classifyRequestStepSideEffects(
         step({
+          protocol: "sql",
           method: "SELECT",
           sql: {
             query: "SELECT id FROM widgets",
@@ -240,13 +264,18 @@ describe("classifyRequestStepSideEffects · MCP", () => {
   test("call_tool is a write — a missing annotation gets no benefit of the doubt", () => {
     expect(
       classifyRequestStepSideEffects(
-        step({ connector_id: CONNECTOR_ID, mcp: { operation: "call_tool", tool: "send_email" } }),
+        step({
+          protocol: "mcp",
+          connector_id: CONNECTOR_ID,
+          mcp: { operation: "call_tool", tool: "send_email" },
+        }),
       ),
     ).toBe("write");
   });
 
   test("call_tool is a write even though the step method defaults to GET", () => {
     const parsed = step({
+      protocol: "mcp",
       connector_id: CONNECTOR_ID,
       mcp: { operation: "call_tool", tool: "anything" },
     });
@@ -257,12 +286,20 @@ describe("classifyRequestStepSideEffects · MCP", () => {
   test("read_resource and get_prompt are reads by the operation alone", () => {
     expect(
       classifyRequestStepSideEffects(
-        step({ connector_id: CONNECTOR_ID, mcp: { operation: "read_resource", uri: "file:///a" } }),
+        step({
+          protocol: "mcp",
+          connector_id: CONNECTOR_ID,
+          mcp: { operation: "read_resource", uri: "file:///a" },
+        }),
       ),
     ).toBe("read");
     expect(
       classifyRequestStepSideEffects(
-        step({ connector_id: CONNECTOR_ID, mcp: { operation: "get_prompt", prompt: "summarise" } }),
+        step({
+          protocol: "mcp",
+          connector_id: CONNECTOR_ID,
+          mcp: { operation: "get_prompt", prompt: "summarise" },
+        }),
       ),
     ).toBe("read");
   });
@@ -271,6 +308,7 @@ describe("classifyRequestStepSideEffects · MCP", () => {
     expect(
       classifyRequestStepSideEffects(
         step({
+          protocol: "mcp",
           connector_id: CONNECTOR_ID,
           side_effects: "read",
           mcp: { operation: "call_tool", tool: "search" },
@@ -280,6 +318,7 @@ describe("classifyRequestStepSideEffects · MCP", () => {
     expect(
       classifyRequestStepSideEffects(
         step({
+          protocol: "mcp",
           connector_id: CONNECTOR_ID,
           side_effects: "write",
           mcp: { operation: "read_resource", uri: "file:///a" },
@@ -293,7 +332,7 @@ describe("classifyRequestStepSideEffects · S3", () => {
   test("GET → read", () => {
     expect(
       classifyRequestStepSideEffects(
-        step({ connector_id: CONNECTOR_ID, method: "GET", s3: { key: "a.json" } }),
+        step({ protocol: "s3", connector_id: CONNECTOR_ID, method: "GET", s3: { key: "a.json" } }),
       ),
     ).toBe("read");
   });
@@ -301,7 +340,12 @@ describe("classifyRequestStepSideEffects · S3", () => {
   test("LIST → read", () => {
     expect(
       classifyRequestStepSideEffects(
-        step({ connector_id: CONNECTOR_ID, method: "LIST", s3: { prefix: "exports/" } }),
+        step({
+          protocol: "s3",
+          connector_id: CONNECTOR_ID,
+          method: "LIST",
+          s3: { prefix: "exports/" },
+        }),
       ),
     ).toBe("read");
   });
@@ -309,7 +353,7 @@ describe("classifyRequestStepSideEffects · S3", () => {
   test("PUT → write", () => {
     expect(
       classifyRequestStepSideEffects(
-        step({ connector_id: CONNECTOR_ID, method: "PUT", s3: { key: "a.json" } }),
+        step({ protocol: "s3", connector_id: CONNECTOR_ID, method: "PUT", s3: { key: "a.json" } }),
       ),
     ).toBe("write");
   });
@@ -318,6 +362,7 @@ describe("classifyRequestStepSideEffects · S3", () => {
     expect(
       classifyRequestStepSideEffects(
         requestStep({
+          protocol: "s3",
           connector_id: CONNECTOR_ID,
           method: "PUT",
           side_effects: "read",
@@ -330,7 +375,12 @@ describe("classifyRequestStepSideEffects · S3", () => {
   test("DELETE → write", () => {
     expect(
       classifyRequestStepSideEffects(
-        step({ connector_id: CONNECTOR_ID, method: "DELETE", s3: { key: "a.json" } }),
+        step({
+          protocol: "s3",
+          connector_id: CONNECTOR_ID,
+          method: "DELETE",
+          s3: { key: "a.json" },
+        }),
       ),
     ).toBe("write");
   });

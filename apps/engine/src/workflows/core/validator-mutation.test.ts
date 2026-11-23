@@ -48,6 +48,7 @@ describe("validator mutation boundaries", () => {
         {
           id: "put",
           kind: "request",
+          protocol: "s3",
           method: "PUT",
           connector_id: "00000000-0000-4000-8000-000000000001",
           path: "archive/",
@@ -56,6 +57,7 @@ describe("validator mutation boundaries", () => {
         {
           id: "delete",
           kind: "request",
+          protocol: "s3",
           method: "DELETE",
           connector_id: "00000000-0000-4000-8000-000000000001",
           path: "archive/",

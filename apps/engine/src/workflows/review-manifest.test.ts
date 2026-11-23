@@ -105,6 +105,7 @@ test("an MCP tool call shows its tool, the effect as stated, its ceiling and its
       {
         id: "lookup",
         kind: "request",
+        protocol: "mcp",
         connector_id: server.id,
         mcp: {
           operation: "call_tool",

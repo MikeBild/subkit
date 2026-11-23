@@ -71,6 +71,7 @@ up front removes the whole loop.
 {
   "id": "list_repos",
   "kind": "request",
+  "protocol": "graphql",
   "connector_id": "00000000-0000-0000-0000-000000000001",
   "graphql": {
     "query": "query ListRepos($owner: String!, $first: Int!) { user(login: $owner) { repositories(first: $first) { nodes { name stargazerCount } } } }",
@@ -79,8 +80,8 @@ up front removes the whole loop.
 }
 ```
 
-For GraphQL request steps, `connector_id`, `method`, `path`, `query`, `headers`,
-and `graphql` live at the top level of the step. Do not wrap them in a legacy
+For GraphQL request steps, `"protocol": "graphql"`, `connector_id`, `method`,
+`path`, `query`, `headers`, and `graphql` live at the top level of the step. Do not wrap them in a legacy
 `config` object.
 
 Three keys under `graphql`:
@@ -133,6 +134,7 @@ Example mutation:
 {
   "id": "move_deal",
   "kind": "request",
+  "protocol": "graphql",
   "connector_id": "00000000-0000-0000-0000-000000000002",
   "graphql": {
     "operation": "mutation",
@@ -156,6 +158,7 @@ GraphQL's natural batching is putting multiple root fields in one query:
 {
   "id": "dashboard",
   "kind": "request",
+  "protocol": "graphql",
   "connector_id": "00000000-0000-0000-0000-000000000003",
   "graphql": {
     "query": "query { orders(status: OPEN) { id total } customers(active: true) { id email } revenue(since: \"2026-01-01\") { total } }"
@@ -226,6 +229,7 @@ attempt is independently audited.
 {
   "id": "list_repos_lenient",
   "kind": "request",
+  "protocol": "graphql",
   "connector_id": "<gql_connector_id>",
   "graphql": {
     "query": "query { viewer { repositories(first: 10) { nodes { name } } } }"

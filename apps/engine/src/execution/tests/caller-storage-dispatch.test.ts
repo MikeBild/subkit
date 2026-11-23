@@ -70,6 +70,7 @@ test("an unsupported S3 range cannot disable principal-bound ownership before di
       {
         id: "read",
         kind: "request",
+        protocol: "s3",
         connector_id: connectorId,
         method: "GET",
         s3: {

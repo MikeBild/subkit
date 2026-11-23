@@ -49,7 +49,7 @@ test("every refusal names its cause", () => {
   expect(reason({ boundary: undefined })).toBe("no_boundary");
   expect(
     compileRequestBoundary(
-      step({ method: "GET", s3: { key: "a" }, boundary: release.boundary }),
+      step({ protocol: "s3", method: "GET", s3: { key: "a" }, boundary: release.boundary }),
       BASE,
     ).refusal,
   ).toBe("not_http_step");

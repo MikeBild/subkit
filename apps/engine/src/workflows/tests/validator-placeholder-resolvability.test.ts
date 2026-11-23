@@ -30,6 +30,7 @@ describe("validateWorkflowDef — addressing-surface placeholder resolvability",
         {
           id: "put_report",
           kind: "request",
+          protocol: "s3",
           method: "GET",
           connector_id: "5f6b2f64-9c1a-4b7e-8c4d-2c9d3e4f5a6b",
           s3: { key: "reports/${input}" },
@@ -123,6 +124,7 @@ describe("validateWorkflowDef — addressing-surface placeholder resolvability",
         {
           id: "gql",
           kind: "request",
+          protocol: "graphql",
           method: "POST",
           connector_id: "7a1c3e5d-2b4f-4a6c-9d8e-1f2a3b4c5d6e",
           graphql: {
@@ -144,6 +146,7 @@ describe("validateWorkflowDef — addressing-surface placeholder resolvability",
         {
           id: "project_items",
           kind: "request",
+          protocol: "graphql",
           method: "GET",
           connector_id: "7a1c3e5d-2b4f-4a6c-9d8e-1f2a3b4c5d6e",
           graphql: {

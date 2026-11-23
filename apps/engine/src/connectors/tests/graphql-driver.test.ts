@@ -551,6 +551,7 @@ describe("graphql request step · envelope unwrap", () => {
     const step: RequestStep = {
       id: "fetch_users",
       kind: "request",
+      protocol: "graphql",
       method: "POST",
       connector_id: connectorId,
       graphql: {
@@ -578,6 +579,7 @@ describe("graphql request step · envelope unwrap", () => {
     const step: RequestStep = {
       id: "fetch_broken",
       kind: "request",
+      protocol: "graphql",
       method: "POST",
       connector_id: connectorId,
       graphql: { query: "query Broken { brokenField }" },

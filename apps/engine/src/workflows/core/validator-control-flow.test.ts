@@ -56,7 +56,9 @@ test("duplicate identifiers, missing request addresses and invalid function bodi
   expect(
     validateWorkflowDef({
       name: "Missing",
-      steps: [{ id: "r", kind: "request", method: "GET", sql: { query: "select 1" } }],
+      steps: [
+        { id: "r", kind: "request", protocol: "sql", method: "GET", sql: { query: "select 1" } },
+      ],
     }).errors,
   ).toContainEqual({ path: "steps.r", message: "request step must specify url or connector_id" });
   const syntax = validateWorkflowDef({
@@ -76,6 +78,7 @@ test("nested GraphQL and MCP argument arrays retain addressing-error paths", () 
     [
       "graphql.variables.rows.0.id",
       {
+        protocol: "graphql",
         graphql: {
           query: "query { viewer { id } }",
           variables: { rows: [{ id: "${scope.absent.data.id}" }, null, 1] },
@@ -85,6 +88,7 @@ test("nested GraphQL and MCP argument arrays retain addressing-error paths", () 
     [
       "mcp.arguments.rows.0.id",
       {
+        protocol: "mcp",
         mcp: {
           operation: "call_tool",
           tool: "lookup",

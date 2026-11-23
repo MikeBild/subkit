@@ -4,6 +4,7 @@ import {
   compileWorkflowEffectManifest,
   type ResolvedEffectBinding,
 } from "../core/effect-manifest.ts";
+import { requestDigest } from "../core/request-protocol.ts";
 import { readPathBoundary, readPathTarget } from "../read-path-boundary.ts";
 import { requestBoundary, requestBoundaryTarget } from "../request-boundary.ts";
 import { storageBoundary, storageTarget } from "../storage-boundary.ts";
@@ -39,7 +40,7 @@ function fixture(request: Record<string, unknown> = {}) {
     connector_id: connector,
     driver: "http",
     environment: "dev",
-    request_digest: workflowJsonDigest(definition.steps[0]),
+    request_digest: requestDigest(definition.steps[0]),
     target: "https://example.test/messages",
     configuration_digest: "a".repeat(64),
     credential_binding_digest: "b".repeat(64),
@@ -70,6 +71,7 @@ for (const kind of ["storage", "read_path", "boundary"] as const) {
     const input = fixture(
       kind === "storage"
         ? {
+            protocol: "s3",
             method: "PUT",
             path: undefined,
             body: "report",
@@ -196,7 +198,7 @@ test("content releases require the exact reviewed revision producer", () => {
   const release: ResolvedEffectBinding = {
     ...producer,
     step_id: "release",
-    request_digest: workflowJsonDigest(input.definition.steps[1]),
+    request_digest: requestDigest(input.definition.steps[1]),
     target: `${origin}/v1/sites/${site}/releases`,
     content_publication: {
       kind: "content_release",
@@ -262,11 +264,12 @@ test("runtime query exemptions require an HTTP request without GraphQL", () => {
     steps: [
       {
         ...input.definition.steps[0]!,
+        protocol: "graphql",
         graphql: { operation: "query", query: "query { viewer { id } }" },
       },
     ],
   });
-  input.bindings[0]!.request_digest = workflowJsonDigest(input.definition.steps[0]);
+  input.bindings[0]!.request_digest = requestDigest(input.definition.steps[0]);
   const graphql = compileWorkflowEffectManifest(input);
   expect(graphql.manifest.effects[0]?.read_query).toBeUndefined();
   expect(graphql.manifest.issues.map((issue) => issue.code)).toContain("dynamic_request");
@@ -287,6 +290,7 @@ test("observed storage keys do not constrain an HTTP request without a storage p
 test("SQL declarations require a PostgreSQL binding even with a GraphQL-shaped path", () => {
   for (const path of [undefined, "/graphql"]) {
     const input = fixture({
+      protocol: "sql",
       method: "SELECT",
       path,
       body: undefined,

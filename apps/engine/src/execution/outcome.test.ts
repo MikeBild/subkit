@@ -230,13 +230,21 @@ describe("deriveRerunSafety", () => {
     { kind: "request", method: "GET", side_effects: "write", url: "https://example.org/items" },
     {
       kind: "request",
+      protocol: "graphql",
       method: "GET",
       graphql: { query: "mutation { removeItem(id: 1) }" },
       url: "https://example.org/graphql",
     },
-    { kind: "request", method: "GET", sql: { query: "DELETE FROM items" }, connector: "database" },
     {
       kind: "request",
+      protocol: "sql",
+      method: "GET",
+      sql: { query: "DELETE FROM items" },
+      connector: "database",
+    },
+    {
+      kind: "request",
+      protocol: "mcp",
       method: "GET",
       mcp: { operation: "call_tool", tool_name: "remove_item" },
       connector: "tools",

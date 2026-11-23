@@ -107,6 +107,7 @@ const boundary = (over: Record<string, unknown> = {}) => ({
 const toolStep = (mcp: Record<string, unknown> = {}, extra: Record<string, unknown> = {}) => ({
   id: "call",
   kind: "request",
+  protocol: "mcp",
   mcp: {
     operation: "call_tool",
     tool: "search",

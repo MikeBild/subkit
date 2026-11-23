@@ -399,6 +399,7 @@ describe("connector re-auth — only the stored credential's success clears", ()
     graphqlReply = { data: { viewer: { id: "1" } } };
     await flag(graphqlConnectorId);
     const result = await run("reauth-graphql-clears", {
+      protocol: "graphql",
       connector_id: graphqlConnectorId,
       graphql: { query: "{ viewer { id } }" },
     });
@@ -410,6 +411,7 @@ describe("connector re-auth — only the stored credential's success clears", ()
     graphqlReply = { data: null, errors: [{ message: "unauthenticated" }] };
     await flag(graphqlConnectorId);
     const result = await run("reauth-graphql-errors", {
+      protocol: "graphql",
       connector_id: graphqlConnectorId,
       graphql: { query: "{ viewer { id } }" },
     });

@@ -5,6 +5,7 @@ import {
   type ResolvedEffectBinding,
   WorkflowEffectManifestSchema,
 } from "../core/effect-manifest.ts";
+import { requestDigest } from "../core/request-protocol.ts";
 import { GMAIL_SEND_TARGET } from "../report-delivery-boundary.ts";
 import { WorkflowDefSchema } from "../types.ts";
 
@@ -47,7 +48,7 @@ function input(
     connector_id: connector,
     driver: "http",
     environment: "dev",
-    request_digest: workflowJsonDigest(request),
+    request_digest: requestDigest(request),
     target: GMAIL_SEND_TARGET,
     configuration_digest: "a".repeat(64),
     credential_binding_digest: "b".repeat(64),
@@ -248,7 +249,7 @@ test("manifest effects and issues use a stable lexical order independent of auth
     connector_id: connector,
     driver: "http",
     environment: "dev",
-    request_digest: workflowJsonDigest(step),
+    request_digest: requestDigest(step),
     target,
     configuration_digest: "a".repeat(64),
     credential_binding_digest: "b".repeat(64),
@@ -325,21 +326,29 @@ test("workflow calls require one literal non-empty target before a child can be 
 test("binding driver declarations bind the request protocol and preserve each protocol operation", () => {
   const cases = [
     {
-      step: { method: "POST", graphql: { query: "query Viewer { viewer { login } }" } },
+      step: {
+        protocol: "graphql",
+        method: "POST",
+        graphql: { query: "query Viewer { viewer { login } }" },
+      },
       driver: "graphql" as const,
       target: "https://api.example.test/graphql",
       operation: "query",
       effect: "read",
     },
     {
-      step: { method: "SELECT", sql: { query: "SELECT id FROM accounts" } },
+      step: { protocol: "sql", method: "SELECT", sql: { query: "SELECT id FROM accounts" } },
       driver: "postgres" as const,
       target: "postgres://reviewed",
       operation: "sql",
       effect: "unknown",
     },
     {
-      step: { method: "GET", mcp: { operation: "read_resource", uri: "resource://reviewed" } },
+      step: {
+        protocol: "mcp",
+        method: "GET",
+        mcp: { operation: "read_resource", uri: "resource://reviewed" },
+      },
       driver: "mcp" as const,
       target: "mcp://reviewed",
       operation: "read_resource",
@@ -427,7 +436,7 @@ test("lexical manifest ordering is deterministic for Unicode identifiers and bin
     connector_id: connector,
     driver: "http" as const,
     environment: "dev" as const,
-    request_digest: workflowJsonDigest(step),
+    request_digest: requestDigest(step),
     target: `https://example.test/${step.id}`,
     configuration_digest: "a".repeat(64),
     credential_binding_digest: "b".repeat(64),
@@ -475,7 +484,7 @@ test("MCP resources and prompts preserve their native operations, while GraphQL 
     [{ operation: "get_prompt", prompt: "reviewed" }, "get_prompt"],
   ] as const) {
     const result = compileWorkflowEffectManifest(
-      input({ method: "GET", mcp }, { driver: "mcp", target: "mcp://reviewed" }),
+      input({ protocol: "mcp", method: "GET", mcp }, { driver: "mcp", target: "mcp://reviewed" }),
     );
     expect(result.manifest.effects[0]).toMatchObject({ operation, effect: "read" });
   }
@@ -483,6 +492,7 @@ test("MCP resources and prompts preserve their native operations, while GraphQL 
     const result = compileWorkflowEffectManifest(
       input(
         {
+          protocol: "graphql",
           method: "POST",
           ...(driver === "http" ? { path: "/graphql" } : {}),
           side_effects: "write",
@@ -503,7 +513,7 @@ test("S3 driver classification preserves read, write, and destructive effects", 
   ] as const) {
     const result = compileWorkflowEffectManifest(
       input(
-        { method, s3: { key: "reviewed/object.json" } },
+        { protocol: "s3", method, s3: { key: "reviewed/object.json" } },
         { driver: "s3", target: "https://store.example.test/reviewed/object.json" },
       ),
     );

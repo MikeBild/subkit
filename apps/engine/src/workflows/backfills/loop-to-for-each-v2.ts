@@ -10,14 +10,13 @@ import {
 import { loadTenantWorkflowHeaderPolicies } from "../tenant-validator.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "../types.ts";
 import { validateWorkflowDef } from "../validator.ts";
-import { rotateWorkflowVersionInternal } from "../version-rotate.ts";
 import {
   backfillAlreadyRan,
   type CurrentDefinitionRow,
   currentDefinitionRows,
   markBackfillRan,
-  scheduleRowCount,
 } from "./persistence/definition-rows.ts";
+import { rotateCurrentVersion } from "./rotate-current-version.ts";
 
 export const LOOP_TO_FOR_EACH_V2_BACKFILL_NAME = "loop_to_for_each_v2";
 
@@ -109,40 +108,28 @@ async function flagNeedsReview(
 }
 
 async function rotate(db: Db, row: CurrentDefinitionRow, conversion: Conversion & { ok: true }) {
-  await db.transaction(async (tx) => {
-    const schedulesBefore = await scheduleRowCount(tx, row.tenant_id, row.workflow_id);
-    const rotated = await rotateWorkflowVersionInternal(
-      {
-        tenant_id: row.tenant_id,
-        workflow_id: row.workflow_id,
-        def: conversion.def,
-        note: "loop-to-for-each-migration: loop steps rewritten to per-step for_each",
-        audit_metadata: {
-          kind: "loop_to_for_each_migration",
-          from_version: row.version,
-          changes: conversion.changes,
-        },
-      },
-      tx,
-    );
-    const schedulesAfter = await scheduleRowCount(tx, row.tenant_id, row.workflow_id);
-    if (schedulesBefore !== schedulesAfter) {
-      throw new Error(
-        `workflows_schedules row-count parity violated (${schedulesBefore} → ${schedulesAfter})`,
-      );
-    }
-    logger.info({
-      module: "workflows",
-      action: "workflow.loop_to_for_each_migration.rewritten",
-      msg: "loop→for_each migration rotated workflow to the for_each contract",
-      tenant_id: row.tenant_id,
-      workflow_id: row.workflow_id,
-      slug: row.slug,
+  const rotated = await rotateCurrentVersion(db, {
+    tenant_id: row.tenant_id,
+    workflow_id: row.workflow_id,
+    def: conversion.def,
+    note: "loop-to-for-each-migration: loop steps rewritten to per-step for_each",
+    audit_metadata: {
+      kind: "loop_to_for_each_migration",
       from_version: row.version,
-      to_version: rotated.version,
-      change_count: conversion.changes.length,
-      loop_step_ids: conversion.changes.map((change) => change.loop_step_id),
-    });
+      changes: conversion.changes,
+    },
+  });
+  logger.info({
+    module: "workflows",
+    action: "workflow.loop_to_for_each_migration.rewritten",
+    msg: "loop→for_each migration rotated workflow to the for_each contract",
+    tenant_id: row.tenant_id,
+    workflow_id: row.workflow_id,
+    slug: row.slug,
+    from_version: row.version,
+    to_version: rotated.version,
+    change_count: conversion.changes.length,
+    loop_step_ids: conversion.changes.map((change) => change.loop_step_id),
   });
 }
 

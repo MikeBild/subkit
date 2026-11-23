@@ -26,6 +26,7 @@ import {
 } from "./content-publication-proposal.ts";
 import { deviceListsFor, deviceUsesOf } from "./core/device-uses.ts";
 import { type DeviceBinding, deviceBindingFor, deviceTarget } from "./core/effect-manifest.ts";
+import { requestDigest } from "./core/request-protocol.ts";
 import {
   compileWorkflowEffectManifest,
   type ResolvedCall,
@@ -464,7 +465,7 @@ async function resolveBindings(
       connector_id: step.connector_id ?? null,
       driver,
       environment: system?.environment ?? input.execution_environment,
-      request_digest: workflowJsonDigest(step),
+      request_digest: requestDigest(step),
       target,
       configuration_digest: workflowJsonDigest(configuration),
       credential_binding_digest: credentials ? workflowJsonDigest(credentials.binding) : null,

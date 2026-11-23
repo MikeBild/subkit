@@ -1,6 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { getConnector } from "../../connectors/service.ts";
-import { workflowJsonDigest } from "../../workflows/canonical-json.ts";
+import { definitionDigest } from "../../workflows/core/request-protocol.ts";
 import { loadWorkflowHead } from "../../workflows/lookup.ts";
 import { prepareWorkflowSave } from "../../workflows/prepare-save.ts";
 import { annotateRuntime } from "../../workflows/runtime-annotation.ts";
@@ -239,7 +239,7 @@ export const prepareServicePackageWorkflowTool: ConversationTool = {
         },
       };
     }
-    const packageDefinitionHash = workflowJsonDigest(annotateRuntime(validation.workflow));
+    const packageDefinitionHash = definitionDigest(annotateRuntime(validation.workflow));
     const existing = await resolveSavedWorkflow(ctx, args.workflow_slug);
     let updateExisting = false;
     if (args.action === "update" && !existing) {
@@ -291,7 +291,7 @@ export const prepareServicePackageWorkflowTool: ConversationTool = {
             next_best_actions: ["get_workflow", "prepare_service_package_workflow"],
           };
         }
-        if (workflowJsonDigest(saved.dag) !== provenance.installed_hash) {
+        if (definitionDigest(saved.dag) !== provenance.installed_hash) {
           return {
             ok: false,
             error_code: "service_package_workflow_local_changes",
@@ -319,7 +319,7 @@ export const prepareServicePackageWorkflowTool: ConversationTool = {
           };
         }
         updateExisting = true;
-      } else if (saved && workflowJsonDigest(saved.dag) === packageDefinitionHash) {
+      } else if (saved && definitionDigest(saved.dag) === packageDefinitionHash) {
         return {
           ok: true,
           data: {

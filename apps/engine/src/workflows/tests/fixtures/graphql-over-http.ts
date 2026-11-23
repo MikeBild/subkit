@@ -11,6 +11,7 @@ export function graphqlProjectItemsStep(query: string = VALID_ITEMS_QUERY) {
   return {
     id: "project_items",
     kind: "request",
+    protocol: "graphql",
     connector_id: BRIEFING_CONNECTOR_ID,
     method: "GET",
     headers: { accept: "application/vnd.github+json" },

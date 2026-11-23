@@ -40,8 +40,8 @@ The driver wires these automatically — you don't pass them in step configs.
 
 ## Step shape
 
-The structured `s3` block on a request step expresses every supported
-operation. `key` (object path) and `prefix` (LIST scope) accept `${input.…}`
+A request step with `"protocol": "s3"` carries the structured `s3` block,
+which expresses every supported operation. `key` (object path) and `prefix` (LIST scope) accept `${input.…}`
 and `${scope.<id>.…}` placeholders.
 
 ## Operations
@@ -52,6 +52,7 @@ and `${scope.<id>.…}` placeholders.
 {
   "id": "archive_report",
   "kind": "request",
+  "protocol": "s3",
   "method": "PUT",
   "connector_id": "<reports_store_connector_id>",
   "s3": {
@@ -72,6 +73,7 @@ for binary. Envelope: `data` is `{ "key": "...", "etag": "...", "version_id": ".
 {
   "id": "load_manifest",
   "kind": "request",
+  "protocol": "s3",
   "method": "GET",
   "connector_id": "<reports_store_connector_id>",
   "s3": {
@@ -95,6 +97,7 @@ binary consumer or when you want byte-exact integrity.
 {
   "id": "list_today",
   "kind": "request",
+  "protocol": "s3",
   "method": "LIST",
   "connector_id": "<reports_store_connector_id>",
   "s3": {
@@ -115,6 +118,7 @@ the prefix or page externally.
 {
   "id": "verify_archive",
   "kind": "request",
+  "protocol": "s3",
   "method": "HEAD",
   "connector_id": "<reports_store_connector_id>",
   "s3": {
@@ -136,6 +140,7 @@ The dispatch maps S3 outcomes to synthetic status codes (`200` PUT/GET/HEAD,
 {
   "id": "guard_present",
   "kind": "request",
+  "protocol": "s3",
   "method": "HEAD",
   "connector_id": "<reports_store_connector_id>",
   "s3": { "key": "weekly/${input.week}/sales.json" },
@@ -152,6 +157,7 @@ downstream steps consume `data`.
 {
   "id": "purge_old_export",
   "kind": "request",
+  "protocol": "s3",
   "method": "DELETE",
   "connector_id": "<reports_store_connector_id>",
   "s3": {
@@ -191,6 +197,7 @@ S3 has no real directories, but clients lean on prefix conventions:
     {
       "id": "archive",
       "kind": "request",
+      "protocol": "s3",
       "method": "PUT",
       "connector_id": "<reports_store_connector_id>",
       "s3": {
@@ -202,6 +209,7 @@ S3 has no real directories, but clients lean on prefix conventions:
     {
       "id": "verify",
       "kind": "request",
+      "protocol": "s3",
       "method": "GET",
       "connector_id": "<reports_store_connector_id>",
       "s3": {

@@ -4,6 +4,7 @@ import {
   compileWorkflowEffectManifest,
   type ResolvedEffectBinding,
 } from "../core/effect-manifest.ts";
+import { requestDigest } from "../core/request-protocol.ts";
 import { readPathBoundary, readPathTarget } from "../read-path-boundary.ts";
 import { requestBoundary, requestBoundaryTarget } from "../request-boundary.ts";
 import { storageBoundary, storageTarget } from "../storage-boundary.ts";
@@ -36,6 +37,7 @@ test("a graphql query on an http connector through path /graphql is an eligible 
 test("a graphql mutation on an http connector is reviewed as a write", () => {
   const result = compileWorkflowEffectManifest(
     httpProjectItems({
+      protocol: "graphql",
       side_effects: undefined,
       graphql: {
         query:
@@ -48,7 +50,10 @@ test("a graphql mutation on an http connector is reviewed as a write", () => {
 
 test("an unparseable graphql document on an http connector is unknown", () => {
   const result = compileWorkflowEffectManifest(
-    httpProjectItems({ graphql: { query: "query Broken { viewer { login }" } }),
+    httpProjectItems({
+      protocol: "graphql",
+      graphql: { query: "query Broken { viewer { login }" },
+    }),
   );
   expect(result.manifest.effects[0]?.effect).toBe("unknown");
   expect(result.manifest.issues.map((issue) => issue.code)).toContain("unknown_effect");
@@ -112,7 +117,7 @@ function fixture(request: Record<string, unknown> = {}) {
     connector_id: connector,
     driver: "http",
     environment: "dev",
-    request_digest: workflowJsonDigest(definition.steps[0]),
+    request_digest: requestDigest(definition.steps[0]),
     target: "https://example.test/messages",
     configuration_digest: "a".repeat(64),
     credential_binding_digest: "b".repeat(64),
@@ -274,10 +279,14 @@ test("only request steps may receive one binding, with an explicit duplicate-cla
 
 test("SQL and MCP tool calls remain unknown even when their authors claim read", () => {
   for (const [driver, request] of [
-    ["postgres", { method: "SELECT", sql: { query: "SELECT hidden_side_effect()" } }],
+    [
+      "postgres",
+      { protocol: "sql", method: "SELECT", sql: { query: "SELECT hidden_side_effect()" } },
+    ],
     [
       "mcp",
       {
+        protocol: "mcp",
         method: "GET",
         body: undefined,
         path: undefined,
@@ -297,7 +306,7 @@ test("a destructive request and invalid GraphQL document require concrete approv
   expect(
     compileWorkflowEffectManifest(fixture({ method: "DELETE" })).manifest.effects[0]?.effect,
   ).toBe("destructive");
-  const input = fixture({ graphql: { query: "fragment F on Item { id }" } });
+  const input = fixture({ protocol: "graphql", graphql: { query: "fragment F on Item { id }" } });
   input.bindings[0]!.driver = "graphql";
   const result = compileWorkflowEffectManifest(input);
   expect(result.eligible_for_repeated_runs).toBe(false);
@@ -347,7 +356,7 @@ test("binding enumeration order is irrelevant but ordered workflow content is no
   input.bindings.push({
     ...input.bindings[0]!,
     step_id: "second",
-    request_digest: workflowJsonDigest(input.definition.steps[1]),
+    request_digest: requestDigest(input.definition.steps[1]),
   });
   const baseline = compileWorkflowEffectManifest(input);
   expect(baseline.eligible_for_repeated_runs).toBe(true);
@@ -401,6 +410,7 @@ test("a reusable path authority must bind the exact reviewed identifier template
 
 test("S3 recurring authority requires an explicit folder profile bound to the authored limits", () => {
   const input = fixture({
+    protocol: "s3",
     method: "PUT",
     path: undefined,
     body: "${input.report}",
@@ -454,6 +464,7 @@ test("S3 recurring authority requires an explicit folder profile bound to the au
 
 test("a removal becomes grantable only with a declared ceiling, and stays visibly destructive", () => {
   const input = fixture({
+    protocol: "s3",
     method: "DELETE",
     path: undefined,
     body: undefined,
