@@ -13,11 +13,8 @@ import {
   releaseGateDescription,
 } from "./lib/mutation-deferral.ts";
 import {
-  completeHighlights,
   HIGHLIGHTS_FLAG,
-  type Highlights,
   highlightsFromBody,
-  missingHighlightLanguages,
   releaseBody,
   splitHighlightsFlag,
 } from "./lib/release-highlights.ts";
@@ -76,14 +73,12 @@ require_(draft === null || draft.isDraft, `${tag} already has a published releas
 const highlightSource = highlightsFlag.path
   ? readFileSync(resolve(highlightsFlag.path), "utf8")
   : (draft?.body ?? "");
-const foundHighlights = highlightsFromBody(highlightSource);
-const missingHighlights = missingHighlightLanguages(foundHighlights);
+const highlights = highlightsFromBody(highlightSource).en ?? [];
 require_(
-  missingHighlights.length === 0,
-  `no reviewed highlights for ${version} in ${missingHighlights.join(" and ")} — pass ` +
-    `${HIGHLIGHTS_FLAG} <file> with "## Highlights (en)" and "## Highlights (de)", or put them into the draft release`,
+  highlights.length > 0,
+  `no reviewed English highlights for ${version} — pass ` +
+    `${HIGHLIGHTS_FLAG} <file> with "## Highlights (en)", or put them into the draft release`,
 );
-const highlights = completeHighlights(foundHighlights) as Highlights;
 require_(dirty === "", `working tree is dirty:\n${dirty}`);
 require_(
   head === originMain,

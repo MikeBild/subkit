@@ -22,8 +22,10 @@ image and the binaries. The desktop app follows with its own workflow, see
    `## Highlights (en)` and a `## Highlights (de)` section of five to seven plain-language
    bullets each: effects for the people who use SubKit, no internal names. German uses „du“,
    „…“ and DIN 5008 (`typografie-de`, `du-sie-check`, `microcopy-ux`); English uses US spelling
-   and curly quotes. They end up in the GitHub release description, and the Cockpit shows them
-   under “What’s new”, falling back to the `feat(user)` and `fix(user)` subjects.
+   and curly quotes. Only the English section goes into the GitHub release description; the
+   German one stays in the file and in the generated release notes, never on GitHub. The
+   Cockpit shows them under “What’s new”, falling back to the `feat(user)` and `fix(user)`
+   subjects.
 4. Bump the version and regenerate the release notes with the highlights:
 
    ```sh
@@ -31,8 +33,9 @@ image and the binaries. The desktop app follows with its own workflow, see
    bun run gen release-notes --highlights <file>
    ```
 
-   Commit the bump and the generated notes together. The generator reads the highlights of
-   published releases from GitHub.
+   Commit the bump and the generated notes together. The generator keeps every highlight it
+   committed before, takes the German highlights of this release from `--highlights` and reads
+   only English highlights from published GitHub releases.
 5. Produce the mutation evidence for this commit. It runs long and is only needed once per commit:
 
    ```sh
@@ -46,11 +49,11 @@ image and the binaries. The desktop app follows with its own workflow, see
    ```
 
    `release tag` refuses a dirty tree, a commit that differs from `origin/main`, a version that
-   was used before and a version without highlights in both languages, taken from `--highlights`
-   or an existing draft release. It then checks the mutation evidence
+   was used before and a version without English highlights, taken from `--highlights` or an
+   existing draft release. It then checks the mutation evidence
    (`bun run quality release --check`), runs the paid live model gate (`bun run verify llm-live`)
-   and the release gate (`bun run verify release`), and only then writes the highlights into the
-   draft release and pushes the tag.
+   and the release gate (`bun run verify release`), and only then writes the English highlights
+   into the draft release and pushes the tag.
    To release before the mutation evidence is ready, tag with `bun run release tag --defer-mutation`.
    It skips `bun run quality release --check`, runs `bun run verify release --defer-mutation` and prints a
    loud warning. The release gate status then ends in `mutation: deferred`, and the GitHub release notes

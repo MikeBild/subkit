@@ -76,7 +76,7 @@ describe("release notes generator", () => {
         { version: "v1.2.3", subjects: [] },
       ],
       unpublished: { version: "1.3.0", subjects: ["feat(user): next"] },
-      highlights: { "1.2.2": both, "1.2.3": { de: ["Nur deutsch"] }, "1.3.0": both },
+      highlights: { "1.2.2": both, "1.2.3": { de: ["Only de"] }, "1.3.0": both },
     });
     expect(history.releases.map((r) => r.highlights)).toEqual([both, null]);
     expect(history.unpublished).toEqual({ version: "1.3.0", notes: ["next"], highlights: both });
@@ -93,10 +93,20 @@ describe("release notes generator", () => {
       unpublished: { version: "1.3.0", notes: [], highlights: both },
     });
     expect(known).toEqual({ "1.2.2": both, "1.3.0": both });
-    const fresh = { de: ["Frisch"], en: ["Fresh"] };
+    const fresh = { de: ["Fresh (de)"], en: ["Fresh"] };
     expect(mergeHighlights(known, null, { "1.3.0": fresh })).toEqual({
       "1.2.2": both,
       "1.3.0": fresh,
+    });
+  });
+
+  test("a published body with only English keeps the committed German highlights", () => {
+    const committed = { "1.2.2": { de: ["Neu"], en: ["New"] } };
+    expect(mergeHighlights(committed, { "1.2.2": { en: ["New, edited"] } }, null)).toEqual({
+      "1.2.2": { de: ["Neu"], en: ["New, edited"] },
+    });
+    expect(mergeHighlights(null, { "1.2.3": { en: ["Only en"] } }, null)).toEqual({
+      "1.2.3": { en: ["Only en"] },
     });
   });
 
@@ -113,19 +123,19 @@ describe("release notes generator", () => {
       writeFileSync(join(repo, "package.json"), '{"version":"1.1.0"}\n');
       git(repo, "add", "package.json");
       commit(repo, "chore: establish history");
-      commit(repo, "feat(user): Erste Kurznotiz");
+      commit(repo, "feat(user): first short note");
       git(repo, "tag", "v1.0.0");
-      commit(repo, "fix(user): Lokale Änderungen behalten");
+      commit(repo, "fix(user): keep local changes");
       const source = git(repo, "rev-parse", "HEAD");
       const history = generateReleaseHistory(repo, source, {
         "1.1.0": { de: ["Neu"], en: ["New"] },
       });
       expect(history).toEqual({
         source,
-        releases: [{ version: "v1.0.0", notes: ["Erste Kurznotiz"], highlights: null }],
+        releases: [{ version: "v1.0.0", notes: ["first short note"], highlights: null }],
         unpublished: {
           version: "1.1.0",
-          notes: ["Lokale Änderungen behalten"],
+          notes: ["keep local changes"],
           highlights: { de: ["Neu"], en: ["New"] },
         },
       });

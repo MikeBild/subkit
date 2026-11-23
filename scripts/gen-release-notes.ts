@@ -80,7 +80,11 @@ export function knownHighlights(history: ReleaseHistory): Record<string, Highlig
 export function mergeHighlights(
   ...sources: Array<Record<string, Partial<Highlights>> | null>
 ): Record<string, Partial<Highlights>> {
-  return Object.assign({}, ...sources.filter((source) => source !== null));
+  const merged: Record<string, Partial<Highlights>> = {};
+  for (const source of sources)
+    for (const [version, highlights] of Object.entries(source ?? {}))
+      merged[version] = { ...merged[version], ...highlights };
+  return merged;
 }
 
 export function pendingVersion(packageVersion: string, tags: string[]): string | null {

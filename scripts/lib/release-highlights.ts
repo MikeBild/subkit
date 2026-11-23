@@ -1,5 +1,4 @@
-export const HIGHLIGHT_LANGUAGES = ["en", "de"] as const;
-export type HighlightLanguage = (typeof HIGHLIGHT_LANGUAGES)[number];
+export type HighlightLanguage = "en" | "de";
 export type Highlights = Record<HighlightLanguage, string[]>;
 
 export const HIGHLIGHTS_FLAG = "--highlights";
@@ -45,15 +44,8 @@ export function completeHighlights(found: Partial<Highlights> | undefined): High
   return de?.length && en?.length ? { en, de } : null;
 }
 
-export function missingHighlightLanguages(found: Partial<Highlights>): HighlightLanguage[] {
-  return HIGHLIGHT_LANGUAGES.filter((language) => !found[language]?.length);
-}
-
-export function renderHighlights(highlights: Highlights): string {
-  return HIGHLIGHT_LANGUAGES.map(
-    (language) =>
-      `## Highlights (${language})\n\n${highlights[language].map((line) => `- ${line}`).join("\n")}\n`,
-  ).join("\n");
+export function renderHighlights(en: readonly string[]): string {
+  return `## Highlights (en)\n\n${en.map((line) => `- ${line}`).join("\n")}\n`;
 }
 
 export function withoutHighlights(body: string): string {
@@ -67,9 +59,9 @@ export function withoutHighlights(body: string): string {
   return kept.join("\n").trim();
 }
 
-export function releaseBody(highlights: Highlights | null, rest: string): string {
+export function releaseBody(en: readonly string[] | null, rest: string): string {
   const others = withoutHighlights(rest);
-  const head = highlights ? renderHighlights(highlights) : "";
+  const head = en?.length ? renderHighlights(en) : "";
   if (!head) return others ? `${others}\n` : "";
   return others ? `${head}\n${others}\n` : head;
 }
@@ -78,12 +70,12 @@ export type PublishedRelease = { tag_name: string; body: string | null; draft: b
 
 export function highlightsFromReleases(
   releases: readonly PublishedRelease[],
-): Record<string, Highlights> {
-  const byVersion: Record<string, Highlights> = {};
+): Record<string, Partial<Highlights>> {
+  const byVersion: Record<string, Partial<Highlights>> = {};
   for (const release of releases) {
     if (release.draft) continue;
-    const highlights = completeHighlights(highlightsFromBody(release.body ?? ""));
-    if (highlights) byVersion[bareVersion(release.tag_name)] = highlights;
+    const en = highlightsFromBody(release.body ?? "").en;
+    if (en?.length) byVersion[bareVersion(release.tag_name)] = { en };
   }
   return byVersion;
 }

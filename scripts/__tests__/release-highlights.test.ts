@@ -4,7 +4,6 @@ import {
   completeHighlights,
   highlightsFromBody,
   highlightsFromReleases,
-  missingHighlightLanguages,
   parseHighlights,
   releaseBody,
   renderHighlights,
@@ -49,31 +48,25 @@ describe("release highlights", () => {
     expect(completeHighlights({ en: ["New"] })).toBeNull();
     expect(completeHighlights({ en: ["New"], de: [] })).toBeNull();
     expect(completeHighlights(undefined)).toBeNull();
-    expect(missingHighlightLanguages({ de: ["Neu"] })).toEqual(["en"]);
-    expect(missingHighlightLanguages({})).toEqual(["en", "de"]);
     expect(bareVersion("v12.1.0")).toBe("12.1.0");
   });
 
-  test("renders the sections so that they read back unchanged", () => {
-    const highlights = { en: ["New"], de: ["Neu"] };
-    expect(renderHighlights(highlights)).toBe(
-      "## Highlights (en)\n\n- New\n\n## Highlights (de)\n\n- Neu\n",
-    );
-    expect(highlightsFromBody(renderHighlights(highlights))).toEqual(highlights);
+  test("renders only the English section so that it reads back unchanged", () => {
+    expect(renderHighlights(["New"])).toBe("## Highlights (en)\n\n- New\n");
+    expect(highlightsFromBody(renderHighlights(["New"]))).toEqual({ en: ["New"] });
   });
 
-  test("a release body puts the highlights first and replaces older ones", () => {
+  test("a release body puts the English highlights first and drops every older section", () => {
     expect(withoutHighlights(body)).toBe("# SubKit 12.1.0\n\n## Changes\n\n- a commit subject");
-    expect(releaseBody({ en: ["Fresh"], de: ["Frisch"] }, body)).toBe(
-      "## Highlights (en)\n\n- Fresh\n\n## Highlights (de)\n\n- Frisch\n\n# SubKit 12.1.0\n\n## Changes\n\n- a commit subject\n",
+    expect(releaseBody(["Fresh"], body)).toBe(
+      "## Highlights (en)\n\n- Fresh\n\n# SubKit 12.1.0\n\n## Changes\n\n- a commit subject\n",
     );
-    expect(releaseBody({ en: ["New"], de: ["Neu"] }, "")).toBe(
-      renderHighlights({ en: ["New"], de: ["Neu"] }),
-    );
+    expect(releaseBody(["New"], "")).toBe(renderHighlights(["New"]));
     expect(releaseBody(null, "- note\n")).toBe("- note\n");
+    expect(releaseBody(["New"], body)).not.toContain("(de)");
   });
 
-  test("takes highlights only from published releases with both languages", () => {
+  test("takes only English highlights from published releases", () => {
     expect(
       highlightsFromReleases([
         { tag_name: "v12.1.0", body, draft: false },
@@ -81,7 +74,7 @@ describe("release highlights", () => {
         { tag_name: "v12.0.0", body: "## Highlights (en)\n- Only English", draft: false },
         { tag_name: "v11.0.0", body: null, draft: false },
       ]),
-    ).toEqual({ "12.1.0": { en: ["New", "Second"], de: ["Neu"] } });
+    ).toEqual({ "12.1.0": { en: ["New", "Second"] }, "12.0.0": { en: ["Only English"] } });
   });
 
   test("splits the highlights file off the other arguments", () => {
