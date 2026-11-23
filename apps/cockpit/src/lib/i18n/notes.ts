@@ -108,7 +108,7 @@ export const notesDe: Record<keyof typeof notesEn, string> = {
   "nav.notes": "Notizen",
   "notes.title": "Notizen",
   "notes.intro":
-    "Was SubKit sich aus deinen eigenen Nachrichten über dich notiert hat. Nur du kannst diese Notizen lesen – kein Teammitglied und kein Admin.",
+    "Was SubKit sich aus deinen eigenen Nachrichten über dich notiert hat. Nur du kannst diese Notizen lesen – kein Teammitglied und kein Administrator.",
   "notes.filter.label": "Welche Notizen",
   "notes.filter.active": "In Verwendung",
   "notes.filter.archived": "Archiviert",
@@ -206,7 +206,7 @@ export const notesDe: Record<keyof typeof notesEn, string> = {
   "notes.error.notFound": "Diese Notiz gibt es nicht mehr.",
   "notes.error.signedInOnly": "Nur du kannst deine Notizen ändern, angemeldet im Cockpit.",
   "notes.error.shareNotAllowed":
-    "Deine Rolle darf nichts in den Eingang des Teams legen. Frag einen Admin.",
+    "Deine Rolle darf nichts in den Eingang des Teams legen. Frag einen Administrator.",
   "notes.save.label": "Neue Notizen speichern",
   "notes.save.help":
     "SubKit merkt sich in kurzen Notizen, wie du etwas haben möchtest – aus deinen eigenen Chat-Nachrichten. Nur du kannst sie lesen. Schalte das aus, damit keine neuen Notizen entstehen. Vorhandene Notizen bleiben, bis du sie vergisst.",

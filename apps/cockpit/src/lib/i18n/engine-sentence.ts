@@ -48,6 +48,12 @@ export const engineSentenceEn = {
     "The link to the next page changed the request beyond the declared paging parameters. Check link_params, then retry.",
   "engine.code.pagination_link_loop":
     "The link to the next page repeated an earlier page. Check the endpoint’s paging, then retry.",
+  "engine.code.pagination_duplicate_page":
+    "A page repeated an earlier page, so paging stopped. The result of this step may be incomplete.",
+  "engine.code.pagination_cursor_repeated":
+    "The cursor for the next page repeated an earlier one. Check the cursor path, then retry.",
+  "engine.code.pagination_stop_when_failed":
+    "The stop_when check of the paging failed or did not answer true or false. Fix it, then retry.",
   "engine.code.pagination_short_page":
     "The server returned fewer items than requested although more pages exist. Lower page_size to the service’s maximum.",
   "engine.code.upstream_rate_limited":
@@ -68,6 +74,16 @@ export const engineSentenceEn = {
     "SubKit stopped while this step was sending a change. The change may have arrived. Check the target before you run again.",
   "engine.code.mcp_timeout_during_write":
     "The tool did not answer in time while this step was sending a change. The change may have arrived. Check the target before you run again.",
+  "engine.code.execution_authority_required":
+    "No approval covers this run. Review and approve the workflow, then run again. Nothing was sent by this step.",
+  "engine.code.execution_authority_expired":
+    "The approval for this workflow has expired. Renew the approval, then run again. Nothing was sent by this step.",
+  "engine.code.execution_authority_exhausted":
+    "The approved number of runs is used up. Renew the approval, then run again. Nothing was sent by this step.",
+  "engine.code.execution_authority_revoked":
+    "The approval for this workflow was revoked. Approve the workflow again, then run again. Nothing was sent by this step.",
+  "engine.code.execution_authority_changed":
+    "This run would do something its approval does not cover. Review what changed and approve it, then run again. Nothing was sent by this step.",
 } as const;
 
 export const engineSentenceDe: Record<keyof typeof engineSentenceEn, string> = {
@@ -121,6 +137,12 @@ export const engineSentenceDe: Record<keyof typeof engineSentenceEn, string> = {
     "Der Link zur nächsten Seite hat die Anfrage über die angegebenen Blätter-Parameter hinaus verändert. Prüfe link_params und versuch es noch einmal.",
   "engine.code.pagination_link_loop":
     "Der Link zur nächsten Seite hat eine frühere Seite wiederholt. Prüfe das Blättern des Endpunkts und versuch es noch einmal.",
+  "engine.code.pagination_duplicate_page":
+    "Eine Seite hat eine frühere Seite wiederholt, deshalb wurde das Blättern gestoppt. Das Ergebnis dieses Schritts ist vielleicht unvollständig.",
+  "engine.code.pagination_cursor_repeated":
+    "Der Cursor für die nächste Seite hat einen früheren wiederholt. Prüfe den Cursor-Pfad und versuch es noch einmal.",
+  "engine.code.pagination_stop_when_failed":
+    "Die stop_when-Prüfung des Blätterns ist fehlgeschlagen oder hat nicht true oder false geliefert. Korrigiere sie und versuch es noch einmal.",
   "engine.code.pagination_short_page":
     "Der Server hat weniger Einträge geliefert als angefragt, obwohl es weitere Seiten gibt. Senke page_size auf das Maximum des Dienstes.",
   "engine.code.upstream_rate_limited":
@@ -141,4 +163,14 @@ export const engineSentenceDe: Record<keyof typeof engineSentenceEn, string> = {
     "SubKit wurde beendet, während dieser Schritt eine Änderung gesendet hat. Die Änderung ist vielleicht angekommen. Prüf das Ziel, bevor du den Run noch einmal startest.",
   "engine.code.mcp_timeout_during_write":
     "Das Tool hat nicht rechtzeitig geantwortet, während dieser Schritt eine Änderung gesendet hat. Die Änderung ist vielleicht angekommen. Prüf das Ziel, bevor du den Run noch einmal startest.",
+  "engine.code.execution_authority_required":
+    "Für diesen Run gibt es keine Freigabe. Prüfe den Workflow und gib ihn frei, dann starte den Run noch einmal. Dieser Schritt hat nichts gesendet.",
+  "engine.code.execution_authority_expired":
+    "Die Freigabe für diesen Workflow ist abgelaufen. Erneuere die Freigabe, dann starte den Run noch einmal. Dieser Schritt hat nichts gesendet.",
+  "engine.code.execution_authority_exhausted":
+    "Die freigegebene Anzahl an Runs ist aufgebraucht. Erneuere die Freigabe, dann starte den Run noch einmal. Dieser Schritt hat nichts gesendet.",
+  "engine.code.execution_authority_revoked":
+    "Die Freigabe für diesen Workflow wurde widerrufen. Gib den Workflow erneut frei, dann starte den Run noch einmal. Dieser Schritt hat nichts gesendet.",
+  "engine.code.execution_authority_changed":
+    "Dieser Run würde etwas tun, das seine Freigabe nicht abdeckt. Prüfe, was sich geändert hat, und gib es frei, dann starte den Run noch einmal. Dieser Schritt hat nichts gesendet.",
 };

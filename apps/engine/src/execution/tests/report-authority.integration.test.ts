@@ -186,7 +186,7 @@ for (const state of ["revoked", "expired"] as const) {
       });
     }
     expect((await inspectScheduleAutomation(f.schedule, ctx.testDb.db)).ready).toBe(false);
-    await expect(f.run()).rejects.toMatchObject({ code: "execution_authority_revoked" });
+    await expect(f.run()).rejects.toMatchObject({ code: `execution_authority_${state}` });
   });
 }
 
