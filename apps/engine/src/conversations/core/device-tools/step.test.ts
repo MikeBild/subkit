@@ -10,6 +10,7 @@ import {
   type FilledValue,
   recipientsOf,
   type StepFacts,
+  sameUrlKey,
 } from "./step.ts";
 
 const NOW = new Date("2026-11-21T10:00:00Z");
@@ -486,5 +487,49 @@ describe("the device decision uses the one trust check", () => {
       decision: "ask",
       reason: "ask_before_writing",
     });
+  });
+});
+
+describe("opening a commit-like address counts like clicking a link to it", () => {
+  const UNSUBSCRIBE = "https://shop.example/unsubscribe?t=x";
+
+  test("an unsubscribe address is a commit, a product page is a read", () => {
+    expect(facts("browser_open", { url: UNSUBSCRIBE }).step).toMatchObject({
+      phase: "commit",
+      always_ask: null,
+      target: "https://shop.example",
+      url: UNSUBSCRIBE,
+    });
+    expect(facts("browser_open", { url: "https://shop.example/products" }).step.phase).toBe("read");
+  });
+
+  test("a commit-like open asks unless the person typed that address", () => {
+    const LEAVE = "https://shop.example.com/unsubscribe?t=x";
+    expect(
+      decide("Please open shop.example.com", facts("browser_open", { url: LEAVE })),
+    ).toMatchObject({
+      decision: "ask",
+    });
+    const named = facts(
+      "browser_open",
+      { url: LEAVE },
+      { named_urls: new Set(["HTTPS://Shop.Example.com/unsubscribe/?t=x"]) },
+    );
+    expect(named.step.phase).toBe("read");
+    expect(decide(`Please open ${LEAVE}`, named)).toMatchObject({ decision: "covered" });
+    expect(
+      facts(
+        "browser_open",
+        { url: LEAVE },
+        { named_urls: new Set(["https://shop.example.com/unsubscribe?t=y"]) },
+      ).step.phase,
+    ).toBe("commit");
+  });
+
+  test("addresses compare with scheme and host in lower case and without a trailing slash", () => {
+    expect(sameUrlKey("HTTPS://Shop.Example/a/")).toBe(sameUrlKey("https://shop.example/a"));
+    expect(sameUrlKey("https://shop.example/")).toBe(sameUrlKey("https://shop.example"));
+    expect(sameUrlKey("https://shop.example/A")).not.toBe(sameUrlKey("https://shop.example/a"));
+    expect(sameUrlKey(" Not A URL ")).toBe("not a url");
   });
 });

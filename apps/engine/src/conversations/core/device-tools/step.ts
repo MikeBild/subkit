@@ -5,6 +5,7 @@ import {
   type BrowserActionKind,
   type BrowserActionTarget,
   classifyBrowserAction,
+  hasCommitPath,
 } from "@shared/local-policy/commit-classifier.ts";
 import { isBlockedShortcut } from "@shared/local-policy/shortcuts.ts";
 import type { DeviceStep } from "../../instruction-cover/job.ts";
@@ -24,6 +25,7 @@ export interface StepFacts {
   readonly page_origin: string | null;
   readonly app: string | null;
   readonly filled: readonly FilledValue[];
+  readonly named_urls?: ReadonlySet<string>;
 }
 
 export interface AssembledStep {
@@ -126,8 +128,29 @@ function target(facts: StepFacts, page_url: string): BrowserActionTarget {
   };
 }
 
+export function sameUrlKey(url: string): string {
+  try {
+    const parsed = new URL(url.trim());
+    const path = parsed.pathname.replace(/\/+$/u, "");
+    return `${parsed.protocol}//${parsed.host}${path}${parsed.search}`;
+  } catch {
+    return url.trim().toLowerCase();
+  }
+}
+
+function namedByPerson(url: string, named: ReadonlySet<string>): boolean {
+  const key = sameUrlKey(url);
+  return [...named].some((entry) => sameUrlKey(entry) === key);
+}
+
+function openClass(facts: StepFacts, url: string): Classified {
+  if (!hasCommitPath(url) || namedByPerson(url, facts.named_urls ?? new Set())) return READ;
+  return { phase: "commit", always_ask: null, name: null, values: [] };
+}
+
 function browserClass(facts: StepFacts, page_url: string): Classified {
   const { input, element } = facts;
+  if (facts.tool.name === "browser_open") return openClass(facts, page_url);
   const base = target(facts, page_url);
   if (facts.tool.name === "browser_fill") {
     return classified(
