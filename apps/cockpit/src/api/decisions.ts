@@ -64,7 +64,7 @@ export function getPatchCandidatePreview(id: string): Promise<PatchCandidatePrev
 }
 
 export function dryRunPatchCandidate(id: string): Promise<PatchCandidateDryRun> {
-  return apiCall("post", "/v1/patch-candidates/{id}/dry-run", { path: { id } });
+  return apiCall("post", "/v1/patch-candidates/{id}/dry-run", { path: { id }, body: {} });
 }
 
 export async function approvePatchCandidate(

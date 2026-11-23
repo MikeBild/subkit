@@ -39,6 +39,7 @@ const untouched: Setup = {
   notifications: { mode: "immediately" },
   timezone: null,
   critical_breakthrough: false,
+  save_new_notes: true,
   first_job: null,
   services: [],
   unset: ["default_environment", "approver", "notifications"],

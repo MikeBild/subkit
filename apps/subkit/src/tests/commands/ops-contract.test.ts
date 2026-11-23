@@ -104,6 +104,8 @@ const patchCandidate = {
   closed_reason: null,
   closed_against_version_id: null,
   closed_at: null,
+  accepted_operations: null,
+  accepted_digest: null,
   created_at: TS,
   updated_at: TS,
 } satisfies Schemas["PatchCandidate"];

@@ -364,8 +364,8 @@ const MESSAGES = {
     en: "A browser step is waiting for you on this device.",
   },
   "notify.reason.knowledge_review_due": {
-    de: "Eine Wissensquelle ist zur Durchsicht fällig.",
-    en: "A knowledge source is due for a review.",
+    de: "Mindestens eine Wissensquelle ist zur Prüfung fällig.",
+    en: "At least one knowledge source is due for a review.",
   },
   "notify.handover.body": {
     de: "Ein Browser-Schritt wartet auf {device} auf dich. Übernimm, erledige ihn und gib dann zurück.",

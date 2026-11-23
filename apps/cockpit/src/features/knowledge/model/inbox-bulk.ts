@@ -19,9 +19,8 @@ export function bulkActions(selected: readonly Pick<EntryView, "state">[]): Bulk
     : ["move", "discard"];
 }
 
-export function entryGroupKey(item: unknown): string | null {
-  const raw = (item as { group_key?: unknown } | null)?.group_key;
-  return typeof raw === "string" && raw.trim() ? raw : null;
+export function entryGroupKey(item: { group_key: string | null }): string | null {
+  return item.group_key?.trim() ? item.group_key : null;
 }
 
 export function groupLabel(key: string | null, other: string): string {

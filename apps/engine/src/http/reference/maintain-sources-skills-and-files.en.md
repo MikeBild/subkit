@@ -44,6 +44,27 @@ SubKit saves the restored content as a new version. The previous version stays u
 
 The list shows conversations that name the source or the skill with an `@` reference. For a source, it also counts conversations in which the assistant read or found the source. For a skill, it also counts conversations that loaded the skill. Click a conversation to open it. If there is none yet, start one with **Ask in chat**.
 
+### See which sources an answer used
+
+Under a chat answer, the line **Sources:** names the knowledge sources and skills SubKit used for it. Click a name to open the source or the skill.
+
+- The line shows up to five names, followed by “and … more”.
+- Documentation that SubKit read, for example about a connector, appears without a link.
+- A source without a name reads “Unnamed source”.
+- An answer for which SubKit used no source has no such line.
+
+### Plan a review of a source
+
+Knowledge goes out of date. A review date reminds your team to check that a source is still correct.
+
+1. Open **Sources** and click the source.
+2. Open **More actions** and choose **Plan a review**.
+3. Under **Review date**, pick the day and save. You read “Review date saved for ….”
+
+From that day on, the source appears on the **Overview** under **Needs you** with the label **Review due**. If several sources are due, one entry names their number, for example “3 knowledge sources are due for a review”. Select the entry to open the source or the list. On the source, **Next review** shows the date, with “due now” once it has passed.
+
+To remove the reminder, open the dialog again and leave the field empty. Setting the date needs `knowledge:write`. The entry under **Needs you** appears for everyone with `knowledge:read`.
+
 ### Decide skill proposals
 
 SubKit proposes skills when a pattern keeps recurring. You decide them on the **Skill candidates** page, not in the skills table.
@@ -84,6 +105,7 @@ Good to know:
 | "This version has no saved state, so it cannot be restored." | Choose another version, or change the skill directly. |
 | The **Replaced** section is missing | The file was never replaced. It has no earlier versions yet. |
 | **Replace** is missing in the menu | Ask an administrator for `file:write`. |
+| **Plan a review** is missing under **More actions** | Ask an administrator for `knowledge:write`. |
 
 ### The same in the terminal
 
@@ -93,4 +115,11 @@ You can also replace files with the `subkit` command line. How to set it up is i
 subkit files replace <file-id> <path>
 subkit files versions <file-id>
 subkit files restore <file-id> <version>
+```
+
+Set or remove the review date of a source like this:
+
+```bash
+subkit knowledge-sources patch <source-id> --review-due 2026-12-31
+subkit knowledge-sources patch <source-id> --review-due none
 ```

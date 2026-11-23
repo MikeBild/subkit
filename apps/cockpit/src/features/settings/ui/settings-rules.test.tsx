@@ -39,6 +39,7 @@ const rule: ApprovalRule = {
   decided_at: "2026-11-02T10:00:00.000Z",
   revoked_at: null,
   last_used_at: "2026-11-19T08:00:00.000Z",
+  source_quote: null,
   created_at: "2026-10-30T10:00:00.000Z",
 };
 

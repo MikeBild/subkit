@@ -31,6 +31,7 @@ const ANSWERED: Attention["sources"] = {
   connectors: "answered",
   connections: "answered",
   secret_approvals: "answered",
+  knowledge: "answered",
   skills: "answered",
   intake: "answered",
   budget: "answered",

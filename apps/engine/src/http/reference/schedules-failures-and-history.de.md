@@ -17,6 +17,7 @@ Du weißt dann auch, wie du einen Zeitplan fortsetzt und eine Freigabe erneuerst
 - Einen Workflow oder eine Aufgabe mit Zeitplan. Wie du ihn anlegst, steht in „Dein erster Workflow“ und in „Ein Ziel als Aufgabe übergeben“.
 - Zum Lesen des Verlaufs: `execution:read` für Workflows, `task:read` für Aufgaben.
 - Zum Fortsetzen eines Zeitplans: `workflow:write`.
+- Zum Übernehmen einer vorgeschlagenen Korrektur: `workflow:write`.
 
 ### Lesen, warum ein Run gescheitert ist
 
@@ -42,10 +43,28 @@ Ein gehaltener Zeitplan startet keinen Run, verliert aber nichts. Sobald du den 
 | Was du liest | Was du tust |
 | --- | --- |
 | „Angehalten: Für diese Version fehlt die Freigabe. Erteile sie, dann läuft der Zeitplan weiter.“ | Öffne den Workflow, prüfe ihn und erteile die Freigabe. |
-| „Angehalten: Die Freigabe gilt nicht mehr. Erneuere sie, dann läuft der Zeitplan weiter.“ | Die Freigabe ist abgelaufen, aufgebraucht oder widerrufen. Erneuere sie. |
+| „Angehalten: Die Freigabe ist abgelaufen. Erneuere sie, dann läuft der Zeitplan weiter.“ | Erneuere die Freigabe. |
+| „Angehalten: Die freigegebene Anzahl an Runs ist aufgebraucht. Erneuere die Freigabe, dann läuft der Zeitplan weiter.“ | Erneuere die Freigabe. |
+| „Angehalten: Die Freigabe wurde widerrufen. Erteile sie erneut, dann läuft der Zeitplan weiter.“ | Prüfe den Workflow und gib ihn erneut frei. |
+| „Angehalten: Der Workflow wurde seit der Freigabe geändert. Prüfe die neue Version und gib sie frei.“ | Öffne die neue Version, prüfe sie und gib sie frei. |
 | „Angehalten: Dem Run fehlen Eingaben. Ergänze sie im Zeitplan.“ | Trage im Zeitplan die fehlende Eingabe ein. |
 | „Angehalten: Der Aufgabe fehlt die Dauererlaubnis. Erteile sie, dann läuft der Zeitplan weiter.“ | Öffne die Aufgabe und wähle **Erlauben**. |
 | „Angehalten: Die Dauererlaubnis ist abgelaufen. Erneuere sie, dann läuft der Zeitplan weiter.“ | Öffne die Aufgabe und wähle **Erlauben**. |
+
+### Warum ein Workflow angehalten ist
+
+Solange ein Workflow angehalten ist, warten seine automatischen Starts. Nichts startet automatisch, bis du den Grund behebst. In der **Übersicht** nennt der Punkt unter **Braucht dich** den Grund mit einem kurzen Kennzeichen und einem Satz.
+
+| Kennzeichen | Was der Satz sagt | Was du tust |
+| --- | --- | --- |
+| **Umbau nötig vor der Freigabe** | Der Zeitplan lässt sich ohne Änderung am Workflow nicht freigeben. Kennt SubKit den Schritt, nennt der Satz ihn und die Ursache. | Ändere den genannten Schritt, etwa mit **Im Chat beheben**. Gib danach die neue Version frei. |
+| **Freigabe abgelaufen** | Die Freigabe für seinen Zeitplan ist abgelaufen. | Erneuere die Freigabe. |
+| **Freigegebene Runs aufgebraucht** | Die freigegebenen Runs seines Zeitplans sind aufgebraucht. | Erneuere die Freigabe. |
+| **Freigabe widerrufen** | Die Freigabe für seinen Zeitplan wurde widerrufen. | Gib den Workflow erneut frei. |
+| **Seit der Freigabe geändert** | Der Workflow wurde geändert, seit sein Zeitplan freigegeben wurde. | Prüfe die neue Version und gib sie frei. |
+| **Eingabe fehlt** | Seinem Zeitplan fehlt eine Eingabe. | Ergänze die Eingabe im Zeitplan. |
+
+Dieselben Gründe halten auch einen eingehenden Webhook an. Der Satz lautet dann zum Beispiel: „… ist angehalten: er nimmt keine Aufrufe vom Webhook ‚…‘ an, weil seine Freigabe abgelaufen ist“. Behebe den Grund auf dieselbe Weise.
 
 ### Was nach wiederholten Fehlern passiert
 
@@ -72,6 +91,22 @@ Scheitert ein geplanter Workflow-Run mehrmals in Folge an derselben Ursache, bre
 
 Nach dem Fortsetzen zählt SubKit die Fehler neu. Geändert wurde durch die Pause sonst nichts: Workflow, Freigabe und Zeitplan sind unverändert.
 
+### Nur einen Teil einer vorgeschlagenen Korrektur übernehmen
+
+Scheitert ein Workflow immer wieder, kann SubKit eine Korrektur vorschlagen. Du findest sie in der **Übersicht** unter **Braucht dich**. Eine Korrektur kann aus mehreren Änderungen bestehen. Du übernimmst nur die, die du willst.
+
+1. Öffne die vorgeschlagene Korrektur in der **Übersicht**. Jede Änderung steht als ein Satz da, zum Beispiel „Ändert die Adresse von … auf ….“
+2. Wähle die Änderungen ab, die du nicht willst. Abgewählte Änderungen bleiben weg. „2 von 3 ausgewählt“ zeigt deine Wahl.
+3. Hast du eine Änderung abgewählt, wähle **Erst testen**. Der Test spielt den fehlgeschlagenen Schritt mit deiner Auswahl nach und schreibt nichts in andere Systeme. Nach einem erfolgreichen Test liest du „Der Test lief ohne Fehler. In andere Systeme wurde nichts geschrieben.“
+4. Wähle **Übernehmen und speichern**. SubKit übernimmt die ausgewählten Änderungen in den Workflow.
+
+Gut zu wissen:
+
+- Sind alle Änderungen ausgewählt, übernimmst du ohne Test.
+- Sobald du eine Änderung abwählst, lässt sich **Übernehmen und speichern** erst nach einem erfolgreichen Test genau dieser Auswahl wählen. Änderst du die Auswahl nach dem Test, teste erneut.
+- Willst du die ganze Korrektur ablehnen, öffne das Menü neben den Buttons und wähle **Ablehnen**.
+- Schlägt der Chat eine Änderung an einem Schritt vor, listet er die Änderungen genauso auf. Dort wählst du **Übernehmen** oder **Übernehmen und speichern**, ohne Test.
+
 ### Den Zeitplan-Verlauf lesen
 
 Der Verlauf zeigt für jeden fälligen Termin, was daraus wurde.
@@ -88,7 +123,7 @@ Der Verlauf zeigt für jeden fälligen Termin, was daraus wurde.
 | „Übersprungen: Am Wochenende läuft dieser Zeitplan nicht.“ | Der Zeitplan schließt Wochenenden aus. |
 | „Übersprungen: Dieser Tag ist im Zeitplan ausgenommen.“ | Der Tag steht in den Ausnahmen des Zeitplans. |
 | „Übersprungen: Der vorherige Run war noch nicht fertig.“ | Eine Aufgabe hat immer nur einen offenen Run. |
-| „Nicht gestartet: Der Zeitplan hat sich selbst pausiert, weil sich derselbe Fehler wiederholt hat.“ | Setz den Zeitplan fort, wie oben beschrieben. |
+| „Nicht gestartet: Der Zeitplan wurde automatisch pausiert, weil sich derselbe Fehler wiederholt hat.“ | Setz den Zeitplan fort, wie oben beschrieben. |
 | „Angehalten: …“ | Der Zeitplan wartet auf dich. Die Gründe stehen in „Warum ein Zeitplan wartet“. |
 
 Gut zu wissen:
@@ -122,6 +157,23 @@ Das Ereignis kommt nur, wenn das Ende etwas ändern würde: Der Workflow hat ein
 
 Der Run endet sofort. Der Zeitplan bleibt aktiv. Schritte, die ein Fremdsystem schon erreicht haben, können ausgeführt sein.
 
+### Einen Run mit unklarem Ausgang klären
+
+Manchmal stoppt SubKit, während ein Schritt gerade eine Änderung an ein anderes System sendet, etwa bei einem Neustart. Dann ist unklar, ob die Änderung angekommen ist. SubKit sendet eine solche Änderung nie von selbst erneut. Der Run bekommt den Status **Ausgang unklar** und wartet auf deine Antwort.
+
+1. Öffne den Run, etwa über **Runs**. Dort steht „Unklar, ob die Änderung von Schritt ‚…‘ angekommen ist“.
+2. Sieh im anderen System nach, ob die Änderung da ist. Prüfe zum Beispiel, ob die E-Mail verschickt wurde oder der Datensatz existiert.
+3. Wähle die passende Antwort.
+
+| Antwort | Was passiert |
+| --- | --- |
+| **Ist angekommen** | Der Schritt gilt als erledigt und wird nicht erneut gesendet. Du liest „Notiert. Der Run läuft nach diesem Schritt weiter.“ |
+| **Ist nicht angekommen** | Der Run sendet diesen Schritt erneut. Du liest „Notiert. Der Run sendet diesen Schritt erneut.“ |
+
+- Bis du antwortest, wird nichts erneut gesendet.
+- Haben mehrere Schritte gesendet, antwortest du für jeden. Der Run läuft weiter, sobald jeder Schritt eine Antwort hat.
+- Auch ein Probe-Run eines einzelnen Schritts kann so enden. Dann steht dort „Es ist unklar, ob dieser Schritt angekommen ist. Öffne den Run, um das zu klären.“
+
 ### Grenzen
 
 - **Die Schwellen sind fest.** Wartezeiten, die Pause nach fünf Fehlern, die 90 Tage des Verlaufs und die Fristen der Ankündigung lassen sich nicht einstellen.
@@ -140,6 +192,12 @@ Der Run endet sofort. Der Zeitplan bleibt aktiv. Schritte, die ein Fremdsystem s
 | „Bisher war noch kein Termin fällig.“ | Der Zeitplan ist neu oder pausiert. Einträge entstehen erst, wenn ein Termin fällig war. |
 | Der Reiter **Zeitplan** fehlt am Workflow | Dir fehlt `execution:read`. Bitte einen Administrator darum. |
 | Ein Hinweis nennt die Ursache auf Englisch mit dem Vermerk „Wortlaut der Engine“ | Das Cockpit kennt diesen Code noch nicht und zeigt deshalb den Satz der Engine. Die Handlung daneben ist übersetzt. |
+| „Deine Antwort ließ sich nicht speichern. Versuch es noch einmal.“ | Wähle die Antwort erneut. |
+| „Du darfst diesen Workflow nicht starten und kannst das deshalb nicht beantworten.“ | Bitte eine Administratorin oder einen Administrator um das Recht, oder bitte jemanden, der den Workflow starten darf, um die Antwort. |
+| „Dieser Run wurde beim Senden einer Änderung unterbrochen. Der Schritt ist noch nicht bekannt.“ | Antworte im Terminal. `subkit executions steps <run-id>` zeigt den Schritt-Schlüssel. |
+| „Teste diese Auswahl zuerst.“ | Wähle **Erst testen** oder wähle wieder alle Änderungen aus. |
+| „Der Test hat diese Auswahl nicht bestätigt, deshalb lässt sie sich nicht übernehmen.“ | Triff eine andere Auswahl oder übernimm die ganze Korrektur. |
+| „Für diese Änderung gibt es keinen Test.“ | Übernimm die Korrektur als Ganzes oder lehne sie ab. |
 
 ### Das Gleiche im Terminal und über die HTTP-API
 
@@ -153,11 +211,26 @@ subkit schedules resume <schedule-id>
 
 `subkit schedules resume` setzt auch einen automatisch pausierten Zeitplan fort und zählt die Fehler neu. Für den Verlauf gibt es keinen `subkit`-Befehl.
 
+Einen Run mit unklarem Ausgang beantworten und einen Teil einer vorgeschlagenen Korrektur übernehmen:
+
+```bash
+subkit executions resolve-write <run-id> --step <step-key> --outcome arrived
+subkit executions resolve-write <run-id> --step <step-key> --outcome not_arrived
+subkit patch-candidates preview <candidate-id>
+subkit patch-candidates dry-run <candidate-id> --accept 0,2
+subkit patch-candidates approve <candidate-id> --review-digest <digest> --accept 0,2
+```
+
+`subkit` zeigt einen Run mit unklarem Ausgang als `uncertain (Outcome unknown)` und nennt die Schritte, die auf eine Antwort warten. `--accept` nimmt die Nummern der Änderungen, beginnend bei 0, in der Reihenfolge der Vorschau. Für einen Teil einer Korrektur nimmst du den `review_digest` aus dem Dry-Run genau dieser Auswahl. Ohne `--accept` übernimmst du die ganze Korrektur, mit dem Digest aus `preview`.
+
 | Route | Bewirkt |
 | --- | --- |
 | `GET /v1/workflows/{id}/schedule-occurrences` | Liest den Verlauf eines Workflows, neueste zuerst. Braucht `workflow:read`. |
 | `GET /v1/tasks/{id}/schedule-occurrences` | Liest den Verlauf einer Aufgabe. Braucht `task:read`, und du musst die Aufgabe sehen dürfen. |
 | `PUT /v1/schedules/{id}` mit `{"paused": false}` | Setzt einen Zeitplan fort. Braucht `workflow:write`. |
-| `POST /v1/executions/{id}/cancel` | Stoppt einen laufenden Run. |
+| `POST /v1/executions/{id}/cancel` | Stoppt einen laufenden Run. Ein Run mit unklarem Ausgang endet als abgebrochen. |
+| `POST /v1/executions/{id}/resolve-write` mit `{"step_key": "<step-key>", "outcome": "arrived"}` | Antwortet für einen Schritt eines Runs mit unklarem Ausgang: `arrived` oder `not_arrived`. Braucht `execution:abort`. Antwortet mit `409`, wenn der Run oder der Schritt auf keine Antwort wartet. |
+| `POST /v1/patch-candidates/{id}/dry-run` mit `{"accepted_operations": [0, 2]}` | Testet die ausgewählten Änderungen einer Korrektur, ohne den Workflow zu ändern. Braucht `workflow:read`. |
+| `POST /v1/patch-candidates/{id}/approve` mit `expected_review_digest` und `accepted_operations` | Übernimmt die ausgewählten Änderungen. Braucht `workflow:write`. |
 
 Die Felder der Antworten, die Ereignisse und die Gründe stehen in „Referenz: Desktop-App, Regeln, Zeitpläne und Fehlerberichte“.

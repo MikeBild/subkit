@@ -54,6 +54,7 @@ export const overviewEn = {
   "overview.subject.settings": "The setting {name}",
   "overview.subject.task": "The task {name}",
   "overview.subject.device": "The device {name}",
+  "overview.subject.knowledge": "The knowledge source {name}",
   "overview.subject.other": "{name}",
   "overview.reason.awaiting_answer": "{subject} is waiting for your answer",
   "overview.reason.execution_authority_required":
@@ -153,6 +154,7 @@ export const overviewEn = {
     "An allowed folder of {subject} was replaced; allow it again on the device",
   "overview.reason.device_handover_waiting": "A step on {subject} waits for you to take over",
   "overview.reason.knowledge_review_due": "{subject} is due for a review",
+  "overview.reason.knowledge_review_dueCount": "{count} knowledge sources are due for a review",
   "overview.reason.schedule_auto_paused":
     "{subject} was paused automatically after failing several times in a row",
   "overview.reason.other": "{subject} needs you",
@@ -232,6 +234,7 @@ export const overviewEn = {
   "overview.source.secret_approvals": "prepared credentials",
   "overview.source.skills": "skill proposals from recurring patterns",
   "overview.source.intake": "collected material",
+  "overview.source.knowledge": "knowledge review dates",
   "overview.source.budget": "allowance",
   "overview.source.ai_access": "AI access",
   "overview.source.risk": "operating signals",
@@ -340,6 +343,7 @@ export const overviewEn = {
   "overview.waitingOn": "Waiting for approval from {name}",
   "overview.object.skills": "Skill proposals from recurring patterns",
   "overview.object.intake": "Collected material",
+  "overview.object.knowledge": "Knowledge sources",
   "overview.object.budget": "Monthly allowance",
   "overview.object.aiAccess": "Set up AI access",
   "overview.count.one": "{count} entry needs you",
@@ -420,6 +424,7 @@ export const overviewDe: Record<keyof typeof overviewEn, string> = {
   "overview.subject.settings": "Die Einstellung {name}",
   "overview.subject.task": "Die Aufgabe {name}",
   "overview.subject.device": "Das Gerät {name}",
+  "overview.subject.knowledge": "Die Wissensquelle {name}",
   "overview.subject.other": "{name}",
   "overview.reason.awaiting_answer": "{subject} wartet auf deine Antwort",
   "overview.reason.execution_authority_required":
@@ -524,6 +529,7 @@ export const overviewDe: Record<keyof typeof overviewEn, string> = {
   "overview.reason.device_handover_waiting":
     "Ein Schritt auf {subject} wartet darauf, dass du übernimmst",
   "overview.reason.knowledge_review_due": "{subject} ist zur Prüfung fällig",
+  "overview.reason.knowledge_review_dueCount": "{count} Wissensquellen sind zur Prüfung fällig",
   "overview.reason.schedule_auto_paused":
     "{subject} wurde nach mehreren Fehlern in Folge automatisch pausiert",
   "overview.reason.other": "{subject} braucht dich",
@@ -603,6 +609,7 @@ export const overviewDe: Record<keyof typeof overviewEn, string> = {
   "overview.source.secret_approvals": "Vorbereitete Zugangsdaten",
   "overview.source.skills": "Skill-Vorschläge aus wiederkehrenden Mustern",
   "overview.source.intake": "Gesammeltes",
+  "overview.source.knowledge": "Prüftermine für Wissen",
   "overview.source.budget": "Kontingent",
   "overview.source.ai_access": "KI-Zugang",
   "overview.source.risk": "Betriebssignale",
@@ -713,6 +720,7 @@ export const overviewDe: Record<keyof typeof overviewEn, string> = {
   "overview.waitingOn": "Wartet auf Freigabe von {name}",
   "overview.object.skills": "Skill-Vorschläge aus wiederkehrenden Mustern",
   "overview.object.intake": "Gesammeltes Material",
+  "overview.object.knowledge": "Wissensquellen",
   "overview.object.budget": "Monatskontingent",
   "overview.object.aiAccess": "KI-Zugang einrichten",
   "overview.count.one": "{count} Eintrag braucht dich",

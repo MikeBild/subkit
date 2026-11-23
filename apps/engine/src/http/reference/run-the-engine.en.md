@@ -90,6 +90,29 @@ Access from outside needs HTTPS and access control. Never expose the database or
 A recovery needs the database, object-store data, `.env`, the matching Compose file and the image identity together.
 Test recovery in a separate installation before you rely on a backup or upgrade. The steps are under “Backup and recovery”.
 
+### Keep workspaces apart in the database
+
+The engine uses PostgreSQL row level security as an extra wall between workspaces. For tables with especially sensitive data, the database itself then returns only rows of the workspace that is currently working. This covers stored secrets, tool approvals, inbound webhooks, subscriptions, chat workspaces, push subscriptions, the run state of workflows and the settings of sign-in providers.
+
+For this, the engine needs the database role `subkit_tenant`. With the supplied `docker-compose.yml` you do nothing: the engine sets up the role itself when it starts.
+
+With your own PostgreSQL database, the engine login may lack the right to create roles. Row level security then stays off, but the engine starts and works as before. It never blocks the start because of this. The log says “row security is off” and names the statements to run.
+
+To switch it on, a database administrator runs the following once, as a superuser or as a role with `CREATEROLE`. Replace `<engine login role>` with the role the engine signs in with:
+
+```sql
+CREATE ROLE subkit_tenant NOLOGIN NOBYPASSRLS;
+GRANT subkit_tenant TO "<engine login role>";
+```
+
+Then restart the engine. At its next start, it finds the role, gives it access to its tables and switches row level security on. Instead, you can also give the engine login the right to create roles (`CREATEROLE`). The engine then sets up the role itself.
+
+Good to know:
+
+- `subkit_tenant` cannot sign in. It is not a database user. The engine only switches to it while it works for one workspace.
+- Roles are not part of a database dump. When you restore a backup into another database server, create the role there first, as described under “Backup and recovery”. If the role is missing anyway, stored secrets cannot be read until it exists again. The log names this case. Run the two statements again and restart the engine.
+- If the log says the role is a superuser or has `BYPASSRLS`, row level security does not restrict it. Fix this with `ALTER ROLE subkit_tenant NOSUPERUSER NOBYPASSRLS;`.
+
 ### Browser crawling for connector discovery
 
 The supplied image contains no browser and no Node.js.
@@ -156,7 +179,8 @@ networks:
    project. Restore only into that new volume:
    `docker run --rm -i --network none -v <new-object-volume>:/data --entrypoint tar oven/bun:@@BUN_VERSION@@-debian -C /data -xf - < /path/to/backup/objects.tar`.
 2. Start the new database with `docker compose -p subkit-recovery up -d --wait postgres`.
-   Restore it with `docker compose -p subkit-recovery exec -T postgres pg_restore --exit-on-error --clean --if-exists --no-owner -U subkit -d subkit < /path/to/backup/postgres.dump`.
+   The dump refers to the role `subkit_tenant`, but roles are not part of it. Create the role first with `docker compose -p subkit-recovery exec -T postgres psql -U subkit -d subkit -c 'CREATE ROLE subkit_tenant NOLOGIN NOBYPASSRLS; GRANT subkit_tenant TO subkit;'`.
+   Then restore the database with `docker compose -p subkit-recovery exec -T postgres pg_restore --exit-on-error --clean --if-exists --no-owner -U subkit -d subkit < /path/to/backup/postgres.dump`.
    This command replaces database contents. Use it only against the new recovery project.
 3. Start the recovered services with `docker compose -p subkit-recovery up -d --wait`.
    Check `/health` and `/ready` on the selected port and sign in with an existing account.

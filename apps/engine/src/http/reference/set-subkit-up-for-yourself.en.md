@@ -78,6 +78,54 @@ The overview of **Settings** shows your choice in one line, for example “Test 
 - If you name an unknown address without the Administrator role, it is stored but nobody is invited. As soon as an administrator invites or adds the address, SubKit links your choice by itself; the notifications go to the person once they have joined.
 - If you choose **Only during my working hours**, you enter your **Working days** besides **From** and **Until**. Monday to Friday are preset.
 
+### Your personal notes
+
+When you tell SubKit in a chat how you like things done, it keeps a short note, with your own words as the source. Only you can read these notes. No teammate and no admin can. SubKit uses the notes that fit your question in its answers to you.
+
+1. In the Cockpit, open **Notes**.
+2. Under **Which notes**, choose **In use** or **Archived**.
+3. Click a note. **Why do you know this?** shows the message you wrote it in. **Open the message** takes you to the conversation.
+
+Each note belongs to an area: **About you**, **How you like things**, **People**, **Routines** or **Lessons**. Its status shows how sure SubKit is:
+
+| Status | Meaning |
+| --- | --- |
+| **Confirmed by you** | You confirmed or wrote these yourself. |
+| **Learned** | You said these in several conversations. |
+| **Mentioned once** | You said these once. Confirm what is right. |
+
+### Keep your notes up to date
+
+Open a note to change it.
+
+| Action | What it does |
+| --- | --- |
+| **Confirm** | Marks the note as correct. It then counts as **Confirmed by you**. |
+| **Edit** | Your new text replaces the note. The old text stays under **Earlier versions**. |
+| **Archive** | SubKit no longer uses the note. You find it under **Archived**. |
+| **Restore** | Brings an archived note back into use. |
+| **Forget** | Deletes the note, its earlier versions and the stored quotes for good. This cannot be undone. |
+| **Share with the team** | Sends the text and your quotes to the team’s **Inbox**. There a teammate can turn them into knowledge. Your note itself stays private. |
+| **Export** | Downloads your notes in use as a Markdown file. |
+
+Sharing needs `intake:write`.
+
+### Stop new notes
+
+1. Open **Settings** › **General**.
+2. Switch off **Save new notes**.
+
+SubKit then stops writing new notes. Existing notes stay until you forget them. The switch is on by default.
+
+Good to know:
+
+- Notes belong to one person. API keys and system accounts have no notes.
+- Only you, signed in to the Cockpit, can change your notes.
+- Notes never keep passwords, keys or tokens. SubKit refuses a text that looks like one.
+- Up to 300 notes can be in use, each with up to 600 characters.
+- The audit log records that a note was forgotten or exported, never its text.
+- When the whole workspace is deleted, all notes in it are deleted as well.
+
 ### If something does not work
 
 | What you see | What to do |
@@ -88,6 +136,10 @@ The overview of **Settings** shows your choice in one line, for example “Test 
 | “Enter a valid email address, for example anna@example.com.” | Check the address of the person who should approve. |
 | “Choose at least one service.” | Choose a service or **Other service**. |
 | The step does not appear | You already answered it or skipped it with **Not now**, or you lack `settings:write`. Your answers are under **Settings › Setup**. |
+| “You have reached the limit of notes in use. Archive or forget one first.” | Archive or forget a note you no longer need. |
+| “The text looks like it contains a password, key or token. Notes never keep those.” | Remove the password, key or token from the text. |
+| “A newer note on the same subject is in use. Archive or forget that one first.” | Archive or forget the newer note, then try again. |
+| “Your role can’t add to the team’s inbox. Ask an admin.” | Ask an administrator for `intake:write`. |
 
 ### The same over the HTTP API
 
@@ -102,3 +154,5 @@ curl -s -X PUT "$SUBKIT_URL/v1/identity/me/setup" \
 ```
 
 Every field is listed in “Reference: desktop app, rules, schedules and problem reports”.
+
+The switch **Save new notes** is the field `save_new_notes`. Your notes are under `/v1/identity/me/notes`: `GET /v1/identity/me/notes` lists them, `GET /v1/identity/me/notes/{id}` reads one with its sources and earlier versions, and `POST /v1/identity/me/notes/export` exports them as Markdown. Changes to a note only work signed in to the Cockpit.

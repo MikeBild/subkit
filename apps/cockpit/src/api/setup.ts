@@ -2,8 +2,8 @@ import type { components } from "@cli-core/engine-api/openapi";
 import { useQuery } from "@tanstack/react-query";
 import { apiCall } from "./call";
 
-export type Setup = components["schemas"]["Setup"] & { save_new_notes?: boolean };
-export type SetupUpdate = components["schemas"]["UpdateSetupBody"] & { save_new_notes?: boolean };
+export type Setup = components["schemas"]["Setup"];
+export type SetupUpdate = components["schemas"]["UpdateSetupBody"];
 export type SetupEnvironment = Setup["default_environment"];
 
 export const SETUP_KEY = ["identity-setup"] as const;

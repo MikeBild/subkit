@@ -16,6 +16,7 @@ export const ATTENTION_SOURCES = [
   "secret_approvals",
   "skills",
   "intake",
+  "knowledge",
   "budget",
   "ai_access",
   "risk",
@@ -91,6 +92,7 @@ export const ATTENTION_SUBJECT_KINDS = [
   "settings",
   "task",
   "device",
+  "knowledge",
 ] as const;
 
 export const APPROVAL_NEEDED_REASONS: ReadonlySet<AttentionReason> = new Set([
@@ -171,6 +173,7 @@ export interface AttentionItem {
     intake?: number;
     intake_by_category?: IntakeCategoryCount[];
     intake_categories_omitted?: number;
+    knowledge_reviews?: number;
   };
   since: string | null;
   deadline: string | null;

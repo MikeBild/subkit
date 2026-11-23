@@ -108,6 +108,12 @@ const AttentionItem = z
         .positive()
         .optional()
         .describe("Items awaiting review in categories beyond those listed in intake_by_category."),
+      knowledge_reviews: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Knowledge sources whose review date has passed."),
     }),
     since: z.string().nullable(),
     deadline: z.string().nullable(),

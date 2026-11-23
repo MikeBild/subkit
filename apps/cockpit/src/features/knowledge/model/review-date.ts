@@ -1,8 +1,8 @@
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
-export function reviewDueAt(source: unknown): string | null {
-  const raw = (source as { review_due_at?: unknown } | null)?.review_due_at;
-  return typeof raw === "string" && !Number.isNaN(Date.parse(raw)) ? raw : null;
+export function reviewDueAt(source: { review_due_at: string | null }): string | null {
+  const raw = source.review_due_at;
+  return raw && !Number.isNaN(Date.parse(raw)) ? raw : null;
 }
 
 export function reviewDateInput(iso: string | null): string {

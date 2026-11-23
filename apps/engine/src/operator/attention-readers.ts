@@ -10,6 +10,7 @@ import {
   workflows,
   workflowsSchedules,
 } from "../db/schema/index.ts";
+import { listDueKnowledgeReviews } from "../knowledge/index.ts";
 import { readSpend } from "../llm/accounting/spend.ts";
 import { listPendingSecretVersions } from "../runtime-config/pending-secrets.ts";
 import { nextScheduleFire } from "../scheduler/next-fire.ts";
@@ -38,6 +39,7 @@ import {
   type DigestFailureGroup,
   failingScheduledGroups,
 } from "./health-digest.ts";
+import { knowledgeReviewCandidates } from "./knowledge-review-attention.ts";
 import { cockpitRunsHref } from "./operating-figures.ts";
 import { getOperationalOverview, type HealthState } from "./operational-overview.ts";
 import type { PendingPairRequest } from "./pair-approval-attention.ts";
@@ -743,6 +745,9 @@ function signalItem(signal: RiskSignal): Candidate {
   };
 }
 
+const readKnowledgeReviews: TenantReader = async (db, tenantId, now) =>
+  knowledgeReviewCandidates(await listDueKnowledgeReviews(db, tenantId, now));
+
 const readBudget: TenantReader = async (db, tenantId, now) =>
   spendCandidates(await readSpend(tenantId, db, now));
 
@@ -868,6 +873,7 @@ const TENANT_READERS: Required<AttentionReaderOverrides> = {
   secret_approvals: readSecretApprovals,
   skills: readSkills,
   intake: readIntake,
+  knowledge: readKnowledgeReviews,
   budget: readBudget,
   ai_access: readAiAccess,
   risk: readRisk,

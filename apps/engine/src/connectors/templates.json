@@ -9808,7 +9808,7 @@
     "inline_schema": null,
     "probe_endpoint": {
       "method": "GET",
-      "path": "/rest/api/3/myself",
+      "path": "/myself",
       "expected_status": [200, 200],
       "description": "Fetch the authenticated user (validates the credential; an invalid token returns 401 or a Seraph anonymous 200)"
     },
@@ -13082,9 +13082,9 @@
     "inline_schema": null,
     "probe_endpoint": {
       "method": "GET",
-      "path": "/services/data",
+      "path": "/sobjects",
       "expected_status": [200, 200],
-      "description": "List API versions"
+      "description": "List the objects this credential can read"
     },
     "credential_hints": [
       {
@@ -13105,12 +13105,12 @@
     "base_url_options": [
       {
         "environment": "sandbox",
-        "base_url": "https://test.salesforce.com/services/data/v67.0",
+        "base_url": "https://{instance}.sandbox.my.salesforce.com/services/data/v67.0",
         "label": "Sandbox"
       },
       {
         "environment": "production",
-        "base_url": "https://login.salesforce.com",
+        "base_url": "https://{instance}.my.salesforce.com/services/data/v67.0",
         "label": "Production"
       }
     ],

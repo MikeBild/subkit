@@ -78,6 +78,24 @@ Skills, knowledge sources, items in the **Inbox** and files that contain Markdow
 2. Under **View**, choose between **Rendered** and **Markdown**. **Rendered** shows the formatted text, **Markdown** the source for reading and copying.
 3. In longer documents, jump to a heading through **Contents**. The table of contents appears from three headings on when the column is wide enough.
 
+### Snooze an entry under Needs you
+
+Not every entry under **Needs you** has to be handled right away. You can hide one until later. This only changes your own list.
+
+1. Open the **Overview**.
+2. On the entry, select **Snooze** and choose **For 3 hours**, **Until tomorrow morning** or **For a week**.
+3. The entry moves to the collapsed **Snoozed** section. “Back on …” says when it returns.
+
+To bring it back early, open **Snoozed** and select **Show again** on the entry.
+
+Good to know:
+
+- A snoozed entry sends you no push notification.
+- It comes back by itself when the time is up. It comes back earlier when it needs you for a different reason.
+- “Until tomorrow morning” means 8 a.m. tomorrow, “For a week” 8 a.m. in seven days, both in your device’s time.
+- Over the HTTP API, `POST /v1/attention/snooze` with `attention_key` and `until` hides an entry for at most 30 days. `POST /v1/attention/unsnooze` shows it again. `GET /v1/attention` lists snoozed entries under `snoozed`.
+- The audit log records “Entry snoozed” and “Snooze ended”.
+
 ### If something does not work
 
 | What you see | What to do |
@@ -87,3 +105,5 @@ Skills, knowledge sources, items in the **Inbox** and files that contain Markdow
 | “The history could not be loaded. Nothing was changed.” | Open the tab again. If it stays that way, select **Show everything in the audit log**. |
 | The **Chat** tab is missing | You are on a chat page. There the conversation already is the page. |
 | “This could not be loaded” | Select **Try again**. |
+| “The entry could not be snoozed. Try again.” | Select **Snooze** again. |
+| “The entry could not be shown again. Try again.” | Select **Show again** once more. |

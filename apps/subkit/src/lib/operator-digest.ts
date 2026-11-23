@@ -48,6 +48,9 @@ export function attentionItemLine(item: AttentionItem): string {
     item.counts.skills
       ? `${item.counts.skills} skill proposal${item.counts.skills === 1 ? "" : "s"}`
       : null,
+    item.counts.knowledge_reviews
+      ? `${item.counts.knowledge_reviews} knowledge source${item.counts.knowledge_reviews === 1 ? "" : "s"} due for review`
+      : null,
   ].filter((part): part is string => part !== null);
   const primary = item.actions.find((action) => action.primary);
   return [

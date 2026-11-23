@@ -22,6 +22,7 @@ export function attentionSources(
     secret_approvals: "answered",
     skills: "answered",
     intake: "answered",
+    knowledge: "answered",
     budget: "answered",
     ai_access: "answered",
     risk: "answered",
@@ -37,6 +38,7 @@ export function attention(overrides: Partial<DigestAttention> = {}): DigestAtten
     sources: attentionSources(),
     status: null,
     items: [],
+    snoozed: [],
     ...overrides,
   };
 }

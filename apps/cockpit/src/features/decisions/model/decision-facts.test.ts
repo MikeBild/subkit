@@ -29,6 +29,8 @@ test("decision facts retain the readable patch identity and approval gates", () 
     closed_reason: null,
     closed_against_version_id: null,
     closed_at: null,
+    accepted_operations: null,
+    accepted_digest: null,
     created_at: "2026-11-09T00:00:00.000Z",
     updated_at: "2026-11-09T00:00:00.000Z",
   } satisfies PatchCandidate;

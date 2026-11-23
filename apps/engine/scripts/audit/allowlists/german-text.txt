@@ -156,13 +156,13 @@ apps/cockpit/src/features/workflows/model/step-form.test.ts                     
 apps/cockpit/src/features/workflows/model/workflow-invocation.test.ts                         2
 apps/cockpit/src/features/workflows/model/workflow-preview.test.ts                            3
 apps/cockpit/src/features/workflows/model/workflow-spec.test.ts                               1
-apps/cockpit/src/features/workflows/model/workflow-steps.test.ts                              2
+apps/cockpit/src/features/workflows/model/workflow-steps.test.ts                              1
 apps/cockpit/src/features/workflows/model/workflow-strip.test.ts                              1
 apps/cockpit/src/features/workflows/model/workflow-versions.test.ts                           2
 apps/cockpit/src/features/workflows/ui/diff-card.test.tsx                                     4
 apps/cockpit/src/lib/action-failure.test.ts                                                   10
 apps/cockpit/src/lib/authority-headline.test.ts                                               3
-apps/cockpit/src/lib/engine-sentence.test.ts                                                  3
+apps/cockpit/src/lib/engine-sentence.test.ts                                                  2
 apps/cockpit/src/lib/i18n-glossary.test.ts                                                    19
 apps/cockpit/src/lib/i18n-plural.test.ts                                                      2
 apps/cockpit/src/lib/identifiers.test.ts                                                      4
@@ -186,8 +186,6 @@ apps/cockpit/src/pages/tasks-pages.test.tsx                                     
 apps/desktop/src/connect/pages/local-window.test.tsx                                          4
 apps/desktop/src/connect/pages/sign-in-window.test.tsx                                        12
 apps/desktop/src/live/pages/live-window.test.tsx                                              5
-apps/desktop/src/shared/anonymous-report.test.ts                                              1
-apps/desktop/src/shared/anonymous-report.ts                                                   1
 apps/desktop/src/shared/app-identity.test.ts                                                  1
 apps/desktop/src/shared/app-identity.ts                                                       7
 apps/desktop/src/shared/attention.test.ts                                                     10
@@ -217,6 +215,7 @@ apps/engine/src/connectors/core/http-request.test.ts                            
 apps/engine/src/connectors/drivers/file-promotion.test.ts                                     1
 apps/engine/src/connectors/drivers/tests/graphql.test.ts                                      2
 apps/engine/src/conversations/agent/skills/content/turn-rhythm-and-language.md                1
+apps/engine/src/conversations/approval-rules/core/spoken-rule.ts                              3
 apps/engine/src/conversations/approval-rules/tests/scope.test.ts                              4
 apps/engine/src/conversations/approval-rules/tests/store.int.test.ts                          1
 apps/engine/src/conversations/authoring-pipeline.ts                                           1
@@ -340,7 +339,6 @@ apps/engine/src/http/routes/tool-approvals.ts                                   
 apps/engine/src/http/tests/agent-briefing-fixtures.ts                                         2
 apps/engine/src/http/tests/agent-briefing.test.ts                                             1
 apps/engine/src/http/tests/agent-sessions.test.ts                                             1
-apps/engine/src/http/tests/browser-pages.test.ts                                              2
 apps/engine/src/http/tests/chat-route-sync.test.ts                                            1
 apps/engine/src/http/tests/knowledge-sources-url.test.ts                                      1
 apps/engine/src/http/tests/metrics-scope.test.ts                                              1

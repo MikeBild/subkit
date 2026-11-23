@@ -24,6 +24,7 @@ const SOURCES: AttentionV1["sources"] = {
   secret_approvals: "answered",
   skills: "answered",
   intake: "answered",
+  knowledge: "answered",
   budget: "answered",
   ai_access: "answered",
   risk: "answered",
