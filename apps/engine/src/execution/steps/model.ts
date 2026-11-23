@@ -4,6 +4,7 @@ import {
   LlmError,
   LlmSpendLimitReached,
   resolvePlaceholders,
+  resolvePlaceholdersTypePreserving,
 } from "../../llm/index.ts";
 import { type ModelStep, parsePlaceholders, walkStrings } from "../../workflows/index.ts";
 import { combineSignals } from "../abort.ts";
@@ -86,26 +87,30 @@ export async function runModelStep(p: RunModelStepParams): Promise<StepResult> {
   if (refusal) return failed(start, clock.now(), refusal);
 
   const scope = await resolveScopeForJsonata(p.ctx.db, p.ctx.tenant_id, p.scope, p.ctx.signal);
-  const resolved = await resolvePlaceholders(
-    { prompt: p.step.prompt, system: p.step.system, input: p.step.input },
-    {
-      tenant_id: p.ctx.tenant_id,
-      environment: p.ctx.execution_mode,
-      db: p.ctx.db,
-      input: scope.$input,
-      scope,
-      ...(p.ctx.principal ? { principal: p.ctx.principal } : {}),
-    },
+  const resolverCtx = {
+    tenant_id: p.ctx.tenant_id,
+    environment: p.ctx.execution_mode,
+    db: p.ctx.db,
+    input: scope.$input,
+    scope,
+    ...(p.ctx.principal ? { principal: p.ctx.principal } : {}),
+  };
+  const texts = await resolvePlaceholders(
+    { prompt: p.step.prompt, system: p.step.system },
+    resolverCtx,
   );
-  if (resolved.unresolved.length > 0) {
+  const data = await resolvePlaceholdersTypePreserving({ input: p.step.input }, resolverCtx);
+  const unresolved = [...texts.unresolved, ...data.unresolved];
+  if (unresolved.length > 0) {
     return failed(start, clock.now(), {
       code: "placeholder_unresolved",
-      message: `The model step references values that do not exist: ${resolved.unresolved
+      message: `The model step references values that do not exist: ${unresolved
         .map((u) => u.token)
         .join(", ")}`,
-      details: { unresolved: resolved.unresolved },
+      details: { unresolved },
     });
   }
+  const resolved = { value: { ...texts.value, input: data.value.input } };
   const userText = modelStepUserText(resolved.value.prompt, resolved.value.input);
   const timeout = new AbortController();
   const timer =

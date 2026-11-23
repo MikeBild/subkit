@@ -64,7 +64,7 @@ describe("model step", () => {
           kind: "model",
           system: "You sort support messages.",
           prompt: "Classify this ${scope.prepare.data.topic} message.",
-          input: { text: "${input.text}" },
+          input: { text: "${input.text}", prepared: "${scope.prepare.data}" },
           output_schema: verdict,
         },
         {
@@ -84,6 +84,7 @@ describe("model step", () => {
     expect(call?.system).toBe("You sort support messages.");
     expect(call?.last_user).toContain("Classify this invoice message.");
     expect(call?.last_user).toContain('"text": "I was charged twice"');
+    expect(call?.last_user).toContain('"prepared": {\n    "topic": "invoice"\n  }');
     expect(call?.included_skill_ids).toEqual([]);
     expect(call?.included_knowledge_chunk_ids).toEqual([]);
     expect(call?.included_chunk_ids).toEqual([]);
