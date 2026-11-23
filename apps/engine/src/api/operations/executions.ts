@@ -1,6 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import { executionStartTraceId } from "../../audit/execution-traces.ts";
 import { AuditAction } from "../../audit/types.ts";
+import { loadRecordLinks, type RecordLink } from "../../connectors/index.ts";
 import { KEYSET_CURSOR_PATTERN } from "../../db/keyset-cursor.ts";
 import { cancelExecutionRequest, resolveUncertainWrite } from "../../execution/control-service.ts";
 import { EXECUTION_STATUSES } from "../../execution/core/status.ts";
@@ -251,6 +252,7 @@ interface ExecutionGetResult {
   readonly workflow_name: string | null;
   readonly outcome: Awaited<ReturnType<typeof loadExecutionOutcome>>;
   readonly trace_id: Awaited<ReturnType<typeof executionStartTraceId>>;
+  readonly record_links: RecordLink[];
 }
 
 export const getExecutionOperation = defineOperation<ExecutionGetInput, ExecutionGetResult>({
@@ -264,13 +266,15 @@ export const getExecutionOperation = defineOperation<ExecutionGetInput, Executio
     if (!principal) return reject.unauthorized();
     if (with_workflow_name) {
       const detail = await loadExecutionDetail(scope.db, principal, id);
-      return detail ?? reject.notFound("execution");
+      if (!detail) return reject.notFound("execution");
+      return { ...detail, record_links: await loadRecordLinks(scope.db, detail.row) };
     }
     const row = await findVisibleExecution(scope.db, scope.tenant_id, id, principal);
     if (!row) return reject.notFound("execution");
     const trace_id = await executionStartTraceId(scope.db, scope.tenant_id, row.id);
     const outcome = await loadExecutionOutcome(scope.tenant_id, row, scope.db);
-    return { row, workflow_name: null, outcome, trace_id };
+    const record_links = await loadRecordLinks(scope.db, row);
+    return { row, workflow_name: null, outcome, trace_id, record_links };
   },
   http: {
     method: "get",
@@ -280,11 +284,12 @@ export const getExecutionOperation = defineOperation<ExecutionGetInput, Executio
     response: ExecDetailSchema,
     errors: { 404: "Not found" },
     toInput: ({ param }) => ({ id: (param as { id: string }).id, with_workflow_name: true }),
-    toBody: ({ row, workflow_name, outcome, trace_id }) => ({
+    toBody: ({ row, workflow_name, outcome, trace_id, record_links }) => ({
       ...serializeExec(row, workflow_name),
       outcome,
       trace_id,
       ...serializeResultMarkdown(row),
+      record_links,
     }),
   },
   tool: {
@@ -296,7 +301,7 @@ export const getExecutionOperation = defineOperation<ExecutionGetInput, Executio
     toInput: (raw) => ({ id: (raw as { id: string }).id, with_workflow_name: false }),
     toResult: (outcome) => {
       if (isRejection(outcome)) return { ok: false, data: { error: toolError(outcome) } };
-      const { row: e, outcome: executionOutcome, trace_id } = outcome;
+      const { row: e, outcome: executionOutcome, trace_id, record_links } = outcome;
       return {
         ok: true,
         data: {
@@ -314,6 +319,7 @@ export const getExecutionOperation = defineOperation<ExecutionGetInput, Executio
             finished_at: e.finished_at,
             created_at: e.created_at,
             ...serializeResultMarkdown(e),
+            record_links,
           },
           outcome: executionOutcome,
         },

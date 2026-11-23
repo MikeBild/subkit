@@ -35437,6 +35437,8 @@ export interface components {
             result_markdown: string | null;
             /** @description True when result_markdown was cut at 64 KiB of text. */
             result_markdown_truncated: boolean;
+            /** @description Links to records that request steps created or changed in external systems, derived on read from built-in connector templates. Empty for sensitive runs, held writes, offloaded or redacted step outputs. */
+            record_links: components["schemas"]["ExecutionRecordLink"][];
         };
         ExecutionOutcome: {
             /** @enum {string} */
@@ -35470,6 +35472,21 @@ export interface components {
             };
             /** @description Fixed request/transform step count from the persisted workflow version. Null when dynamic expansion or unavailable definition prevents an exact count. */
             planned_steps?: number | null;
+        };
+        ExecutionRecordLink: {
+            /** @description Short record name from the external system, such as an issue key. Null when unknown. */
+            label: string | null;
+            /**
+             * Format: uri
+             * @description https web address of the created or changed record on the connector's known web host.
+             */
+            url: string;
+            /** @description Slug of the built-in connector template. */
+            connector: string;
+            /** @description Display name of the external system. */
+            connector_name: string;
+            /** @description Step that created or changed the record. */
+            step_key: string;
         };
         ExecutionStepListResponse: {
             items: components["schemas"]["ExecutionStep"][];

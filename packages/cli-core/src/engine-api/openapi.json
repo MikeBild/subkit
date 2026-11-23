@@ -25337,13 +25337,21 @@
               "result_markdown_truncated": {
                 "type": "boolean",
                 "description": "True when result_markdown was cut at 64 KiB of text."
+              },
+              "record_links": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ExecutionRecordLink"
+                },
+                "description": "Links to records that request steps created or changed in external systems, derived on read from built-in connector templates. Empty for sensitive runs, held writes, offloaded or redacted step outputs."
               }
             },
             "required": [
               "trace_id",
               "outcome",
               "result_markdown",
-              "result_markdown_truncated"
+              "result_markdown_truncated",
+              "record_links"
             ]
           }
         ]
@@ -25538,6 +25546,42 @@
           "steps",
           "output_contract",
           "rerun_safety"
+        ]
+      },
+      "ExecutionRecordLink": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Short record name from the external system, such as an issue key. Null when unknown."
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "https web address of the created or changed record on the connector's known web host."
+          },
+          "connector": {
+            "type": "string",
+            "description": "Slug of the built-in connector template."
+          },
+          "connector_name": {
+            "type": "string",
+            "description": "Display name of the external system."
+          },
+          "step_key": {
+            "type": "string",
+            "description": "Step that created or changed the record."
+          }
+        },
+        "required": [
+          "label",
+          "url",
+          "connector",
+          "connector_name",
+          "step_key"
         ]
       },
       "ExecutionStepListResponse": {

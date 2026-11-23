@@ -56,6 +56,7 @@ const executionDetail = (
   outcome: outcome("held"),
   result_markdown: null,
   result_markdown_truncated: false,
+  record_links: [],
   ...overrides,
 });
 
