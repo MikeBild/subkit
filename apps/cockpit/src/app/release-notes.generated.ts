@@ -3,7 +3,7 @@ export type ReleaseNotes = { version: string; notes: string[]; highlights: strin
 export type PendingNotes = { version: string | null; notes: string[]; highlights: string[] | null };
 
 export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: PendingNotes } = {
-  "source": "d929b7770e7abf832845b629874c49251ebf1860",
+  "source": "5abc5ee8a0fec12991e676e0af7589c105c6521d",
   "releases": [
     {
       "version": "v1.0.0",
@@ -2339,7 +2339,9 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
     "highlights": [
       "SubKit Desktop and the Cockpit no longer show “Server offline” while connected: the live event stream works for every signed-in workspace.",
       "Connected and offline now come from one source, so the status in the top bar and the notice on a page always agree.",
-      "“Report a problem” in the Cockpit attaches the redacted diagnostics and the trace id of the failing request, and confirms that the report arrived."
+      "“Report a problem” in the Cockpit attaches the redacted diagnostics and the trace id of the failing request, and confirms that the report arrived.",
+      "SubKit Desktop asks macOS for screen recording and accessibility before it opens System Settings, so SubKit now appears in both lists.",
+      "After the first setup, SubKit Desktop shows your connected server, permissions and device status at a glance, and back and close always lead where you came from."
     ]
   }
 };
