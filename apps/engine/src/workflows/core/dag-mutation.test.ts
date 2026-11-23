@@ -267,17 +267,15 @@ describe("DAG containment and order", () => {
     expect(topoSort(dag)).toEqual(["independent", "dep", "late"]);
   });
 
-  test("keeps all valid branch, parallel, and loop containment dependencies", () => {
+  test("keeps all valid branch and parallel containment dependencies", () => {
     const dag = buildStepDag(
       workflow([
         { id: "branch", kind: "branch", when: "true", then_steps: ["yes"], else_steps: ["no"] },
         { id: "parallel", kind: "parallel", branches: [["left"], ["right"]] },
-        { id: "loop", kind: "loop", over: "$input", body: ["body"] },
         { id: "yes", kind: "transform", language: "javascript", expression: "return 1;" },
         { id: "no", kind: "transform", language: "javascript", expression: "return 2;" },
         { id: "left", kind: "transform", language: "javascript", expression: "return 3;" },
         { id: "right", kind: "transform", language: "javascript", expression: "return 4;" },
-        { id: "body", kind: "transform", language: "javascript", expression: "return 5;" },
       ]),
     );
     expect(dag.edges).toEqual(
@@ -286,7 +284,6 @@ describe("DAG containment and order", () => {
         { from: "no", to: "branch", reason: "branch_arm" },
         { from: "left", to: "parallel", reason: "parallel_branch" },
         { from: "right", to: "parallel", reason: "parallel_branch" },
-        { from: "body", to: "loop", reason: "loop_body" },
       ]),
     );
     const sorted = topoSort(dag);

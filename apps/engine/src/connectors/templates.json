@@ -6471,12 +6471,16 @@
       },
       {
         "slug": "list-all-repos-paginate-js-form",
-        "title": "Page through every authenticated user's repo with the JS data_selector form",
-        "description": "Demonstrates LoopStep.data_selector — JS arrow form. The selector body receives `sourceData` bound to the full execution scope and returns the array to iterate. Equivalent to the path-string form but lets you reach into a derived array (e.g. filter or flatten).",
-        "intent_keywords": ["loop js arrow", "data_selector js", "iterate paginated repos"],
+        "title": "Page through every authenticated user's repo and run one step per repo",
+        "description": "Demonstrates `for_each` with a JS arrow selector. The selector receives `sourceData` bound to the full execution scope and returns the array to iterate, so it can reach into a derived array (e.g. filter or flatten). The step that carries `for_each` runs once per element.",
+        "intent_keywords": [
+          "for_each js arrow",
+          "iterate with for_each",
+          "iterate paginated repos"
+        ],
         "derived_from_skill": null,
         "category": "devops",
-        "tags": ["loop", "demonstration"],
+        "tags": ["for_each", "demonstration"],
         "difficulty": "advanced",
         "estimated_setup_minutes": 5,
         "prerequisites": ["GitHub PAT with `repo` scope"],
@@ -6488,8 +6492,8 @@
         "last_validated_at": null,
         "deprecated": null,
         "workflow": {
-          "name": "github-loop-via-js-data-selector",
-          "description": "List + iterate repos using the JS arrow form of data_selector.",
+          "name": "github-for-each-repo",
+          "description": "List repos, then run one step per repo with for_each.",
           "steps": [
             {
               "kind": "request",
@@ -6508,14 +6512,9 @@
               }
             },
             {
-              "kind": "loop",
-              "id": "iterate",
-              "data_selector": "(sourceData) => sourceData.list.body.filter(function(r){ return !r.fork; })",
-              "body": ["per_repo_log"]
-            },
-            {
               "kind": "transform",
               "id": "per_repo_log",
+              "for_each": "(sourceData) => sourceData.list.data.filter(function(r){ return !r.fork; })",
               "expression": "return { name: input.scope.$item.full_name, updated_at: input.scope.$item.updated_at };"
             }
           ]
@@ -16922,7 +16921,7 @@
       {
         "slug": "crawl-sitemap-to-markdown",
         "title": "Crawl sitemap → markdown pages",
-        "description": "Fetch a site's sitemap.xml, loop over its <loc> entries, extract the main article of each page via Readability, and return an array of { title, url, markdown } envelopes. The caller is responsible for ingesting the output into Knowledge Sources (POST /v1/knowledge-sources with each element as inline JSON).",
+        "description": "Fetch a site's sitemap.xml, run one fetch per <loc> entry, extract the main article of each page via Readability, and return an array of { title, url, markdown } envelopes. The caller is responsible for ingesting the output into Knowledge Sources (POST /v1/knowledge-sources with each element as inline JSON).",
         "intent_keywords": [
           "crawl site",
           "ingest documentation",
@@ -16976,14 +16975,9 @@
               "expression": "const u = input.scope.fetch_sitemap.data.urlset.url; return (Array.isArray(u) ? u : [u]).map((x) => ({ page_url: x.loc }));"
             },
             {
-              "kind": "loop",
-              "id": "pages",
-              "over": "urls",
-              "body": ["fetch_page", "readable", "to_markdown", "envelope"]
-            },
-            {
               "kind": "request",
               "id": "fetch_page",
+              "for_each": "(sourceData) => sourceData.urls.data",
               "method": "GET",
               "url": "${item.page_url}",
               "expected_statuses": [200]
@@ -16991,23 +16985,25 @@
             {
               "kind": "transform",
               "id": "readable",
+              "for_each": "(sourceData) => sourceData.urls.data",
               "language": "readability",
-              "data_selector": "{ \"html\": fetch_page.data, \"url\": $step_meta.fetch_page.url }"
+              "data_selector": "{ \"html\": $scope.fetch_page.data[$loop_index].fetch_page.data, \"url\": $item.page_url }"
             },
             {
               "kind": "transform",
               "id": "to_markdown",
+              "for_each": "(sourceData) => sourceData.readable.data",
               "language": "html-to-markdown",
-              "data_selector": "readable"
+              "data_selector": "$item.readable.data"
             },
             {
               "kind": "transform",
-              "id": "envelope",
+              "id": "pages",
               "language": "javascript",
-              "expression": "return { title: input.scope.readable.title, url: input.scope.readable.url, markdown: input.scope.to_markdown.markdown, bytes: input.scope.to_markdown.bytes };"
+              "expression": "const markdown = input.scope.to_markdown.data; return input.scope.readable.data.map((entry, index) => { const page = entry.readable.data; const md = markdown[index].to_markdown.data; return { title: page.title, url: page.url, markdown: md.markdown, bytes: md.bytes }; });"
             }
           ],
-          "output_transform": "{ \"pages\": pages }"
+          "output_transform": "{ \"pages\": $scope.pages.data }"
         }
       }
     ],

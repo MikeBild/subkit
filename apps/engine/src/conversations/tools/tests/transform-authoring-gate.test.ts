@@ -163,51 +163,6 @@ describe("evaluateTransformAuthoringGate", () => {
     expect(result.blocks[0]?.reason).toBe("no_preview_for_referenced_step");
   });
 
-  test("exempts a transform that reads a loop step's aggregated output (no dry-run)", () => {
-    const result = evaluateTransformAuthoringGate(
-      {
-        steps: [
-          { id: "query", kind: "request" },
-          {
-            id: "publish_loop",
-            kind: "loop",
-            over: "$scope.query.data.results",
-            body: ["publish_one"],
-          },
-          { id: "publish_one", kind: "call", workflow_slug: "x" },
-          {
-            id: "summarize",
-            kind: "transform",
-            expression: "{ n: $count(input.scope.publish_loop.data.publish_one.data) }",
-          },
-        ],
-      },
-      null,
-    );
-    expect(result.ok).toBe(true);
-    expect(result.blocks).toEqual([]);
-  });
-
-  test("exempts a transform that reads a loop BODY child step directly", () => {
-    const result = evaluateTransformAuthoringGate(
-      {
-        steps: [
-          {
-            id: "publish_loop",
-            kind: "loop",
-            over: "$scope.q.data",
-            body: ["publish_one", "mark"],
-          },
-          { id: "publish_one", kind: "call", workflow_slug: "x" },
-          { id: "mark", kind: "request" },
-          { id: "summarize", kind: "transform", expression: "input.scope.publish_one.data.output" },
-        ],
-      },
-      null,
-    );
-    expect(result.ok).toBe(true);
-  });
-
   test("exempts a transform that reads a branch then/else child step", () => {
     const result = evaluateTransformAuthoringGate(
       {

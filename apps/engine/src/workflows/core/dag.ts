@@ -1,6 +1,5 @@
 import type {
   DomainBranchStep,
-  DomainLoopStep,
   DomainParallelStep,
   DomainStepDef,
   DomainWorkflowDef,
@@ -16,8 +15,7 @@ export interface StepEdge {
     | "js_scope"
     | "data_selector"
     | "branch_arm"
-    | "parallel_branch"
-    | "loop_body";
+    | "parallel_branch";
 }
 
 interface StepDag {
@@ -125,9 +123,6 @@ function collectContainmentEdges(step: DomainStepDef, knownIds: ReadonlySet<stri
     for (const branch of p.branches) {
       addEdges(branch, "parallel_branch");
     }
-  } else if (step.kind === "loop") {
-    const l: DomainLoopStep = step;
-    addEdges(l.body, "loop_body");
   }
   return edges;
 }

@@ -1,3 +1,4 @@
+import { retiredLoopNotices } from "./core/loop-rewrite.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 
 export interface VersionIssue {
@@ -19,41 +20,32 @@ type StoredDefinition =
   | { invalid: false; definition: WorkflowDef }
   | { invalid: true; issues: VersionIssue[] };
 
-const ITEM_VAR_RETIRED_MESSAGE =
-  "`item_var` is retired — remove it. Address the loop item as `$item` in JSONata expressions and `${item.<field>}` in URL/header/query/body strings (`$loop_index` is the iteration counter).";
-
-export function retiredItemVarIssues(dag: unknown): VersionIssue[] {
+export function retiredLoopIssues(dag: unknown): VersionIssue[] {
   const steps = (dag as { steps?: unknown } | null)?.steps;
   if (!Array.isArray(steps)) return [];
-  const issues: VersionIssue[] = [];
-  steps.forEach((step: unknown, index) => {
-    if (typeof step !== "object" || step === null) return;
-    const s = step as { kind?: unknown; id?: unknown };
-    if (s.kind !== "loop" || !Object.hasOwn(step, "item_var")) return;
-    issues.push({
-      path: `steps.${index}.item_var`,
-      step_id: typeof s.id === "string" ? s.id : null,
-      message: ITEM_VAR_RETIRED_MESSAGE,
-    });
-  });
-  return issues;
+  return retiredLoopNotices(dag).map((notice) => ({
+    path: `steps.${steps.findIndex((step) => (step as { id?: unknown } | null)?.id === notice.loop_step_id)}`,
+    step_id: notice.loop_step_id,
+    message: notice.message,
+  }));
 }
 
 export function readStoredDefinition(dag: unknown): StoredDefinition {
   const parsed = WorkflowDefSchema.safeParse(dag);
-  const retired = retiredItemVarIssues(dag);
-  if (parsed.success && retired.length === 0) return { invalid: false, definition: parsed.data };
+  if (parsed.success) return { invalid: false, definition: parsed.data };
+  const retired = retiredLoopIssues(dag);
+  const retiredPaths = new Set(retired.map((issue) => issue.path));
   return {
     invalid: true,
     issues: [
       ...retired,
-      ...(parsed.success
-        ? []
-        : parsed.error.issues.map((issue) => ({
-            path: issue.path.map(String).join("."),
-            step_id: stepIdAt(dag, issue.path),
-            message: issue.message,
-          }))),
+      ...parsed.error.issues
+        .filter((issue) => !retiredPaths.has(issue.path.slice(0, 2).map(String).join(".")))
+        .map((issue) => ({
+          path: issue.path.map(String).join("."),
+          step_id: stepIdAt(dag, issue.path),
+          message: issue.message,
+        })),
     ],
   };
 }

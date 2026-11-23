@@ -100,7 +100,7 @@ export const NEVER_VALID_DEF = {
       method: "GET",
       url: "https://jsonplaceholder.typicode.com/todos",
     },
-    { id: "iter", kind: "loop", over: "$scope.fetch.data", body: ["missing_step"] },
+    { id: "iter", kind: "parallel", branches: [["missing_step"]] },
   ],
 };
 

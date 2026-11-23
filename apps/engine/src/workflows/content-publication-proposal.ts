@@ -163,7 +163,9 @@ export async function proposeContentPublicationBoundaries(
     .passthrough();
   const result: ContentPublicationBoundaries = Object.create(null);
   for (const stepId of stepIds) {
-    const ownRows = rows.filter((row) => revisionStepOwnsRow(stepId, row.key));
+    const owned = rows.filter((row) => revisionStepOwnsRow(stepId, row.key));
+    const iterations = owned.filter((row) => row.key !== stepId);
+    const ownRows = iterations.length > 0 ? iterations : owned;
     if (!ownRows.length) continue;
     const proposals = ownRows.map((row) => observation.safeParse(row.meta));
     if (proposals.some((proposal) => !proposal.success)) continue;

@@ -109,15 +109,6 @@ test("transform syntax rejects redeclaring its input parameter, and syntax error
   );
 });
 
-test("empty loop bodies accept their own JavaScript selector syntax and do not require an item reference", () => {
-  expect(
-    validateWorkflowDef({
-      name: "Empty loop",
-      steps: [{ id: "loop", kind: "loop", data_selector: "(sourceData) => []", body: [] }],
-    }).errors,
-  ).toEqual([]);
-});
-
 test("plain HTTP writes do not acquire S3-specific key requirements", () => {
   expect(
     validateWorkflowDef(define({ ...request, method: "PUT", body: "content" })).errors,

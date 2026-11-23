@@ -26,7 +26,6 @@ test("rich domain step variants remain accepted by the Zod/OpenAPI boundary", ()
       { id: "event", kind: "wait_for_event", event_name: "done", timeout_ms: 1000 },
       { id: "branch", kind: "branch", when: "true", then_steps: [] },
       { id: "parallel", kind: "parallel", branches: [[]] },
-      { id: "loop", kind: "loop", over: "items", body: [] },
     ],
   } satisfies DomainWorkflowDef;
 

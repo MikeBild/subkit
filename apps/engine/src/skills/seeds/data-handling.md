@@ -55,7 +55,7 @@ The three envelope fields you actually use downstream:
 
 `transform` steps are JavaScript-ONLY (see "Transform step" below) —
 JSONata is NOT a transform language. It remains the canonical language
-for `data_selector`, `loop.over`, `branch.when`, the JSONata
+for `data_selector`, `branch.when`, the JSONata
 `output_transform`, and `${scope.x.data}` string interpolation, so this
 cheatsheet still matters for those slots.
 
@@ -372,11 +372,11 @@ Walk-through:
 3. `totals_by_lifecycle` groups + sums in a JS `reduce`.
 4. `output_transform` builds the public payload with a row count sibling.
 
-## `for_each` — inline per-step iteration (JS, preferred)
+## `for_each` — per-step iteration (JS)
 
-A step can declare `for_each` (a JS arrow-function string) instead of
-wrapping itself in a `loop` step. The selector receives `sourceData`
-(the full scope) and returns an array; the step executes once per item.
+A step iterates by declaring `for_each` (a JS arrow-function string).
+The selector receives `sourceData` (the full scope) and returns an
+array; the step executes once per item. There is no `loop` step kind.
 
 ```json
 [
@@ -399,7 +399,8 @@ wrapping itself in a `loop` step. The selector receives `sourceData`
 | Iteration index (zero-based) | not available inline — derive in a prior transform | `$loop_index` |
 
 The step output is an array: `$scope.fetch_resources.data` is an array
-of iteration envelopes. To project across iterations in a downstream
+of iteration objects, each keyed by the step's own id with its envelope
+inside. To project across iterations in a downstream
 JS transform:
 
 ```json
@@ -407,62 +408,34 @@ JS transform:
   "id": "shape_output",
   "kind": "transform",
   "language": "javascript",
-  "expression": "return input.scope.fetch_resources.data.map(iter => ({ id: iter.data.id, name: iter.data.name }));"
+  "expression": "return input.scope.fetch_resources.data.map(iter => ({ id: iter.fetch_resources.data.id, name: iter.fetch_resources.data.name }));"
 }
 ```
 
-**`for_each` vs `loop` kind:**
+## Iteration variables — `$item` only
 
-- `for_each` on `baseStep` = inline iteration, flat pipeline, no body
-  array; preferred for simple fan-out.
-- `loop` kind = explicit container with `body: [...]` steps; use only
-  when each iteration needs multiple sequential sibling steps.
-
-## Loop iteration variables — `$item` only
-
-A `loop` step exposes its current item as **`$item`** in JSONata
-expressions and **`${item.…}`** in request placeholder strings.
-`item_var` is RETIRED: declaring it is rejected at authoring time, and a
-bare item name (`project.name`) is rejected with a
+A step with `for_each` exposes its current item as **`$item`** in JSONata
+expressions and **`${item.…}`** in request placeholder strings. A bare
+item name (`project.name`) is rejected with a
 `did_you_mean: "$item.name"` rewrite. The item is NOT envelope-wrapped —
 no `$scope.` prefix, no `.data`.
 
-Correct:
-
-```json
-[
-  { "id": "list_projects", "kind": "request", "path": "/v2/projects" },
-  {
-    "id": "for_each_project",
-    "kind": "loop",
-    "over": "$scope.list_projects.data.projects",
-    "body": ["fetch_resources"]
-  },
-  {
-    "id": "fetch_resources",
-    "kind": "request",
-    "path": "/v2/projects/${item.id}/resources"
-  }
-]
-```
-
-`$loop_index` (zero-based) is also available inside the loop body.
+`$loop_index` (zero-based) is also available inside the step.
 
 Wrong — the validator (or the engine at run time) will reject each of these:
 
 ```
 "/v2/projects/${scope.item.id}/resources"             # extra `scope.` prefix
-"/v2/projects/$scope.for_each_project.data.id/..."   # loop step has no envelope
 "/v2/projects/${item.data.id}/resources"              # item is not envelope-wrapped
 "/v2/projects/${project.id}/resources"                # bare item names are rejected — `item` is the only item placeholder kind
 ```
 
-In JSONata surfaces inside the loop body (`data_selector`, `branch.when`)
+In JSONata surfaces on the step (`data_selector`, `branch.when`)
 the only form is `$item.field` — no `$scope.` prefix,
-no `.data`. Sibling body-step results in the same iteration are read via
-`$scope.<body_step_id>.data.<field>` (JSONata) /
-`input.scope.<body_step_id>.data.<field>` (JS transforms) /
-`${scope.<body_step_id>.data.<field>}` (request strings).
+no `.data`. Results of earlier steps are read via
+`$scope.<step_id>.data.<field>` (JSONata) /
+`input.scope.<step_id>.data.<field>` (JS transforms) /
+`${scope.<step_id>.data.<field>}` (request strings).
 
 ## Common pitfalls
 
@@ -479,8 +452,8 @@ no `.data`. Sibling body-step results in the same iteration are read via
 - **Assuming consistent casing across vendors.** One API returns `email`,
   another `emailAddress`. Normalize in `data_selector` at each step's boundary.
 - **Forgetting `${...}` resolves once at step-start.** Placeholders are not
-  re-evaluated per iteration inside a `loop` unless the placeholder references
-  the current item via `${item.…}` (see "Loop iteration variables" above).
+  re-evaluated per `for_each` iteration unless the placeholder references
+  the current item via `${item.…}` (see "Iteration variables" above).
 - **Inventing JSONata array syntax.** No single-bracket range (`items[0..4]`),
   no implicit index variable (`items[$i < 5]`), no `.slice()`. To take the
   first N use the double-bracket range `items[[0..N-1]]` — see "Array slicing

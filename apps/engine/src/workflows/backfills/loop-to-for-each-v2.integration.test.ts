@@ -9,12 +9,12 @@ import {
   workflows,
   workflowsSchedules,
   workflowVersions,
-} from "../schema/index.ts";
-import { createTestDb, type TestDb } from "../tests/setup.ts";
+} from "../../db/schema/index.ts";
+import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import {
-  LOOP_TO_FOR_EACH_BACKFILL_NAME,
-  runLoopToForEachBackfill,
-} from "./loop-to-for-each-backfill.ts";
+  LOOP_TO_FOR_EACH_V2_BACKFILL_NAME,
+  runLoopToForEachV2Backfill,
+} from "./loop-to-for-each-v2.ts";
 
 let ctx: TestDb;
 let tenantId: string;
@@ -118,11 +118,11 @@ describe("loop→for_each backfill", () => {
     const marker = await ctx.db
       .select()
       .from(dataMigrations)
-      .where(eq(dataMigrations.name, LOOP_TO_FOR_EACH_BACKFILL_NAME));
+      .where(eq(dataMigrations.name, LOOP_TO_FOR_EACH_V2_BACKFILL_NAME));
     expect(marker).toHaveLength(1);
     await ctx.db
       .delete(dataMigrations)
-      .where(eq(dataMigrations.name, LOOP_TO_FOR_EACH_BACKFILL_NAME));
+      .where(eq(dataMigrations.name, LOOP_TO_FOR_EACH_V2_BACKFILL_NAME));
 
     eligible = await seedWorkflow({
       slug: "eligible-loop-wf",
@@ -137,12 +137,12 @@ describe("loop→for_each backfill", () => {
     });
   });
 
-  test("backfill migrates the eligible workflow and leaves the ineligible one unchanged", async () => {
-    const report = await runLoopToForEachBackfill(ctx.db);
+  test("backfill migrates the eligible workflow and flags the multi-step body for review", async () => {
+    const report = await runLoopToForEachV2Backfill(ctx.db);
     expect(report.skipped).toBe(false);
-    expect(report.affected).toBe(1);
+    expect(report.affected).toBe(2);
     expect(report.migrated).toBe(1);
-    expect(report.needs_review).toBe(0);
+    expect(report.needs_review).toBe(1);
 
     const eligibleVersions = await ctx.db
       .select()
@@ -186,6 +186,20 @@ describe("loop→for_each backfill", () => {
       steps: Array<Record<string, unknown>>;
     };
     expect(ineligibleDagOut.steps.some((s) => s.id === "iter")).toBe(true);
+    const flagged = await ctx.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(eq(auditLog.tenant_id, tenantId), eq(auditLog.resource_id, ineligible.workflow_id)),
+      );
+    const review = flagged.find(
+      (r) =>
+        (r.metadata as { kind?: string } | null)?.kind ===
+        "loop_to_for_each_migration_needs_review",
+    );
+    const flaggedMeta = (review?.metadata ?? {}) as { reason?: string; loop_step_id?: string };
+    expect(flaggedMeta.reason).toContain("more than one step");
+    expect(flaggedMeta.loop_step_id).toBe("iter");
   });
 
   test("workflows_schedules row-count parity across the migration", async () => {
@@ -232,7 +246,7 @@ describe("loop→for_each backfill", () => {
       .select({ c: sql<number>`count(*)::int` })
       .from(workflowVersions)
       .where(eq(workflowVersions.tenant_id, tenantId));
-    const report = await runLoopToForEachBackfill(ctx.db);
+    const report = await runLoopToForEachV2Backfill(ctx.db);
     expect(report.skipped).toBe(true);
     const after = await ctx.db
       .select({ c: sql<number>`count(*)::int` })
@@ -295,10 +309,10 @@ test("backfill uses persisted tenant credentials and refuses protected header ov
   });
   await ctx.db
     .delete(dataMigrations)
-    .where(eq(dataMigrations.name, LOOP_TO_FOR_EACH_BACKFILL_NAME));
-  const report = await runLoopToForEachBackfill(ctx.db);
+    .where(eq(dataMigrations.name, LOOP_TO_FOR_EACH_V2_BACKFILL_NAME));
+  const report = await runLoopToForEachV2Backfill(ctx.db);
   expect(report.migrated).toBe(1);
-  expect(report.needs_review).toBe(1);
+  expect(report.needs_review).toBe(2);
   const versions = await ctx.db
     .select()
     .from(workflowVersions)
@@ -321,5 +335,5 @@ test("backfill uses persisted tenant credentials and refuses protected header ov
       ),
     );
   expect(schedules).toHaveLength(1);
-  expect((await runLoopToForEachBackfill(ctx.db)).skipped).toBe(true);
+  expect((await runLoopToForEachV2Backfill(ctx.db)).skipped).toBe(true);
 });

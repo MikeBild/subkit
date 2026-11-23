@@ -47,9 +47,9 @@ async function fixture(loop = false) {
     steps: [
       ...(loop
         ? [
-            { id: "updates", kind: "loop", over: "$input.items", body: ["update"] },
             {
               id: "update",
+              for_each: "(sourceData) => sourceData.$input.items",
               kind: "request",
               method: "PUT",
               url: `${origin}/v1/content/\${item.item_id}/revisions`,
@@ -70,9 +70,9 @@ async function fixture(loop = false) {
       {
         id: "collect",
         kind: "transform",
-        depends_on: loop ? ["updates"] : ["update_a", "update_b"],
+        depends_on: loop ? ["update"] : ["update_a", "update_b"],
         expression: loop
-          ? "return input.scope.updates.data.map(row => row.update.data.id);"
+          ? "return input.scope.update.data.map(row => row.update.data.id);"
           : "return input.input.foreign ? [input.input.foreign, input.scope.update_b.data.id] : [input.scope.update_a.data.id, input.scope.update_b.data.id];",
       },
       {

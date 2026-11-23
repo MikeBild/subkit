@@ -24,7 +24,7 @@ import { lintJsBody } from "../js-body-lint.ts";
 import { jsonataSiteErrors } from "../jsonata-sites.ts";
 import { suggestClosest } from "../levenshtein.ts";
 import { reportDeliveryLintErrors } from "../report-delivery-lint.ts";
-import { retiredItemVarIssues } from "../stored-definition.ts";
+import { retiredLoopIssues } from "../stored-definition.ts";
 import { type StepDef, type WorkflowDef, WorkflowDefSchema } from "../types.ts";
 import { cycleIssues } from "./definition.ts";
 import { parsePlaceholders } from "./placeholder-parser.ts";
@@ -48,7 +48,7 @@ export interface ValidateOptions {
 
 interface ForwardRef {
   step_id: string;
-  field: "loop.body" | "parallel.branches" | "branch.then_steps" | "branch.else_steps";
+  field: "parallel.branches" | "branch.then_steps" | "branch.else_steps";
   ref: string;
 }
 
@@ -66,15 +66,14 @@ export function validateWorkflowDef(
   options: ValidateOptions = {},
 ): ValidateWorkflowDefResult {
   const parsed = WorkflowDefSchema.safeParse(input);
-  const retiredItemVar = retiredItemVarIssues(input).map(({ path, step_id, message }) => ({
-    path: step_id === null ? path : `steps.${step_id}.item_var`,
-    message,
-  }));
   if (!parsed.success) {
     return {
       ok: false,
       errors: [
-        ...retiredItemVar,
+        ...retiredLoopIssues(input).map(({ step_id, message }) => ({
+          path: `steps.${step_id}`,
+          message,
+        })),
         ...parsed.error.issues.map((i) => ({
           path: i.path.map((p) => String(p)).join("."),
           message: i.message,
@@ -84,7 +83,7 @@ export function validateWorkflowDef(
     };
   }
   const wf = parsed.data;
-  const errors: ValidationError[] = [...retiredItemVar];
+  const errors: ValidationError[] = [];
   const forwardRefs: ForwardRef[] = [];
   const allowForwardRefs = options.allowForwardRefs === true;
   const ids = new Set<string>();
@@ -107,15 +106,13 @@ export function validateWorkflowDef(
       }
     }
     if (step.data_selector) {
-      if (step.kind !== "loop") {
-        try {
-          compileSelector(step.data_selector);
-        } catch (e) {
-          errors.push({
-            path: `steps.${step.id}.data_selector`,
-            message: e instanceof Error ? e.message : String(e),
-          });
-        }
+      try {
+        compileSelector(step.data_selector);
+      } catch (e) {
+        errors.push({
+          path: `steps.${step.id}.data_selector`,
+          message: e instanceof Error ? e.message : String(e),
+        });
       }
     }
     if (step.kind === "request") {
@@ -234,41 +231,13 @@ export function validateWorkflowDef(
         }
       }
     }
-    if (step.kind === "loop") {
-      for (const ref of step.body) {
-        if (!ids.has(ref)) {
-          if (allowForwardRefs) {
-            forwardRefs.push({ step_id: step.id, field: "loop.body", ref });
-          } else {
-            errors.push({
-              path: `steps.${step.id}`,
-              message: `unknown loop body target: ${ref}`,
-            });
-          }
-        }
-      }
-      const bodySteps = step.body
-        .map((bid) => wf.steps.find((s) => s.id === bid))
-        .filter((s): s is StepDef => s !== undefined);
-      const someBodyIsForwardRef = step.body.some((bid) => !ids.has(bid));
-      const referencesItem = bodySteps.some((bs) => stepReferencesCanonicalItem(bs));
-      if (bodySteps.length > 0 && !someBodyIsForwardRef && !referencesItem) {
-        errors.push({
-          path: `steps.${step.id}`,
-          message:
-            "loop body never references the iteration item — use `${item.field}` in URLs/strings or `$item.field` in JSONata. Without it the loop runs N copies of the same call.",
-        });
-      }
-    }
   }
   errors.push(...jsonataSiteErrors(wf));
   if (options.lintJavascript === true)
     errors.push(...reportDeliveryLintErrors(wf.steps, options.connectorBaseUrls));
   const containedStepIds = new Set<string>();
   for (const step of wf.steps) {
-    if (step.kind === "loop") {
-      for (const bid of step.body) containedStepIds.add(bid);
-    } else if (step.kind === "branch") {
+    if (step.kind === "branch") {
       for (const bid of step.then_steps) containedStepIds.add(bid);
       step.else_steps?.forEach((bid) => {
         containedStepIds.add(bid);
@@ -288,7 +257,7 @@ export function validateWorkflowDef(
       errors.push({
         path: `steps.${step.id}`,
         message:
-          'step uses `${item.…}` placeholder but is not contained in any `loop.body[]` and has no `for_each` declared. Set `for_each: "(sourceData) => sourceData.<prev_step>.<array_path>"` on this step to bind `$item` per element (the placeholder resolver only sets `$item` inside a `for_each` iteration or a loop body).',
+          'step uses `${item.…}` placeholder but has no `for_each` declared. Set `for_each: "(sourceData) => sourceData.<prev_step>.data.<array_path>"` on this step to bind `$item` per element (the placeholder resolver only sets `$item` inside a `for_each` iteration).',
       });
     }
   }
@@ -352,11 +321,6 @@ export function validateWorkflowDef(
   };
   if (errors.length > 0) return { ok: false, errors, ...details };
   return { ok: true, workflow: wf, errors: [], ...details };
-}
-
-function stepReferencesCanonicalItem(step: StepDef): boolean {
-  const haystack = JSON.stringify(step);
-  return haystack.includes("${item") || /\$item\b/.test(haystack);
 }
 
 function graphqlTargetErrors(

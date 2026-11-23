@@ -119,8 +119,10 @@ describe("workflow-authoring.md · uniform envelope (no transform-vs-request spl
     expect(dataHandling).toMatch(/Always.*\$scope.<step_id>\.data/);
   });
 
-  test("loop example references $scope.extract_projects.data, not $scope.extract_projects", () => {
-    expect(authoringFamily).toMatch(/over": "\$scope\.extract_projects\.data/);
+  test("for_each example reads sourceData.extract_projects.data, not the envelope", () => {
+    expect(authoringFamily).toMatch(
+      /"for_each": "\(sourceData\) => sourceData\.extract_projects\.data"/,
+    );
   });
 });
 

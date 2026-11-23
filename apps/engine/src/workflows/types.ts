@@ -773,22 +773,6 @@ export const ParallelStepSchema = z
   })
   .openapi("ParallelStep");
 
-export const LoopStepSchema = z
-  .object({
-    kind: z.literal("loop"),
-    ...baseStep,
-    over: z.string().optional(),
-    data_selector: z.string().optional(),
-    body: z.array(z.string()),
-    fail_fast: z.boolean().optional(),
-  })
-  .refine((s) => Boolean(s.over) !== Boolean(s.data_selector), {
-    message:
-      "Loop step must set exactly one of `over` (path/JSONata) or `data_selector` (JS expression).",
-    path: ["over"],
-  })
-  .openapi("LoopStep");
-
 export const StepSchema = z.discriminatedUnion("kind", [
   RequestStepSchema,
   TransformStepSchema,
@@ -797,7 +781,6 @@ export const StepSchema = z.discriminatedUnion("kind", [
   WaitForEventStepSchema,
   BranchStepSchema,
   ParallelStepSchema,
-  LoopStepSchema,
 ]);
 
 export const WorkflowRuntimeSchema = z
@@ -1062,5 +1045,4 @@ export type WaitStep = z.infer<typeof WaitStepSchema>;
 export type WaitForEventStep = z.infer<typeof WaitForEventStepSchema>;
 export type BranchStep = z.infer<typeof BranchStepSchema>;
 export type ParallelStep = z.infer<typeof ParallelStepSchema>;
-export type LoopStep = z.infer<typeof LoopStepSchema>;
 export type ResponseFilter = z.infer<typeof ResponseFilterSchema>;

@@ -131,9 +131,6 @@ function shapeOf(
         : [],
     ),
     iterations: definition.steps.flatMap((step) => [
-      ...(step.kind === "loop"
-        ? [{ step_id: step.id, kind: "loop" as const, body_step_ids: step.body, ...path }]
-        : []),
       ...(step.for_each
         ? [{ step_id: step.id, kind: "for_each" as const, body_step_ids: [step.id], ...path }]
         : []),

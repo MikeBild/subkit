@@ -7,7 +7,6 @@ import {
   executionAuditOutcome,
   forEachBodyEmptyWarning,
   heldPreviewWarning,
-  loopBodyEmptyWarning,
   refusesSensitiveConversation,
   runResultError,
   sensitiveOutputSchemaCheck,
@@ -34,40 +33,6 @@ describe("loop body empty warnings", () => {
     expect(forEachBodyEmptyWarning("fe", 2).message).toBe(
       'for_each step "fe" ran 2 iterations but no iteration produced productive output — every result was null / [] / {}',
     );
-  });
-
-  test("loop warning describes the body shape of the first iteration", () => {
-    expect(loopBodyEmptyWarning("lp", [{ a: 1, b: 2 }, {}])).toStrictEqual({
-      code: "loop_body_empty",
-      identifier: "lp",
-      message:
-        'loop "lp" ran 2 iterations but no iteration produced productive body output — the body steps ran without errors but every result was null / [] / {}',
-      step_key: "lp",
-      details: {
-        iterations: 2,
-        productive_iterations: 0,
-        body_step_ids: ["a", "b"],
-        scope_shape:
-          "$scope.lp.data is an array of 2 iteration objects, each shaped { a: { data, error, duration_ms }, b: { data, error, duration_ms } }",
-        example_path: "$scope.lp.data[0].a.data",
-      },
-    });
-  });
-
-  test("loop warning without body keys points at the loop data", () => {
-    for (const sample of [{}, "x", null]) {
-      const warning = loopBodyEmptyWarning("lp", [sample]);
-      expect(warning.message).toBe(
-        'loop "lp" ran 1 iteration but no iteration produced productive body output — the body steps ran without errors but every result was null / [] / {}',
-      );
-      expect(warning.details).toStrictEqual({
-        iterations: 1,
-        productive_iterations: 0,
-        body_step_ids: [],
-        scope_shape: "$scope.lp.data is an array of 1 iteration objects, each shaped {  }",
-        example_path: "$scope.lp.data",
-      });
-    }
   });
 });
 

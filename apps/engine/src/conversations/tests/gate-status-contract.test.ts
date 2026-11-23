@@ -225,7 +225,7 @@ test("regression suite did not persist workflows via gate paths", async () => {
 });
 
 describe("inspect_execution_step", () => {
-  test("returns step output_preview + canonical loop hint when step kind is loop", async () => {
+  test("returns step output_preview + next actions for a for_each step", async () => {
     const { executions, executionSteps } = await import("../../db/schema/index.ts");
     const [execRow] = await ctx.testDb.db
       .insert(executions)
@@ -257,7 +257,7 @@ describe("inspect_execution_step", () => {
       execution_id: execRow.id,
       step_key: "project_loop",
       step_index: 2,
-      kind: "loop",
+      kind: "request",
       status: "succeeded",
       output_preview: fakeLoopOutput,
       duration_ms: 17,
@@ -295,9 +295,8 @@ describe("inspect_execution_step", () => {
       output_preview: unknown;
       next_best_actions: string[];
     };
-    expect(data.kind).toBe("loop");
+    expect(data.kind).toBe("request");
     expect(data.output_preview).toEqual(fakeLoopOutput);
-    expect(data.next_best_actions.join(" ")).toContain("$scope.<loop_id>.data");
   });
 
   test("returns step_not_found with available_steps list", async () => {

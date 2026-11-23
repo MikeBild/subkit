@@ -106,15 +106,10 @@ describe("validateWorkflowDef — addressing-surface placeholder resolvability",
         },
         {
           id: "fetch_project",
+          for_each: "(sourceData) => sourceData.list_projects.data.projects",
           kind: "request",
           method: "GET",
           url: "${connector.example.base_url}/projects/${item.id}?owner=${input.owner}&prev=${scope.list_projects.data.cursor}",
-        },
-        {
-          id: "each_project",
-          kind: "loop",
-          over: "$scope.list_projects.data.projects",
-          body: ["fetch_project"],
         },
       ]),
     );

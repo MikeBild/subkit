@@ -2,7 +2,7 @@
 slug: workflow-authoring-repair
 scope: global
 title: Repairing And Editing Saved Workflows
-description: Repairing a failed or saved workflow in chat: diagnose and recommit, metadata-only edits, `step_patches` by step ID, recorded-evidence gates for loops and transforms, workflow-level guards, flow pitfalls and provider tool palettes.
+description: Repairing a failed or saved workflow in chat: diagnose and recommit, metadata-only edits, `step_patches` by step ID, recorded-evidence gates for transforms, workflow-level guards, flow pitfalls and provider tool palettes.
 activates_when: [{"kind":"tool","tool":"edit_workflow_patch"},{"kind":"tool","tool":"dry_run_transform"},{"kind":"tool","tool":"update_workflow"},{"kind":"tool","tool":"diagnose_latest_execution"},{"kind":"tool","tool":"propose_schema_migration"},{"kind":"tool","tool":"inspect_workflow_draft"},{"kind":"tool","tool":"suggest_jsonata_paths"},{"kind":"tool","tool":"validate_draft"},{"kind":"diagnosis","codes":["llm_tool_schema_invalid"]},{"kind":"intent_keyword","word":"repair"},{"kind":"intent_keyword","word":"reparier"},{"kind":"intent_keyword","word":"fix the workflow"},{"kind":"intent_keyword","word":"fehlgeschlagen"}]
 side_effects: read
 idempotency: none
@@ -57,8 +57,8 @@ Do not wrap them in `config`.
 
 ## Evidence-gated authoring
 
-**Evidence-gated loop authoring.** A loop step that reads `$scope.<X>`
-(or the equivalent bare form `<X>.data`) needs recorded preview
+**Evidence-gated authoring.** A transform that reads `$scope.<X>`
+(or `input.scope.<X>` in JavaScript) needs recorded preview
 evidence for X. The evidence is **fingerprint-keyed**: it survives
 edits to OTHER steps and goes stale only when X's own definition
 changed since the last dry-run (gate reason
@@ -68,13 +68,13 @@ changed since the last dry-run (gate reason
   ACCEPT the mutation and return a `recorded_eval` findings block in the
   same result: per-expression compile/eval status (caret-pointed JSONata
   errors; sandboxed JS evaluation), scope-reference evidence states
-  (recorded / stale / missing), the loop/transform gate verdicts,
+  (recorded / stale / missing), the transform gate verdict,
   `missing_evidence`, and ordered `next_actions`. Read it — acceptance
   is not proof the expressions resolve. Probed connectors count as
   shape evidence.
-- `edit_workflow_patch` never REFUSES a loop `over` / `data_selector`
-  edit with missing/stale evidence: it accepts the edit and surfaces
-  the `loop_authoring_requires_inspect` verdict as a NON-BLOCKING
+- `edit_workflow_patch` never REFUSES an edit with missing/stale
+  evidence: it accepts the edit and surfaces the
+  `transform_authoring_requires_inspect` verdict as a NON-BLOCKING
   `recorded_eval` finding, so the model repairs on the next call instead
   of thrashing on an identical retry. The fix is unchanged — dry-run once
   to record the shape, then re-apply.
@@ -87,7 +87,7 @@ dry-run per genuinely-new shape suffices. Then call
 recorded preview, with fallback to the last committed version's
 `scope_index` and the most recent execution when no fresh draft
 preview exists) or `inspect_workflow_draft` (returns each step's
-preview side-by-side with config). Authoring a loop's `over` against
+preview side-by-side with config). Authoring a `for_each` selector against
 the LLM's mental model of the API instead of the recorded preview is
 how 4–9× retry spirals start.
 
@@ -113,7 +113,7 @@ per iteration instead of O(s) and avoids burning vendor rate-limit on
 the same upstream call twelve times in a row. Pass the previewed scope
 path (e.g. `$scope.fetch_issues`) as `sample_data`; the tool resolves it
 from the latest cached dry-run. Only fall back to `dry_run_workflow`
-when you actually change a request/connector/loop step, or after several
+when you actually change a request/connector step or a `for_each` selector, or after several
 green transform iterations to confirm end-to-end.
 
 **Validation is auto-surfaced; you rarely need `validate_draft`.**
@@ -138,7 +138,7 @@ real step.
 lose paths.** If a step previously published `data.results[*].email`
 and the next dry-run no longer surfaces that path (e.g. an upstream
 API silently dropped a field), the warning lists every removed path
-so downstream transforms / loops can be re-checked before re-
+so downstream transforms / `for_each` selectors can be re-checked before re-
 committing. The check is skipped when the workflow draft was
 structurally rewritten between dry-runs (mutation_seq guard).
 

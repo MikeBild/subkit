@@ -71,7 +71,7 @@ describe("autoloadForToolCall — step_kind activation rule (A5)", () => {
     ).toContain("wait-step-skill");
   });
 
-  test("edit_workflow_patch with branch.then_steps[].kind=loop → activates branch-and-loop-skill", () => {
+  test("edit_workflow_patch with branch.then_steps[] carrying for_each → activates branch-and-loop-skill", () => {
     expect(
       autoloadForToolCall(
         {
@@ -84,7 +84,7 @@ describe("autoloadForToolCall — step_kind activation rule (A5)", () => {
                 value: {
                   kind: "branch",
                   id: "b1",
-                  then_steps: [{ kind: "loop", id: "l1" }],
+                  then_steps: [{ kind: "request", id: "l1", for_each: "() => []" }],
                   else_steps: [],
                 },
               },

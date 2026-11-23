@@ -42,7 +42,7 @@ export async function fixture(
     inputRequired?: boolean;
     environment?: "dev" | "prod";
     lookupRecipient?: boolean;
-    container?: "loop" | "parallel";
+    container?: "parallel";
     loopRecipients?: boolean;
     inlineEach?: boolean;
     auxiliaryCredential?: boolean;
@@ -177,12 +177,7 @@ export async function fixture(
             {
               id: "group",
               kind: options.container,
-              ...(options.container === "loop"
-                ? {
-                    over: options.loopRecipients ? "$scope.lookup.data.recipients" : "[1]",
-                    body: ["send"],
-                  }
-                : { branches: [["send"]] }),
+              branches: [["send"]],
               ...(options.lookupRecipient ? { depends_on: ["lookup"] } : {}),
             },
           ]

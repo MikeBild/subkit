@@ -23,16 +23,14 @@ const FC = { seed: 20261106, numRuns: 200 } as const;
 const idArb = fc.constantFrom("a", "b", "c", "d");
 
 describe("containerChildStepIds", () => {
-  test("collects parallel branch and loop body ids only", () => {
+  test("collects parallel branch ids only", () => {
     const ids = containerChildStepIds([
       { kind: "parallel", branches: [["p1", "p2"], undefined, ["p3"]] },
       { kind: "parallel" },
-      { kind: "loop", body: ["l1"] },
-      { kind: "loop", branches: [["lb"]] },
       { kind: "request", body: ["r1"] },
       { kind: "transform", branches: [["t1"]] },
     ] as ReadonlyArray<{ kind: string }>);
-    expect([...ids]).toEqual(["p1", "p2", "p3", "l1"]);
+    expect([...ids]).toEqual(["p1", "p2", "p3"]);
   });
 
   test("property: every collected id is declared by a container", () => {
@@ -40,7 +38,7 @@ describe("containerChildStepIds", () => {
       fc.property(
         fc.array(
           fc.record({
-            kind: fc.constantFrom("parallel", "loop", "request"),
+            kind: fc.constantFrom("parallel", "request"),
             branches: fc.array(fc.array(idArb)),
             body: fc.array(idArb),
           }),
@@ -50,7 +48,6 @@ describe("containerChildStepIds", () => {
           for (const s of steps) {
             if (s.kind === "parallel")
               for (const b of s.branches) for (const id of b) expected.add(id);
-            if (s.kind === "loop") for (const id of s.body) expected.add(id);
           }
           expect(containerChildStepIds(steps)).toEqual(expected);
         },

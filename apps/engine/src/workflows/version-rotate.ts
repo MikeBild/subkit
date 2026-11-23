@@ -14,7 +14,7 @@ import { validateBareIterationIdentifiers } from "./reference-validator.ts";
 import { emitWorkflowLifecycle } from "./service.ts";
 import { validateTenantWorkflowDefForSave } from "./tenant-validator.ts";
 import { triggerOf } from "./trigger-bindings.ts";
-import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
+import { TriggerSchema, type WorkflowDef } from "./types.ts";
 import {
   lockWorkflowForVersionWrite,
   nextVersionNumber,
@@ -70,8 +70,10 @@ export async function rotateWorkflowVersionInternal(
     .limit(1);
   const current = currentRows[0];
   if (!current) throw new Error("rotateWorkflowVersionInternal: current version row missing");
-  const currentDef = WorkflowDefSchema.parse(current.dag);
-  if (JSON.stringify(triggerOf(def)) !== JSON.stringify(triggerOf(currentDef))) {
+  const currentTrigger = TriggerSchema.optional().parse(
+    (current.dag as { trigger?: unknown } | null)?.trigger,
+  ) ?? { kind: "request" as const };
+  if (JSON.stringify(triggerOf(def)) !== JSON.stringify(currentTrigger)) {
     throw new Error(
       "rotateWorkflowVersionInternal: trigger block differs from the current version — this path never reconciles trigger bindings, use updateWorkflow",
     );

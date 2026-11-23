@@ -18,7 +18,7 @@ describe("budgetPause", () => {
   });
 
   test("anything else that hits the budget keeps failing with the remedy", () => {
-    expect(budgetPause({ ...base, step_kind: "loop" })).toBe("fail");
+    expect(budgetPause({ ...base, step_kind: "branch" })).toBe("fail");
     expect(budgetPause({ ...base, step_kind: "parallel" })).toBe("fail");
     expect(budgetPause({ ...base, for_each: true })).toBe("fail");
     expect(budgetPause({ ...base, authorized: false })).toBe("fail");

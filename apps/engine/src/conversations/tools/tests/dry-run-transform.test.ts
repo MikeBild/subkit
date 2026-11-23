@@ -206,12 +206,12 @@ describe("dry_run_transform — execution-parity loop-body context", () => {
   const loopDraftSteps = (): Array<Record<string, unknown>> => [
     { id: "fetch", kind: "request", method: "GET", url: "https://example.com/items" },
     {
-      id: "iter",
-      kind: "loop",
-      over: "$scope.fetch.data.items",
-      body: ["shape"],
+      id: "shape",
+      for_each: "(sourceData) => sourceData.fetch.data.items",
+      kind: "transform",
+      language: "jsonata",
+      expression: "$item.name",
     },
-    { id: "shape", kind: "transform", language: "jsonata", expression: "$item.name" },
   ];
 
   function recordEnvelopePreview(toolCtx: ToolContext): void {
@@ -255,7 +255,7 @@ describe("dry_run_transform — execution-parity loop-body context", () => {
       total: 2,
       since: "2026-01-01",
     });
-    expect(data.metadata.loop_context).toEqual({ loop_id: "iter", loop_index: 0 });
+    expect(data.metadata.loop_context).toEqual({ loop_id: "shape", loop_index: 0 });
   });
 
   test("loop_context names the enclosing loop and the emulated iteration", async () => {
@@ -272,7 +272,7 @@ describe("dry_run_transform — execution-parity loop-body context", () => {
       metadata: { loop_context?: { loop_id: string; loop_index: number } };
     };
     expect(data.value).toEqual({ name: "Ada", idx: 0 });
-    expect(data.metadata.loop_context).toEqual({ loop_id: "iter", loop_index: 0 });
+    expect(data.metadata.loop_context).toEqual({ loop_id: "shape", loop_index: 0 });
   });
 
   test("a bare iteration name does NOT resolve (execution parity)", async () => {

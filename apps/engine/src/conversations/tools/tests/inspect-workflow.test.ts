@@ -109,9 +109,10 @@ describe("inspect_workflow · multi-section + multi-step in one call", () => {
       { id: "extract", kind: "transform", language: "javascript", expression: "return input;" },
       {
         id: "fetch_resources",
-        kind: "loop",
-        over: "$scope.extract.data",
-        body: ["fetch_one"],
+        kind: "request",
+        method: "GET",
+        path: "/v2/projects/${item.id}/resources",
+        for_each: "(sourceData) => sourceData.extract.data",
       },
     ]);
     const toolCtx = makeCtx(draft);

@@ -11,14 +11,8 @@
       "connector_id": "aaaaaaaa-aaaa-4aaa-8aaa-000000000001"
     },
     {
-      "id": "projects_loop",
-      "body": ["fetch_resources"],
-      "kind": "loop",
-      "over": "$scope.list_projects.data.projects",
-      "on_error": "fail"
-    },
-    {
       "id": "fetch_resources",
+      "for_each": "(sourceData) => sourceData.list_projects.data.projects",
       "kind": "request",
       "path": "/v2/projects/${item.id}/resources",
       "method": "GET",
@@ -30,7 +24,7 @@
       "kind": "transform",
       "language": "javascript",
       "on_error": "fail",
-      "expression": "return (input.scope.projects_loop.data || []).map((loop_item, idx) => { const resources = (loop_item.fetch_resources.data.resources) || []; const project = input.scope.list_projects.data.projects[idx]; return { project: project.name, id: project.id, resource_count: resources.length, resources: resources.map((x) => x.urn) }; });"
+      "expression": "return (input.scope.fetch_resources.data || []).map((loop_item, idx) => { const resources = (loop_item.fetch_resources.data.resources) || []; const project = input.scope.list_projects.data.projects[idx]; return { project: project.name, id: project.id, resource_count: resources.length, resources: resources.map((x) => x.urn) }; });"
     }
   ]
 }

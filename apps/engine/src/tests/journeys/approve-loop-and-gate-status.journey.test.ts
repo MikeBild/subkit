@@ -157,7 +157,7 @@ describe("approve, loop and gate status", () => {
     expect((result.data as { error_code?: string }).error_code).toBe("workflow_not_persisted");
   });
 
-  test("AC3: loop with empty body → loop_body_empty warning + partial_success at run_workflow", async () => {
+  test("AC3: for_each with empty results → loop_body_empty warning + partial_success at run_workflow", async () => {
     const seeded = await seedWorkflow(ctx, {
       slug: "empty-loop-journey",
       name: "Empty Loop Journey",
@@ -169,14 +169,9 @@ describe("approve, loop and gate status", () => {
           expression: "return ['p1', 'p2', 'p3'];",
         },
         {
-          kind: "loop",
-          id: "iter",
-          over: "items.data",
-          body: ["fetch_resources"],
-        },
-        {
           kind: "transform",
           id: "fetch_resources",
+          for_each: "(sourceData) => sourceData.items.data",
           language: "javascript",
           expression: "return [];",
         },
@@ -198,13 +193,15 @@ describe("approve, loop and gate status", () => {
     expect(exec.status).toBe("succeeded");
     const empty = (exec.warnings ?? []).find((w) => w.code === "loop_body_empty");
     expect(empty).toBeDefined();
-    expect(empty?.identifier).toBe("iter");
+    expect(empty?.identifier).toBe("fetch_resources");
     const details = empty?.details as
-      | { iterations: number; productive_iterations: number; example_path: string }
+      | { iterations: number; productive_iterations: number; scope_shape: string }
       | undefined;
     expect(details?.iterations).toBe(3);
     expect(details?.productive_iterations).toBe(0);
-    expect(details?.example_path).toBe("$scope.iter.data[0].fetch_resources.data");
+    expect(details?.scope_shape).toBe(
+      "$scope.fetch_resources.data is an array of 3 iteration objects",
+    );
 
     const stubEngineClient = {
       context: { actor_id: ctx.userId, actor_type: "user" as const },
@@ -278,7 +275,7 @@ describe("approve, loop and gate status", () => {
     expect(out.ok).toBe(false);
   });
 
-  test("AC5: scope manifest in authoring context exposes typed paths for plain steps and loop body", async () => {
+  test("AC5: scope manifest in authoring context exposes typed paths for plain steps and for_each steps", async () => {
     const out = renderAuthoringContextBlock({
       draft: {
         mode: "workflow_authoring",
@@ -289,13 +286,8 @@ describe("approve, loop and gate status", () => {
             { id: "fetch_projects", kind: "request", method: "GET", url: "/v2/projects" },
             { id: "extract", kind: "transform", expression: "fetch_projects.data.projects" },
             {
-              id: "fetch_resources",
-              kind: "loop",
-              over: "extract.data",
-              body: ["get_project_resources"],
-            },
-            {
               id: "get_project_resources",
+              for_each: "(sourceData) => sourceData.extract.data",
               kind: "request",
               method: "GET",
               url: "/v2/projects/{id}/resources",
@@ -308,11 +300,11 @@ describe("approve, loop and gate status", () => {
     expect(out).not.toBeNull();
     expect(out!).toContain("### Scope manifest");
     expect(out!).toContain("$scope.fetch_projects.data");
-    expect(out!).toContain("$scope.fetch_resources.data");
+    expect(out!).toContain("$scope.get_project_resources.data");
     expect(out!).toContain("$item");
     expect(out!).toContain("flat access across all iterations");
-    expect(out!).toContain("$scope.fetch_resources.data.get_project_resources.data");
-    expect(out!).toContain("$scope.fetch_resources.data[0].get_project_resources.data");
+    expect(out!).toContain("$scope.get_project_resources.data.get_project_resources.data");
+    expect(out!).toContain("$scope.get_project_resources.data[0].get_project_resources.data");
   });
 
   test("AC6: dialog.turn_end log line carries per-turn token breakdown", async () => {

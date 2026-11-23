@@ -233,7 +233,6 @@ describe("recipe-coverage gate (A1)", () => {
     "wait_for_event",
     "branch",
     "parallel",
-    "loop",
   ] as const;
 
   function collectStepKinds(steps: unknown): Set<string> {
@@ -278,7 +277,6 @@ describe("recipe-coverage gate (A1)", () => {
       "wait_for_event",
       "branch",
       "parallel",
-      "loop",
     ]);
     expect([...declared].sort()).toEqual([...expected].sort());
   });

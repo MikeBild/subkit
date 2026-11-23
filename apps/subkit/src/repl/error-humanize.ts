@@ -1,16 +1,7 @@
 import { type EngineError, isEngineError, isTransportError } from "@cli-core/errors.ts";
 import { debugLogPath, isDebugVerbose } from "../debug.ts";
 
-const VALID_KINDS = [
-  "request",
-  "transform",
-  "call",
-  "wait",
-  "branch",
-  "parallel",
-  "loop",
-  "tool",
-] as const;
+const VALID_KINDS = ["request", "transform", "call", "wait", "branch", "parallel", "tool"] as const;
 
 export interface RawValidationError {
   path: string;

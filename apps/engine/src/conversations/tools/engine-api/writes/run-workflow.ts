@@ -531,11 +531,7 @@ export const runWorkflowTool: ConversationTool = {
       const hasLoopBodyEmptyWarning = (result.warnings ?? []).some(
         (w) => w.code === "loop_body_empty",
       );
-      const loopStepRanWithEmptyBody =
-        hasLoopBodyEmptyWarning ||
-        (result.steps.some((s) => s.kind === "loop" && s.status === "succeeded") &&
-          Array.isArray(result.output) &&
-          (result.output as unknown[]).length === 0);
+      const loopStepRanWithEmptyBody = hasLoopBodyEmptyWarning;
       const isPartialSuccess =
         result.status === "succeeded" &&
         (hasUnresolvedIdentifierWarning ||

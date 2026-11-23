@@ -52,7 +52,16 @@ describe("subkit-concepts — mental model coverage", () => {
     const skills = loadAll();
     const concepts = skills.get("subkit-concepts")!;
     const body = concepts.body.toLowerCase();
-    const kinds = ["request", "transform", "wait", "branch", "parallel", "loop", "call", "tool"];
+    const kinds = [
+      "request",
+      "transform",
+      "wait",
+      "branch",
+      "parallel",
+      "for_each",
+      "call",
+      "tool",
+    ];
     for (const k of kinds) {
       expect(body.includes(k)).toBe(true);
     }

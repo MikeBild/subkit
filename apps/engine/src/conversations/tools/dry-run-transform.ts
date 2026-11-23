@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "@hono/zod-openapi";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
+import { buildLoopChildScope, resolveForEachCollection } from "../../execution/index.ts";
 import { buildJsonataBindings } from "../../execution/jsonata-bindings.ts";
 import {
   compile as compileJsonata,
@@ -291,50 +292,34 @@ export const dryRunTransformTool: ConversationTool = {
           },
         };
       }
-      const enclosingLoop = draftSteps.find(
-        (s) =>
-          s.kind === "loop" &&
-          Array.isArray(s.body) &&
-          (s.body as unknown[]).includes(args.step_id as string),
-      );
-      if (enclosingLoop && scopeRecord) {
-        const over = typeof enclosingLoop.over === "string" ? (enclosingLoop.over as string) : null;
-        let items: unknown;
-        if (over) {
-          try {
-            items = await evaluateJsonata(
-              over,
-              scopeRecord,
-              buildJsonataBindings(scopeRecord, inputValue),
-            );
-          } catch {
-            items = undefined;
-          }
-        }
-        if (!Array.isArray(items) || items.length === 0) {
+      const target = draftSteps.find((s) => s.id === args.step_id);
+      const forEach = typeof target?.for_each === "string" ? target.for_each : null;
+      if (forEach && scopeRecord) {
+        const collection = await resolveForEachCollection(
+          forEach,
+          args.step_id,
+          scopeRecord,
+          Date.now(),
+          null,
+        );
+        const items = collection.kind === "collection" ? collection.items : [];
+        if (items.length === 0) {
           return {
             ok: false,
             data: {
               persistence: "none" as const,
               error: {
                 code: "runtime_error" as const,
-                message: `step \`${args.step_id}\` is inside loop \`${String(enclosingLoop.id)}\`, but the loop's \`over\` (${over ?? "(missing)"}) did not resolve to a non-empty array against the available scope. Run dry_run_workflow once so the upstream collection is recorded, then retry.`,
+                message: `step \`${args.step_id}\` runs once per element of its \`for_each\` (${forEach}), but the selector did not resolve to a non-empty array against the available scope. Run dry_run_workflow once so the upstream collection is recorded, then retry.`,
               },
               metadata: { dialect: args.dialect, duration_ms: 0 },
             },
           };
         }
-        const childScope: Record<string, unknown> = {
-          ...scopeRecord,
-          $item: items[0],
-          $loop_index: 0,
-        };
+        const childScope = buildLoopChildScope(scopeRecord, items[0], 0);
         scopeRecord = childScope;
         resolvedSampleData = childScope;
-        loopContext = {
-          loop_id: String(enclosingLoop.id),
-          loop_index: 0,
-        };
+        loopContext = { loop_id: args.step_id, loop_index: 0 };
       }
     }
 

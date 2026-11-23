@@ -13,7 +13,6 @@ test("missing control-flow targets are rejected or explicitly retained as forwar
       else_steps: ["later_no"],
     },
     { id: "parallel", kind: "parallel", branches: [["later_parallel"]] },
-    { id: "loop", kind: "loop", over: "[]", body: ["later_loop"] },
   ];
   const definition = { name: "Draft", steps };
   const rejected = validateWorkflowDef(definition);
@@ -22,7 +21,6 @@ test("missing control-flow targets are rejected or explicitly retained as forwar
     { path: "steps.choose", message: "unknown branch target: later_yes" },
     { path: "steps.choose", message: "unknown branch target: later_no" },
     { path: "steps.parallel", message: "unknown parallel target: later_parallel" },
-    { path: "steps.loop", message: "unknown loop body target: later_loop" },
   ]);
   const draft = validateWorkflowDef(definition, { allowForwardRefs: true });
   expect(draft.ok).toBe(true);
@@ -31,7 +29,6 @@ test("missing control-flow targets are rejected or explicitly retained as forwar
     { step_id: "choose", field: "branch.then_steps", ref: "later_yes" },
     { step_id: "choose", field: "branch.else_steps", ref: "later_no" },
     { step_id: "parallel", field: "parallel.branches", ref: "later_parallel" },
-    { step_id: "loop", field: "loop.body", ref: "later_loop" },
   ]);
 });
 
@@ -39,11 +36,10 @@ test("contained iteration steps are distinguished from unbound top-level item us
   const leaf = { ...request, url: "https://example.test/${item.id}" };
   expect(
     validateWorkflowDef({ name: "Unbound", steps: [leaf] }).errors.some((error) =>
-      error.message.includes("not contained"),
+      error.message.includes("has no `for_each` declared"),
     ),
   ).toBe(true);
   for (const controller of [
-    { id: "control", kind: "loop", over: "[]", body: ["fetch"] },
     { id: "control", kind: "branch", when: "true", then_steps: ["fetch"] },
     { id: "control", kind: "parallel", branches: [["fetch"]] },
   ]) {

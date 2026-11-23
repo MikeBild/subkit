@@ -174,24 +174,6 @@ describe("inspect_workflow_draft side_effect labels", () => {
     expect(step?.side_effect).toBe("read");
   });
 
-  it("loop step → side_effect: 'read' (non-request steps have no external side effect)", async () => {
-    const draft = draftWithSteps([
-      {
-        id: "each_item",
-        kind: "loop",
-        over: "$scope.fetch.data.items",
-        body: ["process_item"],
-      },
-    ]);
-    const result = await inspectWorkflowDraftTool.execute(makeDraftCtx(draft), {});
-    expect(result.ok).toBe(true);
-    const data = result.data as {
-      workflow?: { steps?: Array<{ id: string; side_effect: string }> };
-    };
-    const step = data.workflow?.steps?.find((s) => s.id === "each_item");
-    expect(step?.side_effect).toBe("read");
-  });
-
   it("DELETE request step → side_effect: 'write'", async () => {
     const draft = draftWithSteps([
       {

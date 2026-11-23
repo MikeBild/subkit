@@ -69,12 +69,12 @@ describe("dry_run_transform — javascript dialect", () => {
     const toolCtx = makeCtxWithDraft([
       { id: "fetch", kind: "request", method: "GET", url: "https://example.com/items" },
       {
-        id: "iter",
-        kind: "loop",
-        over: "$scope.fetch.data.items",
-        body: ["shape"],
+        id: "shape",
+        for_each: "(sourceData) => sourceData.fetch.data.items",
+        kind: "transform",
+        language: "javascript",
+        expression: "return null;",
       },
-      { id: "shape", kind: "transform", language: "javascript", expression: "return null;" },
     ]);
     recordEnvelopePreview(toolCtx);
     const result = await dryRunTransformTool.execute(toolCtx, {
@@ -94,14 +94,19 @@ describe("dry_run_transform — javascript dialect", () => {
       total: 2,
       since: "2026-01-01",
     });
-    expect(data.metadata.loop_context).toEqual({ loop_id: "iter", loop_index: 0 });
+    expect(data.metadata.loop_context).toEqual({ loop_id: "shape", loop_index: 0 });
   });
 
   test("$item resolves and no bare item name is bound into input.scope", async () => {
     const toolCtx = makeCtxWithDraft([
       { id: "fetch", kind: "request", method: "GET", url: "https://example.com/items" },
-      { id: "iter", kind: "loop", over: "$scope.fetch.data.items", body: ["shape"] },
-      { id: "shape", kind: "transform", language: "javascript", expression: "return null;" },
+      {
+        id: "shape",
+        for_each: "(sourceData) => sourceData.fetch.data.items",
+        kind: "transform",
+        language: "javascript",
+        expression: "return null;",
+      },
     ]);
     recordEnvelopePreview(toolCtx);
     const result = await dryRunTransformTool.execute(toolCtx, {
