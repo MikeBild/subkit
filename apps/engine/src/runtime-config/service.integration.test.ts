@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import pg from "pg";
 import { SYSTEM_TENANT_ID } from "../audit/types.ts";
 import { _resetConfigForTests, getConfig, loadConfig } from "../config/loader.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
@@ -11,6 +12,7 @@ import {
   activateRuntimeRevision,
   createSecretVersion,
   DATABASE_URL_BOOTSTRAP_SENTINEL,
+  getRuntimeConfigState,
   getRuntimeRevision,
   initializeRuntimeConfig,
   RuntimeConfigConflictError,
@@ -186,5 +188,52 @@ describe("runtime configuration revisions", () => {
         created_by: null,
       }),
     ).rejects.toBeInstanceOf(RuntimeConfigValidationError);
+  });
+});
+
+describe("secret references inside a save transaction", () => {
+  test("resolves one reference at a time on the transaction client", async () => {
+    const references: string[] = [];
+    for (const name of ["fixture.serial-a", "fixture.serial-b", "fixture.serial-c"]) {
+      const secret = await createSecretVersion(tdb.db, {
+        name,
+        value: `${name}-value`,
+        created_by: null,
+      });
+      references.push(secret.reference);
+    }
+    const state = await getRuntimeConfigState(tdb.db);
+    const proto = pg.Client.prototype as unknown as { query: (...args: unknown[]) => unknown };
+    const original = proto.query;
+    const inFlight = new Map<unknown, number>();
+    let peak = 0;
+    proto.query = function counted(this: unknown, ...args: unknown[]) {
+      const running = (inFlight.get(this) ?? 0) + 1;
+      inFlight.set(this, running);
+      peak = Math.max(peak, running);
+      const settle = () => {
+        inFlight.set(this, (inFlight.get(this) ?? 1) - 1);
+      };
+      const result = original.apply(this, args);
+      if (result instanceof Promise) result.then(settle, settle);
+      else settle();
+      return result;
+    };
+    try {
+      const saved = await saveRuntimeConfigPatch(tdb.db, {
+        expected_revision: state.saved_revision,
+        changes: {
+          "llm.providers.anthropic.api_key": references[0],
+          "llm.providers.openai.api_key": references[1],
+          "llm.providers.gemini.api_key": references[2],
+        },
+        scope: "global",
+        created_by: null,
+      });
+      expect(saved.saved_revision).toBe(state.saved_revision + 1);
+    } finally {
+      proto.query = original;
+    }
+    expect(peak).toBe(1);
   });
 });
