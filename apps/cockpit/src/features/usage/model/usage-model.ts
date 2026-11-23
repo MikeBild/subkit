@@ -102,6 +102,7 @@ export const FLOW_ORIGIN: Readonly<Record<string, UsageOrigin>> = {
   catalog_describe: "knowledge",
   discover: "knowledge",
   workflow_step: "workflowRuns",
+  personal_notes: "other",
 };
 
 export function flowOrigin(flow: string): UsageOrigin {

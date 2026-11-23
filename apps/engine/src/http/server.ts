@@ -96,6 +96,7 @@ import { registerMembershipRoutes } from "./routes/identity/memberships.ts";
 import { registerOnboardingRoutes } from "./routes/identity/onboarding.ts";
 import { registerOwnedTenantRoutes } from "./routes/identity/owned-tenant.ts";
 import { registerEffectivePermissionsRoute } from "./routes/identity/permissions.ts";
+import { registerPersonalNotesRoutes } from "./routes/identity/personal-notes.ts";
 import { registerPortalTokenRoutes } from "./routes/identity/portal-tokens.ts";
 import { registerProviderIdentityRoutes } from "./routes/identity/provider-identities.ts";
 import { registerProvidersRoute } from "./routes/identity/providers.ts";
@@ -331,6 +332,7 @@ export function createApp(opts: CreateAppOptions): OpenAPIHono<AppEnv> {
   registerOnboardingRoutes(app, opts.seedWorkspace ?? applyWorkspaceContentSeeds);
   registerUserRoutes(app);
   registerWorkspaceRoutes(app);
+  registerPersonalNotesRoutes(app);
   registerProviderIdentityRoutes(app);
   registerInviteRoutes(app);
   registerSystemAccountRoutes(app);

@@ -126,6 +126,10 @@ class MockProvider {
         };
         return { text: JSON.stringify(obj), object: obj };
       }
+      case "personal_notes": {
+        const obj = { proposals: [] };
+        return { text: JSON.stringify(obj), object: obj };
+      }
       case "catalog_describe": {
         const obj = {
           description: `Mock description: ${lastUser.slice(0, 80).replace(/\s+/g, " ")}`,

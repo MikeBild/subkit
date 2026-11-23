@@ -55,6 +55,7 @@ export interface SetupPreferences {
   critical_breakthrough: boolean;
   first_job: string | null;
   services: string[];
+  save_new_notes: boolean;
   unset: Array<"default_environment" | "approver" | "notifications">;
   updated_at: Date | null;
 }
@@ -68,6 +69,7 @@ export interface SetupPatch {
   critical_breakthrough?: boolean;
   first_job?: string | null;
   services?: string[];
+  save_new_notes?: boolean;
 }
 
 export interface SetupOwner {
@@ -101,6 +103,7 @@ export function setupFromRow(row: UserSetupPreferencesRow | undefined): SetupPre
     critical_breakthrough: row?.critical_breakthrough ?? RECOMMENDED_SETUP.critical_breakthrough,
     first_job: row?.first_job ?? null,
     services: row?.services ?? [],
+    save_new_notes: row?.save_new_notes ?? true,
     unset,
     updated_at: row?.updated_at ?? null,
   };
@@ -357,6 +360,7 @@ function audited(setup: SetupPreferences): Record<string, unknown> {
     critical_breakthrough: setup.critical_breakthrough,
     first_job: setup.first_job,
     services: setup.services,
+    save_new_notes: setup.save_new_notes,
   };
 }
 
@@ -405,6 +409,7 @@ export async function writeSetupPreferences(
         : {}),
       ...(patch.first_job !== undefined ? { first_job: patch.first_job } : {}),
       ...(patch.services !== undefined ? { services: [...new Set(patch.services)] } : {}),
+      ...(patch.save_new_notes !== undefined ? { save_new_notes: patch.save_new_notes } : {}),
     };
     const [row] = await tx
       .insert(userSetupPreferences)

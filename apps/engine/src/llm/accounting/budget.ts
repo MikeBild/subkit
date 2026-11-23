@@ -92,6 +92,7 @@ export async function recordUsage(entry: LlmCallLogEntry, exec?: Executor): Prom
       "critic_authoring",
       "judge",
       "workflow_step",
+      "personal_notes",
     ]).parse(entry.flow);
     z.string()
       .regex(/^[a-zA-Z0-9._:@/+-]{1,200}$/)

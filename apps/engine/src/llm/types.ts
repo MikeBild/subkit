@@ -22,7 +22,8 @@ export type LlmFlow =
   | "suggest_next"
   | "critic_authoring"
   | "judge"
-  | "workflow_step";
+  | "workflow_step"
+  | "personal_notes";
 
 export type LlmProviderKind = ProviderKind;
 

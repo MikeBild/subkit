@@ -207,6 +207,7 @@ export function auditReasonLabel(
 }
 
 const RESOURCE_KEYS: Record<string, TranslationKey> = {
+  personal_note: "audit.resource.personalNote",
   tool_approval_rule: "audit.resource.toolApprovalRule",
   task: "audit.resource.task",
   task_run: "audit.resource.taskRun",
@@ -338,6 +339,14 @@ export const ACTION_KEYS: Record<string, TranslationKey> = {
   "user.notifications_resumed": "audit.action.userNotificationsResumed",
   "attention.snoozed": "audit.action.attentionSnoozed",
   "attention.unsnoozed": "audit.action.attentionUnsnoozed",
+  "personal_note.created": "audit.action.personalNoteCreated",
+  "personal_note.updated": "audit.action.personalNoteUpdated",
+  "personal_note.confirmed": "audit.action.personalNoteConfirmed",
+  "personal_note.archived": "audit.action.personalNoteArchived",
+  "personal_note.restored": "audit.action.personalNoteRestored",
+  "personal_note.forgotten": "audit.action.personalNoteForgotten",
+  "personal_note.shared": "audit.action.personalNoteShared",
+  "personal_note.exported": "audit.action.personalNoteExported",
   "workspace.approval_policy_changed": "audit.action.workspaceApprovalPolicyChanged",
   "workspace.spend_limit_changed": "audit.action.workspaceSpendLimitChanged",
   "workspace.spend_continued": "audit.action.workspaceSpendContinued",
