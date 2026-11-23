@@ -90,6 +90,7 @@ describe("setup choices of the signed-in person", () => {
       critical_breakthrough: false,
       first_job: null,
       services: [],
+      save_new_notes: true,
       unset: ["default_environment", "approver", "notifications"],
       recommended: {
         ask_before_writing: false,

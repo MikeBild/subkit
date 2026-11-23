@@ -224,6 +224,8 @@ export type {
   NotificationRuleRow,
 } from "./schema/notifications.ts";
 export { notificationChannels } from "./schema/notifications.ts";
+export type { PersonalNoteArchiveReason } from "./schema/personal-notes.ts";
+export { personalNoteSources, personalNotes } from "./schema/personal-notes.ts";
 export type { TenantBootstrapPayload } from "./seed.ts";
 export { printIssuedKey, seedAtBoot, seedTenantBootstrap } from "./seed.ts";
 export type { RateLimitVerdict, SharedRateLimiter, WindowLimit } from "./shared-rate-limit.ts";

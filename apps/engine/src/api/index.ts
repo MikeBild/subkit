@@ -367,6 +367,17 @@ export {
   rejectPatchCandidateOperation,
 } from "./operations/patch-candidates.ts";
 export {
+  archivePersonalNoteOperation,
+  confirmPersonalNoteOperation,
+  exportPersonalNotesOperation,
+  forgetPersonalNoteOperation,
+  getPersonalNoteOperation,
+  listPersonalNotesOperation,
+  restorePersonalNoteOperation,
+  sharePersonalNoteOperation,
+  updatePersonalNoteOperation,
+} from "./operations/personal-notes.ts";
+export {
   addGroupMemberOperation,
   assignGroupRoleOperation,
   assignUserRoleOperation,

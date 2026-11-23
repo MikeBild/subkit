@@ -472,6 +472,14 @@ export const AuditAction = {
   MCP_OAUTH_CLIENT_REACTIVATED: "mcp_oauth.client_reactivated",
   MCP_OAUTH_CLIENT_LISTED: "mcp_oauth.client_listed",
   MCP_OAUTH_TOKEN_REJECTED: "mcp_oauth.token_rejected",
+  PERSONAL_NOTE_CREATED: "personal_note.created",
+  PERSONAL_NOTE_UPDATED: "personal_note.updated",
+  PERSONAL_NOTE_CONFIRMED: "personal_note.confirmed",
+  PERSONAL_NOTE_ARCHIVED: "personal_note.archived",
+  PERSONAL_NOTE_RESTORED: "personal_note.restored",
+  PERSONAL_NOTE_FORGOTTEN: "personal_note.forgotten",
+  PERSONAL_NOTE_SHARED: "personal_note.shared",
+  PERSONAL_NOTE_EXPORTED: "personal_note.exported",
 } as const;
 
 export type AuditActionValue = (typeof AuditAction)[keyof typeof AuditAction];

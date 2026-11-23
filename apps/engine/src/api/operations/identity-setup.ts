@@ -146,6 +146,12 @@ const SetupBody = z
       ),
     first_job: z.string().trim().min(1).max(120).nullable().optional(),
     services: z.array(ServiceSlug).max(50).optional(),
+    save_new_notes: z
+      .boolean()
+      .optional()
+      .describe(
+        "Whether SubKit keeps learning personal notes from what the person writes in chats. Switching it off stops new notes; existing notes stay until the person forgets them.",
+      ),
     monthly_spend_usd: z
       .number()
       .nonnegative()
@@ -181,6 +187,11 @@ const SetupSchema = z
       .describe("Whether critical items notify at once despite the schedule. Off unless chosen."),
     first_job: z.string().nullable(),
     services: z.array(z.string()),
+    save_new_notes: z
+      .boolean()
+      .describe(
+        "Whether new personal notes are learned from the person's own chat messages. On unless switched off. Personal notes are readable only by the person.",
+      ),
     unset: z
       .array(z.enum(["default_environment", "approver", "notifications"]))
       .describe("Choices the person has not made yet; their values are the recommended ones."),
@@ -346,6 +357,7 @@ function body({
     critical_breakthrough: setup.critical_breakthrough,
     first_job: setup.first_job,
     services: setup.services,
+    save_new_notes: setup.save_new_notes,
     unset: setup.unset,
     recommended: RECOMMENDED_SETUP,
     ...(invitation
@@ -507,6 +519,7 @@ export const putSetupOperation = defineOperation<SetupInput, SetupResult>({
         : {}),
       ...(input.first_job !== undefined ? { first_job: input.first_job } : {}),
       ...(input.services !== undefined ? { services: input.services } : {}),
+      ...(input.save_new_notes !== undefined ? { save_new_notes: input.save_new_notes } : {}),
     };
     const setup = await writeSetupPreferences(
       scope.db,
