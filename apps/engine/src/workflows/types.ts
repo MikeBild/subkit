@@ -760,7 +760,19 @@ export const RequestStepSchema = z
     SftpRequestStepSchema,
     McpRequestStepSchema,
   ])
-  .openapi("RequestStep");
+  .openapi("RequestStep", {
+    discriminator: {
+      propertyName: "protocol",
+      mapping: {
+        http: "#/components/schemas/HttpRequestStep",
+        graphql: "#/components/schemas/GraphqlRequestStep",
+        sql: "#/components/schemas/SqlRequestStep",
+        s3: "#/components/schemas/S3RequestStep",
+        sftp: "#/components/schemas/SftpRequestStep",
+        mcp: "#/components/schemas/McpRequestStep",
+      },
+    },
+  });
 
 export const PARSE_FILE_FORMATS = ["csv", "xlsx", "pdf", "docx", "zip"] as const;
 export const PARSE_FILE_MAX_ROWS = 10_000;
