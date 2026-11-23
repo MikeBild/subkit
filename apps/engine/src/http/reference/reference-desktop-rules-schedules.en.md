@@ -159,7 +159,7 @@ Body of `POST /v1/identity/desktop-session`: `code` (43 characters), `code_verif
 | `400 invalid_redirect_uri` | The target is not accepted by this server. |
 | `401 invalid_grant` | The code is unknown, used, expired or does not match the verifier or the state. |
 | `403 cross_origin_rejected` | The exchange was called from a web page. |
-| `403 csrf_rejected` | The confirmation came from another site or with an invalid token. |
+| `403 csrf_rejected` | The confirmation came from another site. A token from an earlier browser session opens the confirmation page again instead. |
 | `403 user_inactive` | The account is deactivated. |
 | `403 tenant_unavailable` | The workspace is unavailable. |
 | `426 desktop_app_outdated` | The app is older than `server.desktop_min_version` or names no `app_version`. At the start and on the confirmation page the answer is a page with the header `X-SubKit-Error: desktop_app_outdated`, at the exchange JSON. The sign-in code is not consumed. |

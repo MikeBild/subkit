@@ -103,6 +103,8 @@ What applies:
 | Limit per address | 30 calls per minute for the start, 30 for the confirmation, 10 for the exchange. After that `429` with `Retry-After`. |
 | Exchange from a web page | Refused with `403 cross_origin_rejected`. Only the app itself can exchange. |
 | Confirmation from another site | Refused with `403 csrf_rejected`. |
+| Workspace switched or signed in again after the page opened | The page opens again for the current workspace. Nothing is issued until you confirm once more. |
+| Workspace context of the browser | Not required. The page always shows the workspace of the current browser session, even when a Cockpit tab has another workspace open. |
 
 The engine counts the limits in the database. They apply across all engine processes together and survive a restart.
 

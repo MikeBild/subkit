@@ -103,6 +103,8 @@ Was dabei gilt:
 | Begrenzung je Adresse | 30 Aufrufe pro Minute für den Start, 30 für die Bestätigung, 10 für den Tausch. Danach `429` mit `Retry-After`. |
 | Tausch aus einer Webseite | Abgelehnt mit `403 cross_origin_rejected`. Nur die App selbst kann tauschen. |
 | Bestätigung von einer fremden Seite | Abgelehnt mit `403 csrf_rejected`. |
+| Arbeitsbereich gewechselt oder neu angemeldet, nachdem die Seite offen war | Die Seite öffnet sich erneut für den aktuellen Arbeitsbereich. Ausgestellt wird erst, wenn du noch einmal bestätigst. |
+| Arbeitsbereich-Kontext des Browsers | Nicht nötig. Die Seite zeigt immer den Arbeitsbereich der aktuellen Browser-Sitzung, auch wenn ein Cockpit-Tab einen anderen Arbeitsbereich offen hat. |
 
 Die Begrenzungen zählt die Engine in der Datenbank. Sie gelten über alle Engine-Prozesse zusammen und überstehen einen Neustart.
 

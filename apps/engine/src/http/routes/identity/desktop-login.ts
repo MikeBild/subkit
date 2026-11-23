@@ -338,8 +338,17 @@ export function registerDesktopLoginRoutes(app: OpenAPIHono<AppEnv>): void {
         session.session_id,
         form.data.request,
       ))
-    )
-      return c.json({ code: "csrf_rejected", message: "the confirmation is not valid" }, 403);
+    ) {
+      logger.info({
+        module: "auth",
+        action: "desktop_login.confirmation_stale",
+        msg: "desktop sign-in confirmation came from another browser session; showing the page again",
+        reason: "session_changed",
+        tenant_id: session.tenant_id,
+        device_id: request.device_id,
+      });
+      return c.redirect(confirmPath(form.data.request), 303);
+    }
     const db = c.get("db");
     const device = { device_id: request.device_id, device_label: request.device_label };
     if (form.data.decision === "deny") {

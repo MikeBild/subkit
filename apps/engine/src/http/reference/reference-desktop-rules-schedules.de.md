@@ -159,7 +159,7 @@ Body von `POST /v1/identity/desktop-session`: `code` (43 Zeichen), `code_verifie
 | `400 invalid_redirect_uri` | Dieser Server nimmt das Ziel nicht an. |
 | `401 invalid_grant` | Der Code ist unbekannt, verbraucht, abgelaufen oder passt nicht zum Verifier oder zum State. |
 | `403 cross_origin_rejected` | Der Tausch wurde aus einer Webseite aufgerufen. |
-| `403 csrf_rejected` | Die Bestätigung kam von einer fremden Seite oder mit ungültigem Token. |
+| `403 csrf_rejected` | Die Bestätigung kam von einer fremden Seite. Ein Token aus einer früheren Browser-Sitzung öffnet stattdessen die Bestätigungsseite erneut. |
 | `403 user_inactive` | Das Konto ist deaktiviert. |
 | `403 tenant_unavailable` | Der Arbeitsbereich ist nicht verfügbar. |
 | `426 desktop_app_outdated` | Die App ist älter als `server.desktop_min_version` oder nennt keine `app_version`. Beim Start und auf der Bestätigungsseite ist die Antwort eine Seite mit dem Header `X-SubKit-Error: desktop_app_outdated`, beim Tausch JSON. Der Anmeldecode wird nicht verbraucht. |

@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import type { MiddlewareHandler } from "hono";
 import { browserSessionForPrincipal, canonicalBrowserPath } from "../../auth/browser-session.ts";
 import { sessions } from "../../db/schema/index.ts";
+import { logger } from "../../logging/index.ts";
 import type { AppEnv } from "../openapi.ts";
 
 const IDENTITY_PATHS = new Set([
@@ -23,6 +24,7 @@ export function browserTenantMiddleware(): MiddlewareHandler<AppEnv> {
     if (
       IDENTITY_PATHS.has(path) ||
       path.startsWith("/v1/identity/login/") ||
+      path.startsWith("/v1/identity/desktop-login/") ||
       path.startsWith("/v1/oauth/") ||
       path.startsWith("/v1/tool-approvals/")
     ) {
@@ -53,6 +55,19 @@ export function browserTenantMiddleware(): MiddlewareHandler<AppEnv> {
         ? c.req.query("tenant_context")
         : undefined);
     if (expectedTenant !== payload.tenant_id) {
+      logger.warn({
+        module: "http",
+        action: "browser_tenant.context_changed",
+        msg: expectedTenant
+          ? "browser request names another workspace than its session"
+          : "browser request carries no workspace context for its session",
+        reason: expectedTenant ? "tenant_mismatch" : "tenant_header_missing",
+        path,
+        method: c.req.method,
+        session_tenant_id: payload.tenant_id,
+        ...(expectedTenant ? { expected_tenant_id: expectedTenant } : {}),
+        fetch_mode: c.req.header("sec-fetch-mode") ?? null,
+      });
       return c.json(
         {
           code: "tenant_context_changed",
