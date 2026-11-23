@@ -1,7 +1,7 @@
 import { withEgressAudit } from "../../../../connectors/egress.ts";
 import { classifyConnectorHealth } from "../../../../connectors/health.ts";
 import { logger } from "../../../../logging/index.ts";
-import { runJs } from "../../../../sandboxes/quickjs/runtime.ts";
+import { runJs } from "../../../../sandboxes/index.ts";
 import { pageFingerprint, repeatVerdict, stopWhenVerdict } from "../../../core/pagination-guard.ts";
 import {
   MAX_PAGES,
