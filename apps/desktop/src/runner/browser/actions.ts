@@ -159,6 +159,17 @@ function asRefusal(code: string | null): DeviceRefusal {
   return code === "private_address" ? "private_address" : "origin_not_allowed";
 }
 
+type Handoff = "click" | "key";
+
+const UNCERTAIN_DETAIL: Record<Handoff, string> = {
+  click: "The click may have reached the page. SubKit does not repeat it.",
+  key: "The key press may have reached the page. SubKit does not repeat it.",
+};
+
+function uncertain(handoff: Handoff): DeviceResult {
+  return { status: "failed", code: "delivery_uncertain", detail: UNCERTAIN_DETAIL[handoff] };
+}
+
 export function createBrowserAdapter(options: BrowserAdapterOptions): DeviceAdapter {
   const run = async (
     command: DeviceCommand,
@@ -166,6 +177,7 @@ export function createBrowserAdapter(options: BrowserAdapterOptions): DeviceAdap
     args: CommonArgs & Record<string, unknown>,
     signal: AbortSignal,
     page: { state: PageState | null },
+    handed: { kind: Handoff | null },
   ): Promise<{ output: Record<string, unknown>; evidence: DeviceEvidence }> => {
     const partition = args.partition ?? DEFAULT_PARTITION;
     const client = options.clientFor(partition);
@@ -182,6 +194,18 @@ export function createBrowserAdapter(options: BrowserAdapterOptions): DeviceAdap
       const result = await client.call(tool, input, signal);
       if (signal.aborted) throw new StepEnd({ status: "stopped" });
       if (!result.ok) failed(result.code, "The browser action failed.");
+      return result.data;
+    };
+
+    const hand = async (kind: Handoff, tool: string, input: Record<string, unknown>) => {
+      if (signal.aborted) throw new StepEnd({ status: "stopped" });
+      handed.kind = kind;
+      const result = await client.call(tool, input, signal);
+      if (signal.aborted) throw new StepEnd({ status: "stopped" });
+      if (!result.ok) {
+        if (result.code !== "browser_timeout") handed.kind = null;
+        failed(result.code, "The browser action failed.");
+      }
       return result.data;
     };
 
@@ -226,7 +250,7 @@ export function createBrowserAdapter(options: BrowserAdapterOptions): DeviceAdap
     if (kind === "browser.press") {
       const press = args as unknown as BrowserPressArgs;
       if (press.action === "click")
-        await call("agent_browser_click", { selector: selector(press.ref) });
+        await hand("click", "agent_browser_click", { selector: selector(press.ref) });
       else if (press.action === "key") {
         if (!NAVIGATION_KEYS.has(press.key)) {
           const scan = parseFieldScan(
@@ -235,8 +259,8 @@ export function createBrowserAdapter(options: BrowserAdapterOptions): DeviceAdap
           if (!scan.ok)
             failed("field_check_unavailable", "The focused field could not be checked.");
           if (scan.secure_focus) refused("credential_field", detailFor("credential_field"));
-        }
-        await call("agent_browser_press", { key: press.key });
+          await hand("key", "agent_browser_press", { key: press.key });
+        } else await call("agent_browser_press", { key: press.key });
       } else
         await call("agent_browser_scroll", { direction: press.direction, amount: press.pixels });
       const state = await settle();
@@ -353,6 +377,7 @@ export function createBrowserAdapter(options: BrowserAdapterOptions): DeviceAdap
       const kind = command.kind as BrowserKind;
       const parsed = SCHEMAS[kind].safeParse(command.args);
       const page: { state: PageState | null } = { state: null };
+      const handed: { kind: Handoff | null } = { kind: null };
       let result: DeviceResult;
       let stopping: Promise<void> | null = null;
       const args = parsed.success ? (parsed.data as CommonArgs & Record<string, unknown>) : {};
@@ -363,7 +388,7 @@ export function createBrowserAdapter(options: BrowserAdapterOptions): DeviceAdap
       signal.addEventListener("abort", onAbort, { once: true });
       try {
         if (!parsed.success) failed("invalid_args", "The browser command is not valid.");
-        const done = await run(command, kind, args, signal, page);
+        const done = await run(command, kind, args, signal, page, handed);
         result = { status: "done", output: done.output, evidence: done.evidence };
       } catch (error) {
         if (signal.aborted) result = { status: "stopped" };
@@ -382,6 +407,7 @@ export function createBrowserAdapter(options: BrowserAdapterOptions): DeviceAdap
         await stopping;
         result = { status: "stopped" };
       }
+      if (handed.kind !== null && result.status !== "done") result = uncertain(handed.kind);
       const step: BrowserStep = {
         action: kind,
         origin: page.state?.origin ?? null,
