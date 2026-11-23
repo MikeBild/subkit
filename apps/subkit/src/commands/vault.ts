@@ -3,6 +3,13 @@ import { defineCommand } from "citty";
 import type { CredentialBody } from "../engine-client/connectors.ts";
 import type { VaultItem } from "../engine-client/vault.ts";
 import { makeClient, withCommandErrors } from "./command-runtime.ts";
+import {
+  defaultCredentialMode,
+  parseVaultEnvironment,
+  productionGap,
+  resolveVaultTarget,
+  targetLabel,
+} from "./vault-target.ts";
 
 const connectorCredentialsCommand = defineCommand({
   meta: { name: "connector", description: "List the vault items of one connector" },
@@ -85,14 +92,22 @@ const attachCommand = defineCommand({
   meta: {
     name: "attach",
     description:
-      "Attach a connector's credential as a vault item. The secret comes from stdin or a hidden prompt, never from arguments: the token, the header or query value, the password, the PEM key, or for aws_sigv4 the secret access key and an optional session token on a second line.",
+      "Attach a connector's credential as a vault item. Name the connector by slug or id and choose its record with --env; each environment keeps its own credential. The secret comes from stdin or a hidden prompt, never from arguments: the token, the header or query value, the password, the PEM key, or for aws_sigv4 the secret access key and an optional session token on a second line.",
   },
   args: {
-    "connector-id": { type: "positional", required: true, description: "Connector id" },
+    "connector-id": {
+      type: "positional",
+      required: true,
+      description: "Connector slug or id",
+    },
+    env: {
+      type: "string",
+      description: "dev | prod: the connector record to attach to; required when the slug has both",
+    },
     mode: {
       type: "string",
-      required: true,
-      description: "bearer | header | query | basic | aws_sigv4 | signed_jwt | none",
+      description:
+        "bearer | header | query | basic | aws_sigv4 | signed_jwt | none (default: the connector's auth type)",
     },
     header: {
       type: "string",
@@ -110,10 +125,16 @@ const attachCommand = defineCommand({
   async run({ args }) {
     const client = makeClient();
     const jsonMode = Boolean(args.json);
-    const connectorId = String(args["connector-id"]);
-    const mode = String(args.mode).replace(/-/g, "_");
     return withCommandErrors(
       async () => {
+        const target = await resolveVaultTarget(
+          client,
+          String(args["connector-id"]),
+          parseVaultEnvironment(args.env),
+        );
+        const mode = args.mode
+          ? String(args.mode).replace(/-/g, "_")
+          : defaultCredentialMode(target);
         const body = credentialBody({
           mode,
           value: mode === "none" ? undefined : await readSecretValue(),
@@ -123,22 +144,36 @@ const attachCommand = defineCommand({
           accessKeyId: args["access-key-id"],
         });
 
-        const created = await client.createCredential(connectorId, body);
+        const created = await client.createCredential(target.id, body);
         let probe: { ok: boolean; error?: string } | undefined;
         if (!args["skip-checks"]) {
           try {
-            const result = await client.testConnector(connectorId);
+            const result = await client.testConnector(target.id);
             probe = { ok: result.ok === true };
           } catch {
             probe = { ok: false, error: "probe_failed" };
           }
         }
+        const warning = await productionGap(client, target).catch(() => null);
         if (jsonMode) {
-          process.stdout.write(`${JSON.stringify({ ...created, ...(probe ? { probe } : {}) })}\n`);
+          process.stdout.write(
+            `${JSON.stringify({
+              ...created,
+              connector: {
+                id: target.id,
+                slug: target.slug,
+                name: target.display_name,
+                environment: target.environment,
+              },
+              ...(probe ? { probe } : {}),
+              ...(warning ? { warning } : {}),
+            })}\n`,
+          );
         } else {
-          process.stdout.write(`✓ credential attached to ${connectorId}\n`);
+          process.stdout.write(`✓ credential attached to ${targetLabel(target)}\n`);
           if (probe) process.stdout.write(probe.ok ? "✓ probe ok\n" : "⚠ probe did not succeed\n");
         }
+        if (warning) process.stderr.write(`⚠ ${warning}\n`);
         if (probe && !probe.ok) process.exitCode = 1;
       },
       { json: jsonMode },
