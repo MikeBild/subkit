@@ -40,6 +40,14 @@ body:
   - type: textarea
     id: logs
     attributes:
-      label: Logs
-      description: Relevant log lines. Remove keys, tokens and personal data first.
-      render: text
+      label: Public diagnostics and attachments
+      description: |
+        Drag a sanitized diagnostic file into this field. Include the relevant runtime log excerpt or CLI/HTTP trace and, for a visual problem, a screenshot showing the symptom. Preserve the error code and event order. Explain which step the evidence shows and identify any evidence you could not capture.
+        Remove credentials, personal data and private URLs before uploading. If you link an existing attachment, open it while signed out and verify that it downloads. For a suspected security vulnerability, follow SECURITY.md.
+      placeholder: |
+        Observed error or event:
+        Diagnostic file:
+        Runtime logs or command output:
+        Screenshot, if applicable:
+    validations:
+      required: true
