@@ -21,6 +21,7 @@ import { hideTechnicalIdentifiers } from "@/lib/presentation";
 import {
   isStaleCall,
   isWorkflowRunTool,
+  liveRunExecutionId,
   toolOutcomeKey,
   workflowRefusalKey,
   workflowResultLink,
@@ -61,6 +62,7 @@ import { CHAT_MARKDOWN_COMPONENTS } from "./message-link";
 import { AttachmentChip, PatchProposalDiff, ResultLink } from "./parts";
 import { ToolPolicyNote } from "./policy";
 import { ChatReauthCard } from "./reauth-card";
+import { ChatRunResultCard } from "./run-result-card";
 import { ChatSensitivePreviewCard } from "./sensitive-preview-card";
 import { ChatTestRunCard } from "./test-run-card";
 
@@ -445,6 +447,7 @@ export function ChatMessage({
       tool.type === "dynamic-tool" && verdict.outcome === "ok"
         ? workflowResultLink(tool.output)
         : null;
+    const liveRunId = runKind === "live" ? liveRunExecutionId(tool.output) : null;
     return (
       <Fragment key={`${message.id}-tool-${partIndex}`}>
         <Tool defaultOpen={false} data-testid={`chat-message-${messageIndex}-tool-${partIndex}`}>
@@ -523,6 +526,12 @@ export function ChatMessage({
           <ResultLink
             link={resultLink}
             testId={`chat-message-${messageIndex}-tool-${partIndex}-link`}
+          />
+        ) : null}
+        {liveRunId ? (
+          <ChatRunResultCard
+            executionId={liveRunId}
+            testId={`chat-message-${messageIndex}-tool-${partIndex}-result`}
           />
         ) : null}
       </Fragment>

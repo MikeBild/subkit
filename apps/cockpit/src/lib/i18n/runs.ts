@@ -294,6 +294,16 @@ export const runsEn = {
   "input.type.arrayOf": "{type} ({item})",
   "output.title": "Output",
   "output.none": "The result of the last step.",
+  "runs.result.view": "View in {system}",
+  "runs.result.newTab": "opens in a new tab",
+  "runs.result.showDetails": "Show details",
+  "runs.result.hideDetails": "Hide details",
+  "runs.result.step": "Step {step}",
+  "runs.result.steps": "Steps",
+  "runs.result.stepsValue": "{succeeded} of {total} done",
+  "runs.result.duration": "Duration",
+  "runs.result.recordsLine.one": "Changed 1 record in {systems}.",
+  "runs.result.recordsLine.other": "Changed {count} records in {systems}.",
 } as const;
 
 export const runsDe: Record<keyof typeof runsEn, string> = {
@@ -600,4 +610,14 @@ export const runsDe: Record<keyof typeof runsEn, string> = {
   "input.type.arrayOf": "{type} ({item})",
   "output.title": "Ausgabe",
   "output.none": "Ergebnis des letzten Schritts.",
+  "runs.result.view": "In {system} ansehen",
+  "runs.result.newTab": "öffnet in einem neuen Tab",
+  "runs.result.showDetails": "Details anzeigen",
+  "runs.result.hideDetails": "Details ausblenden",
+  "runs.result.step": "Schritt {step}",
+  "runs.result.steps": "Schritte",
+  "runs.result.stepsValue": "{succeeded} von {total} erledigt",
+  "runs.result.duration": "Dauer",
+  "runs.result.recordsLine.one": "1 Datensatz in {systems} geändert.",
+  "runs.result.recordsLine.other": "{count} Datensätze in {systems} geändert.",
 };

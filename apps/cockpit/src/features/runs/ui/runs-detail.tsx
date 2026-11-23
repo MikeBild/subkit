@@ -89,6 +89,7 @@ import {
   stepGuidance,
   stepLimitSentence,
 } from "../model/runs-model";
+import { RunRecordsCard } from "./run-result-card";
 
 type Execution = components["schemas"]["Execution"];
 type ExecutionDetail = components["schemas"]["ExecutionDetail"];
@@ -476,6 +477,12 @@ export function RunDetail({ run, page = false }: { run: Execution; page?: boolea
               testId="run-detail-graph"
             />
           ) : null}
+          <RunRecordsCard
+            detail={detail.data}
+            title={verdict.label}
+            duration={duration}
+            testId="run-detail-result-card"
+          />
           <RunResultDocument
             result={runResultMarkdown(detail.data)}
             empty={
