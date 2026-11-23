@@ -134,6 +134,16 @@ async function lockOpenItem(
   return rows[0] ?? null;
 }
 
+export async function lockIntakeRequest(
+  tx: Executor,
+  tenantId: string,
+  clientRequestId: string,
+): Promise<void> {
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtext(${`${tenantId}:intake-request:${clientRequestId}`}))`,
+  );
+}
+
 export async function lockOpenIntakeDuplicate(
   tx: Executor,
   p: {

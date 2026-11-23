@@ -51,6 +51,7 @@ import type {
   SetIntakeDefaultCategoryParams,
 } from "./intake-types.ts";
 import { assertConfirmerMayAdmit } from "./persistence/intake-confirm.ts";
+import { lockIntakeRequest } from "./persistence/intake-dedupe.ts";
 import { finishKnowledgeWrite } from "./service.ts";
 
 function redactCollected(p: CreateIntakeItemParams): {
@@ -221,9 +222,7 @@ export async function createIntakeItem(
         : await defaultIntakeCategory(tx, p.tenant_id, p.actor);
     const digest = itemRequestDigest(p, intakeCategory);
     const { params: clean, redactions } = redactCollected(p);
-    await tx.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtext(${`${p.tenant_id}:intake-request:${p.client_request_id}`}))`,
-    );
+    await lockIntakeRequest(tx, p.tenant_id, p.client_request_id);
     const previous = await tx
       .select()
       .from(intakeItems)
