@@ -29,6 +29,7 @@ const UPDATE_STUB: UpdateStub = {
 
 const dbStub: Record<string, unknown> = {
   transaction: async (fn: (db: unknown) => unknown) => fn(dbStub),
+  execute: async () => ({ rows: [{ previous_role: "none", previous_tenant: null }] }),
   insert: () => ({ values: () => ({ onConflictDoNothing: async () => undefined }) }),
   update: () => UPDATE_STUB,
 };

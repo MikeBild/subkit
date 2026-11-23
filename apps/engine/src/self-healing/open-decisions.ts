@@ -129,6 +129,19 @@ export async function closeUndecidableCandidate(
   return true;
 }
 
+export async function markCandidateRefreshed(tx: Executor, row: CandidateRow): Promise<void> {
+  await tx
+    .update(patchCandidates)
+    .set({ updated_at: new Date() })
+    .where(
+      and(
+        eq(patchCandidates.tenant_id, row.tenant_id),
+        eq(patchCandidates.id, row.id),
+        eq(patchCandidates.status, "proposed"),
+      ),
+    );
+}
+
 export async function closeIfUndecidable(
   tx: Executor,
   row: CandidateRow,

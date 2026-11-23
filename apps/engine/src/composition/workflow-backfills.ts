@@ -1,4 +1,4 @@
-import { createMigrationDbFromUrl } from "../db/index.ts";
+import { createDbFromUrl } from "../db/index.ts";
 import { errorFields, logger } from "../logging/index.ts";
 import { runLoopToForEachV2Backfill, runRequestProtocolV1Backfill } from "../workflows/index.ts";
 
@@ -8,7 +8,7 @@ const BACKFILLS = [
 ] as const;
 
 export async function runWorkflowBackfillsFromUrl(url: string): Promise<void> {
-  const { pool, db } = createMigrationDbFromUrl(url);
+  const { pool, db } = createDbFromUrl(url);
   try {
     for (const backfill of BACKFILLS) {
       try {

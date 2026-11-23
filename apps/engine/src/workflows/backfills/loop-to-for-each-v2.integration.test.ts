@@ -114,7 +114,8 @@ describe("loop→for_each backfill", () => {
   let eligible: SeededWorkflow;
   let ineligible: SeededWorkflow;
 
-  test("seed: marker exists from createTestDb; delete it and seed legacy rows", async () => {
+  test("seed: the boot backfill writes its marker on a fresh database; delete it and seed legacy rows", async () => {
+    expect((await runLoopToForEachV2Backfill(ctx.db)).skipped).toBe(false);
     const marker = await ctx.db
       .select()
       .from(dataMigrations)

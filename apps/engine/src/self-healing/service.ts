@@ -31,7 +31,7 @@ import {
 } from "./core/retry-chain.ts";
 import { analyzeStepFailure, type FailingStepSnapshot, renderDriftDiff } from "./drift-detector.ts";
 import { runFixtureDryRun } from "./fixture-runner.ts";
-import { closeIfUndecidable } from "./open-decisions.ts";
+import { closeIfUndecidable, markCandidateRefreshed } from "./open-decisions.ts";
 import { resolvePathRewrite } from "./patch-apply.ts";
 import { persistNotRepairableFinding, persistPatchCandidate } from "./persist-candidate.ts";
 import { resolvePolicy, shouldAutoApply } from "./policy.ts";
@@ -182,9 +182,11 @@ async function refreshOrSkipExistingCandidate(
     };
   }
 
-  const closed = await db.transaction((tx) =>
-    closeIfUndecidable(tx, existing, "proactive_refresh"),
-  );
+  const closed = await db.transaction(async (tx) => {
+    const undecidable = await closeIfUndecidable(tx, existing, "proactive_refresh");
+    if (!undecidable) await markCandidateRefreshed(tx, existing);
+    return undecidable;
+  });
   if (!closed)
     recordPatchCandidate({ classification: existing.classification, decision: "parked" });
   logger.info({

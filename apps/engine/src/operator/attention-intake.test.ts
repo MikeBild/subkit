@@ -39,6 +39,7 @@ test("collected intake is counted per category, largest first, with the total ke
     sources: Object.fromEntries(ATTENTION_SOURCES.map((source) => [source, "answered"])),
     status: null,
     items: [item],
+    snoozed: [],
   });
   expect(feed.items[0]?.counts).toEqual(item.counts);
   expect(attentionLine(item)).toBe(

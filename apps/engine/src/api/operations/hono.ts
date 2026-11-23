@@ -125,6 +125,19 @@ export function toHonoRoute<I, R>(app: OpenAPIHono<AppEnv>, op: Operation<I, R>)
       if (gatedMethods.includes(c.req.method)) return gate(c, next);
       return next();
     });
+  if (http.body && http.bodyRequired === false)
+    app.use(honoPath(http.path), async (c, next) => {
+      if (c.req.method === method && (await c.req.raw.clone().text()).trim() === "") {
+        const headers = new Headers(c.req.raw.headers);
+        headers.delete("content-type");
+        c.req.raw = new Request(c.req.raw.url, {
+          method: c.req.raw.method,
+          headers,
+          signal: c.req.raw.signal,
+        });
+      }
+      return next();
+    });
   const route = createRoute({
     method: http.method,
     path: http.path,
