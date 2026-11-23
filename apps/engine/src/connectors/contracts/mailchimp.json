@@ -1,0 +1,26 @@
+{
+  "request": {
+    "base_url": "https://us1.api.mailchimp.com/3.0",
+    "method": "GET",
+    "path": "/ping"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "health_status": "Everything's Chimpy!"
+    }
+  },
+  "expect": {
+    "url": "https://us1.api.mailchimp.com/3.0/ping",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "Bearer synthetic-contract-token"
+    },
+    "output": {
+      "health_status": "Everything's Chimpy!"
+    }
+  }
+}

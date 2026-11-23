@@ -1,0 +1,46 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/",
+    "headers": {
+      "x-amz-target": "AWSCognitoIdentityProviderService.ListUsers",
+      "content-type": "application/x-amz-json-1.1"
+    },
+    "body": {
+      "UserPoolId": "us-east-1_SYNTHETIC",
+      "Limit": 1
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/x-amz-json-1.1"
+    },
+    "body": {
+      "Users": [
+        {
+          "Username": "synthetic-user",
+          "UserStatus": "CONFIRMED",
+          "Enabled": true
+        }
+      ]
+    }
+  },
+  "expect": {
+    "url": "https://cognito-idp.us-east-1.amazonaws.com/",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "AWS4-HMAC-SHA256 Credential=SYNTHETICACCESSKEYID/",
+      "match": "prefix"
+    },
+    "output": {
+      "Users": [
+        {
+          "Username": "synthetic-user",
+          "UserStatus": "CONFIRMED",
+          "Enabled": true
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/",
+    "headers": {
+      "content-type": "application/x-www-form-urlencoded"
+    },
+    "body": "Action=ListMetrics&Version=2010-08-01&Namespace=Synthetic"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/xml"
+    },
+    "body": "<ListMetricsResponse><ListMetricsResult><Metrics><member><Namespace>Synthetic</Namespace><MetricName>Requests</MetricName></member></Metrics></ListMetricsResult></ListMetricsResponse>"
+  },
+  "expect": {
+    "url": "https://monitoring.us-east-1.amazonaws.com/",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "AWS4-HMAC-SHA256 Credential=SYNTHETICACCESSKEYID/",
+      "match": "prefix"
+    },
+    "output": "<ListMetricsResponse><ListMetricsResult><Metrics><member><Namespace>Synthetic</Namespace><MetricName>Requests</MetricName></member></Metrics></ListMetricsResult></ListMetricsResponse>"
+  }
+}

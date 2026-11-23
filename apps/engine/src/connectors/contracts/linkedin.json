@@ -1,0 +1,31 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v2/userinfo"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "sub": "synthetic-member-1",
+      "name": "Synthetic User",
+      "email": "user@example.com",
+      "email_verified": true
+    }
+  },
+  "expect": {
+    "url": "https://api.linkedin.com/v2/userinfo",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "Bearer synthetic-contract-token"
+    },
+    "output": {
+      "sub": "synthetic-member-1",
+      "name": "Synthetic User",
+      "email": "user@example.com",
+      "email_verified": true
+    }
+  }
+}

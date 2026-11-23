@@ -575,6 +575,10 @@ export const CONCERNS: Readonly<Record<string, Concern>> = {
         },
       ]),
     ),
+    connector: {
+      summary: "contract fixture and template stub: <slug> [--driver http|graphql|postgres|s3|mcp]",
+      plan: () => [bun("gen connector", "scripts/create-connector.ts")],
+    },
     all: {
       summary: "every generator in order",
       plan: (_ctx, args) =>

@@ -1,0 +1,42 @@
+{
+  "request": {
+    "base_url": "https://synthetic.my.salesforce.com/services/data/v67.0",
+    "method": "GET",
+    "path": "/sobjects"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "encoding": "UTF-8",
+      "maxBatchSize": 200,
+      "sobjects": [
+        {
+          "name": "Account",
+          "label": "Account",
+          "queryable": true
+        }
+      ]
+    }
+  },
+  "expect": {
+    "url": "https://synthetic.my.salesforce.com/services/data/v67.0/sobjects",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "Bearer synthetic-contract-token"
+    },
+    "output": {
+      "encoding": "UTF-8",
+      "maxBatchSize": 200,
+      "sobjects": [
+        {
+          "name": "Account",
+          "label": "Account",
+          "queryable": true
+        }
+      ]
+    }
+  }
+}

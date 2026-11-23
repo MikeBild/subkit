@@ -1,0 +1,30 @@
+{
+  "request": {
+    "base_url": "https://api.atlassian.com/ex/jira/synthetic-cloud-id/rest/api/3",
+    "method": "GET",
+    "path": "/myself"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "accountId": "synthetic-account-1",
+      "displayName": "Synthetic User",
+      "active": true
+    }
+  },
+  "expect": {
+    "url": "https://api.atlassian.com/ex/jira/synthetic-cloud-id/rest/api/3/myself",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "Bearer synthetic-contract-token"
+    },
+    "output": {
+      "accountId": "synthetic-account-1",
+      "displayName": "Synthetic User",
+      "active": true
+    }
+  }
+}

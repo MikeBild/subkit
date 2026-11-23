@@ -1,0 +1,43 @@
+{
+  "request": {
+    "base_url": "https://synthetic0002.appsync-api.eu-central-1.amazonaws.com/graphql",
+    "method": "POST",
+    "path": "",
+    "body": {
+      "query": "query GetEntity($id: ID!) { getEntity(id: $id) { id __typename } }",
+      "variables": {
+        "id": "entity-1"
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "data": {
+        "getEntity": {
+          "id": "entity-1",
+          "__typename": "Entity"
+        }
+      }
+    }
+  },
+  "expect": {
+    "url": "https://synthetic0002.appsync-api.eu-central-1.amazonaws.com/graphql",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "AWS4-HMAC-SHA256 Credential=SYNTHETICACCESSKEYID/",
+      "match": "prefix"
+    },
+    "output": {
+      "data": {
+        "getEntity": {
+          "id": "entity-1",
+          "__typename": "Entity"
+        }
+      }
+    }
+  }
+}

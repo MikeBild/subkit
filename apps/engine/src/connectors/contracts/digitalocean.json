@@ -1,0 +1,41 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/projects"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "projects": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "name": "synthetic-project"
+        }
+      ],
+      "meta": {
+        "total": 1
+      }
+    }
+  },
+  "expect": {
+    "url": "https://api.digitalocean.com/v2/projects",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "Bearer synthetic-contract-token"
+    },
+    "output": {
+      "projects": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "name": "synthetic-project"
+        }
+      ],
+      "meta": {
+        "total": 1
+      }
+    }
+  }
+}

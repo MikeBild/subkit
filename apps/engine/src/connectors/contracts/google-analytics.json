@@ -1,0 +1,71 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/v1beta/properties/100000001:runReport",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "dateRanges": [
+        {
+          "startDate": "2026-01-01",
+          "endDate": "2026-01-07"
+        }
+      ],
+      "metrics": [
+        {
+          "name": "activeUsers"
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "metricHeaders": [
+        {
+          "name": "activeUsers",
+          "type": "TYPE_INTEGER"
+        }
+      ],
+      "rows": [
+        {
+          "metricValues": [
+            {
+              "value": "42"
+            }
+          ]
+        }
+      ],
+      "rowCount": 1
+    }
+  },
+  "expect": {
+    "url": "https://analyticsdata.googleapis.com/v1beta/properties/100000001:runReport",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "Bearer synthetic-contract-token"
+    },
+    "output": {
+      "metricHeaders": [
+        {
+          "name": "activeUsers",
+          "type": "TYPE_INTEGER"
+        }
+      ],
+      "rows": [
+        {
+          "metricValues": [
+            {
+              "value": "42"
+            }
+          ]
+        }
+      ],
+      "rowCount": 1
+    }
+  }
+}

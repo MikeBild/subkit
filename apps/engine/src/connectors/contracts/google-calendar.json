@@ -1,0 +1,40 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/users/me/calendarList",
+    "query": {
+      "maxResults": 1
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "kind": "calendar#calendarList",
+      "items": [
+        {
+          "id": "primary",
+          "summary": "Synthetic calendar"
+        }
+      ]
+    }
+  },
+  "expect": {
+    "url": "https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=1",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "Bearer synthetic-contract-token"
+    },
+    "output": {
+      "kind": "calendar#calendarList",
+      "items": [
+        {
+          "id": "primary",
+          "summary": "Synthetic calendar"
+        }
+      ]
+    }
+  }
+}

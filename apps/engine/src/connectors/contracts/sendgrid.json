@@ -1,0 +1,45 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/mail/send",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "personalizations": [
+        {
+          "to": [
+            {
+              "email": "recipient@example.com"
+            }
+          ]
+        }
+      ],
+      "from": {
+        "email": "sender@example.com"
+      },
+      "subject": "Synthetic subject",
+      "content": [
+        {
+          "type": "text/plain",
+          "value": "Synthetic body"
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 202,
+    "headers": {
+      "x-message-id": "synthetic-message-1"
+    },
+    "body": null
+  },
+  "expect": {
+    "url": "https://api.sendgrid.com/v3/mail/send",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "Bearer synthetic-contract-token"
+    },
+    "output": ""
+  }
+}

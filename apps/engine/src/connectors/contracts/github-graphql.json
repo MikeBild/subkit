@@ -1,0 +1,52 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "",
+    "body": {
+      "query": "query ViewerAndRateLimit { viewer { login name url } rateLimit { limit cost remaining resetAt } }"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "data": {
+        "viewer": {
+          "login": "synthetic-user",
+          "name": "Synthetic User",
+          "url": "https://github.com/synthetic-user"
+        },
+        "rateLimit": {
+          "limit": 5000,
+          "cost": 1,
+          "remaining": 4999,
+          "resetAt": "2026-01-01T00:00:00Z"
+        }
+      }
+    }
+  },
+  "expect": {
+    "url": "https://api.github.com/graphql",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "Bearer synthetic-contract-token"
+    },
+    "output": {
+      "data": {
+        "viewer": {
+          "login": "synthetic-user",
+          "name": "Synthetic User",
+          "url": "https://github.com/synthetic-user"
+        },
+        "rateLimit": {
+          "limit": 5000,
+          "cost": 1,
+          "remaining": 4999,
+          "resetAt": "2026-01-01T00:00:00Z"
+        }
+      }
+    }
+  }
+}

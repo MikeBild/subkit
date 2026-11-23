@@ -1,0 +1,51 @@
+{
+  "request": {
+    "base_url": "https://syntheticref.supabase.co/graphql/v1",
+    "method": "POST",
+    "path": "",
+    "body": {
+      "query": "query Items { itemsCollection(first: 1) { edges { node { id name } } } }"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "data": {
+        "itemsCollection": {
+          "edges": [
+            {
+              "node": {
+                "id": 1,
+                "name": "Synthetic item"
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "expect": {
+    "url": "https://syntheticref.supabase.co/graphql/v1",
+    "auth_header": {
+      "name": "apikey",
+      "value": "synthetic-contract-token"
+    },
+    "output": {
+      "data": {
+        "itemsCollection": {
+          "edges": [
+            {
+              "node": {
+                "id": 1,
+                "name": "Synthetic item"
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

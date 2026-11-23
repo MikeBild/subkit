@@ -1,0 +1,46 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/projects/synthetic-project/databases/(default)/documents/items",
+    "query": {
+      "pageSize": 1
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "documents": [
+        {
+          "name": "projects/synthetic-project/databases/(default)/documents/items/item-1",
+          "fields": {
+            "name": {
+              "stringValue": "Synthetic item"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "expect": {
+    "url": "https://firestore.googleapis.com/v1/projects/synthetic-project/databases/(default)/documents/items?pageSize=1",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "Bearer synthetic-contract-token"
+    },
+    "output": {
+      "documents": [
+        {
+          "name": "projects/synthetic-project/databases/(default)/documents/items/item-1",
+          "fields": {
+            "name": {
+              "stringValue": "Synthetic item"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

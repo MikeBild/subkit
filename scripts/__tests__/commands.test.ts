@@ -91,6 +91,9 @@ describe("plan", () => {
     expect(commands(steps("gen", ["release-notes", "--release", "v1.0.0"]))).toEqual([
       "bun scripts/gen-release-notes.ts --release v1.0.0",
     ]);
+    expect(commands(steps("gen", ["connector", "acme-crm", "--driver", "graphql"]))).toEqual([
+      "bun scripts/create-connector.ts acme-crm --driver graphql",
+    ]);
   });
 
   test("a drift check regenerates, then fails on a diff or asks the generator", () => {

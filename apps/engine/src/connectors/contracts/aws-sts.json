@@ -1,0 +1,26 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/",
+    "headers": {
+      "content-type": "application/x-www-form-urlencoded"
+    },
+    "body": "Action=GetCallerIdentity&Version=2011-06-15"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/xml"
+    },
+    "body": "<GetCallerIdentityResponse><GetCallerIdentityResult><Arn>arn:aws:iam::000000000000:user/synthetic</Arn><UserId>SYNTHETICUSERID</UserId><Account>000000000000</Account></GetCallerIdentityResult></GetCallerIdentityResponse>"
+  },
+  "expect": {
+    "url": "https://sts.amazonaws.com/",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "AWS4-HMAC-SHA256 Credential=SYNTHETICACCESSKEYID/",
+      "match": "prefix"
+    },
+    "output": "<GetCallerIdentityResponse><GetCallerIdentityResult><Arn>arn:aws:iam::000000000000:user/synthetic</Arn><UserId>SYNTHETICUSERID</UserId><Account>000000000000</Account></GetCallerIdentityResult></GetCallerIdentityResponse>"
+  }
+}

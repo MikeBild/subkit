@@ -1,0 +1,34 @@
+{
+  "request": {
+    "base_url": "https://auth.example.com",
+    "method": "POST",
+    "path": "/oauth/token",
+    "headers": {
+      "content-type": "application/x-www-form-urlencoded"
+    },
+    "body": "grant_type=client_credentials&scope=read"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "access_token": "synthetic-issued-token",
+      "token_type": "Bearer",
+      "expires_in": 3600
+    }
+  },
+  "expect": {
+    "url": "https://auth.example.com/oauth/token",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "synthetic-contract-token"
+    },
+    "output": {
+      "access_token": "synthetic-issued-token",
+      "token_type": "Bearer",
+      "expires_in": 3600
+    }
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/",
+    "headers": {
+      "x-amz-target": "SimpleEmailService.SendEmail",
+      "content-type": "application/x-amz-json-1.1"
+    },
+    "body": {
+      "Source": "sender@example.com",
+      "Destination": {
+        "ToAddresses": ["recipient@example.com"]
+      },
+      "Message": {
+        "Subject": {
+          "Data": "Synthetic subject"
+        },
+        "Body": {
+          "Text": {
+            "Data": "Synthetic body"
+          }
+        }
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/x-amz-json-1.1"
+    },
+    "body": {
+      "MessageId": "synthetic-message-1"
+    }
+  },
+  "expect": {
+    "url": "https://email.us-east-1.amazonaws.com/",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "AWS4-HMAC-SHA256 Credential=SYNTHETICACCESSKEYID/",
+      "match": "prefix"
+    },
+    "output": {
+      "MessageId": "synthetic-message-1"
+    }
+  }
+}

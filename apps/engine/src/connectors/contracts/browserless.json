@@ -1,0 +1,30 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/chrome/function",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "code": "export default async () => ({ data: 'synthetic', type: 'text/plain' });"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "data": "synthetic",
+      "type": "text/plain"
+    }
+  },
+  "expect": {
+    "url": "https://production-sfo.browserless.io/chrome/function?token=synthetic-contract-token",
+    "auth_header": null,
+    "output": {
+      "data": "synthetic",
+      "type": "text/plain"
+    }
+  }
+}

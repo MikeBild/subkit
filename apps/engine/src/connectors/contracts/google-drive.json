@@ -1,0 +1,42 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/files",
+    "query": {
+      "pageSize": 1
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "kind": "drive#fileList",
+      "files": [
+        {
+          "id": "synthetic-file-1",
+          "name": "synthetic.txt",
+          "mimeType": "text/plain"
+        }
+      ]
+    }
+  },
+  "expect": {
+    "url": "https://www.googleapis.com/drive/v3/files?pageSize=1",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "Bearer synthetic-contract-token"
+    },
+    "output": {
+      "kind": "drive#fileList",
+      "files": [
+        {
+          "id": "synthetic-file-1",
+          "name": "synthetic.txt",
+          "mimeType": "text/plain"
+        }
+      ]
+    }
+  }
+}

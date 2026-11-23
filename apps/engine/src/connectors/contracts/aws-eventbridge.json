@@ -1,0 +1,50 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/",
+    "headers": {
+      "x-amz-target": "AWSEvents.PutEvents",
+      "content-type": "application/x-amz-json-1.1"
+    },
+    "body": {
+      "Entries": [
+        {
+          "Source": "synthetic.app",
+          "DetailType": "synthetic.created",
+          "Detail": "{\"id\":\"item-1\"}",
+          "EventBusName": "default"
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/x-amz-json-1.1"
+    },
+    "body": {
+      "FailedEntryCount": 0,
+      "Entries": [
+        {
+          "EventId": "00000000-0000-4000-8000-000000000001"
+        }
+      ]
+    }
+  },
+  "expect": {
+    "url": "https://events.us-east-1.amazonaws.com/",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "AWS4-HMAC-SHA256 Credential=SYNTHETICACCESSKEYID/",
+      "match": "prefix"
+    },
+    "output": {
+      "FailedEntryCount": 0,
+      "Entries": [
+        {
+          "EventId": "00000000-0000-4000-8000-000000000001"
+        }
+      ]
+    }
+  }
+}

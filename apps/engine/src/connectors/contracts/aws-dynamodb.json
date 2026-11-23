@@ -1,0 +1,52 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/",
+    "headers": {
+      "x-amz-target": "DynamoDB_20120810.GetItem",
+      "content-type": "application/x-amz-json-1.0"
+    },
+    "body": {
+      "TableName": "synthetic-table",
+      "Key": {
+        "id": {
+          "S": "item-1"
+        }
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/x-amz-json-1.0"
+    },
+    "body": {
+      "Item": {
+        "id": {
+          "S": "item-1"
+        },
+        "name": {
+          "S": "Synthetic item"
+        }
+      }
+    }
+  },
+  "expect": {
+    "url": "https://dynamodb.us-east-1.amazonaws.com/",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "AWS4-HMAC-SHA256 Credential=SYNTHETICACCESSKEYID/",
+      "match": "prefix"
+    },
+    "output": {
+      "Item": {
+        "id": {
+          "S": "item-1"
+        },
+        "name": {
+          "S": "Synthetic item"
+        }
+      }
+    }
+  }
+}

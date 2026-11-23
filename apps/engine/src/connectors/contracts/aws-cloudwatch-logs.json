@@ -1,0 +1,44 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/",
+    "headers": {
+      "x-amz-target": "Logs_20140328.DescribeLogGroups",
+      "content-type": "application/x-amz-json-1.1"
+    },
+    "body": {
+      "logGroupNamePrefix": "/synthetic/",
+      "limit": 1
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/x-amz-json-1.1"
+    },
+    "body": {
+      "logGroups": [
+        {
+          "logGroupName": "/synthetic/app",
+          "storedBytes": 1024
+        }
+      ]
+    }
+  },
+  "expect": {
+    "url": "https://logs.us-east-1.amazonaws.com/",
+    "auth_header": {
+      "name": "Authorization",
+      "value": "AWS4-HMAC-SHA256 Credential=SYNTHETICACCESSKEYID/",
+      "match": "prefix"
+    },
+    "output": {
+      "logGroups": [
+        {
+          "logGroupName": "/synthetic/app",
+          "storedBytes": 1024
+        }
+      ]
+    }
+  }
+}
