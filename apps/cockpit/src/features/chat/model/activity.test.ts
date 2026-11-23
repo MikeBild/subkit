@@ -17,8 +17,10 @@ const names: ActivityNames = {
   connectorName: (id) => (id === CONNECTOR ? "Tracker" : null),
   workflowName: (slug) => (slug === "weekly-digest" ? "Weekly digest" : null),
 };
-const de = (key: TranslationKey, params?: Record<string, string>) => translate("de", key, params);
-const en = (key: TranslationKey, params?: Record<string, string>) => translate("en", key, params);
+const de = (key: TranslationKey, params?: Record<string, string | number>) =>
+  translate("de", key, params);
+const en = (key: TranslationKey, params?: Record<string, string | number>) =>
+  translate("en", key, params);
 
 type Frame = { type: string; [key: string]: unknown };
 
