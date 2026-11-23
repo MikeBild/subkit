@@ -1,7 +1,33 @@
 import { type SQL, sql } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
+import type { FtsConfig } from "./core/fts-config.ts";
 import { DOMAIN_TAG_PREFIX } from "./tags.ts";
-import type { KnowledgeSearchHit } from "./types.ts";
+import type { KnowledgeSearchHit, SearchKnowledgeParams } from "./types.ts";
+
+export function knowledgeScopeFilter(p: SearchKnowledgeParams): SQL {
+  let scopeFilter = sql`AND ks.deleted_at IS NULL AND ks.status = 'active'`;
+  if (p.knowledge_source_ids && p.knowledge_source_ids.length > 0) {
+    const ids = p.knowledge_source_ids.map((id) => sql`${id}`);
+    scopeFilter = sql`${scopeFilter} AND kc.knowledge_source_id IN (${sql.join(ids, sql`, `)})`;
+  } else if (p.workflow_id) {
+    scopeFilter = sql`${scopeFilter} AND (ks.scope = 'global' OR (ks.scope = 'workflow' AND ks.workflow_id = ${p.workflow_id}))`;
+  } else if (p.scope) {
+    scopeFilter = sql`${scopeFilter} AND ks.scope = ${p.scope}`;
+  }
+  if (p.tags && p.tags.length > 0) {
+    const tagLiterals = p.tags.map((t) => sql`${t}`);
+    scopeFilter = sql`${scopeFilter} AND ks.tags && ARRAY[${sql.join(tagLiterals, sql`, `)}]::text[]`;
+  }
+  return scopeFilter;
+}
+
+export function allTermsTsQuery(config: FtsConfig, query: string): SQL {
+  return sql`plainto_tsquery(${config}::regconfig, ${query})`;
+}
+
+export function anyTermTsQuery(allTerms: SQL): SQL {
+  return sql`regexp_replace(${allTerms}::text, ' & ', ' | ', 'g')::tsquery`;
+}
 
 type KnowledgeFtsRow = {
   id: string;
@@ -20,6 +46,7 @@ export async function domainTaggedSourceIds(
   db: Executor,
   tenant_id: string,
   tsquery: SQL,
+  config: FtsConfig,
 ): Promise<string[]> {
   const out = await db.execute(sql`
     SELECT ks.id::text AS id
@@ -28,7 +55,7 @@ export async function domainTaggedSourceIds(
       AND EXISTS (
         SELECT 1 FROM unnest(ks.tags) AS tag
         WHERE lower(tag) LIKE ${`${DOMAIN_TAG_PREFIX}%`}
-          AND to_tsvector('english', regexp_replace(substr(tag, ${DOMAIN_TAG_PREFIX.length + 1}), '[-_/.]+', ' ', 'g')) @@ ${tsquery}
+          AND to_tsvector(${config}::regconfig, regexp_replace(substr(tag, ${DOMAIN_TAG_PREFIX.length + 1}), '[-_/.]+', ' ', 'g')) @@ ${tsquery}
       )
       AND ks.deleted_at IS NULL
       AND ks.status = 'active'
@@ -43,6 +70,7 @@ export async function runKnowledgeFts(
   scopeFilter: SQL,
   limit: number,
   domainSourceIds: readonly string[],
+  config: FtsConfig,
 ): Promise<KnowledgeSearchHit[]> {
   const domainIds =
     domainSourceIds.length > 0
@@ -68,10 +96,10 @@ export async function runKnowledgeFts(
       kc.path,
       COALESCE(ks.last_refreshed_at, ks.updated_at) AS fetched_at,
       ts_headline(
-        'english',
+        ${config}::regconfig,
         kc.content,
         ${tsquery},
-        'MaxWords=25, MinWords=5'
+        'MaxWords=50, MinWords=20'
       ) AS snippet,
       ${rank} AS rank
     FROM knowledge_chunks kc

@@ -384,10 +384,11 @@ export async function loadKnowledgeChunks(
   query: string,
   exec: Executor,
   domains?: readonly string[],
+  limit = 10,
 ): Promise<IncludedKnowledgeChunk[]> {
   if (!query) return [];
   try {
-    const base = { tenant_id, query, ...(workflow_id ? { workflow_id } : {}), limit: 10 };
+    const base = { tenant_id, query, ...(workflow_id ? { workflow_id } : {}), limit };
     const tags = [...new Set(domains ?? [])].map((d) => `${DOMAIN_TAG_PREFIX}${d}`);
     const narrowed = tags.length > 0 ? await searchKnowledge({ ...base, tags }, exec) : [];
     const hits = narrowed.length > 0 ? narrowed : await searchKnowledge(base, exec);

@@ -1,13 +1,14 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { auditAwait } from "../../audit/audit.ts";
-import { AuditAction } from "../../audit/types.ts";
 import { createKnowledgeSourceTool } from "../../conversations/tools/engine-api/writes/create-knowledge-source.ts";
 import type { ToolContext } from "../../conversations/tools/index.ts";
 import { knowledgeSources } from "../../db/schema/index.ts";
+import { intakeItems } from "../../db/schema/intake.ts";
 import { attachInlineForTest } from "../../files/test-helpers.ts";
 import { invalidateKnowledgeCache, searchKnowledge } from "../../knowledge/service.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
+
+const CONVERSATION_ID = "00000000-0000-0000-0000-000000000099";
 
 const OCPP_FIXTURE = [
   "# OCPP 2.0.1 Protocol Reference",
@@ -18,93 +19,17 @@ const OCPP_FIXTURE = [
   "## BootNotification",
   "",
   "Sent by the Charge Point to register itself with the CSMS after every reboot.",
-  "The CSMS responds with Accepted, Pending, or Rejected and a current timestamp.",
-  "",
-  "### Request Fields",
-  "- `chargePointVendor`: string — manufacturer name, required.",
-  "- `chargePointModel`: string — model identifier, required.",
-  "- `chargePointSerialNumber`: string — optional serial.",
-  "- `firmwareVersion`: string — optional firmware tag.",
-  "",
-  "### Response Fields",
-  "- `currentTime`: dateTime — CSMS wall clock, required.",
-  "- `heartbeatInterval`: integer — seconds between Heartbeats, required.",
-  "- `status`: enum — Accepted | Pending | Rejected, required.",
-  "",
-  "## Heartbeat",
-  "",
-  "Sent periodically by the Charge Point to confirm it is still online.",
-  "No request fields. Response carries `currentTime` only.",
-  "",
-  "## StatusNotification",
-  "",
-  "Reports connector status changes (Available, Preparing, Charging, etc.).",
-  "Required fields: `connectorId`, `errorCode`, `status`.",
-  "",
-  "## RemoteStartTransaction",
-  "",
-  "Allows the CSMS to initiate a charging session on a specific connector.",
-  "Required: `idTag`. Optional: `connectorId`, `chargingProfile`.",
-  "",
-  "## RemoteStopTransaction",
-  "",
-  "Stops a running transaction by `transactionId`.",
 ].join("\n");
 
 function makeToolCtx(ctx: JourneyCtx): ToolContext {
-  // biome-ignore lint/suspicious/noExplicitAny: minimal stub for in-process service forwarding
-  const engineClientStub: any = {
-    context: { actor_id: ctx.userId, actor_type: "user" },
-    knowledgeSources: {
-      // biome-ignore lint/suspicious/noExplicitAny: in-process service forwarding
-      create: async (params: any) => {
-        const { createKnowledgeSource } = await import("../../knowledge/service.ts");
-        return createKnowledgeSource(
-          {
-            tenant_id: ctx.tenantId,
-            input: params.input,
-            upload: params.upload,
-            actor: { kind: "user", id: ctx.userId },
-            ...(params.source_type_override
-              ? { source_type_override: params.source_type_override }
-              : {}),
-            ...(params.source_uri_override
-              ? { source_uri_override: params.source_uri_override }
-              : {}),
-          },
-          ctx.db,
-        );
-      },
-    },
-    // biome-ignore lint/suspicious/noExplicitAny: minimal audit stub
-    audit_write: async (entry: any) => {
-      const row = await auditAwait(
-        {
-          tenant_id: ctx.tenantId,
-          actor_type: "user",
-          actor_id: ctx.userId,
-          action: AuditAction.KNOWLEDGE_SOURCE_CREATED,
-          resource_type: String(entry.resource_type),
-          resource_id: String(entry.resource_id),
-          result: (entry.result as "success" | "error" | "denied") ?? "success",
-          metadata: {
-            via_action: String(entry.action),
-            ...((entry.metadata as Record<string, unknown>) ?? {}),
-          },
-        },
-        ctx.db,
-      );
-      return row.id;
-    },
-  };
   return {
     db: ctx.db,
     tenant_id: ctx.tenantId,
-    conversation_id: "00000000-0000-0000-0000-000000000099",
+    conversation_id: CONVERSATION_ID,
     actor_id: ctx.userId,
     connector_id: null,
     workflow_id: null,
-    engineClient: engineClientStub,
+    engineClient: { context: { actor_id: ctx.userId, actor_type: "user" } } as never,
     getDraft: () => ({ workflow: { name: "", steps: [] } }) as never,
     setDraft: async () => {},
   };
@@ -126,12 +51,12 @@ afterAll(async () => {
   if (ctxB?.cleanup) await ctxB.cleanup();
 }, JOURNEY_HOOK_TIMEOUT);
 
-describe("create_knowledge_source tool — ingest and search", () => {
-  test("AC1: mode='from_attachment' creates a KS with chunk_count >= 2 and search returns hits", async () => {
+describe("create_knowledge_source tool — collect for review", () => {
+  test("AC1: an attachment lands in the inbox and is not searchable before a person admits it", async () => {
     const attached = await attachInlineForTest({
       db: ctxA.db,
       tenant_id: ctxA.tenantId,
-      conversation_id: "00000000-0000-0000-0000-000000000099",
+      conversation_id: CONVERSATION_ID,
       filename: "ocpp-reference.md",
       content: OCPP_FIXTURE,
       content_type: "text/markdown",
@@ -145,44 +70,38 @@ describe("create_knowledge_source tool — ingest and search", () => {
 
     expect(result.ok).toBe(true);
     const data = result.data as {
-      created: boolean;
-      knowledge_source: {
-        id: string;
-        name: string;
-        slug: string;
-        scope: string;
-        status: string;
-        chunk_count: number;
-        bytes_total: number;
-      };
-      audit_log_id: string;
+      collected: boolean;
+      admitted: boolean;
+      intake_item: { id: string; title: string; state: string };
     };
-    expect(data.created).toBe(true);
-    expect(data.knowledge_source.name).toBe("OCPP 2.0.1 Reference");
-    expect(data.knowledge_source.chunk_count).toBeGreaterThanOrEqual(2);
-
-    const ksId = data.knowledge_source.id;
+    expect(data.collected).toBe(true);
+    expect(data.admitted).toBe(false);
+    expect(data.intake_item.title).toBe("OCPP 2.0.1 Reference");
 
     const listRes = await journeyFetch(ctxA, "/v1/knowledge-sources");
     expect(listRes.status).toBe(200);
-    const listBody = (await listRes.json()) as { items: Array<{ id: string }> };
-    const found = listBody.items.some((item) => item.id === ksId);
-    expect(found).toBe(true);
+    const listed = (await listRes.json()) as { items: Array<{ name: string }> };
+    expect(listed.items.some((source) => source.name === "OCPP 2.0.1 Reference")).toBe(false);
 
     invalidateKnowledgeCache(ctxA.tenantId);
     const hits = await searchKnowledge(
       { tenant_id: ctxA.tenantId, query: "BootNotification" },
       ctxA.db,
     );
-    expect(hits.length).toBeGreaterThanOrEqual(1);
-    expect(hits.some((h) => h.knowledge_source_id === ksId)).toBe(true);
+    expect(hits).toEqual([]);
+
+    const items = await ctxA.db
+      .select()
+      .from(intakeItems)
+      .where(eq(intakeItems.tenant_id, ctxA.tenantId));
+    expect(items.map((item) => item.id)).toContain(data.intake_item.id);
   });
 
   test("AC2: file_id from tenant B is rejected with file_not_found when used from tenant A", async () => {
     const attachedB = await attachInlineForTest({
       db: ctxB.db,
       tenant_id: ctxB.tenantId,
-      conversation_id: "00000000-0000-0000-0000-000000000099",
+      conversation_id: CONVERSATION_ID,
       filename: "tenant-b-doc.md",
       content: "This document belongs to tenant B.",
       content_type: "text/markdown",
@@ -202,7 +121,11 @@ describe("create_knowledge_source tool — ingest and search", () => {
       .select()
       .from(knowledgeSources)
       .where(eq(knowledgeSources.tenant_id, ctxA.tenantId));
-    const leaked = rows.some((r) => r.source_uri === "tenant-b-doc.md");
-    expect(leaked).toBe(false);
+    expect(rows.some((r) => r.source_uri === "tenant-b-doc.md")).toBe(false);
+    const items = await ctxA.db
+      .select()
+      .from(intakeItems)
+      .where(eq(intakeItems.tenant_id, ctxA.tenantId));
+    expect(items.some((item) => item.title === "tenant-b-doc")).toBe(false);
   });
 });

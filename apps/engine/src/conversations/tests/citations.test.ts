@@ -118,3 +118,47 @@ describe("harvestCitationsFromPersisted", () => {
     expect(cites.length).toBeLessThan(40);
   });
 });
+
+describe("harvestCitations — whole sources and skills", () => {
+  test("reading a knowledge source cites the source with the start of its text", () => {
+    const cites = harvestCitations([
+      toolResult("read_knowledge", {
+        source: { id: "ks-1", name: "Deploy Runbook", slug: "deploy", chunk_count: 2 },
+        chunks: [{ ordinal: 0, title: null, path: null, content: "Step one:\n  restart the pod" }],
+      }),
+    ]);
+    expect(cites).toEqual([
+      {
+        source_type: "knowledge_source",
+        id: "ks-1",
+        source_name: "Deploy Runbook",
+        excerpt: "Step one: restart the pod",
+      },
+    ]);
+  });
+
+  test("loading a skill cites the skill by title, once", () => {
+    const loaded = { slug: "refunds", skill: { id: "sk-1", title: "Refunds", body: "…" } };
+    const cites = harvestCitations([
+      toolResult("load_skill", loaded),
+      toolResult("load_skill", { ...loaded, already_loaded: true }),
+    ]);
+    expect(cites).toEqual([{ source_type: "skill", id: "sk-1", source_name: "Refunds" }]);
+  });
+
+  test("a failed read or load cites nothing", () => {
+    expect(
+      harvestCitations([
+        toolResult("read_knowledge", { error: "knowledge_source_not_found" }),
+        toolResult("load_skill", { error: "skill_not_found", slug: "x" }),
+        toolResult("read_knowledge", { source: { name: "no id" }, chunks: [] }),
+      ]),
+    ).toEqual([]);
+  });
+
+  test("a source without readable chunks is cited without an excerpt", () => {
+    expect(
+      harvestCitations([toolResult("read_knowledge", { source: { id: "ks-2" }, chunks: [] })]),
+    ).toEqual([{ source_type: "knowledge_source", id: "ks-2" }]);
+  });
+});

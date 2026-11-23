@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-const CHUNK_TARGET_BYTES = 32 * 1024;
+export const KNOWLEDGE_CHUNK_TARGET_BYTES = 6 * 1024;
 
 export function canonicalize(text: string): string {
   return text.toLowerCase().replace(/\s+/g, " ").trim();
@@ -34,7 +34,7 @@ export function fingerprint(text: string): string {
   return createHash("sha256").update(canonicalize(text)).digest("hex").slice(0, 32);
 }
 
-export function splitByBudget(text: string, budget = CHUNK_TARGET_BYTES): string[] {
+export function splitByBudget(text: string, budget = KNOWLEDGE_CHUNK_TARGET_BYTES): string[] {
   if (!Number.isSafeInteger(budget) || budget <= 0) {
     throw new RangeError("splitByBudget budget must be a positive safe integer");
   }

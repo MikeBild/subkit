@@ -210,7 +210,7 @@ export async function resolveStoredFile(
   }
 }
 
-async function storeInline(
+export async function storeConversationAttachment(
   scope: LinkScope,
   conversation_id: string,
   body: InlineUpload,
@@ -251,7 +251,7 @@ const upload = defineOperation<UploadInput, AttachmentWire>({
     };
     return "$file" in body
       ? linkExisting(linkScope, id, body.$file)
-      : storeInline(linkScope, id, body);
+      : storeConversationAttachment(linkScope, id, body);
   },
   http: {
     method: "post",

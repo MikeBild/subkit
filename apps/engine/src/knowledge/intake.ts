@@ -42,6 +42,7 @@ import type {
   ReviseIntakeProposalParams,
   SetIntakeDefaultCategoryParams,
 } from "./intake-types.ts";
+import { assertConfirmerMayAdmit } from "./persistence/intake-confirm.ts";
 import { finishKnowledgeWrite } from "./service.ts";
 
 function redactCollected(p: CreateIntakeItemParams): {
@@ -846,6 +847,12 @@ export async function confirmIntakeProposal(
         "proposal confirmation does not match the reviewed content",
       );
     await p.authorize(intakeConfirmRequirements(revision.target), revision.target);
+    await assertConfirmerMayAdmit(tx, {
+      tenant_id: p.tenant_id,
+      proposal_id: p.id,
+      revision: p.expected_revision,
+      confirmer: p.actor,
+    });
     if (!lockedItems) throw new IntakeProposalConflictError("proposal cannot be confirmed");
     const currentItems = await itemsForProposal(
       tx,

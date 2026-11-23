@@ -103,6 +103,7 @@ describe.skipIf(skip)("knowledge/search", () => {
           sql``,
           limit,
           [],
+          "english",
         );
       const before = await search(2);
       expect(before.map((hit) => hit.knowledge_source_id)).toEqual([sourceIds[1]!, sourceIds[0]!]);

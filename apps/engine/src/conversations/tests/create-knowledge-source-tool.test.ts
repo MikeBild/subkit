@@ -1,12 +1,15 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, count, eq } from "drizzle-orm";
-import { auditLog, fileLinks, knowledgeChunks, knowledgeSources } from "../../db/schema/index.ts";
+import { auditLog, knowledgeSources } from "../../db/schema/index.ts";
+import { intakeItems } from "../../db/schema/intake.ts";
 import { attachInlineForTest } from "../../files/test-helpers.ts";
 import { createKnowledgeSourceTool } from "../tools/engine-api/writes/create-knowledge-source.ts";
 import type { ToolContext } from "../tools/index.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
 
 let ctx: ConversationTestCtx;
+
+const CONVERSATION_ID = "00000000-0000-0000-0000-000000000001";
 
 beforeAll(async () => {
   ctx = await createConversationTestCtx("create_ks_tool");
@@ -17,294 +20,162 @@ afterAll(async () => {
 });
 
 function toolCtx(): ToolContext {
-  // biome-ignore lint/suspicious/noExplicitAny: minimal stub matching ToolContext for in-process service calls
-  const engineClientStub: any = {
-    context: { actor_id: ctx.user_id, actor_type: "user" },
-    knowledgeSources: {
-      // biome-ignore lint/suspicious/noExplicitAny: in-process service forwarding
-      create: async (params: any) => {
-        const { createKnowledgeSource } = await import("../../knowledge/service.ts");
-        return createKnowledgeSource(
-          {
-            tenant_id: ctx.tenant_id,
-            input: params.input,
-            upload: params.upload,
-            actor: { kind: "user", id: ctx.user_id },
-            ...(params.source_type_override
-              ? { source_type_override: params.source_type_override }
-              : {}),
-            ...(params.source_uri_override
-              ? { source_uri_override: params.source_uri_override }
-              : {}),
-          },
-          ctx.testDb.db,
-        );
-      },
-    },
-    // biome-ignore lint/suspicious/noExplicitAny: minimal audit stub
-    audit_write: async (entry: any) => {
-      const { auditAwait } = await import("../../audit/audit.ts");
-      const { AuditAction } = await import("../../audit/types.ts");
-      const row = await auditAwait(
-        {
-          tenant_id: ctx.tenant_id,
-          actor_type: "user",
-          actor_id: ctx.user_id,
-          action: AuditAction.KNOWLEDGE_SOURCE_CREATED,
-          resource_type: String(entry.resource_type),
-          resource_id: String(entry.resource_id),
-          result: (entry.result as "success" | "error" | "denied") ?? "success",
-          metadata: {
-            via_action: String(entry.action),
-            ...((entry.metadata as Record<string, unknown>) ?? {}),
-          },
-        },
-        ctx.testDb.db,
-      );
-      return row.id;
-    },
-  };
   return {
     db: ctx.testDb.db,
     tenant_id: ctx.tenant_id,
-    conversation_id: "00000000-0000-0000-0000-000000000001",
+    conversation_id: CONVERSATION_ID,
     actor_id: ctx.user_id,
     connector_id: null,
     workflow_id: null,
-    engineClient: engineClientStub,
+    engineClient: { context: { actor_id: ctx.user_id, actor_type: "user" } } as never,
     getDraft: () => ({ workflow: { name: "", steps: [] } }) as never,
     setDraft: async () => {},
   };
 }
 
-const MARKDOWN_CONTENT = [
-  "# OCPP 2.0.1 Protocol Reference",
-  "",
-  "The Open Charge Point Protocol (OCPP) defines the communication between",
-  "charging stations and central management systems.",
-  "",
-  "## BootNotification",
-  "",
-  "Sent by the Charge Point to register itself with the Central System.",
-  "The Central System responds with a status (Accepted / Pending / Rejected).",
-  "",
-  "### Request Fields",
-  "- `chargePointVendor`: string, required",
-  "- `chargePointModel`: string, required",
-  "- `chargePointSerialNumber`: string, optional",
-  "",
-  "## Heartbeat",
-  "",
-  "Sent periodically to confirm that the Charge Point is alive.",
-  "The Central System responds with the current time.",
-  "",
-  "### Interval",
-  "Configured via `HeartbeatInterval` in the configuration key list.",
-].join("\n");
+async function knowledgeSourceCount(): Promise<number> {
+  const [row] = await ctx.testDb.db
+    .select({ n: count() })
+    .from(knowledgeSources)
+    .where(eq(knowledgeSources.tenant_id, ctx.tenant_id));
+  return Number(row?.n ?? 0);
+}
 
-describe("create_knowledge_source tool — mode='inline'", () => {
-  test("happy path: creates KS row with chunk_count >= 1 and two audit rows", async () => {
+interface Collected {
+  collected: boolean;
+  admitted: boolean;
+  intake_item: { id: string; title: string; category: string; state: string };
+  next_action: string;
+}
+
+describe("create_knowledge_source tool collects for review", () => {
+  test("inline content becomes an inbox item and no knowledge source", async () => {
+    const before = await knowledgeSourceCount();
     const result = await createKnowledgeSourceTool.execute(toolCtx(), {
       mode: "inline",
-      name: "OCPP Protocol Ref",
-      content: MARKDOWN_CONTENT,
+      name: "Refund policy",
+      content: "# Refund policy\n\nRefunds above 500 EUR need a second approver.",
+      description: "Asked for in chat",
     });
 
     expect(result.ok).toBe(true);
-    const data = result.data as {
-      created: boolean;
-      knowledge_source: {
-        id: string;
-        name: string;
-        slug: string;
-        scope: string;
-        status: string;
-        chunk_count: number;
-        bytes_total: number;
-      };
-      audit_log_id: string;
-    };
-    expect(data.created).toBe(true);
-    expect(data.knowledge_source.name).toBe("OCPP Protocol Ref");
-    expect(data.knowledge_source.scope).toBe("global");
-    expect(data.knowledge_source.status).toBe("active");
-    expect(data.knowledge_source.chunk_count).toBeGreaterThanOrEqual(1);
-    expect(typeof data.audit_log_id).toBe("string");
+    const data = result.data as Collected;
+    expect(data.collected).toBe(true);
+    expect(data.admitted).toBe(false);
+    expect(data.intake_item.title).toBe("Refund policy");
+    expect(data.intake_item.state).toBe("collected");
+    expect(data.next_action).toContain("not team knowledge yet");
+    expect(await knowledgeSourceCount()).toBe(before);
 
-    const rows = await ctx.testDb.db
+    const [item] = await ctx.testDb.db
       .select()
-      .from(knowledgeSources)
+      .from(intakeItems)
       .where(
-        and(
-          eq(knowledgeSources.tenant_id, ctx.tenant_id),
-          eq(knowledgeSources.id, data.knowledge_source.id),
-        ),
-      )
-      .limit(1);
-    expect(rows.length).toBe(1);
-    expect(rows[0]?.slug).toBe(data.knowledge_source.slug);
-
-    const auditRows = await ctx.testDb.db
-      .select({ action: auditLog.action })
-      .from(auditLog)
-      .where(eq(auditLog.resource_id, data.knowledge_source.id));
-    const actions = auditRows.map((r) => r.action);
-    expect(actions).toContain("knowledge_source.created");
-    expect(data.audit_log_id.length).toBeGreaterThan(0);
-  });
-});
-
-describe("create_knowledge_source tool — mode='from_attachment'", () => {
-  test("execution-data attachments cannot be admitted through the model's knowledge tool", async () => {
-    const attached = await attachInlineForTest({
-      db: ctx.testDb.db,
-      tenant_id: ctx.tenant_id,
-      conversation_id: toolCtx().conversation_id,
-      filename: "diagnostic-context.json",
-      content: JSON.stringify({ conversation: "private diagnostic context" }),
-      content_type: "application/json",
-    });
-    await ctx.testDb.db
-      .update(fileLinks)
-      .set({ role: "execution_data" })
-      .where(
-        and(
-          eq(fileLinks.tenant_id, ctx.tenant_id),
-          eq(fileLinks.file_id, attached.file_id.replace(/^fid_/, "")),
-        ),
+        and(eq(intakeItems.tenant_id, ctx.tenant_id), eq(intakeItems.id, data.intake_item.id)),
       );
-    const result = await createKnowledgeSourceTool.execute(toolCtx(), {
-      mode: "from_attachment",
-      file_id: attached.file_id,
-    });
-    expect(result.ok).toBe(false);
-    expect(result.data).toMatchObject({ error: "execution_data_only" });
-    expect(JSON.stringify(result)).not.toContain("private diagnostic context");
+    expect(item?.body).toContain("second approver");
+    expect(item?.note).toBe("Asked for in chat");
+    expect(item?.collected_by_type).toBe("user");
+    expect(item?.collected_by_id).toBe(ctx.user_id);
+    expect(item?.original_snapshot.origin).toBe("note");
+
+    const audits = await ctx.testDb.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.tenant_id, ctx.tenant_id), eq(auditLog.resource_id, item?.id ?? "")));
+    expect(audits.map((a) => a.action)).toEqual(["intake_item.collected"]);
   });
-  test("happy path: derives name from filename, creates KS row", async () => {
+
+  test("repeating the same call returns the same inbox item", async () => {
+    const args = { mode: "inline", name: "Shipping rules", content: "Ship on weekdays only." };
+    const first = await createKnowledgeSourceTool.execute(toolCtx(), args);
+    const second = await createKnowledgeSourceTool.execute(toolCtx(), args);
+    expect((second.data as Collected).intake_item.id).toBe(
+      (first.data as Collected).intake_item.id,
+    );
+  });
+
+  test("a secret in the collected text is removed before it is stored", async () => {
+    const result = await createKnowledgeSourceTool.execute(toolCtx(), {
+      mode: "inline",
+      name: "Download link",
+      content: "Use https://files.example.test/a.pdf?X-Amz-Signature=abc123&x=1 for the export.",
+    });
+    const [item] = await ctx.testDb.db
+      .select()
+      .from(intakeItems)
+      .where(eq(intakeItems.id, (result.data as Collected).intake_item.id));
+    expect(item?.body).not.toContain("abc123");
+    expect(item?.original_snapshot.redactions).toBeGreaterThan(0);
+  });
+
+  test("a source address is kept as the origin of the item", async () => {
+    const result = await createKnowledgeSourceTool.execute(toolCtx(), {
+      mode: "inline",
+      name: "Vendor limits",
+      content: "The vendor allows 100 requests per minute.",
+      source_uri: "https://vendor.example.test/limits",
+    });
+    const [item] = await ctx.testDb.db
+      .select()
+      .from(intakeItems)
+      .where(eq(intakeItems.id, (result.data as Collected).intake_item.id));
+    expect(item?.original_snapshot.source_url).toBe("https://vendor.example.test/limits");
+    expect(item?.original_snapshot.origin).toBe("capture");
+  });
+
+  test("an attached text file is collected with its file and a title from the filename", async () => {
+    const before = await knowledgeSourceCount();
     const attached = await attachInlineForTest({
       db: ctx.testDb.db,
       tenant_id: ctx.tenant_id,
-      conversation_id: "00000000-0000-0000-0000-000000000001",
+      conversation_id: CONVERSATION_ID,
       filename: "ocpp-reference.md",
-      content: `${MARKDOWN_CONTENT}\n\n## Attachment fixture marker\n`,
+      content: "# OCPP\n\nBootNotification registers a charge point.",
       content_type: "text/markdown",
     });
 
     const result = await createKnowledgeSourceTool.execute(toolCtx(), {
       mode: "from_attachment",
       file_id: attached.file_id,
+      name: "Attachment",
     });
 
     expect(result.ok).toBe(true);
-    const data = result.data as {
-      created: boolean;
-      knowledge_source: {
-        id: string;
-        name: string;
-        slug: string;
-        scope: string;
-        chunk_count: number;
-      };
-      audit_log_id: string;
-    };
-    expect(data.created).toBe(true);
-    expect(data.knowledge_source.name).toBe("ocpp-reference");
-    expect(data.knowledge_source.chunk_count).toBeGreaterThanOrEqual(1);
-
-    const rows = await ctx.testDb.db
+    const data = result.data as Collected;
+    expect(data.intake_item.title).toBe("ocpp-reference");
+    const [item] = await ctx.testDb.db
       .select()
-      .from(knowledgeSources)
-      .where(
-        and(
-          eq(knowledgeSources.tenant_id, ctx.tenant_id),
-          eq(knowledgeSources.id, data.knowledge_source.id),
-        ),
-      )
-      .limit(1);
-    expect(rows.length).toBe(1);
-    expect(rows[0]?.source_uri).toBe("ocpp-reference.md");
+      .from(intakeItems)
+      .where(eq(intakeItems.id, data.intake_item.id));
+    expect(item?.attachment_file_id).not.toBeNull();
+    expect(item?.body).toContain("BootNotification");
+    expect(await knowledgeSourceCount()).toBe(before);
   });
 
-  test("unknown file_id → ok=false, error='file_not_found', no KS row written", async () => {
-    const beforeCount = await ctx.testDb.db
-      .select({ n: count() })
-      .from(knowledgeSources)
-      .where(eq(knowledgeSources.tenant_id, ctx.tenant_id));
-    const countBefore = Number(beforeCount[0]?.n ?? 0);
-
+  test("an unsupported attachment type is refused and nothing is collected", async () => {
+    const attached = await attachInlineForTest({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenant_id,
+      conversation_id: CONVERSATION_ID,
+      filename: "archive.zip",
+      content: "not really a zip",
+      content_type: "application/zip",
+    });
     const result = await createKnowledgeSourceTool.execute(toolCtx(), {
       mode: "from_attachment",
-      file_id: "fid_00000000-dead-beef-0000-000000000000",
+      file_id: attached.file_id,
     });
-
     expect(result.ok).toBe(false);
-    const data = result.data as { error: string; file_id: string };
-    expect(data.error).toBe("file_not_found");
-    expect(data.file_id).toBe("fid_00000000-dead-beef-0000-000000000000");
-
-    const afterCount = await ctx.testDb.db
-      .select({ n: count() })
-      .from(knowledgeSources)
-      .where(eq(knowledgeSources.tenant_id, ctx.tenant_id));
-    expect(Number(afterCount[0]?.n ?? 0)).toBe(countBefore);
+    expect(result.data).toMatchObject({ error: "unsupported_file_type" });
   });
-});
 
-describe("create_knowledge_source tool — scope validation", () => {
-  test("scope='workflow' without workflow_id → ok=false, error='scope_workflow_requires_workflow_id'", async () => {
+  test("an unknown file id is refused", async () => {
     const result = await createKnowledgeSourceTool.execute(toolCtx(), {
-      mode: "inline",
-      name: "Scoped KS",
-      content: "Some content that would be valid otherwise.",
-      scope: "workflow",
+      mode: "from_attachment",
+      file_id: "fid_00000000-0000-4000-8000-000000000000",
     });
-
     expect(result.ok).toBe(false);
-    const data = result.data as { error: string };
-    expect(data.error).toBe("scope_workflow_requires_workflow_id");
-  });
-});
-
-describe("create_knowledge_source tool — dedup behaviour", () => {
-  test("two runs with identical content each produce a separate KS row; chunk dedup is within-run only", async () => {
-    const name1 = "Dedup Test KS First";
-    const name2 = "Dedup Test KS Second";
-    const content = MARKDOWN_CONTENT;
-
-    const result1 = await createKnowledgeSourceTool.execute(toolCtx(), {
-      mode: "inline",
-      name: name1,
-      content,
-    });
-    const result2 = await createKnowledgeSourceTool.execute(toolCtx(), {
-      mode: "inline",
-      name: name2,
-      content,
-    });
-
-    expect(result1.ok).toBe(true);
-    expect(result2.ok).toBe(true);
-
-    const d1 = (result1.data as { knowledge_source: { id: string; chunk_count: number } })
-      .knowledge_source;
-    const d2 = (result2.data as { knowledge_source: { id: string; chunk_count: number } })
-      .knowledge_source;
-
-    expect(d1.id).not.toBe(d2.id);
-
-    expect(d1.chunk_count).toBe(d2.chunk_count);
-
-    const totalChunks1 = await ctx.testDb.db
-      .select({ n: count() })
-      .from(knowledgeChunks)
-      .where(eq(knowledgeChunks.knowledge_source_id, d1.id));
-    const totalChunks2 = await ctx.testDb.db
-      .select({ n: count() })
-      .from(knowledgeChunks)
-      .where(eq(knowledgeChunks.knowledge_source_id, d2.id));
-
-    expect(Number(totalChunks1[0]?.n ?? 0)).toBe(d1.chunk_count);
-    expect(Number(totalChunks2[0]?.n ?? 0)).toBe(d2.chunk_count);
+    expect(result.data).toMatchObject({ error: "file_not_found" });
   });
 });

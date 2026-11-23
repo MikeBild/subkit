@@ -2,11 +2,13 @@ import {
   type ConversationReference,
   isConversationReferenceType,
 } from "@shared/conversation-reference.ts";
+import { type Citation, harvestCitationsFromPersisted } from "./citations.ts";
 import { messageOrigin } from "./task-run-continuation.ts";
 import type {
   ContentPart,
   ConversationMessageRecord,
   ConversationToolCallRecord,
+  TurnEvent,
   UIMessage,
 } from "./types.ts";
 
@@ -66,7 +68,44 @@ export function buildMessages(
   toolCalls: ConversationToolCallRecord[],
 ): UIMessage[] {
   const assistantToolCalls = groupToolCallsByAssistantTurn(messages, toolCalls);
-  return messages.map((m) => toMessageParts(m, assistantToolCalls.get(m.id) ?? []));
+  const citations = citationsByAnswer(messages, assistantToolCalls);
+  return messages.map((m) => {
+    const message = toMessageParts(m, assistantToolCalls.get(m.id) ?? []);
+    const cited = citations.get(m.id);
+    return cited ? { ...message, citations: cited } : message;
+  });
+}
+
+function citationsByAnswer(
+  messages: ConversationMessageRecord[],
+  toolCalls: Map<string, ConversationToolCallRecord[]>,
+): Map<string, Citation[]> {
+  const out = new Map<string, Citation[]>();
+  let results: TurnEvent[] = [];
+  let lastAssistantId: string | null = null;
+  let hadText = false;
+  const flush = () => {
+    if (lastAssistantId && hadText) {
+      const cited = harvestCitationsFromPersisted(results);
+      if (cited.length > 0) out.set(lastAssistantId, cited);
+    }
+    results = [];
+    lastAssistantId = null;
+    hadText = false;
+  };
+  for (const message of messages) {
+    if (message.role === "user") flush();
+    if (message.role === "assistant") {
+      lastAssistantId = message.id;
+      if (messageHasText(message.content)) hadText = true;
+    }
+    for (const call of toolCalls.get(message.id) ?? []) {
+      if (call.output === null || call.output === undefined) continue;
+      results.push({ type: "tool_result", call_id: call.id, tool: call.tool, output: call.output });
+    }
+  }
+  flush();
+  return out;
 }
 
 function groupToolCallsByAssistantTurn(

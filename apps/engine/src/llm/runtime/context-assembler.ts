@@ -1,5 +1,6 @@
 import { getConnector } from "../../connectors/service.ts";
 import { type Db, getDb } from "../../db/client.ts";
+import { knowledgePreloadPlan, withinTokenBudget } from "../../knowledge/index.ts";
 import { logger } from "../../logging/index.ts";
 import { idHashesCapped } from "../../observability/id-hashes.ts";
 import {
@@ -163,6 +164,27 @@ export async function assembleEnhancedPrompt(
   const preEmbedCorpus = p.flow !== "converse" && p.flow !== "summarize";
   const knowledgeChunks: IncludedKnowledgeChunk[] = [];
   const chunks: IncludedChunk[] = [];
+  const knowledgePreload = knowledgePreloadPlan({
+    flow: p.flow,
+    latest_user_text:
+      p.retrieval_query ?? p.user_turns.findLast((turn) => turn.role === "user")?.content,
+    cap_tokens: cap,
+  });
+  if (knowledgePreload) {
+    knowledgeChunks.push(
+      ...withinTokenBudget(
+        await loadKnowledgeChunks(
+          p.tenant_id,
+          p.workflow_id,
+          knowledgePreload.query,
+          db,
+          p.domains,
+          knowledgePreload.limit,
+        ),
+        knowledgePreload.token_budget,
+      ),
+    );
+  }
   if (preEmbedCorpus) {
     const knowledgeBudget = Math.floor(cap * 0.15);
     const rawKnowledgeChunks = await loadKnowledgeChunks(
@@ -369,7 +391,10 @@ export async function assembleEnhancedPrompt(
       generating ? "catalog" : "interactive",
     );
     if (loadedIndexBlock) sections.push(loadedIndexBlock);
-    for (const kc of knowledgeChunks) sections.push(formatKnowledgeChunk(kc));
+    for (const kc of knowledgeChunks) {
+      if (knowledgePreload) vol(formatKnowledgeChunk(kc));
+      else sections.push(formatKnowledgeChunk(kc));
+    }
     if (userMemory) vol(formatUserMemory(userMemory));
     for (const c of chunks) sections.push(formatChunk(c));
     if (connectorSchemaBlock) sections.push(connectorSchemaBlock);

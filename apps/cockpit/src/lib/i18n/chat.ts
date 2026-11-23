@@ -191,6 +191,9 @@ export const chatEn = {
   "chat.form.secretOnly":
     "The form above asks for a secret. Enter it in the form; a message never carries it.",
   "chat.referenceUnnamed": "an entry",
+  "chat.sources.label": "Sources:",
+  "chat.sources.unnamed": "Unnamed source",
+  "chat.sources.more": "and {count} more",
   "chat.failedKept": "Your message is kept.",
   "chat.failedDescription": "The request could not be completed. Your input has been kept.",
   "chat.cause.provider_quota_exhausted": "The AI provider's usage limit has been reached.",
@@ -658,6 +661,9 @@ export const chatDe: Record<keyof typeof chatEn, string> = {
   "chat.form.secretOnly":
     "Das Formular oben fragt nach einem Geheimnis. Trag es dort ein; eine Nachricht transportiert es nie.",
   "chat.referenceUnnamed": "ein Eintrag",
+  "chat.sources.label": "Quellen:",
+  "chat.sources.unnamed": "Quelle ohne Namen",
+  "chat.sources.more": "und {count} weitere",
   "chat.failedKept": "Deine Nachricht bleibt erhalten.",
   "chat.failedDescription":
     "Die Anfrage konnte nicht abgeschlossen werden. Deine Eingabe bleibt erhalten.",

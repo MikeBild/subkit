@@ -5,6 +5,7 @@ import { fetchWithEgressGuard } from "../connectors/egress-fetch.ts";
 import { assertEgressAllowedResolved, EgressBlockedError } from "../connectors/egress-guard.ts";
 import type { Executor } from "../db/client.ts";
 import { KNOWLEDGE_SOURCE_MAX_BYTES, KnowledgeBudgetExceededError } from "./budgets.ts";
+import { redactKnowledgeText } from "./core/redact.ts";
 import { createKnowledgeSource, getKnowledgeSource, ingestKnowledgeSource } from "./service.ts";
 import type { CreateKnowledgeSourceInput, KnowledgeSourceView } from "./types.ts";
 
@@ -105,13 +106,14 @@ export async function createKnowledgeSourceFromUrl(
   exec: Executor,
 ): Promise<KnowledgeSourceView> {
   const document = await fetchUrlDocument(p.url, p.tenant_id, exec);
+  const content = redactKnowledgeText(document.content).text;
   return createKnowledgeSource(
     {
       tenant_id: p.tenant_id,
       actor: p.actor,
       input: { ...p.input, name: p.input.name?.trim() || nameFromUrl(p.url) },
       upload: {
-        buffer: Buffer.from(document.content, "utf8"),
+        buffer: Buffer.from(content, "utf8"),
         filename: p.url,
         mime: document.mime,
       },
@@ -142,7 +144,7 @@ export async function refreshKnowledgeSource(
       knowledge_source_id: p.id,
       expected_source_uri: source.source_uri,
       upload: {
-        buffer: Buffer.from(document.content, "utf8"),
+        buffer: Buffer.from(redactKnowledgeText(document.content).text, "utf8"),
         filename: source.source_uri,
         mime: document.mime,
       },
