@@ -120,7 +120,12 @@ describe("sftp request steps", () => {
         expect.objectContaining({ name: "a.csv", path: "/data/reports/a.csv", type: "file" }),
         expect.objectContaining({ name: "b.csv", path: "/data/reports/b.csv", type: "file" }),
       ],
+      truncated: false,
     });
+    const capped = await run([
+      sftpStep("list", "LIST", "reports", { sftp: { path: "reports", max_entries: 1 } }),
+    ]);
+    expect(capped.output).toMatchObject({ entries: [{ name: "a.csv" }], truncated: true });
   });
 
   test("GET returns the file as a run file", async () => {

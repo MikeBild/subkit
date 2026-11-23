@@ -51,6 +51,7 @@ export interface SftpResponse {
   status: number;
   path: string;
   entries?: SftpEntry[];
+  truncated?: boolean;
   file?: { filename: string; bytes: Buffer };
   bytes_out?: number;
 }
@@ -225,12 +226,12 @@ async function runOperation(p: SftpRequestParams, session: SftpSession, target: 
   switch (p.method) {
     case "LIST": {
       const items = await session.list(target);
-      const entries = items
+      const all = items
         .filter((item) => item.filename !== "." && item.filename !== "..")
         .map((item) => toEntry(target, item))
-        .sort((a, b) => a.name.localeCompare(b.name))
-        .slice(0, p.max_entries ?? items.length);
-      return { status: 200, path: target, entries };
+        .sort((a, b) => a.name.localeCompare(b.name));
+      const entries = all.slice(0, p.max_entries ?? all.length);
+      return { status: 200, path: target, entries, truncated: entries.length < all.length };
     }
     case "GET": {
       const bytes = await session.read(target);

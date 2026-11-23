@@ -413,6 +413,32 @@ test("resolves S3 scope from the loaded connector without a network probe", asyn
   expect(result.execution_shape?.requests[0]?.redacted_request_json).toContain("reports/daily/");
 });
 
+test("an sftp step binds its server folder as the reviewed target", async () => {
+  const f = await fixture({
+    protocol: "sftp",
+    method: "DELETE",
+    path: undefined,
+    body: undefined,
+    sftp: { path: "reports/old.csv" },
+  });
+  await ctx.db
+    .update(connectors)
+    .set({
+      driver: "sftp",
+      auth_type: "basic",
+      base_url: "sftp://files.example.test:22/inbox",
+      config: { host_key_sha256: `SHA256:${"A".repeat(43)}` },
+    })
+    .where(eq(connectors.tenant_id, f.input.tenant_id));
+  const result = await resolveWorkflowEffectManifest(f.input, ctx.db, { include_review: true });
+  expect(result.manifest.effects[0]?.driver).toBe("sftp");
+  expect(result.manifest.effects[0]?.target).toBe(
+    "sftp://files.example.test:22/inbox/reports/old.csv",
+  );
+  expect(result.manifest.effects[0]?.effect).toBe("destructive");
+  expect(result.eligible_for_repeated_runs).toBe(false);
+});
+
 test("a read whose only runtime values are in its query is admitted without a request refusal", async () => {
   const f = await fixture({
     method: "GET",

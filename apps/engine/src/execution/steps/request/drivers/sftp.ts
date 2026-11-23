@@ -47,7 +47,8 @@ function sftpErrorCode(err: unknown): string {
 }
 
 async function stepOutput(d: RequestDispatch, res: SftpResponse): Promise<unknown> {
-  if (res.entries) return { path: res.path, entries: res.entries };
+  if (res.entries)
+    return { path: res.path, entries: res.entries, truncated: res.truncated === true };
   if (res.file) {
     const { p } = d;
     return promoteResponseToFile({
