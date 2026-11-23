@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { ProductIdentityErasedError } from "../auth/identity-link.ts";
 import { DomainRefusal } from "../logging/domain-refusal.ts";
+import { classifyError } from "../logging/error-class.ts";
 import { logger } from "../logging/index.ts";
 import { instrument, sampleMemory } from "./runtime-telemetry.ts";
 
@@ -51,6 +53,49 @@ describe("when an instrumented operation is rejected", () => {
         outcome: "error",
         sqlstate: "55P03",
       });
+    } finally {
+      warn.mockRestore();
+      debug.mockRestore();
+    }
+  });
+
+  test("a unique violation (23505) logs at debug instead of warn", async () => {
+    const warn = spyOn(logger, "warn").mockImplementation(() => {});
+    const debug = spyOn(logger, "debug").mockImplementation(() => {});
+    try {
+      const duplicate = new Error("Failed query: insert into roles", {
+        cause: Object.assign(new Error("duplicate key value violates unique constraint"), {
+          code: "23505",
+        }),
+      });
+      expect(await reject(duplicate)).toBe(duplicate);
+      expect(warn).not.toHaveBeenCalled();
+      expect(debug).toHaveBeenCalledTimes(1);
+      expect(debug.mock.calls[0]?.[0]).toMatchObject({
+        action: "transaction.failed",
+        sqlstate: "23505",
+      });
+    } finally {
+      warn.mockRestore();
+      debug.mockRestore();
+    }
+  });
+
+  test("an erased product identity is an auth refusal without a stack, not a failure", async () => {
+    const warn = spyOn(logger, "warn").mockImplementation(() => {});
+    const debug = spyOn(logger, "debug").mockImplementation(() => {});
+    try {
+      const erased = new ProductIdentityErasedError();
+      expect(await reject(erased)).toBe(erased);
+      expect(warn).not.toHaveBeenCalled();
+      expect(debug).toHaveBeenCalledTimes(1);
+      const fields = debug.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(fields).toMatchObject({
+        action: "transaction.refused",
+        reason_code: "identity_erased",
+      });
+      expect(fields.stack).toBeUndefined();
+      expect(classifyError(erased)).toBe("refusal");
     } finally {
       warn.mockRestore();
       debug.mockRestore();

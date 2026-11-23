@@ -9,6 +9,7 @@ import {
   userIdentities,
   users,
 } from "../db/schema/index.ts";
+import { DomainRefusal } from "../logging/index.ts";
 import { builtinRoleId } from "../rbac/roles.ts";
 
 export class IdentityLinkConflictError extends Error {
@@ -212,9 +213,9 @@ export async function resolveProviderIdentity(
   });
 }
 
-export class ProductIdentityErasedError extends Error {
+export class ProductIdentityErasedError extends DomainRefusal {
   constructor() {
-    super("this product identity was erased");
+    super("identity_erased", "this product identity was erased");
     this.name = "ProductIdentityErasedError";
   }
 }
