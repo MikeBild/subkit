@@ -5,6 +5,7 @@ import { AuditAction } from "../audit/types.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import { decryptSecret, encryptSecret } from "../crypto/index.ts";
 import type { Db, Executor } from "../db/client.ts";
+import { withTenantScope } from "../db/index.ts";
 import { toolApprovals } from "../db/schema/index.ts";
 import { authorizationContextFromPrincipal } from "../execution/authorization-context.ts";
 import { callerFromPrincipal } from "../execution/caller-context.ts";
@@ -180,7 +181,7 @@ export async function requestApproval(input: RequestApprovalInput): Promise<Requ
     ? encryptApprovalPreview(principal.tenant_id, approval_id, preview)
     : null;
 
-  return await db.transaction(async (tx) => {
+  return await withTenantScope(db, principal.tenant_id, async (tx) => {
     await tx.insert(toolApprovals).values({
       id: approval_id,
       tenant_id: principal.tenant_id,
@@ -317,7 +318,7 @@ async function decideApproval(
     return notFound(approval_id);
   }
 
-  return await db.transaction(async (tx) => {
+  return await withTenantScope(db, tenant_id, async (tx) => {
     const decided = await tx
       .update(toolApprovals)
       .set(
@@ -620,7 +621,7 @@ export async function consumeApproval(input: ConsumeApprovalInput): Promise<Cons
   const claimInput = { ...input, approval_id };
 
   try {
-    return await db.transaction(async (tx) => {
+    return await withTenantScope(db, principal.tenant_id, async (tx) => {
       const claimed = await tx
         .update(toolApprovals)
         .set({ consumed_at: sql`now()` })

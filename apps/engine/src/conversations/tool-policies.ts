@@ -50,7 +50,6 @@ export function canSetConversationToolPolicy(
 const AUTO_PREPARATION_WRITES: ReadonlyMap<string, PolicyCategory> = new Map([
   ["save_workflow_draft", "draft_write"],
   ["create_knowledge_source", "tenant_write"],
-  ["analyze_knowledge_source", "tenant_write"],
   ["export_diagnostic_context", "tenant_write"],
   ["export_tenant_package", "tenant_write"],
 ]);
@@ -271,6 +270,18 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
     neverGate: true,
   },
   propose_approval_rule: {
+    defaultMode: "no_confirm",
+    neverGate: true,
+  },
+  remember_for_me: {
+    defaultMode: "no_confirm",
+    neverGate: true,
+  },
+  find_my_notes: {
+    defaultMode: "no_confirm",
+    neverGate: true,
+  },
+  read_my_note: {
     defaultMode: "no_confirm",
     neverGate: true,
   },

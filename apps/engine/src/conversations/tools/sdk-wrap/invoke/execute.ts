@@ -16,6 +16,7 @@ import {
 } from "../../../attachments.ts";
 import { recordConfirmationSkipped, recordTransition } from "../../../confirmation.ts";
 import { createDraftSnapshot } from "../../../draft-checkpoints.ts";
+import { refuseChangedArguments } from "../../../instruction-cover/invoke.ts";
 import { updateToolCallOutput } from "../../../persistence/index.ts";
 import { describeToolExecutionFailure } from "../../../tool-execution-failure.ts";
 import { hideCapabilityLinks } from "../../capability-link.ts";
@@ -56,6 +57,11 @@ async function resolveArgs(
       conversation_id: ctx.conversation_id,
       principal: passed.principal,
     });
+    const changed = await refuseChangedArguments(env, call, passed.covered_digest, pinnedArgs);
+    if (changed) {
+      env.release();
+      return { done: changed };
+    }
     const resolvedArgs = await walkAndResolve(
       pinnedArgs,
       { db, tenant_id: ctx.tenant_id },

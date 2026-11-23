@@ -33,6 +33,7 @@ export interface GatePassed {
   resolvedMode: Gate["record"]["mode"];
   resolvedRule: Gate["record"]["rule"];
   coverage: GateCoverage;
+  covered_digest?: string;
 }
 
 export type GateOutcome = { done: WrappedToolOutput } | { passed: GatePassed };
@@ -151,7 +152,16 @@ export async function runGate(env: InvokeEnv, call: InvokeCall): Promise<GateOut
     return { done: await pauseForConfirmation(env, call, gate, preparedGate) };
   }
 
+  const ranOnCover =
+    gate.record.rule === "user_instruction" || gate.record.rule === "standing_rule";
   return {
-    passed: { principal, pregateRefusal, resolvedMode, resolvedRule: gate.record.rule, coverage },
+    passed: {
+      principal,
+      pregateRefusal,
+      resolvedMode,
+      resolvedRule: gate.record.rule,
+      coverage,
+      ...(ranOnCover && cover.covered_digest ? { covered_digest: cover.covered_digest } : {}),
+    },
   };
 }

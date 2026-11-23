@@ -2,7 +2,9 @@ import type { z } from "@hono/zod-openapi";
 import type { UntrustedSource } from "@shared/untrusted-content.ts";
 import type { Executor } from "../../db/client.ts";
 import type { EngineClient } from "../../engine-client/index.ts";
+import { PERSONAL_NOTES_TOOLS } from "../../personal-notes/index.ts";
 import type { ToolCategory } from "../../tools/types.ts";
+import { proposeApprovalRuleTool } from "../approval-rules/spoken-rule-tool.ts";
 import type { ElicitationBridge } from "../elicitation-bridge.ts";
 import type { DraftDocument } from "../types.ts";
 import { analyzeScrapeTargetTool } from "./analyze-scrape-target.ts";
@@ -217,6 +219,7 @@ register(inspectConnectorDraftTool);
 register(inspectWorkflowDraftTool);
 register(inspectWorkflowTool);
 register(saveLearningTool);
+register(proposeApprovalRuleTool);
 register(searchDocsTool);
 register(analyzeScrapeTargetTool);
 register(listSkillSuggestionsTool);
@@ -308,6 +311,7 @@ import { taskWriteTools } from "./engine-api/writes/tasks.ts";
 for (const t of ALL_ENGINE_API_READ_TOOLS) register(t);
 for (const t of ALL_ENGINE_API_WRITE_TOOLS) register(t);
 for (const t of taskWriteTools) register(t);
+for (const t of PERSONAL_NOTES_TOOLS) register(t);
 
 export function getTool(name: string): ConversationTool | undefined {
   return registry.get(name);
