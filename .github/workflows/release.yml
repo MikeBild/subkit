@@ -42,7 +42,7 @@ jobs:
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "RELEASE_COMMIT=$COMMIT" >> "$GITHUB_ENV"
 
-      - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.5
 
@@ -215,7 +215,7 @@ jobs:
 
       - name: Retain security summary and software inventory
         if: ${{ always() && steps.security.outcome != 'skipped' }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: release-security
           retention-days: 30
@@ -238,12 +238,12 @@ jobs:
         run: |
           bun -e 'import { verify } from "node:crypto"; import { readFileSync } from "node:fs"; import { RELEASE_PUBLIC_KEY } from "./packages/cli-core/src/release-public-key.ts"; if (!verify(null, readFileSync("assets/SHA256SUMS"), RELEASE_PUBLIC_KEY, readFileSync("assets/SHA256SUMS.sig"))) throw new Error("release signature does not match the updater public key");'
 
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
