@@ -1,7 +1,7 @@
 {
   "name": "@subkit/desktop",
   "productName": "SubKit",
-  "version": "12.1.6",
+  "version": "12.1.7",
   "private": true,
   "description": "SubKit Desktop: a hardened shell that loads the Cockpit of a SubKit server and brings its attention items to the tray and to native notifications.",
   "license": "Apache-2.0",
