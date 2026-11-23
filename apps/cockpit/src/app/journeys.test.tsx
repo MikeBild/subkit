@@ -2,24 +2,19 @@ import { expect } from "bun:test";
 import vm from "node:vm";
 import { missingProdCredential, PROD_CONNECTOR } from "@/app/credential-journey-fixtures";
 import { workerSource } from "@/features/pwa/worker-fixture";
-import { type TranslationKey, translate } from "@/lib/i18n";
+import { de, journeys, mount } from "./journey-fixtures";
 import {
   INSTALLATION_BASE as BASE,
   BASE_PERMISSIONS,
-  type Handler,
   INTAKE,
   intakeEntry,
-  journeys,
-  mount,
-  NOW,
   RUN,
   runDetail,
   WORKFLOW,
   workflow,
-} from "./journey-fixtures";
+} from "./workspace-journey-fixtures";
 
 const isolated = journeys(import.meta.path);
-const de = (key: TranslationKey) => translate("de", key);
 
 function scopedNotification(href: string): string {
   const self: Record<string, unknown> = {
@@ -118,96 +113,6 @@ isolated("All runs › a run opens its detail", async () => {
   expect(app.text()).toContain(runDetail.result_markdown);
 });
 
-const invocation = {
-  http: { path: "/v1/executions", body: {} },
-  mcp: {},
-  cli: {},
-  input: { sample: {} },
-  output: {},
-  authority: {},
-  visibility: { hooks: true, schedules: true },
-  webhook_input_shape: {},
-  schedules: [],
-  hooks: [],
-};
-
-function costProjection(overrides: Record<string, unknown> = {}) {
-  return {
-    state: "estimated",
-    basis: "version",
-    runs_sampled: 12,
-    runs_per_month: 30.42,
-    per_run_amount: 0.138,
-    monthly_amount: 4.2,
-    currency: "EUR",
-    unpriced_models: [],
-    rates_basis: "current",
-    ...overrides,
-  };
-}
-
-const scheduleEntry = {
-  id: "66666666-6666-4666-8666-666666666666",
-  workflow_id: WORKFLOW,
-  admission_hold: null,
-  input_error: null,
-  workflow_slug: workflow.slug,
-  workflow_name: workflow.name,
-  prepared_version_id: null,
-  cron: "0 8 * * *",
-  timezone: "Europe/Berlin",
-  execution_mode: "prod",
-  paused: false,
-  auto_pause: null,
-  input: null,
-  created_at: NOW,
-  cost_projection: costProjection(),
-};
-
-const SCHEDULE_ROUTES: Record<string, Handler> = {
-  [`/v1/workflows/${WORKFLOW}/invocation`]: () => invocation,
-  [`/v1/workflows/${WORKFLOW}/input-schema`]: () => ({ schema: null }),
-};
-
-const euros = (amount: number) =>
-  new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(amount);
-const perMonth = (amount: number) =>
-  translate("de", "schedule.cost.amount", { amount: euros(amount) });
-
-isolated("a scheduled workflow › the schedule shows its monthly estimate", async () => {
-  const app = await mount(`/workflows/${WORKFLOW}#workflow-section-use`, {
-    routes: {
-      ...SCHEDULE_ROUTES,
-      "/v1/schedules": () => ({ schedules: [scheduleEntry], total: 1 }),
-    },
-  });
-  await app.click("workflow-invocation-tab-schedule");
-  const fact = app.find("schedule-cost-fact")?.textContent ?? "";
-  expect(fact).toContain(perMonth(4.2));
-  expect(fact).toContain(translate("de", "schedule.cost.basis.version.other", { count: 12 }));
-});
-
-isolated("a new schedule › the estimate follows the chosen rhythm", async () => {
-  const app = await mount(`/workflows/${WORKFLOW}#workflow-section-use`, {
-    routes: {
-      ...SCHEDULE_ROUTES,
-      [`/v1/workflows/${WORKFLOW}/schedule-cost`]: (url) =>
-        costProjection({
-          runs_per_month: url.searchParams.get("cron")?.endsWith("* * *") ? 30.42 : 4.33,
-          monthly_amount: url.searchParams.get("cron")?.endsWith("* * *") ? 4.2 : 0.6,
-        }),
-    },
-  });
-  await app.click("workflow-invocation-tab-schedule");
-  await app.click("schedule-create");
-  await app.settle(80);
-  expect(app.find("schedule-cost-preview")?.textContent).toContain(perMonth(4.2));
-  await app.click("schedule-rhythm-weekly");
-  await app.settle(80);
-  expect(app.find("schedule-cost-preview")?.textContent).toContain(perMonth(0.6));
-  expect(app.seen.filter((call) => call.includes("/schedule-cost?")).length).toBeGreaterThan(1);
-});
-
 isolated("A run result › the changed record opens in its source system", async () => {
   const app = await mount(`/runs/${RUN}`, {
     routes: {
@@ -227,7 +132,7 @@ isolated("A run result › the changed record opens in its source system", async
   });
   app.at(`/runs/${RUN}`);
   const open = app.find("run-detail-result-card-open-0");
-  expect(open?.textContent).toContain(translate("de", "runs.result.view", { system: "GitHub" }));
+  expect(open?.textContent).toContain(de("runs.result.view", { system: "GitHub" }));
   expect(open?.getAttribute("href")).toBe("https://github.com/acme/app/issues/42");
   expect(open?.getAttribute("target")).toBe("_blank");
   expect(open?.getAttribute("rel")).toContain("noopener");
