@@ -80,7 +80,7 @@ export function workflowVersionView(
   const state = workflowVersionState(version, ids);
   const newest = history[0];
   const isNewest = newest !== undefined && newest.id === version.id;
-  const pendingDraft = ids.draft !== null && ids.draft !== version.id;
+  const pendingDraft = ids.draft !== null && ids.draft !== version.id && ids.draft !== ids.current;
   return {
     state,
     newest: isNewest,

@@ -140,6 +140,21 @@ describe("restoring next to a disabled workflow or an open draft", () => {
     expect(translate("de", copy.hint, copy.values)).toContain("Der offene Entwurf bleibt offen");
   });
 
+  test("a draft pointer equal to the current version is no open draft", () => {
+    const view = workflowVersionView(version(2), history, {
+      current: "version-4",
+      draft: "version-4",
+    });
+    expect(view).toMatchObject({ restorable: true, pendingDraft: false, draftVersion: null });
+    const copy = workflowVersionSheetCopy(view, { canRestore: true, archived: false });
+    expect(copy).toMatchObject({
+      restore: true,
+      hint: "workflowVersions.restoreHint",
+      values: { next: "v5", newest: "v4" },
+    });
+    expect(translate("en", copy.hint, copy.values)).not.toContain("draft");
+  });
+
   test("the open draft itself is not restored; it waits for its own approval", () => {
     const restored = [version(5), ...history];
     const view = workflowVersionView(version(4), restored, {
