@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import * as discoveryModule from "../../connectors/discovery/index.ts";
+import { KNOWLEDGE_SOURCE_TTL_MS } from "../../connectors/discovery/service.ts";
 import { DiscoveryError, type DiscoveryResult } from "../../connectors/discovery/types.ts";
 import { createConnector } from "../../connectors/service.ts";
 import { auditLog } from "../../db/schema/audit.ts";
@@ -10,10 +11,7 @@ import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sou
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
-import {
-  discoverConnectorEndpointsTool,
-  KNOWLEDGE_SOURCE_TTL_MS,
-} from "./discover-connector-endpoints.ts";
+import { discoverConnectorEndpointsTool } from "./discover-connector-endpoints.ts";
 import type { ToolContext } from "./index.ts";
 
 const TEST_NOW_MS = getTestNow();

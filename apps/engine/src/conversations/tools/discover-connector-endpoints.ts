@@ -8,8 +8,6 @@ import { getBuiltinTemplate } from "../../connectors/templates.ts";
 import { logger } from "../../logging/index.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
-export { KNOWLEDGE_SOURCE_TTL_MS } from "../../connectors/discovery/service.ts";
-
 const inputSchema = z
   .object({
     connector_id: z.string().uuid().optional(),
