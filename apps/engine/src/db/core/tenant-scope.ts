@@ -58,6 +58,12 @@ export function decideTenantRolePreflight(facts: TenantRoleFacts): TenantRoleDec
         message: `role ${TENANT_ROLE} is a superuser or has BYPASSRLS, so row security does not restrict it. Run: ALTER ROLE ${TENANT_ROLE} NOSUPERUSER NOBYPASSRLS;`,
       };
     }
+    if (!facts.scheme_applied)
+      return {
+        verdict: "will_provision",
+        blocking: false,
+        message: `role ${TENANT_ROLE} is ready, so row security is applied on this start`,
+      };
     return { verdict: "ready", blocking: false, message: `role ${TENANT_ROLE} is ready` };
   }
   if (!facts.role_exists) {

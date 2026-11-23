@@ -17,7 +17,11 @@ import { TENANT_ROLE } from "../core/tenant-scope.ts";
 import rowSecuritySql from "../migrations/0007_tenant_row_security.sql" with { type: "text" };
 import * as schema from "../schema/index.ts";
 import { vaultItems } from "../schema/index.ts";
-import { readTenantRoleFacts, tenantRolePreflight } from "../tenant-role-preflight.ts";
+import {
+  ensureTenantRowSecurity,
+  readTenantRoleFacts,
+  tenantRolePreflight,
+} from "../tenant-role-preflight.ts";
 import { withTenantScope } from "../tenant-scope.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT, type TestDb } from "./setup.ts";
 
@@ -459,5 +463,31 @@ describe("tenant row security", () => {
     } finally {
       await ownerPool.query("DROP TABLE subkit.row_security_probe");
     }
+  });
+
+  test("a role created after the migration takes effect on the next start", async () => {
+    for (const table of SCOPED_TABLES) {
+      await ownerPool.query(`DROP POLICY "tenant_scope" ON subkit.${table}`);
+      await ownerPool.query(`ALTER TABLE subkit.${table} DISABLE ROW LEVEL SECURITY`);
+    }
+    await ownerPool.query(`REVOKE USAGE ON SCHEMA subkit FROM ${TENANT_ROLE}`);
+    expect(await readTenantRoleFacts(ownerPool)).toMatchObject({
+      scheme_applied: false,
+      grants_present: false,
+    });
+
+    expect(await ensureTenantRowSecurity(ownerPool, rowSecuritySql)).toMatchObject({
+      verdict: "ready",
+    });
+
+    const policies = await ownerPool.query<{ tablename: string }>(
+      "SELECT tablename FROM pg_policies WHERE schemaname = 'subkit' ORDER BY tablename",
+    );
+    expect(policies.rows.map((row) => row.tablename)).toEqual(SCOPED_TABLES);
+    const names = await withTenantScope(owner, tenantB, async (tx) =>
+      // tenant-filter:exempt — proves the reapplied policy filters a query without a tenant
+      (await tx.select({ name: vaultItems.name }).from(vaultItems)).map((row) => row.name),
+    );
+    expect(names).toEqual(["b-token"]);
   });
 });

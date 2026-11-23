@@ -41,12 +41,12 @@ describe("scopedTenantId", () => {
 describe("decideTenantRolePreflight", () => {
   test("an existing assumable role never blocks, whatever the login role may create", () => {
     expect(decideTenantRolePreflight(facts())).toMatchObject({ verdict: "ready", blocking: false });
+  });
+
+  test("a role created after the migration has its row security applied on this start", () => {
     expect(
       decideTenantRolePreflight(facts({ scheme_applied: false, grants_present: false })),
-    ).toMatchObject({
-      verdict: "ready",
-      blocking: false,
-    });
+    ).toMatchObject({ verdict: "will_provision", blocking: false });
   });
 
   test("a missing role is provisioned by a login role with CREATEROLE or by a superuser", () => {
