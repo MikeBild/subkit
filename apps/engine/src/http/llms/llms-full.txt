@@ -6423,7 +6423,7 @@ List connectors, grouped into catalog blocks
 
 - `--limit` (string, default: 50) — Max rows
 - `--category` (string) — Only this catalog block
-- `--driver` (string) — Only this driver: http, graphql, postgres, s3, mcp, local_files, local_browser, local_computer
+- `--driver` (string) — Only this driver: http, graphql, postgres, s3, sftp, mcp, local_files, local_browser, local_computer
 - `--flat` — One flat table instead of grouped blocks
 - `--json` — JSON output
 
