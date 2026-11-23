@@ -8,6 +8,7 @@ import { AuditAction } from "../audit/types.ts";
 import type { EncryptedPayload } from "../crypto/index.ts";
 import { decryptSecret, encryptSecret } from "../crypto/index.ts";
 import type { Db, Executor } from "../db/client.ts";
+import { withTenantScope } from "../db/index.ts";
 import { connectors, outboundConnections, vaultItems } from "../db/schema/index.ts";
 import { logger } from "../logging/index.ts";
 import { invalidateTenantState } from "../operator/tenant-state.ts";
@@ -110,7 +111,7 @@ export async function upsertCredential(
   db: Executor,
 ): Promise<CredentialRow> {
   const ownerPredicate = eq(vaultItems.connector_id, input.connector_id);
-  const row = await db.transaction(async (tx) => {
+  const row = await withTenantScope(db, input.tenant_id, async (tx) => {
     if (input.mode === "signed_jwt") {
       if (input.value.mode !== "signed_jwt") {
         throw Object.assign(new Error("signed_jwt mode requires a signed_jwt credential value"), {
@@ -336,7 +337,7 @@ export async function rotateOAuth2Tokens(
   credential_generation: number | null;
   verified_identity: VerifiedProviderIdentity | null;
 }> {
-  const identity = await db.transaction(async (tx) => {
+  const identity = await withTenantScope(db, input.tenant_id, async (tx) => {
     const [prior] = await tx
       .select({
         mode: vaultItems.mode,
@@ -462,21 +463,22 @@ export async function getCredentialForConnector(
   credential_snapshot?: CredentialUseSnapshot;
 } | null> {
   if (!UUID_RE.test(connector_id)) return null;
-  const rows = await db
-    .select()
-    .from(vaultItems)
-    .where(
-      and(
-        eq(vaultItems.tenant_id, tenant_id),
-        eq(vaultItems.connector_id, connector_id),
-        eq(vaultItems.environment, environment),
-        ne(vaultItems.mode, "oauth2_client"),
-        isNull(vaultItems.deleted_at),
-      ),
-    )
-    .orderBy(desc(vaultItems.created_at), desc(vaultItems.id))
-    .limit(1);
-  const row = rows[0];
+  const [row] = await withTenantScope(db, tenant_id, (tx) =>
+    tx
+      .select()
+      .from(vaultItems)
+      .where(
+        and(
+          eq(vaultItems.tenant_id, tenant_id),
+          eq(vaultItems.connector_id, connector_id),
+          eq(vaultItems.environment, environment),
+          ne(vaultItems.mode, "oauth2_client"),
+          isNull(vaultItems.deleted_at),
+        ),
+      )
+      .orderBy(desc(vaultItems.created_at), desc(vaultItems.id))
+      .limit(1),
+  );
   if (!row) return null;
   if (row.connection_id) {
     const grant = await readAccessToken(db as Db, tenant_id, row.connection_id);
@@ -605,28 +607,29 @@ export async function describeCredentialForConnector(
   updated_at: string;
 } | null> {
   if (!UUID_RE.test(connector_id)) return null;
-  const rows = await db
-    .select({
-      id: vaultItems.id,
-      verified_identity: vaultItems.verified_identity,
-      mode: vaultItems.mode,
-      environment: vaultItems.environment,
-      updated_at: vaultItems.updated_at,
-      connection_id: vaultItems.connection_id,
-      ciphertext: vaultItems.ciphertext,
-      iv: vaultItems.iv,
-      auth_tag: vaultItems.auth_tag,
-    })
-    .from(vaultItems)
-    .where(
-      and(
-        authenticatingCredentials(tenant_id, [connector_id]),
-        eq(vaultItems.environment, environment),
-      ),
-    )
-    .orderBy(desc(vaultItems.created_at), desc(vaultItems.id))
-    .limit(1);
-  const row = rows[0];
+  const [row] = await withTenantScope(db, tenant_id, (tx) =>
+    tx
+      .select({
+        id: vaultItems.id,
+        verified_identity: vaultItems.verified_identity,
+        mode: vaultItems.mode,
+        environment: vaultItems.environment,
+        updated_at: vaultItems.updated_at,
+        connection_id: vaultItems.connection_id,
+        ciphertext: vaultItems.ciphertext,
+        iv: vaultItems.iv,
+        auth_tag: vaultItems.auth_tag,
+      })
+      .from(vaultItems)
+      .where(
+        and(
+          authenticatingCredentials(tenant_id, [connector_id]),
+          eq(vaultItems.environment, environment),
+        ),
+      )
+      .orderBy(desc(vaultItems.created_at), desc(vaultItems.id))
+      .limit(1),
+  );
   if (!row) return null;
   const connection = row.connection_id
     ? ((await summarizeConnections(db, tenant_id, [row.connection_id])).get(row.connection_id) ??
@@ -676,19 +679,20 @@ export async function getOAuth2ClientCredential(
   credential_snapshot: CredentialUseSnapshot;
 } | null> {
   if (!UUID_RE.test(connector_id)) return null;
-  const rows = await db
-    .select()
-    .from(vaultItems)
-    .where(
-      and(
-        eq(vaultItems.tenant_id, tenant_id),
-        eq(vaultItems.connector_id, connector_id),
-        eq(vaultItems.environment, environment),
-        eq(vaultItems.mode, "oauth2_client"),
-      ),
-    )
-    .limit(1);
-  const row = rows[0];
+  const [row] = await withTenantScope(db, tenant_id, (tx) =>
+    tx
+      .select()
+      .from(vaultItems)
+      .where(
+        and(
+          eq(vaultItems.tenant_id, tenant_id),
+          eq(vaultItems.connector_id, connector_id),
+          eq(vaultItems.environment, environment),
+          eq(vaultItems.mode, "oauth2_client"),
+        ),
+      )
+      .limit(1),
+  );
   if (!row) return null;
   const plain = decryptSecret(
     {
@@ -803,20 +807,21 @@ export async function getOAuth2PrivateKeyCredential(
   credential_snapshot: CredentialUseSnapshot;
 } | null> {
   if (!UUID_RE.test(connector_id)) return null;
-  const rows = await db
-    .select()
-    .from(vaultItems)
-    .where(
-      and(
-        eq(vaultItems.tenant_id, tenant_id),
-        eq(vaultItems.connector_id, connector_id),
-        eq(vaultItems.environment, environment),
-        eq(vaultItems.mode, "oauth2_private_key"),
-      ),
-    )
-    .orderBy(desc(vaultItems.created_at), desc(vaultItems.id))
-    .limit(1);
-  const row = rows[0];
+  const [row] = await withTenantScope(db, tenant_id, (tx) =>
+    tx
+      .select()
+      .from(vaultItems)
+      .where(
+        and(
+          eq(vaultItems.tenant_id, tenant_id),
+          eq(vaultItems.connector_id, connector_id),
+          eq(vaultItems.environment, environment),
+          eq(vaultItems.mode, "oauth2_private_key"),
+        ),
+      )
+      .orderBy(desc(vaultItems.created_at), desc(vaultItems.id))
+      .limit(1),
+  );
   if (!row) return null;
   const plain = decryptSecret(
     {
@@ -857,7 +862,7 @@ export async function recordCredentialProviderIdentity(
   const generation = input.snapshot.credential_generation;
   if (!credentialId || generation === null) return;
   const identity = input.identity ? VerifiedProviderIdentitySchema.parse(input.identity) : null;
-  await db.transaction(async (tx) => {
+  await withTenantScope(db, input.tenant_id, async (tx) => {
     const rows = await tx
       .update(vaultItems)
       .set({ verified_identity: identity })
@@ -909,18 +914,20 @@ export async function findLiveCredential(
   tenant_id: string,
   credential_id: string,
 ): Promise<typeof vaultItems.$inferSelect | null> {
-  const rows = await db
-    .select()
-    .from(vaultItems)
-    .where(
-      and(
-        eq(vaultItems.tenant_id, tenant_id),
-        eq(vaultItems.id, credential_id),
-        isNull(vaultItems.deleted_at),
-      ),
-    )
-    .limit(1);
-  return rows[0] ?? null;
+  const [row] = await withTenantScope(db, tenant_id, (tx) =>
+    tx
+      .select()
+      .from(vaultItems)
+      .where(
+        and(
+          eq(vaultItems.tenant_id, tenant_id),
+          eq(vaultItems.id, credential_id),
+          isNull(vaultItems.deleted_at),
+        ),
+      )
+      .limit(1),
+  );
+  return row ?? null;
 }
 
 export async function deleteCredential(
@@ -929,14 +936,13 @@ export async function deleteCredential(
   actor_input: string | Actor | null,
   db: Executor,
 ): Promise<boolean> {
-  const deleted = await db
-    .delete(vaultItems)
-    .where(and(eq(vaultItems.tenant_id, tenant_id), eq(vaultItems.id, credential_id)))
-    .returning({ connector_id: vaultItems.connector_id });
-  const ok = deleted.length > 0;
-  if (ok) {
-    invalidateTenantState(tenant_id);
-    await emitCredentialChange(db, tenant_id, deleted[0]?.connector_id);
+  const ok = await withTenantScope(db, tenant_id, async (tx) => {
+    const deleted = await tx
+      .delete(vaultItems)
+      .where(and(eq(vaultItems.tenant_id, tenant_id), eq(vaultItems.id, credential_id)))
+      .returning({ connector_id: vaultItems.connector_id });
+    if (deleted.length === 0) return false;
+    await emitCredentialChange(tx, tenant_id, deleted[0]?.connector_id);
     await auditAwait(
       {
         tenant_id,
@@ -951,8 +957,10 @@ export async function deleteCredential(
         result: "success",
         metadata: {},
       },
-      db,
+      tx,
     );
-  }
+    return true;
+  });
+  if (ok) invalidateTenantState(tenant_id);
   return ok;
 }

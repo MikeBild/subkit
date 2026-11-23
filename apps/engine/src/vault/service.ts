@@ -10,6 +10,7 @@ import { deserializePlain, serializePlain } from "../credentials/credential-valu
 import { deleteCredential } from "../credentials/service.ts";
 import { decryptSecret, encryptSecret } from "../crypto/index.ts";
 import type { Executor } from "../db/client.ts";
+import { withTenantScope } from "../db/index.ts";
 import { auditLog, connectors, vaultItems } from "../db/schema/index.ts";
 import { can } from "../rbac/evaluator.ts";
 import {
@@ -199,17 +200,22 @@ export async function listVaultItems(
   viewer: VaultViewer,
   filter: { scope?: "workspace" | "person" | undefined; kind?: VaultItemKind | undefined } = {},
 ): Promise<VaultItemView[]> {
-  const rows = (await selectItems(
+  const rows = await withTenantScope(
     db,
     tenant_id,
-    isNull(vaultItems.deleted_at),
-    visibleTo(viewer),
-    filter.scope === "workspace" ? isNull(vaultItems.owner_user_id) : undefined,
-    filter.scope === "person" && viewer.user_id
-      ? eq(vaultItems.owner_user_id, viewer.user_id)
-      : undefined,
-    filter.kind ? eq(vaultItems.kind, filter.kind) : undefined,
-  ).orderBy(vaultItems.name, vaultItems.environment)) as ItemRow[];
+    async (tx) =>
+      (await selectItems(
+        tx,
+        tenant_id,
+        isNull(vaultItems.deleted_at),
+        visibleTo(viewer),
+        filter.scope === "workspace" ? isNull(vaultItems.owner_user_id) : undefined,
+        filter.scope === "person" && viewer.user_id
+          ? eq(vaultItems.owner_user_id, viewer.user_id)
+          : undefined,
+        filter.kind ? eq(vaultItems.kind, filter.kind) : undefined,
+      ).orderBy(vaultItems.name, vaultItems.environment)) as ItemRow[],
+  );
   return rows.map(toView);
 }
 
@@ -246,7 +252,9 @@ export async function getVaultItem(
   id: string,
   viewer: VaultViewer,
 ): Promise<VaultItemView> {
-  return toView(await loadItem(db, tenant_id, id, viewer, "read"));
+  return toView(
+    await withTenantScope(db, tenant_id, (tx) => loadItem(tx, tenant_id, id, viewer, "read")),
+  );
 }
 
 function sealed(tenant_id: string, id: string, value: VaultValue) {
@@ -320,7 +328,7 @@ export async function createVaultItem(
   }
   const id = randomUUID();
   try {
-    await db.transaction(async (tx) => {
+    await withTenantScope(db, input.tenant_id, async (tx) => {
       await tx.insert(vaultItems).values({
         id,
         tenant_id: input.tenant_id,
@@ -361,11 +369,13 @@ export async function updateVaultItem(
   },
 ): Promise<VaultItemView> {
   const action: VaultAction = input.value ? "rotate" : "write";
-  const row = await loadItem(db, input.tenant_id, input.id, input.viewer, action);
+  const row = await withTenantScope(db, input.tenant_id, (tx) =>
+    loadItem(tx, input.tenant_id, input.id, input.viewer, action),
+  );
   if (input.value && input.value.kind !== row.kind) {
     throw new VaultError("invalid", `this item holds a ${row.kind}`);
   }
-  await db.transaction(async (tx) => {
+  await withTenantScope(db, input.tenant_id, async (tx) => {
     await tx
       .update(vaultItems)
       .set({
@@ -396,12 +406,14 @@ export async function deleteVaultItem(
   db: Executor,
   input: { tenant_id: string; id: string; actor: Actor | null; viewer: VaultViewer },
 ): Promise<void> {
-  const row = await loadItem(db, input.tenant_id, input.id, input.viewer, "delete");
+  const row = await withTenantScope(db, input.tenant_id, (tx) =>
+    loadItem(tx, input.tenant_id, input.id, input.viewer, "delete"),
+  );
   if (row.kind === "connector") {
     await deleteCredential(input.tenant_id, row.id, input.actor, db);
     return;
   }
-  await db.transaction(async (tx) => {
+  await withTenantScope(db, input.tenant_id, async (tx) => {
     await tx
       .delete(vaultItems)
       .where(and(eq(vaultItems.tenant_id, input.tenant_id), eq(vaultItems.id, row.id)));
@@ -446,19 +458,23 @@ export async function revealVaultItem(
   db: Executor,
   input: { tenant_id: string; id: string; actor: Actor | null; viewer: VaultViewer },
 ): Promise<{ id: string; name: string; values: Record<string, string> }> {
-  const row = await loadItem(db, input.tenant_id, input.id, input.viewer, "reveal");
-  const values = revealedFields(row, await openRow(db, input.tenant_id, row));
-  await record(db, input.tenant_id, input.actor, AuditAction.VAULT_ITEM_REVEALED, row, {
-    fields: Object.keys(values),
+  return withTenantScope(db, input.tenant_id, async (tx) => {
+    const row = await loadItem(tx, input.tenant_id, input.id, input.viewer, "reveal");
+    const values = revealedFields(row, await openRow(tx, input.tenant_id, row));
+    await record(tx, input.tenant_id, input.actor, AuditAction.VAULT_ITEM_REVEALED, row, {
+      fields: Object.keys(values),
+    });
+    return { id: row.id, name: row.name, values };
   });
-  return { id: row.id, name: row.name, values };
 }
 
 export async function vaultItemActivity(
   db: Executor,
   input: { tenant_id: string; id: string; viewer: VaultViewer; limit?: number },
 ): Promise<VaultActivityEntry[]> {
-  const row = await loadItem(db, input.tenant_id, input.id, input.viewer, "read");
+  const row = await withTenantScope(db, input.tenant_id, (tx) =>
+    loadItem(tx, input.tenant_id, input.id, input.viewer, "read"),
+  );
   const rows = await db
     .select({
       id: auditLog.id,
@@ -522,16 +538,25 @@ function storedValueOf(kind: VaultItemKind, raw: string, mode: string): VaultVal
   return null;
 }
 
+interface ResolveVaultHandleInput {
+  tenant_id: string;
+  environment: VaultEnvironment;
+  user_id: string | null;
+  handle: VaultHandle;
+  execution_id?: string | null;
+  step_id?: string | null;
+}
+
 export async function resolveVaultHandle(
   db: Executor,
-  input: {
-    tenant_id: string;
-    environment: VaultEnvironment;
-    user_id: string | null;
-    handle: VaultHandle;
-    execution_id?: string | null;
-    step_id?: string | null;
-  },
+  input: ResolveVaultHandleInput,
+): Promise<VaultResolution> {
+  return withTenantScope(db, input.tenant_id, (tx) => resolveScopedHandle(tx, input));
+}
+
+async function resolveScopedHandle(
+  db: Executor,
+  input: ResolveVaultHandleInput,
 ): Promise<VaultResolution> {
   const candidates = (await selectItems(
     db,
