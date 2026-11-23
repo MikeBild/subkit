@@ -1,3 +1,6 @@
+import { getConfig } from "../../config/loader.ts";
+import { isLlmProviderHost } from "../core/provider-call.ts";
+
 export class LlmBudgetExceededError extends Error {
   readonly code = "llm_budget_exceeded";
   readonly running_total: number;
@@ -45,4 +48,12 @@ export class RunLlmBudget {
   account(usage: LlmCallUsage): void {
     this.running += Math.max(0, usage.total_tokens);
   }
+}
+
+export function isLlmProviderUrl(url: URL): boolean {
+  let extra: readonly string[] = [];
+  try {
+    extra = getConfig().egress.provider_hosts_extra ?? [];
+  } catch {}
+  return isLlmProviderHost(url.hostname, extra);
 }

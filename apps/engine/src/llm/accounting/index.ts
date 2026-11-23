@@ -21,4 +21,9 @@ export {
   countTokens,
   estimatePromptTokens,
 } from "./count.ts";
-export { LlmBudgetExceededError, type LlmCallUsage, RunLlmBudget } from "./enforce.ts";
+export {
+  isLlmProviderUrl,
+  LlmBudgetExceededError,
+  type LlmCallUsage,
+  RunLlmBudget,
+} from "./enforce.ts";
