@@ -243,3 +243,4 @@ export { WorkspaceAiArea } from "./ui/settings-workspace-ai";
 export { WorkspaceRecovery } from "./ui/workspace-recovery";
 export { WorkspaceSwitcher } from "./ui/workspace-switcher";
 export { type PauseControl, usePauseControl } from "./use-notification-pause";
+export { useSaveNotes } from "./use-save-notes";

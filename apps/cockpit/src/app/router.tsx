@@ -12,6 +12,7 @@ import {
   SourcePage,
   SourcesPage,
 } from "@/features/knowledge";
+import { NotesPage } from "@/features/notes";
 import { UsagePage } from "@/features/usage";
 import { ApiAccessPage } from "@/pages/api-access";
 import { AuditPage } from "@/pages/audit";
@@ -106,6 +107,15 @@ const taskRoutes = [
   }),
 ];
 
+const notesRoutes = [
+  createRoute({ getParentRoute: () => rootRoute, path: "/notes", component: NotesPage }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/notes/$resourceId",
+    component: NotesPage,
+  }),
+];
+
 const filesRoutes = [
   createRoute({ getParentRoute: () => rootRoute, path: "/files", component: FilesPage }),
   createRoute({
@@ -160,6 +170,7 @@ const routeTree = rootRoute.addChildren([
   ...catalogRoutes,
   ...knowledgeRoutes,
   ...taskRoutes,
+  ...notesRoutes,
   ...filesRoutes,
   ...docsRoutes,
   runRoute,
