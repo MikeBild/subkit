@@ -154,3 +154,54 @@ describe("desktop sign-in with a hosted browser session", () => {
     expect(issued?.tenant_id).toBe(destination.tenant.id);
   });
 });
+
+const VERIFIER = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+
+async function signInDesktop(subject: string) {
+  const owner = await login(subject);
+  const form = await openConfirm(await startDesktopLogin(owner.cookie), owner.cookie);
+  const approved = await approve(owner.cookie, form.request, form.csrf);
+  const code = new URL(approved.headers.get("location") ?? "").searchParams.get("code");
+  if (!code) throw new Error("desktop code missing");
+  const exchanged = await fetch(`${ctx.baseUrl}/v1/identity/desktop-session`, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify({ code, code_verifier: VERIFIER, app_version: "12.1.4" }),
+  });
+  expect(exchanged.status).toBe(200);
+  const { cockpit_path } = (await exchanged.json()) as { cockpit_path: string };
+  const cookie = exchanged.headers.get("set-cookie")?.split(";")[0];
+  if (!cookie) throw new Error("installation cookie missing");
+  return { cookie, api: `${ctx.baseUrl}${cockpit_path}api` };
+}
+
+describe("desktop device session after a hosted OIDC sign-in", () => {
+  test("the event stream and attention connect without a workspace header", async () => {
+    const device = await signInDesktop("desktop-stream");
+    const controller = new AbortController();
+    const stream = await fetch(`${device.api}/v1/cockpit/events/stream`, {
+      headers: { cookie: device.cookie, accept: "text/event-stream" },
+      signal: controller.signal,
+    });
+    expect(stream.status).toBe(200);
+    expect(stream.headers.get("content-type")).toContain("text/event-stream");
+    controller.abort();
+    const attention = await fetch(`${device.api}/v1/attention`, {
+      headers: { cookie: device.cookie, accept: "application/json" },
+    });
+    expect(attention.status).toBe(200);
+  });
+
+  test("a device request naming another workspace is still refused", async () => {
+    const device = await signInDesktop("desktop-other-tenant");
+    const response = await fetch(`${device.api}/v1/attention`, {
+      headers: {
+        cookie: device.cookie,
+        accept: "application/json",
+        "x-subkit-tenant": "00000000-0000-4000-8000-000000000099",
+      },
+    });
+    expect(response.status).toBe(409);
+    expect(((await response.json()) as { code: string }).code).toBe("tenant_context_changed");
+  });
+});

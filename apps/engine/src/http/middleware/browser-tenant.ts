@@ -34,6 +34,7 @@ export function browserTenantMiddleware(): MiddlewareHandler<AppEnv> {
     const principal = c.get("principal");
     const payload = await browserSessionForPrincipal(c.req.raw, principal);
     if (!payload) return next();
+    if (payload.installation_id && c.req.header("x-subkit-tenant") === undefined) return next();
     const [session] = await c
       .get("db")
       .select({ auth_identity_id: sessions.auth_identity_id })
