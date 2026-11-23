@@ -3,7 +3,7 @@ export type ReleaseNotes = { version: string; notes: string[]; highlights: strin
 export type PendingNotes = { version: string | null; notes: string[]; highlights: string[] | null };
 
 export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: PendingNotes } = {
-  "source": "87b10c310a27b65bd668629135cbdb357940ab3f",
+  "source": "a3a514e5e85d260d53e319e224e978c0ae44fb1c",
   "releases": [
     {
       "version": "v1.0.0",
@@ -2342,15 +2342,32 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
         "SubKit Desktop asks macOS for screen recording and accessibility before it opens System Settings, so SubKit now appears in both lists.",
         "After the first setup, SubKit Desktop shows your connected server, permissions and device status at a glance, and back and close always lead where you came from."
       ]
+    },
+    {
+      "version": "v12.1.6",
+      "notes": [],
+      "highlights": [
+        "Actions under “Needs you” in SubKit Desktop and installed Cockpit apps open the right page again instead of “This page does not exist”.",
+        "A new release becomes “latest” only once its desktop files are attached, so downloads and desktop updates never point at a release without them.",
+        "SubKit Desktop reports “You're on the latest version” when no update is published yet, instead of a network error, and logs the checked address."
+      ]
     }
   ],
   "unpublished": {
-    "version": "12.1.6",
-    "notes": [],
+    "version": "13.0.0",
+    "notes": [
+      "request steps name their protocol as a discriminated union",
+      "remove the loop step kind in favor of for_each"
+    ],
     "highlights": [
-      "Actions under “Needs you” in SubKit Desktop and installed Cockpit apps open the right page again instead of “This page does not exist”.",
-      "A new release becomes “latest” only once its desktop files are attached, so downloads and desktop updates never point at a release without them.",
-      "SubKit Desktop reports “You're on the latest version” when no update is published yet, instead of a network error, and logs the checked address."
+      "Personal notes: SubKit remembers what you tell it, privately for you. Only you can see them, admins included. You can switch learning off, say “remember this”, ask “How do you know this?” and edit, confirm, archive, forget or export every note.",
+      "Your team’s second brain finds German questions in German sources, cites its sources under every answer and searches smaller passages more precisely. What the assistant collects lands in the intake first; duplicates are merged, related items are grouped, and you can work through them in bulk.",
+      "A run interrupted by a restart resumes at the next step instead of starting over. If a write may or may not have reached the other system, the run waits as “uncertain” and you decide whether it happened.",
+      "Stopped workflows name the concrete reason: approval expired, used up, revoked or changed. “Always ask” also applies in tasks, and every confirmation shows the sentence of yours it relies on.",
+      "Self-healing now proposes instead of applying on its own. You review each change separately, test your selection first and approve only what was tested.",
+      "Workflow steps can talk to SFTP servers, and every connector template ships with a tested contract. Loops are replaced by “for each”: simple loops are converted automatically, and any other loop shows exactly how to rewrite it.",
+      "Content from websites, connectors and tool results is marked as untrusted everywhere and can never create notes or team knowledge on its own.",
+      "Cockpit, CLI and SubKit Desktop show the same run states and reasons, and you can snooze items under “Needs you”."
     ]
   }
 };
