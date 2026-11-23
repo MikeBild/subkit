@@ -543,7 +543,7 @@ export function DecisionCard({
               candidateId: item.id,
               workflowId: candidate.workflow_id,
               baseVersionId: candidate.base_version_id,
-              stepId: candidate.before_step.id || candidate.after_step.id || null,
+              stepId: candidate.before_step?.id || candidate.after_step?.id || null,
               before: candidate.before_step,
               operations,
               accepted,
