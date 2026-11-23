@@ -12213,7 +12213,7 @@ export interface paths {
                         "application/json": components["schemas"]["ScheduleUpsertResponse"];
                     };
                 };
-                /** @description Invalid cron */
+                /** @description Invalid cron, or invalid_timezone when timezone is not a known IANA time zone */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -12281,7 +12281,7 @@ export interface paths {
                         "application/json": components["schemas"]["ScheduleWriteResponse"];
                     };
                 };
-                /** @description Invalid cron */
+                /** @description Invalid cron, or invalid_timezone when timezone is not a known IANA time zone */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -12334,6 +12334,58 @@ export interface paths {
                 };
             };
         };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workflows/{id}/schedule-cost": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Projected monthly model cost of a workflow at a given cron or interval */
+        get: {
+            parameters: {
+                query: {
+                    /** @description 5-field cron or "every:<seconds>". */
+                    cron: string;
+                    /** @description IANA timezone; UTC when omitted. */
+                    timezone?: string;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ScheduleCostProjection"];
+                    };
+                };
+                /** @description Workflow not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -25393,6 +25445,63 @@ export interface paths {
         };
         trace?: never;
     };
+    "/v1/chat/slack/interactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Slack interactivity endpoint (buttons, modals, decision cards)
+         * @description Configure this URL as the Slack app's Interactivity Request URL. The raw form body (`payload=<json>`) is verified with the Slack signing secret and a five-minute timestamp window before anything is read; replays of the same action are ignored. Decision buttons (`sk_decide:*`) decide in SubKit as the linked SubKit person after a permission check at click time.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Acknowledged */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ChatAck"];
+                    };
+                };
+                /** @description Signature missing, invalid or outside the timestamp window */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ChatRefusal"];
+                    };
+                };
+                /** @description No Slack adapter is registered */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ChatRefusal"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/chat/workspaces": {
         parameters: {
             query?: never;
@@ -25626,6 +25735,96 @@ export interface paths {
                 };
             };
         };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/integrations/slack/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Browser page that links the clicking Slack account to the signed-in SubKit person
+         * @description Opened from the one-time link in a Slack decision message. Requires a signed-in Cockpit session in the same workspace; shows which Slack account will be linked and asks for confirmation.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    token?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Confirmation page (HTML) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                    };
+                };
+                /** @description Not signed in: redirect to sign-in and back */
+                302: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Link expired, invalid or for another workspace (HTML) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Confirm the Slack account link for the signed-in SubKit person */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/x-www-form-urlencoded": components["schemas"]["SlackLinkForm"];
+                };
+            };
+            responses: {
+                /** @description Linked (HTML) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                    };
+                };
+                /** @description Link refused; nothing changed (HTML) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                    };
+                };
+            };
+        };
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -30902,7 +31101,7 @@ export interface components {
                             enum: string[];
                         } | {
                             /** @enum {string} */
-                            class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                            class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
                         } | {
                             /** @enum {boolean} */
                             caller_bound: true;
@@ -30946,7 +31145,7 @@ export interface components {
                             enum: string[];
                         } | {
                             /** @enum {string} */
-                            class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                            class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
                         } | {
                             /** @enum {boolean} */
                             caller_bound: true;
@@ -31307,9 +31506,27 @@ export interface components {
                     content_type: "text/plain" | "text/html" | "multipart/alternative";
                 };
                 binding?: components["schemas"]["MissingBindingEvidence"];
+                connector?: {
+                    /** Format: uuid */
+                    connector_id: string;
+                    connector_slug: string;
+                    connector_name: string;
+                    /** @enum {string} */
+                    environment: "dev" | "prod";
+                    /** @enum {string} */
+                    reason: "disabled" | "needs_reauth" | "credential_unavailable";
+                };
             };
             /** @enum {string} */
             remedy_kind: "patch" | "prepare" | "declare" | "reconnect" | "author";
+            reconnect?: {
+                /** Format: uuid */
+                connector_id: string;
+                /** @enum {string} */
+                environment: "dev" | "prod";
+                /** @enum {string} */
+                section: "credentials";
+            };
             /** @enum {string} */
             fixer?: "use_utf8_encoder" | "declare_report_delivery";
             /** Format: uuid */
@@ -31607,7 +31824,7 @@ export interface components {
                         enum: string[];
                     } | {
                         /** @enum {string} */
-                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
@@ -31756,7 +31973,7 @@ export interface components {
                         enum: string[];
                     } | {
                         /** @enum {string} */
-                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
@@ -32074,7 +32291,7 @@ export interface components {
                         enum: string[];
                     } | {
                         /** @enum {string} */
-                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
@@ -32244,7 +32461,7 @@ export interface components {
                         enum: string[];
                     } | {
                         /** @enum {string} */
-                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
@@ -32414,7 +32631,7 @@ export interface components {
                         enum: string[];
                     } | {
                         /** @enum {string} */
-                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
@@ -32579,7 +32796,7 @@ export interface components {
                         enum: string[];
                     } | {
                         /** @enum {string} */
-                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
@@ -32744,7 +32961,7 @@ export interface components {
                         enum: string[];
                     } | {
                         /** @enum {string} */
-                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
@@ -32914,7 +33131,7 @@ export interface components {
                         enum: string[];
                     } | {
                         /** @enum {string} */
-                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
@@ -33084,7 +33301,7 @@ export interface components {
                         enum: string[];
                     } | {
                         /** @enum {string} */
-                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
@@ -33235,7 +33452,7 @@ export interface components {
                         enum: string[];
                     } | {
                         /** @enum {string} */
-                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
@@ -33386,7 +33603,7 @@ export interface components {
                         enum: string[];
                     } | {
                         /** @enum {string} */
-                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
@@ -33513,7 +33730,7 @@ export interface components {
                             enum: string[];
                         } | {
                             /** @enum {string} */
-                            class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                            class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
                         } | {
                             /** @enum {boolean} */
                             caller_bound: true;
@@ -33569,7 +33786,7 @@ export interface components {
                         enum: string[];
                     } | {
                         /** @enum {string} */
-                        class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                        class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
                     } | {
                         /** @enum {boolean} */
                         caller_bound: true;
@@ -33696,7 +33913,7 @@ export interface components {
                             enum: string[];
                         } | {
                             /** @enum {string} */
-                            class: "identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
+                            class: "identifier" | "long_identifier" | "uuid" | "integer" | "date" | "timestamp" | "timestamp_range" | "file_name" | "path";
                         } | {
                             /** @enum {boolean} */
                             caller_bound: true;
@@ -34568,6 +34785,31 @@ export interface components {
             /** @description Persisted workflow input returned verbatim to workflow readers; credentials belong in connector credential storage. */
             input?: unknown;
             created_at: string;
+            cost_projection: components["schemas"]["ScheduleCostProjection"];
+        };
+        /** @description Projected model cost a month: the average priced model cost per finished run times runs a month. Prices are the current model rates. */
+        ScheduleCostProjection: {
+            /**
+             * @description estimated: monthly_amount is set. no_history: neither this version nor another version of the workflow has a finished run yet. unknown_rhythm: the cron or interval cannot be counted.
+             * @enum {string}
+             */
+            state: "estimated" | "no_history" | "unknown_rhythm";
+            /**
+             * @description version: averaged over finished runs of the current version. workflow: no run of the current version yet, averaged over finished runs of other versions.
+             * @enum {string|null}
+             */
+            basis: "version" | "workflow" | null;
+            /** @description Finished runs the average per run is taken from (the most recent ones). */
+            runs_sampled: number;
+            /** @description Runs a month from the cron or interval, averaged over the coming year. */
+            runs_per_month: number | null;
+            per_run_amount: number | null;
+            monthly_amount: number | null;
+            currency: string;
+            /** @description Models in the sampled runs without a price; the estimate leaves them out. */
+            unpriced_models: string[];
+            /** @enum {string} */
+            rates_basis: "current";
         };
         ScheduleUpsertResponse: components["schemas"]["ScheduleEntry"] & {
             /** @enum {string} */
@@ -35195,6 +35437,8 @@ export interface components {
             result_markdown: string | null;
             /** @description True when result_markdown was cut at 64 KiB of text. */
             result_markdown_truncated: boolean;
+            /** @description Links to records that request steps created or changed in external systems, derived on read from built-in connector templates. Empty for sensitive runs, held writes, offloaded or redacted step outputs. */
+            record_links: components["schemas"]["ExecutionRecordLink"][];
         };
         ExecutionOutcome: {
             /** @enum {string} */
@@ -35228,6 +35472,21 @@ export interface components {
             };
             /** @description Fixed request/transform step count from the persisted workflow version. Null when dynamic expansion or unavailable definition prevents an exact count. */
             planned_steps?: number | null;
+        };
+        ExecutionRecordLink: {
+            /** @description Short record name from the external system, such as an issue key. Null when unknown. */
+            label: string | null;
+            /**
+             * Format: uri
+             * @description https web address of the created or changed record on the connector's known web host.
+             */
+            url: string;
+            /** @description Slug of the built-in connector template. */
+            connector: string;
+            /** @description Display name of the external system. */
+            connector_name: string;
+            /** @description Step that created or changed the record. */
+            step_key: string;
         };
         ExecutionStepListResponse: {
             items: components["schemas"]["ExecutionStep"][];
@@ -35587,6 +35846,10 @@ export interface components {
                 verified_at: string | null;
                 /** @default false */
                 respects_robots: boolean;
+                /** @default [] */
+                web_hosts: string[];
+                /** @default [] */
+                record_url_patterns: components["schemas"]["ConnectorTemplateRecordUrlPattern"][];
                 /** @enum {string} */
                 source: "builtin" | "tenant";
                 id: string | null;
@@ -35896,6 +36159,22 @@ export interface components {
             placeholder: string;
             template: string;
         };
+        ConnectorTemplateRecordUrlPattern: {
+            methods: ("POST" | "PUT" | "PATCH")[];
+            /** @description Request path after the connector base path, with {name} placeholders. Omitted for GraphQL templates. */
+            path?: string;
+            /** @description Dotted path to a web URL in the response. */
+            url_field?: string;
+            /** @description Web URL built from path placeholders, host placeholders of the base URL, or dotted response fields. */
+            url_template?: string;
+            /** @description Language-neutral record label with the same placeholders, for example {key}. */
+            label?: string;
+            when?: components["schemas"]["ConnectorTemplateRecordUrlCondition"];
+        };
+        ConnectorTemplateRecordUrlCondition: {
+            field: string;
+            equals: string | number | boolean;
+        };
         ConnectorTemplateRow: {
             version: number;
             slug: string;
@@ -35956,6 +36235,10 @@ export interface components {
             verified_at: string | null;
             /** @default false */
             respects_robots: boolean;
+            /** @default [] */
+            web_hosts: string[];
+            /** @default [] */
+            record_url_patterns: components["schemas"]["ConnectorTemplateRecordUrlPattern"][];
             id: string;
             /** @enum {string} */
             source: "tenant";
@@ -36020,6 +36303,10 @@ export interface components {
             verified_at?: string | null;
             /** @default false */
             respects_robots?: boolean;
+            /** @default [] */
+            web_hosts?: string[];
+            /** @default [] */
+            record_url_patterns?: components["schemas"]["ConnectorTemplateRecordUrlPattern"][];
         };
         ConnectorTemplateRecipeListResponse: {
             template_slug: string;
@@ -40389,6 +40676,15 @@ export interface components {
             description?: string;
             enabled?: boolean;
         };
+        ChatAck: {
+            /** @enum {boolean} */
+            ok: true;
+        } & {
+            [key: string]: unknown;
+        };
+        ChatRefusal: {
+            error: string;
+        };
         ChatWorkspace: {
             /** Format: uuid */
             id: string;
@@ -40433,6 +40729,12 @@ export interface components {
             platform_user_id: string;
             /** Format: uuid */
             user_id: string;
+        };
+        SlackLinkForm: {
+            /** @default  */
+            token?: string;
+            /** @default  */
+            csrf_token?: string;
         };
         PendingChatSpaceListResponse: {
             items: components["schemas"]["PendingChatSpace"][];

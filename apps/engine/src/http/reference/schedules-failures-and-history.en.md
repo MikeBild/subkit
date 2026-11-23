@@ -36,6 +36,17 @@ A failed run shows a notice with three parts: what happened, one recommended act
 
 For confidential workflows (`execution_privacy: sensitive`) SubKit stores no failure details. From this version on, such a run still keeps its cause and one fixed sentence that says what to do. Example: “The connected service rejected the sign-in. Reconnect the connector, then run again. Nothing was changed by this step.” When SubKit recognizes no cause, it stays at “Sensitive execution failed.” The engine writes these sentences in English. The Cockpit says them in your language where it knows the cause, the reason for a hold or the failure code: on the overview for held and failing workflows, for a refused rerun and in error notices. In the technical details of a run, over the HTTP API and in `subkit` the engine’s English sentence remains. SubKit Desktop notifies in your language too.
 
+### See what a schedule will cost
+
+Before you create or change a schedule, and on every schedule, SubKit shows an estimate like “≈ €4.20 / month” with its basis, for example “from 12 runs, current model prices”.
+
+- SubKit takes the average model cost of the last finished runs of the current version and multiplies it by the runs a month the rhythm makes.
+- If the current version has not finished a run yet, SubKit takes the runs of earlier versions and says so.
+- Without any finished run you read “No estimate yet”.
+- Prices are the current model rates, in the currency set under **Usage**. Other costs, for example of external services, are not included.
+
+The estimate follows the rhythm while you change it. You also see it on a schedule that waits for approval on the **Overview**.
+
 ### Why a schedule waits
 
 A held schedule starts no run but loses nothing. As soon as you fix the reason, it goes on. The reason is shown on the workflow, on the **Overview** and in the **Schedule history**.
@@ -209,7 +220,7 @@ subkit schedules pause <schedule-id>
 subkit schedules resume <schedule-id>
 ```
 
-`subkit schedules resume` also resumes an automatically paused schedule and counts failures afresh. There is no `subkit` command for the history.
+`subkit schedules resume` also resumes an automatically paused schedule and counts failures afresh. `subkit schedules list` shows the monthly estimate in the column `estimate`. There is no `subkit` command for the history.
 
 Answer a run with an unknown outcome, and accept part of a proposed fix:
 
@@ -228,6 +239,8 @@ subkit patch-candidates approve <candidate-id> --review-digest <digest> --accept
 | `GET /v1/workflows/{id}/schedule-occurrences` | Reads the history of a workflow, newest first. Needs `workflow:read`. |
 | `GET /v1/tasks/{id}/schedule-occurrences` | Reads the history of a task. Needs `task:read`, and you must be allowed to see the task. |
 | `PUT /v1/schedules/{id}` with `{"paused": false}` | Resumes a schedule. Needs `workflow:write`. |
+| `GET /v1/schedules` | Lists schedules, each with `cost_projection`. Needs `workflow:read`. |
+| `GET /v1/workflows/{id}/schedule-cost?cron=…&timezone=…` | Estimates the monthly cost for a rhythm before you save it. Needs `workflow:read`. |
 | `POST /v1/executions/{id}/cancel` | Stops a running run. A run with an unknown outcome ends as aborted. |
 | `POST /v1/executions/{id}/resolve-write` with `{"step_key": "<step-key>", "outcome": "arrived"}` | Answers for one step of a run with an unknown outcome: `arrived` or `not_arrived`. Needs `execution:abort`. Answers `409` when the run or the step is not waiting for an answer. |
 | `POST /v1/patch-candidates/{id}/dry-run` with `{"accepted_operations": [0, 2]}` | Tests the selected changes of a fix without changing the workflow. Needs `workflow:read`. |

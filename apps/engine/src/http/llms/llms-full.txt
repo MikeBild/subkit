@@ -3317,6 +3317,40 @@ What you read below the choice:
 | “… cannot approve with the current role. Approval notifications stay with you until an administrator changes the role.” | Ask an administrator to give the person the role **Member** or **Administrator**, or name someone else. |
 | “Invitation prepared” | You are an administrator and named an unknown address. SubKit prepared an invitation and sent no email. Pass on the **Invitation link** yourself. It is shown only once. |
 
+### Decide from Slack
+
+When a notification rule posts to a Slack channel, items that need a decision arrive as a card.
+
+| Item | Buttons in Slack |
+| --- | --- |
+| A task run waits for your approval | **Approve**, **Decline**, **Open in SubKit** |
+| The result of a task run waits for you to confirm it | **Open in SubKit** |
+| The approval of a workflow expires soon | **Open in SubKit** |
+
+Confirming a result and approving a workflow need a signed-in session in the Cockpit, so these cards link there.
+
+What happens when you select **Approve** or **Decline**:
+
+1. SubKit checks that the click comes from Slack: the signature made with the app’s signing secret and a timestamp no older than five minutes. A click that arrives twice counts once.
+2. SubKit looks up the person your Slack account is linked to. If it is not linked yet, only you see a message with **Link Slack account** and **Open in SubKit**. To link it, select **Link Slack account**, sign in, check the Slack account shown and select **Link account**. You do this once.
+3. SubKit checks at the moment of the click whether this person may decide: an active member with the permission `conversation:approve` or `workflow:write`, and for a task run its owner or an administrator. If not, only you see “You don’t have permission to decide this. Nothing was changed.”
+4. SubKit records the decision in the audit log with the source `slack`, the Slack user ID and the SubKit person.
+5. The message changes for everyone in the channel: it names the outcome, who decided and when. A later click shows the state, for example “Already approved.” or “The deadline has passed. Nothing was changed.”
+
+**Open in SubKit** always works, with or without a linked account.
+
+#### Set up the Slack app
+
+The Slack app of your chat workspace needs these settings:
+
+| Setting | Value |
+| --- | --- |
+| **Interactivity & Shortcuts › Request URL** | `https://<your SubKit address>/v1/chat/slack/interactions`, the same URL that already serves questions in chat |
+| **OAuth & Permissions › Bot token scopes** | `chat:write` to post and update cards; `chat:write.public` if SubKit posts to channels the app was not added to |
+| **Basic Information › Signing Secret** | the value of `platform.slack.signing_secret` in SubKit |
+
+SubKit builds the links from `server.public_base_url`. Without it, the cards carry no **Open in SubKit** and no **Link Slack account** button. An administrator can also link accounts with `POST /v1/chat/identities`.
+
 ### Limits
 
 - **The choice applies to push, not to the desktop app.** SubKit Desktop reads the list directly and follows the quiet hours you set in the app. More in “SubKit Desktop”.
@@ -3378,6 +3412,17 @@ A failed run shows a notice with three parts: what happened, one recommended act
 | **Connector missing**, **Unresolved placeholder**, **Answer in an unexpected shape**, **Message malformed**, **Not classified** | **Fix it in the chat**: the chat opens with the question about cause and fix. |
 
 For confidential workflows (`execution_privacy: sensitive`) SubKit stores no failure details. From this version on, such a run still keeps its cause and one fixed sentence that says what to do. Example: “The connected service rejected the sign-in. Reconnect the connector, then run again. Nothing was changed by this step.” When SubKit recognizes no cause, it stays at “Sensitive execution failed.” The engine writes these sentences in English. The Cockpit says them in your language where it knows the cause, the reason for a hold or the failure code: on the overview for held and failing workflows, for a refused rerun and in error notices. In the technical details of a run, over the HTTP API and in `subkit` the engine’s English sentence remains. SubKit Desktop notifies in your language too.
+
+### See what a schedule will cost
+
+Before you create or change a schedule, and on every schedule, SubKit shows an estimate like “≈ €4.20 / month” with its basis, for example “from 12 runs, current model prices”.
+
+- SubKit takes the average model cost of the last finished runs of the current version and multiplies it by the runs a month the rhythm makes.
+- If the current version has not finished a run yet, SubKit takes the runs of earlier versions and says so.
+- Without any finished run you read “No estimate yet”.
+- Prices are the current model rates, in the currency set under **Usage**. Other costs, for example of external services, are not included.
+
+The estimate follows the rhythm while you change it. You also see it on a schedule that waits for approval on the **Overview**.
 
 ### Why a schedule waits
 
@@ -3552,7 +3597,7 @@ subkit schedules pause <schedule-id>
 subkit schedules resume <schedule-id>
 ```
 
-`subkit schedules resume` also resumes an automatically paused schedule and counts failures afresh. There is no `subkit` command for the history.
+`subkit schedules resume` also resumes an automatically paused schedule and counts failures afresh. `subkit schedules list` shows the monthly estimate in the column `estimate`. There is no `subkit` command for the history.
 
 Answer a run with an unknown outcome, and accept part of a proposed fix:
 
@@ -3571,6 +3616,8 @@ subkit patch-candidates approve <candidate-id> --review-digest <digest> --accept
 | `GET /v1/workflows/{id}/schedule-occurrences` | Reads the history of a workflow, newest first. Needs `workflow:read`. |
 | `GET /v1/tasks/{id}/schedule-occurrences` | Reads the history of a task. Needs `task:read`, and you must be allowed to see the task. |
 | `PUT /v1/schedules/{id}` with `{"paused": false}` | Resumes a schedule. Needs `workflow:write`. |
+| `GET /v1/schedules` | Lists schedules, each with `cost_projection`. Needs `workflow:read`. |
+| `GET /v1/workflows/{id}/schedule-cost?cron=…&timezone=…` | Estimates the monthly cost for a rhythm before you save it. Needs `workflow:read`. |
 | `POST /v1/executions/{id}/cancel` | Stops a running run. A run with an unknown outcome ends as aborted. |
 | `POST /v1/executions/{id}/resolve-write` with `{"step_key": "<step-key>", "outcome": "arrived"}` | Answers for one step of a run with an unknown outcome: `arrived` or `not_arrived`. Needs `execution:abort`. Answers `409` when the run or the step is not waiting for an answer. |
 | `POST /v1/patch-candidates/{id}/dry-run` with `{"accepted_operations": [0, 2]}` | Tests the selected changes of a fix without changing the workflow. Needs `workflow:read`. |
@@ -5174,6 +5221,15 @@ A workflow provides the result in one of two ways:
 - Secrets are removed before it is stored: tokens, keys and passwords become `***redacted***`, and so do credentials in links. Confidential workflows never keep a result.
 - At most 64 KiB of text is kept. A longer text is cut and `result_markdown_truncated` is `true`.
 
+### Links to changed records
+
+`GET /v1/executions/{id}`, the MCP tool `get_execution` and `subkit executions show` carry `record_links`: one entry per record that a request step created or changed in an external system, with `label`, `url`, `connector`, `connector_name` and `step_key`. The Cockpit shows them as buttons such as “View in GitHub” that open in a new tab.
+
+- Built-in connector templates declare which requests lead to a record (`record_url_patterns`) and which web hosts are allowed (`web_hosts`). A web address the response already contains is preferred.
+- Only `https` addresses on a known web host count. Connectors without a built-in template get no links.
+- Confidential runs, held writes and step outputs that were redacted or stored as a file get no links.
+- At most 20 links per run, in step order, each address once.
+
 ### Outcome of a scheduled run
 
 Every entry of the schedule history (`GET /v1/workflows/{id}/schedule-occurrences`, `GET /v1/tasks/{id}/schedule-occurrences`) now carries `run_outcome`:
@@ -5910,7 +5966,7 @@ The `requires` column names the permission that shows a command in
 
 | command | requires | description | subcommands |
 | ------- | -------- | ----------- | ----------- |
-| `subkit agent` | `skill:read` | Coding-agent integration: session briefings and hook setup | `briefing`, `capture`, `init` |
+| `subkit agent` | `skill:read` | Coding-agent integration: session briefings and hook setup | `briefing`, `capture`, `init`, `migrate-hooks` |
 | `subkit apikeys` | `api_key:read` | Manage API keys | `create`, `list`, `revoke`, `rotate` |
 | `subkit apps` | `settings:read` | The apps that sign their users in and call SubKit (products settings, sign-in providers, workflows, users, budget); erase-user removes one app user's SubKit data | `erase-user`, `list`, `show` |
 | `subkit attach` | `file:write` | Upload a file and link it to a conversation (shortcut) | — |
@@ -5926,7 +5982,7 @@ The `requires` column names the permission that shows a command in
 | `subkit discovery` | `discovery:read` | Manage discovery runs and artifacts | `approve`, `artifacts`, `create`, `get`, `list`, `reject` |
 | `subkit doctor` | — | Diagnose engine connectivity, authentication, and setup. Exits 0 (ok or warn) or 2 (blocked). | — |
 | `subkit events` | `audit:read` | Query audit events | `get`, `list` |
-| `subkit executions` | `execution:read` | Manage workflow executions | `abort`, `get`, `list`, `rerun`, `resolve-write`, `result`, `steps`, `tail` |
+| `subkit executions` | `execution:read` | Manage workflow executions | `abort`, `get`, `list`, `rerun`, `resolve-write`, `result`, `show`, `steps`, `tail` |
 | `subkit extract` | `conversation:write` | Extract structured data from a file (LLM for text, native parsers for binary) | — |
 | `subkit files` | `file:read` | Manage files (upload, download, link, …) | `delete`, `download`, `get`, `link`, `list`, `patch`, `replace`, `restore`, `stats`, `upload`, `versions` |
 | `subkit health` | — | Runtime posture: liveness, token budget, failing runs, risk signals, schema drift, and process runtime. Use `subkit doctor` for connectivity/setup. | — |
@@ -6007,6 +6063,12 @@ Set up automatic SubKit briefings for this repository in Claude Code and Codex
 - `--budget` (string) — Optional token budget for each briefing
 - `--skip-claude` (default: false) — Do not touch ~/.claude/settings.json
 - `--skip-codex` (default: false) — Do not touch ~/.codex/hooks.json
+
+#### `subkit agent migrate-hooks`
+
+Rewrite Claude Code and Codex hooks installed for the former `sk` binary to `subkit`
+
+_No arguments._
 
 
 ### `subkit apikeys`
@@ -6640,6 +6702,13 @@ Print the final output a workflow execution produced
 
 - `<id>` (positional) — Execution id
 - `--json` (default: false) — JSON-only output
+
+#### `subkit executions show`
+
+Get an execution by id
+
+- `<id>` (positional) — Execution id
+- `--json` (default: false) — JSON-only (skip Output files line)
 
 #### `subkit executions steps`
 
@@ -8071,10 +8140,11 @@ Add a secret or a login. The token or password is read from stdin or a hidden pr
 
 #### `subkit vault attach`
 
-Attach a connector's credential as a vault item. The secret comes from stdin or a hidden prompt, never from arguments: the token, the header or query value, the password, the PEM key, or for aws_sigv4 the secret access key and an optional session token on a second line.
+Attach a connector's credential as a vault item. Name the connector by slug or id and choose its record with --env; each environment keeps its own credential. The secret comes from stdin or a hidden prompt, never from arguments: the token, the header or query value, the password, the PEM key, or for aws_sigv4 the secret access key and an optional session token on a second line.
 
-- `<connector-id>` (positional, required) — Connector id
-- `--mode` (string, required) — bearer | header | query | basic | aws_sigv4 | signed_jwt | none
+- `<connector-id>` (positional, required) — Connector slug or id
+- `--env` (string) — dev | prod: the connector record to attach to; required when the slug has both
+- `--mode` (string) — bearer | header | query | basic | aws_sigv4 | signed_jwt | none (default: the connector's auth type)
 - `--header` (string) — header mode: the header name; without it stdin holds Name=Value lines
 - `--query` (string) — query mode: the parameter name; without it stdin holds name=value lines
 - `--username` (string) — basic mode username

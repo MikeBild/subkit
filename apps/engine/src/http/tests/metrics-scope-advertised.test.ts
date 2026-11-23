@@ -86,7 +86,7 @@ describe("scopes_supported on a configured installation", () => {
     expect(await advertisedScopes()).toEqual(stored);
   });
 
-  test("the /mcp challenge advertises what discovery does", async () => {
+  test("the /mcp challenge hints the MCP scopes and leaves metrics:read to discovery", async () => {
     installRuntimeConfig({
       ...productionShapedDocument(),
       auth: {
@@ -100,7 +100,10 @@ describe("scopes_supported on a configured installation", () => {
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} }),
     });
     expect(res.status).toBe(401);
-    expect(res.headers.get("www-authenticate") ?? "").toContain(METRICS_SCOPE);
+    const challenge = res.headers.get("www-authenticate") ?? "";
+    expect(challenge).toContain('scope="mcp:read"');
+    expect(challenge).not.toContain(METRICS_SCOPE);
+    expect(await advertisedScopes()).toContain(METRICS_SCOPE);
   });
 });
 

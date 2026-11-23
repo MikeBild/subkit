@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import { METRICS_SCOPE } from "../../auth/index.ts";
 import { getConfig } from "../../config/loader.ts";
 import { ForbiddenError, UnauthorizedError } from "../../http/errors.ts";
 import { requireAuth } from "../../http/middleware/auth.ts";
@@ -82,9 +83,10 @@ export function registerMcpHttpRoutes(app: OpenAPIHono<AppEnv>): void {
       try {
         const config = getConfig();
         baseUrl = config.server.public_base_url;
-        if (config.auth.mcp_oauth.scopes_supported.length > 0) {
-          scopes = config.auth.mcp_oauth.scopes_supported.join(" ");
-        }
+        const hinted = config.auth.mcp_oauth.scopes_supported.filter(
+          (scope) => scope !== METRICS_SCOPE,
+        );
+        if (hinted.length > 0) scopes = hinted.join(" ");
       } catch {}
       const wwwAuth = baseUrl
         ? `Bearer resource_metadata="${baseUrl}/.well-known/oauth-protected-resource", scope="${scopes}"`

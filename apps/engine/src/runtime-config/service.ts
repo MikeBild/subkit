@@ -236,14 +236,15 @@ async function resolveSecretReferences(db: Executor, value: unknown): Promise<un
     const ref = parseSecretReference(value);
     return ref ? readSecret(db, ref.name, ref.version) : value;
   }
-  if (Array.isArray(value))
-    return Promise.all(value.map((child) => resolveSecretReferences(db, child)));
+  if (Array.isArray(value)) {
+    const items: unknown[] = [];
+    for (const child of value) items.push(await resolveSecretReferences(db, child));
+    return items;
+  }
   if (value === null || typeof value !== "object") return value;
-  const entries = await Promise.all(
-    Object.entries(value as Record<string, unknown>).map(
-      async ([key, child]) => [key, await resolveSecretReferences(db, child)] as const,
-    ),
-  );
+  const entries: Array<readonly [string, unknown]> = [];
+  for (const [key, child] of Object.entries(value as Record<string, unknown>))
+    entries.push([key, await resolveSecretReferences(db, child)] as const);
   return Object.fromEntries(entries);
 }
 

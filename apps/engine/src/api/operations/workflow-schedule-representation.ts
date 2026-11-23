@@ -1,5 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { AUTHORITY_REFUSAL_CODES } from "@shared/authority-refusal.ts";
+import { COST_PROJECTION_BASES, COST_PROJECTION_STATES } from "../../scheduler/index.ts";
 
 const ScheduleAdmissionHold = z
   .object({
@@ -30,6 +31,42 @@ export const AutomationReadinessSchema = z
     "Whether recurring runs of the saved version can be approved. repair_required means no human approval can unblock it: change the named steps as repair_guidance says.",
   )
   .openapi("AutomationReadiness");
+
+export const ScheduleCostProjectionSchema = z
+  .object({
+    state: z
+      .enum(COST_PROJECTION_STATES)
+      .describe(
+        "estimated: monthly_amount is set. no_history: neither this version nor another version of the workflow has a finished run yet. unknown_rhythm: the cron or interval cannot be counted.",
+      ),
+    basis: z
+      .enum(COST_PROJECTION_BASES)
+      .nullable()
+      .describe(
+        "version: averaged over finished runs of the current version. workflow: no run of the current version yet, averaged over finished runs of other versions.",
+      ),
+    runs_sampled: z
+      .number()
+      .int()
+      .nonnegative()
+      .describe("Finished runs the average per run is taken from (the most recent ones)."),
+    runs_per_month: z
+      .number()
+      .nonnegative()
+      .nullable()
+      .describe("Runs a month from the cron or interval, averaged over the coming year."),
+    per_run_amount: z.number().nonnegative().nullable(),
+    monthly_amount: z.number().nonnegative().nullable(),
+    currency: z.string(),
+    unpriced_models: z
+      .array(z.string())
+      .describe("Models in the sampled runs without a price; the estimate leaves them out."),
+    rates_basis: z.literal("current"),
+  })
+  .describe(
+    "Projected model cost a month: the average priced model cost per finished run times runs a month. Prices are the current model rates.",
+  )
+  .openapi("ScheduleCostProjection");
 
 export const ScheduleEntry = z
   .object({
@@ -62,6 +99,7 @@ export const ScheduleEntry = z
         "Persisted workflow input returned verbatim to workflow readers; credentials belong in connector credential storage.",
       ),
     created_at: z.string(),
+    cost_projection: ScheduleCostProjectionSchema,
   })
   .openapi("ScheduleEntry");
 
@@ -113,6 +151,13 @@ export const ScheduleUpdateBody = z
     input: ScheduleInputSchema.optional(),
   })
   .openapi("ScheduleUpdateBody");
+
+export const ScheduleCostQuery = z
+  .object({
+    cron: z.string().min(1).describe('5-field cron or "every:<seconds>".'),
+    timezone: z.string().optional().describe("IANA timezone; UTC when omitted."),
+  })
+  .openapi("ScheduleCostQuery");
 
 export const ScheduleDeleteResponse = z
   .object({ id: z.string(), deleted: z.boolean() })

@@ -1,14 +1,21 @@
-import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { afterAll, afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { runCommand } from "citty";
 import {
   AGENT_FILE_RELPATH,
+  agentCommand,
   findAgentFile,
+  legacyAgentHookFiles,
+  migrateLegacyAgentHookFiles,
+  migrateLegacyHookCommands,
   parseHookPayload,
   wireClaudeHooks,
   wireCodexHooks,
 } from "../agent.ts";
+import { agentHooksCheck } from "../doctor-checks.ts";
+import { migrateAgentHooks } from "../update.ts";
 import { inheritedDeclarations } from "./agent-fixtures.ts";
 
 afterAll(() => inheritedDeclarations.mockRestore());
@@ -286,6 +293,242 @@ describe("wireCodexHooks", () => {
     expect(
       hooks.SessionStart?.flatMap((entry) => entry.hooks.map((hook) => hook.command)),
     ).toContain("other-tool");
+  });
+});
+
+type HookConfig = {
+  hooks: Record<
+    string,
+    Array<{ matcher?: string; hooks: Array<{ type?: string; command: string; timeout?: number }> }>
+  >;
+};
+
+const UNRELATED_HOOK = "/Users/x/.agents/hooks/agent-hook.mjs";
+
+function legacyClaudeSettings(): HookConfig & { model: string } {
+  return {
+    model: "opus",
+    hooks: {
+      SessionStart: [
+        {
+          matcher: "startup|resume|clear|compact|fork",
+          hooks: [{ type: "command", command: "sk agent briefing --hook", timeout: 30 }],
+        },
+      ],
+      UserPromptSubmit: [
+        {
+          hooks: [
+            { type: "command", command: "/usr/local/bin/sk agent briefing --hook", timeout: 10 },
+            { type: "command", command: UNRELATED_HOOK, timeout: 5 },
+          ],
+        },
+      ],
+      SessionEnd: [
+        { hooks: [{ type: "command", command: "sk agent capture --hook", timeout: 60 }] },
+      ],
+      PreToolUse: [
+        { matcher: "Bash", hooks: [{ type: "command", command: "echo sk agent briefing --hook" }] },
+      ],
+    },
+  };
+}
+
+function legacyCodexHooks(): HookConfig {
+  return {
+    hooks: {
+      SessionStart: [
+        {
+          matcher: "startup|resume|clear|compact",
+          hooks: [{ type: "command", command: "sk agent briefing --hook", timeout: 30 }],
+        },
+      ],
+      SessionEnd: [
+        {
+          hooks: [
+            {
+              type: "command",
+              command: "sk agent capture --hook --agent codex --detach",
+              timeout: 3,
+            },
+          ],
+        },
+      ],
+      Stop: [{ hooks: [{ type: "command", command: UNRELATED_HOOK }] }],
+    },
+  };
+}
+
+function commands(config: HookConfig, event: string): string[] {
+  return (config.hooks[event] ?? []).flatMap((group) => group.hooks.map((hook) => hook.command));
+}
+
+describe("legacy sk hook migration", () => {
+  test("rewrites Claude Code entries of the former binary and keeps timeouts and unrelated hooks", () => {
+    const migrated = migrateLegacyHookCommands(legacyClaudeSettings()) as
+      | (HookConfig & { model: string })
+      | null;
+    if (!migrated) throw new Error("expected a migration");
+    expect(migrated.model).toBe("opus");
+    expect(migrated.hooks.SessionStart?.[0]?.hooks[0]).toEqual({
+      type: "command",
+      command: "subkit agent briefing --hook",
+      timeout: 30,
+    });
+    expect(migrated.hooks.UserPromptSubmit?.[0]?.hooks).toEqual([
+      { type: "command", command: "subkit agent briefing --hook", timeout: 10 },
+      { type: "command", command: UNRELATED_HOOK, timeout: 5 },
+    ]);
+    expect(commands(migrated, "SessionEnd")).toEqual(["subkit agent capture --hook"]);
+    expect(commands(migrated, "PreToolUse")).toEqual(["echo sk agent briefing --hook"]);
+    expect(migrateLegacyHookCommands(migrated)).toBeNull();
+  });
+
+  test("keeps Codex flags and timeouts", () => {
+    const migrated = migrateLegacyHookCommands(legacyCodexHooks()) as HookConfig | null;
+    if (!migrated) throw new Error("expected a migration");
+    expect(migrated.hooks.SessionEnd?.[0]?.hooks[0]).toEqual({
+      type: "command",
+      command: "subkit agent capture --hook --agent codex --detach",
+      timeout: 3,
+    });
+    expect(commands(migrated, "SessionStart")).toEqual(["subkit agent briefing --hook"]);
+    expect(commands(migrated, "Stop")).toEqual([UNRELATED_HOOK]);
+  });
+
+  test("never duplicates an entry the current binary already has", () => {
+    const migrated = migrateLegacyHookCommands({
+      hooks: {
+        UserPromptSubmit: [
+          { hooks: [{ type: "command", command: "subkit agent briefing --hook", timeout: 10 }] },
+          { hooks: [{ type: "command", command: "sk agent briefing --hook", timeout: 10 }] },
+        ],
+      },
+    }) as HookConfig | null;
+    if (!migrated) throw new Error("expected a migration");
+    expect(migrated.hooks.UserPromptSubmit).toEqual([
+      { hooks: [{ type: "command", command: "subkit agent briefing --hook", timeout: 10 }] },
+    ]);
+  });
+
+  test("leaves commands alone that only mention the former binary", () => {
+    for (const command of [
+      "echo sk agent briefing --hook",
+      "/x/task agent briefing --hook",
+      "subkit agent briefing --hook",
+      "/usr/local/bin/subkit agent briefing --hook",
+      UNRELATED_HOOK,
+    ]) {
+      expect(
+        migrateLegacyHookCommands({ hooks: { SessionStart: [{ hooks: [{ command }] }] } }),
+      ).toBeNull();
+    }
+  });
+
+  test("the installer migrates legacy entries instead of adding a second hook", () => {
+    const claude = wireClaudeHooks(legacyClaudeSettings()) as HookConfig | null;
+    if (!claude) throw new Error("expected a Claude Code update");
+    expect(commands(claude, "SessionStart")).toEqual(["subkit agent briefing --hook"]);
+    expect(commands(claude, "UserPromptSubmit").sort()).toEqual(
+      ["subkit agent briefing --hook", UNRELATED_HOOK].sort(),
+    );
+    expect(commands(claude, "SessionEnd")).toEqual(["subkit agent capture --hook"]);
+    expect(wireClaudeHooks(claude)).toBeNull();
+
+    const codex = wireCodexHooks(legacyCodexHooks()) as HookConfig | null;
+    if (!codex) throw new Error("expected a Codex update");
+    expect(commands(codex, "SessionEnd")).toEqual([
+      "subkit agent capture --hook --agent codex --detach",
+    ]);
+    expect(commands(codex, "SessionStart")).toEqual(["subkit agent briefing --hook"]);
+    expect(commands(codex, "Stop")).toEqual([UNRELATED_HOOK]);
+    expect(wireCodexHooks(codex)).toBeNull();
+  });
+
+  describe("in the home directory", () => {
+    let home: string;
+    let savedHome: string | undefined;
+    let printed: string[];
+    let originalWrite: typeof process.stdout.write;
+    const claudePath = () => join(home, ".claude", "settings.json");
+    const codexPath = () => join(home, ".codex", "hooks.json");
+    const writeConfig = (path: string, value: unknown) => {
+      mkdirSync(join(path, ".."), { recursive: true });
+      writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
+    };
+    const readConfig = (path: string) => JSON.parse(readFileSync(path, "utf8")) as HookConfig;
+
+    beforeEach(() => {
+      home = mkdtempSync(join(tmpdir(), "subkit-agent-legacy-home-"));
+      savedHome = process.env.HOME;
+      process.env.HOME = home;
+      printed = [];
+      originalWrite = process.stdout.write.bind(process.stdout);
+      process.stdout.write = ((chunk: string | Uint8Array) => {
+        printed.push(String(chunk));
+        return true;
+      }) as typeof process.stdout.write;
+    });
+    afterEach(() => {
+      process.stdout.write = originalWrite;
+      if (savedHome === undefined) delete process.env.HOME;
+      else process.env.HOME = savedHome;
+    });
+
+    test("migrates both legacy configs once and a second run changes nothing", () => {
+      writeConfig(claudePath(), legacyClaudeSettings());
+      writeConfig(codexPath(), legacyCodexHooks());
+      expect(legacyAgentHookFiles(home)).toEqual([claudePath(), codexPath()]);
+
+      expect(migrateLegacyAgentHookFiles(home)).toEqual([claudePath(), codexPath()]);
+      const claudeBytes = readFileSync(claudePath(), "utf8");
+      const codexBytes = readFileSync(codexPath(), "utf8");
+      expect(commands(readConfig(claudePath()), "UserPromptSubmit")).toEqual([
+        "subkit agent briefing --hook",
+        UNRELATED_HOOK,
+      ]);
+      expect(commands(readConfig(codexPath()), "SessionEnd")).toEqual([
+        "subkit agent capture --hook --agent codex --detach",
+      ]);
+      expect(legacyAgentHookFiles(home)).toEqual([]);
+
+      expect(migrateLegacyAgentHookFiles(home)).toEqual([]);
+      expect(readFileSync(claudePath(), "utf8")).toBe(claudeBytes);
+      expect(readFileSync(codexPath(), "utf8")).toBe(codexBytes);
+    });
+
+    test("creates no config when none exists and tolerates broken JSON", () => {
+      expect(migrateAgentHooks(home)).toEqual([]);
+      expect(existsSync(claudePath())).toBe(false);
+      expect(existsSync(codexPath())).toBe(false);
+      mkdirSync(join(home, ".claude"), { recursive: true });
+      writeFileSync(claudePath(), "{broken");
+      expect(legacyAgentHookFiles(home)).toEqual([]);
+      expect(migrateAgentHooks(home)).toEqual([]);
+      expect(readFileSync(claudePath(), "utf8")).toBe("{broken");
+    });
+
+    test("subkit update migrates silently after a self-update", () => {
+      writeConfig(codexPath(), legacyCodexHooks());
+      expect(migrateAgentHooks(home)).toEqual([codexPath()]);
+      expect(commands(readConfig(codexPath()), "SessionStart")).toEqual([
+        "subkit agent briefing --hook",
+      ]);
+    });
+
+    test("doctor reports legacy entries with the fix command and migrate-hooks fixes them", async () => {
+      writeConfig(claudePath(), legacyClaudeSettings());
+      const check = agentHooksCheck(legacyAgentHookFiles(home));
+      expect(check.status).toBe("warn");
+      expect(check.detail).toContain(claudePath());
+      expect(check.hint).toContain("subkit agent migrate-hooks");
+
+      await runCommand(agentCommand, { rawArgs: ["migrate-hooks"] });
+      expect(printed.join("")).toContain(`migrated \`sk agent\` hooks in ${claudePath()}`);
+      expect(commands(readConfig(claudePath()), "SessionStart")).toEqual([
+        "subkit agent briefing --hook",
+      ]);
+      expect(agentHooksCheck(legacyAgentHookFiles(home)).status).toBe("ok");
+    });
   });
 });
 

@@ -84,6 +84,15 @@ Ein Workflow liefert das Ergebnis auf einem von zwei Wegen:
 - Geheimnisse entfernt SubKit vor dem Speichern: Tokens, Schlüssel und Passwörter werden zu `***redacted***`, ebenso Zugangsdaten in Links. Vertrauliche Workflows behalten nie ein Ergebnis.
 - SubKit behält höchstens 64 KiB Text. Ein längerer Text wird gekürzt, und `result_markdown_truncated` ist `true`.
 
+### Links zu geänderten Datensätzen
+
+`GET /v1/executions/{id}`, das MCP-Tool `get_execution` und `subkit executions show` liefern `record_links`: je einen Eintrag pro Datensatz, den ein Request-Step in einem externen System angelegt oder geändert hat, mit `label`, `url`, `connector`, `connector_name` und `step_key`. Das Cockpit zeigt sie als Buttons wie „In GitHub ansehen“, die in einem neuen Tab öffnen.
+
+- Eingebaute Connector-Templates legen fest, welche Requests zu einem Datensatz führen (`record_url_patterns`) und welche Web-Hosts erlaubt sind (`web_hosts`). Eine Webadresse, die schon in der Antwort steht, hat Vorrang.
+- Es zählen nur `https`-Adressen auf einem bekannten Web-Host. Connectoren ohne eingebautes Template bekommen keine Links.
+- Vertrauliche Runs, zurückgehaltene Schreibzugriffe und Step-Ausgaben, die geschwärzt oder als Datei abgelegt wurden, bekommen keine Links.
+- Höchstens 20 Links pro Run, in der Reihenfolge der Steps, jede Adresse einmal.
+
 ### Ausgang eines geplanten Runs
 
 Jeder Eintrag der Zeitplan-Historie (`GET /v1/workflows/{id}/schedule-occurrences`, `GET /v1/tasks/{id}/schedule-occurrences`) hat jetzt `run_outcome`:

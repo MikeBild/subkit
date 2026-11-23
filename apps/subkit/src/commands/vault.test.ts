@@ -29,18 +29,35 @@ const probe = spyOn(EngineClient.prototype, "testConnector").mockImplementation(
   ok: probeOk,
   latency_ms: 0,
 }));
+const DEV_CONNECTOR = {
+  id: "5eed0003-0000-4000-8000-000000000001",
+  slug: "connector",
+  display_name: "Connector",
+  environment: "dev",
+  auth_type: "signed_jwt",
+  credentials: [],
+};
+const list = spyOn(EngineClient.prototype, "listConnectors").mockImplementation(
+  async (query = {}) =>
+    ({
+      items: query.environment === "prod" ? [] : [DEV_CONNECTOR],
+      total: 1,
+    }) as never,
+);
 const originalExitCode = process.exitCode ?? 0;
 
 afterEach(() => {
   created.length = 0;
   attach.mockClear();
   probe.mockClear();
+  list.mockClear();
   probeOk = true;
   process.exitCode = originalExitCode;
 });
 afterAll(() => {
   attach.mockRestore();
   probe.mockRestore();
+  list.mockRestore();
   for (const [key, value] of Object.entries(savedEnv)) {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
@@ -87,7 +104,12 @@ describe("signed JWT CLI credential setup", () => {
       },
     ]);
     expect(probe).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(output)).toEqual({ id: "credential", probe: { ok: true } });
+    expect(attach.mock.calls[0]?.[0]).toBe(DEV_CONNECTOR.id);
+    expect(JSON.parse(output)).toEqual({
+      id: "credential",
+      connector: { id: DEV_CONNECTOR.id, slug: "connector", name: "Connector", environment: "dev" },
+      probe: { ok: true },
+    });
     expect(output).not.toContain(import.meta.filename);
     expect(output).not.toContain("private_key");
   });
@@ -97,7 +119,8 @@ describe("signed JWT CLI credential setup", () => {
     expect(process.exitCode).toBe(1);
   });
   test("an explicit skip does not claim a successful probe", async () => {
-    expect(JSON.parse(await setCredential(true))).toEqual({ id: "credential" });
+    expect(JSON.parse(await setCredential(true))).toMatchObject({ id: "credential" });
+    expect(JSON.parse(await setCredential(true)).probe).toBeUndefined();
     expect(probe).not.toHaveBeenCalled();
   });
 });

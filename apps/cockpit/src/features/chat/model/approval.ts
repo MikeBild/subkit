@@ -148,40 +148,81 @@ type ApprovalSubject = Pick<
   | "taskAction"
 >;
 
-export function approvalLine(
+type Mark = (value: string) => string;
+
+const same: Mark = (value) => value;
+
+function approvalSentence(
   subject: ApprovalSubject,
   t: Translate,
   readable: (value: string) => string,
+  mark: Mark,
 ): string {
   if (subject.oauth)
     return t(subject.oauth === "start" ? "chat.oauth.startHelp" : "chat.oauth.completeHelp");
   if (subject.singleRun)
     return t("chat.singleRun.effect", {
-      name: subject.workflowName ?? t("chat.singleRun.thisWorkflow"),
+      name: subject.workflowName ? mark(subject.workflowName) : t("chat.singleRun.thisWorkflow"),
     });
   if (subject.savesInactiveWorkflow) return t("chat.decision.saveEffect");
   if (subject.externalTool)
     return t("chat.decision.externalTool", {
-      connector: subject.externalTool.connector,
-      tool: subject.externalTool.tool,
+      connector: mark(subject.externalTool.connector),
+      tool: mark(subject.externalTool.tool),
     });
-  if (subject.connectorCall)
-    return readable(
-      subject.connectorCall.target
-        ? t("chat.decision.connectorCall", {
-            connector: subject.connectorCall.connector,
-            method: subject.connectorCall.method,
-            target: subject.connectorCall.target,
-          })
-        : t("chat.decision.connectorCallBare", {
-            connector: subject.connectorCall.connector,
-            method: subject.connectorCall.method,
-          }),
-    );
-  const taskLine = subject.taskAction ? taskActionLine(subject.taskAction, t) : null;
+  if (subject.connectorCall) {
+    const connector = mark(readable(subject.connectorCall.connector));
+    const method = readable(subject.connectorCall.method);
+    return subject.connectorCall.target
+      ? t("chat.decision.connectorCall", {
+          connector,
+          method,
+          target: mark(readable(subject.connectorCall.target)),
+        })
+      : t("chat.decision.connectorCallBare", { connector, method });
+  }
+  const taskLine = subject.taskAction ? taskActionLine(subject.taskAction, t, mark) : null;
   if (taskLine) return taskLine;
   if (subject.gatedTool) return t("chat.decision.gatedAction");
   return readable(subject.question);
+}
+
+export function approvalLine(
+  subject: ApprovalSubject,
+  t: Translate,
+  readable: (value: string) => string,
+): string {
+  return approvalSentence(subject, t, readable, same);
+}
+
+export interface LinePart {
+  id: string;
+  text: string;
+  strong: boolean;
+}
+
+const SLOT = "\u0000";
+
+export function markedParts(build: (mark: Mark) => string): LinePart[] {
+  const values: string[] = [];
+  const sentence = build((value) => {
+    values.push(value.replaceAll(SLOT, ""));
+    return `${SLOT}${values.length - 1}${SLOT}`;
+  });
+  if (values.length === 0) return sentence ? [{ id: "t0", text: sentence, strong: false }] : [];
+  return sentence.split(SLOT).flatMap((piece, index): LinePart[] => {
+    if (index % 2 === 0) return piece ? [{ id: `t${index}`, text: piece, strong: false }] : [];
+    const value = values[Number(piece)];
+    return value ? [{ id: `s${index}`, text: value, strong: true }] : [];
+  });
+}
+
+export function approvalLineParts(
+  subject: ApprovalSubject,
+  t: Translate,
+  readable: (value: string) => string,
+): LinePart[] {
+  return markedParts((mark) => approvalSentence(subject, t, readable, mark));
 }
 
 type PendingApproval = NonNullable<

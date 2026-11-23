@@ -36,6 +36,7 @@ function readable(value: string): string {
 
 export const CLASS_KEYS: Record<string, TranslationKey> = {
   identifier: "authority.boundary.class.identifier",
+  long_identifier: "authority.boundary.class.long_identifier",
   uuid: "authority.boundary.class.uuid",
   integer: "authority.boundary.class.integer",
   date: "authority.boundary.class.date",

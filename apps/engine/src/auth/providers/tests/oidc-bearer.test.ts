@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { SignJWT } from "jose";
 import type { OidcBearerProviderConfig } from "../../../config/schema.ts";
@@ -10,6 +10,7 @@ import {
   users,
 } from "../../../db/schema/index.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT, type TestDb } from "../../../db/tests/setup.ts";
+import { logger } from "../../../logging/index.ts";
 import { builtinRoleId } from "../../../rbac/roles.ts";
 import { FROZEN_NOW } from "../../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
@@ -406,7 +407,17 @@ describe("oidc_bearer product identity provisioning", () => {
       subject_sha256: productSubjectDigest(sub),
       erased_at: new Date(FROZEN_NOW),
     });
-    expectDenied(await resolve(await issuer.mint({ sub })), "identity_erased");
+    const warn = spyOn(logger, "warn");
+    try {
+      expectDenied(await resolve(await issuer.mint({ sub })), "identity_erased");
+      const warned = warn.mock.calls.map((call) => call[0] as Record<string, unknown>);
+      expect(warned.some((fields) => fields.action === "transaction.failed")).toBe(false);
+      const denial = warned.find((fields) => fields.action === "denied");
+      expect(denial).toMatchObject({ module: "auth", reason: "identity_erased" });
+      expect(denial?.stack).toBeUndefined();
+    } finally {
+      warn.mockRestore();
+    }
     const rows = await db
       .select()
       .from(userIdentities)

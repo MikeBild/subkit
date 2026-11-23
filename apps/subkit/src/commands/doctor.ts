@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { isEngineError, isTransportError } from "@cli-core/errors.ts";
 import { printJson } from "@cli-core/format";
 import { CLI_BINARY } from "@cli-core/release/assets.ts";
@@ -10,7 +11,9 @@ import pc from "picocolors";
 import { configPath, resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
 import { loadSettings } from "../settings.ts";
+import { legacyAgentHookFiles } from "./agent-hook-config.ts";
 import {
+  agentHooksCheck,
   type CheckResult,
   type CheckStatus,
   type ConfigFacts,
@@ -342,6 +345,7 @@ export const doctorCommand = defineCommand({
     }
 
     results.push(updateCheckResult());
+    results.push(agentHooksCheck(legacyAgentHookFiles(process.env.HOME || homedir())));
 
     const overall = worst(results);
 

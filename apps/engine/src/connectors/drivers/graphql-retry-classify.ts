@@ -57,7 +57,7 @@ export function isGraphqlRetryable(status: number, body: unknown): boolean {
   return errors.some(entryIsRetryable);
 }
 
-const RATE_LIMIT_MESSAGE = /\brate limit\b/i;
+const RATE_LIMIT_MESSAGE = /secondary rate limit|rate limit exceeded|abuse detection/i;
 
 function errorEntries(body: unknown): Record<string, unknown>[] {
   const errors = (body as { errors?: unknown } | null | undefined)?.errors;
@@ -88,7 +88,7 @@ export function graphqlRateLimited(
   if (entries.some(entryIsRateLimited)) return true;
   const failed = status === 403 || entries.length > 0;
   if (!failed) return false;
-  if (headers["x-ratelimit-remaining"] === "0") return true;
+  if (headers["x-ratelimit-remaining"]?.trim() === "0") return true;
   if (status === 403 && headers["retry-after"] !== undefined) return true;
   const message = (body as { message?: unknown } | null | undefined)?.message;
   return [message, ...entries.map((entry) => entry.message)].some(

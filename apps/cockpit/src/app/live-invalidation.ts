@@ -15,6 +15,8 @@ const RUN_LISTS: QueryKey[] = [
   ["workflow-latest-failed-run"],
   ["workflow-diagnosis"],
   ["workflow-automation-status"],
+  ["workflow-active-run"],
+  ["schedule-occurrences"],
   ["run-open-repair"],
   ["connector-stats"],
   ["catalog"],
@@ -23,6 +25,7 @@ const RUN_LISTS: QueryKey[] = [
 
 const WORKFLOW: QueryKey[] = [
   ["workflow"],
+  ["schedule-occurrences"],
   ["workflows"],
   ["workflow-draft-version"],
   ["workflow-authorities"],
@@ -71,12 +74,19 @@ const AUTOMATION: QueryKey[] = [
   ["workflow-automation-status"],
   ["workflow-schedule-holds"],
   ["workflow"],
+  ["schedule-occurrences"],
   ["catalog-detail"],
   ["decisions"],
   ["attention"],
 ];
 
-const TASK: QueryKey[] = [["tasks"], ["task"], ["task-grants"], ["attention"]];
+const TASK: QueryKey[] = [
+  ["tasks"],
+  ["task"],
+  ["schedule-occurrences"],
+  ["task-grants"],
+  ["attention"],
+];
 
 const TASK_GRANT: QueryKey[] = [
   ...TASK,
@@ -88,6 +98,7 @@ const TASK_GRANT: QueryKey[] = [
 const TASK_RUN: QueryKey[] = [
   ["tasks"],
   ["task"],
+  ["schedule-occurrences"],
   ["task-runs"],
   ["task-run"],
   ["task-run-playbook"],

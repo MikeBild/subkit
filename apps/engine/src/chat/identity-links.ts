@@ -21,6 +21,7 @@ export class ChatIdentityLinkRefusedError extends Error {
 
 interface ChatIdentityLinkInput {
   principal: ResolvedPrincipal;
+  kind?: "manual" | "self";
   body: {
     user_id: string;
     platform: InboundChatPlatform;
@@ -94,7 +95,7 @@ export async function linkChatIdentity(
         resource_id: body.user_id,
         result: "success",
         metadata: {
-          kind: "manual",
+          kind: input.kind ?? "manual",
           platform: body.platform,
           platform_user_id: body.platform_user_id,
         },

@@ -113,6 +113,21 @@ export function reachabilityCheck(
   return { name: "reachability", status: ok ? "ok" : "blocked", detail };
 }
 
+export function agentHooksCheck(legacyFiles: readonly string[]): CheckResult {
+  if (legacyFiles.length === 0)
+    return {
+      name: "agent_hooks",
+      status: "ok",
+      detail: "no hooks of the former `sk` binary",
+    };
+  return {
+    name: "agent_hooks",
+    status: "warn",
+    detail: `hooks still call the removed \`sk\` binary in ${legacyFiles.join(", ")}`,
+    hint: "run `subkit agent migrate-hooks` to rewrite them to `subkit agent`",
+  };
+}
+
 export function worst(results: readonly CheckResult[]): CheckStatus {
   if (results.some((r) => r.status === "blocked")) return "blocked";
   if (results.some((r) => r.status === "warn")) return "warn";

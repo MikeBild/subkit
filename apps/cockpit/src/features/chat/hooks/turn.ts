@@ -18,6 +18,7 @@ import { chatSeedFromUrl, chatTargetFromUrl } from "@/app/links";
 import { usdFormatter } from "@/features/usage";
 import { formatDateTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { expectedFailureRemedy } from "@/lib/remedy";
 import {
   addAttachments,
   createEmptyConversation,
@@ -26,6 +27,7 @@ import {
   type PendingAttachment,
   pendingKey,
 } from "../api/attachments";
+import { reduceActivity, startActivity, type TurnActivity } from "../model/activity";
 import type { ChatApprovalOptions } from "../model/approval";
 import { asStreamedDiff, type RestoreComposer, type StreamedDiff } from "../model/labels";
 import { applyLiveCall, type LiveCall, reduceLiveCall } from "../model/live-calls";
@@ -79,6 +81,7 @@ export function useChatTurn({
   const [streamedText, setStreamedText] = useState("");
   const [streamedDiffs, setStreamedDiffs] = useState<StreamedDiff[]>([]);
   const [liveCalls, setLiveCalls] = useState<LiveCall[]>([]);
+  const [activity, setActivity] = useState<TurnActivity>(() => startActivity(Date.now()));
   const [liveTick, setLiveTick] = useState(0);
   const anyLive = liveCalls.some((call) => !call.done);
   useEffect(() => {
@@ -123,6 +126,7 @@ export function useChatTurn({
     setStreamedText("");
     setStreamedDiffs([]);
     setLiveCalls([]);
+    setActivity(startActivity(Date.now()));
   };
   const loadTranscript = (id: string | null): Promise<boolean> =>
     id
@@ -141,6 +145,7 @@ export function useChatTurn({
           )
       : Promise.resolve(false);
   const onTurnEvent = (event: { type: string; [key: string]: unknown }) => {
+    setActivity((current) => reduceActivity(current, event, Date.now()));
     if (event.type === "tool_result" && event.tool === "update_playbook" && activeId) {
       void queryClient.invalidateQueries({ queryKey: ["conversation", activeId], exact: true });
     }
@@ -297,6 +302,9 @@ export function useChatTurn({
           })
         : t(`chat.cause.${failureCause.kind}`)
     : null;
+  const failureRemedy = expectedFailureRemedy(
+    sendError instanceof ApiError ? sendError.code : sendError ? null : turnFailure?.code,
+  );
   const submitTurn = async (
     message: string,
     references: ConversationReference[] = [],
@@ -515,6 +523,7 @@ export function useChatTurn({
     });
   };
   return {
+    activity,
     streamedText,
     streamedDiffs,
     liveCalls,
@@ -531,6 +540,7 @@ export function useChatTurn({
     turnFailure,
     turnFailureMessage,
     failureCauseText,
+    failureRemedy,
     submitTurn,
     retryTurn,
     cancel,

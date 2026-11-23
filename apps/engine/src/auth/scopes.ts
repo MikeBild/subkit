@@ -13,6 +13,12 @@ export function isCeilingScope(scope: string): boolean {
 
 export const METRICS_SCOPE = "metrics:read";
 
+export function ceilingScopes(scopes: readonly string[] | undefined): string[] {
+  if (!scopes || scopes.includes(WILDCARD_SCOPE)) return [];
+  const hasMarker = scopes.some(isMcpModeMarkerScope);
+  return scopes.filter((scope) => isCeilingScope(scope) && !(hasMarker && scope === METRICS_SCOPE));
+}
+
 const NON_REMOVABLE_MCP_SCOPES: readonly string[] = [METRICS_SCOPE];
 
 export function withNonRemovableScopes(configured: readonly string[]): string[] {

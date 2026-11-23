@@ -3,6 +3,7 @@ import type { ConversationDetail } from "@/api/client";
 import { type TranslationKey, translate } from "@/lib/i18n";
 import {
   approvalLine,
+  approvalLineParts,
   type ChatApproval,
   chatApproval,
   conversationRefreshInterval,
@@ -360,4 +361,34 @@ test("a local confirmation carries its device, target and deadline", () => {
   });
   expect(chatApproval(detail)?.device).not.toHaveProperty("command_id");
   expect(chatApproval(fixture())).not.toHaveProperty("device");
+});
+
+test("the approval line marks only structured values as the ones to check", () => {
+  const en = (key: TranslationKey, values?: Record<string, string | number>) =>
+    translate("en", key, values);
+  const same = (value: string) => value;
+  const base = { question: "q", savesInactiveWorkflow: false };
+  const strong = (subject: Parameters<typeof approvalLineParts>[0]) =>
+    approvalLineParts(subject, en, same)
+      .filter((part) => part.strong)
+      .map((part) => part.text);
+  expect(
+    strong({ ...base, connectorCall: { connector: "Billing", method: "POST", target: "/pay" } }),
+  ).toEqual(["Billing", "/pay"]);
+  expect(strong({ ...base, externalTool: { connector: "CRM", tool: "delete" } })).toEqual([
+    "CRM",
+    "delete",
+  ]);
+  expect(strong({ ...base, singleRun: true, workflowName: "Payroll" })).toEqual(["Payroll"]);
+  expect(strong({ ...base, singleRun: true })).toEqual([]);
+  expect(strong({ ...base, question: "Pay **€500** to <b>Eve</b>?" })).toEqual([]);
+  const subject = {
+    ...base,
+    connectorCall: { connector: "Billing", method: "POST", target: "/pay" },
+  };
+  expect(
+    approvalLineParts(subject, en, same)
+      .map((part) => part.text)
+      .join(""),
+  ).toBe(approvalLine(subject, en, same));
 });

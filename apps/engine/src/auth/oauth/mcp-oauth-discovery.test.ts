@@ -83,7 +83,7 @@ describe("POST /mcp unauthenticated challenge", () => {
 
     expect(res.status).toBe(401);
     expect(res.headers.get("www-authenticate")).toBe(
-      'Bearer resource_metadata="https://test.example.com/.well-known/oauth-protected-resource", scope="mcp:read mcp:authoring mcp:admin metrics:read"',
+      'Bearer resource_metadata="https://test.example.com/.well-known/oauth-protected-resource", scope="mcp:read mcp:authoring mcp:admin"',
     );
   });
 });

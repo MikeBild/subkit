@@ -36,6 +36,7 @@ export const findUserTool: ConversationTool = {
   ],
   inputSchema,
   category: "tenant_read",
+  permission: { action: "identity:read", resourceType: "user", resourceIdArg: "id" },
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     if (args.id) {

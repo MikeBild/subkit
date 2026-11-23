@@ -42,6 +42,7 @@ export const findRoleTool: ConversationTool = {
   ],
   inputSchema,
   category: "tenant_read",
+  permission: { action: "rbac:read", resourceType: "role", resourceIdArg: "id" },
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     const all = await listRoles(ctx.db, ctx.tenant_id);

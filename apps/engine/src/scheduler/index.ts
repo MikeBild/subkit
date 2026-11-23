@@ -1,8 +1,14 @@
 export { runTenantErasureSweep } from "../identity/scheduled/tenant-erasure-runner.ts";
 export { inspectInboundHookAutomation, inspectScheduleAutomation } from "./automation-status.ts";
 export { stripCalendarGates } from "./calendar-gates.ts";
+export {
+  COST_PROJECTION_BASES,
+  COST_PROJECTION_STATES,
+  type ScheduleCostProjection,
+} from "./cost-projection.ts";
 export { parseCronExpression } from "./cron.ts";
 export { nextScheduleFire } from "./next-fire.ts";
+export { COST_SAMPLE_RUNS, scheduleCostProjection } from "./persistence/schedule-cost.ts";
 export {
   ALWAYS_RUNNING,
   type BackgroundWork,

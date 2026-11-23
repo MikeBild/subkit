@@ -215,6 +215,19 @@ export function formatDateTime(locale: Locale, value: string | Date | null | und
   }).format(date);
 }
 
+export function formatMoney(locale: Locale, amount: number, currency: string): string {
+  const digits = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+  try {
+    return new Intl.NumberFormat(LOCALE_TAGS[locale], {
+      style: "currency",
+      currency,
+      ...digits,
+    }).format(amount);
+  } catch {
+    return `${new Intl.NumberFormat(LOCALE_TAGS[locale], digits).format(amount)} ${currency}`;
+  }
+}
+
 export function formatDate(locale: Locale, value: string | Date): string {
   const date = typeof value === "string" ? new Date(value) : value;
   if (Number.isNaN(date.valueOf())) return "—";

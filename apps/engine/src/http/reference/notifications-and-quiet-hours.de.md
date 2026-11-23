@@ -105,6 +105,40 @@ Was du unter der Auswahl liest:
 | „… darf mit der aktuellen Rolle nichts freigeben. Freigabe-Mitteilungen bleiben bei dir, bis ein Administrator die Rolle ändert.“ | Bitte einen Administrator, der Person die Rolle **Mitglied** oder **Administrator** zu geben, oder nenne jemand anderen. |
 | „Einladung vorbereitet“ | Du bist Administrator und hast eine unbekannte Adresse genannt. SubKit hat eine Einladung vorbereitet und keine E-Mail verschickt. Gib den **Einladungslink** selbst weiter. Er wird nur einmal angezeigt. |
 
+### In Slack entscheiden
+
+Schickt eine Benachrichtigungsregel in einen Slack-Kanal, kommen Punkte, die eine Entscheidung brauchen, als Karte an.
+
+| Punkt | Buttons in Slack |
+| --- | --- |
+| Ein Lauf einer Aufgabe wartet auf deine Freigabe | **Freigeben**, **Ablehnen**, **In SubKit öffnen** |
+| Das Ergebnis eines Laufs wartet auf deine Bestätigung | **In SubKit öffnen** |
+| Die Freigabe eines Workflows läuft bald ab | **In SubKit öffnen** |
+
+Ein Ergebnis bestätigen und einen Workflow freigeben geht nur mit einer angemeldeten Sitzung im Cockpit. Deshalb führen diese Karten dorthin.
+
+Was passiert, wenn du **Freigeben** oder **Ablehnen** wählst:
+
+1. SubKit prüft, ob der Klick von Slack kommt: die Signatur mit dem Signing Secret der App und einen Zeitstempel, der höchstens fünf Minuten alt ist. Ein Klick, der doppelt ankommt, zählt einmal.
+2. SubKit sucht die Person, mit der dein Slack-Konto verknüpft ist. Ist es noch nicht verknüpft, siehst nur du eine Nachricht mit **Slack-Konto verknüpfen** und **In SubKit öffnen**. Zum Verknüpfen wählst du **Slack-Konto verknüpfen**, meldest dich an, prüfst das angezeigte Slack-Konto und wählst **Konto verknüpfen**. Das machst du einmal.
+3. SubKit prüft im Moment des Klicks, ob diese Person entscheiden darf: ein aktives Mitglied mit der Berechtigung `conversation:approve` oder `workflow:write` und bei einem Lauf die Besitzerin der Aufgabe oder ein Administrator. Sonst siehst nur du „Dir fehlt die Berechtigung, das zu entscheiden. Geändert wurde nichts.“
+4. SubKit hält die Entscheidung im Audit-Log fest, mit der Quelle `slack`, der Slack-User-ID und der Person in SubKit.
+5. Die Nachricht ändert sich für alle im Kanal und nennt das Ergebnis, wer entschieden hat und wann. Ein späterer Klick zeigt den Stand, zum Beispiel „Bereits freigegeben.“ oder „Die Frist ist abgelaufen. Geändert wurde nichts.“
+
+**In SubKit öffnen** funktioniert immer, mit oder ohne verknüpftes Konto.
+
+#### Die Slack-App einrichten
+
+Die Slack-App deines Chat-Workspace braucht diese Einstellungen:
+
+| Einstellung | Wert |
+| --- | --- |
+| **Interactivity & Shortcuts › Request URL** | `https://<deine SubKit-Adresse>/v1/chat/slack/interactions`, dieselbe URL, über die schon Rückfragen im Chat laufen |
+| **OAuth & Permissions › Bot token scopes** | `chat:write`, um Karten zu senden und zu ändern; `chat:write.public`, wenn SubKit in Kanäle schreibt, in die die App nicht eingeladen wurde |
+| **Basic Information › Signing Secret** | der Wert von `platform.slack.signing_secret` in SubKit |
+
+SubKit baut die Links aus `server.public_base_url`. Fehlt der Wert, tragen die Karten weder **In SubKit öffnen** noch **Slack-Konto verknüpfen**. Ein Administrator kann Konten auch mit `POST /v1/chat/identities` verknüpfen.
+
 ### Grenzen
 
 - **Die Wahl gilt für Push, nicht für die Desktop-App.** SubKit Desktop liest die Liste direkt und richtet sich nach den Ruhezeiten, die du in der App einstellst. Mehr in „SubKit Desktop“.

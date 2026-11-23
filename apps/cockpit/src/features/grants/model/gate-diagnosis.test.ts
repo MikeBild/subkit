@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { components } from "@cli-core/engine-api/openapi";
-import { diagnosisFix, diagnosisRepairable } from "@/features/grants/model/gate-diagnosis";
+import {
+  diagnosisFix,
+  diagnosisRepairable,
+  reconnectLink,
+} from "@/features/grants/model/gate-diagnosis";
 
 type GateDiagnosis = components["schemas"]["GateDiagnosis"];
 
@@ -55,5 +59,41 @@ describe("the fix a blocked step offers", () => {
   test("a trial run needs a version to run", () => {
     const entry = block("load", { remedy_kind: "prepare" });
     expect(diagnosisFix(entry, { is_current: true, workflow_version_id: null }, all)).toBeNull();
+  });
+});
+
+describe("a connector that blocks a step", () => {
+  const CONNECTOR = "6c1e2a90-3b4d-4f5e-8a6b-0c9d8e7f6a5b";
+  const gap = (reason: "credential_unavailable" | "needs_reauth" | "disabled") =>
+    block("fetch_beta_group", {
+      code: "connector_unavailable",
+      remedy_kind: "reconnect",
+      evidence: {
+        connector: {
+          connector_id: CONNECTOR,
+          connector_slug: "app-store-connect",
+          connector_name: "App Store Connect",
+          environment: "prod",
+          reason,
+        },
+      },
+      reconnect: { connector_id: CONNECTOR, environment: "prod", section: "credentials" },
+    });
+
+  test("opens that connector's credentials instead of a chat", () => {
+    expect(diagnosisFix(gap("credential_unavailable"), diagnosis([]), all)).toBe("reconnect");
+    expect(reconnectLink(gap("credential_unavailable"))).toEqual({
+      labelKey: "connectorStrip.action.enterCredentials",
+      href: `/connectors/${CONNECTOR}#connector-credentials`,
+      connectorId: CONNECTOR,
+    });
+    expect(reconnectLink(gap("needs_reauth"))?.labelKey).toBe("remedy.reconnect");
+    expect(reconnectLink(gap("disabled"))?.labelKey).toBe("run.openConnector");
+  });
+
+  test("an old diagnosis without a target keeps the chat", () => {
+    const old = block("send", { code: "connector_unavailable", remedy_kind: "reconnect" });
+    expect(reconnectLink(old)).toBeNull();
+    expect(diagnosisFix(old, diagnosis([old]), all)).toBe("chat");
   });
 });

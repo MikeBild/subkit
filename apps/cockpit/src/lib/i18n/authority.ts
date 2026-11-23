@@ -202,6 +202,8 @@ export const authorityEn = {
     "{name} may only be: {values}. Shown exactly as sent; decoded this reads: {decoded}.",
   "authority.boundary.class.identifier":
     "{name} may be any identifier made of letters, digits, “_” and “-” (up to 200 characters).",
+  "authority.boundary.class.long_identifier":
+    "{name} may be any long identifier made of letters, digits, “_” and “-” (up to 1,024 characters), such as an attachment ID.",
   "authority.boundary.class.uuid": "{name} may be any UUID.",
   "authority.boundary.callerBound": "{name} is always the signed-in caller's own identity.",
   "authority.boundary.class.integer":
@@ -630,6 +632,8 @@ export const authorityDe: Record<keyof typeof authorityEn, string> = {
     "{name} darf nur sein: {values}. Genau so wird es gesendet; entschlüsselt heißt das: {decoded}.",
   "authority.boundary.class.identifier":
     "{name} darf jede Kennung aus Buchstaben, Ziffern, „_“ und „-“ sein (bis 200 Zeichen).",
+  "authority.boundary.class.long_identifier":
+    "{name} darf jede lange Kennung aus Buchstaben, Ziffern, „_“ und „-“ sein (bis 1.024 Zeichen), etwa eine Anhang-ID.",
   "authority.boundary.class.uuid": "{name} darf jede UUID sein.",
   "authority.boundary.callerBound":
     "{name} ist immer die eigene Identität der angemeldeten Person.",

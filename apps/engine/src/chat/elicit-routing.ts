@@ -1,6 +1,9 @@
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
-import { humanChatAnswer } from "../conversations/public/authoring.ts";
+import {
+  completeApprovalBackedElicitation,
+  humanChatAnswer,
+} from "../conversations/public/authoring.ts";
 import {
   ConversationNotFoundError,
   deviceConfirmationPort,
@@ -12,7 +15,9 @@ import {
 } from "../conversations/public/elicitation.ts";
 import {
   assertTaskRunWriter,
+  inTaskRunApprovalTrace,
   registerConversationAbort,
+  taskRunApprovalRefusal,
   unregisterConversationAbort,
 } from "../conversations/public/lifecycle.ts";
 import type { Db } from "../db/client.ts";
@@ -27,6 +32,8 @@ import type { DispatchOutcome } from "./dispatcher-types.ts";
 import { resolveChatPrincipal } from "./principal.ts";
 import { withConversationTurnLock } from "./turn-lock.ts";
 import type { ChatEvent, ElicitationKind } from "./types.ts";
+
+export { completeApprovalBackedElicitation, inTaskRunApprovalTrace, taskRunApprovalRefusal };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

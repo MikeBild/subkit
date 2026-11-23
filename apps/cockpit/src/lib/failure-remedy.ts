@@ -3,7 +3,7 @@ import type { RemedyKind } from "@/lib/remedy";
 
 export type FailureRemedyKind = Extract<
   RemedyKind,
-  "retry" | "sign_in" | "reconnect" | "grant" | "chat" | "admin"
+  "retry" | "sign_in" | "reconnect" | "grant" | "chat" | "admin" | "new_conversation"
 >;
 
 export interface ErrorFacts {
@@ -75,6 +75,7 @@ const BY_CODE: Record<string, FailureRemedyKind | null> = {
   llm_key_rejected: "admin",
   llm_access_not_stored: "admin",
   ai_access_missing: "admin",
+  llm_context_too_large: "new_conversation",
   rate_limit_exceeded: "retry",
   rate_limited: "retry",
   llm_provider_limited: "retry",

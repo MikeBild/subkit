@@ -1,8 +1,10 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
+import { createPrivateKey, createPublicKey } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { verifyBrowserSession } from "../../../auth/browser-session.ts";
 import { desktopLoginCodes, sessions, users } from "../../../db/schema/index.ts";
 import { provisionSelfServiceTenant } from "../../../identity/index.ts";
+import { logger } from "../../../logging/index.ts";
 import { builtinRoleId } from "../../../rbac/roles.ts";
 import { TEST_WORKSPACE_REGISTRATION } from "../../../test-helpers/workspace-registration.ts";
 import { ctx, login, mock, setupBrowserMemberships } from "../../tests/memberships-fixtures.ts";
@@ -204,4 +206,68 @@ describe("desktop device session after a hosted OIDC sign-in", () => {
     expect(response.status).toBe(409);
     expect(((await response.json()) as { code: string }).code).toBe("tenant_context_changed");
   });
+
+  test("the event stream and runner enrollment from a device stay free of tenant-context noise", async () => {
+    const device = await signInDesktop("desktop-quiet-routes");
+    const warn = spyOn(logger, "warn");
+    try {
+      const controller = new AbortController();
+      const stream = await fetch(`${device.api}/v1/cockpit/events/stream`, {
+        headers: {
+          cookie: device.cookie,
+          accept: "text/event-stream",
+          "sec-fetch-mode": "no-cors",
+        },
+        signal: controller.signal,
+      });
+      expect(stream.status).toBe(200);
+      controller.abort();
+      const enroll = await fetch(`${device.api}/v1/devices/runner/enroll`, {
+        method: "POST",
+        headers: {
+          cookie: device.cookie,
+          accept: "application/json",
+          "content-type": "application/json",
+          "sec-fetch-mode": "no-cors",
+        },
+        body: JSON.stringify({ public_key: RUNNER_PUBLIC_KEY, runner_version: "12.1.6" }),
+      });
+      expect(enroll.status).not.toBe(409);
+      const actions = warn.mock.calls.map((call) => (call[0] as { action?: string }).action);
+      expect(actions).not.toContain("browser_tenant.context_changed");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("a plain browser session on the same routes still needs its workspace header", async () => {
+    const owner = await login("desktop-plain-browser");
+    const enroll = await fetch(`${ctx.baseUrl}/v1/devices/runner/enroll`, {
+      method: "POST",
+      headers: {
+        cookie: owner.cookie,
+        accept: "application/json",
+        "content-type": "application/json",
+        "x-subkit-csrf": owner.csrf,
+        "sec-fetch-site": "same-origin",
+        "sec-fetch-mode": "cors",
+      },
+      body: JSON.stringify({ public_key: RUNNER_PUBLIC_KEY }),
+    });
+    expect(enroll.status).toBe(409);
+    const stream = await fetch(`${ctx.baseUrl}/v1/cockpit/events/stream`, {
+      headers: { cookie: owner.cookie, accept: "text/event-stream", "sec-fetch-mode": "cors" },
+    });
+    expect(stream.status).toBe(409);
+  });
 });
+
+const RUNNER_PUBLIC_KEY = createPublicKey(
+  createPrivateKey({
+    key: Buffer.from(`302e020100300506032b657004220420${"11".repeat(32)}`, "hex"),
+    format: "der",
+    type: "pkcs8",
+  }),
+)
+  .export({ type: "spki", format: "pem" })
+  .toString();

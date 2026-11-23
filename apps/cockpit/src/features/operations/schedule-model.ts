@@ -15,7 +15,43 @@ export interface Occurrence {
   reasonCode: string | null;
   covers: number;
   runId: string | null;
+  executionId: string | null;
   outcome: RunOutcome | null;
+}
+
+export interface LiveRunStep {
+  stepKey: string;
+  attempt: number;
+  startedAt: string | null;
+}
+
+export interface LiveRunStepSource {
+  step_key: string;
+  step_index: number | null;
+  status: string;
+  retry_count: number;
+  started_at: string | null;
+}
+
+export function liveRunStep(steps: readonly LiveRunStepSource[]): LiveRunStep | null {
+  const ordered = [...steps].sort(
+    (a, b) =>
+      (a.started_at ?? "").localeCompare(b.started_at ?? "") ||
+      (a.step_index ?? 0) - (b.step_index ?? 0),
+  );
+  const running = ordered.filter((step) => step.status === "running").at(-1);
+  if (!running) return null;
+  return {
+    stepKey: running.step_key,
+    attempt: running.retry_count + 1,
+    startedAt: running.started_at,
+  };
+}
+
+export function isLiveOccurrence(
+  occurrence: Pick<Occurrence, "outcome" | "executionId">,
+): occurrence is Occurrence & { executionId: string } {
+  return occurrence.outcome === "running" && occurrence.executionId !== null;
 }
 
 const OCC_STATE: Record<ApiOccurrence["state"], OccState> = {
@@ -54,6 +90,7 @@ export function toOccurrence(
     reasonCode: occurrence.reason_code,
     covers,
     runId: occurrence.execution_id ?? occurrence.task_run_id ?? null,
+    executionId: occurrence.execution_id ?? null,
     outcome: occurrence.run_outcome ?? null,
   };
 }

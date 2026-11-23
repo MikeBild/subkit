@@ -32,6 +32,17 @@ const NETWORK_PATTERNS = [
   "too many tokens",
 ] as const;
 
+const EXHAUSTED_PATTERNS = [
+  "context_length",
+  "too many tokens",
+  "maximum context length",
+  "prompt is too long",
+  "maximum allowed number of output tokens",
+  "max_tokens is too large",
+  "max_output_tokens",
+  "output token limit",
+] as const;
+
 const KEY_REJECTED_STATUSES: ReadonlySet<number> = new Set([401, 403]);
 
 interface ErrorShape {
@@ -64,7 +75,7 @@ export function classifyProviderError(err: unknown): SubkitProviderErrorKind {
   const { statusCode, message } = readErrorParts(err);
   if (statusCode !== null && KEY_REJECTED_STATUSES.has(statusCode)) return "key_rejected";
 
-  if (message.includes("context_length") || message.includes("too many tokens")) {
+  if (EXHAUSTED_PATTERNS.some((pattern) => message.includes(pattern))) {
     return "context_length_exceeded";
   }
   if (QUOTA_PATTERNS.some((pattern) => message.includes(pattern))) {

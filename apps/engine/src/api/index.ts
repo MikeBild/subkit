@@ -570,6 +570,7 @@ export { serializeOne, WorkflowDetailSchema } from "./operations/workflow-repres
 export {
   createScheduleOperation,
   deleteScheduleOperation,
+  getScheduleCostOperation,
   listSchedulesOperation,
   updateScheduleOperation,
 } from "./operations/workflow-schedules.ts";

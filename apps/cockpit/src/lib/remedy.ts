@@ -9,7 +9,8 @@ export type RemedyKind =
   | "check_auth"
   | "retry"
   | "chat"
-  | "admin";
+  | "admin"
+  | "new_conversation";
 
 export const REMEDY_LABEL = {
   review_repair: "remedy.reviewRepair",
@@ -20,6 +21,7 @@ export const REMEDY_LABEL = {
   retry: "remedy.retry",
   chat: "remedy.chat",
   admin: "remedy.admin",
+  new_conversation: "chat.new",
 } as const satisfies Record<RemedyKind, TranslationKey>;
 
 export interface Remedy {
@@ -90,4 +92,23 @@ export function remedyFor(input: RemedyInput): Remedy | null {
     };
   }
   return null;
+}
+
+const MODEL_LIMIT_CODES: ReadonlySet<string> = new Set(["llm_context_too_large"]);
+
+export function modelLimitExhausted(code: string | null | undefined): boolean {
+  return code ? MODEL_LIMIT_CODES.has(code) : false;
+}
+
+export function reportsFault(code: string | null | undefined): boolean {
+  return !modelLimitExhausted(code);
+}
+
+export function expectedFailureRemedy(code: string | null | undefined): Remedy | null {
+  if (!modelLimitExhausted(code)) return null;
+  return {
+    kind: "new_conversation",
+    labelKey: REMEDY_LABEL.new_conversation,
+    href: chatNewHref(),
+  };
 }

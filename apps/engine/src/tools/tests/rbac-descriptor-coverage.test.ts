@@ -31,16 +31,11 @@ const UNGATED_BY_DESIGN: Readonly<Record<string, readonly string[]>> = {
     "create_schedule",
     "delete_schedule",
     "dry_run_patch_candidate",
-    "find_role",
-    "find_skill",
-    "find_user",
-    "find_workflow",
     "get_discovery_artifact",
     "get_inbound_hook",
     "get_llm_usage",
     "get_patch_candidate",
     "get_raw_result",
-    "get_role",
     "get_skill_candidate",
     "get_subscription",
     "get_ai_budget",
@@ -52,7 +47,6 @@ const UNGATED_BY_DESIGN: Readonly<Record<string, readonly string[]>> = {
     "list_executions",
     "list_inbound_hooks",
     "list_patch_candidates",
-    "list_roles",
     "list_skill_candidates",
     "list_skill_suggestions",
     "list_subscriptions",
@@ -113,10 +107,10 @@ describe("MCP RBAC descriptor coverage", () => {
     const knownGap = UNGATED_BY_DESIGN["known gap — needs a permission"] ?? [];
 
     expect(byDesign.length, "deliberate exemptions").toBe(18);
-    expect(knownGap.length, "known gaps still needing a permission").toBe(36);
-    expect(ALLOWED.size, "the list has no duplicates across groups").toBe(54);
-    expect(ungatedIn("admin").length, "admin catalog, ungated").toBe(54);
-    expect(ungatedIn("product").length, "product catalog, ungated").toBe(36);
+    expect(knownGap.length, "known gaps still needing a permission").toBe(30);
+    expect(ALLOWED.size, "the list has no duplicates across groups").toBe(48);
+    expect(ungatedIn("admin").length, "admin catalog, ungated").toBe(48);
+    expect(ungatedIn("product").length, "product catalog, ungated").toBe(30);
   });
 
   test("the audit trail is gated on MCP exactly as it is over HTTP", () => {

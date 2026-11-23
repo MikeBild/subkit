@@ -1,6 +1,7 @@
 import { IconButton } from "@ui/molecules/icon-button";
 import { BookOpen, PanelRight } from "lucide-react";
 import { ApiError } from "@/api/client";
+import { absolute } from "@/app/links";
 import { ActionMenu, Button, StatusBadge, StatusStrip } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
 import type { ChatTurn } from "../hooks/turn";
@@ -84,8 +85,16 @@ export function TurnErrors({
   questionOpen: boolean;
 }) {
   const { t } = useI18n();
-  const { send, sendError, turnFailure, failureCauseText, turnFailureMessage, retryTurn, decide } =
-    turn;
+  const {
+    send,
+    sendError,
+    turnFailure,
+    failureCauseText,
+    failureRemedy,
+    turnFailureMessage,
+    retryTurn,
+    decide,
+  } = turn;
   const secret = sendError instanceof ApiError && sendError.code === "pending_elicitation_secret";
   const blocked =
     secret || (sendError instanceof ApiError && sendError.code === "pending_elicitation_blocked");
@@ -117,7 +126,11 @@ export function TurnErrors({
                     .join(" ")
             }
             action={
-              blocked ? undefined : (
+              blocked ? undefined : failureRemedy ? (
+                <Button asChild variant="outline" data-testid="chat-error-remedy">
+                  <a href={absolute(failureRemedy.href)}>{t(failureRemedy.labelKey)}</a>
+                </Button>
+              ) : (
                 <Button
                   variant="outline"
                   disabled={busy}

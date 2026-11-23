@@ -39,6 +39,8 @@ function render(
   );
 }
 
+const text = (html: string) => html.replaceAll(/<\/?strong[^>]*>/g, "");
+
 const approval: ChatApproval = {
   id: "approval",
   toolCallId: "call",
@@ -113,13 +115,13 @@ test("a gated connector call names connector, method and target in the reader's 
     target: "https://api.example/v1/reports",
   };
   const german = render({ ...gated, connectorCall }, "de");
-  expect(german).toContain("Reporting API aufrufen: PATCH https://api.example/v1/reports");
-  expect(render({ ...gated, connectorCall }, "en")).toContain(
+  expect(text(german)).toContain("Reporting API aufrufen: PATCH https://api.example/v1/reports");
+  expect(text(render({ ...gated, connectorCall }, "en"))).toContain(
     "Call Reporting API: PATCH https://api.example/v1/reports",
   );
-  expect(render({ ...gated, connectorCall: { ...connectorCall, target: null } }, "de")).toContain(
-    "Reporting API aufrufen: PATCH",
-  );
+  expect(
+    text(render({ ...gated, connectorCall: { ...connectorCall, target: null } }, "de")),
+  ).toContain("Reporting API aufrufen: PATCH");
   for (const html of [german, render({ ...gated, gatedTool: "call_connector" }, "de")]) {
     expect(html).not.toContain("call_connector");
     expect(html).not.toContain("Policy requires");
@@ -306,4 +308,28 @@ test("a workflow patch offers each change on its own, then Accept or Accept and 
   expect(html.match(/data-testid="approval-decline"/g)?.length).toBe(1);
   expect(html).not.toContain("approval-approve");
   expect(html).not.toContain("approval-test-first");
+});
+
+test("the question line bolds the structured values to check, never model markup", () => {
+  const html = render(
+    {
+      ...approval,
+      externalTool: undefined,
+      connectorCall: { connector: "Billing", method: "POST", target: "<b>/invoices</b> **42**" },
+      transferBytes: 2048,
+    },
+    "en",
+  );
+  expect(html).toContain('<strong class="font-semibold">Billing</strong>');
+  expect(html).toContain(
+    '<strong class="font-semibold">&lt;b&gt;/invoices&lt;/b&gt; **42**</strong>',
+  );
+  expect(html).toContain('<strong class="font-semibold">2 KB</strong>');
+  expect(html).not.toContain("<b>");
+  const question = render(
+    { ...approval, externalTool: undefined, question: "Send **all** <i>money</i>?" },
+    "en",
+  );
+  expect(question).toContain("Send **all** &lt;i&gt;money&lt;/i&gt;?");
+  expect(question).not.toContain("<strong");
 });

@@ -1,3 +1,4 @@
+import { stripPropertyNames } from "@shared/json-schema.ts";
 import { asSchema, type FlexibleSchema, type JSONSchema7, jsonSchema } from "ai";
 
 const SELF_DESCRIBING_FORMATS = new Set([
@@ -49,7 +50,7 @@ export async function compatibleToolPalette<T extends { inputSchema: unknown }>(
       compatible[name] = {
         ...entry,
         inputSchema: jsonSchema(
-          compactToolJsonSchema(schema) as JSONSchema7,
+          stripPropertyNames(compactToolJsonSchema(schema)) as JSONSchema7,
           original.validate ? { validate: original.validate } : {},
         ),
       };

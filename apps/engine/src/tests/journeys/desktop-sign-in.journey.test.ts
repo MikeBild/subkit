@@ -8,7 +8,6 @@ import {
   summarize,
 } from "../../../../../packages/shared/src/offline-queue.ts";
 import { parsePause, pauseToggle, trayMute } from "../../../../desktop/src/shared/pause-model.ts";
-import { createPkcePair, createState, sameState } from "../../../../desktop/src/shared/pkce.ts";
 import {
   ATTENTION_PATH,
   apiUrl,
@@ -16,9 +15,7 @@ import {
   DESCRIPTOR_PATH,
   type DesktopSession,
   LOGIN_CALLBACK,
-  loginStartUrl,
   parseDescriptor,
-  parseDesktopSession,
   type ServiceDescriptor,
 } from "../../../../desktop/src/shared/server-contract.ts";
 import {
@@ -26,6 +23,7 @@ import {
   CSRF_HEADER,
   parseCsrfToken,
 } from "../../../../desktop/src/shared/workspace-requests.ts";
+import { type Browser, createBrowser, signInDevice, uuidFrom } from "./desktop-login.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 const APP_VERSION = "11.2.0";
@@ -38,77 +36,16 @@ let deviceId = "";
 let session: DesktopSession;
 let deviceCookie = "";
 let deviceCsrf = "";
-const browserJar = new Map<string, string>();
+let browserClient: Browser;
 
 beforeAll(async () => {
   ctx = await createJourneyCtx("desktop-sign-in");
+  browserClient = createBrowser(ctx);
 }, JOURNEY_HOOK_TIMEOUT);
 
 afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
 }, JOURNEY_HOOK_TIMEOUT);
-
-function cookieHeader(jar: Map<string, string>): string {
-  return [...jar].map(([name, value]) => `${name}=${value}`).join("; ");
-}
-
-function keep(jar: Map<string, string>, res: Response): void {
-  for (const line of res.headers.getSetCookie()) {
-    const pair = line.split(";")[0] ?? "";
-    const at = pair.indexOf("=");
-    if (at > 0) jar.set(pair.slice(0, at), pair.slice(at + 1));
-  }
-}
-
-async function browser(url: string, init: RequestInit = {}): Promise<Response> {
-  const headers = new Headers(init.headers);
-  if (!headers.has("accept")) headers.set("accept", "text/html");
-  if (browserJar.size) headers.set("cookie", cookieHeader(browserJar));
-  const res = await fetch(new URL(url, ctx.baseUrl), { ...init, headers, redirect: "manual" });
-  keep(browserJar, res);
-  return res;
-}
-
-function decodeAmp(value: string): string {
-  return value.replaceAll("&amp;", "&");
-}
-
-async function walkBrowser(startUrl: string): Promise<URL> {
-  let res = await browser(startUrl);
-  for (let hop = 0; hop < 12; hop++) {
-    const location = res.headers.get("location");
-    if (location?.startsWith(LOGIN_CALLBACK)) return new URL(location);
-    if (location) {
-      res = await browser(location);
-      continue;
-    }
-    const html = await res.text();
-    const form = html.match(/<form[^>]*action="([^"]*)"[^>]*>([\s\S]*?)<\/form>/);
-    const provider = html.match(/href="([^"]*provider=api-key[^"]*)"/)?.[1];
-    if (!form && provider) {
-      res = await browser(decodeAmp(provider));
-      continue;
-    }
-    if (!form) throw new Error(`browser step without a form (status ${res.status})`);
-    const fields = new URLSearchParams();
-    for (const tag of form[2]?.match(/<input[^>]*>/g) ?? []) {
-      const name = tag.match(/name="([^"]+)"/)?.[1];
-      if (name) fields.set(name, decodeAmp(tag.match(/value="([^"]*)"/)?.[1] ?? ""));
-    }
-    if (fields.has("api_key")) fields.set("api_key", ctx.apiKey);
-    const buttons = [
-      ...(form[2] ?? "").matchAll(/<button[^>]*name="([^"]+)"[^>]*value="([^"]+)"/g),
-    ];
-    const approve = buttons.find((b) => /approve|allow|confirm|accept/i.test(b[2] ?? ""));
-    if (approve?.[1] && approve[2]) fields.set(approve[1], approve[2]);
-    res = await browser(decodeAmp(form[1] ?? "") || startUrl, {
-      method: "POST",
-      body: fields,
-      headers: { origin: ctx.baseUrl, "content-type": "application/x-www-form-urlencoded" },
-    });
-  }
-  throw new Error("the browser never reached the app callback");
-}
 
 function deviceFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
@@ -130,11 +67,6 @@ async function auditActions(action: string): Promise<string[]> {
   return body.items.map((item) => item.action).filter((name) => name === action);
 }
 
-function uuidFrom(bytes: Uint8Array): string {
-  const hex = Buffer.from(bytes).toString("hex");
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
-}
-
 describe("the desktop app signs in through the browser and the person works with it", () => {
   test("the server tells the app how to sign in", async () => {
     const res = await fetch(`${ctx.baseUrl}${DESCRIPTOR_PATH}`);
@@ -146,41 +78,23 @@ describe("the desktop app signs in through the browser and the person works with
   });
 
   test("the browser sign-in hands the app a code for its own state and the app becomes a registered device", async () => {
-    const desktop = descriptor.desktop;
-    if (!desktop) throw new Error("descriptor names no desktop client");
-    const pkce = createPkcePair(ctx.random.bytes(32));
-    const state = createState(ctx.random.bytes(24));
     deviceId = uuidFrom(ctx.random.bytes(16));
-    const start = loginStartUrl(ctx.baseUrl, desktop.login, {
-      challenge: pkce.challenge,
-      state,
-      deviceId,
-      deviceLabel: DEVICE_LABEL,
-      callback: LOGIN_CALLBACK,
+    const signed = await signInDevice(ctx, browserClient, descriptor, {
+      id: deviceId,
+      label: DEVICE_LABEL,
       appVersion: APP_VERSION,
     });
-    const callback = await walkBrowser(start);
-    const code = callback.searchParams.get("code");
-    expect(code).toBeTruthy();
-    expect(sameState(state, callback.searchParams.get("state") ?? "")).toBe(true);
-
-    const exchanged = await fetch(`${ctx.baseUrl}${desktop.login.session}`, {
-      method: "POST",
-      headers: { "content-type": "application/json", "sec-fetch-site": "none" },
-      body: JSON.stringify({ code, code_verifier: pkce.verifier, state, app_version: APP_VERSION }),
-    });
-    expect(exchanged.status).toBe(200);
-    const parsed = parseDesktopSession(await exchanged.json());
-    expect(parsed).not.toBeNull();
-    session = parsed as DesktopSession;
-    const jar = new Map<string, string>();
-    keep(jar, exchanged);
-    deviceCookie = cookieHeader(jar);
+    expect(signed.callback.searchParams.get("code")).toBeTruthy();
+    expect(signed.stateMatches).toBe(true);
+    expect(signed.status).toBe(200);
+    expect(signed.session).not.toBeNull();
+    session = signed.session as DesktopSession;
+    deviceCookie = signed.cookie;
     expect(deviceCookie).not.toBe("");
   });
 
   test("the device is listed as the person's installation and its sign-in is audited", async () => {
-    const list = await browser("/v1/cockpit/installations", {
+    const list = await browserClient.request("/v1/cockpit/installations", {
       headers: { accept: "application/json" },
     });
     expect(list.status).toBe(200);
@@ -305,17 +219,22 @@ describe("the desktop app signs in through the browser and the person works with
   });
 
   test("revoking the device ends its session", async () => {
-    const boot = await browser(BOOTSTRAP_PATH, { headers: { accept: "application/json" } });
-    const csrf = parseCsrfToken(await boot.json());
-    const revoke = await browser(`/v1/cockpit/installations/${session.installationId}`, {
-      method: "DELETE",
-      headers: {
-        accept: "application/json",
-        origin: ctx.baseUrl,
-        "sec-fetch-site": "same-origin",
-        [CSRF_HEADER]: csrf ?? "",
-      },
+    const boot = await browserClient.request(BOOTSTRAP_PATH, {
+      headers: { accept: "application/json" },
     });
+    const csrf = parseCsrfToken(await boot.json());
+    const revoke = await browserClient.request(
+      `/v1/cockpit/installations/${session.installationId}`,
+      {
+        method: "DELETE",
+        headers: {
+          accept: "application/json",
+          origin: ctx.baseUrl,
+          "sec-fetch-site": "same-origin",
+          [CSRF_HEADER]: csrf ?? "",
+        },
+      },
+    );
     expect(revoke.ok).toBe(true);
 
     const refused = await deviceFetch(ATTENTION_PATH);

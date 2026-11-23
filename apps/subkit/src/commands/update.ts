@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import {
   CLI_BINARY,
   defaultUpdaterConfig,
@@ -17,6 +18,7 @@ import { defineCommand } from "citty";
 import { z } from "zod";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
+import { migrateLegacyAgentHookFiles } from "./agent-hook-config.ts";
 
 const RollbackTargetSchema = z
   .string()
@@ -146,6 +148,15 @@ async function install(config: UpdaterConfig, info: UpdateInfo): Promise<void> {
   say(`updating ${VERSION} → ${info.version}...`);
   await performUpdate(config, info);
   say(`updated to ${info.version}.`);
+  for (const path of migrateAgentHooks()) say(`migrated \`sk agent\` hooks in ${path}`);
+}
+
+export function migrateAgentHooks(home: string = process.env.HOME || homedir()): string[] {
+  try {
+    return migrateLegacyAgentHookFiles(home);
+  } catch {
+    return [];
+  }
 }
 
 function runRollback(config: UpdaterConfig, target: string | "previous"): void {

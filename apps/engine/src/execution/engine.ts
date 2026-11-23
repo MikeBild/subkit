@@ -23,7 +23,7 @@ import { resolveFinalOutput } from "./run/output.ts";
 import { planRun } from "./run/plan.ts";
 import { prepareRun, type RunExecutionParams } from "./run/prepare.ts";
 import { runStepLoop } from "./run/step-loop.ts";
-import { isSensitivePayload } from "./sensitive-payload.ts";
+import { isSensitivePayload, sensitiveRunError } from "./sensitive-payload.ts";
 import { finalizeExecution } from "./state.ts";
 import { MAX_CALL_DEPTH } from "./timeouts.ts";
 import type { RunResult, StepResult, StepRunContext } from "./types.ts";
@@ -118,19 +118,7 @@ async function runProtectedExecution(p: RunExecutionParams): Promise<RunResult> 
         },
       ).catch(() => undefined);
     }
-    if (p.options?.execution_privacy === "sensitive") {
-      const code = (error as { code?: string }).code;
-      throw Object.assign(new Error("Sensitive execution could not be resumed or run."), {
-        code: [
-          "sensitive_resume_forbidden",
-          "sensitive_execution_unsupported",
-          "execution_boundary_mismatch",
-          "input_schema_violation",
-        ].includes(code ?? "")
-          ? code
-          : "sensitive_execution_failure",
-      });
-    }
+    if (p.options?.execution_privacy === "sensitive") throw sensitiveRunError(error);
     throw error;
   }
 }

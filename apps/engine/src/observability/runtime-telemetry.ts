@@ -79,7 +79,7 @@ function finishOk(opts: InstrumentOptions, durationMs: number, rssBefore: number
   });
 }
 
-const LOCK_NOT_AVAILABLE = "55P03";
+const EXPECTED_SQLSTATES = new Set(["55P03", "23505"]);
 
 function finishErr(
   opts: InstrumentOptions,
@@ -122,7 +122,7 @@ function finishErr(
       fields.rss_mb = toMb(rssNow);
       fields.rss_delta_mb = toMb(rssNow - rssBefore);
     }
-    (fields.sqlstate === LOCK_NOT_AVAILABLE ? logger.debug : logger.warn)(fields);
+    (EXPECTED_SQLSTATES.has(String(fields.sqlstate)) ? logger.debug : logger.warn)(fields);
   });
 }
 

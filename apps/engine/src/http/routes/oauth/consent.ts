@@ -273,9 +273,10 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
       .sort((a, b) => scopeOrder.indexOf(a) - scopeOrder.indexOf(b));
 
     const requestedSet = new Set(requestedScope.split(" ").filter(Boolean));
-    const explicitlyRequested = new Set((scopeParam ?? "").split(" ").filter(Boolean));
     const preChecked = offeredScopes.filter((s) =>
-      s === METRICS_SCOPE ? explicitlyRequested.has(s) : requestedSet.has(s) || s === "mcp:read",
+      s === METRICS_SCOPE
+        ? requestedSet.size === 1 && requestedSet.has(s)
+        : requestedSet.has(s) || s === "mcp:read",
     );
 
     const hasEntitlement =

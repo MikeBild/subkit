@@ -42,7 +42,8 @@ export type DebugRecordKind =
   | "settings.schema_fallback"
   | "session.append_failed"
   | "agent.briefing_hook_failed"
-  | "agent.capture_hook_failed";
+  | "agent.capture_hook_failed"
+  | "agent.legacy_hook_migration_failed";
 
 export interface DebugCorrelationFields {
   mode?: DebugMode;

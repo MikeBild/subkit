@@ -75,3 +75,27 @@ export function isCronDue(cron: string, lastFiredAt: Date | null, now: Date, tz?
   const next = nextCronOccurrence(trimmed, lastFiredAt, tz);
   return next !== null && now.getTime() >= next.getTime();
 }
+
+export function cronOccurrencesWithin(
+  cron: string,
+  from: Date,
+  to: Date,
+  tz: string | undefined,
+  cap: number,
+): Date[] {
+  const trimmed = cron.trim();
+  if (trimmed.startsWith(EVERY_PREFIX)) return [];
+  const found: Date[] = [];
+  try {
+    const iterator = CronExpressionParser.parse(trimmed, {
+      currentDate: from,
+      endDate: to,
+      strict: false,
+      ...(tz ? { tz } : {}),
+    });
+    while (found.length < cap && iterator.hasNext()) found.push(iterator.next().toDate());
+  } catch {
+    return found;
+  }
+  return found;
+}

@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { INVALID_TIMEZONE } from "@shared/error-taxonomy.ts";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { Db } from "../../db/client.ts";
@@ -8,14 +9,17 @@ import {
   getSchedule,
   listSchedules,
   type ScheduleRow,
+  scheduleCostProjection,
   updateSchedule,
-} from "../../scheduler/repo.ts";
+} from "../../scheduler/index.ts";
 import { getWorkflow } from "../../workflows/service.ts";
 import type { WorkflowView } from "../../workflows/view.ts";
 import { IdParam } from "../common-schemas.ts";
 import { defineOperation, type Rejection, reject } from "./index.ts";
 import { automationReadinessFor } from "./workflow-automation-readiness.ts";
 import {
+  ScheduleCostProjectionSchema,
+  ScheduleCostQuery,
   ScheduleCreateBody,
   ScheduleDeleteResponse,
   ScheduleListResponse,
@@ -39,7 +43,14 @@ const preparedVersionId = (
     ? wf.draft_version_id
     : null;
 
-function scheduleEntry(row: ScheduleRow, wf: WorkflowView | null | undefined, held: boolean) {
+type CostProjection = z.infer<typeof ScheduleCostProjectionSchema>;
+
+function scheduleEntry(
+  row: ScheduleRow,
+  wf: WorkflowView | null | undefined,
+  held: boolean,
+  cost_projection: CostProjection,
+) {
   return {
     id: row.id,
     workflow_id: row.workflow_id,
@@ -63,18 +74,30 @@ function scheduleEntry(row: ScheduleRow, wf: WorkflowView | null | undefined, he
         : null,
     input: row.input ?? null,
     created_at: row.created_at.toISOString(),
+    cost_projection,
   };
 }
 
 async function serializeSchedule(db: Db, tenant_id: string, row: ScheduleRow) {
-  const wf = await getWorkflow(tenant_id, row.workflow_id, db);
-  return scheduleEntry(row, wf, !(row.paused || !wf || wf.lifecycle === "archived"));
+  const [wf, cost] = await Promise.all([
+    getWorkflow(tenant_id, row.workflow_id, db),
+    scheduleCostProjection(db, tenant_id, row),
+  ]);
+  return scheduleEntry(row, wf, !(row.paused || !wf || wf.lifecycle === "archived"), cost);
 }
 
 function scheduleRejection(err: unknown): Rejection {
   const code = (err as { code?: string } | null)?.code;
   if (code === "invalid_cron") {
     return reject.badRequest(err instanceof Error ? err.message : "invalid cron");
+  }
+  if (code === INVALID_TIMEZONE) {
+    return reject.status(
+      400,
+      INVALID_TIMEZONE,
+      err instanceof Error ? err.message : "timezone is not a known IANA time zone",
+      { field: "timezone" },
+    );
   }
   if (code === "input_schema_violation") {
     const details = (err as { details?: unknown } | null)?.details;
@@ -118,12 +141,16 @@ export const listSchedulesOperation = defineOperation<
       ? await Promise.all(ids.map((id) => getWorkflow(scope.tenant_id, id, scope.db)))
       : [];
     const nameById = new Map(named.filter((w) => w !== null).map((w) => [w.id, w]));
+    const costs = await Promise.all(
+      rows.map((r) => scheduleCostProjection(scope.db, scope.tenant_id, r)),
+    );
     return {
-      schedules: rows.map((r) =>
+      schedules: rows.map((r, index) =>
         scheduleEntry(
           r,
           nameById.get(r.workflow_id),
           !(r.paused || !named.find((w) => w?.id === r.workflow_id && w.lifecycle !== "archived")),
+          costs[index] as CostProjection,
         ),
       ),
       total,
@@ -136,6 +163,40 @@ export const listSchedulesOperation = defineOperation<
     query: ListSchedulesQuery,
     response: ScheduleListResponse,
     toInput: ({ query }) => query as { workflow_id?: string },
+    toBody: (result) => result,
+  },
+});
+
+export const getScheduleCostOperation = defineOperation<
+  { id: string; cron: string; timezone?: string },
+  CostProjection
+>({
+  id: "schedules.cost",
+  summary: "Projected monthly model cost of a workflow at a given cron or interval",
+  permission: "workflow:read",
+  resource: { type: "workflow", param: "id" },
+  effect: "read",
+  async handler(scope, { id, cron, timezone }) {
+    const wf = await getWorkflow(scope.tenant_id, id, scope.db);
+    if (!wf) return reject.notFound("workflow");
+    return scheduleCostProjection(scope.db, scope.tenant_id, {
+      workflow_id: id,
+      cron,
+      timezone: timezone ?? "UTC",
+    });
+  },
+  http: {
+    method: "get",
+    path: "/v1/workflows/{id}/schedule-cost",
+    tags: ["workflows"],
+    params: IdParam,
+    query: ScheduleCostQuery,
+    response: ScheduleCostProjectionSchema,
+    errors: { 404: "Workflow not found" },
+    toInput: ({ param, query }) => ({
+      id: (param as { id: string }).id,
+      ...(query as { cron: string; timezone?: string }),
+    }),
     toBody: (result) => result,
   },
 });
@@ -212,7 +273,11 @@ export const createScheduleOperation = defineOperation<ScheduleCreate, ScheduleU
       { status: 201, description: "Schedule created" },
     ],
     statusFor: (result) => (result.created ? 201 : 200),
-    errors: { 400: "Invalid cron", 404: "Workflow not found", 409: "Workflow is archived" },
+    errors: {
+      400: "Invalid cron, or invalid_timezone when timezone is not a known IANA time zone",
+      404: "Workflow not found",
+      409: "Workflow is archived",
+    },
     toInput: ({ json }) => json as ScheduleCreate,
     toBody: (result) => result.body,
   },
@@ -284,7 +349,10 @@ export const updateScheduleOperation = defineOperation<
     params: IdParam,
     body: ScheduleUpdateBody,
     response: ScheduleWriteResponse,
-    errors: { 400: "Invalid cron", 404: "Schedule not found" },
+    errors: {
+      400: "Invalid cron, or invalid_timezone when timezone is not a known IANA time zone",
+      404: "Schedule not found",
+    },
     toInput: ({ param, json }) => ({
       id: (param as { id: string }).id,
       patch: json as ScheduleUpdate,

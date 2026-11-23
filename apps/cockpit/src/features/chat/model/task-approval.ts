@@ -41,15 +41,19 @@ export function withTaskName(
   return name === action.name ? action : { ...action, name };
 }
 
-export function taskActionLine(action: TaskWriteAction, t: Translate): string | null {
+export function taskActionLine(
+  action: TaskWriteAction,
+  t: Translate,
+  mark: (value: string) => string = (value) => value,
+): string | null {
   const task = action.name
-    ? t("chat.taskAction.task.named", { name: action.name })
+    ? t("chat.taskAction.task.named", { name: mark(action.name) })
     : t("chat.taskAction.task.unnamed");
   if (action.tool === "run_task") return t("chat.taskAction.run", { task });
   if (action.tool === "abort_task_run") return t("chat.taskAction.abort", { task });
   if (action.taskId) return t("chat.taskAction.update", { task });
   if (!action.name) return null;
   return t(action.scheduled ? "chat.taskAction.createScheduled" : "chat.taskAction.create", {
-    name: action.name,
+    name: mark(action.name),
   });
 }

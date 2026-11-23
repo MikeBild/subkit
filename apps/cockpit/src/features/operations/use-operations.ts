@@ -14,7 +14,7 @@ export interface OccurrenceView extends Occurrence {
 export function useScheduleOccurrences(subject: { kind: "workflow" | "task"; id: string }) {
   const { t, tn } = useI18n();
   const query = useInfiniteQuery({
-    queryKey: [subject.kind, subject.id, "schedule-occurrences"],
+    queryKey: ["schedule-occurrences", subject.kind, subject.id],
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }) =>
       apiCall(

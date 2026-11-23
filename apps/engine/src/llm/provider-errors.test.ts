@@ -88,6 +88,19 @@ describe("provider-errors", () => {
     expect(shouldFallBack(bad, "anthropic", "openai")).toBe(false);
   });
 
+  it("treats an exhausted context or output limit as one expected kind", () => {
+    for (const message of [
+      "This model's maximum context length is 128000 tokens",
+      "prompt is too long: 210000 tokens > 200000 maximum",
+      "max_tokens: 64001 > 64000, which is the maximum allowed number of output tokens",
+      "Invalid 'max_output_tokens': integer above the output token limit",
+    ]) {
+      expect(classifyProviderError(providerCallError(400, message))).toBe(
+        "context_length_exceeded",
+      );
+    }
+  });
+
   it("reads the kind a typed provider error already carries", () => {
     const typed = new LlmProviderError("context_length_exceeded", "mock: context too large");
     expect(classifyProviderError(typed)).toBe("context_length_exceeded");

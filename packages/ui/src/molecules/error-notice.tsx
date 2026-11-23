@@ -178,6 +178,7 @@ export function ErrorNotice({
   testId,
   layout,
   technical = true,
+  report = true,
   titleSlot = "error-notice-title",
 }: {
   kind: ErrorKind;
@@ -195,6 +196,7 @@ export function ErrorNotice({
   testId?: string | undefined;
   layout?: TechLayout | undefined;
   technical?: boolean | undefined;
+  report?: boolean | undefined;
   titleSlot?: string | undefined;
 }) {
   const c = useErrorCopy(kind);
@@ -258,6 +260,7 @@ export function ErrorNotice({
               testId={testId}
               layout={layout}
               title={typeof title === "string" ? title : undefined}
+              report={report}
             />
           ) : null}
         </div>

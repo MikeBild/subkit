@@ -10,7 +10,7 @@ import type {
   ExecutionStep,
 } from "../engine-client/executions.ts";
 import { EngineClient, type ExecutionCost } from "../engine-client.ts";
-import { executionOutcomeLine } from "../lib/execution-outcome.ts";
+import { executionOutcomeLine, recordLinkLines, stepLimitLine } from "../lib/execution-outcome.ts";
 import { heldRunBlock } from "../lib/held-run.ts";
 import { pickId } from "../lib/pick.ts";
 import { exitCodeForTerminalStatus, followExecution } from "../lib/tail-execution.ts";
@@ -204,11 +204,13 @@ const getCommand = defineCommand({
           printStepBottlenecks(steps);
           const outcomeLine = executionOutcomeLine(execution.outcome);
           if (outcomeLine) process.stderr.write(`\n${pc.dim("outcome:")} ${outcomeLine}\n`);
+          for (const line of recordLinkLines(execution.record_links))
+            process.stderr.write(`${pc.dim("record:")} ${line}\n`);
           const held = heldRunBlock(client, execution, steps);
           if (held) process.stderr.write(`\n${pc.bold(pc.yellow(held))}\n`);
           const uncertain = uncertainWriteBlock(id, execution, steps);
           if (uncertain) process.stderr.write(`\n${pc.bold(pc.yellow(uncertain))}\n`);
-          if (execution.status === "failed") {
+          if (execution.status === "failed" || execution.status === "timed_out") {
             printFailedStepErrors(steps);
           }
           await maybePrintOutputFiles(client, execution);
@@ -346,7 +348,9 @@ function printStepBottlenecks(steps: readonly ExecutionStep[]): void {
 }
 
 function printFailedStepErrors(steps: readonly ExecutionStep[]): void {
-  const failed = steps.filter((s) => s.status === "failed" && s.error);
+  const failed = steps.filter(
+    (s) => (s.status === "failed" || s.status === "timed_out") && s.error,
+  );
   if (failed.length === 0) return;
   process.stdout.write(`\n${pc.bold(pc.red("Failures:"))}\n`);
   for (const s of failed) {
@@ -357,6 +361,8 @@ function printFailedStepErrors(steps: readonly ExecutionStep[]): void {
     const resolvedUrl = stringField(s.error, "resolved_url");
     process.stdout.write(`  ${pc.red("●")} ${pc.bold(stepKey)} — ${pc.red(code)}: ${message}\n`);
     if (resolvedUrl) process.stdout.write(`      ${pc.dim(`url: ${resolvedUrl}`)}\n`);
+    const limit = stepLimitLine(s);
+    if (limit) process.stdout.write(`      ${pc.yellow(limit)}\n`);
     if (guidance) process.stdout.write(`      ${pc.yellow(guidance)}\n`);
   }
 }
@@ -509,6 +515,7 @@ export const executionsCommand = defineCommand({
   subCommands: {
     list: listCommand,
     get: getCommand,
+    show: getCommand,
     result: resultCommand,
     steps: stepsCommand,
     abort: abortCommand,

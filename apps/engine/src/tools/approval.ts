@@ -272,6 +272,7 @@ interface ApprovalDecisionInput {
   readonly tenant_id: string;
   readonly granted_by_user_id: string | null;
   readonly via: ApprovalGrantVia;
+  readonly origin?: Readonly<Record<string, string>>;
 }
 
 function decisionMetadata(p: {
@@ -279,8 +280,10 @@ function decisionMetadata(p: {
   surface: string | null;
   via: ApprovalGrantVia;
   decided_by_user_id: string | null;
+  origin?: Readonly<Record<string, string>> | undefined;
 }): Record<string, unknown> {
   return {
+    ...(p.origin ?? {}),
     ...(p.tool ? { tool: p.tool, canonical_tool: p.tool } : {}),
     ...(p.surface ? { request_source: p.surface } : {}),
     decided_via: p.via,
@@ -302,7 +305,7 @@ async function decideApproval(
   input: ApprovalDecisionInput,
   decision: "grant" | "decline",
 ): Promise<ApprovalDecisionResult> {
-  const { db, approval_id, tenant_id, granted_by_user_id, via } = input;
+  const { db, approval_id, tenant_id, granted_by_user_id, via, origin } = input;
   const action =
     decision === "grant" ? AuditAction.APPROVAL_GRANTED : AuditAction.APPROVAL_DECLINED;
 
@@ -359,6 +362,7 @@ async function decideApproval(
             surface: row.surface,
             via,
             decided_by_user_id: granted_by_user_id,
+            origin,
           }),
         },
         tx,
@@ -398,6 +402,7 @@ async function decideApproval(
           surface: miss.surface,
           via,
           decided_by_user_id: granted_by_user_id,
+          origin,
         }),
       },
       tx,

@@ -39,6 +39,8 @@ const baseTemplate: ConnectorTemplate = {
   aws_region: null,
   verified_at: null,
   respects_robots: false,
+  web_hosts: [],
+  record_url_patterns: [],
 };
 
 describe("enrichConnectorFromTemplate — operator_quirks propagation", () => {

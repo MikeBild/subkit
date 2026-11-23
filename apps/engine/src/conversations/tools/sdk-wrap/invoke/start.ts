@@ -1,6 +1,7 @@
 import { log } from "../../../../logging/index.ts";
 import { stampMcpTaskProgress } from "../../../../mcp/tasks/store.ts";
 import { appendMessage, insertToolCall } from "../../../persistence/index.ts";
+import { toolRetry } from "../../../retry-activity.ts";
 import { computeLineDiff } from "../../../text-line-diff.ts";
 import type { ToolContext } from "../../index.ts";
 import { redactToolArgsForPersist } from "../redact-tool-args.ts";
@@ -84,6 +85,7 @@ export async function startCall(
     label: inner.name,
     tool_name: inner.name,
     call_id: toolCallId,
+    ...toolRetry(signals, inner.name),
   });
   log.conversation.tool.called({ conversation_id: ctx.conversation_id, tool: inner.name, step });
   return {

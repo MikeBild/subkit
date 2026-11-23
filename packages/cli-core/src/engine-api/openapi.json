@@ -9082,6 +9082,7 @@
                                 "type": "string",
                                 "enum": [
                                   "identifier",
+                                  "long_identifier",
                                   "uuid",
                                   "integer",
                                   "date",
@@ -9295,6 +9296,7 @@
                                 "type": "string",
                                 "enum": [
                                   "identifier",
+                                  "long_identifier",
                                   "uuid",
                                   "integer",
                                   "date",
@@ -10852,6 +10854,43 @@
               },
               "binding": {
                 "$ref": "#/components/schemas/MissingBindingEvidence"
+              },
+              "connector": {
+                "type": "object",
+                "properties": {
+                  "connector_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "connector_slug": {
+                    "type": "string"
+                  },
+                  "connector_name": {
+                    "type": "string"
+                  },
+                  "environment": {
+                    "type": "string",
+                    "enum": [
+                      "dev",
+                      "prod"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string",
+                    "enum": [
+                      "disabled",
+                      "needs_reauth",
+                      "credential_unavailable"
+                    ]
+                  }
+                },
+                "required": [
+                  "connector_id",
+                  "connector_slug",
+                  "connector_name",
+                  "environment",
+                  "reason"
+                ]
               }
             }
           },
@@ -10863,6 +10902,33 @@
               "declare",
               "reconnect",
               "author"
+            ]
+          },
+          "reconnect": {
+            "type": "object",
+            "properties": {
+              "connector_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "environment": {
+                "type": "string",
+                "enum": [
+                  "dev",
+                  "prod"
+                ]
+              },
+              "section": {
+                "type": "string",
+                "enum": [
+                  "credentials"
+                ]
+              }
+            },
+            "required": [
+              "connector_id",
+              "environment",
+              "section"
             ]
           },
           "fixer": {
@@ -11989,6 +12055,7 @@
                           "type": "string",
                           "enum": [
                             "identifier",
+                            "long_identifier",
                             "uuid",
                             "integer",
                             "date",
@@ -12531,6 +12598,7 @@
                           "type": "string",
                           "enum": [
                             "identifier",
+                            "long_identifier",
                             "uuid",
                             "integer",
                             "date",
@@ -13727,6 +13795,7 @@
                           "type": "string",
                           "enum": [
                             "identifier",
+                            "long_identifier",
                             "uuid",
                             "integer",
                             "date",
@@ -14352,6 +14421,7 @@
                           "type": "string",
                           "enum": [
                             "identifier",
+                            "long_identifier",
                             "uuid",
                             "integer",
                             "date",
@@ -14980,6 +15050,7 @@
                           "type": "string",
                           "enum": [
                             "identifier",
+                            "long_identifier",
                             "uuid",
                             "integer",
                             "date",
@@ -15592,6 +15663,7 @@
                           "type": "string",
                           "enum": [
                             "identifier",
+                            "long_identifier",
                             "uuid",
                             "integer",
                             "date",
@@ -16209,6 +16281,7 @@
                           "type": "string",
                           "enum": [
                             "identifier",
+                            "long_identifier",
                             "uuid",
                             "integer",
                             "date",
@@ -16824,6 +16897,7 @@
                           "type": "string",
                           "enum": [
                             "identifier",
+                            "long_identifier",
                             "uuid",
                             "integer",
                             "date",
@@ -17444,6 +17518,7 @@
                           "type": "string",
                           "enum": [
                             "identifier",
+                            "long_identifier",
                             "uuid",
                             "integer",
                             "date",
@@ -17990,6 +18065,7 @@
                           "type": "string",
                           "enum": [
                             "identifier",
+                            "long_identifier",
                             "uuid",
                             "integer",
                             "date",
@@ -18547,6 +18623,7 @@
                           "type": "string",
                           "enum": [
                             "identifier",
+                            "long_identifier",
                             "uuid",
                             "integer",
                             "date",
@@ -19015,6 +19092,7 @@
                               "type": "string",
                               "enum": [
                                 "identifier",
+                                "long_identifier",
                                 "uuid",
                                 "integer",
                                 "date",
@@ -19230,6 +19308,7 @@
                           "type": "string",
                           "enum": [
                             "identifier",
+                            "long_identifier",
                             "uuid",
                             "integer",
                             "date",
@@ -19698,6 +19777,7 @@
                               "type": "string",
                               "enum": [
                                 "identifier",
+                                "long_identifier",
                                 "uuid",
                                 "integer",
                                 "date",
@@ -23004,6 +23084,9 @@
           },
           "created_at": {
             "type": "string"
+          },
+          "cost_projection": {
+            "$ref": "#/components/schemas/ScheduleCostProjection"
           }
         },
         "required": [
@@ -23019,8 +23102,90 @@
           "execution_mode",
           "paused",
           "auto_pause",
-          "created_at"
+          "created_at",
+          "cost_projection"
         ]
+      },
+      "ScheduleCostProjection": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "estimated",
+              "no_history",
+              "unknown_rhythm"
+            ],
+            "description": "estimated: monthly_amount is set. no_history: neither this version nor another version of the workflow has a finished run yet. unknown_rhythm: the cron or interval cannot be counted."
+          },
+          "basis": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "version",
+              "workflow",
+              null
+            ],
+            "description": "version: averaged over finished runs of the current version. workflow: no run of the current version yet, averaged over finished runs of other versions."
+          },
+          "runs_sampled": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Finished runs the average per run is taken from (the most recent ones)."
+          },
+          "runs_per_month": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Runs a month from the cron or interval, averaged over the coming year."
+          },
+          "per_run_amount": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "monthly_amount": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "currency": {
+            "type": "string"
+          },
+          "unpriced_models": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Models in the sampled runs without a price; the estimate leaves them out."
+          },
+          "rates_basis": {
+            "type": "string",
+            "enum": [
+              "current"
+            ]
+          }
+        },
+        "required": [
+          "state",
+          "basis",
+          "runs_sampled",
+          "runs_per_month",
+          "per_run_amount",
+          "monthly_amount",
+          "currency",
+          "unpriced_models",
+          "rates_basis"
+        ],
+        "description": "Projected model cost a month: the average priced model cost per finished run times runs a month. Prices are the current model rates."
       },
       "ScheduleUpsertResponse": {
         "allOf": [
@@ -25172,13 +25337,21 @@
               "result_markdown_truncated": {
                 "type": "boolean",
                 "description": "True when result_markdown was cut at 64 KiB of text."
+              },
+              "record_links": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ExecutionRecordLink"
+                },
+                "description": "Links to records that request steps created or changed in external systems, derived on read from built-in connector templates. Empty for sensitive runs, held writes, offloaded or redacted step outputs."
               }
             },
             "required": [
               "trace_id",
               "outcome",
               "result_markdown",
-              "result_markdown_truncated"
+              "result_markdown_truncated",
+              "record_links"
             ]
           }
         ]
@@ -25373,6 +25546,42 @@
           "steps",
           "output_contract",
           "rerun_safety"
+        ]
+      },
+      "ExecutionRecordLink": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Short record name from the external system, such as an issue key. Null when unknown."
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "https web address of the created or changed record on the connector's known web host."
+          },
+          "connector": {
+            "type": "string",
+            "description": "Slug of the built-in connector template."
+          },
+          "connector_name": {
+            "type": "string",
+            "description": "Display name of the external system."
+          },
+          "step_key": {
+            "type": "string",
+            "description": "Step that created or changed the record."
+          }
+        },
+        "required": [
+          "label",
+          "url",
+          "connector",
+          "connector_name",
+          "step_key"
         ]
       },
       "ExecutionStepListResponse": {
@@ -26834,6 +27043,22 @@
                   "type": "boolean",
                   "default": false
                 },
+                "web_hosts": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^(?:\\*\\.)?[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$",
+                    "description": "A web host that record links may point to. A leading `*.` allows exactly one extra label."
+                  },
+                  "default": []
+                },
+                "record_url_patterns": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ConnectorTemplateRecordUrlPattern"
+                  },
+                  "default": []
+                },
                 "source": {
                   "type": "string",
                   "enum": [
@@ -26883,7 +27108,9 @@
                 "aws_service",
                 "aws_region",
                 "verified_at",
-                "respects_robots"
+                "respects_robots",
+                "web_hosts",
+                "record_url_patterns"
               ]
             }
           }
@@ -28052,6 +28279,77 @@
           "template"
         ]
       },
+      "ConnectorTemplateRecordUrlPattern": {
+        "type": "object",
+        "properties": {
+          "methods": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "POST",
+                "PUT",
+                "PATCH"
+              ]
+            },
+            "minItems": 1
+          },
+          "path": {
+            "type": "string",
+            "pattern": "^\\/[A-Za-z0-9_.{}/-]*$",
+            "description": "Request path after the connector base path, with {name} placeholders. Omitted for GraphQL templates."
+          },
+          "url_field": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z0-9_]+)*$",
+            "description": "Dotted path to a web URL in the response."
+          },
+          "url_template": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "description": "Web URL built from path placeholders, host placeholders of the base URL, or dotted response fields."
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "description": "Language-neutral record label with the same placeholders, for example {key}."
+          },
+          "when": {
+            "$ref": "#/components/schemas/ConnectorTemplateRecordUrlCondition"
+          }
+        },
+        "required": [
+          "methods"
+        ]
+      },
+      "ConnectorTemplateRecordUrlCondition": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z0-9_]+)*$"
+          },
+          "equals": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          }
+        },
+        "required": [
+          "field",
+          "equals"
+        ]
+      },
       "ConnectorTemplateRow": {
         "type": "object",
         "properties": {
@@ -28282,6 +28580,22 @@
             "type": "boolean",
             "default": false
           },
+          "web_hosts": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^(?:\\*\\.)?[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$",
+              "description": "A web host that record links may point to. A leading `*.` allows exactly one extra label."
+            },
+            "default": []
+          },
+          "record_url_patterns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConnectorTemplateRecordUrlPattern"
+            },
+            "default": []
+          },
           "id": {
             "type": "string"
           },
@@ -28327,7 +28641,9 @@
           "aws_service",
           "aws_region",
           "verified_at",
-          "respects_robots"
+          "respects_robots",
+          "web_hosts",
+          "record_url_patterns"
         ]
       },
       "ConnectorTemplateCreateBody": {
@@ -28559,6 +28875,22 @@
           "respects_robots": {
             "type": "boolean",
             "default": false
+          },
+          "web_hosts": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^(?:\\*\\.)?[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$",
+              "description": "A web host that record links may point to. A leading `*.` allows exactly one extra label."
+            },
+            "default": []
+          },
+          "record_url_patterns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConnectorTemplateRecordUrlPattern"
+            },
+            "default": []
           }
         },
         "required": [
@@ -47074,6 +47406,32 @@
           }
         }
       },
+      "ChatAck": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "additionalProperties": {}
+      },
+      "ChatRefusal": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
       "ChatWorkspace": {
         "type": "object",
         "properties": {
@@ -47244,6 +47602,21 @@
           "platform_user_id",
           "user_id"
         ]
+      },
+      "SlackLinkForm": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "maxLength": 4096,
+            "default": ""
+          },
+          "csrf_token": {
+            "type": "string",
+            "maxLength": 4096,
+            "default": ""
+          }
+        }
       },
       "PendingChatSpaceListResponse": {
         "type": "object",
@@ -66233,7 +66606,7 @@
             }
           },
           "400": {
-            "description": "Invalid cron",
+            "description": "Invalid cron, or invalid_timezone when timezone is not a known IANA time zone",
             "content": {
               "application/json": {
                 "schema": {
@@ -66308,7 +66681,7 @@
             }
           },
           "400": {
-            "description": "Invalid cron",
+            "description": "Invalid cron, or invalid_timezone when timezone is not a known IANA time zone",
             "content": {
               "application/json": {
                 "schema": {
@@ -66363,6 +66736,73 @@
           },
           "404": {
             "description": "Schedule not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workflows/{id}/schedule-cost": {
+      "get": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Projected monthly model cost of a workflow at a given cron or interval",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "description": "5-field cron or \"every:<seconds>\"."
+            },
+            "required": true,
+            "description": "5-field cron or \"every:<seconds>\".",
+            "name": "cron",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "IANA timezone; UTC when omitted."
+            },
+            "required": false,
+            "description": "IANA timezone; UTC when omitted.",
+            "name": "timezone",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleCostProjection"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Workflow not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -81704,6 +82144,47 @@
         }
       }
     },
+    "/v1/chat/slack/interactions": {
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Slack interactivity endpoint (buttons, modals, decision cards)",
+        "description": "Configure this URL as the Slack app's Interactivity Request URL. The raw form body (`payload=<json>`) is verified with the Slack signing secret and a five-minute timestamp window before anything is read; replays of the same action are ignored. Decision buttons (`sk_decide:*`) decide in SubKit as the linked SubKit person after a permission check at click time.",
+        "responses": {
+          "200": {
+            "description": "Acknowledged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatAck"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Signature missing, invalid or outside the timestamp window",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatRefusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No Slack adapter is registered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatRefusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/chat/workspaces": {
       "post": {
         "tags": [
@@ -81947,6 +82428,90 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/integrations/slack/link": {
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Browser page that links the clicking Slack account to the signed-in SubKit person",
+        "description": "Opened from the one-time link in a Slack decision message. Requires a signed-in Cockpit session in the same workspace; shows which Slack account will be linked and asks for confirmation.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 4096,
+              "default": ""
+            },
+            "required": false,
+            "name": "token",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Confirmation page (HTML)",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "302": {
+            "description": "Not signed in: redirect to sign-in and back"
+          },
+          "400": {
+            "description": "Link expired, invalid or for another workspace (HTML)",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Confirm the Slack account link for the signed-in SubKit person",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/SlackLinkForm"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Linked (HTML)",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Link refused; nothing changed (HTML)",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
                 }
               }
             }

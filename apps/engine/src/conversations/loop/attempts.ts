@@ -10,6 +10,7 @@ import { logger } from "../../logging/index.ts";
 import { isExpectedCancellation } from "../abort.ts";
 import { fallsBack } from "../core/loop.ts";
 import { inferReplyLocale } from "../handoff-summary.ts";
+import { fallbackRetryActivity } from "../retry-activity.ts";
 import { LlmTimeoutError, providerFailureNotice } from "../turn-failure.ts";
 import { runAttempt } from "./attempt.ts";
 import { resolveConversationAttemptRoutes } from "./attempt-route.ts";
@@ -134,6 +135,7 @@ export async function runTurnAttempts(
       fallback: route.fallback,
       kind: providerErr.kind,
     });
+    env.events.push(fallbackRetryActivity());
     await runFallback(env, state, attempts.fallback.model, attempts.fallback.provider);
   }
 }
