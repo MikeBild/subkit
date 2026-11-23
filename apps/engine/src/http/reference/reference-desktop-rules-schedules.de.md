@@ -154,6 +154,8 @@ Abfrage-Parameter von `GET /v1/identity/desktop-login/start`:
 
 Body von `POST /v1/identity/desktop-session`: `code` (43 Zeichen), `code_verifier` (43 bis 128 Zeichen), `app_version` und optional `state`. Die Antwort ist `200` mit `installation_id`, `cockpit_path` und `created` und setzt das Sitzungs-Cookie.
 
+Der Start und die Bestätigung sind Seiten im Browser. Ein Browser, der sie öffnet, bekommt jede der folgenden Ablehnungen als Seite mit dem nächsten Schritt und dem Code, nie als JSON. Ein API-Client bekommt JSON.
+
 | Antwort | Bedeutung |
 | --- | --- |
 | `400 invalid_redirect_uri` | Dieser Server nimmt das Ziel nicht an. |

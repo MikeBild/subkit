@@ -30,6 +30,7 @@ import { registerCockpitInstallationAssets } from "./cockpit-installation-assets
 import { registerChangeAnnouncements } from "./middleware/announce-change.ts";
 import { authMiddleware } from "./middleware/auth.ts";
 import { browserCsrfMiddleware } from "./middleware/browser-csrf.ts";
+import { browserPageRefusalMiddleware } from "./middleware/browser-page-refusal.ts";
 import { browserTenantMiddleware } from "./middleware/browser-tenant.ts";
 import {
   requireCockpitInstallation,
@@ -292,6 +293,7 @@ export function createApp(opts: CreateAppOptions): OpenAPIHono<AppEnv> {
     });
   }
   app.use("*", clientIpMiddleware());
+  app.use("/v1/*", browserPageRefusalMiddleware());
   app.use("*", hostedIngressRateLimit());
   app.use("*", authMiddleware(registry));
   app.use("/cockpit/i/:installationId/api/*", requireCockpitInstallation());

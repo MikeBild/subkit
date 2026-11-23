@@ -4687,6 +4687,8 @@ Query parameters of `GET /v1/identity/desktop-login/start`:
 
 Body of `POST /v1/identity/desktop-session`: `code` (43 characters), `code_verifier` (43 to 128 characters), `app_version` and optionally `state`. The answer is `200` with `installation_id`, `cockpit_path` and `created`, and it sets the session cookie.
 
+The start and the confirmation are pages in the browser. A browser that opens them gets every refusal below as a page with the next step and the code, never as JSON. An API client gets JSON.
+
 | Answer | Meaning |
 | --- | --- |
 | `400 invalid_redirect_uri` | The target is not accepted by this server. |
