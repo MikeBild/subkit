@@ -91,7 +91,10 @@ describe("permission cost", () => {
     const forTen = queries;
     expect(ten.items).toHaveLength(10);
     expect(forTen).toBe(forOne);
-    expect(forTen).toBeLessThanOrEqual(43);
+    expect(
+      forTen,
+      "43 permission queries plus the one read of the person's own snoozes",
+    ).toBeLessThanOrEqual(44);
   });
 });
 
