@@ -3,6 +3,7 @@ import {
   classifyUpdateError,
   initialUpdateState,
   reduceUpdate,
+  restartRequest,
   type UpdateEvent,
   type UpdateState,
   updateBusy,
@@ -91,8 +92,12 @@ export class UpdateController {
   }
 
   restart(): boolean {
-    if (this.state.phase !== "ready" || !this.install) return false;
-    this.install();
+    const request = restartRequest(this.state, this.install !== null);
+    if (request !== "install") return request === "pending";
+    const install = this.install;
+    this.install = null;
+    this.dispatch({ type: "install" });
+    install?.();
     return true;
   }
 

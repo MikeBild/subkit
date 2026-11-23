@@ -6,6 +6,7 @@ import {
   classifyUpdateError,
   initialUpdateState,
   reduceUpdate,
+  restartRequest,
   type UpdateEvent,
   type UpdateState,
   updateAction,
@@ -318,5 +319,49 @@ describe("updates decision at build time", () => {
     expect(buildSigned("win32", {})).toBe(false);
     expect(buildSigned("linux", { CSC_LINK: "base64" })).toBe(false);
     expect(buildSigned("freebsd", { CSC_LINK: "base64" })).toBe(false);
+  });
+});
+
+describe("a pending install", () => {
+  const ready: UpdateState = { phase: "ready", version: "0.2.0" };
+  const installing: UpdateState = { phase: "installing", version: "0.2.0" };
+
+  test("starts once from ready and then ignores every event", () => {
+    expect(reduceUpdate(ready, { type: "install" })).toEqual(installing);
+    for (const event of [
+      { type: "install" },
+      { type: "checking" },
+      { type: "not-available" },
+      { type: "available", version: "0.3.0" },
+      { type: "progress", percent: 10 },
+      { type: "downloaded", version: "0.3.0" },
+      { type: "error", message: "boom" },
+    ] satisfies UpdateEvent[]) {
+      expect(reduceUpdate(installing, event)).toBe(installing);
+    }
+  });
+
+  test("a download is not cut short by a new check", () => {
+    const downloading: UpdateState = { phase: "downloading", version: "0.2.0", percent: 40 };
+    expect(reduceUpdate(downloading, { type: "checking" })).toBe(downloading);
+    expect(reduceUpdate(downloading, { type: "not-available" })).toBe(downloading);
+    expect(reduceUpdate(downloading, { type: "available", version: "0.2.0" })).toBe(downloading);
+  });
+
+  test("keeps exactly one queued restart", () => {
+    expect(restartRequest(ready, true)).toBe("install");
+    expect(restartRequest(ready, false)).toBe("unavailable");
+    expect(restartRequest(installing, false)).toBe("pending");
+    expect(restartRequest({ phase: "downloading", version: "0.2.0", percent: 1 }, true)).toBe(
+      "unavailable",
+    );
+  });
+
+  test("offers no action and says it is installing", () => {
+    expect(updateBusy(installing)).toBe(true);
+    expect(updateAction(installing)).toBeNull();
+    expect(updateStatus(installing, "0.1.0").key).toBe("updates.state.installing");
+    expect(updateMenuLabel(installing).key).toBe("updates.menu.installing");
+    expect(t("en", updateMenuLabel(installing).key)).toBe("Installing update…");
   });
 });

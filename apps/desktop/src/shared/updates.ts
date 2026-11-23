@@ -10,6 +10,7 @@ export type UpdateState =
   | { phase: "available"; version: string }
   | { phase: "downloading"; version: string; percent: number }
   | { phase: "ready"; version: string }
+  | { phase: "installing"; version: string }
   | { phase: "failed"; reason: UpdateFailure };
 
 export type UpdateEvent =
@@ -18,6 +19,7 @@ export type UpdateEvent =
   | { type: "available"; version: string }
   | { type: "progress"; percent: number }
   | { type: "downloaded"; version: string }
+  | { type: "install" }
   | { type: "error"; message: string };
 
 export function initialUpdateState(enabled: boolean): UpdateState {
@@ -89,31 +91,47 @@ function percentOf(value: number): number {
   return Number.isFinite(value) ? Math.min(100, Math.max(0, Math.round(value))) : 0;
 }
 
+function downloading(state: UpdateState): boolean {
+  return state.phase === "available" || state.phase === "downloading";
+}
+
 export function reduceUpdate(state: UpdateState, event: UpdateEvent): UpdateState {
-  if (state.phase === "disabled") return state;
-  if (state.phase === "ready" && event.type !== "downloaded") return state;
+  if (state.phase === "disabled" || state.phase === "installing") return state;
+  if (state.phase === "ready")
+    return event.type === "install"
+      ? { phase: "installing", version: state.version }
+      : event.type === "downloaded"
+        ? { phase: "ready", version: event.version }
+        : state;
   switch (event.type) {
     case "checking":
-      return state.phase === "available" || state.phase === "downloading"
-        ? state
-        : { phase: "checking" };
+      return downloading(state) ? state : { phase: "checking" };
     case "not-available":
-      return { phase: "current" };
+      return downloading(state) ? state : { phase: "current" };
     case "available":
-      return { phase: "available", version: event.version };
+      return state.phase === "downloading" ? state : { phase: "available", version: event.version };
     case "progress":
       return state.phase === "available" || state.phase === "downloading"
         ? { phase: "downloading", version: state.version, percent: percentOf(event.percent) }
         : state;
     case "downloaded":
       return { phase: "ready", version: event.version };
+    case "install":
+      return state;
     case "error":
       return { phase: "failed", reason: updateFailure(state, event.message) };
   }
 }
 
 export function updateBusy(state: UpdateState): boolean {
-  return state.phase === "checking" || state.phase === "available" || state.phase === "downloading";
+  return state.phase === "checking" || downloading(state) || state.phase === "installing";
+}
+
+export type RestartRequest = "install" | "pending" | "unavailable";
+
+export function restartRequest(state: UpdateState, installable: boolean): RestartRequest {
+  if (state.phase === "installing") return "pending";
+  return state.phase === "ready" && installable ? "install" : "unavailable";
 }
 
 export type UpdateAction = "check" | "restart" | null;
@@ -147,6 +165,8 @@ export function updateStatus(state: UpdateState, appVersion: string): UpdateText
       };
     case "ready":
       return { key: "updates.state.ready", vars: { version: state.version } };
+    case "installing":
+      return { key: "updates.state.installing", vars: { version: state.version } };
     case "failed":
       return { key: `updates.state.failed.${state.reason}`, vars: {} };
   }
@@ -160,6 +180,7 @@ export function updateMenuLabel(state: UpdateState): UpdateText {
       vars: { percent: state.phase === "downloading" ? state.percent : 0 },
     };
   if (state.phase === "ready") return { key: "updates.menu.restart", vars: {} };
+  if (state.phase === "installing") return { key: "updates.menu.installing", vars: {} };
   return { key: "tray.checkUpdates", vars: {} };
 }
 

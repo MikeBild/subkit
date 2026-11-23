@@ -23,6 +23,7 @@ export interface UpdateHost {
 export class UpdateFlow {
   private readonly controller: UpdateController;
   private offered: string | null = null;
+  private restarting = false;
   private last: UpdateState = { phase: "idle" };
 
   constructor(private readonly host: UpdateHost) {
@@ -74,11 +75,18 @@ export class UpdateFlow {
   }
 
   private restart(): void {
-    void this.host.confirmRestart().then((go) => {
-      if (!go) return;
-      this.host.beforeQuit();
-      if (!this.controller.restart()) this.host.cancelQuit();
-    });
+    if (this.restarting || this.controller.current.phase === "installing") return;
+    this.restarting = true;
+    void this.host
+      .confirmRestart()
+      .then((go) => {
+        if (!go) return;
+        this.host.beforeQuit();
+        if (!this.controller.restart()) this.host.cancelQuit();
+      })
+      .finally(() => {
+        this.restarting = false;
+      });
   }
 
   private async offerRestart(version: string): Promise<void> {
