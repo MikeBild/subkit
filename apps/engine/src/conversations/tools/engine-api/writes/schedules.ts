@@ -1,6 +1,5 @@
 import { z } from "@hono/zod-openapi";
 import { inspectScheduleAutomation } from "../../../../scheduler/automation-status.ts";
-import { scheduleCostProjection } from "../../../../scheduler/index.ts";
 import {
   createSchedule,
   deleteSchedule,
@@ -119,6 +118,7 @@ export const listSchedulesTool: ConversationTool = {
   category: "tenant_read",
   permission: { action: "schedule:read", resourceType: "schedule" },
   async execute(ctx, args: z.infer<typeof ListInput>) {
+    const { scheduleCostProjection } = await import("../../../../scheduler/index.ts");
     const { rows, total } = await listSchedules(
       ctx.db,
       ctx.tenant_id,
