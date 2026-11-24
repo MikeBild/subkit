@@ -1,6 +1,6 @@
-import type { Executor } from "../../db/client.ts";
-import { getKnowledgeSourceContent } from "../../knowledge/content.ts";
-import type { KnowledgeSourceView } from "../../knowledge/types.ts";
+import type { Executor } from "../../db/index.ts";
+import type { KnowledgeSourceView } from "../../knowledge/index.ts";
+import { getKnowledgeSourceContent } from "../../knowledge/index.ts";
 import type { KnowledgePayload } from "./format.ts";
 
 export async function knowledgePayload(

@@ -1,11 +1,11 @@
 import { and, eq } from "drizzle-orm";
-import type { Executor } from "../../db/client.ts";
-import { packageInstallItems } from "../../db/schema/index.ts";
-import { getKnowledgeSource } from "../../knowledge/catalog.ts";
-import { logger } from "../../logging/index.ts";
-import { now } from "../../utils/clock.ts";
-import { payloadHash } from "./format.ts";
-import { knowledgePayload } from "./knowledge-payload.ts";
+import type { Executor } from "../../../db/index.ts";
+import { packageInstallItems } from "../../../db/index.ts";
+import { getKnowledgeSource } from "../../../knowledge/index.ts";
+import { logger } from "../../../logging/index.ts";
+import { now } from "../../../utils/index.ts";
+import { payloadHash } from "../format.ts";
+import { knowledgePayload } from "../knowledge-payload.ts";
 
 export async function recordAdmittedKnowledgeBaseline(
   exec: Executor,

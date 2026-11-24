@@ -10,7 +10,7 @@ import {
   intakeProposalRevisions,
   intakeProposals,
 } from "../db/schema/intake.ts";
-import { recordAdmittedKnowledgeBaseline } from "../identity/portability/baseline.ts";
+import { recordAdmittedKnowledgeBaseline } from "../identity/index.ts";
 import { redactSecretShapes } from "../logging/scrub-secrets.ts";
 import { absorbedRequestKey, intakeGroupKey } from "./core/intake-dedupe.ts";
 import {
@@ -70,7 +70,6 @@ function itemRequestDigest(p: CreateIntakeItemParams, intakeCategory: string): s
     original_snapshot: snapshot(p),
   });
 }
-
 export async function listIntakeCategories(
   p: { tenant_id: string; actor: Actor },
   exec: Executor,
