@@ -17,6 +17,8 @@ import {
   matchRules,
   type NotificationEvent,
   type NotificationSeverity,
+  normalizeSeverity,
+  severityMeets,
 } from "./matcher.ts";
 import { tryAcquire } from "./rate-limit.ts";
 import { slackDecisionBlocks } from "./slack-decision-card.ts";
@@ -77,7 +79,7 @@ async function ensureChannel(
       workspace_id: rule.target_workspace_id,
       channel_id: rule.target_channel_id,
       platform: platformHint,
-      default_severity: rule.severity,
+      default_severity: "debug",
       rate_limit_per_minute: 60,
       circuit_state: "closed",
       consecutive_failures: 0,
@@ -240,6 +242,37 @@ export async function dispatchEvent(
         severity: rule.severity,
         status: "skipped",
         reason: "channel_inactive",
+      });
+      continue;
+    }
+
+    const channelFloor = normalizeSeverity(channel.default_severity);
+    if (!severityMeets(event.severity, channelFloor)) {
+      result.outcomes.push({
+        rule_id: rule.row.id,
+        channel_id: channel.id,
+        status: "skipped",
+        reason: "below_channel_severity",
+      });
+      await recordDelivery(db, {
+        tenant_id: event.tenant_id,
+        rule_id: rule.row.id,
+        channel_id: channel.id,
+        event,
+        severity: rule.severity,
+        status: "skipped",
+        reason: "below_channel_severity",
+      });
+      logger.debug({
+        module: "notifications",
+        action: "channel.below_severity",
+        msg: "event severity is below the channel severity floor; delivery skipped",
+        tenant_id: event.tenant_id,
+        rule_id: rule.row.id,
+        channel_id: channel.id,
+        event_type: event.type,
+        event_severity: event.severity ?? "info",
+        channel_severity: channelFloor,
       });
       continue;
     }

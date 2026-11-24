@@ -209,4 +209,53 @@ describe("notifications: dispatchEvent", () => {
     expect(after?.circuit_state).toBe("closed");
     expect(after?.consecutive_failures).toBe(0);
   });
+  test("channel severity floor skips events below it and still delivers events that meet it", async () => {
+    await wipeState();
+    for (const [channel, floor] of [
+      ["C_CRITICAL_ONLY", "critical"],
+      ["C_FROM_INFO", "info"],
+    ] as const) {
+      await ctx.db.insert(notificationChannels).values({
+        tenant_id: ctx.tenant_id,
+        workspace_id: "W_SEVERITY",
+        channel_id: channel,
+        platform: "slack",
+        default_severity: floor,
+      });
+      await ctx.db.insert(notificationRules).values({
+        tenant_id: ctx.tenant_id,
+        name: `errors-${channel}`,
+        event_pattern: "execution.*",
+        severity: "error",
+        target_workspace_id: "W_SEVERITY",
+        target_channel_id: channel,
+      });
+    }
+    const channelRows = await ctx.db.select().from(notificationChannels);
+    const channelIdByName = new Map(channelRows.map((row) => [row.channel_id, row.id]));
+    const criticalChannelId = channelIdByName.get("C_CRITICAL_ONLY");
+    const infoChannelId = channelIdByName.get("C_FROM_INFO");
+    const adapter = new FakeAdapter();
+    const deps = { db: ctx.db, resolveAdapter: () => adapter as unknown as NotificationAdapter };
+
+    const errorResult = await dispatchEvent(deps, baseEvent());
+    expect(errorResult.matched).toBe(2);
+    expect(errorResult.delivered).toBe(1);
+    const criticalOutcome = errorResult.outcomes.find((o) => o.channel_id === criticalChannelId);
+    expect(criticalOutcome?.status).toBe("skipped");
+    expect(criticalOutcome?.reason).toBe("below_channel_severity");
+    expect(errorResult.outcomes.find((o) => o.channel_id === infoChannelId)?.status).toBe("sent");
+    expect(adapter.sends.map((sent) => sent.channel_id)).toEqual(["C_FROM_INFO"]);
+    const skippedRows = await ctx.db
+      .select()
+      .from(notificationDeliveries)
+      .where(eq(notificationDeliveries.reason, "below_channel_severity"));
+    expect(skippedRows.length).toBe(1);
+    expect(skippedRows[0]?.status).toBe("skipped");
+    expect(skippedRows[0]?.channel_id).toBe(criticalChannelId ?? "");
+
+    const criticalResult = await dispatchEvent(deps, { ...baseEvent(), severity: "critical" });
+    expect(criticalResult.delivered).toBe(2);
+    expect(adapter.sends.filter((sent) => sent.channel_id === "C_CRITICAL_ONLY").length).toBe(1);
+  });
 });
