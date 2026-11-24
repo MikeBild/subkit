@@ -9,9 +9,11 @@ import {
   type PackageManifest,
   type PackagePayload,
   type PackageRequirement,
-  payloadBytes,
+  payloadHash,
   sha256Hex,
 } from "./format.ts";
+
+export { payloadHash };
 
 export type PackagePlanAction = "create" | "update" | "unchanged" | "conflict";
 
@@ -55,10 +57,6 @@ const UPDATABLE: ReadonlySet<PackageItemKind> = new Set(["workflow", "skill"]);
 
 export function itemId(kind: PackageItemKind, key: string): string {
   return `${kind}:${key}`;
-}
-
-export function payloadHash(payload: unknown): string {
-  return sha256Hex(payloadBytes(payload));
 }
 
 function indexFor(index: PackageIndex, kind: PackageItemKind): Map<string, string> {
@@ -122,6 +120,19 @@ export async function targetState(
   return { index: target.index, hashes };
 }
 
+function localChanged(
+  localId: string | null,
+  targetHash: string | undefined,
+  registry: RegistryRow,
+): boolean {
+  return (
+    localId !== null &&
+    targetHash !== undefined &&
+    registry.local_hash !== null &&
+    targetHash !== registry.local_hash
+  );
+}
+
 function decide(
   item: PackagePayload,
   archiveHash: string,
@@ -131,6 +142,8 @@ function decide(
 ): Pick<PackagePlanItem, "action" | "reason"> {
   if (item.kind === "knowledge") {
     if (registry) {
+      if (localChanged(localId, targetHash, registry))
+        return { action: "conflict", reason: "local_changes" };
       return registry.imported_hash === archiveHash
         ? { action: "unchanged" }
         : { action: "conflict", reason: "knowledge_changed" };
@@ -141,9 +154,8 @@ function decide(
   if (item.kind === "file") return { action: "unchanged" };
   if (!registry) return { action: "conflict", reason: "exists_unmanaged" };
   if (targetHash === undefined) return { action: "conflict", reason: "reserved" };
-  if (registry.local_hash !== null && targetHash !== registry.local_hash) {
+  if (localChanged(localId, targetHash, registry))
     return { action: "conflict", reason: "local_changes" };
-  }
   if (registry.imported_hash === archiveHash) return { action: "unchanged" };
   return UPDATABLE.has(item.kind)
     ? { action: "update" }

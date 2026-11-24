@@ -10,6 +10,7 @@ import {
   intakeProposalRevisions,
   intakeProposals,
 } from "../db/schema/intake.ts";
+import { recordAdmittedKnowledgeBaseline } from "../identity/portability/baseline.ts";
 import { redactSecretShapes } from "../logging/scrub-secrets.ts";
 import { absorbedRequestKey, intakeGroupKey } from "./core/intake-dedupe.ts";
 import {
@@ -912,6 +913,8 @@ export async function confirmIntakeProposal(
       revision.items.map((item) => item.id),
       "intake_item_admitted",
     );
+    if (target.kind === "knowledge")
+      await recordAdmittedKnowledgeBaseline(tx, p.tenant_id, p.id, target.id);
     await recordIntakeAudit(
       tx,
       p.tenant_id,

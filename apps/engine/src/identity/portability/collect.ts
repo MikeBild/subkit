@@ -15,7 +15,6 @@ import {
 } from "../../db/schema/index.ts";
 import { storageKey } from "../../files/resolver.ts";
 import { listKnowledgeSources } from "../../knowledge/catalog.ts";
-import { getKnowledgeSourceContent } from "../../knowledge/content.ts";
 import { logger } from "../../logging/index.ts";
 import { listSkills } from "../../skills/service.ts";
 import { getObjectStore } from "../../storage/object-store.ts";
@@ -27,7 +26,6 @@ import {
   type ConnectorTemplatePayload,
   connectorKey,
   type FilePayload,
-  type KnowledgePayload,
   PACKAGE_CONTENT_TYPE,
   PACKAGE_MAX_BYTES,
   PACKAGE_MAX_ENTRY_BYTES,
@@ -39,6 +37,7 @@ import {
   sortPayloads,
   type WorkflowPayload,
 } from "./format.ts";
+import { knowledgePayload } from "./knowledge-payload.ts";
 import { stripMaskedUrl, stripMaskedValues, stripSecretFields } from "./redact.ts";
 
 const PAGE = 500;
@@ -423,16 +422,7 @@ export async function collectTenantPackage(
   for (const source of knowledgeRows) {
     index.knowledge.set(source.slug, source.id);
     if (source.source_type === "seed" || source.category === PLATFORM_CATEGORY) continue;
-    const content = await getKnowledgeSourceContent(tenant_id, source.id, exec);
-    const payload: KnowledgePayload = {
-      slug: source.slug,
-      name: source.name,
-      description: source.description,
-      category: source.category,
-      tags: source.tags,
-      source_type: source.source_type,
-      documents: content?.documents ?? [],
-    };
+    const payload = await knowledgePayload(exec, tenant_id, source);
     requires.push({ kind: "knowledge_review", knowledge: source.slug });
     add({ kind: "knowledge", key: source.slug, payload });
   }
