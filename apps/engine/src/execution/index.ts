@@ -14,7 +14,11 @@ export {
   callerFromPrincipal,
 } from "./caller-context.ts";
 export * from "./caller-summary.ts";
-export { PREVIEW_CLASSIFICATIONS, type PreviewClassification } from "./classify.ts";
+export {
+  classifyPersistedFailure,
+  PREVIEW_CLASSIFICATIONS,
+  type PreviewClassification,
+} from "./classify.ts";
 export * from "./control-service.ts";
 export { TERMINAL_EXECUTION_STATUSES } from "./core/status.ts";
 export * from "./engine.ts";

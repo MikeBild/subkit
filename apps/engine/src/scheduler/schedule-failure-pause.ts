@@ -28,6 +28,7 @@ export async function readScheduledRunOutcomes(
     .select({
       status: executions.status,
       error_code: sql<string | null>`(${executions.failure}->>'error_code')`,
+      error_message: sql<string | null>`(${executions.failure}->>'error_message')`,
       finished_at: ended,
     })
     .from(executions)

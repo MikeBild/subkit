@@ -1,4 +1,4 @@
-import { FAILURE_PAUSE_AFTER } from "../failure-backoff.ts";
+import { FAILURE_PAUSE_AFTER } from "./failure-policy.ts";
 
 export const REFUSAL_PAUSE_AFTER = FAILURE_PAUSE_AFTER;
 
