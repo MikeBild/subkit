@@ -46,6 +46,17 @@ describe("createLogRing", () => {
     expect(slice.map((e) => e.ts)).toEqual([102, 103, 104]);
   });
 
+  test("since_ms page never splits entries that share the last millisecond", () => {
+    for (const action of ["a", "b", "c"])
+      ring.record({ ts: 500, level: "info", action, fields: {} });
+    ring.record({ ts: 501, level: "info", action: "d", fields: {} });
+
+    const firstPage = ring.tail({ since_ms: 500, limit: 1 });
+    expect(firstPage.map((e) => e.action)).toEqual(["a", "b", "c"]);
+    const nextPage = ring.tail({ since_ms: firstPage.at(-1)!.ts + 1, limit: 1 });
+    expect(nextPage.map((e) => e.action)).toEqual(["d"]);
+  });
+
   test("module + action + min_level filtering", () => {
     ring.record({ ts: 1, level: "info", module: "a", action: "x", fields: {} });
     ring.record({ ts: 2, level: "warn", module: "a", action: "y", fields: {} });
