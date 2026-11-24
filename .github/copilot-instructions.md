@@ -37,6 +37,7 @@ One short English Conventional Commits subject, no body, for example `fix(http):
 ## Pull requests
 
 - A pull request that fixes an issue writes `Fixes #<issue>` in its description, one line per issue, so GitHub closes the issue when it merges into main. `Refs #<issue>` or an issue number only in the title does not close it.
+- Several sessions work on this repository in parallel. Before you bump `package.json`, tag, or run `bun run release tag`, read the open pinned issue labelled `release-coordination` (currently #790) and comment there with what you plan; do not release while it lists a condition that is not met.
 - Use `Refs #<issue>` only when the pull request does not fully fix the issue.
 
 ## Reviews
