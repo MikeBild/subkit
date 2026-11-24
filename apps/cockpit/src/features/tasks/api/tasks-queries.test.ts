@@ -2,13 +2,14 @@ import { afterEach, describe, expect, mock, test } from "bun:test";
 import { ApiError } from "@/api/client";
 import { keyId, keysForEvent } from "@/app/live-invalidation";
 import { patchCatalogMetadata } from "@/features/catalog/api/catalog-metadata-api";
-import { task } from "../model/tasks-fixtures";
+import { run, task } from "../model/tasks-fixtures";
 import { draftFromTask, startErrorKey, taskBody } from "../model/tasks-model";
 import {
   abortTaskRun,
   completeTaskRun,
   createTask,
   deleteTask,
+  listAllTaskRuns,
   listAllTasks,
   pauseTask,
   rejectTaskRun,
@@ -164,6 +165,43 @@ describe("the task list", () => {
     }) as unknown as typeof fetch;
     const listed = await listAllTasks("x");
     expect(listed.items).toHaveLength(1);
+    expect(calls).toBe(2);
+  });
+});
+
+describe("the run list of a task", () => {
+  test("loads every page so the oldest run beyond the first page is listed", async () => {
+    const all = Array.from({ length: 51 }, (_, index) => run({ id: `r-${index}` }));
+    const requests: string[] = [];
+    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input), "http://cockpit.test");
+      const offset = Number(url.searchParams.get("offset") ?? 0);
+      const limit = Number(url.searchParams.get("limit"));
+      requests.push(`${url.pathname} ${offset} ${limit}`);
+      return new Response(
+        JSON.stringify({ items: all.slice(offset, offset + limit), total: all.length }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+    const listed = await listAllTaskRuns("t1");
+    expect(listed.items).toHaveLength(51);
+    expect(listed.total).toBe(51);
+    expect(listed.items.at(-1)?.id).toBe("r-50");
+    expect(requests).toEqual(["/v1/tasks/t1/runs 0 50", "/v1/tasks/t1/runs 50 50"]);
+  });
+
+  test("stops when a page comes back empty although the total says more", async () => {
+    let calls = 0;
+    globalThis.fetch = mock(async () => {
+      calls += 1;
+      return new Response(JSON.stringify({ items: calls === 1 ? [run()] : [], total: 7 }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as unknown as typeof fetch;
+    const listed = await listAllTaskRuns("t1");
+    expect(listed.items).toHaveLength(1);
+    expect(listed.total).toBe(7);
     expect(calls).toBe(2);
   });
 });
