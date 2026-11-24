@@ -63,9 +63,9 @@ async function runSql(
     const alsoStatements = sqlBlock.also ?? [];
     const statements = [
       { query: sqlBlock.query, params },
-      ...alsoStatements.map((s) => ({
+      ...alsoStatements.map((s, alsoIndex) => ({
         query: s.query,
-        params: (s.params ?? []) as unknown[],
+        params: d.parts.sql_also_params?.[alsoIndex] ?? [],
       })),
     ];
     const stepLevelExpectation = p.step.expected_row_count;
@@ -153,9 +153,9 @@ async function executePostgres(d: RequestDispatch): Promise<StepResult> {
           params: d.parts.sql_params ?? [],
           ...(sqlBlock.also && sqlBlock.also.length > 0
             ? {
-                also: sqlBlock.also.map((s) => ({
+                also: sqlBlock.also.map((s, alsoIndex) => ({
                   query: s.query,
-                  params: s.params ?? [],
+                  params: d.parts.sql_also_params?.[alsoIndex] ?? [],
                 })),
               }
             : {}),
