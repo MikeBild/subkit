@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { applyResponseFilters, ResponseFilterFailError } from "../execution/response-filter.ts";
-import { compileRequestBoundary } from "../workflows/request-boundary.ts";
+import { compileRequestBoundary, requestBoundaryViolation } from "../workflows/request-boundary.ts";
 import type { RequestStep } from "../workflows/types.ts";
 import { bindRecipe } from "./recipe-binding.ts";
 import { getBuiltinTemplate } from "./templates.ts";
@@ -50,6 +50,38 @@ describe("slack recipes (#591)", () => {
   test("the channel history read approves any channel identifier", () => {
     const history = requestSteps.find((entry) => entry.name === "channel-history/hist")!;
     expect(history.step.boundary?.variables).toEqual({ "input.channel": { class: "identifier" } });
+  });
+
+  test("message recipes admit long text within a finite request body boundary", () => {
+    const messages = requestSteps.filter(({ step }) =>
+      ["/chat.postMessage", "/chat.update"].includes(step.path!),
+    );
+    expect(messages).toHaveLength(3);
+    for (const { step } of messages) {
+      const { boundary } = compileRequestBoundary(step, slack.base_url);
+      expect(boundary).toBeDefined();
+      const request = {
+        method: "POST",
+        url: `${slack.base_url}${step.path}`,
+        headers: {},
+        body: {
+          channel: "C1234567890",
+          ...(step.id === "edit" ? { ts: "1714000000.000100" } : {}),
+          text: "x".repeat(4096),
+        },
+      };
+      for (const text of ["x".repeat(4096), "😀".repeat(40000), "\u0000".repeat(40000)]) {
+        expect(
+          requestBoundaryViolation(boundary!, { ...request, body: { ...request.body, text } }),
+        ).toBeNull();
+      }
+      expect(
+        requestBoundaryViolation(boundary!, {
+          ...request,
+          body: { ...request.body, text: "x".repeat(boundary!.max_body_bytes + 1) },
+        }),
+      ).toMatchObject({ kind: "body_size" });
+    }
   });
 
   test("a slack error envelope fails every request step while a success passes", () => {

@@ -14226,7 +14226,7 @@
               "method": "POST",
               "connector_id": "00000000-0000-0000-0000-000000000000",
               "path": "/chat.postMessage",
-              "boundary": { "variables": {}, "max_body_bytes": 4096, "max_calls": 1 },
+              "boundary": { "variables": {}, "max_body_bytes": 1048576, "max_calls": 1 },
               "response_filters": [
                 { "target": "KEYS", "action": "FAIL", "pattern": "^error$", "scope": "ENTRY" }
               ],
@@ -14728,7 +14728,7 @@
               "method": "POST",
               "connector_id": "00000000-0000-0000-0000-000000000000",
               "path": "/chat.postMessage",
-              "boundary": { "variables": {}, "max_body_bytes": 4096, "max_calls": 1 },
+              "boundary": { "variables": {}, "max_body_bytes": 1048576, "max_calls": 1 },
               "response_filters": [
                 { "target": "KEYS", "action": "FAIL", "pattern": "^error$", "scope": "ENTRY" }
               ],
@@ -14751,7 +14751,7 @@
               "method": "POST",
               "connector_id": "00000000-0000-0000-0000-000000000000",
               "path": "/chat.update",
-              "boundary": { "variables": {}, "max_body_bytes": 4096, "max_calls": 1 },
+              "boundary": { "variables": {}, "max_body_bytes": 1048576, "max_calls": 1 },
               "response_filters": [
                 { "target": "KEYS", "action": "FAIL", "pattern": "^error$", "scope": "ENTRY" }
               ],
