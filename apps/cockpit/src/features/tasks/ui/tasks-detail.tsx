@@ -510,6 +510,8 @@ export function TaskDetail({
   const latestRecord = items.find((run) => run.id === latest?.id) ?? null;
   const openRun = isOpenRun(latest);
   const grantLive = scheduled ? task.grant_live : null;
+  const listedRun = items.find((run) => run.id === shownRun) ?? null;
+  const fetchedRun = useTaskRun(shownRun || null, canSeeRuns && !listedRun);
   const asked = useTaskRun(latest?.id ?? null, canSeeRuns && latest?.state === "waiting");
   const question =
     latest?.state === "waiting" && waitingForKey(latest) === "tasks.overview.waiting.you"
@@ -664,7 +666,10 @@ export function TaskDetail({
       content: (
         <>
           <ScheduleTab task={task} start={nextUp} />
-          <ScheduleHistory subject={{ kind: "task", id: task.id }} />
+          <ScheduleHistory
+            subject={{ kind: "task", id: task.id }}
+            onOpenRun={canSeeRuns ? setShownRun : undefined}
+          />
         </>
       ),
     },
@@ -826,7 +831,7 @@ export function TaskDetail({
       ) : null}
       <TaskRunSheet
         task={task}
-        run={items.find((run) => run.id === shownRun) ?? null}
+        run={listedRun ?? fetchedRun.data ?? null}
         onClose={() => setShownRun("")}
         permissions={permissions}
       />

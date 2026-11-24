@@ -1,4 +1,5 @@
 import { expect } from "bun:test";
+import { RUN_ID, run, TASK_ID, task } from "@/features/tasks/model/tasks-fixtures";
 import { formatMoney, type Locale } from "@/lib/i18n";
 import { type Journey, journeys, mount } from "./journey-fixtures";
 import { ALL_PERMISSIONS, NOW, WORKFLOW, workflow } from "./workspace-journey-fixtures";
@@ -212,4 +213,55 @@ isolated("Schedules › the estimate of a new schedule follows the chosen rhythm
   await app.settle(80);
   expect(app.find("schedule-cost-preview")?.textContent).toContain(perMonth(app, 0.6));
   expect(app.seen.filter((call) => call.includes("/schedule-cost?")).length).toBeGreaterThan(1);
+});
+
+const TASK_OCCURRENCE = "88888888-8888-4888-8888-888888888888";
+
+const taskScheduleRoutes = {
+  [`/v1/tasks/${TASK_ID}`]: () =>
+    task({ schedule_cron: DAILY.cron, schedule_timezone: DAILY.timezone }),
+  [`/v1/tasks/${TASK_ID}/runs`]: () => ({ items: [], next_cursor: null, total: 0 }),
+  [`/v1/task-runs/${RUN_ID}`]: () =>
+    run({ trigger: "cron", state: "completed", ended_at: NOW, completed_at: NOW }),
+  [`/v1/tasks/${TASK_ID}/schedule-occurrences`]: () => ({
+    items: [
+      {
+        id: TASK_OCCURRENCE,
+        workflow_id: null,
+        task_id: TASK_ID,
+        schedule_id: null,
+        due_at: NOW,
+        last_due_at: NOW,
+        started_at: NOW,
+        state: "ran",
+        reason_code: null,
+        skipped_count: 0,
+        execution_id: null,
+        task_run_id: RUN_ID,
+        run_outcome: "succeeded",
+        created_at: NOW,
+        updated_at: NOW,
+      },
+    ],
+    next_before: null,
+  }),
+};
+
+isolated("Schedules › a task occurrence opens its scheduled run", async () => {
+  const app = await mount(`/tasks/${TASK_ID}?tab=schedule`, {
+    routes: taskScheduleRoutes,
+    permissions: ALL_PERMISSIONS,
+  });
+  await app.click(`schedule-occurrence-open-${TASK_OCCURRENCE}`);
+  expect(new URL(app.dom.window.location.href).searchParams.get("task_run")).toBe(RUN_ID);
+  expect(app.find("task-run-sheet")).not.toBeNull();
+});
+
+isolated("Schedules › a task occurrence offers no run without task_run:read", async () => {
+  const app = await mount(`/tasks/${TASK_ID}?tab=schedule`, {
+    routes: taskScheduleRoutes,
+    permissions: ALL_PERMISSIONS.filter((permission) => permission !== "task_run:read"),
+  });
+  expect(app.find("schedule-history")).not.toBeNull();
+  expect(app.find(`schedule-occurrence-open-${TASK_OCCURRENCE}`)).toBeNull();
 });

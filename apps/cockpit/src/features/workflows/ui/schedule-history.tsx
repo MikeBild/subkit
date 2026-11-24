@@ -6,9 +6,11 @@ import { useI18n } from "@/lib/i18n-context";
 export function ScheduleHistory({
   subject,
   scheduled = true,
+  onOpenRun,
 }: {
   subject: { kind: "workflow" | "task"; id: string };
   scheduled?: boolean;
+  onOpenRun?: (runId: string) => void;
 }) {
   const { t } = useI18n();
   const sheets = useOpenRunSheet();
@@ -17,7 +19,7 @@ export function ScheduleHistory({
       <OccurrenceHistory
         subject={subject}
         scheduled={scheduled}
-        onOpenRun={subject.kind === "workflow" ? (id) => sheets.run(id) : undefined}
+        onOpenRun={onOpenRun ?? (subject.kind === "workflow" ? (id) => sheets.run(id) : undefined)}
       />
     </Section>
   );
