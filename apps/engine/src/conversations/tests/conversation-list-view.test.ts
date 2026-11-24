@@ -1,6 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, desc, eq } from "drizzle-orm";
-import { auditLog, conversationHidden, conversations, workflows } from "../../db/schema/index.ts";
+import {
+  auditLog,
+  conversationHidden,
+  conversationMessages,
+  conversations,
+  workflows,
+} from "../../db/schema/index.ts";
 import { appendMessage } from "../persistence/index.ts";
 import {
   appendUserMessage,
@@ -257,5 +263,31 @@ describe("conversation list view", () => {
     const after = (await listMine()).find((r) => r.id === created.conversation.id)!;
     expect(Date.parse(after.last_activity_at!)).toBeGreaterThanOrEqual(Date.parse(before));
     expect(after.message_count).toBe(2);
+  });
+
+  test("a follow-up message moves a resumed conversation above a newer idle one (#528)", async () => {
+    const start = (initial_message: string) =>
+      createConversation(
+        { tenant_id: ctx.tenant_id, actor_id: ctx.user_id, initial_message, surface: "web" },
+        ctx.testDb.db,
+      );
+    const resumed = (await start("Resume me later")).conversation.id;
+    const idle = (await start("Idle thread")).conversation.id;
+    await appendMessage(ctx.testDb.db, ctx.tenant_id, resumed, "user", { text: "Follow-up" });
+    const lastMessageId = await appendMessage(ctx.testDb.db, ctx.tenant_id, resumed, "assistant", {
+      text: "Answer",
+    });
+
+    const ids = (await listMine({ sort: "updated_at", order: "desc" })).map((r) => r.id);
+    expect(ids.indexOf(resumed)).toBeLessThan(ids.indexOf(idle));
+    const [lastMessage] = await ctx.testDb.db
+      .select({ created_at: conversationMessages.created_at })
+      .from(conversationMessages)
+      .where(eq(conversationMessages.id, lastMessageId));
+    const [row] = await ctx.testDb.db
+      .select({ updated_at: conversations.updated_at })
+      .from(conversations)
+      .where(eq(conversations.id, resumed));
+    expect(row!.updated_at.getTime()).toBeGreaterThanOrEqual(lastMessage!.created_at.getTime());
   });
 });
