@@ -31,6 +31,14 @@ describe("skillVersionRows", () => {
     expect(rows[0]?.current).toBe(true);
     expect(rows[1]?.restorable).toBe(true);
   });
+
+  test("labels no row current when the running version is not in the history (#538)", () => {
+    const rows = skillVersionRows([entry("c", 3), entry("b", 2)], 4);
+    expect(rows.map((row) => [row.current, row.restorable])).toEqual([
+      [false, true],
+      [false, true],
+    ]);
+  });
 });
 
 describe("what a skill covers and where it is used are two answers", () => {
