@@ -131,7 +131,11 @@ export function createFeedbackStore(env: StoreEnvironment = BROWSER) {
       set({ ...state, status: "sending", failure: null });
     },
     failed(failure: FeedbackFailure): void {
-      set({ ...state, status: "failed", failure });
+      const draft =
+        failure === "attachment"
+          ? { ...state.draft, files: [], screenshotIncluded: false }
+          : state.draft;
+      set({ ...state, draft, status: "failed", failure });
     },
     recordError(error: unknown, at: Date): void {
       errors = appendClientError(errors, { code: clientErrorCode(error), at: at.toISOString() });
