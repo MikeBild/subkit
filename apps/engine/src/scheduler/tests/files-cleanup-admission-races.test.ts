@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import pg from "pg";
 import { executions, files, workflows } from "../../db/schema/index.ts";
 import { createExecution } from "../../execution/state.ts";
@@ -166,6 +166,7 @@ test("unlinked cleanup retries a catalog conflict with a fresh reference scan", 
       filename: "retry.txt",
       storage_uri: `local://${srv.tenantId}/${id}`,
       size_bytes: 1,
+      created_at: sql`now() - interval '2 days'`,
     });
     await blocker.query("BEGIN");
     await blocker.query("SELECT pg_advisory_xact_lock(hashtextextended($1::text,741937))", [

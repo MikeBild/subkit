@@ -713,8 +713,8 @@ jobs:
 
   # release.yml publishes a release without marking it latest. This job marks it latest once the
   # desktop assets are attached, so releases/latest/download/latest-mac.yml and the DMG link never
-  # point at a release without them. It also runs when the desktop build failed or was skipped,
-  # then with a warning, so the CLI, install.sh and the Compose file still move on.
+  # point at a release without them. When the desktop build failed or was skipped it fails and
+  # leaves the previous release latest; rerun desktop-release for the tag to promote it.
   promote:
     needs: [resolve, publish]
     if: ${{ !cancelled() && needs.resolve.outputs.dry_run != 'true' && ((github.event_name == 'workflow_run' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository) || (github.event_name == 'workflow_dispatch' && inputs.tag != '' && !inputs.unsigned_dry_run)) }}
@@ -749,7 +749,8 @@ jobs:
             jq -e --arg name "$asset" 'any(.assets[]; .name == $name)' <<<"$release" > /dev/null || missing="$missing $asset"
           done
           if [ -n "$missing" ]; then
-            echo "::warning::$TAG becomes the latest release without SubKit Desktop assets:$missing (desktop publish: ${PUBLISH_RESULT:-skipped}). The desktop updater finds no update and the DMG link answers 404 until desktop-release runs again for $TAG. See apps/desktop/RELEASING.md."
+            echo "::error::$TAG stays unpromoted, it lacks SubKit Desktop assets:$missing (desktop publish: ${PUBLISH_RESULT:-skipped}). The previous release stays latest until desktop-release runs again for $TAG. See apps/desktop/RELEASING.md." >&2
+            exit 1
           fi
           gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --latest
           latest=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name')

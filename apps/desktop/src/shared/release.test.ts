@@ -356,7 +356,7 @@ describe("desktop release workflow", () => {
     for (const run of verifies) expect(run).toMatch(/verify-feed\.ts "\$\w+" "\$VERSION" \$FEEDS/);
   });
 
-  test("marks the release latest after the desktop assets, and also when they are missing", () => {
+  test("marks the release latest only after the desktop assets", () => {
     const promote = jobs.promote;
     expect(promote?.needs).toEqual(["resolve", "publish"]);
     const condition = promote?.if ?? "";
@@ -372,10 +372,12 @@ describe("desktop release workflow", () => {
     expect(script).toContain("sort -V | tail -n 1");
     expect(script).toContain("for asset in latest-mac.yml subkit-desktop-mac-arm64.dmg; do");
     expect(script).toMatch(
-      /::warning::\$TAG becomes the latest release without SubKit Desktop assets/,
+      /::error::\$TAG stays unpromoted, it lacks SubKit Desktop assets:\$missing[^\n]*\n\s+exit 1/,
     );
     expect(script).toContain("releases/latest\" --jq '.tag_name'");
-    expect(script.indexOf("::warning::$TAG becomes")).toBeLessThan(script.indexOf("--latest"));
+    expect(script.indexOf("::error::$TAG stays unpromoted")).toBeLessThan(
+      script.indexOf("--latest"),
+    );
     const publishScripts = (jobs.publish?.steps ?? []).map((step) => step.run ?? "").join("\n");
     expect(publishScripts).not.toContain("--latest");
   });

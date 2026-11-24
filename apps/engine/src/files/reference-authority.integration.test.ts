@@ -56,6 +56,7 @@ async function file() {
     status: "ready",
     storage_uri: `memory://${id}`,
     size_bytes: 4,
+    created_at: sql`now() - interval '2 days'`,
   });
   await store.put(id, new Uint8Array([1, 2, 3, 4]));
   return {

@@ -45,6 +45,8 @@ import { removeStoredFile } from "../remove-stored-file.ts";
 
 const UNLINKED_HARD_DELETE_AFTER = sql`interval '7 days'`;
 
+const UNLINKED_SOFT_DELETE_MIN_AGE = sql`interval '1 day'`;
+
 const PENDING_EXPIRY_GRACE = sql`interval '1 hour'`;
 
 const STUCK_SCAN_GRACE = sql`interval '1 hour'`;
@@ -306,6 +308,10 @@ function isSettledForCleanup(): SQL {
   );
 }
 
+function isOldEnoughForUnlinkedCleanup(): SQL {
+  return lt(files.created_at, sql`now() - ${UNLINKED_SOFT_DELETE_MIN_AGE}`);
+}
+
 function hasNoFileLink() {
   return notExists(
     sql`(select 1 from ${fileLinks} where ${fileLinks.file_id}=${files.id} and ${fileLinks.tenant_id}=${files.tenant_id})`,
@@ -347,6 +353,7 @@ async function sweepUnlinkedTtlPass(
     and(
       eq(files.status, "ready"),
       isNull(files.deleted_at),
+      isOldEnoughForUnlinkedCleanup(),
       isSettledForCleanup(),
       isNotInstalledPackageArchive(),
     ),
@@ -412,6 +419,7 @@ async function sweepUnlinkedTtlPass(
             eq(files.id, candidate.id),
             eq(files.status, "ready"),
             isNull(files.deleted_at),
+            isOldEnoughForUnlinkedCleanup(),
             isSettledForCleanup(),
             hasNoFileLink(),
             isNotInstalledPackageArchive(),

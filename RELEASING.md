@@ -62,8 +62,8 @@ image and the binaries. The desktop app follows with its own workflow, see
    say "Mutation evidence: deferred". Produce the evidence afterwards with `bun run quality release`.
    Without the flag nothing changes.
 7. The `release` workflow publishes the release without marking it latest. `desktop-release`
-   marks it latest once the SubKit Desktop assets are attached, or with a warning when they are
-   missing, so `releases/latest/download/…` never serves a release without them (see
+   marks it latest only once the SubKit Desktop assets are attached; when they are missing it fails
+   and the previous release stays latest, so `releases/latest/download/…` never serves a release without them (see
    [apps/desktop/RELEASING.md](apps/desktop/RELEASING.md#when-a-release-becomes-latest)).
    A `release` run started by hand marks the release latest at once and warns; run
    `desktop-release` with the tag yourself.

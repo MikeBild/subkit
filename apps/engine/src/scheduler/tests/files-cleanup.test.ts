@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { PgBoss } from "pg-boss";
 import {
   auditLog,
@@ -102,12 +102,35 @@ describe("runFilesCleanup — sweep 2: unlinked TTL", () => {
     });
 
     await srv.db.delete(fileLinks).where(eq(fileLinks.file_id, att.file_uuid));
+    await srv.db
+      .update(files)
+      .set({ created_at: sql`now() - interval '2 days'` })
+      .where(eq(files.id, att.file_uuid));
 
     await runFilesCleanup(new Date(getTestNow()), srv.db, boss, srv.testDb.pool);
 
     const [row] = await srv.db.select().from(files).where(eq(files.id, att.file_uuid));
     expect(row).toBeDefined();
     expect(row!.deleted_at).not.toBeNull();
+  });
+
+  test("ready unlinked row younger than a day stays until it is linked", async () => {
+    const att = await attachInlineForTest({
+      db: srv.db,
+      tenant_id: srv.tenantId,
+      conversation_id: uuid(),
+      filename: "fresh.txt",
+      content: "fresh-bytes",
+      slug: `fresh-${uuid().slice(0, 8)}`,
+    });
+
+    await srv.db.delete(fileLinks).where(eq(fileLinks.file_id, att.file_uuid));
+
+    await runFilesCleanup(new Date(getTestNow()), srv.db, boss, srv.testDb.pool);
+
+    const [row] = await srv.db.select().from(files).where(eq(files.id, att.file_uuid));
+    expect(row?.status).toBe("ready");
+    expect(row?.deleted_at).toBeNull();
   });
 
   test("soft-deleted row older than 7d is hard-deleted", async () => {
@@ -187,6 +210,7 @@ async function seedUnlinked(tenantId = srv.tenantId, deletedAt?: Date) {
     storage_uri: `local://${tenantId}/${id}`,
     size_bytes: 1,
     deleted_at: deletedAt,
+    created_at: sql`now() - interval '2 days'`,
   });
   return id;
 }

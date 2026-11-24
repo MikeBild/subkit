@@ -207,7 +207,7 @@ Therefore:
 | --- | --- | --- |
 | `release` publishes | New release is latest without desktop assets: `latest-mac.yml` and the DMG answer 404 | New release is published, not latest: all `latest` links serve the previous, complete release |
 | About 40 minutes later, `desktop-release` uploads | Desktop assets appear, the gap closes | `promote` marks the new release latest: every channel moves at once |
-| Desktop build fails or is skipped | The 404 stays until someone reruns | `promote` still marks it latest, with a warning naming the missing assets |
+| Desktop build fails or is skipped | The 404 stays until someone reruns | `promote` fails and names the missing assets; the previous, complete release stays latest until `desktop-release` runs again for the tag |
 
 `promote` runs whenever the `release` run came from a tag push, also when the desktop build
 failed, `DESKTOP_RELEASE_AUTO` is `false`, signing values are missing or the `release` run

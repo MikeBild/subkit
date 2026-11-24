@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import { fileLinks, files } from "../../db/schema/index.ts";
 import { requireFileForTenant, resolvedFromRow } from "../../files/resolver.ts";
@@ -37,6 +37,10 @@ describe("files cleanup race — soft-delete grace", () => {
       slug: `race-grace-${uuid().slice(0, 8)}`,
     });
     await srv.db.delete(fileLinks).where(eq(fileLinks.file_id, att.file_uuid));
+    await srv.db
+      .update(files)
+      .set({ created_at: sql`now() - interval '2 days'` })
+      .where(eq(files.id, att.file_uuid));
 
     await runFilesCleanup(new Date(FROZEN_NOW), srv.db, boss, srv.testDb.pool);
 
