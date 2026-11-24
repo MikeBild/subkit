@@ -76,7 +76,7 @@ Die Engine hat noch keinen Mailversand, deshalb lautet die Antwort `copy_link` m
 
 ### Benachrichtigungspause
 
-Inhalt von `PUT`: `{"mode": "for", "minutes": 60}`, `{"mode": "until", "until": "…"}` oder `{"mode": "until_resumed"}`. Das Ende muss in der Zukunft und höchstens 30 Tage voraus liegen, sonst `422 pause_in_past` oder `422 pause_too_long`. Die Antwort ist `{paused, mode, paused_at, until}`. Eine abgelaufene Pause liest sich als `paused: false`.
+Inhalt von `PUT`: `{"mode": "for", "minutes": 60}`, `{"mode": "until", "until": "…"}` oder `{"mode": "until_resumed"}`. Bei `for` und `until` muss das Ende in der Zukunft und höchstens 30 Tage voraus liegen, sonst `422 pause_in_past` oder `422 pause_too_long`; `until_resumed` hat kein Ende (`until: null`) und keine Grenze. Die Antwort ist `{paused, mode, paused_at, until}`. Eine abgelaufene Pause liest sich als `paused: false`.
 
 Während der Pause hält SubKit Push-Benachrichtigungen und Desktop-Banner zurück. Die Aufmerksamkeitsliste und die Zähler zählen weiter. Hast du dringende Punkte trotz Ruhezeiten eingeschaltet, erreichen sie dich weiterhin. Im Cockpit-Ereignisstrom tragen Ankündigungen `delivery: held` (oder `critical_only`), `held_by: pause` und bei einer Pause mit Ende `held_until`. Ruhezeiten erscheinen dort mit `held_by: schedule`. Ein offener Strom übernimmt eine Änderung innerhalb von 30 Sekunden.
 
