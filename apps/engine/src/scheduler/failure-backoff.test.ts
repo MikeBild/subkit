@@ -14,8 +14,14 @@ function run(
   minutesAgo: number,
   status = "failed",
   error_code: string | null = "sensitive_execution_failure",
+  error_message: string | null = null,
 ): ScheduledRunOutcome {
-  return { status, error_code, finished_at: new Date(NOW.getTime() - minutesAgo * MINUTE) };
+  return {
+    status,
+    error_code,
+    error_message,
+    finished_at: new Date(NOW.getTime() - minutesAgo * MINUTE),
+  };
 }
 
 describe("failureClassOf", () => {
@@ -50,6 +56,24 @@ describe("failureStreak", () => {
 
   test("another failure class ends the streak", () => {
     expect(failureStreak([run(1), run(2), run(3, "failed", "http_500"), run(4)]).streak).toBe(2);
+  });
+
+  test("the same error code with a different cause ends the streak", () => {
+    const runs = [
+      run(1, "failed", "http_4xx", "HTTP 403 Forbidden"),
+      run(2, "failed", "http_4xx", "HTTP 422 Unprocessable Entity"),
+      run(3, "failed", "http_4xx", "HTTP 422 Unprocessable Entity"),
+    ];
+    expect(failureStreak(runs)).toEqual({ streak: 1, failure_class: "http_4xx" });
+    expect(assessFailures(runs, NOW).action).toBe("run");
+  });
+
+  test("the same error code with the same cause keeps the streak", () => {
+    const runs = [1, 2, 3].map((minutesAgo) =>
+      run(minutesAgo, "failed", "http_4xx", "HTTP 422 Unprocessable Entity"),
+    );
+    expect(failureStreak(runs)).toEqual({ streak: 3, failure_class: "http_4xx" });
+    expect(assessFailures(runs, NOW).action).toBe("backoff");
   });
 
   test("a success or an aborted run on top means no streak", () => {

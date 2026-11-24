@@ -1,4 +1,5 @@
 import { backoffDelay } from "@shared/backoff.ts";
+import { classifyPersistedFailure } from "../execution/core/classify.ts";
 
 export const FAILURE_BACKOFF_AFTER = 3;
 export const FAILURE_PAUSE_AFTER = 5;
@@ -12,6 +13,7 @@ const MINUTE_MS = 60_000;
 export interface ScheduledRunOutcome {
   status: string;
   error_code: string | null;
+  error_message: string | null;
   finished_at: Date;
 }
 
@@ -24,6 +26,16 @@ export function failureClassOf(run: Pick<ScheduledRunOutcome, "status" | "error_
   if (run.status === "timed_out") return "timed_out";
   const code = run.error_code?.trim() ?? "";
   return /^[a-z][a-z0-9_]{0,99}$/.test(code) ? code : "unclassified";
+}
+
+export function failureCauseOf(
+  run: Pick<ScheduledRunOutcome, "status" | "error_code" | "error_message">,
+): string {
+  if (run.status === "timed_out") return "timeout";
+  return classifyPersistedFailure({
+    status: run.status,
+    error: { code: run.error_code, message: run.error_message },
+  }).classification;
 }
 
 function isFailure(run: Pick<ScheduledRunOutcome, "status">): boolean {
@@ -47,9 +59,15 @@ export function failureStreak(newestFirst: readonly ScheduledRunOutcome[]): {
   const lead = newestFirst[0];
   if (!lead || !isFailure(lead)) return { streak: 0, failure_class: null };
   const failure_class = failureClassOf(lead);
+  const failure_cause = failureCauseOf(lead);
   let streak = 0;
   for (const run of newestFirst) {
-    if (!isFailure(run) || failureClassOf(run) !== failure_class) break;
+    if (
+      !isFailure(run) ||
+      failureClassOf(run) !== failure_class ||
+      failureCauseOf(run) !== failure_cause
+    )
+      break;
     streak++;
   }
   return { streak, failure_class };
