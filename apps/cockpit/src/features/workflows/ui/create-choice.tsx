@@ -12,6 +12,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { apiCall } from "@/api/call";
 import { absolute, chatNewHref, workflowHref } from "@/app/links";
+import { useSession } from "@/app/session";
 import { createRefusal, slugify } from "@/components/cockpit/create-refusal";
 import { SelectField, TextField } from "@/components/cockpit/form-field";
 import {
@@ -37,6 +38,7 @@ import { humanizeCategory, UNCATEGORIZED } from "@/features/workflows/model/work
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { manualWorkflowDefinition, type WorkflowTrigger } from "../model/create-workflow-model";
+import { scheduleZone } from "../model/schedule-zone";
 import { useSolutionFlow } from "./create-from-template";
 import { ScheduleFields } from "./workflow-schedule";
 
@@ -303,6 +305,7 @@ function useManualWorkflow(
 ): ManualForm {
   const { t } = useI18n();
   const navigate = useNavigate();
+  const session = useSession();
   const client = useQueryClient();
   const [name, setName] = useState("");
   const [purpose, setPurpose] = useState("");
@@ -331,7 +334,7 @@ function useManualWorkflow(
         trigger,
         schedule: () => ({
           cron: rhythmToCron(rhythm),
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+          timezone: scheduleZone({ workspaceZone: session.tenant.timezone }),
         }),
       });
       return apiCall("post", "/v1/workflows/drafts", {
