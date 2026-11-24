@@ -12,6 +12,7 @@ import { validateAgainstJsonSchema } from "../execution/engine/envelope.ts";
 import { chooseEnvironment } from "../identity/core/default-environment.ts";
 import { personalDefaultEnvironment } from "../identity/setup-preferences.ts";
 import { emitResourceChange } from "../pubsub/resource-changes.ts";
+import { isRecord } from "../utils/type-guards.ts";
 import { normalizeWorkflowRunInput } from "../workflows/run-input.ts";
 import type { ScheduleTrigger } from "../workflows/types.ts";
 import { isIanaTimeZone, WorkflowDefSchema } from "../workflows/types.ts";
@@ -531,7 +532,12 @@ export async function bindFromWorkflow(
     const sameCron = prior.cron === input.trigger.cron;
     const sameTz = prior.timezone === tz;
     const sameExecutionMode = prior.execution_mode === executionMode;
-    const sameInput = canonicalJson(prior.input ?? {}) === canonicalJson(inputPayload);
+    const priorInput = isRecord(prior.input) ? prior.input : {};
+    const mergedInput = { ...priorInput, ...inputPayload };
+    const preservedInputKeyCount = Object.keys(priorInput).filter(
+      (key) => !(key in inputPayload),
+    ).length;
+    const sameInput = canonicalJson(priorInput) === canonicalJson(mergedInput);
     if (sameCron && sameTz && sameExecutionMode && sameInput) {
       return { status: "noop", row: prior };
     }
@@ -541,7 +547,7 @@ export async function bindFromWorkflow(
         cron: input.trigger.cron,
         timezone: tz,
         execution_mode: executionMode,
-        input: inputPayload as never,
+        input: mergedInput as never,
         created_by: personOf(input),
         updated_at: new Date(),
       })
@@ -565,6 +571,7 @@ export async function bindFromWorkflow(
           execution_mode: executionMode,
           business_days_only: input.trigger.business_days_only ?? false,
           skip_date_count: (input.trigger.skip_dates ?? []).length,
+          preserved_input_key_count: preservedInputKeyCount,
           kind: "update",
         },
       },

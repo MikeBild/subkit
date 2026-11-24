@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { tenants, workflowsSchedules } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
-import { createSchedule } from "../../scheduler/repo.ts";
+import { createSchedule, updateSchedule } from "../../scheduler/repo.ts";
 import { createWorkflow, updateWorkflow } from "../service.ts";
 
 let ctx: TestDb;
@@ -32,10 +32,10 @@ function requestDef(slug: string, expression: string) {
   };
 }
 
-function scheduledDef(slug: string, cron: string) {
+function scheduledDef(slug: string, cron: string, tz?: string) {
   return {
     ...requestDef(slug, "return input.scope.fetch.data;"),
-    trigger: { kind: "schedule", cron },
+    trigger: { kind: "schedule", cron, ...(tz ? { tz } : {}) },
   };
 }
 
@@ -112,6 +112,36 @@ describe("schedule binding survives a step-only edit", () => {
     );
     if ("errors" in updated) throw new Error(`update: ${updated.errors.join("; ")}`);
     expect(await schedulesFor(wfId)).toHaveLength(0);
+  });
+
+  test("changing only the trigger timezone keeps saved schedule input", async () => {
+    const created = await createWorkflow(
+      { tenant_id, def: scheduledDef("sbse-tz-change", "0 8 * * *", "UTC"), actor_id: null },
+      ctx.db,
+    );
+    if ("errors" in created) throw new Error(`create: ${created.errors.join("; ")}`);
+    const wfId = created.workflow.id;
+    const [bound] = await schedulesFor(wfId);
+    await updateSchedule(ctx.db, tenant_id, bound!.id, {
+      input: { ...(bound!.input as Record<string, unknown>), batch: 17 },
+    });
+
+    const updated = await updateWorkflow(
+      {
+        tenant_id,
+        id: wfId,
+        def: scheduledDef("sbse-tz-change", "0 8 * * *", "Etc/UTC"),
+        actor_id: null,
+      },
+      ctx.db,
+    );
+    if ("errors" in updated) throw new Error(`update: ${updated.errors.join("; ")}`);
+
+    const rows = await schedulesFor(wfId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.id).toBe(bound!.id);
+    expect(rows[0]?.timezone).toBe("Etc/UTC");
+    expect((rows[0]!.input as { batch?: number }).batch).toBe(17);
   });
 
   test("changing an inline trigger cron rebinds", async () => {
