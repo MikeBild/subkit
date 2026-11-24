@@ -1,6 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { auditLog, executions, workflowsSchedules } from "../../db/schema/index.ts";
+import {
+  auditLog,
+  executions,
+  scheduleOccurrences,
+  workflowsSchedules,
+} from "../../db/schema/index.ts";
 import {
   createEngineCtx,
   createWorkflowRow,
@@ -131,5 +136,90 @@ describe("scheduler reconciler honours tz + business_days_only + skip_dates", ()
     expect(md?.workflow_id).toBe(workflow_id);
     expect(md?.tz).toBe("Europe/Berlin");
     expect(md?.execution_id).toBe(execRows[0]?.id);
+  });
+});
+
+const lateSweep = async (
+  slug: string,
+  input: Record<string, unknown>,
+  lastEnqueuedAt: Date,
+  sweepAt: Date,
+) => {
+  const calls: SendCall[] = [];
+  const { workflow_id } = await createWorkflowRow(ctx, {
+    name: slug,
+    slug,
+    input_schema: { type: "object", properties: {}, additionalProperties: false },
+    steps: [{ id: "noop", kind: "transform", expression: "$input" }],
+  });
+  await grantScheduleAuthorityFixture(ctx.testDb.db, ctx.tenantId, workflow_id);
+  await ctx.testDb.db.insert(workflowsSchedules).values({
+    tenant_id: ctx.tenantId,
+    workflow_id,
+    cron: "59 23 * * *",
+    timezone: "America/Phoenix",
+    paused: false,
+    input,
+    last_enqueued_at: lastEnqueuedAt,
+  });
+  const reconciler = new SchedulerReconciler({
+    boss: createStubBoss(calls),
+    db: ctx.testDb.db,
+    intervalMs: 60_000,
+  });
+  await reconciler.reconcileWorkflowSchedules(sweepAt);
+  const sends = calls.filter(
+    (call) => (call.payload as { workflow_id?: string })?.workflow_id === workflow_id,
+  );
+  const execRows = await ctx.testDb.db
+    .select()
+    .from(executions)
+    .where(eq(executions.workflow_id, workflow_id));
+  const occurrences = await ctx.testDb.db
+    .select()
+    .from(scheduleOccurrences)
+    .where(eq(scheduleOccurrences.workflow_id, workflow_id));
+  return { sends, execRows, occurrences };
+};
+
+describe("calendar gate judges the due occurrence, not the late sweep", () => {
+  const previousDue = new Date("2026-11-23T06:59:00Z");
+  const sweepAfterLocalMidnight = new Date("2026-11-24T07:00:09Z");
+
+  test("an excluded 23:59 occurrence swept after local midnight is skipped", async () => {
+    const { sends, execRows, occurrences } = await lateSweep(
+      "late-sweep-skip-date",
+      { skip_dates: ["2026-11-23"] },
+      previousDue,
+      sweepAfterLocalMidnight,
+    );
+    expect(sends.length).toBe(0);
+    expect(execRows.length).toBe(0);
+    expect(occurrences.length).toBe(1);
+    expect(occurrences[0]?.state).toBe("skipped");
+    expect(occurrences[0]?.reason_code).toBe("calendar_skip_date");
+    expect(occurrences[0]?.last_due_at.toISOString()).toBe("2026-11-24T06:59:00.000Z");
+  });
+
+  test("the same late sweep fires when the day is not excluded", async () => {
+    const { sends, execRows } = await lateSweep(
+      "late-sweep-control",
+      {},
+      previousDue,
+      sweepAfterLocalMidnight,
+    );
+    expect(sends.length).toBe(1);
+    expect(execRows.length).toBe(1);
+  });
+
+  test("a Friday 23:59 business-day occurrence swept on Saturday still fires", async () => {
+    const { sends, occurrences } = await lateSweep(
+      "late-sweep-business-day",
+      { business_days_only: true },
+      new Date("2026-11-20T06:59:00Z"),
+      new Date("2026-11-21T07:00:09Z"),
+    );
+    expect(sends.length).toBe(1);
+    expect(occurrences[0]?.state).toBe("ran");
   });
 });

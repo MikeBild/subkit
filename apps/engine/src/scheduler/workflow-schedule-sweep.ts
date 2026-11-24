@@ -8,7 +8,12 @@ import { lockActiveTenant } from "../identity/index.ts";
 import { logger } from "../logging/index.ts";
 import type { ExecutionRunJob } from "../queue/queues.ts";
 import { inspectScheduleAutomation } from "./automation-status.ts";
-import { calendarGateSkipReason, readCalendarGates, stripCalendarGates } from "./calendar-gates.ts";
+import {
+  calendarGateSkipReason,
+  localDateInTz,
+  readCalendarGates,
+  stripCalendarGates,
+} from "./calendar-gates.ts";
 import { holdStillStands } from "./core/admission-refusals.ts";
 import { isCronDue, parseCronExpression } from "./cron.ts";
 import type { EveryScheduleDefinition } from "./every-schedule-registry.ts";
@@ -295,9 +300,22 @@ async function fireCandidate(
     await note({ state: "held", reason_code: "input_required" });
     return "visited" as const;
   }
+  const gatedDueAt =
+    seconds === undefined ? (cronDueWindow(row.cron, tz, anchor, now)?.last_due ?? now) : now;
   const gate =
-    seconds === undefined ? calendarGateSkipReason(now, tz, readCalendarGates(input)) : null;
+    seconds === undefined ? calendarGateSkipReason(gatedDueAt, tz, readCalendarGates(input)) : null;
   if (gate !== null) {
+    logger.debug({
+      module: "scheduler",
+      action: "schedule.calendar_skipped",
+      msg: "scheduled occurrence skipped by its calendar gate",
+      tenant_id: row.tenant_id,
+      workflow_id: row.workflow_id,
+      schedule_id: row.id,
+      reason_code: `calendar_${gate}`,
+      due_at: gatedDueAt.toISOString(),
+      local_date: localDateInTz(gatedDueAt, tz),
+    });
     await note({ state: "skipped", reason_code: `calendar_${gate}` });
     return "visited" as const;
   }
