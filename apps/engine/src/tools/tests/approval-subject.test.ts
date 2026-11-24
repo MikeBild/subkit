@@ -17,14 +17,21 @@ describe("workflowSubjectChanges", () => {
     ]);
   });
 
-  test("truncates and scrubs a proposed description and records a cleared one as empty", () => {
+  test("scrubs a proposed description and records a cleared one as empty", () => {
     const [long] = workflowSubjectChanges({
       description: `token sk-ant-${"a".repeat(40)} ${"x".repeat(400)}`,
     });
     expect(long?.field).toBe("description");
-    expect(long?.to.length).toBeLessThanOrEqual(161);
+    expect(long?.to).toEndWith("x".repeat(400));
     expect(long?.to).not.toContain("sk-ant-aaaa");
     expect(workflowSubjectChanges({ description: "" })).toEqual([{ field: "description", to: "" }]);
+  });
+
+  test("preserves the full proposed description beyond the preview limit", () => {
+    const description = `${"x".repeat(160)} Remaining changes require review.`;
+    expect(workflowSubjectChanges({ description })).toEqual([
+      { field: "description", to: description },
+    ]);
   });
 
   test("ignores non-string and unknown fields", () => {

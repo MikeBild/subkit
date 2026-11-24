@@ -35,7 +35,7 @@ const subjectText = (value: string): string => {
 export const workflowSubjectChanges = (args: Record<string, unknown>): ApprovalSubjectChange[] =>
   WORKFLOW_SUBJECT_FIELDS.flatMap((field) => {
     const proposed = args[field];
-    return typeof proposed === "string" ? [{ field, to: subjectText(proposed) }] : [];
+    return typeof proposed === "string" ? [{ field, to: scrubString(proposed) }] : [];
   });
 
 export async function captureApprovalSubject(input: {
