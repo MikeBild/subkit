@@ -8756,7 +8756,7 @@ Grouped by template. **Trigger** is how the workflow starts: `request` (on deman
 | `list-issues` | First 50 open issues for a team, ordered by createdAt desc. | request | — |
 | `list-projects` | Enumerate projects with their progress. | request | — |
 | `list-teams` | Enumerate teams the user belongs to. | request | — |
-| `update-issue` | Mutation to update title / description / state. | request | — |
+| `update-issue` | Mutation to update an issue's title, description and/or workflow state (stateId); only the fields passed in changes are sent. | request | — |
 | `viewer` | Identity probe via GraphQL `viewer { id email name }`. | request | — |
 
 ### LinkedIn (`linkedin`)

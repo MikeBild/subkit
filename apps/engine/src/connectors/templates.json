@@ -10429,7 +10429,7 @@
       {
         "slug": "update-issue",
         "title": "Update an issue",
-        "description": "Mutation to update title / description / state.",
+        "description": "Mutation to update an issue's title, description and/or workflow state (stateId); only the fields passed in changes are sent.",
         "intent_keywords": ["update issue", "edit issue", "update an issue"],
         "derived_from_skill": "linear-basics",
         "category": "project-management",
@@ -10449,13 +10449,28 @@
           "description": "Update an issue.",
           "input_schema": {
             "type": "object",
-            "required": ["issue_id", "title"],
+            "required": ["issue_id", "changes"],
             "properties": {
               "issue_id": {
                 "type": "string"
               },
-              "title": {
-                "type": "string"
+              "changes": {
+                "type": "object",
+                "description": "IssueUpdateInput fields to change; at least one.",
+                "additionalProperties": false,
+                "minProperties": 1,
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "stateId": {
+                    "type": "string",
+                    "description": "Linear workflow state id."
+                  }
+                }
               }
             }
           },
@@ -10466,10 +10481,10 @@
               "method": "POST",
               "url": "${connector.linear.base_url}",
               "graphql": {
-                "query": "mutation($id:String!,$t:String!) { issueUpdate(id:$id, input:{title:$t}) { success issue { id title } } }",
+                "query": "mutation($id:String!,$input:IssueUpdateInput!) { issueUpdate(id:$id, input:$input) { success issue { id identifier title url state { id name } } } }",
                 "variables": {
                   "id": "${input.issue_id}",
-                  "t": "${input.title}"
+                  "input": "${input.changes}"
                 }
               }
             }
