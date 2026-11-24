@@ -251,13 +251,15 @@ function editedOAuthConfig(config: unknown, oauth: OAuthClientFields): Record<st
   return { ...(isRecord(config) ? config : {}), oauth: { ...kept, ...fresh } };
 }
 
+const addressChanged = (prior: ConnectorEditPrior, draft: ConnectorEditDraft): boolean =>
+  Boolean(prior.address) && draft.address.trim() !== prior.address;
+
 export function connectorEditPlan(
   prior: ConnectorEditPrior,
   draft: ConnectorEditDraft,
 ): ConnectorEditPlan {
   const patch: UpdateConnectorBody = { name: draft.name.trim() };
-  if (prior.address && draft.address.trim() !== prior.address)
-    patch.base_url = draft.address.trim();
+  if (addressChanged(prior, draft)) patch.base_url = draft.address.trim();
   const target = connectorTargetOf(prior.driver);
   const from = signInOf(prior.authType);
   const to = target ? draft.signIn : from;
@@ -304,7 +306,8 @@ export function connectorEditProblem(
   callbackUrl: string | null,
 ): TranslationKey | null {
   if (!draft.name.trim()) return "create.nameMissing";
-  if (prior.address && !HTTPS.test(draft.address.trim())) return "create.connector.addressInvalid";
+  if (addressChanged(prior, draft) && !HTTPS.test(draft.address.trim()))
+    return "create.connector.addressInvalid";
   const target = connectorTargetOf(prior.driver);
   const from = signInOf(prior.authType);
   if (!target || draft.signIn === null || draft.signIn === from) {
