@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { occurrenceLabel, occurrenceTone, sortOccurrences, toOccurrence } from "./schedule-model";
+import {
+  occurrenceCursor,
+  occurrenceLabel,
+  occurrenceTone,
+  sortOccurrences,
+  toOccurrence,
+} from "./schedule-model";
 
 const base = {
   id: "o1",
@@ -81,5 +87,14 @@ describe("the run an occurrence started", () => {
     expect(occurrenceTone({ state: "ran", outcome: "succeeded" })).toBe("success");
     expect(occurrenceLabel({ state: "skipped", outcome: null })).toBe("skipped");
     expect(occurrenceTone({ state: "held", outcome: null })).toBe("warning");
+  });
+});
+
+describe("the cursor for older occurrences", () => {
+  test("carries the due time and id of the last item so tied due times are not skipped", () => {
+    expect(
+      occurrenceCursor({ next_before: "2026-11-20T07:00:00.000Z", next_before_id: "o2" }),
+    ).toEqual({ before: "2026-11-20T07:00:00.000Z", before_id: "o2" });
+    expect(occurrenceCursor({ next_before: null, next_before_id: null })).toBeNull();
   });
 });

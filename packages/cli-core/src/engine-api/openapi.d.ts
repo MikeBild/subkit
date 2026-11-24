@@ -12405,6 +12405,8 @@ export interface paths {
                     limit?: number;
                     /** @description Only occurrences due before this instant; pass next_before to read on. */
                     before?: string;
+                    /** @description With before, read on after this occurrence, including later rows due at the same instant; pass next_before_id. */
+                    before_id?: string;
                 };
                 header?: never;
                 path: {
@@ -17246,6 +17248,8 @@ export interface paths {
                     limit?: number;
                     /** @description Only occurrences due before this instant; pass next_before to read on. */
                     before?: string;
+                    /** @description With before, read on after this occurrence, including later rows due at the same instant; pass next_before_id. */
+                    before_id?: string;
                 };
                 header?: never;
                 path: {
@@ -34899,6 +34903,11 @@ export interface components {
              * @description Pass as before to read older occurrences; null when this page is the last.
              */
             next_before: string | null;
+            /**
+             * Format: uuid
+             * @description Pass as before_id together with next_before; null when this page is the last.
+             */
+            next_before_id: string | null;
         };
         ScheduleOccurrence: {
             /** Format: uuid */

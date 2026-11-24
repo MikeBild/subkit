@@ -72,6 +72,13 @@ const ScheduleOccurrenceListQuery = z
       .datetime()
       .optional()
       .describe("Only occurrences due before this instant; pass next_before to read on."),
+    before_id: z
+      .string()
+      .uuid()
+      .optional()
+      .describe(
+        "With before, read on after this occurrence, including later rows due at the same instant; pass next_before_id.",
+      ),
   })
   .openapi("ListScheduleOccurrencesQuery");
 
@@ -83,6 +90,11 @@ const ScheduleOccurrenceListResponse = z
       .datetime()
       .nullable()
       .describe("Pass as before to read older occurrences; null when this page is the last."),
+    next_before_id: z
+      .string()
+      .uuid()
+      .nullable()
+      .describe("Pass as before_id together with next_before; null when this page is the last."),
   })
   .openapi("ScheduleOccurrenceListResponse");
 
@@ -92,6 +104,7 @@ interface OccurrenceListInput {
   id: string;
   limit: number;
   before?: Date;
+  beforeId?: string;
 }
 
 export function scheduleOccurrencePage(
@@ -116,8 +129,8 @@ export function scheduleOccurrencePage(
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
   }));
-  const last = items[items.length - 1];
-  return { items, next_before: rows.length > limit && last ? last.due_at : null };
+  const last = rows.length > limit ? items[items.length - 1] : undefined;
+  return { items, next_before: last?.due_at ?? null, next_before_id: last?.id ?? null };
 }
 
 function listInput({ param, query }: { param: unknown; query: unknown }): OccurrenceListInput {
@@ -126,6 +139,7 @@ function listInput({ param, query }: { param: unknown; query: unknown }): Occurr
     id: (param as { id: string }).id,
     limit: page.limit ?? SCHEDULE_OCCURRENCE_DEFAULT_LIMIT,
     ...(page.before ? { before: new Date(page.before) } : {}),
+    ...(page.before && page.before_id ? { beforeId: page.before_id } : {}),
   };
 }
 
@@ -139,12 +153,12 @@ export const listWorkflowScheduleOccurrencesOperation = defineOperation<
   permission: "workflow:read",
   resource: { type: "workflow", param: "id" },
   effect: "read",
-  async handler(scope, { id, limit, before }) {
+  async handler(scope, { id, limit, before, beforeId }) {
     if (!(await getWorkflow(scope.tenant_id, id, scope.db))) return reject.notFound("workflow");
     const rows = await listScheduleOccurrences(
       scope.db,
       { tenant_id: scope.tenant_id, workflow_id: id },
-      { limit: limit + 1, ...(before ? { before } : {}) },
+      { limit: limit + 1, ...(before ? { before } : {}), ...(beforeId ? { beforeId } : {}) },
     );
     return scheduleOccurrencePage(
       rows,
@@ -175,7 +189,7 @@ export const listTaskScheduleOccurrencesOperation = defineOperation<
   permission: "task:read",
   resource: { type: "task", param: "id" },
   effect: "read",
-  async handler(scope, { id, limit, before }) {
+  async handler(scope, { id, limit, before, beforeId }) {
     const principal = taskPrincipal(scope);
     if (isRejection(principal)) return principal;
     const task = await getTask(
@@ -186,7 +200,7 @@ export const listTaskScheduleOccurrencesOperation = defineOperation<
     const rows = await listScheduleOccurrences(
       scope.db,
       { tenant_id: scope.tenant_id, task_id: id },
-      { limit: limit + 1, ...(before ? { before } : {}) },
+      { limit: limit + 1, ...(before ? { before } : {}), ...(beforeId ? { beforeId } : {}) },
     );
     return scheduleOccurrencePage(
       rows,

@@ -37,7 +37,7 @@ Die vollständige, maschinenlesbare Beschreibung jeder Route steht unter `/opena
 
 ### Zeitplan-Verlauf
 
-Abfrage-Parameter beider Routen: `limit` (Standard 50, höchstens 200) und `before` (ein Zeitpunkt nach ISO 8601). Die Antwort ist `{items, next_before}`. Gib `next_before` als `before` mit, um ältere Einträge zu lesen.
+Abfrage-Parameter beider Routen: `limit` (Standard 50, höchstens 200), `before` (ein Zeitpunkt nach ISO 8601) und `before_id` (die ID eines Eintrags). Die Antwort ist `{items, next_before, next_before_id}`. Gib `next_before` als `before` und `next_before_id` als `before_id` mit, um ältere Einträge zu lesen; Einträge mit derselben Fälligkeit werden nicht übersprungen.
 
 | Feld | Bedeutung |
 | --- | --- |
