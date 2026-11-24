@@ -3,6 +3,7 @@ import { getConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { conversationMessages } from "../../db/schema/index.ts";
 import { stripFileSentinelsForDisplay } from "../../files/sentinel.ts";
+import { recordUsage } from "../../llm/accounting/budget.ts";
 import { isCatalogModelProvider } from "../../llm/model-catalog-view.ts";
 import { AiSdkModel } from "../../llm/runtime/ai-sdk-model.ts";
 import { resolveModelRoute } from "../../llm/runtime/invoke.ts";
@@ -19,6 +20,7 @@ import {
   type SuggestNextModelInvocation,
   type SuggestNextModelInvoker,
   type SuggestNextModelResult,
+  type SuggestNextUsageRecorder,
   suggestNextMessage,
 } from "../suggest-next.ts";
 import type { LoadedSkillHint } from "../suggest-next-offer-parse.ts";
@@ -32,6 +34,7 @@ export interface EmitSuggestNextFrameParams {
   client_suppress?: boolean;
   loaded_skills?: ReadonlyArray<LoadedSkillHint>;
   model_invoker?: SuggestNextModelInvoker;
+  usage_recorder?: SuggestNextUsageRecorder;
   budget_guard?: () => Promise<boolean> | boolean;
 }
 
@@ -95,6 +98,7 @@ export async function buildNextSuggestionFrame(
       recent_messages: recent,
       last_assistant_text: lastAssistantText,
       model_invoker: params.model_invoker ?? suggestNextModelInvoker(params.db),
+      usage_recorder: params.usage_recorder ?? ((entry) => recordUsage(entry, params.db)),
     };
     if (params.client_suppress !== undefined) callParams.client_suppress = params.client_suppress;
     if (params.loaded_skills) callParams.loaded_skills = params.loaded_skills;
@@ -273,6 +277,7 @@ function suggestNextModelInvoker(db: Db | undefined): SuggestNextModelInvoker {
     }
 
     let result: Awaited<ReturnType<AiSdkModel["generateText"]>>;
+    const startedAt = performance.now();
     try {
       result = await model.generateText(
         [{ role: "system", content: call.system }, ...call.messages],
@@ -286,6 +291,7 @@ function suggestNextModelInvoker(db: Db | undefined): SuggestNextModelInvoker {
       text: result.response || null,
       model: result.model_used,
       usage: result.usage,
+      latency_ms: Math.round(performance.now() - startedAt),
     };
   };
 }

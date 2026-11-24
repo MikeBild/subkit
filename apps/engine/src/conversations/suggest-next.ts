@@ -1,5 +1,6 @@
 import type { SubkitLlmMessage, SubkitLlmUsage } from "../llm/runtime/base-types.ts";
 import { assembleSuggestionPrompt, type RecentMessage } from "../llm/runtime/suggestion-prompt.ts";
+import type { LlmCallLogEntry } from "../llm/types.ts";
 import { logger } from "../logging/index.ts";
 import { recordLlmTokens, recordSuggestNextOutcome } from "../observability/instrumentation.ts";
 import { filterSuggestion } from "./suggest-next-filter.ts";
@@ -19,17 +20,21 @@ export interface SuggestNextModelInvocation {
   system: string;
   messages: SubkitLlmMessage[];
   tenant_id: string;
+  conversation_id: string;
 }
 
 export interface SuggestNextModelResult {
   text: string | null;
   usage?: SubkitLlmUsage;
   model?: string;
+  latency_ms?: number;
 }
 
 export type SuggestNextModelInvoker = (
   call: SuggestNextModelInvocation,
 ) => Promise<SuggestNextModelResult>;
+
+export type SuggestNextUsageRecorder = (entry: LlmCallLogEntry) => Promise<void>;
 
 type SuggestNextBudgetGuard = () => Promise<boolean> | boolean;
 
@@ -42,6 +47,7 @@ interface SuggestNextParams {
   client_suppress?: boolean;
   budget_guard?: SuggestNextBudgetGuard;
   model_invoker?: SuggestNextModelInvoker;
+  usage_recorder?: SuggestNextUsageRecorder;
 }
 
 const MIN_HISTORY_FOR_MODEL_CALL = 2;
@@ -131,6 +137,7 @@ export async function suggestNextMessage(params: SuggestNextParams): Promise<Sug
       system: prompt.system,
       messages: prompt.messages,
       tenant_id: params.tenant_id,
+      conversation_id: params.conversation_id,
     });
   } catch (err) {
     logSuggestError(params, "model_invoker_threw", err);
@@ -147,6 +154,7 @@ export async function suggestNextMessage(params: SuggestNextParams): Promise<Sug
       completion_tokens: modelResult.usage.output_tokens ?? 0,
     });
   }
+  await recordSuggestUsage(params, modelResult);
 
   const raw = (modelResult.text ?? "").trim();
   if (raw.length === 0) {
@@ -191,6 +199,44 @@ export async function suggestNextMessage(params: SuggestNextParams): Promise<Sug
   });
   emitOutcome(params.tenant_id, "generated", kind);
   return { suggestion: raw, reason: "model", kind };
+}
+
+const suggestUsageEntry = (
+  params: SuggestNextParams,
+  model: string,
+  modelResult: SuggestNextModelResult,
+): LlmCallLogEntry => ({
+  tenant_id: params.tenant_id,
+  flow: "suggest_next",
+  model,
+  prompt_tokens: modelResult.usage?.input_tokens ?? 0,
+  completion_tokens: modelResult.usage?.output_tokens ?? 0,
+  cache_read_tokens: modelResult.usage?.cache_read_tokens ?? 0,
+  cache_creation_tokens: modelResult.usage?.cache_creation_tokens ?? 0,
+  latency_ms: modelResult.latency_ms ?? 0,
+  result: "success",
+  conversation_id: params.conversation_id,
+  actor_type: "system",
+});
+
+async function recordSuggestUsage(
+  params: SuggestNextParams,
+  modelResult: SuggestNextModelResult,
+): Promise<void> {
+  if (!params.usage_recorder || !modelResult.model) return;
+  try {
+    await params.usage_recorder(suggestUsageEntry(params, modelResult.model, modelResult));
+  } catch (err) {
+    logger.warn({
+      module: "conversations",
+      action: "suggest_next.usage_record_failed",
+      msg: "could not record suggestion llm usage — suggestion unaffected",
+      tenant_id: params.tenant_id,
+      conversation_id: params.conversation_id,
+      model: modelResult.model,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 function finalizeOfferResult(params: SuggestNextParams, offer: ParsedOffer): SuggestNextResult {
