@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { runFileDelete } from "../../commands/files.ts";
 import {
   EngineClient,
   type FileLinkWire,
@@ -395,5 +396,64 @@ describe("subkit files replace, versions and restore", () => {
     expect(urls).toEqual([
       "http://engine.local/v1/files/fid_00000000-0000-0000-0000-000000000001/versions/1/restore",
     ]);
+  });
+});
+
+describe("subkit files delete confirmation (#511)", () => {
+  const FILE_ID = "fid_00000000-0000-0000-0000-000000000001";
+  const harness = (isTTY: boolean, confirmAnswer = true) => {
+    const calls = { deleted: [] as string[], confirmed: 0, out: "", err: "" };
+    const deps = {
+      isTTY,
+      deleteFile: async (id: string) => {
+        calls.deleted.push(id);
+      },
+      confirm: async () => {
+        calls.confirmed++;
+        return confirmAnswer;
+      },
+      writeOut: (text: string) => {
+        calls.out += text;
+      },
+      writeErr: (text: string) => {
+        calls.err += text;
+      },
+    };
+    return { calls, deps };
+  };
+
+  test("non-interactive without --force refuses and does not delete", async () => {
+    const { calls, deps } = harness(false);
+    const exitCode = await runFileDelete({ id: FILE_ID, force: false, ...deps });
+    expect(exitCode).toBe(2);
+    expect(calls.deleted).toEqual([]);
+    expect(calls.confirmed).toBe(0);
+    expect(calls.err).toContain(`refusing to delete ${FILE_ID} without confirmation`);
+    expect(calls.err).toContain("--force");
+    expect(calls.out).not.toContain("deleted");
+  });
+
+  test("non-interactive with --force deletes", async () => {
+    const { calls, deps } = harness(false);
+    const exitCode = await runFileDelete({ id: FILE_ID, force: true, ...deps });
+    expect(exitCode).toBe(0);
+    expect(calls.deleted).toEqual([FILE_ID]);
+    expect(calls.out).toContain("deleted");
+  });
+
+  test("interactive prompt confirmed deletes", async () => {
+    const { calls, deps } = harness(true, true);
+    const exitCode = await runFileDelete({ id: FILE_ID, force: false, ...deps });
+    expect(exitCode).toBe(0);
+    expect(calls.confirmed).toBe(1);
+    expect(calls.deleted).toEqual([FILE_ID]);
+  });
+
+  test("interactive prompt declined cancels without deleting", async () => {
+    const { calls, deps } = harness(true, false);
+    const exitCode = await runFileDelete({ id: FILE_ID, force: false, ...deps });
+    expect(exitCode).toBe(0);
+    expect(calls.deleted).toEqual([]);
+    expect(calls.out).toContain("cancelled");
   });
 });
