@@ -17,6 +17,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { defaultRemarkPlugins } from "streamdown";
 import { routerTarget } from "@/app/links";
 import { useSession } from "@/app/session";
 import { MessageResponse } from "@/components/ai-elements/message";
@@ -40,6 +41,7 @@ import {
   activeHeading,
   anchorFor,
   article,
+  chapterLinks,
   type DocsArticle,
   type DocsChoice,
   type DocsHeading,
@@ -840,6 +842,13 @@ export function DocsArticleView({
         : {},
     [bundle, page, locale, doc, t],
   );
+  const remarkPlugins = useMemo(
+    () => [
+      ...Object.values(defaultRemarkPlugins),
+      ...(page ? [chapterLinks(bundle, page, locale)] : []),
+    ],
+    [bundle, page, locale],
+  );
   if (!page || !doc) return <NotFoundPage />;
   const onThisPage = t("docs.onThisPage");
   const section = sectionText(bundle, page.section, locale);
@@ -878,6 +887,7 @@ export function DocsArticleView({
               key={`${page.slug}:${locale}`}
               controls={false}
               components={components}
+              remarkPlugins={remarkPlugins}
               className={cn("text-sm", TABLE_CLASS)}
             >
               {doc.body}

@@ -1,4 +1,5 @@
 import { type DocsBundle, docsSectionRank } from "@shared/llms-index";
+import { docsHref } from "@/app/links";
 import type { Locale } from "@/lib/i18n";
 
 export type DocsPage = DocsBundle["pages"][number];
@@ -347,7 +348,7 @@ export function resolveLink(
       ? { kind: "anchor", anchor }
       : { kind: "chapter", slug, ...(anchor ? { anchor } : {}) };
   }
-  const name = path.replace(/^(?:\.\.?\/)+/, "").replace(/^llms\//, "");
+  const name = path.replace(/^(?:\.{0,2}\/)+/, "").replace(/^llms\//, "");
   if (!/\.md$/.test(name))
     return path.startsWith("/") ? { kind: "route", href } : { kind: "plain", href };
   const sharing = ordered.filter((page) => page.llms_path === name);
@@ -355,6 +356,32 @@ export function resolveLink(
   if (!target) return { kind: "plain", href };
   if (target.slug === current.slug && anchor) return { kind: "anchor", anchor };
   return { kind: "chapter", slug: target.slug, ...(anchor ? { anchor } : {}) };
+}
+
+export function chapterHref(
+  bundle: DocsBundle,
+  current: DocsPage,
+  locale: Locale,
+  href: string,
+): string {
+  const target = resolveLink(bundle, current, locale, href);
+  if (target.kind === "anchor") return docsHref(current.slug, target.anchor);
+  return target.kind === "chapter" ? docsHref(target.slug, target.anchor) : href;
+}
+
+interface MarkdownNode {
+  type: string;
+  url?: string;
+  children?: MarkdownNode[];
+}
+
+export function chapterLinks(bundle: DocsBundle, current: DocsPage, locale: Locale) {
+  const rewrite = (node: MarkdownNode): void => {
+    if ((node.type === "link" || node.type === "definition") && typeof node.url === "string")
+      node.url = chapterHref(bundle, current, locale, node.url);
+    node.children?.forEach(rewrite);
+  };
+  return () => rewrite;
 }
 
 export function releaseVersion(version: string | null | undefined): string | null {
