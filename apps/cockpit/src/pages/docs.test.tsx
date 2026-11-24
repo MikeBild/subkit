@@ -406,6 +406,31 @@ describe("docs pages", () => {
     expect(missing).not.toContain('data-testid="docs-article"');
   });
 
+  test("relative chapter links resolve instead of rendering as blocked text", async () => {
+    const bundle = {
+      ...DOCS,
+      pages: DOCS.pages.map((page) =>
+        page.slug === "web-clipper"
+          ? withLinks("[Branding](setup.md#cockpit-branding) [Dot](./setup.md#cockpit-branding)")
+              .pages[0]
+          : page,
+      ),
+    } as DocsBundle;
+    const html = await renderAt(bundle, "/cockpit/docs/web-clipper");
+    expect(count(html, 'href="/cockpit/docs/cockpit-branding#cockpit-branding"')).toBe(2);
+    expect(html).toContain('data-testid="docs-chapter-link"');
+    expect(html).not.toContain("[blocked]");
+  });
+
+  test("the features chapter renders without blocked links in both languages", async () => {
+    for (const locale of ["en", "de"] as const) {
+      const html = await renderAt(DOCS, "/cockpit/docs/features", locale);
+      expect(html).toContain('data-testid="docs-article"');
+      expect(html).toContain('href="/cockpit/docs/cockpit-branding#cockpit-branding"');
+      expect(html).not.toContain("[blocked]");
+    }
+  });
+
   test("a screenshot renders root-relative and lazy with its alt, size, build caption and full-size link", async () => {
     const html = await renderAt(withImage(VERSION), "/cockpit/docs/web-clipper");
     const image = html.match(/<img [^>]*>/)?.[0] ?? "";
