@@ -7273,7 +7273,9 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "deprecated": true,
+            "description": "Deprecated: accepted for compatibility and not shown. The Cockpit wordmark and title show the workspace name; rename the workspace with PATCH /v1/identity/workspace (display_name) or in the Cockpit under Settings → Workspace."
           },
           "subtitle": {
             "type": [
@@ -7379,7 +7381,9 @@
               "string",
               "null"
             ],
-            "maxLength": 80
+            "maxLength": 80,
+            "deprecated": true,
+            "description": "Deprecated: accepted for compatibility and not shown. The Cockpit wordmark and title show the workspace name; rename the workspace with PATCH /v1/identity/workspace (display_name) or in the Cockpit under Settings → Workspace."
           },
           "subtitle": {
             "type": [

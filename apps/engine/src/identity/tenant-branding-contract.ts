@@ -1,6 +1,9 @@
 import { z } from "zod";
 import type { TenantBrandingValue } from "./tenant-branding.ts";
 
+export const DEPRECATED_BRANDING_DISPLAY_NAME =
+  "Deprecated: accepted for compatibility and not shown. The Cockpit wordmark and title show the workspace name; rename the workspace with PATCH /v1/identity/workspace (display_name) or in the Cockpit under Settings → Workspace.";
+
 const TenantBrandingLogoOperationSchema = z.discriminatedUnion("operation", [
   z.object({ operation: z.literal("keep") }).strict(),
   z.object({ operation: z.literal("remove") }).strict(),
@@ -18,7 +21,12 @@ const TenantBrandingAppIconOperationSchema = TenantBrandingLogoOperationSchema;
 export const TenantBrandingUpdateSchema = z
   .object({
     revision: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
-    display_name: z.string().trim().max(80).nullable(),
+    display_name: z
+      .string()
+      .trim()
+      .max(80)
+      .nullable()
+      .meta({ deprecated: true, description: DEPRECATED_BRANDING_DISPLAY_NAME }),
     subtitle: z.string().trim().max(160).nullable(),
     palette: z.enum(["standard", "indigo", "teal"]).nullable(),
     logos: z
@@ -44,7 +52,10 @@ export const TenantBrandingLogoReadSchema = z
 export const TenantBrandingResponseSchema = z.object({
   configured: z.boolean(),
   revision: z.number().int(),
-  display_name: z.string().nullable(),
+  display_name: z
+    .string()
+    .nullable()
+    .meta({ deprecated: true, description: DEPRECATED_BRANDING_DISPLAY_NAME }),
   subtitle: z.string().nullable(),
   palette: z.enum(["standard", "indigo", "teal"]).nullable(),
   logos: z.object({ light: z.boolean(), dark: z.boolean() }),

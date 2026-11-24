@@ -2201,16 +2201,16 @@ Each app has its own sign-in. Your sign-in in the regular Cockpit stays untouche
 
 ### Set the branding of a workspace
 
-1. Open **Settings** and, under **Working with subkit**, the **Workspace branding** section.
+1. Open **Settings**, then **Workspace**, and go to **How should SubKit look for your team?**.
 2. Under **App icon (1:1)**, upload a square PNG with at least 512 pixels per side.
 3. Under **Color palette**, choose **Standard**, **Indigo** or **Teal**.
 
-   ![Workspace branding settings of the fictional workspace Brennwerk with the organization name Brennwerk, the subtitle Logistics, the dark teal app icon with an orange flame, the light and dark logo, and the Teal palette selected; the sidebar shows the same logo and wordmark](/docs-images/cockpit-app-branding.en.webp?v=8cb19518463b)
+   ![Workspace branding settings of the fictional workspace Brennwerk with the subtitle Logistics, the dark teal app icon with an orange flame, the light and dark logo, and the Teal palette selected; the sidebar shows the same logo and wordmark](/docs-images/cockpit-app-branding.en.webp?v=8cb19518463b)
 
 4. Check the preview and select **Save changes**.
 
 Without both permissions you can only view the branding.
-The app name comes from the workspace name, not from the **Organization name** in the branding.
+The app name and the wordmark come from the workspace name. To change them, rename the workspace under **Settings** → **Workspace** → **What’s your workspace called?**.
 **Reset branding** restores the SubKit look for all members.
 
 ### Remove an installed app
@@ -4091,17 +4091,23 @@ Behind the form and the button in SubKit Desktop is `POST /v1/feedback/anonymous
 The service descriptor names the route as `clients.desktop.anonymous_feedback_path`.
 ## Cockpit branding
 
-Branding makes the signed-in Cockpit show your name, your logo and a matching color palette instead of the SubKit look. You need it when your team should recognize the Cockpit as its own tool. Afterwards everyone signed in to your workspace sees the same look; login, email and other clients stay with SubKit.
+Branding makes the signed-in Cockpit show your logo and a matching color palette instead of the SubKit look. You need it when your team should recognize the Cockpit as its own tool. Afterwards everyone signed in to your workspace sees the same look; login, email and other clients stay with SubKit.
 
 ### Change it in the Cockpit
 
-A workspace is your tenant in the engine: its own data, its own users, its own permissions. To make changes you need `settings:write` and `identity:write` there. Under Settings → Operations, in the Appearance area (section Workspace branding), you set:
+A workspace is your tenant in the engine: its own data, its own users, its own permissions. To make changes you need `settings:write` and `identity:write` there. Under Settings → Workspace, in the section “How should SubKit look for your team?”, you set:
 
-- the wordmark, meaning the displayed name, and an optional subtitle,
+- an optional subtitle below the name,
 - one logo each for the light and the dark theme,
 - one of three reviewed palette pairs.
 
 The preview stays in your browser until you save. Reset restores the SubKit look. An accessible “powered by SubKit” attribution remains even with your own branding.
+
+### One workspace, one name
+
+A workspace has exactly one name. With branding, the Cockpit wordmark and the browser title show the workspace name, as does the installed app; branding does not set a second name. To change it, rename the workspace: under Settings → Workspace, answer “What’s your workspace called?” and save. Through HTTP, send `PATCH /v1/identity/workspace` with `{"display_name": "<new name>"}`. Renaming needs the workspace owner or `identity:write`.
+
+The branding field `display_name` is deprecated. HTTP, CLI and MCP still accept it for compatibility and return it, but the Cockpit does not show it.
 
 ### What happens to uploaded logos
 
@@ -5404,7 +5410,7 @@ Each line says what you get and links to the chapter that explains it.
 | Find your way | Navigation, side panel, error notices with remedies and a Markdown viewer. | All | [Find your way in the Cockpit](setup.md#find-your-way-in-the-cockpit) |
 | Setup in five questions | Your answers set the default environment, approver and notifications. | All | [Set SubKit up for yourself](setup.md#set-subkit-up-for-yourself) |
 | English and German | The Cockpit and this documentation come in both languages. | All | [What is SubKit?](setup.md#what-is-subkit) |
-| Branding | Give the Cockpit your company's name, logo and colors. | Admin | [Cockpit branding](setup.md#cockpit-branding) |
+| Branding | Give the Cockpit your company's logo and colors. | Admin | [Cockpit branding](setup.md#cockpit-branding) |
 | Cockpit as an app | Install a workspace's Cockpit as its own app on computer and phone, with push and sharing from other apps. | All | [Cockpit as an app](setup.md#cockpit-as-an-app) |
 
 ### SubKit Desktop

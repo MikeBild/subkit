@@ -38,7 +38,7 @@ export const getTenantBrandingMcpTool: Tool = {
 export const updateTenantBrandingMcpTool: Tool = {
   name: UPDATE_TENANT_BRANDING_TOOL_NAME,
   description:
-    "Save workspace branding with an optimistic revision. Replaced logos use PNG, JPEG or WebP base64 input and are normalized to still PNG before storage.",
+    "Save workspace branding with an optimistic revision. Replaced logos use PNG, JPEG or WebP base64 input and are normalized to still PNG before storage. display_name is deprecated: it is accepted for compatibility and not shown; the Cockpit wordmark shows the workspace name.",
   inputSchema: mcpSchema(TenantBrandingUpdateSchema),
 };
 

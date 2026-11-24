@@ -1,23 +1,29 @@
 ---
 slug: cockpit-branding
-summary: Give the Cockpit your company's name, logo and colors.
+summary: Give the Cockpit your company's logo and colors.
 section: operate
 order: 1
 audience: operator
 ---
 ## Cockpit branding
 
-Branding makes the signed-in Cockpit show your name, your logo and a matching color palette instead of the SubKit look. You need it when your team should recognize the Cockpit as its own tool. Afterwards everyone signed in to your workspace sees the same look; login, email and other clients stay with SubKit.
+Branding makes the signed-in Cockpit show your logo and a matching color palette instead of the SubKit look. You need it when your team should recognize the Cockpit as its own tool. Afterwards everyone signed in to your workspace sees the same look; login, email and other clients stay with SubKit.
 
 ### Change it in the Cockpit
 
-A workspace is your tenant in the engine: its own data, its own users, its own permissions. To make changes you need `settings:write` and `identity:write` there. Under Settings → Operations, in the Appearance area (section Workspace branding), you set:
+A workspace is your tenant in the engine: its own data, its own users, its own permissions. To make changes you need `settings:write` and `identity:write` there. Under Settings → Workspace, in the section “How should SubKit look for your team?”, you set:
 
-- the wordmark, meaning the displayed name, and an optional subtitle,
+- an optional subtitle below the name,
 - one logo each for the light and the dark theme,
 - one of three reviewed palette pairs.
 
 The preview stays in your browser until you save. Reset restores the SubKit look. An accessible “powered by SubKit” attribution remains even with your own branding.
+
+### One workspace, one name
+
+A workspace has exactly one name. With branding, the Cockpit wordmark and the browser title show the workspace name, as does the installed app; branding does not set a second name. To change it, rename the workspace: under Settings → Workspace, answer “What’s your workspace called?” and save. Through HTTP, send `PATCH /v1/identity/workspace` with `{"display_name": "<new name>"}`. Renaming needs the workspace owner or `identity:write`.
+
+The branding field `display_name` is deprecated. HTTP, CLI and MCP still accept it for compatibility and return it, but the Cockpit does not show it.
 
 ### What happens to uploaded logos
 

@@ -121,7 +121,7 @@ Each line says what you get and links to the chapter that explains it.
 | Find your way | Navigation, side panel, error notices with remedies and a Markdown viewer. | All | [Find your way in the Cockpit](setup.md#find-your-way-in-the-cockpit) |
 | Setup in five questions | Your answers set the default environment, approver and notifications. | All | [Set SubKit up for yourself](setup.md#set-subkit-up-for-yourself) |
 | English and German | The Cockpit and this documentation come in both languages. | All | [What is SubKit?](setup.md#what-is-subkit) |
-| Branding | Give the Cockpit your company's name, logo and colors. | Admin | [Cockpit branding](setup.md#cockpit-branding) |
+| Branding | Give the Cockpit your company's logo and colors. | Admin | [Cockpit branding](setup.md#cockpit-branding) |
 | Cockpit as an app | Install a workspace's Cockpit as its own app on computer and phone, with push and sharing from other apps. | All | [Cockpit as an app](setup.md#cockpit-as-an-app) |
 
 ### SubKit Desktop

@@ -101,16 +101,16 @@ Each app has its own sign-in. Your sign-in in the regular Cockpit stays untouche
 
 ### Set the branding of a workspace
 
-1. Open **Settings** and, under **Working with subkit**, the **Workspace branding** section.
+1. Open **Settings**, then **Workspace**, and go to **How should SubKit look for your team?**.
 2. Under **App icon (1:1)**, upload a square PNG with at least 512 pixels per side.
 3. Under **Color palette**, choose **Standard**, **Indigo** or **Teal**.
 
-   ![Workspace branding settings of the fictional workspace Brennwerk with the organization name Brennwerk, the subtitle Logistics, the dark teal app icon with an orange flame, the light and dark logo, and the Teal palette selected; the sidebar shows the same logo and wordmark](images/cockpit-app-branding.en.webp)
+   ![Workspace branding settings of the fictional workspace Brennwerk with the subtitle Logistics, the dark teal app icon with an orange flame, the light and dark logo, and the Teal palette selected; the sidebar shows the same logo and wordmark](images/cockpit-app-branding.en.webp)
 
 4. Check the preview and select **Save changes**.
 
 Without both permissions you can only view the branding.
-The app name comes from the workspace name, not from the **Organization name** in the branding.
+The app name and the wordmark come from the workspace name. To change them, rename the workspace under **Settings** → **Workspace** → **What’s your workspace called?**.
 **Reset branding** restores the SubKit look for all members.
 
 ### Remove an installed app
