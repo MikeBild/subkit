@@ -9,10 +9,7 @@
       "number": 17
     },
     "activation_status": 200,
-    "authority_diagnostics": [
-      "binding_mismatch",
-      "dynamic_request"
-    ],
+    "authority_diagnostics": ["binding_mismatch", "dynamic_request"],
     "driver": "connectorless",
     "calls": [
       {
@@ -37,10 +34,7 @@
       "after": null
     },
     "activation_status": 200,
-    "authority_diagnostics": [
-      "binding_mismatch",
-      "dynamic_request"
-    ],
+    "authority_diagnostics": ["binding_mismatch", "dynamic_request"],
     "driver": "connectorless",
     "calls": [
       {
@@ -65,10 +59,7 @@
       "after": null
     },
     "activation_status": 200,
-    "authority_diagnostics": [
-      "binding_mismatch",
-      "dynamic_request"
-    ],
+    "authority_diagnostics": ["binding_mismatch", "dynamic_request"],
     "driver": "connectorless",
     "calls": [
       {
@@ -91,10 +82,7 @@
       "first": 3
     },
     "activation_status": 200,
-    "authority_diagnostics": [
-      "binding_mismatch",
-      "dynamic_request"
-    ],
+    "authority_diagnostics": ["binding_mismatch", "dynamic_request"],
     "driver": "connectorless",
     "calls": [
       {
@@ -117,9 +105,7 @@
       "number": 17
     },
     "activation_status": 200,
-    "authority_diagnostics": [
-      "dynamic_request"
-    ],
+    "authority_diagnostics": ["dynamic_request"],
     "driver": "graphql",
     "calls": [
       {
@@ -266,9 +252,7 @@
       "after": null
     },
     "activation_status": 200,
-    "authority_diagnostics": [
-      "dynamic_request"
-    ],
+    "authority_diagnostics": ["dynamic_request"],
     "driver": "graphql",
     "calls": [
       {
@@ -349,9 +333,7 @@
       "after": null
     },
     "activation_status": 200,
-    "authority_diagnostics": [
-      "dynamic_request"
-    ],
+    "authority_diagnostics": ["dynamic_request"],
     "driver": "graphql",
     "calls": [
       {
@@ -415,9 +397,7 @@
       "first": 3
     },
     "activation_status": 200,
-    "authority_diagnostics": [
-      "dynamic_request"
-    ],
+    "authority_diagnostics": ["dynamic_request"],
     "driver": "graphql",
     "calls": [
       {
