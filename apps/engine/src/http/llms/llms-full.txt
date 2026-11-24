@@ -6620,7 +6620,7 @@ Engine diagnostics: errors, LLM status, setup validation
 Show recent engine errors
 
 - `--limit` (string, default: 20) — Max rows
-- `--since` (string) — ISO timestamp lower bound
+- `--since` (string) — ISO timestamp lower bound (UTC or numeric offset)
 - `--trace-id` (string) — Filter by trace id
 - `--tail` — Keep reading (not applicable — uses snapshot endpoint)
 - `--json` — JSON output
