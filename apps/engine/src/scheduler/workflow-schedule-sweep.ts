@@ -302,8 +302,7 @@ async function fireCandidate(
   }
   const gatedDueAt =
     seconds === undefined ? (cronDueWindow(row.cron, tz, anchor, now)?.last_due ?? now) : now;
-  const gate =
-    seconds === undefined ? calendarGateSkipReason(gatedDueAt, tz, readCalendarGates(input)) : null;
+  const gate = calendarGateSkipReason(gatedDueAt, tz, readCalendarGates(input));
   if (gate !== null) {
     logger.debug({
       module: "scheduler",
@@ -437,8 +436,9 @@ export async function fireEverySchedule(
   db: Db,
   definition: EveryScheduleDefinition,
   fire: ScheduleFire,
+  now: Date = new Date(),
 ): Promise<void> {
   await withTenantWork(definition.tenant_id, () =>
-    fireCandidate(db, definition, new Date(), fire, undefined, definition.seconds),
+    fireCandidate(db, definition, now, fire, undefined, definition.seconds),
   );
 }
