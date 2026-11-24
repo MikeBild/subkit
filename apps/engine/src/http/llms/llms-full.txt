@@ -2272,9 +2272,9 @@ SubKit saves the restored content as a new version. The previous version stays u
 ### Find conversations about a source or a skill
 
 1. Open the source or the skill.
-2. Open the **Usage** tab and expand **Conversations about this**.
+2. Open the **Usage** tab. Each conversation appears there as a **Chat** row, next to workflows, connectors and other uses.
 
-The list shows conversations that name the source or the skill with an `@` reference. For a source, it also counts conversations in which the assistant read or found the source. For a skill, it also counts conversations that loaded the skill. Click a conversation to open it. If there is none yet, start one with **Ask in chat**.
+The tab lists conversations that name the source or the skill with an `@` reference. For a source, it also counts conversations in which the assistant read or found the source. For a skill, it also counts conversations that loaded the skill. Click a **Chat** row to open the conversation.
 
 ### See which sources an answer used
 
