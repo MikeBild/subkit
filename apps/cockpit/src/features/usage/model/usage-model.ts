@@ -369,6 +369,16 @@ export function llmGroups(envelope: unknown): LlmGroupView[] {
   });
 }
 
+export function modelPriceApplied(
+  envelope: unknown,
+  model: string,
+  inputPerMtok: number,
+  outputPerMtok: number,
+): boolean {
+  const price = llmGroups(envelope).find((group) => group.key.model === model)?.modelPrice;
+  return price?.inputPerMtok === inputPerMtok && price.outputPerMtok === outputPerMtok;
+}
+
 export const FAILED_RESULTS = [
   "error",
   "context_too_large",

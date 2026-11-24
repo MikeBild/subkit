@@ -3281,13 +3281,13 @@ What happens while push is held back:
 - If nothing new is open at the daily time, no message is sent.
 - The **Needs you** list shows everything at once, whatever you choose here.
 
-Under **Settings › Notifications**, your choice appears as a line “From your setup: …” with **Open setup**.
+You can change the same choice under **Settings › Notifications** too. **Quiet hours** with **From** and **Until** holds push back outside your working hours: **From** is the end of your working hours, **Until** their start. **Daily summary** with its time switches on the summary. Under **More options** you find **Notify on** for your working days, **Critical items may break through quiet hours** and **Time zone**, as soon as quiet hours or the daily summary are on.
 
 ### Which time zone applies
 
 The times apply in the time zone of the workspace. It is set under **Settings › Workspace** at “Which time zone do you work in?”. Scheduled runs follow the same time zone.
 
-If you work in a different time zone than your team, you can store your own. The Cockpit has no field for it yet. It works over the HTTP API with the field `timezone`, see below.
+If you work in a different time zone than your team, you can store your own: in **Setup** in the question on **Notifications** at **Time zone**, or under **Settings › Notifications › More options** at **Time zone**. The field appears as soon as you choose working hours or the daily summary. Over the HTTP API it is the field `timezone`, see below.
 
 ### Pause notifications
 
@@ -3305,7 +3305,7 @@ Two kinds of items count as critical:
 - A workflow in production was stopped.
 - A stored secret can no longer be read.
 
-By default these items wait for your next delivery too. With the setting `critical_breakthrough` they arrive at once, also outside working hours and before the daily delivery. In the Cockpit you switch it on in the same question with **Critical items may break through quiet hours**; the HTTP API works too, see below.
+By default these items wait for your next delivery too. With the setting `critical_breakthrough` they arrive at once, also outside working hours and before the daily delivery. In the Cockpit you switch it on in the same question or under **Settings › Notifications › More options** with **Critical items may break through quiet hours**; the HTTP API works too, see below.
 
 ### Route approval notifications to another person
 
@@ -3371,7 +3371,6 @@ SubKit builds the links from `server.public_base_url`. Without it, the cards car
 
 - **The choice applies to push, not to the desktop app.** SubKit Desktop reads the list directly and follows the quiet hours you set in the app. More in “SubKit Desktop”.
 - **The summary only names the count per kind.** The **Needs you** list shows which items they are.
-- **`critical_breakthrough` and your own time zone have no interface.** Both can only be set over the HTTP API.
 - **A person without the right to approve gets no notifications.** If the person named is an active member but may not give the approval, the push stays with you, and **Settings** › **Setup** warns you. Your **Needs you** list then does not name the person, and the item stays your decision. Name a person who may approve.
 - **The Cockpit does not show whom an item waits for.** The API returns the field `waiting_on` for it.
 - **Messages already sent cannot be taken back.** When you switch to working hours, it applies from the next check on.
@@ -3381,7 +3380,7 @@ SubKit builds the links from `server.public_base_url`. Without it, the cards car
 | What you see | What to do |
 | --- | --- |
 | “Browser permission was denied. Allow notifications in your browser settings.” | Allow notifications for the Cockpit address in your browser settings. |
-| No push arrives although something is open | Check the line “From your setup” under **Settings › Notifications**. Outside working hours and before the daily time, SubKit holds push back. |
+| No push arrives although something is open | Check **Quiet hours** and **Daily summary** under **Settings › Notifications**. Outside working hours and before the daily time, SubKit holds push back. |
 | Push arrives at the wrong hour | Check the time zone of the workspace under **Settings › Workspace**. |
 | “Enter a time such as 08:00.” | Write the time with four digits and a colon. |
 | “The setting was not applied” | Nothing was changed. Your earlier choice still applies. Try again. |

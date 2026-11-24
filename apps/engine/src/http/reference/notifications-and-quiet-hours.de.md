@@ -53,13 +53,13 @@ Was beim Zurückhalten passiert:
 - Ist zur täglichen Uhrzeit nichts Neues offen, kommt keine Nachricht.
 - Die Liste **Braucht dich** zeigt alles sofort, unabhängig von dieser Wahl.
 
-Unter **Einstellungen › Benachrichtigungen** steht deine Wahl als Zeile „Aus deiner Einrichtung: …“ mit **Einrichtung öffnen**.
+Dieselbe Wahl änderst du auch unter **Einstellungen › Benachrichtigungen**. **Ruhezeiten** mit **Von** und **Bis** hält Push außerhalb deiner Arbeitszeiten zurück: **Von** ist das Ende deiner Arbeitszeit, **Bis** ihr Beginn. **Tägliche Zusammenfassung** mit ihrer Uhrzeit schaltet die Zusammenfassung ein. Unter **Weitere Optionen** findest du **Benachrichtigen an** für deine Arbeitstage, **Kritisches darf Ruhezeiten durchbrechen** und **Zeitzone**, sobald Ruhezeiten oder die tägliche Zusammenfassung an sind.
 
 ### Welche Zeitzone gilt
 
 Die Uhrzeiten gelten in der Zeitzone des Arbeitsbereichs. Sie steht unter **Einstellungen › Arbeitsbereich** bei „In welcher Zeitzone arbeitet ihr?“. Geplante Abläufe richten sich nach derselben Zeitzone.
 
-Arbeitest du in einer anderen Zeitzone als dein Team, kannst du eine eigene hinterlegen. Dafür gibt es im Cockpit noch kein Feld. Es geht über die HTTP-API mit dem Feld `timezone`, siehe unten.
+Arbeitest du in einer anderen Zeitzone als dein Team, kannst du eine eigene hinterlegen: in **Einrichtung** in der Frage zu **Benachrichtigungen** bei **Zeitzone** oder unter **Einstellungen › Benachrichtigungen › Weitere Optionen** bei **Zeitzone**. Das Feld erscheint, sobald du Arbeitszeiten oder die tägliche Zusammenfassung wählst. Über die HTTP-API ist es das Feld `timezone`, siehe unten.
 
 ### Benachrichtigungen pausieren
 
@@ -77,7 +77,7 @@ Zwei Arten von Punkten gelten als kritisch:
 - Ein Workflow im Echtbetrieb wurde angehalten.
 - Ein gespeichertes Geheimnis lässt sich nicht mehr lesen.
 
-In der Voreinstellung warten auch diese Punkte auf deine nächste Zustellung. Mit der Einstellung `critical_breakthrough` kommen sie sofort, auch außerhalb der Arbeitszeiten und vor der täglichen Zustellung. Im Cockpit schaltest du sie in derselben Frage mit **Kritisches darf Ruhezeiten durchbrechen** ein; über die HTTP-API geht es auch, siehe unten.
+In der Voreinstellung warten auch diese Punkte auf deine nächste Zustellung. Mit der Einstellung `critical_breakthrough` kommen sie sofort, auch außerhalb der Arbeitszeiten und vor der täglichen Zustellung. Im Cockpit schaltest du sie in derselben Frage oder unter **Einstellungen › Benachrichtigungen › Weitere Optionen** mit **Kritisches darf Ruhezeiten durchbrechen** ein; über die HTTP-API geht es auch, siehe unten.
 
 ### Freigabe-Hinweise an eine andere Person leiten
 
@@ -143,7 +143,6 @@ SubKit baut die Links aus `server.public_base_url`. Fehlt der Wert, tragen die K
 
 - **Die Wahl gilt für Push, nicht für die Desktop-App.** SubKit Desktop liest die Liste direkt und richtet sich nach den Ruhezeiten, die du in der App einstellst. Mehr in „SubKit Desktop“.
 - **Die Zusammenfassung nennt nur die Anzahl je Art.** Welche Punkte es sind, zeigt die Liste **Braucht dich**.
-- **Für `critical_breakthrough` und die eigene Zeitzone fehlt die Oberfläche.** Beide lassen sich nur über die HTTP-API setzen.
 - **Eine Person ohne das Recht freizugeben bekommt keine Hinweise.** Ist die genannte Person aktives Mitglied, darf aber die Freigabe nicht erteilen, bleibt der Push bei dir, und **Einstellungen** › **Einrichtung** warnt dich. Deine Liste **Braucht dich** nennt die Person dann nicht, und der Punkt bleibt deine Entscheidung. Nenne eine Person, die freigeben darf.
 - **Das Cockpit zeigt nicht an, auf wen ein Punkt wartet.** Die API liefert dafür das Feld `waiting_on`.
 - **Bereits versendete Nachrichten lassen sich nicht zurückholen.** Stellst du auf Arbeitszeiten um, gilt das ab der nächsten Prüfung.
@@ -153,7 +152,7 @@ SubKit baut die Links aus `server.public_base_url`. Fehlt der Wert, tragen die K
 | Was du siehst | Was du tust |
 | --- | --- |
 | „Browser-Berechtigung verweigert. Bitte in den Einstellungen erlauben.“ | Erlaube Benachrichtigungen für die Cockpit-Adresse in den Einstellungen deines Browsers. |
-| Es kommt kein Push, obwohl etwas offen ist | Prüfe unter **Einstellungen › Benachrichtigungen** die Zeile „Aus deiner Einrichtung“. Außerhalb der Arbeitszeiten und vor der täglichen Uhrzeit hält SubKit Push zurück. |
+| Es kommt kein Push, obwohl etwas offen ist | Prüfe unter **Einstellungen › Benachrichtigungen** **Ruhezeiten** und **Tägliche Zusammenfassung**. Außerhalb der Arbeitszeiten und vor der täglichen Uhrzeit hält SubKit Push zurück. |
 | Push kommt zur falschen Stunde | Prüfe die Zeitzone des Arbeitsbereichs unter **Einstellungen › Arbeitsbereich**. |
 | „Gib eine Uhrzeit ein, zum Beispiel 08:00.“ | Schreib die Uhrzeit mit vier Ziffern und Doppelpunkt. |
 | „Die Einstellung wurde nicht übernommen“ | Geändert wurde nichts. Deine bisherige Wahl gilt weiter. Versuch es erneut. |

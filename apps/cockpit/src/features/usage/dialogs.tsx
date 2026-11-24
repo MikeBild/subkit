@@ -11,7 +11,7 @@ import {
   type StatsWindow,
   type WindowBounds,
 } from "@/features/usage/model/operations-figures";
-import { unpricedModels, usageCsv } from "@/features/usage/model/usage-model";
+import { modelPriceApplied, usageCsv } from "@/features/usage/model/usage-model";
 import { useI18n } from "@/lib/i18n-context";
 import { ORIGIN_LABEL, WINDOW_OPTION } from "./format";
 
@@ -115,9 +115,9 @@ export function PriceDialog({
     onSuccess: async () => {
       await settle(async () => {
         const window = await apiCall("get", "/v1/stats/llm", {
-          query: llmStatsQuery(pricedBounds),
+          query: llmStatsQuery(pricedBounds, "model"),
         });
-        return unpricedModels(window).includes(model) ? null : window;
+        return modelPriceApplied(window, model, inputValue ?? 0, outputValue ?? 0) ? window : null;
       });
       await client.invalidateQueries({ queryKey: ["usage-llm"] });
       await client.invalidateQueries({ queryKey: ["usage-price-setting"] });
