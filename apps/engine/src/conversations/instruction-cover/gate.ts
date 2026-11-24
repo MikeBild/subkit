@@ -209,6 +209,16 @@ export async function resolvePersonCover(input: PersonCoverInput): Promise<Perso
     ? null
     : interactivePersonRefusal({ principal, surface: input.surface, task_run: false });
   if (session !== null || principal === null) {
+    logger.debug({
+      module: "conversation_tool",
+      action: "person_cover.session_refused",
+      msg: "no interactive browser person for this call; the question stays",
+      tenant_id: input.tenant_id,
+      conversation_id: input.conversation_id,
+      tool,
+      refusal: session ?? "no_person",
+      surface: input.surface ?? null,
+    });
     return asking(
       session === "task_run" || session === "no_person" || principal === null
         ? "no_person"

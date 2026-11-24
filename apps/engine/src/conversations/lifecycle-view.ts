@@ -56,3 +56,10 @@ export function surfaceFromClientHeader(value: string | undefined | null): Conve
       return "api";
   }
 }
+
+export function turnSurfaceFromClientHeader(
+  value: string | undefined | null,
+): Exclude<ConversationSurface, "api"> | undefined {
+  const surface = surfaceFromClientHeader(value);
+  return surface === "api" ? undefined : surface;
+}
