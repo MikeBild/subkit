@@ -146,7 +146,7 @@ Without a valid approval, a product run answers 403.
 A person with write access approves each product workflow once per environment.
 
 1. In the Cockpit, open **Workflows** and click the workflow.
-2. Select **Approve** in the status line or on the **Approvals** tab. The dialog **Approve <workflow> v<n>** opens.
+2. Select **Approve** in the status line or under **Overview › Approvals**. The dialog **Approve <workflow> v<n>** opens.
 3. Check that **Environment** (**Production** or **Test**) matches the product's `execution_environment`.
 4. Review the connectors, addresses and read or write access.
 5. Under **Validity**, choose **7 days**, **30 days** or **Until revoked**. **Until revoked** is preset and sets no run limit and no end date. The same choice appears when you review a saved change in the chat.
@@ -199,7 +199,7 @@ The Cockpit and `GET /v1/health` show failing connectors.
 
 ### Roll back an app
 
-1. Revoke the workflow approval on the **Approvals** tab. The app then gets 403 and nothing runs.
+1. Revoke the workflow approval under **Overview › Approvals**. The app then gets 403 and nothing runs.
 2. Restore the `auth.providers` and `products` values you read in step 2.
 3. Restore a workflow version with `subkit workflows history <id>` and `subkit workflows restore <id>`.
 
