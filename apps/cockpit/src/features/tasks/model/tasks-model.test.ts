@@ -25,6 +25,7 @@ import {
   type ScheduleDraft,
   saveErrorKey,
   saveWarning,
+  setupEnvironmentApplies,
   startErrorKey,
   stateKey,
   stateTone,
@@ -441,6 +442,14 @@ describe("the form", () => {
     expect(bothEnvironments([{ environment: "prod" }, { environment: "dev" }], null)).toBe(true);
     expect(bothEnvironments([{ environment: "prod" }], "dev")).toBe(true);
     expect(bothEnvironments([], "prod")).toBe(false);
+  });
+
+  test("the setup environment applies unless it would hide every bindable connector", () => {
+    expect(setupEnvironmentApplies([], "dev", false)).toBe(true);
+    expect(setupEnvironmentApplies([{ environment: "dev" }], "dev", false)).toBe(true);
+    expect(setupEnvironmentApplies([{ environment: "prod" }], "dev", false)).toBe(false);
+    expect(setupEnvironmentApplies([{ environment: "prod" }], "dev", true)).toBe(true);
+    expect(setupEnvironmentApplies([{ environment: "prod" }], "prod", false)).toBe(true);
   });
 });
 

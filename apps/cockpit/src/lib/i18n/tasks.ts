@@ -268,6 +268,8 @@ export const tasksEn = {
   "tasks.form.environmentPreselected": "Preselected from your setup.",
   "tasks.form.environmentFromSetup":
     "“{where}” is preselected from your setup. Change it for this task under “{more}”, the default under Settings › Setup.",
+  "tasks.form.environmentFromSetupOnly":
+    "“{where}” is preselected from your setup. Change the default under Settings › Setup.",
   "tasks.environment.dev": "Test",
   "tasks.environment.prod": "Production",
   "tasks.form.deadline": "How long may one run take?",
@@ -588,6 +590,8 @@ export const tasksDe: Record<keyof typeof tasksEn, string> = {
   "tasks.form.environmentPreselected": "Vorausgewählt aus deiner Einrichtung.",
   "tasks.form.environmentFromSetup":
     "„{where}“ ist aus deiner Einrichtung vorausgewählt. Für diese Aufgabe änderst du das unter „{more}“, die Vorgabe unter Einstellungen › Einrichtung.",
+  "tasks.form.environmentFromSetupOnly":
+    "„{where}“ ist aus deiner Einrichtung vorausgewählt. Die Vorgabe änderst du unter Einstellungen › Einrichtung.",
   "tasks.environment.dev": "Test",
   "tasks.environment.prod": "Echtbetrieb",
   "tasks.form.deadline": "Wie lange darf ein Run dauern?",

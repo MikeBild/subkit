@@ -211,6 +211,26 @@ describe("the form dialog fits every width", () => {
     expect(fromSetup(null, "prod")).toBe(false);
   });
 
+  test("the setup environment is named even when the workspace offers no choice", async () => {
+    const draft = { ...emptyDraft("Europe/Berlin"), environment: "dev" as const };
+    const shown = await show(
+      <TaskFormFields
+        draft={draft}
+        onChange={() => {}}
+        workflowOptions={[]}
+        connectorOptions={[]}
+        choosesEnvironment={false}
+        environmentFromSetup
+      />,
+      cache(),
+      "en",
+    );
+    expect(shown).toContain('data-testid="task-form-environment-default"');
+    expect(shown).toContain("“Test” is preselected from your setup.");
+    expect(shown).not.toContain('data-testid="task-form-environment"');
+    expect(draft.environment).toBe("dev");
+  });
+
   test("the body has one shrinking column and never scrolls sideways", () => {
     const classes = DIALOG_BODY.split(" ");
     expect(classes).toContain("grid-cols-[minmax(0,1fr)]");
