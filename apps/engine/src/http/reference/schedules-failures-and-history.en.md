@@ -52,8 +52,8 @@ A held schedule starts no run but loses nothing. As soon as you fix the reason, 
 
 | What you read | What to do |
 | --- | --- |
-| “Held: this version has no approval. Approve it and the schedule runs again.” | Open the workflow, review it and give the approval. |
-| “Held: the approval no longer applies. Renew it and the schedule runs again.” | The approval has expired, is used up or was revoked. Renew it. |
+| “Held: no approval currently covers this version. Approve it and the schedule runs again.” | No approval is in force: it was never given, has expired, is used up or was revoked. Open the workflow, review it and give or renew the approval. |
+| “Held: this version must change before its schedule can be approved.” | Change the workflow so that its schedule can be approved, then approve the new version. |
 | “Held: the run is missing input. Add it in the schedule.” | Enter the missing input in the schedule. |
 | “Held: the task has no standing permission. Give it and the schedule runs again.” | Open the task and select **Allow**. |
 | “Held: the standing permission has ended. Renew it and the schedule runs again.” | Open the task and select **Allow**. |

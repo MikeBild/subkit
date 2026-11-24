@@ -154,9 +154,9 @@ export const automationEn = {
   "scheduleHistory.reason.input_required":
     "On hold: the run is missing input. Add it in the schedule.",
   "scheduleHistory.reason.execution_authority_required":
-    "On hold: this version has no approval. Approve it and the schedule runs again.",
+    "On hold: this version must change before its schedule can be approved.",
   "scheduleHistory.reason.execution_authority_unavailable":
-    "On hold: the approval no longer applies. Renew it and the schedule runs again.",
+    "On hold: no approval currently covers this version. Approve it and the schedule runs again.",
   "scheduleHistory.reason.grant_required":
     "On hold: the task has no standing permission. Give it and the schedule runs again.",
   "scheduleHistory.reason.grant_expired":
@@ -366,9 +366,9 @@ export const automationDe: Record<keyof typeof automationEn, string> = {
   "scheduleHistory.reason.input_required":
     "Angehalten: Dem Run fehlen Eingaben. Ergänze sie im Zeitplan.",
   "scheduleHistory.reason.execution_authority_required":
-    "Angehalten: Für diese Version fehlt die Freigabe. Erteile sie, dann läuft der Zeitplan weiter.",
+    "Angehalten: Diese Version muss geändert werden, bevor ihr Zeitplan freigegeben werden kann.",
   "scheduleHistory.reason.execution_authority_unavailable":
-    "Angehalten: Die Freigabe gilt nicht mehr. Erneuere sie, dann läuft der Zeitplan weiter.",
+    "Angehalten: Für diese Version gilt keine Freigabe. Erteile sie, dann läuft der Zeitplan weiter.",
   "scheduleHistory.reason.grant_required":
     "Angehalten: Der Aufgabe fehlt die Dauererlaubnis. Erteile sie, dann läuft der Zeitplan weiter.",
   "scheduleHistory.reason.grant_expired":

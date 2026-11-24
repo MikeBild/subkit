@@ -63,8 +63,8 @@ Query parameters of both routes: `limit` (default 50, at most 200) and `before` 
 | `previous_run_active` | `skipped` | The previous run of the task was still open. |
 | `repeated_failures` | `held` | The schedule paused itself. |
 | `input_required` | `held` | The schedule lacks required input. |
-| `execution_authority_required` | `held` | No approval covers the current version. |
-| `execution_authority_unavailable` | `held` | The approval expired, is used up or was revoked. |
+| `execution_authority_required` | `held` | The current version must change before it can be approved. |
+| `execution_authority_unavailable` | `held` | No approval is in force for the current version: it was never given, expired, is used up or was revoked. Approve or renew it. |
 | `grant_required`, `grant_expired`, `grant_exhausted`, `grant_fingerprint_mismatch` | `held` | The standing permission of the task is missing, ended, used up or no longer fits the task. |
 | `owner_unavailable`, `ai_access_missing`, `paused` | `held` | The owner of the task is unavailable, the workspace has no AI provider, or the task is paused. |
 
