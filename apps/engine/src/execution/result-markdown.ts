@@ -93,7 +93,6 @@ export function redactResultMarkdown(markdown: string, secrets: readonly string[
 const isUtf8Continuation = (byte: number | undefined): boolean =>
   byte !== undefined && (byte & 0b1100_0000) === 0b1000_0000;
 
-/** Longest prefix whose UTF-8 encoding fits in maxBytes, never splitting a code point. */
 export function truncateUtf8(text: string, maxBytes: number): ResultMarkdown {
   const encoded = new TextEncoder().encode(text);
   if (encoded.length <= maxBytes) return { markdown: text, truncated: false };
