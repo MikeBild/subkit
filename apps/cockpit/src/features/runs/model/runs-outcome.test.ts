@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { connectorHref } from "@/app/links";
 import { causeClassLabel } from "@/lib/cause-class";
 import { type Locale, translate } from "@/lib/i18n";
+import { remedyFor } from "@/lib/remedy";
 import {
   runDurationMs as coreRunDurationMs,
   payloadEvidence,
@@ -244,6 +246,25 @@ describe("stepConnectorId", () => {
         request_meta: { connector: { connector_id: "c1", step_key: "s" } },
       }),
     ).toBe("c1");
+  });
+  test("a confidential sign-in failure leads to the connector, not the chat (#555)", () => {
+    const connectorId = stepConnectorId({
+      step_key: "s",
+      result_preview: null,
+      request_meta: {
+        driver: "sensitive",
+        connector: { connector_id: "c1", connector_slug: "crm" },
+      },
+    });
+    expect(connectorId).toBe("c1");
+    const remedy = remedyFor({
+      workflowId: "w1",
+      executionId: "e1",
+      canRun: true,
+      canChat: true,
+      authState: connectorId ? { connectorId, state: "unproven" } : null,
+    });
+    expect(remedy?.href).toBe(connectorHref("c1"));
   });
   test("no connector recorded is null", () => {
     expect(stepConnectorId({ step_key: "s", result_preview: null, request_meta: null })).toBeNull();

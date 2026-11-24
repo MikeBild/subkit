@@ -32695,10 +32695,15 @@ export interface components {
         SensitiveRequestMeta: {
             /** @enum {string} */
             driver: "sensitive";
-            pagination: components["schemas"]["RequestPaginationSummary"];
+            pagination?: components["schemas"]["RequestPaginationSummary"];
+            connector?: components["schemas"]["SensitiveConnectorRef"];
             extras?: {
                 [key: string]: unknown;
             };
+        };
+        SensitiveConnectorRef: {
+            connector_id: string;
+            connector_slug: string;
         };
         SandboxRequestMeta: {
             /** @enum {string} */
