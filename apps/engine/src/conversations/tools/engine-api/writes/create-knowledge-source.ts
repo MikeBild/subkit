@@ -1,7 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import { executionDataFileIds } from "../../../../files/model-context.ts";
 import type { FileRow } from "../../../../files/resolver.ts";
-import { requireFileForTenant, resolvedFromRow } from "../../../../files/resolver.ts";
+import { requireLiveFileForTenant, resolvedFromRow } from "../../../../files/resolver.ts";
 import { KnowledgeBudgetExceededError } from "../../../../knowledge/budgets.ts";
 import { log } from "../../../../logging/index.ts";
 import type { ConversationTool, ToolResult } from "../../index.ts";
@@ -120,7 +120,7 @@ export const createKnowledgeSourceTool: ConversationTool = {
       const file_id = args.file_id as string;
       let row: FileRow;
       try {
-        row = await requireFileForTenant(ctx.db, ctx.tenant_id, file_id);
+        row = await requireLiveFileForTenant(ctx.db, ctx.tenant_id, file_id);
       } catch (err) {
         return {
           ok: false,

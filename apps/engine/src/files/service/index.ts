@@ -27,7 +27,6 @@ export {
 export {
   type ContentChange,
   deleteFile,
-  findLiveFile,
   linkFile,
   type ReplaceBytesOutcome,
   type RestoreOutcome,
@@ -47,4 +46,4 @@ export {
   getFileDetail,
   listFiles,
 } from "./read.ts";
-export { type FileActor, type FileRow, findTenantFile } from "./shared.ts";
+export { type FileActor, type FileRow, findLiveFile, findTenantFile } from "./shared.ts";
