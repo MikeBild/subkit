@@ -6,6 +6,10 @@ export function printJson(value: unknown): void {
   process.stdout.write(`${toJson(value)}\n`);
 }
 
+export function printNdjson(value: unknown): void {
+  process.stdout.write(`${JSON.stringify(value)}\n`);
+}
+
 export function printTable(columns: readonly string[], rows: Record<string, unknown>[]): void {
   if (rows.length === 0) {
     process.stdout.write("(no rows)\n");
