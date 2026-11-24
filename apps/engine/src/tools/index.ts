@@ -1,5 +1,6 @@
 export * from "./approval.ts";
 export * from "./approval-portal.ts";
+export type { ApprovalSubject } from "./approval-subject.ts";
 export * from "./dispatcher.ts";
 export * from "./policy.ts";
 export { conversationToolProvider } from "./providers/conversation.ts";
