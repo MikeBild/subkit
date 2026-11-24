@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { RequestStepSchema, WorkflowDefSchema } from "../workflows/types.ts";
+import {
+  GraphqlRequestStepSchema,
+  HttpRequestStepSchema,
+  McpRequestStepSchema,
+  S3RequestStepSchema,
+  SftpRequestStepSchema,
+  SqlRequestStepSchema,
+  WorkflowDefSchema,
+} from "../workflows/types.ts";
 import { getBuiltinTemplate, loadBuiltinTemplates } from "./templates.ts";
 
 describe("recipe request steps survive WorkflowDefSchema parsing (#533)", () => {
@@ -14,10 +22,19 @@ describe("recipe request steps survive WorkflowDefSchema parsing (#533)", () => 
           ]
         : [];
   const strippedKeysTrackedInIssue542 = ["form"];
-  const requestStepKeys = new Set([
-    ...Object.keys(RequestStepSchema.shape),
-    ...strippedKeysTrackedInIssue542,
-  ]);
+  const keysOf = (shape: object): ReadonlySet<string> =>
+    new Set([...Object.keys(shape), ...strippedKeysTrackedInIssue542]);
+  const requestStepKeysByProtocol: Record<string, ReadonlySet<string>> = {
+    http: keysOf(HttpRequestStepSchema.shape),
+    graphql: keysOf(GraphqlRequestStepSchema.shape),
+    sql: keysOf(SqlRequestStepSchema.shape),
+    s3: keysOf(S3RequestStepSchema.shape),
+    sftp: keysOf(SftpRequestStepSchema.shape),
+    mcp: keysOf(McpRequestStepSchema.shape),
+  };
+  const requestStepKeys = (step: RawStep): ReadonlySet<string> =>
+    requestStepKeysByProtocol[typeof step.protocol === "string" ? step.protocol : "http"] ??
+    new Set();
   const recipes = loadBuiltinTemplates().flatMap((template) =>
     template.recipes.map((recipe) => ({ label: `${template.slug}/${recipe.slug}`, recipe })),
   );
@@ -26,7 +43,7 @@ describe("recipe request steps survive WorkflowDefSchema parsing (#533)", () => 
     const strippedKeys = recipes.flatMap(({ label, recipe }) =>
       collectRequestSteps(recipe.workflow.steps).flatMap((step) =>
         Object.keys(step)
-          .filter((key) => !requestStepKeys.has(key))
+          .filter((key) => !requestStepKeys(step).has(key))
           .map((key) => `${label}#${String(step.id)}.${key}`),
       ),
     );
