@@ -7310,7 +7310,9 @@
           "screenPageViews": 133,
           "keyEvents": 3
         },
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "google-analytics" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -7341,7 +7343,8 @@
               "kind": "request",
               "id": "totals",
               "method": "POST",
-              "url": "${connector.google-analytics.base_url}/v1beta/properties/${input.property_id}:runReport",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "path": "/v1beta/properties/${input.property_id}:runReport",
               "headers": {
                 "Content-Type": "application/json"
               },
@@ -7406,7 +7409,9 @@
             }
           ]
         },
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "google-analytics" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -7437,7 +7442,8 @@
               "kind": "request",
               "id": "pages",
               "method": "POST",
-              "url": "${connector.google-analytics.base_url}/v1beta/properties/${input.property_id}:runReport",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "path": "/v1beta/properties/${input.property_id}:runReport",
               "headers": {
                 "Content-Type": "application/json"
               },
@@ -7512,7 +7518,9 @@
             }
           ]
         },
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "google-analytics" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -7543,7 +7551,8 @@
               "kind": "request",
               "id": "sources",
               "method": "POST",
-              "url": "${connector.google-analytics.base_url}/v1beta/properties/${input.property_id}:runReport",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "path": "/v1beta/properties/${input.property_id}:runReport",
               "headers": {
                 "Content-Type": "application/json"
               },
@@ -7612,7 +7621,9 @@
             }
           ]
         },
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "google-analytics" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -7635,7 +7646,8 @@
               "kind": "request",
               "id": "realtime",
               "method": "POST",
-              "url": "${connector.google-analytics.base_url}/v1beta/properties/${input.property_id}:runRealtimeReport",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "path": "/v1beta/properties/${input.property_id}:runRealtimeReport",
               "headers": {
                 "Content-Type": "application/json"
               },
