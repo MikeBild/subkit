@@ -1016,7 +1016,6 @@ export function UsageBreakdown({
           onOpenChange={(open) => (open ? undefined : setPriceModel(null))}
           model={priceModel}
           modelName={modelName(priceModel)}
-          currentPrices={Array.isArray(priceSetting?.value) ? priceSetting.value : []}
           canWriteGlobal={canWriteGlobal}
           tenantId={session.tenant.id}
           pricedBounds={bounds}

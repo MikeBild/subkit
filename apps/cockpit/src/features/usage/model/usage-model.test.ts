@@ -9,6 +9,7 @@ import {
   consumptionRows,
   FLOW_ORIGIN,
   flowOrigin,
+  mergeModelPrice,
   modelPriceApplied,
   originRows,
   runsByWorkflow,
@@ -433,5 +434,39 @@ describe("the workflows a run can be named for", () => {
     expect(attributed.map((row) => row.key)).toEqual(["w1"]);
     expect(attributed[0]?.share).toBeCloseTo(0.03, 5);
     expect(attributableWorkflowRows(rows.filter((row) => row.unattributed))).toEqual([]);
+  });
+});
+
+describe("merging one model price into the stored list", () => {
+  test("keeps the other models and appends the edited one", () => {
+    expect(
+      mergeModelPrice([{ model: "alfa", input_per_mtok: 1, output_per_mtok: 2 }], "beta", 3, 4),
+    ).toEqual([
+      { model: "alfa", input_per_mtok: 1, output_per_mtok: 2 },
+      { model: "beta", input_per_mtok: 3, output_per_mtok: 4 },
+    ]);
+  });
+
+  test("replaces an earlier price of the same model", () => {
+    expect(
+      mergeModelPrice(
+        [
+          { model: "beta", input_per_mtok: 1, output_per_mtok: 1 },
+          { model: "alfa", input_per_mtok: 5, output_per_mtok: 6 },
+        ],
+        "beta",
+        3,
+        4,
+      ),
+    ).toEqual([
+      { model: "alfa", input_per_mtok: 5, output_per_mtok: 6 },
+      { model: "beta", input_per_mtok: 3, output_per_mtok: 4 },
+    ]);
+  });
+
+  test("a missing or malformed list starts empty", () => {
+    expect(mergeModelPrice(null, "beta", 3, 4)).toEqual([
+      { model: "beta", input_per_mtok: 3, output_per_mtok: 4 },
+    ]);
   });
 });
