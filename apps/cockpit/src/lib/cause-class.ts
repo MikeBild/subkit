@@ -22,6 +22,7 @@ const CAUSE_CLASS_KEYS = {
   unknown: "cause.unknown",
   incomplete_read: "cause.incomplete_read",
   rate_limited: "cause.rate_limited",
+  step_error: "cause.step_error",
 } as const satisfies Record<CauseClass, TranslationKey>;
 
 export function causeClassKey(value: string): TranslationKey | undefined {

@@ -37,6 +37,7 @@ const BY_CAUSE: Record<CauseClass, FailureRemedyKind | null> = {
   schema_mismatch: "chat",
   payload_invalid: "chat",
   preview_unsupported: "chat",
+  step_error: "chat",
   unknown: "chat",
 };
 

@@ -32,6 +32,10 @@ describe("error taxonomy", () => {
     }
   });
 
+  test("a local transform error is a step error, not an external-system error (#525)", () => {
+    expect(classifyErrorCode("transform_error")).toEqual({ cause: "step_error", remedy: "patch" });
+  });
+
   test("repair remedies are part of the remedy vocabulary", () => {
     for (const remedy of REPAIR_REMEDIES) expect(REMEDIES).toContain(remedy);
   });

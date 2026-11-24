@@ -57,6 +57,7 @@ describe("failure remedy", () => {
     expect(remedy(null, null, "placeholder_unresolved")).toBe("chat");
     expect(remedy(null, null, "schema_mismatch")).toBe("chat");
     expect(remedy(null, null, "unknown")).toBe("chat");
+    expect(remedy(null, null, "step_error")).toBe("chat");
   });
 
   test("the cause class outranks the code, the code outranks the status", () => {

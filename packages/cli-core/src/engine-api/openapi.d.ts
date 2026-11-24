@@ -32873,7 +32873,7 @@ export interface components {
             failure: {
                 step_key: string | null;
                 /** @enum {string|null} */
-                cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown" | "incomplete_read" | "rate_limited" | null;
+                cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown" | "incomplete_read" | "rate_limited" | "step_error" | null;
                 /** @enum {string|null} */
                 refusal_reason: "not_json_raw" | "not_base64url" | "not_utf8" | "header_control_byte" | "header_folded" | "header_not_allowed" | "header_duplicate" | "missing_headers" | "sender_invalid" | "recipient_invalid" | "extra_recipients" | "multipart_unsupported" | "content_type_unsupported" | "transfer_encoding_unsupported" | "body_not_base64" | "recipient_differs" | "sender_differs" | "content_type_differs" | null;
                 connector: {
@@ -32952,7 +32952,7 @@ export interface components {
                 kind: string;
             } | null;
             /** @enum {string|null} */
-            cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown" | "incomplete_read" | "rate_limited" | null;
+            cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown" | "incomplete_read" | "rate_limited" | "step_error" | null;
             error_code: string | null;
             /** @enum {string|null} */
             refusal_reason: "not_json_raw" | "not_base64url" | "not_utf8" | "header_control_byte" | "header_folded" | "header_not_allowed" | "header_duplicate" | "missing_headers" | "sender_invalid" | "recipient_invalid" | "extra_recipients" | "multipart_unsupported" | "content_type_unsupported" | "transfer_encoding_unsupported" | "body_not_base64" | "recipient_differs" | "sender_differs" | "content_type_differs" | null;
@@ -34264,7 +34264,7 @@ export interface components {
                 /** @description Low-cardinality failure code: the status class (`4xx_auth`, `5xx`, …), `network_error` for a call with no status, `remote_error` for an MCP tool that answered with an error. */
                 code: string;
                 /** @enum {string} */
-                cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown" | "incomplete_read" | "rate_limited";
+                cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown" | "incomplete_read" | "rate_limited" | "step_error";
             } | null;
             /** @description Whether this connector's driver records every call in the audit log. False means the absence of calls says nothing. */
             recorded: boolean;
@@ -36042,7 +36042,7 @@ export interface components {
             step_key: string;
             error_kind: string;
             /** @enum {string} */
-            cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown" | "incomplete_read" | "rate_limited";
+            cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown" | "incomplete_read" | "rate_limited" | "step_error";
             count: number;
             lookback_days: number;
         };
@@ -37543,7 +37543,7 @@ export interface components {
             guidance: string | null;
         };
         /** @enum {string} */
-        FailureCauseClass: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown" | "incomplete_read" | "rate_limited";
+        FailureCauseClass: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown" | "incomplete_read" | "rate_limited" | "step_error";
         OperatorDigestPatch: {
             id: string;
             workflow_id: string | null;
@@ -37654,7 +37654,7 @@ export interface components {
                 execution_id: string | null;
             };
             /** @enum {string|null} */
-            cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown" | "incomplete_read" | "rate_limited" | null;
+            cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown" | "incomplete_read" | "rate_limited" | "step_error" | null;
             counts: {
                 patches?: number;
                 failures?: number;
@@ -37877,7 +37877,7 @@ export interface components {
                         /** @description Residual engine free text (a failing group's cause, a connector's health reason), or null. Show it as the engine's wording. */
                         detail: string | null;
                         /** @enum {string|null} */
-                        cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown" | "incomplete_read" | "rate_limited" | null;
+                        cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown" | "incomplete_read" | "rate_limited" | "step_error" | null;
                         drilldown: {
                             path: string;
                             label_id: string;

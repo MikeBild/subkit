@@ -15,6 +15,7 @@ export const ERROR_CAUSES = [
   "unknown",
   "incomplete_read",
   "rate_limited",
+  "step_error",
 ] as const;
 
 export type ErrorCause = (typeof ERROR_CAUSES)[number];
@@ -73,6 +74,7 @@ export const ERROR_CODES = {
   app_not_open: entry("connector_unavailable", "retry"),
   missing_graphql: entry("driver_error", "author"),
   unknown_step_kind: entry("driver_error", "author"),
+  transform_error: entry("step_error", "patch"),
   data_selector_error: entry("schema_mismatch", "patch"),
   graphql_pagination_incomplete: entry("incomplete_read", "patch"),
   upstream_rate_limited: entry("rate_limited", "wait"),

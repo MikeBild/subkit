@@ -314,6 +314,7 @@ export const ERROR_CAUSE_LABELS: Readonly<
     unknown: "Nicht eingeordnet",
     incomplete_read: "Nicht vollständig gelesen",
     rate_limited: "Abrufgrenze des Anbieters erreicht",
+    step_error: "Fehler im Code des Schritts",
     version_unsupported: "Version nicht unterstützt",
   },
   en: {
@@ -333,6 +334,7 @@ export const ERROR_CAUSE_LABELS: Readonly<
     unknown: "Not classified",
     incomplete_read: "Not read completely",
     rate_limited: "Provider rate limit reached",
+    step_error: "Error in the step's code",
     version_unsupported: "Version not supported",
   },
 };
