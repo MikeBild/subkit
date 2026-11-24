@@ -2,10 +2,12 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { desc, eq } from "drizzle-orm";
 import { scheduleOccurrences, tasks, workflows } from "../../db/schema/index.ts";
 import { createEngineCtx, type EngineTestCtx } from "../../execution/tests/setup.ts";
+import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { cronDueWindow, onceDueWindow } from "../occurrence-window.ts";
 import { type OccurrenceWindowReader, recordScheduleOccurrence } from "../schedule-occurrences.ts";
 
 let ctx: EngineTestCtx;
+const uuid = createDeterministicUuidFactory(548);
 
 const ANCHOR = new Date("2026-11-20T21:09:00Z");
 const SKIPPED_AT = new Date("2026-11-20T21:10:00Z");
@@ -92,7 +94,7 @@ describe("a skipped or held due time is not counted again by the next row", () =
         locale: "en",
         tenant_id: ctx.tenantId,
         name: "once-held-then-run",
-        owner_id: crypto.randomUUID(),
+        owner_id: uuid(),
         goal: "goal",
         done_when: "done",
         plan: {},
