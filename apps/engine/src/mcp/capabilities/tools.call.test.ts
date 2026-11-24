@@ -4,6 +4,7 @@ import { and, count, eq, sql } from "drizzle-orm";
 import { MCP_AUTHORING_SCOPE } from "../../auth/scopes.ts";
 import {
   executions,
+  tasks,
   workflowExecutionAuthorities,
   workflows,
   workflowVersions,
@@ -397,6 +398,68 @@ describe("MCP tools/call — wf_<slug> end-to-end (T7)", () => {
       expect(body.status).toBe("cannot_help");
       expect(body.error_code).toBe("unknown_tool");
       expect(body.next_best_actions).toContain("conversation_start");
+    } finally {
+      await client.close();
+    }
+  });
+});
+
+describe("MCP tools/call — authoring-gated tools on a read-scoped credential", () => {
+  test("save_task answers authoring_scope_required, leaves the task unchanged and stays unlisted", async () => {
+    const created = await journeyFetch(ctx, "/v1/tasks", {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Read-scoped save",
+        goal: "Summarize the inbox",
+        done_when: "The summary is written",
+        plan: {
+          title: "Read-scoped save",
+          goal: "Summarize the inbox",
+          steps: [
+            {
+              id: "summary",
+              label: "Write the summary",
+              criterion: { kind: "assessment", description: "Summary is written", result: null },
+              depends_on: [],
+              evidence_ids: [],
+              note: null,
+              progress: "open",
+              next_action: null,
+            },
+          ],
+          cancelled: false,
+          completion_step_id: null,
+        },
+        bindings: { workflow_ids: [], connector_ids: [], skill_slugs: [], web_search: false },
+        environment: "dev",
+      }),
+    });
+    expect(created.status).toBe(201);
+    const { id: taskId } = (await created.json()) as { id: string };
+    const storedTask = async () =>
+      (
+        await ctx.db
+          .select({ revision: tasks.revision, name: tasks.name })
+          .from(tasks)
+          .where(and(eq(tasks.tenant_id, ctx.tenantId), eq(tasks.id, taskId)))
+      )[0];
+    const before = await storedTask();
+    const client = await connect();
+    try {
+      const listed = await client.listTools();
+      expect(listed.tools.map((tool) => tool.name)).not.toContain("save_task");
+      const result = await client.callTool({
+        name: "save_task",
+        arguments: { task_id: taskId, expected_revision: before?.revision, name: "Renamed" },
+      });
+      expect(result.isError).toBe(true);
+      const text = (result.content as Array<{ type: string; text?: string }>).find(
+        (block) => block.type === "text",
+      )?.text;
+      const response = JSON.parse(text!) as { ok: boolean; error_code: string };
+      expect(response.ok).toBe(false);
+      expect(response.error_code).toBe("authoring_scope_required");
+      expect(await storedTask()).toEqual(before);
     } finally {
       await client.close();
     }
