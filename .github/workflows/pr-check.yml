@@ -81,8 +81,12 @@ jobs:
           sort -u graph.txt scans.txt > affected.txt
           awk -v shard="$SHARD" 'NR % 4 == shard - 1' affected.txt > shard.txt
           echo "$(wc -l < affected.txt) affected test files, $(wc -l < shard.txt) in shard $SHARD"
-      - name: Install PTY test dependency
-        run: sudo apt-get update && sudo apt-get install -y expect
+      - name: Coverage floor of the changed source files
+        if: matrix.shard == 1
+        run: |
+          changed=$(git diff --name-only --diff-filter=AMR "$BASE_SHA...HEAD" -- 'apps/*.ts' 'packages/*.ts' | grep -vE '\.test\.tsx?$' || true)
+          [ -z "$changed" ] && { echo "no changed source files"; exit 0; }
+          bun apps/engine/scripts/check-coverage-floor.ts $changed
       - name: Run the shard and compare failures with the base commit
         run: |
           : > failed.txt
