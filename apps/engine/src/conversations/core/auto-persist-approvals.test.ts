@@ -51,7 +51,7 @@ describe("held workflow writes", () => {
   });
 
   test("empty approved args replay as no input", () => {
-    expect(replayInput({})).toBeNull();
+    expect(replayInput({})).toBeUndefined();
     const args = { a: 1 };
     expect(replayInput(args)).toBe(args);
   });

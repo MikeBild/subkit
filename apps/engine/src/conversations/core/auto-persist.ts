@@ -304,8 +304,8 @@ export function heldTargetMissing(
   };
 }
 
-export function replayInput(args: Record<string, unknown>): Record<string, unknown> | null {
-  return Object.keys(args).length > 0 ? args : null;
+export function replayInput(args: Record<string, unknown>): Record<string, unknown> | undefined {
+  return Object.keys(args).length > 0 ? args : undefined;
 }
 
 export function relayGrantResult(granted: boolean, tool: string): ToolResult {

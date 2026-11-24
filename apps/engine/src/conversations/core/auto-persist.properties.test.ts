@@ -76,7 +76,7 @@ describe("auto-persist core properties", () => {
   test("replay input is null exactly when there are no args", () => {
     fc.assert(
       fc.property(fc.dictionary(fc.string(), fc.integer()), (args) => {
-        expect(replayInput(args) === null).toBe(Object.keys(args).length === 0);
+        expect(replayInput(args) === undefined).toBe(Object.keys(args).length === 0);
       }),
       { seed: 20261106, numRuns: 200 },
     );
