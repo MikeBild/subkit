@@ -75,7 +75,14 @@ async function writeOccurrence(
     const coveredUntil = prior?.last_due_at ?? null;
     if (entry.state === "ran" || entry.state === "ran_late") {
       const started_at = entry.started_at ?? new Date();
-      const due = window(coveredUntil) ?? { first_due: started_at, last_due: started_at, count: 1 };
+      const pendingDue =
+        prior && (prior.state === "held" || prior.state === "skipped") ? prior.last_due_at : null;
+      const fallbackDue = pendingDue ?? started_at;
+      const due = window(coveredUntil) ?? {
+        first_due: fallbackDue,
+        last_due: fallbackDue,
+        count: 1,
+      };
       const run = classifyRun(due, started_at);
       await tx.insert(scheduleOccurrences).values({
         ...subjectColumns(subject),

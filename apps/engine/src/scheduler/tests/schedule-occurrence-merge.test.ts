@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { desc, eq } from "drizzle-orm";
-import { scheduleOccurrences, workflows } from "../../db/schema/index.ts";
+import { scheduleOccurrences, tasks, workflows } from "../../db/schema/index.ts";
 import { createEngineCtx, type EngineTestCtx } from "../../execution/tests/setup.ts";
-import { cronDueWindow } from "../occurrence-window.ts";
+import { cronDueWindow, onceDueWindow } from "../occurrence-window.ts";
 import { type OccurrenceWindowReader, recordScheduleOccurrence } from "../schedule-occurrences.ts";
 
 let ctx: EngineTestCtx;
@@ -83,5 +83,63 @@ describe("a skipped or held due time is not counted again by the next row", () =
     );
     const [held] = await rowsFor(workflow_id);
     expect(held).toMatchObject({ state: "held", due_at: RAN_AT, skipped_count: 1 });
+  });
+
+  test("a one-shot task released from a hold keeps its due time and reads late", async () => {
+    const [task] = await ctx.testDb.db
+      .insert(tasks)
+      .values({
+        locale: "en",
+        tenant_id: ctx.tenantId,
+        name: "once-held-then-run",
+        owner_id: crypto.randomUUID(),
+        goal: "goal",
+        done_when: "done",
+        plan: {},
+        bindings: {
+          workflow_ids: [],
+          connector_ids: [],
+          skill_slugs: [],
+          web_search: false,
+        },
+        environment: "dev",
+        schedule_run_at: SKIPPED_AT,
+        fingerprint: "a".repeat(64),
+        description_source: "human",
+        category_source: "human",
+      })
+      .returning({ task_id: tasks.id });
+    const subject = { tenant_id: ctx.tenantId, task_id: task!.task_id };
+    const onceAt =
+      (now: Date): OccurrenceWindowReader =>
+      (after) =>
+        onceDueWindow(SKIPPED_AT, after, now);
+    await recordScheduleOccurrence(
+      ctx.testDb.db,
+      subject,
+      { state: "held", reason_code: "input_required" },
+      onceAt(SKIPPED_AT),
+    );
+    const releasedAt = new Date(SKIPPED_AT.getTime() + 10 * 60_000);
+    await recordScheduleOccurrence(
+      ctx.testDb.db,
+      subject,
+      { state: "ran", reason_code: null, started_at: releasedAt },
+      onceAt(releasedAt),
+    );
+    const [ran, held] = await ctx.testDb.db
+      .select()
+      .from(scheduleOccurrences)
+      .where(eq(scheduleOccurrences.task_id, task!.task_id))
+      .orderBy(desc(scheduleOccurrences.created_at));
+    expect(held).toMatchObject({ state: "held", due_at: SKIPPED_AT });
+    expect(ran).toMatchObject({
+      state: "ran_late",
+      reason_code: "late_start",
+      due_at: SKIPPED_AT,
+      last_due_at: SKIPPED_AT,
+      started_at: releasedAt,
+      skipped_count: 0,
+    });
   });
 });
