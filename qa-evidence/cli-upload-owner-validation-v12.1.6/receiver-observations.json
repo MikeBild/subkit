@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "receiver": "independent loopback HTTP receiver",
+  "invalid_owner_attempts": 2,
+  "corrected_controls": 2,
+  "invalid_owner_observations": [
+    {
+      "upload_before_cli_error": true,
+      "http_status": 200,
+      "bytes": 54,
+      "link_submitted": false
+    },
+    {
+      "upload_before_cli_error": true,
+      "http_status": 200,
+      "bytes": 54,
+      "link_submitted": false
+    }
+  ],
+  "capture_limits": "Receiver records HTTP request order and synthetic content digests only. It cannot establish Engine persistence or deduplication."
+}
