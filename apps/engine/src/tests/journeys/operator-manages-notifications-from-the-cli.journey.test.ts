@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { exitCodeFor } from "@cli-core/errors.ts";
 import { notificationsCommand } from "../../../../subkit/src/commands/notifications.ts";
 import { type Captured, extractLastJson, patchStd, withEnv, withNoExit } from "./cli-capture.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
@@ -275,6 +276,44 @@ describe("an operator manages notifications from the subkit CLI", () => {
       expect(ok.status).toBe(200);
       const body = (await ok.json()) as { items: Array<{ id: string }> };
       expect(body.items.some((c) => c.id === otherChannel.id)).toBe(true);
+    });
+
+    test("AC13: deleting a channel that a rule still targets fails and keeps the channel", async () => {
+      const channel = await seedChannel({
+        workspace_id: "W_IN_USE",
+        channel_id: "C_IN_USE",
+        platform: "slack",
+      });
+      await seedRule({
+        name: "in-use-rule",
+        event_pattern: "execution.failed",
+        target_workspace_id: "W_IN_USE",
+        target_channel_id: "C_IN_USE",
+      });
+      const cli = patchStd();
+      let failure: unknown;
+      try {
+        await withEnv(ctx.baseUrl, ctx.apiKey, () =>
+          withNoExit(async () => {
+            const citty = await import("citty");
+            await citty.runCommand(notificationsCommand, {
+              rawArgs: ["channels", "delete", channel.id],
+            });
+          }),
+        );
+      } catch (err) {
+        failure = err;
+      } finally {
+        cli.restore();
+      }
+      expect((failure as Error).message).toBe("channel_in_use");
+      expect(exitCodeFor(failure)).toBe(1);
+      expect(cli.stderr).toContain("conflict: channel_in_use");
+      expect(cli.stdout).not.toContain("deleted");
+
+      const res = await journeyFetch(ctx, "/v1/notifications/channels");
+      const { items } = (await res.json()) as { items: Array<{ id: string }> };
+      expect(items.map((c) => c.id)).toContain(channel.id);
     });
   });
 });

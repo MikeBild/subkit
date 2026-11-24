@@ -1,6 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import { AuditAction } from "../../audit/types.ts";
 import {
+  ChannelInUseError,
   createChannel,
   deleteChannel,
   listChannels,
@@ -169,8 +170,14 @@ export const deleteNotificationChannelOperation = defineOperation<IdInput, { del
   audit: AuditAction.NOTIFICATION_CHANNEL_DELETED,
   async handler(scope, { id }) {
     if (!scope.principal) return reject.unauthorized();
-    const deleted = await deleteChannel(scope.db, scope.principal, id);
-    return deleted ? { deleted: true } : reject.notFound("notification_channel");
+    try {
+      const deleted = await deleteChannel(scope.db, scope.principal, id);
+      return deleted ? { deleted: true } : reject.notFound("notification_channel");
+    } catch (err) {
+      if (err instanceof ChannelInUseError)
+        return reject.conflict("channel_in_use", { rule_count: err.rule_count });
+      throw err;
+    }
   },
   http: {
     method: "delete",
@@ -178,7 +185,7 @@ export const deleteNotificationChannelOperation = defineOperation<IdInput, { del
     tags: ["notifications"],
     params: IdParam,
     response: z.object({ deleted: z.boolean() }),
-    errors: { 404: "Not found" },
+    errors: { 404: "Not found", 409: "Channel still targeted by notification rules" },
     toInput: ({ param }) => idFrom(param),
     toBody: (result) => result,
   },

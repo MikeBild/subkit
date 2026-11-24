@@ -296,3 +296,15 @@ describe("request step union in the committed openapi.json", () => {
     });
   }
 });
+
+describe("notification channel deletion in the committed openapi.json", () => {
+  test("documents the conflict response for channels targeted by notification rules", () => {
+    const doc = JSON.parse(readFileSync(OPENAPI_JSON_PATH, "utf8"));
+    expect(doc.paths["/v1/notifications/channels/{id}"].delete.responses["409"]).toEqual({
+      description: "Channel still targeted by notification rules",
+      content: {
+        "application/json": { schema: { $ref: "#/components/schemas/Error" } },
+      },
+    });
+  });
+});
