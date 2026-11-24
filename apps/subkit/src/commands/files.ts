@@ -109,19 +109,25 @@ export async function uploadPath(
   }
 
   const sha256 = createHash("sha256").update(bytes).digest("hex");
+  const dedup = opts.dedup ?? true;
   const batch = await client.batchCreateFiles({
     files: [
       {
         filename,
         content_type,
         size_bytes: bytes.byteLength,
-        sha256,
+        ...(dedup ? { sha256 } : {}),
       },
     ],
   });
   const entry = batch.files[0];
   if (!entry) throw new Error("batch-create returned no entries");
   if (entry.dedup) {
+    if (!dedup) {
+      throw new Error(
+        `engine answered with a dedup match for ${filename} although --no-dedup was set`,
+      );
+    }
     return await client.getFile(entry.id);
   }
   const stream = readableFromBytes(bytes, filename, entry.id, bytes.byteLength, (ev) => {
@@ -230,6 +236,7 @@ export async function runFileUpload(
     linkTo?: string;
     slug?: string;
     role?: string;
+    dedup?: boolean;
     quiet: boolean;
     json: boolean;
   },
@@ -238,6 +245,7 @@ export async function runFileUpload(
   const row = await uploadPath(client, uploadArgs.path, {
     quiet: uploadArgs.quiet,
     json: uploadArgs.json,
+    ...(uploadArgs.dedup === false ? { dedup: false } : {}),
     ...(uploadArgs.contentType ? { content_type: uploadArgs.contentType } : {}),
   });
   if (linkRef) {
@@ -258,10 +266,11 @@ const uploadCommand = defineCommand({
   args: {
     path: { type: "positional", required: true, description: "Path to file" },
     "content-type": { type: "string", description: "Override detected MIME type" },
-    "no-dedup": {
+    dedup: {
       type: "boolean",
-      description: "Skip the client-side sha256 dedup probe (forces an upload)",
-      default: false,
+      description: "Reuse an existing file with the same sha256; --no-dedup forces an upload",
+      negativeDescription: "Skip the sha256 dedup probe (forces an upload)",
+      default: true,
     },
     "link-to": {
       type: "string",
@@ -283,6 +292,7 @@ const uploadCommand = defineCommand({
           path: String(args.path),
           quiet,
           json,
+          dedup: args.dedup !== false,
           ...(args["content-type"] ? { contentType: String(args["content-type"]) } : {}),
           ...(args["link-to"] ? { linkTo: String(args["link-to"]) } : {}),
           ...(args.slug ? { slug: String(args.slug) } : {}),
