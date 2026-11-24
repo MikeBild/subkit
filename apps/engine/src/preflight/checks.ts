@@ -1,6 +1,7 @@
 import type { DeploymentMode } from "../config/deployment-mode.ts";
 import { ConfigSchema } from "../config/schema.ts";
 import { listConfigLeaves } from "../config/walk.ts";
+import { FileSystemStoreError } from "../storage/file-system-object-store.ts";
 import type { PreflightCheckResult, PreflightNote, PreflightOutcome } from "./contracts.ts";
 
 export interface ObjectStoreBinding {
@@ -228,7 +229,12 @@ async function checkLocalObjectStore(
   try {
     await env.probeLocalObjectStore(root);
   } catch (error) {
-    return refuse("object_store", "object_store_unreachable", messageOf(error));
+    if (!(error instanceof FileSystemStoreError))
+      return refuse("object_store", "object_store_unreachable", messageOf(error));
+    return {
+      ...refuse("object_store", "object_store_unreachable", `${error.code}: ${error.message}`),
+      reason: error.code,
+    };
   }
   return ok("object_store");
 }

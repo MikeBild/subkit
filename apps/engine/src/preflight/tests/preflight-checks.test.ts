@@ -1,5 +1,9 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { ConfigSchema } from "../../config/schema.ts";
+import { FileSystemStoreError } from "../../storage/file-system-object-store.ts";
 import { testEnv } from "../../test-helpers/determinism/env.ts";
 import {
   FILESYSTEM_STORE_LOCAL_ONLY_REMEDY,
@@ -11,6 +15,7 @@ import {
   secretBindingsOf,
 } from "../checks.ts";
 import { firstRefusal, refusalLine } from "../contracts.ts";
+import { probeLocalObjectStore } from "../environment.ts";
 
 const KEY = "a".repeat(64);
 const DSN = "postgres://localhost/subkit";
@@ -205,6 +210,55 @@ describe("check 3 — the object store", () => {
     const outcome = await runPreflightChecks(env);
     expect(firstRefusal(outcome)?.code).toBe("object_store_unreachable");
     expect(firstRefusal(outcome)?.detail).toContain("EACCES");
+    expect(firstRefusal(outcome)?.reason).toBeUndefined();
+    expect(JSON.parse(refusalLine(firstRefusal(outcome)!))).not.toHaveProperty("reason");
+  });
+
+  for (const reason of ["root_parent_missing", "root_not_directory"] as const) {
+    test(`a typed local store failure keeps its reason ${reason} in the refusal`, async () => {
+      const { env } = healthyEnvironment({
+        localObjectStoreRoot: () => "/data/files",
+        deploymentMode: () => "local_workspace",
+        probeLocalObjectStore: async () => {
+          throw new FileSystemStoreError(reason, "the files folder cannot be used");
+        },
+      });
+      const refusal = firstRefusal(await runPreflightChecks(env));
+      expect(refusal?.code).toBe("object_store_unreachable");
+      expect(refusal?.reason).toBe(reason);
+      expect(refusal?.detail?.startsWith(`${reason}: `)).toBe(true);
+      const line = JSON.parse(refusalLine(refusal!));
+      expect(line.code).toBe("object_store_unreachable");
+      expect(line.reason).toBe(reason);
+    });
+  }
+});
+
+describe("check 3 — a real local folder names its reason", () => {
+  const scratch = mkdtempSync(join(tmpdir(), "subkit-preflight-reason-"));
+  afterAll(() => rmSync(scratch, { recursive: true, force: true }));
+
+  const refusalFor = async (root: string) => {
+    const { env } = healthyEnvironment({
+      localObjectStoreRoot: () => root,
+      deploymentMode: () => "local_workspace",
+      probeLocalObjectStore,
+    });
+    return firstRefusal(await runPreflightChecks(env));
+  };
+
+  test("a missing parent folder refuses with reason root_parent_missing", async () => {
+    const refusal = await refusalFor(join(scratch, "absent", "files"));
+    expect(refusal?.code).toBe("object_store_unreachable");
+    expect(refusal?.reason).toBe("root_parent_missing");
+  });
+
+  test("a regular file in place of the folder refuses with reason root_not_directory", async () => {
+    const filePath = join(scratch, "plain-file");
+    writeFileSync(filePath, "not a folder");
+    const refusal = await refusalFor(filePath);
+    expect(refusal?.code).toBe("object_store_unreachable");
+    expect(refusal?.reason).toBe("root_not_directory");
   });
 });
 
