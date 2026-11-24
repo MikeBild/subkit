@@ -64,10 +64,11 @@ Der Verweis auf die Datei bleibt gleich. Workflows und Chat nutzen deshalb sofor
 
 ### Einen früheren Stand einer Datei wiederherstellen
 
-1. Öffne die Datei und den Tab **Verwendung**.
-2. Klappe **Ersetzt** auf. Der Bereich erscheint, sobald eine Datei frühere Versionen hat.
+1. Öffne **Dateien** und klicke auf die Datei.
+2. Öffne den Tab **Versionen**. Der Tab erscheint, sobald die Datei ersetzt wurde.
 3. Klicke auf eine Version. Du siehst ihre Vorschau.
-4. Wähle bei einer früheren Version **Wiederherstellen**.
+4. Wähle bei einer früheren Version **Diese Version wiederherstellen**.
+5. Bestätige im Dialog mit **Diese Version wiederherstellen**.
 
 Der frühere Stand wird als neue Version aktuell. Der jetzige Inhalt bleibt als frühere Version erhalten.
 
@@ -82,7 +83,7 @@ Gut zu wissen:
 | --- | --- |
 | **Diese Version wiederherstellen** fehlt | Du hast die aktuelle Version geöffnet. Öffne eine frühere. Fehlt der Button weiter, bitte eine Administratorin oder einen Administrator um das Schreibrecht für Quellen oder Skills. |
 | „Für diese Version ist kein Stand gespeichert; sie lässt sich nicht wiederherstellen.“ | Wähle eine andere Version oder ändere den Skill direkt. |
-| Der Bereich **Ersetzt** fehlt | Die Datei wurde noch nie ersetzt. Es gibt noch keine früheren Versionen. |
+| Der Tab **Versionen** fehlt | Die Datei wurde noch nie ersetzt. Es gibt noch keine früheren Versionen. |
 | **Ersetzen** fehlt im Menü | Bitte eine Administratorin oder einen Administrator um `file:write`. |
 
 ### Dasselbe im Terminal
