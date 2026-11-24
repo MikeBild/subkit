@@ -15,7 +15,7 @@ import { RequestSourceSchema } from "../../observability/index.ts";
 import { NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
-import type { AppEnv } from "../openapi.ts";
+import { type AppEnv, validationFailedResponse } from "../openapi.ts";
 
 const AuditEntrySchema = z
   .object({
@@ -301,7 +301,7 @@ export function registerAuditLogRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const parsed = FilterQuery.safeParse(c.req.query());
     if (!parsed.success) {
-      return c.json({ code: "bad_request", message: "request validation failed" }, 400);
+      return validationFailedResponse(c, parsed.error.flatten());
     }
     const filters = filtersFromQuery(principal.tenant_id, parsed.data);
     c.header("Content-Type", "application/x-ndjson");

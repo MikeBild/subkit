@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { type ServerType, serve } from "@hono/node-server";
+import { createRoute, z } from "@hono/zod-openapi";
 import { Hono } from "hono";
 import { PendingElicitationBlockedError } from "../../conversations/service/shared.ts";
 import { LlmTimeoutError } from "../../conversations/turn-failure.ts";
@@ -7,7 +8,8 @@ import { CatalogVocabularyBusyError } from "../../db/catalog-vocabulary.ts";
 import { LlmAccessMissing } from "../../llm/errors.ts";
 import { BadRequestError, ConflictError, HttpError, UnprocessableEntityError } from "../errors.ts";
 import { errorMiddleware, mapKnownErrorResponse } from "../middleware/error.ts";
-import type { AppEnv } from "../openapi.ts";
+import { traceMiddleware } from "../middleware/trace.ts";
+import { type AppEnv, createOpenApiApp } from "../openapi.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 describe("HttpError envelope shape", () => {
@@ -333,5 +335,34 @@ describe("error envelope wire — a tenant catalog that stayed busy", () => {
     const body = (await res.json()) as ErrorBody;
     expect(body.code).toBe("catalog_vocabulary_changed");
     expect(JSON.stringify(body)).not.toContain("private catalog");
+  });
+});
+
+describe("error envelope wire — a request that fails schema validation", () => {
+  const app = createOpenApiApp();
+  app.use("*", traceMiddleware());
+  app.use("*", errorMiddleware());
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/__test__/bounded",
+      request: { query: z.object({ limit: z.coerce.number().max(50).optional() }) },
+      responses: { 200: { description: "ok" } },
+    }),
+    (c) => c.json({ ok: true }, 200),
+  );
+
+  test("a 400 validation failure carries the trace id of its response header", async () => {
+    const res = await app.request("/__test__/bounded?limit=51");
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as ErrorBody & {
+      details: { fieldErrors: { limit?: string[] } };
+    };
+    expect(body.code).toBe("bad_request");
+    expect(body.details.fieldErrors.limit?.length).toBeGreaterThan(0);
+    expect(typeof body.trace_id).toBe("string");
+    expect(body.trace_id?.length).toBeGreaterThan(0);
+    expect(body.trace_id).toBe(res.headers.get("x-trace-id") ?? "");
+    expect(Object.keys(body)).toEqual(["code", "message", "trace_id", "details"]);
   });
 });
