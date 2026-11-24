@@ -128,6 +128,29 @@ export function agentHooksCheck(legacyFiles: readonly string[]): CheckResult {
   };
 }
 
+export interface SetupFacts {
+  overall_status: CheckStatus;
+  summary_counts: {
+    blockers: number;
+    warnings: number;
+    sections_blocked: number;
+    sections_warn: number;
+  };
+}
+
+export function setupCheck({ overall_status, summary_counts: counts }: SetupFacts): CheckResult {
+  return {
+    name: "setup",
+    status: overall_status,
+    detail: `overall=${overall_status} blockers=${counts.blockers} warnings=${counts.warnings} sections_blocked=${counts.sections_blocked} sections_warn=${counts.sections_warn}`,
+    ...(overall_status !== "ok"
+      ? {
+          hint: "run `subkit diagnostics setup --json` (or hit GET /v1/diagnostics/setup) for the per-section detail",
+        }
+      : {}),
+  };
+}
+
 export function worst(results: readonly CheckResult[]): CheckStatus {
   if (results.some((r) => r.status === "blocked")) return "blocked";
   if (results.some((r) => r.status === "warn")) return "warn";
