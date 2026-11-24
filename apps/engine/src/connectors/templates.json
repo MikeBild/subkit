@@ -14292,7 +14292,7 @@
         "sample_input": null,
         "expected_output_preview": null,
         "required_connectors": [],
-        "version": "1.0.0",
+        "version": "1.0.1",
         "author": "subkit-builtin",
         "last_validated_at": null,
         "deprecated": null,
@@ -14316,6 +14316,12 @@
           },
           "steps": [
             {
+              "kind": "transform",
+              "id": "form",
+              "language": "javascript",
+              "expression": "return [\"channels\",\"filename\",\"content\"].map((k) => k + '=' + encodeURIComponent(String(input.input[k] ?? ''))).join('&');"
+            },
+            {
               "kind": "request",
               "id": "up",
               "method": "POST",
@@ -14323,7 +14329,7 @@
               "headers": {
                 "Content-Type": "application/x-www-form-urlencoded"
               },
-              "body": "channels=${input.channels}&filename=${input.filename}&content=${input.content}"
+              "body": "${scope.form.data}"
             }
           ]
         }
@@ -16603,7 +16609,7 @@
         "sample_input": null,
         "expected_output_preview": null,
         "required_connectors": [],
-        "version": "1.0.0",
+        "version": "1.0.1",
         "author": "subkit-builtin",
         "last_validated_at": null,
         "deprecated": null,
@@ -16630,6 +16636,12 @@
           },
           "steps": [
             {
+              "kind": "transform",
+              "id": "form",
+              "language": "javascript",
+              "expression": "return [\"From\",\"To\",\"Body\"].map((k) => k + '=' + encodeURIComponent(String(input.input[k] ?? ''))).join('&');"
+            },
+            {
               "kind": "request",
               "id": "send",
               "method": "POST",
@@ -16637,7 +16649,7 @@
               "headers": {
                 "Content-Type": "application/x-www-form-urlencoded"
               },
-              "body": "From=${input.From}&To=${input.To}&Body=${input.Body}"
+              "body": "${scope.form.data}"
             }
           ]
         }
@@ -16865,7 +16877,7 @@
         "sample_input": null,
         "expected_output_preview": null,
         "required_connectors": [],
-        "version": "1.0.0",
+        "version": "1.0.1",
         "author": "subkit-builtin",
         "last_validated_at": null,
         "deprecated": null,
@@ -16892,6 +16904,12 @@
           },
           "steps": [
             {
+              "kind": "transform",
+              "id": "form",
+              "language": "javascript",
+              "expression": "return [\"From\",\"To\",\"Body\"].map((k) => k + '=' + encodeURIComponent(String(input.input[k] ?? ''))).join('&');"
+            },
+            {
               "kind": "request",
               "id": "send",
               "method": "POST",
@@ -16899,7 +16917,7 @@
               "headers": {
                 "Content-Type": "application/x-www-form-urlencoded"
               },
-              "body": "From=${input.From}&To=${input.To}&Body=${input.Body}"
+              "body": "${scope.form.data}"
             }
           ]
         }
