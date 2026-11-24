@@ -484,6 +484,7 @@ export function FilesPage() {
             <ListSummary
               testId="kn-files-summary"
               kind="file"
+              loaded={query.data}
               parts={[
                 plural(t, "kn.files.count", items.length, { size: formatBytes(total, locale) }),
               ]}

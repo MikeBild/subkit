@@ -80,6 +80,7 @@ export function SourcesPage() {
             items={items}
             groups={groups}
             sections={sections}
+            loaded={query.data}
             onOpen={open}
           />
         )}

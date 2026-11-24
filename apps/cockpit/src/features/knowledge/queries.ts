@@ -22,7 +22,7 @@ const MAX_PAGES = 20;
 
 export async function allPages<T>(
   load: (offset: number) => Promise<{ items: T[]; total: number }>,
-): Promise<{ items: T[]; total: number }> {
+): Promise<{ items: T[]; total: number; truncated: boolean }> {
   const first = await load(0);
   const items = [...first.items];
   for (let page = 1; items.length < first.total && page < MAX_PAGES; page++) {
@@ -30,7 +30,7 @@ export async function allPages<T>(
     if (next.items.length === 0) break;
     items.push(...next.items);
   }
-  return { items, total: first.total };
+  return { items, total: first.total, truncated: items.length < first.total };
 }
 
 export function useEntries() {

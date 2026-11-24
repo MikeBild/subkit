@@ -788,28 +788,41 @@ export function ListSummary({
   parts,
   kind,
   testId,
+  loaded,
 }: {
   parts: ReactNode[];
   kind?: CatalogKind;
   testId?: string;
+  loaded?: { items: unknown[]; total: number; truncated?: boolean } | undefined;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const count = new Intl.NumberFormat(LOCALE_TAGS[locale]);
   const ai = useAiCount(kind ?? "file");
   const all = [...parts, kind && ai ? t("catalog.aiCount", { count: ai }) : null].filter(
     (p) => p !== null && p !== false && p !== "",
   );
   return (
-    <p
-      className="mb-3 flex flex-wrap items-center gap-x-1 text-sm text-muted-foreground"
-      data-testid={testId}
-    >
-      {all.map((p, i) => (
-        <Fragment key={typeof p === "string" ? p : i}>
-          {i > 0 && <span aria-hidden>·</span>}
-          {p}
-        </Fragment>
-      ))}
-    </p>
+    <>
+      <p
+        className="mb-3 flex flex-wrap items-center gap-x-1 text-sm text-muted-foreground"
+        data-testid={testId}
+      >
+        {all.map((p, i) => (
+          <Fragment key={typeof p === "string" ? p : i}>
+            {i > 0 && <span aria-hidden>·</span>}
+            {p}
+          </Fragment>
+        ))}
+      </p>
+      {loaded?.truncated && (
+        <p className="mb-3 text-sm text-warning-ink" role="status" data-testid="kn-list-partial">
+          {t("kn.partial", {
+            n: count.format(loaded.items.length),
+            total: count.format(loaded.total),
+          })}
+        </p>
+      )}
+    </>
   );
 }
 

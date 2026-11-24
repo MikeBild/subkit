@@ -242,6 +242,7 @@ function ConnectorsScreen() {
           <ListSummary
             testId="cn-summary"
             kind="connector"
+            loaded={connectors.data}
             parts={[
               t(
                 shown.length === 1
