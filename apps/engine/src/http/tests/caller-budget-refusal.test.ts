@@ -1,10 +1,27 @@
-import { expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, test } from "bun:test";
 import { Hono } from "hono";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { refusalFromError } from "../../execution/use-cases/core/run-workflow.ts";
+import {
+  createDeterministicClock,
+  FROZEN_NOW,
+  installClock,
+  type NowProvider,
+  restoreClock,
+} from "../../test-helpers/determinism/clock.ts";
 import { mapKnownErrorResponse } from "../middleware/error.ts";
 import type { AppEnv } from "../openapi.ts";
 import { refusalResponse } from "../routes/executions/run.ts";
+
+let previousClock: NowProvider | null;
+
+beforeEach(() => {
+  previousClock = installClock(createDeterministicClock());
+});
+
+afterEach(() => {
+  restoreClock(previousClock);
+});
 
 const principal = {
   kind: "user",
@@ -34,14 +51,13 @@ async function answer(thrown: unknown): Promise<Response> {
 }
 
 test("a used-up daily limit answers 429 with a Retry-After until the reset", async () => {
-  const resetsAt = new Date(Date.now() + 3_600_000).toISOString();
+  const resetsAt = new Date(FROZEN_NOW + 3_600_000).toISOString();
   expect(refusalFromError(dailyLimitReached(resetsAt), "admission")?.refusal).toBe("budget");
   const res = await answer(dailyLimitReached(resetsAt));
   expect(res.status).toBe(429);
   const retryAfter = Number(res.headers.get("Retry-After"));
   expect(Number.isInteger(retryAfter)).toBe(true);
-  expect(retryAfter).toBeGreaterThan(3500);
-  expect(retryAfter).toBeLessThanOrEqual(3600);
+  expect(retryAfter).toBe(3600);
   expect(await res.json()).toMatchObject({
     error: "rate-limited",
     code: "rate_limited",
@@ -51,7 +67,7 @@ test("a used-up daily limit answers 429 with a Retry-After until the reset", asy
 });
 
 test("a reset time already passed still asks the caller to wait at least one second", async () => {
-  const res = await answer(dailyLimitReached(new Date(Date.now() - 5_000).toISOString()));
+  const res = await answer(dailyLimitReached(new Date(FROZEN_NOW - 5_000).toISOString()));
   expect(res.status).toBe(429);
   expect(res.headers.get("Retry-After")).toBe("1");
 });

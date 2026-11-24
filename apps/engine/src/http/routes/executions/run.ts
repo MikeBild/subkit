@@ -17,6 +17,7 @@ import {
 import { logger } from "../../../logging/index.ts";
 import type { RequestSource } from "../../../observability/index.ts";
 import { getBoss } from "../../../queue/index.ts";
+import { now } from "../../../utils/clock.ts";
 import { normalizeWorkflowRunInput } from "../../../workflows/index.ts";
 import { BadRequestError, HttpError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
@@ -138,9 +139,9 @@ const callerBudgetStatuses = {
   invalid: { status: 400, error: "invalid" },
 } as const;
 
-export function retryAfterSeconds(resetsAt: unknown, now = Date.now()): number | undefined {
+export function retryAfterSeconds(resetsAt: unknown, currentTime = now()): number | undefined {
   const resetAt = typeof resetsAt === "string" ? Date.parse(resetsAt) : Number.NaN;
-  return Number.isNaN(resetAt) ? undefined : Math.max(1, Math.ceil((resetAt - now) / 1000));
+  return Number.isNaN(resetAt) ? undefined : Math.max(1, Math.ceil((resetAt - currentTime) / 1000));
 }
 
 function refusalDetails(refusal: RunRefusal): Record<string, unknown> | undefined {
