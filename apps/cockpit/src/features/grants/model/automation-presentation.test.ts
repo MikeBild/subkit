@@ -72,6 +72,20 @@ test("automation presentation only adopts a complete repeatable activation", () 
   expect(recommendedAutomationEnvironment({})).toBeNull();
 });
 
+test("a context-free review recommendation yields to the personal default environment", () => {
+  const manual = {
+    recommended_environment: { environment: "dev", reason: "started_manually" },
+  } as const;
+  const scheduled = {
+    recommended_environment: { environment: "dev", reason: "schedule" },
+  } as const;
+  expect(recommendedAutomationEnvironment(manual, "prod")).toBe("prod");
+  expect(recommendedAutomationEnvironment(manual)).toBe("dev");
+  expect(recommendedAutomationEnvironment(scheduled, "prod")).toBe("dev");
+  expect(recommendedAutomationEnvironment(null, "prod")).toBe("prod");
+  expect(recommendedAutomationEnvironment({})).toBeNull();
+});
+
 test("automation cards retain the actionable and calm state contracts", () => {
   const card = (input = inputs(), webhooks = 0) => automationCard(automationState(input), webhooks);
   const grantState = automationState(inputs());

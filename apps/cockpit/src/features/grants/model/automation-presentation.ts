@@ -7,9 +7,14 @@ type WorkflowAuthority = components["schemas"]["WorkflowExecutionAuthority"];
 type CockpitAutomationState = AutomationState<WorkflowAuthority>;
 
 export function recommendedAutomationEnvironment(
-  preview: { recommended_environment?: { environment: "dev" | "prod" | null } } | null,
+  preview: {
+    recommended_environment?: { environment: "dev" | "prod" | null; reason?: string };
+  } | null,
+  personalDefault?: ReviewEnvironment | null,
 ): ReviewEnvironment | null {
-  return preview?.recommended_environment?.environment ?? null;
+  const recommendation = preview?.recommended_environment;
+  const contextFree = !recommendation || recommendation.reason === "started_manually";
+  return (contextFree ? personalDefault : null) ?? recommendation?.environment ?? null;
 }
 
 export const AUTOMATION_STATE_KEYS = {
