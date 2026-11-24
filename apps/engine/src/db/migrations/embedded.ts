@@ -25,6 +25,7 @@ import sql0004IntakeAnonymousCollector from "./0004_intake_anonymous_collector.s
 import sql0005SecondBrainContract from "./0005_second_brain_contract.sql" with { type: "text" };
 import sql0006KnowledgeReviewDue from "./0006_knowledge_review_due.sql" with { type: "text" };
 import sql0007TenantRowSecurity from "./0007_tenant_row_security.sql" with { type: "text" };
+import sql0008NotificationChannelFloor from "./0008_notification_channel_floor.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -57,6 +58,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0005_second_brain_contract": sql0005SecondBrainContract,
   "0006_knowledge_review_due": sql0006KnowledgeReviewDue,
   "0007_tenant_row_security": sql0007TenantRowSecurity,
+  "0008_notification_channel_floor": sql0008NotificationChannelFloor,
 };
 
 const journal = journalMeta as unknown as Journal;
