@@ -1,5 +1,19 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { collectImports, resolveImport } from "../audit/imports.ts";
+import { subsystemEntryHits } from "../audit/rules.ts";
+
+test("unknown tool guidance uses the auth subsystem entry point", () => {
+  const file = "apps/engine/src/tools/policy.ts";
+  const source = readFileSync(new URL("../../src/tools/policy.ts", import.meta.url), "utf8");
+  const imports = collectImports(file, source).map((entry) => ({
+    ...entry,
+    resolved: resolveImport(file, entry.specifier, () => false),
+  }));
+  expect(
+    subsystemEntryHits(file, imports).filter((hit) => hit.what.startsWith("apps/engine/src/auth/")),
+  ).toEqual([]);
+});
 
 describe("collectImports", () => {
   test("finds static, re-export, type-only, dynamic and import-type references", () => {

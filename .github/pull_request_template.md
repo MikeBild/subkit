@@ -1,6 +1,8 @@
 ## What and why
 
-Closes #
+Fixes #
+
+<!-- One "Fixes #<issue>" line per issue this pull request fixes; GitHub closes them on merge. Use "Refs #<issue>" only for a partial fix. -->
 
 ## How it was tested
 

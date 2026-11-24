@@ -54,6 +54,33 @@ describe("feedback store", () => {
     expect(web.get().draft.diagnostics).toBe(true);
   });
 
+  test("a rejected attachment is dropped, other failures keep the files (#557)", () => {
+    const file = { id: "f1", name: "a.exe", size: 3, content_base64: "AAAA" };
+    const rejected = createFeedbackStore(environment().env);
+    rejected.update({
+      kind: "idea",
+      text: "Broken",
+      diagnostics: false,
+      files: [file],
+      screenshot: "AAAA",
+      screenshotIncluded: true,
+    });
+    rejected.sending();
+    rejected.failed("attachment");
+    expect(rejected.get().draft).toMatchObject({
+      kind: "idea",
+      text: "Broken",
+      diagnostics: false,
+      files: [],
+      screenshotIncluded: false,
+    });
+    const generic = createFeedbackStore(environment().env);
+    generic.update({ text: "Broken", files: [file] });
+    generic.sending();
+    generic.failed("generic");
+    expect(generic.get().draft.files).toEqual([file]);
+  });
+
   test("opens without a screenshot in a plain browser", async () => {
     const store = createFeedbackStore(environment().env);
     await store.open();

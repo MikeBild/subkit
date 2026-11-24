@@ -30,6 +30,7 @@ export const TOP_LEVEL_FILES = [
   "bunfig.toml",
   "docker-compose.yml",
   "drizzle.config.ts",
+  "osv-scanner.toml",
   "package.json",
   "stryker.config.json",
   "subkit.config.example.json",

@@ -48,7 +48,7 @@
     "@clack/prompts": "^1.9.0",
     "@hono/node-server": "2.1.6",
     "@hono/zod-openapi": "^1.6.3",
-    "@huggingface/transformers": "4.2.0",
+    "@huggingface/transformers": "4.3.2",
     "@jitl/quickjs-singlefile-cjs-release-sync": "^0.32.0",
     "@js-joda/core": "6.3.2",
     "@js-joda/timezone": "3.2.1",
@@ -163,6 +163,7 @@
   },
   "overrides": {
     "@grpc/grpc-js": "1.14.6",
+    "@hono/node-server": "2.1.6",
     "@protobufjs/utf8": "1.1.2",
     "protobufjs": "7.6.6",
     "qs": "^6.17.1",

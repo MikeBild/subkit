@@ -34,6 +34,11 @@ Use Bun for everything; do not add npm, yarn or pnpm commands or lockfiles.
 
 One short English Conventional Commits subject, no body, for example `fix(http): keep the status on retry`.
 
+## Pull requests
+
+- A pull request that fixes an issue writes `Fixes #<issue>` in its description, one line per issue, so GitHub closes the issue when it merges into main. `Refs #<issue>` or an issue number only in the title does not close it.
+- Use `Refs #<issue>` only when the pull request does not fully fix the issue.
+
 ## Reviews
 
 Flag: missing tests for changed behavior, new comments, cross-tenant data access, unredacted secrets in logs or diagnostics, hand-edited generated files, and new top-level files or folders.
