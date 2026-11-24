@@ -503,7 +503,12 @@ export async function advanceTaskRun(
       db,
       {
         ...p,
-        turn: { id: turn.id, driver: turn.driver, failure: null, interrupted: orphaned },
+        turn: {
+          id: turn.id,
+          driver: turn.driver,
+          failure: turn.state === "cancelled" ? { code: TASK_TURN_STOPPED, retry_at: null } : null,
+          interrupted: orphaned,
+        },
         source: "scheduler",
       },
       overrides,
