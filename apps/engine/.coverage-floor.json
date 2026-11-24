@@ -14,7 +14,6 @@
       "line_min": 90,
       "function_min": 85,
       "rationale": "Audit log is the immutable evidence trail for SOC2/ISO27001/GDPR; redaction, tenant scoping, and tx rollback are non-negotiable contracts.",
-      "tests": ["apps/engine/src/conversations/tools/tests/loop-gate-probe-evidence.test.ts"],
       "observed": {
         "line": 95,
         "function": null

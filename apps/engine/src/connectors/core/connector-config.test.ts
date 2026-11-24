@@ -10,6 +10,7 @@ import {
   mcpTrustedTools,
   metadataPatchOf,
   oauthScopeOf,
+  sftpAuthConsistencyIssue,
   signedJwtAuthConfigIssue,
   slugify,
   templateWasRebound,
@@ -31,6 +32,12 @@ test("driver, MCP and signed-JWT policy facts preserve the validation matrix", (
     }),
   ).toBeNull();
   expect(mcpAuthConsistencyIssue("http", "bearer", {})).toBeNull();
+  const keyAuth = { method: "private_key", username: "deploy", private_key_item: "sftp-key" };
+  expect(sftpAuthConsistencyIssue("sftp", "basic", { auth: keyAuth })).toMatchObject({
+    path: "auth_type",
+  });
+  expect(sftpAuthConsistencyIssue("sftp", "none", { auth: keyAuth })).toBeNull();
+  expect(sftpAuthConsistencyIssue("http", "basic", { auth: keyAuth })).toBeNull();
   expect(signedJwtAuthConfigIssue("none", {})).toBeNull();
   expect(signedJwtAuthConfigIssue("signed_jwt", { oauth: {} })).toMatchObject({
     path: "config.signed_jwt",

@@ -7,6 +7,12 @@ import {
 } from "./provider-call.ts";
 
 describe("parseLlmUsage", () => {
+  it("reads token counts sent as numeric strings", () => {
+    expect(
+      parseLlmUsage({ usage: { prompt_tokens: "12", completion_tokens: "3", total_tokens: "x" } }),
+    ).toMatchObject({ prompt_tokens: 12, completion_tokens: 3, total_tokens: 15 });
+  });
+
   it("adds the cache slices in for the Messages shape, which excludes them", () => {
     const usage = parseLlmUsage({
       usage: {
@@ -105,6 +111,13 @@ describe("estimateLlmCallTokens", () => {
 
   it("estimates four characters per token for large bodies", () => {
     expect(estimateLlmCallTokens("x".repeat(400))).toBe(100);
+  });
+
+  it("measures an object body as JSON and falls back to the floor when it cannot be serialized", () => {
+    expect(estimateLlmCallTokens({ prompt: "x".repeat(400) })).toBe(104);
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    expect(estimateLlmCallTokens(circular)).toBe(50);
   });
 });
 

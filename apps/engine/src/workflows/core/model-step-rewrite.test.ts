@@ -71,6 +71,30 @@ describe("rewriteStoredModelSteps", () => {
     });
   });
 
+  test("system messages of a chat call join the system text, a non-text one keeps the request", () => {
+    const chat = (id: string, system: unknown) => ({
+      kind: "request",
+      id,
+      method: "POST",
+      url: "https://api.openai.com/v1/chat/completions",
+      body: {
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: "Sort ${input.text}" },
+        ],
+        response_format: { json_schema: { schema: people } },
+      },
+    });
+    const rewrite = rewriteStoredModelSteps(wf([chat("sort", "Be brief."), chat("odd", 7)]));
+    expect((rewrite.dag as { steps: unknown[] }).steps[0]).toMatchObject({
+      kind: "model",
+      id: "sort",
+      prompt: "Sort ${input.text}",
+      system: "Be brief.",
+    });
+    expect(rewrite.skipped).toEqual([{ step_id: "odd", reason: "not_one_user_message" }]);
+  });
+
   test("steps that cannot be carried over keep their request form with a reason", () => {
     const chat = (id: string, body: Record<string, unknown>, extra = {}) => ({
       kind: "request",
@@ -127,5 +151,21 @@ describe("rewriteStoredModelSteps", () => {
       ),
     );
     expect(rewrite.skipped).toEqual([{ step_id: "ask", reason: "output_referenced" }]);
+  });
+  test("requests that are not provider calls stay untouched without a reason", () => {
+    const rewrite = rewriteStoredModelSteps(
+      wf([
+        { kind: "request", id: "broken", method: "POST", url: "not a url", body: {} },
+        {
+          kind: "request",
+          id: "embed",
+          method: "POST",
+          url: "https://api.openai.com/v1/embeddings",
+          body: { input: "x" },
+        },
+      ]),
+    );
+    expect(rewrite.changed).toBe(false);
+    expect(rewrite.skipped).toEqual([]);
   });
 });

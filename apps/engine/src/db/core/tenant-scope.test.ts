@@ -89,6 +89,10 @@ describe("decideTenantRolePreflight", () => {
       verdict: "will_provision",
       blocking: false,
     });
+    expect(decideTenantRolePreflight(facts({ ...base, is_superuser: true }))).toMatchObject({
+      verdict: "will_provision",
+      blocking: false,
+    });
   });
 
   test("an applied scheme with a missing role or missing grants is reported without blocking", () => {

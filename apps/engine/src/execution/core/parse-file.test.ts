@@ -132,6 +132,14 @@ describe("parse-file output", () => {
       ok: true,
       value: { format: "pdf", filename: "p.pdf", text: "x", pages: 2 },
     });
+    const entries = [{ path: "a.csv", format: "csv" }];
+    const skipped = [{ path: "b.bin", reason: "unsupported" }];
+    expect(
+      parseFileOutput({ format: "zip", text: "a", entries, skipped }, { filename: "z.zip" }),
+    ).toEqual({
+      ok: true,
+      value: { format: "zip", filename: "z.zip", text: "a", entries, skipped },
+    });
   });
 });
 
