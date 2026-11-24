@@ -68,6 +68,7 @@ jobs:
           bun-version: 1.4.5
       - name: Install dependencies (retry transient download failures)
         run: for attempt in 1 2 3; do bun install --frozen-lockfile && exit 0; echo "install attempt $attempt failed, retrying"; sleep 20; done; exit 1
+      - run: sudo apt-get update && sudo apt-get install -y expect
       - run: bun run build assets
       - run: bun run build subkit --skip-deps
       - name: Select this shard of the affected tests
@@ -88,7 +89,7 @@ jobs:
           done < shard.txt
           [ -s failed.txt ] || { echo "all shard tests passed"; exit 0; }
           git worktree add -q --detach ../base "$BASE_SHA"
-          (cd ../base && bun install --frozen-lockfile >/dev/null && bun run build assets >/dev/null 2>&1)
+          (cd ../base && bun install --frozen-lockfile >/dev/null && bun run build assets >/dev/null 2>&1 && bun run build subkit --skip-deps >/dev/null 2>&1)
           new=0
           while read -r file; do
             if [ -f "../base/$file" ] && ! (cd ../base && bun scripts/test-files-isolated.ts "$file" >/dev/null 2>&1); then
