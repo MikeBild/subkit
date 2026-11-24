@@ -8705,7 +8705,7 @@ Grouped by template. **Trigger** is how the workflow starts: `request` (on deman
 
 | Recipe | What it does | Trigger | Also uses |
 | ------ | ------------ | ------- | --------- |
-| `create-contact` | POST a new contact with email + firstname + lastname properties. | request | — |
+| `create-contact` | POST a new contact with email plus firstname and lastname when provided; absent optional names are omitted. | request | — |
 | `get-contact` | Fetch a single contact record. | request | — |
 | `list-companies` | Page through CRM companies. | request | — |
 | `list-contacts` | Page through CRM contacts with cursor pagination. | request | — |

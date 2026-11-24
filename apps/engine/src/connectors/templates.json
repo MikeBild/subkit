@@ -8917,7 +8917,7 @@
       {
         "slug": "create-contact",
         "title": "Create a contact",
-        "description": "POST a new contact with email + firstname + lastname properties.",
+        "description": "POST a new contact with email plus firstname and lastname when provided; absent optional names are omitted.",
         "intent_keywords": ["create contact", "new contact", "add contact"],
         "derived_from_skill": "hubspot-basics",
         "category": "crm",
@@ -8928,7 +8928,7 @@
         "sample_input": null,
         "expected_output_preview": null,
         "required_connectors": [],
-        "version": "1.0.0",
+        "version": "1.0.1",
         "author": "subkit-builtin",
         "last_validated_at": null,
         "deprecated": null,
@@ -8952,6 +8952,12 @@
           },
           "steps": [
             {
+              "kind": "transform",
+              "id": "build",
+              "language": "javascript",
+              "expression": "const fields = input.input || {}; const properties = { email: fields.email }; for (const key of ['firstname', 'lastname']) { if (typeof fields[key] === 'string' && fields[key].trim() !== '') properties[key] = fields[key]; } return { properties };"
+            },
+            {
               "kind": "request",
               "id": "create",
               "method": "POST",
@@ -8960,11 +8966,7 @@
                 "Content-Type": "application/json"
               },
               "body": {
-                "properties": {
-                  "email": "${input.email}",
-                  "firstname": "${input.firstname}",
-                  "lastname": "${input.lastname}"
-                }
+                "properties": "${scope.build.data.properties}"
               }
             }
           ]
