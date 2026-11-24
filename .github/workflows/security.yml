@@ -7,9 +7,12 @@ on:
 permissions:
   contents: read
 
+# Never cancel a running scan: a cancelled CodeQL job uploads a failed analysis
+# and GitHub then reports a code scanning configuration error. Queued runs are
+# still superseded by newer pushes, so only the latest pending commit waits.
 concurrency:
   group: security-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 defaults:
   run:
