@@ -1,5 +1,5 @@
 import type { components } from "@cli-core/engine-api/openapi";
-import { conversationHref } from "@/app/links";
+import { chatNewHref, conversationHref } from "@/app/links";
 import { auditActionLabel } from "@/features/audit/model";
 import { UNCATEGORIZED } from "@/features/workflows/model";
 import type { TranslationKey } from "@/lib/i18n";
@@ -93,6 +93,23 @@ export function stateWords(
     return words.t("tasks.state.sleepingUntil", { time: words.time(run.next_check_at) });
   const waiting = state === "waiting" ? waitingStateKey({ state, ...run }) : null;
   return words.t(waiting ?? STATE_KEYS[state]);
+}
+
+export function taskRunContinueHref(
+  task: Pick<Task, "name">,
+  run: Pick<TaskRun, "id" | "created_at">,
+  words: {
+    t(key: TranslationKey, values?: Record<string, string>): string;
+    time(at: string): string;
+  },
+): string {
+  return chatNewHref({
+    prompt: words.t("tasks.run.continuePrompt", {
+      name: task.name,
+      runId: run.id,
+      date: words.time(run.created_at),
+    }),
+  });
 }
 
 export function hasSchedule(
@@ -883,6 +900,14 @@ export function bothEnvironments(
 ): boolean {
   const seen = new Set(connectors.map((connector) => connector.environment));
   return current === "dev" || (seen.has("dev") && seen.has("prod"));
+}
+
+export function setupEnvironmentApplies(
+  connectors: readonly { environment?: string | null }[],
+  personal: Task["environment"],
+  offered: boolean,
+): boolean {
+  return offered || connectors.every((connector) => connector.environment === personal);
 }
 
 const TRIGGER_KEYS: Record<TaskRun["trigger"], TranslationKey> = {

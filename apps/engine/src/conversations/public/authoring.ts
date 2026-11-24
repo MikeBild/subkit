@@ -10,7 +10,7 @@ export { completeApprovalBackedElicitation } from "../approval-completion.ts";
 export { harvestCitationsFromPersisted } from "../citations.ts";
 export { getTaskRunCheck, getTaskRunMarker, withoutTaskRunCheck } from "../core/draft.ts";
 export { loadDraft, loadFocusExecution } from "../draft.ts";
-export { surfaceFromClientHeader } from "../lifecycle-view.ts";
+export { surfaceFromClientHeader, turnSurfaceFromClientHeader } from "../lifecycle-view.ts";
 export { continueConversationDevLiveTest } from "../live-test-continuation.ts";
 export { messageHasText } from "../parts.ts";
 export { readPlaybook, updatePlaybook } from "../playbook.ts";

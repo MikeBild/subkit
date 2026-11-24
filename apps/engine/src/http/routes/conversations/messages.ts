@@ -16,6 +16,7 @@ import {
   serializeEvent,
   type TurnEvent,
   turnFailureFramePayload,
+  turnSurfaceFromClientHeader,
 } from "../../../conversations/public/authoring.ts";
 import { PendingElicitationBlockedError } from "../../../conversations/public/elicitation.ts";
 import {
@@ -145,6 +146,7 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
         ...(body.memory !== undefined ? { memory: body.memory } : {}),
       } as const;
       const runtimeContext = buildRuntimeContextFromRequest(c, principal);
+      const turnSurface = turnSurfaceFromClientHeader(c.req.header("x-subkit-client"));
       const driveTurn = (
         appended: AppendMessageResult,
         onEvent?: (ev: TurnEvent) => void,
@@ -162,6 +164,7 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
             user_memory: appended.user_memory,
             turn_abort_ctrl: turnAbortCtrl,
             runtime_context: runtimeContext,
+            ...(turnSurface ? { surface: turnSurface } : {}),
             ...(body.step_budget !== undefined ? { step_budget: body.step_budget } : {}),
             ...(body.client_suppress !== undefined
               ? { next_suggestion_suppress: body.client_suppress }
@@ -257,6 +260,7 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
       actor_id: principal.id,
       principal,
     });
+    const turnSurface = turnSurfaceFromClientHeader(c.req.header("x-subkit-client"));
 
     const turnAbortCtrl = await registerConversationAbort(principal.tenant_id, id, db);
     try {
@@ -314,6 +318,7 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
           user_memory: appended.user_memory,
           turn_abort_ctrl: turnAbortCtrl,
           runtime_context: buildRuntimeContextFromRequest(c, principal),
+          ...(turnSurface ? { surface: turnSurface } : {}),
         },
         db,
       );

@@ -3,7 +3,8 @@ import {
   validateStepReferences,
   validateUnsupportedPlaceholders,
 } from "../workflows/reference-validator.ts";
-import { WorkflowDefSchema } from "../workflows/types.ts";
+import { compileRequestBoundary } from "../workflows/request-boundary.ts";
+import { type RequestStep, WorkflowDefSchema } from "../workflows/types.ts";
 import { validateWorkflowDef } from "../workflows/validator.ts";
 import { bindRecipe } from "./recipe-binding.ts";
 import {
@@ -72,6 +73,27 @@ describe("Postgres recipes", () => {
     }
   });
 
+  test("recent-rows orders the table rows instead of catalog columns (#571)", () => {
+    const recentRowsRecipe = pg.recipes.find((recipe) => recipe.slug === "recent-rows")!;
+    const [rowsStep] = recentRowsRecipe.workflow.steps as Array<{
+      sql: { query: string; params: string[] };
+    }>;
+    expect(rowsStep!.sql.query).not.toContain("information_schema");
+    expect(rowsStep!.sql.query).toContain("FROM %I.%I");
+    expect(rowsStep!.sql.query).toContain("ORDER BY t.%I DESC");
+    expect(rowsStep!.sql.params).toEqual([
+      "${input.schema_name}",
+      "${input.table_name}",
+      "${input.order_column}",
+      "${input.limit}",
+    ]);
+    const inputProperties = recentRowsRecipe.workflow.input_schema?.properties as Record<
+      string,
+      { default?: unknown }
+    >;
+    expect(inputProperties.order_column?.default).toBe("created_at");
+  });
+
   test("each recipe ships a sql block (not an http url)", () => {
     for (const r of pg.recipes) {
       for (const step of r.workflow.steps as Array<{ sql?: { query?: string }; url?: string }>) {
@@ -79,6 +101,16 @@ describe("Postgres recipes", () => {
         expect(step.url).toBeUndefined();
       }
     }
+  });
+
+  test("row-count counts the table rows instead of catalog entries (#569)", () => {
+    const rowCountRecipe = pg.recipes.find((recipe) => recipe.slug === "row-count")!;
+    const [countStep] = rowCountRecipe.workflow.steps as Array<{
+      sql: { query: string; params: string[] };
+    }>;
+    expect(countStep!.sql.query).not.toContain("information_schema");
+    expect(countStep!.sql.query).toContain("FROM %I.%I");
+    expect(countStep!.sql.params).toEqual(["${input.schema_name}", "${input.table_name}"]);
   });
 });
 
@@ -528,5 +560,37 @@ describe("template recipe urls (#521)", () => {
       }),
     );
     expect(urlErrors).toEqual([]);
+  });
+});
+
+describe("square write recipes (#564)", () => {
+  test("every square write step binds the square connector and compiles a request boundary", () => {
+    const placeholder = "00000000-0000-0000-0000-000000000000";
+    const square = getBuiltinTemplate("square")!;
+    const outcomes = square.recipes.flatMap((recipe) =>
+      (recipe.workflow.steps as RequestStep[])
+        .filter((step) => (step.method ?? "GET").toUpperCase() !== "GET")
+        .map((step) => ({
+          step: `${recipe.slug}/${step.id}`,
+          connector_id: step.connector_id,
+          required: recipe.required_connectors.find((r) => r.placeholder === placeholder)?.template,
+          refusal: compileRequestBoundary(step, square.base_url).refusal ?? null,
+        })),
+    );
+    expect(outcomes.map((outcome) => outcome.step).sort()).toEqual([
+      "create-customer/create",
+      "inventory-counts/counts",
+      "list-orders/search",
+      "list-team-members/search",
+      "refund-payment/refund",
+    ]);
+    expect(outcomes).toEqual(
+      outcomes.map((outcome) => ({
+        ...outcome,
+        connector_id: placeholder,
+        required: "square",
+        refusal: null,
+      })),
+    );
   });
 });

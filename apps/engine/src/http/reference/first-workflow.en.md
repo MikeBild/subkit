@@ -65,7 +65,7 @@ Without an approval, a run starts only as a trial run without effects.
 
 Approving starts no run. It covers one environment and a duration.
 A new version needs no new approval as long as it touches no more systems, addresses or write permissions than the approved one. If it reaches further, SubKit asks again and names the difference.
-You can revoke it at any time in the **Approvals** tab.
+You can revoke it at any time under **Overview › Approvals**.
 If an approval still has an end date, **Remove expiry** on the same tab makes it apply until revoked and lifts a run limit as well. If only a run limit is left, the action reads **Remove run limit**.
 If the chat offers an approval, it opens the same dialog.
 

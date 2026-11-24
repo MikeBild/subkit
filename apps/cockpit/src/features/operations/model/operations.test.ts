@@ -328,6 +328,45 @@ describe("run step graph", () => {
     expect(runGraphSteps([], 2, true).map((step) => step.state)).toEqual(["done", "done"]);
   });
 
+  test("held write steps stay pending instead of done", () => {
+    expect(
+      runGraphSteps(
+        [
+          { step_key: "a", status: "succeeded", held: true },
+          { step_key: "b", status: "succeeded", held: true },
+          { step_key: "c", status: "succeeded", held: true },
+        ],
+        3,
+        false,
+      ).map((step) => step.state),
+    ).toEqual(["pending", "pending", "pending"]);
+  });
+
+  test("a hold recorded in request_meta extras also stays pending", () => {
+    expect(
+      runGraphSteps(
+        [{ step_key: "a", status: "succeeded", request_meta: { extras: { held: true } } }],
+        null,
+      ).map((step) => step.state),
+    ).toEqual(["pending"]);
+  });
+
+  test("a succeeded step that was not held stays done", () => {
+    expect(
+      runGraphSteps(
+        [
+          {
+            step_key: "a",
+            status: "succeeded",
+            held: false,
+            request_meta: { extras: { held: false } },
+          },
+        ],
+        null,
+      ).map((step) => step.state),
+    ).toEqual(["done"]);
+  });
+
   test("no planned count adds nothing", () => {
     expect(runGraphSteps([], null)).toEqual([]);
     expect(runGraphSteps([{ step_key: "a", status: "succeeded" }], 0)).toHaveLength(1);

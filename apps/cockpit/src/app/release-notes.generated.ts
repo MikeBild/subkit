@@ -3,7 +3,7 @@ export type ReleaseNotes = { version: string; notes: string[]; highlights: strin
 export type PendingNotes = { version: string | null; notes: string[]; highlights: string[] | null };
 
 export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: PendingNotes } = {
-  "source": "2e8cff90403fa41d266d78d618e46a487efd06c9",
+  "source": "8071f6ff50eb54637b99d063a4d4179ef4177051",
   "releases": [
     {
       "version": "v1.0.0",
@@ -2356,6 +2356,13 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
   "unpublished": {
     "version": "13.0.0",
     "notes": [
+      "inbox list/ack emit one JSON document (#513)",
+      "atomic files download with clean path errors (#603, #592)",
+      "branding form keeps saved name (#647)",
+      "read price decimals in reader locale (#508)",
+      "keep every repeated --input-file and --attach (#608)",
+      "ignore headings in tilde fences (#562)",
+      "wordmark shows saved branding name (#523)",
       "logs --json emits NDJSON (#527)",
       "approval expiry says today on same local day (#556)",
       "request steps name their protocol as a discriminated union",

@@ -3,6 +3,7 @@ import type { components } from "@cli-core/engine-api/openapi";
 type Schemas = components["schemas"];
 
 import type { Tone } from "@ui/atoms/pill";
+import { stepWasHeld } from "@/lib/step-held";
 
 type ExecutionStats = Pick<Schemas["StatsExecutionsResponse"], "groups">;
 type LlmStats = Pick<Schemas["StatsLlmResponse"], "groups">;
@@ -168,14 +169,20 @@ export interface RunGraphStep {
 const STEP_DONE = new Set(["succeeded", "completed", "skipped"]);
 
 export function runGraphSteps(
-  steps: readonly { step_key: string; status: string }[],
+  steps: readonly { step_key: string; status: string; held?: boolean; request_meta?: unknown }[],
   planned: number | null,
   succeeded = false,
 ): RunGraphStep[] {
   const ran: RunGraphStep[] = steps.map((step, index) => ({
     key: `${index}:${step.step_key}`,
     name: step.step_key,
-    state: STEP_DONE.has(step.status) ? "done" : LIVE.has(step.status) ? "active" : "pending",
+    state: stepWasHeld(step)
+      ? "pending"
+      : STEP_DONE.has(step.status)
+        ? "done"
+        : LIVE.has(step.status)
+          ? "active"
+          : "pending",
   }));
   const rest = Math.max(0, (planned ?? 0) - steps.length);
   return [

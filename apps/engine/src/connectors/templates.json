@@ -10420,7 +10420,7 @@
       {
         "slug": "update-issue",
         "title": "Update an issue",
-        "description": "Mutation to update title / description / state.",
+        "description": "Mutation to update an issue's title, description and/or workflow state (stateId); only the fields passed in changes are sent.",
         "intent_keywords": ["update issue", "edit issue", "update an issue"],
         "derived_from_skill": "linear-basics",
         "category": "project-management",
@@ -10440,13 +10440,28 @@
           "description": "Update an issue.",
           "input_schema": {
             "type": "object",
-            "required": ["issue_id", "title"],
+            "required": ["issue_id", "changes"],
             "properties": {
               "issue_id": {
                 "type": "string"
               },
-              "title": {
-                "type": "string"
+              "changes": {
+                "type": "object",
+                "description": "IssueUpdateInput fields to change; at least one.",
+                "additionalProperties": false,
+                "minProperties": 1,
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "stateId": {
+                    "type": "string",
+                    "description": "Linear workflow state id."
+                  }
+                }
               }
             }
           },
@@ -10458,10 +10473,10 @@
               "method": "POST",
               "url": "${connector.linear.base_url}",
               "graphql": {
-                "query": "mutation($id:String!,$t:String!) { issueUpdate(id:$id, input:{title:$t}) { success issue { id title } } }",
+                "query": "mutation($id:String!,$input:IssueUpdateInput!) { issueUpdate(id:$id, input:$input) { success issue { id identifier title url state { id name } } } }",
                 "variables": {
                   "id": "${input.issue_id}",
-                  "t": "${input.title}"
+                  "input": "${input.changes}"
                 }
               }
             }
@@ -12793,7 +12808,7 @@
         "sample_input": null,
         "expected_output_preview": null,
         "required_connectors": [],
-        "version": "1.0.0",
+        "version": "1.0.1",
         "author": "subkit-builtin",
         "last_validated_at": null,
         "deprecated": null,
@@ -12821,7 +12836,7 @@
               "method": "SELECT",
               "connector_id": "00000000-0000-0000-0000-000000000000",
               "sql": {
-                "query": "SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = $1 AND table_name = $2;",
+                "query": "SELECT (xpath('/row/n/text()', query_to_xml(format('SELECT count(*) AS n FROM %I.%I', $1::text, $2::text), false, true, '')))[1]::text::bigint AS n;",
                 "params": ["${input.schema_name}", "${input.table_name}"]
               }
             }
@@ -12831,7 +12846,7 @@
       {
         "slug": "recent-rows",
         "title": "Show the most recent N rows",
-        "description": "ORDER BY a timestamp column (default `created_at`) DESC LIMIT N. Edit the column if your schema uses a different name.",
+        "description": "ORDER BY a timestamp column (default `created_at`) DESC LIMIT N. Set `order_column` if your schema uses a different name.",
         "intent_keywords": ["recent rows", "latest entries", "most recent"],
         "derived_from_skill": "postgres-basics",
         "category": "database",
@@ -12842,13 +12857,13 @@
         "sample_input": null,
         "expected_output_preview": null,
         "required_connectors": [],
-        "version": "1.0.0",
+        "version": "1.0.1",
         "author": "subkit-builtin",
         "last_validated_at": null,
         "deprecated": null,
         "workflow": {
           "name": "postgres-recent-rows",
-          "description": "Pull the most recent N rows ordered by created_at.",
+          "description": "Pull the most recent N rows ordered by a timestamp column (default created_at), one jsonb row per record.",
           "input_schema": {
             "type": "object",
             "required": ["table_name"],
@@ -12859,6 +12874,10 @@
               },
               "table_name": {
                 "type": "string"
+              },
+              "order_column": {
+                "type": "string",
+                "default": "created_at"
               },
               "limit": {
                 "type": "integer",
@@ -12874,8 +12893,13 @@
               "method": "SELECT",
               "connector_id": "00000000-0000-0000-0000-000000000000",
               "sql": {
-                "query": "SELECT * FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2 ORDER BY ordinal_position LIMIT $3;",
-                "params": ["${input.schema_name}", "${input.table_name}", "${input.limit}"]
+                "query": "SELECT convert_from(decode((xpath('/row/r/text()', x.node))[1]::text, 'base64'), 'UTF8')::jsonb AS row FROM unnest(xpath('/table/row', query_to_xml(format('SELECT encode(convert_to(row_to_json(t)::text, ''UTF8''), ''base64'') AS r FROM %I.%I t ORDER BY t.%I DESC LIMIT %s', $1::text, $2::text, $3::text, $4::int), false, false, ''))) WITH ORDINALITY AS x(node, position) ORDER BY x.position;",
+                "params": [
+                  "${input.schema_name}",
+                  "${input.table_name}",
+                  "${input.order_column}",
+                  "${input.limit}"
+                ]
               }
             }
           ]
@@ -13114,7 +13138,6 @@
               "sql": {
                 "query": "UPDATE accounts SET balance_cents = balance_cents - $1 WHERE id = $2",
                 "params": ["${input.amount_cents}", "${input.from_id}"],
-                "expected_row_count": 1,
                 "also": [
                   {
                     "query": "UPDATE accounts SET balance_cents = balance_cents + $1 WHERE id = $2",
@@ -13122,7 +13145,8 @@
                     "expected_row_count": 1
                   }
                 ]
-              }
+              },
+              "expected_row_count": 1
             }
           ]
         }
@@ -14915,7 +14939,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "square" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -14937,7 +14963,9 @@
               "kind": "request",
               "id": "search",
               "method": "POST",
-              "url": "${connector.square.base_url}/v2/orders/search",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "path": "/v2/orders/search",
+              "boundary": { "variables": {}, "max_body_bytes": 4096, "max_calls": 1 },
               "headers": {
                 "Square-Version": "2025-01-22",
                 "Content-Type": "application/json"
@@ -15006,7 +15034,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "square" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -15031,7 +15061,9 @@
               "kind": "request",
               "id": "create",
               "method": "POST",
-              "url": "${connector.square.base_url}/v2/customers",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "path": "/v2/customers",
+              "boundary": { "variables": {}, "max_body_bytes": 4096, "max_calls": 1 },
               "headers": {
                 "Square-Version": "2025-01-22",
                 "Content-Type": "application/json"
@@ -15094,7 +15126,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "square" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -15125,7 +15159,9 @@
               "kind": "request",
               "id": "refund",
               "method": "POST",
-              "url": "${connector.square.base_url}/v2/refunds",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "path": "/v2/refunds",
+              "boundary": { "variables": {}, "max_body_bytes": 4096, "max_calls": 1 },
               "headers": {
                 "Square-Version": "2025-01-22",
                 "Content-Type": "application/json"
@@ -15155,7 +15191,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "square" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -15177,7 +15215,9 @@
               "kind": "request",
               "id": "search",
               "method": "POST",
-              "url": "${connector.square.base_url}/v2/team-members/search",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "path": "/v2/team-members/search",
+              "boundary": { "variables": {}, "max_body_bytes": 4096, "max_calls": 1 },
               "headers": {
                 "Square-Version": "2025-01-22",
                 "Content-Type": "application/json"
@@ -15210,7 +15250,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "square" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -15235,7 +15277,9 @@
               "kind": "request",
               "id": "counts",
               "method": "POST",
-              "url": "${connector.square.base_url}/v2/inventory/counts/batch-retrieve",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "path": "/v2/inventory/counts/batch-retrieve",
+              "boundary": { "variables": {}, "max_body_bytes": 4096, "max_calls": 1 },
               "headers": {
                 "Square-Version": "2025-01-22",
                 "Content-Type": "application/json"

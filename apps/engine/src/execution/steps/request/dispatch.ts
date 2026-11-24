@@ -286,16 +286,24 @@ async function resolveRequestParts(
   const sftpPathRes = p.step.sftp?.path
     ? await resolveStringPlaceholders(p.step.sftp.path, resolverCtx)
     : null;
-  let sqlParams: unknown[] | undefined;
-  if (p.step.sql && Array.isArray(p.step.sql.params)) {
-    sqlParams = [];
-    for (const raw of p.step.sql.params) {
-      if (typeof raw === "string") {
-        const r = await resolveStringPlaceholders(raw, resolverCtx);
-        sqlParams.push(r.value);
-      } else {
-        sqlParams.push(raw);
-      }
+  const resolveSqlParams = async (rawParams: readonly unknown[]): Promise<unknown[]> => {
+    const resolvedParams: unknown[] = [];
+    for (const raw of rawParams) {
+      resolvedParams.push(
+        typeof raw === "string" ? (await resolveStringPlaceholders(raw, resolverCtx)).value : raw,
+      );
+    }
+    return resolvedParams;
+  };
+  const sqlParams =
+    p.step.sql && Array.isArray(p.step.sql.params)
+      ? await resolveSqlParams(p.step.sql.params)
+      : undefined;
+  let sqlAlsoParams: unknown[][] | undefined;
+  if (p.step.sql?.also && p.step.sql.also.length > 0) {
+    sqlAlsoParams = [];
+    for (const alsoStatement of p.step.sql.also) {
+      sqlAlsoParams.push(await resolveSqlParams(alsoStatement.params ?? []));
     }
   }
   const mcpTarget =
@@ -330,6 +338,7 @@ async function resolveRequestParts(
     s3_prefix: s3PrefixRes?.value ?? p.step.s3?.prefix,
     sftp_path: sftpPathRes?.value ?? p.step.sftp?.path,
     sql_params: sqlParams,
+    sql_also_params: sqlAlsoParams,
     mcp_target: mcpTargetRes,
     mcp_arguments: mcpArgsRes,
   };

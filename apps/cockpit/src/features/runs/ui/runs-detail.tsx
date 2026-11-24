@@ -484,7 +484,7 @@ export function RunDetail({ run, page = false }: { run: Execution; page?: boolea
               steps={runGraphSteps(
                 stepItems,
                 (outcome as { planned_steps?: number | null } | null)?.planned_steps ?? null,
-                current.status === "succeeded",
+                current.status === "succeeded" && !held,
               )}
               testId="run-detail-graph"
             />

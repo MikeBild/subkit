@@ -3,6 +3,7 @@ import {
   deriveConversationOutcome,
   STALE_AFTER_DAYS,
   surfaceFromClientHeader,
+  turnSurfaceFromClientHeader,
 } from "../lifecycle-view.ts";
 import {
   buildTitlePrompt,
@@ -105,6 +106,16 @@ describe("surfaceFromClientHeader", () => {
     expect(surfaceFromClientHeader("sk_headless")).toBe("sk_headless");
     expect(surfaceFromClientHeader(undefined)).toBe("api");
     expect(surfaceFromClientHeader("curl/8")).toBe("api");
+  });
+});
+
+describe("turnSurfaceFromClientHeader", () => {
+  test("hands the turn the client surface and none for the bare API", () => {
+    expect(turnSurfaceFromClientHeader("cockpit")).toBe("web");
+    expect(turnSurfaceFromClientHeader("subkit")).toBe("sk_interactive");
+    expect(turnSurfaceFromClientHeader("sk_headless")).toBe("sk_headless");
+    expect(turnSurfaceFromClientHeader(undefined)).toBeUndefined();
+    expect(turnSurfaceFromClientHeader("curl/8")).toBeUndefined();
   });
 });
 

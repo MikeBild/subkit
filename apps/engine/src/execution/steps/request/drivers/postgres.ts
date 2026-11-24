@@ -63,9 +63,9 @@ async function runSql(
     const alsoStatements = sqlBlock.also ?? [];
     const statements = [
       { query: sqlBlock.query, params },
-      ...alsoStatements.map((s) => ({
+      ...alsoStatements.map((s, alsoIndex) => ({
         query: s.query,
-        params: (s.params ?? []) as unknown[],
+        params: d.parts.sql_also_params?.[alsoIndex] ?? [],
       })),
     ];
     const stepLevelExpectation = p.step.expected_row_count;
@@ -83,7 +83,7 @@ async function runSql(
         if (violation) {
           throw Object.assign(
             new Error(`expected_row_count violation on statement ${idx}: ${violation}`),
-            { code: "expected_row_count_mismatch", statement_index: idx },
+            { code: "expected_row_count_mismatch", statement_index: idx, row_count: rowCount },
           );
         }
       },
@@ -116,6 +116,13 @@ async function runSql(
   return { output: res.rows, rowCount: res.row_count };
 }
 
+function rowCountGuardViolation(err: unknown): { row_count: number | null } | null {
+  if (!err || typeof err !== "object") return null;
+  const guard = err as { code?: unknown; row_count?: unknown };
+  if (guard.code !== "expected_row_count_mismatch") return null;
+  return { row_count: typeof guard.row_count === "number" ? guard.row_count : null };
+}
+
 async function executePostgres(d: RequestDispatch): Promise<StepResult> {
   const { p } = d;
   const connector = requireConnector(d);
@@ -129,9 +136,11 @@ async function executePostgres(d: RequestDispatch): Promise<StepResult> {
   }
   try {
     const sqlBlock = p.step.sql;
-    const useTransaction =
-      sqlBlock.transaction === true || (sqlBlock.also !== undefined && sqlBlock.also.length > 0);
     const useCursor = sqlBlock.cursor !== undefined;
+    const useTransaction =
+      sqlBlock.transaction === true ||
+      (sqlBlock.also !== undefined && sqlBlock.also.length > 0) ||
+      (p.step.expected_row_count !== undefined && !useCursor);
 
     if (d.state.holdThisStep) {
       return heldStepResult({
@@ -144,9 +153,9 @@ async function executePostgres(d: RequestDispatch): Promise<StepResult> {
           params: d.parts.sql_params ?? [],
           ...(sqlBlock.also && sqlBlock.also.length > 0
             ? {
-                also: sqlBlock.also.map((s) => ({
+                also: sqlBlock.also.map((s, alsoIndex) => ({
                   query: s.query,
-                  params: s.params ?? [],
+                  params: d.parts.sql_also_params?.[alsoIndex] ?? [],
                 })),
               }
             : {}),
@@ -234,12 +243,32 @@ async function executePostgres(d: RequestDispatch): Promise<StepResult> {
       },
     };
   } catch (err) {
-    await recordDriverOutcome(p.ctx.db, connector, evidenceFromThrow(err));
+    const guardViolation = rowCountGuardViolation(err);
+    await recordDriverOutcome(
+      p.ctx.db,
+      connector,
+      guardViolation ? "answered" : evidenceFromThrow(err),
+    );
     const code =
       err && typeof err === "object" && (err as { code?: string }).code
         ? (err as { code: string }).code
         : "postgres_error";
-    return failedStep(d, buildStepErrorDetail({ code, err }));
+    return failedStep(
+      d,
+      buildStepErrorDetail({ code, err }),
+      guardViolation && d.connector_resolution
+        ? {
+            request_meta: {
+              driver: "postgres",
+              query_preview: p.step.sql.query.slice(0, 120),
+              row_count: guardViolation.row_count,
+              transaction: true,
+              cursor: false,
+              connector: d.connector_resolution,
+            },
+          }
+        : {},
+    );
   }
 }
 
