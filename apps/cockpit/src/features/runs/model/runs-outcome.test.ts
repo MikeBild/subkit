@@ -186,6 +186,7 @@ describe("causeClassLabel", () => {
       "driver_error",
       "preview_unsupported",
       "unknown",
+      "step_error",
     ];
     for (const value of classes)
       for (const t of [de, en]) {
@@ -200,6 +201,13 @@ describe("causeClassLabel", () => {
     expect(causeClassLabel("refused_before_start", de).text).toBe("Vor dem Start abgelehnt");
     expect(causeClassLabel("connector_unavailable", en).text).toBe("Connector unavailable");
     expect(causeClassLabel("refused_before_start", en).text).toBe("Refused before the start");
+  });
+
+  test("a failing local code step is not an error in the external system (#525)", () => {
+    expect(causeClassLabel("step_error", de).text).not.toBe(
+      causeClassLabel("driver_error", de).text,
+    );
+    expect(causeClassLabel("step_error", en).text).toBe("Error in the step's code");
   });
 });
 
