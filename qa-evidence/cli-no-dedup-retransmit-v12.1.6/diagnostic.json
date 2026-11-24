@@ -1,0 +1,14 @@
+{
+  "observed": "On SubKit v12.1.6, two independent fresh CLI processes ran `files upload export.bin --no-dedup --json` after an ordinary upload of the same bytes. Each forced command exited 0; the isolated receiver recorded a 200 batch-create response with dedup=true and a subsequent metadata GET, but recorded zero additional content-transfer bytes.",
+  "scope": "Signed Linux CLI client behavior only. The HTTP receiver was a simulated loopback provider implementing the released batch-create, transfer, finalize, and file-readback contract; no production Engine was used.",
+  "release": {
+    "tag": "v12.1.6",
+    "commit": "f42b9ea4e25ea0922a51940aac8b40a023ce3231",
+    "release_id": 455339059
+  },
+  "result": {
+    "ordinary_upload_controls": "2/2 transferred complete 6,291,514-byte synthetic files",
+    "forced_uploads": "2/2 exited 0 with zero new transferred bytes"
+  },
+  "limitation": "This evidence does not establish production Engine behavior or server-side persistence; it establishes the released CLI request sequence against the simulated contract."
+}
