@@ -1,7 +1,7 @@
-import { createWriteStream } from "node:fs";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import type { AuditLogQuery } from "../engine-client/diagnostics.ts";
+import { writeStreamAtomically } from "../utils/atomic-write.ts";
 import { auditFilterQuery } from "./audit-filter.ts";
 import { makeClient, withCommandErrors } from "./command-runtime.ts";
 
@@ -203,32 +203,20 @@ const exportCmd = defineCommand({
         process.stderr.write(`export failed: ${JSON.stringify(body)}\n`);
         process.exit(2);
       }
-      const dest = args.output ? createWriteStream(String(args.output)) : process.stdout;
-      const reader = res.body?.getReader();
-      if (!reader) return;
+      if (!res.body) return;
+      if (args.output) {
+        await writeStreamAtomically(res.body, String(args.output));
+        return;
+      }
+      const reader = res.body.getReader();
       const decoder = new TextDecoder();
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
-        if (value) {
-          const chunk = decoder.decode(value, { stream: true });
-          if (dest === process.stdout) {
-            process.stdout.write(chunk);
-          } else {
-            (dest as ReturnType<typeof createWriteStream>).write(chunk);
-          }
-        }
+        if (value) process.stdout.write(decoder.decode(value, { stream: true }));
       }
       const final = decoder.decode();
-      if (final) {
-        if (dest === process.stdout) {
-          process.stdout.write(final);
-        } else {
-          (dest as ReturnType<typeof createWriteStream>).end(final);
-        }
-      } else if (dest !== process.stdout) {
-        (dest as ReturnType<typeof createWriteStream>).end();
-      }
+      if (final) process.stdout.write(final);
     });
   },
 });
