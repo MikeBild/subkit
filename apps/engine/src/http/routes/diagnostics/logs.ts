@@ -209,6 +209,7 @@ export function registerLogsRoutes(app: OpenAPIHono<AppEnv>): void {
         }
 
         const unsub = logRing.subscribe((entry) => {
+          if (q.since !== undefined && entry.ts < q.since) return;
           if (q.module && entry.module !== q.module) return;
           if (q.action && entry.action !== q.action) return;
           if (minLevelWeight > 0 && levelWeight(entry.level) < minLevelWeight) return;

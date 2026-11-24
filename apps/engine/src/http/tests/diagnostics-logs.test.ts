@@ -270,4 +270,63 @@ describe("/v1/diagnostics/logs", () => {
     expect(seen).toContain("history");
     expect(seen).toContain("live");
   }, 10_000);
+  test("SSE stream drops live entries older than a future since bound", async () => {
+    const sinceMs = Date.now() + 5000; // allow-wall-clock: future ring window bound
+    const ac = new AbortController();
+    const res = await fetch(
+      `${srv.baseUrl}/v1/diagnostics/logs/stream?since=${sinceMs}&module=test_logs_stream_future`,
+      {
+        headers: { authorization: `Bearer ${srv.apiKey}`, accept: "text/event-stream" },
+        signal: ac.signal,
+      },
+    );
+    expect(res.status).toBe(200);
+
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    const seen: string[] = [];
+    let buffer = "";
+
+    queueMicrotask(() => {
+      logRing.record({
+        ts: sinceMs - 1,
+        level: "info",
+        module: "test_logs_stream_future",
+        action: "before_since",
+        fields: {},
+      });
+      logRing.record({
+        ts: sinceMs,
+        level: "info",
+        module: "test_logs_stream_future",
+        action: "at_since",
+        fields: {},
+      });
+    });
+
+    // allow-wall-clock: bounded read deadline for the SSE stream
+    const deadline = Date.now() + 4000;
+    while (Date.now() < deadline) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const blocks = buffer.split("\n\n");
+      buffer = blocks.pop() ?? "";
+      for (const block of blocks) {
+        const dataLine = block.split("\n").find((l) => l.startsWith("data: "));
+        if (!dataLine) continue;
+        try {
+          const payload = JSON.parse(dataLine.slice(6)) as { action?: string };
+          if (payload.action) seen.push(payload.action);
+        } catch {}
+      }
+      if (seen.includes("at_since")) break;
+    }
+    ac.abort();
+    try {
+      reader.releaseLock();
+    } catch {}
+
+    expect(seen).toEqual(["at_since"]);
+  }, 10_000);
 });
