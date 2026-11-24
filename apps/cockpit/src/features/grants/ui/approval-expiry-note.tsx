@@ -2,11 +2,13 @@ import { useQuery } from "@tanstack/react-query";
 import { cn } from "@ui/lib/utils";
 import { useState } from "react";
 import { apiCall } from "@/api/call";
+import { useOptionalSession } from "@/app/session-context";
 import { Button, STATUS_DOT } from "@/components/cockpit/patterns";
 import { approvalExpiryDays, approvalExpiryKey } from "@/features/grants/model/approval-expiry";
 import { taskKeys } from "@/features/tasks/model";
 import { type ConnectorEnvironment, EnvironmentChip } from "@/features/workflows";
 import { useI18n } from "@/lib/i18n-context";
+import { browserTimeZone } from "@/lib/timezones";
 
 export function ApprovalExpiryNote({
   validUntil,
@@ -20,8 +22,9 @@ export function ApprovalExpiryNote({
   testId?: string;
 }) {
   const { t } = useI18n();
+  const session = useOptionalSession();
   const [now] = useState(() => Date.now());
-  const days = approvalExpiryDays(validUntil, now);
+  const days = approvalExpiryDays(validUntil, now, session?.tenant.timezone ?? browserTimeZone());
   if (days === null) return null;
   return (
     <span
