@@ -121,7 +121,7 @@ Jede Zeile sagt, was du bekommst, und verlinkt das Kapitel, das sie erklärt.
 | Zurechtfinden | Navigation, Seitenleiste, Fehlerhinweise mit Abhilfe und eine Markdown-Ansicht. | Überall | [Im Cockpit zurechtfinden](setup.md#im-cockpit-zurechtfinden) |
 | Einrichtung in fünf Fragen | Deine Antworten setzen Standardumgebung, freigebende Person und Benachrichtigungen. | Überall | [SubKit auf dich einstellen](setup.md#subkit-auf-dich-einstellen) |
 | Deutsch und Englisch | Das Cockpit und diese Dokumentation gibt es in beiden Sprachen. | Überall | [Was ist SubKit?](setup.md#was-ist-subkit) |
-| Branding | Gib dem Cockpit Namen, Logo und Farben deiner Firma. | Admin | [Cockpit-Branding](setup.md#cockpit-branding) |
+| Branding | Gib dem Cockpit das Logo und die Farben deiner Firma. | Admin | [Cockpit-Branding](setup.md#cockpit-branding) |
 | Cockpit als App | Installiere das Cockpit eines Arbeitsbereichs als eigene App auf Computer und Smartphone, mit Push und Teilen aus anderen Apps. | Überall | [Cockpit als App](setup.md#cockpit-als-app) |
 
 ### SubKit Desktop
