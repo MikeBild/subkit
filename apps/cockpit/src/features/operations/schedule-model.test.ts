@@ -21,7 +21,15 @@ describe("schedule occurrences in the click-dummy's shape", () => {
   });
 
   test("a late run counts the times it stood in for, a single skip counts nothing extra", () => {
-    expect(toOccurrence({ ...base, state: "ran_late", skipped_count: 2 }).covers).toBe(2);
+    expect(toOccurrence({ ...base, state: "ran_late", skipped_count: 2 }).covers).toBe(3);
+    expect(
+      toOccurrence({ ...base, state: "ran_late", reason_code: "merged_missed", skipped_count: 1 })
+        .covers,
+    ).toBe(2);
+    expect(
+      toOccurrence({ ...base, state: "ran_late", reason_code: "late_start", skipped_count: 0 })
+        .covers,
+    ).toBe(0);
     expect(toOccurrence({ ...base, state: "skipped", skipped_count: 1 }).covers).toBe(0);
     expect(toOccurrence({ ...base, state: "held", skipped_count: 3 }).covers).toBe(3);
     expect(toOccurrence({ ...base, state: "ran", skipped_count: 4 }).covers).toBe(0);
