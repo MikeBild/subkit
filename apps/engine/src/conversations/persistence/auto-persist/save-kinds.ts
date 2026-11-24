@@ -2,8 +2,8 @@ import { logger } from "../../../logging/index.ts";
 import {
   acceptedPatchResult,
   noOpsAcceptedResult,
-  readApprovedIndices,
   readPatches,
+  selectApprovedIndices,
 } from "../../core/auto-persist.ts";
 import { partitionDiffs } from "../../json-patch-apply.ts";
 import { applyWorkflowPatchToDraft } from "../../tools/edit-workflow-patch.ts";
@@ -52,8 +52,7 @@ export async function applyWorkflowPatch({ p, intent, ctx }: CommitEnv): Promise
   if (!patches) {
     return invalidIntent("apply_workflow_patch commit_intent is missing payload.patches");
   }
-  const selection = readApprovedIndices(p.elicitation_output, patches.length);
-  const approvedIndices = selection ?? patches.map((_, i) => i);
+  const approvedIndices = selectApprovedIndices(p.elicitation_output, patches.length);
   const { approved, rejected } = partitionDiffs(patches, approvedIndices);
   if (approved.length === 0) return noOpsAcceptedResult(rejected);
   const applyResult = await applyWorkflowPatchToDraft(ctx, approved);

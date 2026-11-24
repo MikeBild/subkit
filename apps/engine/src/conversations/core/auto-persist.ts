@@ -99,6 +99,12 @@ export function readApprovedIndices(output: unknown, total: number): number[] | 
   return [...seen].sort((a, b) => a - b);
 }
 
+export function selectApprovedIndices(output: unknown, total: number): number[] {
+  const selection = readApprovedIndices(output, total);
+  if (selection) return selection;
+  return asRecord(output)?.partial === true ? [] : Array.from({ length: total }, (_, i) => i);
+}
+
 export function readPatches(raw: unknown): ToolDiff[] | null {
   return Array.isArray(raw) && raw.length > 0 ? (raw as ToolDiff[]) : null;
 }
