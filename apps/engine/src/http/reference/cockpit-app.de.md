@@ -101,16 +101,16 @@ Jede App hat ihre eigene Anmeldung. Deine Anmeldung im normalen Cockpit bleibt d
 
 ### Branding eines Arbeitsbereichs festlegen
 
-1. Öffne **Einstellungen** und darin unter **Arbeiten mit subkit** den Bereich **Arbeitsbereich-Branding**.
+1. Öffne **Einstellungen**, dann **Arbeitsbereich**, und gehe zu **Wie soll SubKit bei euch aussehen?**.
 2. Lade unter **App-Icon (1:1)** ein quadratisches PNG mit mindestens 512 Pixeln Kantenlänge hoch.
 3. Wähle unter **Farbpalette** zwischen **Standard**, **Indigo** und **Teal**.
 
-   ![Arbeitsbereich-Branding des fiktiven Arbeitsbereichs Brennwerk mit dem Organisationsnamen Brennwerk, dem Untertitel Logistik, dem dunkelgrünen App-Icon mit orangefarbener Flamme, dem hellen und dunklen Logo und der gewählten Farbpalette Teal; die Seitenleiste zeigt dasselbe Logo und die Wortmarke](images/cockpit-app-branding.de.webp)
+   ![Arbeitsbereich-Branding des fiktiven Arbeitsbereichs Brennwerk mit dem Untertitel Logistik, dem dunkelgrünen App-Icon mit orangefarbener Flamme, dem hellen und dunklen Logo und der gewählten Farbpalette Teal; die Seitenleiste zeigt dasselbe Logo und die Wortmarke](images/cockpit-app-branding.de.webp)
 
 4. Prüfe die Vorschau und wähle **Änderungen speichern**.
 
 Ohne beide Rechte kannst du das Branding nur ansehen.
-Den App-Namen bestimmt der Name des Arbeitsbereichs, nicht der **Organisationsname** im Branding.
+App-Name und Wortmarke kommen aus dem Namen des Arbeitsbereichs. Um sie zu ändern, benenne den Arbeitsbereich unter **Einstellungen** → **Arbeitsbereich** → **Wie heißt dein Arbeitsbereich?** um.
 **Branding zurücksetzen** stellt das SubKit-Erscheinungsbild für alle Mitglieder wieder her.
 
 ### Installierte App entfernen
