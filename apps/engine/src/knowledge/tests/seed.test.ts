@@ -97,6 +97,20 @@ describe("loadEmbeddedKnowledgeSeeds — all 8 embedded files", () => {
     expect(cli!.body).not.toContain("raw.githubusercontent.com");
   });
 
+  test("sk-ref-mcp-tools scopes the attachment tools to conversation files and routes execution outputs to file resources", () => {
+    const r = loadEmbeddedKnowledgeSeeds();
+    const mcpTools = r.knowledge.find((k) => k.slug === "sk-ref-mcp-tools");
+    expect(mcpTools).toBeDefined();
+    const attachmentEntry = mcpTools!.body
+      .split("\n- ")
+      .find((entry) => entry.startsWith("`list_attachments` / `preview_attachment`"));
+    expect(attachmentEntry).toBeDefined();
+    expect(attachmentEntry).not.toContain("execution-produced");
+    expect(attachmentEntry).toContain("conversation");
+    expect(attachmentEntry).toContain("`inspect_execution_step`");
+    expect(attachmentEntry).toContain("`file://<id>`");
+  });
+
   test("sk-ref-coding-agents seed is generated from the coding-agent chapter", () => {
     const seed = EMBEDDED_KNOWLEDGE_SEEDS.find((s) => s.file === "coding-agents.md");
     expect(seed?.content).toMatch(/^---\n[\s\S]*^generated: true$[\s\S]*?\n---\n/m);
