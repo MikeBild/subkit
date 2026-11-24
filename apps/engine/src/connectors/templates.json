@@ -17035,7 +17035,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "vercel" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -17048,7 +17050,9 @@
               "kind": "request",
               "id": "projects",
               "method": "GET",
-              "url": "${connector.vercel.base_url}/v10/projects"
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "path": "/v10/projects",
+              "boundary": { "variables": {}, "max_body_bytes": 0, "max_calls": 1 }
             }
           ]
         }
@@ -17066,7 +17070,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "vercel" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -17089,7 +17095,8 @@
               "kind": "request",
               "id": "deployments",
               "method": "GET",
-              "url": "${connector.vercel.base_url}/v7/deployments",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "path": "/v7/deployments",
               "query": {
                 "projectId": "${input.project_id}"
               }
@@ -17110,7 +17117,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "vercel" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -17133,7 +17142,13 @@
               "kind": "request",
               "id": "deployment",
               "method": "GET",
-              "url": "${connector.vercel.base_url}/v13/deployments/${input.deployment_id_or_url}"
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "path": "/v13/deployments/${input.deployment_id_or_url}",
+              "boundary": {
+                "variables": { "input.deployment_id_or_url": { "class": "path" } },
+                "max_body_bytes": 0,
+                "max_calls": 1
+              }
             }
           ]
         }
