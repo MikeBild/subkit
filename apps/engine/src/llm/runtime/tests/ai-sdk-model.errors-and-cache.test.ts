@@ -1,4 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { createOpenAI } from "@ai-sdk/openai";
+import { generateText } from "ai";
+import { readStepUsage } from "../../../conversations/loop/usage.ts";
 import { testEnv } from "../../../test-helpers/determinism/env.ts";
 import { classifyProviderError, isFallbackEligible } from "../../provider-errors.ts";
 import { AiSdkModel, usageOf } from "../ai-sdk-model.ts";
@@ -211,6 +215,7 @@ describe("AiSdkModel prompt-cache usage", () => {
       output_tokens: 5,
       cache_read_tokens: 800,
       cache_creation_tokens: 0,
+      cache_reported: true,
     });
   });
 
@@ -228,7 +233,88 @@ describe("AiSdkModel prompt-cache usage", () => {
       output_tokens: 3,
       cache_read_tokens: 900,
       cache_creation_tokens: 200,
+      cache_reported: true,
     });
+  });
+
+  it("preserves reporting presence through installed OpenAI and Anthropic adapters", async () => {
+    for (const cached of [undefined, 0, 40]) {
+      const openai = createOpenAI({
+        apiKey: "test-key",
+        fetch: Object.assign(
+          async () =>
+            Response.json({
+              id: "chat-test",
+              object: "chat.completion",
+              created: 0,
+              model: "gpt-4o",
+              choices: [
+                { index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" },
+              ],
+              usage: {
+                prompt_tokens: 100,
+                completion_tokens: 1,
+                ...(cached === undefined
+                  ? {}
+                  : { prompt_tokens_details: { cached_tokens: cached } }),
+              },
+            }),
+          { preconnect: () => {} },
+        ),
+      });
+      const anthropic = createAnthropic({
+        apiKey: "test-key",
+        fetch: Object.assign(
+          async () =>
+            Response.json({
+              id: "msg-test",
+              type: "message",
+              role: "assistant",
+              model: "claude-sonnet-4-5",
+              content: [{ type: "text", text: "ok" }],
+              stop_reason: "end_turn",
+              stop_sequence: null,
+              usage: {
+                input_tokens: 100,
+                output_tokens: 1,
+                ...(cached === undefined ? {} : { cache_read_input_tokens: cached }),
+              },
+            }),
+          { preconnect: () => {} },
+        ),
+      });
+      for (const model of [openai.chat("gpt-4o"), anthropic("claude-sonnet-4-5")]) {
+        const result = await generateText({ model, prompt: "hello", maxRetries: 0 });
+        expect(result.usage.inputTokenDetails.cacheReadTokens).toBe(cached ?? 0);
+        expect(usageOf(result.usage, result.providerMetadata).cache_reported).toBe(
+          cached !== undefined,
+        );
+        expect(readStepUsage(result.steps[0]!).cacheReported).toBe(cached !== undefined);
+      }
+    }
+  });
+
+  it("uses raw provider usage to distinguish omitted cache counts from explicit zero", () => {
+    for (const [raw, reported] of [
+      [{ prompt_tokens: 500, completion_tokens: 2 }, false],
+      [{ input_tokens: 500, output_tokens: 2 }, false],
+      [{ prompt_tokens: 500, prompt_tokens_details: { cached_tokens: 0 } }, true],
+      [{ input_tokens: 500, input_tokens_details: { cached_tokens: 0 } }, true],
+      [{ input_tokens: 500, cache_read_input_tokens: 0 }, true],
+    ] as const) {
+      expect(
+        usageOf({ inputTokens: 500, inputTokenDetails: { cacheReadTokens: 0 }, raw }, undefined)
+          .cache_reported,
+      ).toBe(reported);
+    }
+  });
+
+  it("marks cache figures as unreported when neither usage nor metadata carries them", () => {
+    expect(usageOf({ inputTokens: 500, outputTokens: 2 }, undefined).cache_reported).toBe(false);
+    expect(
+      usageOf({ inputTokens: 500, inputTokenDetails: { cacheReadTokens: 0 } }, undefined)
+        .cache_reported,
+    ).toBe(true);
   });
 
   it("falls back to the provider metadata when the normalized usage has no cache details", () => {
@@ -238,5 +324,6 @@ describe("AiSdkModel prompt-cache usage", () => {
     );
     expect(usage.cache_read_tokens).toBe(400);
     expect(usage.cache_creation_tokens).toBe(50);
+    expect(usage.cache_reported).toBe(true);
   });
 });

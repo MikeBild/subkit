@@ -1,12 +1,18 @@
+import { cacheReadReported } from "../../llm/core/cache-reporting.ts";
+
 export interface StepUsage {
   inputTokens: number;
   outputTokens: number;
   cacheReadTokens: number;
   cacheCreationTokens: number;
+  cacheReported: boolean;
 }
+
+type StepTokens = Omit<StepUsage, "cacheReported">;
 
 interface RawStep {
   usage: {
+    raw?: unknown;
     inputTokens?: number | undefined;
     outputTokens?: number | undefined;
     inputTokenDetails?: {
@@ -17,11 +23,11 @@ interface RawStep {
   providerMetadata?: Record<string, unknown> | undefined;
 }
 
-export function stepPromptTokens(u: StepUsage): number {
+export function stepPromptTokens(u: StepTokens): number {
   return u.inputTokens + u.cacheReadTokens + u.cacheCreationTokens;
 }
 
-export function stepTotalTokens(u: StepUsage): number {
+export function stepTotalTokens(u: StepTokens): number {
   return stepPromptTokens(u) + u.outputTokens;
 }
 
@@ -39,7 +45,9 @@ export function readStepUsage(step: RawStep): StepUsage {
   if (!cacheCreationTokens && anthropic?.usage?.cache_creation_input_tokens) {
     cacheCreationTokens = Number(anthropic.usage.cache_creation_input_tokens);
   }
-  return { inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens };
+  const cacheReported =
+    cacheReadReported(step.usage) || anthropic?.usage?.cache_read_input_tokens != null;
+  return { inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, cacheReported };
 }
 
 const ABORT_TOKEN_RE = /\b(?:abort(?:ed)?|cancel(?:l?ed)?)\b/i;

@@ -9,6 +9,8 @@ import {
   aggregateAudit,
   aggregateExecutions,
   aggregateLlm,
+  aggregateLlmCacheReportedByFlow,
+  type LlmCacheReported,
   type LlmGroup,
   statsBucketFor,
 } from "../stats/index.ts";
@@ -79,13 +81,17 @@ function cockpitHref(path: string, query: Record<string, string>): string {
   return `/cockpit${path}?${new URLSearchParams(query).toString()}`;
 }
 
-export function promptCacheByFlow(groups: readonly LlmGroup[]): PromptCacheFlow[] {
+export function promptCacheByFlow(
+  groups: readonly LlmGroup[],
+  reported: ReadonlyMap<string, LlmCacheReported>,
+): PromptCacheFlow[] {
   return groups
     .filter((group) => group.totals.calls > 0)
     .map((group) => {
       const prompt = group.totals.tokens.prompt;
       const cacheRead = group.totals.tokens.cache_read;
-      const share = percent(cacheRead, prompt);
+      const reporting = reported.get(group.key.flow ?? "");
+      const share = reporting ? percent(reporting.cache_read, reporting.prompt) : null;
       return {
         flow: group.key.flow ?? "",
         calls: group.totals.calls,
@@ -149,22 +155,32 @@ export async function readOperatingFigures(
 ): Promise<OperatingFigures> {
   const bucket = statsBucketFor(bounds.from, bounds.to);
   const window = { tenantId, bucket, from: bounds.from, to: bounds.to, tz: "UTC" } as const;
-  const [executions, repairs, enabled, notOk, needsReauth, llm, heldSucceeded, taskRunCounts] =
-    await Promise.all([
-      aggregateExecutions(db, { ...window, groupBy: [] }),
-      aggregateAudit(db, {
-        ...window,
-        actions: [...DECIDED_REPAIR_ACTIONS],
-        groupBy: ["action"],
-      }),
-      listConnectors(tenantId, { enabled: true, limit: 1 }, db),
-      listConnectors(tenantId, { health: "not_ok", limit: 1 }, db),
-      db
-        .select({ total: count() })
-        .from(connectors)
-        .where(and(eq(connectors.tenant_id, tenantId), connectorNeedsReauth())),
-      aggregateLlm(db, { ...window, groupBy: ["flow"] }),
-      db.execute(sql`
+  const [
+    executions,
+    repairs,
+    enabled,
+    notOk,
+    needsReauth,
+    llm,
+    cacheReported,
+    heldSucceeded,
+    taskRunCounts,
+  ] = await Promise.all([
+    aggregateExecutions(db, { ...window, groupBy: [] }),
+    aggregateAudit(db, {
+      ...window,
+      actions: [...DECIDED_REPAIR_ACTIONS],
+      groupBy: ["action"],
+    }),
+    listConnectors(tenantId, { enabled: true, limit: 1 }, db),
+    listConnectors(tenantId, { health: "not_ok", limit: 1 }, db),
+    db
+      .select({ total: count() })
+      .from(connectors)
+      .where(and(eq(connectors.tenant_id, tenantId), connectorNeedsReauth())),
+    aggregateLlm(db, { ...window, groupBy: ["flow"] }),
+    aggregateLlmCacheReportedByFlow(db, window),
+    db.execute(sql`
       select count(distinct ${executionSteps.execution_id})::int as total
       from ${executionSteps}
       inner join executions
@@ -180,21 +196,21 @@ export async function readOperatingFigures(
           or ${executionSteps.request_meta}->'extras'->>'held' = 'true'
         )
     `),
-      db
-        .select({
-          total: count(),
-          completed: sql<number>`count(*) filter (where ${taskRuns.state} = 'completed')::int`,
-          failed: sql<number>`count(*) filter (where ${taskRuns.state} = 'failed')::int`,
-        })
-        .from(taskRuns)
-        .where(
-          and(
-            eq(taskRuns.tenant_id, tenantId),
-            gte(taskRuns.created_at, bounds.from),
-            lt(taskRuns.created_at, bounds.to),
-          ),
+    db
+      .select({
+        total: count(),
+        completed: sql<number>`count(*) filter (where ${taskRuns.state} = 'completed')::int`,
+        failed: sql<number>`count(*) filter (where ${taskRuns.state} = 'failed')::int`,
+      })
+      .from(taskRuns)
+      .where(
+        and(
+          eq(taskRuns.tenant_id, tenantId),
+          gte(taskRuns.created_at, bounds.from),
+          lt(taskRuns.created_at, bounds.to),
         ),
-    ]);
+      ),
+  ]);
 
   const total = executions.totals.executions.count;
   const byStatus = executions.totals.executions.by_status;
@@ -246,7 +262,7 @@ export async function readOperatingFigures(
         ts_to: to,
       }),
     },
-    prompt_cache: { flows: promptCacheByFlow(llm.groups) },
+    prompt_cache: { flows: promptCacheByFlow(llm.groups, cacheReported) },
     task_runs: {
       total: Number(taskRunCounts[0]?.total ?? 0),
       completed: Number(taskRunCounts[0]?.completed ?? 0),

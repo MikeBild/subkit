@@ -158,6 +158,7 @@ export interface LlmCallLogEntry {
   completion_tokens: number;
   cache_read_tokens?: number;
   cache_creation_tokens?: number;
+  cache_reported?: boolean;
   latency_ms: number;
   result: "success" | "quota_exhausted" | "context_too_large" | "key_rejected" | "error";
   error?: string;

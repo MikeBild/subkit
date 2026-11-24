@@ -4,6 +4,7 @@ export interface LlmCallUsage {
   total_tokens: number;
   cache_read_tokens: number;
   cache_creation_tokens: number;
+  cache_reported: boolean;
 }
 
 const CHARS_PER_TOKEN = 4;
@@ -80,6 +81,7 @@ export function parseLlmUsage(body: unknown): LlmCallUsage | null {
       total_tokens: numberish(u.total_tokens) ?? prompt + completion,
       cache_read_tokens: numberish(details?.cached_tokens) ?? 0,
       cache_creation_tokens: numberish(details?.cache_write_tokens) ?? 0,
+      cache_reported: numberish(details?.cached_tokens) !== null,
     };
   }
 
@@ -97,6 +99,7 @@ export function parseLlmUsage(body: unknown): LlmCallUsage | null {
       total_tokens: numberish(u.total_tokens) ?? input + completion,
       cache_read_tokens: numberish(responseDetails.cached_tokens) ?? 0,
       cache_creation_tokens: numberish(responseDetails.cache_write_tokens) ?? 0,
+      cache_reported: numberish(responseDetails.cached_tokens) !== null,
     };
   }
 
@@ -109,5 +112,6 @@ export function parseLlmUsage(body: unknown): LlmCallUsage | null {
     total_tokens: prompt + completion,
     cache_read_tokens: cacheRead,
     cache_creation_tokens: cacheCreate,
+    cache_reported: numberish(u.cache_read_input_tokens) !== null,
   };
 }

@@ -118,6 +118,7 @@ export async function recordUsage(entry: LlmCallLogEntry, exec?: Executor): Prom
     completion_tokens: billed.completion_tokens,
     cache_read_tokens: billed.cache_read_tokens,
     cache_creation_tokens: billed.cache_creation_tokens,
+    cache_reported: entry.cache_reported ?? null,
     total_tokens,
     latency_ms: entry.latency_ms,
     result: entry.result,

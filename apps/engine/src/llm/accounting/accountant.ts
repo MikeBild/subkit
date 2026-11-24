@@ -84,6 +84,7 @@ export async function account(p: AccountParams, exec?: Executor): Promise<Accoun
     };
     if (cacheRead > 0) entry.cache_read_tokens = cacheRead;
     if (cacheCreate > 0) entry.cache_creation_tokens = cacheCreate;
+    if (p.usage.cache_reported !== undefined) entry.cache_reported = p.usage.cache_reported;
     if (p.error !== undefined) entry.error = p.error;
     Object.assign(entry, usageAttribution(p.metadata));
     await recordUsage(entry, exec);

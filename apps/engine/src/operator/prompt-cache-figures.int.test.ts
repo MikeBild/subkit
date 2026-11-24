@@ -18,6 +18,7 @@ function usage(
   prompt: number,
   cacheRead: number,
   at: Date,
+  cacheReported: boolean | null = true,
 ): typeof llmUsage.$inferInsert {
   return {
     tenant_id: tenant,
@@ -28,6 +29,7 @@ function usage(
     total_tokens: prompt + 10,
     cache_read_tokens: cacheRead,
     cache_creation_tokens: 0,
+    cache_reported: cacheReported,
     latency_ms: 100,
     result: "success",
     created_at: at,
@@ -53,6 +55,10 @@ beforeAll(async () => {
       usage(tenantId, "converse", 1_000, 700, INSIDE),
       usage(tenantId, "generate", 400, 0, INSIDE),
       usage(tenantId, "generate", 9_000, 9_000, OUTSIDE),
+      usage(tenantId, "workflow_step", 3_000, 0, INSIDE, false),
+      usage(tenantId, "workflow_step", 2_000, 0, INSIDE, null),
+      usage(tenantId, "summarize", 300, 0, INSIDE, false),
+      usage(tenantId, "summarize", 200, 0, INSIDE, true),
       usage(other!.id, "converse", 50_000, 0, INSIDE),
     ]);
 });
@@ -65,11 +71,25 @@ test("the operating figures carry the tenant's prompt-cache share per flow in th
   const figures = await readOperatingFigures(testDb.db, tenantId, { from: FROM, to: TO });
   expect(figures.prompt_cache.flows).toEqual([
     {
+      flow: "workflow_step",
+      calls: 2,
+      prompt_tokens: 5_000,
+      cache_read_tokens: 0,
+      cache_read_percent: null,
+    },
+    {
       flow: "converse",
       calls: 2,
       prompt_tokens: 2_000,
       cache_read_tokens: 1_600,
       cache_read_percent: 80,
+    },
+    {
+      flow: "summarize",
+      calls: 2,
+      prompt_tokens: 500,
+      cache_read_tokens: 0,
+      cache_read_percent: 0,
     },
     { flow: "generate", calls: 1, prompt_tokens: 400, cache_read_tokens: 0, cache_read_percent: 0 },
   ]);
