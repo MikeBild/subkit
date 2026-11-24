@@ -1,4 +1,4 @@
-import { and, count, eq } from "drizzle-orm";
+import { and, count, eq, sql } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../../audit/index.ts";
 import type { Db } from "../../db/client.ts";
 import {
@@ -126,45 +126,48 @@ export async function deleteChannel(
   actor: NotificationActor,
   id: string,
 ): Promise<boolean> {
-  const scoped = and(
-    eq(notificationChannels.tenant_id, actor.tenant_id),
-    eq(notificationChannels.id, id),
-  );
-  const [row] = await db
-    .select()
-    .from(notificationChannels)
-    .where(
-      and(eq(notificationChannels.tenant_id, actor.tenant_id), eq(notificationChannels.id, id)),
-    )
-    .limit(1);
-  if (!row) return false;
-  const ruleCount = await countRulesTargeting(db, row);
-  if (ruleCount > 0) {
-    logger.warn({
-      module: "notifications",
-      action: "channel.delete.refused",
-      msg: "channel is still targeted by notification rules",
-      tenant_id: actor.tenant_id,
-      channel_id: id,
-      rule_count: ruleCount,
-    });
-    throw new ChannelInUseError(ruleCount);
-  }
-  const deleted = await db
-    .delete(notificationChannels)
-    .where(scoped)
-    .returning({ id: notificationChannels.id });
-  if (deleted.length === 0) return false;
-  await auditAwait(
-    {
-      ...auditedBy(actor),
-      action: AuditAction.NOTIFICATION_CHANNEL_DELETED,
-      resource_type: "notification_channel",
-      resource_id: id,
-      result: "success",
-      metadata: {},
-    },
-    db,
-  );
-  return true;
+  return db.transaction(async (db) => {
+    await db.execute(sql`lock table ${notificationRules} in share mode`);
+    const scoped = and(
+      eq(notificationChannels.tenant_id, actor.tenant_id),
+      eq(notificationChannels.id, id),
+    );
+    const [row] = await db
+      .select()
+      .from(notificationChannels)
+      .where(
+        and(eq(notificationChannels.tenant_id, actor.tenant_id), eq(notificationChannels.id, id)),
+      )
+      .limit(1);
+    if (!row) return false;
+    const ruleCount = await countRulesTargeting(db, row);
+    if (ruleCount > 0) {
+      logger.warn({
+        module: "notifications",
+        action: "channel.delete.refused",
+        msg: "channel is still targeted by notification rules",
+        tenant_id: actor.tenant_id,
+        channel_id: id,
+        rule_count: ruleCount,
+      });
+      throw new ChannelInUseError(ruleCount);
+    }
+    const deleted = await db
+      .delete(notificationChannels)
+      .where(scoped)
+      .returning({ id: notificationChannels.id });
+    if (deleted.length === 0) return false;
+    await auditAwait(
+      {
+        ...auditedBy(actor),
+        action: AuditAction.NOTIFICATION_CHANNEL_DELETED,
+        resource_type: "notification_channel",
+        resource_id: id,
+        result: "success",
+        metadata: {},
+      },
+      db,
+    );
+    return true;
+  });
 }

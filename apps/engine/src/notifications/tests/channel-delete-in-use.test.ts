@@ -1,10 +1,11 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import {
   notificationChannels,
   notificationDeliveries,
   notificationRules,
 } from "../../db/schema/notifications.ts";
+import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import type { NotificationActor } from "../admin/actor.ts";
 import { ChannelInUseError, deleteChannel, updateChannel } from "../admin/channels.ts";
 import { __resetBreakers } from "../circuit-breaker.ts";
@@ -98,6 +99,68 @@ describe("notifications: deleting a channel that rules still target", () => {
     ]);
     expect(adapter.sends.length).toBe(0);
   });
+
+  for (const operation of ["create", "retarget"] as const) {
+    test(`serializes deletion with concurrent rule ${operation}`, async () => {
+      const { channel, rule } = await seedChannelWithRule();
+      await updateChannel(ctx.db, actor, channel.id, { active: false });
+      if (operation === "create") {
+        await ctx.db.delete(notificationRules).where(eq(notificationRules.id, rule.id));
+      } else {
+        await ctx.db
+          .update(notificationRules)
+          .set({ target_workspace_id: "W_OTHER", target_channel_id: "C_OTHER" })
+          .where(eq(notificationRules.id, rule.id));
+      }
+      const ready = Promise.withResolvers<number>();
+      const release = Promise.withResolvers<void>();
+      const writer = ctx.db.transaction(async (tx) => {
+        const result = await tx.execute(sql`select pg_backend_pid() as pid`);
+        if (operation === "create") {
+          await tx.insert(notificationRules).values({
+            tenant_id: ctx.tenant_id,
+            name: "concurrent-target",
+            event_pattern: "execution.*",
+            target_workspace_id: channel.workspace_id,
+            target_channel_id: channel.channel_id,
+          });
+        } else {
+          await tx
+            .update(notificationRules)
+            .set({
+              target_workspace_id: channel.workspace_id,
+              target_channel_id: channel.channel_id,
+            })
+            .where(eq(notificationRules.id, rule.id));
+        }
+        ready.resolve(Number(result.rows[0]?.pid));
+        await release.promise;
+      });
+      const writerPid = await ready.promise;
+      let finished = false;
+      const deletion = deleteChannel(ctx.db, actor, channel.id)
+        .catch((error: unknown) => error)
+        .finally(() => {
+          finished = true;
+        });
+      try {
+        await waitFor(async () => {
+          const result = await ctx.db.execute(sql`
+            select 1 from pg_stat_activity
+            where ${writerPid} = any(pg_blocking_pids(pid))
+          `);
+          return finished || result.rows.length > 0;
+        });
+      } finally {
+        release.resolve();
+        await writer;
+      }
+      expect(await deletion).toBeInstanceOf(ChannelInUseError);
+      expect((await channelRows()).map((row) => ({ id: row.id, active: row.active }))).toEqual([
+        { id: channel.id, active: false },
+      ]);
+    });
+  }
 
   test("counts inactive rules too", async () => {
     const { channel, rule } = await seedChannelWithRule();
