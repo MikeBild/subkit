@@ -116,6 +116,16 @@ describe("tasks/service definitions", () => {
       }),
     ).catch((e) => e);
     expect(crowded.details).toEqual({ code: "plan_too_many_steps" });
+    const reserved = await create(
+      taskInput({
+        plan: {
+          ...taskInput().plan,
+          steps: [base, { ...base, id: "confirm-result", label: "Verify warehouse South" }],
+        },
+      }),
+    ).catch((e) => e);
+    expect(reserved).toBeInstanceOf(BadRequestError);
+    expect(reserved.details).toEqual({ code: "plan_reserved_step_id" });
     expect(await countTasks({ tenant_id: w.tenant_id, principal: SYSTEM_SCOPE }, ctx.db)).toBe(0);
   });
 

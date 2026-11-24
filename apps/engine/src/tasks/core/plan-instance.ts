@@ -6,7 +6,11 @@ export const TASK_PLAN_TEMPLATE_MAX_STEPS = 19;
 
 type PlanStep = PlaybookPlan["steps"][number];
 
-export type TaskPlanTemplateIssue = "plan_too_many_steps" | "plan_without_steps" | "plan_cancelled";
+export type TaskPlanTemplateIssue =
+  | "plan_too_many_steps"
+  | "plan_without_steps"
+  | "plan_cancelled"
+  | "plan_reserved_step_id";
 
 function workSteps(template: PlaybookPlan): PlanStep[] {
   return template.steps.filter((step) => step.id !== TASK_RESULT_STEP_ID);
@@ -14,6 +18,12 @@ function workSteps(template: PlaybookPlan): PlanStep[] {
 
 export function taskPlanTemplateIssue(template: PlaybookPlan): TaskPlanTemplateIssue | null {
   if (template.cancelled) return "plan_cancelled";
+  if (
+    template.steps.some(
+      (step) => step.id === TASK_RESULT_STEP_ID && step.criterion.kind !== "human_confirmation",
+    )
+  )
+    return "plan_reserved_step_id";
   const count = workSteps(template).length;
   if (count === 0) return "plan_without_steps";
   if (count > TASK_PLAN_TEMPLATE_MAX_STEPS) return "plan_too_many_steps";
