@@ -337,7 +337,7 @@ export async function updateKnowledgeSource(
   p: UpdateKnowledgeSourceParams,
   db: Executor,
 ): Promise<KnowledgeSourceView | null> {
-  return await (db as Db).transaction(async (tx) => {
+  const updatedView = await (db as Db).transaction(async (tx) => {
     await lockCatalogVocabulary(tx, p.tenant_id);
     await lockActiveTenant(p.tenant_id, tx);
     const existing = await tx
@@ -414,6 +414,8 @@ export async function updateKnowledgeSource(
 
     return knowledgeSourceRowToView(updated);
   });
+  if (updatedView) invalidateKnowledgeCache(p.tenant_id);
+  return updatedView;
 }
 
 const ANALYZE_SAMPLE_MAX_CHARS = 28_000;

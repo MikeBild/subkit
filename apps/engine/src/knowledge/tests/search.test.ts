@@ -352,4 +352,35 @@ describe.skipIf(skip)("knowledge/search", () => {
     );
     expect(ownHits.length).toBeGreaterThan(0);
   });
+
+  test("status toggles take effect for cached queries without a manual cache flush", async () => {
+    const toggled = await createKnowledgeSource(
+      {
+        tenant_id: ctx.tenantId,
+        input: { name: "Toggle Notes" },
+        upload: {
+          buffer: Buffer.from("The quokkaberry checklist covers the toggle scenario."),
+          filename: "toggle.txt",
+        },
+        actor: null,
+      },
+      ctx.testDb.db,
+    );
+    const setStatus = (status: "active" | "inactive") =>
+      updateKnowledgeSource(
+        { tenant_id: ctx.tenantId, id: toggled.id, patch: { status }, actor_id: null },
+        ctx.testDb.db,
+      );
+    const searchToggled = async () =>
+      (
+        await searchKnowledge({ tenant_id: ctx.tenantId, query: "quokkaberry" }, ctx.testDb.db)
+      ).filter((hit) => hit.knowledge_source_id === toggled.id);
+
+    await setStatus("inactive");
+    expect(await searchToggled()).toHaveLength(0);
+    await setStatus("active");
+    expect((await searchToggled()).length).toBeGreaterThan(0);
+    await setStatus("inactive");
+    expect(await searchToggled()).toHaveLength(0);
+  });
 });
