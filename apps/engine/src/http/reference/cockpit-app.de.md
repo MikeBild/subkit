@@ -101,7 +101,7 @@ Jede App hat ihre eigene Anmeldung. Deine Anmeldung im normalen Cockpit bleibt d
 
 ### Branding eines Arbeitsbereichs festlegen
 
-1. Öffne **Einstellungen** und darin unter **Arbeiten mit subkit** den Bereich **Arbeitsbereich-Branding**.
+1. Öffne **Einstellungen** → **Arbeitsbereich** und darin unter **Wie soll SubKit bei euch aussehen?** den Bereich **Arbeitsbereich-Branding**.
 2. Lade unter **App-Icon (1:1)** ein quadratisches PNG mit mindestens 512 Pixeln Kantenlänge hoch.
 3. Wähle unter **Farbpalette** zwischen **Standard**, **Indigo** und **Teal**.
 

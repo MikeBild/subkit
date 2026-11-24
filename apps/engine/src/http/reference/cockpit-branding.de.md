@@ -11,7 +11,7 @@ Mit dem Branding zeigt das angemeldete Cockpit deinen Namen, dein Logo und eine 
 
 ### Im Cockpit ändern
 
-Dein Arbeitsbereich ist in der Engine ein eigener Mandant: eigene Daten, eigene Nutzer, eigene Rechte. Zum Ändern brauchst du dort die Rechte `settings:write` und `identity:write`. In den Einstellungen unter „Betrieb“, Bereich „Erscheinungsbild“ (Abschnitt „Arbeitsbereich-Branding“), legst du fest:
+Dein Arbeitsbereich ist in der Engine ein eigener Mandant: eigene Daten, eigene Nutzer, eigene Rechte. Zum Ändern brauchst du dort die Rechte `settings:write` und `identity:write`. In den Einstellungen unter „Arbeitsbereich“, bei der Frage „Wie soll SubKit bei euch aussehen?“ (Abschnitt „Arbeitsbereich-Branding“), legst du fest:
 
 - das Wortzeichen, also den angezeigten Namen, und einen optionalen Untertitel,
 - je ein Logo für die helle und die dunkle Darstellung,

@@ -11,7 +11,7 @@ Branding makes the signed-in Cockpit show your name, your logo and a matching co
 
 ### Change it in the Cockpit
 
-A workspace is your tenant in the engine: its own data, its own users, its own permissions. To make changes you need `settings:write` and `identity:write` there. Under Settings → Operations, in the Appearance area (section Workspace branding), you set:
+A workspace is your tenant in the engine: its own data, its own users, its own permissions. To make changes you need `settings:write` and `identity:write` there. Under Settings → Workspace, in the question "How should SubKit look for your team?" (section Workspace branding), you set:
 
 - the wordmark, meaning the displayed name, and an optional subtitle,
 - one logo each for the light and the dark theme,

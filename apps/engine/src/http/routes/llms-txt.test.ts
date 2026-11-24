@@ -223,3 +223,31 @@ describe("first-run setup guide (#507)", () => {
     }
   });
 });
+
+describe("cockpit branding guides (#536)", () => {
+  const COCKPIT_I18N = join(
+    import.meta.dir,
+    "../../../../cockpit/src/lib/i18n/settings-personal.ts",
+  );
+  const STALE_PATH =
+    /Settings → Operations|Appearance area|„Betrieb“|„Erscheinungsbild“|Working with subkit|Arbeiten mit subkit/;
+
+  test("point to the Workspace settings area that renders the branding editor", async () => {
+    const { settingsPersonalEn, settingsPersonalDe } = await import(COCKPIT_I18N);
+    const labels = { en: settingsPersonalEn, de: settingsPersonalDe } as const;
+    const bundle = DocsBundleSchema.parse(await (await buildApp().request("/docs.json")).json());
+    for (const slug of ["cockpit-branding", "cockpit-app"]) {
+      const page = bundle.pages.find((entry) => entry.slug === slug);
+      for (const locale of ["en", "de"] as const) {
+        const sourceText = await Bun.file(
+          join(import.meta.dir, `../reference/${slug}.${locale}.md`),
+        ).text();
+        for (const text of [sourceText, page?.locales[locale]?.body ?? ""]) {
+          expect(text).toContain(labels[locale]["settings.area.workspace.title"]);
+          expect(text).toContain(labels[locale]["settings.workspace.look"]);
+          expect(text).not.toMatch(STALE_PATH);
+        }
+      }
+    }
+  });
+});

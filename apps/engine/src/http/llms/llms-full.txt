@@ -2137,7 +2137,7 @@ Each app has its own sign-in. Your sign-in in the regular Cockpit stays untouche
 
 ### Set the branding of a workspace
 
-1. Open **Settings** and, under **Working with subkit**, the **Workspace branding** section.
+1. Open **Settings** → **Workspace** and, under **How should SubKit look for your team?**, the **Workspace branding** section.
 2. Under **App icon (1:1)**, upload a square PNG with at least 512 pixels per side.
 3. Under **Color palette**, choose **Standard**, **Indigo** or **Teal**.
 
@@ -3855,7 +3855,7 @@ Branding makes the signed-in Cockpit show your name, your logo and a matching co
 
 ### Change it in the Cockpit
 
-A workspace is your tenant in the engine: its own data, its own users, its own permissions. To make changes you need `settings:write` and `identity:write` there. Under Settings → Operations, in the Appearance area (section Workspace branding), you set:
+A workspace is your tenant in the engine: its own data, its own users, its own permissions. To make changes you need `settings:write` and `identity:write` there. Under Settings → Workspace, in the question "How should SubKit look for your team?" (section Workspace branding), you set:
 
 - the wordmark, meaning the displayed name, and an optional subtitle,
 - one logo each for the light and the dark theme,
