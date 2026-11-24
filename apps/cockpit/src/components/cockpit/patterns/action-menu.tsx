@@ -14,6 +14,7 @@ import { useI18n } from "@/lib/i18n-context";
 export interface ActionMenuItem {
   label: string;
   onSelect?(): void;
+  selectTiming?: "immediate" | "after-close";
   href?: string;
   disabled?: boolean;
   disabledReason?: string;
@@ -102,7 +103,8 @@ export function ActionMenu({
             {...item.data}
             asChild={Boolean(item.href)}
             onSelect={() => {
-              pendingSelect.current = item.onSelect;
+              if (item.selectTiming === "immediate") item.onSelect?.();
+              else pendingSelect.current = item.onSelect;
             }}
           >
             {item.href ? (

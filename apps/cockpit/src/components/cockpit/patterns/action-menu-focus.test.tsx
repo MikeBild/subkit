@@ -177,3 +177,51 @@ test("dialog opened from action menu returns focus to the menu trigger", async (
   expect(query("confirm")).toBeNull();
   expect(focusedId()).toBe("more");
 });
+
+test("clipboard menu action reads within the selection gesture", async () => {
+  if (!isChild) return runInChild("clipboard menu action");
+  const { ActionMenu } = await import("./action-menu");
+  let inGesture = false;
+  const reads: boolean[] = [];
+  const clipboard = {
+    readText: () => {
+      reads.push(inGesture);
+      return Promise.resolve("imported text");
+    },
+  };
+  await mount(
+    <ActionMenu
+      alwaysMenu
+      testId="more"
+      items={[
+        {
+          label: "Import clipboard",
+          selectTiming: "immediate",
+          testId: "clipboard",
+          onSelect: () => void clipboard.readText(),
+        },
+      ]}
+    />,
+  );
+  await press(query("more") as HTMLElement, "Enter");
+  await settle();
+  const item = query("clipboard") as HTMLElement;
+  item.focus();
+  await act(async () => {
+    inGesture = true;
+    try {
+      item.dispatchEvent(
+        new dom.window.KeyboardEvent("keydown", {
+          key: "Enter",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    } finally {
+      inGesture = false;
+    }
+    expect(reads).toEqual([true]);
+  });
+  await settle();
+  expect(reads).toEqual([true]);
+});
