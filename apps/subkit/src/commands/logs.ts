@@ -1,5 +1,5 @@
 import { exitCodeFor } from "@cli-core/errors";
-import { printJson } from "@cli-core/format";
+import { printNdjson } from "@cli-core/format";
 import { colorizeLogLevel } from "@cli-core/log-levels";
 import { readSse } from "@cli-core/sse.ts";
 import { defineCommand } from "citty";
@@ -103,7 +103,7 @@ export const logsCommand = defineCommand({
 
     const print = (e: LogEntry): void => {
       if (args.json) {
-        printJson(e);
+        printNdjson(e);
       } else {
         process.stdout.write(`${renderPretty(e)}\n`);
       }
