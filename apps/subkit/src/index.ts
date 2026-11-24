@@ -72,7 +72,7 @@ import { enableRequestTrace, isDebugVerbose } from "./debug.ts";
 import { EngineClient } from "./engine-client.ts";
 import type { OutputFormat } from "./headless.ts";
 import { runHeadless } from "./headless.ts";
-import { profileOption, splitLeadingOptions } from "./lib/leading-options.ts";
+import { profileOption, repeatedOption, splitLeadingOptions } from "./lib/leading-options.ts";
 import { riskSummaryLine } from "./lib/operator-digest.ts";
 import { suggestCommand } from "./lib/suggest.ts";
 import { runCliOAuthLogin } from "./login-oauth.ts";
@@ -495,7 +495,7 @@ const mainCommand = defineCommand({
     system: systemCommand,
     "system-accounts": systemAccountsCommand,
   },
-  async run({ args }) {
+  async run({ args, rawArgs }) {
     const positional = (args._ as string[] | undefined)?.[0];
     if (positional && Object.hasOwn(SUB_COMMANDS, positional)) return;
     let profile = resolveProfile({
@@ -564,15 +564,7 @@ const mainCommand = defineCommand({
     }
 
     if (headlessPrompt) {
-      const attachRaw = args.attach as string | string[] | undefined;
-      const attach: readonly string[] =
-        attachRaw === undefined
-          ? []
-          : Array.isArray(attachRaw)
-            ? attachRaw.filter((p): p is string => typeof p === "string" && p.length > 0)
-            : attachRaw.length > 0
-              ? [attachRaw]
-              : [];
+      const attach = repeatedOption(rawArgs, "attach").filter((path) => path.length > 0);
       const result = await runHeadless({
         profile,
         prompt: headlessPrompt,
