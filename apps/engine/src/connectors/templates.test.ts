@@ -285,6 +285,45 @@ describe("connector-template catalog — recipes (migration 0006)", () => {
     }
   });
 
+  test("no recipe transform expression fails validateWorkflowDef (draft-save gate, #516)", async () => {
+    const { validateWorkflowDef } = await import("../workflows/core/validator.ts");
+    const failures = templates.flatMap((t) =>
+      t.recipes.flatMap((r) =>
+        validateWorkflowDef(r.workflow)
+          .errors.filter((error) => error.path.endsWith(".expression"))
+          .map((error) => `${t.slug}.${r.slug} ${error.path}: ${error.message}`),
+      ),
+    );
+    expect(failures).toEqual([]);
+  });
+
+  test("every javascript recipe transform parses as a function body (#516)", () => {
+    const failures = templates.flatMap((t) =>
+      t.recipes.flatMap((r) =>
+        (
+          r.workflow.steps as Array<{
+            id: string;
+            kind: string;
+            language?: string;
+            expression?: string;
+          }>
+        )
+          .filter(
+            (step) => step.kind === "transform" && (step.language ?? "javascript") === "javascript",
+          )
+          .flatMap((step) => {
+            try {
+              new Function("input", step.expression ?? "");
+              return [];
+            } catch (error) {
+              return [`${t.slug}.${r.slug}.${step.id}: ${(error as Error).message}`];
+            }
+          }),
+      ),
+    );
+    expect(failures).toEqual([]);
+  });
+
   test("every recipe.intent_keywords entry is a non-empty string", () => {
     for (const t of templates) {
       for (const r of t.recipes) {
