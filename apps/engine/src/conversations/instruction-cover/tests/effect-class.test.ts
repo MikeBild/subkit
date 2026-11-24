@@ -75,6 +75,8 @@ describe("effect class of a connector call", () => {
     expect(declaredEffect("linkedin", "POST", "/v2/ugcPosts")).toBe("publication");
     expect(declaredEffect("aws-sqs", "POST", "/")).toBe("unknown");
     expect(declaredEffect("slack", "POST", "/reactions.add")).toBe("ordinary");
+    expect(declaredEffect("slack", "POST", "/conversations.create")).toBe("publication");
+    expect(declaredEffect("square", "POST", "/v2/customers")).toBe("ordinary");
     expect(declaredEffect("slack", "POST", "/never.heard")).toBeNull();
     expect(declaredEffect("no-such-template", "POST", "/x")).toBeNull();
     expect(declaredEffect(null, "POST", "/x")).toBeNull();
