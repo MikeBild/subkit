@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { apiCall } from "@/api/call";
 import { absolute, chatNewHref } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
+import { useSession } from "@/app/session";
 import { SelectField, TextField } from "@/components/cockpit/form-field";
 import {
   ActionButton,
@@ -27,6 +28,7 @@ import {
   rhythmToCron,
   validTime,
 } from "@/features/workflows/model/schedule-rhythm";
+import { scheduleZone } from "@/features/workflows/model/schedule-zone";
 import { ScheduleCostPreview, ScheduleCostValue } from "@/features/workflows/ui/schedule-cost";
 import { reportFailure } from "@/lib/action-failure";
 import { LOCALE_TAGS } from "@/lib/i18n";
@@ -36,8 +38,6 @@ import { formFields, inputForm } from "@/lib/workflow-inputs";
 
 type ScheduleEntry = components["schemas"]["ScheduleEntry"];
 type ScheduleInput = components["schemas"]["ScheduleCreateBody"]["input"];
-
-const localZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 
 function useWorkflowSchedule(workflowId: string) {
   const live = useLiveQueryOptions();
@@ -71,7 +71,11 @@ function ScheduleDialog({
   const [error, setError] = useState<string | null>(null);
   const [values, setValues] = useState<SchemaValues | null>(null);
   const [checked, setChecked] = useState(false);
-  const zone = schedule?.timezone ?? localZone();
+  const session = useSession();
+  const zone = scheduleZone({
+    scheduleZone: schedule?.timezone,
+    workspaceZone: session.tenant.timezone,
+  });
   const schema = useQuery({
     queryKey: ["workflow", workflowId, "input-schema"],
     enabled: open,
