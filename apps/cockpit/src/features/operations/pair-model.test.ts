@@ -90,10 +90,14 @@ describe("pair approval", () => {
 });
 
 describe("pair approval policy and failures", () => {
-  test("a workspace with one approver never sees pair approval", () => {
+  test("one approver hides the setting but setup still offers inviting the second", () => {
+    const invite = { setting: false, option: true, hints: false };
+    expect(pairVisibility({ workflow_approvals: "single", eligible_approvers: 1 })).toEqual(invite);
+    expect(pairVisibility({ workflow_approvals: "single", eligible_approvers: 0 })).toEqual(invite);
+  });
+
+  test("an unreadable policy hides every pair surface", () => {
     const hidden = { setting: false, option: false, hints: false };
-    expect(pairVisibility({ workflow_approvals: "single", eligible_approvers: 1 })).toEqual(hidden);
-    expect(pairVisibility({ workflow_approvals: "single", eligible_approvers: 0 })).toEqual(hidden);
     expect(pairVisibility(null)).toEqual(hidden);
     expect(pairVisibility(undefined)).toEqual(hidden);
   });

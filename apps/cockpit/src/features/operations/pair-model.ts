@@ -87,7 +87,8 @@ export function pairVisibility(
 ): PairVisibility {
   const enabled = policy?.workflow_approvals === "pair";
   const setting = enabled || (policy?.eligible_approvers ?? 0) >= PAIR_MIN_APPROVERS;
-  return { setting, option: setting || chosen, hints: enabled };
+  // Setup offers pair whenever the policy is readable: naming the second approver is how one gets invited.
+  return { setting, option: policy != null || chosen, hints: enabled };
 }
 
 export type PairRefusalClass =
