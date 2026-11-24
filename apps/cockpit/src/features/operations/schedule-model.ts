@@ -90,6 +90,22 @@ export function toOccurrence(
   };
 }
 
+export interface OccurrenceCursor {
+  before: string;
+  before_id?: string;
+}
+
+export function occurrenceCursor(page: {
+  next_before: string | null;
+  next_before_id?: string | null;
+}): OccurrenceCursor | null {
+  if (!page.next_before) return null;
+  return {
+    before: page.next_before,
+    ...(page.next_before_id ? { before_id: page.next_before_id } : {}),
+  };
+}
+
 export function sortOccurrences(items: readonly Occurrence[]): Occurrence[] {
   return [...items].sort((a, b) => b.due.localeCompare(a.due));
 }

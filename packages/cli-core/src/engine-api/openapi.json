@@ -23504,11 +23504,20 @@
             ],
             "format": "date-time",
             "description": "Pass as before to read older occurrences; null when this page is the last."
+          },
+          "next_before_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Pass as before_id together with next_before; null when this page is the last."
           }
         },
         "required": [
           "items",
-          "next_before"
+          "next_before",
+          "next_before_id"
         ]
       },
       "ScheduleOccurrence": {
@@ -66949,6 +66958,17 @@
             "description": "Only occurrences due before this instant; pass next_before to read on.",
             "name": "before",
             "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "With before, read on after this occurrence, including later rows due at the same instant; pass next_before_id."
+            },
+            "required": false,
+            "description": "With before, read on after this occurrence, including later rows due at the same instant; pass next_before_id.",
+            "name": "before_id",
+            "in": "query"
           }
         ],
         "responses": {
@@ -72692,6 +72712,17 @@
             "required": false,
             "description": "Only occurrences due before this instant; pass next_before to read on.",
             "name": "before",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "With before, read on after this occurrence, including later rows due at the same instant; pass next_before_id."
+            },
+            "required": false,
+            "description": "With before, read on after this occurrence, including later rows due at the same instant; pass next_before_id.",
+            "name": "before_id",
             "in": "query"
           }
         ],

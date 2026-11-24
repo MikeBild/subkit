@@ -154,12 +154,21 @@ export async function recordScheduleOccurrence(
   }
 }
 
+function occurrenceCursorFilter(tenant_id: string, before: Date, beforeId?: string) {
+  if (!beforeId) return lt(scheduleOccurrences.due_at, before);
+  const anchorCreatedAt = sql`(SELECT anchor.created_at FROM subkit.schedule_occurrences AS anchor WHERE anchor.tenant_id = ${tenant_id} AND anchor.id = ${beforeId})`;
+  return sql`(${scheduleOccurrences.due_at}, ${scheduleOccurrences.created_at}, ${scheduleOccurrences.id}) < (${before.toISOString()}::timestamptz, ${anchorCreatedAt}, ${beforeId}::uuid)`;
+}
+
 export async function listScheduleOccurrences(
   db: Db,
   subject: { tenant_id: string; workflow_id: string } | { tenant_id: string; task_id: string },
-  page: { limit: number; before?: Date },
+  page: { limit: number; before?: Date; beforeId?: string },
 ): Promise<ScheduleOccurrenceRow[]> {
   const limit = Math.max(1, Math.min(page.limit, SCHEDULE_OCCURRENCE_PAGE_MAX));
+  const cursor = page.before
+    ? occurrenceCursorFilter(subject.tenant_id, page.before, page.beforeId)
+    : null;
   return db
     .select()
     .from(scheduleOccurrences)
@@ -169,10 +178,14 @@ export async function listScheduleOccurrences(
         "workflow_id" in subject
           ? eq(scheduleOccurrences.workflow_id, subject.workflow_id)
           : eq(scheduleOccurrences.task_id, subject.task_id),
-        ...(page.before ? [lt(scheduleOccurrences.due_at, page.before)] : []),
+        ...(cursor ? [cursor] : []),
       ),
     )
-    .orderBy(desc(scheduleOccurrences.due_at), desc(scheduleOccurrences.created_at))
+    .orderBy(
+      desc(scheduleOccurrences.due_at),
+      desc(scheduleOccurrences.created_at),
+      desc(scheduleOccurrences.id),
+    )
     .limit(limit);
 }
 

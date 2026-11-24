@@ -2,7 +2,13 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { apiCall } from "@/api/call";
 import { occurrenceSentenceKey } from "@/features/workflows/model";
 import { useI18n } from "@/lib/i18n-context";
-import { type Occurrence, sortOccurrences, toOccurrence } from "./schedule-model";
+import {
+  type Occurrence,
+  type OccurrenceCursor,
+  occurrenceCursor,
+  sortOccurrences,
+  toOccurrence,
+} from "./schedule-model";
 
 const OCCURRENCE_PAGE = 30;
 
@@ -15,7 +21,7 @@ export function useScheduleOccurrences(subject: { kind: "workflow" | "task"; id:
   const { t, tn } = useI18n();
   const query = useInfiniteQuery({
     queryKey: ["schedule-occurrences", subject.kind, subject.id],
-    initialPageParam: null as string | null,
+    initialPageParam: null as OccurrenceCursor | null,
     queryFn: ({ pageParam }) =>
       apiCall(
         "get",
@@ -24,10 +30,10 @@ export function useScheduleOccurrences(subject: { kind: "workflow" | "task"; id:
           : "/v1/tasks/{id}/schedule-occurrences",
         {
           path: { id: subject.id },
-          query: { limit: OCCURRENCE_PAGE, ...(pageParam ? { before: pageParam } : {}) },
+          query: { limit: OCCURRENCE_PAGE, ...(pageParam ?? {}) },
         },
       ),
-    getNextPageParam: (page) => page.next_before,
+    getNextPageParam: (page) => occurrenceCursor(page),
   });
   const raw = query.data?.pages.flatMap((page) => page.items) ?? [];
   const items: OccurrenceView[] = sortOccurrences(raw.map(toOccurrence)).map((occurrence) => {
