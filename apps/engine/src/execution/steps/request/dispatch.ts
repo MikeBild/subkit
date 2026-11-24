@@ -42,6 +42,7 @@ import {
 } from "./drivers/context.ts";
 import { DRIVERS } from "./drivers/registry.ts";
 import { RequestError } from "./errors.ts";
+import { resolveRequestQuery } from "./query-params.ts";
 import { rateLimitDeadline } from "./rate-limit.ts";
 import { isDocumentedReadOperation } from "./read-operations.ts";
 import { requestMaxAttempts } from "./retry.ts";
@@ -221,7 +222,15 @@ async function resolveRequestParts(
   const pathRes = p.step.path ? await resolveStringPlaceholders(p.step.path, resolverCtx) : null;
   const urlRes = p.step.url ? await resolveStringPlaceholders(p.step.url, resolverCtx) : null;
   const headersRes = p.step.headers ? await resolvePlaceholders(p.step.headers, partsCtx) : null;
-  const queryRes = p.step.query ? await resolvePlaceholders(p.step.query, partsCtx) : null;
+  const queryRes = p.step.query ? await resolveRequestQuery(p.step.query, partsCtx) : null;
+  if (queryRes && queryRes.omitted.length > 0)
+    logger.debug({
+      module: "request",
+      action: "query_null_params_omitted",
+      execution_id: p.ctx.execution_id,
+      step_id: p.step.id,
+      omitted_keys: queryRes.omitted,
+    });
   const bodyRes =
     p.step.body !== undefined && p.step.body !== null
       ? await resolvePlaceholdersTypePreserving(p.step.body, partsCtx)
@@ -277,10 +286,7 @@ async function resolveRequestParts(
   }
   const stepHeaders =
     (headersRes?.value as Record<string, string> | undefined) ?? p.step.headers ?? {};
-  const stepQuery =
-    (queryRes?.value as Record<string, string | number | boolean> | undefined) ??
-    p.step.query ??
-    {};
+  const stepQuery = queryRes?.value ?? p.step.query ?? {};
   const s3KeyRes = p.step.s3?.key
     ? await resolveStringPlaceholders(p.step.s3.key, resolverCtx)
     : null;

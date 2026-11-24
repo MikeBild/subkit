@@ -15876,7 +15876,7 @@
               "url": "${connector.stripe.base_url}/charges",
               "query": {
                 "limit": 100,
-                "starting_after": "${state.last_synced_charge_id}"
+                "ending_before": "${state.last_synced_charge_id}"
               },
               "state_read": {
                 "key": "last_synced_charge_id",
@@ -15885,14 +15885,14 @@
               },
               "state_write": {
                 "key": "last_synced_charge_id",
-                "value_path": "body.data[last].id"
+                "value_path": "body.data[0].id"
               }
             },
             {
               "kind": "transform",
               "id": "summary",
               "language": "javascript",
-              "expression": "const rows = input.scope.list_new.body.data || []; return { new_count: rows.length, newest_id: rows.length > 0 ? rows[rows.length - 1].id : undefined, window_amount: rows.reduce((s, r) => s + (r.amount || 0), 0) };"
+              "expression": "const rows = input.scope.list_new.body.data || []; return { new_count: rows.length, newest_id: rows.length > 0 ? rows[0].id : undefined, window_amount: rows.reduce((s, r) => s + (r.amount || 0), 0) };"
             }
           ]
         }
