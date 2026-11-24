@@ -99,3 +99,27 @@ export function cronOccurrencesWithin(
   }
   return found;
 }
+
+export interface CronDayPlan {
+  startMinutes: number[];
+  firesOnDay: (utcMidnight: number) => boolean;
+}
+
+export function cronDayPlan(cron: string): CronDayPlan | null {
+  const trimmed = cron.trim();
+  if (trimmed.startsWith(EVERY_PREFIX)) return null;
+  try {
+    const expression = CronExpressionParser.parse(trimmed, { strict: false, tz: "UTC" });
+    const { hour, minute } = expression.fields;
+    const startMinutes = hour.values
+      .flatMap((startHour) => minute.values.map((startMinute) => startHour * 60 + startMinute))
+      .sort((left, right) => left - right);
+    const firstStartMs = (startMinutes[0] ?? 0) * 60_000;
+    return {
+      startMinutes,
+      firesOnDay: (utcMidnight) => expression.includesDate(new Date(utcMidnight + firstStartMs)),
+    };
+  } catch {
+    return null;
+  }
+}
