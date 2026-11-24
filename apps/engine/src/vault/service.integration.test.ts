@@ -8,6 +8,7 @@ import { upsertCredential } from "../credentials/service.ts";
 import { auditLog, users, vaultItems } from "../db/schema/index.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT, type TestDb } from "../db/tests/setup.ts";
 import { builtinRoleId } from "../rbac/roles.ts";
+import { waitFor } from "../test-helpers/determinism/wait.ts";
 import { adminPrincipal } from "../test-helpers/principals.ts";
 import { seedConnector, seedTenant } from "../test-helpers/seed.ts";
 import { VAULT_PERMISSION, type VaultViewer } from "./core/vault-item.ts";
@@ -190,6 +191,73 @@ describe("vault items", () => {
     expect(used).toHaveLength(1);
     expect(used[0]?.metadata).toMatchObject({ name: "crm-token", version: 2, step_id: "call" });
     expect(await storedText()).not.toContain(ROTATED);
+  });
+
+  test("concurrent rotations audit the version each one produced", async () => {
+    const created = await createVaultItem(ctx.db, {
+      tenant_id,
+      actor: { kind: "user", id: owner },
+      viewer: admin,
+      kind: "secret",
+      name: "concurrent-token",
+      scope: "workspace",
+      environment: "dev",
+      description: null,
+      value: { kind: "secret", token: TOKEN },
+    });
+    expect(created.version).toBe(1);
+    const locked = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const holder = ctx.db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT id FROM vault_items WHERE id = ${created.id} FOR UPDATE`);
+      locked.resolve();
+      await release.promise;
+    });
+    await locked.promise;
+    const rotating = Promise.all(
+      [owner, colleague].map((actor_id) =>
+        updateVaultItem(ctx.db, {
+          tenant_id,
+          id: created.id,
+          actor: { kind: "user", id: actor_id },
+          viewer: admin,
+          value: { kind: "secret", token: `${ROTATED}-${actor_id}` },
+        }),
+      ),
+    );
+    const completed = Promise.allSettled([holder, rotating]);
+    try {
+      await waitFor(
+        async () => {
+          const result = await ctx.pool.query<{ count: number }>(
+            "SELECT count(*)::int AS count FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query ILIKE 'update \"vault_items\"%'",
+          );
+          return Number(result.rows[0]?.count) === 2;
+        },
+        { label: "concurrent vault rotations", tries: 200 },
+      );
+    } finally {
+      release.resolve();
+      await completed;
+    }
+    await rotating;
+    const current = await getVaultItem(ctx.db, tenant_id, created.id, admin);
+    expect(current.version).toBe(3);
+    const rotations = await ctx.db
+      .select({ actor_id: auditLog.actor_id, metadata: auditLog.metadata })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, tenant_id),
+          eq(auditLog.resource_id, created.id),
+          eq(auditLog.action, "vault.item.rotated"),
+        ),
+      );
+    expect(rotations).toHaveLength(2);
+    expect(
+      rotations.map((entry) => (entry.metadata as { version: number }).version).sort(),
+    ).toEqual([2, 3]);
+    expect(rotations.map((entry) => entry.actor_id).sort()).toEqual([owner, colleague].sort());
   });
 
   test("a handle resolves only in its environment", async () => {
