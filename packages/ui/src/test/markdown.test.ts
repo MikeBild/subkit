@@ -7,6 +7,21 @@ describe("markdown helpers", () => {
     const h = headings("# A\n```\n# not\n```\n## B\n## B");
     expect(h.map((x) => x.id)).toEqual(["a", "b", "b-1"]);
   });
+  it("ignores headings inside tilde fences (#562)", () => {
+    const h = headings("## Before\n~~~bash\n### EXAMPLE ONLY — NOT A HEADING\n~~~\n## After");
+    expect(h.map((x) => x.text)).toEqual(["Before", "After"]);
+  });
+  it("closes a fence only with the same char and at least the opening length", () => {
+    const texts = (md: string) => headings(md).map((x) => x.text);
+    expect(texts("~~~\n```\n# inside\n```\n~~~\n# out")).toEqual(["out"]);
+    expect(texts("````\n```\n# inside\n````\n# out")).toEqual(["out"]);
+    expect(texts("~~~~\n~~~\n# inside\n~~~~~\n# out")).toEqual(["out"]);
+    expect(texts("   ```\n# inside\n   ```\n# out")).toEqual(["out"]);
+    expect(texts("    ```\n# indented code, not a fence")).toEqual(["indented code, not a fence"]);
+  });
+  it("treats an unclosed fence as running to the end", () => {
+    expect(headings("# A\n~~~\n# B\n## C").map((x) => x.text)).toEqual(["A"]);
+  });
   it("bold wraps the selection, list prefixes each line", () => {
     expect(applyFormat("hallo welt", 0, 5, "bold").value).toBe("**hallo** welt");
     expect(applyFormat("a\nb", 0, 3, "list").value).toBe("- a\n- b");

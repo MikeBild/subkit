@@ -28,6 +28,7 @@ import {
   type LocalSnippetReason,
   resolveInvokeSnippet,
 } from "../lib/invoke-snippet-source.ts";
+import { repeatedOption } from "../lib/leading-options.ts";
 import { pickId } from "../lib/pick.ts";
 import {
   environmentMismatchHint,
@@ -287,7 +288,7 @@ const runCommand = defineCommand({
     },
     environment: RUN_ENVIRONMENT_ARG,
   },
-  async run({ args }) {
+  async run({ args, rawArgs }) {
     const environment = parseRunEnvironment(args.environment);
     if (!environment) {
       process.stderr.write(`${invalidRunEnvironmentMessage(args.environment)}\n`);
@@ -321,12 +322,7 @@ const runCommand = defineCommand({
       }
     }
 
-    const rawInputFile = (args as Record<string, unknown>)["input-file"];
-    const inputFilePairs: string[] = Array.isArray(rawInputFile)
-      ? rawInputFile.map((s) => String(s))
-      : rawInputFile
-        ? [String(rawInputFile)]
-        : [];
+    const inputFilePairs = repeatedOption(rawArgs, "input-file");
     if (inputFilePairs.length > 0) {
       if (input === null || typeof input !== "object" || Array.isArray(input)) {
         input = {};

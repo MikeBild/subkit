@@ -1,4 +1,20 @@
-export function normalizeDecimal(text: string): string | null {
+export type DecimalSeparator = "." | ",";
+
+export const decimalSeparatorFor = (locale: string): DecimalSeparator =>
+  locale === "de" ? "," : ".";
+
+export function readsAsThousandsGroup(
+  wholePart: string,
+  separator: DecimalSeparator,
+  decimalSeparator: DecimalSeparator,
+): boolean {
+  return separator !== decimalSeparator && !/^0*$/.test(wholePart);
+}
+
+export function normalizeDecimal(
+  text: string,
+  decimalSeparator: DecimalSeparator = ",",
+): string | null {
   const compact = text.trim().replace(/[\s'\u00a0\u202f]/g, "");
   if (!/^[\d.,]+$/.test(compact) || !/\d/.test(compact)) return null;
   const lastDot = compact.lastIndexOf(".");
@@ -19,7 +35,9 @@ export function normalizeDecimal(text: string): string | null {
       const parts = compact.split(separator);
       const grouped =
         parts.length > 2 ||
-        (parts.length === 2 && parts[1]?.length === 3 && !/^0*$/.test(parts[0] ?? ""));
+        (parts.length === 2 &&
+          parts[1]?.length === 3 &&
+          readsAsThousandsGroup(parts[0] ?? "", separator, decimalSeparator));
       if (grouped) {
         if (!parts.slice(1).every((part) => part.length === 3) || !parts[0]) return null;
         whole = parts.join("");
@@ -33,8 +51,8 @@ export function normalizeDecimal(text: string): string | null {
   return fraction ? `${whole}.${fraction}` : whole;
 }
 
-export function parseAmount(text: string): number | null {
-  const normalized = normalizeDecimal(text);
+export function parseAmount(text: string, decimalSeparator: DecimalSeparator = ","): number | null {
+  const normalized = normalizeDecimal(text, decimalSeparator);
   if (normalized === null) return null;
   const value = Number(normalized);
   return Number.isFinite(value) ? value : null;

@@ -420,7 +420,14 @@ networks:
    Then restore the database with `docker compose -p subkit-recovery exec -T postgres pg_restore --exit-on-error --clean --if-exists --no-owner -U subkit -d subkit < /path/to/backup/postgres.dump`.
    This command replaces database contents. Use it only against the new recovery project.
 3. Start the recovered services with `docker compose -p subkit-recovery up -d --wait`.
-   Check `/health` and `/ready` on the selected port and sign in with an existing account.
+   Docker does not publish `SUBKIT_HOST_PORT` while the network is `internal`, so check inside the engine container:
+   `docker compose -p subkit-recovery exec engine curl -fsS http://127.0.0.1:3000/health` and
+   `docker compose -p subkit-recovery exec engine curl -fsS http://127.0.0.1:3000/ready`.
+   Read records back with the CLI in the same container: issue a key with
+   `docker compose -p subkit-recovery exec engine engine --issue-admin-key --tenant <tenant>`, then run
+   `docker compose -p subkit-recovery exec engine subkit login --engine-url http://127.0.0.1:3000 --api-key <key>` and
+   `docker compose -p subkit-recovery exec engine subkit workflows list`.
+   Do not remove `internal: true` just to verify. Sign in to Cockpit only after you have reviewed schedules, triggers and connector permissions and lifted the isolation.
    Compare workflow records and downloaded file checksums, and verify an encrypted credential through a controlled test.
    A successful health check alone does not prove that the database, object files and key match.
 
@@ -447,7 +454,16 @@ If the provider refuses it, the setup stops and nothing is stored. The same toke
 
 Open `http://localhost:3000` in your browser. The address takes you straight to the Cockpit at `/cockpit`.
 The engine index, with every address for tools and AI clients, is at `/engine`.
-If no sign-in provider is configured, sign in with an API key.
+If no sign-in provider is configured, sign in with a personal API key.
+The key `subkit init` prints belongs to a system account. It works for the API and the CLI, but not for Cockpit sign-in.
+Issue a personal admin key instead:
+
+```bash
+docker compose exec engine engine --issue-admin-key --tenant my-org
+```
+
+The tenant slug is your workspace name in lowercase with hyphens, so "My Org" becomes `my-org`.
+Paste the printed `wf_live_…` key into the API-key sign-in of the Cockpit.
 Then build your first workflow with "Your first workflow".
 
 ## Your first workflow
@@ -6307,7 +6323,7 @@ Show and rename the catalog categories shared by every kind
 
 #### `subkit categories list`
 
-List the catalog categories with how many workflows, connectors, knowledge sources, skills, files and tasks use each
+List the catalog categories with how many workflows, connectors, knowledge sources, skills, files, tasks and intake items use each
 
 - `--json` — JSON output
 
@@ -7459,6 +7475,9 @@ Drop a session from the local cache (the server-side conversation row is preserv
 
 Scheduled workflow runs
 
+- `--workflow` (string) — Filter by workflow id
+- `--json` (default: false) — JSON output
+
 #### `subkit schedules create`
 
 Schedule a workflow (a workflow carries at most one schedule; re-create updates it)
@@ -8005,6 +8024,11 @@ List system accounts
 ### `subkit tasks`
 
 Tasks: a goal with limits that works on its own and asks before it acts
+
+- `--category` (string) — Only this catalog block
+- `--archived` (default: false) — Show archived tasks instead
+- `--limit` (string, default: 50) — Max rows
+- `--json` (default: false) — JSON output
 
 #### `subkit tasks abort`
 

@@ -236,7 +236,8 @@ describe("DAG containment and order", () => {
           id: "self",
           kind: "transform",
           language: "javascript",
-          expression: "return input.scope.self.data + $scope.self.data + self.value;",
+          expression: "return input.scope.self.data + $scope.self.data;",
+          data_selector: "self.value",
         },
       ]),
     );

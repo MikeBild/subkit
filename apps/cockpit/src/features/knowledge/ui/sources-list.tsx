@@ -28,6 +28,7 @@ export function SourcesList({
   items,
   groups,
   sections,
+  loaded,
   onOpen,
 }: {
   st: ListState;
@@ -37,6 +38,7 @@ export function SourcesList({
   items: SourceView[];
   groups: [string, SourceView[]][];
   sections: number;
+  loaded?: { items: unknown[]; total: number; truncated?: boolean } | undefined;
   onOpen: (id: string) => void;
 }) {
   const { t } = useI18n();
@@ -54,6 +56,7 @@ export function SourcesList({
       <ListSummary
         testId="kn-sources-summary"
         kind="knowledge_source"
+        loaded={loaded}
         parts={[
           plural(t, "kn.sources.count", items.length, {
             sections: plural(t, "kn.sources.sections", sections),

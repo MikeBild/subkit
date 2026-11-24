@@ -7,7 +7,7 @@ const listCommand = defineCommand({
   meta: {
     name: "list",
     description:
-      "List the catalog categories with how many workflows, connectors, knowledge sources, skills, files and tasks use each",
+      "List the catalog categories with how many workflows, connectors, knowledge sources, skills, files, tasks and intake items use each",
   },
   args: { json: { type: "boolean", description: "JSON output" } },
   async run({ args }) {
@@ -25,6 +25,7 @@ const listCommand = defineCommand({
             "skill",
             "file",
             "task",
+            "intake",
           ],
           categories.map((c) => ({ category: c.category, total: c.total, ...c.counts })),
         );

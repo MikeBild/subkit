@@ -183,7 +183,14 @@ networks:
    Then restore the database with `docker compose -p subkit-recovery exec -T postgres pg_restore --exit-on-error --clean --if-exists --no-owner -U subkit -d subkit < /path/to/backup/postgres.dump`.
    This command replaces database contents. Use it only against the new recovery project.
 3. Start the recovered services with `docker compose -p subkit-recovery up -d --wait`.
-   Check `/health` and `/ready` on the selected port and sign in with an existing account.
+   Docker does not publish `SUBKIT_HOST_PORT` while the network is `internal`, so check inside the engine container:
+   `docker compose -p subkit-recovery exec engine curl -fsS http://127.0.0.1:3000/health` and
+   `docker compose -p subkit-recovery exec engine curl -fsS http://127.0.0.1:3000/ready`.
+   Read records back with the CLI in the same container: issue a key with
+   `docker compose -p subkit-recovery exec engine engine --issue-admin-key --tenant <tenant>`, then run
+   `docker compose -p subkit-recovery exec engine subkit login --engine-url http://127.0.0.1:3000 --api-key <key>` and
+   `docker compose -p subkit-recovery exec engine subkit workflows list`.
+   Do not remove `internal: true` just to verify. Sign in to Cockpit only after you have reviewed schedules, triggers and connector permissions and lifted the isolation.
    Compare workflow records and downloaded file checksums, and verify an encrypted credential through a controlled test.
    A successful health check alone does not prove that the database, object files and key match.
 

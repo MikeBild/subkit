@@ -19,6 +19,7 @@ import {
   type ConfigFacts,
   configCheck,
   reachabilityCheck,
+  setupCheck,
   updateChannelCheck,
   worst,
 } from "./doctor-checks.ts";
@@ -168,18 +169,7 @@ export const doctorCommand = defineCommand({
           status: "ok",
           detail: "api_key resolved; principal authenticated",
         });
-        const overall = setup.overall_status;
-        const counts = setup.summary_counts;
-        results.push({
-          name: "setup",
-          status: overall,
-          detail: `overall=${overall} blockers=${counts.blockers} warnings=${counts.warnings} sections_blocked=${counts.sections_blocked} sections_warn=${counts.sections_warn}`,
-          ...(overall !== "ok"
-            ? {
-                hint: "run `subkit doctor --json` (or hit GET /v1/diagnostics/setup) for the per-section detail",
-              }
-            : {}),
-        });
+        results.push(setupCheck(setup));
       } catch (err) {
         const denial = engineCheckDenial("setup", err);
         if (denial) {

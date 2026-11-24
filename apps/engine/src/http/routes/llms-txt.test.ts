@@ -209,3 +209,17 @@ describe("GET /docs.json", () => {
     expect(embedded.filter((file) => !referenced.has(file))).toEqual([]);
   });
 });
+
+describe("first-run setup guide (#507)", () => {
+  test("tells the operator how to get a user-owned key for Cockpit sign-in", async () => {
+    const bundle = DocsBundleSchema.parse(await (await buildApp().request("/docs.json")).json());
+    const page = bundle.pages.find((entry) => entry.slug === "first-run-setup");
+    for (const locale of ["en", "de"] as const) {
+      const sourceText = await Bun.file(
+        join(import.meta.dir, `../reference/first-run-setup.${locale}.md`),
+      ).text();
+      expect(sourceText).toContain("--issue-admin-key --tenant my-org");
+      expect(page?.locales[locale]?.body).toContain("--issue-admin-key --tenant my-org");
+    }
+  });
+});

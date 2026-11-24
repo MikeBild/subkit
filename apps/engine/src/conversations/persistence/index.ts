@@ -6,6 +6,7 @@ import { fileLinks } from "../../db/schema/files.ts";
 import {
   conversationElicitations,
   conversationMessages,
+  conversations,
   conversationToolCalls,
 } from "../../db/schema/index.ts";
 import { extractFileSentinels, replaceFileSentinels } from "../../files/sentinel.ts";
@@ -169,9 +170,16 @@ export async function appendMessage(
     })
     .returning({ id: conversationMessages.id });
   assertInsertRow(row, "conversation_messages");
+  await touchConversation(db, tenant_id, conversation_id);
   if (role === "user") await ensureConversationTitle(db, tenant_id, conversation_id, content);
   return row.id;
 }
+
+const touchConversation = (db: Executor, tenant_id: string, conversation_id: string) =>
+  db
+    .update(conversations)
+    .set({ updated_at: sql`now()` })
+    .where(and(eq(conversations.tenant_id, tenant_id), eq(conversations.id, conversation_id)));
 
 export async function updateMessageContent(
   db: Executor,

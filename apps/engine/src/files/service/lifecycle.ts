@@ -32,15 +32,6 @@ import {
   scanWithTimeout,
 } from "./shared.ts";
 
-export async function findLiveFile(
-  db: Db,
-  tenantId: string,
-  fileUuid: string,
-): Promise<FileRow | null> {
-  const row = await findTenantFile(db, tenantId, fileUuid);
-  return row && !row.deleted_at ? row : null;
-}
-
 export async function deleteFile(
   db: Db,
   actor: FileActor,

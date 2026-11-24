@@ -134,3 +134,25 @@ test("the skills list hides creation without skill:write", async () => {
   for (const filter of ["kn-created-by", "kn-group"])
     expect(sheet).toContain(`data-testid="${filter}"`);
 });
+
+test("a list cut off at the page cap says only the loaded entries are searched", async () => {
+  permissions = ["skill:read"];
+  const items = Array.from({ length: 2000 }, (_, i) => ({
+    id: `s${i}`,
+    title: `Skill ${i}`,
+    status: "active",
+    applies_to: "both",
+    scope: "global",
+    category: "writing",
+    version: 1,
+    body: "",
+    updated_at: "2026-11-20T10:00:00Z",
+    created_at: "2026-11-01T10:00:00Z",
+  }));
+  const markup = await html(
+    seeded([[KEYS.skills, { items, total: 2001, truncated: true }]]),
+    <SkillsPage />,
+  );
+  expect(markup).toContain('data-testid="kn-list-partial"');
+  expect(markup).toContain("2.000 von 2.001");
+});

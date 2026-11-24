@@ -4,6 +4,11 @@ import pc from "picocolors";
 import { configPath, DEFAULT_ENGINE_URL, loadConfig, saveConfig, saveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
 
+export const profileAddOutro = (name: string, previousActive?: string | null): string =>
+  previousActive && previousActive !== name
+    ? `Profile "${name}" is now active — 'subkit profile use ${previousActive}' to switch back`
+    : `Profile "${name}" is now active`;
+
 const listCommand = defineCommand({
   meta: { name: "list", description: "List all saved profiles" },
   async run() {
@@ -112,6 +117,7 @@ const addCommand = defineCommand({
       }
     }
 
+    const previousActive = loadConfig().active_profile;
     saveProfile({
       name,
       engine_url: engineUrl,
@@ -133,7 +139,7 @@ const addCommand = defineCommand({
       }
     }
 
-    prompts.outro(`Use 'subkit profile use ${name}' to activate`);
+    prompts.outro(profileAddOutro(name, previousActive));
   },
 });
 

@@ -6,6 +6,7 @@ import {
   skillScopeViolation,
 } from "../skills/types.ts";
 import { CategorySchema } from "./catalog-metadata.ts";
+import { FileIdSchema } from "./files-schemas.ts";
 
 const IntakeTagsSchema = z.array(z.string().min(1).max(40)).max(20);
 
@@ -113,7 +114,9 @@ export const IntakeProposalTargetSchema = z
 
 export const IntakeAttachmentSchema = z
   .object({
-    file_id: z.string().uuid(),
+    file_id: FileIdSchema.describe(
+      "Files API id (fid_…); download via GET /v1/files/{file_id}/content.",
+    ),
     filename: z.string(),
     content_type: z.string(),
     size_bytes: z.number().int().nonnegative(),

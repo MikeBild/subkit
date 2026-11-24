@@ -28,6 +28,21 @@ export function splitLeadingOptions(
   return { leading, command: rawArgs[i], rest: rawArgs.slice(i + 1) };
 }
 
+export function repeatedOption(rawArgs: readonly string[], name: string): string[] {
+  const flag = `--${name}`;
+  const values: string[] = [];
+  for (let i = 0; i < rawArgs.length; i += 1) {
+    const token = rawArgs[i]!;
+    if (token === "--") break;
+    if (token.startsWith(`${flag}=`)) values.push(token.slice(flag.length + 1));
+    else if (token === flag && i + 1 < rawArgs.length) {
+      values.push(rawArgs[i + 1]!);
+      i += 1;
+    }
+  }
+  return values;
+}
+
 export function profileOption(rawArgs: readonly string[]): string | undefined {
   let found: string | undefined;
   for (let i = 0; i < rawArgs.length; i += 1) {

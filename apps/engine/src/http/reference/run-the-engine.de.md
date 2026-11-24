@@ -183,7 +183,14 @@ networks:
    Stelle dann die Datenbank mit `docker compose -p subkit-recovery exec -T postgres pg_restore --exit-on-error --clean --if-exists --no-owner -U subkit -d subkit < /path/to/backup/postgres.dump` wieder her.
    Dieser Befehl ersetzt Datenbankinhalte. Verwende ihn nur gegen das neue Wiederherstellungsprojekt.
 3. Starte die wiederhergestellten Dienste mit `docker compose -p subkit-recovery up -d --wait`.
-   Prüfe `/health` und `/ready` auf dem gewählten Port und melde dich mit einem bestehenden Konto an.
+   Docker veröffentlicht `SUBKIT_HOST_PORT` nicht, solange das Netz `internal` ist. Prüfe deshalb im Engine-Container:
+   `docker compose -p subkit-recovery exec engine curl -fsS http://127.0.0.1:3000/health` und
+   `docker compose -p subkit-recovery exec engine curl -fsS http://127.0.0.1:3000/ready`.
+   Lies Datensätze mit der CLI im selben Container zurück: Stelle einen Schlüssel mit
+   `docker compose -p subkit-recovery exec engine engine --issue-admin-key --tenant <tenant>` aus, dann führe
+   `docker compose -p subkit-recovery exec engine subkit login --engine-url http://127.0.0.1:3000 --api-key <key>` und
+   `docker compose -p subkit-recovery exec engine subkit workflows list` aus.
+   Entferne `internal: true` nicht nur für die Prüfung. Melde dich erst im Cockpit an, wenn du Zeitpläne, Trigger und Connector-Rechte geprüft und die Trennung aufgehoben hast.
    Vergleiche Workflow-Datensätze und Prüfsummen heruntergeladener Dateien, und prüfe ein verschlüsseltes Zugangsdatum mit einem kontrollierten Test.
    Ein erfolgreicher Health-Check allein belegt nicht, dass Datenbank, Objektdateien und Schlüssel zusammenpassen.
 

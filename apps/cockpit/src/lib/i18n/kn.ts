@@ -56,6 +56,7 @@ export const knEn = {
   "kn.editInChat": "Change in chat",
   "kn.noMatch": "No matching records",
   "kn.noMatchHint": "Try a broader search.",
+  "kn.partial": "Showing the first {n} of {total}. Search covers only the loaded entries.",
   "kn.technical": "Technical",
   "kn.fact.ref": "Reference",
   "kn.fact.version": "Version",
@@ -448,6 +449,8 @@ export const knDe: Record<keyof typeof knEn, string> = {
   "kn.editInChat": "Im Chat ändern",
   "kn.noMatch": "Keine passenden Datensätze",
   "kn.noMatchHint": "Versuch eine allgemeinere Suche.",
+  "kn.partial":
+    "Angezeigt werden die ersten {n} von {total}. Die Suche umfasst nur die geladenen Einträge.",
   "kn.technical": "Technisch",
   "kn.fact.ref": "Verweis",
   "kn.fact.version": "Version",

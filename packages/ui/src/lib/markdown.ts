@@ -13,16 +13,38 @@ export const slug = (s: string) =>
     .trim()
     .replace(/\s+/g, "-") || "abschnitt";
 
+export interface FenceMarker {
+  char: "`" | "~";
+  length: number;
+  info: string;
+}
+
+export function fenceMarker(line: string): FenceMarker | null {
+  const m = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+  if (!m?.[1]) return null;
+  const char = m[1][0] as FenceMarker["char"];
+  const info = (m[2] ?? "").trim();
+  if (char === "`" && info.includes("`")) return null;
+  return { char, length: m[1].length, info };
+}
+
+const closesFence = (open: FenceMarker, marker: FenceMarker | null) =>
+  !!marker && marker.char === open.char && marker.length >= open.length && !marker.info;
+
 export function headings(md: string): Heading[] {
   const out: Heading[] = [];
   const seen = new Map<string, number>();
-  let fence = false;
+  let openFence: FenceMarker | null = null;
   for (const line of md.split("\n")) {
-    if (/^\s*```/.test(line)) {
-      fence = !fence;
+    const marker = fenceMarker(line);
+    if (openFence) {
+      if (closesFence(openFence, marker)) openFence = null;
       continue;
     }
-    if (fence) continue;
+    if (marker) {
+      openFence = marker;
+      continue;
+    }
     const m = /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
     if (!m) continue;
     const text = (m[2] ?? "").replace(/[*_`]/g, "");

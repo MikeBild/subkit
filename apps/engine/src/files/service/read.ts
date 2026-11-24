@@ -46,7 +46,7 @@ import {
   auditedBy,
   type FileActor,
   type FileRow,
-  findTenantFile,
+  findLiveFile,
   openObjectStream,
 } from "./shared.ts";
 
@@ -221,7 +221,7 @@ export async function getFileDetail(
   principal: ResolvedPrincipal,
   fileUuid: string,
 ): Promise<FileDetail | null> {
-  const row = await findTenantFile(db, principal.tenant_id, fileUuid);
+  const row = await findLiveFile(db, principal.tenant_id, fileUuid);
   if (!row) return null;
   const creators = await recordedFileCreators(db, principal.tenant_id, [row]);
   const creator = creators.get(row.id) ?? null;
@@ -237,7 +237,7 @@ export async function findDownloadableFile(
   tenantId: string,
   fileUuid: string,
 ): Promise<FileRow | null> {
-  const row = await findTenantFile(db, tenantId, fileUuid);
+  const row = await findLiveFile(db, tenantId, fileUuid);
   if (!row || row.content_type === PACKAGE_CONTENT_TYPE) return null;
   return row;
 }

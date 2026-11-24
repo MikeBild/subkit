@@ -38034,8 +38034,7 @@ export interface components {
             tags?: string[];
         };
         IntakeAttachment: {
-            /** Format: uuid */
-            file_id: string;
+            file_id: components["schemas"]["FileId"] & unknown;
             filename: string;
             content_type: string;
             size_bytes: number;

@@ -35862,8 +35862,14 @@
         "type": "object",
         "properties": {
           "file_id": {
-            "type": "string",
-            "format": "uuid"
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FileId"
+              },
+              {
+                "description": "Files API id (fid_…); download via GET /v1/files/{file_id}/content."
+              }
+            ]
           },
           "filename": {
             "type": "string"

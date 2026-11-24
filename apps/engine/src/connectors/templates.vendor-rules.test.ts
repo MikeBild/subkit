@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { buildStepDag, detectCycles } from "../workflows/core/dag.ts";
+import type { WorkflowDef } from "../workflows/types.ts";
 import { loadBuiltinTemplates, ProbeDiagnosticsSchema, ReadOperationSchema } from "./templates.ts";
 
 const templates = loadBuiltinTemplates();
@@ -179,6 +181,13 @@ describe("connector-template catalog — browserless query-auth hardening", () =
     const transformStep = recipe?.workflow.steps.find((s) => s.id === "normalise");
     expect(transformStep?.kind).toBe("transform");
     expect(recipe?.workflow.trigger?.kind).toBe("schedule");
+  });
+
+  test("browserless scrape-then-email-digest recipe has no dependency cycle (#520)", () => {
+    const recipe = templates
+      .find((x) => x.slug === "browserless")
+      ?.recipes.find((r) => r.slug === "scrape-then-email-digest");
+    expect(detectCycles(buildStepDag(recipe!.workflow as WorkflowDef)).has_cycle).toBe(false);
   });
 });
 

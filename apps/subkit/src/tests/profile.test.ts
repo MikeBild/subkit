@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { initialSessionState } from "@cli-core/index.ts";
+import { profileAddOutro } from "../commands/profile.ts";
 import { defaultConfig, loadConfig, resolveProfile, saveConfig, saveProfile } from "../config.ts";
 import type { EngineClient } from "../engine-client.ts";
 import { handleSlash } from "../repl/slash/handler.ts";
@@ -136,6 +137,23 @@ describe("subkit profile CRUD", () => {
     expect(reloaded.active_profile).toBe("a");
     expect(Object.keys(reloaded.profiles)).toContain("a");
     expect(Object.keys(reloaded.profiles)).not.toContain("b");
+  });
+});
+
+describe("subkit profile add (#510)", () => {
+  test("new profile is active and the outro says so", () => {
+    saveConfig(defaultConfig(), path);
+    const previousActive = loadConfig(path).active_profile;
+    saveProfile(
+      { name: "prod", engine_url: "https://prod", api_key: "", active_tenant_id: null },
+      path,
+    );
+    expect(loadConfig(path).active_profile).toBe("prod");
+    const outro = profileAddOutro("prod", previousActive);
+    expect(outro).not.toContain("to activate");
+    expect(outro).toContain('"prod" is now active');
+    expect(outro).toContain("subkit profile use default");
+    expect(profileAddOutro("prod", "prod")).toBe('Profile "prod" is now active');
   });
 });
 

@@ -3,7 +3,7 @@ export type ReleaseNotes = { version: string; notes: string[]; highlights: strin
 export type PendingNotes = { version: string | null; notes: string[]; highlights: string[] | null };
 
 export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: PendingNotes } = {
-  "source": "0ed0c08d4e4b9de9e0e4a54b47b21f40bdbbb660",
+  "source": "2e8cff90403fa41d266d78d618e46a487efd06c9",
   "releases": [
     {
       "version": "v1.0.0",
@@ -2356,6 +2356,8 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
   "unpublished": {
     "version": "13.0.0",
     "notes": [
+      "logs --json emits NDJSON (#527)",
+      "approval expiry says today on same local day (#556)",
       "request steps name their protocol as a discriminated union",
       "remove the loop step kind in favor of for_each"
     ],

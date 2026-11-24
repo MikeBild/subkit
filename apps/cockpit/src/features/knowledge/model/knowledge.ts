@@ -101,13 +101,17 @@ export interface EntryAttachment {
   ready: boolean;
 }
 
+const BARE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export const filesApiId = (id: string): string => (BARE_UUID.test(id) ? `fid_${id}` : id);
+
 export function entryAttachment(item: unknown): EntryAttachment | null {
   const raw = (item as { attachment?: unknown } | null)?.attachment;
   if (!raw || typeof raw !== "object") return null;
   const a = raw as Record<string, unknown>;
   if (typeof a.file_id !== "string" || typeof a.filename !== "string") return null;
   return {
-    fileId: a.file_id,
+    fileId: filesApiId(a.file_id),
     name: a.filename,
     kind: fileKindOf(a.filename),
     size: typeof a.size_bytes === "number" ? a.size_bytes : 0,

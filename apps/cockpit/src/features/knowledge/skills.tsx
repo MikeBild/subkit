@@ -299,6 +299,7 @@ export function SkillsPage({ creating = false }: { creating?: boolean }) {
             <ListSummary
               testId="kn-skills-summary"
               kind="skill"
+              loaded={query.data}
               parts={[plural(t, "kn.skills.count", items.length)]}
             />
             {items.length ? (

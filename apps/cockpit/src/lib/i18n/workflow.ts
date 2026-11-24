@@ -281,7 +281,8 @@ export const workflowEn = {
   "workflowSteps.column.step": "Step",
   "workflowSteps.column.kind": "Kind",
   "stepEditor.durationPlaceholder": "e.g. 5 min",
-  "stepEditor.codeHelp": "JavaScript; input holds the previous step's output.",
+  "stepEditor.codeHelp":
+    "JavaScript; earlier step results are at input.scope.<step_id>.data, the workflow input at input.input.",
   "stepEditor.connectorMissing": "Choose a connector.",
   "stepEditor.pathInvalid": "Enter a path like /messages/send.",
   "stepEditor.codeMissing": "The transformation is missing.",
@@ -688,7 +689,8 @@ export const workflowDe: Record<keyof typeof workflowEn, string> = {
   "workflowSteps.column.step": "Schritt",
   "workflowSteps.column.kind": "Art",
   "stepEditor.durationPlaceholder": "z. B. 5 min",
-  "stepEditor.codeHelp": "JavaScript; input enthält die Ausgabe des vorigen Schritts.",
+  "stepEditor.codeHelp":
+    "JavaScript; Ergebnisse früherer Schritte liegen unter input.scope.<step_id>.data, die Workflow-Eingabe unter input.input.",
   "stepEditor.connectorMissing": "Wähle einen Connector.",
   "stepEditor.pathInvalid": "Gib einen Pfad wie /messages/send ein.",
   "stepEditor.codeMissing": "Die Umwandlung fehlt.",
