@@ -6461,7 +6461,7 @@ Upload a file (inline ≤5 MB, authenticated streaming above)
 
 - `<path>` (positional, required) — Path to file
 - `--content-type` (string) — Override detected MIME type
-- `--no-dedup` (default: false) — Skip the client-side sha256 dedup probe (forces an upload)
+- `--dedup` (default: true) — Reuse an existing file with the same sha256; --no-dedup forces an upload
 - `--link-to` (string) — After upload, link the file to <resource_type>:<id>
 - `--slug` (string) — Optional slug for the link
 - `--role` (string) — Optional role for the link
