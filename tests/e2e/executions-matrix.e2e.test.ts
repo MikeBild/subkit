@@ -124,9 +124,15 @@ describe("source: step (single isolated step)", () => {
       },
       input: { n: 21 },
     });
-    expect([200, 201]).toContain(run.status);
-    const output = run.body.output as { doubled?: number } | undefined;
-    expect(output?.doubled).toBe(42);
+    expect(run.status).toBe(202);
+    expect(run.body.execution_id).toBeTruthy();
+    const terminal = await waitForExecution(api, run.body.execution_id);
+    expect(["completed", "succeeded"]).toContain(terminal.status);
+    const steps = await api.get<{ items: { step_key: string; output_preview: unknown }[] }>(
+      `/v1/executions/${run.body.execution_id}/steps`,
+    );
+    const only = steps.body.items.find((item) => item.step_key === "only");
+    expect(only?.output_preview).toEqual({ doubled: 42 });
   }, 60_000);
 });
 
