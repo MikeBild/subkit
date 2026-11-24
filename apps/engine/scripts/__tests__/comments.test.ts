@@ -1,7 +1,16 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { findComments } from "../audit/comments.ts";
 
 describe("findComments", () => {
+  test("setup pair visibility satisfies the no-comments invariant (#552)", () => {
+    const source = readFileSync(
+      new URL("../../../cockpit/src/features/operations/pair-model.ts", import.meta.url),
+      "utf8",
+    );
+    expect(findComments("pair-model.ts", source)).toEqual([]);
+  });
+
   test("reports line, block and JSX comments", () => {
     const source = [
       "// a",
