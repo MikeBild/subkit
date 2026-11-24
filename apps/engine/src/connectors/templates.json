@@ -12836,7 +12836,7 @@
       {
         "slug": "recent-rows",
         "title": "Show the most recent N rows",
-        "description": "ORDER BY a timestamp column (default `created_at`) DESC LIMIT N. Edit the column if your schema uses a different name.",
+        "description": "ORDER BY a timestamp column (default `created_at`) DESC LIMIT N. Set `order_column` if your schema uses a different name.",
         "intent_keywords": ["recent rows", "latest entries", "most recent"],
         "derived_from_skill": "postgres-basics",
         "category": "database",
@@ -12847,13 +12847,13 @@
         "sample_input": null,
         "expected_output_preview": null,
         "required_connectors": [],
-        "version": "1.0.0",
+        "version": "1.0.1",
         "author": "subkit-builtin",
         "last_validated_at": null,
         "deprecated": null,
         "workflow": {
           "name": "postgres-recent-rows",
-          "description": "Pull the most recent N rows ordered by created_at.",
+          "description": "Pull the most recent N rows ordered by a timestamp column (default created_at), one jsonb row per record.",
           "input_schema": {
             "type": "object",
             "required": ["table_name"],
@@ -12864,6 +12864,10 @@
               },
               "table_name": {
                 "type": "string"
+              },
+              "order_column": {
+                "type": "string",
+                "default": "created_at"
               },
               "limit": {
                 "type": "integer",
@@ -12878,8 +12882,13 @@
               "method": "SELECT",
               "connector_id": "00000000-0000-0000-0000-000000000000",
               "sql": {
-                "query": "SELECT * FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2 ORDER BY ordinal_position LIMIT $3;",
-                "params": ["${input.schema_name}", "${input.table_name}", "${input.limit}"]
+                "query": "SELECT convert_from(decode((xpath('/row/r/text()', x.node))[1]::text, 'base64'), 'UTF8')::jsonb AS row FROM unnest(xpath('/table/row', query_to_xml(format('SELECT encode(convert_to(row_to_json(t)::text, ''UTF8''), ''base64'') AS r FROM %I.%I t ORDER BY %I DESC LIMIT %s', $1::text, $2::text, $3::text, $4::int), false, false, ''))) WITH ORDINALITY AS x(node, position) ORDER BY x.position;",
+                "params": [
+                  "${input.schema_name}",
+                  "${input.table_name}",
+                  "${input.order_column}",
+                  "${input.limit}"
+                ]
               }
             }
           ]

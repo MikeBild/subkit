@@ -73,6 +73,27 @@ describe("Postgres recipes", () => {
     }
   });
 
+  test("recent-rows orders the table rows instead of catalog columns (#571)", () => {
+    const recentRowsRecipe = pg.recipes.find((recipe) => recipe.slug === "recent-rows")!;
+    const [rowsStep] = recentRowsRecipe.workflow.steps as Array<{
+      sql: { query: string; params: string[] };
+    }>;
+    expect(rowsStep!.sql.query).not.toContain("information_schema");
+    expect(rowsStep!.sql.query).toContain("FROM %I.%I");
+    expect(rowsStep!.sql.query).toContain("ORDER BY %I DESC");
+    expect(rowsStep!.sql.params).toEqual([
+      "${input.schema_name}",
+      "${input.table_name}",
+      "${input.order_column}",
+      "${input.limit}",
+    ]);
+    const inputProperties = recentRowsRecipe.workflow.input_schema?.properties as Record<
+      string,
+      { default?: unknown }
+    >;
+    expect(inputProperties.order_column?.default).toBe("created_at");
+  });
+
   test("each recipe ships a sql block (not an http url)", () => {
     for (const r of pg.recipes) {
       for (const step of r.workflow.steps as Array<{ sql?: { query?: string }; url?: string }>) {
