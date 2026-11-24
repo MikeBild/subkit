@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { profileOption, splitLeadingOptions } from "./leading-options.ts";
+import { profileOption, repeatedOption, splitLeadingOptions } from "./leading-options.ts";
 
 const defs = {
   profile: { type: "string" },
@@ -65,5 +65,33 @@ describe("profileOption", () => {
   test("returns nothing without a profile", () => {
     expect(profileOption(["workflows", "list", "--json"])).toBeUndefined();
     expect(profileOption(["workflows", "--profile"])).toBeUndefined();
+  });
+});
+
+describe("repeatedOption", () => {
+  test("keeps every value of a repeated option in order", () => {
+    expect(
+      repeatedOption(
+        ["--input-file", "order=a.pdf", "--input-file", "receipt=b.pdf"],
+        "input-file",
+      ),
+    ).toEqual(["order=a.pdf", "receipt=b.pdf"]);
+  });
+
+  test("accepts inline values mixed with spaced ones", () => {
+    expect(
+      repeatedOption(["--attach=a.png", "wf", "--json", "--attach", "b.png"], "attach"),
+    ).toEqual(["a.png", "b.png"]);
+  });
+
+  test("ignores similarly named options and everything after --", () => {
+    expect(
+      repeatedOption(["--attachment", "x", "--attach", "a", "--", "--attach", "b"], "attach"),
+    ).toEqual(["a"]);
+  });
+
+  test("returns an empty list when absent or the value is missing", () => {
+    expect(repeatedOption(["--json"], "attach")).toEqual([]);
+    expect(repeatedOption(["--attach"], "attach")).toEqual([]);
   });
 });
