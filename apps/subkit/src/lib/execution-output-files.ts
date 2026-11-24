@@ -54,7 +54,7 @@ export async function executionOutputFileLines(
   try {
     linkedFiles = await listLinkedOutputFiles(client, execution.id);
   } catch {
-    return [];
+    linkedFiles = [];
   }
   const filesById = new Map(linkedFiles.map((file) => [file.id, file]));
   return Promise.all(

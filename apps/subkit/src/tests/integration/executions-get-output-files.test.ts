@@ -216,6 +216,33 @@ describe("executions get output files from workflow_run links", () => {
     ]);
   });
 
+  for (const metadataAvailable of [true, false]) {
+    test(`preserves result download hints when listing fails and metadata is ${metadataAvailable ? "available" : "unavailable"}`, async () => {
+      const { EngineClient } = await import("../../engine-client.ts");
+      const { executionOutputFileLines } = await import("../../lib/execution-output-files.ts");
+      const client = new EngineClient({
+        engine_url: "http://engine.local",
+        api_key: "wf_live_test",
+        tenant: "t-test",
+        fetchImpl: async (input) => {
+          const url = new URL(String(input));
+          if (metadataAvailable && url.pathname === `/v1/files/${GENERATED_FID}`) {
+            return jsonResponse(fileRow(GENERATED_FID, "invoice.pdf", 2048));
+          }
+          return jsonResponse({ code: "forbidden", message: "nope" }, 403);
+        },
+      });
+      const execution = {
+        id: EXECUTION_ID,
+        input: { $file: INPUT_FID },
+        result: [{ $file: GENERATED_FID }, { $file: INPUT_FID }],
+      };
+      expect(await executionOutputFileLines(client, execution)).toEqual([
+        `${GENERATED_FID}${metadataAvailable ? " (invoice.pdf, 2.0 KB)" : ""} — subkit files download ${GENERATED_FID}`,
+      ]);
+    });
+  }
+
   test("falls back quietly when listing linked files fails", async () => {
     const { EngineClient } = await import("../../engine-client.ts");
     const { executionOutputFileLines } = await import("../../lib/execution-output-files.ts");
