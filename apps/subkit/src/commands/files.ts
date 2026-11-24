@@ -222,6 +222,34 @@ const getCommand = defineCommand({
   },
 });
 
+export async function runFileUpload(
+  client: EngineClient,
+  uploadArgs: {
+    path: string;
+    contentType?: string;
+    linkTo?: string;
+    slug?: string;
+    role?: string;
+    quiet: boolean;
+    json: boolean;
+  },
+): Promise<FileWire> {
+  const linkRef = uploadArgs.linkTo ? parseResourceRef(uploadArgs.linkTo) : undefined;
+  const row = await uploadPath(client, uploadArgs.path, {
+    quiet: uploadArgs.quiet,
+    json: uploadArgs.json,
+    ...(uploadArgs.contentType ? { content_type: uploadArgs.contentType } : {}),
+  });
+  if (linkRef) {
+    await client.linkFile(row.id, {
+      ...linkRef,
+      ...(uploadArgs.slug ? { slug: uploadArgs.slug } : {}),
+      ...(uploadArgs.role ? { role: uploadArgs.role } : {}),
+    });
+  }
+  return row;
+}
+
 const uploadCommand = defineCommand({
   meta: {
     name: "upload",
@@ -251,18 +279,15 @@ const uploadCommand = defineCommand({
     const json = Boolean(args.json);
     return withCommandErrors(
       async () => {
-        const opts: { content_type?: string; quiet?: boolean; json?: boolean } = { quiet, json };
-        if (args["content-type"]) opts.content_type = String(args["content-type"]);
-        const row = await uploadPath(client, String(args.path), opts);
-        if (args["link-to"]) {
-          const ref = parseResourceRef(String(args["link-to"]));
-          await client.linkFile(row.id, {
-            resource_type: ref.resource_type,
-            resource_id: ref.resource_id,
-            ...(args.slug ? { slug: String(args.slug) } : {}),
-            ...(args.role ? { role: String(args.role) } : {}),
-          });
-        }
+        const row = await runFileUpload(client, {
+          path: String(args.path),
+          quiet,
+          json,
+          ...(args["content-type"] ? { contentType: String(args["content-type"]) } : {}),
+          ...(args["link-to"] ? { linkTo: String(args["link-to"]) } : {}),
+          ...(args.slug ? { slug: String(args.slug) } : {}),
+          ...(args.role ? { role: String(args.role) } : {}),
+        });
         if (json) {
           printJson(row);
           return;

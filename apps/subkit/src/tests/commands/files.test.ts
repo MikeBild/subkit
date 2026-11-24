@@ -457,3 +457,55 @@ describe("subkit files delete confirmation (#511)", () => {
     expect(calls.out).toContain("cancelled");
   });
 });
+
+describe("subkit files upload --link-to validation (#581)", () => {
+  const makeRecordingClient = (requestedUrls: string[]) =>
+    new EngineClient({
+      engine_url: "http://engine.local",
+      api_key: "wf_live_test",
+      tenant: "t-test",
+      fetchImpl: async (input) => {
+        const requestUrl = input instanceof Request ? input.url : String(input);
+        requestedUrls.push(requestUrl);
+        const body = requestUrl.includes("/links") ? makeLinkRow() : makeFileRow({ size_bytes: 5 });
+        return new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    });
+
+  test.each([
+    ["00000000-0000-0000-0000-000000000001", /bad resource ref/],
+    ["bogus:00000000-0000-0000-0000-000000000001", /bad resource_type 'bogus'/],
+  ])("rejects malformed --link-to %s before any upload request", async (linkTo, expectedError) => {
+    const requestedUrls: string[] = [];
+    const client = makeRecordingClient(requestedUrls);
+    const filePath = join(tmpDir, "small.txt");
+    writeFileSync(filePath, "hello world");
+    const { runFileUpload } = await import("../../commands/files.ts");
+    await expect(
+      runFileUpload(client, { path: filePath, linkTo, quiet: true, json: false }),
+    ).rejects.toThrow(expectedError);
+    expect(requestedUrls).toEqual([]);
+  });
+
+  test("uploads first, then links a valid --link-to target", async () => {
+    const requestedUrls: string[] = [];
+    const client = makeRecordingClient(requestedUrls);
+    const filePath = join(tmpDir, "small.txt");
+    writeFileSync(filePath, "hello world");
+    const { runFileUpload } = await import("../../commands/files.ts");
+    const uploadedRow = await runFileUpload(client, {
+      path: filePath,
+      linkTo: "conversation:00000000-0000-0000-0000-000000000002",
+      role: "attachment",
+      quiet: true,
+      json: false,
+    });
+    expect(uploadedRow.id).toBe(makeFileRow().id);
+    expect(requestedUrls).toHaveLength(2);
+    expect(requestedUrls[0]).toContain("/v1/files/inline");
+    expect(requestedUrls[1]).toContain("/links");
+  });
+});
