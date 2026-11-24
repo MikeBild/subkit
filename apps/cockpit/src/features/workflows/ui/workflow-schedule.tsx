@@ -20,6 +20,7 @@ import {
 } from "@/components/cockpit/patterns";
 import { invalidateWorkflowAutomation } from "@/features/grants";
 import { cronWords } from "@/features/workflows/model/cron-words";
+import { preserveCalendarGates } from "@/features/workflows/model/schedule-input";
 import {
   cronToRhythm,
   DEFAULT_RHYTHM,
@@ -139,7 +140,12 @@ function ScheduleDialog({
         setChecked(true);
         if (built.errors.length > 0) return setError(t("schedule.inputInvalid"));
         setError(null);
-        save.mutate({ cron, input: built.input });
+        save.mutate({
+          cron,
+          input: schedule
+            ? (preserveCalendarGates(schedule.input, built.input) as ScheduleInput)
+            : built.input,
+        });
       }}
       error={error}
       failure={error === t("schedule.saveFailed") ? save.error : undefined}
