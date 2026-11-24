@@ -1,5 +1,6 @@
 export * from "./circuit-breaker.ts";
 export * from "./config-schemas.ts";
+export { resolveSigV4Target } from "./core/http-request.ts";
 export * from "./credential-setup-grant.ts";
 export * from "./discovery/service.ts";
 export * from "./discovery/types.ts";

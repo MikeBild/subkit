@@ -1,13 +1,13 @@
 import { redactKnownValues } from "@shared/redaction.ts";
 import { and, eq } from "drizzle-orm";
 import { evaluateHook } from "../../../../auth/hooks.ts";
-import { resolveSigV4Target } from "../../../../connectors/core/http-request.ts";
 import { buildMultipartBody, buildRequestPlan } from "../../../../connectors/drivers/http.ts";
 import {
   multipartObservationHeaders,
   prepareMultipartBody,
 } from "../../../../connectors/drivers/http-multipart.ts";
 import { flagConnectorContractFailure } from "../../../../connectors/health-state.ts";
+import { resolveSigV4Target } from "../../../../connectors/index.ts";
 import { flagConnectorAuthFailure } from "../../../../connectors/reauth.ts";
 import { connectorMaskedQueryKeys } from "../../../../connectors/recorded-url.ts";
 import { connectorEndpointSchemas } from "../../../../db/schema/index.ts";
