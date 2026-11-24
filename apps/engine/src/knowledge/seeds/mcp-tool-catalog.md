@@ -106,8 +106,13 @@ execution_id, poll_with: "get_execution" }`.
   input/output.
 - `list_executions` **[product]** — list past executions.
 - `get_raw_result` **[product]** — fetch an offloaded result. Small results return whole; large results list fields to fetch by path and bounded chunks via offset/limit.
-- `list_attachments` / `preview_attachment` **[product]** — execution-produced
-  files.
+- `list_attachments` / `preview_attachment` **[product]** — files the operator
+  attached to the current conversation (uploads referenced as
+  `@attachment:<slug>`). A plain MCP session has no conversation attachments,
+  so the list is empty there. They never cover workflow execution outputs:
+  take the `$file` / `fid_` reference from `inspect_execution` or
+  `inspect_execution_step`, then read the bytes with `resources/read` on
+  `file://<id>` (needs `file:read`).
 - `list_schedules` **[product]**; `create_schedule`, `update_schedule`,
   `delete_schedule` **[admin]**.
 - `rerun_execution` **[admin]** — re-run a prior execution.
