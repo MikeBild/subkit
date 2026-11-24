@@ -130,7 +130,13 @@ export async function deleteChannel(
     eq(notificationChannels.tenant_id, actor.tenant_id),
     eq(notificationChannels.id, id),
   );
-  const [row] = await db.select().from(notificationChannels).where(scoped).limit(1);
+  const [row] = await db
+    .select()
+    .from(notificationChannels)
+    .where(
+      and(eq(notificationChannels.tenant_id, actor.tenant_id), eq(notificationChannels.id, id)),
+    )
+    .limit(1);
   if (!row) return false;
   const ruleCount = await countRulesTargeting(db, row);
   if (ruleCount > 0) {
