@@ -1,8 +1,0 @@
-{
-  "release": "v12.1.6",
-  "product_commit": "f42b9ea4e25ea0922a51940aac8b40a023ce3231",
-  "surface": "Cockpit Rules page",
-  "observed": "A browser-signed-in member opened an owned active personal rule and selected Renew. The renewal POST returned HTTP 200. The visible and reloaded expiry changed from 2027-02-22T01:17:48.590Z to 2027-02-22T01:17:52.010Z. The member audit attributed the rule creation and renewal to that member.",
-  "scope": "Synthetic OIDC identity and loopback notes connector; no external account or content.",
-  "status": "confirmed documentation mismatch"
-}

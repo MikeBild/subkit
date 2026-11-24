@@ -1,6 +1,0 @@
-{
-  "schema_version": 1,
-  "observed": "On v12.1.6, two malformed --link-to invocations each uploaded a complete 54-byte synthetic receipt to an independent loopback receiver before the CLI returned exit 1 for the missing '<type>:' prefix. Each corrected control then uploaded and linked successfully.",
-  "release": "v12.1.6",
-  "capture_limits": "Released CLI plus independent loopback receiver only. No Engine storage, production logs, tenant, credentials, request correlation ID, or server-side persistence was inspected."
-}
