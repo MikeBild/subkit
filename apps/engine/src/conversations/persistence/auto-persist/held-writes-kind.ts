@@ -140,26 +140,23 @@ export async function commitHeldWorkflowWrites(
     logger.warn({
       module: "conversation_persistence",
       action: "held_writes.dispatch_failed",
-      msg: "approved held workflow writes could not be dispatched",
+      msg: "approved held workflow execution failed with an unknown write outcome",
       tenant_id: p.tenant_id,
       conversation_id: p.conversation_id,
       approval_id: claim.approval_id,
       workflow_id: workflowId,
       error_code,
     });
-    await recordApprovalUnfulfilled({
-      db: p.db,
-      principal: p.principal,
-      claim,
-      tool: approvedTool,
-      via: "chat",
-      reason: error_code,
-    });
     return {
       ok: false,
       error_code: "held_dispatch_failed",
-      message: `${approvedTool} was approved but could not run (${error_code}: ${err instanceof Error ? err.message : String(err)}); nothing was written.`,
-      data: { workflow_id: workflowId, cause: error_code },
+      message: `${approvedTool} was approved but execution did not finish (${error_code}: ${err instanceof Error ? err.message : String(err)}). External writes may have completed; check the execution and external system before retrying.`,
+      data: {
+        workflow_id: workflowId,
+        cause: error_code,
+        writes_executed: null,
+        write_outcome: "unknown",
+      },
     };
   }
   const heldRun = dispatched.run;
