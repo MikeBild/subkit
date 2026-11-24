@@ -39,7 +39,7 @@ const DETAILS: readonly { field: string; label: TranslationKey; kind: DetailKind
   { field: "reason_code", label: "audit.column.reason", kind: "reason" },
   { field: "failure_code", label: "audit.task.cause", kind: "reason" },
   { field: "resume_reason", label: "audit.task.continuedAfter", kind: "reason" },
-  { field: "turns_used", label: "audit.task.workSteps", kind: "count" },
+  { field: "turns_used", label: "audit.task.rounds", kind: "count" },
   { field: "duration_ms", label: "audit.task.duration", kind: "duration" },
   { field: "scheduled_for", label: "audit.task.scheduledFor", kind: "instant" },
   { field: "deadline_at", label: "audit.task.finishBy", kind: "instant" },
