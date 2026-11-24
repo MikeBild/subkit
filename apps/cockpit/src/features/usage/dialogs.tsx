@@ -5,7 +5,7 @@ import { apiCall } from "@/api/call";
 import { saveSetting } from "@/api/settings";
 import { ChoiceField, SelectField, TextField } from "@/components/cockpit/form-field";
 import { FormDialog } from "@/components/cockpit/patterns";
-import { parseAmount } from "@/features/settings/model";
+import { decimalSeparatorFor, parseAmount } from "@/features/settings/model";
 import {
   llmStatsQuery,
   type StatsWindow,
@@ -92,12 +92,12 @@ export function PriceDialog({
   modelName: string;
   currentPrices: readonly unknown[];
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const client = useQueryClient();
   const [input, setInput] = useState("");
   const [output, setOutput] = useState("");
-  const inputValue = parseAmount(input);
-  const outputValue = parseAmount(output);
+  const inputValue = parseAmount(input, decimalSeparatorFor(locale));
+  const outputValue = parseAmount(output, decimalSeparatorFor(locale));
   const { scope, setScope, target } = useSettingScope(tenantId);
   const save = useMutation({
     mutationFn: async () => {
