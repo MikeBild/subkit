@@ -25,6 +25,15 @@ Lehnt der Anbieter ihn ab, stoppt das Setup ohne gespeicherte Daten. Derselbe To
 
 Öffne `http://localhost:3000` im Browser. Die Adresse führt direkt ins Cockpit unter `/cockpit`.
 Die Übersicht der Engine mit allen Adressen für Werkzeuge und KI-Clients findest du unter `/engine`.
-Ist kein Anmeldeanbieter eingerichtet, meldest du dich mit einem API-Schlüssel an.
+Ist kein Anmeldeanbieter eingerichtet, meldest du dich mit einem persönlichen API-Schlüssel an.
+Der Schlüssel, den `subkit init` ausgibt, gehört einem Systemkonto. Er funktioniert für die API und die CLI, aber nicht für die Anmeldung im Cockpit.
+Stelle dir stattdessen einen persönlichen Admin-Schlüssel aus:
+
+```bash
+docker compose exec engine engine --issue-admin-key --tenant my-org
+```
+
+Der Tenant-Slug ist dein Workspace-Name in Kleinbuchstaben mit Bindestrichen, aus „My Org“ wird also `my-org`.
+Füge den ausgegebenen `wf_live_…`-Schlüssel bei der API-Schlüssel-Anmeldung im Cockpit ein.
 Danach baust du mit „Dein erster Workflow“ deinen ersten Workflow.
 

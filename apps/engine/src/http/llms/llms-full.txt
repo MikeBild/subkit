@@ -423,7 +423,16 @@ If the provider refuses it, the setup stops and nothing is stored. The same toke
 
 Open `http://localhost:3000` in your browser. The address takes you straight to the Cockpit at `/cockpit`.
 The engine index, with every address for tools and AI clients, is at `/engine`.
-If no sign-in provider is configured, sign in with an API key.
+If no sign-in provider is configured, sign in with a personal API key.
+The key `subkit init` prints belongs to a system account. It works for the API and the CLI, but not for Cockpit sign-in.
+Issue a personal admin key instead:
+
+```bash
+docker compose exec engine engine --issue-admin-key --tenant my-org
+```
+
+The tenant slug is your workspace name in lowercase with hyphens, so "My Org" becomes `my-org`.
+Paste the printed `wf_live_…` key into the API-key sign-in of the Cockpit.
 Then build your first workflow with "Your first workflow".
 
 ## Your first workflow
