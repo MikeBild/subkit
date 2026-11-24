@@ -10,6 +10,11 @@ import type {
   ExecutionStep,
 } from "../engine-client/executions.ts";
 import { EngineClient, type ExecutionCost } from "../engine-client.ts";
+import {
+  abortRequestedLine,
+  isAbortableExecutionStatus,
+  nothingToAbortLine,
+} from "../lib/execution-abort.ts";
 import { executionOutcomeLine, recordLinkLines, stepLimitLine } from "../lib/execution-outcome.ts";
 import { executionOutputFileLines } from "../lib/execution-output-files.ts";
 import { resolveExecutionResult } from "../lib/execution-result.ts";
@@ -364,7 +369,11 @@ function printFailedStepErrors(steps: readonly ExecutionStep[]): void {
 }
 
 const abortCommand = defineCommand({
-  meta: { name: "abort", description: "Abort a running execution" },
+  meta: {
+    name: "abort",
+    description:
+      "Request an abort of a queued, waiting or running execution. A finished execution is left unchanged and the command exits 1.",
+  },
   args: {
     id: { type: "positional", required: false, description: "Execution id" },
   },
@@ -377,8 +386,14 @@ const abortCommand = defineCommand({
         argValue: args.id,
         fetch: () => fetchExecutionRows(client),
       });
+      const execution = await client.getExecution(id);
+      if (!isAbortableExecutionStatus(execution.status)) {
+        process.stderr.write(`${pc.yellow(nothingToAbortLine(execution))}\n`);
+        process.exitCode = 1;
+        return;
+      }
       await client.abortExecution(id);
-      process.stdout.write(`${pc.green("aborted")}\n`);
+      process.stdout.write(`${pc.green(abortRequestedLine(id))}\n`);
     });
   },
 });
