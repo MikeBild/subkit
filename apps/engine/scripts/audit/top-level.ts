@@ -6,7 +6,6 @@ export const TOP_LEVEL_DIRECTORIES: Readonly<Record<string, string>> = {
     "container entrypoint scripts, the image source offer and the test and demo compose files",
   packages: "code shared between apps",
   patches: "bun patches of dependencies",
-  "qa-evidence": "sanitized QA evidence that bug reports link to",
   scripts: "the bun run command dispatcher",
   tests: "cross-app contract, docker and e2e tests",
   vendor: "pinned third-party inputs and license notices",
