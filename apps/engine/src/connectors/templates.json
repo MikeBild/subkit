@@ -5119,7 +5119,7 @@
               "id": "send_digest",
               "method": "POST",
               "connector_id": "b8000000-0000-4000-8000-000000000002",
-              "url": "${connector.sendgrid.base_url}/v3/mail/send",
+              "url": "${connector.sendgrid.base_url}/mail/send",
               "headers": {
                 "Content-Type": "application/json"
               },
@@ -13412,7 +13412,7 @@
               "kind": "request",
               "id": "send",
               "method": "POST",
-              "url": "${connector.sendgrid.base_url}/v3/mail/send",
+              "url": "${connector.sendgrid.base_url}/mail/send",
               "headers": {
                 "Content-Type": "application/json"
               },
@@ -13467,7 +13467,7 @@
               "kind": "request",
               "id": "list",
               "method": "GET",
-              "url": "${connector.sendgrid.base_url}/v3/templates",
+              "url": "${connector.sendgrid.base_url}/templates",
               "query": {
                 "generations": "dynamic",
                 "page_size": 50
@@ -13511,7 +13511,7 @@
               "kind": "request",
               "id": "get",
               "method": "GET",
-              "url": "${connector.sendgrid.base_url}/v3/templates/${input.template_id}"
+              "url": "${connector.sendgrid.base_url}/templates/${input.template_id}"
             }
           ]
         }
@@ -13564,7 +13564,7 @@
               "kind": "request",
               "id": "send",
               "method": "POST",
-              "url": "${connector.sendgrid.base_url}/v3/mail/send",
+              "url": "${connector.sendgrid.base_url}/mail/send",
               "headers": {
                 "Content-Type": "application/json"
               },
@@ -13614,7 +13614,7 @@
               "kind": "request",
               "id": "list",
               "method": "GET",
-              "url": "${connector.sendgrid.base_url}/v3/suppression/bounces"
+              "url": "${connector.sendgrid.base_url}/suppression/bounces"
             }
           ]
         }
@@ -13645,7 +13645,7 @@
               "kind": "request",
               "id": "stats",
               "method": "GET",
-              "url": "${connector.sendgrid.base_url}/v3/stats",
+              "url": "${connector.sendgrid.base_url}/stats",
               "query": {
                 "start_date": "2026-04-01",
                 "aggregated_by": "day"
@@ -13680,7 +13680,7 @@
               "kind": "request",
               "id": "list",
               "method": "GET",
-              "url": "${connector.sendgrid.base_url}/v3/marketing/contacts"
+              "url": "${connector.sendgrid.base_url}/marketing/contacts"
             }
           ]
         }
@@ -13720,7 +13720,7 @@
               "kind": "request",
               "id": "create",
               "method": "POST",
-              "url": "${connector.sendgrid.base_url}/v3/marketing/lists",
+              "url": "${connector.sendgrid.base_url}/marketing/lists",
               "headers": {
                 "Content-Type": "application/json"
               },
