@@ -15,6 +15,7 @@ import {
 
 const NOW = new Date("2026-11-19T08:00:00.000Z");
 const MINUTE = 60_000;
+const RARE_CLOSE_PAIR = "0,16,32,50 0,2,4,6,8,10,12,14,16,18,20,23 1,3,5,6 12 *";
 
 function schedule(overrides: Partial<TaskScheduleFields> = {}): TaskScheduleFields {
   return { schedule_cron: null, schedule_timezone: null, schedule_run_at: null, ...overrides };
@@ -75,6 +76,12 @@ describe("taskScheduleIssue", () => {
     ["every ten minutes", { schedule_cron: "*/10 * * * *" }, "cron_too_frequent"],
     ["fourteen minutes apart", { schedule_cron: "0,14 * * * *" }, "cron_too_frequent"],
     ["close across midnight", { schedule_cron: "0,50 0,23 * * *" }, "cron_too_frequent"],
+    ["close pair only after many starts", { schedule_cron: RARE_CLOSE_PAIR }, "cron_too_frequent"],
+    [
+      "close pair across the spring clock change",
+      { schedule_cron: "0,50 1,3 29 3 *", schedule_timezone: "Europe/Berlin" },
+      "cron_too_frequent",
+    ],
   ];
   for (const [label, fields, issue] of invalid)
     test(`rejects: ${label}`, () => {
@@ -87,26 +94,30 @@ describe("smallestCronGapMs", () => {
     expect(TASK_SCHEDULE_MIN_INTERVAL_MS).toBe(15 * MINUTE);
     expect(smallestCronGapMs("*/15 * * * *", null, NOW)).toBe(15 * MINUTE);
     expect(smallestCronGapMs("0,20 * * * *", null, NOW)).toBe(20 * MINUTE);
-    expect(smallestCronGapMs("0 8 * * *", "Europe/Berlin", NOW)).toBe(24 * 60 * MINUTE);
+    expect(smallestCronGapMs("0 8 * * *", "Asia/Tokyo", NOW)).toBe(24 * 60 * MINUTE);
     expect(smallestCronGapMs("0 8 * * *", null, new Date("2025-11-29T00:00:00.000Z"))).toBe(
       24 * 60 * MINUTE,
     );
     expect(smallestCronGapMs("0 0 31 2 *", null, NOW)).toBeNull();
   });
 
-  test("samples exactly 120 gaps", () => {
+  test("sees a clock change however far ahead it lies", () => {
     const daily = "0 8 * * *";
     expect(smallestCronGapMs(daily, "Europe/Berlin", new Date("2025-11-29T00:00:00.000Z"))).toBe(
       23 * 60 * MINUTE,
     );
     expect(smallestCronGapMs(daily, "Europe/Berlin", new Date("2025-11-28T00:00:00.000Z"))).toBe(
-      24 * 60 * MINUTE,
+      23 * 60 * MINUTE,
     );
+    expect(smallestCronGapMs("0,50 1,3 29 3 *", "Europe/Berlin", NOW)).toBe(10 * MINUTE);
+    expect(smallestCronGapMs("0,50 1,3 29 3 *", null, NOW)).toBe(50 * MINUTE);
   });
 
   test("looks far enough to see a rare close pair", () => {
     expect(smallestCronGapMs("0 0-23 * * 1-6,0", null, NOW)).toBe(60 * MINUTE);
     expect(smallestCronGapMs("0,10 0 19 3 *", null, NOW)).toBe(10 * MINUTE);
+    expect(smallestCronGapMs(RARE_CLOSE_PAIR, null, NOW)).toBe(10 * MINUTE);
+    expect(smallestCronGapMs("0 8 29 2 *", null, NOW)).toBe(1461 * 24 * 60 * MINUTE);
   });
 
   test("stops sampling where the calendar ends", () => {
