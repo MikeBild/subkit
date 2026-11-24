@@ -13113,7 +13113,6 @@
               "sql": {
                 "query": "UPDATE accounts SET balance_cents = balance_cents - $1 WHERE id = $2",
                 "params": ["${input.amount_cents}", "${input.from_id}"],
-                "expected_row_count": 1,
                 "also": [
                   {
                     "query": "UPDATE accounts SET balance_cents = balance_cents + $1 WHERE id = $2",
@@ -13121,7 +13120,8 @@
                     "expected_row_count": 1
                   }
                 ]
-              }
+              },
+              "expected_row_count": 1
             }
           ]
         }
