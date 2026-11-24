@@ -301,4 +301,53 @@ describe("/v1/extract file-format matrix", () => {
     const metadata = row.metadata as Record<string, unknown>;
     expect(metadata.format).toBe("pdf");
   });
+
+  test("percent-encoded non-ASCII x-filename → 200 + decoded name in audit", async () => {
+    const xlsx = buildXlsxFixture({ Demo: [{ id: 1, name: "alice" }] });
+    const res = await fetch(`${srv.baseUrl}/v1/extract`, {
+      method: "POST",
+      headers: {
+        ...(authHeaders("application/octet-stream") as Record<string, string>),
+        "x-filename": encodeURIComponent("東京 予算.xlsx"),
+      },
+      body: new Uint8Array(xlsx),
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { format: string }).format).toBe("xlsx");
+    const rows = await srv.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.tenant_id, srv.tenantId), eq(auditLog.action, "data.exported")))
+      .orderBy(desc(auditLog.ts))
+      .limit(1);
+    const metadata = rows[0]?.metadata as Record<string, unknown> | undefined;
+    expect(metadata?.filename).toBe("東京 予算.xlsx");
+  });
+
+  test("percent-encoded .txt x-filename → 200 plaintext", async () => {
+    const res = await fetch(`${srv.baseUrl}/v1/extract`, {
+      method: "POST",
+      headers: {
+        ...(authHeaders("application/octet-stream") as Record<string, string>),
+        "x-filename": encodeURIComponent("メモ.txt"),
+      },
+      body: "hello",
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { format: string }).format).toBe("plaintext");
+  });
+
+  test("percent-encoded path separator in x-filename → 400", async () => {
+    const res = await fetch(`${srv.baseUrl}/v1/extract`, {
+      method: "POST",
+      headers: {
+        ...(authHeaders("text/plain") as Record<string, string>),
+        "x-filename": "..%2Fetc%2Fpasswd.txt",
+      },
+      body: "hello",
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { details?: { code?: string } };
+    expect(body.details?.code).toBe("invalid_x_filename_header");
+  });
 });

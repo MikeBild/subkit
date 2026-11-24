@@ -7,6 +7,10 @@ type Schemas = components["schemas"];
 
 export type KnowledgeSourceMetadata = Partial<Schemas["CreateKnowledgeSourceBody"]>;
 
+// HTTP header values must be ASCII; percent-encode names the engine decodes back.
+export const encodeFilenameHeader = (filename: string): string =>
+  /^[\x20-\x24\x26-\x7e]*$/.test(filename) ? filename : encodeURIComponent(filename);
+
 export const knowledgeMethods = {
   async listKnowledgeSources(
     this: EngineClient,
@@ -185,7 +189,7 @@ export const knowledgeMethods = {
     const traceId = this.newClientTraceId();
     const headers = this.headers(undefined, { traceId });
     headers["content-type"] = args.contentType;
-    if (args.filename) headers["x-filename"] = args.filename;
+    if (args.filename) headers["x-filename"] = encodeFilenameHeader(args.filename);
     const ab = args.buffer.buffer.slice(
       args.buffer.byteOffset,
       args.buffer.byteOffset + args.buffer.byteLength,

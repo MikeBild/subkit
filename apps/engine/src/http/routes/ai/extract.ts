@@ -53,6 +53,16 @@ const FILENAME_HEADER_SCHEMA = z
     message: "filename header must not contain path separators or NULs",
   });
 
+// Clients percent-encode non-ASCII names (header values must be ASCII).
+const decodeFilenameHeader = (value: string): string => {
+  if (!value.includes("%")) return value;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+};
+
 const ExtractFileResponse = ExtractFileResponseSchema;
 
 const ExtractBody = z
@@ -248,7 +258,7 @@ export function registerAiExtractRoute(app: OpenAPIHono<AppEnv>): void {
     const rawFilenameHeader = c.req.header("x-filename");
     let filenameHeader: string | undefined;
     if (rawFilenameHeader !== undefined) {
-      const parsed = FILENAME_HEADER_SCHEMA.safeParse(rawFilenameHeader);
+      const parsed = FILENAME_HEADER_SCHEMA.safeParse(decodeFilenameHeader(rawFilenameHeader));
       if (!parsed.success) {
         throw new BadRequestError(
           parsed.error.issues[0]?.message ?? "x-filename header is invalid",
