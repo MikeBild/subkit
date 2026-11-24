@@ -100,7 +100,7 @@ printf 'Authorization=Bearer %s\napikey=%s\n' "$IDP_ADMIN_KEY" "$IDP_ADMIN_KEY" 
 ```
 
 - `--skip-checks` ist nötig, weil die Zugangsdaten beim Anlegen des Connectors noch fehlen. `subkit vault attach` prüft sie anschließend.
-- `bearer` sendet `Authorization: Bearer <token>`. `header` sendet die genannten Header (kommagetrennt `Name=Value`).
+- `bearer` sendet `Authorization: Bearer <token>`. `header` sendet die genannten Header (eine `Name=Value`-Zeile pro Header über stdin).
 - Zugangsdaten stammen aus deiner Shell oder deinem Secret-Speicher, nie aus einer Datei, der App oder diesem Repository.
 - Ersetzt du im Cockpit Zugangsdaten mit mehreren Headern, füll alle Header-Felder aus. Lässt du alle leer, bleiben die alten Werte.
 

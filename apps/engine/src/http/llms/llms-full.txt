@@ -1780,7 +1780,7 @@ printf 'Authorization=Bearer %s\napikey=%s\n' "$IDP_ADMIN_KEY" "$IDP_ADMIN_KEY" 
 ```
 
 - `--skip-checks` is needed because the credentials are still missing when the connector is created. `subkit vault attach` checks them afterwards.
-- `bearer` sends `Authorization: Bearer <token>`. `header` sends the named headers (comma-separated `Name=Value`).
+- `bearer` sends `Authorization: Bearer <token>`. `header` sends the named headers (one `Name=Value` line per header on stdin).
 - Credentials come from your shell or secret store, never from a file, the app or this repository.
 - If you replace credentials with several headers in the Cockpit, fill all header fields. If you leave all of them empty, the old values stay.
 
