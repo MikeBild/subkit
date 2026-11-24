@@ -8645,7 +8645,7 @@ Grouped by template. **Trigger** is how the workflow starts: `request` (on deman
 
 | Recipe | What it does | Trigger | Also uses |
 | ------ | ------------ | ------- | --------- |
-| `scrape-then-email-digest` | Reliable scrape-then-email pattern for pages that load content via client-side JS. | schedule | `undefined`, `undefined` |
+| `scrape-then-email-digest` | Reliable scrape-then-email pattern for pages that load content via client-side JS. | schedule | `sendgrid` |
 
 ### Cloudflare (`cloudflare`)
 
@@ -8915,8 +8915,8 @@ Grouped by template. **Trigger** is how the workflow starts: `request` (on deman
 | `list-prices` | List prices, optionally scoped to one product id. | request | — |
 | `list-products` | Page through Stripe products. | request | — |
 | `list-subscriptions` | List subscriptions, defaulting to active status. | request | — |
-| `new-customer-enrich-notify` | Three-connector reference recipe. | request | `undefined`, `undefined`, `undefined` |
-| `on-charge-failed-notify-slack` | Webhook-triggered: when Stripe fires `charge.failed` against the workflow's inbound URL, this recipe verifies the Stripe signature, extracts the failed-charge fields (id, amount, currency, decline reason, customer email), and posts a redacted alert into the operator's chosen Slack channel. | webhook | `undefined` |
+| `new-customer-enrich-notify` | Three-connector reference recipe. | request | `hubspot`, `slack` |
+| `on-charge-failed-notify-slack` | Webhook-triggered: when Stripe fires `charge.failed` against the workflow's inbound URL, this recipe verifies the Stripe signature, extracts the failed-charge fields (id, amount, currency, decline reason, customer email), and posts a redacted alert into the operator's chosen Slack channel. | webhook | `slack` |
 
 ### Twilio (`twilio`)
 
