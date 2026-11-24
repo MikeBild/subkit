@@ -26,6 +26,10 @@
       "resource_tags": ["db", "ports", "global-state"]
     },
     {
+      "id": "db",
+      "resource_tags": ["db", "ports", "global-state"]
+    },
+    {
       "id": "devices",
       "resource_tags": ["db", "ports", "global-state"]
     },
@@ -54,7 +58,15 @@
       "resource_tags": ["db", "ports", "global-state"]
     },
     {
+      "id": "personal-notes",
+      "resource_tags": ["db", "ports", "global-state"]
+    },
+    {
       "id": "rbac",
+      "resource_tags": ["db", "ports", "global-state"]
+    },
+    {
+      "id": "scheduler",
       "resource_tags": ["db", "ports", "global-state"]
     },
     {
