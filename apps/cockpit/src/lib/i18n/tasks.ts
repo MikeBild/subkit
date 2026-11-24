@@ -173,7 +173,7 @@ export const tasksEn = {
   "tasks.run.open": "Open conversation",
   "tasks.run.continue": "Continue as a workflow",
   "tasks.run.continuePrompt":
-    "Build a workflow from the task “{name}” that carries out the same steps as fixed steps.",
+    "Build a workflow from the task “{name}”. Use its completed run {runId} from {date} and carry out the same steps as fixed steps.",
   "tasks.run.fact.state": "State",
   "tasks.run.fact.started": "Started",
   "tasks.run.fact.ended": "Ended",
@@ -490,7 +490,7 @@ export const tasksDe: Record<keyof typeof tasksEn, string> = {
   "tasks.run.open": "Unterhaltung öffnen",
   "tasks.run.continue": "Als Workflow weiterführen",
   "tasks.run.continuePrompt":
-    "Baue aus der Aufgabe „{name}“ einen Workflow, der dieselben Schritte als feste Schritte ausführt.",
+    "Baue aus der Aufgabe „{name}“ einen Workflow. Nimm ihren abgeschlossenen Run {runId} vom {date} und führe dieselben Schritte als feste Schritte aus.",
   "tasks.run.fact.state": "Zustand",
   "tasks.run.fact.started": "Gestartet",
   "tasks.run.fact.ended": "Beendet",

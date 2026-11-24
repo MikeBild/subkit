@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError } from "@/api/client";
-import { absolute, chatNewHref, conversationHref } from "@/app/links";
+import { absolute, conversationHref } from "@/app/links";
 import {
   ActionButton,
   ActionMenu,
@@ -31,6 +31,7 @@ import {
   stateWords,
   type Task,
   type TaskRun,
+  taskRunContinueHref,
   triggerKey,
 } from "../model/tasks-model";
 import type { StepResult } from "../model/tasks-steps";
@@ -190,9 +191,7 @@ export function TaskRunSheet({
             items={[
               {
                 label: t("tasks.run.continue"),
-                href: absolute(
-                  chatNewHref({ prompt: t("tasks.run.continuePrompt", { name: task.name }) }),
-                ),
+                href: absolute(taskRunContinueHref(task, run, { t, time: dateTime })),
                 testId: "task-run-continue",
               },
             ]}

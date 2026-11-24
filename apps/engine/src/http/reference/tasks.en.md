@@ -203,7 +203,7 @@ When a person is removed from the workspace or deactivated, their tasks are paus
 A run cannot write workflows. That stays your decision.
 
 1. On the **Runs** tab, open a run that is **done**.
-2. In its menu, select **Continue as a workflow**. A normal conversation opens, and the request to build a workflow with the same steps is already written.
+2. In its menu, select **Continue as a workflow**. A normal conversation opens, and the request to build a workflow with the same steps is already written. It names the run you opened, so SubKit works from exactly that run.
 3. Send the request and work through the draft with SubKit.
 4. Save the draft and approve it as described in “Your first workflow”.
 
