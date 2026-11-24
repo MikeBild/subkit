@@ -15,6 +15,7 @@ import {
   surfaceFromClientHeader,
   type TurnEvent,
   turnFailureFramePayload,
+  turnSurfaceFromClientHeader,
 } from "../../../conversations/public/authoring.ts";
 import {
   buildMessages,
@@ -121,6 +122,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
       surface: surfaceFromClientHeader(c.req.header("x-subkit-client")),
     } as const;
     const runtimeContext = buildRuntimeContextFromRequest(c, principal);
+    const turnSurface = turnSurfaceFromClientHeader(c.req.header("x-subkit-client"));
 
     const driveTurn = async (
       created: CreateConversationResult,
@@ -145,6 +147,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
             user_memory: created.user_memory,
             turn_abort_ctrl: turnAbortCtrl,
             runtime_context: runtimeContext,
+            ...(turnSurface ? { surface: turnSurface } : {}),
             ...(body.step_budget !== undefined ? { step_budget: body.step_budget } : {}),
             ...(onEvent ? { onEvent } : {}),
           },
