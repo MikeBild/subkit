@@ -57,7 +57,10 @@ beforeAll(() => {
       const url = new URL(request.url);
       const body = request.method === "GET" ? "" : await request.text();
       requests.push(`${request.method} ${url.pathname}${url.search} ${body}`.trim());
-      if (url.pathname === "/v1/workflows") return Response.json(LIST);
+      if (url.pathname === "/v1/workflows") {
+        const offset = Number(url.searchParams.get("offset") ?? 0);
+        return Response.json({ ...LIST, items: LIST.items.slice(offset) });
+      }
       if (url.pathname === `/v1/workflows/${WORKFLOW_ID}`) return Response.json(DETAIL);
       if (url.pathname === `/v1/workflows/${WORKFLOW_ID}/metadata`)
         return Response.json({ ...DETAIL, ...JSON.parse(body) });

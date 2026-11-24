@@ -51,13 +51,26 @@ const fetchWorkflowRows = async (client: EngineClient) => {
 const WORKFLOW_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+const WORKFLOW_LOOKUP_PAGE_SIZE = 200;
+
 export async function resolveWorkflowIdOrSlug(
   client: EngineClient,
   idOrSlug: string,
 ): Promise<string> {
   if (WORKFLOW_UUID_RE.test(idOrSlug)) return idOrSlug;
-  const { items } = await client.listWorkflows({ limit: 200 });
-  const matches = items.filter((r) => r.slug === idOrSlug || r.name === idOrSlug);
+  const matches: Array<{ id: unknown }> = [];
+  let scannedCount = 0;
+  let catalogTotal = 0;
+  do {
+    const page = await client.listWorkflows({
+      limit: WORKFLOW_LOOKUP_PAGE_SIZE,
+      offset: scannedCount,
+    });
+    catalogTotal = page.total;
+    if (page.items.length === 0) break;
+    scannedCount += page.items.length;
+    matches.push(...page.items.filter((r) => r.slug === idOrSlug || r.name === idOrSlug));
+  } while (scannedCount < catalogTotal);
   if (matches.length === 1) return String(matches[0]?.id);
   if (matches.length > 1) {
     throw new Error(

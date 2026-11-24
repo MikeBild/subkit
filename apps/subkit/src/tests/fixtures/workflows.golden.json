@@ -32,7 +32,8 @@
   "patch": {
     "exitCode": 0,
     "requests": [
-      "GET /v1/workflows?limit=200",
+      "GET /v1/workflows?limit=200&offset=0",
+      "GET /v1/workflows?limit=200&offset=2",
       "PATCH /v1/workflows/5eed0002-0000-4000-8000-000000000001/metadata {\"category\":\"notion\",\"name\":\"Notion mirror\"}"
     ],
     "stdout": "{\n  \"id\": \"5eed0002-0000-4000-8000-000000000001\",\n  \"slug\": \"notion-sync\",\n  \"name\": \"Notion mirror\",\n  \"description\": \"Notion sync keeps the notion catalog block in shape for the golden test.\",\n  \"category\": \"notion\",\n  \"lifecycle\": \"active\",\n  \"connectors\": [\n    \"notion\"\n  ],\n  \"trigger\": null,\n  \"schedule\": null,\n  \"webhooks_active\": 0,\n  \"effective_trigger\": {\n    \"kind\": \"manual\"\n  },\n  \"updated_at\": \"2023-11-14T22:13:21.000Z\",\n  \"definition\": {\n    \"name\": \"Notion sync\",\n    \"steps\": [\n      {\n        \"id\": \"noop\",\n        \"kind\": \"transform\"\n      }\n    ]\n  }\n}\n",
