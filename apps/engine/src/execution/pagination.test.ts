@@ -79,6 +79,33 @@ describe("pagination strategies", () => {
     expect(output).toEqual([first, last]);
   });
 
+  test("page pagination reads the configured items path when an empty array precedes it", () => {
+    const strategy = makeStrategy(
+      {
+        strategy: "page",
+        page_param: "page",
+        limit_param: "per_page",
+        page_size: 50,
+        start_page: 1,
+        items_path: "result",
+      },
+      context,
+    );
+    const zones = Array.from({ length: 51 }, (_, index) => ({ id: `zone-${index + 1}` }));
+    const firstPage = { success: true, errors: [], messages: [], result: zones.slice(0, 50) };
+    const secondPage = { success: true, errors: [], messages: [], result: zones.slice(50) };
+    const merged: unknown[] = [];
+
+    expect(new URL(strategy.next(null, 0).url).searchParams.get("page")).toBe("1");
+    strategy.merge(merged, firstPage);
+    const secondRequest = strategy.next(firstPage, 1);
+    expect(secondRequest.done).toBe(false);
+    expect(new URL(secondRequest.url).searchParams.get("page")).toBe("2");
+    strategy.merge(merged, secondPage);
+    expect(strategy.next(secondPage, 2).done).toBe(true);
+    expect(merged).toEqual(zones);
+  });
+
   test("request signature is stable across object key order and covers body config", () => {
     const left = paginationSignature({
       base_url: "https://example.test/report",
