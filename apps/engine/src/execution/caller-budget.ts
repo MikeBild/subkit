@@ -110,6 +110,10 @@ async function localDayWindow(
 
 const BUDGET_REFUSAL_REASONS = ["rate_limited", "turn_limit", "turn_busy"] as const;
 
+function leaseLapsed(now: Date) {
+  return sql`(${callerBudgetUnits.lease_until} < ${now.toISOString()}::timestamptz AND NOT EXISTS (SELECT 1 FROM ${executions} WHERE ${executions.tenant_id} = ${callerBudgetUnits.tenant_id} AND ${executions.guard_unit_key} = ${callerBudgetUnits.principal_id}::text || '/' || ${callerBudgetUnits.unit_key} AND ${executions.status} IN ('queued', 'running')))`;
+}
+
 export async function bucketUsageToday(
   tx: Executor,
   input: {
@@ -124,8 +128,8 @@ export async function bucketUsageToday(
   const window = await localDayWindow(tx, input.tz, now);
   const [units] = await tx
     .select({
-      consumed: sql<number>`count(*) FILTER (WHERE ${callerBudgetUnits.state} = 'committed')::int`,
-      reserved: sql<number>`count(*) FILTER (WHERE ${callerBudgetUnits.state} = 'reserved')::int`,
+      consumed: sql<number>`count(*) FILTER (WHERE ${callerBudgetUnits.state} = 'committed' OR (${callerBudgetUnits.state} = 'reserved' AND ${callerBudgetUnits.billable} AND ${leaseLapsed(now)}))::int`,
+      reserved: sql<number>`count(*) FILTER (WHERE ${callerBudgetUnits.state} = 'reserved' AND NOT ${leaseLapsed(now)})::int`,
     })
     .from(callerBudgetUnits)
     .where(
@@ -180,8 +184,7 @@ async function settleExpiredLeases(
         eq(callerBudgetUnits.bucket, ledger.bucket),
         eq(callerBudgetUnits.principal_id, ledger.principal_id),
         eq(callerBudgetUnits.state, "reserved"),
-        sql`${callerBudgetUnits.lease_until} < ${now.toISOString()}::timestamptz`,
-        sql`NOT EXISTS (SELECT 1 FROM ${executions} WHERE ${executions.tenant_id} = ${ledger.tenant_id} AND ${executions.guard_unit_key} = ${ledger.principal_id}::text || '/' || ${callerBudgetUnits.unit_key} AND ${executions.status} IN ('queued', 'running'))`,
+        leaseLapsed(now),
       ),
     );
 }
