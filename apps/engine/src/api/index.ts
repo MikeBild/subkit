@@ -329,6 +329,7 @@ export {
   createNotificationRuleOperation,
   deleteNotificationRuleOperation,
   listNotificationRulesOperation,
+  makeTestNotificationRuleOperation,
   testNotificationRuleOperation,
   updateNotificationRuleOperation,
 } from "./operations/notification-rules.ts";

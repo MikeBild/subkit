@@ -2,8 +2,9 @@ import { and, eq } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../../audit/index.ts";
 import type { Db } from "../../db/client.ts";
 import { type NotificationRuleRow, notificationRules } from "../../db/schema/notifications.ts";
+import { logger } from "../../logging/index.ts";
 import type { NotificationSeverity } from "../matcher.ts";
-import { type DispatchResult, dispatchEvent } from "../service.ts";
+import { type AdapterResolver, type DispatchResult, dispatchEvent } from "../service.ts";
 import { auditedBy, type NotificationActor } from "./actor.ts";
 
 export type { NotificationRuleRow };
@@ -141,6 +142,7 @@ export async function testRule(
   ctx: TestRuleContext,
   id: string,
   input: TestRuleInput,
+  resolveAdapter?: AdapterResolver,
 ): Promise<DispatchResult | null> {
   const [rule] = await db
     .select()
@@ -156,7 +158,18 @@ export async function testRule(
     severity: (input.severity ?? rule.severity) as NotificationSeverity,
     payload: input.payload ?? null,
   };
-  const result = await dispatchEvent({ db }, event);
+  const result = await dispatchEvent({ db, ...(resolveAdapter ? { resolveAdapter } : {}) }, event);
+  logger.info({
+    module: "notifications",
+    action: "rule.test.dispatched",
+    msg: "notification rule test event dispatched",
+    tenant_id: ctx.tenant_id,
+    rule_id: rule.id,
+    event_type: event.type,
+    matched: result.matched,
+    delivered: result.delivered,
+    trace_id: ctx.trace_id,
+  });
   await auditAwait(
     {
       tenant_id: ctx.tenant_id,
