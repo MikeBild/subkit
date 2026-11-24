@@ -16,6 +16,7 @@ import {
 } from "../../files/composer-tray.ts";
 import { claimSelection } from "../../files/composer-tray-model.ts";
 import { conversationExists } from "../../files/service/index.ts";
+import { logger } from "../../logging/index.ts";
 import { now } from "../../utils/clock.ts";
 import {
   AttachmentSchema,
@@ -244,17 +245,32 @@ const claim = defineOperation<Claim, { attachments: AttachmentWire[] }>({
       actor_id: who.principal.id,
       principal: who.principal,
     });
-    const live = await listComposerTray(scope.db, who.owner, new Date(now()));
-    const picked = claimSelection(
-      live.map((item) => ({ ...item.entry, item })),
-      ids,
-    );
-    if (!picked.ok)
-      return plainRejection(404, "not_found", "Not every attachment is waiting in your composer.", {
-        missing: picked.missing,
+    const notWaiting = (missing: readonly string[]) =>
+      plainRejection(404, "not_found", "Not every attachment is waiting in your composer.", {
+        missing,
       });
+    let claimed: TrayItem[];
     try {
-      await scope.db.transaction(async (tx) => {
+      claimed = await scope.db.transaction(async (tx) => {
+        const live = await listComposerTray(tx, who.owner, new Date(now()), { lock: true });
+        const picked = claimSelection(
+          live.map((item) => ({ ...item.entry, item })),
+          ids,
+        );
+        if (!picked.ok) throw new ClaimRefused(notWaiting(picked.missing));
+        const wanted = picked.claim.map(({ item }) => item.entry.id);
+        const consumed = new Set(await removeComposerFiles(tx, who.owner, wanted));
+        const missing = wanted.filter((id) => !consumed.has(id));
+        if (missing.length > 0) {
+          logger.warn({
+            module: "chat_composer",
+            action: "claim.race_refused",
+            tenant_id: scope.tenant_id,
+            conversation_id,
+            missing,
+          });
+          throw new ClaimRefused(notWaiting(missing));
+        }
         for (const { item } of picked.claim) {
           const refused = await linkToConversation(
             who.link,
@@ -265,24 +281,18 @@ const claim = defineOperation<Claim, { attachments: AttachmentWire[] }>({
           );
           if (refused) throw new ClaimRefused(refused);
         }
-        await removeComposerFiles(
-          tx,
-          who.owner,
-          picked.claim.map(({ item }) => item.entry.id),
-        );
+        return picked.claim.map(({ item }) => item);
       });
     } catch (error) {
       if (error instanceof ClaimRefused) return error.rejection;
       throw error;
     }
-    const attachments = picked.claim.map(({ item }) =>
-      toAttachmentWire(item.file, item.entry.slug),
-    );
+    const attachments = claimed.map((item) => toAttachmentWire(item.file, item.entry.slug));
     await auditComposer(
       who,
       AuditAction.CHAT_COMPOSER_ATTACHMENTS_CLAIMED,
       { type: "conversation", id: conversation_id },
-      { file_ids: picked.claim.map(({ item }) => item.file.id), count: picked.claim.length },
+      { file_ids: claimed.map((item) => item.file.id), count: claimed.length },
     );
     return { attachments };
   },
