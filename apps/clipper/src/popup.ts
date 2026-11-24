@@ -1,5 +1,5 @@
 import { ApiError, CollectionPermissionError, connectionErrorMessage, IntakeApi } from "./api.ts";
-import { chromeApi } from "./chrome-api.ts";
+import { chromeApi, sendRuntimeMessage } from "./chrome-api.ts";
 import { apiUrl, isDraftForEngine, loadSettings, normalizeSourceUrl } from "./clipper.ts";
 import { intakeSubmission } from "./intake.ts";
 import type { CaptureError, Draft } from "./types.ts";
@@ -191,10 +191,10 @@ function queueDraft(next: Draft): Promise<void> {
     writeRevision: Math.max(priorRevision, next.writeRevision || 0) + 1,
   };
   draft = draftWithRevision;
-  const write = chromeApi.runtime.sendMessage({
+  const write = sendRuntimeMessage<void>({
     type: "save-draft",
     draft: draftWithRevision,
-  }) as Promise<void>;
+  });
   draftWrite = draftWrite.then(
     () => write,
     () => write,
@@ -251,11 +251,11 @@ async function refreshSource(
     await persist();
     await draftWrite;
     if (request !== sourceRefresh) return;
-    const captured = (await chromeApi.runtime.sendMessage({
+    const captured = await sendRuntimeMessage<Draft>({
       type: "start-capture",
       mode: "article",
       captureTabId: tabId,
-    })) as Draft;
+    });
     if (request !== sourceRefresh) return;
     draft = captured;
     categoriesState = "loading";
@@ -399,7 +399,7 @@ function updateCaptureDetails(current: Draft): void {
 
 async function refreshDraftPicker(selectedId?: string): Promise<void> {
   if (!draftPicker) return;
-  const drafts = (await chromeApi.runtime.sendMessage({ type: "list-drafts" })) as Draft[];
+  const drafts = await sendRuntimeMessage<Draft[]>({ type: "list-drafts" });
   draftPicker.replaceChildren();
   if (!selectedId && drafts.length) {
     const placeholder = document.createElement("option");
@@ -421,13 +421,11 @@ async function refreshDraftPicker(selectedId?: string): Promise<void> {
 }
 
 async function loadStoredDraft(id: string): Promise<Draft | undefined> {
-  return (await chromeApi.runtime.sendMessage({ type: "load-draft", draftId: id })) as
-    | Draft
-    | undefined;
+  return await sendRuntimeMessage<Draft | undefined>({ type: "load-draft", draftId: id });
 }
 
 async function clearStoredDraft(id: string): Promise<void> {
-  await chromeApi.runtime.sendMessage({ type: "clear-draft", draftId: id });
+  await sendRuntimeMessage({ type: "clear-draft", draftId: id });
 }
 
 function replaceDraftRoute(id: string): void {
@@ -578,11 +576,11 @@ async function discardAndCapture(): Promise<void> {
   try {
     await persist();
     await draftWrite;
-    draft = (await chromeApi.runtime.sendMessage({
+    draft = await sendRuntimeMessage<Draft>({
       type: "discard-and-capture",
       mode: "auto",
       ...(draft ? { draftId: draft.id } : {}),
-    })) as Draft;
+    });
     if (draft) {
       categoriesState = "loading";
       replaceDraftRoute(draft.id);
@@ -614,10 +612,10 @@ async function initialize(): Promise<void> {
   await refreshDraftPicker(draft?.id);
   if (!draft) {
     try {
-      draft = (await chromeApi.runtime.sendMessage({
+      draft = await sendRuntimeMessage<Draft>({
         type: "start-capture",
         mode: "auto",
-      })) as Draft;
+      });
     } catch (error) {
       setStatus(
         captureError?.message || (error instanceof Error ? error.message : text.captureFailed),

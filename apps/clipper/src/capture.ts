@@ -1,6 +1,7 @@
 import Defuddle, { createMarkdownContent } from "defuddle/full";
 import { fallbackArticleText, prepareCaptureDocument } from "./capture-document.ts";
 import { chromeApi } from "./chrome-api.ts";
+import { respondWith, type SendResponse } from "./messaging.ts";
 import type { CaptureDiagnostic, CapturedClip, CaptureMode, ClipMetadata } from "./types.ts";
 
 const asyncExtractionTimeoutMs = 8_000;
@@ -402,16 +403,26 @@ export function capture(mode: CaptureMode): Promise<CapturedClip> {
   return result;
 }
 
+export function handleCaptureMessage(
+  message: unknown,
+  sendResponse: SendResponse,
+): true | undefined {
+  if (!message || typeof message !== "object") return undefined;
+  const request = message as { type?: string; mode?: CaptureMode };
+  if (request.type !== "capture") return undefined;
+  return respondWith(
+    capture(
+      request.mode === "selection" ? "selection" : request.mode === "auto" ? "auto" : "article",
+    ),
+    sendResponse,
+  );
+}
+
 const pageState = globalThis as typeof globalThis & { subkitCaptureHandler?: boolean };
 
 if (!pageState.subkitCaptureHandler && chromeApi?.runtime) {
   pageState.subkitCaptureHandler = true;
-  chromeApi.runtime.onMessage.addListener((message: unknown) => {
-    if (!message || typeof message !== "object") return undefined;
-    const request = message as { type?: string; mode?: CaptureMode };
-    if (request.type !== "capture") return undefined;
-    return capture(
-      request.mode === "selection" ? "selection" : request.mode === "auto" ? "auto" : "article",
-    );
-  });
+  chromeApi.runtime.onMessage.addListener((message, _sender, sendResponse) =>
+    handleCaptureMessage(message, sendResponse),
+  );
 }
