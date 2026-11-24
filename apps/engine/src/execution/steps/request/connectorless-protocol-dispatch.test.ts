@@ -96,6 +96,7 @@ describe("connectorless protocol request steps", () => {
       RequestStepSchema.parse({
         id: "teams",
         kind: "request",
+        protocol: "graphql",
         method: "POST",
         url: mock.baseUrl,
         graphql: { query: "query { teams(first:50) { nodes { id } } }" },

@@ -204,6 +204,7 @@ test("a graphql block without a connector is refused at save time, with a connec
   const graphqlStep = {
     id: "teams",
     kind: "request",
+    protocol: "graphql",
     method: "POST",
     graphql: { query: "query { teams(first:50) { nodes { id } } }" },
   };
