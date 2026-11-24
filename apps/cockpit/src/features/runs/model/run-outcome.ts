@@ -1,6 +1,8 @@
 import type { components } from "@cli-core/engine-api/openapi";
 import { FAILED_RUN_STATUSES } from "./runs-filter";
 
+export { stepWasHeld } from "@/lib/step-held";
+
 type Execution = components["schemas"]["Execution"];
 export type ExecutionOutcome = components["schemas"]["ExecutionOutcome"];
 export type StepLike = {
@@ -95,13 +97,6 @@ export function stepEffectKind(step: { request_meta?: unknown }): "read" | "writ
     (extras.effect_kind === "read" || extras.effect_kind === "write")
     ? extras.effect_kind
     : null;
-}
-export function stepWasHeld(step: { held?: boolean; request_meta?: unknown }): boolean {
-  if (step.held === true) return true;
-  const meta = step.request_meta;
-  if (!meta || typeof meta !== "object" || !("extras" in meta)) return false;
-  const extras = meta.extras;
-  return Boolean(extras && typeof extras === "object" && "held" in extras && extras.held === true);
 }
 export function runDisplayState(
   status: string,
