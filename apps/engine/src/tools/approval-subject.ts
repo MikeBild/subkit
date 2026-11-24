@@ -1,8 +1,7 @@
-import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
-import type { Executor } from "../db/client.ts";
-import { workflows } from "../db/schema/index.ts";
+import type { Executor } from "../db/index.ts";
 import { logger, scrubString } from "../logging/index.ts";
+import { findApprovalSubjectWorkflow } from "./persistence/approval-subject.ts";
 
 const SUBJECT_TEXT_LIMIT = 160;
 
@@ -49,17 +48,7 @@ export async function captureApprovalSubject(input: {
   if (!WORKFLOW_SUBJECT_TOOLS.has(tool)) return null;
   const workflowId = args.id;
   if (typeof workflowId !== "string" || !UUID_PATTERN.test(workflowId)) return null;
-  const [current] = await db
-    .select({ name: workflows.name, slug: workflows.slug })
-    .from(workflows)
-    .where(
-      and(
-        eq(workflows.tenant_id, tenant_id),
-        eq(workflows.id, workflowId),
-        isNull(workflows.deleted_at),
-      ),
-    )
-    .limit(1);
+  const current = await findApprovalSubjectWorkflow(db, tenant_id, workflowId);
   if (!current)
     logger.warn({
       module: "tools",
