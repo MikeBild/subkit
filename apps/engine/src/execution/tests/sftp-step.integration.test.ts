@@ -97,7 +97,7 @@ beforeAll(async () => {
   connectorId = await sftpConnector("sftp-files", server.host_key_sha256);
   wrongKeyConnectorId = await sftpConnector(
     "sftp-wrong-key",
-    "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU",
   );
 });
 

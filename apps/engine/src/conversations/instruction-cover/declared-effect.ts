@@ -68,7 +68,7 @@ function templateUrl(
   slug: string,
   owned: ReadonlySet<string>,
 ): string | null {
-  const base = `\${connector.${slug}.base_url}`;
+  const base = `${"$"}{connector.${slug}.base_url}`;
   if (typeof step.url === "string") return step.url.startsWith(base) ? step.url : null;
   if (typeof step.path !== "string" || typeof step.connector_id !== "string") return null;
   return owned.has(step.connector_id) ? `${base}${step.path}` : null;
