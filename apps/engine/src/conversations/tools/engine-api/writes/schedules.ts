@@ -1,6 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { inspectScheduleAutomation } from "../../../../scheduler/automation-status.ts";
-import { scheduleCostProjection } from "../../../../scheduler/index.ts";
+import { scheduleCostProjection } from "../../../../scheduler/persistence/schedule-cost.ts";
 import {
   createSchedule,
   deleteSchedule,
