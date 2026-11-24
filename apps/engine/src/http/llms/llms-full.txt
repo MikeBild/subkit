@@ -7043,6 +7043,9 @@ Drop a session from the local cache (the server-side conversation row is preserv
 
 Scheduled workflow runs
 
+- `--workflow` (string) — Filter by workflow id
+- `--json` (default: false) — JSON output
+
 #### `subkit schedules create`
 
 Schedule a workflow (a workflow carries at most one schedule; re-create updates it)
@@ -7589,6 +7592,11 @@ List system accounts
 ### `subkit tasks`
 
 Tasks: a goal with limits that works on its own and asks before it acts
+
+- `--category` (string) — Only this catalog block
+- `--archived` (default: false) — Show archived tasks instead
+- `--limit` (string, default: 50) — Max rows
+- `--json` (default: false) — JSON output
 
 #### `subkit tasks abort`
 

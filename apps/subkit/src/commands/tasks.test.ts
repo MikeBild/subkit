@@ -184,6 +184,24 @@ describe("subkit tasks list and get", () => {
     expect(JSON.parse(state.stdout)).toEqual([state.world.task]);
   });
 
+  test("bare tasks lists once with the list defaults", async () => {
+    await subkit();
+    expect(state.calls).toEqual([["listTasks", { lifecycle: "active", limit: 50 }]]);
+    expect(state.stdout).toEndWith("1 task total\n");
+  });
+
+  test("bare tasks forwards list flags and emits a single JSON document", async () => {
+    await subkit("--json", "--limit", "5");
+    expect(state.calls).toEqual([["listTasks", { lifecycle: "active", limit: 5 }]]);
+    expect(JSON.parse(state.stdout)).toEqual([state.world.task]);
+  });
+
+  test("get --json runs only the subcommand, never the parent list", async () => {
+    await subkit("get", TASK_ID, "--json");
+    expect(state.calls.map(([method]) => method)).toEqual(["getTask"]);
+    expect(JSON.parse(state.stdout)).toMatchObject({ id: TASK_ID });
+  });
+
   test("get shows the task, no run yet and where a person can allow it", async () => {
     await subkit("get", TASK_ID);
     expect(state.calls).toEqual([["getTask", TASK_ID]]);

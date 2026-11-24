@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
-import { type defineCommand, runCommand } from "citty";
+import { type ArgsDef, type CommandDef, runCommand } from "citty";
 import { decodeProtectedHeader, exportPKCS8, generateKeyPair } from "jose";
 import { profileCommand } from "../../../../subkit/src/commands/profile.ts";
 import { schedulesCommand } from "../../../../subkit/src/commands/schedules.ts";
@@ -94,8 +94,8 @@ afterAll(async () => {
   if (ctx?.cleanup) await ctx.cleanup();
 }, JOURNEY_HOOK_TIMEOUT);
 
-async function subkit(
-  command: ReturnType<typeof defineCommand>,
+async function subkit<CommandArgs extends ArgsDef>(
+  command: CommandDef<CommandArgs>,
   argv: string[],
   stdin?: string,
 ): Promise<Captured & { error: string }> {

@@ -205,14 +205,16 @@ const jsonArg = { type: "boolean" as const, description: "JSON output", default:
 export function buildTasksCommand(overrides: Partial<TaskCommandDeps> = {}) {
   const deps: TaskCommandDeps = { ...defaultDeps, ...overrides };
 
+  const taskListArgs = {
+    category: { type: "string", description: "Only this catalog block" },
+    archived: { type: "boolean", description: "Show archived tasks instead", default: false },
+    limit: { type: "string", description: "Max rows", default: "50" },
+    json: jsonArg,
+  } as const;
+
   const listCommand = defineCommand({
     meta: { name: "list", description: "List tasks (your own; an admin sees all)" },
-    args: {
-      category: { type: "string", description: "Only this catalog block" },
-      archived: { type: "boolean", description: "Show archived tasks instead", default: false },
-      limit: { type: "string", description: "Max rows", default: "50" },
-      json: jsonArg,
-    },
+    args: taskListArgs,
     async run({ args }) {
       return withCommandErrors(
         async () => {
@@ -500,6 +502,7 @@ export function buildTasksCommand(overrides: Partial<TaskCommandDeps> = {}) {
       name: "tasks",
       description: "Tasks: a goal with limits that works on its own and asks before it acts",
     },
+    args: taskListArgs,
     subCommands: {
       list: listCommand,
       get: getCommand,
@@ -512,13 +515,7 @@ export function buildTasksCommand(overrides: Partial<TaskCommandDeps> = {}) {
       abort: abortCommand,
       delete: deleteCommand,
     },
-    async run(ctx) {
-      if (ctx.args._.length === 0) {
-        await listCommand.run?.({
-          args: { category: undefined, archived: false, limit: "50", json: false, _: [] },
-        } as never);
-      }
-    },
+    default: "list",
   });
 }
 
