@@ -12,6 +12,7 @@ import { decryptSecret, encryptSecret } from "../crypto/index.ts";
 import type { Executor } from "../db/client.ts";
 import { withTenantScope } from "../db/index.ts";
 import { auditLog, connectors, vaultItems } from "../db/schema/index.ts";
+import { logger } from "../logging/index.ts";
 import { can } from "../rbac/evaluator.ts";
 import {
   type PreparedVaultValue,
@@ -375,8 +376,8 @@ export async function updateVaultItem(
   if (input.value && input.value.kind !== row.kind) {
     throw new VaultError("invalid", `this item holds a ${row.kind}`);
   }
-  await withTenantScope(db, input.tenant_id, async (tx) => {
-    await tx
+  const rotatedVersion = await withTenantScope(db, input.tenant_id, async (tx) => {
+    const [updated] = await tx
       .update(vaultItems)
       .set({
         ...(input.description !== undefined ? { description: input.description } : {}),
@@ -389,16 +390,29 @@ export async function updateVaultItem(
           : {}),
         updated_at: new Date(),
       })
-      .where(and(eq(vaultItems.tenant_id, input.tenant_id), eq(vaultItems.id, row.id)));
+      .where(and(eq(vaultItems.tenant_id, input.tenant_id), eq(vaultItems.id, row.id)))
+      .returning({ credential_generation: vaultItems.credential_generation });
+    const version = input.value ? (updated?.credential_generation ?? null) : null;
     await record(
       tx,
       input.tenant_id,
       input.actor,
       input.value ? AuditAction.VAULT_ITEM_ROTATED : AuditAction.VAULT_ITEM_UPDATED,
       row,
-      input.value ? { version: row.credential_generation + 1 } : {},
+      version === null ? {} : { version },
     );
+    return version;
   });
+  if (rotatedVersion !== null) {
+    logger.info({
+      module: "vault",
+      action: AuditAction.VAULT_ITEM_ROTATED,
+      msg: "vault item rotated",
+      tenant_id: input.tenant_id,
+      vault_item_id: row.id,
+      version: rotatedVersion,
+    });
+  }
   return getVaultItem(db, input.tenant_id, row.id, input.viewer);
 }
 
