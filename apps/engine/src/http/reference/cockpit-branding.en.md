@@ -46,4 +46,6 @@ subkit branding reset <revision>
 subkit branding logo <light|dark> --output <file>
 ```
 
+`--revision <n>` is optional; without it the CLI downloads the logo of the current revision.
+
 MCP provides `get_tenant_branding`, `update_tenant_branding`, `reset_tenant_branding` and `get_tenant_branding_logo`. Changes through MCP need the usual approval by a signed-in person. SubKit checks both write permissions before it requests that approval. Ordinary reads return metadata; only `get_tenant_branding_logo` returns the normalized PNG bytes. The OpenAPI and MCP input schemas are generated from the same request definition.

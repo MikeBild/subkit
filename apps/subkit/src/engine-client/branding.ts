@@ -20,13 +20,14 @@ export const brandingMethods = {
     const { data } = await this.api.DELETE("/v1/tenant/branding", { body: { revision } });
     return data as TenantBranding;
   },
-  getTenantBrandingLogo(
+  async getTenantBrandingLogo(
     this: EngineClient,
     opts: { theme: "light" | "dark"; revision?: number },
   ): Promise<Uint8Array> {
+    const revision = opts.revision ?? (await this.getTenantBranding()).revision;
     const params = new URLSearchParams({ theme: opts.theme });
     if (this.tenant) params.set("tenant_context", this.tenant);
-    if (opts.revision !== undefined) params.set("revision", String(opts.revision));
+    params.set("revision", String(revision));
     return this.requestBytes(`/v1/tenant/branding/logo?${params}`);
   },
 };
