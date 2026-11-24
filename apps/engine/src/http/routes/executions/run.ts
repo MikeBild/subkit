@@ -17,7 +17,7 @@ import {
 import { logger } from "../../../logging/index.ts";
 import type { RequestSource } from "../../../observability/index.ts";
 import { getBoss } from "../../../queue/index.ts";
-import { now } from "../../../utils/clock.ts";
+import { now } from "../../../utils/index.ts";
 import { normalizeWorkflowRunInput } from "../../../workflows/index.ts";
 import { BadRequestError, HttpError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
