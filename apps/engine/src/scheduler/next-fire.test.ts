@@ -6,6 +6,28 @@ import { isCronDue } from "./reconciler.ts";
 const created = new Date("2026-01-01T00:00:00.000Z");
 
 describe("nextScheduleFire", () => {
+  test.each([
+    { input: { business_days_only: true }, expected: "2026-03-16T18:00:00.000Z" },
+    { input: { skip_dates: ["2026-03-14"] }, expected: "2026-03-15T18:00:00.000Z" },
+  ])("a missed Friday run does not fire on a blocked Saturday: $input", ({ input, expected }) => {
+    const now = new Date("2026-03-14T09:00:00.000Z");
+    const last = new Date("2026-03-12T18:00:00.000Z");
+    const next = nextScheduleFire(
+      {
+        cron: "0 19 * * *",
+        timezone: "Europe/Berlin",
+        input,
+        last_enqueued_at: last,
+        created_at: created,
+      },
+      now,
+    );
+    expect(next).toBe(expected);
+    const at = new Date(next ?? "");
+    expect(calendarGateSkipReason(at, "Europe/Berlin", input)).toBeNull();
+    expect(isCronDue("0 19 * * *", last, at, "Europe/Berlin")).toBe(true);
+  });
+
   test("a cron schedule fires when the reconciler's due check first turns true", () => {
     const now = new Date("2026-03-10T10:20:00.000Z");
     const last = new Date("2026-03-10T10:07:00.000Z");
