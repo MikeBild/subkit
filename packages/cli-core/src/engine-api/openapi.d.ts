@@ -12849,7 +12849,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"] | components["schemas"]["CallerBudgetRefusal"];
                     };
                 };
-                /** @description The workflow's caller daily limit is reached (`{error:"rate-limited", code:"rate_limited", usage}`) or the turn has used all of its metered calls (`{error:"turn-limit", code:"turn_limit"}`). Nothing was reserved. */
+                /** @description The workflow's caller daily limit is reached (`{error:"rate-limited", code:"rate_limited", usage, retry_after}` with a `Retry-After` header in seconds until the daily limit resets) or the turn has used all of its metered calls (`{error:"turn-limit", code:"turn_limit"}`). Nothing was reserved. */
                 429: {
                     headers: {
                         [name: string]: unknown;
@@ -13009,7 +13009,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"] | components["schemas"]["CallerBudgetRefusal"];
                     };
                 };
-                /** @description The workflow's caller daily limit is reached (`{error:"rate-limited", code:"rate_limited", usage}`) or the turn has used all of its metered calls (`{error:"turn-limit", code:"turn_limit"}`). Nothing was reserved. */
+                /** @description The workflow's caller daily limit is reached (`{error:"rate-limited", code:"rate_limited", usage, retry_after}` with a `Retry-After` header in seconds until the daily limit resets) or the turn has used all of its metered calls (`{error:"turn-limit", code:"turn_limit"}`). Nothing was reserved. */
                 429: {
                     headers: {
                         [name: string]: unknown;
@@ -35266,6 +35266,7 @@ export interface components {
                 usedToday: number;
                 dailyLimit: number;
             };
+            retry_after?: number;
         };
         ExecutionRunSavedBody: {
             /**

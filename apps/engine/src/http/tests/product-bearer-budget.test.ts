@@ -342,11 +342,15 @@ describe("te-brain compatible budget over HTTP", () => {
     expect((await run(bearer, { turn_id: "turn-2" })).status).toBe(202);
     const refused = await run(bearer, { turn_id: "turn-3" });
     expect(refused.status).toBe(429);
+    const retryAfter = Number(refused.headers.get("Retry-After"));
+    expect(retryAfter).toBeGreaterThanOrEqual(1);
+    expect(retryAfter).toBeLessThanOrEqual(86_400);
     expect(await refused.json()).toEqual({
       error: "rate-limited",
       code: "rate_limited",
       message: "the daily limit is reached",
       usage: { usedToday: 2, dailyLimit: 2 },
+      retry_after: retryAfter,
     });
     const later = await run(bearer, { turn_id: "turn-1" });
     expect(later.status).toBe(202);
@@ -363,11 +367,15 @@ describe("te-brain compatible budget over HTTP", () => {
     const refusalsBefore = await appRefusalsToday();
     const refused = await rerun(bearer, execution_id, { turn_id: "rerun-3" });
     expect(refused.status).toBe(429);
+    const retryAfter = Number(refused.headers.get("Retry-After"));
+    expect(retryAfter).toBeGreaterThanOrEqual(1);
+    expect(retryAfter).toBeLessThanOrEqual(86_400);
     expect(await refused.json()).toEqual({
       error: "rate-limited",
       code: "rate_limited",
       message: "the daily limit is reached",
       usage: { usedToday: 2, dailyLimit: 2 },
+      retry_after: retryAfter,
     });
     const [audit] = await ctx.db
       .select({ reason: auditLog.reason, metadata: auditLog.metadata })
