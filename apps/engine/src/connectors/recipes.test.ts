@@ -515,3 +515,19 @@ describe("solution recipes — several connectors per recipe", () => {
     expect(builtFromRecipe({ name: "x" }, recipe)).toBe(false);
   });
 });
+
+describe("template recipe urls (#521)", () => {
+  test("every recipe url built on a connector base_url passes the draft-save url check", () => {
+    const urlErrors = loadBuiltinTemplates().flatMap((template) =>
+      template.recipes.flatMap((recipe) => {
+        const baseUrlStepPaths = (recipe.workflow.steps as Array<{ id: string; url?: string }>)
+          .filter((step) => step.url?.startsWith("${connector."))
+          .map((step) => `steps.${step.id}.url`);
+        return validateWorkflowDef(JSON.parse(JSON.stringify(recipe.workflow)))
+          .errors.filter((error) => baseUrlStepPaths.includes(error.path))
+          .map((error) => `${template.slug}/${recipe.slug}: ${error.path}`);
+      }),
+    );
+    expect(urlErrors).toEqual([]);
+  });
+});
