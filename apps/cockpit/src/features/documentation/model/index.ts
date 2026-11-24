@@ -2,6 +2,8 @@ export {
   activeHeading,
   anchorFor,
   article,
+  chapterHref,
+  chapterLinks,
   type DocsArticle,
   type DocsChoice,
   type DocsContent,

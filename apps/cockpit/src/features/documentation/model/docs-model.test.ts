@@ -6,6 +6,8 @@ import {
   activeHeading,
   anchorFor,
   article,
+  chapterHref,
+  chapterLinks,
   docsEntries,
   docsRows,
   docsSections,
@@ -365,6 +367,33 @@ describe("docs model", () => {
       slug: "missing",
     });
     expect(resolveLink(FIXTURE, current, "en", "other.md").kind).toBe("plain");
+  });
+
+  test("rewrites relative chapter links to cockpit routes before markdown hardening", () => {
+    const current = findPage(FIXTURE, "clipper");
+    if (!current) throw new Error("fixture");
+    expect(resolveLink(FIXTURE, current, "en", "/setup.md#backups")).toEqual({
+      kind: "chapter",
+      slug: "operate",
+      anchor: "backups",
+    });
+    expect(chapterHref(FIXTURE, current, "en", "setup.md#backups")).toBe("/docs/operate#backups");
+    expect(chapterHref(FIXTURE, current, "en", "./setup.md#backups")).toBe("/docs/operate#backups");
+    expect(chapterHref(FIXTURE, current, "en", "#review")).toBe("/docs/clipper#review");
+    expect(chapterHref(FIXTURE, current, "en", "https://example.com/x")).toBe(
+      "https://example.com/x",
+    );
+    expect(chapterHref(FIXTURE, current, "en", "other.md")).toBe("other.md");
+    const tree = {
+      type: "root",
+      children: [
+        { type: "paragraph", children: [{ type: "link", url: "setup.md#backups", children: [] }] },
+        { type: "definition", url: "./setup.md" },
+      ],
+    };
+    chapterLinks(FIXTURE, current, "en")()(tree);
+    expect(JSON.stringify(tree)).toContain('"url":"/docs/operate#backups"');
+    expect(JSON.stringify(tree)).not.toContain(".md");
   });
 
   test("keeps internal addresses inside the cockpit router", () => {
