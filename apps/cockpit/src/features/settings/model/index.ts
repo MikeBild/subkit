@@ -189,4 +189,10 @@ export {
   profileStatus,
   workspaceAiStatus,
 } from "./settings-personal";
-export { moneyText, normalizeDecimal, parseAmount, parseTokens } from "./settings-units";
+export {
+  decimalSeparatorFor,
+  moneyText,
+  normalizeDecimal,
+  parseAmount,
+  parseTokens,
+} from "./settings-units";

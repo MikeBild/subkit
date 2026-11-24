@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  decimalSeparatorFor,
   moneyText,
   normalizeDecimal,
   parseAmount,
@@ -29,5 +30,20 @@ describe("amounts typed with thousands separators", () => {
     expect(normalizeDecimal("0,500")).toBe("0.500");
     expect(normalizeDecimal("1.2.3")).toBeNull();
     expect(parseAmount("1.000,50")).toBe(1000.5);
+  });
+});
+
+describe("amounts in the reader's locale (#508)", () => {
+  test("English reads a single dot with three digits as a decimal fraction", () => {
+    expect(parseAmount("1234.567", decimalSeparatorFor("en"))).toBe(1234.567);
+    expect(parseAmount("0.125", decimalSeparatorFor("en"))).toBe(0.125);
+    expect(parseAmount("1,234", decimalSeparatorFor("en"))).toBe(1234);
+    expect(parseAmount("1,000.50", decimalSeparatorFor("en"))).toBe(1000.5);
+  });
+
+  test("German reads a single comma with three digits as a decimal fraction", () => {
+    expect(parseAmount("1234,567", decimalSeparatorFor("de"))).toBe(1234.567);
+    expect(parseAmount("1.234", decimalSeparatorFor("de"))).toBe(1234);
+    expect(parseAmount("1.000,50", decimalSeparatorFor("de"))).toBe(1000.5);
   });
 });
