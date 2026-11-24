@@ -14766,7 +14766,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "square" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -14788,7 +14790,9 @@
               "kind": "request",
               "id": "search",
               "method": "POST",
-              "url": "${connector.square.base_url}/v2/orders/search",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "path": "/v2/orders/search",
+              "boundary": { "variables": {}, "max_body_bytes": 4096, "max_calls": 1 },
               "headers": {
                 "Square-Version": "2025-01-22",
                 "Content-Type": "application/json"
@@ -14857,7 +14861,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "square" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -14882,7 +14888,9 @@
               "kind": "request",
               "id": "create",
               "method": "POST",
-              "url": "${connector.square.base_url}/v2/customers",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "path": "/v2/customers",
+              "boundary": { "variables": {}, "max_body_bytes": 4096, "max_calls": 1 },
               "headers": {
                 "Square-Version": "2025-01-22",
                 "Content-Type": "application/json"
@@ -14945,7 +14953,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "square" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -14976,7 +14986,9 @@
               "kind": "request",
               "id": "refund",
               "method": "POST",
-              "url": "${connector.square.base_url}/v2/refunds",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "path": "/v2/refunds",
+              "boundary": { "variables": {}, "max_body_bytes": 4096, "max_calls": 1 },
               "headers": {
                 "Square-Version": "2025-01-22",
                 "Content-Type": "application/json"
@@ -15006,7 +15018,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "square" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -15028,7 +15042,9 @@
               "kind": "request",
               "id": "search",
               "method": "POST",
-              "url": "${connector.square.base_url}/v2/team-members/search",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "path": "/v2/team-members/search",
+              "boundary": { "variables": {}, "max_body_bytes": 4096, "max_calls": 1 },
               "headers": {
                 "Square-Version": "2025-01-22",
                 "Content-Type": "application/json"
@@ -15061,7 +15077,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "square" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -15086,7 +15104,9 @@
               "kind": "request",
               "id": "counts",
               "method": "POST",
-              "url": "${connector.square.base_url}/v2/inventory/counts/batch-retrieve",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "path": "/v2/inventory/counts/batch-retrieve",
+              "boundary": { "variables": {}, "max_body_bytes": 4096, "max_calls": 1 },
               "headers": {
                 "Square-Version": "2025-01-22",
                 "Content-Type": "application/json"

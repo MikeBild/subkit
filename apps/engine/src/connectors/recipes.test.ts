@@ -3,7 +3,8 @@ import {
   validateStepReferences,
   validateUnsupportedPlaceholders,
 } from "../workflows/reference-validator.ts";
-import { WorkflowDefSchema } from "../workflows/types.ts";
+import { compileRequestBoundary } from "../workflows/request-boundary.ts";
+import { type RequestStep, WorkflowDefSchema } from "../workflows/types.ts";
 import { validateWorkflowDef } from "../workflows/validator.ts";
 import { bindRecipe } from "./recipe-binding.ts";
 import {
@@ -529,5 +530,37 @@ describe("template recipe urls (#521)", () => {
       }),
     );
     expect(urlErrors).toEqual([]);
+  });
+});
+
+describe("square write recipes (#564)", () => {
+  test("every square write step binds the square connector and compiles a request boundary", () => {
+    const placeholder = "00000000-0000-0000-0000-000000000000";
+    const square = getBuiltinTemplate("square")!;
+    const outcomes = square.recipes.flatMap((recipe) =>
+      (recipe.workflow.steps as RequestStep[])
+        .filter((step) => (step.method ?? "GET").toUpperCase() !== "GET")
+        .map((step) => ({
+          step: `${recipe.slug}/${step.id}`,
+          connector_id: step.connector_id,
+          required: recipe.required_connectors.find((r) => r.placeholder === placeholder)?.template,
+          refusal: compileRequestBoundary(step, square.base_url).refusal ?? null,
+        })),
+    );
+    expect(outcomes.map((outcome) => outcome.step).sort()).toEqual([
+      "create-customer/create",
+      "inventory-counts/counts",
+      "list-orders/search",
+      "list-team-members/search",
+      "refund-payment/refund",
+    ]);
+    expect(outcomes).toEqual(
+      outcomes.map((outcome) => ({
+        ...outcome,
+        connector_id: placeholder,
+        required: "square",
+        refusal: null,
+      })),
+    );
   });
 });
