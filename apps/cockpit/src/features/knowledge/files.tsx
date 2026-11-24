@@ -410,12 +410,14 @@ export function FilesPage() {
     ? [
         {
           label: t("installation.openFile"),
+          selectTiming: "immediate",
           onSelect: () => pickInstallationFiles(stage),
           testId: "installation-import-file",
         },
         {
           label: t("installation.clipboard"),
           disabled: !installation.capabilities.clipboard,
+          selectTiming: "immediate",
           onSelect: () =>
             void navigator.clipboard
               .readText()

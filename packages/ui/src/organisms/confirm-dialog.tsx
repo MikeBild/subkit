@@ -20,7 +20,7 @@ import {
   dialogWidthClass,
   FILLED_DESTRUCTIVE,
 } from "@ui/organisms/dialog-frame";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 
 type ConfirmTitle = { title: string } | { object: string; verb: string };
 
@@ -57,6 +57,11 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
   const [ownOpen, setOwnOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const shown = open ?? ownOpen;
+  const opener = useRef<HTMLElement | null>(null);
+  const wasShown = useRef(false);
+  if (shown && !wasShown.current && typeof document !== "undefined")
+    opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  wasShown.current = shown;
   const setShown = (next: boolean) => {
     if (open === undefined) setOwnOpen(next);
     onOpenChange?.(next);
@@ -70,6 +75,12 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
       <AlertDialogContent
         data-testid={testId}
         className={cn(dialogWidthClass("default"), DIALOG_FRAME)}
+        onCloseAutoFocus={(event) => {
+          const target = opener.current;
+          if (trigger || !target?.isConnected || target === document.body) return;
+          event.preventDefault();
+          target.focus({ preventScroll: true });
+        }}
       >
         <div className={DIALOG_HEAD} data-slot="dialog-head">
           <DialogTitleRow
