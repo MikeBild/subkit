@@ -5917,7 +5917,7 @@ Show and rename the catalog categories shared by every kind
 
 #### `subkit categories list`
 
-List the catalog categories with how many workflows, connectors, knowledge sources, skills, files and tasks use each
+List the catalog categories with how many workflows, connectors, knowledge sources, skills, files, tasks and intake items use each
 
 - `--json` — JSON output
 
