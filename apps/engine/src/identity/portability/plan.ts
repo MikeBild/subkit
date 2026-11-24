@@ -171,16 +171,20 @@ export async function planPackageImport(
   const registry = await loadRegistry(exec, tenant_id);
   const inArchive = new Set(pkg.payloads.map((item) => itemId(item.kind, item.key)));
   const items: PackagePlanItem[] = [];
+  const targetHashes = new Map(hashes);
   for (const item of pkg.payloads) {
     const archiveHash = payloadHash(item.payload);
-    const localId = indexFor(index, item.kind).get(item.key) ?? null;
-    const decision = decide(
-      item,
-      archiveHash,
-      localId,
-      hashes.get(itemId(item.kind, item.key)),
-      registry.get(itemId(item.kind, item.key)),
-    );
+    const registered = registry.get(itemId(item.kind, item.key));
+    const localKey =
+      item.kind === "knowledge" && registered?.local_id
+        ? [...index.knowledge].find(([, id]) => id === registered.local_id)?.[0]
+        : item.key;
+    const localId =
+      (localKey === undefined ? undefined : indexFor(index, item.kind).get(localKey)) ?? null;
+    const targetHash = localKey === undefined ? undefined : hashes.get(itemId(item.kind, localKey));
+    if (targetHash === undefined) targetHashes.delete(itemId(item.kind, item.key));
+    else targetHashes.set(itemId(item.kind, item.key), targetHash);
+    const decision = decide(item, archiveHash, localId, targetHash, registered);
     const missing = dependencies(item)
       .filter(
         (dep) =>
@@ -212,7 +216,7 @@ export async function planPackageImport(
       content_digest: pkg.manifest.content_digest,
       items: items.map((item) => ({
         ...item,
-        target_hash: hashes.get(itemId(item.kind, item.key)) ?? null,
+        target_hash: targetHashes.get(itemId(item.kind, item.key)) ?? null,
         registry: registry.get(itemId(item.kind, item.key))?.local_hash ?? null,
       })),
     }),
@@ -227,7 +231,7 @@ export async function planPackageImport(
       requires: pkg.manifest.requires,
       summary,
     },
-    target_hashes: hashes,
+    target_hashes: targetHashes,
     index,
     registry,
   };

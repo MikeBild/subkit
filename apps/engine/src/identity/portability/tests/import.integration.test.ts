@@ -96,6 +96,10 @@ beforeAll(async () => {
   storage = await useMemoryOffloadStorage();
   const source = await seedTenant(ctx, "pkg-import-a");
   fixture = await seedSourceTenant(ctx.db, source.tenant_id, source.user_id);
+  await ctx.db
+    .update(knowledgeSources)
+    .set({ name: "Reviewed widget handbook" })
+    .where(eq(knowledgeSources.id, fixture.knowledge_id));
   archive = buildPackageArchive(
     await collectTenantPackage(ctx.db, source.tenant_id, { include_bytes: true }),
     SOURCE,
@@ -327,7 +331,7 @@ describe("tenant package import", () => {
     expect(actionOf(plan, "workflow", "fetch-widgets")).toBe("unchanged");
   });
 
-  test("local edits of an admitted knowledge source surface as conflicts", async () => {
+  test("local edits of an admitted knowledge source with a different slug surface as conflicts", async () => {
     const knowledge = applied.items.find((item) => item.kind === "knowledge");
     if (!knowledge?.review) throw new Error("knowledge review handoff missing");
     const proposal = await getIntakeProposal(target_id, knowledge.review.proposal_id, ctx.db);
@@ -367,6 +371,7 @@ describe("tenant package import", () => {
     const content = await getKnowledgeSourceContent(target_id, source_id, ctx.db);
     const document = content?.documents[0];
     if (!source || !document) throw new Error("admitted knowledge content missing");
+    expect(source.slug).not.toBe(key);
     const edited = "# Runbook\n\nLocally edited on engine B.";
     await updateKnowledgeSourceContent(
       {
