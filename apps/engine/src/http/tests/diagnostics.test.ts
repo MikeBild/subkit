@@ -127,6 +127,52 @@ describe("/v1/diagnostics/errors", () => {
     expect(body.items[0]?.trace_id).toBe("trace-self");
   });
 
+  test.each([
+    ["+05:45", 345],
+    ["-07:00", -420],
+  ])(
+    "since accepts a numeric %s offset and cuts off at the same instant as UTC",
+    async (suffix, offsetMinutes) => {
+      const cutoffMs = TEST_NOW_MS - 60 * 60 * 1000;
+      const recordAt = (traceId: string, atMs: number) =>
+        errorRing.record({
+          trace_id: traceId,
+          ts: new Date(atMs).toISOString(),
+          tenant_id: srv.tenantId,
+          method: "GET",
+          path: "/v1/workflows",
+          status: 500,
+          code: "internal_error",
+          message: `since ${traceId}`,
+          stack: null,
+          bucket: "unhandled",
+        });
+      recordAt(`trace-before${suffix}`, cutoffMs - 60 * 1000);
+      recordAt(`trace-after${suffix}`, cutoffMs + 60 * 1000);
+      const sinceWithOffset = `${new Date(cutoffMs + offsetMinutes * 60 * 1000).toISOString().slice(0, -1)}${suffix}`;
+      const fetchTraces = async (since: string) => {
+        const res = await fetch(
+          `${srv.baseUrl}/v1/diagnostics/errors?limit=200&since=${encodeURIComponent(since)}`,
+          { headers: adminHeaders(srv.apiKey) },
+        );
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { items: Array<{ trace_id: string }> };
+        return body.items.map((row) => row.trace_id);
+      };
+      const offsetTraces = await fetchTraces(sinceWithOffset);
+      expect(offsetTraces).toContain(`trace-after${suffix}`);
+      expect(offsetTraces).not.toContain(`trace-before${suffix}`);
+      expect(offsetTraces).toEqual(await fetchTraces(new Date(cutoffMs).toISOString()));
+    },
+  );
+
+  test("since rejects a malformed timestamp with 400", async () => {
+    const res = await fetch(`${srv.baseUrl}/v1/diagnostics/errors?since=not-a-date`, {
+      headers: adminHeaders(srv.apiKey),
+    });
+    expect(res.status).toBe(400);
+  });
+
   test("audit:read is required — member gets 403", async () => {
     const res = await fetch(`${srv.baseUrl}/v1/diagnostics/errors`, {
       headers: { authorization: `Bearer ${memberKey}` },

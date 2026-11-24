@@ -32,7 +32,11 @@ export const ListResponse = z
 export const ListQuery = z
   .object({
     limit: z.coerce.number().int().positive().max(200).optional(),
-    since: z.string().datetime().optional(),
+    since: z
+      .string()
+      .datetime({ offset: true })
+      .optional()
+      .describe("ISO 8601 lower bound, UTC (Z) or numeric offset (+05:45)"),
     trace_id: z.string().optional(),
   })
   .openapi("DiagnosticsErrorListQuery");
