@@ -62,6 +62,29 @@ describe("conversations/same-approval", () => {
     expect(asksForSameApproval(oauthCard("a"), oauthCard("b"))).toBe(false);
   });
 
+  test("held workflow writes keep approval bound to their preview", () => {
+    const heldCard = (approvalId: string, workflowSlug = "publish", value = "first") => ({
+      tool_name: "ask_user_confirm",
+      input: {
+        kind: "external_write",
+        target: { tool: "run_workflow", workflow_slug: workflowSlug },
+        pending_output: {
+          held_steps: ["write"],
+          would_write: [{ body: value }],
+        },
+        commit_intent: {
+          kind: "commit_held_workflow_writes",
+          payload: { tool: "run_workflow", approval_id: approvalId },
+        },
+      },
+    });
+    const open = heldCard("preview-1");
+    expect(asksForSameApproval(open, heldCard("preview-2", "publish", "changed"))).toBe(false);
+    expect(asksForSameApproval(open, heldCard("preview-3", "another"))).toBe(false);
+    expect(asksForSameApproval(open, heldCard("preview-4"))).toBe(false);
+    expect(asksForSameApproval(open, heldCard("preview-1"))).toBe(true);
+  });
+
   test("a card that opens an authorization link is never reused", () => {
     const link = { authorization_url: "https://idp.test/auth" };
     expect(asksForSameApproval(oauthCard("a", link), oauthCard("a", link))).toBe(false);

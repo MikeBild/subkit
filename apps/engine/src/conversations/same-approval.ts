@@ -44,7 +44,17 @@ export function approvalAction(input: unknown): ApprovalAction | null {
   return {
     name,
     ...(target ? { targetArgs: target.args ?? {} } : {}),
-    ...(intent ? { intent: { kind: intent.kind, payload: withoutHandle(intent.payload) } } : {}),
+    ...(intent
+      ? {
+          intent: {
+            kind: intent.kind,
+            payload:
+              intent.kind === "commit_held_workflow_writes"
+                ? (record(intent.payload) ?? {})
+                : withoutHandle(intent.payload),
+          },
+        }
+      : {}),
   };
 }
 
