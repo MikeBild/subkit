@@ -902,6 +902,14 @@ export function bothEnvironments(
   return current === "dev" || (seen.has("dev") && seen.has("prod"));
 }
 
+export function setupEnvironmentApplies(
+  connectors: readonly { environment?: string | null }[],
+  personal: Task["environment"],
+  offered: boolean,
+): boolean {
+  return offered || connectors.every((connector) => connector.environment === personal);
+}
+
 const TRIGGER_KEYS: Record<TaskRun["trigger"], TranslationKey> = {
   manual: "tasks.trigger.manual",
   once: "tasks.trigger.once",

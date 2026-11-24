@@ -39,6 +39,7 @@ import {
   saveErrorKey,
   saveWarning,
   scheduleFields,
+  setupEnvironmentApplies,
   type Task,
   type TaskDraft,
   taskBody,
@@ -184,7 +185,11 @@ function useBindable(permissions: readonly string[], enabled: boolean) {
     staleTime: 300_000,
     queryFn: () => apiCall("get", "/v1/connectors", { query: { limit: 200 } }),
   });
-  return { workflows: workflows.data?.items ?? [], connectors: connectors.data?.items ?? [] };
+  return {
+    workflows: workflows.data?.items ?? [],
+    connectors: connectors.data?.items ?? [],
+    connectorsSettled: !permissions.includes("connector:read") || connectors.isSuccess,
+  };
 }
 
 export function TaskFormFields({
@@ -248,12 +253,16 @@ export function TaskFormFields({
           quiet
         />
       </fieldset>
-      {choosesEnvironment && environmentFromSetup ? (
+      {environmentFromSetup ? (
         <p className="text-sm text-muted-foreground" data-testid="task-form-environment-default">
-          {t("tasks.form.environmentFromSetup", {
-            where: t(`tasks.environment.${draft.environment}`),
-            more: t("tasks.form.more"),
-          })}
+          {choosesEnvironment
+            ? t("tasks.form.environmentFromSetup", {
+                where: t(`tasks.environment.${draft.environment}`),
+                more: t("tasks.form.more"),
+              })
+            : t("tasks.form.environmentFromSetupOnly", {
+                where: t(`tasks.environment.${draft.environment}`),
+              })}
         </p>
       ) : null}
       <CollapsibleSection label={t("tasks.form.more")} testId="task-form-more">
@@ -363,7 +372,9 @@ export function TaskFormDialog({
   const choosesEnvironment = bothEnvironments(bindable.connectors, task?.environment ?? null);
   const preselected = useTaskEnvironmentDefault(
     !task && !seed?.environment,
-    choosesEnvironment,
+    (personal) =>
+      bindable.connectorsSettled &&
+      setupEnvironmentApplies(bindable.connectors, personal, choosesEnvironment),
     (environment) => set({ environment }),
   );
 
