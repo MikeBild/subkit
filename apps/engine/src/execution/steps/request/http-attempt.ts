@@ -43,6 +43,7 @@ async function fetchOnce(
   captureBinary?: boolean,
   beforeDispatch?: (request: MaterializedRequest) => Promise<RequestDispatchPolicy | undefined>,
   signedJwt?: Parameters<typeof executePlannedHttpRequest>[0]["signed_jwt"],
+  sigv4?: Parameters<typeof executePlannedHttpRequest>[0]["sigv4"],
 ): Promise<FetchAttemptResult> {
   let parsedUrl: URL;
   try {
@@ -65,6 +66,7 @@ async function fetchOnce(
     ...(captureBinary ? { capture_binary: true } : {}),
     ...(beforeDispatch ? { before_dispatch: beforeDispatch } : {}),
     ...(signedJwt ? { signed_jwt: signedJwt } : {}),
+    ...(sigv4 ? { sigv4 } : {}),
   });
   return {
     status: execution.status,
@@ -97,6 +99,7 @@ export async function sleep(ms: number, signal: AbortSignal): Promise<void> {
 export interface DoOnePageParams {
   clock: Clock;
   signed_jwt?: Parameters<typeof executePlannedHttpRequest>[0]["signed_jwt"];
+  sigv4?: Parameters<typeof executePlannedHttpRequest>[0]["sigv4"];
   db: Db;
   before_dispatch?: (request: MaterializedRequest) => Promise<RequestDispatchPolicy | undefined>;
   url: string;
@@ -208,6 +211,7 @@ export async function doOnePage(p: DoOnePageParams): Promise<FetchAttemptResult>
         p.capture_binary,
         p.before_dispatch,
         p.signed_jwt,
+        p.sigv4,
       );
       if (res.status >= 400 && p.accepted_statuses?.has(res.status)) {
         return res;
