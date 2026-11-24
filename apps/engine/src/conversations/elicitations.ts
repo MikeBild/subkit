@@ -24,6 +24,7 @@ import { type DecidedBy, decidedByAuditActor } from "./decided-by.ts";
 import { transitionConversation } from "./persistence/conversation-status.ts";
 import { applyPlaybookDecision } from "./playbook.ts";
 import { humanConfirmationContextFingerprint } from "./playbook-evidence.ts";
+import { asksForSameApproval } from "./same-approval.ts";
 import {
   approvalHandleFromElicitationInput,
   isWorkflowInputForm,
@@ -319,6 +320,26 @@ async function insertElicitation(
         eq(conversationElicitations.status, "pending"),
       ),
     );
+  const openApproval = stale.find((row) =>
+    asksForSameApproval(row, { tool_name: p.tool_name, input: p.input }),
+  );
+  if (openApproval) {
+    await exec
+      .update(conversations)
+      .set({ status: "awaiting_input", updated_at: new Date() })
+      .where(eq(conversations.id, p.conversation_id));
+    logger.info({
+      module: "conversation",
+      action: "elicitation.reused_open_approval",
+      msg: "open approval for the same action kept; no new elicitation created",
+      tenant_id: p.tenant_id,
+      conversation_id: p.conversation_id,
+      elicitation_id: openApproval.id,
+      tool_name: p.tool_name,
+      ...(p.tool_call_id ? { tool_call_id: p.tool_call_id } : {}),
+    });
+    return rowToRecord(openApproval);
+  }
   if (stale.length > 0) {
     const staleIds = stale.map((row) => row.id);
     await transitionElicitations(exec, {
