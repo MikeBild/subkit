@@ -22,7 +22,6 @@ import {
   brandingDraftAppIcon,
   brandingDraftLogo,
   brandingPreviewLogo,
-  brandingWorkspaceName,
 } from "@/features/settings/model/branding";
 import { useI18n } from "@/lib/i18n-context";
 import { BrandingIconUpload } from "./branding-icon-upload";
@@ -208,17 +207,11 @@ function BrandingPreview({ draft, saved }: { draft: TenantBrandingUpdate; saved:
   const { t } = useI18n();
   const session = useSession();
   const configured =
-    draft.display_name !== null ||
     draft.subtitle !== null ||
     draft.palette !== null ||
     brandingDraftLogo(draft, saved, "light") !== null ||
     brandingDraftLogo(draft, saved, "dark") !== null ||
     brandingDraftAppIcon(draft, saved) !== null;
-  const workspaceName =
-    brandingWorkspaceName(
-      { tenant: session.tenant, branding: { configured, display_name: draft.display_name } },
-      false,
-    ) ?? t("app.name");
   return (
     <section aria-labelledby="branding-preview-title">
       <div className="mb-2">
@@ -269,7 +262,9 @@ function BrandingPreview({ draft, saved }: { draft: TenantBrandingUpdate; saved:
                       kind === "mobile" ? "text-[11px]" : "text-xs",
                     )}
                   >
-                    <b className="truncate">{workspaceName}</b>
+                    <b className="truncate">
+                      {configured ? session.tenant.display_name : t("app.name")}
+                    </b>
                     <span className="truncate text-muted-foreground">
                       {configured ? draft.subtitle : session.tenant.display_name}
                     </span>
