@@ -81,6 +81,16 @@ describe("Postgres recipes", () => {
       }
     }
   });
+
+  test("row-count counts the table rows instead of catalog entries (#569)", () => {
+    const rowCountRecipe = pg.recipes.find((recipe) => recipe.slug === "row-count")!;
+    const [countStep] = rowCountRecipe.workflow.steps as Array<{
+      sql: { query: string; params: string[] };
+    }>;
+    expect(countStep!.sql.query).not.toContain("information_schema");
+    expect(countStep!.sql.query).toContain("FROM %I.%I");
+    expect(countStep!.sql.params).toEqual(["${input.schema_name}", "${input.table_name}"]);
+  });
 });
 
 describe("GraphQL and AWS recipe coverage", () => {
