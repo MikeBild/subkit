@@ -26649,6 +26649,15 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
+                /** @description Channel still targeted by notification rules */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
             };
         };
         options?: never;
@@ -28348,6 +28357,7 @@ export interface paths {
             parameters: {
                 query?: {
                     limit?: number;
+                    /** @description ISO 8601 lower bound, UTC (Z) or numeric offset (+05:45) */
                     since?: string;
                     trace_id?: string;
                 };

@@ -8,7 +8,7 @@ const errorsCommand = defineCommand({
   meta: { name: "errors", description: "Show recent engine errors" },
   args: {
     limit: { type: "string", description: "Max rows", default: "20" },
-    since: { type: "string", description: "ISO timestamp lower bound" },
+    since: { type: "string", description: "ISO timestamp lower bound (UTC or numeric offset)" },
     "trace-id": { type: "string", description: "Filter by trace id" },
     tail: {
       type: "boolean",

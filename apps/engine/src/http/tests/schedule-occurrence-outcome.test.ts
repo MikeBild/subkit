@@ -81,3 +81,22 @@ describe("schedule occurrences carry the outcome of the run they started", () =>
     ]);
   });
 });
+
+describe("schedule occurrence history accepts a before cutoff with a numeric offset", () => {
+  const readDueTimes = async (before: string) => {
+    const res = await fetch(
+      `${srv.baseUrl}/v1/workflows/${workflowId}/schedule-occurrences?before=${encodeURIComponent(before)}`,
+      { headers: { authorization: `Bearer ${srv.apiKey}` } },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { items: Array<{ due_at: string }> };
+    return body.items.map((item) => item.due_at);
+  };
+
+  test("+05:30, -07:00 and Z name the same exclusive cutoff", async () => {
+    const expected = ["2026-03-02T09:00:00.000Z", "2026-03-02T08:00:00.000Z"];
+    expect(await readDueTimes("2026-03-02T10:00:00Z")).toEqual(expected);
+    expect(await readDueTimes("2026-03-02T15:30:00+05:30")).toEqual(expected);
+    expect(await readDueTimes("2026-03-02T03:00:00-07:00")).toEqual(expected);
+  });
+});

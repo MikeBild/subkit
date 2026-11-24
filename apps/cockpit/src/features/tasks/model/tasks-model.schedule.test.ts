@@ -138,6 +138,19 @@ describe("schedule choices", () => {
     ).toBe("2026-03-29T07:00:00.000Z");
   });
 
+  test("a local time skipped by the spring clock change is rejected, not moved", () => {
+    const issue = (runAt: string) => {
+      const result = scheduleFields(draft({ option: "once", runAt }), NOW);
+      return result.ok ? result.fields.schedule_run_at : result.issue;
+    };
+    expect(localInputToInstant("2027-03-28T02:30", BERLIN)).toBeNull();
+    expect(issue("2027-03-28T02:30")).toBe("tasks.schedule.error.runAtGap");
+    expect(issue("2027-03-28T03:30")).toBe("2027-03-28T01:30:00.000Z");
+    expect(issue("2027-03-28T01:59")).toBe("2027-03-28T00:59:00.000Z");
+    expect(issue("2027-10-31T02:30")).toMatch(/^2027-10-31T0[01]:30:00\.000Z$/);
+    expect(issue("2027-03-28T02:30")).not.toBe("tasks.schedule.error.runAt");
+  });
+
   test("the next start is computed for every choice a person can make", () => {
     const next = (cron: string | null, zone: string | null = BERLIN, at = NOW) =>
       nextStart(

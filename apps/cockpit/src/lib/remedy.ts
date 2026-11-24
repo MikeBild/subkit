@@ -1,4 +1,5 @@
 import { attentionHref, chatNewHref, connectorHref, workflowAutomationHref } from "@/app/links";
+import { failureRemedy } from "@/lib/failure-remedy";
 import type { TranslationKey } from "@/lib/i18n";
 
 export type RemedyKind =
@@ -40,6 +41,7 @@ export interface RemedyInput {
     section?: "credentials";
   } | null;
   held?: boolean;
+  causeClass?: string | null;
   canRun: boolean;
   canChat: boolean;
   prompt?: string | null;
@@ -75,6 +77,13 @@ export function remedyFor(input: RemedyInput): Remedy | null {
         : REMEDY_LABEL.check_auth,
       href: `${connectorHref(input.authState.connectorId)}${card ? "#connector-credentials" : ""}`,
     };
+  }
+  if (
+    input.canRun &&
+    input.executionId &&
+    failureRemedy({ causeClass: input.causeClass ?? null, code: null, status: null }) === "retry"
+  ) {
+    return { kind: "retry", labelKey: REMEDY_LABEL.retry, href: "" };
   }
   if (input.canChat) {
     return {

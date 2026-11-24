@@ -66,12 +66,24 @@ export function useTask(id: string, enabled: boolean) {
   });
 }
 
+const listTaskRunPage = (id: string, offset: number) =>
+  apiCall("get", "/v1/tasks/{id}/runs", { path: { id }, query: { limit: RUN_PAGE, offset } });
+
+export async function listAllTaskRuns(id: string) {
+  const items: Awaited<ReturnType<typeof listTaskRunPage>>["items"] = [];
+  for (;;) {
+    const page = await listTaskRunPage(id, items.length);
+    items.push(...page.items);
+    if (page.items.length === 0 || items.length >= page.total)
+      return { items, total: Math.max(page.total, items.length) };
+  }
+}
+
 export function useTaskRuns(id: string, enabled: boolean) {
   const live = useLiveQueryOptions();
   return useQuery({
     queryKey: taskKeys.runs(id),
-    queryFn: () =>
-      apiCall("get", "/v1/tasks/{id}/runs", { path: { id }, query: { limit: RUN_PAGE } }),
+    queryFn: () => listAllTaskRuns(id),
     enabled: enabled && Boolean(id),
     ...live,
   });

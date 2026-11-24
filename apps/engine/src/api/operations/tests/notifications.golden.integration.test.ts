@@ -365,14 +365,18 @@ describe("notification operations keep their HTTP responses byte for byte", () =
   });
 
   test("delete", async () => {
-    record("http.channels.delete", await http("DELETE", `/v1/notifications/channels/${channelId}`));
     record(
-      "http.channels.delete.again",
+      "http.channels.delete.in_use",
       await http("DELETE", `/v1/notifications/channels/${channelId}`),
     );
     record("http.rules.delete", await http("DELETE", `/v1/notifications/rules/${ruleId}`));
     record("http.rules.delete.again", await http("DELETE", `/v1/notifications/rules/${ruleId}`));
     record("http.rules.delete.invalid", await http("DELETE", "/v1/notifications/rules/nope"));
+    record("http.channels.delete", await http("DELETE", `/v1/notifications/channels/${channelId}`));
+    record(
+      "http.channels.delete.again",
+      await http("DELETE", `/v1/notifications/channels/${channelId}`),
+    );
   });
 
   test("marking inbox tasks read or unread writes an audit row", async () => {

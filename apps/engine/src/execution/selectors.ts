@@ -8,7 +8,34 @@ interface Compiled {
   ops: Op[];
 }
 
-const TOKEN_RE = /\.(\w+)|\[(\*|-?\d+(?::-?\d+)?|'[^']*'|"[^"]*")\]/g;
+const TOKEN_RE = /\.(\w+)|\[(\*|last|first|-?\d+(?::-?\d+)?|'[^']*'|"[^"]*")\]/g;
+
+const NAMED_INDEX: Record<string, number> = { first: 0, last: -1 };
+const SEGMENT_RE = /^([^[]*)((?:\[[^\]]*\])*)$/;
+const BRACKET_RE = /\[([^\]]*)\]/g;
+
+const toIndex = (token: string): number | null =>
+  token in NAMED_INDEX
+    ? (NAMED_INDEX[token] ?? null)
+    : /^-?\d+$/.test(token)
+      ? Number(token)
+      : null;
+
+export function resolveValuePath(value: unknown, dotPath: string): unknown {
+  let current: unknown = value;
+  for (const segment of dotPath.split(".")) {
+    if (segment === "") continue;
+    const [, key = segment, brackets = ""] = SEGMENT_RE.exec(segment) ?? [];
+    if (current == null || typeof current !== "object") return undefined;
+    if (key !== "") current = (current as Record<string, unknown>)[key];
+    for (const [, token = ""] of brackets.matchAll(BRACKET_RE)) {
+      const index = toIndex(token);
+      if (!Array.isArray(current) || index === null) return undefined;
+      current = current[index < 0 ? current.length + index : index];
+    }
+  }
+  return current;
+}
 
 export function compileSelector(expr: string): Compiled {
   if (expr?.[0] !== "$") {
@@ -30,6 +57,8 @@ export function compileSelector(expr: string): Compiled {
       const inner = m[2];
       if (inner === "*") {
         ops.push({ type: "wildcard" });
+      } else if (inner in NAMED_INDEX) {
+        ops.push({ type: "index", index: NAMED_INDEX[inner] ?? 0 });
       } else if (inner.startsWith("'") || inner.startsWith('"')) {
         ops.push({ type: "key", key: inner.slice(1, -1) });
       } else if (inner.includes(":")) {
