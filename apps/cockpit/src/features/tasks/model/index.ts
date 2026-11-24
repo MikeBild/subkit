@@ -1,4 +1,4 @@
-export { type WorkSteps, workSteps } from "./progress-model";
+export { type RoundBudget, roundBudget } from "./progress-model";
 export { taskKeys } from "./task-keys";
 export { type HistoryEntry, historyLabelKey, historyReason, historyTitle } from "./tasks-history";
 export {

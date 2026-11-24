@@ -15,9 +15,15 @@ import {
   TASK_ID,
   task,
 } from "@/features/tasks/model/tasks-fixtures";
-import { emptyDraft, scheduleDraft, type TaskRun } from "@/features/tasks/model/tasks-model";
+import {
+  emptyDraft,
+  scheduleDraft,
+  type TaskRun,
+  type TaskView,
+} from "@/features/tasks/model/tasks-model";
 import { TaskDetail } from "@/features/tasks/ui/tasks-detail";
 import { TaskFormFields, TaskScheduleFields } from "@/features/tasks/ui/tasks-form";
+import { CATALOGS } from "@/lib/i18n";
 
 const ALL = [
   "task:read",
@@ -49,7 +55,12 @@ const count = (markup: string, needle: string) => markup.split(needle).length - 
 
 function detail(
   latest: TaskRun | null,
-  options: { permissions?: string[]; steps?: unknown[]; locale?: "de" | "en" } = {},
+  options: {
+    permissions?: string[];
+    steps?: unknown[];
+    locale?: "de" | "en";
+    task?: Partial<TaskView>;
+  } = {},
 ) {
   const client = cache();
   client.setQueryData(["task-runs", TASK_ID, "list"], {
@@ -64,7 +75,7 @@ function detail(
     });
   return show(
     <TaskDetail
-      task={task({ latest_run: latestRun(latest) })}
+      task={task({ ...options.task, latest_run: latestRun(latest) })}
       permissions={options.permissions ?? ALL}
     />,
     client,
@@ -166,6 +177,45 @@ describe("the overview at a glance", () => {
       expect(box).not.toContain("min-h-35");
     }
     expect(render(<KpiTile label="A" note="B" testId="k" />)).toContain("min-h-35");
+  });
+});
+
+describe("the round budget of a run", () => {
+  const twoSteps = [
+    { id: "fetch", label: "Fetch", status: "in_progress" },
+    { id: "work", label: "Summarize", status: "open" },
+  ];
+
+  test("is counted in rounds, never as work steps next to the plan steps", async () => {
+    const english = await detail(run({ state: "running", turns_used: 0 }), {
+      steps: twoSteps,
+      task: { max_turns: 13 },
+      locale: "en",
+    });
+    const counter = english.slice(english.indexOf('data-testid="task-rounds"'));
+    expect(counter.slice(0, counter.indexOf("</div>"))).toContain("0 of 13 rounds");
+    expect(english.toLowerCase()).not.toContain("work step");
+    expect(has(english, "task-work-steps")).toBe(false);
+    const german = await detail(run({ state: "running", turns_used: 0 }), {
+      steps: twoSteps,
+      task: { max_turns: 13 },
+    });
+    expect(german).toContain(
+      CATALOGS.de["tasks.overview.rounds"].replace("{used}", "0").replace("{total}", "13"),
+    );
+  });
+
+  test("every budget label speaks of rounds in both languages", () => {
+    for (const key of [
+      "tasks.overview.rounds",
+      "tasks.form.effort",
+      "audit.task.rounds",
+    ] as const) {
+      expect(CATALOGS.en[key].toLowerCase()).toContain("round");
+      expect(CATALOGS.en[key].toLowerCase()).not.toContain("work step");
+      expect(CATALOGS.de[key]).toMatch(/Runde/);
+      expect(CATALOGS.de[key]).not.toMatch(/Arbeitsschritt/);
+    }
   });
 });
 

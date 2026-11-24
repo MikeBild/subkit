@@ -195,13 +195,13 @@ describe("the facts of a task entry", () => {
       { tech: true, label: "Run-ID der Aufgabe", value: UUID },
       { label: "Zustand davor", value: "läuft" },
       { label: "Ursache", value: "Die Frist ist abgelaufen" },
-      { label: "Arbeitsschritte", value: "7" },
+      { label: "Runden", value: "7" },
       { label: "Dauer", value: "1 h 30 min" },
     ]);
     expect(auditTaskFacts(failed, t("en"), dateTime).slice(2)).toEqual([
       { label: "State before", value: "running" },
       { label: "Cause", value: "The time limit ran out" },
-      { label: "Work steps", value: "7" },
+      { label: "Rounds", value: "7" },
       { label: "Duration", value: "1 h 30 min" },
     ]);
   });

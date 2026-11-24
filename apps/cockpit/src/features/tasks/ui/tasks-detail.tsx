@@ -67,7 +67,7 @@ import {
   useTaskRuns,
   useTaskUsage,
 } from "../api/tasks-queries";
-import { workSteps } from "../model/progress-model";
+import { roundBudget } from "../model/progress-model";
 import { historyTitle } from "../model/tasks-history";
 import {
   actionKey,
@@ -281,7 +281,7 @@ function OverviewTab({
   const { t, dateTime } = useI18n();
   const live = run && (isOpenRun(run) || run.state === "result_ready") ? run : null;
   const sleeping = live?.state === "sleeping" && sleepReason ? sleepReason : null;
-  const steps = workSteps(run ? turnsUsed : null, task.max_turns);
+  const rounds = roundBudget(run ? turnsUsed : null, task.max_turns);
   const nextCheck =
     live?.state === "sleeping" && live.next_check_at
       ? dateTime(live.next_check_at)
@@ -343,23 +343,20 @@ function OverviewTab({
         ]}
       />
       <StepProgress task={task} playbook={playbook} state={run?.state ?? null} />
-      {steps ? (
-        <div
-          className="flex items-center gap-4 border-t pt-4 text-sm"
-          data-testid="task-work-steps"
-        >
+      {rounds ? (
+        <div className="flex items-center gap-4 border-t pt-4 text-sm" data-testid="task-rounds">
           <ProgressRing
-            value={steps.used}
-            total={steps.total}
-            label={t("tasks.overview.workSteps", {
-              used: String(steps.used),
-              total: String(steps.total),
+            value={rounds.used}
+            total={rounds.total}
+            label={t("tasks.overview.rounds", {
+              used: String(rounds.used),
+              total: String(rounds.total),
             })}
           />
           <p className="font-mono">
-            {t("tasks.overview.workSteps", {
-              used: String(steps.used),
-              total: String(steps.total),
+            {t("tasks.overview.rounds", {
+              used: String(rounds.used),
+              total: String(rounds.total),
             })}
           </p>
         </div>

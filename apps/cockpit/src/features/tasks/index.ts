@@ -20,7 +20,7 @@ export {
   useTaskUsage,
 } from "./api/tasks-queries";
 export { fromSetup, useTaskEnvironmentDefault } from "./hooks/tasks-default-environment";
-export { type WorkSteps, workSteps } from "./model/progress-model";
+export { type RoundBudget, roundBudget } from "./model/progress-model";
 export { historyTitle } from "./model/tasks-history";
 export {
   actionKey,
