@@ -28,6 +28,19 @@ test("unknown tool guidance uses the auth subsystem entry point", () => {
   ).toEqual([]);
 });
 
+test("scheduled failure classification uses the execution subsystem entry point", () => {
+  const file = "apps/engine/src/scheduler/failure-backoff.ts";
+  const source = readFileSync(
+    new URL("../../src/scheduler/failure-backoff.ts", import.meta.url),
+    "utf8",
+  );
+  const imports = collectImports(file, source).map((entry) => ({
+    ...entry,
+    resolved: resolveImport(file, entry.specifier),
+  }));
+  expect(subsystemEntryHits(file, imports)).toEqual([]);
+});
+
 describe("collectImports", () => {
   test("finds static, re-export, type-only, dynamic and import-type references", () => {
     const source = [

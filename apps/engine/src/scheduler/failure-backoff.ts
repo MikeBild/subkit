@@ -1,8 +1,11 @@
 import { backoffDelay } from "@shared/backoff.ts";
-import { classifyPersistedFailure } from "../execution/core/classify.ts";
+import { classifyPersistedFailure } from "../execution/index.ts";
+import { FAILURE_PAUSE_AFTER } from "./core/failure-policy.ts";
+
+export { FAILURE_PAUSE_AFTER } from "./core/failure-policy.ts";
 
 export const FAILURE_BACKOFF_AFTER = 3;
-export const FAILURE_PAUSE_AFTER = 5;
+
 const FAILURE_BACKOFF_BASE_MINUTES = 2;
 const FAILURE_BACKOFF_FACTOR = 3;
 const FAILURE_BACKOFF_MAX_MINUTES = 54;
