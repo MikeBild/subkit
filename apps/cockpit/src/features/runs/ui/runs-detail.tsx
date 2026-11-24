@@ -1,5 +1,5 @@
 import type { components } from "@cli-core/engine-api/openapi";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
 import { cn } from "@ui/lib/utils";
 import { ErrorNotice } from "@ui/molecules/error-notice";
@@ -129,7 +129,10 @@ function useRerun(run: Execution, onStarted: (id: string) => void) {
   const safety = detail.data?.outcome.rerun_safety;
   const prepareOnly = safety?.mode === "prepare_only";
   const unavailable = !safety || safety.mode === "unavailable";
+  const mutationKey = ["run-rerun", run.id];
+  const pending = useIsMutating({ mutationKey }) > 0;
   const mutation = useMutation({
+    mutationKey,
     mutationFn: () =>
       apiCall("post", "/v1/executions/{id}/rerun", {
         path: { id: run.id },
@@ -143,12 +146,19 @@ function useRerun(run: Execution, onStarted: (id: string) => void) {
     onError: (error) =>
       reportFailure(rerunFailureText(error instanceof ApiError ? error : null, t), error),
   });
-  return { mutation, safety, prepareOnly, unavailable, checking: detail.isPending };
+  return { mutation, pending, safety, prepareOnly, unavailable, checking: detail.isPending };
 }
 
 export function RerunAction({ run, onStarted }: { run: Execution; onStarted(id: string): void }) {
   const { t } = useI18n();
-  const { mutation: rerun, safety, prepareOnly, unavailable, checking } = useRerun(run, onStarted);
+  const {
+    mutation: rerun,
+    pending,
+    safety,
+    prepareOnly,
+    unavailable,
+    checking,
+  } = useRerun(run, onStarted);
   const running = isLive(run.status);
   const disabled = running || unavailable || checking;
   const disabledReason = running
@@ -158,7 +168,7 @@ export function RerunAction({ run, onStarted }: { run: Execution; onStarted(id: 
     <ActionButton
       disabled={disabled}
       disabledReason={disabledReason}
-      pending={rerun.isPending}
+      pending={pending}
       onClick={() => rerun.mutate()}
       testId="run-rerun-open"
     >
@@ -397,7 +407,7 @@ export function RunDetail({ run, page = false }: { run: Execution; page?: boolea
                     remedy.kind === "retry"
                       ? rerun.mutation.mutate()
                       : router.history.push(absolute(remedy.href)),
-                  pending: remedy.kind === "retry" && rerun.mutation.isPending,
+                  pending: remedy.kind === "retry" && rerun.pending,
                   testId: "run-detail-cause-remedy",
                 }
               : undefined
