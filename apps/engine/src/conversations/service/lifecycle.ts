@@ -22,7 +22,7 @@ import {
 } from "../../db/task-run-conversations.ts";
 import { logger } from "../../logging/index.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
-import { now } from "../../utils/clock.ts";
+import { now } from "../../utils/index.ts";
 import { cancelConversationAbort, hasConversationAbort } from "../abort.ts";
 import { stringifyConversationExcerpt, truncateExcerpt } from "../excerpt.ts";
 import type { ConversationOutcome } from "../lifecycle-view.ts";
