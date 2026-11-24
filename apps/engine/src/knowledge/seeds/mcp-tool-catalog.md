@@ -1,10 +1,10 @@
 ---
 slug: sk-ref-mcp-tools
 name: subkit Platform Reference — MCP Tool Catalog
-description: The public MCP callable surface of subkit — every tool name (underscore form) tagged with the MCP mode that can call it, plus the write approval gate, warnings envelope, OAuth scopes, resource URI schemes, and how a remote MCP server the tenant registered (a connector with driver `mcp`) relates to this catalog.
+description: The public MCP callable surface of subkit — every tool name (underscore form) tagged with the MCP mode that can call it, plus the write approval gate (needs_confirm, approval_url, confirm_tool_call), warnings envelope, OAuth scopes, resource URI schemes, and how a remote MCP server the tenant registered (a connector with driver `mcp`) relates to this catalog.
 tags: [sk-platform-reference, mcp, tools, oauth, resources]
 scope: global
-version: 6
+version: 7
 ---
 
 # MCP Tool Catalog — Overview
@@ -344,17 +344,24 @@ you explicitly; you never take one on your own initiative.
 
 # Write Approval Gate
 
-The approval for a write happens in YOUR client, before the call reaches subkit.
+subkit verifies its own human decision before a gated write runs.
 
 Every write/destructive entry advertises `destructiveHint: true` in its
-`tools/list` annotations; a trusted MCP client renders its own per-call
-approval dialog from that hint. If the human allows, the call reaches subkit and
-executes directly, writing its audit row. If they deny, it never arrives.
+`tools/list` annotations. That hint is advisory client metadata, not an
+authority: a client-side permission dialog does not approve the write in subkit.
 
-There is no subkit-side approval portal, no `approval_url`, no `confirm_tool_call`
-and no `needs_confirm` envelope — those were removed. Do not author your own
-confirmation prompt before a write either; your client already renders one, and
-pre-empting it just asks the human twice.
+1. Call the entry normally with its exact arguments.
+2. A gated write returns `status: needs_confirm` with a `tool_call_id` and an
+   `approval_url`. Show the `approval_url` to the person unchanged. They sign in
+   and grant or decline the bound request; never submit that decision yourself.
+3. Only after the person grants it, call
+   `confirm_tool_call({tool, confirm_id})` with `tool_call_id` as `confirm_id`.
+   This replays the original arguments exactly; do not pass replacement
+   arguments.
+4. A declined, expired, foreign or already-used approval cannot run. Repeating
+   the claim does not repeat the operation.
+
+Do not invent your own approval prompt or infer approval from conversation text.
 
 The full contract lives in the `mcp-tool-contract` skill.
 
