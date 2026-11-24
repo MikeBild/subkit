@@ -9,7 +9,7 @@ import { readWorkflowState, writeWorkflowState } from "../workflow-state/index.t
 import type { StepDef } from "../workflows/types.ts";
 import { resolveMultipartInput } from "./multipart-input.ts";
 import { maybeOffload, previewOf } from "./offload.ts";
-import { applySelector } from "./selectors.ts";
+import { applySelector, resolveValuePath } from "./selectors.ts";
 import { finalizeStepRow } from "./state.ts";
 import { runBranchStep } from "./steps/branch.ts";
 import { runModelStep } from "./steps/model.ts";
@@ -19,18 +19,6 @@ import { runTransformStep } from "./steps/transform.ts";
 import { runWaitStep } from "./steps/wait.ts";
 import { runWaitForEventStep } from "./steps/wait-for-event.ts";
 import type { StepResult, StepRunContext } from "./types.ts";
-
-function resolveDotPath(value: unknown, dotPath: string): unknown {
-  if (!dotPath) return value;
-  let cur: unknown = value;
-  for (const segment of dotPath.split(".")) {
-    if (segment === "") continue;
-    if (cur === null || cur === undefined) return undefined;
-    if (typeof cur !== "object") return undefined;
-    cur = (cur as Record<string, unknown>)[segment];
-  }
-  return cur;
-}
 
 export interface RunStepOutcome {
   result: StepResult;
@@ -283,7 +271,7 @@ export async function runStep(
 
   if (result.status === "succeeded" && step.kind === "request" && step.state_write) {
     const sw = step.state_write;
-    const sliced = resolveDotPath(result.output, sw.value_path);
+    const sliced = resolveValuePath(result.output, sw.value_path);
     try {
       await writeWorkflowState(ctx.db, {
         tenant_id: ctx.tenant_id,
