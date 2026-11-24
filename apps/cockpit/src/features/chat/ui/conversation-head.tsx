@@ -127,8 +127,10 @@ export function TurnErrors({
             }
             action={
               blocked ? undefined : failureRemedy ? (
-                <Button asChild variant="outline" data-testid="chat-error-remedy">
-                  <a href={absolute(failureRemedy.href)}>{t(failureRemedy.labelKey)}</a>
+                <Button asChild variant="outline">
+                  <a href={absolute(failureRemedy.href)} data-testid="chat-error-remedy">
+                    {t(failureRemedy.labelKey)}
+                  </a>
                 </Button>
               ) : (
                 <Button
