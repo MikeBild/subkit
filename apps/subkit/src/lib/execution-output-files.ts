@@ -24,8 +24,11 @@ export function outputFileIds(
 ): string[] {
   const inputFids = new Set(collectFileRefs(execution.input));
   const { input: _input, ...withoutInput } = execution;
-  const candidates = [...linkedFiles.map((file) => file.id), ...collectFileRefs(withoutInput)];
-  return [...new Set(candidates)].filter((fid) => !inputFids.has(fid));
+  const candidates = [
+    ...linkedFiles.map((file) => file.id),
+    ...collectFileRefs(withoutInput).filter((fid) => !inputFids.has(fid)),
+  ];
+  return [...new Set(candidates)];
 }
 
 async function listLinkedOutputFiles(

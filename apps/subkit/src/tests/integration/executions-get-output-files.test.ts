@@ -178,6 +178,31 @@ describe("executions get output files from workflow_run links", () => {
     expect(outputFileIds(execution, [{ id: GENERATED_FID }])).toEqual([GENERATED_FID]);
   });
 
+  test("preserves one download hint when a linked output reuses an input file ID", async () => {
+    const { EngineClient } = await import("../../engine-client.ts");
+    const { executionOutputFileLines } = await import("../../lib/execution-output-files.ts");
+    const client = new EngineClient({
+      engine_url: "http://engine.local",
+      api_key: "wf_live_test",
+      tenant: "t-test",
+      fetchImpl: async () =>
+        jsonResponse({
+          items: [fileRow(INPUT_FID, "report.pdf", 2048)],
+          next_cursor: null,
+        }),
+    });
+
+    const execution = {
+      id: EXECUTION_ID,
+      input: { $file: INPUT_FID },
+      result: { $file: INPUT_FID },
+    };
+
+    expect(await executionOutputFileLines(client, execution)).toEqual([
+      `${INPUT_FID} (report.pdf, 2.0 KB) — subkit files download ${INPUT_FID}`,
+    ]);
+  });
+
   test("lists the generated file and never the uploaded input", async () => {
     const { EngineClient } = await import("../../engine-client.ts");
     const { executionOutputFileLines } = await import("../../lib/execution-output-files.ts");
