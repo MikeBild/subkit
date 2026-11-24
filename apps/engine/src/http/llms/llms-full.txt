@@ -2315,10 +2315,11 @@ The reference to the file stays the same. Workflows and the chat therefore use t
 
 ### Restore an earlier state of a file
 
-1. Open the file and its **Usage** tab.
-2. Expand **Replaced**. The section appears once a file has earlier versions.
+1. Open **Files** and click the file.
+2. Open the **Versions** tab. The tab appears once the file has been replaced.
 3. Click a version. You see its preview.
-4. On an earlier version, select **Restore**.
+4. On an earlier version, select **Restore this version**.
+5. In the dialog, confirm with **Restore this version**.
 
 The earlier state becomes current again as a new version. The current content stays as an earlier version.
 
@@ -2333,7 +2334,7 @@ Good to know:
 | --- | --- |
 | **Restore this version** is missing | You opened the current version. Open an earlier one. If the button is still missing, ask an administrator for the write permission for sources or skills. |
 | "This version has no saved state, so it cannot be restored." | Choose another version, or change the skill directly. |
-| The **Replaced** section is missing | The file was never replaced. It has no earlier versions yet. |
+| The **Versions** tab is missing | The file was never replaced. It has no earlier versions yet. |
 | **Replace** is missing in the menu | Ask an administrator for `file:write`. |
 | **Plan a review** is missing under **More actions** | Ask an administrator for `knowledge:write`. |
 
@@ -4129,6 +4130,8 @@ subkit branding update <json-file|->
 subkit branding reset <revision>
 subkit branding logo <light|dark> --output <file>
 ```
+
+`--revision <n>` is optional; without it the CLI downloads the logo of the current revision.
 
 MCP provides `get_tenant_branding`, `update_tenant_branding`, `reset_tenant_branding` and `get_tenant_branding_logo`. Changes through MCP need the usual approval by a signed-in person. SubKit checks both write permissions before it requests that approval. Ordinary reads return metadata; only `get_tenant_branding_logo` returns the normalized PNG bytes. The OpenAPI and MCP input schemas are generated from the same request definition.
 ## Installed Cockpit sessions
@@ -6295,7 +6298,7 @@ Download normalized branding logo PNG
 
 - `<theme>` (positional, required) — light or dark
 - `--output` (string) — Output file, defaults to stdout
-- `--revision` (string)
+- `--revision` (string) — Branding revision, defaults to the current revision
 - `--engine-url` (string)
 - `--api-key` (string)
 - `--profile` (string)

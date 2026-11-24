@@ -483,6 +483,25 @@ describe("tasks/service definitions", () => {
       deps,
     ).catch((e) => e);
     expect(frequent.details).toEqual({ code: "cron_too_frequent" });
+    const rareClosePair = await updateTask(
+      {
+        ...scope,
+        task_id: task.id,
+        input: {
+          ...taskInput({
+            schedule_cron: "0,16,32,50 0,2,4,6,8,10,12,14,16,18,20,23 1,3,5,6 12 *",
+          }),
+          expected_revision: 3,
+        },
+      },
+      ctx.db,
+      deps,
+    ).catch((e) => e);
+    expect(rareClosePair).toBeInstanceOf(BadRequestError);
+    expect(rareClosePair.details).toEqual({ code: "cron_too_frequent" });
+    expect((await getTask({ ...scope, task_id: task.id }, ctx.db))?.schedule_cron).toBe(
+      "0 8 * * 1",
+    );
   });
 
   test("update and delete record name and lifecycle before and after", async () => {

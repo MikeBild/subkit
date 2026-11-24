@@ -37,6 +37,24 @@ describe("schedule occurrences", () => {
     }
   });
 
+  test("asks to approve a version without an approval and to renew one that ran out", () => {
+    const lastSentence = (sentence: string) => sentence.split(". ").at(-1);
+    const sentenceOf = (locale: "en" | "de", reason: string) =>
+      translate(locale, occurrenceSentenceKey({ state: "held", reason_code: reason }));
+    expect(sentenceOf("en", "execution_authority_required")).toContain("Approve it");
+    expect(sentenceOf("en", "execution_authority_required")).not.toMatch(/renew|no longer/i);
+    expect(sentenceOf("en", "execution_authority_expired")).toContain("Renew it");
+    expect(lastSentence(sentenceOf("de", "execution_authority_required"))).toBe(
+      lastSentence(sentenceOf("de", "grant_required")),
+    );
+    expect(lastSentence(sentenceOf("de", "execution_authority_required"))).not.toBe(
+      lastSentence(sentenceOf("de", "grant_expired")),
+    );
+    expect(lastSentence(sentenceOf("de", "execution_authority_expired"))).not.toBe(
+      lastSentence(sentenceOf("de", "grant_required")),
+    );
+  });
+
   test("falls back to the state for an unknown or missing reason", () => {
     expect(occurrenceSentenceKey({ state: "ran", reason_code: null })).toBe(
       "scheduleHistory.state.ran",

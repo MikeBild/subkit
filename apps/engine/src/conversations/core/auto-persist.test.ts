@@ -11,6 +11,7 @@ import {
   readFormValues,
   readPatches,
   readSubmittedWorkflowInput,
+  selectApprovedIndices,
   writeNotDispatchedSynthetic,
 } from "./auto-persist.ts";
 
@@ -109,6 +110,17 @@ describe("patch selection", () => {
   test("returns null without an index list", () => {
     expect(readApprovedIndices({ approved_indices: "0" }, 3)).toBeNull();
     expect(readApprovedIndices(null, 3)).toBeNull();
+  });
+
+  test("a partial approval without indices selects no ops", () => {
+    expect(selectApprovedIndices({ confirmed: true, partial: true }, 3)).toStrictEqual([]);
+    expect(
+      selectApprovedIndices({ confirmed: true, partial: true, approved_indices: [1] }, 3),
+    ).toStrictEqual([1]);
+  });
+
+  test("a plain confirm without indices selects every op", () => {
+    expect(selectApprovedIndices({ confirmed: true }, 3)).toStrictEqual([0, 1, 2]);
   });
 
   test("reads only non-empty patch lists", () => {

@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getTool } from "../../conversations/tools/index.ts";
 import { taskRunToolRefusal } from "../../conversations/tools/sdk-wrap/task-run-guard.ts";
 import {
   conversationElicitations,
   conversationToolCalls,
+  executions,
   workflows,
   workflowVersions,
 } from "../../db/schema/index.ts";
@@ -17,6 +18,7 @@ import {
   db,
   jobOf,
   ownedTask,
+  pendingElicitation,
   person,
   runRow,
   script,
@@ -34,7 +36,10 @@ useTaskRunQueue("task_run_turn_workflow");
 
 let sequence = 0;
 
-async function writingWorkflow(w: Workspace): Promise<{ id: string; slug: string }> {
+async function writingWorkflow(
+  w: Workspace,
+  options: { url?: string; input_schema?: Record<string, unknown> } = {},
+): Promise<{ id: string; slug: string }> {
   const slug = `send-report-${++sequence}`;
   const [workflow] = await db
     .insert(workflows)
@@ -50,12 +55,13 @@ async function writingWorkflow(w: Workspace): Promise<{ id: string; slug: string
       dag: {
         name: slug,
         slug,
+        ...(options.input_schema ? { input_schema: options.input_schema } : {}),
         steps: [
           {
             id: "send",
             kind: "request",
             method: "POST",
-            url: "http://127.0.0.1:9/messages",
+            url: options.url ?? "http://127.0.0.1:9/messages",
             body: { recipient: "reviewed@example.test" },
           },
         ],
@@ -180,4 +186,140 @@ describe("bound workflows in a task run", () => {
     const foreign = await taskRunToolRefusal(tool, marker, ctx, { workflow: "not-part-of-it" });
     expect(foreign).toMatchObject({ error_code: "task_run_workflow_not_bound" });
   }, 120_000);
+
+  test("approving held writes of a workflow without input runs them once (#539)", async () => {
+    const received: string[] = [];
+    const receiver = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch(request) {
+        received.push(request.method);
+        return Response.json({ ok: true });
+      },
+    });
+    try {
+      const w = await workspace();
+      const workflow = await writingWorkflow(w, {
+        url: `http://127.0.0.1:${receiver.port}/messages`,
+        input_schema: { type: "object" },
+      });
+      const task = await ownedTask(
+        w,
+        taskInput({
+          bindings: {
+            workflow_ids: [workflow.id],
+            connector_ids: [],
+            skill_slugs: [],
+            web_search: false,
+          },
+        }),
+      );
+      const run = await startedRun(w, task);
+      await clearQueue();
+      await enqueueTaskRunTurn(db, jobOf(w, run));
+      script(run.conversation_id, [{ tool: `wf_${workflow.slug}`, args: {} }]);
+      expect(await workQueuedTurn()).toBe(true);
+      const pending = await pendingElicitation(w, run.conversation_id);
+      const approval_id = (
+        pending.input as { commit_intent?: { payload?: { approval_id?: string } } }
+      ).commit_intent?.payload?.approval_id;
+      if (!approval_id) throw new Error("expected held writes that wait for an approval");
+      expect(received).toEqual([]);
+      script(run.conversation_id, [{ text: "The report went out." }]);
+
+      await answerAsPerson(w, run.conversation_id, w.owner, { confirmed: true });
+
+      const released = await db
+        .select({ status: executions.status })
+        .from(executions)
+        .where(
+          and(eq(executions.tenant_id, w.tenant_id), eq(executions.tool_approval_id, approval_id)),
+        );
+      expect(released).toEqual([{ status: "succeeded" }]);
+      expect(received).toEqual(["POST"]);
+    } finally {
+      receiver.stop(true);
+    }
+  }, 240_000);
+  test("a finalization failure after POST preserves an unknown write outcome (#539)", async () => {
+    const received: string[] = [];
+    const receiver = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch(request) {
+        received.push(request.method);
+        return Response.json({ ok: true });
+      },
+    });
+    try {
+      const w = await workspace();
+      const workflow = await writingWorkflow(w, {
+        url: `http://127.0.0.1:${receiver.port}/messages`,
+        input_schema: { type: "object" },
+      });
+      const task = await ownedTask(
+        w,
+        taskInput({
+          bindings: {
+            workflow_ids: [workflow.id],
+            connector_ids: [],
+            skill_slugs: [],
+            web_search: false,
+          },
+        }),
+      );
+      const run = await startedRun(w, task);
+      await clearQueue();
+      await enqueueTaskRunTurn(db, jobOf(w, run));
+      script(run.conversation_id, [{ tool: `wf_${workflow.slug}`, args: {} }]);
+      expect(await workQueuedTurn()).toBe(true);
+      const pending = await pendingElicitation(w, run.conversation_id);
+      const approval_id = (
+        pending.input as { commit_intent?: { payload?: { approval_id?: string } } }
+      ).commit_intent?.payload?.approval_id;
+      if (!approval_id) throw new Error("expected held writes that wait for an approval");
+      expect(received).toEqual([]);
+      script(run.conversation_id, [{ text: "The report went out." }]);
+
+      await db.execute(
+        sql.raw(`
+        CREATE FUNCTION subkit.test_held_finalize_failure() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN RAISE EXCEPTION 'synthetic finalization failure'; END $$;
+        CREATE TRIGGER test_held_finalize_failure BEFORE UPDATE ON subkit.executions
+        FOR EACH ROW WHEN (NEW.tool_approval_id IS NOT NULL AND NEW.status = 'succeeded')
+        EXECUTE FUNCTION subkit.test_held_finalize_failure();
+      `),
+      );
+      try {
+        await answerAsPerson(w, run.conversation_id, w.owner, { confirmed: true });
+      } finally {
+        await db.execute(
+          sql.raw(`
+          DROP TRIGGER test_held_finalize_failure ON subkit.executions;
+          DROP FUNCTION subkit.test_held_finalize_failure();
+        `),
+        );
+      }
+
+      expect(received).toEqual(["POST"]);
+      const calls = await db
+        .select({ output: conversationToolCalls.output })
+        .from(conversationToolCalls)
+        .where(
+          and(
+            eq(conversationToolCalls.tenant_id, w.tenant_id),
+            eq(conversationToolCalls.conversation_id, run.conversation_id),
+          ),
+        );
+      const failed = calls.find(
+        (call) => (call.output as { error_code?: string })?.error_code === "held_dispatch_failed",
+      )?.output as { message: string; data: Record<string, unknown> } | undefined;
+      expect(failed).toBeDefined();
+      expect(failed?.message).not.toContain("nothing was written");
+      expect(failed?.message).toContain("may have completed");
+      expect(failed?.data).toMatchObject({ writes_executed: null, write_outcome: "unknown" });
+    } finally {
+      receiver.stop(true);
+    }
+  }, 240_000);
 });

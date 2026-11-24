@@ -242,6 +242,64 @@ describe("validateElicitationAnswer — ask_user_multi", () => {
   });
 });
 
+describe("validateElicitationAnswer — ask_user_confirm partial_diff_approval", () => {
+  const partialInput = {
+    question: "Apply these changes?",
+    kind: "partial_diff_approval",
+    diffs: [{ label: "replace /steps/0" }, { label: "remove /steps/1" }],
+  };
+  const selectionError = {
+    ok: false,
+    field_errors: [
+      { name: "approved_indices", message: "a partial approval must select at least one change" },
+    ],
+  };
+
+  test("rejects a partial approval without indices", () => {
+    expect(
+      validateElicitationAnswer("ask_user_confirm", partialInput, {
+        confirmed: true,
+        partial: true,
+      }),
+    ).toStrictEqual(selectionError);
+  });
+
+  test("rejects a partial approval with only out-of-range indices", () => {
+    expect(
+      validateElicitationAnswer("ask_user_confirm", partialInput, {
+        confirmed: true,
+        partial: true,
+        approved_indices: [5, -1],
+      }),
+    ).toStrictEqual(selectionError);
+  });
+
+  test("accepts a partial approval with a valid selection", () => {
+    expect(
+      validateElicitationAnswer("ask_user_confirm", partialInput, {
+        confirmed: true,
+        partial: true,
+        approved_indices: [1],
+      }),
+    ).toStrictEqual({ ok: true });
+  });
+
+  test("accepts a plain confirm without indices", () => {
+    expect(
+      validateElicitationAnswer("ask_user_confirm", partialInput, { confirmed: true }),
+    ).toStrictEqual({ ok: true });
+  });
+
+  test("accepts a decline", () => {
+    expect(
+      validateElicitationAnswer("ask_user_confirm", partialInput, {
+        confirmed: false,
+        partial: true,
+      }),
+    ).toStrictEqual({ ok: true });
+  });
+});
+
 describe("validateElicitationAnswer — unknown tool", () => {
   test("unknown tool_name always returns ok:true", () => {
     const result = validateElicitationAnswer("some_future_tool", { question: "?" }, { x: 1 });

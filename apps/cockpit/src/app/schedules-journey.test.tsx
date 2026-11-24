@@ -148,11 +148,16 @@ async function createPauseResume(locale: Locale) {
 
   await app.click("schedule-create");
   expect(app.find("schedule-dialog-title")?.textContent).toBe(app.t("schedule.createTitle"));
+  expect(app.find("schedule-dialog")?.textContent).toContain("Europe/Berlin");
   await app.press("schedule-rhythm-monthly");
   await app.fill("schedule-time", "06:45");
   await app.click("schedule-dialog-submit");
   expect(app.seen).toContain("POST /v1/schedules");
-  expect(flow.bodies[0]).toMatchObject({ workflow_id: WORKFLOW, cron: CRON });
+  expect(flow.bodies[0]).toMatchObject({
+    workflow_id: WORKFLOW,
+    cron: CRON,
+    timezone: "Europe/Berlin",
+  });
   expect(app.find("schedule-dialog")).toBeNull();
   expect(app.text()).toContain(app.t("schedule.created"));
   expect(app.find("workflow-schedule")).not.toBeNull();

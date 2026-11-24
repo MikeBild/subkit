@@ -118,6 +118,7 @@ export const listSchedulesTool: ConversationTool = {
   category: "tenant_read",
   permission: { action: "schedule:read", resourceType: "schedule" },
   async execute(ctx, args: z.infer<typeof ListInput>) {
+    const { scheduleCostProjection } = await import("../../../../scheduler/index.ts");
     const { rows, total } = await listSchedules(
       ctx.db,
       ctx.tenant_id,

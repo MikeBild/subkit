@@ -11,6 +11,7 @@ import type {
 } from "../engine-client/executions.ts";
 import { EngineClient, type ExecutionCost } from "../engine-client.ts";
 import { executionOutcomeLine, recordLinkLines, stepLimitLine } from "../lib/execution-outcome.ts";
+import { resolveExecutionResult } from "../lib/execution-result.ts";
 import { heldRunBlock } from "../lib/held-run.ts";
 import { pickId } from "../lib/pick.ts";
 import { exitCodeForTerminalStatus, followExecution } from "../lib/tail-execution.ts";
@@ -242,23 +243,41 @@ const resultCommand = defineCommand({
         });
         const execution = await client.getExecution(id);
         const { items: steps } = await client.executionSteps(id);
-        const last = steps.length > 0 ? steps[steps.length - 1] : undefined;
-        const output = last?.output_preview ?? last?.result_preview ?? null;
+        const result = resolveExecutionResult(execution, steps);
         if (args.json) {
-          printJson(output);
+          printJson(
+            result.kind === "markdown"
+              ? { result_markdown: result.markdown, result_markdown_truncated: result.truncated }
+              : result.output,
+          );
           return;
         }
         const held = heldRunBlock(client, execution, steps);
         process.stdout.write(`execution ${id} · ${statusText(execution.status)}\n`);
         if (held) process.stderr.write(`\n${pc.bold(pc.yellow(held))}\n`);
         const uncertain = uncertainWriteBlock(id, execution, steps);
-        if (uncertain) process.stderr.write(`\n${pc.bold(pc.yellow(uncertain))}\n`);
-        if (output === null || output === undefined) {
-          const uri = last?.result_storage_uri;
-          process.stdout.write(uri ? `  result offloaded to ${uri}\n` : "  (no output recorded)\n");
+        if (uncertain)
+          process.stderr.write(`
+${pc.bold(pc.yellow(uncertain))}
+`);
+        if (result.kind === "markdown") {
+          process.stdout.write(`${result.markdown}
+`);
+          if (result.truncated)
+            process.stderr.write(`
+${pc.dim("note:")} result truncated at 64 KiB
+`);
           return;
         }
-        printJson(output);
+        if (result.output === null || result.output === undefined) {
+          process.stdout.write(
+            result.storageUri
+              ? `  result offloaded to ${result.storageUri}\n`
+              : "  (no output recorded)\n",
+          );
+          return;
+        }
+        printJson(result.output);
       },
       { json: Boolean(args.json) },
     );

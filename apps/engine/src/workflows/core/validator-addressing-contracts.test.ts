@@ -167,7 +167,10 @@ test("plain requests do not acquire GraphQL driver requirements from connector f
     }),
     { connectorGraphqlTargets: new Map([["", [{ driver: "postgres" }]]]) },
   );
-  expect(fallback.errors.map((error) => error.path)).toEqual(["steps.fetch.graphql"]);
+  expect(fallback.errors.map((error) => error.path)).toEqual([
+    "steps.fetch.connector_id",
+    "steps.fetch.graphql",
+  ]);
 });
 
 test("URL-only requests retain supplied fallback connector endpoint facts", () => {

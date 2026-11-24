@@ -7,6 +7,7 @@ import {
   prepareMultipartBody,
 } from "../../../../connectors/drivers/http-multipart.ts";
 import { flagConnectorContractFailure } from "../../../../connectors/health-state.ts";
+import { resolveSigV4Target } from "../../../../connectors/index.ts";
 import { flagConnectorAuthFailure } from "../../../../connectors/reauth.ts";
 import { connectorMaskedQueryKeys } from "../../../../connectors/recorded-url.ts";
 import { connectorEndpointSchemas } from "../../../../db/schema/index.ts";
@@ -79,6 +80,7 @@ interface HttpTarget {
   base_url: URL;
   active_credential_id: string | null;
   signed_jwt: DoOnePageParams["signed_jwt"];
+  sigv4: DoOnePageParams["sigv4"];
   stored_credential_used: boolean;
   connector_query: ConnectorQuery | null;
   masked_query_keys: string[];
@@ -132,6 +134,13 @@ async function connectorTarget(
       plan.credential?.mode === "signed_jwt"
         ? { connector, credential: plan.credential }
         : undefined,
+    sigv4:
+      plan.credential?.mode === "aws_sigv4"
+        ? {
+            ...resolveSigV4Target(connector.config, connector.id),
+            credential: plan.credential,
+          }
+        : undefined,
     stored_credential_used: plan.stored_credential_used,
     connector_query: connectorQueryOf(
       (connector.config as { static_query?: unknown } | null | undefined)?.static_query,
@@ -160,6 +169,7 @@ async function resolveTarget(d: RequestDispatch): Promise<HttpTarget | { result:
       base_url,
       active_credential_id: null,
       signed_jwt: undefined,
+      sigv4: undefined,
       stored_credential_used: false,
       connector_query: connectorQueryOf(undefined, []),
       masked_query_keys: [],
@@ -499,6 +509,7 @@ async function prepareHttp(d: RequestDispatch): Promise<Prepared> {
     query,
     active_credential_id: target.active_credential_id,
     signed_jwt: target.signed_jwt,
+    sigv4: target.sigv4,
     stored_credential_used: target.stored_credential_used,
     body_schema: effectiveBodySchema,
     response_schema: effectiveResponseSchema,

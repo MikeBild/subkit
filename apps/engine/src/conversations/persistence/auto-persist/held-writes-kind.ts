@@ -1,6 +1,7 @@
 import { runExecution } from "../../../execution/engine.ts";
 import { approvedDispatchOutcome } from "../../../execution/tool-approval-dispatch.ts";
 import { authorizeWorkflowRun } from "../../../execution/use-cases/run-workflow.ts";
+import { logger } from "../../../logging/index.ts";
 import {
   approvalAuditResource,
   recordApprovalApproved,
@@ -111,7 +112,7 @@ export async function commitHeldWorkflowWrites(
       data: { workflow_id: workflowId },
     };
   }
-  const heldRun = await runExecution({
+  const dispatched = await runExecution({
     db: p.db,
     tenant_id: p.tenant_id,
     source: {
@@ -128,7 +129,37 @@ export async function commitHeldWorkflowWrites(
       self_healing: { enabled: false },
       tool_approval_id: claim.approval_id,
     },
-  });
+  }).then(
+    (run) => ({ run }),
+    (err: unknown) => ({ err }),
+  );
+  if ("err" in dispatched) {
+    const { err } = dispatched;
+    const code = (err as { code?: unknown } | null)?.code;
+    const error_code = typeof code === "string" ? code : "held_dispatch_failed";
+    logger.warn({
+      module: "conversation_persistence",
+      action: "held_writes.dispatch_failed",
+      msg: "approved held workflow execution failed with an unknown write outcome",
+      tenant_id: p.tenant_id,
+      conversation_id: p.conversation_id,
+      approval_id: claim.approval_id,
+      workflow_id: workflowId,
+      error_code,
+    });
+    return {
+      ok: false,
+      error_code: "held_dispatch_failed",
+      message: `${approvedTool} was approved but execution did not finish (${error_code}: ${err instanceof Error ? err.message : String(err)}). External writes may have completed; check the execution and external system before retrying.`,
+      data: {
+        workflow_id: workflowId,
+        cause: error_code,
+        writes_executed: null,
+        write_outcome: "unknown",
+      },
+    };
+  }
+  const heldRun = dispatched.run;
   return {
     ok: heldRun.status === "succeeded",
     data: {

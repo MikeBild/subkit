@@ -8,11 +8,13 @@ import {
 import { IconButton } from "@ui/molecules/icon-button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@ui/molecules/tooltip";
 import { MoreHorizontal } from "lucide-react";
+import { useRef } from "react";
 import { useI18n } from "@/lib/i18n-context";
 
 export interface ActionMenuItem {
   label: string;
   onSelect?(): void;
+  selectTiming?: "immediate" | "after-close";
   href?: string;
   disabled?: boolean;
   disabledReason?: string;
@@ -35,6 +37,8 @@ export function ActionMenu({
   size?: "default" | "sm";
 }) {
   const { t } = useI18n();
+  const menuTrigger = useRef<HTMLButtonElement>(null);
+  const pendingSelect = useRef<(() => void) | undefined>(undefined);
   const [only] = items;
   if (!only) return null;
   if (items.length === 1 && !alwaysMenu) {
@@ -68,7 +72,7 @@ export function ActionMenu({
   }
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
+      <DropdownMenuTrigger asChild ref={menuTrigger}>
         <IconButton
           variant="outline"
           size={size === "sm" ? "icon-sm" : "icon"}
@@ -78,7 +82,17 @@ export function ActionMenu({
           <MoreHorizontal />
         </IconButton>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+      <DropdownMenuContent
+        align="end"
+        onCloseAutoFocus={(event) => {
+          const selected = pendingSelect.current;
+          pendingSelect.current = undefined;
+          if (!selected) return;
+          event.preventDefault();
+          menuTrigger.current?.focus({ preventScroll: true });
+          selected();
+        }}
+      >
         {items.map((item) => (
           <DropdownMenuItem
             key={item.label}
@@ -88,7 +102,10 @@ export function ActionMenu({
             data-testid={item.testId}
             {...item.data}
             asChild={Boolean(item.href)}
-            onSelect={item.onSelect}
+            onSelect={() => {
+              if (item.selectTiming === "immediate") item.onSelect?.();
+              else pendingSelect.current = item.onSelect;
+            }}
           >
             {item.href ? (
               <a href={item.href} data-testid={item.testId}>

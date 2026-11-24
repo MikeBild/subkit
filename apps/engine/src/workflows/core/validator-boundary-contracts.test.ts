@@ -199,3 +199,26 @@ test("invalid properties shapes produce only the schema diagnostic, not invented
     expect(result.errors[0]?.message).toStartWith("input_schema is not a valid JSON Schema:");
   }
 });
+
+test("a graphql block without a connector is refused at save time, with a connector it is accepted", () => {
+  const graphqlStep = {
+    id: "teams",
+    kind: "request",
+    method: "POST",
+    graphql: { query: "query { teams(first:50) { nodes { id } } }" },
+  };
+  const connectorless = validateWorkflowDef(
+    define([{ ...graphqlStep, url: "${connector.linear.base_url}" }]),
+  );
+  expect(connectorless.ok).toBe(false);
+  expect(connectorless.errors).toEqual([
+    {
+      path: "steps.teams.connector_id",
+      message:
+        "a graphql block needs connector_id — a GraphQL endpoint is addressed as a connector; without one the step would send an empty, unauthenticated HTTP request. Set connector_id to a graphql connector (or the recipe placeholder bound via required_connectors) and drop url.",
+    },
+  ]);
+  expect(validateWorkflowDef(define([{ ...graphqlStep, connector_id: connector }])).errors).toEqual(
+    [],
+  );
+});

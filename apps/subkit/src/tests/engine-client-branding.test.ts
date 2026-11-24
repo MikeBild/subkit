@@ -70,6 +70,30 @@ describe("tenant branding EngineClient parity", () => {
     );
   });
 
+  test("downloads the logo at the current revision when none is given", async () => {
+    const urls: string[] = [];
+    const client = new EngineClient({
+      engine_url: "https://engine.test",
+      api_key: "key",
+      tenant: "tenant-a",
+      fetchImpl: async (input) => {
+        urls.push(String(input));
+        return urls.length === 1
+          ? Response.json(branding)
+          : new Response(new Uint8Array([137, 80, 78, 71]), {
+              headers: { "content-type": "image/png" },
+            });
+      },
+    });
+    expect(await client.getTenantBrandingLogo({ theme: "light" })).toEqual(
+      new Uint8Array([137, 80, 78, 71]),
+    );
+    expect(urls).toEqual([
+      "https://engine.test/v1/tenant/branding",
+      "https://engine.test/v1/tenant/branding/logo?theme=light&tenant_context=tenant-a&revision=7",
+    ]);
+  });
+
   test("preserves permission and stale-revision API errors", async () => {
     const denied = new EngineClient({
       engine_url: "https://engine.test",

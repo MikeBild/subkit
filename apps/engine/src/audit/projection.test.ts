@@ -145,3 +145,19 @@ test("an approval and an activation show what they bound, never free text", () =
   expect(JSON.stringify(saved)).not.toContain("private-operation-canary");
   expect(projectAuditEntry(entry).details).toEqual({});
 });
+
+test("approval policy change exposes its recorded source", () => {
+  const policyChange: AuditEntry = {
+    ...entry,
+    action: "workspace.approval_policy_changed",
+    resource_type: "tenant",
+    metadata: { source: "policy", eligible_approvers: 2 },
+  };
+  const projected = projectAuditEntry(policyChange);
+  expect((projected.metadata as Record<string, unknown>).source).toBe("policy");
+  expect(projected.details).toEqual({ source: "policy", eligible_approvers: 2 });
+  const forged = projectAuditEntry({ ...policyChange, metadata: { source: "forged" } });
+  expect((forged.metadata as Record<string, unknown>).source).toBeUndefined();
+  const other = projectAuditEntry({ ...entry, metadata: { source: "policy" } });
+  expect((other.metadata as Record<string, unknown>).source).toBeUndefined();
+});

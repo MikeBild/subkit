@@ -2,6 +2,7 @@ export { runProbePathV1Backfill } from "./backfills/probe-path-v1.ts";
 export * from "./circuit-breaker.ts";
 export * from "./config-schemas.ts";
 export { validateConnectorAuthType, validateSftpAuthConsistency } from "./core/config-policy.ts";
+export { resolveSigV4Target } from "./core/http-request.ts";
 export { type SftpMethod, SftpRefusal } from "./core/sftp.ts";
 export * from "./credential-setup-grant.ts";
 export * from "./discovery/service.ts";

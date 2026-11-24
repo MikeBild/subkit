@@ -1,9 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import { DriverEnum } from "../types.ts";
-import { lookupDriver, requestDriverKind } from "./port.ts";
+import { connectorlessProtocol, lookupDriver, requestDriverKind } from "./port.ts";
 
 const FC = { seed: 20261106, numRuns: 200 } as const;
+
+describe("connectorlessProtocol", () => {
+  test("a graphql or mcp block without a connector names the protocol it cannot reach", () => {
+    expect(connectorlessProtocol({ graphql: {} })).toBe("graphql");
+    expect(connectorlessProtocol({ mcp: {} })).toBe("mcp");
+    expect(connectorlessProtocol({ graphql: {}, connector_id: "c1" })).toBeNull();
+    expect(connectorlessProtocol({ mcp: {}, connector_id: "c1" })).toBeNull();
+    expect(connectorlessProtocol({})).toBeNull();
+  });
+});
 
 describe("requestDriverKind", () => {
   test("a graphql block or graphql connector selects graphql first", () => {

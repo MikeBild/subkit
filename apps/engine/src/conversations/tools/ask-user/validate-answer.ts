@@ -25,6 +25,18 @@ function formValues(output: Record<string, unknown>): Record<string, unknown> {
   return wrapped ?? output;
 }
 
+const PARTIAL_SELECTION_MESSAGE = "a partial approval must select at least one change";
+
+function missesPartialSelection(
+  input: Record<string, unknown>,
+  output: Record<string, unknown>,
+): boolean {
+  if (input.kind !== "partial_diff_approval" || output.partial !== true) return false;
+  const total = Array.isArray(input.diffs) ? input.diffs.length : 0;
+  const selected = Array.isArray(output.approved_indices) ? output.approved_indices : [];
+  return !selected.some((index) => Number.isInteger(index) && index >= 0 && index < total);
+}
+
 export function validateElicitationAnswer(
   tool_name: string,
   input: unknown,
@@ -161,6 +173,12 @@ export function validateElicitationAnswer(
               message: "confirm answer must set confirmed (or approved) to true or false",
             },
           ],
+        };
+      }
+      if (missesPartialSelection(inputObj, outputObj)) {
+        return {
+          ok: false,
+          field_errors: [{ name: "approved_indices", message: PARTIAL_SELECTION_MESSAGE }],
         };
       }
       return approvalChange(inputObj, outputObj, reason) === null
