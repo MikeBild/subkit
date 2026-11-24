@@ -3298,7 +3298,7 @@ Pause notifications for a while, for example during a meeting, without changing 
 1. In SubKit Desktop, open the menu bar icon and select **Pause notifications for 1 hour**. In the Cockpit, open **Settings › Notifications**.
 2. To end the pause early, select **Resume notifications**.
 
-During the pause, SubKit sends no push notifications and shows no desktop banners. The **Needs you** list and its count keep updating. Urgent items still reach you if you switched them on. The pause applies on all your devices at once: the desktop app, the Cockpit and the installed web app read the same state. A pause lasts at most 30 days.
+During the pause, SubKit sends no push notifications and shows no desktop banners. The **Needs you** list and its count keep updating. Urgent items still reach you if you switched them on. The pause applies on all your devices at once: the desktop app, the Cockpit and the installed web app read the same state. A pause with an end lasts at most 30 days. **Until resumed** has no end and lasts until you select **Resume notifications**.
 
 ### Get urgent items despite quiet hours
 
@@ -5153,7 +5153,7 @@ The engine has no mail transport yet, so the answer is `copy_link` with `no_mail
 
 ### Notification pause
 
-Body of `PUT`: `{"mode": "for", "minutes": 60}`, `{"mode": "until", "until": "…"}` or `{"mode": "until_resumed"}`. The end has to lie in the future and at most 30 days ahead, otherwise `422 pause_in_past` or `422 pause_too_long`. The answer is `{paused, mode, paused_at, until}`. A pause that has ended reads as `paused: false`.
+Body of `PUT`: `{"mode": "for", "minutes": 60}`, `{"mode": "until", "until": "…"}` or `{"mode": "until_resumed"}`. For `for` and `until`, the end has to lie in the future and at most 30 days ahead, otherwise `422 pause_in_past` or `422 pause_too_long`; `until_resumed` has no end (`until: null`) and no limit. The answer is `{paused, mode, paused_at, until}`. A pause that has ended reads as `paused: false`.
 
 During the pause, push notifications and desktop banners are held back. The attention list and the counters keep counting. If you opted into critical items despite quiet hours, they still reach you. On the Cockpit event stream, announcements carry `delivery: held` (or `critical_only`), `held_by: pause` and, for a pause with an end, `held_until`. Quiet hours show up there with `held_by: schedule`. An open stream picks up a change within 30 seconds.
 

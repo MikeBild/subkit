@@ -68,7 +68,7 @@ Pause notifications for a while, for example during a meeting, without changing 
 1. In SubKit Desktop, open the menu bar icon and select **Pause notifications for 1 hour**. In the Cockpit, open **Settings › Notifications**.
 2. To end the pause early, select **Resume notifications**.
 
-During the pause, SubKit sends no push notifications and shows no desktop banners. The **Needs you** list and its count keep updating. Urgent items still reach you if you switched them on. The pause applies on all your devices at once: the desktop app, the Cockpit and the installed web app read the same state. A pause lasts at most 30 days.
+During the pause, SubKit sends no push notifications and shows no desktop banners. The **Needs you** list and its count keep updating. Urgent items still reach you if you switched them on. The pause applies on all your devices at once: the desktop app, the Cockpit and the installed web app read the same state. A pause with an end lasts at most 30 days. **Until resumed** has no end and lasts until you select **Resume notifications**.
 
 ### Get urgent items despite quiet hours
 

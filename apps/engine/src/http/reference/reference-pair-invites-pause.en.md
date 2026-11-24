@@ -76,7 +76,7 @@ The engine has no mail transport yet, so the answer is `copy_link` with `no_mail
 
 ### Notification pause
 
-Body of `PUT`: `{"mode": "for", "minutes": 60}`, `{"mode": "until", "until": "…"}` or `{"mode": "until_resumed"}`. The end has to lie in the future and at most 30 days ahead, otherwise `422 pause_in_past` or `422 pause_too_long`. The answer is `{paused, mode, paused_at, until}`. A pause that has ended reads as `paused: false`.
+Body of `PUT`: `{"mode": "for", "minutes": 60}`, `{"mode": "until", "until": "…"}` or `{"mode": "until_resumed"}`. For `for` and `until`, the end has to lie in the future and at most 30 days ahead, otherwise `422 pause_in_past` or `422 pause_too_long`; `until_resumed` has no end (`until: null`) and no limit. The answer is `{paused, mode, paused_at, until}`. A pause that has ended reads as `paused: false`.
 
 During the pause, push notifications and desktop banners are held back. The attention list and the counters keep counting. If you opted into critical items despite quiet hours, they still reach you. On the Cockpit event stream, announcements carry `delivery: held` (or `critical_only`), `held_by: pause` and, for a pause with an end, `held_until`. Quiet hours show up there with `held_by: schedule`. An open stream picks up a change within 30 seconds.
 

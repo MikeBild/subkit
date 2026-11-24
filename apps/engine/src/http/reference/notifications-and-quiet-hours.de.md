@@ -68,7 +68,7 @@ Pausiere Benachrichtigungen eine Zeit lang, etwa während eines Termins, ohne de
 1. Öffne in SubKit Desktop das Symbol in der Menüleiste und wähle **Benachrichtigungen 1 Stunde pausieren**. Im Cockpit öffnest du **Einstellungen › Benachrichtigungen**.
 2. Willst du die Pause früher beenden, wähle **Benachrichtigungen fortsetzen**.
 
-Während der Pause schickt SubKit keine Push-Benachrichtigungen und zeigt keine Desktop-Banner. Die Liste **Braucht dich** und ihre Zahl laufen weiter. Dringendes erreicht dich trotzdem, wenn du es eingeschaltet hast. Die Pause gilt auf allen deinen Geräten zugleich: Desktop-App, Cockpit und installierte Web-App lesen denselben Stand. Eine Pause dauert höchstens 30 Tage.
+Während der Pause schickt SubKit keine Push-Benachrichtigungen und zeigt keine Desktop-Banner. Die Liste **Braucht dich** und ihre Zahl laufen weiter. Dringendes erreicht dich trotzdem, wenn du es eingeschaltet hast. Die Pause gilt auf allen deinen Geräten zugleich: Desktop-App, Cockpit und installierte Web-App lesen denselben Stand. Eine Pause mit Ende dauert höchstens 30 Tage. **Bis zum Fortsetzen** hat kein Ende und dauert, bis du **Benachrichtigungen fortsetzen** wählst.
 
 ### Dringendes trotz Ruhezeit bekommen
 
