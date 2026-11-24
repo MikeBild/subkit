@@ -5,7 +5,7 @@ type Recipe = {
   title: string;
   description?: string;
   tags?: string[];
-  required_connectors?: { template_slug: string; role?: string }[];
+  required_connectors?: { template: string; role?: string }[];
   deprecated?: boolean;
   workflow?: { trigger?: { kind?: string } };
 };
@@ -79,7 +79,7 @@ function triggerKind(r: Recipe): string {
 
 function extraConnectors(t: Template, r: Recipe): string {
   const extras = (r.required_connectors ?? [])
-    .map((c) => c.template_slug)
+    .map((c) => c.template)
     .filter((slug) => slug !== t.slug);
   return extras.length > 0 ? extras.map((s) => `\`${s}\``).join(", ") : "—";
 }
