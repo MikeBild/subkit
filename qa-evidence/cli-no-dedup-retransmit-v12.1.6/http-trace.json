@@ -1,0 +1,42 @@
+{
+  "simulated_provider": true,
+  "trials": [
+    {
+      "trial": "A",
+      "events": [
+        {
+          "method": "POST",
+          "path": "/v1/files/batch-create",
+          "status": 200,
+          "dedup": true
+        },
+        {
+          "method": "GET",
+          "path": "/v1/files/[synthetic-file-id]",
+          "status": 200
+        }
+      ],
+      "content_transfer_requests": 0,
+      "content_transfer_bytes": 0
+    },
+    {
+      "trial": "B",
+      "events": [
+        {
+          "method": "POST",
+          "path": "/v1/files/batch-create",
+          "status": 200,
+          "dedup": true
+        },
+        {
+          "method": "GET",
+          "path": "/v1/files/[synthetic-file-id]",
+          "status": 200
+        }
+      ],
+      "content_transfer_requests": 0,
+      "content_transfer_bytes": 0
+    }
+  ],
+  "control": "A preceding ordinary upload in each isolated trial transferred 6,291,514 bytes successfully."
+}
