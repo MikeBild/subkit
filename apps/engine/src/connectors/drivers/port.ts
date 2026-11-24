@@ -46,6 +46,17 @@ export function requestDriverKind(
   return driver;
 }
 
+export function connectorlessProtocol(declared: {
+  connector_id?: string | undefined;
+  graphql?: unknown;
+  mcp?: unknown;
+}): "graphql" | "mcp" | null {
+  if (declared.connector_id) return null;
+  if (declared.graphql) return "graphql";
+  if (declared.mcp) return "mcp";
+  return null;
+}
+
 export function lookupDriver<Request, Result, Step>(
   registry: DriverRegistry<Request, Result, Step>,
   kind: string,

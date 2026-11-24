@@ -1,7 +1,11 @@
 import { redactKnownValues } from "@shared/redaction.ts";
 import { persistCircuitState } from "../../../connectors/circuit-breaker.ts";
 import { serializeXmlBody } from "../../../connectors/drivers/http.ts";
-import { lookupDriver, requestDriverKind } from "../../../connectors/drivers/port.ts";
+import {
+  connectorlessProtocol,
+  lookupDriver,
+  requestDriverKind,
+} from "../../../connectors/drivers/port.ts";
 import { getConnectorForEnvironment, isCircuitOpenBlocking } from "../../../connectors/service.ts";
 import type { CredentialUseSnapshot } from "../../../credentials/index.ts";
 import {
@@ -520,6 +524,25 @@ async function dispatchRequestStep(
             },
           }
         : resolver;
+    const protocol = connectorlessProtocol(p.step);
+    if (protocol) {
+      logger.warn({
+        module: "connectors",
+        action: "request.connectorless_protocol.refused",
+        msg: "request step declares a protocol block without a connector — refused before dispatch",
+        tenant_id: p.ctx.tenant_id,
+        execution_id: p.ctx.execution_id,
+        step_id: p.step.id,
+        protocol,
+      });
+      return failedStep(
+        { clock, start },
+        {
+          code: "connector_driver_mismatch",
+          message: `a ${protocol} block needs connector_id: bind the step to a ${protocol} connector (recipes declare it in required_connectors) — without one the request would go out as an empty, unauthenticated HTTP call`,
+        },
+      );
+    }
     const timing = { p, clock, start, state, resolver };
     const parts = await resolveRequestParts(timing, partsCtx);
     if ("result" in parts) return parts.result;
