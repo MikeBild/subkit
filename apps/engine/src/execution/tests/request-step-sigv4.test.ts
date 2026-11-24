@@ -73,11 +73,12 @@ afterAll(async () => {
 });
 
 function expectSigned(headers: IncomingHttpHeaders | undefined) {
-  const date = new Date().toISOString().slice(0, 10).replaceAll("-", "");
+  const timestamp = headers?.["x-amz-date"];
+  expect(timestamp).toMatch(/^\d{8}T\d{6}Z$/);
+  const date = String(timestamp).slice(0, 8);
   expect(headers?.authorization).toStartWith(
     `AWS4-HMAC-SHA256 Credential=TESTACCESS/${date}/us-east-1/sqs/aws4_request`,
   );
-  expect(headers?.["x-amz-date"]).toBeString();
 }
 
 test("a request step bound by connector_id signs an aws_sigv4 connector", async () => {
