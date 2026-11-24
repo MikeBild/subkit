@@ -111,6 +111,7 @@ const EXPLICIT_PURE_TARGETS: readonly ExplicitPureTarget[] = [
   { path: "packages/shared/src/conversation-reference.ts", target_kind: "shared" },
   { path: "packages/shared/src/connector-operation-error.ts", target_kind: "shared" },
   { path: "packages/shared/src/audit-source.ts", target_kind: "shared" },
+  { path: "packages/shared/src/local-model-server.ts", target_kind: "shared" },
   { path: "packages/cli-core/src/message-parts.ts", target_kind: "shared" },
   { path: "packages/cli-core/src/turn-event-model.ts", target_kind: "shared" },
   { path: "packages/cli-core/src/errors-facts.ts", target_kind: "shared" },
@@ -156,6 +157,7 @@ const EXPLICIT_PURE_TARGETS: readonly ExplicitPureTarget[] = [
   { path: "packages/shared/src/local-policy/shortcuts.ts", target_kind: "shared" },
   { path: "packages/shared/src/local-policy/redaction-rects.ts", target_kind: "shared" },
   { path: "packages/shared/src/local-policy/proxy-decision.ts", target_kind: "shared" },
+  { path: "packages/shared/src/untrusted-content.ts", target_kind: "shared" },
   { path: "packages/shared/src/device/actions.ts", target_kind: "shared" },
 ];
 
