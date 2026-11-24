@@ -1,10 +1,14 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { evaluateJsBody } from "../conversations/js-transform-eval.ts";
 import { planStateWrite } from "../execution/state-write-plan.ts";
 import { pruneScopeForJs } from "../sandboxes/quickjs/scope-references.ts";
+import { FROZEN_NOW, getTestNow, setTestNow } from "../test-helpers/determinism/clock.ts";
 import { getBuiltinTemplate, loadBuiltinTemplates } from "./templates.ts";
 
 describe("stateful recipes — paths match the request step output (#534)", () => {
+  beforeEach(() => setTestNow(() => FROZEN_NOW));
+  afterEach(() => setTestNow(null));
+
   const transformCode = (templateSlug: string, recipeSlug: string) => {
     const recipe = getBuiltinTemplate(templateSlug)!.recipes.find((r) => r.slug === recipeSlug)!;
     const steps = recipe.workflow.steps as Array<{ kind: string; expression?: string }>;
@@ -12,7 +16,7 @@ describe("stateful recipes — paths match the request step output (#534)", () =
   };
   const runTransform = (code: string, scope: Record<string, unknown>, workflowInput: unknown) =>
     evaluateJsBody({ code, scope: pruneScopeForJs(code, scope).scope, input: workflowInput });
-  const isoInDays = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString();
+  const isoInDays = (days: number) => new Date(getTestNow() + days * 86_400_000).toISOString();
   const deal = (id: string, dealstage: string, closedate: string) => ({
     id,
     properties: { dealname: `deal-${id}`, dealstage, closedate },
