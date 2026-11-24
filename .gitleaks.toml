@@ -62,3 +62,15 @@ paths = [
 regexes = [
   '''^[0-9]{4}_vault_maintenance$''',
 ]
+
+[[allowlists]]
+description = "SFTP key-format docs named the OpenSSH and PKCS#8 header lines as examples; no key material"
+targetRules = ["private-key"]
+condition = "AND"
+paths = [
+  '''(?:^|/)apps/engine/src/http/reference/reference-file-servers-and-model-steps\.(?:en|de)\.md$''',
+  '''(?:^|/)apps/engine/src/http/llms/(?:docs\.json|llms-full\.txt)$''',
+]
+regexes = [
+  '''-----BEGIN OPENSSH PRIVATE KEY-----`\), RSA[\s\S]{0,80}\(`-----BEGIN PRIVATE KEY-----''',
+]
