@@ -37,6 +37,7 @@ export {
   countConversations,
   type DeleteConversationResult,
   deleteConversation,
+  interruptTaskRunTurn,
   isConversationHiddenFor,
   type ListConversationsParams,
   listConversations,

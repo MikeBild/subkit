@@ -30,7 +30,12 @@ import {
 } from "../db/schema/index.ts";
 import { errorFields, logger } from "../logging/index.ts";
 import { type TaskRunToolCall, taskRunCallMarks } from "./core/progress.ts";
-import { type TaskRunObservation, taskRunIsOpen, taskRunLimitReached } from "./core/run-state.ts";
+import {
+  TASK_TURN_STOPPED,
+  type TaskRunObservation,
+  taskRunIsOpen,
+  taskRunLimitReached,
+} from "./core/run-state.ts";
 import type { TaskRunSource } from "./service/run-rows.ts";
 import {
   type RunObservationResult,
@@ -410,7 +415,12 @@ export async function observePersonTurn(
     {
       tenant_id: release.tenant_id,
       task_run_id: run.id,
-      turn: { id: release.turn_id, driver: "person", failure: null, interrupted: false },
+      turn: {
+        id: release.turn_id,
+        driver: "person",
+        failure: release.state === "cancelled" ? { code: TASK_TURN_STOPPED, retry_at: null } : null,
+        interrupted: false,
+      },
       source: "chat",
     },
     overrides,

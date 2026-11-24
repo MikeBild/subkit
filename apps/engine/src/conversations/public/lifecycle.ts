@@ -21,6 +21,7 @@ export {
   clearConversationTurnFailure,
   countConversations,
   deleteConversation,
+  interruptTaskRunTurn,
   isConversationHiddenFor,
   listConversations,
   patchConversation,
