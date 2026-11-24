@@ -38,6 +38,71 @@ async function freshRun(): Promise<{ w: Workspace; run: StartedRun }> {
 }
 
 describe("stopping a task run turn", () => {
+  test("stopping before a queued task job starts prevents its turn from executing", async () => {
+    const { w, run } = await freshRun();
+    expect(await queuedJobs(run.id)).toHaveLength(1);
+    const stopped = await lifecycle.interruptTaskRunTurn(
+      w.tenant_id,
+      run.conversation_id,
+      w.owner.id,
+      db,
+      "user",
+      w.owner,
+    );
+    expect(stopped).toMatchObject({ id: run.conversation_id });
+    let executed = false;
+    expect(
+      await workQueuedTurn({
+        runTurn: async () => {
+          executed = true;
+        },
+      }),
+    ).toBe(true);
+    expect(executed).toBe(false);
+    expect(await runRow(w, run.id)).toMatchObject({
+      state: "waiting",
+      waiting_reason: "turn_stopped",
+      failure_code: null,
+    });
+    expect(
+      await advanceTaskRun(db, {
+        tenant_id: w.tenant_id,
+        task_run_id: run.id,
+        now: FIXED_NOW,
+      }),
+    ).toBe("idle");
+    expect(await queuedJobs(run.id)).toHaveLength(0);
+  }, 180_000);
+
+  test("stopping a dequeued job before it reserves a turn prevents execution", async () => {
+    const { w, run } = await freshRun();
+    let executed = false;
+    await workQueuedTurn({
+      service: {
+        aiAccessConfigured: async () => {
+          await lifecycle.interruptTaskRunTurn(
+            w.tenant_id,
+            run.conversation_id,
+            w.owner.id,
+            db,
+            "user",
+            w.owner,
+          );
+          return true;
+        },
+      },
+      runTurn: async () => {
+        executed = true;
+      },
+    });
+    expect(executed).toBe(false);
+    expect(await runRow(w, run.id)).toMatchObject({
+      state: "waiting",
+      waiting_reason: "turn_stopped",
+      failure_code: null,
+    });
+  }, 180_000);
+
   test("a stopped turn waits for the person instead of failing the run", async () => {
     const { w, run } = await freshRun();
     await workQueuedTurn({

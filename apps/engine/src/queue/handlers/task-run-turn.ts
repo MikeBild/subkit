@@ -240,6 +240,11 @@ async function driveTurn(
     if (!(error instanceof ConversationTurnInProgressError)) throw error;
     return dropped(job, "task.run-turn found the conversation busy — dropped");
   }
+  const current = await driver.loadTaskRun(db, data.tenant_id, run.id);
+  if (current?.run.state !== "running" || ctrl.signal.aborted) {
+    await unregisterConversationAbort(data.tenant_id, conversation_id, ctrl, "cancelled");
+    return dropped(job, "task.run-turn stopped before starting its turn — dropped");
+  }
   const turn_id = conversationTurnId(ctrl) ?? null;
   if (turn_id) driver.markTaskDrivenTurn(turn_id, true);
   const asked = await driver

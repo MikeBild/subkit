@@ -77,13 +77,9 @@ export async function cancelConversation(
 
 const TURN_STOP_RUN_STATES = ["running", "waiting", "sleeping", "result_ready"] as const;
 
-async function attachedToActiveRun(
-  exec: Executor,
-  tenant_id: string,
-  conversation_id: string,
-): Promise<boolean> {
+async function activeTaskRun(exec: Executor, tenant_id: string, conversation_id: string) {
   const [run] = await exec
-    .select({ id: taskRuns.id })
+    .select({ id: taskRuns.id, state: taskRuns.state })
     .from(taskRuns)
     .where(
       and(
@@ -93,7 +89,7 @@ async function attachedToActiveRun(
       ),
     )
     .limit(1);
-  return Boolean(run);
+  return run;
 }
 
 export async function interruptTaskRunTurn(
@@ -104,7 +100,8 @@ export async function interruptTaskRunTurn(
   actor_type?: "user" | "system_account" | "system" | "unknown",
   principal?: ResolvedPrincipal | null,
 ): Promise<ConversationRecord | null> {
-  if (!(await attachedToActiveRun(exec, tenant_id, conversation_id))) return null;
+  const run = await activeTaskRun(exec, tenant_id, conversation_id);
+  if (!run) return null;
   await assertTaskRunWriter(exec, { tenant_id, conversation_id, actor_id, principal });
   const [row] = await exec
     .select()
@@ -128,6 +125,20 @@ export async function interruptTaskRunTurn(
     },
     exec,
   );
+  if (run.state === "running") {
+    const { observeTaskRun } = await import("../../tasks/run-driver.ts");
+    await observeTaskRun(exec, {
+      tenant_id,
+      task_run_id: run.id,
+      turn: {
+        id: null,
+        driver: "task",
+        failure: { code: "turn_stopped", retry_at: null },
+        interrupted: false,
+      },
+      source: "chat",
+    });
+  }
   await cancelConversationTurns(exec, tenant_id, conversation_id);
   cancelConversationAbort(tenant_id, conversation_id);
   logger.info({
