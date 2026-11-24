@@ -12882,7 +12882,7 @@
               "method": "SELECT",
               "connector_id": "00000000-0000-0000-0000-000000000000",
               "sql": {
-                "query": "SELECT convert_from(decode((xpath('/row/r/text()', x.node))[1]::text, 'base64'), 'UTF8')::jsonb AS row FROM unnest(xpath('/table/row', query_to_xml(format('SELECT encode(convert_to(row_to_json(t)::text, ''UTF8''), ''base64'') AS r FROM %I.%I t ORDER BY %I DESC LIMIT %s', $1::text, $2::text, $3::text, $4::int), false, false, ''))) WITH ORDINALITY AS x(node, position) ORDER BY x.position;",
+                "query": "SELECT convert_from(decode((xpath('/row/r/text()', x.node))[1]::text, 'base64'), 'UTF8')::jsonb AS row FROM unnest(xpath('/table/row', query_to_xml(format('SELECT encode(convert_to(row_to_json(t)::text, ''UTF8''), ''base64'') AS r FROM %I.%I t ORDER BY t.%I DESC LIMIT %s', $1::text, $2::text, $3::text, $4::int), false, false, ''))) WITH ORDINALITY AS x(node, position) ORDER BY x.position;",
                 "params": [
                   "${input.schema_name}",
                   "${input.table_name}",

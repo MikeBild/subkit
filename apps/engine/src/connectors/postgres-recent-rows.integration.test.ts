@@ -35,6 +35,15 @@ describe("postgres recent-rows recipe SQL (#571)", () => {
     await testDb.pool.query(
       `INSERT INTO recent_rows_probe."Mixed Case" VALUES (10, '2026-02-01T00:00:00Z'), (11, '2026-02-02T00:00:00Z')`,
     );
+    await testDb.pool.query(
+      "CREATE TABLE recent_rows_probe.alias_collision (id integer, r timestamptz)",
+    );
+    await testDb.pool.query(
+      `INSERT INTO recent_rows_probe.alias_collision VALUES
+        (1, '2026-03-03T00:00:00Z'),
+        (2, '2026-03-01T00:00:00Z'),
+        (3, '2026-03-02T00:00:00Z')`,
+    );
   }, TEST_DB_HOOK_TIMEOUT);
 
   afterAll(async () => {
@@ -70,6 +79,16 @@ describe("postgres recent-rows recipe SQL (#571)", () => {
       3,
     ]);
     expect(rowIds(result.rows)).toEqual([11, 10]);
+  });
+
+  test("orders by a timestamp column named r without resolving the SELECT alias", async () => {
+    const result = await testDb.pool.query(recentRowsQuery(), [
+      "recent_rows_probe",
+      "alias_collision",
+      "r",
+      2,
+    ]);
+    expect(rowIds(result.rows)).toEqual([1, 3]);
   });
 
   test("treats an injection attempt as a missing relation", async () => {

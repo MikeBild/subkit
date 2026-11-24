@@ -80,7 +80,7 @@ describe("Postgres recipes", () => {
     }>;
     expect(rowsStep!.sql.query).not.toContain("information_schema");
     expect(rowsStep!.sql.query).toContain("FROM %I.%I");
-    expect(rowsStep!.sql.query).toContain("ORDER BY %I DESC");
+    expect(rowsStep!.sql.query).toContain("ORDER BY t.%I DESC");
     expect(rowsStep!.sql.params).toEqual([
       "${input.schema_name}",
       "${input.table_name}",
