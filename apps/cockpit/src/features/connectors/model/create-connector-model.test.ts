@@ -217,6 +217,19 @@ describe("editing a connector's sign-in", () => {
     expect(plan).toEqual({ patch: { name: "Billing" }, credential: null, startSignIn: false });
   });
 
+  test("renaming a connector keeps its unchanged http address (#515)", () => {
+    const prior = { ...PRIOR, address: "http://10.0.0.5:8080" };
+    const draft = draftOf({ name: "Billing v2", address: "http://10.0.0.5:8080" });
+    expect(connectorEditProblem(prior, draft, null)).toBeNull();
+    expect(connectorEditPlan(prior, draft).patch).toEqual({ name: "Billing v2" });
+  });
+
+  test("a changed address must still be https", () => {
+    const prior = { ...PRIOR, address: "http://10.0.0.5:8080" };
+    const draft = draftOf({ address: "http://other.example" });
+    expect(connectorEditProblem(prior, draft, null)).toBe("create.connector.addressInvalid");
+  });
+
   test("a typed key replaces the stored one without touching the sign-in kind", () => {
     const plan = connectorEditPlan(PRIOR, draftOf({ secret: " new-token " }));
     expect(plan.patch.auth_type).toBeUndefined();
