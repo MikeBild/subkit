@@ -39,7 +39,8 @@ export function skillVersionRows(
   currentVersion: number,
 ): SkillVersionRow[] {
   const found = entries.findIndex((entry) => entry.version === currentVersion);
-  const currentIndex = found < 0 ? 0 : found;
+  const legacyHistory = entries.every((entry) => entry.version === null);
+  const currentIndex = found >= 0 ? found : legacyHistory ? 0 : -1;
   return entries.map((entry, index) => ({
     ...entry,
     current: index === currentIndex,
