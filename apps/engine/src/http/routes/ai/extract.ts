@@ -53,7 +53,6 @@ const FILENAME_HEADER_SCHEMA = z
     message: "filename header must not contain path separators or NULs",
   });
 
-// Clients percent-encode non-ASCII names (header values must be ASCII).
 const decodeFilenameHeader = (value: string): string => {
   if (!value.includes("%")) return value;
   try {

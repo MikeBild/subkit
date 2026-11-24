@@ -7,7 +7,6 @@ type Schemas = components["schemas"];
 
 export type KnowledgeSourceMetadata = Partial<Schemas["CreateKnowledgeSourceBody"]>;
 
-// HTTP header values must be ASCII; percent-encode names the engine decodes back.
 export const encodeFilenameHeader = (filename: string): string =>
   /^[\x20-\x24\x26-\x7e]*$/.test(filename) ? filename : encodeURIComponent(filename);
 

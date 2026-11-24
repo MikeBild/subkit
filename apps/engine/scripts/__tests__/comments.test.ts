@@ -3,6 +3,14 @@ import { readFileSync } from "node:fs";
 import { findComments } from "../audit/comments.ts";
 
 describe("findComments", () => {
+  test.each([
+    "../../src/http/routes/ai/extract.ts",
+    "../../../subkit/src/engine-client/knowledge.ts",
+  ])("filename encoding satisfies the no-comments invariant: %s (#558)", (file) => {
+    const source = readFileSync(new URL(file, import.meta.url), "utf8");
+    expect(findComments(file, source)).toEqual([]);
+  });
+
   test("setup pair visibility satisfies the no-comments invariant (#552)", () => {
     const source = readFileSync(
       new URL("../../../cockpit/src/features/operations/pair-model.ts", import.meta.url),
