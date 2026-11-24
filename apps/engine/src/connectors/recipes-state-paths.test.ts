@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { evaluateJsBody } from "../conversations/js-transform-eval.ts";
+import type { Db } from "../db/client.ts";
 import { planStateWrite } from "../execution/state-write-plan.ts";
+import { resolvePlaceholdersTypePreserving } from "../llm/substitution/resolver.ts";
 import { pruneScopeForJs } from "../sandboxes/quickjs/scope-references.ts";
 import { FROZEN_NOW, getTestNow, setTestNow } from "../test-helpers/determinism/clock.ts";
 import { getBuiltinTemplate, loadBuiltinTemplates } from "./templates.ts";
@@ -12,7 +14,7 @@ describe("stateful recipes — paths match the request step output (#534)", () =
   const transformCode = (templateSlug: string, recipeSlug: string) => {
     const recipe = getBuiltinTemplate(templateSlug)!.recipes.find((r) => r.slug === recipeSlug)!;
     const steps = recipe.workflow.steps as Array<{ kind: string; expression?: string }>;
-    return steps.find((step) => step.kind === "transform")!.expression!;
+    return steps.findLast((step) => step.kind === "transform")!.expression!;
   };
   const runTransform = (code: string, scope: Record<string, unknown>, workflowInput: unknown) =>
     evaluateJsBody({ code, scope: pruneScopeForJs(code, scope).scope, input: workflowInput });
@@ -42,6 +44,84 @@ describe("stateful recipes — paths match the request step output (#534)", () =
       .value;
     expect(value.deals_in_window).toBe(1);
     expect(value.deals.map((d) => d.id)).toEqual(["1"]);
+  });
+
+  test("hubspot counts a deal entering the window on a later sweep as new", async () => {
+    const recipe = getBuiltinTemplate("hubspot")!.recipes.find(
+      (r) => r.slug === "postmortem-due-in-n-days-via-state",
+    )!;
+    const steps = recipe.workflow.steps as Array<{
+      id: string;
+      kind: string;
+      method?: string;
+      url?: string;
+      body?: unknown;
+      expression?: string;
+      state_write?: { value_path: string };
+    }>;
+    const candidates = [
+      deal("entering", "closedlost", isoInDays(8)),
+      deal("seen", "closedlost", isoInDays(3)),
+      deal("won", "closedwon", isoInDays(3)),
+    ];
+    let prior: unknown = null;
+    const sweep = async () => {
+      const scope: Record<string, unknown> = { $state: { last_postmortem_sweep: prior } };
+      for (const step of steps) {
+        if (step.kind === "transform") {
+          const outcome = await runTransform(step.expression!, scope, { days: 7 });
+          expect(outcome.ok).toBe(true);
+          scope[step.id] = (outcome as { value: unknown }).value;
+        } else if (step.kind === "request") {
+          const resolved = await resolvePlaceholdersTypePreserving(step.body ?? {}, {
+            tenant_id: "test",
+            environment: "dev",
+            db: {} as Db,
+            scope,
+            input: { days: 7 },
+          });
+          expect(resolved.unresolved).toEqual([]);
+          const body = resolved.value as {
+            filterGroups?: Array<{
+              filters: Array<{
+                propertyName: string;
+                operator: string;
+                value: string;
+                highValue?: string;
+              }>;
+            }>;
+          };
+          const results = candidates.filter(
+            (d) =>
+              !step.url?.endsWith("/search") ||
+              body.filterGroups!.some((group) =>
+                group.filters.every((filter) => {
+                  const value = d.properties[filter.propertyName as keyof typeof d.properties];
+                  if (filter.operator === "EQ") return value === filter.value;
+                  expect(filter.operator).toBe("BETWEEN");
+                  const ms = Date.parse(value);
+                  return ms >= Number(filter.value) && ms <= Number(filter.highValue);
+                }),
+              ),
+          );
+          scope[step.id] = { results };
+          const write = planStateWrite(scope[step.id], step.state_write!.value_path);
+          expect(write.write).toBe(true);
+          if (write.write) prior = write.value;
+        }
+      }
+      return scope.shape_digest;
+    };
+    expect(await sweep()).toMatchObject({ deals_in_window: 1, new_since_last_sweep: 1 });
+    setTestNow(() => FROZEN_NOW + 86_400_000);
+    expect(await sweep()).toMatchObject({
+      deals_in_window: 2,
+      new_since_last_sweep: 1,
+      deals: [
+        { id: "entering", seen_before: false },
+        { id: "seen", seen_before: true },
+      ],
+    });
   });
 
   test("intercom nurture and stripe incremental transforms read the body directly", async () => {

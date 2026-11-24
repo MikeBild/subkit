@@ -8840,13 +8840,39 @@
           },
           "steps": [
             {
+              "kind": "transform",
+              "id": "sweep_window",
+              "language": "javascript",
+              "expression": "const fromMs = Date.now(); const days = Number(input.input?.days ?? 7); return { from_ms: String(fromMs), until_ms: String(fromMs + days * 86400000) };"
+            },
+            {
               "kind": "request",
               "id": "deals_due",
-              "method": "GET",
-              "url": "${connector.hubspot.base_url}/crm/v3/objects/deals",
-              "query": {
+              "method": "POST",
+              "url": "${connector.hubspot.base_url}/crm/v3/objects/deals/search",
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "body": {
                 "limit": 100,
-                "properties": "dealname,dealstage,closedate"
+                "properties": ["dealname", "dealstage", "closedate"],
+                "filterGroups": [
+                  {
+                    "filters": [
+                      {
+                        "propertyName": "dealstage",
+                        "operator": "EQ",
+                        "value": "closedlost"
+                      },
+                      {
+                        "propertyName": "closedate",
+                        "operator": "BETWEEN",
+                        "value": "${scope.sweep_window.from_ms}",
+                        "highValue": "${scope.sweep_window.until_ms}"
+                      }
+                    ]
+                  }
+                ]
               },
               "state_read": {
                 "key": "last_postmortem_sweep",
@@ -8862,7 +8888,7 @@
               "kind": "transform",
               "id": "shape_digest",
               "language": "javascript",
-              "expression": "const days = Number(input.input?.days ?? 7); const fromMs = Date.now(); const untilMs = fromMs + days * 86400000; const prior = input.scope.$state?.last_postmortem_sweep; const priorIds = new Set((Array.isArray(prior) ? prior : []).map((d) => d.id)); const due = (input.scope.deals_due?.results ?? []).filter((d) => { const p = d.properties ?? {}; const closeMs = Date.parse(p.closedate); return p.dealstage === 'closedlost' && closeMs >= fromMs && closeMs <= untilMs; }); return { swept_at: new Date(fromMs).toISOString(), window_days: days, prior_sweep_size: Array.isArray(prior) ? prior.length : null, deals_in_window: due.length, new_since_last_sweep: due.filter((d) => !priorIds.has(d.id)).length, deals: due.map((d) => ({ id: d.id, dealname: d.properties.dealname, closedate: d.properties.closedate, seen_before: priorIds.has(d.id) })) };"
+              "expression": "const days = Number(input.input?.days ?? 7); const fromMs = Number(input.scope.sweep_window?.from_ms ?? Date.now()); const untilMs = fromMs + days * 86400000; const prior = input.scope.$state?.last_postmortem_sweep; const priorIds = new Set((Array.isArray(prior) ? prior : []).map((d) => d.id)); const due = (input.scope.deals_due?.results ?? []).filter((d) => { const p = d.properties ?? {}; const closeMs = Date.parse(p.closedate); return p.dealstage === 'closedlost' && closeMs >= fromMs && closeMs <= untilMs; }); return { swept_at: new Date(fromMs).toISOString(), window_days: days, prior_sweep_size: Array.isArray(prior) ? prior.length : null, deals_in_window: due.length, new_since_last_sweep: due.filter((d) => !priorIds.has(d.id)).length, deals: due.map((d) => ({ id: d.id, dealname: d.properties.dealname, closedate: d.properties.closedate, seen_before: priorIds.has(d.id) })) };"
             }
           ]
         }
