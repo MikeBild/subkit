@@ -55,6 +55,7 @@ describe("stopping a task run turn", () => {
       await workQueuedTurn({
         runTurn: async () => {
           executed = true;
+          throw new Error("Stopped task turn must not execute");
         },
       }),
     ).toBe(true);
@@ -93,6 +94,7 @@ describe("stopping a task run turn", () => {
       },
       runTurn: async () => {
         executed = true;
+        throw new Error("Stopped task turn must not execute");
       },
     });
     expect(executed).toBe(false);
