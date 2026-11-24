@@ -356,10 +356,16 @@ describe("P14 FormDialog", () => {
   test("the hint has its own row so a longer button hint never moves the buttons", () => {
     const html = render(
       <FormDialogFoot hint="Short default hint." testId="dialog">
-        <button type="button" data-hint="A much longer hint that would push the buttons aside.">
+        <button
+          type="button"
+          data-testid="dialog-apply"
+          data-hint="A much longer hint that would push the buttons aside."
+        >
           Apply only
         </button>
-        <button type="submit">Approve</button>
+        <button type="submit" data-testid="dialog-approve">
+          Approve
+        </button>
       </FormDialogFoot>,
     );
     const hint = html.match(/<p[^>]*data-testid="dialog-hint"[^>]*>/)?.[0] ?? "";
@@ -376,7 +382,9 @@ describe("P14 FormDialog", () => {
   test("without a hint the footer is only the buttons", () => {
     const html = render(
       <FormDialogFoot testId="dialog">
-        <button type="submit">Save</button>
+        <button type="submit" data-testid="dialog-save">
+          Save
+        </button>
       </FormDialogFoot>,
     );
     expect(html).not.toContain('data-testid="dialog-hint"');
