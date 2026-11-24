@@ -1,7 +1,7 @@
 import { scrubString } from "@shared/redaction.ts";
 import { scrubUrl } from "../connectors/egress.ts";
 
-export const RESULT_MARKDOWN_MAX_CHARS = 65_536;
+export const RESULT_MARKDOWN_MAX_BYTES = 65_536;
 export const RESULT_MARKDOWN_FIELD = "result_markdown";
 export const MARKDOWN_MEDIA_TYPE = "text/markdown";
 
@@ -90,16 +90,25 @@ export function redactResultMarkdown(markdown: string, secrets: readonly string[
   return scrubString(masked.replace(URL_IN_TEXT, (url) => scrubUrl(url)));
 }
 
+const isUtf8Continuation = (byte: number | undefined): boolean =>
+  byte !== undefined && (byte & 0b1100_0000) === 0b1000_0000;
+
+/** Longest prefix whose UTF-8 encoding fits in maxBytes, never splitting a code point. */
+export function truncateUtf8(text: string, maxBytes: number): ResultMarkdown {
+  const encoded = new TextEncoder().encode(text);
+  if (encoded.length <= maxBytes) return { markdown: text, truncated: false };
+  let end = Math.max(0, maxBytes);
+  while (end > 0 && isUtf8Continuation(encoded[end])) end--;
+  return { markdown: new TextDecoder().decode(encoded.subarray(0, end)), truncated: true };
+}
+
 export function resultMarkdown(
   output: unknown,
   outputSchema: unknown,
   secrets: readonly string[] = [],
-  maxChars = RESULT_MARKDOWN_MAX_CHARS,
+  maxBytes = RESULT_MARKDOWN_MAX_BYTES,
 ): ResultMarkdown | null {
   const picked = pickResultMarkdown(output, outputSchema);
   if (picked === null) return null;
-  const redacted = redactResultMarkdown(picked, secrets);
-  return redacted.length > maxChars
-    ? { markdown: redacted.slice(0, maxChars), truncated: true }
-    : { markdown: redacted, truncated: false };
+  return truncateUtf8(redactResultMarkdown(picked, secrets), maxBytes);
 }
