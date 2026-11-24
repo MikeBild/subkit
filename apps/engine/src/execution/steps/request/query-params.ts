@@ -1,10 +1,10 @@
-import { parsePlaceholders } from "../../../llm/substitution/parser.ts";
 import {
+  parsePlaceholders,
   type ResolverContext,
   resolvePlaceholders,
   resolvePlaceholdersTypePreserving,
   type Unresolved,
-} from "../../../llm/substitution/resolver.ts";
+} from "../../../llm/index.ts";
 
 export type QueryValue = string | number | boolean;
 
@@ -26,7 +26,6 @@ const isWholePlaceholder = (raw: unknown): raw is string => {
 const isQueryPrimitive = (value: unknown): value is QueryValue =>
   typeof value === "string" || typeof value === "number" || typeof value === "boolean";
 
-/** Resolves request query placeholders; a whole-value placeholder resolving to null/undefined drops its key (#541). */
 export async function resolveRequestQuery(
   query: Record<string, unknown>,
   ctx: ResolverContext,
