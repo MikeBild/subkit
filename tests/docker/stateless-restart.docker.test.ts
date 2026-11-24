@@ -45,6 +45,12 @@ describe("stateless application replacement", () => {
       content_base64: Buffer.from(content, "utf8").toString("base64"),
     });
     expect(file.status).toBe(201);
+    const link = await dockerApi(env, "POST", `/v1/files/${file.body.id}/links`, {
+      resource_type: "conversation",
+      resource_id: "5eed0001-0000-4000-8000-00000000d0c1",
+      slug: `stateless-${suffix}`,
+    });
+    expect([200, 201]).toContain(link.status);
 
     const runtimeBefore = await dockerApi<{
       saved_revision: number;
