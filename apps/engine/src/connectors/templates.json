@@ -6589,7 +6589,7 @@
               "id": "open",
               "method": "POST",
               "url": "${connector.github.base_url}/repos/${input.owner}/${input.repo}/issues",
-              "json_body": {
+              "body": {
                 "title": "${input.title}",
                 "body": "${input.body}"
               }
@@ -6674,7 +6674,7 @@
               "id": "open_pr",
               "method": "POST",
               "url": "${connector.github.base_url}/repos/${input.owner}/${input.repo}/pulls",
-              "json_body": {
+              "body": {
                 "title": "${input.title}",
                 "head": "${input.head}",
                 "base": "${input.base}"
@@ -6702,7 +6702,7 @@
               "id": "merge",
               "method": "PUT",
               "url": "${connector.github.base_url}/repos/${input.owner}/${input.repo}/pulls/${scope.open_pr.data.number}/merge",
-              "json_body": {
+              "body": {
                 "merge_method": "squash"
               }
             },
