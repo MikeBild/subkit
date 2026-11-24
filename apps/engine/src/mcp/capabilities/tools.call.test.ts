@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { and, count, eq, sql } from "drizzle-orm";
+import { MCP_AUTHORING_SCOPE } from "../../auth/scopes.ts";
 import {
   executions,
   workflowExecutionAuthorities,
@@ -13,6 +14,7 @@ import { previewWorkflowAuthority } from "../../workflows/execution-authorities.
 import {
   connect,
   ctx,
+  issueApiKey,
   mockBase,
   setupMcpTools,
   toolWfId,
@@ -377,7 +379,7 @@ describe("MCP tools/call — wf_<slug> end-to-end (T7)", () => {
   });
 
   test("tools/call for a tool absent from this surface returns a terminal cannot_help", async () => {
-    const client = await connect();
+    const client = await connect(await issueApiKey([MCP_AUTHORING_SCOPE]));
     try {
       const result = await client.callTool({
         name: "totally_made_up_tool_xyz",
