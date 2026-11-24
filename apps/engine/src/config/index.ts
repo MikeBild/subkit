@@ -1,4 +1,3 @@
-export { configurationSweepLeaves, sampleConfigLeaf } from "./__tests__/leaf-samples.ts";
 export type { DeploymentMode } from "./deployment-mode.ts";
 export { currentDeploymentMode } from "./deployment-mode.ts";
 export {
