@@ -1,5 +1,6 @@
 import { type SQL, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
+import { bucketStartExpr } from "./bucket-fill.ts";
 import type { BucketUnit } from "./bucket-units.ts";
 import type { TrafficClass, UsageSurface } from "./usage-events.ts";
 
@@ -172,7 +173,7 @@ export async function aggregateUsage(db: Db, p: UsageStatsParams): Promise<Usage
   const bucketRows = (
     await db.execute(sql`
       select
-        date_trunc(${p.bucket}, created_at at time zone ${p.tz}) as bucket_ts,
+        ${bucketStartExpr(sql`created_at`, p.bucket, p.tz)} as bucket_ts,
         ${dimensionSelect ? sql`${dimensionSelect},` : sql``}
         ${rollupSelect()}
       from usage_events

@@ -1,5 +1,6 @@
 import { type SQL, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
+import { bucketStartExpr } from "./bucket-fill.ts";
 import type { BucketUnit } from "./bucket-units.ts";
 
 export type ExecutionGroupDim = "workflow_id" | "status" | "request_source";
@@ -101,7 +102,7 @@ function buildWhere(p: ExecutionsStatsParams): SQL {
 }
 
 function bucketExpr(p: ExecutionsStatsParams): SQL {
-  return sql`date_trunc(${p.bucket}, started_at at time zone ${p.tz})`;
+  return bucketStartExpr(sql`started_at`, p.bucket, p.tz);
 }
 
 const GROUP_BY_BUCKET = sql`bucket_ts`;

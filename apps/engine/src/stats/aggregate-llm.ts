@@ -1,5 +1,6 @@
 import { type SQL, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
+import { bucketStartExpr } from "./bucket-fill.ts";
 import type { BucketUnit } from "./bucket-units.ts";
 
 export const LLM_GROUP_DIMS = [
@@ -199,7 +200,7 @@ export function llmBucketKey(groupKey: string, ts: string): string {
 }
 
 export function llmBucketExpr(p: Pick<LlmStatsParams, "bucket" | "tz">): SQL {
-  return sql`date_trunc(${p.bucket}, llm_usage.created_at at time zone ${p.tz})`;
+  return bucketStartExpr(sql`llm_usage.created_at`, p.bucket, p.tz);
 }
 
 export async function aggregateLlm(db: Db, p: LlmStatsParams): Promise<LlmStatsResult> {
