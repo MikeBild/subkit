@@ -64,7 +64,10 @@ const logoCommand = defineCommand({
   args: {
     theme: { type: "positional" as const, required: true, description: "light or dark" },
     output: { type: "string" as const, description: "Output file, defaults to stdout" },
-    revision: { type: "string" as const },
+    revision: {
+      type: "string" as const,
+      description: "Branding revision, defaults to the current revision",
+    },
     ...commonArgs,
   },
   async run({ args }) {
