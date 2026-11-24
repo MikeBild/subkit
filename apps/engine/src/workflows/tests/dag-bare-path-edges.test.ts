@@ -13,8 +13,10 @@ describe("dag · bare-path edges", () => {
         { id: "fetch", kind: "request", method: "GET", url: "https://x/y" },
         {
           id: "shape",
-          kind: "transform",
-          expression: "fetch.data.id",
+          kind: "request",
+          method: "POST",
+          url: "https://x/z",
+          body: "fetch.data.id",
         },
       ]),
     );
@@ -25,13 +27,39 @@ describe("dag · bare-path edges", () => {
   test("cycle via bare-path forward refs is detected", () => {
     const dag = buildStepDag(
       wf([
-        { id: "a", kind: "transform", expression: "b.data" },
+        { id: "a", kind: "transform", expression: "1", data_selector: "b.data" },
         { id: "b", kind: "transform", expression: "$scope.a.data" },
       ]),
     );
     const report = detectCycles(dag);
     expect(report.has_cycle).toBe(true);
     expect(new Set(report.cycles[0]?.nodes ?? [])).toEqual(new Set(["a", "b"]));
+  });
+
+  test("bare identifiers in a JavaScript transform add no step edge (#520)", () => {
+    const dag = buildStepDag(
+      wf([
+        { id: "scrape", kind: "request", method: "POST", url: "https://x/scrape" },
+        {
+          id: "normalise",
+          kind: "transform",
+          language: "javascript",
+          expression:
+            "const result = input.scope.scrape.data; if (result.error) return []; return result.selector;",
+        },
+        {
+          id: "send_digest",
+          kind: "request",
+          method: "POST",
+          url: "https://x/send",
+          body: "${scope.normalise.data}",
+        },
+        { id: "result", kind: "transform", expression: "return input.scope.send_digest.status;" },
+      ]),
+    );
+    expect(dag.edges.find((e) => e.from === "normalise" && e.to === "result")).toBeUndefined();
+    expect(dag.edges).toContainEqual({ from: "normalise", to: "scrape", reason: "js_scope" });
+    expect(detectCycles(dag).has_cycle).toBe(false);
   });
 
   test("bare-path reference to an UNKNOWN step id does NOT add an edge", () => {

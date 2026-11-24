@@ -54,7 +54,7 @@ function collectStepReferences(
     refs.push({ ref, reason });
   }
 
-  function scanString(s: string): void {
+  function scanString(s: string, bare = true): void {
     SCOPE_PLACEHOLDER_RE.lastIndex = 0;
     JSONATA_SCOPE_RE.lastIndex = 0;
     JS_SCOPE_RE.lastIndex = 0;
@@ -68,6 +68,7 @@ function collectStepReferences(
     for (let m = JS_SCOPE_RE.exec(s); m !== null; m = JS_SCOPE_RE.exec(s)) {
       add(m[1]!, "js_scope");
     }
+    if (!bare) return;
     for (let m = BARE_PATH_RE.exec(s); m !== null; m = BARE_PATH_RE.exec(s)) {
       add(m[1]!, "jsonata_bare");
     }
@@ -87,7 +88,13 @@ function collectStepReferences(
     }
   }
 
-  walk(step);
+  if (step.kind === "transform" && (step.language ?? "javascript") === "javascript") {
+    const { expression, ...rest } = step;
+    if (typeof expression === "string") scanString(expression, false);
+    walk(rest);
+  } else {
+    walk(step);
+  }
 
   if (typeof step.data_selector === "string") {
     const ds = step.data_selector;
