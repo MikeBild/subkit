@@ -1,10 +1,13 @@
 import { and, eq, sql } from "drizzle-orm";
 import { CategorySchema } from "../api/catalog-metadata.ts";
-import { type Actor, auditActor } from "../audit/actor.ts";
-import { auditAwait } from "../audit/audit.ts";
-import type { AuditAction } from "../audit/types.ts";
+import { toFileId } from "../api/files-schemas.ts";
+import { type Actor, type AuditAction, auditActor, auditAwait } from "../audit/index.ts";
 import type { Executor } from "../db/client.ts";
-import { intakeCategoryDefaults, type intakeItems } from "../db/schema/intake.ts";
+import {
+  type IntakeAttachmentFacts,
+  intakeCategoryDefaults,
+  type intakeItems,
+} from "../db/schema/intake.ts";
 import {
   ANONYMOUS_COLLECTOR,
   type IntakeCollector,
@@ -43,13 +46,26 @@ export function collectorAuditActor(actor: IntakeCollector) {
     : auditActor(actor);
 }
 
+function wireAttachment(attachment: IntakeAttachmentFacts): IntakeAttachmentFacts {
+  return attachment.file_id.startsWith("fid_")
+    ? attachment
+    : { ...attachment, file_id: toFileId(attachment.file_id) };
+}
+
+function wireSnapshot(snapshot: IntakeItemView["original_snapshot"]) {
+  return snapshot.origin === "note" && snapshot.attachment
+    ? { ...snapshot, attachment: wireAttachment(snapshot.attachment) }
+    : snapshot;
+}
+
 export function intakeItemView(row: typeof intakeItems.$inferSelect): IntakeItemView {
+  const original_snapshot = wireSnapshot(row.original_snapshot);
   return {
     id: row.id,
     tenant_id: row.tenant_id,
     category: row.category,
     client_request_id: row.client_request_id,
-    original_snapshot: row.original_snapshot,
+    original_snapshot,
     title: row.title,
     body: row.body,
     note: row.note,
@@ -58,8 +74,7 @@ export function intakeItemView(row: typeof intakeItems.$inferSelect): IntakeItem
     collected_by: intakeCollector(row.collected_by_type, row.collected_by_id),
     admitted_target_kind: row.admitted_target_kind,
     admitted_target_id: row.admitted_target_id,
-    attachment:
-      row.original_snapshot.origin === "note" ? (row.original_snapshot.attachment ?? null) : null,
+    attachment: original_snapshot.origin === "note" ? (original_snapshot.attachment ?? null) : null,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
   };
