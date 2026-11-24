@@ -69,7 +69,7 @@ const ScheduleOccurrenceListQuery = z
     limit: z.coerce.number().int().positive().max(SCHEDULE_OCCURRENCE_PAGE_MAX).optional(),
     before: z
       .string()
-      .datetime()
+      .datetime({ offset: true })
       .optional()
       .describe("Only occurrences due before this instant; pass next_before to read on."),
     before_id: z
