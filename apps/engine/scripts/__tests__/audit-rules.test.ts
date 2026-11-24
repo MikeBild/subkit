@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { collectImports, parseSource, resolveImport } from "../audit/imports.ts";
 import {
   conversationsLeafHits,
@@ -290,7 +290,20 @@ test("schedule tools stay within their subsystem entry import budget", () => {
   const file = "apps/engine/src/conversations/tools/engine-api/writes/schedules.ts";
   const imports = collectImports(file, readFileSync(file, "utf8")).map((ref) => ({
     ...ref,
-    resolved: resolveImport(file, ref.specifier),
+    resolved: resolveImport(file, ref.specifier, existsSync),
   }));
   expect(subsystemEntryHits(file, imports).length).toBeLessThanOrEqual(2);
+});
+
+test("webhook fanout wiring respects subsystem entry points", () => {
+  for (const [file, budget] of [
+    ["apps/engine/src/composition/worker.ts", 21],
+    ["apps/engine/src/webhooks/outbound/fanout-channels.ts", 0],
+  ] as const) {
+    const imports = collectImports(file, readFileSync(file, "utf8")).map((ref) => ({
+      ...ref,
+      resolved: resolveImport(file, ref.specifier, existsSync),
+    }));
+    expect(subsystemEntryHits(file, imports).length).toBeLessThanOrEqual(budget);
+  }
 });

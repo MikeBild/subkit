@@ -31,7 +31,7 @@ import { EXECUTION_RUN_QUEUE, enqueueHostedWork } from "../queue/index.ts";
 import { rememberWorkerRegistration } from "../queue/worker-pause.ts";
 import { prewarmSandboxWorkers } from "../sandboxes/quickjs/runtime.ts";
 import { applySkillSeedsForAllTenants, loadEmbeddedSkillSeeds } from "../skills/seed.ts";
-import { WEBHOOK_FANOUT_CHANNELS } from "../webhooks/outbound/fanout-channels.ts";
+import { WEBHOOK_FANOUT_CHANNELS } from "../webhooks/index.ts";
 import { SHUTDOWN_DRAIN_TIMEOUT_MS } from "./shutdown.ts";
 
 export interface WorkerDeps {

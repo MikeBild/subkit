@@ -1,4 +1,4 @@
-import type { OutboxChannel } from "../../db/events.ts";
+import type { OutboxChannel } from "../../db/index.ts";
 
 export const WEBHOOK_FANOUT_CHANNELS = [
   "execution.status",
