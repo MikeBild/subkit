@@ -1,3 +1,5 @@
+import { IDEMPOTENCY_KEY_MAX_LENGTH, isRunIdempotencyKey } from "../../core/run-idempotency-key.ts";
+
 export type RunDispatchMode = "enqueue" | "inline" | "background";
 
 export type RunErrorStage = "admission" | "execution";
@@ -24,7 +26,7 @@ export interface RunRefusal {
   cause?: unknown;
 }
 
-export const IDEMPOTENCY_KEY_MAX_LENGTH = 200;
+export { IDEMPOTENCY_KEY_MAX_LENGTH };
 
 export const CALLER_FORBIDDEN_CODES: ReadonlySet<string> = new Set([
   "caller_required",
@@ -122,7 +124,7 @@ interface RunRequestFacts {
 
 export function precheckRunRequest(facts: RunRequestFacts): RunRefusal | null {
   const key = facts.idempotency_key;
-  if (key !== null && (key.length < 1 || key.length > IDEMPOTENCY_KEY_MAX_LENGTH))
+  if (key !== null && !isRunIdempotencyKey(key))
     return rejected(
       "bad_request",
       "bad_request",

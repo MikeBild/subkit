@@ -113,6 +113,16 @@ describe("session normalization edges", () => {
       live_test: liveTest,
     });
   });
+
+  test("a live test counts an astral character in the idempotency key as one character", () => {
+    const key = `${"k".repeat(199)}🚚`;
+    expect(
+      sessionOf({ live_test: { ...liveTest, idempotency_key: key } }) as unknown,
+    ).toStrictEqual({
+      live_test: { ...liveTest, idempotency_key: key },
+    });
+    expect(sessionOf({ live_test: { ...liveTest, idempotency_key: `${key}k` } })).toBeUndefined();
+  });
 });
 
 describe("latest_preview normalization edges", () => {
