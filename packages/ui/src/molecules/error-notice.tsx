@@ -8,6 +8,7 @@ import { type ReactNode, useState } from "react";
 export interface ErrorAction {
   label: string;
   onClick: () => void;
+  pending?: boolean | undefined;
   testId?: string | undefined;
 }
 
@@ -232,6 +233,8 @@ export function ErrorNotice({
                   type="button"
                   size="sm"
                   data-testid={primary.testId ?? part(testId, "primary")}
+                  disabled={primary.pending}
+                  aria-busy={primary.pending || undefined}
                   onClick={primary.onClick}
                 >
                   {primary.label}

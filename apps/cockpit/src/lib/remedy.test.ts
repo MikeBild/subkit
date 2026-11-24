@@ -98,6 +98,39 @@ describe("remedyFor", () => {
     });
   }
 
+  test("a retryable cause offers a retry instead of the chat", () => {
+    for (const causeClass of ["timeout", "aborted", "connector_unavailable", "rate_limited"]) {
+      const remedy = remedyFor({ ...base, causeClass });
+      expect(remedy ? { kind: remedy.kind, labelKey: remedy.labelKey } : null).toEqual({
+        kind: "retry",
+        labelKey: "remedy.retry",
+      });
+    }
+  });
+
+  test("a retryable cause without permission to run still leads to the chat", () => {
+    expect(remedyFor({ ...base, causeClass: "timeout", canRun: false })?.kind).toBe("chat");
+  });
+
+  test("a retryable cause without a run to repeat still leads to the chat", () => {
+    expect(remedyFor({ ...base, executionId: null, causeClass: "timeout" })?.kind).toBe("chat");
+  });
+
+  test("a cause that needs a change still leads to the chat", () => {
+    for (const causeClass of ["schema_mismatch", "payload_invalid", "unknown"]) {
+      expect(remedyFor({ ...base, causeClass })?.kind).toBe("chat");
+    }
+  });
+
+  test("a repair proposal, a hold and a lost sign-in win over a retry", () => {
+    const retryable = { ...base, causeClass: "timeout" };
+    expect(remedyFor({ ...retryable, patch: { id: "p1" } })?.kind).toBe("review_repair");
+    expect(remedyFor({ ...retryable, held: true })?.kind).toBe("grant");
+    expect(
+      remedyFor({ ...retryable, authState: { connectorId: CONNECTOR, state: "expired" } })?.kind,
+    ).toBe("reconnect");
+  });
+
   test("the connector's own surfaces say reconnect; a run page says sign in again", () => {
     const state = { connectorId: CONNECTOR, state: "expired" };
     expect(remedyFor({ ...base, authState: state })?.labelKey).toBe("remedy.reauth");
