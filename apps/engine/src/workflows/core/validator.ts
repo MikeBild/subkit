@@ -125,6 +125,12 @@ export function validateWorkflowDef(
           message: "graphql.query must be a valid GraphQL document containing an operation",
         });
       }
+      if (step.graphql && !step.connector_id)
+        errors.push({
+          path: `steps.${step.id}.connector_id`,
+          message:
+            "a graphql block needs connector_id — a GraphQL endpoint is addressed as a connector; without one the step would send an empty, unauthenticated HTTP request. Set connector_id to a graphql connector (or the recipe placeholder bound via required_connectors) and drop url.",
+        });
       if (step.graphql) errors.push(...graphqlTargetErrors(step, options.connectorGraphqlTargets));
       errors.push(
         ...graphqlOverHttpErrors(

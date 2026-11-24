@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { Kind, parse, print } from "graphql";
 import {
   validateStepReferences,
   validateUnsupportedPlaceholders,
@@ -157,6 +158,55 @@ describe("GraphQL and AWS recipe coverage", () => {
       connection_path: "user.projectV2.items",
       required_connection_paths: ["fieldValues"],
     });
+  });
+
+  test("every GraphQL recipe step binds a placeholder connector of its own template", () => {
+    const placeholder = "00000000-0000-0000-0000-000000000000";
+    const offenders: string[] = [];
+    for (const template of loadBuiltinTemplates()) {
+      for (const recipe of template.recipes) {
+        const graphqlSteps = (
+          recipe.workflow.steps as Array<{
+            connector_id?: string;
+            url?: string;
+            graphql?: { query?: string };
+          }>
+        ).filter((step) => step.graphql);
+        if (graphqlSteps.length === 0) continue;
+        const label = `${template.slug}/${recipe.slug}`;
+        const required = recipe.required_connectors.find((r) => r.placeholder === placeholder);
+        if (required?.template !== template.slug) offenders.push(`${label}: required_connectors`);
+        for (const step of graphqlSteps) {
+          if (step.connector_id !== placeholder) offenders.push(`${label}: connector_id`);
+          if (step.url !== undefined) offenders.push(`${label}: url`);
+          try {
+            parse(step.graphql?.query ?? "");
+          } catch {
+            offenders.push(`${label}: query`);
+          }
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  test("linear team queries declare the team id as String!", () => {
+    const linear = getBuiltinTemplate("linear")!;
+    for (const slug of ["list-issues", "list-cycles"]) {
+      const recipe = linear.recipes.find((r) => r.slug === slug)!;
+      const step = recipe.workflow.steps[0] as { graphql?: { query?: string } };
+      const document = parse(step.graphql?.query ?? "");
+      const operation = document.definitions[0];
+      if (operation?.kind !== Kind.OPERATION_DEFINITION)
+        throw new Error(`${slug} has no operation`);
+      const teamVariable = operation.variableDefinitions?.find(
+        (v) => v.variable.name.value === "t",
+      );
+      expect({ slug, type: teamVariable ? print(teamVariable.type) : null }).toEqual({
+        slug,
+        type: "String!",
+      });
+    }
   });
 
   test("appsync recipes use placeholder connector ids for tenant-specific endpoints", () => {

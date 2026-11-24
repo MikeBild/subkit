@@ -843,7 +843,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "appsync-cognito" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -895,7 +897,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "appsync-cognito" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -948,7 +952,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "appsync-cognito" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -1066,7 +1072,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "appsync-iam" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -1118,7 +1126,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "appsync-iam" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -1171,7 +1181,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "appsync-iam" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -6869,7 +6881,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "github-graphql" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -6882,7 +6896,7 @@
               "kind": "request",
               "id": "query",
               "method": "POST",
-              "url": "${connector.github-graphql.base_url}",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
               "graphql": {
                 "query": "query ViewerAndRateLimit { viewer { login name url } rateLimit { limit cost remaining resetAt } }"
               }
@@ -6903,7 +6917,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "github-graphql" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -6930,7 +6946,7 @@
               "kind": "request",
               "id": "query",
               "method": "POST",
-              "url": "${connector.github-graphql.base_url}",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
               "graphql": {
                 "query": "query ViewerRepos($first: Int!, $after: String) { viewer { repositories(first: $first, after: $after, orderBy: {field: UPDATED_AT, direction: DESC}) { nodes { nameWithOwner isPrivate updatedAt url } pageInfo { hasNextPage endCursor } } } rateLimit { cost remaining resetAt } }",
                 "variables": {
@@ -6955,7 +6971,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "github-graphql" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -6976,7 +6994,7 @@
               "kind": "request",
               "id": "project_items",
               "method": "POST",
-              "url": "${connector.github-graphql.base_url}",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
               "graphql": {
                 "operation": "query",
                 "query": "query UserProjectItems($login: String!, $number: Int!, $after: String) { user(login: $login) { projectV2(number: $number) { id title items(first: 50, after: $after) { totalCount nodes { id content { ... on Issue { id number url title } ... on PullRequest { id number url title } ... on DraftIssue { id title } } fieldValues(first: 20) { totalCount nodes { __typename ... on ProjectV2ItemFieldSingleSelectValue { name field { ... on ProjectV2FieldCommon { name } } } ... on ProjectV2ItemFieldTextValue { text field { ... on ProjectV2FieldCommon { name } } } } pageInfo { hasNextPage } } } pageInfo { hasNextPage endCursor } } } } }",
@@ -7007,7 +7025,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "github-graphql" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -7042,7 +7062,7 @@
               "kind": "request",
               "id": "query",
               "method": "POST",
-              "url": "${connector.github-graphql.base_url}",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
               "graphql": {
                 "query": "query RepositoryIssues($owner: String!, $name: String!, $first: Int!, $after: String) { repository(owner: $owner, name: $name) { issues(first: $first, after: $after, states: OPEN, orderBy: {field: UPDATED_AT, direction: DESC}) { nodes { number title url state updatedAt labels(first: 10) { nodes { name color } } assignees(first: 10) { nodes { login } } } pageInfo { hasNextPage endCursor } } } rateLimit { cost remaining resetAt } }",
                 "variables": {
@@ -7069,7 +7089,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "github-graphql" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -7104,7 +7126,7 @@
               "kind": "request",
               "id": "query",
               "method": "POST",
-              "url": "${connector.github-graphql.base_url}",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
               "graphql": {
                 "query": "query RepositoryPullRequests($owner: String!, $name: String!, $first: Int!, $after: String) { repository(owner: $owner, name: $name) { pullRequests(first: $first, after: $after, states: OPEN, orderBy: {field: UPDATED_AT, direction: DESC}) { nodes { number title url state updatedAt author { login } reviewDecision commits { totalCount } } pageInfo { hasNextPage endCursor } } } rateLimit { cost remaining resetAt } }",
                 "variables": {
@@ -7131,7 +7153,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "github-graphql" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -7158,7 +7182,7 @@
               "kind": "request",
               "id": "query",
               "method": "POST",
-              "url": "${connector.github-graphql.base_url}",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
               "graphql": {
                 "query": "query SearchRepositories($query: String!, $first: Int!) { search(query: $query, type: REPOSITORY, first: $first) { repositoryCount nodes { ... on Repository { nameWithOwner description url stargazerCount updatedAt } } } rateLimit { cost remaining resetAt } }",
                 "variables": {
@@ -10239,7 +10263,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "linear" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -10252,7 +10278,7 @@
               "kind": "request",
               "id": "v",
               "method": "POST",
-              "url": "${connector.linear.base_url}",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
               "graphql": {
                 "query": "query { viewer { id email name } }"
               }
@@ -10273,7 +10299,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "linear" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -10286,7 +10314,7 @@
               "kind": "request",
               "id": "t",
               "method": "POST",
-              "url": "${connector.linear.base_url}",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
               "graphql": {
                 "query": "query { teams(first:50) { nodes { id key name } } }"
               }
@@ -10307,7 +10335,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "linear" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -10329,9 +10359,9 @@
               "kind": "request",
               "id": "i",
               "method": "POST",
-              "url": "${connector.linear.base_url}",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
               "graphql": {
-                "query": "query($t:ID!) { team(id:$t) { issues(first:50, filter:{state:{type:{eq:\"started\"}}}) { nodes { id identifier title state { name } } } } }",
+                "query": "query($t:String!) { team(id:$t) { issues(first:50, filter:{state:{type:{eq:\"started\"}}}) { nodes { id identifier title state { name } } } } }",
                 "variables": {
                   "t": "${input.team_id}"
                 }
@@ -10353,7 +10383,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "linear" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -10381,7 +10413,7 @@
               "kind": "request",
               "id": "c",
               "method": "POST",
-              "url": "${connector.linear.base_url}",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
               "graphql": {
                 "query": "mutation($t:String!,$ti:String!,$d:String) { issueCreate(input:{teamId:$t,title:$ti,description:$d}) { success issue { id identifier } } }",
                 "variables": {
@@ -10407,7 +10439,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "linear" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -10429,7 +10463,7 @@
               "kind": "request",
               "id": "g",
               "method": "POST",
-              "url": "${connector.linear.base_url}",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
               "graphql": {
                 "query": "query($id:String!) { issue(id:$id) { id identifier title description state { name } assignee { id name } } }",
                 "variables": {
@@ -10453,7 +10487,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "linear" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -10493,7 +10529,7 @@
               "kind": "request",
               "id": "u",
               "method": "POST",
-              "url": "${connector.linear.base_url}",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
               "graphql": {
                 "query": "mutation($id:String!,$input:IssueUpdateInput!) { issueUpdate(id:$id, input:$input) { success issue { id identifier title url state { id name } } } }",
                 "variables": {
@@ -10518,7 +10554,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "linear" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -10531,7 +10569,7 @@
               "kind": "request",
               "id": "p",
               "method": "POST",
-              "url": "${connector.linear.base_url}",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
               "graphql": {
                 "query": "query { projects(first:50) { nodes { id name state progress } } }"
               }
@@ -10552,7 +10590,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "linear" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -10574,9 +10614,9 @@
               "kind": "request",
               "id": "c",
               "method": "POST",
-              "url": "${connector.linear.base_url}",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
               "graphql": {
-                "query": "query($t:ID!) { team(id:$t) { cycles(first:20) { nodes { id name startsAt endsAt } } } }",
+                "query": "query($t:String!) { team(id:$t) { cycles(first:20) { nodes { id name startsAt endsAt } } } }",
                 "variables": {
                   "t": "${input.team_id}"
                 }
@@ -11094,7 +11134,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "monday" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -11107,7 +11149,7 @@
               "kind": "request",
               "id": "me",
               "method": "POST",
-              "url": "${connector.monday.base_url}",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
               "graphql": {
                 "query": "query { me { id email name } }"
               }
@@ -11128,7 +11170,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "monday" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -11141,7 +11185,7 @@
               "kind": "request",
               "id": "list",
               "method": "POST",
-              "url": "${connector.monday.base_url}",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
               "graphql": {
                 "query": "query { boards(limit:100) { id name state } }"
               }
@@ -11162,7 +11206,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "monday" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -11184,7 +11230,7 @@
               "kind": "request",
               "id": "get",
               "method": "POST",
-              "url": "${connector.monday.base_url}",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
               "graphql": {
                 "query": "query($id:[ID!]) { boards(ids:$id) { id name columns { id title type } items_page(limit:100) { items { id name } } } }",
                 "variables": {
@@ -11208,7 +11254,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "monday" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -11236,7 +11284,7 @@
               "kind": "request",
               "id": "create",
               "method": "POST",
-              "url": "${connector.monday.base_url}",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
               "graphql": {
                 "query": "mutation($b:ID!,$g:String,$n:String!) { create_item(board_id:$b, group_id:$g, item_name:$n) { id name } }",
                 "variables": {
@@ -11262,7 +11310,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "monday" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -11293,7 +11343,7 @@
               "kind": "request",
               "id": "upd",
               "method": "POST",
-              "url": "${connector.monday.base_url}",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
               "graphql": {
                 "query": "mutation($b:ID!,$i:ID!,$c:String!,$v:JSON!) { change_column_value(board_id:$b, item_id:$i, column_id:$c, value:$v) { id } }",
                 "variables": {
@@ -11320,7 +11370,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "monday" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -11333,7 +11385,7 @@
               "kind": "request",
               "id": "list",
               "method": "POST",
-              "url": "${connector.monday.base_url}",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
               "graphql": {
                 "query": "query { users(limit:200) { id email name enabled } }"
               }
@@ -11354,7 +11406,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "monday" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -11367,7 +11421,7 @@
               "kind": "request",
               "id": "list",
               "method": "POST",
-              "url": "${connector.monday.base_url}",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
               "graphql": {
                 "query": "query { workspaces { id name kind } }"
               }
@@ -11388,7 +11442,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "monday" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -11401,7 +11457,7 @@
               "kind": "request",
               "id": "c",
               "method": "POST",
-              "url": "${connector.monday.base_url}",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
               "graphql": {
                 "query": "query { complexity { before after query reset_in_x_seconds } }"
               }
@@ -17667,7 +17723,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "xray-cloud" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -17702,7 +17760,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "xray-cloud" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
