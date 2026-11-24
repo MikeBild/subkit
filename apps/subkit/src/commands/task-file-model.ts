@@ -74,13 +74,15 @@ function isObject(value: unknown): value is Json {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+const characterCount = (value: string): number => [...value].length;
+
 function text(source: Json, key: string, field: string, max: number, report: Report): void {
   const value = source[key];
   if (typeof value !== "string" || value.trim().length === 0) {
     report(field, "is missing or empty", `set "${key}" to a text of at most ${max} characters`);
     return;
   }
-  if (value.trim().length > max) {
+  if (characterCount(value.trim()) > max) {
     report(field, `is longer than ${max} characters`, `shorten it to ${max} characters or less`);
   }
 }
@@ -124,7 +126,7 @@ function checkSchedule(source: Json, report: Report): void {
         "is not a cron expression with five fields",
         'use minute hour day month weekday, for example "0 7 * * 1-5"',
       );
-    } else if (cron.length > 120) {
+    } else if (characterCount(cron) > 120) {
       report("schedule_cron", "is longer than 120 characters", "shorten the expression");
     }
   }
@@ -251,13 +253,16 @@ function checkDefinition(source: Json, report: Report): void {
   }
   text(source, "name", "name", 200, report);
   const description = source.description ?? null;
-  if (description !== null && (typeof description !== "string" || description.length > 2000)) {
+  if (
+    description !== null &&
+    (typeof description !== "string" || characterCount(description) > 2000)
+  ) {
     report("description", "must be a text of at most 2000 characters", "shorten it or remove it");
   }
   const category = source.category;
   if (
     category !== undefined &&
-    (typeof category !== "string" || category.length > 40 || !CATEGORY.test(category))
+    (typeof category !== "string" || characterCount(category) > 40 || !CATEGORY.test(category))
   ) {
     report(
       "category",
