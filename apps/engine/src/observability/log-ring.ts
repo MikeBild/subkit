@@ -55,6 +55,18 @@ function weight(level: string): number {
   return logLevelWeight(level);
 }
 
+export function pageEndingOnMillisecondBoundary(
+  chronological: CapturedLog[],
+  limit: number,
+): CapturedLog[] {
+  const lastTs = chronological[limit - 1]?.ts;
+  if (lastTs === undefined) return chronological;
+  const boundaryIndex = chronological.findIndex(
+    (entry, index) => index >= limit && entry.ts !== lastTs,
+  );
+  return boundaryIndex === -1 ? chronological : chronological.slice(0, boundaryIndex);
+}
+
 export function createLogRing(capacity = DEFAULT_CAPACITY_FROM_ENV()): LogRing {
   const buf: CapturedLog[] = [];
   const subs = new Set<(e: CapturedLog) => void>();
@@ -87,7 +99,7 @@ export function createLogRing(capacity = DEFAULT_CAPACITY_FROM_ENV()): LogRing {
     tail(opts = {}): CapturedLog[] {
       const limit = opts.limit ?? 200;
       const filtered = buf.filter((e) => matches(e, opts));
-      if (opts.since_ms !== undefined) return filtered.slice(0, limit);
+      if (opts.since_ms !== undefined) return pageEndingOnMillisecondBoundary(filtered, limit);
       return filtered.slice(-limit).reverse();
     },
     size(): number {
