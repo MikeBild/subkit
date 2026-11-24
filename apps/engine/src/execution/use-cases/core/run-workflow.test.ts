@@ -174,6 +174,15 @@ describe("precheckRunRequest", () => {
     ).toBeNull();
   });
 
+  test("counts the idempotency key length in Unicode code points like the published maxLength", () => {
+    expect(
+      precheckRunRequest({ ...baseFacts, idempotency_key: `${"k".repeat(199)}🚚` }),
+    ).toBeNull();
+    expect(
+      precheckRunRequest({ ...baseFacts, idempotency_key: `${"k".repeat(200)}🚚` }),
+    ).toMatchObject({ code: "bad_request" });
+  });
+
   test("a product caller cannot ask for a held preparation", () => {
     expect(
       precheckRunRequest({ ...baseFacts, product_bearer: true, hold_writes: true }),
