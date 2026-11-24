@@ -5100,7 +5100,7 @@
               "id": "send_digest",
               "method": "POST",
               "connector_id": "b8000000-0000-4000-8000-000000000002",
-              "url": "${connector.sendgrid.base_url}/v3/mail/send",
+              "url": "${connector.sendgrid.base_url}/mail/send",
               "headers": {
                 "Content-Type": "application/json"
               },
@@ -8903,7 +8903,7 @@
       {
         "slug": "create-contact",
         "title": "Create a contact",
-        "description": "POST a new contact with email + firstname + lastname properties.",
+        "description": "POST a new contact with email plus firstname and lastname when provided; absent optional names are omitted.",
         "intent_keywords": ["create contact", "new contact", "add contact"],
         "derived_from_skill": "hubspot-basics",
         "category": "crm",
@@ -8914,7 +8914,7 @@
         "sample_input": null,
         "expected_output_preview": null,
         "required_connectors": [],
-        "version": "1.0.0",
+        "version": "1.0.1",
         "author": "subkit-builtin",
         "last_validated_at": null,
         "deprecated": null,
@@ -8938,6 +8938,12 @@
           },
           "steps": [
             {
+              "kind": "transform",
+              "id": "build",
+              "language": "javascript",
+              "expression": "const fields = input.input || {}; const properties = { email: fields.email }; for (const key of ['firstname', 'lastname']) { if (typeof fields[key] === 'string' && fields[key].trim() !== '') properties[key] = fields[key]; } return { properties };"
+            },
+            {
               "kind": "request",
               "id": "create",
               "method": "POST",
@@ -8946,11 +8952,7 @@
                 "Content-Type": "application/json"
               },
               "body": {
-                "properties": {
-                  "email": "${input.email}",
-                  "firstname": "${input.firstname}",
-                  "lastname": "${input.lastname}"
-                }
+                "properties": "${scope.build.data.properties}"
               }
             }
           ]
@@ -13559,7 +13561,7 @@
               "kind": "request",
               "id": "send",
               "method": "POST",
-              "url": "${connector.sendgrid.base_url}/v3/mail/send",
+              "url": "${connector.sendgrid.base_url}/mail/send",
               "headers": {
                 "Content-Type": "application/json"
               },
@@ -13614,7 +13616,7 @@
               "kind": "request",
               "id": "list",
               "method": "GET",
-              "url": "${connector.sendgrid.base_url}/v3/templates",
+              "url": "${connector.sendgrid.base_url}/templates",
               "query": {
                 "generations": "dynamic",
                 "page_size": 50
@@ -13658,7 +13660,7 @@
               "kind": "request",
               "id": "get",
               "method": "GET",
-              "url": "${connector.sendgrid.base_url}/v3/templates/${input.template_id}"
+              "url": "${connector.sendgrid.base_url}/templates/${input.template_id}"
             }
           ]
         }
@@ -13711,7 +13713,7 @@
               "kind": "request",
               "id": "send",
               "method": "POST",
-              "url": "${connector.sendgrid.base_url}/v3/mail/send",
+              "url": "${connector.sendgrid.base_url}/mail/send",
               "headers": {
                 "Content-Type": "application/json"
               },
@@ -13761,7 +13763,7 @@
               "kind": "request",
               "id": "list",
               "method": "GET",
-              "url": "${connector.sendgrid.base_url}/v3/suppression/bounces"
+              "url": "${connector.sendgrid.base_url}/suppression/bounces"
             }
           ]
         }
@@ -13792,7 +13794,7 @@
               "kind": "request",
               "id": "stats",
               "method": "GET",
-              "url": "${connector.sendgrid.base_url}/v3/stats",
+              "url": "${connector.sendgrid.base_url}/stats",
               "query": {
                 "start_date": "2026-04-01",
                 "aggregated_by": "day"
@@ -13827,7 +13829,7 @@
               "kind": "request",
               "id": "list",
               "method": "GET",
-              "url": "${connector.sendgrid.base_url}/v3/marketing/contacts"
+              "url": "${connector.sendgrid.base_url}/marketing/contacts"
             }
           ]
         }
@@ -13867,7 +13869,7 @@
               "kind": "request",
               "id": "create",
               "method": "POST",
-              "url": "${connector.sendgrid.base_url}/v3/marketing/lists",
+              "url": "${connector.sendgrid.base_url}/marketing/lists",
               "headers": {
                 "Content-Type": "application/json"
               },

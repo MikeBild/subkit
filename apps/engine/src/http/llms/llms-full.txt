@@ -3100,7 +3100,7 @@ The check is strict on purpose and asks when in doubt. It still is not an unders
 - **SubKit checks what it sends, not what the service does with it.** If a service forwards a message to a list, SubKit only sees the address of the list.
 - **A few added words can change the tone.** The content stays yours, but the greeting, the closing and up to three words come from SubKit.
 - **A rule with changing text checks the origin, not the meaning.** It covers any text you wrote or saw as a draft, to the recipients named.
-- **Renewing is not possible on the Rules page yet.** The page shows neither the expiry date nor the daily limit and offers no renewal. An expired rule asks every time, and SubKit does not offer it again. It can only be renewed through the route `POST /v1/approval-rules/{id}/renew` from a browser session.
+- **Renew a rule on the Rules page.** Each active rule shows its expiry date and today's uses against the daily limit, and has the **Renew** button. Renewing sets the rule to 90 days from now, also when it has already expired. It works only in a browser session, and the audit trail records it as `tool_approval_rule.renewed` under your name.
 - **The daily limit and the duration are fixed.** You cannot set them.
 
 ### If something does not work
@@ -6868,7 +6868,7 @@ Upload a file (inline ≤5 MB, authenticated streaming above)
 
 - `<path>` (positional, required) — Path to file
 - `--content-type` (string) — Override detected MIME type
-- `--no-dedup` (default: false) — Skip the client-side sha256 dedup probe (forces an upload)
+- `--dedup` (default: true) — Reuse an existing file with the same sha256; --no-dedup forces an upload
 - `--link-to` (string) — After upload, link the file to <resource_type>:<id>
 - `--slug` (string) — Optional slug for the link
 - `--role` (string) — Optional role for the link
@@ -9122,7 +9122,7 @@ Grouped by template. **Trigger** is how the workflow starts: `request` (on deman
 
 | Recipe | What it does | Trigger | Also uses |
 | ------ | ------------ | ------- | --------- |
-| `create-contact` | POST a new contact with email + firstname + lastname properties. | request | — |
+| `create-contact` | POST a new contact with email plus firstname and lastname when provided; absent optional names are omitted. | request | — |
 | `get-contact` | Fetch a single contact record. | request | — |
 | `list-companies` | Page through CRM companies. | request | — |
 | `list-contacts` | Page through CRM contacts with cursor pagination. | request | — |

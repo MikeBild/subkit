@@ -461,7 +461,7 @@ test("the granted boundary is checked again at dispatch, independently of the st
   });
 });
 
-test("sensitive steps retain verified credential attribution without request metadata", async () => {
+test("sensitive steps retain verified credential attribution and only the connector reference", async () => {
   refreshedScope = "write";
   const f = await fixture("http", 1, true, undefined, true);
   mock.setHandler((_, res) => jsonResponse(res, 200, { ok: true }));
@@ -476,7 +476,10 @@ test("sensitive steps retain verified credential attribution without request met
         eq(executionSteps.execution_id, result.execution_id),
       ),
     );
-  expect(stored?.request_meta).toBeNull();
+  expect(stored?.request_meta).toEqual({
+    driver: "sensitive",
+    connector: { connector_id: expect.any(String), connector_slug: expect.any(String) },
+  });
   expect(stored?.credential_snapshots).toEqual([
     expect.objectContaining({
       credential_generation: 2,

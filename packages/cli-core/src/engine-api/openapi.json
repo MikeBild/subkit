@@ -24583,14 +24583,31 @@
           "pagination": {
             "$ref": "#/components/schemas/RequestPaginationSummary"
           },
+          "connector": {
+            "$ref": "#/components/schemas/SensitiveConnectorRef"
+          },
           "extras": {
             "type": "object",
             "additionalProperties": {}
           }
         },
         "required": [
-          "driver",
-          "pagination"
+          "driver"
+        ]
+      },
+      "SensitiveConnectorRef": {
+        "type": "object",
+        "properties": {
+          "connector_id": {
+            "type": "string"
+          },
+          "connector_slug": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "connector_id",
+          "connector_slug"
         ]
       },
       "SandboxRequestMeta": {

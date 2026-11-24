@@ -109,19 +109,25 @@ export async function uploadPath(
   }
 
   const sha256 = createHash("sha256").update(bytes).digest("hex");
+  const dedup = opts.dedup ?? true;
   const batch = await client.batchCreateFiles({
     files: [
       {
         filename,
         content_type,
         size_bytes: bytes.byteLength,
-        sha256,
+        ...(dedup ? { sha256 } : {}),
       },
     ],
   });
   const entry = batch.files[0];
   if (!entry) throw new Error("batch-create returned no entries");
   if (entry.dedup) {
+    if (!dedup) {
+      throw new Error(
+        `engine answered with a dedup match for ${filename} although --no-dedup was set`,
+      );
+    }
     return await client.getFile(entry.id);
   }
   const stream = readableFromBytes(bytes, filename, entry.id, bytes.byteLength, (ev) => {
@@ -222,6 +228,36 @@ const getCommand = defineCommand({
   },
 });
 
+export async function runFileUpload(
+  client: EngineClient,
+  uploadArgs: {
+    path: string;
+    contentType?: string;
+    linkTo?: string;
+    slug?: string;
+    role?: string;
+    dedup?: boolean;
+    quiet: boolean;
+    json: boolean;
+  },
+): Promise<FileWire> {
+  const linkRef = uploadArgs.linkTo ? parseResourceRef(uploadArgs.linkTo) : undefined;
+  const row = await uploadPath(client, uploadArgs.path, {
+    quiet: uploadArgs.quiet,
+    json: uploadArgs.json,
+    ...(uploadArgs.dedup === false ? { dedup: false } : {}),
+    ...(uploadArgs.contentType ? { content_type: uploadArgs.contentType } : {}),
+  });
+  if (linkRef) {
+    await client.linkFile(row.id, {
+      ...linkRef,
+      ...(uploadArgs.slug ? { slug: uploadArgs.slug } : {}),
+      ...(uploadArgs.role ? { role: uploadArgs.role } : {}),
+    });
+  }
+  return row;
+}
+
 const uploadCommand = defineCommand({
   meta: {
     name: "upload",
@@ -230,10 +266,11 @@ const uploadCommand = defineCommand({
   args: {
     path: { type: "positional", required: true, description: "Path to file" },
     "content-type": { type: "string", description: "Override detected MIME type" },
-    "no-dedup": {
+    dedup: {
       type: "boolean",
-      description: "Skip the client-side sha256 dedup probe (forces an upload)",
-      default: false,
+      description: "Reuse an existing file with the same sha256; --no-dedup forces an upload",
+      negativeDescription: "Skip the sha256 dedup probe (forces an upload)",
+      default: true,
     },
     "link-to": {
       type: "string",
@@ -251,18 +288,16 @@ const uploadCommand = defineCommand({
     const json = Boolean(args.json);
     return withCommandErrors(
       async () => {
-        const opts: { content_type?: string; quiet?: boolean; json?: boolean } = { quiet, json };
-        if (args["content-type"]) opts.content_type = String(args["content-type"]);
-        const row = await uploadPath(client, String(args.path), opts);
-        if (args["link-to"]) {
-          const ref = parseResourceRef(String(args["link-to"]));
-          await client.linkFile(row.id, {
-            resource_type: ref.resource_type,
-            resource_id: ref.resource_id,
-            ...(args.slug ? { slug: String(args.slug) } : {}),
-            ...(args.role ? { role: String(args.role) } : {}),
-          });
-        }
+        const row = await runFileUpload(client, {
+          path: String(args.path),
+          quiet,
+          json,
+          dedup: args.dedup !== false,
+          ...(args["content-type"] ? { contentType: String(args["content-type"]) } : {}),
+          ...(args["link-to"] ? { linkTo: String(args["link-to"]) } : {}),
+          ...(args.slug ? { slug: String(args.slug) } : {}),
+          ...(args.role ? { role: String(args.role) } : {}),
+        });
         if (json) {
           printJson(row);
           return;

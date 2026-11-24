@@ -667,7 +667,12 @@ export async function runSelfHealingLoop(
       snapshot.request_meta && "connector" in snapshot.request_meta
         ? snapshot.request_meta.connector
         : null;
-    const workflowStepId = requestConnector?.step_key ?? snapshot.step_key;
+    const workflowStepId =
+      (requestConnector &&
+      "step_key" in requestConnector &&
+      typeof requestConnector.step_key === "string"
+        ? requestConnector.step_key
+        : null) ?? snapshot.step_key;
     lastShape = await getLatestShape(
       {
         tenant_id: params.tenant_id,

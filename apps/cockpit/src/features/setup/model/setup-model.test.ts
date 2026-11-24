@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Setup } from "@/api/setup";
+import { pairVisibility } from "@/features/operations";
 import { type TranslationKey, translate } from "@/lib/i18n";
 import {
   answersFromSetup,
@@ -404,6 +405,11 @@ describe("approving together", () => {
   test("the setup question offers approving together only when the workspace can use it", () => {
     expect(setupApprovers(false)).toEqual(["self", "teammate"]);
     expect(setupApprovers(true)).toEqual(["self", "teammate", "pair"]);
+  });
+
+  test("a lone administrator can pick approving together to invite the second (#552)", () => {
+    const lone = pairVisibility({ workflow_approvals: "single", eligible_approvers: 1 });
+    expect(setupApprovers(lone.option)).toEqual(["self", "teammate", "pair"]);
   });
 
   test("approving together needs a partner address", () => {

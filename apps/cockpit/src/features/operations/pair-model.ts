@@ -87,7 +87,7 @@ export function pairVisibility(
 ): PairVisibility {
   const enabled = policy?.workflow_approvals === "pair";
   const setting = enabled || (policy?.eligible_approvers ?? 0) >= PAIR_MIN_APPROVERS;
-  return { setting, option: setting || chosen, hints: enabled };
+  return { setting, option: policy != null || chosen, hints: enabled };
 }
 
 export type PairRefusalClass =

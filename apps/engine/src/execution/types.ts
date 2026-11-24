@@ -135,6 +135,11 @@ export interface RequestPaginationSummary {
   rereads?: number;
 }
 
+export interface SensitiveConnectorRef {
+  connector_id: string;
+  connector_slug: string;
+}
+
 export type RequestMeta =
   | {
       driver: "http";
@@ -230,7 +235,8 @@ export type RequestMeta =
     }
   | {
       driver: "sensitive";
-      pagination: RequestPaginationSummary;
+      pagination?: RequestPaginationSummary;
+      connector?: SensitiveConnectorRef;
       extras?: Record<string, unknown>;
     }
   | {
