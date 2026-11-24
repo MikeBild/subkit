@@ -1,0 +1,27 @@
+[[IgnoredVulns]]
+id = "GHSA-3x9f-74h4-2fqr"
+reason = "xlsx comes from vendor/xlsx.tgz, SheetJS 0.20.3 from the official CDN. The advisory affects < 0.17.0; osv cannot read the version of a file: dependency."
+
+[[IgnoredVulns]]
+id = "GHSA-8vcr-vxm8-293m"
+reason = "xlsx comes from vendor/xlsx.tgz, SheetJS 0.20.3 from the official CDN. The advisory affects < 0.17.0; osv cannot read the version of a file: dependency."
+
+[[IgnoredVulns]]
+id = "GHSA-g973-978j-2c3p"
+reason = "xlsx comes from vendor/xlsx.tgz, SheetJS 0.20.3 from the official CDN. The advisory affects < 0.17.0; osv cannot read the version of a file: dependency."
+
+[[IgnoredVulns]]
+id = "GHSA-4r6h-8v6p-xvw6"
+reason = "xlsx comes from vendor/xlsx.tgz, SheetJS 0.20.3 from the official CDN. The advisory affects < 0.19.3, fixed in 0.19.3 on the CDN; osv cannot read the version of a file: dependency."
+
+[[IgnoredVulns]]
+id = "GHSA-5pgg-2g8v-p4x9"
+reason = "xlsx comes from vendor/xlsx.tgz, SheetJS 0.20.3 from the official CDN. The advisory affects < 0.20.2, fixed in 0.20.2 on the CDN; osv cannot read the version of a file: dependency."
+
+[[IgnoredVulns]]
+id = "GHSA-67mh-4wv8-2f99"
+reason = "esbuild 0.18 is pulled in only by @esbuild-kit/core-utils under drizzle-kit (dev tooling). It calls the transform API and never starts the esbuild dev server the advisory is about. Bun has no nested overrides, and a global one would break tsx, which pins esbuild ~0.28."
+
+[[IgnoredVulns]]
+id = "GHSA-g3hv-75wg-m249"
+reason = "minimatch 9/10 is pulled in only by build and test tooling (@stryker-mutator/core ~10.2.4, electron-builder app-builder-lib ^10.2.5, @electron/universal ^9) with no upstream release on 11. They match repo-authored glob patterns, never untrusted input. Bun has no nested overrides, and a global one would break @redocly/openapi-core, which needs the minimatch 5 default export."
