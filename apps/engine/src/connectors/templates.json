@@ -1806,7 +1806,7 @@
             "properties": {
               "path": {
                 "type": "string",
-                "description": "Path relative to base_url, beginning with /"
+                "description": "Path relative to base_url, without a leading slash (e.g. prod/items)"
               }
             }
           },
@@ -1815,7 +1815,7 @@
               "kind": "request",
               "id": "get",
               "method": "GET",
-              "url": "${connector.aws-apigw-iam.base_url}${input.path}"
+              "url": "${connector.aws-apigw-iam.base_url}/${input.path}"
             }
           ]
         }
@@ -1847,7 +1847,7 @@
             "properties": {
               "path": {
                 "type": "string",
-                "description": "Path relative to base_url, beginning with /"
+                "description": "Path relative to base_url, without a leading slash (e.g. prod/items)"
               },
               "body": {
                 "type": "object",
@@ -1861,7 +1861,7 @@
               "kind": "request",
               "id": "post",
               "method": "POST",
-              "url": "${connector.aws-apigw-iam.base_url}${input.path}",
+              "url": "${connector.aws-apigw-iam.base_url}/${input.path}",
               "body": "${input.body}"
             }
           ]
@@ -12029,7 +12029,7 @@
           "redirect_uri matches the provider"
         ],
         "sample_input": {
-          "token_endpoint": "/oauth/token",
+          "token_endpoint": "oauth/token",
           "code": "<auth-code-from-callback>",
           "redirect_uri": "https://app.example.com/callback"
         },
@@ -12046,7 +12046,8 @@
             "required": ["token_endpoint", "code", "redirect_uri"],
             "properties": {
               "token_endpoint": {
-                "type": "string"
+                "type": "string",
+                "description": "Endpoint path relative to base_url, without a leading slash (e.g. oauth/token)"
               },
               "code": {
                 "type": "string"
@@ -12061,7 +12062,7 @@
               "kind": "request",
               "id": "exchange",
               "method": "POST",
-              "url": "${connector.oauth2-generic.base_url}${input.token_endpoint}",
+              "url": "${connector.oauth2-generic.base_url}/${input.token_endpoint}",
               "headers": {
                 "content-type": "application/x-www-form-urlencoded"
               },
@@ -12094,7 +12095,7 @@
         "estimated_setup_minutes": 5,
         "prerequisites": ["Stored refresh_token from a prior auth_code or password grant"],
         "sample_input": {
-          "token_endpoint": "/oauth/token",
+          "token_endpoint": "oauth/token",
           "refresh_token": "<refresh-token>"
         },
         "expected_output_preview": null,
@@ -12110,7 +12111,8 @@
             "required": ["token_endpoint", "refresh_token"],
             "properties": {
               "token_endpoint": {
-                "type": "string"
+                "type": "string",
+                "description": "Endpoint path relative to base_url, without a leading slash (e.g. oauth/token)"
               },
               "refresh_token": {
                 "type": "string"
@@ -12122,7 +12124,7 @@
               "kind": "request",
               "id": "refresh",
               "method": "POST",
-              "url": "${connector.oauth2-generic.base_url}${input.token_endpoint}",
+              "url": "${connector.oauth2-generic.base_url}/${input.token_endpoint}",
               "headers": {
                 "content-type": "application/x-www-form-urlencoded"
               },
@@ -12154,7 +12156,7 @@
         "estimated_setup_minutes": 5,
         "prerequisites": ["client_id + client_secret with the requested scope"],
         "sample_input": {
-          "token_endpoint": "/oauth/token",
+          "token_endpoint": "oauth/token",
           "scope": "read:all"
         },
         "expected_output_preview": null,
@@ -12170,7 +12172,8 @@
             "required": ["token_endpoint"],
             "properties": {
               "token_endpoint": {
-                "type": "string"
+                "type": "string",
+                "description": "Endpoint path relative to base_url, without a leading slash (e.g. oauth/token)"
               },
               "scope": {
                 "type": "string"
@@ -12185,7 +12188,7 @@
               "kind": "request",
               "id": "issue",
               "method": "POST",
-              "url": "${connector.oauth2-generic.base_url}${input.token_endpoint}",
+              "url": "${connector.oauth2-generic.base_url}/${input.token_endpoint}",
               "headers": {
                 "content-type": "application/x-www-form-urlencoded"
               },
@@ -12218,7 +12221,7 @@
           "client_id + client_secret"
         ],
         "sample_input": {
-          "introspect_endpoint": "/oauth/introspect",
+          "introspect_endpoint": "oauth/introspect",
           "token": "<token-to-check>"
         },
         "expected_output_preview": null,
@@ -12234,7 +12237,8 @@
             "required": ["introspect_endpoint", "token"],
             "properties": {
               "introspect_endpoint": {
-                "type": "string"
+                "type": "string",
+                "description": "Endpoint path relative to base_url, without a leading slash (e.g. oauth/token)"
               },
               "token": {
                 "type": "string"
@@ -12249,7 +12253,7 @@
               "kind": "request",
               "id": "introspect",
               "method": "POST",
-              "url": "${connector.oauth2-generic.base_url}${input.introspect_endpoint}",
+              "url": "${connector.oauth2-generic.base_url}/${input.introspect_endpoint}",
               "headers": {
                 "content-type": "application/x-www-form-urlencoded"
               },
@@ -12273,7 +12277,7 @@
         "estimated_setup_minutes": 5,
         "prerequisites": ["Provider supports the revocation endpoint"],
         "sample_input": {
-          "revoke_endpoint": "/oauth/revoke",
+          "revoke_endpoint": "oauth/revoke",
           "token": "<token-to-revoke>"
         },
         "expected_output_preview": null,
@@ -12289,7 +12293,8 @@
             "required": ["revoke_endpoint", "token"],
             "properties": {
               "revoke_endpoint": {
-                "type": "string"
+                "type": "string",
+                "description": "Endpoint path relative to base_url, without a leading slash (e.g. oauth/token)"
               },
               "token": {
                 "type": "string"
@@ -12304,7 +12309,7 @@
               "kind": "request",
               "id": "revoke",
               "method": "POST",
-              "url": "${connector.oauth2-generic.base_url}${input.revoke_endpoint}",
+              "url": "${connector.oauth2-generic.base_url}/${input.revoke_endpoint}",
               "headers": {
                 "content-type": "application/x-www-form-urlencoded"
               },
@@ -12328,7 +12333,7 @@
         "estimated_setup_minutes": 5,
         "prerequisites": ["Provider supports device-code grant", "client_id"],
         "sample_input": {
-          "device_code_endpoint": "/oauth/device/code",
+          "device_code_endpoint": "oauth/device/code",
           "scope": "read write"
         },
         "expected_output_preview": null,
@@ -12344,7 +12349,8 @@
             "required": ["device_code_endpoint"],
             "properties": {
               "device_code_endpoint": {
-                "type": "string"
+                "type": "string",
+                "description": "Endpoint path relative to base_url, without a leading slash (e.g. oauth/token)"
               },
               "scope": {
                 "type": "string"
@@ -12356,7 +12362,7 @@
               "kind": "request",
               "id": "device",
               "method": "POST",
-              "url": "${connector.oauth2-generic.base_url}${input.device_code_endpoint}",
+              "url": "${connector.oauth2-generic.base_url}/${input.device_code_endpoint}",
               "headers": {
                 "content-type": "application/x-www-form-urlencoded"
               },
