@@ -427,6 +427,32 @@ const restoreCommand = defineCommand({
   },
 });
 
+export async function runFileDelete(deps: {
+  id: string;
+  force: boolean;
+  isTTY: boolean;
+  deleteFile: (id: string) => Promise<unknown>;
+  confirm: (message: string) => Promise<boolean>;
+  writeOut: (text: string) => void;
+  writeErr: (text: string) => void;
+}): Promise<number> {
+  if (!deps.force) {
+    if (!deps.isTTY) {
+      deps.writeErr(
+        `error: refusing to delete ${deps.id} without confirmation. Re-run with --force to confirm.\n`,
+      );
+      return 2;
+    }
+    if (!(await deps.confirm(`delete ${deps.id}?`))) {
+      deps.writeOut("cancelled\n");
+      return 0;
+    }
+  }
+  await deps.deleteFile(deps.id);
+  deps.writeOut(`${pc.green("deleted")}  ${deps.id}\n`);
+  return 0;
+}
+
 const deleteCommand = defineCommand({
   meta: { name: "delete", description: "Soft-delete a file" },
   args: {
@@ -435,18 +461,22 @@ const deleteCommand = defineCommand({
   },
   async run({ args }) {
     const client = makeClient();
-    return withCommandErrors(async () => {
-      if (!args.force && process.stdin.isTTY) {
-        const prompts = await import("@clack/prompts");
-        const ok = await prompts.confirm({ message: `delete ${args.id}?`, initialValue: false });
-        if (prompts.isCancel(ok) || ok === false) {
-          process.stdout.write("cancelled\n");
-          return;
-        }
-      }
-      await client.deleteFile(args.id);
-      process.stdout.write(`${pc.green("deleted")}  ${args.id}\n`);
-    });
+    const exitCode = await withCommandErrors(() =>
+      runFileDelete({
+        id: String(args.id),
+        force: Boolean(args.force),
+        isTTY: Boolean(process.stdin.isTTY),
+        deleteFile: (id) => client.deleteFile(id),
+        confirm: async (message) => {
+          const prompts = await import("@clack/prompts");
+          const ok = await prompts.confirm({ message, initialValue: false });
+          return !prompts.isCancel(ok) && ok === true;
+        },
+        writeOut: (text) => process.stdout.write(text),
+        writeErr: (text) => process.stderr.write(text),
+      }),
+    );
+    if (exitCode) process.exit(exitCode);
   },
 });
 
