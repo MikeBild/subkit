@@ -1,6 +1,6 @@
+import type { LlmCallLogEntry } from "../llm/index.ts";
 import type { SubkitLlmMessage, SubkitLlmUsage } from "../llm/runtime/base-types.ts";
 import { assembleSuggestionPrompt, type RecentMessage } from "../llm/runtime/suggestion-prompt.ts";
-import type { LlmCallLogEntry } from "../llm/types.ts";
 import { logger } from "../logging/index.ts";
 import { recordLlmTokens, recordSuggestNextOutcome } from "../observability/instrumentation.ts";
 import { filterSuggestion } from "./suggest-next-filter.ts";

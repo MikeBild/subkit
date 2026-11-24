@@ -3,7 +3,7 @@ import { getConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { conversationMessages } from "../../db/schema/index.ts";
 import { stripFileSentinelsForDisplay } from "../../files/sentinel.ts";
-import { recordUsage } from "../../llm/accounting/budget.ts";
+import { recordUsage } from "../../llm/index.ts";
 import { isCatalogModelProvider } from "../../llm/model-catalog-view.ts";
 import { AiSdkModel } from "../../llm/runtime/ai-sdk-model.ts";
 import { resolveModelRoute } from "../../llm/runtime/invoke.ts";
