@@ -1,4 +1,4 @@
-import { cacheReadReported } from "../../llm/core/cache-reporting.ts";
+import { cacheReadReported } from "../../llm/index.ts";
 
 export interface StepUsage {
   inputTokens: number;

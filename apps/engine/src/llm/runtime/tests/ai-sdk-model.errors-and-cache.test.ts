@@ -1,12 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { createAnthropic } from "@ai-sdk/anthropic";
-import { createOpenAI } from "@ai-sdk/openai";
 import { generateText } from "ai";
 import { readStepUsage } from "../../../conversations/loop/usage.ts";
 import { testEnv } from "../../../test-helpers/determinism/env.ts";
 import { classifyProviderError, isFallbackEligible } from "../../provider-errors.ts";
 import { AiSdkModel, usageOf } from "../ai-sdk-model.ts";
 import type { SubkitLlmMessage } from "../base-types.ts";
+import { cacheReportingModels } from "./cache-reporting-fixtures.ts";
 
 let previousLlmProvider: string | undefined;
 
@@ -239,51 +238,7 @@ describe("AiSdkModel prompt-cache usage", () => {
 
   it("preserves reporting presence through installed OpenAI and Anthropic adapters", async () => {
     for (const cached of [undefined, 0, 40]) {
-      const openai = createOpenAI({
-        apiKey: "test-key",
-        fetch: Object.assign(
-          async () =>
-            Response.json({
-              id: "chat-test",
-              object: "chat.completion",
-              created: 0,
-              model: "gpt-4o",
-              choices: [
-                { index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" },
-              ],
-              usage: {
-                prompt_tokens: 100,
-                completion_tokens: 1,
-                ...(cached === undefined
-                  ? {}
-                  : { prompt_tokens_details: { cached_tokens: cached } }),
-              },
-            }),
-          { preconnect: () => {} },
-        ),
-      });
-      const anthropic = createAnthropic({
-        apiKey: "test-key",
-        fetch: Object.assign(
-          async () =>
-            Response.json({
-              id: "msg-test",
-              type: "message",
-              role: "assistant",
-              model: "claude-sonnet-4-5",
-              content: [{ type: "text", text: "ok" }],
-              stop_reason: "end_turn",
-              stop_sequence: null,
-              usage: {
-                input_tokens: 100,
-                output_tokens: 1,
-                ...(cached === undefined ? {} : { cache_read_input_tokens: cached }),
-              },
-            }),
-          { preconnect: () => {} },
-        ),
-      });
-      for (const model of [openai.chat("gpt-4o"), anthropic("claude-sonnet-4-5")]) {
+      for (const model of cacheReportingModels(cached)) {
         const result = await generateText({ model, prompt: "hello", maxRetries: 0 });
         expect(result.usage.inputTokenDetails.cacheReadTokens).toBe(cached ?? 0);
         expect(usageOf(result.usage, result.providerMetadata).cache_reported).toBe(

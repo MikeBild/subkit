@@ -1,4 +1,5 @@
 export * from "./accounting/index.ts";
+export { cacheReadReported } from "./core/cache-reporting.ts";
 export * from "./errors.ts";
 export { runExtractFlow } from "./flows/extract.ts";
 export { runGenerateFlow } from "./flows/generate.ts";
