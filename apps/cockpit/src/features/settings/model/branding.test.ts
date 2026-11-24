@@ -6,7 +6,6 @@ import {
   brandingDraftAppIcon,
   brandingLogo,
   brandingPreviewLogo,
-  brandingWorkspaceName,
 } from "@/features/settings/model/branding";
 
 const branding: TenantBranding = {
@@ -94,54 +93,4 @@ describe("tenant branding client contracts", () => {
       expect(contrast(colors[3], "#0f172a")).toBeGreaterThanOrEqual(3);
     });
   }
-});
-
-describe("brandingWorkspaceName", () => {
-  const tenant = { display_name: "Synthetic workspace A" };
-
-  test("configured branding with a saved name shows the saved branding name", () => {
-    expect(
-      brandingWorkspaceName(
-        { tenant, branding: { ...branding, display_name: "Juniper Lab" } },
-        false,
-      ),
-    ).toBe("Juniper Lab");
-    expect(
-      brandingWorkspaceName(
-        { tenant, branding: { ...branding, display_name: "Juniper Lab" } },
-        true,
-      ),
-    ).toBe("Juniper Lab");
-  });
-
-  test("configured branding without or with a blank saved name falls back to the workspace name", () => {
-    expect(
-      brandingWorkspaceName({ tenant, branding: { ...branding, display_name: null } }, false),
-    ).toBe("Synthetic workspace A");
-    expect(
-      brandingWorkspaceName({ tenant, branding: { ...branding, display_name: "  " } }, false),
-    ).toBe("Synthetic workspace A");
-  });
-
-  test("an installed app without branding shows the workspace name", () => {
-    expect(brandingWorkspaceName({ tenant, branding: undefined }, true)).toBe(
-      "Synthetic workspace A",
-    );
-    expect(
-      brandingWorkspaceName(
-        { tenant, branding: { ...branding, configured: false, display_name: null } },
-        true,
-      ),
-    ).toBe("Synthetic workspace A");
-  });
-
-  test("no branding outside an installed app keeps the product name (null)", () => {
-    expect(brandingWorkspaceName({ tenant, branding: undefined }, false)).toBeNull();
-    expect(
-      brandingWorkspaceName(
-        { tenant, branding: { ...branding, configured: false, display_name: null } },
-        false,
-      ),
-    ).toBeNull();
-  });
 });

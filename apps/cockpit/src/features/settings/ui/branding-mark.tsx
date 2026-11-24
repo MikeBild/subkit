@@ -2,7 +2,7 @@ import { cn } from "@ui/lib/utils";
 import { useEffect } from "react";
 import { cockpitBasePath, installationId } from "@/app/installation-context";
 import { useSession } from "@/app/session";
-import { brandingLogo, brandingWorkspaceName } from "@/features/settings/model/branding";
+import { brandingLogo } from "@/features/settings/model/branding";
 import { useI18n } from "@/lib/i18n-context";
 import { useTheme } from "@/lib/theme";
 import { BrandingLogo } from "./branding-logo";
@@ -11,7 +11,6 @@ export function BrandingAppearance() {
   const session = useSession();
   const value = session.branding;
   const installed = Boolean(installationId());
-  const workspaceName = brandingWorkspaceName(session, installed);
   useEffect(() => {
     const root = document.documentElement;
     const title = document.title;
@@ -27,13 +26,13 @@ export function BrandingAppearance() {
     if (value?.configured) {
       root.dataset.brandPalette = value.palette ?? "standard";
     }
-    if (workspaceName) document.title = workspaceName;
+    if (installed || value?.configured) document.title = session.tenant.display_name;
     return () => {
       delete root.dataset.brandPalette;
       document.title = title;
       touchIcon?.remove();
     };
-  }, [value, installed, workspaceName]);
+  }, [value, installed, session.tenant.id, session.tenant.display_name]);
   return null;
 }
 
@@ -56,7 +55,7 @@ export function BrandingWordmark() {
       </span>
       <span className="grid min-w-0 flex-1 text-left text-sm leading-tight">
         <span data-testid="cockpit-wordmark-name" className="truncate font-semibold">
-          {brandingWorkspaceName(session, Boolean(installationId())) ?? t("app.name")}
+          {installationId() || value?.configured ? session.tenant.display_name : t("app.name")}
         </span>
         <span className="truncate text-xs text-muted-foreground">
           {value?.configured ? value.subtitle : session.tenant.display_name}
