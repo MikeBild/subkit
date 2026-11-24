@@ -96,3 +96,41 @@ describe("a credential carrying mcp:authoring", () => {
     await client.close();
   }, 90_000);
 });
+
+interface UnknownToolReply {
+  error_code: string;
+  message: string;
+  next_best_actions: string[];
+}
+
+async function callUnknownTool(client: Client, toolName: string): Promise<UnknownToolReply> {
+  const result = (await client.callTool({ name: toolName, arguments: {} })) as {
+    isError?: boolean;
+    content?: { type: string; text?: string }[];
+  };
+  expect(result.isError).toBe(true);
+  return JSON.parse(result.content?.[0]?.text ?? "{}") as UnknownToolReply;
+}
+
+describe("the unknown-tool reply matches what the credential can do", () => {
+  test("a credential without authoring is pointed at the CLI, not at conversation_start", async () => {
+    const client = await connectWithScopes(["workflow:read"]);
+    const reply = await callUnknownTool(client, "update_workflow");
+
+    expect(reply.error_code).toBe("unknown_tool");
+    expect(reply.next_best_actions).toEqual(["find_workflow", "run_workflow"]);
+    expect(reply.message).not.toContain("conversation_start");
+    expect(reply.message).toContain("subkit workflows --help");
+    expect(reply.message).toContain(MCP_AUTHORING_SCOPE);
+    await client.close();
+  }, 60_000);
+
+  test("an authoring credential is still offered conversation_start", async () => {
+    const client = await connectWithScopes([MCP_AUTHORING_SCOPE]);
+    const reply = await callUnknownTool(client, "totally_made_up_tool_xyz");
+
+    expect(reply.error_code).toBe("unknown_tool");
+    expect(reply.next_best_actions).toContain("conversation_start");
+    await client.close();
+  }, 60_000);
+});

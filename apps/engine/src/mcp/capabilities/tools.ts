@@ -25,7 +25,11 @@ import {
 import { logger } from "../../logging/index.ts";
 import { globalEmitter } from "../../pubsub/emitter.ts";
 import type { EventEnvelope } from "../../pubsub/types.ts";
-import { CONVERSATION_TOOL_MCP_UNAVAILABLE_REASON, getUnifiedRegistry } from "../../tools/index.ts";
+import {
+  CONVERSATION_TOOL_MCP_UNAVAILABLE_REASON,
+  getUnifiedRegistry,
+  unknownToolGuidance,
+} from "../../tools/index.ts";
 import type { ToolInvocation } from "../../tools/types.ts";
 import { callToolViaDispatcher } from "../adapter.ts";
 import { toMcpErrorText } from "../error-adapter.ts";
@@ -371,6 +375,7 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       }
 
       if (!name.startsWith(TOOL_PREFIX)) {
+        const authoringEnabled = modeFlags(mcpModeForCall, readOnly).showConversationTools;
         logger.warn({
           module: "mcp",
           action: "mcp.tool.unknown",
@@ -378,6 +383,7 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           tool: name,
           principal_id: principal.id,
           tenant_id: principal.tenant_id,
+          authoring_enabled: authoringEnabled,
         });
         return {
           isError: true,
@@ -388,8 +394,7 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
                 status: "cannot_help",
                 error_code: "unknown_tool",
                 tool: name,
-                message: `No tool named "${name}" is available on this surface. To run a saved workflow, call find_workflow to locate it, then run_workflow(workflow: "<slug>"). To build or edit a workflow or connector, call conversation_start. Do NOT retry "${name}" — it does not exist here.`,
-                next_best_actions: ["find_workflow", "run_workflow", "conversation_start"],
+                ...unknownToolGuidance(name, authoringEnabled),
               }),
             },
           ],

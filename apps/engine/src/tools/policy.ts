@@ -1,3 +1,4 @@
+import { MCP_AUTHORING_SCOPE } from "../auth/scopes.ts";
 import { decideToolMode } from "../conversations/public/policy.ts";
 import type {
   ConfirmEnvelope,
@@ -26,6 +27,25 @@ export const DRAFT_WRITE_MCP_UNAVAILABLE_REASON = `This tool mutates a conversat
 
 export const CONVERSATION_TOOL_MCP_UNAVAILABLE_REASON =
   "Authoring is not enabled for this credential. Definitions — workflows, connectors, knowledge sources, skills — are authored through the subkit CLI (`subkit workflows --help`, `subkit connectors --help`), where the change is a file you can read before it is applied. To author over MCP instead, the credential must carry the mcp:authoring scope.";
+
+export interface UnknownToolGuidance {
+  readonly message: string;
+  readonly next_best_actions: readonly string[];
+}
+
+export function unknownToolGuidance(toolName: string, canAuthor: boolean): UnknownToolGuidance {
+  const runHint =
+    'To run a saved workflow, call find_workflow to locate it, then run_workflow(workflow: "<slug>").';
+  const authorHint = canAuthor
+    ? "To build or edit a workflow or connector, call conversation_start."
+    : `Building or editing a workflow or connector needs the ${MCP_AUTHORING_SCOPE} scope on this credential, or the subkit CLI (\`subkit workflows --help\`, \`subkit connectors --help\`).`;
+  return {
+    message: `No tool named "${toolName}" is available on this surface. ${runHint} ${authorHint} Do NOT retry "${toolName}" — it does not exist here.`,
+    next_best_actions: canAuthor
+      ? ["find_workflow", "run_workflow", "conversation_start"]
+      : ["find_workflow", "run_workflow"],
+  };
+}
 
 export const DRAFT_REQUIRED_MCP_UNAVAILABLE_REASON = `This tool operates on a conversation-scoped working draft and is only available inside an authoring conversation. Author from the subkit CLI (\`subkit workflows --help\`, \`subkit connectors --help\`), which edits definitions from a file you can read. Over MCP, conversation_start opens an authoring conversation when the credential carries the mcp:authoring scope; ${MCP_ELICITATION_BLURB}.`;
 
