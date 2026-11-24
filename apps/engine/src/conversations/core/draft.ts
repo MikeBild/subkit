@@ -387,8 +387,8 @@ export function normalizeDraftDocument(now: DraftClock, raw: unknown): Refreshed
         typeof raw.session.live_test.input_digest === "string" &&
         /^[a-f0-9]{64}$/.test(raw.session.live_test.input_digest) &&
         typeof raw.session.live_test.idempotency_key === "string" &&
-        raw.session.live_test.idempotency_key.length > 0 &&
-        raw.session.live_test.idempotency_key.length <= 200 &&
+        Array.from(raw.session.live_test.idempotency_key).length > 0 &&
+        Array.from(raw.session.live_test.idempotency_key).length <= 200 &&
         (raw.session.live_test.state === "pending" ||
           raw.session.live_test.state === "running" ||
           raw.session.live_test.state === "succeeded" ||
