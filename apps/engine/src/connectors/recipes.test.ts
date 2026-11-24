@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { evaluateJsBody } from "../conversations/js-transform-eval.ts";
+import { planStateWrite } from "../execution/state-write-plan.ts";
 import { pruneScopeForJs } from "../sandboxes/quickjs/scope-references.ts";
 import {
   validateStepReferences,
@@ -597,5 +598,36 @@ describe("stateful recipes — paths match the request step output (#534)", () =
       ),
     );
     expect(offenders).toEqual([]);
+  });
+});
+
+describe("stripe incremental recipe keeps its watermark on an empty page (#541)", () => {
+  const stateWrite = () => {
+    const recipe = getBuiltinTemplate("stripe")!.recipes.find(
+      (r) => r.slug === "incremental-charges-via-state",
+    )!;
+    const steps = recipe.workflow.steps as Array<{
+      id: string;
+      state_write?: { key: string; value_path: string };
+    }>;
+    return steps.find((step) => step.id === "list_new")!.state_write!;
+  };
+
+  test("an empty page skips the write", () => {
+    expect(planStateWrite({ object: "list", data: [] }, stateWrite().value_path)).toEqual({
+      write: false,
+    });
+  });
+
+  test("a non-empty page writes the newest charge id", () => {
+    const page = { object: "list", data: [{ id: "ch_new" }, { id: "ch_old" }] };
+    expect(planStateWrite(page, stateWrite().value_path)).toEqual({ write: true, value: "ch_new" });
+  });
+
+  test("an explicit null at the path is still written", () => {
+    expect(planStateWrite({ data: [{ id: null }] }, stateWrite().value_path)).toEqual({
+      write: true,
+      value: null,
+    });
   });
 });

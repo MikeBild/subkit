@@ -9,8 +9,9 @@ import { readWorkflowState, writeWorkflowState } from "../workflow-state/index.t
 import type { StepDef } from "../workflows/types.ts";
 import { resolveMultipartInput } from "./multipart-input.ts";
 import { maybeOffload, previewOf } from "./offload.ts";
-import { applySelector, resolveValuePath } from "./selectors.ts";
+import { applySelector } from "./selectors.ts";
 import { finalizeStepRow } from "./state.ts";
+import { planStateWrite, stateValueKind } from "./state-write-plan.ts";
 import { runBranchStep } from "./steps/branch.ts";
 import { runModelStep } from "./steps/model.ts";
 import { runParallelStep } from "./steps/parallel.ts";
@@ -271,14 +272,16 @@ export async function runStep(
 
   if (result.status === "succeeded" && step.kind === "request" && step.state_write) {
     const sw = step.state_write;
-    const sliced = resolveValuePath(result.output, sw.value_path);
+    const plan = planStateWrite(result.output, sw.value_path);
     try {
-      await writeWorkflowState(ctx.db, {
-        tenant_id: ctx.tenant_id,
-        workflow_id: ctx.workflow_id,
-        key: sw.key,
-        value: sliced ?? null,
-      });
+      if (plan.write) {
+        await writeWorkflowState(ctx.db, {
+          tenant_id: ctx.tenant_id,
+          workflow_id: ctx.workflow_id,
+          key: sw.key,
+          value: plan.value,
+        });
+      }
       await auditAwait(
         {
           tenant_id: ctx.tenant_id,
@@ -292,14 +295,7 @@ export async function runStep(
             step_id: step.id,
             key: sw.key,
             value_path: sw.value_path,
-            value_kind:
-              sliced === null
-                ? "null"
-                : sliced === undefined
-                  ? "undefined"
-                  : Array.isArray(sliced)
-                    ? "array"
-                    : typeof sliced,
+            value_kind: stateValueKind(plan),
           },
         },
         ctx.db,
