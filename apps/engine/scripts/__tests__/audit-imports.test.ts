@@ -3,6 +3,19 @@ import { readFileSync } from "node:fs";
 import { collectImports, resolveImport } from "../audit/imports.ts";
 import { subsystemEntryHits } from "../audit/rules.ts";
 
+test("preflight uses the storage subsystem entry point", () => {
+  const file = "apps/engine/src/preflight/checks.ts";
+  const imports = collectImports(file, readFileSync(file, "utf8")).map((entry) => ({
+    ...entry,
+    resolved: resolveImport(file, entry.specifier),
+  }));
+  expect(
+    subsystemEntryHits(file, imports).filter((hit) =>
+      hit.what.startsWith("apps/engine/src/storage/"),
+    ),
+  ).toEqual([]);
+});
+
 test("unknown tool guidance uses the auth subsystem entry point", () => {
   const file = "apps/engine/src/tools/policy.ts";
   const source = readFileSync(new URL("../../src/tools/policy.ts", import.meta.url), "utf8");

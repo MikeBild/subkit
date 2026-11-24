@@ -1,7 +1,7 @@
 import type { DeploymentMode } from "../config/deployment-mode.ts";
 import { ConfigSchema } from "../config/schema.ts";
 import { listConfigLeaves } from "../config/walk.ts";
-import { FileSystemStoreError } from "../storage/file-system-object-store.ts";
+import { FileSystemStoreError } from "../storage/index.ts";
 import type { PreflightCheckResult, PreflightNote, PreflightOutcome } from "./contracts.ts";
 
 export interface ObjectStoreBinding {
