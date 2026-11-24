@@ -25,9 +25,10 @@ export function engineServeOptions(
   port: number,
   env: EnvRecord = envSnapshot(),
   loopbackOnly = false,
-): { port: number; hostname: string } {
+): { port: number; hostname: string; overrideGlobalObjects: false } {
   return {
     port,
     hostname: loopbackOnly ? DEFAULT_ENGINE_LISTEN_HOSTNAME : resolveListenHostname(env),
+    overrideGlobalObjects: false,
   };
 }

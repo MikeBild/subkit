@@ -180,7 +180,12 @@ export async function createHttpTestServer(
     ...(opts?.appOptions ?? {}),
   });
 
-  const server: ServerType = serve({ fetch: app.fetch, port: 0, hostname: "127.0.0.1" });
+  const server: ServerType = serve({
+    fetch: app.fetch,
+    port: 0,
+    hostname: "127.0.0.1",
+    overrideGlobalObjects: false,
+  });
   const addr = (server as unknown as { address: () => { port: number } | null }).address();
   if (!addr || typeof addr !== "object") {
     throw new Error("failed to determine test server port");

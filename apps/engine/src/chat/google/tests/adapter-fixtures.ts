@@ -76,10 +76,13 @@ export function setupGoogleChatAdapter(): void {
       return c.json({ name: `${c.req.param("space")}/messages/${c.req.param("id")}` });
     });
     await new Promise<void>((resolve) => {
-      server = serve({ fetch: app.fetch, port: 0, hostname: "127.0.0.1" }, (info) => {
-        baseUrl = `http://127.0.0.1:${info.port}`;
-        resolve();
-      });
+      server = serve(
+        { fetch: app.fetch, port: 0, hostname: "127.0.0.1", overrideGlobalObjects: false },
+        (info) => {
+          baseUrl = `http://127.0.0.1:${info.port}`;
+          resolve();
+        },
+      );
     });
   });
   afterAll(async () => {

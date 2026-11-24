@@ -26,7 +26,7 @@ function bootHttp(hostname: string): Promise<{ address: string; port: number; cl
     // bind-wildcard-allowed: this suite's SUBJECT is which address the server
     // binds, so the hostname is the parameter under test and cannot be pinned
     // to a literal here.
-    const server = serve({ fetch: app.fetch, port: 0, hostname }, (info) => {
+    const server = serve({ fetch: app.fetch, ...engineServeOptions(0, {}), hostname }, (info) => {
       try {
         resolve({
           address: info.address,
@@ -68,6 +68,31 @@ describe("engine bind hostname — defense-in-depth", () => {
     }
   });
 
+  test("an engine server leaves the global Response native for loopback upstreams", async () => {
+    const nativeResponse = globalThis.Response;
+    const app = new Hono();
+    app.get("/_probe", (c) => c.text("ok"));
+    const engine = serve({
+      fetch: app.fetch,
+      ...engineServeOptions(0, NO_OVERRIDE),
+      hostname: "127.0.0.1",
+    });
+    const upstream = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch: () => Response.json({ error: "unauthorized" }, { status: 401 }),
+    });
+    try {
+      expect(globalThis.Response).toBe(nativeResponse);
+      const res = await fetch(`http://127.0.0.1:${upstream.port}/protected`);
+      expect(res.status).toBe(401);
+      expect(await res.json()).toEqual({ error: "unauthorized" });
+    } finally {
+      upstream.stop(true);
+      engine.close();
+    }
+  });
+
   test("a server bound to 0.0.0.0 reports 0.0.0.0 (negative control)", async () => {
     const handle = await bootHttp("0.0.0.0");
     try {
@@ -105,10 +130,12 @@ describe("engine bind hostname — defense-in-depth", () => {
       expect(engineServeOptions(40_000, { ENGINE_LISTEN_HOST: "0.0.0.0" }, true)).toEqual({
         port: 40_000,
         hostname: DEFAULT_ENGINE_LISTEN_HOSTNAME,
+        overrideGlobalObjects: false,
       });
       expect(engineServeOptions(40_000, { ENGINE_LISTEN_HOST: "0.0.0.0" })).toEqual({
         port: 40_000,
         hostname: "0.0.0.0",
+        overrideGlobalObjects: false,
       });
     });
 

@@ -41,8 +41,7 @@ export async function startHttp(db: Db, deps: HttpDeps): Promise<void> {
             if (lifetime.stopping) return new Response("Service unavailable", { status: 503 });
             return lifetime.handleRequest(() => app.fetch(request, env));
           },
-          port: opts.port,
-          hostname: opts.hostname,
+          ...opts,
         });
         return new Promise<typeof server>((resolve, reject) => {
           if (server.listening) return resolve(server);
