@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { collectImports, parseSource } from "../audit/imports.ts";
+import { readFileSync } from "node:fs";
+import { collectImports, parseSource, resolveImport } from "../audit/imports.ts";
 import {
   conversationsLeafHits,
   dbImportHits,
@@ -283,4 +284,13 @@ describe("subsystemEntryHits", () => {
       ]).map((hit) => hit.what),
     ).toEqual([`${src}db/client.ts`]);
   });
+});
+
+test("schedule tools stay within their subsystem entry import budget", () => {
+  const file = "apps/engine/src/conversations/tools/engine-api/writes/schedules.ts";
+  const imports = collectImports(file, readFileSync(file, "utf8")).map((ref) => ({
+    ...ref,
+    resolved: resolveImport(file, ref.specifier),
+  }));
+  expect(subsystemEntryHits(file, imports).length).toBeLessThanOrEqual(2);
 });
