@@ -13,6 +13,7 @@ import {
 } from "../../execution/tests/setup.ts";
 import { calendarGateSkipReason, localDateInTz } from "../calendar-gates.ts";
 import { SchedulerReconciler } from "../reconciler.ts";
+import { fireEverySchedule } from "../workflow-schedule-sweep.ts";
 import { grantScheduleAuthorityFixture } from "./authority-fixture.ts";
 import { createStubBoss, type SendCall } from "./stub-boss.ts";
 
@@ -221,5 +222,101 @@ describe("calendar gate judges the due occurrence, not the late sweep", () => {
     );
     expect(sends.length).toBe(1);
     expect(occurrences[0]?.state).toBe("ran");
+  });
+});
+
+const intervalTicks = async (slug: string, input: Record<string, unknown>, ticks: Date[]) => {
+  const { workflow_id } = await createWorkflowRow(ctx, {
+    name: slug,
+    slug,
+    input_schema: { type: "object", properties: {}, additionalProperties: false },
+    steps: [{ id: "noop", kind: "transform", expression: "$input" }],
+  });
+  await grantScheduleAuthorityFixture(ctx.testDb.db, ctx.tenantId, workflow_id);
+  const [schedule] = await ctx.testDb.db
+    .insert(workflowsSchedules)
+    .values({
+      tenant_id: ctx.tenantId,
+      workflow_id,
+      cron: "every:15",
+      timezone: "Asia/Kathmandu",
+      paused: false,
+      input,
+      last_enqueued_at: null,
+      created_at: new Date("2026-11-01T00:00:00Z"),
+    })
+    .returning();
+  if (!schedule) throw new Error("schedule insert failed");
+  const fired: string[] = [];
+  const definition = {
+    schedule_id: schedule.id,
+    tenant_id: ctx.tenantId,
+    workflow_id,
+    seconds: 15,
+  };
+  const tick = (at: Date) =>
+    fireEverySchedule(
+      ctx.testDb.db,
+      definition,
+      async (key) => {
+        fired.push(key);
+      },
+      at,
+    );
+  for (const at of ticks) await tick(at);
+  const occurrences = () =>
+    ctx.testDb.db
+      .select()
+      .from(scheduleOccurrences)
+      .where(eq(scheduleOccurrences.workflow_id, workflow_id));
+  return { schedule, fired, tick, occurrences };
+};
+
+const ticksFrom = (start: string, count: number) =>
+  Array.from({ length: count }, (_, index) => new Date(Date.parse(start) + index * 15_000));
+
+describe("interval schedules honour the calendar gate", () => {
+  test("an every:15 schedule does not run on an excluded local date and runs once it is removed", async () => {
+    const { schedule, fired, tick, occurrences } = await intervalTicks(
+      "interval-skip-date",
+      { skip_dates: ["2026-11-24"] },
+      ticksFrom("2026-11-24T02:00:00Z", 4),
+    );
+    expect(fired).toHaveLength(0);
+    const skipped = await occurrences();
+    expect(skipped).toHaveLength(1);
+    expect(skipped[0]?.state).toBe("skipped");
+    expect(skipped[0]?.reason_code).toBe("calendar_skip_date");
+    expect(skipped[0]?.skipped_count).toBeGreaterThan(1);
+    await ctx.testDb.db
+      .update(workflowsSchedules)
+      .set({ input: {}, updated_at: new Date("2026-11-24T02:00:50Z") })
+      .where(eq(workflowsSchedules.id, schedule.id));
+    await tick(new Date("2026-11-24T02:01:00Z"));
+    expect(fired).toHaveLength(1);
+    const after = await occurrences();
+    expect(after).toHaveLength(1);
+    expect(after.some((entry) => entry.state === "ran")).toBe(false);
+  });
+
+  test("an every:15 business-day schedule does not run on a local weekend", async () => {
+    const { fired, occurrences } = await intervalTicks(
+      "interval-weekend",
+      { business_days_only: true },
+      ticksFrom("2026-11-28T06:00:00Z", 3),
+    );
+    expect(fired).toHaveLength(0);
+    const skipped = await occurrences();
+    expect(skipped).toHaveLength(1);
+    expect(skipped[0]?.reason_code).toBe("calendar_weekend");
+  });
+
+  test("an every:15 business-day schedule runs on a local weekday", async () => {
+    const { fired } = await intervalTicks(
+      "interval-weekday",
+      { business_days_only: true },
+      ticksFrom("2026-11-27T06:00:00Z", 1),
+    );
+    expect(fired).toHaveLength(1);
   });
 });
