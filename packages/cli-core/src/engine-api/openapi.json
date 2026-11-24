@@ -83587,6 +83587,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Channel still targeted by notification rules",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
