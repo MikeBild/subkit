@@ -11,6 +11,7 @@ import type {
 } from "../engine-client/executions.ts";
 import { EngineClient, type ExecutionCost } from "../engine-client.ts";
 import { executionOutcomeLine, recordLinkLines, stepLimitLine } from "../lib/execution-outcome.ts";
+import { executionOutputFileLines } from "../lib/execution-output-files.ts";
 import { resolveExecutionResult } from "../lib/execution-result.ts";
 import { heldRunBlock } from "../lib/held-run.ts";
 import { pickId } from "../lib/pick.ts";
@@ -27,7 +28,6 @@ import {
   formatTokens,
   humanMs,
 } from "../render/format.ts";
-import { collectFileRefs } from "../utils/file-ref.ts";
 import { withCommandErrors } from "./command-runtime.ts";
 import { resolveTime } from "./stats.ts";
 
@@ -78,37 +78,14 @@ export function executionListQuery(
   return query;
 }
 
-function humanBytes(n: number): string {
-  if (!Number.isFinite(n) || n < 0) return "—";
-  if (n < 1024) return `${Math.round(n)} B`;
-  const units = ["KB", "MB", "GB", "TB"];
-  let v = n / 1024;
-  let i = 0;
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024;
-    i++;
-  }
-  return `${v.toFixed(v >= 100 ? 0 : 1)} ${units[i]}`;
-}
-
 async function maybePrintOutputFiles(
   client: EngineClient,
   execution: ExecutionDetail,
 ): Promise<void> {
-  const fids = new Set<string>();
-  for (const ref of collectFileRefs(execution)) fids.add(ref);
-  if (fids.size === 0) return;
+  const lines = await executionOutputFileLines(client, execution);
+  if (lines.length === 0) return;
   process.stdout.write(`\n${pc.bold("Output files:")}\n`);
-  for (const fid of fids) {
-    try {
-      const row = await client.getFile(fid);
-      process.stdout.write(
-        `  ${fid} (${row.filename}, ${humanBytes(row.size_bytes)}) — subkit files download ${fid}\n`,
-      );
-    } catch {
-      process.stdout.write(`  ${fid} — subkit files download ${fid}\n`);
-    }
-  }
+  for (const line of lines) process.stdout.write(`  ${line}\n`);
 }
 
 const listCommand = defineCommand({

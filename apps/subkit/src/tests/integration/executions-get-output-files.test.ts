@@ -144,3 +144,143 @@ describe("output-files text rendering", () => {
     expect(lines[0]).toContain("subkit files download");
   });
 });
+
+describe("executions get output files from workflow_run links", () => {
+  const INPUT_FID = "fid_00000000-0000-0000-0000-000000000050";
+  const GENERATED_FID = "fid_00000000-0000-0000-0000-000000000051";
+  const EXECUTION_ID = "00000000-0000-4000-8000-000000000620";
+  const NOW = "2026-01-01T00:00:00.000Z";
+  const fileRow = (id: string, filename: string, sizeBytes: number) => ({
+    id,
+    status: "ready",
+    filename,
+    content_type: "application/pdf",
+    size_bytes: sizeBytes,
+    sha256: "aa",
+    scan_result: null,
+    created_at: NOW,
+    updated_at: NOW,
+    deleted_at: null,
+  });
+  const jsonResponse = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+
+  test("outputFileIds keeps linked outputs and drops input refs", async () => {
+    const { outputFileIds } = await import("../../lib/execution-output-files.ts");
+    const execution = {
+      id: EXECUTION_ID,
+      input: { $file: INPUT_FID },
+      result: { $file: INPUT_FID },
+    };
+    expect(outputFileIds(execution, [{ id: GENERATED_FID }])).toEqual([GENERATED_FID]);
+  });
+
+  test("preserves one download hint when a linked output reuses an input file ID", async () => {
+    const { EngineClient } = await import("../../engine-client.ts");
+    const { executionOutputFileLines } = await import("../../lib/execution-output-files.ts");
+    const client = new EngineClient({
+      engine_url: "http://engine.local",
+      api_key: "wf_live_test",
+      tenant: "t-test",
+      fetchImpl: async () =>
+        jsonResponse({
+          items: [fileRow(INPUT_FID, "report.pdf", 2048)],
+          next_cursor: null,
+        }),
+    });
+
+    const execution = {
+      id: EXECUTION_ID,
+      input: { $file: INPUT_FID },
+      result: { $file: INPUT_FID },
+    };
+
+    expect(await executionOutputFileLines(client, execution)).toEqual([
+      `${INPUT_FID} (report.pdf, 2.0 KB) — subkit files download ${INPUT_FID}`,
+    ]);
+  });
+
+  test("lists the generated file and never the uploaded input", async () => {
+    const { EngineClient } = await import("../../engine-client.ts");
+    const { executionOutputFileLines } = await import("../../lib/execution-output-files.ts");
+    const listUrls: URL[] = [];
+    const client = new EngineClient({
+      engine_url: "http://engine.local",
+      api_key: "wf_live_test",
+      tenant: "t-test",
+      fetchImpl: async (input) => {
+        const url = new URL(String(input));
+        if (url.pathname !== "/v1/files") return jsonResponse(fileRow(INPUT_FID, "upload.csv", 10));
+        listUrls.push(url);
+        return url.searchParams.get("cursor")
+          ? jsonResponse({ items: [], next_cursor: null })
+          : jsonResponse({
+              items: [fileRow(GENERATED_FID, "invoice.pdf", 2048)],
+              next_cursor: "page-2",
+            });
+      },
+    });
+
+    const lines = await executionOutputFileLines(client, {
+      id: EXECUTION_ID,
+      input: { $file: INPUT_FID },
+    });
+    const output = lines.join("\n");
+
+    expect(lines).toHaveLength(1);
+    expect(output).toContain(GENERATED_FID);
+    expect(output).toContain("invoice.pdf");
+    expect(output).toContain(`subkit files download ${GENERATED_FID}`);
+    expect(output).not.toContain(INPUT_FID);
+    expect(listUrls.map((url) => url.searchParams.get("linked_to"))).toEqual([
+      `workflow_run:${EXECUTION_ID}`,
+      `workflow_run:${EXECUTION_ID}`,
+    ]);
+  });
+
+  for (const metadataAvailable of [true, false]) {
+    test(`preserves result download hints when listing fails and metadata is ${metadataAvailable ? "available" : "unavailable"}`, async () => {
+      const { EngineClient } = await import("../../engine-client.ts");
+      const { executionOutputFileLines } = await import("../../lib/execution-output-files.ts");
+      const client = new EngineClient({
+        engine_url: "http://engine.local",
+        api_key: "wf_live_test",
+        tenant: "t-test",
+        fetchImpl: async (input) => {
+          const url = new URL(String(input));
+          if (metadataAvailable && url.pathname === `/v1/files/${GENERATED_FID}`) {
+            return jsonResponse(fileRow(GENERATED_FID, "invoice.pdf", 2048));
+          }
+          return jsonResponse({ code: "forbidden", message: "nope" }, 403);
+        },
+      });
+      const execution = {
+        id: EXECUTION_ID,
+        input: { $file: INPUT_FID },
+        result: [{ $file: GENERATED_FID }, { $file: INPUT_FID }],
+      };
+      expect(await executionOutputFileLines(client, execution)).toEqual([
+        `${GENERATED_FID}${metadataAvailable ? " (invoice.pdf, 2.0 KB)" : ""} — subkit files download ${GENERATED_FID}`,
+      ]);
+    });
+  }
+
+  test("falls back quietly when listing linked files fails", async () => {
+    const { EngineClient } = await import("../../engine-client.ts");
+    const { executionOutputFileLines } = await import("../../lib/execution-output-files.ts");
+    const client = new EngineClient({
+      engine_url: "http://engine.local",
+      api_key: "wf_live_test",
+      tenant: "t-test",
+      fetchImpl: async () => jsonResponse({ code: "forbidden", message: "nope" }, 403),
+    });
+    const lines = await executionOutputFileLines(client, {
+      id: EXECUTION_ID,
+      input: { $file: INPUT_FID },
+    });
+    expect(lines).toEqual([]);
+  });
+});
