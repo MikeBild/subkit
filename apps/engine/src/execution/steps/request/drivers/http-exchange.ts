@@ -24,6 +24,7 @@ export interface HttpExchange {
   query: Record<string, string | number | boolean>;
   active_credential_id: string | null;
   signed_jwt: DoOnePageParams["signed_jwt"];
+  sigv4: DoOnePageParams["sigv4"];
   stored_credential_used: boolean;
   body_schema: Record<string, unknown> | null;
   response_schema: Record<string, unknown> | null;
@@ -80,6 +81,7 @@ export function attemptParams(
     db: d.p.ctx.db,
     before_dispatch: x.before_dispatch,
     ...(x.signed_jwt ? { signed_jwt: x.signed_jwt } : {}),
+    ...(x.sigv4 ? { sigv4: x.sigv4 } : {}),
     url: page.url,
     method: d.p.step.method,
     headers: x.headers,
