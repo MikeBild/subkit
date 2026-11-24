@@ -1,0 +1,9 @@
+{
+  "release": "v12.1.6",
+  "signed_engine_sha256": "96bc6c1741719cb40950b0d36c5acfb7739924a89aa0d8d4fb7f23a7af7a1bbd",
+  "persona": "Workspace member using Cockpit Chat after owner review and activation",
+  "expected": "Each stock read sends a GraphQL query and bound inputs with the configured workspace bearer and persists the result.",
+  "actual": "Four stock variants sent empty connectorless POSTs with no matching bearer and received HTTP 400. Four explicit binding controls sent valid authenticated GraphQL requests and persisted read results.",
+  "provider": "Owned loopback GraphQL fixture. Projects are paginated and repository search is deterministic.",
+  "fixture_unchanged": true
+}
