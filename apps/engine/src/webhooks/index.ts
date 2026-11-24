@@ -5,5 +5,6 @@ export * from "./inbound/service.ts";
 export { HmacVerifierConfig } from "./inbound/verifiers/hmac.ts";
 export * from "./outbound/delivery-worker.ts";
 export * from "./outbound/fanout.ts";
+export { WEBHOOK_FANOUT_CHANNELS } from "./outbound/fanout-channels.ts";
 export * from "./outbound/replay.ts";
 export * from "./outbound/service.ts";

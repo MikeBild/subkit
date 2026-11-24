@@ -31,6 +31,7 @@ import { EXECUTION_RUN_QUEUE, enqueueHostedWork } from "../queue/index.ts";
 import { rememberWorkerRegistration } from "../queue/worker-pause.ts";
 import { prewarmSandboxWorkers } from "../sandboxes/quickjs/runtime.ts";
 import { applySkillSeedsForAllTenants, loadEmbeddedSkillSeeds } from "../skills/seed.ts";
+import { WEBHOOK_FANOUT_CHANNELS } from "../webhooks/index.ts";
 import { SHUTDOWN_DRAIN_TIMEOUT_MS } from "./shutdown.ts";
 
 export interface WorkerDeps {
@@ -190,7 +191,7 @@ async function startEventListener(
     () => startAbortMonitor(db),
     (monitor) => monitor.stop(),
   );
-  for (const channel of ["execution.status", "notification.emitted"] as const) {
+  for (const channel of WEBHOOK_FANOUT_CHANNELS) {
     lifetime.registerStop(
       listener.on(channel, async (event) => {
         if (lifetime.stopping) return;
