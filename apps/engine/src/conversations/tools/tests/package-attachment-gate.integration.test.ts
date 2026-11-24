@@ -17,7 +17,7 @@ beforeAll(async () => {
   ctx = await createTestDb("package-attachment-gate");
   const [t] = await ctx.db
     .insert(tenants)
-    .values({ slug: "pkg-gate-t", display_name: "Package Gate" })
+    .values({ slug: "pkg-gate-t", display_name: "Package Gate", language: "de" })
     .returning();
   if (!t) throw new Error("seed tenant");
   tenant_id = t.id;
