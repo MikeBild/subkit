@@ -40,9 +40,9 @@ SubKit speichert den wiederhergestellten Inhalt als neue Version. Die bisherige 
 ### Unterhaltungen zu einer Quelle oder einem Skill finden
 
 1. Öffne die Quelle oder den Skill.
-2. Öffne den Tab **Verwendung** und klappe **Unterhaltungen dazu** auf.
+2. Öffne den Tab **Verwendung**. Jede Unterhaltung erscheint dort als Zeile **Chat**, neben Workflows, Konnektoren und anderen Verwendungen.
 
-Die Liste zeigt Unterhaltungen, die die Quelle oder den Skill mit einem `@`-Verweis nennen. Bei einer Quelle zählen auch Unterhaltungen, in denen der Assistent die Quelle gelesen oder gefunden hat. Bei einem Skill zählen auch Unterhaltungen, die den Skill geladen haben. Klicke auf eine Unterhaltung, um sie zu öffnen. Gibt es noch keine, startest du mit **Im Chat fragen** eine neue.
+Der Tab listet Unterhaltungen, die die Quelle oder den Skill mit einem `@`-Verweis nennen. Bei einer Quelle zählen auch Unterhaltungen, in denen der Assistent die Quelle gelesen oder gefunden hat. Bei einem Skill zählen auch Unterhaltungen, die den Skill geladen haben. Klicke auf eine Zeile **Chat**, um die Unterhaltung zu öffnen.
 
 ### Sehen, welche Quellen eine Antwort genutzt hat
 

@@ -15,7 +15,6 @@ import { join } from "node:path";
 import { _resetConfigForTests, loadConfig } from "../config/loader.ts";
 import { ConfigSchema } from "../config/schema.ts";
 import { probeLocalObjectStore } from "../preflight/index.ts";
-import { waitFor } from "../test-helpers/determinism/index.ts";
 import {
   bindProcessStorage,
   FILESYSTEM_BUCKET,
@@ -132,19 +131,16 @@ describe("filesystem object store on disk", () => {
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
+    const started = Promise.withResolvers<void>();
     async function* gated(): AsyncIterable<Uint8Array> {
       yield Buffer.from("first-");
+      started.resolve();
       await gate;
       yield Buffer.from("second");
     }
     const pending = writer.putStream("inflight/key", gated(), 12);
-    await waitFor(() => {
-      try {
-        return readdirSync(join(root, STAGING_DIR)).length === 1;
-      } catch {
-        return false;
-      }
-    });
+    await started.promise;
+    expect(readdirSync(join(root, STAGING_DIR))).toHaveLength(1);
     await new FileSystemObjectStore(root).headBucket();
     release();
     await pending;
