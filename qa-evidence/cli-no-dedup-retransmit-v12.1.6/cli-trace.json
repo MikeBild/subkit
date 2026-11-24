@@ -1,0 +1,22 @@
+{
+  "release": "v12.1.6",
+  "client": "signed Linux CLI",
+  "simulated_provider": true,
+  "trials": [
+    {
+      "trial": "A",
+      "command": "files upload export.bin --no-dedup --json",
+      "exit_code": 0,
+      "reported_state": "ready",
+      "transferred_bytes": 0
+    },
+    {
+      "trial": "B",
+      "command": "files upload export.bin --no-dedup --json",
+      "exit_code": 0,
+      "reported_state": "ready",
+      "transferred_bytes": 0
+    }
+  ],
+  "note": "Synthetic filenames, file identifiers, addresses, and credentials are intentionally omitted."
+}
