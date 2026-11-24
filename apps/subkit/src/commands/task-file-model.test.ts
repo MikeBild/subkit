@@ -153,6 +153,21 @@ describe("task file", () => {
     expect(fixOf({ goal: "g".repeat(601) })).toBe("shorten it to 600 characters or less");
   });
 
+  test("text limits count characters the way the engine does, not utf-16 code units", () => {
+    const astral = "\u{10348}";
+    expect(issuesOf({ done_when: `Inventory completion: ${astral.repeat(1978)}` })).toEqual([]);
+    expect(issuesOf({ done_when: `Inventory completion: ${astral.repeat(1979)}` })).toEqual([
+      "done_when is longer than 2000 characters",
+    ]);
+    expect(issuesOf({ name: astral.repeat(200) })).toEqual([]);
+    expect(issuesOf({ name: astral.repeat(201) })).toEqual(["name is longer than 200 characters"]);
+    expect(issuesOf({ goal: astral.repeat(600) })).toEqual([]);
+    expect(issuesOf({ description: astral.repeat(2000) })).toEqual([]);
+    expect(issuesOf({ description: astral.repeat(2001) })).toEqual([
+      "description must be a text of at most 2000 characters",
+    ]);
+  });
+
   test("description and category are optional but checked", () => {
     expect(issuesOf({ description: null })).toEqual([]);
     expect(issuesOf({ description: "d".repeat(2000) })).toEqual([]);
