@@ -1,5 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+import { parseFileIdOrThrow } from "../../api/files-schemas.ts";
 import { auditLog, files, intakeItems } from "../../db/schema/index.ts";
 import { findRetainedFileReferences } from "../../files/reference-protection.ts";
 import * as scanner from "../../files/scanner.ts";
@@ -42,6 +43,8 @@ describe("POST /v1/intake/items/file", () => {
     expect(res.status).toBe(201);
     const item = (await res.json()) as Item;
     expect(item.title).toBe("quarter.pdf");
+    expect(item.attachment?.file_id).toMatch(/^fid_/);
+    const fileUuid = parseFileIdOrThrow(item.attachment!.file_id);
     expect(item.attachment).toMatchObject({
       filename: "quarter.pdf",
       content_type: "application/pdf",
@@ -51,15 +54,23 @@ describe("POST /v1/intake/items/file", () => {
       .select({ attachment_file_id: intakeItems.attachment_file_id })
       .from(intakeItems)
       .where(and(eq(intakeItems.tenant_id, ctx.tenantId), eq(intakeItems.id, item.id)));
-    expect(row?.attachment_file_id).toBe(item.attachment!.file_id);
+    expect(row?.attachment_file_id).toBe(fileUuid);
     const [file] = await ctx.db
       .select({ status: files.status })
       .from(files)
-      .where(and(eq(files.tenant_id, ctx.tenantId), eq(files.id, item.attachment!.file_id)));
+      .where(and(eq(files.tenant_id, ctx.tenantId), eq(files.id, fileUuid)));
     expect(file?.status).toBe("ready");
 
     const detail = (await (await request(`/v1/intake/items/${item.id}`, "GET")).json()) as Item;
     expect(detail.attachment?.file_id).toBe(item.attachment!.file_id);
+    expect(
+      (detail as Item & { original_snapshot: { attachment?: { file_id: string } } })
+        .original_snapshot.attachment?.file_id,
+    ).toBe(item.attachment!.file_id);
+
+    const download = await request(`/v1/files/${detail.attachment!.file_id}/content`, "GET");
+    expect(download.status).toBe(200);
+    expect(Buffer.from(await download.arrayBuffer()).equals(PDF)).toBe(true);
 
     const audits = await ctx.db
       .select({ metadata: auditLog.metadata })
@@ -71,13 +82,13 @@ describe("POST /v1/intake/items/file", () => {
           eq(auditLog.resource_id, item.id),
         ),
       );
-    expect(audits[0]?.metadata).toMatchObject({ attachment_file_id: item.attachment!.file_id });
+    expect(audits[0]?.metadata).toMatchObject({ attachment_file_id: fileUuid });
 
     const retained = await findRetainedFileReferences(ctx.db, [
-      { id: item.attachment!.file_id, tenant_id: ctx.tenantId, slug: null },
+      { id: fileUuid, tenant_id: ctx.tenantId, slug: null },
       { id: "00000000-0000-4000-8000-0000000000bb", tenant_id: ctx.tenantId, slug: null },
     ]);
-    expect(retained.has(item.attachment!.file_id)).toBe(true);
+    expect(retained.has(fileUuid)).toBe(true);
     expect(retained.has("00000000-0000-4000-8000-0000000000bb")).toBe(false);
   });
 

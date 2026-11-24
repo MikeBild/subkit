@@ -196,6 +196,15 @@ describe("inbox attachments", () => {
     });
     expect(a).toEqual({ fileId: "f1", name: "Angebot.PDF", kind: "pdf", size: 2048, ready: true });
   });
+  it("addresses the files API with a fid_ id even when the engine sent a bare uuid", () => {
+    const uuid = "a20a7da8-66c2-46e8-90c4-02c23106d143";
+    expect(entryAttachment({ attachment: { file_id: uuid, filename: "a.png" } })?.fileId).toBe(
+      `fid_${uuid}`,
+    );
+    expect(
+      entryAttachment({ attachment: { file_id: `fid_${uuid}`, filename: "a.png" } })?.fileId,
+    ).toBe(`fid_${uuid}`);
+  });
   it("is null without an attachment or with a malformed one", () => {
     expect(entryAttachment({ attachment: null })).toBeNull();
     expect(entryAttachment({})).toBeNull();
