@@ -2,35 +2,31 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { knDe, knEn } from "../../apps/cockpit/src/lib/i18n/kn.ts";
+import { germanTextLines } from "../../apps/engine/scripts/audit/german-text.ts";
 
 const guideDir = join(import.meta.dir, "../../apps/engine/src/http/reference");
 const readGuide = (locale: string) =>
   readFileSync(join(guideDir, `maintain-sources-skills-and-files.${locale}.md`), "utf8");
-const sectionOf = (guide: string, heading: RegExp) =>
-  guide.split(/^### /m).find((section) => heading.test(section.split("\n")[0] ?? "")) ?? "";
+const englishHeadings = readGuide("en")
+  .split(/^### /m)
+  .map((section) => section.split("\n")[0]);
+const sectionOf = (guide: string, heading: string) =>
+  guide.split(/^### /m)[englishHeadings.indexOf(heading)] ?? "";
 
 const locales = [
-  {
-    locale: "en",
-    kn: knEn,
-    restoreHeading: /^Restore an earlier state of a file$/,
-    troubleHeading: /^If something does not work$/,
-    replaced: "Replaced",
-  },
-  {
-    locale: "de",
-    kn: knDe,
-    restoreHeading: /^Einen früheren Stand einer Datei wiederherstellen$/,
-    troubleHeading: /^Wenn etwas nicht klappt$/,
-    replaced: "Ersetzt",
-  },
+  { locale: "en", kn: knEn },
+  { locale: "de", kn: knDe },
 ];
 
+test("file restore guide test contains no German text outside locale catalogs", () => {
+  expect(germanTextLines(readFileSync(import.meta.path, "utf8"))).toEqual([]);
+});
+
 describe("file restore guide matches the Cockpit versions tab (#549)", () => {
-  for (const { locale, kn, restoreHeading, troubleHeading, replaced } of locales) {
+  for (const { locale, kn } of locales) {
     const guide = readGuide(locale);
-    const restoreSection = sectionOf(guide, restoreHeading);
-    const troubleSection = sectionOf(guide, troubleHeading);
+    const restoreSection = sectionOf(guide, "Restore an earlier state of a file");
+    const troubleSection = sectionOf(guide, "If something does not work");
 
     test(`${locale}: restore steps name the versions tab and restore button`, () => {
       expect(restoreSection).toContain(`**${kn["kn.tab.versions"]}**`);
@@ -39,8 +35,8 @@ describe("file restore guide matches the Cockpit versions tab (#549)", () => {
 
     test(`${locale}: no replaced section under the usage tab`, () => {
       expect(restoreSection).not.toContain(`**${kn["kn.tab.usage"]}**`);
-      expect(restoreSection).not.toContain(`**${replaced}**`);
-      expect(troubleSection).not.toContain(`**${replaced}**`);
+      expect(restoreSection).not.toContain(`**${kn["kn.files.replacedAt"]}**`);
+      expect(troubleSection).not.toContain(`**${kn["kn.files.replacedAt"]}**`);
       expect(troubleSection).toContain(`**${kn["kn.tab.versions"]}**`);
     });
   }
