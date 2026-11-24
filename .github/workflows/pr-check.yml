@@ -34,7 +34,8 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: 1.4.5
-      - run: bun install --frozen-lockfile
+      - name: Install dependencies (retry transient download failures)
+        run: for attempt in 1 2 3; do bun install --frozen-lockfile && exit 0; echo "install attempt $attempt failed, retrying"; sleep 20; done; exit 1
       - name: Commit messages of the pull request
         run: bash scripts/check-commit-message.sh --range "$BASE_SHA..$HEAD_SHA"
       - run: bun run verify push
@@ -65,7 +66,8 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: 1.4.5
-      - run: bun install --frozen-lockfile
+      - name: Install dependencies (retry transient download failures)
+        run: for attempt in 1 2 3; do bun install --frozen-lockfile && exit 0; echo "install attempt $attempt failed, retrying"; sleep 20; done; exit 1
       - run: bun run build assets
       - run: bun run build subkit --skip-deps
       - name: Select this shard of the affected tests
