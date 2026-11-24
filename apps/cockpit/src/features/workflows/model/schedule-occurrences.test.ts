@@ -34,6 +34,25 @@ describe("schedule occurrences", () => {
     }
   });
 
+  test("asks to approve a version without a live approval and to change a version that cannot be approved", () => {
+    const lastSentence = (sentence: string) => sentence.split(". ").at(-1);
+    const sentenceOf = (locale: "en" | "de", reason: string) =>
+      translate(locale, occurrenceSentenceKey({ state: "held", reason_code: reason }));
+    expect(sentenceOf("en", "execution_authority_unavailable")).toContain("Approve it");
+    expect(sentenceOf("en", "execution_authority_unavailable")).not.toMatch(/renew|no longer/i);
+    expect(sentenceOf("en", "execution_authority_required")).toMatch(/must change/);
+    expect(sentenceOf("en", "execution_authority_required")).not.toContain("Approve it");
+    expect(lastSentence(sentenceOf("de", "execution_authority_unavailable"))).toBe(
+      lastSentence(sentenceOf("de", "grant_required")),
+    );
+    expect(lastSentence(sentenceOf("de", "execution_authority_unavailable"))).not.toBe(
+      lastSentence(sentenceOf("de", "grant_expired")),
+    );
+    expect(lastSentence(sentenceOf("de", "execution_authority_required"))).not.toBe(
+      lastSentence(sentenceOf("de", "grant_required")),
+    );
+  });
+
   test("falls back to the state for an unknown or missing reason", () => {
     expect(occurrenceSentenceKey({ state: "ran", reason_code: null })).toBe(
       "scheduleHistory.state.ran",

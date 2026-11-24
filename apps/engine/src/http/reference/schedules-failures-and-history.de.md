@@ -52,8 +52,8 @@ Ein gehaltener Zeitplan startet keinen Run, verliert aber nichts. Sobald du den 
 
 | Was du liest | Was du tust |
 | --- | --- |
-| „Angehalten: Für diese Version fehlt die Freigabe. Erteile sie, dann läuft der Zeitplan weiter.“ | Öffne den Workflow, prüfe ihn und erteile die Freigabe. |
-| „Angehalten: Die Freigabe gilt nicht mehr. Erneuere sie, dann läuft der Zeitplan weiter.“ | Die Freigabe ist abgelaufen, aufgebraucht oder widerrufen. Erneuere sie. |
+| „Angehalten: Für diese Version gilt keine Freigabe. Erteile sie, dann läuft der Zeitplan weiter.“ | Es gilt keine Freigabe: Sie wurde nie erteilt, ist abgelaufen, aufgebraucht oder widerrufen. Öffne den Workflow, prüfe ihn und erteile oder erneuere die Freigabe. |
+| „Angehalten: Diese Version muss geändert werden, bevor ihr Zeitplan freigegeben werden kann.“ | Ändere den Workflow so, dass sein Zeitplan freigegeben werden kann, und gib dann die neue Version frei. |
 | „Angehalten: Dem Run fehlen Eingaben. Ergänze sie im Zeitplan.“ | Trage im Zeitplan die fehlende Eingabe ein. |
 | „Angehalten: Der Aufgabe fehlt die Dauererlaubnis. Erteile sie, dann läuft der Zeitplan weiter.“ | Öffne die Aufgabe und wähle **Erlauben**. |
 | „Angehalten: Die Dauererlaubnis ist abgelaufen. Erneuere sie, dann läuft der Zeitplan weiter.“ | Öffne die Aufgabe und wähle **Erlauben**. |
