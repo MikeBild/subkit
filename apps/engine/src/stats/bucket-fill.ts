@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { type SQL, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import type { BucketUnit } from "./bucket-units.ts";
 
@@ -11,6 +11,9 @@ export interface BucketSeriesWindow {
   to: Date;
   tz: string;
 }
+
+export const bucketStartExpr = (column: SQL, bucket: BucketUnit, tz: string): SQL =>
+  sql`(date_trunc(${bucket}, ${column} at time zone ${tz}) at time zone 'UTC')`;
 
 export function fillBuckets<B extends { ts: string }>(
   keys: readonly string[],
@@ -40,7 +43,7 @@ export async function readBucketSeries(db: Db, w: BucketSeriesWindow): Promise<s
         date_trunc(${w.bucket}, ${w.from.toISOString()}::timestamptz at time zone ${w.tz}),
         (${w.to.toISOString()}::timestamptz at time zone ${w.tz}) - interval '1 microsecond',
         ('1 ' || ${w.bucket})::interval
-      ) as bucket_ts
+      ) at time zone 'UTC' as bucket_ts
     `)
   ).rows as Record<string, unknown>[];
   return rows.map((row) => new Date(row.bucket_ts as string).toISOString());

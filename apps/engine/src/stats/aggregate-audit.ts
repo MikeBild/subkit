@@ -1,5 +1,6 @@
 import { type SQL, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
+import { bucketStartExpr } from "./bucket-fill.ts";
 import type { BucketUnit } from "./bucket-units.ts";
 
 export type AuditOutcome = "success" | "denied" | "error";
@@ -214,7 +215,7 @@ function buildWhere(p: AuditStatsParams): SQL {
 }
 
 function bucketExpr(p: AuditStatsParams): SQL {
-  return sql`date_trunc(${p.bucket}, ts at time zone ${p.tz})`;
+  return bucketStartExpr(sql`ts`, p.bucket, p.tz);
 }
 
 const GROUP_BY_BUCKET = sql`bucket_ts`;
