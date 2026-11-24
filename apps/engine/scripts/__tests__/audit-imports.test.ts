@@ -3,6 +3,19 @@ import { readFileSync } from "node:fs";
 import { collectImports, resolveImport } from "../audit/imports.ts";
 import { subsystemEntryHits } from "../audit/rules.ts";
 
+test("draft idempotency validation avoids execution subsystem reach-ins", () => {
+  const file = "apps/engine/src/conversations/core/draft.ts";
+  const imports = collectImports(file, readFileSync(file, "utf8")).map((entry) => ({
+    ...entry,
+    resolved: resolveImport(file, entry.specifier),
+  }));
+  expect(
+    subsystemEntryHits(file, imports).filter((hit) =>
+      hit.what.startsWith("apps/engine/src/execution/"),
+    ),
+  ).toEqual([]);
+});
+
 test("preflight uses the storage subsystem entry point", () => {
   const file = "apps/engine/src/preflight/checks.ts";
   const imports = collectImports(file, readFileSync(file, "utf8")).map((entry) => ({
