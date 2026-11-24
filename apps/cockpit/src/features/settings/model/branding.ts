@@ -9,18 +9,6 @@ export function brandingLogo(value: TenantBranding | undefined, theme: "light" |
   return source ? cockpitApiHref(source) : null;
 }
 
-export function brandingWorkspaceName(
-  session: {
-    tenant: { display_name: string };
-    branding?: Pick<TenantBranding, "configured" | "display_name">;
-  },
-  installed: boolean,
-): string | null {
-  const savedName = session.branding?.display_name?.trim();
-  if (session.branding?.configured && savedName) return savedName;
-  return installed || session.branding?.configured ? session.tenant.display_name : null;
-}
-
 export const BRANDING_SWATCHES = {
   standard: ["#0f172a", "#2563eb", "#f8fafc", "#60a5fa"],
   indigo: ["#312e81", "#4f46e5", "#e0e7ff", "#a5b4fc"],
@@ -30,7 +18,7 @@ export const BRANDING_SWATCHES = {
 export function brandingDraft(value: TenantBranding): TenantBrandingUpdate {
   return {
     revision: value.revision,
-    display_name: value.display_name,
+    display_name: null,
     subtitle: value.subtitle,
     palette: value.palette,
     logos: { light: { operation: "keep" }, dark: { operation: "keep" } },
