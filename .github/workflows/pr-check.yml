@@ -74,7 +74,9 @@ jobs:
         env:
           SHARD: ${{ matrix.shard }}
         run: |
-          bun scripts/affected-tests.ts --list --depth 3 "$BASE_SHA...HEAD" | grep -E '\.test\.tsx?$' > affected.txt || true
+          bun scripts/affected-tests.ts --list --depth 3 "$BASE_SHA...HEAD" | grep -E '\.test\.tsx?$' > graph.txt || true
+          git grep -lE 'readdirSync|globSync|new Glob|readdir\(' -- '*.test.ts' '*.test.tsx' > scans.txt || true
+          sort -u graph.txt scans.txt > affected.txt
           awk -v shard="$SHARD" 'NR % 4 == shard - 1' affected.txt > shard.txt
           echo "$(wc -l < affected.txt) affected test files, $(wc -l < shard.txt) in shard $SHARD"
       - name: Run the shard and compare failures with the base commit
