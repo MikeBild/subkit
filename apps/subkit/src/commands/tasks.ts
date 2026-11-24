@@ -64,6 +64,12 @@ const WAITING_WORDS: Record<NonNullable<TaskRun["waiting_reason"]>, string> = {
   turn_stopped: "it was stopped and waits for you",
 };
 
+const AUTOMATIC_WAIT_LINES: Partial<Record<NonNullable<TaskRun["waiting_reason"]>, string>> = {
+  budget:
+    "This run waits for the monthly AI budget and continues on its own once allowance is available",
+  ai_access: "This run waits for AI access and continues on its own once a provider is set up",
+};
+
 const PAUSED_WORDS: Record<NonNullable<Task["paused_reason"]>, string> = {
   owner_request: "paused",
   admin: "paused by an admin",
@@ -125,8 +131,16 @@ export function taskRunRow(run: TaskRun): Record<string, unknown> {
   };
 }
 
-export function runAttentionLine(run: Pick<TaskRun, "state">, url: string): string | null {
-  if (run.state === "waiting") return `This run is waiting for you. Answer in the Cockpit: ${url}`;
+export function runAttentionLine(
+  run: Pick<TaskRun, "state" | "waiting_reason">,
+  url: string,
+): string | null {
+  if (run.state === "waiting") {
+    const automaticWait = run.waiting_reason ? AUTOMATIC_WAIT_LINES[run.waiting_reason] : undefined;
+    return automaticWait
+      ? `${automaticWait}: ${url}`
+      : `This run is waiting for you. Answer in the Cockpit: ${url}`;
+  }
   if (run.state === "result_ready") {
     return `The result is ready. A person confirms it in the Cockpit: ${url}`;
   }

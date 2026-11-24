@@ -130,6 +130,24 @@ describe("subkit tasks words", () => {
       expect(runAttentionLine(taskRun({ state }), TASK_URL)).toBeNull();
     }
   });
+
+  test("automatic waits for the AI budget or AI access say the run continues on its own", () => {
+    expect(
+      runAttentionLine(taskRun({ state: "waiting", waiting_reason: "budget" }), TASK_URL),
+    ).toBe(
+      `This run waits for the monthly AI budget and continues on its own once allowance is available: ${TASK_URL}`,
+    );
+    expect(
+      runAttentionLine(taskRun({ state: "waiting", waiting_reason: "ai_access" }), TASK_URL),
+    ).toBe(
+      `This run waits for AI access and continues on its own once a provider is set up: ${TASK_URL}`,
+    );
+    for (const waiting_reason of ["question", "no_progress", "approval"] as const) {
+      expect(runAttentionLine(taskRun({ state: "waiting", waiting_reason }), TASK_URL)).toBe(
+        `This run is waiting for you. Answer in the Cockpit: ${TASK_URL}`,
+      );
+    }
+  });
 });
 
 describe("standing permission", () => {
@@ -239,6 +257,26 @@ describe("subkit tasks list and get", () => {
     expect(state.stdout).toMatch(new RegExp(`latest_run\\s+waiting for you \\(${RUN_ID}\\)`));
     expect(state.stdout).toEndWith(
       `Standing permission: live until revoked\nThis run is waiting for you. Answer in the Cockpit: ${TASK_URL}\n`,
+    );
+  });
+
+  test("get does not ask a person to answer a run waiting for the AI budget", async () => {
+    state.world.task = task({
+      latest_run: latestRun(taskRun({ state: "waiting", waiting_reason: "budget" })),
+    });
+    await subkit("get", TASK_ID);
+    expect(state.stdout).not.toContain("Answer in the Cockpit");
+    expect(state.stdout).toEndWith(
+      `This run waits for the monthly AI budget and continues on its own once allowance is available: ${TASK_URL}\n`,
+    );
+  });
+
+  test("runs does not ask a person to answer a run waiting for AI access", async () => {
+    state.world.runs = [taskRun({ state: "waiting", waiting_reason: "ai_access" })];
+    await subkit("runs", TASK_ID);
+    expect(state.stdout).not.toContain("Answer in the Cockpit");
+    expect(state.stdout).toEndWith(
+      `1 run total\nThis run waits for AI access and continues on its own once a provider is set up: ${TASK_URL}\n`,
     );
   });
 
