@@ -40,12 +40,14 @@ Gut zu wissen: Eine kleine Aufgabe lässt sich leichter prüfen. Erweitern kanns
 
 ### Den Workflow speichern
 
-Ist der Workflow fertig, zeigt SubKit eine Karte **Workflow-Entwurf speichern**.
+Ist der Workflow fertig, speichert SubKit ihn ohne Rückfrage als inaktive Version. Speichern startet nichts. Der Workflow erscheint jetzt unter **Workflows**.
+
+Mit der Regel **Immer vorher fragen** zeigt SubKit vorher eine Karte **Workflow-Entwurf speichern**:
 
 1. Öffne **Was sich ändert** und lies, welche Schritte und Ziele enthalten sind.
 2. Wähle **Inaktive Version speichern**.
 
-Speichern startet nichts. Der Workflow erscheint jetzt unter **Workflows**.
+[Wann SubKit fragt](setup.md#wann-subkit-fragt) erklärt, welche Schritte fragen und welche ohne Frage laufen.
 
 Ohne Chat legst du einen Workflow unter **Workflows** mit **Workflow erstellen** an. Der Assistent führt dich durch **Wie**, **Was**, **Wann** und **Prüfen**.
 

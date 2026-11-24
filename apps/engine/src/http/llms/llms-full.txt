@@ -501,12 +501,14 @@ Good to know: a small task is easier to check. You can extend the workflow later
 
 ### Save the workflow
 
-When the workflow is ready, SubKit shows a card **Save workflow draft**.
+When the workflow is ready, SubKit saves it as an inactive version without asking. Saving starts nothing. The workflow now appears under **Workflows**.
+
+With the rule **Always ask first** on, SubKit first shows a card **Save workflow draft**:
 
 1. Open **What will change** and read which steps and targets are included.
 2. Select **Save inactive version**.
 
-Saving starts nothing. The workflow now appears under **Workflows**.
+[When SubKit asks](setup.md#when-subkit-asks) explains which steps ask and which run without a question.
 
 Without the chat, you create a workflow under **Workflows** with **Create workflow**. The wizard guides you through **How**, **What**, **When** and **Check**.
 
