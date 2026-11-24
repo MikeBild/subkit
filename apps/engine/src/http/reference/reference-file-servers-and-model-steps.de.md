@@ -27,7 +27,7 @@ Der Test des Connectors listet den Ordner mit einem Eintrag. Damit sind Adresse,
 
 Der private Schlüssel bleibt im Tresor. Der Connector kennt nur die Namen der Tresor-Einträge, nie den Schlüssel selbst.
 
-1. Speichere den Schlüssel als Workspace-Secret im Tresor, in der Umgebung des Connectors, zum Beispiel mit `subkit vault add sftp-deploy-key --env prod < deploy_key`. Unterstützt werden OpenSSH (`-----BEGIN OPENSSH PRIVATE KEY-----`), RSA- und EC-PEM. Einen PKCS#8-Schlüssel (`-----BEGIN PRIVATE KEY-----`) wandelst du vorher mit `ssh-keygen -p -f deploy_key` um.
+1. Speichere den Schlüssel als Workspace-Secret im Tresor, in der Umgebung des Connectors, zum Beispiel mit `subkit vault add sftp-deploy-key --env prod < deploy_key`. Unterstützt werden OpenSSH, RSA-PEM und EC-PEM. Einen PKCS#8-Schlüssel wandelst du vorher mit `ssh-keygen -p -f deploy_key` um.
 2. Ist der Schlüssel verschlüsselt, speichere seine Passphrase als zweites Secret, zum Beispiel `sftp-deploy-key-passphrase`.
 3. Setze am Connector `auth_type: "none"` und verweise in `config.auth` auf die Einträge:
 

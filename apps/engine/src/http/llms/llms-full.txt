@@ -5717,7 +5717,7 @@ Testing the connector lists the folder with one entry. That confirms the address
 
 The private key stays in the vault. The connector holds only the names of the vault items, never the key itself.
 
-1. Store the key as a workspace secret in the vault, in the connector's environment, for example `subkit vault add sftp-deploy-key --env prod < deploy_key`. Supported formats are OpenSSH (`-----BEGIN OPENSSH PRIVATE KEY-----`), RSA and EC PEM. Convert a PKCS#8 key (`-----BEGIN PRIVATE KEY-----`) with `ssh-keygen -p -f deploy_key` first.
+1. Store the key as a workspace secret in the vault, in the connector's environment, for example `subkit vault add sftp-deploy-key --env prod < deploy_key`. Supported formats are OpenSSH, RSA PEM and EC PEM. Convert a PKCS#8 key with `ssh-keygen -p -f deploy_key` first.
 2. If the key is encrypted, store its passphrase as a second secret, for example `sftp-deploy-key-passphrase`.
 3. Set `auth_type: "none"` on the connector and reference the items in `config.auth`:
 
