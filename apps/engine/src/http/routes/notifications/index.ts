@@ -1,5 +1,5 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
-import type { ChatAdapterRegistry } from "../../../chat/registry.ts";
+import type { ChatAdapterRegistry } from "../../../chat/index.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { registerChannelRoutes } from "./channels.ts";
 import { registerDeliveryRoutes } from "./deliveries.ts";

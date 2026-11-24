@@ -7,8 +7,8 @@ import {
   makeTestNotificationRuleOperation,
   updateNotificationRuleOperation,
 } from "../../../api/operations/notification-rules.ts";
-import type { ChatAdapterRegistry } from "../../../chat/registry.ts";
-import { makeRegistryAdapterResolver } from "../../../webhooks/outbound/fanout.ts";
+import type { ChatAdapterRegistry } from "../../../chat/index.ts";
+import { makeRegistryAdapterResolver } from "../../../webhooks/index.ts";
 import type { AppEnv } from "../../openapi.ts";
 
 export function registerRuleRoutes(

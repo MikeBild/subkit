@@ -41,6 +41,25 @@ test("scheduled failure classification uses the execution subsystem entry point"
   expect(subsystemEntryHits(file, imports)).toEqual([]);
 });
 
+test("notification routes use public chat and webhook subsystem entries", () => {
+  for (const name of ["index", "rules"]) {
+    const file = `apps/engine/src/http/routes/notifications/${name}.ts`;
+    const source = readFileSync(
+      new URL(`../../src/http/routes/notifications/${name}.ts`, import.meta.url),
+      "utf8",
+    );
+    const imports = collectImports(file, source).map((entry) => ({
+      ...entry,
+      resolved: resolveImport(file, entry.specifier, () => false),
+    }));
+    expect(
+      subsystemEntryHits(file, imports).filter((hit) =>
+        /apps\/engine\/src\/(chat|webhooks)\//.test(hit.what),
+      ),
+    ).toEqual([]);
+  }
+});
+
 describe("collectImports", () => {
   test("finds static, re-export, type-only, dynamic and import-type references", () => {
     const source = [
