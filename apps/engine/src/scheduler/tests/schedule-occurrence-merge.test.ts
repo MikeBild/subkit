@@ -87,6 +87,61 @@ describe("a skipped or held due time is not counted again by the next row", () =
     expect(held).toMatchObject({ state: "held", due_at: RAN_AT, skipped_count: 1 });
   });
 
+  test.each([
+    { state: "held" as const, reason_code: "execution_authority_unavailable" },
+    { state: "skipped" as const, reason_code: "failure_backoff" },
+  ])("a one-shot hold changing to $state with $reason_code starts a new row", async (entry) => {
+    const [task] = await ctx.testDb.db
+      .insert(tasks)
+      .values({
+        locale: "en",
+        tenant_id: ctx.tenantId,
+        name: `once-held-then-${entry.reason_code}`,
+        owner_id: uuid(),
+        goal: "goal",
+        done_when: "done",
+        plan: {},
+        bindings: {
+          workflow_ids: [],
+          connector_ids: [],
+          skill_slugs: [],
+          web_search: false,
+        },
+        environment: "dev",
+        schedule_run_at: SKIPPED_AT,
+        fingerprint: "a".repeat(64),
+        description_source: "human",
+        category_source: "human",
+      })
+      .returning({ task_id: tasks.id });
+    const subject = { tenant_id: ctx.tenantId, task_id: task!.task_id };
+    const onceAt: OccurrenceWindowReader = (after) => onceDueWindow(SKIPPED_AT, after, RAN_AT);
+    await recordScheduleOccurrence(
+      ctx.testDb.db,
+      subject,
+      { state: "held", reason_code: "input_required" },
+      onceAt,
+    );
+    await recordScheduleOccurrence(ctx.testDb.db, subject, entry, onceAt);
+    await recordScheduleOccurrence(ctx.testDb.db, subject, entry, onceAt);
+    const rows = await ctx.testDb.db
+      .select()
+      .from(scheduleOccurrences)
+      .where(eq(scheduleOccurrences.task_id, task!.task_id));
+    expect(rows).toHaveLength(2);
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ state: "held", reason_code: "input_required" }),
+        expect.objectContaining({
+          ...entry,
+          due_at: SKIPPED_AT,
+          last_due_at: SKIPPED_AT,
+          skipped_count: 1,
+        }),
+      ]),
+    );
+  });
+
   test("a one-shot task released from a hold keeps its due time and reads late", async () => {
     const [task] = await ctx.testDb.db
       .insert(tasks)

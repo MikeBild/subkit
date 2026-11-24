@@ -116,7 +116,11 @@ async function writeOccurrence(
         );
       return;
     }
-    const due = window(coveredUntil);
+    const due =
+      window(coveredUntil) ??
+      (prior && (prior.state === "held" || prior.state === "skipped")
+        ? { first_due: prior.last_due_at, last_due: prior.last_due_at, count: 1 }
+        : null);
     if (!due) return;
     await tx.insert(scheduleOccurrences).values({
       ...subjectColumns(subject),
