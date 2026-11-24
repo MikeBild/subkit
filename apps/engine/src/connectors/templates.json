@@ -14279,7 +14279,8 @@
       "strategy": "cursor",
       "cursor_request_param": "cursor",
       "cursor_response_path": "response_metadata.next_cursor",
-      "page_size": 100
+      "page_size": 100,
+      "max_pages": 1000
     },
     "capabilities": {
       "webhooks": true,
@@ -14304,7 +14305,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "slack" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -14317,7 +14320,12 @@
               "kind": "request",
               "id": "auth",
               "method": "POST",
-              "url": "${connector.slack.base_url}/auth.test",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "path": "/auth.test",
+              "boundary": { "variables": {}, "max_body_bytes": 0, "max_calls": 1 },
+              "response_filters": [
+                { "target": "KEYS", "action": "FAIL", "pattern": "^error$", "scope": "ENTRY" }
+              ],
               "headers": {
                 "Content-Type": "application/x-www-form-urlencoded"
               }
@@ -14338,7 +14346,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "slack" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -14363,7 +14373,12 @@
               "kind": "request",
               "id": "post",
               "method": "POST",
-              "url": "${connector.slack.base_url}/chat.postMessage",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "path": "/chat.postMessage",
+              "boundary": { "variables": {}, "max_body_bytes": 1048576, "max_calls": 1 },
+              "response_filters": [
+                { "target": "KEYS", "action": "FAIL", "pattern": "^error$", "scope": "ENTRY" }
+              ],
               "headers": {
                 "Content-Type": "application/json; charset=utf-8"
               },
@@ -14388,7 +14403,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "slack" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -14401,7 +14418,12 @@
               "kind": "request",
               "id": "list",
               "method": "GET",
-              "url": "${connector.slack.base_url}/conversations.list",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "path": "/conversations.list",
+              "boundary": { "variables": {}, "max_body_bytes": 0, "max_calls": 1000 },
+              "response_filters": [
+                { "target": "KEYS", "action": "FAIL", "pattern": "^error$", "scope": "ENTRY" }
+              ],
               "query": {
                 "limit": 100,
                 "types": "public_channel"
@@ -14410,7 +14432,8 @@
                 "strategy": "cursor",
                 "cursor_request_param": "cursor",
                 "cursor_response_path": "response_metadata.next_cursor",
-                "page_size": 100
+                "page_size": 100,
+                "max_pages": 1000
               }
             }
           ]
@@ -14429,7 +14452,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "slack" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -14442,7 +14467,12 @@
               "kind": "request",
               "id": "list",
               "method": "GET",
-              "url": "${connector.slack.base_url}/users.list",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "path": "/users.list",
+              "boundary": { "variables": {}, "max_body_bytes": 0, "max_calls": 1000 },
+              "response_filters": [
+                { "target": "KEYS", "action": "FAIL", "pattern": "^error$", "scope": "ENTRY" }
+              ],
               "query": {
                 "limit": 200
               },
@@ -14450,7 +14480,8 @@
                 "strategy": "cursor",
                 "cursor_request_param": "cursor",
                 "cursor_response_path": "response_metadata.next_cursor",
-                "page_size": 200
+                "page_size": 200,
+                "max_pages": 1000
               }
             }
           ]
@@ -14469,7 +14500,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "slack" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -14491,7 +14524,16 @@
               "kind": "request",
               "id": "hist",
               "method": "GET",
-              "url": "${connector.slack.base_url}/conversations.history",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "path": "/conversations.history",
+              "boundary": {
+                "variables": { "input.channel": { "class": "identifier" } },
+                "max_body_bytes": 0,
+                "max_calls": 1000
+              },
+              "response_filters": [
+                { "target": "KEYS", "action": "FAIL", "pattern": "^error$", "scope": "ENTRY" }
+              ],
               "query": {
                 "channel": "${input.channel}",
                 "limit": 100
@@ -14500,7 +14542,8 @@
                 "strategy": "cursor",
                 "cursor_request_param": "cursor",
                 "cursor_response_path": "response_metadata.next_cursor",
-                "page_size": 100
+                "page_size": 100,
+                "max_pages": 1000
               }
             }
           ]
@@ -14519,7 +14562,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "slack" }
+        ],
         "version": "1.0.1",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -14553,7 +14598,12 @@
               "kind": "request",
               "id": "up",
               "method": "POST",
-              "url": "${connector.slack.base_url}/files.upload",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "path": "/files.upload",
+              "boundary": { "variables": {}, "max_body_bytes": 1048576, "max_calls": 1 },
+              "response_filters": [
+                { "target": "KEYS", "action": "FAIL", "pattern": "^error$", "scope": "ENTRY" }
+              ],
               "headers": {
                 "Content-Type": "application/x-www-form-urlencoded"
               },
@@ -14575,7 +14625,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "slack" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -14603,7 +14655,12 @@
               "kind": "request",
               "id": "react",
               "method": "POST",
-              "url": "${connector.slack.base_url}/reactions.add",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "path": "/reactions.add",
+              "boundary": { "variables": {}, "max_body_bytes": 4096, "max_calls": 1 },
+              "response_filters": [
+                { "target": "KEYS", "action": "FAIL", "pattern": "^error$", "scope": "ENTRY" }
+              ],
               "headers": {
                 "Content-Type": "application/json"
               },
@@ -14629,7 +14686,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "slack" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -14651,7 +14710,12 @@
               "kind": "request",
               "id": "create",
               "method": "POST",
-              "url": "${connector.slack.base_url}/conversations.create",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "path": "/conversations.create",
+              "boundary": { "variables": {}, "max_body_bytes": 4096, "max_calls": 1 },
+              "response_filters": [
+                { "target": "KEYS", "action": "FAIL", "pattern": "^error$", "scope": "ENTRY" }
+              ],
               "headers": {
                 "Content-Type": "application/json"
               },
@@ -14675,7 +14739,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "slack" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -14700,7 +14766,12 @@
               "kind": "request",
               "id": "inv",
               "method": "POST",
-              "url": "${connector.slack.base_url}/conversations.invite",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "path": "/conversations.invite",
+              "boundary": { "variables": {}, "max_body_bytes": 4096, "max_calls": 1 },
+              "response_filters": [
+                { "target": "KEYS", "action": "FAIL", "pattern": "^error$", "scope": "ENTRY" }
+              ],
               "headers": {
                 "Content-Type": "application/json"
               },
@@ -14725,7 +14796,9 @@
         "prerequisites": [],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "slack" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -14738,7 +14811,12 @@
               "kind": "request",
               "id": "team",
               "method": "GET",
-              "url": "${connector.slack.base_url}/team.info"
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "path": "/team.info",
+              "boundary": { "variables": {}, "max_body_bytes": 0, "max_calls": 1 },
+              "response_filters": [
+                { "target": "KEYS", "action": "FAIL", "pattern": "^error$", "scope": "ENTRY" }
+              ]
             }
           ]
         }
@@ -14767,7 +14845,9 @@
           "ok": true,
           "ts": "1714000000.000100"
         },
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "slack" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -14795,7 +14875,12 @@
               "kind": "request",
               "id": "post",
               "method": "POST",
-              "url": "${connector.slack.base_url}/chat.postMessage",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "path": "/chat.postMessage",
+              "boundary": { "variables": {}, "max_body_bytes": 1048576, "max_calls": 1 },
+              "response_filters": [
+                { "target": "KEYS", "action": "FAIL", "pattern": "^error$", "scope": "ENTRY" }
+              ],
               "headers": {
                 "content-type": "application/json"
               },
@@ -14813,7 +14898,12 @@
               "kind": "request",
               "id": "edit",
               "method": "POST",
-              "url": "${connector.slack.base_url}/chat.update",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "path": "/chat.update",
+              "boundary": { "variables": {}, "max_body_bytes": 1048576, "max_calls": 1 },
+              "response_filters": [
+                { "target": "KEYS", "action": "FAIL", "pattern": "^error$", "scope": "ENTRY" }
+              ],
               "headers": {
                 "content-type": "application/json"
               },

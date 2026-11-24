@@ -55,8 +55,23 @@ function steps(value: unknown, into: Array<Record<string, unknown>>, depth = 0):
     return;
   }
   const record = value as Record<string, unknown>;
-  if (typeof record.method === "string" && typeof record.url === "string") into.push(record);
+  if (
+    typeof record.method === "string" &&
+    (typeof record.url === "string" || typeof record.path === "string")
+  )
+    into.push(record);
   for (const nested of Object.values(record)) steps(nested, into, depth + 1);
+}
+
+function templateUrl(
+  step: Record<string, unknown>,
+  slug: string,
+  owned: ReadonlySet<string>,
+): string | null {
+  const base = `\${connector.${slug}.base_url}`;
+  if (typeof step.url === "string") return step.url.startsWith(base) ? step.url : null;
+  if (typeof step.path !== "string" || typeof step.connector_id !== "string") return null;
+  return owned.has(step.connector_id) ? `${base}${step.path}` : null;
 }
 
 function build(): Map<string, DeclaredTemplate> {
@@ -69,13 +84,18 @@ function build(): Map<string, DeclaredTemplate> {
         ...words(recipe.title),
         ...recipe.tags.flatMap(words),
       ]);
+      const owned = new Set(
+        recipe.required_connectors
+          .filter((required) => required.template === template.slug)
+          .map((required) => required.placeholder),
+      );
       const found: Array<Record<string, unknown>> = [];
       steps(recipe.workflow, found);
       for (const step of found) {
         const method = String(step.method).toUpperCase();
-        const url = String(step.url);
         if (method === "GET" || step.side_effects === "read") continue;
-        if (!url.startsWith(`\${connector.${template.slug}.base_url}`)) continue;
+        const url = templateUrl(step, template.slug, owned);
+        if (!url) continue;
         const path = pathPattern(url);
         if (path) operations.push({ method, path, effect });
       }
