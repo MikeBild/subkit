@@ -15,10 +15,12 @@ import {
 let ctx: EngineTestCtx;
 let mock: MockServer;
 let nextPage: unknown = { object: "list", data: [] };
+const requestedUrls: string[] = [];
 
 beforeAll(async () => {
   ctx = await createEngineCtx("state-watermark");
-  mock = await createMockServer((_req, res) => {
+  mock = await createMockServer((req, res) => {
+    requestedUrls.push(req.url ?? "");
     res.statusCode = 200;
     res.setHeader("content-type", "application/json");
     res.end(JSON.stringify(nextPage));
@@ -42,6 +44,12 @@ async function watermarkWorkflow(slug: string) {
         url: `${mock.baseUrl}/charges`,
         side_effects: "read",
         max_retries: 0,
+        query: { limit: 100, ending_before: "${state.last_synced_charge_id}" },
+        state_read: {
+          key: "last_synced_charge_id",
+          into_var: "last_synced_charge_id",
+          default_value: null,
+        },
         state_write: { key: "last_synced_charge_id", value_path: "data.0.id" },
       },
     ],
@@ -134,4 +142,17 @@ test("an explicit null at the path still overwrites the watermark", async () => 
   );
   expect(state).toBeDefined();
   expect(state?.value).toBeNull();
+});
+
+test("the cursor is omitted until a watermark exists and survives an empty page", async () => {
+  const { workflow_id } = await watermarkWorkflow("watermark-cursor");
+  requestedUrls.length = 0;
+  await runOnce(workflow_id, { object: "list", data: [{ id: "ch_2" }, { id: "ch_1" }] });
+  await runOnce(workflow_id, { object: "list", data: [] });
+  await runOnce(workflow_id, { object: "list", data: [] });
+  expect(requestedUrls).toEqual([
+    "/charges?limit=100",
+    "/charges?limit=100&ending_before=ch_2",
+    "/charges?limit=100&ending_before=ch_2",
+  ]);
 });
