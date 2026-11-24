@@ -5233,7 +5233,9 @@
         "prerequisites": ["A scoped Cloudflare API token"],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "cloudflare" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -5246,7 +5248,9 @@
               "kind": "request",
               "id": "verify",
               "method": "GET",
-              "url": "${connector.cloudflare.base_url}/user/tokens/verify",
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "path": "/user/tokens/verify",
+              "boundary": { "variables": {}, "max_body_bytes": 0, "max_calls": 1 },
               "side_effects": "read"
             }
           ]
@@ -5265,7 +5269,9 @@
         "prerequisites": ["API token with Zone:Read permission"],
         "sample_input": null,
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "cloudflare" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -5278,14 +5284,15 @@
               "kind": "request",
               "id": "list_zones",
               "method": "GET",
-              "url": "${connector.cloudflare.base_url}/zones",
-              "query": {
-                "per_page": 50
-              },
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "path": "/zones",
+              "boundary": { "variables": {}, "max_body_bytes": 0, "max_calls": 100 },
               "pagination": {
                 "strategy": "page",
                 "page_param": "page",
+                "limit_param": "per_page",
                 "page_size": 50,
+                "max_pages": 100,
                 "items_path": "result"
               },
               "side_effects": "read"
@@ -5308,7 +5315,9 @@
           "zone_id": "023e105f4ecef8ad9ca31a8372d0c353"
         },
         "expected_output_preview": null,
-        "required_connectors": [],
+        "required_connectors": [
+          { "placeholder": "00000000-0000-0000-0000-000000000000", "template": "cloudflare" }
+        ],
         "version": "1.0.0",
         "author": "subkit-builtin",
         "last_validated_at": null,
@@ -5331,14 +5340,19 @@
               "kind": "request",
               "id": "list_dns_records",
               "method": "GET",
-              "url": "${connector.cloudflare.base_url}/zones/${input.zone_id}/dns_records",
-              "query": {
-                "per_page": 100
+              "connector_id": "00000000-0000-0000-0000-000000000000",
+              "path": "/client/v4/zones/${input.zone_id}/dns_records",
+              "boundary": {
+                "variables": { "input.zone_id": { "class": "identifier" } },
+                "max_body_bytes": 0,
+                "max_calls": 100
               },
               "pagination": {
                 "strategy": "page",
                 "page_param": "page",
+                "limit_param": "per_page",
                 "page_size": 100,
+                "max_pages": 100,
                 "items_path": "result"
               },
               "side_effects": "read"
