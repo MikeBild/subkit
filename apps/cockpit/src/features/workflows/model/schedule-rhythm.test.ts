@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { cronToRhythm, rhythmToCron, validTime } from "@/features/workflows/model/schedule-rhythm";
+import {
+  cronToRhythm,
+  editableRhythm,
+  rhythmToCron,
+  scheduleCronForSave,
+  validTime,
+} from "@/features/workflows/model/schedule-rhythm";
 
 describe("schedule rhythm ↔ cron", () => {
   test("each rhythm writes its cron", () => {
@@ -27,5 +33,35 @@ describe("schedule rhythm ↔ cron", () => {
     expect(validTime("08:00")).toBe(true);
     expect(validTime("8:00")).toBe(false);
     expect(validTime("24:00")).toBe(false);
+  });
+});
+
+describe("cron sent on save", () => {
+  const picked = { rhythm: "daily", weekday: 1, time: "08:00" } as const;
+
+  test("an untouched rhythm keeps the saved cadence", () => {
+    for (const existingCron of ["every:15", "every:25", "*/15 * * * *", "0 9 * * 1-5", "0 9 * * 7"])
+      expect(scheduleCronForSave({ existingCron, rhythmValue: picked, rhythmTouched: false })).toBe(
+        existingCron,
+      );
+  });
+
+  test("a touched rhythm replaces the saved cadence", () => {
+    for (const existingCron of ["every:15", "every:25", "*/15 * * * *", "0 9 * * 1-5"])
+      expect(scheduleCronForSave({ existingCron, rhythmValue: picked, rhythmTouched: true })).toBe(
+        "0 8 * * *",
+      );
+  });
+
+  test("a new schedule takes the picked rhythm", () => {
+    expect(
+      scheduleCronForSave({ existingCron: null, rhythmValue: picked, rhythmTouched: false }),
+    ).toBe("0 8 * * *");
+  });
+
+  test("only plain daily, weekly and monthly crons fit the picker", () => {
+    expect(editableRhythm("0 8 * * *")).toBe(true);
+    for (const cron of ["every:900", "*/15 * * * *", "0 9 * * 1-5"])
+      expect(editableRhythm(cron)).toBe(false);
   });
 });
