@@ -132,7 +132,7 @@ Die Prüfung ist bewusst streng und fragt im Zweifel. Sie ist trotzdem kein Vers
 - **SubKit prüft, was es sendet, nicht was der Dienst daraus macht.** Verteilt ein Dienst eine Nachricht an eine Liste weiter, sieht SubKit nur die Adresse der Liste.
 - **Wenige ergänzte Wörter können den Ton ändern.** Der Inhalt bleibt deiner, aber Anrede, Gruß und bis zu drei Wörter kommen von SubKit.
 - **Eine Regel mit wechselndem Text prüft die Herkunft, nicht den Sinn.** Sie deckt jeden Text, den du geschrieben oder als Entwurf gesehen hast, an die genannten Empfänger.
-- **Verlängern geht noch nicht auf der Seite Regeln.** Die Seite zeigt weder das Ablaufdatum noch das Tageslimit und bietet kein Verlängern an. Eine abgelaufene Regel fragt jedes Mal, und SubKit bietet sie nicht erneut an. Verlängern lässt sie sich nur über die Route `POST /v1/approval-rules/{id}/renew` aus einer Browsersitzung.
+- **Verlängere eine Regel auf der Seite Regeln.** Jede aktive Regel zeigt ihr Ablaufdatum und die heutigen Nutzungen gegen das Tageslimit und hat die Schaltfläche **Verlängern**. Verlängern setzt die Regel auf 90 Tage ab jetzt, auch wenn sie schon abgelaufen ist. Das geht nur in einer Browsersitzung, und der Audit-Trail hält es als `tool_approval_rule.renewed` unter deinem Namen fest.
 - **Das Tageslimit und die Dauer sind fest.** Du kannst sie nicht einstellen.
 
 ### Wenn etwas nicht klappt

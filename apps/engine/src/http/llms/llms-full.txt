@@ -2953,7 +2953,7 @@ The check is strict on purpose and asks when in doubt. It still is not an unders
 - **SubKit checks what it sends, not what the service does with it.** If a service forwards a message to a list, SubKit only sees the address of the list.
 - **A few added words can change the tone.** The content stays yours, but the greeting, the closing and up to three words come from SubKit.
 - **A rule with changing text checks the origin, not the meaning.** It covers any text you wrote or saw as a draft, to the recipients named.
-- **Renewing is not possible on the Rules page yet.** The page shows neither the expiry date nor the daily limit and offers no renewal. An expired rule asks every time, and SubKit does not offer it again. It can only be renewed through the route `POST /v1/approval-rules/{id}/renew` from a browser session.
+- **Renew a rule on the Rules page.** Each active rule shows its expiry date and today's uses against the daily limit, and has the **Renew** button. Renewing sets the rule to 90 days from now, also when it has already expired. It works only in a browser session, and the audit trail records it as `tool_approval_rule.renewed` under your name.
 - **The daily limit and the duration are fixed.** You cannot set them.
 
 ### If something does not work
