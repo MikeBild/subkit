@@ -241,6 +241,8 @@ export const tasksEn = {
   "tasks.schedule.error.time": "Enter a time like 08:00.",
   "tasks.schedule.error.runAt": "Choose a day and a time.",
   "tasks.schedule.error.runAtPast": "Choose a time in the future.",
+  "tasks.schedule.error.runAtGap":
+    "This time does not exist in the selected time zone (clock change). Choose another time.",
   "tasks.schedule.error.cron": "Enter the rhythm with five fields, for example 0 7 * * 1.",
   "tasks.schedule.error.tooFrequent": "Choose a rhythm with at least 15 minutes between starts.",
   "tasks.schedule.error.timezone": "Choose a time zone from the list.",
@@ -562,6 +564,8 @@ export const tasksDe: Record<keyof typeof tasksEn, string> = {
   "tasks.schedule.error.time": "Gib eine Uhrzeit wie 08:00 ein.",
   "tasks.schedule.error.runAt": "Wähle einen Tag und eine Uhrzeit.",
   "tasks.schedule.error.runAtPast": "Wähle einen Zeitpunkt in der Zukunft.",
+  "tasks.schedule.error.runAtGap":
+    "Diese Uhrzeit gibt es in der gewählten Zeitzone nicht (Zeitumstellung). Wähle eine andere Uhrzeit.",
   "tasks.schedule.error.cron": "Gib den Rhythmus mit fünf Feldern ein, zum Beispiel 0 7 * * 1.",
   "tasks.schedule.error.tooFrequent":
     "Wähle einen Rhythmus mit mindestens 15 Minuten zwischen zwei Starts.",

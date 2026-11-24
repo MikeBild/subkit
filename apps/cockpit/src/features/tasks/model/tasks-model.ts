@@ -458,20 +458,37 @@ export function zonedInstant(
   return new Date(guess);
 }
 
-export function localInputToInstant(value: string, timezone: string): string | null {
+type CivilTime = { year: number; month: number; day: number; hour: number; minute: number };
+
+function parseLocalInput(value: string): CivilTime | null {
   const match = LOCAL_DATE_TIME.exec(value);
   if (!match) return null;
-  const instant = zonedInstant(
-    {
-      year: Number(match[1]),
-      month: Number(match[2]),
-      day: Number(match[3]),
-      hour: Number(match[4]),
-      minute: Number(match[5]),
-    },
-    timezone,
+  return {
+    year: Number(match[1]),
+    month: Number(match[2]),
+    day: Number(match[3]),
+    hour: Number(match[4]),
+    minute: Number(match[5]),
+  };
+}
+
+function civilTimeExists(local: CivilTime, timezone: string): boolean {
+  const instant = zonedInstant(local, timezone);
+  if (Number.isNaN(instant.getTime())) return false;
+  const seen = zonedParts(instant, timezone);
+  return (
+    seen.year === local.year &&
+    seen.month === local.month &&
+    seen.day === local.day &&
+    seen.hour === local.hour &&
+    seen.minute === local.minute
   );
-  return Number.isNaN(instant.getTime()) ? null : instant.toISOString();
+}
+
+export function localInputToInstant(value: string, timezone: string): string | null {
+  const local = parseLocalInput(value);
+  if (!local || !civilTimeExists(local, timezone)) return null;
+  return zonedInstant(local, timezone).toISOString();
 }
 
 export function instantToLocalInput(iso: string, timezone: string): string {
@@ -517,6 +534,7 @@ export type ScheduleIssue =
   | "tasks.schedule.error.time"
   | "tasks.schedule.error.runAt"
   | "tasks.schedule.error.runAtPast"
+  | "tasks.schedule.error.runAtGap"
   | "tasks.schedule.error.cron";
 
 export function scheduleFields(
@@ -530,6 +548,8 @@ export function scheduleFields(
     };
   if (draft.option === "once") {
     const at = localInputToInstant(draft.runAt, draft.timezone);
+    if (!at && parseLocalInput(draft.runAt))
+      return { ok: false, issue: "tasks.schedule.error.runAtGap" };
     if (!at) return { ok: false, issue: "tasks.schedule.error.runAt" };
     if (Date.parse(at) <= now) return { ok: false, issue: "tasks.schedule.error.runAtPast" };
     return {
