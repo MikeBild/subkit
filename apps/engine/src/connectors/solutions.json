@@ -88,7 +88,14 @@
             "format": "full"
           },
           "for_each": "(sourceData) => (sourceData.list_messages.data && sourceData.list_messages.data.messages) || []",
-          "side_effects": "read"
+          "side_effects": "read",
+          "boundary": {
+            "variables": {
+              "item.id": { "class": "identifier" }
+            },
+            "max_body_bytes": 0,
+            "max_calls": 50
+          }
         },
         {
           "kind": "transform",
@@ -103,7 +110,21 @@
           "connector_id": "51000000-0000-4000-8000-000000000001",
           "path": "/users/me/messages/${item.message_id}/attachments/${item.attachment_id}",
           "for_each": "(sourceData) => sourceData.pick_attachments.data.attachments",
-          "side_effects": "read"
+          "side_effects": "read",
+          "boundary": {
+            "variables": {
+              "item.message_id": { "class": "identifier" },
+              "item.attachment_id": { "class": "long_identifier" }
+            },
+            "max_body_bytes": 0,
+            "max_calls": 500
+          }
+        },
+        {
+          "kind": "transform",
+          "id": "folder_query",
+          "language": "javascript",
+          "expression": "const name = String(input.input.folder_name).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"\\\\'\"); return { q: \"mimeType='application/vnd.google-apps.folder' and name='\" + name + \"' and trashed=false\" };"
         },
         {
           "kind": "request",
@@ -112,7 +133,7 @@
           "connector_id": "51000000-0000-4000-8000-000000000002",
           "path": "/files",
           "query": {
-            "q": "mimeType='application/vnd.google-apps.folder' and name='${input.folder_name}' and trashed=false",
+            "q": "${scope.folder_query.data.q}",
             "fields": "files(id,name)",
             "spaces": "drive"
           },
@@ -140,6 +161,11 @@
           "body": {
             "name": "${input.folder_name}",
             "mimeType": "application/vnd.google-apps.folder"
+          },
+          "boundary": {
+            "variables": {},
+            "max_body_bytes": 1024,
+            "max_calls": 1
           }
         },
         {
@@ -159,12 +185,21 @@
           "id": "upload_file",
           "method": "POST",
           "connector_id": "51000000-0000-4000-8000-000000000002",
-          "url": "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name",
+          "url": "https://www.googleapis.com/upload/drive/v3/files",
+          "query": {
+            "uploadType": "multipart",
+            "fields": "id,name"
+          },
           "headers": {
             "Content-Type": "multipart/related; boundary=subkit-upload"
           },
           "body": "${item.body}",
-          "for_each": "(sourceData) => sourceData.build_uploads.data.uploads"
+          "for_each": "(sourceData) => sourceData.build_uploads.data.uploads",
+          "boundary": {
+            "variables": {},
+            "max_body_bytes": 10000000,
+            "max_calls": 500
+          }
         },
         {
           "kind": "transform",

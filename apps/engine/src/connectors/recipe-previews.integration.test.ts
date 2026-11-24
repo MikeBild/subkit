@@ -182,6 +182,8 @@ describe.skipIf(skip)("solution recipes preview against their expected output", 
     });
     const upload = calls.find((c) => c.url.pathname === "/upload/drive/v3/files");
     expect(upload?.url.hostname).toBe("www.googleapis.com");
+    expect(upload?.url.searchParams.get("uploadType")).toBe("multipart");
+    expect(upload?.url.searchParams.get("fields")).toBe("id,name");
     expect(upload?.body).toContain('"parents":["folder-1"]');
     expect(upload?.body).toContain("JVBERi0xLjQK");
   });
