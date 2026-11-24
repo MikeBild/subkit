@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { and, asc, eq, sql } from "drizzle-orm";
+import { queryAuditLog } from "../audit/query.ts";
 import {
   auditLog,
   conversationElicitations,
@@ -183,6 +184,44 @@ describe("the task sweep starts scheduled tasks", () => {
     await settle(w, task, "completed");
     expect(await sweep(w, "2027-03-27T13:00:00.000Z")).toEqual([]);
     expect((await runs(w, task)).map((run) => run.trigger)).toEqual(["once"]);
+  }, 180_000);
+
+  test("a scheduled start and its claim are recorded as a task run from the scheduler", async () => {
+    const w = await workspace();
+    const task = await scheduled(w, { schedule_run_at: "2027-03-26T13:00:00.000Z" });
+    await grant(w, task);
+    expect(await sweep(w, "2027-03-26T13:00:00.000Z")).toHaveLength(1);
+    const [run] = await runs(w, task);
+    const task_run_id = run?.id ?? "";
+    const started = await db
+      .select({ metadata: auditLog.metadata })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, w.tenant_id),
+          eq(auditLog.resource_id, task_run_id),
+          eq(auditLog.action, "task_run.started"),
+        ),
+      );
+    const claimed = await taskAudit(w, task, "task.schedule_claimed");
+    for (const row of [...started, ...claimed])
+      expect(row.metadata).toMatchObject({
+        audit_access_type: "task_run",
+        origin_source: "scheduler",
+        audit_trace_id: run?.trace_id,
+      });
+    expect(started).toHaveLength(1);
+    expect(claimed).toHaveLength(1);
+    const { items } = await queryAuditLog(db, {
+      tenant_id: w.tenant_id,
+      access_type: "task_run",
+      task_run_id,
+    });
+    expect(items.map((item) => item.action).sort()).toEqual([
+      "task.schedule_claimed",
+      "task_run.started",
+    ]);
+    await settle(w, task, "completed");
   }, 180_000);
 
   test("a held start writes one audit row, stays quiet, and starts once it is permitted", async () => {

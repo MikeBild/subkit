@@ -13,7 +13,7 @@ import {
   openRunConversationIds,
   unpreparedRunIds,
 } from "../persistence/run-start-rows.ts";
-import { withTaskRunAuditTrace } from "../trace.ts";
+import { withTaskRunTrace } from "../trace.ts";
 import type { TaskAdmissionReason, TaskRun, TaskRunTrigger } from "../types.ts";
 import { recordTaskAdmissionChange } from "./admission.ts";
 import {
@@ -149,21 +149,25 @@ async function admitAndInsert(
     })
     .returning();
   assertInsertRow(run, "task_runs");
-  await auditTaskRun(
-    tx,
-    run,
-    run,
-    {
-      action: AuditAction.TASK_RUN_STARTED,
-      actor: actorOf(p.started_by),
-      environment: task.environment,
-    },
-    { at, source: p.source },
+  const traced = <T>(fn: () => T): T =>
+    scheduled_now ? withTaskRunTrace({ ...run, conversation_id: null }, fn) : fn();
+  await traced(() =>
+    auditTaskRun(
+      tx,
+      run,
+      run,
+      {
+        action: AuditAction.TASK_RUN_STARTED,
+        actor: actorOf(p.started_by),
+        environment: task.environment,
+      },
+      { at, source: p.source },
+    ),
   );
   if (scheduled_now) {
     await markTaskClaimed(tx, task, at);
     await recordTaskAdmissionChange(tx, { ...change, reason: null, source: p.source });
-    await withTaskRunAuditTrace(run, () =>
+    await traced(() =>
       auditAwait(
         {
           tenant_id: p.tenant_id,
