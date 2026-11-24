@@ -6464,7 +6464,7 @@
             {
               "kind": "transform",
               "id": "merge",
-              "expression": "{ \"issues\": $.fetch_issues.body, \"pulls\": $.fetch_pulls.body, \"releases\": $.fetch_releases.body }"
+              "expression": "const branches = Object.assign({}, ...(input.scope.fan.data || [])); return { issues: branches.fetch_issues?.data ?? [], pulls: branches.fetch_pulls?.data ?? [], releases: branches.fetch_releases?.data ?? [] };"
             }
           ]
         }
@@ -6709,7 +6709,7 @@
             {
               "kind": "transform",
               "id": "abandon_on_timeout",
-              "expression": "{ \"status\": \"timed_out\", \"pr_number\": $.steps.open_pr.body.number }"
+              "expression": "return { status: 'timed_out', pr_number: input.scope.open_pr.data?.number ?? null };"
             }
           ]
         }
@@ -9051,7 +9051,7 @@
             {
               "kind": "transform",
               "id": "out",
-              "expression": "$.list.body.results.{ \"id\": id, \"name\": properties.dealname, \"amount\": properties.amount, \"stage\": properties.dealstage }"
+              "expression": "const items = Array.isArray(input.scope.list.data) ? input.scope.list.data : []; return items.map((d) => ({ id: d.id, name: d.properties?.dealname, amount: d.properties?.amount, stage: d.properties?.dealstage }));"
             }
           ]
         }
@@ -15252,7 +15252,7 @@
             {
               "kind": "transform",
               "id": "out",
-              "expression": "$.list.body.data.{ \"id\": id, \"email\": email, \"created\": created }"
+              "expression": "const items = Array.isArray(input.scope.list.data) ? input.scope.list.data : []; return items.map((c) => ({ id: c.id, email: c.email, created: c.created }));"
             }
           ]
         }
@@ -15387,7 +15387,7 @@
             {
               "kind": "transform",
               "id": "out",
-              "expression": "$.list.body.data.{ \"id\": id, \"amount\": amount, \"currency\": currency, \"status\": status }"
+              "expression": "const items = Array.isArray(input.scope.list.data) ? input.scope.list.data : []; return items.map((c) => ({ id: c.id, amount: c.amount, currency: c.currency, status: c.status }));"
             }
           ]
         }
@@ -15702,7 +15702,7 @@
             {
               "kind": "transform",
               "id": "out",
-              "expression": "$.list.body.data.{ \"id\": id, \"status\": status, \"amount_due\": amount_due, \"customer\": customer }"
+              "expression": "const items = Array.isArray(input.scope.list.data) ? input.scope.list.data : []; return items.map((i) => ({ id: i.id, status: i.status, amount_due: i.amount_due, customer: i.customer }));"
             }
           ]
         }
