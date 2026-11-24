@@ -65,7 +65,7 @@ Ohne Freigabe startet ein Run nur als Probe-Run ohne Wirkung.
 
 Die Freigabe startet keinen Run. Eine Freigabe gilt für eine Umgebung und eine Dauer.
 Eine neue Version braucht keine neue Freigabe, solange sie nicht mehr Systeme, Adressen oder Schreibrechte anfasst als die freigegebene. Greift sie weiter, fragt SubKit erneut und nennt den Unterschied.
-Im Tab **Freigaben** kannst du sie jederzeit widerrufen.
+Unter **Übersicht › Freigaben** kannst du sie jederzeit widerrufen.
 Hat eine Freigabe noch ein Ablaufdatum, macht **Unbefristet machen** im selben Tab daraus eine Freigabe bis auf Widerruf und hebt auch eine Run-Grenze auf. Ist nur noch eine Run-Grenze übrig, heißt die Aktion **Run-Grenze aufheben**.
 Bietet dir der Chat eine Freigabe an, öffnet sie denselben Dialog.
 

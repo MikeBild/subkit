@@ -146,7 +146,7 @@ Ohne gültige Freigabe antwortet ein Produktlauf mit 403.
 Eine Person mit Schreibrecht gibt jeden Produkt-Workflow einmal pro Umgebung frei.
 
 1. Öffne im Cockpit **Workflows** und klicke auf den Workflow.
-2. Wähle **Freigeben** in der Statuszeile oder auf dem Tab **Freigaben**. Der Dialog **<Workflow> v<n> freigeben** öffnet sich.
+2. Wähle **Freigeben** in der Statuszeile oder unter **Übersicht › Freigaben**. Der Dialog **<Workflow> v<n> freigeben** öffnet sich.
 3. Prüfe, ob **Umgebung** (**Echtbetrieb** oder **Test**) zur `execution_environment` des Produkts passt.
 4. Prüfe Connectors, Adressen und Lese- oder Schreibzugriff.
 5. Wähle unter **Gültigkeit** **7 Tage**, **30 Tage** oder **Bis auf Widerruf**. **Bis auf Widerruf** ist vorausgewählt und setzt weder eine Run-Grenze noch ein Ablaufdatum. Dieselbe Wahl erscheint, wenn du im Chat eine gespeicherte Änderung prüfst.
@@ -199,7 +199,7 @@ Das Cockpit und `GET /v1/health` zeigen fehlschlagende Connectors.
 
 ### Eine App zurückrollen
 
-1. Widerrufe die Freigabe des Workflows im Tab **Freigaben**. Die App erhält dann 403, nichts läuft.
+1. Widerrufe die Freigabe des Workflows unter **Übersicht › Freigaben**. Die App erhält dann 403, nichts läuft.
 2. Stell die Werte von `auth.providers` und `products` aus Schritt 2 wieder her.
 3. Stell eine Workflow-Version mit `subkit workflows history <id>` und `subkit workflows restore <id>` wieder her.
 
