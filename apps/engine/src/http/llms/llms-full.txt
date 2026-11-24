@@ -2230,10 +2230,11 @@ The reference to the file stays the same. Workflows and the chat therefore use t
 
 ### Restore an earlier state of a file
 
-1. Open the file and its **Usage** tab.
-2. Expand **Replaced**. The section appears once a file has earlier versions.
+1. Open **Files** and click the file.
+2. Open the **Versions** tab. The tab appears once the file has been replaced.
 3. Click a version. You see its preview.
-4. On an earlier version, select **Restore**.
+4. On an earlier version, select **Restore this version**.
+5. In the dialog, confirm with **Restore this version**.
 
 The earlier state becomes current again as a new version. The current content stays as an earlier version.
 
@@ -2248,7 +2249,7 @@ Good to know:
 | --- | --- |
 | **Restore this version** is missing | You opened the current version. Open an earlier one. If the button is still missing, ask an administrator for the write permission for sources or skills. |
 | "This version has no saved state, so it cannot be restored." | Choose another version, or change the skill directly. |
-| The **Replaced** section is missing | The file was never replaced. It has no earlier versions yet. |
+| The **Versions** tab is missing | The file was never replaced. It has no earlier versions yet. |
 | **Replace** is missing in the menu | Ask an administrator for `file:write`. |
 
 ### The same in the terminal
