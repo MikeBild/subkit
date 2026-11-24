@@ -49,7 +49,8 @@ export function occurrenceCovers(
   occurrence: Pick<ScheduleOccurrence, "state" | "skipped_count">,
 ): number {
   if (occurrence.state === "ran") return 0;
-  if (occurrence.state === "ran_late") return occurrence.skipped_count;
+  if (occurrence.state === "ran_late")
+    return occurrence.skipped_count > 0 ? occurrence.skipped_count + 1 : 0;
   return occurrence.skipped_count > 1 ? occurrence.skipped_count : 0;
 }
 
