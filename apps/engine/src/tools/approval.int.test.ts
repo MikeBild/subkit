@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { AuditAction } from "../audit/types.ts";
 import { toolApprovals } from "../db/schema/index.ts";
+import { seedWorkflow } from "../test-helpers/seed.ts";
 import {
   consumeApproval,
   declineApproval,
@@ -19,6 +20,7 @@ import {
   testDb,
   useApprovalDb,
 } from "./approval-fixtures.ts";
+import { decryptPreview, encryptApprovalPreview } from "./approval-portal.ts";
 
 useApprovalDb();
 
@@ -302,6 +304,51 @@ describe("approval.ts — declineApproval is terminal", () => {
     const deniedGrant = rows.find((r) => r.action === AuditAction.APPROVAL_GRANTED);
     expect(deniedGrant?.reason).toBe("approval_already_declined");
     expect(rows).toHaveLength(3);
+  });
+
+  test("an update_workflow approval stores the target workflow and proposed change in its preview", async () => {
+    const principal = principalIn(tenant_id);
+    const { workflow } = await seedWorkflow(testDb.db, {
+      tenant_id,
+      name: "Invoice sync",
+      slug: "invoice-sync",
+    });
+    const approval_id = nextId();
+    await seedApproval({
+      principal,
+      approval_id,
+      tool: "update_workflow",
+      surface: "chat",
+      args: { id: workflow.id, name: "Invoice sync (legacy)" },
+    });
+    const row = await approvalRow(approval_id);
+    if (!row) throw new Error("approval row missing");
+    expect(decryptPreview(row)).toEqual({
+      would_write: [],
+      subject: {
+        resource_type: "workflow",
+        resource_id: workflow.id,
+        current_name: "Invoice sync",
+        current_slug: "invoice-sync",
+        changes: [{ field: "name", to: "Invoice sync (legacy)" }],
+      },
+    });
+  });
+
+  test("a legacy preview without a subject still decrypts", async () => {
+    const approval_id = nextId();
+    const legacy = encryptApprovalPreview(tenant_id, approval_id, {
+      would_write: [{ step: "send", method: "POST", url: null }],
+    });
+    expect(
+      decryptPreview({
+        id: approval_id,
+        tenant_id,
+        preview_ciphertext: legacy.preview_ciphertext,
+        preview_iv: legacy.preview_iv,
+        preview_auth_tag: legacy.preview_auth_tag,
+      }),
+    ).toEqual({ would_write: [{ step: "send", method: "POST", url: null }] });
   });
 
   test("a second decline of an already-declined approval fails", async () => {

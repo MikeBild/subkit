@@ -341,3 +341,40 @@ for (const locale of ["de", "en"] as const) {
     expect(PENDING_HTML(locale)).toContain("ledger.example.test/entries");
   });
 }
+
+for (const locale of ["de", "en"] as const) {
+  test(`${locale} a workflow metadata update names the affected workflow and the proposed change`, () => {
+    const copy = approvalCopy(locale);
+    const renameView = (current_name: string, current_slug: string): ApprovalPortalView => ({
+      ...view,
+      tool: "update_workflow",
+      workflow_slug: null,
+      preview: {
+        would_write: [],
+        subject: {
+          resource_type: "workflow",
+          resource_id: "00000000-0000-4000-8000-000000000002",
+          current_name,
+          current_slug,
+          changes: [{ field: "name", to: "Invoice sync (legacy)" }],
+        },
+      },
+    });
+    const render = (target: ApprovalPortalView) =>
+      buildApprovalDecisionHtml(target, "grant", { email: "operator@example.test" }, "csrf", {
+        locale,
+        scheme: null,
+      });
+    const first = render(renameView("Invoice sync <b>", "invoice-sync"));
+    const second = render(renameView("Invoice sync 2", "invoice-sync-2"));
+    const text = visibleText(first);
+    expect(text).toContain(copy.proposedName);
+    expect(text).toContain("Invoice sync (legacy)");
+    expect(text).toContain("invoice-sync");
+    expect(text).not.toContain(copy.unknownEffect);
+    expect(first).toContain(copy.titleForRename.replace("{workflow}", "Invoice sync &lt;b&gt;"));
+    expect(first).not.toContain("Invoice sync <b>");
+    expect(visibleText(second)).toContain("invoice-sync-2");
+    expect(visibleText(second)).not.toContain("Invoice sync <b>");
+  });
+}

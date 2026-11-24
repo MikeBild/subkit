@@ -3,6 +3,7 @@ import {
   APPROVAL_CLAIM_WINDOW_MS,
   APPROVAL_PORTAL_PATH,
   type ApprovalPortalView,
+  type ApprovalSubject,
 } from "../../tools/index.ts";
 import { escapeHtml } from "./oauth/shared.ts";
 import { cockpitLink, type PageLook, pageActions, pageHead, renderSinglePage } from "./oauth/ui.ts";
@@ -25,6 +26,37 @@ export function approvalDisplayTarget(value: string | null): string | null {
     return null;
   }
 }
+
+type ApprovalCopy = ReturnType<typeof approvalCopy>;
+
+const subjectLabel = (subject: ApprovalSubject): string =>
+  scrubString(subject.current_name ?? subject.current_slug ?? subject.resource_id);
+
+const subjectFacts = (subject: ApprovalSubject, copy: ApprovalCopy) => {
+  const changeLabels: Record<ApprovalSubject["changes"][number]["field"], string> = {
+    name: copy.proposedName,
+    slug: copy.proposedSlug,
+    description: copy.proposedDescription,
+    lifecycle: copy.proposedLifecycle,
+  };
+  const target =
+    subject.current_name && subject.current_slug
+      ? `${scrubString(subject.current_name)} (${scrubString(subject.current_slug)})`
+      : subjectLabel(subject);
+  return [
+    [copy.workflow, target] as const,
+    ...subject.changes.map(
+      (change) =>
+        [changeLabels[change.field], change.to ? scrubString(change.to) : copy.cleared] as const,
+    ),
+  ];
+};
+
+const subjectTitle = (subject: ApprovalSubject, copy: ApprovalCopy): string =>
+  (subject.changes.some((change) => change.field === "name" || change.field === "slug")
+    ? copy.titleForRename
+    : copy.titleForWorkflowChange
+  ).replace("{workflow}", subjectLabel(subject));
 
 function portalPage(look: PageLook, body: string, opts: { wide?: boolean; footer?: string } = {}) {
   return renderSinglePage({
@@ -89,9 +121,12 @@ export function buildApprovalDecisionHtml(
     rows
       .map(([label, value]) => `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd>`)
       .join("");
+  const subject = view.preview?.subject;
+  const subjectRows = subject ? subjectFacts(subject, copy) : [];
   const bindingFacts = facts([
     [copy.tool, scrubString(view.tool)],
     ...(view.workflow_slug ? [[copy.workflow, scrubString(view.workflow_slug)] as const] : []),
+    ...subjectRows,
     ...(binding ? [[copy.version, binding.workflow_version_id] as const] : []),
     [copy.decider, approver.email],
     [copy.scope, copy.once],
@@ -116,8 +151,11 @@ export function buildApprovalDecisionHtml(
         ? copy.titleForTarget
             .replace("{operation}", scrubString(firstBound.method ?? copy.unspecified))
             .replace("{target}", boundTarget)
-        : copy.title;
+        : subject
+          ? subjectTitle(subject, copy)
+          : copy.title;
   const glance = facts([
+    ...subjectRows,
     ...(firstBound && boundTarget && boundRequests.length === 1
       ? [
           [
@@ -148,7 +186,7 @@ ${review ? `<dt>${copy.attempts}</dt><dd>${escapeHtml(copy.attemptsValue.replace
   return portalPage(
     look,
     `${pageHead({ title, slot: "auth-heading", line: copy.intro, chip: { tone: "warning", word: copy.pending } })}
-<dl class="facts">${glance}</dl>${boundRequests.length === 0 ? `<p class="muted">${copy.unknownEffect}</p>` : ""}
+<dl class="facts">${glance}</dl>${boundRequests.length === 0 && !subject ? `<p class="muted">${copy.unknownEffect}</p>` : ""}
 <details><summary>${copy.details}</summary><div class="stack">
 <p>${copy.contextNote}</p>
 <section class="stack" aria-labelledby="boundary-title"><h2 id="boundary-title">${copy.summary}</h2><dl class="facts">${bindingFacts}</dl></section>

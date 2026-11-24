@@ -18,6 +18,7 @@ import {
   encryptApprovalPreview,
   mintApprovalGrantUrl,
 } from "./approval-portal.ts";
+import { captureApprovalSubject } from "./approval-subject.ts";
 import {
   captureDirectConnectorBinding,
   type DirectConnectorBinding,
@@ -169,12 +170,14 @@ export async function requestApproval(input: RequestApprovalInput): Promise<Requ
   const direct = isDirectConnectorTool(tool)
     ? await captureDirectConnectorBinding({ db, tenant_id: principal.tenant_id, tool, args })
     : null;
+  const subject = await captureApprovalSubject({ db, tenant_id: principal.tenant_id, tool, args });
   const preview: ApprovalPreview | null =
-    prepared || direct
+    prepared || direct || subject
       ? {
           would_write: visiblePreview?.would_write ?? (direct ? [direct.review] : []),
           ...(prepared ? { prepared_workflow: prepared } : {}),
           ...(direct ? { direct_connector: direct } : {}),
+          ...(subject ? { subject } : {}),
         }
       : visiblePreview;
   const encPreview = preview

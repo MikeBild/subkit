@@ -7,6 +7,7 @@ import { CallerContextSchema } from "../execution/caller-context.ts";
 import { sha256Hex } from "../identity/api-key.ts";
 import { engineUrlFromConfig } from "../llm/runtime-context.ts";
 import { logger } from "../logging/index.ts";
+import { type ApprovalSubject, ApprovalSubjectSchema } from "./approval-subject.ts";
 import {
   type DirectConnectorBinding,
   DirectConnectorBindingSchema,
@@ -49,6 +50,7 @@ export interface ApprovalPreview {
   readonly would_write: readonly ApprovalWouldWrite[];
   readonly prepared_workflow?: PreparedWorkflowBinding;
   readonly direct_connector?: DirectConnectorBinding;
+  readonly subject?: ApprovalSubject;
 }
 
 function asStringOrNull(value: unknown): string | null {
@@ -237,13 +239,16 @@ export function decryptPreview(row: {
       would_write?: unknown;
       prepared_workflow?: unknown;
       direct_connector?: unknown;
+      subject?: unknown;
     };
     const binding = PreparedWorkflowBindingSchema.safeParse(parsed.prepared_workflow);
     const direct = DirectConnectorBindingSchema.safeParse(parsed.direct_connector);
+    const subject = ApprovalSubjectSchema.safeParse(parsed.subject);
     return {
       would_write: normalizeWouldWrite(parsed.would_write),
       ...(binding.success ? { prepared_workflow: binding.data } : {}),
       ...(direct.success ? { direct_connector: direct.data } : {}),
+      ...(subject.success ? { subject: subject.data } : {}),
     };
   } catch (err) {
     logger.error({
