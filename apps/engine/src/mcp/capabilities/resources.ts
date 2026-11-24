@@ -25,7 +25,7 @@ import { executionFixtures, executions, files } from "../../db/schema/index.ts";
 import { executionVisibleToPrincipal } from "../../execution/execution-owner.ts";
 import { isSensitivePayload } from "../../execution/sensitive-payload.ts";
 import { isTextLike } from "../../files/content-type.ts";
-import { FileNotFoundError, requireFileForTenant, storageKey } from "../../files/resolver.ts";
+import { FileNotFoundError, requireLiveFileForTenant, storageKey } from "../../files/resolver.ts";
 import * as knowledgeSvc from "../../knowledge/service.ts";
 import { logger } from "../../logging/index.ts";
 import { buildOperatorHealthDigest } from "../../operator/health-digest.ts";
@@ -490,9 +490,9 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
 
     if (uri.startsWith("file://")) {
       const fid = uri.slice("file://".length);
-      let row: Awaited<ReturnType<typeof requireFileForTenant>>;
+      let row: Awaited<ReturnType<typeof requireLiveFileForTenant>>;
       try {
-        row = await requireFileForTenant(db, principal.tenant_id, fid);
+        row = await requireLiveFileForTenant(db, principal.tenant_id, fid);
       } catch (err) {
         if (err instanceof FileNotFoundError) {
           throw new McpError(RESOURCE_NOT_FOUND, `file not found: ${fid}`);

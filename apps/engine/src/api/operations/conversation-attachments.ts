@@ -7,7 +7,7 @@ import type { Db, Executor } from "../../db/client.ts";
 import { recordFilesDedupSeen } from "../../files/dedup-counter.ts";
 import { FileLinkError, linkStoredFile } from "../../files/links.ts";
 import { persistInlineUpload } from "../../files/persist-inline-upload.ts";
-import { type FileRow, requireFileForTenant } from "../../files/resolver.ts";
+import { type FileRow, requireLiveFileForTenant } from "../../files/resolver.ts";
 import {
   auditConversationAttachmentStored,
   conversationExists,
@@ -203,7 +203,7 @@ export async function resolveStoredFile(
 ): Promise<StoredUpload | Rejection> {
   const fid_uuid = parseFileIdOrThrow(fileRef);
   try {
-    const row = await requireFileForTenant(scope.db, scope.tenant_id, fid_uuid);
+    const row = await requireLiveFileForTenant(scope.db, scope.tenant_id, fid_uuid);
     return { row, slug: linkSlug(row) };
   } catch {
     return plainRejection(404, "not_found", "file not found");

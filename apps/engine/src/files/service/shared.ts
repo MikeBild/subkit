@@ -3,7 +3,7 @@ import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
 import { getObjectStore } from "../../storage/object-store.ts";
-import { type FileRow, requireFileForTenant } from "../resolver.ts";
+import { type FileRow, requireFileForTenant, requireLiveFileForTenant } from "../resolver.ts";
 import { getScanner, SCANNER_TIMEOUT_SECONDS, type ScanResult } from "../scanner.ts";
 
 export type { FileRow };
@@ -36,6 +36,18 @@ export async function findTenantFile(
 ): Promise<FileRow | null> {
   try {
     return await requireFileForTenant(db, tenantId, fileUuid);
+  } catch {
+    return null;
+  }
+}
+
+export async function findLiveFile(
+  db: Db,
+  tenantId: string,
+  fileUuid: string,
+): Promise<FileRow | null> {
+  try {
+    return await requireLiveFileForTenant(db, tenantId, fileUuid);
   } catch {
     return null;
   }

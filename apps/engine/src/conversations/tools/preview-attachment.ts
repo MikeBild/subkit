@@ -1,7 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import { isTextLike } from "../../files/content-type.ts";
 import { executionDataFileIds } from "../../files/model-context.ts";
-import { requireFileForTenant, storageKey } from "../../files/resolver.ts";
+import { requireLiveFileForTenant, storageKey } from "../../files/resolver.ts";
 import { findConversationAttachmentBySlug } from "../../files/service/index.ts";
 import { getObjectStore } from "../../storage/object-store.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
@@ -50,9 +50,9 @@ export const previewAttachmentTool: ConversationTool = {
         },
       };
     }
-    let row: Awaited<ReturnType<typeof requireFileForTenant>>;
+    let row: Awaited<ReturnType<typeof requireLiveFileForTenant>>;
     try {
-      row = await requireFileForTenant(ctx.db, ctx.tenant_id, link.file_id);
+      row = await requireLiveFileForTenant(ctx.db, ctx.tenant_id, link.file_id);
     } catch {
       return {
         ok: false,

@@ -1,6 +1,6 @@
 export const SPOOL_THRESHOLD_BYTES = 50 * 1024 * 1024;
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, type SQL } from "drizzle-orm";
 import { FileByteRangeSchema } from "../api/files-schemas.ts";
 import type { Db } from "../db/client.ts";
 import { files } from "../db/schema/files.ts";
@@ -26,21 +26,31 @@ export class FileNotFoundError extends Error {
   }
 }
 
-export async function requireFileForTenant(
+async function selectTenantFile(
   db: Db,
   tenant_id: string,
   fid: string,
+  extra?: SQL,
 ): Promise<FileRow> {
   const uuid = fid.startsWith("fid_") ? fid.slice("fid_".length) : fid;
   const rows = await db
     .select()
     .from(files)
-    .where(and(eq(files.tenant_id, tenant_id), eq(files.id, uuid)))
+    .where(and(eq(files.tenant_id, tenant_id), eq(files.id, uuid), extra))
     .limit(1);
   const row = rows[0];
   if (!row) throw new FileNotFoundError(fid);
   return row;
 }
+
+export const requireFileForTenant = (db: Db, tenant_id: string, fid: string): Promise<FileRow> =>
+  selectTenantFile(db, tenant_id, fid);
+
+export const requireLiveFileForTenant = (
+  db: Db,
+  tenant_id: string,
+  fid: string,
+): Promise<FileRow> => selectTenantFile(db, tenant_id, fid, isNull(files.deleted_at));
 
 export function storageKey(storage_uri: string): string {
   if (storage_uri.startsWith("memory://")) return storage_uri.slice("memory://".length);
@@ -147,7 +157,7 @@ export async function resolveSingleFid(
     const cached = cache.get(fid);
     if (cached) return cached;
   }
-  const row = await requireFileForTenant(db, tenant_id, fid);
+  const row = await requireLiveFileForTenant(db, tenant_id, fid);
   const resolved = resolvedFromRow(row);
   if (cache) cache.set(fid, resolved);
   return resolved;
@@ -171,7 +181,7 @@ export async function walkAndResolve<T>(
     if (cached) return rangeResolvedFile(cached, value.$range) as unknown as T;
     const row = fid.startsWith(ATTACHMENT_REFERENCE_PREFIX)
       ? await requireFileByReference(ctx, fid)
-      : await requireFileForTenant(ctx.db, ctx.tenant_id, fid);
+      : await requireLiveFileForTenant(ctx.db, ctx.tenant_id, fid);
     const resolved = resolvedFromRow(row);
     cache.set(fid, resolved);
     return rangeResolvedFile(resolved, value.$range) as unknown as T;

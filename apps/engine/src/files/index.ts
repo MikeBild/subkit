@@ -27,6 +27,7 @@ export type { FileRow, ResolvedFile, ResolverContext } from "./resolver.ts";
 export {
   FileNotFoundError,
   requireFileForTenant,
+  requireLiveFileForTenant,
   resolvedFromRow,
   resolveSingleFid,
   SPOOL_THRESHOLD_BYTES,
