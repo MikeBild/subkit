@@ -68,6 +68,7 @@ jobs:
           bun-version: 1.4.5
       - name: Install dependencies (retry transient download failures)
         run: for attempt in 1 2 3; do bun install --frozen-lockfile && exit 0; echo "install attempt $attempt failed, retrying"; sleep 20; done; exit 1
+      - run: sudo apt-get update && sudo apt-get install -y expect
       - run: bun run build assets
       - run: bun run build subkit --skip-deps
       - name: Select this shard of the affected tests
