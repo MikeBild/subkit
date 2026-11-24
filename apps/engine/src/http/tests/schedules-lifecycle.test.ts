@@ -308,6 +308,55 @@ describe("schedules HTTP write surface", () => {
     expect(body.details).toMatchObject({ checked_version: 2, kept_existing_input: true });
   });
 
+  test("pausing a schedule whose input the active version outgrew stays paused until resume", async () => {
+    const wf = await createWorkflow("sched-input-pause", {
+      type: "object",
+      properties: { account_id: { type: "string" } },
+    });
+    const created = await fetch(`${ctx.baseUrl}/v1/schedules`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify({ workflow_id: wf.id, cron: "0 8 * * *", input: {} }),
+    });
+    expect(created.status).toBe(201);
+    const schedule = (await created.json()) as { id: string };
+    await addVersion(wf.id, sinceContract, true);
+    await ctx.db
+      .update(workflowsSchedules)
+      .set({
+        admission_hold: {
+          reason_code: "input_required",
+          observed_at: new Date(Date.UTC(2026, 10, 1)).toISOString(),
+        },
+      })
+      .where(eq(workflowsSchedules.id, schedule.id));
+    const readRow = async () =>
+      (
+        await ctx.db.select().from(workflowsSchedules).where(eq(workflowsSchedules.id, schedule.id))
+      )[0];
+    const put = (body: Record<string, unknown>) =>
+      fetch(`${ctx.baseUrl}/v1/schedules/${schedule.id}`, {
+        method: "PUT",
+        headers: headers(),
+        body: JSON.stringify(body),
+      });
+
+    expect((await put({ paused: true })).status).toBe(200);
+    const paused = await readRow();
+    expect(paused?.paused).toBe(true);
+    expect(paused?.admission_hold?.reason_code).toBe("input_required");
+
+    expect((await put({ input: { since: "2026-11-01" } })).status).toBe(200);
+    const corrected = await readRow();
+    expect(corrected?.paused).toBe(true);
+    expect(corrected?.input).toEqual({ since: "2026-11-01" });
+    expect(corrected?.admission_hold).toBeNull();
+    expect(corrected?.input_error).toBeNull();
+
+    expect((await put({ paused: false })).status).toBe(200);
+    expect((await readRow())?.paused).toBe(false);
+  });
+
   test("input written for a prepared version says that version is not active yet", async () => {
     const wf = await createWorkflow("sched-input-prepared", {
       type: "object",

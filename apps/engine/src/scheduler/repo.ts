@@ -16,6 +16,7 @@ import { normalizeWorkflowRunInput } from "../workflows/run-input.ts";
 import type { ScheduleTrigger } from "../workflows/types.ts";
 import { isIanaTimeZone, WorkflowDefSchema } from "../workflows/types.ts";
 import { stripCalendarGates } from "./calendar-gates.ts";
+import { pausesOnly } from "./core/schedule-update.ts";
 import { parseCronExpression } from "./cron.ts";
 import {
   type ScheduleInputVersions,
@@ -407,8 +408,11 @@ async function updateScheduleLocked(
   assertTimeZone(patch.timezone);
   const existing = await getSchedule(db, tenant_id, id);
   if (!existing) return null;
+  const pauseOnly = pausesOnly(patch);
   const nextInput = patch.input === undefined ? existing.input : patch.input;
-  const input_error = await validateScheduleInput(db, tenant_id, existing.workflow_id, nextInput);
+  const input_error = pauseOnly
+    ? null
+    : await validateScheduleInput(db, tenant_id, existing.workflow_id, nextInput);
   if (input_error)
     await invalidScheduleInput(
       db,
@@ -420,8 +424,14 @@ async function updateScheduleLocked(
     );
   const set: Record<string, unknown> = {
     updated_at: new Date(),
-    input_error: null,
-    ...(existing.admission_hold?.reason_code === "input_required" ? { admission_hold: null } : {}),
+    ...(pauseOnly
+      ? {}
+      : {
+          input_error: null,
+          ...(existing.admission_hold?.reason_code === "input_required"
+            ? { admission_hold: null }
+            : {}),
+        }),
   };
   if (patch.cron !== undefined) set.cron = patch.cron;
   if (patch.timezone !== undefined) set.timezone = patch.timezone;
