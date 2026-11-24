@@ -230,6 +230,7 @@ describe("request step · postgres connector dispatch", () => {
         {
           id: "transfer",
           kind: "request",
+          protocol: "sql",
           method: "UPDATE",
           connector_id: pgConnectorId,
           sql: {
@@ -361,6 +362,7 @@ describe("request step · postgres connector dispatch", () => {
         {
           id: "close",
           kind: "request",
+          protocol: "sql",
           method: "UPDATE",
           connector_id: pgConnectorId,
           sql: {
@@ -402,6 +404,7 @@ describe("request step · postgres connector dispatch", () => {
         {
           id: "close",
           kind: "request",
+          protocol: "sql",
           method: "UPDATE",
           connector_id: pgConnectorId,
           sql: {
