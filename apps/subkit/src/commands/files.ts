@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { createWriteStream } from "node:fs";
 import { basename } from "node:path";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
@@ -21,6 +20,7 @@ import {
   renderSuspiciousCodepoints,
   sanitizePathInput,
 } from "../lib/path-input.ts";
+import { writeStreamAtomically } from "../utils/atomic-write.ts";
 import { detectMime } from "../utils/mime.ts";
 import {
   readableFromBytes,
@@ -302,19 +302,8 @@ const downloadCommand = defineCommand({
         }
         return;
       }
-      const sink = createWriteStream(outPath);
-      let written = 0;
-      const reader = dl.stream.getReader();
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (value) {
-          sink.write(value);
-          written += value.byteLength;
-        }
-      }
-      await new Promise<void>((resolve, reject) => {
-        sink.end((err: Error | null | undefined) => (err ? reject(err) : resolve()));
+      const written = await writeStreamAtomically(dl.stream, outPath, {
+        expectedBytes: dl.size_bytes,
       });
       if (!args.quiet) {
         process.stdout.write(
