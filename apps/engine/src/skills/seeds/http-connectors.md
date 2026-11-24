@@ -123,19 +123,18 @@ auth headers from the connector's auth config, then dispatches. The envelope's
 
 ### Form-encoded body
 
-For `application/x-www-form-urlencoded`, send a pre-encoded string body and set
-the matching `content-type` header explicitly:
+For `application/x-www-form-urlencoded`, set the `content-type` header. Placeholders
+are not URL-encoded (`+` becomes a space, `&` splits a field), so build the body in a
+`transform` step and send it whole:
 
 ```json
-{
-  "id": "exchange_code",
-  "kind": "request",
-  "method": "POST",
-  "connector_id": "<slack_oauth_connector_id>",
-  "path": "/api/oauth.v2.access",
-  "headers": { "content-type": "application/x-www-form-urlencoded" },
-  "body": "code=${input.code}&client_id=${cred.slack_oauth.client_id}&client_secret=${cred.slack_oauth.client_secret}"
-}
+[
+  { "id": "form", "kind": "transform", "language": "javascript",
+    "expression": "return ['From','To','Body'].map((k) => k + '=' + encodeURIComponent(String(input.input[k] ?? ''))).join('&');" },
+  { "id": "send", "kind": "request", "method": "POST", "connector_id": "<twilio_connector_id>",
+    "path": "/Accounts/${input.account_sid}/Messages.json",
+    "headers": { "content-type": "application/x-www-form-urlencoded" }, "body": "${scope.form.data}" }
+]
 ```
 
 ## Typed JSON bodies and arrays
