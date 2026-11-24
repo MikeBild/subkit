@@ -2,7 +2,7 @@ import { z } from "zod";
 import { decryptSecret, encryptSecret } from "../crypto/index.ts";
 import { DEVICE_STEP_ERROR_CODES, DEVICE_STEP_REMEDIES } from "../devices/core/step-output.ts";
 import { classifyFailure, type PreviewClassification } from "./core/classify.ts";
-import type { RequestMeta, SensitiveOutputField } from "./types.ts";
+import type { RequestMeta, SensitiveConnectorRef, SensitiveOutputField } from "./types.ts";
 
 const SensitivePayloadSchema = z
   .object({
@@ -207,23 +207,34 @@ export function sensitiveFailure(code?: string, message?: string): SensitiveFail
     : { code: safeCode, message: PROTECTED_MESSAGE };
 }
 
+function sensitiveConnectorRef(meta: RequestMeta): SensitiveConnectorRef | undefined {
+  const connector = "connector" in meta ? meta.connector : undefined;
+  if (!connector?.connector_id) return undefined;
+  return { connector_id: connector.connector_id, connector_slug: connector.connector_slug };
+}
+
 export function sensitiveRequestMeta(meta: RequestMeta | null | undefined): RequestMeta | null {
-  const pagination = meta && "pagination" in meta ? meta.pagination : undefined;
-  if (!pagination) return null;
-  const { strategy, pages, items, duplicates_dropped, complete, truncated, limit, rereads } =
-    pagination;
+  if (!meta) return null;
+  const pagination = "pagination" in meta ? meta.pagination : undefined;
+  const connector = sensitiveConnectorRef(meta);
+  if (!pagination && !connector) return null;
   return {
     driver: "sensitive",
-    pagination: {
-      strategy,
-      pages,
-      items,
-      duplicates_dropped,
-      complete,
-      truncated,
-      limit,
-      ...(rereads !== undefined ? { rereads } : {}),
-    },
+    ...(pagination
+      ? {
+          pagination: {
+            strategy: pagination.strategy,
+            pages: pagination.pages,
+            items: pagination.items,
+            duplicates_dropped: pagination.duplicates_dropped,
+            complete: pagination.complete,
+            truncated: pagination.truncated,
+            limit: pagination.limit,
+            ...(pagination.rereads !== undefined ? { rereads: pagination.rereads } : {}),
+          },
+        }
+      : {}),
+    ...(connector ? { connector } : {}),
   };
 }
 

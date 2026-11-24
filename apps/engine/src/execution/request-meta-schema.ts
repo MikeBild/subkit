@@ -161,7 +161,11 @@ const ErrorRequestMetaSchema = z
 const SensitiveRequestMetaSchema = z
   .object({
     driver: z.literal("sensitive"),
-    pagination: RequestPaginationSummarySchema,
+    pagination: RequestPaginationSummarySchema.optional(),
+    connector: z
+      .object({ connector_id: z.string(), connector_slug: z.string() })
+      .optional()
+      .openapi("SensitiveConnectorRef"),
     extras: z.record(z.string(), z.unknown()).optional(),
   })
   .openapi("SensitiveRequestMeta");
