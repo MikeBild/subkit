@@ -1,5 +1,5 @@
 import { Button } from "@ui/atoms/button";
-import { headings, slug, stripTitleHeading } from "@ui/lib/markdown";
+import { headings, markdownLink, slug, stripTitleHeading } from "@ui/lib/markdown";
 import { useI18n } from "@ui/lib/ui-context";
 import { cn } from "@ui/lib/utils";
 import hljs from "highlight.js/lib/core";
@@ -166,11 +166,29 @@ export function MarkdownDocument({
           <CodeBlock code={text(props.children).replace(/\n$/, "")} {...(lang ? { lang } : {})} />
         );
       },
-      a: ({ href, children }) => (
-        <a href={href} onClick={(e) => e.preventDefault()}>
-          {children}
-        </a>
-      ),
+      a: ({ href, children }) => {
+        const link = markdownLink(href);
+        if (link.kind === "external")
+          return (
+            <a href={link.href} target="_blank" rel="noopener noreferrer">
+              {children}
+            </a>
+          );
+        return (
+          <a
+            href={href}
+            onClick={(e) => {
+              e.preventDefault();
+              if (link.kind === "fragment")
+                document
+                  .getElementById(`${uid}-${link.id}`)
+                  ?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }}
+          >
+            {children}
+          </a>
+        );
+      },
       table: ({ children }) => (
         <div className="md-table">
           <table>{children}</table>

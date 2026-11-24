@@ -122,3 +122,23 @@ export function applyFormat(v: string, a: number, b: number, f: Fmt, linkText = 
 }
 
 export const refToken = (prefix: string, name: string) => `@${prefix}:${name}`;
+
+export type MarkdownLink =
+  | { kind: "external"; href: string }
+  | { kind: "fragment"; id: string }
+  | { kind: "inert" };
+
+const decodeFragment = (fragment: string) => {
+  try {
+    return decodeURIComponent(fragment);
+  } catch {
+    return "";
+  }
+};
+
+export function markdownLink(href: string | undefined): MarkdownLink {
+  if (!href) return { kind: "inert" };
+  if (/^(https?:\/\/|mailto:)/i.test(href)) return { kind: "external", href };
+  const id = href.startsWith("#") ? decodeFragment(href.slice(1)) : "";
+  return id ? { kind: "fragment", id } : { kind: "inert" };
+}
