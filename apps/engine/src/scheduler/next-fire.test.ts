@@ -53,26 +53,44 @@ describe("nextScheduleFire", () => {
     ).toBe("2026-03-10T10:00:30.000Z");
   });
 
-  test("a business-days schedule on Friday evening next fires when Monday opens, not Saturday", () => {
+  test("a business-days schedule on Friday evening next fires at Monday's cron slot, not Saturday", () => {
     const now = new Date("2026-03-13T19:00:00.000Z");
+    const last = new Date("2026-03-13T18:00:00.000Z");
     const next = nextScheduleFire(
       {
         cron: "0 19 * * *",
         timezone: "Europe/Berlin",
         input: { business_days_only: true },
-        last_enqueued_at: new Date("2026-03-13T18:00:00.000Z"),
+        last_enqueued_at: last,
         created_at: created,
       },
       now,
     );
-    expect(next).toBe("2026-03-15T23:00:00.000Z");
+    expect(next).toBe("2026-03-16T18:00:00.000Z");
     const at = new Date(next ?? "");
     expect(calendarGateSkipReason(at, "Europe/Berlin", { business_days_only: true })).toBeNull();
+    expect(isCronDue("0 19 * * *", last, at, "Europe/Berlin")).toBe(true);
+  });
+
+  test("a skipped date moves the next fire to the next cron occurrence on an open date, not local midnight", () => {
+    const now = new Date("2026-11-24T07:42:00.000Z");
+    const next = nextScheduleFire(
+      {
+        cron: "26,28 13 * * *",
+        timezone: "Asia/Kathmandu",
+        input: { skip_dates: ["2026-11-24"] },
+        last_enqueued_at: new Date("2026-11-24T07:41:00.000Z"),
+        created_at: created,
+      },
+      now,
+    );
+    expect(next).toBe("2026-11-25T07:41:00.000Z");
+    const at = new Date(next ?? "");
+    const dayBefore = new Date("2026-11-24T07:43:00.000Z");
+    expect(isCronDue("26,28 13 * * *", dayBefore, at, "Asia/Kathmandu")).toBe(true);
     expect(
-      calendarGateSkipReason(new Date(at.getTime() - 60_000), "Europe/Berlin", {
-        business_days_only: true,
-      }),
-    ).toBe("weekend");
+      isCronDue("26,28 13 * * *", dayBefore, new Date(at.getTime() - 60_000), "Asia/Kathmandu"),
+    ).toBe(false);
   });
 
   test("gates closed beyond the search bound → null rather than a guess", () => {
