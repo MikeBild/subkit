@@ -10,7 +10,7 @@ import { apiCall } from "@/api/call";
 import { ApiError } from "@/api/client";
 import { useActorDirectory } from "@/app/actor-directory";
 import { actorDirectoryName } from "@/app/actor-directory-model";
-import { absolute, workflowHref } from "@/app/links";
+import { absolute, runHref, workflowHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { technicalFactsPlace } from "@/app/side-panel-model";
 import { useNameIndex } from "@/app/use-decisions";
@@ -119,7 +119,7 @@ function OutcomeText({ sentence }: { sentence: OutcomeSentence }) {
   );
 }
 
-export function RerunAction({ run, onStarted }: { run: Execution; onStarted(id: string): void }) {
+function useRerun(run: Execution, onStarted: (id: string) => void) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const detail = useQuery({
@@ -129,7 +129,7 @@ export function RerunAction({ run, onStarted }: { run: Execution; onStarted(id: 
   const safety = detail.data?.outcome.rerun_safety;
   const prepareOnly = safety?.mode === "prepare_only";
   const unavailable = !safety || safety.mode === "unavailable";
-  const rerun = useMutation({
+  const mutation = useMutation({
     mutationFn: () =>
       apiCall("post", "/v1/executions/{id}/rerun", {
         path: { id: run.id },
@@ -143,8 +143,14 @@ export function RerunAction({ run, onStarted }: { run: Execution; onStarted(id: 
     onError: (error) =>
       reportFailure(rerunFailureText(error instanceof ApiError ? error : null, t), error),
   });
+  return { mutation, safety, prepareOnly, unavailable, checking: detail.isPending };
+}
+
+export function RerunAction({ run, onStarted }: { run: Execution; onStarted(id: string): void }) {
+  const { t } = useI18n();
+  const { mutation: rerun, safety, prepareOnly, unavailable, checking } = useRerun(run, onStarted);
   const running = isLive(run.status);
-  const disabled = running || unavailable || detail.isPending;
+  const disabled = running || unavailable || checking;
   const disabledReason = running
     ? t("runs.rerun.whileRunning")
     : safety?.reason || t("runs.rerun.unavailable");
@@ -255,6 +261,11 @@ export function RunDetail({ run, page = false }: { run: Execution; page?: boolea
     : outcome?.cause_class === "connector_unavailable"
       ? refusedSignIn(outcome.connector)
       : null;
+  const rerun = useRerun(current, (next) => router.history.push(absolute(runHref(next))));
+  const rerunnable =
+    current.source_kind === "saved" &&
+    Boolean(current.workflow_id) &&
+    Boolean(current.workflow_version_id);
   const remedy =
     failed || held
       ? remedyFor({
@@ -263,7 +274,12 @@ export function RunDetail({ run, page = false }: { run: Execution; page?: boolea
           patch: patch.data?.items?.[0] ?? null,
           authState,
           held: held || outcome?.cause_class === "authority_mismatch",
-          canRun: session.permissions.includes("workflow:run"),
+          causeClass: outcome?.cause_class ?? null,
+          canRun:
+            session.permissions.includes("workflow:run") &&
+            rerunnable &&
+            !rerun.unavailable &&
+            !isLive(current.status),
           canChat: session.permissions.includes("conversation:write"),
           prompt: t("remedy.chatPrompt"),
         })
@@ -377,7 +393,11 @@ export function RunDetail({ run, page = false }: { run: Execution; page?: boolea
             remedy
               ? {
                   label: t(remedy.labelKey),
-                  onClick: () => router.history.push(absolute(remedy.href)),
+                  onClick: () =>
+                    remedy.kind === "retry"
+                      ? rerun.mutation.mutate()
+                      : router.history.push(absolute(remedy.href)),
+                  pending: remedy.kind === "retry" && rerun.mutation.isPending,
                   testId: "run-detail-cause-remedy",
                 }
               : undefined
