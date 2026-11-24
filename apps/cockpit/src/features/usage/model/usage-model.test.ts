@@ -9,6 +9,7 @@ import {
   consumptionRows,
   FLOW_ORIGIN,
   flowOrigin,
+  modelPriceApplied,
   originRows,
   runsByWorkflow,
   unpricedModels,
@@ -263,6 +264,37 @@ describe("a workflow id on the usage page", () => {
     expect(workflowNameLookup(undefined, 403)).toEqual({ kind: "unreadable" });
     expect(workflowNameLookup(undefined, 0)).toEqual({ kind: "unreadable" });
     expect(workflowNameLookup(undefined, null)).toEqual({ kind: "pending" });
+  });
+});
+
+describe("a saved model price", () => {
+  const envelope = (price?: { input_per_mtok: number; output_per_mtok: number }) => ({
+    groups: [
+      {
+        key: { model: "gpt-x" },
+        totals: { calls: 1, tokens: { total: 100 } },
+        ...(price ? { model_price: { ...price, currency: "USD" } } : {}),
+      },
+    ],
+  });
+
+  test("the old rates still in the read do not count as applied", () => {
+    expect(
+      modelPriceApplied(envelope({ input_per_mtok: 10, output_per_mtok: 20 }), "gpt-x", 15, 30),
+    ).toBe(false);
+  });
+
+  test("the new rates in the read count as applied", () => {
+    expect(
+      modelPriceApplied(envelope({ input_per_mtok: 15, output_per_mtok: 30 }), "gpt-x", 15, 30),
+    ).toBe(true);
+  });
+
+  test("an unpriced or missing model is not applied", () => {
+    expect(modelPriceApplied(envelope(), "gpt-x", 15, 30)).toBe(false);
+    expect(
+      modelPriceApplied(envelope({ input_per_mtok: 15, output_per_mtok: 30 }), "other", 15, 30),
+    ).toBe(false);
   });
 });
 
