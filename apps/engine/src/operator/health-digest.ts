@@ -90,7 +90,7 @@ export async function collectFailureGroups(
     .where(
       and(
         eq(executions.tenant_id, tenant_id),
-        eq(executions.status, "failed"),
+        inArray(executions.status, ["failed", "timed_out"]),
         gte(executions.created_at, cutoff),
       ),
     )

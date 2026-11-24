@@ -1,13 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import type { ResolvedPrincipal } from "../auth/types.ts";
-import { patchCandidates, tenants, users } from "../db/schema/index.ts";
+import { executionSteps, executions, patchCandidates, tenants, users } from "../db/schema/index.ts";
 import { grantResource } from "../rbac/grants.ts";
 import { readOpenPatchDecisions } from "../self-healing/open-decisions.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { reviewableDiff, seedPatchableWorkflow } from "../test-helpers/patch-candidates.ts";
 import { adminPrincipal } from "../test-helpers/principals.ts";
 import { emptyRoleId } from "../test-helpers/roles.ts";
-import { type AttentionItem, attentionAllClear, buildAttention } from "./attention.ts";
+import {
+  type AttentionItem,
+  attentionAllClear,
+  buildAttention,
+  invalidateAttention,
+} from "./attention.ts";
 import { HOUR, owner, tenant_id, testDb, useAttentionTenant, wf } from "./attention-fixtures.ts";
 import {
   collectFailureGroups,
@@ -217,5 +222,59 @@ describe("parity with the operational overview's decision buckets", () => {
     const paths = JSON.stringify(overview);
     expect(paths).not.toContain("/cockpit/decisions");
     expect(paths).not.toContain("/cockpit/operations");
+  });
+});
+
+describe("a scheduled run that timed out", () => {
+  test("shows its workflow as failing until a later scheduled run succeeds", async () => {
+    const [t] = await testDb.db
+      .insert(tenants)
+      .values({ slug: "t-attention-timeout", display_name: "Timeout" })
+      .returning();
+    const timeoutTenant = t!.id;
+    const reader = adminPrincipal(timeoutTenant);
+    const { workflow_id } = await seedPatchableWorkflow(testDb.db, timeoutTenant, "slow-one");
+    const now = getTestNow();
+    const [timedOut] = await testDb.db
+      .insert(executions)
+      .values({
+        tenant_id: timeoutTenant,
+        workflow_id,
+        source_kind: "saved",
+        status: "timed_out",
+        request_source: "scheduler",
+        execution_mode: "prod",
+        created_at: new Date(now - 2 * HOUR),
+      })
+      .returning();
+    await testDb.db.insert(executionSteps).values({
+      tenant_id: timeoutTenant,
+      execution_id: timedOut!.id,
+      step_key: "read",
+      step_index: 0,
+      kind: "request",
+      status: "timed_out",
+      error: { code: "step_timeout", message: "step exceeded its timeout" },
+    });
+
+    invalidateAttention(timeoutTenant);
+    const failing = await buildAttention(testDb.db, reader);
+    expect(failing.sources.failures).toBe("answered");
+    const item = failing.items.find((i) => i.id === `workflow:${workflow_id}`);
+    expect(item?.class).toBe("failing");
+    expect(item?.counts.failures).toBe(1);
+
+    await testDb.db.insert(executions).values({
+      tenant_id: timeoutTenant,
+      workflow_id,
+      source_kind: "saved",
+      status: "succeeded",
+      request_source: "scheduler",
+      execution_mode: "prod",
+      created_at: new Date(now - HOUR),
+    });
+    invalidateAttention(timeoutTenant);
+    const recovered = await buildAttention(testDb.db, reader);
+    expect(recovered.items.some((i) => i.id === `workflow:${workflow_id}`)).toBe(false);
   });
 });
