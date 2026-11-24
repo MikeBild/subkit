@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
@@ -98,6 +98,12 @@ describe("fast-check seeds", () => {
 });
 
 describe("existing rules stay line-based", () => {
+  test("schedule occurrence merge fixtures remain deterministic", () => {
+    const file = "apps/engine/src/scheduler/tests/schedule-occurrence-merge.test.ts";
+    const source = readFileSync(new URL(`../../${file}`, import.meta.url), "utf8");
+    expect(checkSource(file, source)).toEqual([]);
+  });
+
   test("flags clock and randomness next to a seeded property without double counting", () => {
     const src = [
       "fc.assert(fc.property(fc.nat(), (n) => n >= 0), { seed: 1 });",

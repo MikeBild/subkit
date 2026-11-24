@@ -58,3 +58,13 @@ export const MCP_CORE_TOOL_NAMES: ReadonlySet<string> = new Set([
   "authenticate",
   "list_recipes",
 ]);
+
+export const AUTHORING_SCOPE_REQUIRED = "authoring_scope_required";
+
+export const SAVE_TASK_AUTHORING_SCOPE_MESSAGE =
+  "Saving a task over MCP needs a credential with the mcp:authoring scope. Without it, tasks can be listed, started and stopped here and are created in the Cockpit.";
+
+export const authoringScopeRequiredMessage = (toolName: string): string =>
+  toolName === "save_task"
+    ? SAVE_TASK_AUTHORING_SCOPE_MESSAGE
+    : `"${toolName}" over MCP needs a credential with the mcp:authoring scope. Reconnect with the Authoring level, or use the Cockpit.`;

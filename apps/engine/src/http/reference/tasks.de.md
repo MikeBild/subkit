@@ -54,6 +54,7 @@ Im Chat geht es schneller. Beschreibe das Ziel, arbeite es einmal durch und bitt
 Gut zu wissen:
 
 - Eine Aufgabe hat einen Plan mit 1 bis 19 Schritten. Einen letzten Schritt ergänzt SubKit selbst: Du bestätigst das Ergebnis.
+- Die Schritt-ID `confirm-result` ist für diese abschließende Bestätigung reserviert.
 - Eine Aufgabe bindet höchstens 20 Workflows, 20 Connectors und 20 Skills. Gebundene Skills werden zu Beginn jedes Runs geladen.
 - Speichern startet nichts und erlaubt nichts.
 - Die Aufgabe gehört dir. Andere Personen im Arbeitsbereich sehen sie nicht. Admins sehen jede Aufgabe.

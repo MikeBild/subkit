@@ -33,7 +33,13 @@ import {
 import type { ToolInvocation } from "../../tools/types.ts";
 import { callToolViaDispatcher } from "../adapter.ts";
 import { toMcpErrorText } from "../error-adapter.ts";
-import { MCP_CORE_TOOL_NAMES, modeFlags, resolveMcpMode } from "../mode-resolver.ts";
+import {
+  AUTHORING_SCOPE_REQUIRED,
+  authoringScopeRequiredMessage,
+  MCP_CORE_TOOL_NAMES,
+  modeFlags,
+  resolveMcpMode,
+} from "../mode-resolver.ts";
 import { MCP_OFFLOAD_CHAR_CAP } from "../types.ts";
 import { assembleCatalog, DEFAULT_PALETTE_LIMIT, TOOL_PREFIX } from "./catalog-budget.ts";
 import { ELICITATION_FORM_TIMEOUT_MS } from "./conversation-native-elicitation.ts";
@@ -371,6 +377,37 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
             type: "text" as const,
             text: c.text,
           })),
+        };
+      }
+
+      if (
+        mcpModeForCall === "product" &&
+        getUnifiedRegistry().get(name, {
+          surface: "mcp",
+          mcpMode: "authoring",
+          readOnly: !modeFlags("authoring", readOnly).showTenantWrites,
+        })
+      ) {
+        logger.info({
+          module: "mcp",
+          action: "mcp.tool.mode_denied",
+          msg: "authoring tool refused — credential does not carry authoring",
+          tool: name,
+          principal_id: principal.id,
+          tenant_id: principal.tenant_id,
+        });
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({
+                ok: false,
+                error_code: AUTHORING_SCOPE_REQUIRED,
+                message: authoringScopeRequiredMessage(name),
+              }),
+            },
+          ],
         };
       }
 

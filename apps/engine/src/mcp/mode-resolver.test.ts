@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { ResolvedPrincipal } from "../auth/types.ts";
-import { modeFlags, resolveMcpMode } from "./mode-resolver.ts";
+import {
+  authoringScopeRequiredMessage,
+  modeFlags,
+  resolveMcpMode,
+  SAVE_TASK_AUTHORING_SCOPE_MESSAGE,
+} from "./mode-resolver.ts";
 
 function principal(scopes: string[]): ResolvedPrincipal {
   return {
@@ -104,5 +109,17 @@ describe("MCP catalog visibility · per-mode is strict superset", () => {
     for (const key of Object.keys(authoring) as Array<keyof typeof authoring>) {
       if (authoring[key] === true) expect(admin[key]).toBe(true);
     }
+  });
+});
+
+describe("MCP authoring scope refusal · authoringScopeRequiredMessage", () => {
+  test("save_task keeps its task-specific message", () => {
+    expect(authoringScopeRequiredMessage("save_task")).toBe(SAVE_TASK_AUTHORING_SCOPE_MESSAGE);
+  });
+
+  test("other authoring tools name the tool and the scope", () => {
+    const message = authoringScopeRequiredMessage("save_connector_draft");
+    expect(message).toContain("save_connector_draft");
+    expect(message).toContain("mcp:authoring");
   });
 });

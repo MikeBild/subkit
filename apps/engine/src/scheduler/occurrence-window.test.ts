@@ -36,6 +36,16 @@ describe("cronDueWindow", () => {
     });
   });
 
+  test("a window after an already recorded due time counts only the new one", () => {
+    expect(
+      cronDueWindow("* * * * *", "UTC", at("2026-11-20T21:10:00Z"), at("2026-11-20T21:11:00Z")),
+    ).toEqual({
+      first_due: at("2026-11-20T21:11:00Z"),
+      last_due: at("2026-11-20T21:11:00Z"),
+      count: 1,
+    });
+  });
+
   test("honours the schedule timezone", () => {
     const window = cronDueWindow(
       "0 9 * * *",

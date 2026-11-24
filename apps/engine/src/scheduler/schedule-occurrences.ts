@@ -72,9 +72,17 @@ async function writeOccurrence(
       .orderBy(desc(scheduleOccurrences.due_at), desc(scheduleOccurrences.created_at))
       .limit(1)
       .for("update");
+    const coveredUntil = prior?.last_due_at ?? null;
     if (entry.state === "ran" || entry.state === "ran_late") {
       const started_at = entry.started_at ?? new Date();
-      const due = window(null) ?? { first_due: started_at, last_due: started_at, count: 1 };
+      const pendingDue =
+        prior && (prior.state === "held" || prior.state === "skipped") ? prior.last_due_at : null;
+      const fallbackDue = pendingDue ?? started_at;
+      const due = window(coveredUntil) ?? {
+        first_due: fallbackDue,
+        last_due: fallbackDue,
+        count: 1,
+      };
       const run = classifyRun(due, started_at);
       await tx.insert(scheduleOccurrences).values({
         ...subjectColumns(subject),
@@ -108,7 +116,11 @@ async function writeOccurrence(
         );
       return;
     }
-    const due = window(null);
+    const due =
+      window(coveredUntil) ??
+      (prior && (prior.state === "held" || prior.state === "skipped")
+        ? { first_due: prior.last_due_at, last_due: prior.last_due_at, count: 1 }
+        : null);
     if (!due) return;
     await tx.insert(scheduleOccurrences).values({
       ...subjectColumns(subject),

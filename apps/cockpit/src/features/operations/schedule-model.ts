@@ -1,4 +1,5 @@
 import type { components } from "@cli-core/engine-api/openapi";
+import { occurrenceCovers } from "@/features/workflows/model";
 
 type ApiOccurrence = components["schemas"]["ScheduleOccurrence"];
 
@@ -75,12 +76,6 @@ export function toOccurrence(
     | "execution_id"
   > & { run_outcome?: RunOutcome | null; task_run_id?: string | null },
 ): Occurrence {
-  const covers =
-    occurrence.state === "ran"
-      ? 0
-      : occurrence.state === "ran_late" || occurrence.skipped_count > 1
-        ? occurrence.skipped_count
-        : 0;
   return {
     id: occurrence.id,
     ref: occurrence.workflow_id ?? occurrence.task_id ?? "",
@@ -88,7 +83,7 @@ export function toOccurrence(
     due: occurrence.due_at,
     start: occurrence.started_at,
     reasonCode: occurrence.reason_code,
-    covers,
+    covers: occurrenceCovers(occurrence),
     runId: occurrence.execution_id ?? occurrence.task_run_id ?? null,
     executionId: occurrence.execution_id ?? null,
     outcome: occurrence.run_outcome ?? null,

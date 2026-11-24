@@ -73,9 +73,15 @@ describe("schedule occurrences", () => {
 
   test("counts the scheduled times a row stands for", () => {
     expect(occurrenceCovers({ state: "ran", skipped_count: 0 })).toBe(0);
-    expect(occurrenceCovers({ state: "ran_late", skipped_count: 3 })).toBe(3);
+    expect(occurrenceCovers({ state: "ran_late", skipped_count: 3 })).toBe(4);
     expect(occurrenceCovers({ state: "skipped", skipped_count: 1 })).toBe(0);
     expect(occurrenceCovers({ state: "held", skipped_count: 4 })).toBe(4);
+  });
+
+  test("a merged late run counts the due time it ran for on top of the ones it stood in for", () => {
+    expect(occurrenceCovers({ state: "ran_late", skipped_count: 1 })).toBe(2);
+    expect(occurrenceCovers({ state: "ran_late", skipped_count: 2 })).toBe(3);
+    expect(occurrenceCovers({ state: "ran_late", skipped_count: 0 })).toBe(0);
   });
 
   test("groups consecutive occurrences by day", () => {

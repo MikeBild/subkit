@@ -9,7 +9,11 @@ import {
   SAVE_TASK_TOOL_NAME,
   taskCockpitPath,
 } from "../../../../api/operations/task-tool-contract.ts";
-import { resolveMcpMode } from "../../../../mcp/mode-resolver.ts";
+import {
+  AUTHORING_SCOPE_REQUIRED,
+  resolveMcpMode,
+  SAVE_TASK_AUTHORING_SCOPE_MESSAGE,
+} from "../../../../mcp/mode-resolver.ts";
 import { type PlaybookPlan, PlaybookPlanSchema } from "../../../playbook-contract.ts";
 import { readConversationPlaybookPlan } from "../../../service/tool-state.ts";
 import type { ConversationTool, ToolContext, ToolResult } from "../../index.ts";
@@ -156,10 +160,7 @@ async function saveTask(ctx: ToolContext, args: SaveTaskArgs): Promise<ToolResul
   const principal = ctx.principal;
   if (!principal) return failure("principal_required", "Saving a task needs a signed-in person.");
   if (ctx.surface === "mcp" && resolveMcpMode(principal) === "product")
-    return failure(
-      "authoring_scope_required",
-      "Saving a task over MCP needs a credential with the mcp:authoring scope. Without it, tasks can be listed, started and stopped here and are created in the Cockpit.",
-    );
+    return failure(AUTHORING_SCOPE_REQUIRED, SAVE_TASK_AUTHORING_SCOPE_MESSAGE);
   const operations = await import("../../../../api/operations/tasks.ts");
   const { TaskCreateInputSchema, TaskUpdateInputSchema, readTaskSourceOfToolCall } = await import(
     "../../../../tasks/index.ts"
