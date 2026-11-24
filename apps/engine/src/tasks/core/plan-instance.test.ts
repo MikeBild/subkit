@@ -174,12 +174,16 @@ describe("the confirmation step", () => {
 });
 
 describe("taskPlanTemplateIssue", () => {
+  const confirmation = step(TASK_RESULT_STEP_ID, {
+    criterion: { kind: "human_confirmation", question: GOAL },
+  });
+
   test("accepts a template that leaves room for the confirmation", () => {
     const steps = Array.from({ length: TASK_PLAN_TEMPLATE_MAX_STEPS }, (_, index) =>
       step(`s${index}`),
     );
     expect(taskPlanTemplateIssue(template(steps))).toBeNull();
-    expect(taskPlanTemplateIssue(template([...steps, step(TASK_RESULT_STEP_ID)]))).toBeNull();
+    expect(taskPlanTemplateIssue(template([...steps, confirmation]))).toBeNull();
     expect(taskPlanTemplateIssue(template([step("one")]))).toBeNull();
   });
 
@@ -188,13 +192,24 @@ describe("taskPlanTemplateIssue", () => {
       step(`s${index}`),
     );
     expect(taskPlanTemplateIssue(template(steps))).toBe("plan_too_many_steps");
-    expect(taskPlanTemplateIssue(template([step(TASK_RESULT_STEP_ID)]))).toBe("plan_without_steps");
+    expect(taskPlanTemplateIssue(template([confirmation]))).toBe("plan_without_steps");
     expect(taskPlanTemplateIssue(template([step("one")], { cancelled: true }))).toBe(
       "plan_cancelled",
     );
-    expect(taskPlanTemplateIssue(template([step(TASK_RESULT_STEP_ID)], { cancelled: true }))).toBe(
+    expect(taskPlanTemplateIssue(template([confirmation], { cancelled: true }))).toBe(
       "plan_cancelled",
     );
+  });
+
+  test("refuses a work step that uses the reserved confirmation id", () => {
+    expect(taskPlanTemplateIssue(template([step("one"), step(TASK_RESULT_STEP_ID)]))).toBe(
+      "plan_reserved_step_id",
+    );
+    expect(
+      taskPlanTemplateIssue(
+        template([step("one"), step(TASK_RESULT_STEP_ID)], { cancelled: true }),
+      ),
+    ).toBe("plan_cancelled");
   });
 });
 

@@ -2495,6 +2495,7 @@ In the chat you get there faster. Describe the goal, work through it once and as
 Good to know:
 
 - A task has a plan of 1 to 19 steps. SubKit adds one last step itself: you confirm the result.
+- The step ID `confirm-result` is reserved for that final confirmation.
 - A task binds at most 20 workflows, 20 connectors and 20 skills. Bound skills are loaded at the start of every run.
 - Saving starts nothing and allows nothing.
 - The task belongs to you. Other people in the workspace do not see it. Admins see every task.
