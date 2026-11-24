@@ -101,13 +101,6 @@ export function FormDialog({
   const errorText = dialogErrorText(error);
   const cause = dialogErrorCause(error, failure);
   const notice = useErrorNotice({ error: cause ?? undefined, tone: cause ? "error" : "warn" });
-  const [shownHint, setShownHint] = useState<string | null>(null);
-  const pointHint = (target: EventTarget) =>
-    setShownHint(
-      target instanceof Element
-        ? (target.closest("[data-hint]")?.getAttribute("data-hint") ?? null)
-        : null,
-    );
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {trigger ? <DialogTrigger asChild>{trigger}</DialogTrigger> : null}
@@ -196,29 +189,7 @@ export function FormDialog({
               />
             </div>
           ) : null}
-          <DialogFooter
-            className={cn(
-              DIALOG_FOOT,
-              hint !== undefined && "max-sm:flex-col-reverse max-sm:items-stretch",
-            )}
-            {...(hint !== undefined
-              ? {
-                  onMouseOver: (event) => pointHint(event.target),
-                  onFocus: (event) => pointHint(event.target),
-                  onMouseLeave: () => setShownHint(null),
-                  onBlur: () => setShownHint(null),
-                }
-              : {})}
-          >
-            {hint !== undefined ? (
-              <p
-                className="mr-auto self-center text-xs text-muted-foreground max-sm:mr-0"
-                aria-live="polite"
-                data-testid={`${testId}-hint`}
-              >
-                {shownHint ?? hint}
-              </p>
-            ) : null}
+          <FormDialogFoot hint={hint} testId={testId}>
             {cancel ? (
               <Button
                 type="button"
@@ -243,9 +214,55 @@ export function FormDialog({
                 {submit.label}
               </Button>
             ) : null}
-          </DialogFooter>
+          </FormDialogFoot>
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+export function FormDialogFoot({
+  hint,
+  testId,
+  children,
+}: {
+  hint?: string;
+  testId: string;
+  children: ReactNode;
+}) {
+  const [shownHint, setShownHint] = useState<string | null>(null);
+  const pointHint = (target: EventTarget) =>
+    setShownHint(
+      target instanceof Element
+        ? (target.closest("[data-hint]")?.getAttribute("data-hint") ?? null)
+        : null,
+    );
+  return (
+    <DialogFooter
+      className={cn(
+        DIALOG_FOOT,
+        hint !== undefined && "max-sm:flex-col-reverse max-sm:items-stretch",
+      )}
+      {...(hint !== undefined
+        ? {
+            onMouseOver: (event) => pointHint(event.target),
+            onFocus: (event) => pointHint(event.target),
+            onMouseLeave: () => setShownHint(null),
+            onBlur: () => setShownHint(null),
+          }
+        : {})}
+    >
+      {hint !== undefined ? (
+        <p
+          className="order-first min-h-4 basis-full truncate text-xs text-muted-foreground"
+          aria-live="polite"
+          title={shownHint ?? hint}
+          data-testid={`${testId}-hint`}
+        >
+          {shownHint ?? hint}
+        </p>
+      ) : null}
+      {children}
+    </DialogFooter>
   );
 }
