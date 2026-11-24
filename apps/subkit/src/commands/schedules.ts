@@ -29,12 +29,14 @@ function emitSchedule(json: boolean, row: ScheduleWriteResponse): void {
   process.stderr.write(formatAutomationReadiness(automation_readiness));
 }
 
+const scheduleListArgs = {
+  workflow: { type: "string", description: "Filter by workflow id" },
+  json: { type: "boolean", description: "JSON output", default: false },
+} as const;
+
 const listCommand = defineCommand({
   meta: { name: "list", description: "List scheduled workflow runs" },
-  args: {
-    workflow: { type: "string", description: "Filter by workflow id" },
-    json: { type: "boolean", description: "JSON output", default: false },
-  },
+  args: scheduleListArgs,
   async run({ args }) {
     return withCommandErrors(
       async () => {
@@ -192,6 +194,7 @@ const deleteCommand = defineCommand({
 
 export const schedulesCommand = defineCommand({
   meta: { name: "schedules", description: "Scheduled workflow runs" },
+  args: scheduleListArgs,
   subCommands: {
     list: listCommand,
     create: createCommand,
@@ -200,9 +203,5 @@ export const schedulesCommand = defineCommand({
     resume: pauseResumeCommand(false),
     delete: deleteCommand,
   },
-  async run(ctx) {
-    if (ctx.args._.length === 0) {
-      await listCommand.run?.({ args: { workflow: undefined, json: false, _: [] } } as never);
-    }
-  },
+  default: "list",
 });

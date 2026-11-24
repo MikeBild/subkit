@@ -417,7 +417,7 @@ const inboxCmd = defineCommand({
     list: inboxListCmd,
     ack: inboxAckCmd,
   },
-  run: ({ args }) => runInboxList(args),
+  default: "list",
 });
 
 export const notificationsCommand = defineCommand({
