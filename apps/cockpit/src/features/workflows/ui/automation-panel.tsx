@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { apiCall } from "@/api/call";
 import { listProposedPatchCandidates } from "@/api/decisions";
+import { useSetup } from "@/api/setup";
 import type { RunEnvironment } from "@/api/workflow-run";
 import {
   absolute,
@@ -187,12 +188,19 @@ export function useWorkflowAutomation(
       }),
     retry: false,
   });
+  const setup = useSetup(undecided);
+  const previewAwaited = undecided && mayPreview && previewVersionId !== null;
+  const recommendationPending =
+    (previewAwaited && connectorPreview.isPending) || (undecided && setup.isPending);
   const connectorEnvironment =
-    undecided && !connectorPreview.isPending
-      ? recommendedAutomationEnvironment(connectorPreview.data ?? null)
+    undecided && !recommendationPending
+      ? recommendedAutomationEnvironment(
+          previewAwaited ? (connectorPreview.data ?? null) : null,
+          setup.data?.default_environment,
+        )
       : null;
   const environment =
-    settled && !(undecided && mayPreview && previewVersionId !== null && connectorPreview.isPending)
+    settled && !recommendationPending
       ? automationEnvironment({ ...inputs, connectorEnvironment })
       : null;
   const mayDiagnose = permissions.includes("workflow:read");
