@@ -132,7 +132,7 @@ describe("runAuthoringPipeline — one-shot contract", () => {
       const preview = await dryRunWorkflowTool.execute(toolCtx, {
         input: { secret: "private-input-canary" },
       });
-      expect(preview).toMatchObject({ ok: false, error_code: "sensitive_execution_failure" });
+      expect(preview).toMatchObject({ ok: false, error_code: "caller_product_mismatch" });
       expect(JSON.stringify(preview)).not.toContain("private-input-canary");
       expect(writes).toBe(0);
       expect(JSON.stringify(toolCtx.getDraft())).toBe(initial);
