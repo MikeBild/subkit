@@ -4,9 +4,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { eq } from "drizzle-orm";
 import { conversations } from "../../apps/engine/src/db/schema/conversations.ts";
-import type { ExpectStep } from "./_helpers/pty.ts";
 import { ptyFailureDiagnostic, runPtyScenario, SKIP_PTY } from "./_helpers/pty.ts";
-import { quickStartReady } from "./_helpers/pty-steps.ts";
+import { quickStartReady, sendLine } from "./_helpers/pty-steps.ts";
 import { boot, type E2EEnv, shutdown } from "./setup.ts";
 
 let env: E2EEnv;
@@ -16,14 +15,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await shutdown(env);
 }, 30_000);
-
-function typeLine(text: string): ExpectStep[] {
-  return [
-    { kind: "send", text },
-    { kind: "wait", pattern: text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") },
-    { kind: "send", text: "\r" },
-  ];
-}
 
 describe("subkit interactive REPL briefing", () => {
   test.skipIf(SKIP_PTY)(
@@ -41,28 +32,28 @@ describe("subkit interactive REPL briefing", () => {
           [
             quickStartReady(),
             { kind: "ready" },
-            ...typeLine("Please summarize what SubKit can help with."),
+            sendLine("Please summarize what SubKit can help with."),
             {
               kind: "wait-file",
               file: debugFile,
               pattern: '"kind":"dialog.turn_end"[^\n]*"input_kind":"prompt"',
               count: 1,
             },
-            ...typeLine("/clear"),
+            sendLine("/clear"),
             {
               kind: "wait-file",
               file: debugFile,
               pattern: '"kind":"dialog.turn_end"[^\n]*"name":"clear"',
               count: 1,
             },
-            ...typeLine("Summarize the SubKit context again."),
+            sendLine("Summarize the SubKit context again."),
             {
               kind: "wait-file",
               file: debugFile,
               pattern: '"kind":"dialog.turn_end"[^\n]*"input_kind":"prompt"',
               count: 2,
             },
-            ...typeLine("/exit"),
+            sendLine("/exit"),
           ],
           {
             persona: env.personas.admin,
