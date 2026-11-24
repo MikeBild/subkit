@@ -70,7 +70,15 @@ const DETAIL_FIELDS: Record<string, readonly string[]> = {
     "execution_mode",
     "hold_writes",
   ],
+  "workspace.approval_policy_changed": ["source", "eligible_approvers"],
 };
+const APPROVAL_POLICY_SOURCES = new Set(["policy", "setup", "approver_joined"]);
+const approvalPolicySource = (entry: AuditEntry): string | null =>
+  entry.action === "workspace.approval_policy_changed" &&
+  typeof entry.metadata.source === "string" &&
+  APPROVAL_POLICY_SOURCES.has(entry.metadata.source)
+    ? entry.metadata.source
+    : null;
 const ID_DETAIL_FIELDS = new Set(["job_id"]);
 const DETAIL_TEXT = /^[A-Za-z0-9 _.:*/+-]{1,64}$/;
 const CORRELATION_ID = /^[0-9a-f]{32}$/;
@@ -404,6 +412,7 @@ export function projectAuditEntry(entry: AuditEntry): Record<string, unknown> {
     : auditResourceName(entry);
   const resourceName = recordedName ? sanitizeForAudit(scrubSecrets(recordedName) as string) : null;
   const changes = provenChanges(entry);
+  const policySource = approvalPolicySource(entry);
   return {
     id: entry.id,
     ts: entry.ts.toISOString(),
@@ -455,6 +464,7 @@ export function projectAuditEntry(entry: AuditEntry): Record<string, unknown> {
       ...(workflowId ? { workflow_id: workflowId } : {}),
       ...(taskId ? { task_id: taskId } : {}),
       ...(taskRunId ? { task_run_id: taskRunId } : {}),
+      ...(policySource ? { source: policySource } : {}),
     },
   };
 }
