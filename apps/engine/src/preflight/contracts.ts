@@ -27,6 +27,7 @@ export interface PreflightCheckResult {
   check: PreflightCheckName;
   ok: boolean;
   code?: PreflightRefusalCode;
+  reason?: string;
   detail?: string;
 }
 
@@ -49,6 +50,7 @@ export function refusalLine(result: PreflightCheckResult): string {
   return JSON.stringify({
     event: "preflight.refused",
     code: result.code ?? "settings_unparsable",
+    ...(result.reason ? { reason: result.reason } : {}),
     detail: (result.detail ?? "").replace(/\s+/g, " ").trim(),
   });
 }
