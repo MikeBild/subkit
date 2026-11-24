@@ -1,4 +1,4 @@
-import { MCP_AUTHORING_SCOPE } from "../auth/scopes.ts";
+import { MCP_AUTHORING_SCOPE } from "../auth/index.ts";
 import { decideToolMode } from "../conversations/public/policy.ts";
 import type {
   ConfirmEnvelope,
