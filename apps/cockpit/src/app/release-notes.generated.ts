@@ -3,7 +3,7 @@ export type ReleaseNotes = { version: string; notes: string[]; highlights: strin
 export type PendingNotes = { version: string | null; notes: string[]; highlights: string[] | null };
 
 export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: PendingNotes } = {
-  "source": "83b87b6ed3bfedb06de2389308a3b3b865e76702",
+  "source": "cf5e90c0f46ba6269354d94ccbbce23759d4b1ba",
   "releases": [
     {
       "version": "v1.0.0",
@@ -2400,6 +2400,14 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
         "approval expiry says today on same local day (#556)",
         "request steps name their protocol as a discriminated union",
         "remove the loop step kind in favor of for_each"
+      ]
+    },
+    {
+      "version": "v13.0.1",
+      "notes": [],
+      "highlights": [
+        "The Mac download and the desktop update always point at a release that has the Mac app. If the app for a new release is missing, the previous complete release stays the latest one.",
+        "A file you upload stays available for a day before cleanup can remove it, even when nothing links to it yet, so a chat or workflow that picks it up a little later still finds it."
       ]
     }
   ],
