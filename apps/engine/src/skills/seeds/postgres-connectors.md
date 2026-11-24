@@ -61,6 +61,10 @@ Zod schema rejects mixing them). Four shapes:
 - `expected_row_count: { min: 1 }`     — at least 1 row affected
 - `expected_row_count: { max: 0 }`     — at most 0 rows (a no-op safety net)
 
+A step-level `expected_row_count` always runs the statement inside a
+transaction (no `sql.transaction` needed), so a mismatch rolls the write back
+before it commits.
+
 ```json
 {
   "id": "delete_one",

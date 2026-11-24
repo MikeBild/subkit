@@ -269,6 +269,86 @@ describe("request step · postgres connector dispatch", () => {
     expect(result.error?.code).toBe("expected_row_count_mismatch");
   });
 
+  test("step-level expected_row_count mismatch rolls back the UPDATE without sql.transaction", async () => {
+    await ctx.testDb.pool.query(
+      "CREATE TABLE IF NOT EXISTS public.pg_step_guard (id int PRIMARY KEY, business_key text NOT NULL, status text NOT NULL)",
+    );
+    await ctx.testDb.pool.query(
+      "INSERT INTO public.pg_step_guard (id, business_key, status) VALUES (1, 'dup', 'open'), (2, 'dup', 'open'), (3, 'sentinel', 'open') ON CONFLICT (id) DO UPDATE SET status = 'open'",
+    );
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "pg-guard-rollback",
+      steps: [
+        {
+          id: "close",
+          kind: "request",
+          method: "UPDATE",
+          connector_id: pgConnectorId,
+          sql: {
+            query: "UPDATE public.pg_step_guard SET status = 'closed' WHERE business_key = $1",
+            params: ["dup"],
+          },
+          expected_row_count: 1,
+        },
+      ],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: null,
+    });
+    expect(result.status).toBe("failed");
+    expect(result.error?.code).toBe("expected_row_count_mismatch");
+    const after = await ctx.testDb.pool.query(
+      "SELECT id, status FROM public.pg_step_guard ORDER BY id",
+    );
+    expect(after.rows).toEqual([
+      { id: 1, status: "open" },
+      { id: 2, status: "open" },
+      { id: 3, status: "open" },
+    ]);
+  });
+
+  test("step-level expected_row_count match commits the UPDATE without sql.transaction", async () => {
+    await ctx.testDb.pool.query(
+      "CREATE TABLE IF NOT EXISTS public.pg_step_guard_ok (id int PRIMARY KEY, status text NOT NULL)",
+    );
+    await ctx.testDb.pool.query(
+      "INSERT INTO public.pg_step_guard_ok (id, status) VALUES (1, 'open'), (2, 'open') ON CONFLICT (id) DO UPDATE SET status = 'open'",
+    );
+    const { workflow_id } = await createWorkflowRow(ctx, {
+      name: "pg-guard-commit",
+      steps: [
+        {
+          id: "close",
+          kind: "request",
+          method: "UPDATE",
+          connector_id: pgConnectorId,
+          sql: {
+            query: "UPDATE public.pg_step_guard_ok SET status = 'closed' WHERE id = $1",
+            params: [1],
+          },
+          expected_row_count: 1,
+        },
+      ],
+    });
+    const result = await runExecution({
+      db: ctx.testDb.db,
+      tenant_id: ctx.tenantId,
+      source: { kind: "saved", workflow_id },
+      input: null,
+    });
+    expect(result.status).toBe("succeeded");
+    const after = await ctx.testDb.pool.query(
+      "SELECT id, status FROM public.pg_step_guard_ok ORDER BY id",
+    );
+    expect(after.rows).toEqual([
+      { id: 1, status: "closed" },
+      { id: 2, status: "open" },
+    ]);
+  });
+
   test("expected_row_count object form (max only) — at-most-N enforced", async () => {
     await ctx.testDb.pool.query(
       "CREATE TABLE IF NOT EXISTS public.pg_step_atmost (id int PRIMARY KEY)",
