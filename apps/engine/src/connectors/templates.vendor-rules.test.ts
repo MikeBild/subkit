@@ -236,9 +236,10 @@ describe("connector-template catalog — Anthropic and Google Analytics 4", () =
 });
 
 describe("connector-template provider metadata", () => {
-  test("only the analytics template declares a read POST operation", () => {
+  test("analytics and HubSpot templates declare read POST operations", () => {
     expect(templates.filter((t) => t.read_operations.length > 0).map((t) => t.slug)).toEqual([
       "google-analytics",
+      "hubspot",
     ]);
   });
 

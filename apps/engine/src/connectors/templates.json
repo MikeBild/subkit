@@ -8695,6 +8695,13 @@
   {
     "version": 1,
     "slug": "hubspot",
+    "read_operations": [
+      {
+        "method": "POST",
+        "origin": "https://api.hubapi.com",
+        "path_pattern": "^/crm/v3/objects/deals/search$"
+      }
+    ],
     "name": "HubSpot",
     "driver": "http",
     "base_url": "https://api.hubapi.com",
