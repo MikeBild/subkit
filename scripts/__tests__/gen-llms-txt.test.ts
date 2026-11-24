@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -87,4 +87,12 @@ describe("docs images in the bundle", () => {
       `  "first-workflow-run-result.de.webp": {\n    path: image0FirstWorkflowRunResultDe,\n    sha256: "${"a".repeat(64)}",\n    bytes: 42,\n  },`,
     );
   });
+});
+
+test("generated docs bundle is valid JSON", () => {
+  const source = readFileSync(
+    new URL("../../apps/engine/src/http/llms/docs.json", import.meta.url),
+    "utf8",
+  );
+  expect(() => JSON.parse(source)).not.toThrow();
 });
