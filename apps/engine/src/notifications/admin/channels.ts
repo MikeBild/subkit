@@ -1,14 +1,23 @@
-import { and, eq } from "drizzle-orm";
+import { and, count, eq } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../../audit/index.ts";
 import type { Db } from "../../db/client.ts";
 import {
   type NotificationChannelRow,
   notificationChannels,
+  notificationRules,
 } from "../../db/schema/notifications.ts";
+import { logger } from "../../logging/index.ts";
 import type { NotificationSeverity } from "../matcher.ts";
 import { auditedBy, type NotificationActor } from "./actor.ts";
 
 export type { NotificationChannelRow };
+
+export class ChannelInUseError extends Error {
+  constructor(readonly rule_count: number) {
+    super("channel_in_use");
+    this.name = "ChannelInUseError";
+  }
+}
 
 interface CreateChannelInput {
   workspace_id: string;
@@ -98,16 +107,46 @@ export async function updateChannel(
   return row;
 }
 
+async function countRulesTargeting(db: Db, row: NotificationChannelRow): Promise<number> {
+  const [result] = await db
+    .select({ rule_count: count() })
+    .from(notificationRules)
+    .where(
+      and(
+        eq(notificationRules.tenant_id, row.tenant_id),
+        eq(notificationRules.target_workspace_id, row.workspace_id),
+        eq(notificationRules.target_channel_id, row.channel_id),
+      ),
+    );
+  return result?.rule_count ?? 0;
+}
+
 export async function deleteChannel(
   db: Db,
   actor: NotificationActor,
   id: string,
 ): Promise<boolean> {
+  const scoped = and(
+    eq(notificationChannels.tenant_id, actor.tenant_id),
+    eq(notificationChannels.id, id),
+  );
+  const [row] = await db.select().from(notificationChannels).where(scoped).limit(1);
+  if (!row) return false;
+  const ruleCount = await countRulesTargeting(db, row);
+  if (ruleCount > 0) {
+    logger.warn({
+      module: "notifications",
+      action: "channel.delete.refused",
+      msg: "channel is still targeted by notification rules",
+      tenant_id: actor.tenant_id,
+      channel_id: id,
+      rule_count: ruleCount,
+    });
+    throw new ChannelInUseError(ruleCount);
+  }
   const deleted = await db
     .delete(notificationChannels)
-    .where(
-      and(eq(notificationChannels.tenant_id, actor.tenant_id), eq(notificationChannels.id, id)),
-    )
+    .where(scoped)
     .returning({ id: notificationChannels.id });
   if (deleted.length === 0) return false;
   await auditAwait(
