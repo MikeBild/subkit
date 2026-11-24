@@ -5,7 +5,8 @@ import path from "node:path";
 import { eq } from "drizzle-orm";
 import { conversations } from "../../apps/engine/src/db/schema/conversations.ts";
 import type { ExpectStep } from "./_helpers/pty.ts";
-import { runPtyScenario, SKIP_PTY } from "./_helpers/pty.ts";
+import { ptyFailureDiagnostic, runPtyScenario, SKIP_PTY } from "./_helpers/pty.ts";
+import { quickStartReady } from "./_helpers/pty-steps.ts";
 import { boot, type E2EEnv, shutdown } from "./setup.ts";
 
 let env: E2EEnv;
@@ -19,7 +20,7 @@ afterAll(async () => {
 function typeLine(text: string): ExpectStep[] {
   return [
     { kind: "send", text },
-    { kind: "sleep", ms: 100 },
+    { kind: "wait", pattern: text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") },
     { kind: "send", text: "\r" },
   ];
 }
@@ -38,14 +39,29 @@ describe("subkit interactive REPL briefing", () => {
       try {
         const result = await runPtyScenario(
           [
+            quickStartReady(),
             { kind: "ready" },
-            { kind: "sleep", ms: 1000 },
             ...typeLine("Please summarize what SubKit can help with."),
-            { kind: "sleep", ms: 1500 },
+            {
+              kind: "wait-file",
+              file: debugFile,
+              pattern: '"kind":"dialog.turn_end"[^\n]*"input_kind":"prompt"',
+              count: 1,
+            },
             ...typeLine("/clear"),
-            { kind: "sleep", ms: 500 },
+            {
+              kind: "wait-file",
+              file: debugFile,
+              pattern: '"kind":"dialog.turn_end"[^\n]*"name":"clear"',
+              count: 1,
+            },
             ...typeLine("Summarize the SubKit context again."),
-            { kind: "sleep", ms: 1500 },
+            {
+              kind: "wait-file",
+              file: debugFile,
+              pattern: '"kind":"dialog.turn_end"[^\n]*"input_kind":"prompt"',
+              count: 2,
+            },
             ...typeLine("/exit"),
           ],
           {
@@ -55,7 +71,7 @@ describe("subkit interactive REPL briefing", () => {
             env: { SUBKIT_DEBUG: "1", SUBKIT_DEBUG_FILE: debugFile },
           },
         );
-        expect(result.exitCode).toBe(0);
+        expect(result.exitCode, ptyFailureDiagnostic(result)).toBe(0);
         expect(result.visible).not.toContain("HTTP 500");
         const records = readFileSync(debugFile, "utf8")
           .trim()
