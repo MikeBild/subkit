@@ -11,7 +11,7 @@ import { CodeBlock } from "./code-block";
 import { CopyField } from "./copy-field";
 import { DataState } from "./data-state";
 import { FactList } from "./fact-list";
-import { dialogWidthClass } from "./form-dialog";
+import { dialogWidthClass, FormDialogFoot } from "./form-dialog";
 import {
   KPI_TILE_BOX,
   KPI_TILE_DETAIL,
@@ -351,6 +351,36 @@ describe("P14 FormDialog", () => {
   test("two widths", () => {
     expect(dialogWidthClass("default")).toBe("sm:max-w-lg");
     expect(dialogWidthClass("wide")).toBe("sm:max-w-xl");
+  });
+
+  test("the hint has its own row so a longer button hint never moves the buttons", () => {
+    const html = render(
+      <FormDialogFoot hint="Short default hint." testId="dialog">
+        <button type="button" data-hint="A much longer hint that would push the buttons aside.">
+          Apply only
+        </button>
+        <button type="submit">Approve</button>
+      </FormDialogFoot>,
+    );
+    const hint = html.match(/<p[^>]*data-testid="dialog-hint"[^>]*>/)?.[0] ?? "";
+    expect(hint).toContain("basis-full");
+    expect(hint).toContain("order-first");
+    expect(hint).toContain("truncate");
+    expect(hint).toContain("min-h-4");
+    expect(hint).not.toContain("mr-auto");
+    expect(hint).not.toContain("self-center");
+    expect(html.indexOf('data-testid="dialog-hint"')).toBeLessThan(html.indexOf("Apply only"));
+    expect(html.match(/<div[^>]*data-slot="dialog-footer"[^>]*>/)?.[0]).toContain("justify-end");
+  });
+
+  test("without a hint the footer is only the buttons", () => {
+    const html = render(
+      <FormDialogFoot testId="dialog">
+        <button type="submit">Save</button>
+      </FormDialogFoot>,
+    );
+    expect(html).not.toContain('data-testid="dialog-hint"');
+    expect(html).not.toContain("flex-col-reverse");
   });
 });
 
