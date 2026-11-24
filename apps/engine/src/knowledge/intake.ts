@@ -10,6 +10,7 @@ import {
   intakeProposalRevisions,
   intakeProposals,
 } from "../db/schema/intake.ts";
+import { isTransientDbError, retryTransient } from "../db/transient.ts";
 import { redactSecretShapes } from "../logging/scrub-secrets.ts";
 import { absorbedRequestKey, intakeGroupKey } from "./core/intake-dedupe.ts";
 import {
@@ -200,6 +201,22 @@ export async function setIntakeDefaultCategory(
   });
 }
 
+function isTransientIntakeWriteError(error: unknown, depth = 0): boolean {
+  if (depth > 4 || !error || typeof error !== "object") return false;
+  return (
+    isTransientDbError(error) ||
+    isTransientIntakeWriteError((error as { cause?: unknown }).cause, depth + 1)
+  );
+}
+
+const INTAKE_WRITE_RETRY = {
+  tries: 5,
+  startMs: 50,
+  maxMs: 1_000,
+  label: "intake_write",
+  shouldRetry: isTransientIntakeWriteError,
+} as const;
+
 export async function createIntakeItem(
   p: CreateIntakeItemParams,
   exec: Executor,
@@ -214,75 +231,18 @@ export async function createIntakeItem(
           { ...p, target: null, exclude_request_id: p.client_request_id },
           deps.embedder,
         );
-  return (db as Db).transaction(async (tx) => {
-    const intakeCategory = p.category
-      ? parseIntakeCategory(p.category)
-      : p.actor.kind === "anonymous"
-        ? DEFAULT_INTAKE_CATEGORY
-        : await defaultIntakeCategory(tx, p.tenant_id, p.actor);
-    const digest = itemRequestDigest(p, intakeCategory);
-    const { params: clean, redactions } = redactCollected(p);
-    await lockIntakeRequest(tx, p.tenant_id, p.client_request_id);
-    const previous = await tx
-      .select()
-      .from(intakeItems)
-      .where(
-        and(
-          eq(intakeItems.tenant_id, p.tenant_id),
-          eq(intakeItems.client_request_id, p.client_request_id),
-        ),
-      )
-      .limit(1);
-    if (previous[0]) {
-      if (previous[0].creation_request_digest !== digest)
-        throw new IntakeConflictError("item request id was already used with different content");
-      return intakeItemView(previous[0]);
-    }
-    const absorbed = await replayAbsorbedRequest(tx, {
-      tenant_id: p.tenant_id,
-      client_request_id: p.client_request_id,
-      digest,
-    });
-    if (absorbed) return absorbed;
-    const collected = snapshot(clean, redactions);
-    const duplicate =
-      p.actor.kind === "anonymous"
-        ? null
-        : await appendToOpenDuplicate(tx, {
-            tenant_id: p.tenant_id,
-            actor: p.actor,
-            target: null,
-            source_url: collected.source_url,
-            similar_id,
-            agent: collected.origin,
-            session_id: absorbedRequestKey(p.client_request_id, digest),
-            repo: null,
-            excerpt: collectedEvidenceExcerpt(collected.source_url, clean.body),
-            captured_at: p.captured_at,
-          });
-    if (duplicate) return duplicate;
-    const inserted = await tx
-      .insert(intakeItems)
-      .values({
-        tenant_id: p.tenant_id,
-        category: intakeCategory,
-        client_request_id: p.client_request_id,
-        creation_request_digest: digest,
-        original_snapshot: collected,
-        title: clean.title,
-        body: clean.body,
-        note: clean.note ?? "",
-        attachment_file_id: p.attachment?.file_id ?? null,
-        group_key: intakeGroupKey({ source_url: collected.source_url }),
-        collected_by_type: p.actor.kind,
-        collected_by_id: p.actor.id,
-      })
-      .onConflictDoNothing()
-      .returning();
-    const row =
-      inserted[0] ??
-      (
-        await tx
+  return retryTransient(
+    () =>
+      (db as Db).transaction(async (tx) => {
+        const intakeCategory = p.category
+          ? parseIntakeCategory(p.category)
+          : p.actor.kind === "anonymous"
+            ? DEFAULT_INTAKE_CATEGORY
+            : await defaultIntakeCategory(tx, p.tenant_id, p.actor);
+        const digest = itemRequestDigest(p, intakeCategory);
+        const { params: clean, redactions } = redactCollected(p);
+        await lockIntakeRequest(tx, p.tenant_id, p.client_request_id);
+        const previous = await tx
           .select()
           .from(intakeItems)
           .where(
@@ -291,31 +251,96 @@ export async function createIntakeItem(
               eq(intakeItems.client_request_id, p.client_request_id),
             ),
           )
-          .limit(1)
-      )[0];
-    if (!row) throw new Error("intake item insertion failed");
-    if (!inserted[0]) {
-      if (row.creation_request_digest !== digest)
-        throw new IntakeConflictError("item request id was already used with different content");
-      return intakeItemView(row);
-    }
-    await recordIntakeAudit(
-      tx,
-      p.tenant_id,
-      p.actor,
-      AuditAction.INTAKE_ITEM_COLLECTED,
-      "intake_item",
-      row.id,
-      {
-        category: intakeCategory,
-        origin: row.original_snapshot.origin,
-        source_url: row.original_snapshot.source_url ?? null,
-        redactions: row.original_snapshot.redactions ?? 0,
-        ...(p.attachment ? { attachment_file_id: p.attachment.file_id } : {}),
-      },
-    );
-    return intakeItemView(row);
-  });
+          .limit(1);
+        if (previous[0]) {
+          if (previous[0].creation_request_digest !== digest)
+            throw new IntakeConflictError(
+              "item request id was already used with different content",
+            );
+          return intakeItemView(previous[0]);
+        }
+        const absorbed = await replayAbsorbedRequest(tx, {
+          tenant_id: p.tenant_id,
+          client_request_id: p.client_request_id,
+          digest,
+        });
+        if (absorbed) return absorbed;
+        const collected = snapshot(clean, redactions);
+        const duplicate =
+          p.actor.kind === "anonymous"
+            ? null
+            : await appendToOpenDuplicate(tx, {
+                tenant_id: p.tenant_id,
+                actor: p.actor,
+                target: null,
+                source_url: collected.source_url,
+                similar_id,
+                agent: collected.origin,
+                session_id: absorbedRequestKey(p.client_request_id, digest),
+                repo: null,
+                excerpt: collectedEvidenceExcerpt(collected.source_url, clean.body),
+                captured_at: p.captured_at,
+              });
+        if (duplicate) return duplicate;
+        const inserted = await tx
+          .insert(intakeItems)
+          .values({
+            tenant_id: p.tenant_id,
+            category: intakeCategory,
+            client_request_id: p.client_request_id,
+            creation_request_digest: digest,
+            original_snapshot: collected,
+            title: clean.title,
+            body: clean.body,
+            note: clean.note ?? "",
+            attachment_file_id: p.attachment?.file_id ?? null,
+            group_key: intakeGroupKey({ source_url: collected.source_url }),
+            collected_by_type: p.actor.kind,
+            collected_by_id: p.actor.id,
+          })
+          .onConflictDoNothing()
+          .returning();
+        const row =
+          inserted[0] ??
+          (
+            await tx
+              .select()
+              .from(intakeItems)
+              .where(
+                and(
+                  eq(intakeItems.tenant_id, p.tenant_id),
+                  eq(intakeItems.client_request_id, p.client_request_id),
+                ),
+              )
+              .limit(1)
+          )[0];
+        if (!row) throw new Error("intake item insertion failed");
+        if (!inserted[0]) {
+          if (row.creation_request_digest !== digest)
+            throw new IntakeConflictError(
+              "item request id was already used with different content",
+            );
+          return intakeItemView(row);
+        }
+        await recordIntakeAudit(
+          tx,
+          p.tenant_id,
+          p.actor,
+          AuditAction.INTAKE_ITEM_COLLECTED,
+          "intake_item",
+          row.id,
+          {
+            category: intakeCategory,
+            origin: row.original_snapshot.origin,
+            source_url: row.original_snapshot.source_url ?? null,
+            redactions: row.original_snapshot.redactions ?? 0,
+            ...(p.attachment ? { attachment_file_id: p.attachment.file_id } : {}),
+          },
+        );
+        return intakeItemView(row);
+      }),
+    INTAKE_WRITE_RETRY,
+  );
 }
 
 export async function listIntakeItems(
@@ -448,74 +473,78 @@ export async function patchIntakeItem(
   exec: Executor,
 ): Promise<IntakeItemView | null> {
   const db = exec;
-  return (db as Db).transaction(async (tx) => {
-    const rows = await tx
-      .select()
-      .from(intakeItems)
-      .where(and(eq(intakeItems.tenant_id, p.tenant_id), eq(intakeItems.id, p.id)))
-      .limit(1)
-      .for("update");
-    const existing = rows[0];
-    if (!existing) return null;
-    if (existing.version !== p.expected_version)
-      throw new IntakeConflictError("intake item has changed");
-    if (existing.state === "admitted" && p.state !== undefined)
-      throw new IntakeConflictError("an admitted intake item cannot change processing state");
-    let redactions = 0;
-    const clean = (value: string | undefined): string | undefined => {
-      if (value === undefined) return undefined;
-      const r = redactSecretShapes(value);
-      redactions += r.count;
-      return r.text;
-    };
-    const title = clean(p.title);
-    const body = clean(p.body);
-    const note = clean(p.note);
-    const contentChanged =
-      p.title !== undefined ||
-      p.body !== undefined ||
-      p.note !== undefined ||
-      p.category !== undefined ||
-      p.state !== undefined;
-    const [row] = await tx
-      .update(intakeItems)
-      .set({
-        ...(p.category !== undefined ? { category: parseIntakeCategory(p.category) } : {}),
-        ...(title !== undefined ? { title } : {}),
-        ...(body !== undefined ? { body } : {}),
-        ...(note !== undefined ? { note } : {}),
-        ...(p.state !== undefined ? { state: p.state } : {}),
-        ...(contentChanged ? { version: existing.version + 1 } : {}),
-        updated_at: new Date(),
-      })
-      .where(and(eq(intakeItems.tenant_id, p.tenant_id), eq(intakeItems.id, p.id)))
-      .returning();
-    if (!row) throw new Error("intake item update failed");
-    const staleReason =
-      p.category !== undefined
-        ? "intake_category_changed"
-        : p.title !== undefined ||
-            p.body !== undefined ||
-            p.note !== undefined ||
-            p.state !== undefined
-          ? "intake_item_changed"
-          : null;
-    if (staleReason) await staleDraftProposalsForItems(tx, p.tenant_id, [p.id], staleReason);
-    await recordIntakeAudit(
-      tx,
-      p.tenant_id,
-      p.actor,
-      AuditAction.INTAKE_ITEM_UPDATED,
-      "intake_item",
-      p.id,
-      {
-        version: row.version,
-        ...(p.category !== undefined ? { category: row.category } : {}),
-        ...(redactions > 0 ? { redactions } : {}),
-      },
-    );
-    return intakeItemView(row);
-  });
+  return retryTransient(
+    () =>
+      (db as Db).transaction(async (tx) => {
+        const rows = await tx
+          .select()
+          .from(intakeItems)
+          .where(and(eq(intakeItems.tenant_id, p.tenant_id), eq(intakeItems.id, p.id)))
+          .limit(1)
+          .for("update");
+        const existing = rows[0];
+        if (!existing) return null;
+        if (existing.version !== p.expected_version)
+          throw new IntakeConflictError("intake item has changed");
+        if (existing.state === "admitted" && p.state !== undefined)
+          throw new IntakeConflictError("an admitted intake item cannot change processing state");
+        let redactions = 0;
+        const clean = (value: string | undefined): string | undefined => {
+          if (value === undefined) return undefined;
+          const r = redactSecretShapes(value);
+          redactions += r.count;
+          return r.text;
+        };
+        const title = clean(p.title);
+        const body = clean(p.body);
+        const note = clean(p.note);
+        const contentChanged =
+          p.title !== undefined ||
+          p.body !== undefined ||
+          p.note !== undefined ||
+          p.category !== undefined ||
+          p.state !== undefined;
+        const [row] = await tx
+          .update(intakeItems)
+          .set({
+            ...(p.category !== undefined ? { category: parseIntakeCategory(p.category) } : {}),
+            ...(title !== undefined ? { title } : {}),
+            ...(body !== undefined ? { body } : {}),
+            ...(note !== undefined ? { note } : {}),
+            ...(p.state !== undefined ? { state: p.state } : {}),
+            ...(contentChanged ? { version: existing.version + 1 } : {}),
+            updated_at: new Date(),
+          })
+          .where(and(eq(intakeItems.tenant_id, p.tenant_id), eq(intakeItems.id, p.id)))
+          .returning();
+        if (!row) throw new Error("intake item update failed");
+        const staleReason =
+          p.category !== undefined
+            ? "intake_category_changed"
+            : p.title !== undefined ||
+                p.body !== undefined ||
+                p.note !== undefined ||
+                p.state !== undefined
+              ? "intake_item_changed"
+              : null;
+        if (staleReason) await staleDraftProposalsForItems(tx, p.tenant_id, [p.id], staleReason);
+        await recordIntakeAudit(
+          tx,
+          p.tenant_id,
+          p.actor,
+          AuditAction.INTAKE_ITEM_UPDATED,
+          "intake_item",
+          p.id,
+          {
+            version: row.version,
+            ...(p.category !== undefined ? { category: row.category } : {}),
+            ...(redactions > 0 ? { redactions } : {}),
+          },
+        );
+        return intakeItemView(row);
+      }),
+    INTAKE_WRITE_RETRY,
+  );
 }
 
 export async function deleteDiscardedIntakeItem(
