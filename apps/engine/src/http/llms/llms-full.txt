@@ -4884,7 +4884,7 @@ The complete, machine-readable description of every route is at `/openapi.json` 
 
 ### Schedule history
 
-Query parameters of both routes: `limit` (default 50, at most 200), `before` (a time in ISO 8601) and `before_id` (the id of an entry). The answer is `{items, next_before, next_before_id}`. Pass `next_before` as `before` and `next_before_id` as `before_id` to read older entries; entries due at the same time are not skipped.
+Query parameters of both routes: `limit` (default 50, at most 200), `before` (a time in ISO 8601, with `Z` or a numeric offset such as `+05:30`) and `before_id` (the id of an entry). The answer is `{items, next_before, next_before_id}`. Pass `next_before` as `before` and `next_before_id` as `before_id` to read older entries; entries due at the same time are not skipped.
 
 | Field | Meaning |
 | --- | --- |
