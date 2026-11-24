@@ -203,7 +203,7 @@ Wird eine Person aus dem Arbeitsbereich entfernt oder deaktiviert, werden ihre A
 Ein Run kann keine Workflows schreiben. Das bleibt deine Entscheidung.
 
 1. Öffne im Reiter **Runs** einen Run, der **erledigt** ist.
-2. Wähle in seinem Menü **Als Workflow weiterführen**. Eine normale Unterhaltung öffnet sich, und die Bitte, einen Workflow mit denselben Schritten zu bauen, steht schon im Eingabefeld.
+2. Wähle in seinem Menü **Als Workflow weiterführen**. Eine normale Unterhaltung öffnet sich, und die Bitte, einen Workflow mit denselben Schritten zu bauen, steht schon im Eingabefeld. Sie nennt den Run, den du geöffnet hast, damit SubKit genau von diesem Run ausgeht.
 3. Sende die Bitte und arbeite den Entwurf mit SubKit durch.
 4. Speichere den Entwurf und gib ihn frei, wie in „Dein erster Workflow“ beschrieben.
 

@@ -36,6 +36,7 @@ import {
   type TaskRun,
   taskBody,
   taskCounts,
+  taskRunContinueHref,
   taskStatus,
   triggerKey,
 } from "./tasks-model";
@@ -90,6 +91,30 @@ describe("run state words", () => {
     );
     expect(stateWords("sleeping", { next_check_at: null }, words)).toBe("schläft");
     expect(stateWords("running", null, words)).toBe("läuft");
+  });
+
+  test("continuing a run as a workflow names the chosen run", () => {
+    const words = {
+      t: (key: Parameters<typeof translate>[1], values?: Record<string, string>) =>
+        translate("en", key, values),
+      time: (at: string) => at.slice(0, 10),
+    };
+    const first = run({ id: "run-first", state: "completed", created_at: "2026-11-18T09:00:00Z" });
+    const second = run({
+      id: "run-second",
+      state: "completed",
+      created_at: "2026-11-19T09:00:00Z",
+    });
+    const firstHref = taskRunContinueHref(task(), first, words);
+    const secondHref = taskRunContinueHref(task(), second, words);
+    const promptOf = (href: string) =>
+      new URL(href, "http://cockpit").searchParams.get("prompt") ?? "";
+    expect(firstHref).not.toBe(secondHref);
+    expect(promptOf(firstHref)).toContain("run-first");
+    expect(promptOf(firstHref)).toContain("2026-11-18");
+    expect(promptOf(firstHref)).toContain(task().name);
+    expect(promptOf(secondHref)).toContain("run-second");
+    expect(promptOf(secondHref)).not.toContain("run-first");
   });
 
   test("tones never rely on a state the badge does not know", () => {
