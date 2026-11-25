@@ -165,6 +165,7 @@ Ein Run wartet in diesen Fällen auf dich:
 - Zwei Runden hintereinander brachten keinen echten Fortschritt. Als Fortschritt zählt, dass ein Schritt fertig wird, ein neuer Beleg oder ein neues Ergebnis dazukommt, ein gebundener Workflow oder Connector läuft, du schreibst oder antwortest oder der Run seine nächste Prüfung plant. Nur Notizen im Plan umzuschreiben zählt nicht.
 - Du hast am Eingabefeld **Stoppen** gewählt, während eine Runde lief.
 - Eine Runde wurde abgebrochen, zum Beispiel weil die Engine neu gestartet hat, während sie arbeitete. Der Run schlägt nicht fehl: Er behält seine Unterhaltung und arbeitet weiter, wenn du ihm schreibst.
+- Seine Unterhaltung wurde abgebrochen, und der Run wollte dort eine Rückfrage stellen. SubKit stellt die Rückfrage nicht und öffnet die Unterhaltung nicht wieder. Der Run wartet mit dem Grund `conversation_abandoned`; wähle **Run abbrechen** und starte die Aufgabe neu.
 - Das monatliche KI-Budget ist erreicht, oder der Arbeitsbereich hat gerade keinen KI-Anbieter. In diesen beiden Fällen musst du im Run nichts tun: Er arbeitet von selbst weiter, sobald das Budget es wieder erlaubt oder ein Anbieter eingerichtet ist.
 
 Ein Run schläft, wenn er sich selbst eine nächste Prüfung gesetzt hat, wenn der KI-Anbieter SubKit bremst oder solange die Aufgabe pausiert ist. Eine nächste Prüfung liegt höchstens 31 Tage voraus und nie hinter der Frist des Runs.
