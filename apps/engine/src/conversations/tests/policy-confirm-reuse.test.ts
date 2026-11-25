@@ -51,7 +51,9 @@ test("reused policy confirmation publishes the persisted approval metadata", asy
     getDraft: () => ({ workflow: { name: "", steps: [] } }),
     setDraft: async () => {},
   };
+  let invocation = 0;
   const invoke = async () => {
+    invocation += 1;
     const signals = freshSignals();
     const events: TurnEvent[] = [];
     const wrapped = await wrapTools(
@@ -66,7 +68,7 @@ test("reused policy confirmation publishes the persisted approval metadata", asy
     if (!execute) throw new Error("missing run_workflow");
     const result = await execute(
       { workflow: "reuse-test", environment: "prod", execute_writes: true },
-      { toolCallId: crypto.randomUUID(), messages: [] },
+      { toolCallId: `00000000-0000-4000-8000-00000000000${invocation}`, messages: [], context: {} },
     );
     return { result, signals, events };
   };
