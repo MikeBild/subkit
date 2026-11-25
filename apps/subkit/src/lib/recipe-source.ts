@@ -95,7 +95,7 @@ export function recipeWorkflowSource(
   return {
     body: swapConnectorIds(entry.workflow, mapping) as Record<string, unknown>,
     previewInput: entry.sample_input,
-    installInputs: entry.install_inputs,
+    installInputs: entry.install_inputs ?? [],
     recipe: { vertical: SOLUTIONS_VERTICAL, slug },
   };
 }

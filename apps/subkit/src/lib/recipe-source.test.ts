@@ -50,6 +50,17 @@ const pack = (connector_id: string | null, candidates: Candidate[] = []) => ({
 });
 
 describe("subkit workflows create --from-recipe", () => {
+  test("recipe sources normalize omitted install inputs and preserve declared inputs", () => {
+    expect(recipeWorkflowSource(pack(SLACK), "webhook-to-slack").installInputs).toEqual([]);
+    const declared = { ...entry(SLACK), install_inputs: ["property_id"] };
+    expect(
+      recipeWorkflowSource(
+        { recipes: [declared] as unknown as Record<string, unknown>[] },
+        "webhook-to-slack",
+      ).installInputs,
+    ).toEqual(["property_id"]);
+  });
+
   test("recipe preview keeps omitted input distinct from explicit null", () => {
     const missing = entry(SLACK);
     Reflect.deleteProperty(missing, "sample_input");
