@@ -355,6 +355,7 @@ export function makeStrategy(spec: PaginationSpec, ctx: PageContext): Pagination
         if (spec.limit_param && spec.page_size != null) params[spec.limit_param] = spec.page_size;
         return buildNextPage(spec, ctx, params);
       }
+      if (reportsNoMorePages(prev)) return { url: "", done: true };
       const next = applyPaginationSelector(spec.cursor_response_path, prev);
       if (next == null || next === "" || (Array.isArray(next) && next.length === 0)) {
         return { url: "", done: true };
@@ -473,6 +474,12 @@ function extractArray(body: unknown, path?: string): unknown[] | null {
   }
   return null;
 }
+
+const reportsNoMorePages = (body: unknown): boolean =>
+  body !== null &&
+  typeof body === "object" &&
+  !Array.isArray(body) &&
+  (body as { has_more?: unknown }).has_more === false;
 
 function applyPaginationSelector(path: string, value: unknown): unknown {
   return applySelector(path.startsWith("$") ? path : `$.${path}`, value);
