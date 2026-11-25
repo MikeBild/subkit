@@ -7,8 +7,8 @@ import {
   WorkflowScheduleBindingSchema,
   workflowTriggerView,
 } from "../../scheduler/trigger-bindings.ts";
-import * as svc from "../../workflows/index.ts";
 import type { RecipeOrigin } from "../../workflows/index.ts";
+import * as svc from "../../workflows/index.ts";
 import { loadWorkflowBinding, type WorkflowListEntry } from "../../workflows/read-model.ts";
 import {
   checkRecipeOrigin,
