@@ -8711,6 +8711,13 @@
   {
     "version": 1,
     "slug": "hubspot",
+    "read_operations": [
+      {
+        "method": "POST",
+        "origin": "https://api.hubapi.com",
+        "path_pattern": "^/crm/v3/objects/deals/search$"
+      }
+    ],
     "name": "HubSpot",
     "driver": "http",
     "base_url": "https://api.hubapi.com",
@@ -8808,7 +8815,7 @@
       {
         "slug": "postmortem-due-in-n-days-via-state",
         "title": "Daily check: are any HubSpot deals due for a postmortem in N days?",
-        "description": "Schedule + State multi-day lifecycle. Every morning the workflow scans HubSpot for closed-lost deals whose `closedate` falls within the next N days, reads `last_postmortem_swept_at` from persistent state, branches on whether the operator has already been notified for this window, and writes the new watermark in the same transaction as the digest. Adapt to any HubSpot lifecycle (renewal-due-in-30-days, contract-expiring, dormant-account-recheck) — the pattern is `state_read → query → branch → state_write`, never a multi-day in-flight wait.",
+        "description": "Schedule + State multi-day lifecycle. Every morning the workflow scans HubSpot for closed-lost deals whose `closedate` falls within the next N days (`days` input, default 7), reads the previous run's deal snapshot (`last_postmortem_sweep`) from persistent state, flags which in-window deals are new since that sweep, and persists the current snapshot after the read succeeds. Adapt to any HubSpot lifecycle (renewal-due-in-30-days, contract-expiring, dormant-account-recheck) — the pattern is `state_read → query → branch → state_write`, never a multi-day in-flight wait.",
         "intent_keywords": [
           "postmortem reminder",
           "deal lifecycle",
@@ -8835,7 +8842,7 @@
         "deprecated": null,
         "workflow": {
           "name": "hubspot-postmortem-due-via-state",
-          "description": "Daily HubSpot deal sweep: surface closed-lost deals whose postmortem window opens today; advance the watermark only after the digest is built so a crash mid-run replays safely.",
+          "description": "Daily HubSpot deal sweep: surface closed-lost deals whose closedate falls within the next N days and flag the ones not seen in the previous run's snapshot.",
           "trigger": {
             "kind": "schedule",
             "cron": "0 9 * * *",
@@ -8843,31 +8850,68 @@
             "business_days_only": true,
             "skip_dates": []
           },
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "days": {
+                "type": "integer",
+                "minimum": 1,
+                "default": 7,
+                "description": "Window size in days, counted from now."
+              }
+            }
+          },
           "steps": [
+            {
+              "kind": "transform",
+              "id": "sweep_window",
+              "language": "javascript",
+              "expression": "const fromMs = Date.now(); const days = Number(input.input?.days ?? 7); return { from_ms: String(fromMs), until_ms: String(fromMs + days * 86400000) };"
+            },
             {
               "kind": "request",
               "id": "deals_due",
-              "method": "GET",
-              "url": "${connector.hubspot.base_url}/crm/v3/objects/deals",
-              "query": {
+              "method": "POST",
+              "url": "${connector.hubspot.base_url}/crm/v3/objects/deals/search",
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "body": {
                 "limit": 100,
-                "properties": "dealname,dealstage,closedate"
+                "properties": ["dealname", "dealstage", "closedate"],
+                "filterGroups": [
+                  {
+                    "filters": [
+                      {
+                        "propertyName": "dealstage",
+                        "operator": "EQ",
+                        "value": "closedlost"
+                      },
+                      {
+                        "propertyName": "closedate",
+                        "operator": "BETWEEN",
+                        "value": "${scope.sweep_window.from_ms}",
+                        "highValue": "${scope.sweep_window.until_ms}"
+                      }
+                    ]
+                  }
+                ]
               },
               "state_read": {
-                "key": "last_postmortem_swept_at",
-                "into_var": "last_postmortem_swept_at",
+                "key": "last_postmortem_sweep",
+                "into_var": "last_postmortem_sweep",
                 "default_value": null
               },
               "state_write": {
-                "key": "last_postmortem_swept_at",
-                "value_path": "headers.date"
+                "key": "last_postmortem_sweep",
+                "value_path": "results"
               }
             },
             {
               "kind": "transform",
               "id": "shape_digest",
               "language": "javascript",
-              "expression": "const deals = input.scope.deals_due.body.results; return { swept_at: new Date().toISOString(), prior_sweep: input.scope.deals_due['_state'].last_postmortem_swept_at, deals_in_window: (deals || []).length };"
+              "expression": "const days = Number(input.input?.days ?? 7); const fromMs = Number(input.scope.sweep_window?.from_ms ?? Date.now()); const untilMs = fromMs + days * 86400000; const prior = input.scope.$state?.last_postmortem_sweep; const priorIds = new Set((Array.isArray(prior) ? prior : []).map((d) => d.id)); const due = (input.scope.deals_due?.results ?? []).filter((d) => { const p = d.properties ?? {}; const closeMs = Date.parse(p.closedate); return p.dealstage === 'closedlost' && closeMs >= fromMs && closeMs <= untilMs; }); return { swept_at: new Date(fromMs).toISOString(), window_days: days, prior_sweep_size: Array.isArray(prior) ? prior.length : null, deals_in_window: due.length, new_since_last_sweep: due.filter((d) => !priorIds.has(d.id)).length, deals: due.map((d) => ({ id: d.id, dealname: d.properties.dealname, closedate: d.properties.closedate, seen_before: priorIds.has(d.id) })) };"
             }
           ]
         }
@@ -9376,7 +9420,7 @@
       {
         "slug": "trial-nurture-day-1-3-7-14-via-state",
         "title": "Daily trial-nurture sweep with state-driven cadence",
-        "description": "Replaces a multi-day in-flight wait with the canonical Schedule + State pattern. Every morning the workflow lists Intercom contacts whose `created_at` matches one of the nurture-cadence days (1, 3, 7, 14 days post-signup), reads `last_nurture_sent_for` from state, sends only the messages that haven't been delivered yet, and advances the watermark. Adapt the cadence array (`[1, 3, 7, 14]`) for any time-shaped lifecycle.",
+        "description": "Replaces a multi-day in-flight wait with the canonical Schedule + State pattern. Every morning the workflow lists Intercom contacts whose `created_at` matches one of the nurture-cadence days (1, 3, 7, 14 days post-signup), reads the previous run's contact total (`last_contact_total`) from state, reports the growth since then, and persists the new `total_count` after the read succeeds. Extend it with a send step that delivers only the cadence messages not sent yet. Adapt the cadence array (`[1, 3, 7, 14]`) for any time-shaped lifecycle.",
         "intent_keywords": [
           "trial nurture",
           "drip campaign",
@@ -9421,20 +9465,20 @@
                 "per_page": 100
               },
               "state_read": {
-                "key": "last_nurture_sent_for",
-                "into_var": "last_nurture_sent_for",
-                "default_value": {}
+                "key": "last_contact_total",
+                "into_var": "last_contact_total",
+                "default_value": null
               },
               "state_write": {
-                "key": "last_nurture_sent_for",
-                "value_path": "headers.date"
+                "key": "last_contact_total",
+                "value_path": "total_count"
               }
             },
             {
               "kind": "transform",
               "id": "summary",
               "language": "javascript",
-              "expression": "const contacts = input.scope.due_contacts.body.data; return { swept_at: new Date().toISOString(), due_count: (contacts || []).length };"
+              "expression": "const contacts = input.scope.due_contacts?.data ?? []; const prior = input.scope.$state?.last_contact_total ?? null; const total = input.scope.due_contacts?.total_count ?? null; return { swept_at: new Date().toISOString(), due_count: contacts.length, prior_total: prior, new_since_last_sweep: prior !== null && total !== null ? total - prior : null };"
             }
           ]
         }
@@ -15839,7 +15883,7 @@
               "kind": "transform",
               "id": "summary",
               "language": "javascript",
-              "expression": "const charges = input.scope.list.body.data || []; const by_currency = {}; for (const c of charges) { const k = c.currency; if (!by_currency[k]) by_currency[k] = { count: 0, amount_total: 0 }; by_currency[k].count += 1; by_currency[k].amount_total += (c.amount || 0); } return { count: charges.length, by_currency: by_currency };"
+              "expression": "const listed = input.scope.list; const charges = Array.isArray(listed) ? listed : (listed?.data ?? []); const by_currency = {}; for (const c of charges) { const k = c.currency; if (!by_currency[k]) by_currency[k] = { count: 0, amount_total: 0 }; by_currency[k].count += 1; by_currency[k].amount_total += (c.amount || 0); } return { count: charges.length, by_currency: by_currency };"
             }
           ]
         }
@@ -15876,7 +15920,7 @@
         "deprecated": null,
         "workflow": {
           "name": "stripe-incremental-charges-via-state",
-          "description": "Daily incremental sync of Stripe charges. Reads `last_synced_charge_id` watermark, fetches only newer charges, writes the new watermark in the same transaction. First run reads default_value=null and pulls the most-recent page.",
+          "description": "Daily incremental sync of Stripe charges. Reads the `last_synced_charge_id` watermark, fetches only newer charges (`ending_before`), and persists the newest charge id (`data.0.id`, Stripe lists newest first) after the read succeeds. First run reads default_value=null and pulls the most-recent page.",
           "trigger": {
             "kind": "schedule",
             "cron": "0 9 * * *",
@@ -15892,7 +15936,7 @@
               "url": "${connector.stripe.base_url}/charges",
               "query": {
                 "limit": 100,
-                "starting_after": "${state.last_synced_charge_id}"
+                "ending_before": "${state.last_synced_charge_id}"
               },
               "state_read": {
                 "key": "last_synced_charge_id",
@@ -15901,14 +15945,14 @@
               },
               "state_write": {
                 "key": "last_synced_charge_id",
-                "value_path": "body.data[last].id"
+                "value_path": "data.0.id"
               }
             },
             {
               "kind": "transform",
               "id": "summary",
               "language": "javascript",
-              "expression": "const rows = input.scope.list_new.body.data || []; return { new_count: rows.length, newest_id: rows.length > 0 ? rows[rows.length - 1].id : undefined, window_amount: rows.reduce((s, r) => s + (r.amount || 0), 0) };"
+              "expression": "const rows = input.scope.list_new?.data ?? []; return { new_count: rows.length, newest_id: rows[0]?.id, window_amount: rows.reduce((s, r) => s + (r.amount || 0), 0) };"
             }
           ]
         }

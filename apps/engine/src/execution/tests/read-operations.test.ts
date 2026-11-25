@@ -61,3 +61,33 @@ test("every built-in read operation is a POST anchored to a bare https origin", 
     expect(operation.path_pattern.endsWith("$")).toBe(true);
   }
 });
+
+test("the scheduled HubSpot deal sweep is a documented read POST", () => {
+  const hubspot = getBuiltinTemplate("hubspot")!;
+  const recipe = hubspot.recipes.find(
+    (recipe) => recipe.slug === "postmortem-due-in-n-days-via-state",
+  )!;
+  const step = recipe.workflow.steps.find((step) => step.id === "deals_due") as {
+    method: string;
+    url: string;
+    headers: Record<string, string>;
+    body: unknown;
+  };
+  const search = {
+    method: step.method,
+    url: step.url.replace(/^.*(?=\/crm\/)/, hubspot.base_url!),
+    headers: step.headers,
+    body: step.body,
+  };
+  expect(search.method).toBe("POST");
+  expect(isDocumentedReadOperation(search)).toBe(true);
+  for (const url of [
+    "https://api.hubapi.com/crm/v3/objects/deals",
+    "https://api.hubapi.com/crm/v3/objects/deals/batch/update",
+    "https://api.hubapi.com/crm/v3/objects/contacts/search",
+    "https://other.example.test/crm/v3/objects/deals/search",
+    `${search.url}/other`,
+    `${search.url}?method=delete`,
+  ])
+    expect(isDocumentedReadOperation({ ...search, url })).toBe(false);
+});
