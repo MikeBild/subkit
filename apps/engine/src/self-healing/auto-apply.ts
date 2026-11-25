@@ -19,6 +19,7 @@ import {
   candidateDriftKind,
   type PatchApplyFailure,
 } from "./patch-apply.ts";
+import { transitionPatchCandidate } from "./persistence/patch-candidate-status.ts";
 import { resolveCandidateStepKey } from "./step-snapshot.ts";
 
 type AutoApplyResult =
@@ -142,21 +143,17 @@ export async function autoApplyPatch(
     actor_id: null,
   });
 
-  await tx
-    .update(patchCandidates)
-    .set({
-      status: "applied",
+  await transitionPatchCandidate(tx, {
+    tenant_id: params.tenant_id,
+    candidate_id: params.candidate_id,
+    to: "applied",
+    set: {
       accepted_operations: patched.accepted,
       accepted_digest: patched.accepted ? (params.accepted_digest ?? null) : null,
       diff: sql`${patchCandidates.diff} || jsonb_build_object('applied_version_id', ${inserted.id}::text)`,
       updated_at: new Date(),
-    })
-    .where(
-      and(
-        eq(patchCandidates.tenant_id, params.tenant_id),
-        eq(patchCandidates.id, params.candidate_id),
-      ),
-    );
+    },
+  });
 
   return { applied: true, version_id: inserted.id, changed_paths: patched.changed_paths };
 }

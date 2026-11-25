@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { localConfirmationOf } from "@shared/device/confirmation.ts";
 import { and, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import type { PgUpdateSetSource } from "drizzle-orm/pg-core";
 import { auditAwait } from "../audit/audit.ts";
 import { resolveActor } from "../audit/recorders/types.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -15,6 +16,7 @@ import { LocalConfirmationForbiddenError } from "../devices/confirmation-errors.
 import { grantsConfirmation, NOTHING_CHANGED } from "../devices/core/local-confirmation.ts";
 import { logger } from "../logging/index.ts";
 import { APPROVAL_TTL_MS } from "../tools/approval.ts";
+import { type ElicitationStatus, elicitationSources } from "./core/elicitation-status.ts";
 import { type DecidedBy, decidedByAuditActor } from "./decided-by.ts";
 import { applyPlaybookDecision } from "./playbook.ts";
 import { humanConfirmationContextFingerprint } from "./playbook-evidence.ts";
@@ -25,7 +27,30 @@ import {
 import { interpretConfirmDecision } from "./tools/ask-user/interpret-confirm.ts";
 import { redactElicitationOutput } from "./tools/ask-user/redact-answer.ts";
 
-export type ElicitationStatus = "pending" | "resolved" | "cancelled" | "timeout";
+export type { ElicitationStatus };
+
+interface ElicitationTransition {
+  tenant_id: string;
+  ids: readonly string[];
+  to: ElicitationStatus;
+  set: Omit<PgUpdateSetSource<typeof conversationElicitations>, "status" | "id" | "tenant_id">;
+}
+
+async function transitionElicitations(exec: Executor, transition: ElicitationTransition) {
+  const sources = elicitationSources(transition.to);
+  if (sources.length === 0 || transition.ids.length === 0) return [];
+  return exec
+    .update(conversationElicitations)
+    .set({ ...transition.set, status: transition.to })
+    .where(
+      and(
+        eq(conversationElicitations.tenant_id, transition.tenant_id),
+        inArray(conversationElicitations.id, [...transition.ids]),
+        inArray(conversationElicitations.status, sources),
+      ),
+    )
+    .returning();
+}
 
 export interface ElicitationRecord {
   id: string;
@@ -227,15 +252,16 @@ async function insertElicitation(
     );
   if (stale.length > 0) {
     const staleIds = stale.map((row) => row.id);
-    await exec
-      .update(conversationElicitations)
-      .set({
-        status: "cancelled",
+    await transitionElicitations(exec, {
+      tenant_id: p.tenant_id,
+      ids: staleIds,
+      to: "cancelled",
+      set: {
         decision_reason: "superseded_by_new_elicitation",
         decided_at: new Date(),
         updated_at: new Date(),
-      })
-      .where(inArray(conversationElicitations.id, staleIds));
+      },
+    });
     const staleToolCallIds = stale
       .map((row) => row.tool_call_id)
       .filter((id): id is string => typeof id === "string" && id.length > 0);
@@ -571,10 +597,11 @@ async function resolveElicitationWithin(
           : null;
     }
   }
-  const [row] = await exec
-    .update(conversationElicitations)
-    .set({
-      status,
+  const [row] = await transitionElicitations(exec, {
+    tenant_id: p.tenant_id,
+    ids: [p.id],
+    to: status,
+    set: {
       output: persistedOutput as Record<string, unknown> | null,
       decided_by: p.decided_by?.id ?? null,
       decided_by_kind: p.decided_by?.kind ?? null,
@@ -582,15 +609,8 @@ async function resolveElicitationWithin(
       playbook_context_fingerprint: playbookContextFingerprint,
       decision_reason: p.reason ?? null,
       updated_at: new Date(),
-    })
-    .where(
-      and(
-        eq(conversationElicitations.tenant_id, p.tenant_id),
-        eq(conversationElicitations.id, p.id),
-        eq(conversationElicitations.status, "pending"),
-      ),
-    )
-    .returning();
+    },
+  });
   if (!row) {
     const [existing] = await exec
       .select()

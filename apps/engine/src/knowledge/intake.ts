@@ -13,6 +13,7 @@ import {
 import { recordAdmittedKnowledgeBaseline } from "../identity/index.ts";
 import { redactSecretShapes } from "../logging/scrub-secrets.ts";
 import { absorbedRequestKey, intakeGroupKey } from "./core/intake-dedupe.ts";
+import { canMoveIntakeItem } from "./core/intake-status.ts";
 import {
   appendToOpenDuplicate,
   collectedEvidenceExcerpt,
@@ -54,6 +55,7 @@ import type {
 } from "./intake-types.ts";
 import { assertConfirmerMayAdmit } from "./persistence/intake-confirm.ts";
 import { lockIntakeRequest } from "./persistence/intake-dedupe.ts";
+import { transitionIntakeItems, transitionIntakeProposals } from "./persistence/intake-status.ts";
 import { finishKnowledgeWrite } from "./service.ts";
 
 function itemRequestDigest(p: CreateIntakeItemParams, intakeCategory: string): string {
@@ -392,19 +394,12 @@ async function staleDraftProposalsForItems(
     .orderBy(asc(intakeProposals.id))
     .for("update");
   if (!locked.length) return;
-  await tx
-    .update(intakeProposals)
-    .set({ status: "stale", stale_reason: reason, updated_at: new Date() })
-    .where(
-      and(
-        eq(intakeProposals.tenant_id, tenant_id),
-        eq(intakeProposals.status, "draft"),
-        inArray(
-          intakeProposals.id,
-          locked.map((row) => row.id),
-        ),
-      ),
-    );
+  await transitionIntakeProposals(tx, {
+    tenant_id,
+    ids: locked.map((row) => row.id),
+    to: "stale",
+    set: { stale_reason: reason, updated_at: new Date() },
+  });
 }
 
 export async function patchIntakeItem(
@@ -425,7 +420,7 @@ export async function patchIntakeItem(
         if (!existing) return null;
         if (existing.version !== p.expected_version)
           throw new IntakeConflictError("intake item has changed");
-        if (existing.state === "admitted" && p.state !== undefined)
+        if (p.state !== undefined && !canMoveIntakeItem(existing.state, p.state))
           throw new IntakeConflictError("an admitted intake item cannot change processing state");
         let redactions = 0;
         const clean = (value: string | undefined): string | undefined => {
@@ -690,18 +685,12 @@ async function insertProposalRevision(
       source_url: item.source_url,
     })),
   );
-  await tx
-    .update(intakeItems)
-    .set({ state: "reviewing", updated_at: new Date() })
-    .where(
-      and(
-        eq(intakeItems.tenant_id, p.tenant_id),
-        inArray(
-          intakeItems.id,
-          items.map((item) => item.id),
-        ),
-      ),
-    );
+  await transitionIntakeItems(tx, {
+    tenant_id: p.tenant_id,
+    ids: items.map((item) => item.id),
+    to: "reviewing",
+    set: { updated_at: new Date() },
+  });
   return {
     revision,
     digest,
@@ -785,15 +774,12 @@ export async function reviseIntakeProposal(
       throw new IntakeProposalConflictError("intake proposal has changed");
     const revision = proposal.current_revision + 1;
     await insertProposalRevision(tx, p, proposal.id, revision, items);
-    await tx
-      .update(intakeProposals)
-      .set({
-        status: "draft",
-        stale_reason: null,
-        current_revision: revision,
-        updated_at: new Date(),
-      })
-      .where(and(eq(intakeProposals.tenant_id, p.tenant_id), eq(intakeProposals.id, p.id)));
+    await transitionIntakeProposals(tx, {
+      tenant_id: p.tenant_id,
+      ids: [p.id],
+      to: "draft",
+      set: { stale_reason: null, current_revision: revision, updated_at: new Date() },
+    });
     await recordIntakeAudit(
       tx,
       p.tenant_id,
@@ -879,33 +865,27 @@ export async function confirmIntakeProposal(
       throw new IntakeProposalConflictError("an intake item changed after review");
     const target = await publishIntakeRevision(tx, p.tenant_id, p.actor, p.id, revision);
     published = target;
-    await tx
-      .update(intakeProposals)
-      .set({
-        status: "confirmed",
+    await transitionIntakeProposals(tx, {
+      tenant_id: p.tenant_id,
+      ids: [p.id],
+      to: "confirmed",
+      set: {
         confirmed_revision: p.expected_revision,
         confirmed_target_kind: target.kind,
         confirmed_target_id: target.id,
         updated_at: new Date(),
-      })
-      .where(and(eq(intakeProposals.tenant_id, p.tenant_id), eq(intakeProposals.id, p.id)));
-    await tx
-      .update(intakeItems)
-      .set({
-        state: "admitted",
+      },
+    });
+    await transitionIntakeItems(tx, {
+      tenant_id: p.tenant_id,
+      ids: revision.items.map((item) => item.id),
+      to: "admitted",
+      set: {
         admitted_target_kind: target.kind,
         admitted_target_id: target.id,
         updated_at: new Date(),
-      })
-      .where(
-        and(
-          eq(intakeItems.tenant_id, p.tenant_id),
-          inArray(
-            intakeItems.id,
-            revision.items.map((item) => item.id),
-          ),
-        ),
-      );
+      },
+    });
     await staleDraftProposalsForItems(
       tx,
       p.tenant_id,
@@ -952,10 +932,12 @@ export async function rejectIntakeProposal(
     if (!proposal) return null;
     if (proposal.status !== "draft" || proposal.current_revision !== p.expected_revision)
       throw new IntakeProposalConflictError("proposal cannot be rejected");
-    await tx
-      .update(intakeProposals)
-      .set({ status: "rejected", rejected_at: new Date(), updated_at: new Date() })
-      .where(and(eq(intakeProposals.tenant_id, p.tenant_id), eq(intakeProposals.id, p.id)));
+    await transitionIntakeProposals(tx, {
+      tenant_id: p.tenant_id,
+      ids: [p.id],
+      to: "rejected",
+      set: { rejected_at: new Date(), updated_at: new Date() },
+    });
     await recordIntakeAudit(
       tx,
       p.tenant_id,

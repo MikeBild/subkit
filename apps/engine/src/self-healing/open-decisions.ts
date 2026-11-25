@@ -12,6 +12,7 @@ import {
   readPatchReadiness,
   readPatchReadinessBatch,
 } from "./candidate-readiness.ts";
+import { transitionPatchCandidate } from "./persistence/patch-candidate-status.ts";
 
 type CandidateRow = typeof patchCandidates.$inferSelect;
 
@@ -80,24 +81,18 @@ export async function closeUndecidableCandidate(
   const reason = readiness.review_reason;
   if (!reason || !UNDECIDABLE_REASONS.has(reason)) return false;
   const closedAt = new Date();
-  const closed = await tx
-    .update(patchCandidates)
-    .set({
-      status: "inapplicable",
+  const closed = await transitionPatchCandidate(tx, {
+    tenant_id: row.tenant_id,
+    candidate_id: row.id,
+    to: "inapplicable",
+    set: {
       closed_reason: reason,
       closed_against_version_id: readiness.base_version_id,
       closed_at: closedAt,
       updated_at: closedAt,
-    })
-    .where(
-      and(
-        eq(patchCandidates.tenant_id, row.tenant_id),
-        eq(patchCandidates.id, row.id),
-        eq(patchCandidates.status, "proposed"),
-      ),
-    )
-    .returning({ id: patchCandidates.id });
-  if (closed.length === 0) return false;
+    },
+  });
+  if (!closed) return false;
   await auditAwait(
     {
       tenant_id: row.tenant_id,

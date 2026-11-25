@@ -15,6 +15,7 @@ import { autoApplyPatch, logPatchNotApplied } from "./auto-apply.ts";
 import { readPatchSelection } from "./candidate-readiness.ts";
 import { approvalRefusal } from "./core/approval-refusal.ts";
 import { closeIfUndecidable } from "./open-decisions.ts";
+import { transitionPatchCandidate } from "./persistence/patch-candidate-status.ts";
 
 export class PatchDecisionError extends Error {
   constructor(public readonly code: string) {
@@ -194,18 +195,13 @@ export async function rejectPatchCandidate(
   db: Db,
 ): Promise<boolean> {
   const rejected = await db.transaction(async (tx) => {
-    const rows = await tx
-      .update(patchCandidates)
-      .set({ status: "rejected", updated_at: new Date() })
-      .where(
-        and(
-          eq(patchCandidates.tenant_id, params.tenant_id),
-          eq(patchCandidates.id, params.candidate_id),
-          eq(patchCandidates.status, "proposed"),
-        ),
-      )
-      .returning();
-    if (rows.length === 0) return false;
+    const moved = await transitionPatchCandidate(tx, {
+      tenant_id: params.tenant_id,
+      candidate_id: params.candidate_id,
+      to: "rejected",
+      set: { updated_at: new Date() },
+    });
+    if (!moved) return false;
     await auditAwait(
       {
         tenant_id: params.tenant_id,
