@@ -87,20 +87,21 @@ export {
 } from "./public/elicitation.ts";
 export type { ConversationTurnRelease, TaskRunApprovalRefusal } from "./public/lifecycle.ts";
 export {
-  assertTaskRunWriter,
+  assertConversationWriter,
   bindConversationTurn,
   buildMessages,
   cancelConversation,
   cancelConversationAbort,
-  canReadTaskRun,
-  canWriteTaskRun,
+  canWriteConversationById,
   clearConversationTurnFailure,
   conversationTurnId,
+  conversationViewerOf,
   countConversations,
   finishConversationTurn,
   getConversation,
   inTaskRunApprovalTrace,
   isConversationHiddenFor,
+  isConversationReadable,
   listConversations,
   mayDecideTaskRunApproval,
   onConversationTurnReleased,
@@ -115,7 +116,6 @@ export {
   stopConversationTaskTurn,
   taskRunApprovalRefusal,
   taskRunApprovalTrace,
-  taskRunListReader,
   unregisterConversationAbort,
   withReservedConversationTurn,
 } from "./public/lifecycle.ts";

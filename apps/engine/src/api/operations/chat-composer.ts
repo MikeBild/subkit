@@ -3,7 +3,7 @@ import { actorType } from "../../audit/actor.ts";
 import { auditAwait } from "../../audit/index.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import { assertTaskRunWriter } from "../../conversations/public/lifecycle.ts";
+import { assertConversationWriter } from "../../conversations/public/lifecycle.ts";
 import type { ChatComposerAttachmentRow } from "../../db/schema/index.ts";
 import {
   ComposerTrayFullError,
@@ -257,7 +257,7 @@ const claim = defineOperation<Claim, { attachments: AttachmentWire[] }>({
     if (isRejection(who)) return who;
     if (!(await conversationExists(scope.db, scope.tenant_id, conversation_id)))
       return plainRejection(404, "not_found", "conversation not found");
-    await assertTaskRunWriter(scope.db, {
+    await assertConversationWriter(scope.db, {
       tenant_id: scope.tenant_id,
       conversation_id,
       actor_id: who.principal.id,

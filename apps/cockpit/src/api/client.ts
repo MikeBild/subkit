@@ -83,6 +83,14 @@ export function deleteConversation(id: string): Promise<{ id: string; deleted: t
   return apiCall("delete", "/v1/conversations/{id}", { path: { id } });
 }
 
+// Untyped until the OpenAPI client is regenerated with the share and unshare routes.
+export function setConversationShared(id: string, shared: boolean): Promise<Conversation> {
+  return apiRequest(`/v1/conversations/${encodeURIComponent(id)}/${shared ? "share" : "unshare"}`, {
+    method: "POST",
+    body: JSON.stringify({ confirm: true }),
+  });
+}
+
 export function getConversation(id: string): Promise<ConversationDetail> {
   return apiRequest(`/v1/conversations/${encodeURIComponent(id)}`);
 }

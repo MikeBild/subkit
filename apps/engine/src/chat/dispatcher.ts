@@ -13,9 +13,10 @@ import {
 } from "../conversations/public/authoring.ts";
 import { PendingElicitationBlockedError } from "../conversations/public/elicitation.ts";
 import {
-  assertTaskRunWriter,
+  assertConversationWriter,
   conversationTurnId,
   registerConversationAbort,
+  shareChannelThread,
   unregisterConversationAbort,
 } from "../conversations/public/lifecycle.ts";
 import type { RunLoopResult } from "../conversations/types.ts";
@@ -33,6 +34,7 @@ import { formatChatText } from "./format/outbound-format.ts";
 import { HostedChatOwnershipRequired, requiresHostedChatOwnership } from "./hosted-ownership.ts";
 import { intakeReviewHandoff } from "./intake-handoff.ts";
 import { resolveChatPrincipal } from "./principal.ts";
+import { chatThreadVisibility } from "./thread-visibility.ts";
 
 export type { DispatchOutcome, HandleChatEventOpts } from "./dispatcher-types.ts";
 
@@ -638,16 +640,19 @@ async function handleChatEventImpl(
 
   let conversation_id: string;
   let turn: ChannelTurn;
+  const visibility = chatThreadVisibility(ev);
   if (existing) {
     conversation_id = existing.conversation_id;
+    if (visibility === "team") await shareChannelThread(db, tenant_id, conversation_id);
     try {
       turn = await runTurnForChannel(() =>
         withConversationTurnLock(tenant_id, conversation_id, async () => {
-          await assertTaskRunWriter(db, {
+          await assertConversationWriter(db, {
             tenant_id,
             conversation_id,
             actor_id: user_id,
             principal: chatPrincipal,
+            write_via: "chat_thread",
           });
           const turnAbortCtrl = await registerConversationAbort(tenant_id, conversation_id, db);
           try {
@@ -658,6 +663,7 @@ async function handleChatEventImpl(
                 actor_id: user_id,
                 principal: chatPrincipal,
                 message: prompt,
+                write_via: "chat_thread",
                 turn_id: conversationTurnId(turnAbortCtrl),
               },
               db,
@@ -669,6 +675,7 @@ async function handleChatEventImpl(
                 actor_id: user_id,
                 principal: chatPrincipal,
                 user_message: appended.message,
+                write_via: "chat_thread",
                 answer_actor: humanChatAnswer(chatPrincipal),
                 user_memory: appended.user_memory,
                 turn_abort_ctrl: turnAbortCtrl,
@@ -705,6 +712,7 @@ async function handleChatEventImpl(
         initial_message: prompt,
         origin_client: principalOrigin(chatPrincipal) ?? `chat:${ev.platform}`,
         surface: "chat",
+        visibility,
       },
       db,
     );

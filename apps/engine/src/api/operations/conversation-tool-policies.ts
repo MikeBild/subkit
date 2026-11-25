@@ -1,5 +1,6 @@
 import type { z } from "@hono/zod-openapi";
 import { AuditAction } from "../../audit/types.ts";
+import { assertConversationWriter } from "../../conversations/public/lifecycle.ts";
 import type { ConversationDetail } from "../../conversations/types.ts";
 import type { Db } from "../../db/client.ts";
 import {
@@ -99,6 +100,12 @@ export function conversationToolPolicyOperations(svc: ConversationToolPolicyServ
       if (!principal) return reject.unauthorized();
       const detail = await svc.getConversation(scope.tenant_id, id, scope.db);
       if (!detail) return reject.notFound("conversation");
+      await assertConversationWriter(scope.db, {
+        tenant_id: scope.tenant_id,
+        conversation_id: id,
+        actor_id: principal.id,
+        principal,
+      });
       for (const [toolName, mode] of Object.entries(body.policies)) {
         if (!svc.canSetConversationToolPolicy(toolName, mode)) {
           return reject.unprocessable(

@@ -1,10 +1,11 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
-import { conversationElicitations, conversations } from "../../db/schema/index.ts";
-import { hasBuiltinAdminRole } from "../../rbac/evaluator.ts";
+import { conversationElicitations } from "../../db/schema/index.ts";
+import { canWriteConversation, conversationViewerOf } from "../core/access.ts";
 import { resolveElicitationAndReactivate } from "../elicitations.ts";
 import { normalizeConfirmOutput } from "../tools/ask-user/interpret-confirm.ts";
+import { loadConversationAccess } from "./access.ts";
 import { TaskRunWriteForbiddenError } from "./task-run-errors.ts";
 
 export async function answerElicitationAsPerson(
@@ -17,16 +18,11 @@ export async function answerElicitationAsPerson(
     output: unknown;
   },
 ): Promise<boolean> {
-  const [conversation] = await db
-    .select({ owner_id: conversations.owner_id })
-    .from(conversations)
-    .where(and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)))
-    .limit(1);
-  if (!conversation) return false;
+  const facts = await loadConversationAccess(db, p.tenant_id, p.conversation_id);
+  if (!facts) return false;
   if (
     p.principal.kind !== "user" ||
-    p.principal.tenant_id !== p.tenant_id ||
-    (conversation.owner_id !== p.principal.id && !hasBuiltinAdminRole(p.principal))
+    !canWriteConversation(conversationViewerOf(p.principal), facts.row)
   )
     throw new TaskRunWriteForbiddenError();
   const [pending] = await db

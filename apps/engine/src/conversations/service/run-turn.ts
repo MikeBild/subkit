@@ -24,7 +24,7 @@ import type { TaskRunMarker, TurnEvent } from "../types.ts";
 import { getConversation } from "./get.ts";
 import type { ConversationTurnOutcome } from "./shared.ts";
 import {
-  assertTaskRunWriter,
+  assertConversationWriter,
   requireTaskRunPrincipal,
   TaskRunLockedError,
 } from "./task-run-access.ts";
@@ -38,6 +38,7 @@ export interface RunConversationTurnParams {
   tenant_id: string;
   conversation_id: string;
   actor_id: string | null;
+  write_via?: "chat_thread";
   locale?: "de" | "en";
   user_message: string;
   answer_actor: AnswerActor;
@@ -103,7 +104,7 @@ async function driveConversationTurn(
     p.locale,
   );
   if (!conv) throw new Error("conversation not found");
-  const taskRun = await assertTaskRunWriter(exec, p);
+  const taskRun = await assertConversationWriter(exec, p);
   if (taskRun) return driveTaskRunTurn(p, exec, conv, taskRun);
   const askBeforeWriting = await askBeforeWritingFor(exec, {
     tenant_id: p.tenant_id,

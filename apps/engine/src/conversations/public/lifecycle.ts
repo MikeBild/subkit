@@ -2,7 +2,18 @@ export {
   CONVERSATION_CANCELLED_REASON,
   cancelConversationAbort,
 } from "../abort.ts";
+export {
+  type ConversationViewer,
+  type ConversationVisibility,
+  conversationViewerOf,
+  moveConversationVisibility,
+  type VisibilityAction,
+} from "../core/access.ts";
 export { buildMessages } from "../parts.ts";
+export {
+  isConversationReadable,
+  loadConversationAccess,
+} from "../service/access.ts";
 export {
   type CompactConversationParams,
   type CompactConversationResult,
@@ -30,8 +41,11 @@ export {
 } from "../service/lifecycle.ts";
 export { getContextSnapshot } from "../service/snapshot.ts";
 export {
-  assertTaskRunWriter,
-  canWriteTaskRun,
+  assertConversationWriter,
+  ConversationHiddenError,
+  ConversationReadOnlyError,
+  type ConversationWriter,
+  canWriteConversationById,
   inTaskRunApprovalTrace,
   mayDecideTaskRunApproval,
   type TaskRunApprovalRefusal,
@@ -41,7 +55,7 @@ export {
   taskRunApprovalRefusal,
   taskRunApprovalTrace,
 } from "../service/task-run-access.ts";
-export { canReadTaskRun, taskRunListReader } from "../service/task-run-read.ts";
+export { shareChannelThread, storeConversationVisibility } from "../service/visibility.ts";
 export { isConversationTitleOpening, refreshConversationTitle } from "../title.ts";
 export {
   type ConversationTurnRelease,

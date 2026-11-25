@@ -39,3 +39,22 @@ export class TaskRunApprovalUnavailableError extends HttpError {
     this.name = "TaskRunApprovalUnavailableError";
   }
 }
+
+/** A conversation the caller may not read: answered as not found so its existence stays hidden. */
+export class ConversationHiddenError extends HttpError {
+  constructor() {
+    super(404, "not_found", "conversation not found");
+    this.name = "ConversationHiddenError";
+  }
+}
+
+export class ConversationReadOnlyError extends HttpError {
+  constructor() {
+    super(
+      403,
+      "conversation_read_only",
+      "Only the owner writes in this conversation. Fork it to continue on your own.",
+    );
+    this.name = "ConversationReadOnlyError";
+  }
+}

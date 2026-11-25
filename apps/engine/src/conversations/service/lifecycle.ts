@@ -16,7 +16,6 @@ import {
   workflows,
 } from "../../db/schema/index.ts";
 import {
-  notTaskRunConversation,
   type TaskRunConversationFilter,
   taskRunConversationCond,
 } from "../../db/task-run-conversations.ts";
@@ -24,6 +23,13 @@ import { logger } from "../../logging/index.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
 import { now } from "../../utils/index.ts";
 import { cancelConversationAbort, hasConversationAbort } from "../abort.ts";
+import {
+  type ConversationViewer,
+  canDeleteConversation,
+  canReadConversation,
+  conversationAccessRowOf,
+  conversationViewerOf,
+} from "../core/access.ts";
 import { stringifyConversationExcerpt, truncateExcerpt } from "../excerpt.ts";
 import type { ConversationOutcome } from "../lifecycle-view.ts";
 import { deriveConversationOutcome } from "../lifecycle-view.ts";
@@ -35,8 +41,9 @@ import type {
   ConversationStatus,
   ConversationTargetRef,
 } from "../types.ts";
+import { conversationReaderCond } from "./access.ts";
 import { loadOwners, rowToRecord } from "./shared.ts";
-import { assertTaskRunWriter } from "./task-run-access.ts";
+import { assertConversationWriter, ConversationHiddenError } from "./task-run-access.ts";
 
 export async function cancelConversation(
   tenant_id: string,
@@ -48,7 +55,7 @@ export async function cancelConversation(
 ): Promise<ConversationRecord | null> {
   const bySystem = actor_id === null && actor_type === "system" && !principal;
   if (!bySystem)
-    await assertTaskRunWriter(exec, { tenant_id, conversation_id, actor_id, principal });
+    await assertConversationWriter(exec, { tenant_id, conversation_id, actor_id, principal });
   const [row] = await exec
     .update(conversations)
     .set({ status: "abandoned", updated_at: new Date(now()) })
@@ -165,7 +172,8 @@ export interface ListConversationsParams {
   viewer_user_id?: string;
   hidden?: "exclude" | "only" | "all";
   task_runs?: TaskRunConversationFilter;
-  task_run_reader?: string;
+  /** Restricts the list to what this viewer may see; admins also see others' private rows as metadata. */
+  viewer?: ConversationViewer;
   owner_kind?: "user" | "system_account";
   sort?: "title" | "status" | "created_at" | "updated_at";
   order?: "asc" | "desc";
@@ -174,6 +182,7 @@ export interface ListConversationsParams {
 }
 
 export interface ConversationListItem extends ConversationRecord {
+  content_hidden?: true;
   last_message_role: string | null;
   last_message_excerpt: string | null;
   pending_elicitation_expires_at: string | null;
@@ -229,10 +238,12 @@ function conversationListConds(p: ListConversationsParams) {
   const tenantConds = [eq(conversations.tenant_id, p.tenant_id)];
   const taskRuns = taskRunConversationCond(p.task_runs);
   if (taskRuns) tenantConds.push(taskRuns);
-  if (p.task_run_reader)
-    tenantConds.push(
-      sql<boolean>`(${notTaskRunConversation()} or ${conversations.owner_id} = ${p.task_run_reader})`,
+  if (p.viewer) {
+    const searchesContent = Boolean(
+      p.q || p.referenced_skill_id || p.referenced_knowledge_source_id,
     );
+    if (!p.viewer.is_admin || searchesContent) tenantConds.push(conversationReaderCond(p.viewer));
+  }
   if (p.status) tenantConds.push(eq(conversations.status, p.status));
   if (p.owner_id) tenantConds.push(eq(conversations.owner_id, p.owner_id));
   if (p.target_workflow_id) {
@@ -312,7 +323,16 @@ export async function listConversations(
     .offset(p.offset ?? 0);
   if (rows.length === 0) return [];
 
-  const conversationIds = rows.map((row) => row.id);
+  const viewer = p.viewer;
+  const readableIds = new Set(
+    rows
+      .filter((row) => !viewer || canReadConversation(viewer, conversationAccessRowOf(row)))
+      .map((row) => row.id),
+  );
+  const readable = rows.map((row) => row.id).filter((id) => readableIds.has(id));
+  // Content queries only touch readable rows; the nil id keeps inArray non-empty.
+  const conversationIds = readable.length > 0 ? readable : [NIL_CONVERSATION_ID];
+  const rowIds = rows.map((row) => row.id);
   const messages = await exec
     .select({
       conversation_id: conversationMessages.conversation_id,
@@ -373,7 +393,7 @@ export async function listConversations(
             and(
               eq(conversationHidden.tenant_id, p.tenant_id),
               eq(conversationHidden.user_id, p.viewer_user_id),
-              inArray(conversationHidden.conversation_id, conversationIds),
+              inArray(conversationHidden.conversation_id, rowIds),
             ),
           )
       : Promise.resolve([] as Array<{ conversation_id: string }>),
@@ -400,6 +420,7 @@ export async function listConversations(
   const pendingByConversation = new Map(pendingRows.map((row) => [row.conversation_id, row]));
 
   return rows.map((row) => {
+    if (!readableIds.has(row.id)) return metadataOnly(row, owners, hiddenIds.has(row.id));
     const latest = latestByConversation.get(row.id);
     const pending = pendingByConversation.get(row.id);
     const act = activity.get(row.id);
@@ -430,6 +451,42 @@ export async function listConversations(
       pending_elicitation_tool: pending?.tool_name ?? null,
     };
   });
+}
+
+const NIL_CONVERSATION_ID = "00000000-0000-0000-0000-000000000000";
+
+/** Another person's private conversation as an admin sees it: that it exists, no content. */
+function metadataOnly(
+  row: typeof conversations.$inferSelect,
+  owners: Map<string, ConversationOwner>,
+  hidden: boolean,
+): ConversationListItem {
+  return {
+    ...rowToRecord(row),
+    title: null,
+    model: null,
+    target_workflow_id: null,
+    target_connector_id: null,
+    content_hidden: true,
+    last_message_role: null,
+    last_message_excerpt: null,
+    last_activity_at: null,
+    message_count: 0,
+    outcome: deriveConversationOutcome({
+      status: row.status,
+      last_message_role: null,
+      last_activity_at: null,
+      last_turn_error: null,
+      now: now(),
+    }),
+    owner: (row.owner_id && owners.get(row.owner_id)) || null,
+    target_workflow: null,
+    target_connector: null,
+    hidden,
+    pending_elicitation_expires_at: null,
+    pending_elicitation_summary: null,
+    pending_elicitation_tool: null,
+  };
 }
 
 async function loadTargetWorkflows(
@@ -498,12 +555,17 @@ export async function setConversationHidden(
     .where(and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)))
     .limit(1);
   if (!row) return null;
-  await assertTaskRunWriter(exec, {
-    tenant_id: p.tenant_id,
-    conversation_id: p.conversation_id,
-    actor_id: p.user_id,
-    principal: p.principal,
-  });
+  // Hiding is a per-person view choice: whoever may read the conversation may hide it.
+  const access = conversationAccessRowOf(row);
+  if (access.task_run)
+    await assertConversationWriter(exec, {
+      tenant_id: p.tenant_id,
+      conversation_id: p.conversation_id,
+      actor_id: p.user_id,
+      principal: p.principal,
+    });
+  else if (p.principal && !canReadConversation(conversationViewerOf(p.principal), access))
+    throw new ConversationHiddenError();
   if (p.hidden) {
     await exec
       .insert(conversationHidden)
@@ -555,12 +617,22 @@ export async function deleteConversation(
   exec: Db,
 ): Promise<DeleteConversationResult> {
   const [row] = await exec
-    .select({ id: conversations.id, title: conversations.title, owner_id: conversations.owner_id })
+    .select({
+      id: conversations.id,
+      title: conversations.title,
+      tenant_id: conversations.tenant_id,
+      owner_id: conversations.owner_id,
+      visibility: conversations.visibility,
+      draft: conversations.draft,
+    })
     .from(conversations)
     .where(and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)))
     .limit(1);
   if (!row) return { kind: "not_found" };
-  if (!p.actor_is_admin && row.owner_id !== p.actor_id) return { kind: "forbidden" };
+  const viewer = { id: p.actor_id, tenant_id: p.tenant_id, is_admin: p.actor_is_admin };
+  const access = conversationAccessRowOf(row);
+  if (!canDeleteConversation(viewer, access))
+    return canReadConversation(viewer, access) ? { kind: "forbidden" } : { kind: "not_found" };
   if (hasConversationAbort(p.tenant_id, p.conversation_id)) return { kind: "turn_running" };
   const [liveTask] = await exec
     .select({ id: mcpTasks.id })
@@ -642,6 +714,7 @@ export interface PatchConversationParams {
   tenant_id: string;
   conversation_id: string;
   actor_id: string | null;
+  principal?: ResolvedPrincipal | null;
   actor_type?: "user" | "system_account" | "system" | "unknown";
   model?: string | null;
   title?: string | null;
@@ -651,7 +724,7 @@ export async function patchConversation(
   p: PatchConversationParams,
   exec: Db,
 ): Promise<ConversationRecord | null> {
-  await assertTaskRunWriter(exec, p);
+  await assertConversationWriter(exec, p);
   const updates: Partial<typeof conversations.$inferInsert> = { updated_at: new Date(now()) };
   if (p.model !== undefined) updates.model = p.model;
   if (p.title !== undefined) {

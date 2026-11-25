@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { setConfigKey } from "../../config/loader.ts";
 import { listElicitationsForConversation } from "../../conversations/elicitations.ts";
 import {
-  assertTaskRunWriter,
+  assertConversationWriter,
   cancelConversation,
   mayDecideTaskRunApproval,
   setConversationHidden,
@@ -225,10 +225,14 @@ describe("who may cancel, hide or approve in a run conversation", () => {
     const disabled = await seedUser("disabled-admin", "admin", "disabled");
     const active = await seedUser("active-admin", "admin");
     await expect(
-      assertTaskRunWriter(srv.db, { tenant_id: srv.tenantId, conversation_id, actor_id: disabled }),
+      assertConversationWriter(srv.db, {
+        tenant_id: srv.tenantId,
+        conversation_id,
+        actor_id: disabled,
+      }),
     ).rejects.toMatchObject(FORBIDDEN);
     expect(
-      await assertTaskRunWriter(srv.db, {
+      await assertConversationWriter(srv.db, {
         tenant_id: srv.tenantId,
         conversation_id,
         actor_id: active,

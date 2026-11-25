@@ -11,9 +11,9 @@ import {
   stageElicitationAnswer,
 } from "../../conversations/public/elicitation.ts";
 import {
-  assertTaskRunWriter,
-  canReadTaskRun,
+  assertConversationWriter,
   getConversation,
+  isConversationReadable,
   withReservedConversationTurn,
 } from "../../conversations/public/lifecycle.ts";
 import {
@@ -449,7 +449,7 @@ export async function handleConversationTool(
     if (name === "conversation_append") {
       const parsed = AppendArgs.safeParse(args);
       if (!parsed.success) return errorText("conversation_id and message are required");
-      await assertTaskRunWriter(db, {
+      await assertConversationWriter(db, {
         tenant_id: principal.tenant_id,
         conversation_id: parsed.data.conversation_id,
         actor_id: principal.id,
@@ -489,7 +489,7 @@ export async function handleConversationTool(
       if (!parsed.success) {
         return errorText("conversation_id and elicitation_id are required");
       }
-      await assertTaskRunWriter(db, {
+      await assertConversationWriter(db, {
         tenant_id: principal.tenant_id,
         conversation_id: parsed.data.conversation_id,
         actor_id: principal.id,
@@ -582,7 +582,13 @@ async function conversationGet(
     nativeElicitation?: NonNullable<HandleConversationToolParams["nativeElicitation"]>;
   } = {},
 ): Promise<HandleConversationToolResult> {
-  if (!(await canReadTaskRun(db, { tenant_id: principal.tenant_id, conversation_id, principal })))
+  if (
+    !(await isConversationReadable(db, {
+      tenant_id: principal.tenant_id,
+      conversation_id,
+      principal,
+    }))
+  )
     return errorText("conversation not found");
   const detail = await getConversation(principal.tenant_id, conversation_id, db);
   if (!detail) return errorText("conversation not found");

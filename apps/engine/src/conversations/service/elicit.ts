@@ -42,8 +42,8 @@ import {
   isAskUserToolName,
 } from "./shared.ts";
 import {
+  assertConversationWriter,
   assertTaskRunApprovalDecider,
-  assertTaskRunWriter,
   requireTaskRunPrincipal,
   TaskRunApprovalUnavailableError,
 } from "./task-run-access.ts";
@@ -54,6 +54,7 @@ export interface RespondElicitationParams {
   elicitation_id: string;
   actor_id: string | null;
   principal?: ResolvedPrincipal | null;
+  write_via?: "chat_thread";
   answer_actor: AnswerActor;
   output: unknown;
   reason?: string;
@@ -116,7 +117,7 @@ async function driveElicitation(
   p: RespondElicitationParams,
   exec: Db,
 ): Promise<ConversationTurnOutcome> {
-  const taskRun = await assertTaskRunWriter(exec, p);
+  const taskRun = await assertConversationWriter(exec, p);
   if (p.require_same_actor) {
     const detail = await getConversation(p.tenant_id, p.conversation_id, exec);
     if (!detail) throw new ConversationNotFoundError(p.conversation_id);

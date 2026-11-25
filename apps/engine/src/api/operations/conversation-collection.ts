@@ -2,7 +2,11 @@ import { z } from "@hono/zod-openapi";
 import { actorType } from "../../audit/actor.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import { taskRunListReader } from "../../conversations/public/lifecycle.ts";
+import {
+  type ConversationViewer,
+  conversationViewerOf,
+  isConversationReadable,
+} from "../../conversations/public/lifecycle.ts";
 import type {
   ConversationDetail,
   ConversationRecord,
@@ -75,7 +79,7 @@ interface ListParams {
   viewer_user_id?: string;
   hidden?: "exclude" | "only" | "all";
   task_runs?: "exclude" | "only" | "all";
-  task_run_reader?: string;
+  viewer?: ConversationViewer;
   owner_kind?: "user" | "system_account";
   target_workflow_id?: string;
   target_connector_id?: string;
@@ -117,6 +121,7 @@ export interface ConversationCollectionServices {
       tenant_id: string;
       conversation_id: string;
       actor_id: string | null;
+      principal?: ResolvedPrincipal | null;
       actor_type?: "user" | "system_account" | "system" | "unknown";
       model?: string | null;
       title?: string | null;
@@ -178,7 +183,6 @@ function withConfirmPrompt(detail: ConversationDetail): ConversationDetail {
 }
 
 function listParams(principal: ResolvedPrincipal, q: ListQuery): ListParams {
-  const reader = taskRunListReader(principal);
   return {
     tenant_id: principal.tenant_id,
     ...(q.status ? { status: q.status } : {}),
@@ -186,7 +190,7 @@ function listParams(principal: ResolvedPrincipal, q: ListQuery): ListParams {
     ...(principal.kind === "user" ? { viewer_user_id: principal.id } : {}),
     ...(q.hidden ? { hidden: q.hidden } : {}),
     ...(q.task_runs ? { task_runs: q.task_runs } : {}),
-    ...(reader ? { task_run_reader: reader } : {}),
+    viewer: conversationViewerOf(principal),
     ...(q.owner_kind ? { owner_kind: q.owner_kind } : {}),
     ...(q.target_workflow_id ? { target_workflow_id: q.target_workflow_id } : {}),
     ...(q.target_connector_id ? { target_connector_id: q.target_connector_id } : {}),
@@ -253,6 +257,12 @@ export function conversationCollectionOperations(svc: ConversationCollectionServ
     async handler(scope, { id }) {
       const principal = scope.principal;
       if (!principal) return reject.unauthorized();
+      const readable = await isConversationReadable(scope.db, {
+        tenant_id: scope.tenant_id,
+        conversation_id: id,
+        principal,
+      });
+      if (!readable) return reject.notFound("conversation");
       const headers = scope.request?.headers;
       const loaded = await svc.getConversation(
         scope.tenant_id,
@@ -315,6 +325,7 @@ export function conversationCollectionOperations(svc: ConversationCollectionServ
           conversation_id: id,
           actor_id: principal.id,
           actor_type: actorType(principal),
+          principal,
           ...(body.model !== undefined ? { model: body.model } : {}),
           ...(body.title !== undefined ? { title: body.title } : {}),
         },

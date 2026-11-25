@@ -82,6 +82,7 @@ export async function preflightTurn(
         conversation_id: p.conversation_id,
         actor_id: p.actor_id,
         ...(p.principal !== undefined ? { principal: p.principal } : {}),
+        write_via: "admitted_turn",
       },
       p.db,
     );

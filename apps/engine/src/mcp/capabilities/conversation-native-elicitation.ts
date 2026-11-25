@@ -16,7 +16,7 @@ import {
   validateElicitationAnswer,
 } from "../../conversations/public/elicitation.ts";
 import {
-  assertTaskRunWriter,
+  assertConversationWriter,
   withReservedConversationTurn,
 } from "../../conversations/public/lifecycle.ts";
 import type { Db } from "../../db/client.ts";
@@ -132,7 +132,7 @@ export async function deliverPendingNativeElicitationCore(p: {
     });
   }
 
-  const deliverable = await assertTaskRunWriter(p.db, {
+  const deliverable = await assertConversationWriter(p.db, {
     tenant_id: p.principal.tenant_id,
     conversation_id: pending.conversation_id,
     actor_id: p.principal.id,

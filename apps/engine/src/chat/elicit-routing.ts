@@ -14,7 +14,7 @@ import {
   respondElicitation,
 } from "../conversations/public/elicitation.ts";
 import {
-  assertTaskRunWriter,
+  assertConversationWriter,
   inTaskRunApprovalTrace,
   registerConversationAbort,
   taskRunApprovalRefusal,
@@ -57,11 +57,12 @@ export async function answerChatElicitation(db: Db, a: ChatAnswer): Promise<Chat
   const output = validateElicitationOutput(a.kind, a.output);
   if (output === null) return { kind: "invalid" };
   const principal = await resolveChatPrincipal(db, a.tenant_id, a.user_id);
-  await assertTaskRunWriter(db, {
+  await assertConversationWriter(db, {
     tenant_id: a.tenant_id,
     conversation_id: a.conversation_id,
     actor_id: a.user_id,
     principal,
+    write_via: "chat_thread",
   });
   const turnAbortCtrl = await registerConversationAbort(a.tenant_id, a.conversation_id, db);
   try {
@@ -74,6 +75,7 @@ export async function answerChatElicitation(db: Db, a: ChatAnswer): Promise<Chat
           actor_id: a.user_id,
           principal,
           answer_actor: humanChatAnswer(principal),
+          write_via: "chat_thread",
           output,
           turn_abort_ctrl: turnAbortCtrl,
           require_same_actor: true,

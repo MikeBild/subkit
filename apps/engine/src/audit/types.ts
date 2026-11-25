@@ -253,6 +253,8 @@ export const AuditAction = {
   CONVERSATION_HIDDEN: "conversation.hidden",
   CONVERSATION_UNHIDDEN: "conversation.unhidden",
   CONVERSATION_DELETED: "conversation.deleted",
+  CONVERSATION_SHARED: "conversation.shared",
+  CONVERSATION_UNSHARED: "conversation.unshared",
   CONVERSATION_SKILL_LOADED: "conversation.skill_loaded",
   CONVERSATION_ANSWER_CITED: "conversation.answer_cited",
   CONVERSATION_TURN_CHANGED: "conversation.turn_changed",

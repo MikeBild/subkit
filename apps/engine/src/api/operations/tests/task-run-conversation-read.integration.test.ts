@@ -29,7 +29,7 @@ beforeAll(async () => {
   const started = await world.http("POST", `/v1/tasks/${(created.body as { id: string }).id}/runs`);
   expect(started.status).toBe(201);
   conversationId = (started.body as { conversation_id: string }).conversation_id;
-  const chat = await world.http("POST", "/v1/conversations", { title: "Shared chat" });
+  const chat = await world.http("POST", "/v1/conversations", { title: "Chat to share" });
   expect(chat.status).toBe(201);
   chatId = (chat.body as { conversation: { id: string } }).conversation.id;
 }, 120_000);
@@ -77,12 +77,14 @@ describe("reading the conversation of a task run", () => {
         (missing.body as { message: string }).message,
       );
     }
-    const shared = await world.http(
-      "GET",
-      `/v1/conversations/${chatId}`,
-      undefined,
-      world.other.key,
-    );
+    const chatPath = `/v1/conversations/${chatId}`;
+    const privateChat = await world.http("GET", chatPath, undefined, world.other.key);
+    expect(privateChat.status).toBe(404);
+    await world.ctx.db
+      .update(conversations)
+      .set({ visibility: "team" })
+      .where(and(eq(conversations.tenant_id, world.ctx.tenantId), eq(conversations.id, chatId)));
+    const shared = await world.http("GET", chatPath, undefined, world.other.key);
     expect(shared.status).toBe(200);
   });
 

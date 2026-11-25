@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { loadDraft } from "../../conversations/public/authoring.ts";
-import { canReadTaskRun, getConversation } from "../../conversations/public/lifecycle.ts";
+import { getConversation, isConversationReadable } from "../../conversations/public/lifecycle.ts";
 import {
   buildWorkflowUsage,
   classifyDraftVsPersisted,
@@ -38,7 +38,13 @@ export async function readConversationCommit(
   principal: ResolvedPrincipal,
   conversation_id: string,
 ): Promise<HandleConversationToolResult> {
-  if (!(await canReadTaskRun(db, { tenant_id: principal.tenant_id, conversation_id, principal })))
+  if (
+    !(await isConversationReadable(db, {
+      tenant_id: principal.tenant_id,
+      conversation_id,
+      principal,
+    }))
+  )
     return errorText("conversation not found");
   const detail = await getConversation(principal.tenant_id, conversation_id, db);
   if (!detail) return errorText("conversation not found");

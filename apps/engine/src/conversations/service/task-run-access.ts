@@ -12,25 +12,46 @@ import {
 } from "../../db/schema/index.ts";
 import { withContext } from "../../logging/context.ts";
 import { hasBuiltinAdminRole } from "../../rbac/evaluator.ts";
+import {
+  type ConversationWriteRefusal,
+  conversationViewerOf,
+  conversationWriteRefusal,
+} from "../core/access.ts";
 import { getTaskRunMarker } from "../core/draft.ts";
 import { approvalHandleFromElicitationInput } from "../tools/ask-user/commit-intent.ts";
 import type { TaskRunMarker } from "../types.ts";
-import { TaskRunApprovalForbiddenError, TaskRunWriteForbiddenError } from "./task-run-errors.ts";
+import { loadConversationAccess } from "./access.ts";
+import {
+  ConversationHiddenError,
+  ConversationReadOnlyError,
+  TaskRunApprovalForbiddenError,
+  TaskRunWriteForbiddenError,
+} from "./task-run-errors.ts";
 import { taskRunPrincipal } from "./task-run-marker.ts";
 
 export {
+  ConversationHiddenError,
+  ConversationReadOnlyError,
   TaskRunApprovalForbiddenError,
   TaskRunApprovalUnavailableError,
   TaskRunLockedError,
   TaskRunWriteForbiddenError,
 } from "./task-run-errors.ts";
 
-export interface TaskRunWriter {
+export interface ConversationWriter {
   tenant_id: string;
   conversation_id: string;
   actor_id: string | null;
   principal?: ResolvedPrincipal | null | undefined;
+  /**
+   * chat_thread: the chat dispatcher appends replies from teammates in a shared
+   * channel thread. admitted_turn: a step inside a turn whose entry was already
+   * checked (e.g. automatic compaction). Neither skips the task-run rule.
+   */
+  write_via?: "chat_thread" | "admitted_turn" | undefined;
 }
+
+export type TaskRunWriter = ConversationWriter;
 
 export interface TaskRunScope {
   marker: TaskRunMarker;
@@ -94,9 +115,32 @@ async function isActiveAdmin(exec: Executor, tenant_id: string, actor: string): 
   return machine?.role === "admin";
 }
 
-export async function canWriteTaskRun(exec: Executor, writer: TaskRunWriter): Promise<boolean> {
-  const scope = await readTaskRunScope(exec, writer.tenant_id, writer.conversation_id);
-  return scope === null || mayWrite(exec, scope, writer);
+type WriteRefusal = "task_run_forbidden" | ConversationWriteRefusal;
+
+async function writeRefusal(
+  exec: Executor,
+  writer: ConversationWriter,
+): Promise<{ refusal: WriteRefusal | null; marker: TaskRunMarker | null }> {
+  const facts = await loadConversationAccess(exec, writer.tenant_id, writer.conversation_id);
+  if (!facts) return { refusal: null, marker: null };
+  const { row, marker } = facts;
+  if (marker) {
+    const allowed = await mayWrite(exec, { marker, owner_id: row.owner_id }, writer);
+    return { refusal: allowed ? null : "task_run_forbidden", marker };
+  }
+  const principal = writer.principal;
+  if (!principal) return { refusal: null, marker: null };
+  if (writer.write_via === "admitted_turn") return { refusal: null, marker: null };
+  if (writer.write_via === "chat_thread" && row.visibility === "team")
+    return { refusal: null, marker: null };
+  return { refusal: conversationWriteRefusal(conversationViewerOf(principal), row), marker: null };
+}
+
+export async function canWriteConversationById(
+  exec: Executor,
+  writer: ConversationWriter,
+): Promise<boolean> {
+  return (await writeRefusal(exec, writer)).refusal === null;
 }
 
 export type TaskRunApprovalRefusal = "not_allowed" | "owner_or_admin";
@@ -187,14 +231,20 @@ export async function mayDecideTaskRunApproval(
   return (await taskRunApprovalRefusal(exec, p)) === null;
 }
 
-export async function assertTaskRunWriter(
+/**
+ * The one write check for a conversation. Task runs keep their owner-or-admin
+ * rule; any other conversation is written by its owner only. Calls without a
+ * principal are internal system paths and pass.
+ */
+export async function assertConversationWriter(
   exec: Executor,
-  writer: TaskRunWriter,
+  writer: ConversationWriter,
 ): Promise<TaskRunMarker | null> {
-  const scope = await readTaskRunScope(exec, writer.tenant_id, writer.conversation_id);
-  if (!scope) return null;
-  if (!(await mayWrite(exec, scope, writer))) throw new TaskRunWriteForbiddenError();
-  return scope.marker;
+  const { refusal, marker } = await writeRefusal(exec, writer);
+  if (refusal === "task_run_forbidden") throw new TaskRunWriteForbiddenError();
+  if (refusal === "not_found") throw new ConversationHiddenError();
+  if (refusal === "read_only") throw new ConversationReadOnlyError();
+  return marker;
 }
 
 export interface TaskRunApprovalDecider {

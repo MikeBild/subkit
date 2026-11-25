@@ -43,7 +43,11 @@ import { readReviewTriggerState } from "../workflows/review-triggers.ts";
 import { appendSnapshot, loadDraft } from "./draft.ts";
 import { resolveElicitation } from "./elicitations.ts";
 import { commitWorkflowAtomic, workflowDefFromDraft } from "./persistence/commit-workflow.ts";
-import { readTaskRunScope, TaskRunLockedError } from "./service/task-run-access.ts";
+import {
+  assertConversationWriter,
+  readTaskRunScope,
+  TaskRunLockedError,
+} from "./service/task-run-access.ts";
 import type { ToolContext } from "./tools/index.ts";
 import type { DraftDocument } from "./types.ts";
 import { assertReviewedToolPinsCurrent } from "./workflow-review-tool-pins.ts";
@@ -149,10 +153,16 @@ function receiptView(row: typeof workflowReviewReceipts.$inferSelect): WorkflowR
 
 async function refuseInTaskRun(
   db: Db,
-  p: { tenant_id: string; conversation_id: string },
+  p: { tenant_id: string; conversation_id: string; principal: ResolvedPrincipal },
 ): Promise<void> {
   if (await readTaskRunScope(db, p.tenant_id, p.conversation_id))
     throw new TaskRunLockedError("Reviewing or activating a workflow");
+  await assertConversationWriter(db, {
+    tenant_id: p.tenant_id,
+    conversation_id: p.conversation_id,
+    actor_id: p.principal.id,
+    principal: p.principal,
+  });
 }
 
 export async function prepareWorkflowReview(

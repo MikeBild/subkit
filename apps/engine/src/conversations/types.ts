@@ -25,6 +25,7 @@ export interface ConversationRecord {
   title_locked: boolean;
   origin_client: string | null;
   surface: string | null;
+  visibility: "private" | "team";
   created_at: string;
   updated_at: string;
 }

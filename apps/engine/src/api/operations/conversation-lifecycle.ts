@@ -3,7 +3,7 @@ import { actorType } from "../../audit/actor.ts";
 import type { AuditActorType } from "../../audit/types.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import { canReadTaskRun } from "../../conversations/public/lifecycle.ts";
+import { isConversationReadable } from "../../conversations/public/lifecycle.ts";
 import type { ConversationRecord } from "../../conversations/types.ts";
 import type { Db } from "../../db/client.ts";
 import { conversationLocale } from "../../http/routes/conversations/locale.ts";
@@ -133,7 +133,7 @@ export interface ConversationLifecycleServices {
     },
     exec: Db,
   ): Promise<object>;
-  assertTaskRunWriter(
+  assertConversationWriter(
     exec: Db,
     writer: {
       tenant_id: string;
@@ -336,7 +336,7 @@ export function conversationLifecycleOperations(svc: ConversationLifecycleServic
     async handler(scope, { id, keep_last }) {
       const principal = scope.principal;
       if (!principal) return reject.unauthorized();
-      await svc.assertTaskRunWriter(scope.db, {
+      await svc.assertConversationWriter(scope.db, {
         tenant_id: scope.tenant_id,
         conversation_id: id,
         actor_id: principal.id,
@@ -384,7 +384,7 @@ export function conversationLifecycleOperations(svc: ConversationLifecycleServic
     async handler(scope, { id, message_id }) {
       const principal = scope.principal;
       if (!principal) return reject.unauthorized();
-      const readable = await canReadTaskRun(scope.db, {
+      const readable = await isConversationReadable(scope.db, {
         tenant_id: scope.tenant_id,
         conversation_id: id,
         principal,

@@ -162,6 +162,10 @@ export { conversationDirectToolOperations } from "./operations/conversation-dire
 export { conversationLifecycleOperations } from "./operations/conversation-lifecycle.ts";
 export { conversationSuggestNextOperations } from "./operations/conversation-suggest-next.ts";
 export { conversationToolPolicyOperations } from "./operations/conversation-tool-policies.ts";
+export {
+  shareConversationOperation,
+  unshareConversationOperation,
+} from "./operations/conversation-visibility.ts";
 export { conversationWorkflowReviewOperations } from "./operations/conversation-workflow-reviews.ts";
 export {
   approveDiscoveryArtifactOperation,

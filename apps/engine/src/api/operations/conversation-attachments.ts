@@ -2,7 +2,10 @@ import { z } from "@hono/zod-openapi";
 import { actorType } from "../../audit/actor.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import { assertTaskRunWriter } from "../../conversations/public/lifecycle.ts";
+import {
+  assertConversationWriter,
+  isConversationReadable,
+} from "../../conversations/public/lifecycle.ts";
 import type { Db, Executor } from "../../db/client.ts";
 import { recordFilesDedupSeen } from "../../files/dedup-counter.ts";
 import { FileLinkError, linkStoredFile } from "../../files/links.ts";
@@ -237,7 +240,7 @@ const upload = defineOperation<UploadInput, AttachmentWire>({
     const principal = scope.principal;
     if (!principal) return reject.unauthorized();
     if (!(await conversationExists(scope.db, scope.tenant_id, id))) return CONVERSATION_NOT_FOUND();
-    await assertTaskRunWriter(scope.db, {
+    await assertConversationWriter(scope.db, {
       tenant_id: scope.tenant_id,
       conversation_id: id,
       actor_id: principal.id,
@@ -272,6 +275,14 @@ const list = defineOperation<IdInput, { attachments: AttachmentWire[] }>({
   ...READ,
   effect: "read",
   async handler(scope, { id }) {
+    if (
+      !(await isConversationReadable(scope.db, {
+        tenant_id: scope.tenant_id,
+        conversation_id: id,
+        principal: scope.principal,
+      }))
+    )
+      return CONVERSATION_NOT_FOUND();
     if (!(await conversationExists(scope.db, scope.tenant_id, id))) return CONVERSATION_NOT_FOUND();
     const rows = await listConversationAttachments(scope.db, scope.tenant_id, id);
     return {
@@ -298,7 +309,7 @@ const remove = defineOperation<SlugInput, true>({
   async handler(scope, { id, slug }) {
     const principal = scope.principal;
     if (!principal) return reject.unauthorized();
-    await assertTaskRunWriter(scope.db, {
+    await assertConversationWriter(scope.db, {
       tenant_id: scope.tenant_id,
       conversation_id: id,
       actor_id: principal.id,

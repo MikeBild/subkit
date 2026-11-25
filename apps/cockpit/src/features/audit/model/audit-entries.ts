@@ -413,6 +413,8 @@ export const ACTION_KEYS: Record<string, TranslationKey> = {
   "session.issued": "audit.action.sessionIssued",
   "connector.mcp_handshake_ok": "audit.action.connectorHandshakeOk",
   "conversation.created": "audit.action.conversationCreated",
+  "conversation.shared": "audit.action.conversationShared",
+  "conversation.unshared": "audit.action.conversationUnshared",
   "credential.oauth2_refreshed": "audit.action.credentialRefreshed",
   "credential.rotated": "audit.action.credentialRotated",
   "file.downloaded": "audit.action.fileDownloaded",

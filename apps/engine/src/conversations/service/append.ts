@@ -19,7 +19,7 @@ import { assertConversationAvailable } from "../turns.ts";
 import type { ConversationRecord } from "../types.ts";
 import { getConversation } from "./get.ts";
 import { PendingElicitationBlockedError } from "./shared.ts";
-import { assertTaskRunWriter } from "./task-run-access.ts";
+import { assertConversationWriter } from "./task-run-access.ts";
 
 export interface AppendMessageParams {
   turn_id?: string | undefined;
@@ -27,6 +27,7 @@ export interface AppendMessageParams {
   conversation_id: string;
   actor_id: string | null;
   principal?: ResolvedPrincipal | null;
+  write_via?: "chat_thread";
   message: string;
   references?: ConversationReference[] | null;
   memory?: string | null;
@@ -48,7 +49,7 @@ export async function appendUserMessage(
   await assertConversationAvailable(exec, p.tenant_id, p.conversation_id, p.turn_id);
   const conv = await getConversation(p.tenant_id, p.conversation_id, exec);
   if (!conv) throw new Error("conversation not found");
-  await assertTaskRunWriter(exec, p);
+  await assertConversationWriter(exec, p);
   {
     const { listElicitationsForConversation } = await import("../elicitations.ts");
     const pending = (await listElicitationsForConversation(p.tenant_id, p.conversation_id, exec))

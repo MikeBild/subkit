@@ -6,8 +6,8 @@ import type { Request, RequestId, Result, Task } from "@modelcontextprotocol/sdk
 import { and, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import {
-  assertTaskRunWriter,
-  canWriteTaskRun,
+  assertConversationWriter,
+  canWriteConversationById,
   stopConversationTaskTurn,
 } from "../../conversations/public/lifecycle.ts";
 import type { Db } from "../../db/client.ts";
@@ -59,7 +59,7 @@ export class ConversationTaskStore implements TaskStore {
   }
 
   private async visible(row: McpTaskRow | null): Promise<McpTaskRow | null> {
-    return row && (await canWriteTaskRun(this.db, this.writer(row))) ? row : null;
+    return row && (await canWriteConversationById(this.db, this.writer(row))) ? row : null;
   }
 
   setInputRequiredHandler(handler: (row: McpTaskRow) => Promise<boolean>): void {
@@ -145,7 +145,7 @@ export class ConversationTaskStore implements TaskStore {
     if (status === "cancelled") {
       const row = await getMcpTask(this.tenantId, taskId, this.db);
       if (!row) throw new Error(`task not found: ${taskId}`);
-      await assertTaskRunWriter(this.db, this.writer(row));
+      await assertConversationWriter(this.db, this.writer(row));
       const firstCancellation = await setMcpTaskCancelled(this.tenantId, taskId, this.db);
       if (row.job_id) {
         const [turn] = await this.db

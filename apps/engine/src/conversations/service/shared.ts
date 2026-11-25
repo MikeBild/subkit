@@ -17,6 +17,7 @@ export function rowToRecord(row: typeof conversations.$inferSelect): Conversatio
     title_locked: row.title_locked ?? false,
     origin_client: row.origin_client ?? null,
     surface: row.surface ?? null,
+    visibility: row.visibility === "team" ? "team" : "private",
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
   };

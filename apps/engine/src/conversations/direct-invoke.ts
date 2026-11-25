@@ -11,7 +11,7 @@ import { createDraftSnapshot } from "./draft-checkpoints.ts";
 import { listElicitationsForConversation } from "./elicitations.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "./persistence/index.ts";
 import { PendingElicitationBlockedError } from "./service/shared.ts";
-import { assertTaskRunWriter } from "./service/task-run-access.ts";
+import { assertConversationWriter } from "./service/task-run-access.ts";
 import { withTaskRunMarker } from "./service/task-run-marker.ts";
 import { computeLineDiff } from "./text-line-diff.ts";
 import { describeToolExecutionFailure } from "./tool-execution-failure.ts";
@@ -110,7 +110,7 @@ async function driveDirectTool(
   if (!convRow) {
     throw new DirectInvokeError("conversation_not_found", "conversation not found", 404);
   }
-  const taskRun = await assertTaskRunWriter(p.db, p);
+  const taskRun = await assertConversationWriter(p.db, p);
   if (taskRun) {
     throw new DirectInvokeError(
       "tool_not_available_in_task_run",

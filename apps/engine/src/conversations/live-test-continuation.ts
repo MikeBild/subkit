@@ -1,13 +1,13 @@
-import { and, eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
-import { conversations } from "../db/schema/index.ts";
 import { runWorkflow } from "../execution/use-cases/run-workflow.ts";
 import { workflowJsonDigest } from "../workflows/canonical-json.ts";
 import { getWorkflow } from "../workflows/service.ts";
+import { canWriteConversation, conversationViewerOf } from "./core/access.ts";
 import { loadDraft } from "./draft.ts";
 import { conversationExecutionSuppression } from "./execution-suppression.ts";
+import { loadConversationAccess } from "./service/access.ts";
 
 export async function continueConversationDevLiveTest(input: {
   db: Db;
@@ -22,21 +22,15 @@ export async function continueConversationDevLiveTest(input: {
 }> {
   if (!input.conversation_id) return { state: "not_requested" };
   if (!input.boss) return { state: "blocked" };
-  const [conversation] = await input.db
-    .select({ owner_id: conversations.owner_id })
-    .from(conversations)
-    .where(
-      and(
-        eq(conversations.tenant_id, input.principal.tenant_id),
-        eq(conversations.id, input.conversation_id),
-      ),
-    )
-    .limit(1);
+  const facts = await loadConversationAccess(
+    input.db,
+    input.principal.tenant_id,
+    input.conversation_id,
+  );
   if (
-    !conversation ||
-    (conversation.owner_id &&
-      conversation.owner_id !== input.principal.id &&
-      !input.principal.roles.includes("admin"))
+    !facts ||
+    (facts.row.owner_id !== null &&
+      !canWriteConversation(conversationViewerOf(input.principal), facts.row))
   )
     return { state: "blocked" };
   if (

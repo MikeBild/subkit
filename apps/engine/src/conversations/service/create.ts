@@ -15,6 +15,7 @@ import { can } from "../../rbac/evaluator.ts";
 import { getWorkflow } from "../../workflows/service.ts";
 import { resolveAttachmentSlugsInText } from "../attachments.ts";
 import { createEmptyDraftDocument, withFocusedExecution } from "../authoring-state/index.ts";
+import type { ConversationVisibility } from "../core/access.ts";
 import { normalizeTaskRunMarker } from "../core/draft.ts";
 import type { ConversationSurface } from "../lifecycle-view.ts";
 import { appendMessage } from "../persistence/index.ts";
@@ -47,6 +48,8 @@ export interface CreateConversationParams {
   playbook_mode?: "off" | "auto";
   intake_item_ids?: string[] | null;
   task_run?: TaskRunMarker | null;
+  /** Defaults to private; the chat dispatcher shares channel threads with the team. */
+  visibility?: ConversationVisibility;
 }
 
 const PLAYGROUND_PRELOADED_SKILL = "workflow-authoring";
@@ -201,6 +204,7 @@ export async function createConversation(
             owner_id: p.actor_id ?? null,
             origin_client: p.origin_client ?? null,
             surface: p.surface ?? null,
+            visibility: p.visibility ?? "private",
             title_locked: typeof p.title === "string" && p.title.trim().length > 0,
             loaded_skills: seedSlugs.map((slug) => ({ slug, last_turn: 0 })),
             ...(p.model ? { model: p.model } : {}),

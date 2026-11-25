@@ -13,7 +13,7 @@ import {
   respondElicitation,
 } from "../../../conversations/public/elicitation.ts";
 import {
-  assertTaskRunWriter,
+  assertConversationWriter,
   clearConversationTurnFailure,
   recordConversationTurnFailure,
   registerConversationAbort,
@@ -95,7 +95,7 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id, elicitation_id } = c.req.valid("param");
     const body = c.req.valid("json");
-    await assertTaskRunWriter(db, {
+    await assertConversationWriter(db, {
       tenant_id: principal.tenant_id,
       conversation_id: id,
       actor_id: principal.id,
@@ -214,7 +214,7 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
     if (!elicit) {
       throw new NotFoundError("elicitation_for_tool_call");
     }
-    await assertTaskRunWriter(db, {
+    await assertConversationWriter(db, {
       tenant_id: principal.tenant_id,
       conversation_id: id,
       actor_id: principal.id,

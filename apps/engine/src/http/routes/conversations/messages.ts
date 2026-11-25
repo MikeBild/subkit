@@ -20,7 +20,7 @@ import {
 } from "../../../conversations/public/authoring.ts";
 import { PendingElicitationBlockedError } from "../../../conversations/public/elicitation.ts";
 import {
-  assertTaskRunWriter,
+  assertConversationWriter,
   clearConversationTurnFailure,
   conversationTurnId,
   getConversation,
@@ -126,7 +126,7 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
-    await assertTaskRunWriter(db, {
+    await assertConversationWriter(db, {
       tenant_id: principal.tenant_id,
       conversation_id: id,
       actor_id: principal.id,
@@ -254,7 +254,7 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
 
     const conv = await getConversation(principal.tenant_id, id, db);
     if (!conv) return c.json({ error: "conversation not found" }, 404);
-    await assertTaskRunWriter(db, {
+    await assertConversationWriter(db, {
       tenant_id: principal.tenant_id,
       conversation_id: id,
       actor_id: principal.id,
