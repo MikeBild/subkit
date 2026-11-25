@@ -4,7 +4,6 @@ import { type MutableRefObject, useEffect, useMemo, useRef, useState } from "rea
 import type { ConversationReference } from "@/api/client";
 import { chatSeedFromUrl } from "@/app/links";
 import { useSession } from "@/app/session";
-import { useDirtyGuard } from "@/app/version-notice";
 import {
   PromptInput,
   PromptInputBody,
@@ -25,6 +24,7 @@ import {
   reconcileReferences,
 } from "@/features/chat/model/mentions";
 import { useI18n } from "@/lib/i18n-context";
+import { useDirtyGuard } from "@/lib/use-dirty-guard";
 import {
   attachmentName,
   attachmentSize,

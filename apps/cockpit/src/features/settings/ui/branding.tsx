@@ -10,7 +10,6 @@ import {
   type TenantBrandingUpdate,
 } from "@/api/tenant-branding";
 import { useSession } from "@/app/session";
-import { useDirtyGuard } from "@/app/version-notice";
 import { Button, ConfirmDialog, DataState } from "@/components/cockpit/patterns";
 import { Alert, AlertDescription } from "@/components/cockpit/patterns/controls";
 import {
@@ -19,6 +18,7 @@ import {
   readBrandingLogo,
 } from "@/features/settings/model/branding";
 import { useI18n } from "@/lib/i18n-context";
+import { useDirtyGuard } from "@/lib/use-dirty-guard";
 import { BrandingForm } from "./branding-form";
 
 export interface BrandingDraftHandle {

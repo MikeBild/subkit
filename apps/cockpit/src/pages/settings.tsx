@@ -9,7 +9,6 @@ import { ApiError } from "@/api/client";
 import { absolute, settingsHref } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useSession, useSessionUpdate } from "@/app/session";
-import { useDirtyGuard } from "@/app/version-notice";
 import {
   Button,
   ConfirmDialog,
@@ -117,6 +116,7 @@ import { VaultArea } from "@/features/vault";
 import { PreparedChanges } from "@/features/workflows";
 import { reportFailure } from "@/lib/action-failure";
 import { useI18n } from "@/lib/i18n-context";
+import { useDirtyGuard } from "@/lib/use-dirty-guard";
 
 const SYSTEM_TENANT_ID = "00000000-0000-0000-0000-000000000000";
 

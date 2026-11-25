@@ -3,16 +3,19 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "@ui/molecules/inpu
 import { Copy } from "lucide-react";
 import { toast } from "sonner";
 import { reportFailure } from "@/lib/action-failure";
+import { writeClipboardText } from "@/lib/clipboard";
 import { useI18n } from "@/lib/i18n-context";
 
-export function useCopy(): (value: string) => Promise<void> {
+export function useCopy(): (value: string) => Promise<boolean> {
   const { t } = useI18n();
   return async (value: string) => {
     try {
-      await navigator.clipboard.writeText(value);
+      await writeClipboardText(value);
       toast.success(t("pattern.copied"));
+      return true;
     } catch {
       reportFailure(t("common.actionFailed"));
+      return false;
     }
   };
 }

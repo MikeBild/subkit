@@ -1,5 +1,6 @@
 import { ErrorNotice } from "@ui/molecules/error-notice";
 import { useEffect, useState } from "react";
+import { useCopy } from "@/components/cockpit/patterns";
 import { StatusStrip } from "@/components/cockpit/patterns/status-strip";
 import { useI18n } from "@/lib/i18n-context";
 import { type Connectivity, useConnectivity } from "./connectivity";
@@ -54,6 +55,7 @@ function BannerNotice({
 }) {
   const { t } = useI18n();
   const [asked, setAsked] = useState(false);
+  const copy = useCopy();
   const { ask } = banner;
   const testId = `desktop-status-${banner.kind}`;
   return (
@@ -73,12 +75,7 @@ function BannerNotice({
             ? {
                 label: t("remedy.admin"),
                 testId: `${testId}-ask`,
-                onClick: () => {
-                  void navigator.clipboard
-                    ?.writeText(ask)
-                    .then(() => setAsked(true))
-                    .catch(() => setAsked(false));
-                },
+                onClick: async () => setAsked(await copy(ask)),
               }
             : undefined
         }

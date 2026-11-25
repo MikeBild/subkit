@@ -34,7 +34,6 @@ import { useActorDirectory } from "@/app/actor-directory";
 import { actorDirectoryName, actorLabel } from "@/app/actor-directory-model";
 import { recordHref } from "@/app/links";
 import { useSession } from "@/app/session";
-import { useDirtyGuard } from "@/app/version-notice";
 import { Button, Input, Label } from "@/components/cockpit/patterns/controls";
 import { Measured } from "@/components/cockpit/patterns/measure";
 import { PageHeader, TopPageHeader } from "@/components/cockpit/patterns/page-header";
@@ -79,6 +78,7 @@ import { reportFailure } from "@/lib/action-failure";
 import { useI18n } from "@/lib/i18n-context";
 import { plural } from "@/lib/plural";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
+import { useDirtyGuard } from "@/lib/use-dirty-guard";
 import { categoryCounts, createdByMatches, sortRows, sortValueOf } from "./list-model";
 import { KEYS, useMarkdownRefs, useRefreshKnowledge, useSkills } from "./queries";
 import {

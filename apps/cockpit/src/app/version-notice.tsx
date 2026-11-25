@@ -2,27 +2,10 @@ import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { reloadIntoUpdate, useWaitingUpdate } from "@/features/pwa";
 import { useI18n } from "@/lib/i18n-context";
+import { hasDirtyForms } from "@/lib/use-dirty-guard";
 import { useLiveStatus } from "./live-events";
 import { useSession } from "./session";
 import { handleReloadAction } from "./version-notice-model";
-
-const dirtyForms = new Set<symbol>();
-
-function hasDirtyForms(): boolean {
-  return dirtyForms.size > 0;
-}
-
-export function useDirtyGuard(dirty: boolean): void {
-  const id = useRef(Symbol("form"));
-  useEffect(() => {
-    const key = id.current;
-    if (dirty) dirtyForms.add(key);
-    else dirtyForms.delete(key);
-    return () => {
-      dirtyForms.delete(key);
-    };
-  }, [dirty]);
-}
 
 export function isNewVersion(booted: string, announced: string | null): boolean {
   return announced !== null && announced !== "" && announced !== booted;

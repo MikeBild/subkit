@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
 import { contextualHref } from "@/app/installation-context";
 import { Button, ChatCard } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
+import { useNow } from "@/lib/use-now";
 import type { ChatReauth } from "../model/reauth";
 
 export function ChatReauthCard({
@@ -18,11 +18,7 @@ export function ChatReauthCard({
   onRenew: (action: ChatReauth) => void;
 }) {
   const { t } = useI18n();
-  const [now, setNow] = useState(Date.now);
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
+  const now = useNow();
   const expired = Date.parse(action.expiresAt) <= now;
   return (
     <ChatCard

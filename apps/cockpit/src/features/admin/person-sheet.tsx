@@ -5,7 +5,6 @@ import { toast } from "sonner";
 import { apiCall } from "@/api/call";
 import { peopleHref } from "@/app/links";
 import { useSession } from "@/app/session";
-import { useDirtyGuard } from "@/app/version-notice";
 import {
   ActionMenu,
   type ActionMenuItem,
@@ -27,6 +26,7 @@ import {
 } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
+import { useDirtyGuard } from "@/lib/use-dirty-guard";
 import {
   builtinRoleDescription,
   personEmailFact,

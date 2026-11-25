@@ -18,6 +18,7 @@ import {
 } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
+import { useNow } from "@/lib/use-now";
 import {
   type ChatForm,
   formFieldLabel,
@@ -51,7 +52,7 @@ export function ChatFormCard({
   const runQuestion = /^Workflow ".+" needs the following inputs? to run:$/.test(form.question);
   const question = runQuestion ? t("chat.form.runQuestion") : form.question;
   const [values, setValues] = useState<Record<string, string | boolean | string[]>>({});
-  const [now, setNow] = useState(Date.now);
+  const now = useNow();
   const initialized = useRef<string | null>(null);
   useEffect(() => {
     if (initialized.current === form.id) return;
@@ -60,10 +61,6 @@ export function ChatFormCard({
       Object.fromEntries(form.fields.map((field) => [field.name, initialFieldValue(field)])),
     );
   }, [form]);
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
   const expired = !Number.isFinite(Date.parse(form.expiresAt)) || Date.parse(form.expiresAt) <= now;
   const output = formValues(form, values);
   const set = (name: string, value: string | boolean | string[]) =>

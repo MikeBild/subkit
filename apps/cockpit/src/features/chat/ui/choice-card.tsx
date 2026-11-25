@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Button, ChatCard, Spinner } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
+import { useNow } from "@/lib/use-now";
 import type { ChatChoice } from "../model/choice";
 
 export function ChatChoiceCard({
@@ -22,14 +23,10 @@ export function ChatChoiceCard({
 }) {
   const { t } = useI18n();
   const [value, setValue] = useState<string>("");
-  const [now, setNow] = useState(Date.now);
+  const now = useNow();
   useEffect(() => {
     setValue("");
   }, [choice.id]);
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
   const deadline = Date.parse(choice.expiresAt);
   const expired = !Number.isFinite(deadline) || deadline <= now;
   const selected = choice.options.find((option) => option.value === value);

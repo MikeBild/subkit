@@ -3,7 +3,7 @@ import { useId, useMemo, useState } from "react";
 import { LiveIndicator } from "@/components/cockpit/live-indicator";
 import { useConnectorRecords } from "@/features/connectors";
 import { useI18n } from "@/lib/i18n-context";
-import { useNow } from "@/lib/use-reduced-motion";
+import { useNow } from "@/lib/use-now";
 import { activityLine, recentSteps, type TurnActivity } from "../model/activity";
 import {
   type ActivityNames,

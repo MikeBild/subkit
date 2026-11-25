@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ErrorNotice } from "@ui/molecules/error-notice";
 import { ToolApprovalCard } from "@ui/organisms/tool-approval-card";
 import { Clock, KeyRound, Laptop, Wrench } from "lucide-react";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useState } from "react";
 import { listDevices } from "@/api/devices";
 import { contextualHref } from "@/app/installation-context";
 import { Button, ContextHelp } from "@/components/cockpit/patterns";
@@ -18,6 +18,7 @@ import {
 import { formatDateTime, LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
+import { useNow } from "@/lib/use-now";
 import {
   approvalLineParts,
   type ChatApproval,
@@ -47,11 +48,7 @@ export function ChatApprovalCard({
   const [reviewOpen, setReviewOpen] = useState(false);
   const reviewable = approval.savesInactiveWorkflow && Boolean(conversationId);
   const deadline = Date.parse(approval.expiresAt);
-  const [now, setNow] = useState(Date.now);
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, []);
+  const now = useNow();
   const expired = !Number.isFinite(deadline) || deadline <= now;
   const device = approval.device;
   const devices = useQuery({

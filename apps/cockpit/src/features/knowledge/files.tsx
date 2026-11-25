@@ -49,6 +49,7 @@ import {
 } from "@/features/knowledge/model/knowledge";
 import { humanizeCategory } from "@/features/workflows/model";
 import { reportFailure } from "@/lib/action-failure";
+import { readClipboardText } from "@/lib/clipboard";
 import { LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { plural } from "@/lib/plural";
@@ -418,11 +419,13 @@ export function FilesPage() {
           label: t("installation.clipboard"),
           disabled: !installation.capabilities.clipboard,
           selectTiming: "immediate",
-          onSelect: () =>
-            void navigator.clipboard
-              .readText()
-              .then((text) => stage([], text))
-              .catch(() => {}),
+          onSelect: async () => {
+            try {
+              stage([], await readClipboardText());
+            } catch {
+              reportFailure(t("installation.importFailed"));
+            }
+          },
           testId: "installation-import-clipboard",
         },
       ]

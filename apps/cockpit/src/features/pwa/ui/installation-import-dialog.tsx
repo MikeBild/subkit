@@ -12,6 +12,7 @@ import { useSession } from "@/app/session";
 import { SelectField } from "@/components/cockpit/form-field";
 import { FilePreview, FormDialog, useFileGate } from "@/components/cockpit/patterns";
 import { humanizeCategory } from "@/features/workflows/model";
+import { readClipboardText } from "@/lib/clipboard";
 import { useI18n } from "@/lib/i18n-context";
 import { InstallationInputActions } from "./installation-dialogs";
 
@@ -90,7 +91,7 @@ export function InstallationImportDialog() {
     try {
       replaceIncoming({
         title: "",
-        text: await navigator.clipboard.readText(),
+        text: await readClipboardText(),
         url: "",
         files: [],
       });

@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { apiCall } from "@/api/call";
 import { ApiError } from "@/api/client";
-import { useDirtyGuard } from "@/app/version-notice";
 import {
   CheckListField,
   ChoiceField,
@@ -44,6 +43,7 @@ import { readStepDefinition } from "@/features/workflows/model/workflow-steps";
 import { reportFailure } from "@/lib/action-failure";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { useDirtyGuard } from "@/lib/use-dirty-guard";
 
 type DraftUpdate = components["schemas"]["UpdateWorkflowDraft"];
 type RecordValue = Record<string, unknown>;
