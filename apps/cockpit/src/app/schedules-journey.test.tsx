@@ -92,7 +92,12 @@ function invocation(schedule: Schedule | null) {
   };
 }
 
-function scenario(initial: Schedule | null = null) {
+const BATCH_SCHEMA = {
+  type: "object",
+  properties: { batch: { type: "integer", title: "Batch" } },
+};
+
+function scenario(initial: Schedule | null = null, inputSchema: unknown = null) {
   let schedule = initial;
   const bodies: unknown[] = [];
   const read = (init: RequestInit | undefined) => {
@@ -114,7 +119,7 @@ function scenario(initial: Schedule | null = null) {
       diagnoses: [],
     }),
     [`/v1/workflows/${WORKFLOW}/invocation`]: () => invocation(schedule),
-    [`/v1/workflows/${WORKFLOW}/input-schema`]: () => ({ schema: null }),
+    [`/v1/workflows/${WORKFLOW}/input-schema`]: () => ({ schema: inputSchema }),
     [`/v1/workflows/${WORKFLOW}/schedule-cost`]: (url: URL) =>
       costProjection(url.searchParams.get("cron") ?? ""),
     "POST /v1/schedules": (_url: URL, init: RequestInit | undefined) => {
@@ -125,7 +130,11 @@ function scenario(initial: Schedule | null = null) {
     [`PUT /v1/schedules/${SCHEDULE}`]: (_url: URL, init: RequestInit | undefined) => {
       const body = read(init);
       if (!schedule) throw new Error("no schedule to update");
-      schedule = { ...schedule, paused: body.paused === true };
+      schedule = {
+        ...schedule,
+        ...(typeof body.cron === "string" ? { cron: body.cron } : {}),
+        ...(typeof body.paused === "boolean" ? { paused: body.paused } : {}),
+      };
       return { ...entry(schedule), upsert_status: "updated" };
     },
     "/v1/schedules": () => ({
@@ -264,4 +273,25 @@ isolated("Schedules › a task occurrence offers no run without task_run:read", 
   });
   expect(app.find("schedule-history")).not.toBeNull();
   expect(app.find(`schedule-occurrence-open-${TASK_OCCURRENCE}`)).toBeNull();
+});
+
+isolated("Schedules › editing only the input keeps an interval cadence", async () => {
+  const flow = scenario({ cron: "every:900", timezone: "UTC", paused: false }, BATCH_SCHEMA);
+  const app = await mount(`/workflows/${WORKFLOW}#workflow-section-use`, {
+    permissions: ALL_PERMISSIONS,
+    routes: flow.routes,
+  });
+  await app.click("workflow-invocation-tab-schedule");
+  await app.press("schedule-menu");
+  await app.press("schedule-edit");
+  expect(app.find("schedule-current-rhythm")).not.toBeNull();
+  await app.fill("schedule-inputs-batch-input", "23");
+  await app.click("schedule-dialog-submit");
+  expect(app.seen).toContain(`PUT /v1/schedules/${SCHEDULE}`);
+  expect(flow.bodies[0]).toMatchObject({
+    cron: "every:900",
+    timezone: "UTC",
+    input: { batch: 23 },
+  });
+  expect(flow.current()?.cron).toBe("every:900");
 });

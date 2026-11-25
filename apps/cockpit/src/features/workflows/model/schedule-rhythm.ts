@@ -41,3 +41,15 @@ export function cronToRhythm(cron: string): RhythmValue | null {
   if (day === "1" && weekday === "*") return { rhythm: "monthly", weekday: 1, time };
   return null;
 }
+
+export const editableRhythm = (cron: string): boolean => cronToRhythm(cron) !== null;
+
+export const scheduleCronForSave = ({
+  existingCron,
+  rhythmValue,
+  rhythmTouched,
+}: {
+  existingCron: string | null;
+  rhythmValue: RhythmValue;
+  rhythmTouched: boolean;
+}): string => (existingCron !== null && !rhythmTouched ? existingCron : rhythmToCron(rhythmValue));

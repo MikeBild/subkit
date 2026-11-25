@@ -23,9 +23,10 @@ import { cronWords } from "@/features/workflows/model/cron-words";
 import {
   cronToRhythm,
   DEFAULT_RHYTHM,
+  editableRhythm,
   type Rhythm,
   type RhythmValue,
-  rhythmToCron,
+  scheduleCronForSave,
   validTime,
 } from "@/features/workflows/model/schedule-rhythm";
 import { scheduleZone } from "@/features/workflows/model/schedule-zone";
@@ -63,11 +64,12 @@ function ScheduleDialog({
   workflowId: string;
   schedule: ScheduleEntry | null;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const client = useQueryClient();
   const [value, setValue] = useState<RhythmValue>(
     () => (schedule ? cronToRhythm(schedule.cron) : null) ?? DEFAULT_RHYTHM,
   );
+  const [rhythmTouched, setRhythmTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [values, setValues] = useState<SchemaValues | null>(null);
   const [checked, setChecked] = useState(false);
@@ -89,7 +91,19 @@ function ScheduleDialog({
     if (!open) return;
     setValues(null);
     setChecked(false);
-  }, [open, schedule?.id]);
+    setRhythmTouched(false);
+    setValue((schedule?.cron ? cronToRhythm(schedule.cron) : null) ?? DEFAULT_RHYTHM);
+  }, [open, schedule?.id, schedule?.cron]);
+  const existingCron = schedule?.cron ?? null;
+  const keepsCron = existingCron !== null && !rhythmTouched;
+  const cron =
+    keepsCron || validTime(value.time)
+      ? scheduleCronForSave({ existingCron, rhythmValue: value, rhythmTouched })
+      : null;
+  const currentRhythm =
+    keepsCron && !editableRhythm(existingCron)
+      ? cronWords(existingCron, t, LOCALE_TAGS[locale])
+      : null;
   const save = useMutation({
     mutationFn: ({ cron, input }: { cron: string; input: ScheduleInput }) =>
       schedule
@@ -121,27 +135,41 @@ function ScheduleDialog({
       title={t(schedule ? "schedule.editTitle" : "schedule.createTitle")}
       submit={{ label: t(schedule ? "common.save" : "schedule.create"), pending: save.isPending }}
       onSubmit={() => {
-        if (!validTime(value.time)) return setError(t("schedule.timeInvalid"));
+        if (cron === null) return setError(t("schedule.timeInvalid"));
         setChecked(true);
         if (built.errors.length > 0) return setError(t("schedule.inputInvalid"));
         setError(null);
-        save.mutate({ cron: rhythmToCron(value), input: built.input });
+        save.mutate({ cron, input: built.input });
       }}
       error={error}
       failure={error === t("schedule.saveFailed") ? save.error : undefined}
       testId="schedule-dialog"
     >
       <FactList
-        items={[{ label: t("schedule.zone"), value: zone, help: t("schedule.zoneHelp") }]}
+        items={[
+          { label: t("schedule.zone"), value: zone, help: t("schedule.zoneHelp") },
+          ...(currentRhythm
+            ? [
+                {
+                  label: t("schedule.currentRhythm"),
+                  value: currentRhythm,
+                  help: t("schedule.currentRhythmHelp"),
+                  testId: "schedule-current-rhythm",
+                },
+              ]
+            : []),
+        ]}
       />
-      <ScheduleFields value={value} onChange={setValue} invalid={Boolean(error)} />
-      {validTime(value.time) ? (
-        <ScheduleCostPreview
-          workflowId={workflowId}
-          cron={rhythmToCron(value)}
-          timezone={zone}
-          enabled={open}
-        />
+      <ScheduleFields
+        value={value}
+        onChange={(next) => {
+          setRhythmTouched(true);
+          setValue(next);
+        }}
+        invalid={Boolean(error)}
+      />
+      {cron !== null ? (
+        <ScheduleCostPreview workflowId={workflowId} cron={cron} timezone={zone} enabled={open} />
       ) : null}
       <SchemaForm
         fields={fields}
