@@ -116,4 +116,23 @@ describe("stock recipe connector binding (#537, #544)", () => {
       })),
     );
   });
+
+  test("every notion recipe request sends the Notion-Version the template probe uses", () => {
+    const notion = getBuiltinTemplate("notion")!;
+    const probeVersion = (notion.probe_endpoint?.headers as Record<string, string> | undefined)?.[
+      "Notion-Version"
+    ];
+    const versions = notion.recipes.flatMap((recipe) =>
+      (recipe.workflow.steps as RequestStep[])
+        .filter((step) => step.kind === "request")
+        .map((step) => {
+          const headers = (step.headers ?? {}) as Record<string, string>;
+          const name = Object.keys(headers).find((key) => key.toLowerCase() === "notion-version");
+          return [`${recipe.slug}/${step.id}`, name ? headers[name] : null];
+        }),
+    );
+    expect(probeVersion).toBe("2022-06-28");
+    expect(versions.length).toBeGreaterThanOrEqual(10);
+    expect(versions).toEqual(versions.map(([name]) => [name, probeVersion]));
+  });
 });

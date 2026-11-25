@@ -12039,7 +12039,8 @@
               "id": "me",
               "method": "GET",
               "connector_id": "00000000-0000-0000-0000-000000000000",
-              "path": "/users/me"
+              "path": "/users/me",
+              "headers": { "Notion-Version": "2022-06-28" }
             }
           ]
         }
@@ -12075,6 +12076,7 @@
               "connector_id": "00000000-0000-0000-0000-000000000000",
               "path": "/search",
               "headers": {
+                "Notion-Version": "2022-06-28",
                 "Content-Type": "application/json"
               },
               "body": {
@@ -12128,6 +12130,7 @@
               "connector_id": "00000000-0000-0000-0000-000000000000",
               "path": "/databases/${input.database_id}/query",
               "headers": {
+                "Notion-Version": "2022-06-28",
                 "Content-Type": "application/json"
               },
               "body": {
@@ -12175,7 +12178,8 @@
               "id": "get",
               "method": "GET",
               "connector_id": "00000000-0000-0000-0000-000000000000",
-              "path": "/pages/${input.page_id}"
+              "path": "/pages/${input.page_id}",
+              "headers": { "Notion-Version": "2022-06-28" }
             }
           ]
         }
@@ -12223,6 +12227,7 @@
               "connector_id": "00000000-0000-0000-0000-000000000000",
               "path": "/pages",
               "headers": {
+                "Notion-Version": "2022-06-28",
                 "Content-Type": "application/json"
               },
               "body": {
@@ -12288,6 +12293,7 @@
               "connector_id": "00000000-0000-0000-0000-000000000000",
               "path": "/pages/${input.page_id}",
               "headers": {
+                "Notion-Version": "2022-06-28",
                 "Content-Type": "application/json"
               },
               "body": {
@@ -12336,6 +12342,7 @@
               "method": "GET",
               "connector_id": "00000000-0000-0000-0000-000000000000",
               "path": "/blocks/${input.page_id}/children",
+              "headers": { "Notion-Version": "2022-06-28" },
               "query": {
                 "page_size": 100
               },
@@ -12389,6 +12396,7 @@
               "connector_id": "00000000-0000-0000-0000-000000000000",
               "path": "/search",
               "headers": {
+                "Notion-Version": "2022-06-28",
                 "Content-Type": "application/json"
               },
               "body": {
@@ -12429,6 +12437,7 @@
               "method": "GET",
               "connector_id": "00000000-0000-0000-0000-000000000000",
               "path": "/users",
+              "headers": { "Notion-Version": "2022-06-28" },
               "query": {
                 "page_size": 100
               },
@@ -12480,7 +12489,8 @@
               "id": "get",
               "method": "GET",
               "connector_id": "00000000-0000-0000-0000-000000000000",
-              "path": "/databases/${input.database_id}"
+              "path": "/databases/${input.database_id}",
+              "headers": { "Notion-Version": "2022-06-28" }
             }
           ]
         }
