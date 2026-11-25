@@ -25,6 +25,7 @@ const LLM_PROVIDERS = [
 ] as const;
 
 const LlmProvider = z.enum(LLM_PROVIDERS);
+const TranscriptionProvider = z.enum(["auto", "openai", "azure", "gemini", "local", "off"]);
 
 const ReasoningEffort = z.enum(["default", "none", "low", "medium", "high"]);
 
@@ -363,6 +364,16 @@ const LlmSection = z
       .describe(
         "Small model used to generate post-turn suggestions; empty uses the primary provider's default",
       )
+      .meta(tenant()),
+    transcription_provider: TranscriptionProvider.default("auto")
+      .describe(
+        "Speech-to-text service for voice dictation: auto picks a configured audio-capable provider and falls back to the local model; off hides dictation",
+      )
+      .meta(tenant()),
+    transcription_model: z
+      .string()
+      .default("")
+      .describe("Speech-to-text model; empty uses the provider's default")
       .meta(tenant()),
     context_1m: z
       .boolean()
@@ -1615,6 +1626,8 @@ const TenantOverlaySchema = z
         summarize_provider: LlmProvider.nullable().optional(),
         summarize_model: z.string().optional(),
         suggestion_model: z.string().optional(),
+        transcription_provider: TranscriptionProvider.optional(),
+        transcription_model: z.string().optional(),
         context_1m: z.boolean().optional(),
         web_search: z.boolean().optional(),
         result_question_check: z.boolean().optional(),

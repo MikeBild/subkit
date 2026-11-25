@@ -41,8 +41,8 @@ mac:
   minimumSystemVersion: "13.0"
   hardenedRuntime: true
   gatekeeperAssess: false
-  entitlements: assets/entitlements.mac.plist
-  entitlementsInherit: assets/entitlements.mac.plist
+  entitlements: assets/entitlements.app.mac.plist
+  entitlementsInherit: assets/entitlements.app.mac.plist
   notarize: false
   # Purpose strings are the English defaults; dist/mac/<locale>.lproj/InfoPlist.strings (written
   # by scripts/build.ts from src/shared/app-identity.ts) localizes them and the name. A null
@@ -61,7 +61,7 @@ mac:
     NSBluetoothAlwaysUsageDescription: null
     NSBluetoothPeripheralUsageDescription: null
     NSCameraUsageDescription: null
-    NSMicrophoneUsageDescription: null
+    NSMicrophoneUsageDescription: SubKit listens only while you dictate a message and stops when you press stop.
     # Files dropped on the Dock icon open "Where should it go?"; SubKit never claims a file type.
     CFBundleDocumentTypes:
       - CFBundleTypeName: Document

@@ -29,6 +29,7 @@ const EnvSchema = z.object({
   OBJECT_STORAGE_FORCE_PATH_STYLE: text,
   OBJECT_STORAGE_BACKEND: text,
   OBJECT_STORAGE_ROOT: text,
+  SPEECH_MODEL_DIR: text,
   HTTP_PROXY: text,
   HTTPS_PROXY: text,
   ALL_PROXY: text,

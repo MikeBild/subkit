@@ -135,6 +135,10 @@ export const settingsHelpEn = {
     "Has the model check every question of a task run that the exact comparison lets through, and holds it back when it asks for the result in other words. Costs an extra call per question; if the call fails, the question gets through.",
   "settings.help.llm.summarize_provider":
     "Provider for summarising long conversations. Not set uses the primary provider.",
+  "settings.help.llm.transcription_provider":
+    "Who turns dictation into text. Auto uses a configured OpenAI, Azure or Gemini key and falls back to the speech model on this server; off hides the microphone.",
+  "settings.help.llm.transcription_model":
+    "Speech-to-text model of that provider. Empty uses its default.",
   "settings.help.llm.web_search":
     "Lets the assistant search the web on Anthropic models. Every search is billed by the provider.",
   "settings.help.notifications.inbox.retention_days":
@@ -303,6 +307,10 @@ export const settingsHelpDe: Record<keyof typeof settingsHelpEn, string> = {
     "Lässt das Modell jede Frage eines Aufgaben-Runs prüfen, die der wörtliche Vergleich durchlässt, und hält sie zurück, wenn sie mit anderen Worten nach dem Ergebnis fragt. Kostet einen Aufruf je Frage; schlägt der Aufruf fehl, kommt die Frage durch.",
   "settings.help.llm.summarize_provider":
     "Anbieter für Zusammenfassungen langer Gespräche. Nicht gesetzt: der Hauptanbieter.",
+  "settings.help.llm.transcription_provider":
+    "Wer Diktate in Text umwandelt. Auto nutzt einen eingerichteten OpenAI-, Azure- oder Gemini-Schlüssel und sonst das Sprachmodell auf diesem Server; aus blendet das Mikrofon aus.",
+  "settings.help.llm.transcription_model":
+    "Spracherkennungsmodell dieses Anbieters. Leer nutzt seine Voreinstellung.",
   "settings.help.llm.web_search":
     "Erlaubt dem Assistenten bei Anthropic-Modellen die Websuche. Jede Suche berechnet der Anbieter.",
   "settings.help.notifications.inbox.retention_days":

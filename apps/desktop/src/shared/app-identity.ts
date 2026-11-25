@@ -1,4 +1,4 @@
-import type { Locale } from "./i18n.ts";
+import { type Locale, t } from "./i18n.ts";
 
 export const COPYRIGHT = "© 2026 Mike Bild";
 export const WEBSITE = "https://subkit.mikebild.dev";
@@ -29,6 +29,10 @@ export const USAGE_DESCRIPTIONS = {
     de: "SubKit liest und ändert Dateien auf Netzlaufwerken nur in Ordnern, die du erlaubt hast.",
     en: "SubKit reads and changes files on network drives only in folders you have allowed.",
   },
+  NSMicrophoneUsageDescription: {
+    de: t("de", "usage.microphone"),
+    en: t("en", "usage.microphone"),
+  },
   NSLocalNetworkUsageDescription: {
     de: "SubKit verbindet sich mit einem SubKit-Server in deinem lokalen Netzwerk, wenn du seine Adresse eingibst.",
     en: "SubKit connects to a SubKit server in your local network when you enter its address.",
@@ -42,7 +46,6 @@ export const ELECTRON_USAGE_KEYS_REMOVED = [
   "NSBluetoothAlwaysUsageDescription",
   "NSBluetoothPeripheralUsageDescription",
   "NSCameraUsageDescription",
-  "NSMicrophoneUsageDescription",
 ] as const;
 
 export const INFO_PLIST_LOCALES: readonly Locale[] = ["de", "en"];

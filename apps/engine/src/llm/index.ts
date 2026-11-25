@@ -39,6 +39,7 @@ export * from "./provider-errors.ts";
 export * from "./runtime/context-assembler.ts";
 export * from "./runtime/invoke.ts";
 export * from "./runtime/model-init.ts";
+export * from "./runtime/transcription.ts";
 export * from "./runtime/workspace-access.ts";
 export * from "./runtime-context.ts";
 export { parsePlaceholders } from "./substitution/parser.ts";

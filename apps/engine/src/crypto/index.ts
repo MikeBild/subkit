@@ -13,3 +13,4 @@ export {
   secretComparisonProof,
   secureEqual,
 } from "./aes-gcm.ts";
+export { sha256OfFile } from "./file-digest.ts";

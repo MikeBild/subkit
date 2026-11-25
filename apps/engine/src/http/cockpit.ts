@@ -214,7 +214,7 @@ export function cockpitInstallationWorker(): string | null {
 export function cockpitSecurityHeaders(csp: string) {
   return {
     "content-security-policy": csp,
-    "permissions-policy": "camera=(), microphone=(), geolocation=()",
+    "permissions-policy": "camera=(), microphone=(self), geolocation=()",
     "referrer-policy": "no-referrer",
     "x-content-type-options": "nosniff",
     "x-frame-options": "DENY",

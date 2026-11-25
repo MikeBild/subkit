@@ -34,6 +34,8 @@ const ENV_TO_CONFIG_PATH: Record<string, string[]> = {
   LLM_FALLBACK_PROVIDER: ["llm", "fallback_provider"],
   SUMMARIZE_LLM_PROVIDER: ["llm", "summarize_provider"],
   SUMMARIZE_MODEL: ["llm", "summarize_model"],
+  TRANSCRIPTION_PROVIDER: ["llm", "transcription_provider"],
+  TRANSCRIPTION_MODEL: ["llm", "transcription_model"],
   LLM_CONTEXT_1M: ["llm", "context_1m"],
   ANTHROPIC_API_KEY: ["llm", "providers", "anthropic", "api_key"],
   ANTHROPIC_MODEL: ["llm", "providers", "anthropic", "model"],

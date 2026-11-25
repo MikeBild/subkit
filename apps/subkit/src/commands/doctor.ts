@@ -6,6 +6,8 @@ import { CLI_BINARY } from "@cli-core/release/assets.ts";
 import { compatibilityWarning } from "@cli-core/release/compatibility.ts";
 import { defaultUpdaterConfig, readCache } from "@cli-core/updater.ts";
 import { VERSION as CLI_VERSION } from "@cli-core/version.ts";
+import { detectRecorder } from "@cli-core/voice/recorder.ts";
+import { recorderInstallHint } from "@cli-core/voice/recorder-detect.ts";
 import { defineCommand } from "citty";
 import pc from "picocolors";
 import { configPath, resolveProfile } from "../config.ts";
@@ -18,6 +20,7 @@ import {
   type CheckStatus,
   type ConfigFacts,
   configCheck,
+  dictationCheck,
   reachabilityCheck,
   setupCheck,
   updateChannelCheck,
@@ -336,6 +339,9 @@ export const doctorCommand = defineCommand({
 
     results.push(updateCheckResult());
     results.push(agentHooksCheck(legacyAgentHookFiles(process.env.HOME || homedir())));
+    results.push(
+      dictationCheck(detectRecorder()?.tool ?? null, recorderInstallHint(process.platform)),
+    );
 
     const overall = worst(results);
 

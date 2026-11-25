@@ -135,6 +135,7 @@ const WelcomeBannerImpl: React.FC<WelcomeBannerProps> = ({
 export const WelcomeBanner = memo(WelcomeBannerImpl);
 
 export const BANNER_TIPS: readonly string[] = [
+  "Press Ctrl-D to dictate a message and again to insert the text; it needs sox or ffmpeg.",
   "Use /resume to reopen a prior session without replaying the full transcript.",
   "`@path/to/file` inlines a file; `@workflow:<slug>` fetches a committed workflow.",
   "Drop an `SK.md` next to your project and subkit injects it as memory each turn.",

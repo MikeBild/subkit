@@ -128,6 +128,17 @@ export function agentHooksCheck(legacyFiles: readonly string[]): CheckResult {
   };
 }
 
+export function dictationCheck(recorder: string | null, installHint: string): CheckResult {
+  if (recorder)
+    return { name: "dictation", status: "ok", detail: `Ctrl-D records with ${recorder}` };
+  return {
+    name: "dictation",
+    status: "warn",
+    detail: "no audio recorder found, so Ctrl-D dictation is off",
+    hint: installHint,
+  };
+}
+
 export interface SetupFacts {
   overall_status: CheckStatus;
   summary_counts: {

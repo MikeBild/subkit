@@ -20,6 +20,11 @@ const MESSAGES = {
   "tray.status.signedOut": { de: "Nicht angemeldet", en: "Not signed in" },
   "tray.status.reconnect": { de: "Neu anmelden …", en: "Sign in again…" },
 
+  "usage.microphone": {
+    de: "SubKit hört nur zu, während du eine Nachricht diktierst, und stoppt, sobald du auf Stopp drückst.",
+    en: "SubKit listens only while you dictate a message and stops when you press stop.",
+  },
+
   "menu.about": { de: "Über SubKit", en: "About SubKit" },
   "menu.settings": { de: "Einstellungen …", en: "Settings…" },
   "menu.servers": { de: "Server", en: "Servers" },
