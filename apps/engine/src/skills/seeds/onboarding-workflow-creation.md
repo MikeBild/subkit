@@ -8,6 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [onboarding, authoring]
+audience: [runtime]
 version: 4
 ---
 

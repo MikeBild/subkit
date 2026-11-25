@@ -8,6 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [foundations, concepts]
+audience: [authoring]
 version: 5
 ---
 

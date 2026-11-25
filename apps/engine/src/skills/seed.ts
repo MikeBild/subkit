@@ -11,6 +11,8 @@ import { EMBEDDED_SKILL_SEEDS } from "./embedded-seeds.ts";
 import {
   type SkillActivation,
   SkillActivationSchema,
+  type SkillGuidanceAudience,
+  SkillGuidanceAudienceSchema,
   type SkillIdempotency,
   SkillIdempotencySchema,
   type SkillMaturity,
@@ -31,6 +33,7 @@ export interface SeededSkill {
   idempotency: SkillIdempotency;
   maturity: SkillMaturity;
   tags: string[];
+  audience: SkillGuidanceAudience;
   input_schema: Record<string, unknown> | null;
   output_schema: Record<string, unknown> | null;
   version: number;
@@ -49,6 +52,7 @@ export interface ParseError {
     | "bad_idempotency"
     | "bad_maturity"
     | "bad_schema"
+    | "bad_audience"
     | "legacy_field";
   message: string;
 }
@@ -120,6 +124,7 @@ function seedContentMatches(row: SkillRow, s: SeededSkill): boolean {
     sameStringArray(row.gates_tools, s.gates_tools) &&
     sameUnknownArray(row.activates_when, s.activates_when) &&
     sameStringArray(row.tags, s.tags) &&
+    sameStringArray(row.audience, s.audience) &&
     sameRecord(row.input_schema, s.input_schema) &&
     sameRecord(row.output_schema, s.output_schema)
   );
@@ -204,6 +209,7 @@ function applyChangedSkillSeeds(
           idempotency: s.idempotency,
           maturity: s.maturity,
           tags: s.tags,
+          audience: s.audience,
         });
         inserted++;
         continue;
@@ -241,6 +247,7 @@ function applyChangedSkillSeeds(
           idempotency: s.idempotency,
           maturity: s.maturity,
           tags: s.tags,
+          audience: s.audience,
           version: Math.max(row.version + 1, s.version),
           updated_at: new Date(),
         })
@@ -395,6 +402,19 @@ function parseFrontmatter(raw: string, file: string): ParseOk | ParseFail {
   const tags = Array.isArray(fm.tags) ? fm.tags.map((v) => String(v)) : [];
   const gates_tools = Array.isArray(fm.gates_tools) ? fm.gates_tools.map((v) => String(v)) : [];
 
+  const audienceRes = SkillGuidanceAudienceSchema.safeParse(fm.audience ?? []);
+  if (!audienceRes.success) {
+    return {
+      error: {
+        file,
+        code: "bad_audience",
+        message: `invalid audience ${JSON.stringify(fm.audience)}: ${audienceRes.error.issues
+          .map((iss) => iss.message)
+          .join("; ")}`,
+      },
+    };
+  }
+
   const input_schema = parseSchemaField(fm.input_schema, "input_schema", file);
   if ("error" in input_schema) return input_schema;
   const output_schema = parseSchemaField(fm.output_schema, "output_schema", file);
@@ -414,6 +434,7 @@ function parseFrontmatter(raw: string, file: string): ParseOk | ParseFail {
       idempotency: idemRes.data,
       maturity: matRes.data,
       tags,
+      audience: audienceRes.data,
       input_schema: input_schema.value,
       output_schema: output_schema.value,
       version,

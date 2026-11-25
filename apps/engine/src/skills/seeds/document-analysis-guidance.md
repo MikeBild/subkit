@@ -8,6 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [discovery, openapi, attachments]
+audience: [runtime]
 version: 3
 ---
 

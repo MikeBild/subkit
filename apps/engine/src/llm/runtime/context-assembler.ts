@@ -13,7 +13,12 @@ import { retrieveApplicableSkills } from "../../skills/service.ts";
 import { type Skill, skillOfferedTo } from "../../skills/types.ts";
 import { listWorkflowToolSlugs } from "../../workflows/catalog.ts";
 import type { PriorWorkflowRef } from "../../workflows/prior-workflows.ts";
-import { contextCapFor, countMessagesTokens, countTokens } from "../accounting/index.ts";
+import {
+  completionBudgetFor,
+  contextCapFor,
+  countMessagesTokens,
+  countTokens,
+} from "../accounting/index.ts";
 import { LlmContextTooLarge } from "../errors.ts";
 import { renderRuntimeContextBlock } from "../runtime-context.ts";
 import type {
@@ -43,6 +48,10 @@ import {
   selectOperatorQuirkCategories,
   trimPriorWorkflowsToBudget,
 } from "./context-assembler/formatters.ts";
+import {
+  formatGenerationSkillIndex,
+  planGenerationGuidance,
+} from "./context-assembler/generation-guidance.ts";
 import { resolveLoadedSkills } from "./context-assembler/loaded-skills.ts";
 import {
   type InteractionLogEntry,
@@ -139,6 +148,7 @@ export async function assembleEnhancedPrompt(
           tenant_id: p.tenant_id,
           ...(scopedConnectorIds.length > 0 ? { connector_ids: scopedConnectorIds } : {}),
           ...(p.workflow_id ? { workflow_ids: [p.workflow_id] } : {}),
+          ...(p.flow === "generate" ? { include_template_bound: true } : {}),
           audience,
         },
         db,
@@ -146,9 +156,27 @@ export async function assembleEnhancedPrompt(
 
   const generating = p.flow === "generate";
   const skillIndexMode = generating ? "guidance" : "interactive";
-  const globalSkills = skillsApplicable.filter((s) => s.scope === "global");
-  const connectorSkills = skillsApplicable.filter((s) => s.scope === "connector");
-  const workflowSkills = skillsApplicable.filter((s) => s.scope === "workflow");
+  const generationPlan = generating
+    ? planGenerationGuidance({
+        tenant_id: p.tenant_id,
+        flow: p.flow,
+        goal:
+          p.retrieval_query ?? p.user_turns.findLast((turn) => turn.role === "user")?.content ?? "",
+        connectors: (
+          await Promise.all(scopedConnectorIds.map((id) => getConnector(p.tenant_id, id, db)))
+        ).filter((connector) => connector !== null),
+        requested_slugs: p.guidance_skill_slugs ?? [],
+        applicable: skillsApplicable,
+        cap,
+        fixed_tokens: countTokens(baseSystem) + countMessagesTokens(p.user_turns),
+        reserve_tokens: completionBudgetFor(p.flow),
+        tokens_of: (skill) => countTokens(formatSkill(skill, p.runtime_context)),
+      })
+    : null;
+  const guidanceSkills = generationPlan ? generationPlan.included : skillsApplicable;
+  const globalSkills = guidanceSkills.filter((s) => s.scope === "global");
+  const connectorSkills = guidanceSkills.filter((s) => s.scope === "connector");
+  const workflowSkills = guidanceSkills.filter((s) => s.scope === "workflow");
 
   const loadedSkillSlugs = p.loaded_skill_slugs ?? [];
   const membershipSlugs = p.loaded_skill_membership ?? [];
@@ -387,6 +415,14 @@ export async function assembleEnhancedPrompt(
       p.runtime_context,
       skillIndexMode,
     );
+    if (generationPlan) {
+      const generationIndexBlock = formatGenerationSkillIndex(generationPlan.ranked, [
+        ...globalSkills,
+        ...connectorSkills,
+        ...workflowSkills,
+      ]);
+      if (generationIndexBlock) sections.push(generationIndexBlock);
+    }
     if (globalIndexBlock) sections.push(globalIndexBlock);
     if (connectorOperatorQuirksBlock) sections.push(connectorOperatorQuirksBlock);
     if (connectorRecipesBlock) sections.push(connectorRecipesBlock);
@@ -453,6 +489,19 @@ export async function assembleEnhancedPrompt(
       ...s,
       body: `${s.body.slice(0, SKILL_BODY_SUMMARY_LIMIT).trim()}… [load_skill('${s.title ?? s.id}') for full body]`,
     };
+  };
+  const dropLowestRankedGuidance = (): boolean => {
+    const lowest = [...(generationPlan?.ranked ?? [])]
+      .reverse()
+      .find(({ skill }) =>
+        [globalSkills, connectorSkills, workflowSkills].some((list) => list.includes(skill)),
+      );
+    if (!lowest) return false;
+    for (const list of [globalSkills, connectorSkills, workflowSkills]) {
+      const index = list.indexOf(lowest.skill);
+      if (index >= 0) list.splice(index, 1);
+    }
+    return true;
   };
   let trimmedLoadedCursor = 0;
   while (total > cap) {
@@ -542,6 +591,8 @@ export async function assembleEnhancedPrompt(
     } else if (referencedEntitiesBlock) {
       referencedEntitiesBlock = null;
       trimmed.push("referenced_entities_ref");
+    } else if (generationPlan && dropLowestRankedGuidance()) {
+      trimmed.push("generation_skill_guidance");
     } else {
       logger.error({
         module: "llm",
@@ -556,7 +607,7 @@ export async function assembleEnhancedPrompt(
       });
       throw new LlmContextTooLarge(
         generating
-          ? "The generation goal and complete approved skill guidance exceed the context budget. Narrow the workflow scope or provide a larger verified model context; generation cannot omit required guidance or call tools to reload it."
+          ? "The generation goal does not fit the model context budget even without pre-included skill guidance. Narrow the workflow goal or configure a model with a larger context window."
           : "prompt exceeds model context window after trimming",
         { total, cap },
       );

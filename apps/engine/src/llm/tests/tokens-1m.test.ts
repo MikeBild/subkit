@@ -44,6 +44,15 @@ describe("contextCapFor · open-weight / OpenAI-compatible families", () => {
     expect(contextCapFor("together/llama-3.3-70b")).toBe(120_000);
   });
 
+  test("catalog default models resolve to their real context window", () => {
+    expect(contextCapFor("gemini-2.5-flash")).toBe(900_000);
+    expect(contextCapFor("google/gemini-2.5-pro")).toBe(900_000);
+    expect(contextCapFor("gpt-4.1-mini")).toBe(900_000);
+    expect(contextCapFor("gpt-5")).toBe(360_000);
+    expect(contextCapFor("claude-sonnet-5")).toBe(180_000);
+    expect(contextCapFor("anthropic/claude-next")).toBe(180_000);
+  });
+
   test("unknown ids keep the conservative 100k default", () => {
     expect(contextCapFor("some-unknown-model")).toBe(100_000);
   });

@@ -37779,6 +37779,11 @@ export interface components {
              */
             applies_to: "chat" | "authoring" | "both";
             /**
+             * @description Who needs this guidance; one ranking signal for workflow generation. authoring: core drafting rules, ranked high. runtime: interactive and operator guidance, never pre-included. connector:<slug>: ranked first when a connector with that slug or template slug is in scope. driver:<driver>: ranked high when a connector of that driver is in scope. Empty ranks the skill like authoring. Every applicable skill stays listed in the generation skill index and loadable on demand.
+             * @default []
+             */
+            audience: string[];
+            /**
              * @description Confirmed tenant conventions of this skill. Read-only here: only a confirmed intake proposal publishes them.
              * @default []
              */
@@ -38046,6 +38051,8 @@ export interface components {
             tags?: string[];
             /** @enum {string} */
             applies_to?: "chat" | "authoring" | "both";
+            /** @description Who needs this guidance; one ranking signal for workflow generation. authoring: core drafting rules, ranked high. runtime: interactive and operator guidance, never pre-included. connector:<slug>: ranked first when a connector with that slug or template slug is in scope. driver:<driver>: ranked high when a connector of that driver is in scope. Empty ranks the skill like authoring. Every applicable skill stays listed in the generation skill index and loadable on demand. */
+            audience?: string[];
             /** @enum {string} */
             status?: "draft" | "active" | "archived";
             /** @enum {string} */
@@ -38080,6 +38087,8 @@ export interface components {
             tags?: string[];
             /** @enum {string} */
             applies_to?: "chat" | "authoring" | "both";
+            /** @description Who needs this guidance; one ranking signal for workflow generation. authoring: core drafting rules, ranked high. runtime: interactive and operator guidance, never pre-included. connector:<slug>: ranked first when a connector with that slug or template slug is in scope. driver:<driver>: ranked high when a connector of that driver is in scope. Empty ranks the skill like authoring. Every applicable skill stays listed in the generation skill index and loadable on demand. */
+            audience?: string[];
             /** @enum {string} */
             status?: "draft" | "active" | "archived";
         };

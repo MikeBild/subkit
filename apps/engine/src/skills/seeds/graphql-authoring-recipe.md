@@ -8,6 +8,7 @@ side_effects: read
 idempotency: naturally
 maturity: stable
 tags: [driver, graphql, recipe]
+audience: [driver:graphql]
 version: 2
 ---
 

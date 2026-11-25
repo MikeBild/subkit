@@ -8,6 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [onboarding, skills, knowledge-sources, domain-modeling, authoring-only]
+audience: [runtime]
 version: 4
 ---
 

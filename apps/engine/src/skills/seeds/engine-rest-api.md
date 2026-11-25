@@ -8,6 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [sk-platform-reference, rest, api, openapi, http]
+audience: [runtime]
 version: 1
 ---
 

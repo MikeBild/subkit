@@ -75,6 +75,19 @@ SubKit schlägt Skills vor, wenn sich ein Muster wiederholt. Du entscheidest sie
 
 Zum Verwerfen brauchst du `skill:write`, zum Übernehmen zusätzlich `skill:activate`. Einen verworfenen Kandidaten schlägt SubKit nicht noch einmal vor.
 
+### Festlegen, für wen ein Skill gedacht ist
+
+Wenn der Assistent einen Workflow entwirft, bekommt er eine Liste aller Skills und den vollständigen Text der Skills, die am besten zur Anfrage passen. Jeden weiteren Skill aus der Liste lädt er nach, wenn er ihn braucht. Ein Skill kommt immer ganz an, nie gekürzt. Das Skill-Feld `audience` hilft bei der Auswahl:
+
+| Wert | Wann der volle Text mitkommt |
+|---|---|
+| `authoring` | Regeln zum Entwerfen von Workflows. Kommt bei jedem Entwurf mit, für den Platz ist. |
+| `connector:<slug>` | Nur wenn der Entwurf einen Connector mit diesem Slug oder aus dieser Vorlage nutzt, zum Beispiel `connector:google-gmail`. Kommt dann zuerst. |
+| `driver:<driver>` | Nur wenn der Entwurf einen Connector dieser Art nutzt, zum Beispiel `driver:http`. |
+| `runtime` | Nie vorab. Hilfe für den Chat und für laufende Workflows. Wird nur auf Anfrage geladen. |
+
+Ein Skill ohne `audience` behält sein bisheriges Verhalten: Er zählt wie `authoring`. Du setzt das Feld mit `PATCH /v1/skills/{id}`, zum Beispiel `{"audience": ["connector:google-gmail"]}`.
+
 ### Eine Datei ersetzen
 
 1. Öffne **Dateien** und klicke auf die Datei.

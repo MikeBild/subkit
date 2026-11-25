@@ -1,6 +1,6 @@
 {
-  "id": "2e090b97-4520-4a64-8c09-34273233e463",
-  "prevId": "2d8ec565-765c-4dc0-8179-c4f4b5961f17",
+  "id": "ff881750-2338-4486-a161-74cbc45ccbbb",
+  "prevId": "2e090b97-4520-4a64-8c09-34273233e463",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -19615,6 +19615,13 @@
           "notNull": true,
           "default": "'both'"
         },
+        "audience": {
+          "name": "audience",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
         "rules": {
           "name": "rules",
           "type": "jsonb",
@@ -19777,6 +19784,10 @@
         "skills_domains_array_chk": {
           "name": "skills_domains_array_chk",
           "value": "jsonb_typeof(\"skills\".\"domains\") = 'array'"
+        },
+        "skills_audience_array_chk": {
+          "name": "skills_audience_array_chk",
+          "value": "jsonb_typeof(\"skills\".\"audience\") = 'array'"
         },
         "skills_side_effects_chk": {
           "name": "skills_side_effects_chk",

@@ -8,6 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [self-healing, drift, repair]
+audience: [runtime]
 version: 4
 ---
 

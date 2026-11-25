@@ -33395,6 +33395,16 @@
             ],
             "default": "both"
           },
+          "audience": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^(authoring|runtime|(connector|driver):[A-Za-z0-9][A-Za-z0-9_-]{0,63})$"
+            },
+            "maxItems": 16,
+            "default": [],
+            "description": "Who needs this guidance; one ranking signal for workflow generation. authoring: core drafting rules, ranked high. runtime: interactive and operator guidance, never pre-included. connector:<slug>: ranked first when a connector with that slug or template slug is in scope. driver:<driver>: ranked high when a connector of that driver is in scope. Empty ranks the skill like authoring. Every applicable skill stays listed in the generation skill index and loadable on demand."
+          },
           "rules": {
             "type": "array",
             "items": {
@@ -33468,6 +33478,7 @@
           "maturity",
           "tags",
           "applies_to",
+          "audience",
           "rules",
           "domains"
         ]
@@ -34377,6 +34388,15 @@
               "both"
             ]
           },
+          "audience": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^(authoring|runtime|(connector|driver):[A-Za-z0-9][A-Za-z0-9_-]{0,63})$"
+            },
+            "maxItems": 16,
+            "description": "Who needs this guidance; one ranking signal for workflow generation. authoring: core drafting rules, ranked high. runtime: interactive and operator guidance, never pre-included. connector:<slug>: ranked first when a connector with that slug or template slug is in scope. driver:<driver>: ranked high when a connector of that driver is in scope. Empty ranks the skill like authoring. Every applicable skill stays listed in the generation skill index and loadable on demand."
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -34529,6 +34549,15 @@
               "authoring",
               "both"
             ]
+          },
+          "audience": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^(authoring|runtime|(connector|driver):[A-Za-z0-9][A-Za-z0-9_-]{0,63})$"
+            },
+            "maxItems": 16,
+            "description": "Who needs this guidance; one ranking signal for workflow generation. authoring: core drafting rules, ranked high. runtime: interactive and operator guidance, never pre-included. connector:<slug>: ranked first when a connector with that slug or template slug is in scope. driver:<driver>: ranked high when a connector of that driver is in scope. Empty ranks the skill like authoring. Every applicable skill stays listed in the generation skill index and loadable on demand."
           },
           "status": {
             "type": "string",

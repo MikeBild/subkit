@@ -83,6 +83,7 @@ function rowToSkill(row: SkillRow): Skill {
     maturity: row.maturity as Skill["maturity"],
     tags: Array.isArray(row.tags) ? (row.tags as string[]) : [],
     applies_to: row.applies_to,
+    audience: Array.isArray(row.audience) ? row.audience : [],
     rules: Array.isArray(row.rules) ? row.rules : [],
     domains: Array.isArray(row.domains) ? row.domains : [],
     status: row.lifecycle as SkillLifecycle,
@@ -150,6 +151,7 @@ export async function createSkill(p: CreateSkillParams, db: Executor): Promise<S
         maturity: p.input.maturity ?? "stable",
         tags: p.input.tags ?? [],
         applies_to: p.input.applies_to ?? "both",
+        audience: p.input.audience ?? [],
         rules: p.conventions?.rules ?? [],
         domains: p.conventions?.domains ?? [],
       })
@@ -358,6 +360,7 @@ export async function updateSkill(
     if (patch.maturity !== undefined) set.maturity = patch.maturity;
     if (patch.tags !== undefined) set.tags = patch.tags;
     if (patch.applies_to !== undefined) set.applies_to = patch.applies_to;
+    if (patch.audience !== undefined) set.audience = patch.audience;
     if (conventions?.rules !== undefined) set.rules = conventions.rules;
     if (conventions?.domains !== undefined) set.domains = conventions.domains;
     Object.assign(
@@ -764,6 +767,7 @@ export async function restoreSkill(
       maturity: snapshot.maturity,
       tags: snapshot.tags,
       applies_to: snapshot.applies_to,
+      audience: snapshot.audience,
       status: snapshot.status,
     },
     actor_id,
@@ -777,6 +781,7 @@ interface RetrieveApplicableParams {
   connector_ids?: string[];
   workflow_ids?: string[];
   audience?: SkillAudience;
+  include_template_bound?: boolean;
 }
 
 export async function retrieveApplicableSkills(
@@ -791,6 +796,14 @@ export async function retrieveApplicableSkills(
     .from(skills)
     .where(and(tenant, active, eq(skills.scope, "global")))
     .orderBy(desc(skills.version), desc(skills.created_at));
+
+  const templateBoundRows = p.include_template_bound
+    ? await db
+        .select()
+        .from(skills)
+        .where(and(tenant, active, eq(skills.scope, "connector"), isNull(skills.connector_id)))
+        .orderBy(desc(skills.version), desc(skills.created_at))
+    : [];
 
   let connectorRows: SkillRow[] = [];
   if (p.connector_ids && p.connector_ids.length > 0) {
@@ -824,7 +837,9 @@ export async function retrieveApplicableSkills(
       .orderBy(desc(skills.version), desc(skills.created_at));
   }
 
-  const all = [...globalRows, ...connectorRows, ...workflowRows].map(rowToSkill);
+  const all = [...globalRows, ...templateBoundRows, ...connectorRows, ...workflowRows].map(
+    rowToSkill,
+  );
   const audience = p.audience;
   return audience ? all.filter((s) => skillOfferedTo(s.applies_to, audience)) : all;
 }

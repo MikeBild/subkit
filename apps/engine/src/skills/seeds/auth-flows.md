@@ -8,6 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [auth, oauth, security]
+audience: [driver:http]
 version: 3
 ---
 

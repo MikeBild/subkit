@@ -8,6 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, governance, report-delivery, repair]
+audience: [connector:google-gmail]
 version: 1
 ---
 

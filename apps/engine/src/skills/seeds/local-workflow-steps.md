@@ -8,6 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, workflow, device, local]
+audience: [driver:local_files, driver:local_browser, driver:local_computer]
 version: 1
 ---
 

@@ -89,6 +89,7 @@ describe("structured output through the OpenAI provider", () => {
       "method",
       "path",
       "question",
+      "skill_slug",
     ]);
   });
 

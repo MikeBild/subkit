@@ -8,6 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [scraping, browserless, headless-chrome, reliability]
+audience: [connector:browserless]
 version: 2
 ---
 

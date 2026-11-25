@@ -8,6 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [authoring, workflow, caller, supabase]
+audience: [authoring]
 version: 2
 ---
 

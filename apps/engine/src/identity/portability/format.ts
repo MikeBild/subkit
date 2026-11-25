@@ -179,6 +179,7 @@ export const SkillPayloadSchema = z.object({
   maturity: z.string(),
   tags: z.array(z.string()),
   applies_to: z.string(),
+  audience: z.array(z.string()).optional(),
 });
 export type SkillPayload = z.infer<typeof SkillPayloadSchema>;
 

@@ -8,6 +8,7 @@ side_effects: read
 idempotency: none
 maturity: stable
 tags: [coding-agents, onboarding, mcp]
+audience: [runtime]
 version: 2
 ---
 
