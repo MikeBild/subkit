@@ -466,3 +466,61 @@ describe("installing a connector template recipe with install inputs (#895)", ()
     expect(res.status).toBe(400);
   });
 });
+
+describe("installing a web-scraper template recipe pins its allowed hosts (#895)", () => {
+  type Saved = {
+    id: string;
+    current_version_id: string;
+    steps: Array<{ id: string; boundary?: { allowed_hosts?: unknown } }>;
+  };
+  const saveScraper = async (slug: string, inputs?: Record<string, unknown>) => {
+    const recipeRes = await fetch(
+      `${ctx.baseUrl}/v1/connector-templates/web-scraper/recipes/fetch-url-as-markdown`,
+      { headers: auth() },
+    );
+    expect(recipeRes.status).toBe(200);
+    const { workflow } = (await recipeRes.json()) as { workflow: Record<string, unknown> };
+    const res = await fetch(`${ctx.baseUrl}/v1/workflows`, {
+      method: "POST",
+      headers: auth(),
+      body: JSON.stringify({
+        ...workflow,
+        slug,
+        recipe: {
+          template: "web-scraper",
+          slug: "fetch-url-as-markdown",
+          ...(inputs ? { inputs } : {}),
+        },
+      }),
+    });
+    expect(res.status).toBe(201);
+    return (await res.json()) as Saved;
+  };
+  const fetchHosts = (saved: Saved) =>
+    saved.steps.find((step) => step.id === "fetch")?.boundary?.allowed_hosts;
+  const requestRefusals = async (saved: Saved) => {
+    const res = await fetch(
+      `${ctx.baseUrl}/v1/workflows/${saved.id}/versions/${saved.current_version_id}/authority-preview?environment=dev`,
+      { headers: auth() },
+    );
+    expect(res.status).toBe(200);
+    return ((await res.json()) as { request_refusals: Array<{ step_id: string; reason: string }> })
+      .request_refusals;
+  };
+
+  test("the stored request boundary carries the host list given at install", async () => {
+    const saved = await saveScraper("scraper-template-pinned", {
+      allowed_hosts: ["docs.example.com"],
+    });
+    expect(fetchHosts(saved)).toEqual(["docs.example.com"]);
+    expect(await requestRefusals(saved)).toEqual([]);
+  });
+
+  test("without allowed hosts the fetch boundary stays unpinned and is refused", async () => {
+    const saved = await saveScraper("scraper-template-unpinned");
+    expect(fetchHosts(saved)).toBe("${input.allowed_hosts}");
+    expect(await requestRefusals(saved)).toEqual([
+      { step_id: "fetch", reason: "allowed_hosts_unpinned" },
+    ]);
+  });
+});
