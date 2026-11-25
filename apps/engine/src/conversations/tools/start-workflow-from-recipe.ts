@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { pinInstallInputs } from "@shared/recipe-install-inputs.ts";
 import { rebindConnectorIds } from "../../connectors/recipe-binding.ts";
 import { getBuiltinTemplate } from "../../connectors/templates.ts";
 import { withWorkflowDraft } from "../authoring-state/index.ts";
@@ -42,6 +43,12 @@ const inputSchema = z
       .describe(
         "Multi-connector path. Map each placeholder UUID declared in `recipe.required_connectors` to a saved connector id. Required when `required_connectors` is non-empty; the tool rejects partial maps with the missing placeholders listed.",
       ),
+    inputs: z
+      .record(z.string().min(1).max(64), z.union([z.string(), z.number()]))
+      .optional()
+      .describe(
+        "Install-time values for every key the recipe lists in `install_inputs` (for example a GA4 `property_id`). Each value is written into the request paths so the reviewed boundary stays literal. Ask the user for them; never invent or reuse sample values.",
+      ),
   })
   .openapi("StartWorkflowFromRecipeToolInput");
 
@@ -57,6 +64,7 @@ export const startWorkflowFromRecipeTool: ConversationTool = {
     "The cloned draft validates as-is under WorkflowDefSchema. Only override fields the user explicitly customized.",
     "Recipes are READ ONLY in templates.json. Edits land on the draft, not on the template.",
     "If the recipe declares `derived_from_skill`, the cloned workflow's `derived_from_skill_id` is populated so `save_workflow_draft` can apply the skill-schema gate.",
+    "Recipes with `install_inputs` need a value for every listed key in `inputs`; without them the tool answers `recipe_inputs_missing` and you ask the user.",
     "Recipes with `required_connectors` need a binding for every declared placeholder UUID: pass `connector_id` when exactly one connector is declared, otherwise `connector_bindings`. Use `inspect_recipe` to see the placeholder roster, then resolve each placeholder to a saved connector via `find_connector` before cloning.",
   ],
   inputSchema,
@@ -124,6 +132,29 @@ export const startWorkflowFromRecipeTool: ConversationTool = {
       bindings[PLACEHOLDER_CONNECTOR_ID] = args.connector_id;
     }
 
+    const installKeys = recipe.install_inputs ?? [];
+    const suppliedInputs = args.inputs ?? {};
+    const missingInputs = installKeys.filter(
+      (key) => String(suppliedInputs[key] ?? "").trim().length === 0,
+    );
+    if (missingInputs.length > 0) {
+      const properties = (recipe.workflow.input_schema?.properties ?? {}) as Record<
+        string,
+        { description?: unknown }
+      >;
+      const missing = missingInputs.map((key) => {
+        const description = properties[key]?.description;
+        return { key, description: typeof description === "string" ? description : null };
+      });
+      return {
+        ok: false,
+        error_code: "recipe_inputs_missing",
+        message: `recipe \`${args.recipe_slug}\` needs install input(s) ${missing.map((m) => `\`${m.key}\`${m.description ? ` (${m.description})` : ""}`).join(", ")}. Ask the user for each value, then call start_workflow_from_recipe again with \`inputs\`.`,
+        next_best_actions: ["start_workflow_from_recipe"],
+        data: { install_inputs: installKeys, missing_inputs: missing },
+      };
+    }
+
     const slug = args.slug ?? `${args.template_slug}-${args.recipe_slug}`;
     const name = args.name ?? recipe.title;
     const goal = [
@@ -135,8 +166,20 @@ export const startWorkflowFromRecipeTool: ConversationTool = {
       .filter((part, index, all) => all.indexOf(part) === index)
       .join(" — ");
     const clonedRaw = JSON.parse(JSON.stringify(recipe.workflow));
+    const pinned = pinInstallInputs(clonedRaw, installKeys, suppliedInputs);
+    if (!pinned.ok) {
+      return {
+        ok: false,
+        error_code: "recipe_input_invalid",
+        message: `${pinned.message}. Ask the user for the plain value, then call start_workflow_from_recipe again.`,
+        next_best_actions: ["start_workflow_from_recipe"],
+        data: { install_inputs: installKeys, invalid_input: pinned.key },
+      };
+    }
     const cloned = (
-      Object.keys(bindings).length > 0 ? rebindConnectorIds(clonedRaw, bindings) : clonedRaw
+      Object.keys(bindings).length > 0
+        ? rebindConnectorIds(pinned.definition, bindings)
+        : pinned.definition
     ) as WorkflowDraftDocument;
     const nextWorkflow: WorkflowDraftDocument = {
       ...cloned,
@@ -167,6 +210,7 @@ export const startWorkflowFromRecipeTool: ConversationTool = {
           step_count: nextWorkflow.steps?.length ?? 0,
           derived_from_skill: recipe.derived_from_skill,
           required_connectors: required,
+          install_inputs_pinned: installKeys,
           connector_bindings_applied: Object.keys(bindings).length,
           next_hint:
             "Recipe cloned. Inspect with inspect_workflow_draft, dry_run with dry_run_workflow, then save_workflow_draft.",

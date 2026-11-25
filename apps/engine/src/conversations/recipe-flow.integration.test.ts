@@ -114,6 +114,67 @@ describe.skipIf(skip)("start_workflow_from_recipe", () => {
     expect(goal).toContain("Weekly VIP customer pull");
   });
 
+  test("a recipe with install inputs asks for them instead of cloning an unapprovable draft", async () => {
+    const draft: { current: DraftDocument } = { current: createEmptyDraftDocument() };
+    const result = await startWorkflowFromRecipeTool.execute(
+      makeToolCtx({ tenant_id, conversation_id, draft }),
+      {
+        template_slug: "google-analytics",
+        recipe_slug: "run-report",
+        connector_id: boundConnectorId,
+      },
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error_code).toBe("recipe_inputs_missing");
+    expect(result.message).toContain("property_id");
+    const data = result.data as {
+      missing_inputs?: Array<{ key: string; description: string | null }>;
+    };
+    expect(data.missing_inputs).toEqual([
+      {
+        key: "property_id",
+        description: "GA4 property id (digits only, from Admin > Property settings)",
+      },
+    ]);
+    expect(draft.current.workflow?.steps ?? []).toEqual([]);
+  });
+
+  test("install inputs are pinned into the cloned request paths", async () => {
+    const draft: { current: DraftDocument } = { current: createEmptyDraftDocument() };
+    const result = await startWorkflowFromRecipeTool.execute(
+      makeToolCtx({ tenant_id, conversation_id, draft }),
+      {
+        template_slug: "google-analytics",
+        recipe_slug: "run-report",
+        connector_id: boundConnectorId,
+        inputs: { property_id: "123456789" },
+      },
+    );
+    expect(result.ok).toBe(true);
+    const request = (draft.current.workflow?.steps ?? []).find(
+      (step) => (step as { kind?: string }).kind === "request",
+    ) as { path?: string } | undefined;
+    expect(request?.path).toBe("/v1beta/properties/123456789:runReport");
+  });
+
+  test("an install input that is not one plain path segment is refused", async () => {
+    const draft: { current: DraftDocument } = { current: createEmptyDraftDocument() };
+    const result = await startWorkflowFromRecipeTool.execute(
+      makeToolCtx({ tenant_id, conversation_id, draft }),
+      {
+        template_slug: "google-analytics",
+        recipe_slug: "run-report",
+        connector_id: boundConnectorId,
+        inputs: { property_id: "123/../456" },
+      },
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error_code).toBe("recipe_input_invalid");
+    expect(draft.current.workflow?.steps ?? []).toEqual([]);
+  });
+
   test("unknown template returns connector_template_unknown", async () => {
     const draft: { current: DraftDocument } = { current: createEmptyDraftDocument() };
     const result = await startWorkflowFromRecipeTool.execute(

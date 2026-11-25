@@ -124,6 +124,9 @@ export const createEn = {
   "create.solution.address": "Address of {name}",
   "create.solution.addressHelp":
     "This connector points at a system of your own; SubKit adds it with this address.",
+  "create.solution.inputHelp": "Fixed into the approved boundary when the workflow is created.",
+  "create.solution.inputMissing": "Fill in every value the template needs.",
+  "create.solution.inputInvalid": "Use letters, digits, _ or - only, without slashes or spaces.",
   "wizard.progress": "Step {step} of {total}",
   "wizard.step.how": "How",
   "wizard.step.what": "What",
@@ -261,6 +264,10 @@ export const createDe: Record<keyof typeof createEn, string> = {
   "create.solution.address": "Adresse von {name}",
   "create.solution.addressHelp":
     "Dieser Connector zeigt auf ein eigenes System; SubKit legt ihn mit dieser Adresse an.",
+  "create.solution.inputHelp": "Wird beim Anlegen fest in die freigegebene Grenze geschrieben.",
+  "create.solution.inputMissing": "Fülle jeden Wert aus, den die Vorlage braucht.",
+  "create.solution.inputInvalid":
+    "Nur Buchstaben, Ziffern, _ oder -, ohne Schrägstriche und Leerzeichen.",
   "wizard.progress": "Schritt {step} von {total}",
   "wizard.step.how": "Wie",
   "wizard.step.what": "Was",
