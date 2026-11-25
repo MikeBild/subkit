@@ -1,5 +1,7 @@
 import { canonicalWorkflowJson } from "./canonical-json.ts";
-import type { RequestBoundary } from "./request-boundary.ts";
+import { hasRuntimeValue } from "./report-delivery-boundary.ts";
+import type { RequestBoundary, RequestBoundaryRefusal } from "./request-boundary.ts";
+import type { RequestStep } from "./types.ts";
 
 export function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -58,4 +60,18 @@ export function describePagedBodyViolation(detail: PagedBodyViolation): string {
   if (detail.reason === "changed_between_pages")
     return "a later page differs from the first page in more than the reviewed paging fields";
   return "paging through the body needs a JSON object body";
+}
+
+export function bodyPagingRefusal(
+  step: RequestStep,
+  params: readonly string[],
+): RequestBoundaryRefusal | null {
+  const method = (step.method ?? "GET").toUpperCase();
+  if (method === "GET" || method === "HEAD") return "pagination_body_unsupported";
+  if (step.form !== undefined) return "pagination_body_unsupported";
+  if (step.body === undefined || step.body === null) return null;
+  if (!isPlainRecord(step.body)) return "pagination_body_unsupported";
+  const keys = Object.keys(step.body);
+  if (keys.some((key) => hasRuntimeValue(key))) return "pagination_body_unsupported";
+  return keys.some((key) => params.includes(key)) ? "pagination_param_conflict" : null;
 }
