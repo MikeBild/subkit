@@ -8,7 +8,7 @@ import { notificationChannels, notificationRules } from "../schema/notifications
 import { createTestDb } from "../tests/setup.ts";
 import { EMBEDDED_MIGRATIONS } from "./embedded.ts";
 
-test("legacy channel floors allow delivery after a rule severity is lowered", async () => {
+test("legacy channel floors remain effective after a rule severity is lowered", async () => {
   const ctx = await createTestDb(
     "legacy_channel_floor",
     EMBEDDED_MIGRATIONS.filter((migration) => migration.tag !== "0008_notification_channel_floor"),
@@ -51,7 +51,16 @@ test("legacy channel floors allow delivery after a rule severity is lowered", as
     const event = { tenant_id: tenant.id, type: "execution.failed", severity: "warn" as const };
     const result = await dispatchEvent({ db: ctx.db, resolveAdapter: () => adapter }, event);
     expect(result.matched).toBe(1);
-    expect(result.delivered).toBe(1);
+    expect(result.delivered).toBe(0);
+    expect(result.outcomes[0]?.reason).toBe("below_channel_severity");
+    expect(adapter.sends).toHaveLength(0);
+
+    await ctx.db
+      .update(notificationChannels)
+      .set({ default_severity: "debug" })
+      .where(eq(notificationChannels.id, channel.id));
+    const delivered = await dispatchEvent({ db: ctx.db, resolveAdapter: () => adapter }, event);
+    expect(delivered.delivered).toBe(1);
     expect(adapter.sends).toHaveLength(1);
 
     await ctx.db
