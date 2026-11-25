@@ -9,7 +9,7 @@ import {
 } from "../../scheduler/trigger-bindings.ts";
 import type * as svc from "../../workflows/index.ts";
 import { loadWorkflowBinding, type WorkflowListEntry } from "../../workflows/read-model.ts";
-import { checkRecipeOrigin } from "../../workflows/recipe-origin.ts";
+import { checkRecipeOrigin, pinnedRecipeDefinition } from "../../workflows/recipe-origin.ts";
 import { TriggerSchema } from "../../workflows/types.ts";
 import { CatalogSourceSchema } from "../catalog-metadata.ts";
 import { type Rejection, reject } from "./index.ts";
@@ -189,4 +189,20 @@ export function recipeOriginRejection(
   return check.ok
     ? null
     : reject.unprocessable(check.message, { reason: check.reason }, "unprocessable_entity");
+}
+
+export function pinRecipeInputs<T>(
+  origin: { vertical: string; slug: string; inputs?: Record<string, unknown> | undefined },
+  definition: T,
+): { definition: T; rejection?: never } | { rejection: Rejection } {
+  const pinned = pinnedRecipeDefinition(origin, definition);
+  return pinned.ok
+    ? { definition: pinned.definition as T }
+    : {
+        rejection: reject.unprocessable(
+          pinned.message,
+          { reason: pinned.reason },
+          "unprocessable_entity",
+        ),
+      };
 }

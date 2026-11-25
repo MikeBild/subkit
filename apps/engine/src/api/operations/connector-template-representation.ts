@@ -158,6 +158,7 @@ export const RecipePackEntrySchema = z
     tags: z.array(z.string()),
     difficulty: z.string(),
     connectors: z.array(RecipeConnectorBindingSchema),
+    install_inputs: ConnectorRecipeSchema.shape.install_inputs.removeDefault().optional(),
     sample_input: z.unknown().nullable(),
     workflow: WorkflowDefSchema,
   })

@@ -1,4 +1,5 @@
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
+import { pinInstallInputs } from "@shared/recipe-install-inputs.ts";
 
 export type RecipePackEntry = components["schemas"]["RecipePackEntry"];
 
@@ -7,6 +8,7 @@ export const SOLUTIONS_VERTICAL = "solutions";
 export interface WorkflowSource {
   body: Record<string, unknown>;
   previewInput: unknown;
+  installInputs?: readonly string[];
   recipe: { vertical: string; slug: string } | null;
 }
 
@@ -93,10 +95,20 @@ export function recipeWorkflowSource(
   return {
     body: swapConnectorIds(entry.workflow, mapping) as Record<string, unknown>,
     previewInput: entry.sample_input,
+    installInputs: entry.install_inputs ?? [],
     recipe: { vertical: SOLUTIONS_VERTICAL, slug },
   };
 }
 
-export function createBodyFor(source: WorkflowSource): Record<string, unknown> {
-  return source.recipe ? { ...source.body, recipe: source.recipe } : source.body;
+const isInputObject = (input: unknown): input is Record<string, unknown> =>
+  input !== null && typeof input === "object" && !Array.isArray(input);
+
+export function createBodyFor(source: WorkflowSource, input?: unknown): Record<string, unknown> {
+  if (!source.recipe) return source.body;
+  const recipe = isInputObject(input) ? { ...source.recipe, inputs: input } : source.recipe;
+  const pinned = isInputObject(input)
+    ? pinInstallInputs(source.body, source.installInputs ?? [], input)
+    : { ok: true as const, definition: source.body };
+  if (!pinned.ok) throw new Error(pinned.message);
+  return { ...(pinned.definition as Record<string, unknown>), recipe };
 }

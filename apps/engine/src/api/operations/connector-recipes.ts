@@ -77,6 +77,7 @@ async function recipePack(
       tags: recipe.tags,
       difficulty: recipe.difficulty,
       connectors: bound.connectors,
+      install_inputs: recipe.install_inputs,
       sample_input: recipe.sample_input ?? null,
       workflow: bound.workflow,
     };

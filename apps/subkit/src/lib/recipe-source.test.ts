@@ -50,6 +50,17 @@ const pack = (connector_id: string | null, candidates: Candidate[] = []) => ({
 });
 
 describe("subkit workflows create --from-recipe", () => {
+  test("recipe sources normalize omitted install inputs and preserve declared inputs", () => {
+    expect(recipeWorkflowSource(pack(SLACK), "webhook-to-slack").installInputs).toEqual([]);
+    const declared = { ...entry(SLACK), install_inputs: ["property_id"] };
+    expect(
+      recipeWorkflowSource(
+        { recipes: [declared] as unknown as Record<string, unknown>[] },
+        "webhook-to-slack",
+      ).installInputs,
+    ).toEqual(["property_id"]);
+  });
+
   test("recipe preview keeps omitted input distinct from explicit null", () => {
     const missing = entry(SLACK);
     Reflect.deleteProperty(missing, "sample_input");
@@ -84,6 +95,23 @@ describe("subkit workflows create --from-recipe", () => {
       steps: [{ id: "post", connector_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" }],
       recipe: { vertical: "solutions", slug: "webhook-to-slack" },
     });
+  });
+
+  test("an explicit install input travels with the origin so the engine pins it (#519)", () => {
+    const source = recipeWorkflowSource(
+      pack("cccccccc-cccc-4ccc-8ccc-cccccccccccc"),
+      "webhook-to-slack",
+    );
+    expect(createBodyFor(source, { property_id: "123456789" }).recipe).toEqual({
+      vertical: "solutions",
+      slug: "webhook-to-slack",
+      inputs: { property_id: "123456789" },
+    });
+    for (const input of [undefined, null, ["123"], "123"])
+      expect(createBodyFor(source, input).recipe).toEqual({
+        vertical: "solutions",
+        slug: "webhook-to-slack",
+      });
   });
 
   test("a solution with a missing connector names it, how to bind it and how to create it", () => {

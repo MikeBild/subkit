@@ -235,6 +235,7 @@
       "recipient": "team@example.com",
       "sender": "reports@example.com"
     },
+    "install_inputs": ["property_id"],
     "expected_output_preview": {
       "active_users": 42,
       "sessions": 57,

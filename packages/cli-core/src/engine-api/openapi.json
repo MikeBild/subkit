@@ -21830,6 +21830,11 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 128
+          },
+          "inputs": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "Install-time input values. Each value of a key the recipe lists in install_inputs is written into the request paths before the workflow is saved, so its reviewed boundary stays literal; other keys are ignored."
           }
         },
         "required": [
@@ -28152,6 +28157,15 @@
             "default": []
           },
           "sample_input": {},
+          "install_inputs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            },
+            "default": [],
+            "description": "Input keys whose install-time values are written into the request paths, so the reviewed boundary stays literal."
+          },
           "expected_output_preview": {},
           "required_connectors": {
             "type": "array",
@@ -28301,6 +28315,15 @@
             "default": []
           },
           "sample_input": {},
+          "install_inputs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            },
+            "default": [],
+            "description": "Input keys whose install-time values are written into the request paths, so the reviewed boundary stays literal."
+          },
           "expected_output_preview": {},
           "required_connectors": {
             "type": "array",
@@ -28367,6 +28390,7 @@
           "difficulty",
           "estimated_setup_minutes",
           "prerequisites",
+          "install_inputs",
           "required_connectors",
           "version",
           "author",
@@ -29116,6 +29140,13 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/RecipeConnectorBinding"
+            }
+          },
+          "install_inputs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
             }
           },
           "sample_input": {},

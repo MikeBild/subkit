@@ -7608,6 +7608,7 @@
           "start_date": "7daysAgo",
           "end_date": "yesterday"
         },
+        "install_inputs": ["property_id"],
         "expected_output_preview": {
           "activeUsers": 42,
           "sessions": 57,
@@ -7701,6 +7702,7 @@
           "start_date": "yesterday",
           "end_date": "yesterday"
         },
+        "install_inputs": ["property_id"],
         "expected_output_preview": {
           "pages": [
             {
@@ -7810,6 +7812,7 @@
           "start_date": "7daysAgo",
           "end_date": "yesterday"
         },
+        "install_inputs": ["property_id"],
         "expected_output_preview": {
           "sources": [
             {
@@ -7912,6 +7915,7 @@
         "sample_input": {
           "property_id": "123456789"
         },
+        "install_inputs": ["property_id"],
         "expected_output_preview": {
           "active_users": 7,
           "countries": [
