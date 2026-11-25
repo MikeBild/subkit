@@ -3,7 +3,7 @@ export type ReleaseNotes = { version: string; notes: string[]; highlights: strin
 export type PendingNotes = { version: string | null; notes: string[]; highlights: string[] | null };
 
 export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpublished: PendingNotes; highlights: Record<string, string[]> } = {
-  "source": "ec4ae3cc74b22d276f8b9532fceb7ba37251c4e5",
+  "source": "0ea6a3517d1c18d0952b282fcfd5f4fa8734cde9",
   "releases": [
     {
       "version": "v1.0.0",
@@ -2498,6 +2498,15 @@ export const RELEASE_HISTORY: { source: string; releases: ReleaseNotes[]; unpubl
     "13.0.2": [
       "The Mac download and the desktop update always point at a release that has the Mac app. If the app for a new release is missing, the previous complete release stays the latest one.",
       "A file you upload stays available for a day before cleanup can remove it, even when nothing links to it yet, so a chat or workflow that picks it up a little later still finds it."
+    ],
+    "13.1.0": [
+      "Conversations are private by default. Only you can read your conversations, admins included. You choose to share one with your team and can take it back at any time. Admins can delete someone’s private conversation without reading it. Threads in Slack or Google Chat channels are shared, direct messages stay private.",
+      "Secrets, approvals, webhooks and subscriptions are now separated per workspace by the database itself, also in SubKit Cloud, without any extra database role.",
+      "SFTP connectors sign in with PKCS#8 keys too: RSA, ECDSA and Ed25519, with or without a passphrase.",
+      "Reading CSV files in a workflow takes an optional delimiter: comma, semicolon, tab or pipe. Without one, SubKit still detects it.",
+      "When a run asks a question in a conversation you already closed, it now stops with that reason under “Needs you”, so you can continue or cancel it instead of waiting for the question to expire.",
+      "“What’s new” shows the notes of every version, including 13.0.1 and 13.0.2, and formats code in them.",
+      "Many smaller fixes and a cleaner Cockpit: one confirm dialog, shared list controls, clearer status badges and copy feedback."
     ]
   }
 };
