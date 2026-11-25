@@ -313,25 +313,25 @@ describe("only the task owner or an admin writes in a run conversation", () => {
     expect(outcome.result.status).toBe("active");
   }, 120_000);
 
-  test("an ordinary conversation keeps accepting every one of these writes", async () => {
+  test("an ordinary conversation keeps accepting every one of these writes from its owner", async () => {
     const conversation_id = await createRunConversation(ctx, owner.id, null);
     await svc.appendUserMessage(
       {
         tenant_id: ctx.tenant_id,
         conversation_id,
-        actor_id: stranger.id,
-        principal: stranger,
+        actor_id: owner.id,
+        principal: owner,
         message: "Hello.",
       },
       ctx.testDb.db,
     );
     await svc.compactConversation(
-      { tenant_id: ctx.tenant_id, conversation_id, actor_id: stranger.id, principal: stranger },
+      { tenant_id: ctx.tenant_id, conversation_id, actor_id: owner.id, principal: owner },
       ctx.testDb.db,
     );
     await svc.undoLastDraftMutation(ctx.tenant_id, conversation_id, ctx.testDb.db);
     await svc.patchConversation(
-      { tenant_id: ctx.tenant_id, conversation_id, actor_id: stranger.id, title: "Shared" },
+      { tenant_id: ctx.tenant_id, conversation_id, actor_id: owner.id, title: "Shared" },
       ctx.testDb.db,
     );
     await setToolPolicies(
@@ -339,11 +339,24 @@ describe("only the task owner or an admin writes in a run conversation", () => {
       ctx.tenant_id,
       conversation_id,
       { run_workflow: "confirm_before_execution" },
-      { actor_type: "user", actor_id: stranger.id, request_source: "api" },
+      { actor_type: "user", actor_id: owner.id, request_source: "api" },
     );
     expect(await getToolPolicies(ctx.testDb.db, ctx.tenant_id, conversation_id)).toEqual({
       run_workflow: "confirm_before_execution",
     });
+    expect(await userMessages(conversation_id)).toBe(1);
+    await expect(
+      svc.appendUserMessage(
+        {
+          tenant_id: ctx.tenant_id,
+          conversation_id,
+          actor_id: stranger.id,
+          principal: stranger,
+          message: "Hello.",
+        },
+        ctx.testDb.db,
+      ),
+    ).rejects.toMatchObject({ status: 404, code: "not_found" });
     expect(await userMessages(conversation_id)).toBe(1);
   }, 120_000);
 });
