@@ -178,7 +178,7 @@ Eine offene Rückfrage hält den nächsten geplanten Start auf, weil der Run noc
 
 ### Das Ergebnis prüfen
 
-Sind alle Schritte erledigt, lautet der Zustand **Ergebnis liegt vor**, und du bekommst einen Hinweis. Der Run fragt dich nicht selbst, ob das Ergebnis stimmt: Er übergibt es, indem er seine Runde beendet. Er schreibt dir in der Sprache, die du beim letzten Speichern der Aufgabe verwendet hast.
+Sind alle Schritte erledigt, lautet der Zustand **Ergebnis liegt vor**, und du bekommst einen Hinweis. Der Run soll das Ergebnis übergeben, indem er seine Runde beendet, und dich nicht fragen, ob es stimmt. SubKit hält eine solche Frage nur zurück, wenn sie das Ziel der Aufgabe wörtlich wiederholt; Groß- und Kleinschreibung, Leerzeichen und Satzzeichen am Ende zählen dabei nicht. Fragt der Run dasselbe mit anderen Worten, kann dich die Frage trotzdem erreichen, auch solange ein Schritt noch offen ist. Eine Antwort darauf bestätigt das Ergebnis nicht: Das tut nur **Passt** unter **Ergebnis prüfen**. Er schreibt dir in der Sprache, die du beim letzten Speichern der Aufgabe verwendet hast.
 
 1. Wähle **Ergebnis prüfen**.
 2. Lies, was der Run getan hat. Jeder Schritt zeigt seine Belege.

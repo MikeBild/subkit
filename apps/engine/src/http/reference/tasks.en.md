@@ -178,7 +178,7 @@ An open question blocks the next scheduled start, because the run is still open.
 
 ### Review the result
 
-When all steps are done, the state reads **result ready** and you get a notice. The run does not ask you itself whether the result is right: it hands the result over by ending its round. It writes to you in the language you used when you last saved the task.
+When all steps are done, the state reads **result ready** and you get a notice. The run is meant to hand the result over by ending its round, not to ask you whether it is right. SubKit holds such a question back only when it repeats the goal of the task word for word; capitalization, spacing and closing punctuation do not count. A question that asks the same in other words can still reach you, even while a step is open. Answering it does not confirm the result: only **Looks good** under **Review result** does. It writes to you in the language you used when you last saved the task.
 
 1. Select **Review result**.
 2. Read what the run did. Each step shows its evidence.
