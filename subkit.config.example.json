@@ -43,6 +43,7 @@
     "suggestion_model": "",
     "context_1m": false,
     "web_search": true,
+    "result_question_check": false,
     "reasoning_effort": "default",
     "output_guard": "soft",
     "providers": {

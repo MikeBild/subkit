@@ -76,6 +76,16 @@ describe("task guide on result questions of a run", () => {
     expect(paragraph).toContain(`only **${englishAccept}** under **${englishReview}** does`);
   });
 
+  test("both guides name the opt-in result question check and its failure behaviour", () => {
+    const englishParagraph = resultReadyParagraph(englishGuide, englishAccept, englishReview);
+    const germanParagraph = resultReadyParagraph(germanGuide, germanAccept, germanReview);
+    expect(englishParagraph).toContain(
+      "unless you switch on the setting `llm.result_question_check`",
+    );
+    expect(englishParagraph).toContain("a question still gets through when that call fails");
+    expect(germanParagraph).toContain("`llm.result_question_check`");
+  });
+
   test("the German twin carries the same paragraph with the cockpit labels", () => {
     expect(germanAccept.length).toBeGreaterThan(0);
     expect(germanReview.length).toBeGreaterThan(0);

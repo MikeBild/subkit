@@ -1,8 +1,23 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  spyOn,
+  test,
+} from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { and, eq, isNull } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
+import { _resetConfigForTests, getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
 import { conversations, roles, users } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { getMockProvider } from "../../llm/mock-provider.ts";
+import { logger } from "../../logging/index.ts";
 import { startTaskRun, TASK_RESULT_STEP_ID, type TaskRun } from "../../tasks/index.ts";
 import { createTask } from "../../tasks/service/tasks.ts";
 import { seedTenant } from "../../test-helpers/seed.ts";
@@ -10,9 +25,13 @@ import { getTaskRunMarker } from "../core/draft.ts";
 import { updatePlaybook } from "../playbook.ts";
 import { PlaybookDocumentSchema, type PlaybookPlan } from "../playbook-contract.ts";
 import { readConversationPlaybookPlan } from "../service/tool-state.ts";
+import { getTool } from "../tools/index.ts";
 import { prepareGate } from "../tools/sdk-wrap/gate-subjects.ts";
+import { taskRunToolRefusal } from "../tools/sdk-wrap/task-run-guard.ts";
 import {
+  type ResultQuestionMemo,
   TASK_RUN_CONFIRM_STEP_ID,
+  taskRunAsksForTheResult,
   taskRunPlaybookRefusal,
 } from "../tools/sdk-wrap/task-run-playbook.ts";
 
@@ -182,6 +201,137 @@ describe("a started task run seeds its conversation before the first turn", () =
       .where(and(eq(conversations.tenant_id, tenant_id), eq(conversations.id, conversation_id)))
       .limit(1);
     expect(PlaybookDocumentSchema.safeParse(document?.playbook).success).toBe(true);
+  });
+});
+
+describe("the opt-in check for result questions in other words", () => {
+  const paraphrase = "Does the weekly report look right to you?";
+  const marker = () => ({
+    task_id: run.task_id,
+    task_run_id: run.id,
+    environment: "dev" as const,
+    workflow_ids: [],
+    connector_ids: [],
+    web_search: true,
+  });
+  const askConfirm = async (question: string) => {
+    const tool = getTool("ask_user_confirm");
+    if (!tool) throw new Error("ask_user_confirm is not registered");
+    return taskRunToolRefusal(tool, marker(), { db: db.db, tenant_id, conversation_id } as never, {
+      question,
+    });
+  };
+  const judgeCalls = () => getMockProvider().calls.filter((call) => call.flow === "judge").length;
+  const prompts: string[] = [];
+  let configDir = "";
+
+  beforeAll(async () => {
+    configDir = mkdtempSync(join(tmpdir(), "subkit-result-question-"));
+    await loadConfig({
+      env: { DATABASE_URL: db.url, NODE_ENV: "test" },
+      configPathOverride: join(configDir, "subkit.config.json"),
+    });
+  });
+
+  afterAll(() => {
+    _resetConfigForTests();
+    rmSync(configDir, { recursive: true, force: true });
+  });
+
+  beforeEach(() => {
+    getMockProvider().reset();
+    prompts.length = 0;
+  });
+
+  afterEach(async () => {
+    getMockProvider().reset();
+    await setConfigKey("llm.result_question_check", false, { tenantId: tenant_id });
+  });
+
+  test("the setting is off by default and a paraphrase reaches the person without a model call", async () => {
+    expect(getConfig(tenant_id).llm.result_question_check).toBe(false);
+    getMockProvider().generateOverrides.judge = () => ({ asks_for_result: true });
+    expect(await askConfirm(paraphrase)).toBeNull();
+    expect(await askConfirm(GOAL)).toMatchObject({
+      ok: false,
+      error_code: "task_run_result_question_refused",
+    });
+    expect(judgeCalls()).toBe(0);
+  });
+
+  test("switched on, a paraphrase the model recognizes is refused like the goal itself", async () => {
+    await setConfigKey("llm.result_question_check", true, { tenantId: tenant_id });
+    getMockProvider().generateOverrides.judge = (last) => {
+      prompts.push(last);
+      return { asks_for_result: last.includes(JSON.stringify(paraphrase)) };
+    };
+    expect(await askConfirm(paraphrase)).toMatchObject({
+      ok: false,
+      error_code: "task_run_result_question_refused",
+    });
+    expect(await askConfirm("Which week should the report cover?")).toBeNull();
+    expect(await askConfirm(GOAL)).toMatchObject({
+      error_code: "task_run_result_question_refused",
+    });
+    expect(prompts).toHaveLength(2);
+    expect(prompts[0]).toContain(`Goal of the task: ${JSON.stringify(GOAL)}`);
+  });
+
+  test("the classifier system requests its own verdict instead of a workflow judgment", async () => {
+    await setConfigKey("llm.result_question_check", true, { tenantId: tenant_id });
+    getMockProvider().generateOverrides.judge = () => ({ asks_for_result: true });
+    await askConfirm(paraphrase);
+    const call = getMockProvider().calls.find((entry) => entry.flow === "judge");
+    expect(call?.system).toContain("asks_for_result");
+    expect(call?.system).not.toContain("{ reason, missing, verdict }");
+    expect(call?.system).not.toContain("workflow output");
+  });
+
+  test("switched on, a failing model lets the question through and warns", async () => {
+    await setConfigKey("llm.result_question_check", true, { tenantId: tenant_id });
+    getMockProvider().generateOverrides.judge = () => {
+      throw new Error("judge unavailable");
+    };
+    const warnings: Array<Record<string, unknown>> = [];
+    const warn = spyOn(logger, "warn").mockImplementation((entry: unknown) => {
+      warnings.push(entry as Record<string, unknown>);
+    });
+    try {
+      expect(await askConfirm(paraphrase)).toBeNull();
+    } finally {
+      warn.mockRestore();
+    }
+    expect(warnings).toContainEqual(
+      expect.objectContaining({
+        module: "conversations",
+        action: "task_run.result_question_check_failed",
+        tenant_id,
+        conversation_id,
+      }),
+    );
+  });
+
+  test("switched on, a reply without a verdict lets the question through and warns", async () => {
+    await setConfigKey("llm.result_question_check", true, { tenantId: tenant_id });
+    const warn = spyOn(logger, "warn").mockImplementation(() => undefined);
+    try {
+      expect(await askConfirm(paraphrase)).toBeNull();
+      expect(warn.mock.calls.map(([entry]) => (entry as { action?: string }).action)).toContain(
+        "task_run.result_question_check_failed",
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("the guard asks the model once for the precheck and the call of the same question", async () => {
+    await setConfigKey("llm.result_question_check", true, { tenantId: tenant_id });
+    getMockProvider().generateOverrides.judge = () => ({ asks_for_result: false });
+    const memo: ResultQuestionMemo = new Map();
+    const scope = { db: db.db, tenant_id, conversation_id };
+    expect(await taskRunAsksForTheResult(scope, { question: paraphrase }, memo)).toBe(false);
+    expect(await taskRunAsksForTheResult(scope, { question: paraphrase }, memo)).toBe(false);
+    expect(judgeCalls()).toBe(1);
   });
 });
 

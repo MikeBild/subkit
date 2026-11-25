@@ -125,5 +125,6 @@ export async function basePromptFor(
   if (flow === "tool_repair") {
     throw new Error("basePromptFor: tool_repair composes its own messages");
   }
+  if (flow === "judge" && authorSystem?.trim()) return { content: authorSystem.trim() };
   return { content: BASE_SYSTEM_PROMPTS[flow] };
 }
