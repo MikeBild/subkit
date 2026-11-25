@@ -1,0 +1,93 @@
+import { afterAll, beforeAll, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
+import { setConfigKey } from "../../config/loader.ts";
+import { conversations, conversationToolCalls } from "../../db/schema/index.ts";
+import { EngineClient } from "../../engine-client/index.ts";
+import { getElicitation } from "../elicitations.ts";
+import { elicitationInputForClient } from "../tools/ask-user/commit-intent.ts";
+import type { ToolContext } from "../tools/index.ts";
+import { wrapTools } from "../tools/sdk-wrap.ts";
+import type { TurnEvent } from "../types.ts";
+import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
+import { freshSignals } from "./turn-signals.ts";
+
+let ctx: ConversationTestCtx;
+
+beforeAll(async () => {
+  ctx = await createConversationTestCtx("policy-confirm-reuse");
+  await setConfigKey("server.public_base_url", "https://engine.example.test", { force: true });
+});
+
+afterAll(async () => {
+  await ctx.cleanup();
+});
+
+test("reused policy confirmation publishes the persisted approval metadata", async () => {
+  const [conversation] = await ctx.testDb.db
+    .insert(conversations)
+    .values({ tenant_id: ctx.tenant_id, owner_id: ctx.user_id, status: "active" })
+    .returning();
+  if (!conversation) throw new Error("failed to seed conversation");
+  const toolCtx: ToolContext = {
+    db: ctx.testDb.db,
+    tenant_id: ctx.tenant_id,
+    conversation_id: conversation.id,
+    actor_id: ctx.user_id,
+    principal: {
+      provider: "test",
+      kind: "user",
+      id: ctx.user_id,
+      tenant_id: ctx.tenant_id,
+      roles: ["admin"],
+    },
+    connector_id: null,
+    workflow_id: null,
+    engineClient: new EngineClient({
+      tenant_id: ctx.tenant_id,
+      actor_id: ctx.user_id,
+      actor_type: "user",
+      db: ctx.testDb.db,
+    }),
+    getDraft: () => ({ workflow: { name: "", steps: [] } }),
+    setDraft: async () => {},
+  };
+  const invoke = async () => {
+    const signals = freshSignals();
+    const events: TurnEvent[] = [];
+    const wrapped = await wrapTools(
+      toolCtx,
+      signals,
+      events,
+      ctx.testDb.db,
+      ["workflow-authoring"],
+      { run_workflow: "confirm_before_execution" },
+    );
+    const execute = wrapped.run_workflow?.execute;
+    if (!execute) throw new Error("missing run_workflow");
+    const result = await execute(
+      { workflow: "reuse-test", environment: "prod", execute_writes: true },
+      { toolCallId: crypto.randomUUID(), messages: [] },
+    );
+    return { result, signals, events };
+  };
+  const first = await invoke();
+  const firstId = first.signals.pendingElicitation?.elicitation_id;
+  expect(firstId).toBeDefined();
+  const persisted = await getElicitation(ctx.tenant_id, firstId!, ctx.testDb.db);
+  const input = elicitationInputForClient(persisted?.input) as Record<string, unknown>;
+  expect(input.approval_url).toMatch(/^https:\/\/engine\.example\.test\//);
+  const second = await invoke();
+  expect(second.signals.pendingElicitation?.elicitation_id).toBe(firstId);
+  expect(second.result).toMatchObject({
+    data: { approval_url: input.approval_url },
+    pause: { input, summary: persisted?.summary },
+  });
+  expect(second.signals.pendingElicitation?.input).toEqual(input);
+  expect(second.events.find((event) => event.type === "elicit_request")).toMatchObject({ input });
+  const calls = await ctx.testDb.db
+    .select()
+    .from(conversationToolCalls)
+    .where(eq(conversationToolCalls.conversation_id, conversation.id));
+  expect(calls).toHaveLength(2);
+  for (const call of calls) expect(call.output).toMatchObject({ approval_url: input.approval_url });
+});
