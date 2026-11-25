@@ -369,7 +369,12 @@ function idempotencyHeader(
   step: RequestStep,
 ): { idempotency_key?: { var: string }; refusal?: never } | { refusal: RequestBoundaryRefusal } {
   let idempotencyKey: { var: string } | undefined;
-  for (const [name, value] of Object.entries(step.headers ?? {})) {
+  const effectiveHeaders: Record<string, string> =
+    step.idempotency_key !== undefined &&
+    !Object.keys(step.headers ?? {}).some((name) => name.toLowerCase() === "idempotency-key")
+      ? { ...step.headers, "Idempotency-Key": step.idempotency_key }
+      : { ...step.headers };
+  for (const [name, value] of Object.entries(effectiveHeaders)) {
     if (hasRuntimeValue(name)) return refuse("runtime_header");
     if (!hasRuntimeValue(value) || onlyVaultHandles(value)) continue;
     const whole = typeof value === "string" ? WHOLE_SEGMENT.exec(value) : null;
@@ -385,7 +390,7 @@ function idempotencyHeader(
   }
   if (
     idempotencyKey &&
-    Object.keys(step.headers ?? {}).filter((name) => name.toLowerCase() === "idempotency-key")
+    Object.keys(effectiveHeaders).filter((name) => name.toLowerCase() === "idempotency-key")
       .length !== 1
   )
     return refuse("runtime_header");
@@ -399,6 +404,8 @@ function stepWithoutRuntimeParts(step: RequestStep) {
     url: _url,
     query: _query,
     headers: _headers,
+    form: _form,
+    idempotency_key: _idempotencyKey,
     multipart: _multipart,
     for_each: _forEach,
     data_selector: _dataSelector,

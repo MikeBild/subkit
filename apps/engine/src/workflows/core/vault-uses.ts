@@ -26,9 +26,11 @@ export function stepVaultUses(step: {
   readonly headers?: unknown;
   readonly query?: unknown;
   readonly body?: unknown;
+  readonly form?: unknown;
+  readonly idempotency_key?: unknown;
 }): string[] {
   const found = new Set<string>();
-  collect([step.headers, step.query, step.body], found);
+  collect([step.headers, step.query, step.body, step.form, step.idempotency_key], found);
   return [...found].sort();
 }
 

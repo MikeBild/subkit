@@ -36,7 +36,7 @@ SubKit Desktop creates device items itself, for example the key the device uses 
 
 ### Use an item in a workflow
 
-Write the handle into a header, a query value or the body of a request step that has a connector:
+Write the handle into a header, a query value, a `form` field or the body of a request step that has a connector:
 
 ```json
 {
@@ -62,8 +62,8 @@ These rules always apply:
 - **The approval names the items.** It shows “Uses from the vault: crm-token, …” and binds the names, never the values. A new version that uses another item needs a new approval. Fewer items carry the approval forward.
 - **Approved runs only.** In drafts, test runs and held steps the handle stays unresolved (`secret_withheld`) and nothing is sent.
 - **Own connector only.** A step that carries a vault value may only go to its connector's origin. Any other address stops with `credential_boundary_violation` before anything is sent.
-- **Headers, query and body only.** In the path, the URL, a GraphQL query or an MCP call a handle is never resolved; in the path or URL the step stops before anything is sent.
-- **The same rules everywhere.** A handle in the query or body is resolved, redacted and approved exactly like one in a header. A query value may hold fixed text around a handle but no other placeholder; the approval checks that the key is sent, not its value, so a rotation needs no new approval.
+- **Headers, query, form and body only.** In the path, the URL, a GraphQL query or an MCP call a handle is never resolved; in the path or URL the step stops before anything is sent.
+- **The same rules everywhere.** A handle in the query, a form field or the body is resolved, redacted and approved exactly like one in a header. A query value may hold fixed text around a handle but no other placeholder; the approval checks that the key is sent, not its value, so a rotation needs no new approval.
 - **A missing item fails the step** with `placeholder_unresolved`, and nothing is sent.
 
 ### What the AI and the records see

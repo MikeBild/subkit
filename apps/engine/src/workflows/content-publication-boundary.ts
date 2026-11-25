@@ -66,6 +66,7 @@ export function contentPublicationShape(step: RequestStep, baseUrl: string | nul
     step.query ||
     step.multipart ||
     step.xml ||
+    step.form ||
     (path && url) ||
     hasRuntimeValue(fixed)
   )
