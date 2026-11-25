@@ -3,6 +3,7 @@ import {
   declaredMarkdownSource,
   declaredSecretValues,
   pickResultMarkdown,
+  RESULT_MARKDOWN_MAX_BYTES,
   resultMarkdown,
 } from "./result-markdown.ts";
 
@@ -75,6 +76,27 @@ describe("resultMarkdown", () => {
   test("text beyond the cap is cut and marked truncated", () => {
     const out = resultMarkdown({ result_markdown: "x".repeat(20) }, undefined, [], 8);
     expect(out).toEqual({ markdown: "xxxxxxxx", truncated: true });
+  });
+
+  test("the cap counts UTF-8 bytes, so accented text over 64 KiB is cut", () => {
+    const accented = "é".repeat(40_000);
+    const out = resultMarkdown({ result_markdown: accented }, undefined);
+    expect(out?.truncated).toBe(true);
+    expect(Buffer.byteLength(out?.markdown ?? "", "utf8")).toBe(RESULT_MARKDOWN_MAX_BYTES);
+  });
+
+  test("the cut never splits a code point", () => {
+    const out = resultMarkdown({ result_markdown: `a${"😀".repeat(10)}` }, undefined, [], 8);
+    expect(out).toEqual({ markdown: "a😀", truncated: true });
+    expect(out?.markdown).not.toContain("�");
+  });
+
+  test("ASCII exactly at the cap is kept whole", () => {
+    const exact = "x".repeat(RESULT_MARKDOWN_MAX_BYTES);
+    expect(resultMarkdown({ result_markdown: exact }, undefined)).toEqual({
+      markdown: exact,
+      truncated: false,
+    });
   });
 
   test("no Markdown means no result", () => {

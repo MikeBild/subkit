@@ -11,6 +11,14 @@ describe("findComments", () => {
     expect(findComments(file, source)).toEqual([]);
   });
 
+  test("Markdown byte truncation satisfies the no-comments invariant (#543)", () => {
+    const source = readFileSync(
+      new URL("../../src/execution/result-markdown.ts", import.meta.url),
+      "utf8",
+    );
+    expect(findComments("result-markdown.ts", source)).toEqual([]);
+  });
+
   test("setup pair visibility satisfies the no-comments invariant (#552)", () => {
     const source = readFileSync(
       new URL("../../../cockpit/src/features/operations/pair-model.ts", import.meta.url),
