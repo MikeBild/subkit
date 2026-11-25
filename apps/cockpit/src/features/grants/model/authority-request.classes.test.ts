@@ -4,7 +4,7 @@ import { CLASS_KEYS } from "@/features/grants/model/authority-request";
 import { CATALOGS } from "@/lib/i18n";
 
 const ENGINE_SOURCE = new URL(
-  "../../../../../engine/src/workflows/request-boundary.ts",
+  "../../../../../engine/src/workflows/request-value-rules.ts",
   import.meta.url,
 ).pathname;
 

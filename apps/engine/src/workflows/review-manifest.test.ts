@@ -182,3 +182,42 @@ test("a model step appears in the review as an AI model effect", async () => {
     },
   ]);
 });
+
+test("a bounded header shows its literal name and rule, and a changed rule changes the review digest", async () => {
+  const definition = (headerRule: Record<string, unknown>) => ({
+    name: "Create work",
+    steps: [
+      {
+        id: "create",
+        kind: "request",
+        method: "POST",
+        connector_id: connectorId,
+        path: "/work",
+        headers: { "Idempotency-Key": "${input.body.workId}" },
+        body: { title: "${input.body.title}" },
+        boundary: {
+          variables: {},
+          headers: { "Idempotency-Key": headerRule },
+          max_body_bytes: 1024,
+          max_calls: 1,
+        },
+      },
+    ],
+  });
+  const review = (headerRule: Record<string, unknown>) =>
+    resolveWorkflowReviewManifest(
+      { tenant_id: tenantId, definition: definition(headerRule), environment: "dev" },
+      testDb.db,
+    );
+  const byClass = await review({ class: "identifier" });
+  const byEnum = await review({ enum: ["work-1"] });
+  expect(byClass.effects[0]?.details).toEqual([
+    "POST",
+    "At most 1 calls; 1024 body bytes",
+    "Variable headers: Idempotency-Key (class identifier)",
+  ]);
+  expect(byClass.manifest.effects[0]?.boundary?.headers).toEqual({
+    "Idempotency-Key": { var: "input.body.workId", rule: { class: "identifier" } },
+  });
+  expect(byEnum.digest).not.toBe(byClass.digest);
+});

@@ -9321,6 +9321,67 @@
                       ],
                       "additionalProperties": false
                     },
+                    "headers": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                          "var": {
+                            "type": "string",
+                            "pattern": "^(?:(?:item|input|scope)(?:\\.[A-Za-z_][A-Za-z0-9_]*)+|caller\\.(?:subject|principalId))$"
+                          },
+                          "rule": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "enum": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "pattern": "^(?:[A-Za-z0-9._~:-]|%[0-9A-Fa-f]{2}){1,200}$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 50
+                                  }
+                                },
+                                "required": [
+                                  "enum"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "class": {
+                                    "type": "string",
+                                    "enum": [
+                                      "identifier",
+                                      "long_identifier",
+                                      "uuid",
+                                      "integer",
+                                      "date",
+                                      "timestamp",
+                                      "timestamp_range",
+                                      "file_name"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "class"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "var",
+                          "rule"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
                     "segments": {
                       "type": "array",
                       "items": {
@@ -12447,6 +12508,54 @@
                   ]
                 }
               },
+              "headers": {
+                "type": "object",
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "enum": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "pattern": "^(?:[A-Za-z0-9._~:-]|%[0-9A-Fa-f]{2}){1,200}$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 50
+                        }
+                      },
+                      "required": [
+                        "enum"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "class": {
+                          "type": "string",
+                          "enum": [
+                            "identifier",
+                            "long_identifier",
+                            "uuid",
+                            "integer",
+                            "date",
+                            "timestamp",
+                            "timestamp_range",
+                            "file_name"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "class"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "description": "Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`."
+              },
               "allowed_hosts": {
                 "anyOf": [
                   {
@@ -13027,6 +13136,54 @@
                     }
                   ]
                 }
+              },
+              "headers": {
+                "type": "object",
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "enum": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "pattern": "^(?:[A-Za-z0-9._~:-]|%[0-9A-Fa-f]{2}){1,200}$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 50
+                        }
+                      },
+                      "required": [
+                        "enum"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "class": {
+                          "type": "string",
+                          "enum": [
+                            "identifier",
+                            "long_identifier",
+                            "uuid",
+                            "integer",
+                            "date",
+                            "timestamp",
+                            "timestamp_range",
+                            "file_name"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "class"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "description": "Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`."
               },
               "allowed_hosts": {
                 "anyOf": [
@@ -14263,6 +14420,54 @@
                   ]
                 }
               },
+              "headers": {
+                "type": "object",
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "enum": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "pattern": "^(?:[A-Za-z0-9._~:-]|%[0-9A-Fa-f]{2}){1,200}$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 50
+                        }
+                      },
+                      "required": [
+                        "enum"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "class": {
+                          "type": "string",
+                          "enum": [
+                            "identifier",
+                            "long_identifier",
+                            "uuid",
+                            "integer",
+                            "date",
+                            "timestamp",
+                            "timestamp_range",
+                            "file_name"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "class"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "description": "Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`."
+              },
               "allowed_hosts": {
                 "anyOf": [
                   {
@@ -14913,6 +15118,54 @@
                     }
                   ]
                 }
+              },
+              "headers": {
+                "type": "object",
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "enum": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "pattern": "^(?:[A-Za-z0-9._~:-]|%[0-9A-Fa-f]{2}){1,200}$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 50
+                        }
+                      },
+                      "required": [
+                        "enum"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "class": {
+                          "type": "string",
+                          "enum": [
+                            "identifier",
+                            "long_identifier",
+                            "uuid",
+                            "integer",
+                            "date",
+                            "timestamp",
+                            "timestamp_range",
+                            "file_name"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "class"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "description": "Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`."
               },
               "allowed_hosts": {
                 "anyOf": [
@@ -15568,6 +15821,54 @@
                   ]
                 }
               },
+              "headers": {
+                "type": "object",
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "enum": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "pattern": "^(?:[A-Za-z0-9._~:-]|%[0-9A-Fa-f]{2}){1,200}$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 50
+                        }
+                      },
+                      "required": [
+                        "enum"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "class": {
+                          "type": "string",
+                          "enum": [
+                            "identifier",
+                            "long_identifier",
+                            "uuid",
+                            "integer",
+                            "date",
+                            "timestamp",
+                            "timestamp_range",
+                            "file_name"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "class"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "description": "Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`."
+              },
               "allowed_hosts": {
                 "anyOf": [
                   {
@@ -16205,6 +16506,54 @@
                     }
                   ]
                 }
+              },
+              "headers": {
+                "type": "object",
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "enum": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "pattern": "^(?:[A-Za-z0-9._~:-]|%[0-9A-Fa-f]{2}){1,200}$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 50
+                        }
+                      },
+                      "required": [
+                        "enum"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "class": {
+                          "type": "string",
+                          "enum": [
+                            "identifier",
+                            "long_identifier",
+                            "uuid",
+                            "integer",
+                            "date",
+                            "timestamp",
+                            "timestamp_range",
+                            "file_name"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "class"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "description": "Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`."
               },
               "allowed_hosts": {
                 "anyOf": [
@@ -16849,6 +17198,54 @@
                   ]
                 }
               },
+              "headers": {
+                "type": "object",
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "enum": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "pattern": "^(?:[A-Za-z0-9._~:-]|%[0-9A-Fa-f]{2}){1,200}$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 50
+                        }
+                      },
+                      "required": [
+                        "enum"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "class": {
+                          "type": "string",
+                          "enum": [
+                            "identifier",
+                            "long_identifier",
+                            "uuid",
+                            "integer",
+                            "date",
+                            "timestamp",
+                            "timestamp_range",
+                            "file_name"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "class"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "description": "Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`."
+              },
               "allowed_hosts": {
                 "anyOf": [
                   {
@@ -17489,6 +17886,54 @@
                     }
                   ]
                 }
+              },
+              "headers": {
+                "type": "object",
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "enum": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "pattern": "^(?:[A-Za-z0-9._~:-]|%[0-9A-Fa-f]{2}){1,200}$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 50
+                        }
+                      },
+                      "required": [
+                        "enum"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "class": {
+                          "type": "string",
+                          "enum": [
+                            "identifier",
+                            "long_identifier",
+                            "uuid",
+                            "integer",
+                            "date",
+                            "timestamp",
+                            "timestamp_range",
+                            "file_name"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "class"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "description": "Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`."
               },
               "allowed_hosts": {
                 "anyOf": [
@@ -18136,6 +18581,54 @@
                   ]
                 }
               },
+              "headers": {
+                "type": "object",
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "enum": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "pattern": "^(?:[A-Za-z0-9._~:-]|%[0-9A-Fa-f]{2}){1,200}$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 50
+                        }
+                      },
+                      "required": [
+                        "enum"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "class": {
+                          "type": "string",
+                          "enum": [
+                            "identifier",
+                            "long_identifier",
+                            "uuid",
+                            "integer",
+                            "date",
+                            "timestamp",
+                            "timestamp_range",
+                            "file_name"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "class"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "description": "Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`."
+              },
               "allowed_hosts": {
                 "anyOf": [
                   {
@@ -18707,6 +19200,54 @@
                     }
                   ]
                 }
+              },
+              "headers": {
+                "type": "object",
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "enum": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "pattern": "^(?:[A-Za-z0-9._~:-]|%[0-9A-Fa-f]{2}){1,200}$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 50
+                        }
+                      },
+                      "required": [
+                        "enum"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "class": {
+                          "type": "string",
+                          "enum": [
+                            "identifier",
+                            "long_identifier",
+                            "uuid",
+                            "integer",
+                            "date",
+                            "timestamp",
+                            "timestamp_range",
+                            "file_name"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "class"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "description": "Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`."
               },
               "allowed_hosts": {
                 "anyOf": [
@@ -19290,6 +19831,54 @@
                     }
                   ]
                 }
+              },
+              "headers": {
+                "type": "object",
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "enum": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "pattern": "^(?:[A-Za-z0-9._~:-]|%[0-9A-Fa-f]{2}){1,200}$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 50
+                        }
+                      },
+                      "required": [
+                        "enum"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "class": {
+                          "type": "string",
+                          "enum": [
+                            "identifier",
+                            "long_identifier",
+                            "uuid",
+                            "integer",
+                            "date",
+                            "timestamp",
+                            "timestamp_range",
+                            "file_name"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "class"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "description": "Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`."
               },
               "allowed_hosts": {
                 "anyOf": [
@@ -20000,6 +20589,54 @@
                     }
                   ]
                 }
+              },
+              "headers": {
+                "type": "object",
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "enum": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "pattern": "^(?:[A-Za-z0-9._~:-]|%[0-9A-Fa-f]{2}){1,200}$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 50
+                        }
+                      },
+                      "required": [
+                        "enum"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "class": {
+                          "type": "string",
+                          "enum": [
+                            "identifier",
+                            "long_identifier",
+                            "uuid",
+                            "integer",
+                            "date",
+                            "timestamp",
+                            "timestamp_range",
+                            "file_name"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "class"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "description": "Header values that may vary at run time, keyed by the literal header name. Each value is one whole `${input.*}`, `${scope.*}` or `${item.*}` placeholder and its resolved value must meet the rule: an `enum` or a value `class` as in `variables`."
               },
               "allowed_hosts": {
                 "anyOf": [

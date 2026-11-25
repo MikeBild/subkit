@@ -88,9 +88,11 @@ const REQUEST_BOUNDARY_REMEDY =
   "as written: a placeholder that is only PART of a path segment or of a query value — build the " +
   "whole value in a transform and reference that instead. Percent-encoding is NOT a way around " +
   "the one-segment rule: `%2F` is not a `/` to the server, so a value like `a%2Fb` addresses " +
-  "something else and the request goes nowhere. One placeholder per segment, always. Not " +
-  "coverable at all yet: a placeholder " +
-  "in `headers`, a query KEY that varies, and `pagination`.";
+  "something else and the request goes nowhere. One placeholder per segment, always. A header " +
+  'value that is one whole placeholder (`"Idempotency-Key": "${input.body.workId}"`) is bounded ' +
+  'by `boundary.headers`, keyed by the literal header name: `{"Idempotency-Key": {class: ' +
+  '"identifier"}}`. Not coverable at all yet: a header NAME or a query KEY that varies, and ' +
+  "`pagination`.";
 
 const REQUEST_REFUSAL_REMEDY: Partial<Record<RequestBoundaryRefusal, string>> = {
   variables_mismatch:
@@ -134,8 +136,17 @@ const REQUEST_REFUSAL_REMEDY: Partial<Record<RequestBoundaryRefusal, string>> = 
     'has to surround it. A value made only of vault handles (`"${secret.crm-token}"`) needs no ' +
     "entry: the approval names the vault item.",
   runtime_header:
-    "`boundary` cannot cover this step: a header value is a runtime placeholder. Make the header " +
-    "a literal, or leave this step to concrete-run review.",
+    "`boundary` cannot cover this step: a header name holds a placeholder, or a header value is a " +
+    "runtime placeholder that is not one whole `${input.*}`, `${scope.*}` or `${item.*}`. Keep the " +
+    "name literal, build the whole value in a transform first, and bound it with an entry in " +
+    '`boundary.headers` keyed by the header name, such as `{"Idempotency-Key": {class: ' +
+    '"identifier"}}`. Otherwise make the header a literal or leave this step to concrete-run review.',
+  header_boundary_mismatch:
+    "This step already has `boundary`, but `boundary.headers` does not match the step: it needs " +
+    "exactly one entry per header whose value is a runtime placeholder bounded there, keyed by the " +
+    "header name as the step sends it, and NO entry for a header that is literal, holds only " +
+    "vault handles or is not sent. Remove the extra entry or add the missing one; do not change " +
+    "the header itself.",
   runtime_value_outside_path_and_body:
     "This step has a runtime placeholder in a field the engine substitutes and that a boundary " +
     "cannot hold: only the path (whole segments), whole query values and the body may vary. Make " +
