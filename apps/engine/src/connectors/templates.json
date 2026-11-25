@@ -16850,7 +16850,7 @@
       {
         "slug": "charge-or-refund-by-amount",
         "title": "Charge or refund a Stripe customer by amount",
-        "description": "Demonstrates BranchStep — when amount > 0, capture a charge against the customer; when amount < 0, issue a refund of the absolute value against the most recent charge. Single workflow, two branches, deterministic routing on the input.",
+        "description": "Demonstrates BranchStep — when amount > 0, capture a charge against the customer; when amount < 0, issue a refund of the absolute value against the most recent charge. Single workflow, two branches, deterministic routing on the input. Reuse input.idempotency_key for retries of the same operation; use a new key for each distinct charge or refund.",
         "intent_keywords": ["charge or refund", "branch by amount", "stripe conditional"],
         "derived_from_skill": "stripe-basics",
         "category": "payments",
@@ -16860,7 +16860,8 @@
         "prerequisites": ["Stripe API key with `write` scope"],
         "sample_input": {
           "customer_id": "cus_123",
-          "amount": 5000
+          "amount": 5000,
+          "idempotency_key": "order-1001"
         },
         "expected_output_preview": {
           "id": "ch_***",
@@ -16879,13 +16880,18 @@
           "description": "Branch on input.amount sign — charge when positive, refund when negative.",
           "input_schema": {
             "type": "object",
-            "required": ["customer_id", "amount"],
+            "required": ["customer_id", "amount", "idempotency_key"],
             "properties": {
               "customer_id": {
                 "type": "string"
               },
               "amount": {
                 "type": "number"
+              },
+              "idempotency_key": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,200}$",
+                "description": "Reuse the same key when retrying the same operation; use a new key for each distinct operation."
               }
             }
           },
@@ -16911,9 +16917,18 @@
               "path": "/charges",
               "headers": {
                 "content-type": "application/x-www-form-urlencoded",
-                "Idempotency-Key": "charge:${input.customer_id}:${input.amount}"
+                "Idempotency-Key": "${input.idempotency_key}"
               },
-              "body": "${scope.charge_form.data}"
+              "body": "${scope.charge_form.data}",
+              "boundary": {
+                "variables": {
+                  "input.idempotency_key": {
+                    "class": "identifier"
+                  }
+                },
+                "max_body_bytes": 16384,
+                "max_calls": 1
+              }
             },
             {
               "kind": "request",
@@ -16940,9 +16955,18 @@
               "path": "/refunds",
               "headers": {
                 "content-type": "application/x-www-form-urlencoded",
-                "Idempotency-Key": "refund:${input.customer_id}:${input.amount}"
+                "Idempotency-Key": "${input.idempotency_key}"
               },
-              "body": "${scope.refund_form.data}"
+              "body": "${scope.refund_form.data}",
+              "boundary": {
+                "variables": {
+                  "input.idempotency_key": {
+                    "class": "identifier"
+                  }
+                },
+                "max_body_bytes": 16384,
+                "max_calls": 1
+              }
             }
           ]
         }
@@ -16950,7 +16974,7 @@
       {
         "slug": "create-customer-idempotent",
         "title": "Create a Stripe customer (idempotent)",
-        "description": "Demonstrates an explicit `Idempotency-Key` header — the workflow can re-run with the same email and Stripe will return the original customer instead of creating a duplicate. Without that header the executor generates a key per execution, which only protects retries within one run.",
+        "description": "Demonstrates an explicit `Idempotency-Key` header — re-run with the same input.idempotency_key and email to return the original customer instead of creating a duplicate. Use a new key for each distinct operation.",
         "intent_keywords": [
           "create customer idempotent",
           "stripe new customer safe",
@@ -16963,7 +16987,8 @@
         "estimated_setup_minutes": 3,
         "prerequisites": ["Stripe API key with `write` scope"],
         "sample_input": {
-          "email": "billing@acme.test"
+          "email": "billing@acme.test",
+          "idempotency_key": "customer-1001"
         },
         "expected_output_preview": {
           "id": "cus_***",
@@ -16978,13 +17003,18 @@
         "deprecated": null,
         "workflow": {
           "name": "stripe-create-customer-idempotent",
-          "description": "Idempotent customer creation keyed by email.",
+          "description": "Idempotent customer creation keyed by input.idempotency_key.",
           "input_schema": {
             "type": "object",
-            "required": ["email"],
+            "required": ["email", "idempotency_key"],
             "properties": {
               "email": {
                 "type": "string"
+              },
+              "idempotency_key": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,200}$",
+                "description": "Reuse the same key when retrying the same operation; use a new key for each distinct operation."
               }
             }
           },
@@ -17003,9 +17033,18 @@
               "path": "/customers",
               "headers": {
                 "content-type": "application/x-www-form-urlencoded",
-                "Idempotency-Key": "create-customer:${input.email}"
+                "Idempotency-Key": "${input.idempotency_key}"
               },
-              "body": "${scope.form.data}"
+              "body": "${scope.form.data}",
+              "boundary": {
+                "variables": {
+                  "input.idempotency_key": {
+                    "class": "identifier"
+                  }
+                },
+                "max_body_bytes": 16384,
+                "max_calls": 1
+              }
             }
           ]
         }

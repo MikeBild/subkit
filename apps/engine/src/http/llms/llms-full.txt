@@ -9385,7 +9385,7 @@ Grouped by template. **Trigger** is how the workflow starts: `request` (on deman
 | ------ | ------------ | ------- | --------- |
 | `charge-or-refund-by-amount` | Demonstrates BranchStep — when amount > 0, capture a charge against the customer; when amount < 0, issue a refund of the absolute value against the most recent charge. | request | — |
 | `create-customer` | POST a new customer record. | request | — |
-| `create-customer-idempotent` | Demonstrates an explicit `Idempotency-Key` header — the workflow can re-run with the same email and Stripe will return the original customer instead of creating a duplicate. | request | — |
+| `create-customer-idempotent` | Demonstrates RequestStep.idempotency_key — the workflow can re-run with the same email and Stripe will return the original customer instead of creating a duplicate. | request | — |
 | `create-payment-intent` | POST a new payment intent. | request | — |
 | `daily-charges-digest` | Pull yesterday's charges every business day at 08:00 Europe/Berlin and summarise total volume + count by currency. | schedule | — |
 | `get-charge` | Fetch a single charge record by its Stripe id. | request | — |

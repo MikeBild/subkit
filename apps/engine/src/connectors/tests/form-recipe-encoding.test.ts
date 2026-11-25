@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { compileRequestBoundary } from "../../workflows/request-boundary.ts";
+import type { RequestStep } from "../../workflows/types.ts";
 import { getBuiltinTemplate } from "../templates.ts";
 
 type RecipeStep = {
@@ -81,6 +83,24 @@ describe("form-urlencoded recipes encode every field value", () => {
 
 describe("stripe form recipes send a body and a stable idempotency key", () => {
   for (const slug of stripeFormRecipeSlugs) {
+    test(`stripe/${slug} form POSTs compile a bounded idempotency key`, () => {
+      const requests = recipeSteps("stripe", slug).filter(
+        (step) => step.kind === "request" && isFormEncoded(step),
+      );
+      expect(requests.length).toBeGreaterThan(0);
+      for (const step of requests) {
+        const compiled = compileRequestBoundary(
+          step as RequestStep,
+          getBuiltinTemplate("stripe")!.base_url,
+        );
+        expect(compiled.refusal).toBeUndefined();
+        expect(compiled.boundary?.idempotency_key).toEqual({ var: "input.idempotency_key" });
+        expect(compiled.boundary?.variables["input.idempotency_key"]).toEqual({
+          class: "identifier",
+        });
+      }
+    });
+
     test(`stripe/${slug} request steps carry no unsupported form or idempotency_key field`, () => {
       for (const step of recipeSteps("stripe", slug).filter((step) => step.kind === "request")) {
         expect(step.form).toBeUndefined();
