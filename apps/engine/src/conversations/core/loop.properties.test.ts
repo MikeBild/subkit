@@ -77,8 +77,13 @@ describe("loop core properties", () => {
   test("cache read share stays between 0 and 100 percent", () => {
     fc.assert(
       fc.property(fc.nat(1_000_000), fc.nat(1_000_000), (input, cached) => {
-        const u = cacheReadUsage(input, cached);
-        if (input + cached === 0) {
+        const u = cacheReadUsage({
+          input_tokens: input,
+          cache_read_tokens: cached,
+          cache_creation_tokens: 0,
+          cache_reported: true,
+        });
+        if (Math.max(input, cached) === 0) {
           expect(u).toStrictEqual({});
           return;
         }

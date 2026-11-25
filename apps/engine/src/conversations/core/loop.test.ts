@@ -416,9 +416,33 @@ describe("labels and units", () => {
 });
 
 describe("usage payload", () => {
-  test("cache read share is a percentage with one decimal", () => {
-    expect(cacheReadUsage(2, 1)).toStrictEqual({ cache_read_tokens: 1, cache_read_pct: 33.3 });
-    expect(cacheReadUsage(0, 0)).toStrictEqual({});
+  test("cache read share is a percentage of the input including cached tokens", () => {
+    const turn = { input_tokens: 3, cache_read_tokens: 1, cache_creation_tokens: 1 };
+    expect(cacheReadUsage({ ...turn, cache_reported: true })).toStrictEqual({
+      cache_read_tokens: 1,
+      cache_creation_tokens: 1,
+      cache_reported: true,
+      cache_read_pct: 33.3,
+    });
+    expect(
+      cacheReadUsage({
+        input_tokens: 0,
+        cache_read_tokens: 0,
+        cache_creation_tokens: 0,
+        cache_reported: true,
+      }),
+    ).toStrictEqual({});
+  });
+
+  test("a turn whose provider reports no cache figures carries no cache share", () => {
+    expect(
+      cacheReadUsage({
+        input_tokens: 40,
+        cache_read_tokens: 0,
+        cache_creation_tokens: 0,
+        cache_reported: false,
+      }),
+    ).toStrictEqual({ cache_read_tokens: 0, cache_creation_tokens: 0, cache_reported: false });
   });
 
   const counts = {

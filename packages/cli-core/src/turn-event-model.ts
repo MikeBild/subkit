@@ -7,6 +7,8 @@ export interface TurnUsage {
   turn_tokens: number;
   context_cap_tokens?: number;
   cache_read_tokens?: number;
+  cache_creation_tokens?: number;
+  cache_reported?: boolean;
   cache_read_pct?: number;
   breakdown?: {
     system: number;

@@ -255,10 +255,17 @@ export interface LlmBucketView {
   cost: number | null;
 }
 
+export interface PromptCacheView {
+  hit: number | null;
+  cachedTokens: number;
+  reportedCalls: number;
+}
+
 export interface LlmGroupView {
   key: Record<string, string>;
   calls: number;
   tokens: UsageTokens;
+  promptCache: PromptCacheView;
   latencyP50: number | null;
   results: Record<string, number>;
   cost: number | null;
@@ -278,6 +285,17 @@ function tokensOf(value: unknown): UsageTokens {
     cacheRead: numberOrNull(t.cache_read) ?? 0,
     cacheCreation: numberOrNull(t.cache_creation) ?? 0,
     total: numberOrNull(t.total) ?? 0,
+  };
+}
+
+export function promptCacheOf(value: unknown): PromptCacheView {
+  const cache = isRecord(value) ? value : {};
+  const reportedCalls = numberOrNull(cache.reported_calls) ?? 0;
+  const percent = numberOrNull(cache.hit_percent);
+  return {
+    hit: reportedCalls > 0 && percent !== null ? Math.min(percent, 100) / 100 : null,
+    cachedTokens: numberOrNull(cache.reported_cache_read_tokens) ?? 0,
+    reportedCalls,
   };
 }
 
@@ -355,6 +373,7 @@ export function llmGroups(envelope: unknown): LlmGroupView[] {
         key,
         calls: numberOrNull(totals.calls) ?? 0,
         tokens: tokensOf(totals.tokens),
+        promptCache: promptCacheOf(totals.prompt_cache),
         latencyP50: numberOrNull(latency.p50),
         results: resultsOf(totals.result),
         cost: cost.amount,

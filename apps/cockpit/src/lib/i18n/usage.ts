@@ -156,6 +156,7 @@ export const usageEn = {
   "usage.sheet.latencyHelp": "How long a reply usually takes.",
   "usage.sheet.seconds": "{seconds} s",
   "usage.sheet.fromCache": "From cache",
+  "usage.sheet.cachedTokens": "{count} tokens reused",
   "usage.sheet.conversationSubtitle": "{name} · last active {date}",
   "usage.sheet.longConversations":
     "Long conversations get more expensive because every reply reads the history so far. A new topic is worth a new conversation.",
@@ -392,6 +393,7 @@ export const usageDe: Record<keyof typeof usageEn, string> = {
   "usage.sheet.latencyHelp": "Wie lange eine Antwort meist dauert.",
   "usage.sheet.seconds": "{seconds} s",
   "usage.sheet.fromCache": "Aus dem Cache",
+  "usage.sheet.cachedTokens": "{count} Token wiederverwendet",
   "usage.sheet.conversationSubtitle": "{name} · zuletzt {date}",
   "usage.sheet.longConversations":
     "Lange Unterhaltungen werden teurer, weil jede Antwort den bisherigen Verlauf mitliest. Für ein neues Thema lohnt eine neue Unterhaltung.",

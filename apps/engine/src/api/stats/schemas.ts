@@ -55,6 +55,27 @@ const TokenAggSchema = z
   })
   .openapi("StatsTokenAgg");
 
+const PromptCacheAggSchema = z
+  .object({
+    reported_calls: z
+      .number()
+      .int()
+      .describe("Calls whose provider reported prompt-cache figures."),
+    reported_prompt_tokens: z
+      .number()
+      .describe("Input tokens of those calls, cached tokens included."),
+    reported_cache_read_tokens: z
+      .number()
+      .describe("Input tokens of those calls read from the provider prompt cache."),
+    hit_percent: z
+      .number()
+      .nullable()
+      .describe(
+        "Share of input read from the prompt cache over the reporting calls, one decimal; null when no call reported cache figures.",
+      ),
+  })
+  .openapi("StatsLlmPromptCache");
+
 const GroupKey = z.record(z.string(), z.string());
 
 const FillParam = z
@@ -235,6 +256,7 @@ export const LlmStatsResponse = z
           tokens: TokenAggSchema,
           latency_ms: LatencyAggSchema,
           result: z.record(z.string(), z.number()),
+          prompt_cache: PromptCacheAggSchema,
         }),
         cost: LlmPartCost.optional(),
       }),
@@ -243,6 +265,7 @@ export const LlmStatsResponse = z
       calls: z.object({ total: z.number(), by_result: z.record(z.string(), z.number()) }),
       tokens: TokenAggSchema,
       latency_ms: LatencyAggSchema,
+      prompt_cache: PromptCacheAggSchema,
     }),
     cost: z
       .object({

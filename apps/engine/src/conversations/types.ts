@@ -54,6 +54,10 @@ export interface TurnUsage {
   turn_tokens?: number;
   prompt_tokens_last_call?: number;
   turn_tokens_total?: number;
+  cache_read_tokens?: number;
+  cache_creation_tokens?: number;
+  cache_reported?: boolean;
+  cache_read_pct?: number;
   context_cap_tokens?: number;
   spend_notice?: {
     run: "chat_turn" | "task_run";

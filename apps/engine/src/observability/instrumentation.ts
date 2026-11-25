@@ -811,6 +811,7 @@ export function recordLlmContextAssembled(args: {
     conventions: number;
     prior_workflows: number;
   };
+  stable_prefix_hash?: string;
 }): void {
   safe(() => {
     const reg = getMetrics();
@@ -856,6 +857,7 @@ export function recordLlmContextAssembled(args: {
       included_prior_workflow_slugs: args.included_prior_workflow_slugs,
       dropped_sections: args.dropped_sections,
       section_tokens: args.section_tokens,
+      stable_prefix_hash: args.stable_prefix_hash ?? null,
     });
   });
 }

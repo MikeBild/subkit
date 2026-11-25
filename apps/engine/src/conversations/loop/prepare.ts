@@ -108,6 +108,8 @@ export async function openTurn(
     turnTokensTotal: 0,
     turnInputTokens: 0,
     turnCacheReadTokens: 0,
+    turnCacheCreationTokens: 0,
+    turnCacheReported: false,
     lastStepHadText: false,
     handoffSummaryOnly: false,
     paletteSkills: [],

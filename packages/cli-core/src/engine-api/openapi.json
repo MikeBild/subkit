@@ -1454,13 +1454,17 @@
                       "additionalProperties": {
                         "type": "number"
                       }
+                    },
+                    "prompt_cache": {
+                      "$ref": "#/components/schemas/StatsLlmPromptCache"
                     }
                   },
                   "required": [
                     "calls",
                     "tokens",
                     "latency_ms",
-                    "result"
+                    "result",
+                    "prompt_cache"
                   ]
                 },
                 "cost": {
@@ -1500,12 +1504,16 @@
               },
               "latency_ms": {
                 "$ref": "#/components/schemas/StatsLatencyAgg"
+              },
+              "prompt_cache": {
+                "$ref": "#/components/schemas/StatsLlmPromptCache"
               }
             },
             "required": [
               "calls",
               "tokens",
-              "latency_ms"
+              "latency_ms",
+              "prompt_cache"
             ]
           },
           "cost": {
@@ -1570,6 +1578,36 @@
           "currency",
           "unpriced_calls",
           "cache_savings"
+        ]
+      },
+      "StatsLlmPromptCache": {
+        "type": "object",
+        "properties": {
+          "reported_calls": {
+            "type": "integer",
+            "description": "Calls whose provider reported prompt-cache figures."
+          },
+          "reported_prompt_tokens": {
+            "type": "number",
+            "description": "Input tokens of those calls, cached tokens included."
+          },
+          "reported_cache_read_tokens": {
+            "type": "number",
+            "description": "Input tokens of those calls read from the provider prompt cache."
+          },
+          "hit_percent": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Share of input read from the prompt cache over the reporting calls, one decimal; null when no call reported cache figures."
+          }
+        },
+        "required": [
+          "reported_calls",
+          "reported_prompt_tokens",
+          "reported_cache_read_tokens",
+          "hit_percent"
         ]
       },
       "StatsLlmCost": {

@@ -43,6 +43,12 @@ export async function finalizeTurn(
   const turnTokens = Math.max(0, usageAfter - env.usageBefore);
   const breakdown = tokenBreakdown(prompt?.token_counts);
   const spendNotice = await turnSpendNotice(p, env.spendBefore);
+  const turnCache = cacheReadUsage({
+    input_tokens: state.turnInputTokens,
+    cache_read_tokens: state.turnCacheReadTokens,
+    cache_creation_tokens: state.turnCacheCreationTokens,
+    cache_reported: state.turnCacheReported,
+  });
   events.push({
     type: "completed",
     status: outcome.status,
@@ -52,7 +58,7 @@ export async function finalizeTurn(
         ? { prompt_tokens_last_call: state.promptTokensLastCall }
         : {}),
       turn_tokens_total: state.turnTokensTotal,
-      ...cacheReadUsage(state.turnInputTokens, state.turnCacheReadTokens),
+      ...turnCache,
       context_cap_tokens: env.contextCap,
       ...(spendNotice ? { spend_notice: spendNotice } : {}),
       ...(breakdown ? { breakdown } : {}),
@@ -73,6 +79,11 @@ export async function finalizeTurn(
     conversation_id: p.conversation_id,
     final_status: outcome.status,
     turn_tokens: turnTokens,
+    turn_input_tokens: state.turnInputTokens,
+    turn_cache_read_tokens: state.turnCacheReadTokens,
+    turn_cache_creation_tokens: state.turnCacheCreationTokens,
+    turn_cache_reported: state.turnCacheReported,
+    turn_cache_read_pct: turnCache.cache_read_pct ?? null,
     references_resolved: env.referenced.resolved.length,
     references_unresolved: env.referenced.unresolved.length,
     ...breakdownLogFields(breakdown),

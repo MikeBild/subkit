@@ -513,11 +513,7 @@ function ModelSheet({ ctx, id }: { ctx: SheetContext; id: string }) {
           <KpiTile label={t("usage.calls")} value={ctx.format.count(group?.calls ?? 0)} />
           <KpiTile
             label={t("usage.sheet.cacheShare")}
-            value={ctx.format.percent(
-              group && group.tokens.prompt > 0
-                ? group.tokens.cacheRead / group.tokens.prompt
-                : null,
-            )}
+            value={ctx.format.percent(group?.promptCache.hit ?? null)}
           />
           <KpiTile
             label={t("usage.sheet.errorRate")}
@@ -620,11 +616,17 @@ function ConversationSheet({ ctx, id }: { ctx: SheetContext; id: string }) {
           <KpiTile label={t("usage.calls")} value={ctx.format.count(group?.calls ?? 0)} />
           <KpiTile
             label={t("usage.sheet.fromCache")}
-            value={ctx.format.percent(
-              group && group.tokens.prompt > 0
-                ? group.tokens.cacheRead / group.tokens.prompt
-                : null,
-            )}
+            value={ctx.format.percent(group?.promptCache.hit ?? null)}
+            note={
+              group
+                ? group.promptCache.reportedCalls > 0
+                  ? t("usage.sheet.cachedTokens", {
+                      count: ctx.format.count(group.promptCache.cachedTokens),
+                    })
+                  : t("usage.cache.noData")
+                : undefined
+            }
+            testId="usage-conversation-cache"
           />
         </div>
         <p className="text-sm text-muted-foreground">{t("usage.sheet.longConversations")}</p>
