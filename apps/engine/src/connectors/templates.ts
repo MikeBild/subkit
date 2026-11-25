@@ -105,11 +105,18 @@ const ProbeHeadersSchema = z
     }
   });
 
+export const PROBE_EXPECTED_STATUS_RANGE_MESSAGE =
+  "expected_status is an inclusive [min, max] status range, e.g. [200, 200] or [200, 299]";
+
 export const ProbeEndpointSchema = z
   .object({
     method: z.enum(["GET", "HEAD", "POST"]),
     path: z.string(),
-    expected_status: z.tuple([z.number().int().positive(), z.number().int().positive()]).optional(),
+    expected_status: z
+      .tuple([z.number().int().positive(), z.number().int().positive()], {
+        error: PROBE_EXPECTED_STATUS_RANGE_MESSAGE,
+      })
+      .optional(),
     description: z.string().default(""),
     headers: ProbeHeadersSchema.optional(),
   })

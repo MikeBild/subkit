@@ -2,6 +2,7 @@ import { z } from "zod";
 import { SignedJwtConfigSchema } from "../credentials/signed-jwt.ts";
 import { type McpAuthConfig, McpAuthConfigSchema } from "../mcp/client/registry.ts";
 import { SftpAuthConfigSchema } from "./core/sftp-auth.ts";
+import { ProbeEndpointSchema } from "./templates.ts";
 import { type AuthType, type DriverName, HttpConnectorConfig } from "./types.ts";
 
 const GraphQLConnectorConfigSchema = z.object({
@@ -168,8 +169,9 @@ export function validateConnectorConfig(
   const schema = CONNECTOR_CONFIG_SCHEMAS[driver];
   if (!schema) return [{ path: "driver", message: `no config schema for driver '${driver}'` }];
   const parsed = schema.safeParse(config);
-  if (parsed.success) return [];
-  return parsed.error.issues.map((i) => {
+  const probeIssues = driver === "http" ? validateHttpProbeEndpoint(config.probe_endpoint) : [];
+  if (parsed.success) return probeIssues;
+  const configIssues = parsed.error.issues.map((i) => {
     const path = i.path.length > 0 ? i.path.join(".") : "config";
     const headerKey =
       driver === "mcp" &&
@@ -183,6 +185,18 @@ export function validateConnectorConfig(
         : i.message,
     };
   });
+  return [...configIssues, ...probeIssues];
+}
+
+function validateHttpProbeEndpoint(probeEndpoint: unknown): ConnectorConfigIssue[] {
+  if (!probeEndpoint || typeof probeEndpoint !== "object" || Array.isArray(probeEndpoint))
+    return [];
+  const parsed = ProbeEndpointSchema.safeParse(probeEndpoint);
+  if (parsed.success) return [];
+  return parsed.error.issues.map((issue) => ({
+    path: ["probe_endpoint", ...issue.path.map(String)].join("."),
+    message: issue.message,
+  }));
 }
 
 export function validateConnectorConfigOrThrow(
