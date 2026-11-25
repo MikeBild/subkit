@@ -342,3 +342,21 @@ describe("connector-template catalog — webhook-catalog cross-consistency", () 
     }
   });
 });
+
+describe("connector-template catalog — cloudflare pagination", () => {
+  test("every paginated cloudflare recipe step reads items from the result envelope", () => {
+    const cloudflare = templates.find((t) => t.slug === "cloudflare");
+    const paginatedSteps = (cloudflare?.recipes ?? []).flatMap((recipe) =>
+      (recipe.workflow.steps as Array<{ id: string; pagination?: { items_path?: string } }>)
+        .filter((step) => step.pagination)
+        .map((step) => ({
+          recipe: recipe.slug,
+          step: step.id,
+          items_path: step.pagination?.items_path,
+        })),
+    );
+    expect(paginatedSteps.map(({ recipe }) => recipe)).toEqual(["list-zones", "list-dns-records"]);
+    for (const paginatedStep of paginatedSteps)
+      expect(paginatedStep).toEqual({ ...paginatedStep, items_path: "result" });
+  });
+});

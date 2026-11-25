@@ -5285,7 +5285,8 @@
               "pagination": {
                 "strategy": "page",
                 "page_param": "page",
-                "page_size": 50
+                "page_size": 50,
+                "items_path": "result"
               },
               "side_effects": "read"
             }
@@ -5337,7 +5338,8 @@
               "pagination": {
                 "strategy": "page",
                 "page_param": "page",
-                "page_size": 100
+                "page_size": 100,
+                "items_path": "result"
               },
               "side_effects": "read"
             }
