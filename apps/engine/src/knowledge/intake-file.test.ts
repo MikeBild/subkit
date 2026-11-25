@@ -74,6 +74,11 @@ describe("intakeFileBody", () => {
     );
   });
 
+  test("text files keep their whole text beyond two million characters", () => {
+    const text = `${"a".repeat(2_030_000)}END`;
+    expect(intakeFileBody({ ...file, content_type: "text/plain" }, text)).toBe(text);
+  });
+
   test("empty text files are named in one line", () => {
     expect(
       intakeFileBody(

@@ -47,7 +47,7 @@ The desktop app's drop sheet uses these routes for “Attach in chat”. The Coc
 - At most 5 MB.
 - The bytes must match the type: a PNG must start like a PNG, text must be UTF-8, JSON must parse. HTML, SVG, XML and scripts are refused, also when they claim to be text.
 - The file goes through the malware check. A rejected file creates no item.
-- `title` defaults to the filename. The item text is the file's text for CSV, text, Markdown and JSON; for PDFs and images it is one line naming the file.
+- `title` defaults to the filename. The item text is the file's whole text for CSV, text, Markdown and JSON; for PDFs and images it is one line naming the file.
 - `client_request_id` works as with text items: the same id with the same file returns the same item.
 - Every intake item now carries `attachment`: `null`, or `{file_id, filename, content_type, size_bytes}`. Download the file with `GET /v1/files/{file_id}/content` (`file:read`).
 

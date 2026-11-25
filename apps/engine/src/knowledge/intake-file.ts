@@ -12,8 +12,6 @@ export const INTAKE_FILE_TYPES = {
 
 export type IntakeFileType = keyof typeof INTAKE_FILE_TYPES;
 
-export const INTAKE_TEXT_BODY_MAX_CHARS = 2_000_000;
-
 export type IntakeFileCheck =
   | { ok: true; content_type: IntakeFileType; text: string | null }
   | { ok: false; reason: "unsupported_file_type" | "content_type_mismatch" };
@@ -74,6 +72,6 @@ export function intakeFileBody(
   file: { filename: string; content_type: IntakeFileType; size_bytes: number },
   text: string | null,
 ): string {
-  if (text !== null && text.length > 0) return text.slice(0, INTAKE_TEXT_BODY_MAX_CHARS);
+  if (text !== null && text.length > 0) return text;
   return `${file.filename} (${file.content_type}, ${file.size_bytes} bytes)`;
 }
