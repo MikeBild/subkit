@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { sql } from "drizzle-orm";
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { EMBEDDED_MIGRATIONS } from "./embedded.ts";
 
 let ctx: TestDb;
 
@@ -9,7 +10,10 @@ let tenantId: string;
 const FAKE_CONV_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 
 beforeAll(async () => {
-  ctx = await createTestDb("files_backfill_e12");
+  ctx = await createTestDb(
+    "files_backfill_e12",
+    EMBEDDED_MIGRATIONS.filter((migration) => migration.idx < 9),
+  );
 
   const [t] = await ctx.db
     .insert(tenants)

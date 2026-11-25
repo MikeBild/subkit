@@ -97,6 +97,7 @@ Good to know:
 
 - SubKit keeps the last 20 earlier versions of a file.
 - Deleting a file also removes all its earlier versions.
+- If another file holds exactly the same content, the restore is refused. Once you delete that file, the restore works.
 
 ### If something does not work
 

@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { getConfig } from "../config/loader.ts";
 import type { Config } from "../config/schema.ts";
 import type { Executor } from "../db/client.ts";
@@ -32,7 +32,9 @@ export async function assertHostedFileAdmission(
     const [existing] = await tx
       .select({ id: files.id })
       .from(files)
-      .where(and(eq(files.tenant_id, tenantId), eq(files.sha256, contentHash)))
+      .where(
+        and(eq(files.tenant_id, tenantId), eq(files.sha256, contentHash), isNull(files.deleted_at)),
+      )
       .limit(1);
     if (existing) return;
   }

@@ -8,7 +8,7 @@ import { getObjectStore } from "../storage/object-store.ts";
 import { buildObjectKey, composeStorageUri, streamFromBytes } from "./object-key.ts";
 import { removeStoredFile } from "./remove-stored-file.ts";
 import { getScanner, SCANNER_TIMEOUT_SECONDS, type ScanResult } from "./scanner.ts";
-import { insertFileRow, reviveFileRow } from "./slug.ts";
+import { findFileByContent, insertFileRow, reviveFileRow } from "./slug.ts";
 
 export interface PersistedScan {
   verdict: string;
@@ -56,14 +56,10 @@ export async function persistInlineUpload(
 ): Promise<PersistInlineUploadResult> {
   const sha256 = createHash("sha256").update(params.bytes).digest("hex");
 
-  const existing = await db
-    .select()
-    .from(files)
-    .where(and(eq(files.tenant_id, params.tenant_id), eq(files.sha256, sha256)))
-    .limit(1);
-  if (existing[0]) {
+  const existing = await findFileByContent(db, params.tenant_id, sha256);
+  if (existing) {
     return {
-      row: existing[0].deleted_at ? await reviveFileRow(db as Db, existing[0]) : existing[0],
+      row: existing.deleted_at ? await reviveFileRow(db as Db, existing) : existing,
       dedup: true,
       scan: null,
       scan_timed_out: false,
@@ -88,11 +84,7 @@ export async function persistInlineUpload(
       created_by: params.actor_id,
     });
   } catch (err) {
-    const [canonical] = await db
-      .select()
-      .from(files)
-      .where(and(eq(files.tenant_id, params.tenant_id), eq(files.sha256, sha256)))
-      .limit(1);
+    const canonical = await findFileByContent(db, params.tenant_id, sha256);
     if (!canonical) throw err;
     return {
       row: canonical.deleted_at ? await reviveFileRow(db as Db, canonical) : canonical,

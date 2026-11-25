@@ -193,7 +193,14 @@ async function findTwin(db: Db, tenantId: string, sha256: string, fileId: string
   const [twin] = await db
     .select({ id: files.id })
     .from(files)
-    .where(and(eq(files.tenant_id, tenantId), eq(files.sha256, sha256), ne(files.id, fileId)))
+    .where(
+      and(
+        eq(files.tenant_id, tenantId),
+        eq(files.sha256, sha256),
+        ne(files.id, fileId),
+        isNull(files.deleted_at),
+      ),
+    )
     .limit(1);
   return twin?.id ?? null;
 }

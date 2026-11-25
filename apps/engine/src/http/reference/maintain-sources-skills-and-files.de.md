@@ -97,6 +97,7 @@ Gut zu wissen:
 
 - SubKit behält die letzten 20 früheren Versionen einer Datei.
 - Löschst du eine Datei, entfernt das auch alle ihre früheren Versionen.
+- Hat eine andere Datei genau denselben Inhalt, lehnt SubKit das Wiederherstellen ab. Sobald du diese Datei löschst, klappt es.
 
 ### Wenn etwas nicht klappt
 
