@@ -2,6 +2,7 @@ import { useState } from "react";
 import { RELEASE_HISTORY } from "@/app/release-notes.generated";
 import { Button, FormDialog, Section } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
+import { inlineCodeParts } from "../inline-code";
 import { releaseNotesFor } from "../release-notes";
 
 export function ReleaseNotesDialog({
@@ -74,7 +75,9 @@ function ReleaseNotesSection({
       {notes.length > 0 ? (
         <ul lang="en" className="flex list-disc flex-col gap-1 pl-4 text-sm text-muted-foreground">
           {notes.map((note) => (
-            <li key={note}>{note}</li>
+            <li key={note}>
+              <NoteText text={note} />
+            </li>
           ))}
         </ul>
       ) : (
@@ -82,4 +85,19 @@ function ReleaseNotesSection({
       )}
     </Section>
   );
+}
+
+function NoteText({ text }: { text: string }) {
+  let offset = 0;
+  return inlineCodeParts(text).map((part) => {
+    const key = `${part.kind}-${offset}`;
+    offset += part.value.length;
+    return part.kind === "code" ? (
+      <code key={key} className="rounded bg-muted px-1 font-mono text-xs text-foreground">
+        {part.value}
+      </code>
+    ) : (
+      <span key={key}>{part.value}</span>
+    );
+  });
 }
