@@ -116,7 +116,14 @@ Eine fehlende Lizenzdatei oder eine abweichende Prüfsumme bricht die Installati
 | Installer | Was er prüft | Wem er vertraut |
 | --- | --- | --- |
 | `install.sh` aus dem Release oder `/install` der Engine | Binärdatei, `LICENSE` und `THIRD_PARTY_NOTICES.txt` gegen `SHA256SUMS`, dazu die Signatur von `SHA256SUMS`, wenn sie veröffentlicht ist und OpenSSL 3 im PATH liegt | Dem Release oder der Engine, von der du lädst, und dem festen öffentlichen Release-Schlüssel, wenn er die Signatur prüfen kann |
+| `install.ps1` aus dem Release oder `/install.ps1` der Engine | Binärdatei, `LICENSE` und `THIRD_PARTY_NOTICES.txt` gegen `SHA256SUMS`; die Signatur kann PowerShell nicht prüfen | Dem Release oder der Engine, von der du lädst |
 | `subkit update` | Das signierte Prüfsummen-Manifest des Releases, danach Binärdatei und beide Lizenzdateien | Dem festen öffentlichen Release-Schlüssel, egal ob die Dateien von deiner Engine oder von GitHub kommen |
+
+### Eine Nachricht diktieren
+
+In der interaktiven Sitzung drückst du `Ctrl-D`, sprichst und drückst wieder `Ctrl-D`. Der Text landet an der Cursorposition in der Eingabe, du kannst ihn also vor dem Senden prüfen und ändern. `Esc` verwirft die Aufnahme.
+
+Zum Diktieren braucht dein Rechner ein Aufnahmeprogramm: SoX (`rec` oder `sox`) oder ffmpeg, unter Linux auch `arecord`. `subkit doctor` zeigt, welches gefunden wurde. Unter Windows mit ffmpeg nimmt die CLI das erste Mikrofon; ein anderes wählst du mit `SUBKIT_MICROPHONE`. `SUBKIT_DICTATION_LANGUAGE` legt die gesprochene Sprache fest, zum Beispiel `de`; sonst gilt deine Systemsprache.
 
 ### Den Arbeitsbereich auf eine andere Engine umziehen
 

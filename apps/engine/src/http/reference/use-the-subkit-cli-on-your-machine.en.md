@@ -123,7 +123,7 @@ A missing license file or a checksum that does not match stops the installation.
 
 In the interactive session, press `Ctrl-D`, speak, and press `Ctrl-D` again. The text lands in the input at the cursor, so you can check and change it before you send it. `Esc` discards the recording.
 
-Dictation needs a recorder on your machine: SoX (`rec` or `sox`) or ffmpeg, on Linux also `arecord`. `subkit doctor` shows which one it found. On Windows with ffmpeg, set `SUBKIT_MICROPHONE` to the name of your microphone. `SUBKIT_DICTATION_LANGUAGE` sets the spoken language, for example `de`; otherwise your system language is used.
+Dictation needs a recorder on your machine: SoX (`rec` or `sox`) or ffmpeg, on Linux also `arecord`. `subkit doctor` shows which one it found. On Windows with ffmpeg the CLI takes the first microphone; set `SUBKIT_MICROPHONE` to choose another. `SUBKIT_DICTATION_LANGUAGE` sets the spoken language, for example `de`; otherwise your system language is used.
 
 ### Move your workspace to another engine
 
