@@ -333,7 +333,7 @@ export function installInputProblem(
   }));
   if (given.some(({ value }) => value === null)) return "create.solution.inputMissing";
   const refused = given.find(
-    ({ field, value }) => !pinInstallInputs({ steps: [] }, [field.key], { [field.key]: value }).ok,
+    ({ field, value }) => !pinInstallInputs(entry.workflow, [field.key], { [field.key]: value }).ok,
   );
   if (!refused) return null;
   return refused.field.list ? "create.solution.hostsInvalid" : "create.solution.inputInvalid";

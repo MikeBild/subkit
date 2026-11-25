@@ -101,10 +101,11 @@ describe("connector template recipes with install inputs (#895)", () => {
         "create.solution.hostsInvalid",
       );
     const hosts = ["docs.example.com", "example.com"];
-    const sharedRule = pinInstallInputs({ steps: [] }, ["allowed_hosts"], { allowed_hosts: hosts });
-    expect(installInputProblem(entry(), { allowed_hosts: hosts.join("\n") })).toBe(
-      sharedRule.ok ? null : "create.solution.hostsInvalid",
-    );
+    const sharedRule = pinInstallInputs(entry().workflow, ["allowed_hosts"], {
+      allowed_hosts: hosts,
+    });
+    expect(sharedRule.ok).toBe(true);
+    expect(installInputProblem(entry(), { allowed_hosts: hosts.join("\n") })).toBeNull();
   });
 
   test("the draft sends the host list with the template recipe as its origin", () => {
