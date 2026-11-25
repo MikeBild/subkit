@@ -2,6 +2,7 @@ const ABORTABLE_EXECUTION_STATUSES: ReadonlySet<string> = new Set([
   "queued",
   "waiting_for_device",
   "running",
+  "uncertain",
 ]);
 
 export const isAbortableExecutionStatus = (status: string): boolean =>
