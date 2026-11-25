@@ -141,7 +141,7 @@ Good to know:
 
 - When the same reason repeats, SubKit merges the scheduled times into one entry. “Stands for 12 scheduled times” names the number.
 - The history goes back 90 days. SubKit deletes older entries.
-- A schedule that runs more often than once a minute writes no entry for runs on time.
+- A schedule that runs more often than once a minute writes no entry for runs on time. A catch-up run that stands in for missed times is still recorded.
 
 ### Renew an approval before it ends
 

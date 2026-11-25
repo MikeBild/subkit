@@ -72,6 +72,15 @@ export function classifyRun(window: DueWindow, started_at: Date): RunClassificat
   return { state: "ran", reason_code: null, skipped_count: 0 };
 }
 
+export function shouldRecordRun(
+  seconds: number | undefined,
+  window: DueWindow | null,
+  started_at: Date,
+): boolean {
+  if (seconds === undefined || seconds * 1000 >= OCCURRENCE_RECORD_MIN_INTERVAL_MS) return true;
+  return window !== null && classifyRun(window, started_at).state === "ran_late";
+}
+
 export interface PriorOccurrence {
   state: ScheduleOccurrenceState;
   reason_code: string | null;

@@ -22,6 +22,7 @@ import {
   cronDueWindow,
   everyDueWindow,
   OCCURRENCE_RECORD_MIN_INTERVAL_MS,
+  shouldRecordRun,
 } from "./occurrence-window.ts";
 import { getSchedule, validateScheduleInput } from "./repo.ts";
 import { recordScheduleInputRequired, recordScheduleRefusal } from "./schedule-admission-state.ts";
@@ -367,13 +368,29 @@ async function fireCandidate(
         claimed_at: now,
       },
     );
-    if (seconds === undefined || seconds * 1000 >= OCCURRENCE_RECORD_MIN_INTERVAL_MS)
+    const window =
+      seconds !== undefined && seconds * 1000 < OCCURRENCE_RECORD_MIN_INTERVAL_MS
+        ? everyDueWindow(seconds, anchor, now)
+        : null;
+    if (shouldRecordRun(seconds, window, now)) {
+      if (window)
+        logger.debug({
+          module: "scheduler",
+          action: "schedule_occurrence.subminute_catchup_recorded",
+          msg: "a sub-minute schedule recorded its catch-up run for the missed due times",
+          tenant_id: row.tenant_id,
+          workflow_id: row.workflow_id,
+          schedule_id: row.id,
+          due_count: window.count,
+          execution_id: fired?.execution_id ?? null,
+        });
       await note({
         state: "ran",
         reason_code: null,
         started_at: now,
         execution_id: fired?.execution_id ?? null,
       });
+    }
   } catch (error) {
     if (lease)
       logScheduleFireFailure(
