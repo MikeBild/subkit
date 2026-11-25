@@ -224,3 +224,20 @@ export function judgeFile(
     message: `line=${row.lines.toFixed(2)} (>=${floor.line_min}) funcs=${row.funcs.toFixed(2)} (>=${floor.function_min})`,
   };
 }
+
+export function coverageTargetWanted(
+  name: string,
+  targets: readonly string[],
+  subsystem = false,
+): boolean {
+  return (
+    targets.length === 0 ||
+    targets.some(
+      (target) =>
+        target === name ||
+        target === name.split("/").pop() ||
+        name.startsWith(`${target}/`) ||
+        (subsystem && target.startsWith(`${name}/`)),
+    )
+  );
+}

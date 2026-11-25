@@ -35,6 +35,7 @@ import {
 import {
   aggregateByPrefix,
   type CoverageRun,
+  coverageTargetWanted,
   type FloorEntry,
   judgeFile,
   parseFloorFile,
@@ -516,6 +517,8 @@ if ("errors" in parsed) {
 }
 const { floors } = parsed;
 const cliArgs = process.argv.slice(2);
+const changedFiles = cliArgs[0] === "--changed-files";
+if (changedFiles) cliArgs.shift();
 if (cliArgs[0] === "--wave-manifest") {
   if (
     cliArgs.length !== 4 ||
@@ -584,17 +587,34 @@ if (cliArgs[0] === "--wave-manifest") {
 }
 if (cliArgs.some((arg) => arg.startsWith("--")) && !waveContext) {
   console.error(
-    "usage: check-coverage-floor.ts [targets...] | --wave-manifest <absolute> --shard <id>",
+    "usage: check-coverage-floor.ts [--changed-files] [targets...] | --wave-manifest <absolute> --shard <id>",
   );
   process.exit(1);
 }
+const want = waveContext ? [...waveContext.tests.keys()] : cliArgs;
+const wanted = (name: string, subsystem = false): boolean =>
+  coverageTargetWanted(name, want, subsystem);
+
+if (changedFiles) {
+  if (want.length === 0) {
+    console.error("--changed-files requires at least one source path");
+    process.exit(1);
+  }
+  const sources = COVERAGE_INPUT_ROOTS.flatMap((root) =>
+    listFiles(join(REPO, root), isSource).map((file) => relative(REPO, file)),
+  );
+  const targets = new Set([...resolveFileFloors(floors, sources).keys(), ...PURE_MUTATION_TARGETS]);
+  if (
+    !Object.keys(floors.subsystems).some((name) => wanted(name, true)) &&
+    ![...targets].some((name) => wanted(name))
+  ) {
+    console.log("SKIP no configured coverage targets for changed source files");
+    process.exit(0);
+  }
+}
+
 coverageLease = createCoverageRunLease(COVERAGE_DIR);
 disposeCoverageSignalRetention = installCoverageLeaseSignalRetention(coverageLease);
-
-const want = waveContext ? [...waveContext.tests.keys()] : [...process.argv.slice(2)];
-const wanted = (name: string): boolean =>
-  want.length === 0 ||
-  want.some((w) => w === name || w === name.split("/").pop() || name.startsWith(`${w}/`));
 
 interface Result {
   target: string;
@@ -604,7 +624,7 @@ interface Result {
 const results: Result[] = [];
 
 for (const [subsystem, floor] of Object.entries(floors.subsystems)) {
-  if (!wanted(subsystem)) continue;
+  if (!wanted(subsystem, changedFiles)) continue;
   if (floor.line_min === 0 && floor.function_min === 0) {
     results.push({
       target: subsystem,

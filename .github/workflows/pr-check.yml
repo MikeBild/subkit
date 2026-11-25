@@ -86,7 +86,7 @@ jobs:
         run: |
           changed=$(git diff --name-only --diff-filter=AMR "$BASE_SHA...HEAD" -- 'apps/*.ts' 'packages/*.ts' | grep -vE '\.test\.tsx?$' || true)
           [ -z "$changed" ] && { echo "no changed source files"; exit 0; }
-          bun apps/engine/scripts/check-coverage-floor.ts $changed
+          bun apps/engine/scripts/check-coverage-floor.ts --changed-files $changed
       - name: Run the shard and compare failures with the base commit
         run: |
           : > failed.txt
