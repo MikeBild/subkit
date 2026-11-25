@@ -1,11 +1,7 @@
 import { reportCommandError } from "@cli-core/errors";
 import { printJson } from "@cli-core/format";
 import pc from "picocolors";
-import type {
-  CreateConnectorBody,
-  CredentialBody,
-  UpdateConnectorBody,
-} from "../engine-client/connectors.ts";
+import type { CreateConnectorBody, UpdateConnectorBody } from "../engine-client/connectors.ts";
 import type { EngineClient } from "../engine-client.ts";
 import {
   connectorDisplayName,
@@ -15,6 +11,7 @@ import {
 import { renderIntent, renderSummary, renderTaskList } from "../render/index.ts";
 import type { ConnectorSummary } from "../render/types.ts";
 import { makeClient } from "./command-runtime.ts";
+import { credentialHint, parseCredentialFile } from "./connector-credential-file-model.ts";
 import { connectorCheckPlan } from "./connector-save-model.ts";
 
 import { readDefinitionFile } from "./definition-file.ts";
@@ -112,7 +109,7 @@ export async function saveConnectorFromFile(
         );
       } else if (checks === "probe_draft" && plan.action === "create") {
         const credential = args.credential
-          ? await readDefinitionFile<CredentialBody>(String(args.credential))
+          ? parseCredentialFile(await readDefinitionFile<unknown>(String(args.credential)))
           : undefined;
         const result = await client.probeConnectorDraft({
           connector: plan.body,
@@ -127,7 +124,7 @@ export async function saveConnectorFromFile(
                 id: "probe",
                 label: "Probe",
                 status: "failed",
-                detail: result.detail ?? "probe returned not-ok",
+                detail: credentialHint(result) ?? "probe returned not-ok",
               },
               { id: "save", label: "Save", status: "pending" },
             ],
