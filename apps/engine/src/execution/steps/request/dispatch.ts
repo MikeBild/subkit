@@ -235,10 +235,26 @@ async function resolveRequestParts(
     p.step.body !== undefined && p.step.body !== null
       ? await resolvePlaceholdersTypePreserving(p.step.body, partsCtx)
       : null;
+  const formRes = p.step.form ? await resolveRequestQuery(p.step.form, partsCtx) : null;
+  if (formRes && formRes.omitted.length > 0)
+    logger.debug({
+      module: "request",
+      action: "form_null_fields_omitted",
+      execution_id: p.ctx.execution_id,
+      step_id: p.step.id,
+      omitted_keys: formRes.omitted,
+    });
+  const idempotencyKeyRes =
+    p.step.idempotency_key !== undefined &&
+    !Object.keys(p.step.headers ?? {}).some((key) => key.toLowerCase() === "idempotency-key")
+      ? await resolveStringPlaceholders(p.step.idempotency_key, partsCtx)
+      : null;
   const credentialUnresolved = [
     ...(headersRes?.unresolved ?? []),
     ...(queryRes?.unresolved ?? []),
     ...(bodyRes?.unresolved ?? []),
+    ...(formRes?.unresolved ?? []),
+    ...(idempotencyKeyRes?.unresolved ?? []),
   ].filter((u) => /^\$\{\s*(?:cred|secret)\./.test(u.token));
   if (credentialUnresolved.length > 0) {
     return {
@@ -337,6 +353,19 @@ async function resolveRequestParts(
     if (!Object.keys(headers).some((k) => k.toLowerCase() === "content-type"))
       headers["Content-Type"] = "application/xml";
   }
+  if (formRes) {
+    body = new URLSearchParams(
+      Object.entries(formRes.value).map(([name, value]) => [name, String(value)]),
+    ).toString();
+    if (!Object.keys(headers).some((k) => k.toLowerCase() === "content-type"))
+      headers["Content-Type"] = "application/x-www-form-urlencoded";
+  }
+  if (
+    idempotencyKeyRes &&
+    idempotencyKeyRes.value.length > 0 &&
+    !Object.keys(headers).some((k) => k.toLowerCase() === "idempotency-key")
+  )
+    headers["Idempotency-Key"] = idempotencyKeyRes.value;
   return {
     path: pathRes?.value ?? p.step.path ?? null,
     url: urlRes?.value ?? p.step.url ?? null,
@@ -520,7 +549,7 @@ async function dispatchRequestStep(
                   execution_id: p.ctx.execution_id,
                   step_id: p.step.id,
                 },
-                [p.step.headers, p.step.query, p.step.body],
+                [p.step.headers, p.step.query, p.step.body, p.step.form, p.step.idempotency_key],
               ),
               onSecret: (value: string) => {
                 ownCredentials.push(value);

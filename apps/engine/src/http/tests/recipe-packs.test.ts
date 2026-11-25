@@ -379,3 +379,148 @@ describe("the paid checkout solution asks for its sender at install (#590)", () 
     });
   });
 });
+
+describe("installing a connector template recipe with install inputs (#895)", () => {
+  type Steps = { steps: Array<{ id: string; path?: string }> };
+  const templateWorkflow = async (template: string, recipe: string) => {
+    const res = await fetch(`${ctx.baseUrl}/v1/connector-templates/${template}/recipes/${recipe}`, {
+      headers: auth(),
+    });
+    expect(res.status).toBe(200);
+    return ((await res.json()) as { workflow: Steps }).workflow;
+  };
+  const installTemplateRecipe = async (
+    route: "/v1/workflows" | "/v1/workflows/drafts",
+    slug: string,
+    recipe: Record<string, unknown>,
+  ) => {
+    const definition = { ...(await templateWorkflow("google-analytics", "run-report")), slug };
+    return fetch(`${ctx.baseUrl}${route}`, {
+      method: "POST",
+      headers: auth(),
+      body: JSON.stringify(
+        route === "/v1/workflows" ? { ...definition, recipe } : { definition, recipe },
+      ),
+    });
+  };
+  const reportPath = (definition: Steps) =>
+    definition.steps.find((step) => step.id === "totals")?.path;
+
+  test("a draft from a template recipe pins its install input and records the template", async () => {
+    const res = await installTemplateRecipe("/v1/workflows/drafts", "ga4-template-pinned", {
+      template: "google-analytics",
+      slug: "run-report",
+      inputs: { property_id: "987654321" },
+    });
+    expect(res.status).toBe(201);
+    const draft = (await res.json()) as { workflow_id: string; definition: Steps };
+    expect(reportPath(draft.definition)).toBe("/v1beta/properties/987654321:runReport");
+    expect(await createdAudit(draft.workflow_id)).toEqual(
+      expect.objectContaining({
+        source: "recipe",
+        recipe_template: "google-analytics",
+        recipe_slug: "run-report",
+      }),
+    );
+  });
+
+  test("without install inputs the template recipe keeps its placeholder path", async () => {
+    const res = await installTemplateRecipe("/v1/workflows/drafts", "ga4-template-unpinned", {
+      template: "google-analytics",
+      slug: "run-report",
+    });
+    expect(res.status).toBe(201);
+    const draft = (await res.json()) as { definition: Steps };
+    expect(reportPath(draft.definition)).toBe("/v1beta/properties/${input.property_id}:runReport");
+  });
+
+  test("an invalid install input of a template recipe is refused on save", async () => {
+    const res = await installTemplateRecipe("/v1/workflows", "ga4-template-forged", {
+      template: "google-analytics",
+      slug: "run-report",
+      inputs: { property_id: "1/../2" },
+    });
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { message?: string; details?: { reason?: string } };
+    expect(body.details?.reason).toBe("recipe_input_invalid");
+    expect(body.message).toContain("google-analytics/run-report");
+  });
+
+  test("a template origin that names no shipped template recipe is refused", async () => {
+    const res = await installTemplateRecipe("/v1/workflows/drafts", "ga4-template-unknown", {
+      template: "google-analytics",
+      slug: "made-up",
+    });
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { details?: { reason?: string } }).details?.reason).toBe(
+      "recipe_unknown",
+    );
+  });
+
+  test("an origin naming both a recipe pack and a template is refused", async () => {
+    const res = await installTemplateRecipe("/v1/workflows/drafts", "ga4-template-both", {
+      vertical: "solutions",
+      template: "google-analytics",
+      slug: "run-report",
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("installing a web-scraper template recipe pins its allowed hosts (#895)", () => {
+  type Saved = {
+    id: string;
+    current_version_id: string;
+    steps: Array<{ id: string; boundary?: { allowed_hosts?: unknown } }>;
+  };
+  const saveScraper = async (slug: string, inputs?: Record<string, unknown>) => {
+    const recipeRes = await fetch(
+      `${ctx.baseUrl}/v1/connector-templates/web-scraper/recipes/fetch-url-as-markdown`,
+      { headers: auth() },
+    );
+    expect(recipeRes.status).toBe(200);
+    const { workflow } = (await recipeRes.json()) as { workflow: Record<string, unknown> };
+    const res = await fetch(`${ctx.baseUrl}/v1/workflows`, {
+      method: "POST",
+      headers: auth(),
+      body: JSON.stringify({
+        ...workflow,
+        slug,
+        recipe: {
+          template: "web-scraper",
+          slug: "fetch-url-as-markdown",
+          ...(inputs ? { inputs } : {}),
+        },
+      }),
+    });
+    expect(res.status).toBe(201);
+    return (await res.json()) as Saved;
+  };
+  const fetchHosts = (saved: Saved) =>
+    saved.steps.find((step) => step.id === "fetch")?.boundary?.allowed_hosts;
+  const requestRefusals = async (saved: Saved) => {
+    const res = await fetch(
+      `${ctx.baseUrl}/v1/workflows/${saved.id}/versions/${saved.current_version_id}/authority-preview?environment=dev`,
+      { headers: auth() },
+    );
+    expect(res.status).toBe(200);
+    return ((await res.json()) as { request_refusals: Array<{ step_id: string; reason: string }> })
+      .request_refusals;
+  };
+
+  test("the stored request boundary carries the host list given at install", async () => {
+    const saved = await saveScraper("scraper-template-pinned", {
+      allowed_hosts: ["docs.example.com"],
+    });
+    expect(fetchHosts(saved)).toEqual(["docs.example.com"]);
+    expect(await requestRefusals(saved)).toEqual([]);
+  });
+
+  test("without allowed hosts the fetch boundary stays unpinned and is refused", async () => {
+    const saved = await saveScraper("scraper-template-unpinned");
+    expect(fetchHosts(saved)).toBe("${input.allowed_hosts}");
+    expect(await requestRefusals(saved)).toEqual([
+      { step_id: "fetch", reason: "allowed_hosts_unpinned" },
+    ]);
+  });
+});

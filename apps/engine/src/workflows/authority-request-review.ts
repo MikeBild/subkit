@@ -88,6 +88,7 @@ export function authorityRequestReview(step: RequestStep) {
     query: step.query ?? null,
     url_query: urlQuery,
     body: step.body ?? null,
+    ...(step.form ? { form: step.form } : {}),
     graphql: graphql.value,
     header_names: Object.keys(step.headers ?? {}).sort(),
     header_values_omitted: Object.keys(step.headers ?? {}).length > 0,

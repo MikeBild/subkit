@@ -97,7 +97,9 @@ export function pinInstallInputs(
   inputDefinition: unknown = definition,
 ): InstallInputPin {
   const mailboxKeys = new Set(mailboxInstallInputs(inputDefinition, keys));
-  const requests = stepsOf(definition).filter((step) => step?.kind === "request");
+  const requests = [...stepsOf(inputDefinition), ...stepsOf(definition)].filter(
+    (step) => step?.kind === "request",
+  );
   const paths = new Map<string, string>();
   const senders = new Map<string, string>();
   const lists = new Map<string, string[]>();

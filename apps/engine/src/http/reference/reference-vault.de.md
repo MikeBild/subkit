@@ -36,7 +36,7 @@ Geräteeinträge legt SubKit Desktop selbst an, zum Beispiel den Schlüssel, mit
 
 ### Einen Eintrag in einem Workflow nutzen
 
-Schreib das Handle in einen Header, einen Query-Wert oder den Body eines Request-Schritts mit Connector:
+Schreib das Handle in einen Header, einen Query-Wert, ein `form`-Feld oder den Body eines Request-Schritts mit Connector:
 
 ```json
 {
@@ -62,8 +62,8 @@ Diese Regeln gelten immer:
 - **Die Freigabe nennt die Einträge.** Sie zeigt „Nutzt aus dem Tresor: crm-token, …“ und bindet die Namen, nie die Werte. Nutzt eine neue Version einen weiteren Eintrag, braucht sie eine neue Freigabe. Weniger Einträge übernehmen die Freigabe.
 - **Nur in freigegebenen Runs.** In Entwürfen, Probe-Runs und zurückgehaltenen Schritten bleibt das Handle unaufgelöst (`secret_withheld`), und es wird nichts gesendet.
 - **Nur zum eigenen Connector.** Ein Schritt mit Tresor-Wert darf nur an den Origin seines Connectors gehen. Jede andere Adresse bricht mit `credential_boundary_violation` ab, bevor etwas gesendet wird.
-- **Nur in Header, Query und Body.** In Pfad, URL, einer GraphQL-Abfrage oder einem MCP-Aufruf wird ein Handle nie aufgelöst; in Pfad oder URL stoppt der Schritt, bevor etwas gesendet wird.
-- **Überall dieselben Regeln.** Ein Handle in Query oder Body wird genauso aufgelöst, unkenntlich gemacht und freigegeben wie eines im Header. Ein Query-Wert darf festen Text um ein Handle enthalten, aber keinen anderen Platzhalter. Die Freigabe prüft, dass der Schlüssel gesendet wird, nicht seinen Wert; eine Rotation braucht deshalb keine neue Freigabe.
+- **Nur in Header, Query, Form und Body.** In Pfad, URL, einer GraphQL-Abfrage oder einem MCP-Aufruf wird ein Handle nie aufgelöst; in Pfad oder URL stoppt der Schritt, bevor etwas gesendet wird.
+- **Überall dieselben Regeln.** Ein Handle in Query, einem Form-Feld oder Body wird genauso aufgelöst, unkenntlich gemacht und freigegeben wie eines im Header. Ein Query-Wert darf festen Text um ein Handle enthalten, aber keinen anderen Platzhalter. Die Freigabe prüft, dass der Schlüssel gesendet wird, nicht seinen Wert; eine Rotation braucht deshalb keine neue Freigabe.
 - **Fehlt der Eintrag, scheitert der Schritt** mit `placeholder_unresolved`, und nichts wird gesendet.
 
 ### Was die KI und die Aufzeichnung sehen

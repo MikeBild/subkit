@@ -614,14 +614,14 @@ const createCommand = defineCommand({
   meta: {
     name: "create",
     description:
-      "Create a workflow from a JSON file (--file) or a solution recipe (--from-recipe <slug>, see `subkit connector-templates recipe-pack solutions`). Runs `validate` and `preview` by default; pass --skip-checks to bypass.",
+      "Create a workflow from a JSON file (--file), a solution recipe (--from-recipe <slug>, see `subkit connector-templates recipe-pack solutions`) or a connector template recipe (--from-recipe <template>/<recipe>, see `subkit connector-templates recipes <template>`). Runs `validate` and `preview` by default; pass --skip-checks to bypass.",
   },
   args: {
     file: { type: "string", description: "Path to WorkflowDef JSON" },
     "from-recipe": {
       type: "string",
       description:
-        "Slug of a solution recipe; its connectors are bound to the ones you already have",
+        "Slug of a solution recipe, or <template>/<recipe> for a connector template recipe; its connectors are bound to the ones you already have",
     },
     bind: {
       type: "string",
@@ -632,7 +632,7 @@ const createCommand = defineCommand({
     input: {
       type: "string",
       description:
-        "Input JSON string passed to the preview dry-run. With --from-recipe it defaults to the recipe's sample input.",
+        "Input JSON string passed to the preview dry-run. With --from-recipe it defaults to the recipe's sample input and must carry every install input the recipe declares, such as a host list.",
     },
   },
   async run({ args }) {

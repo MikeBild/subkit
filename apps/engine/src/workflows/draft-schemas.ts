@@ -77,24 +77,47 @@ export const WorkflowDraftSchema = z
   })
   .openapi("WorkflowDraft");
 
+const RecipeInstallInputsSchema = z
+  .record(z.string().min(1).max(64), z.unknown())
+  .optional()
+  .describe(
+    "Install-time input values. Each value of a key the recipe lists in install_inputs is validated and written into the request paths, a host list into the request boundary, or the transactional delivery sender before the workflow is saved, so its reviewed boundary stays literal; a sender the recipe needs must be given; other keys are ignored.",
+  );
+
 export const RecipeOriginSchema = z
-  .object({
-    vertical: z.string().min(1).max(64),
-    slug: z.string().min(1).max(128),
-    inputs: z
-      .record(z.string().min(1).max(64), z.unknown())
-      .optional()
-      .describe(
-        "Install-time input values. Each value of a key the recipe lists in install_inputs is validated and written into the request paths or the transactional delivery sender before the workflow is saved, so its reviewed boundary stays literal; a sender the recipe needs must be given; other keys are ignored.",
-      ),
-  })
-  .strict()
-  .describe("The recipe pack entry this workflow was created from; recorded in the audit trail.")
+  .union([
+    z
+      .object({
+        vertical: z.string().min(1).max(64),
+        slug: z.string().min(1).max(128),
+        inputs: RecipeInstallInputsSchema,
+      })
+      .strict(),
+    z
+      .object({
+        template: z
+          .string()
+          .min(1)
+          .max(128)
+          .describe("Slug of the connector template that ships the recipe."),
+        slug: z.string().min(1).max(128),
+        inputs: RecipeInstallInputsSchema,
+      })
+      .strict(),
+  ])
+  .describe(
+    "The recipe this workflow was created from: a recipe pack entry (vertical) or a connector template recipe (template); recorded in the audit trail.",
+  )
   .openapi("RecipeOrigin");
 export type RecipeOrigin = z.infer<typeof RecipeOriginSchema>;
 
+export const recipeOriginName = (origin: RecipeOrigin): string =>
+  `${"template" in origin ? origin.template : origin.vertical}/${origin.slug}`;
+
 export function recipeAuditMetadata(origin: RecipeOrigin): Record<string, string> {
-  return { source: "recipe", recipe_vertical: origin.vertical, recipe_slug: origin.slug };
+  return "template" in origin
+    ? { source: "recipe", recipe_template: origin.template, recipe_slug: origin.slug }
+    : { source: "recipe", recipe_vertical: origin.vertical, recipe_slug: origin.slug };
 }
 
 const DraftBodySchema = z.object({

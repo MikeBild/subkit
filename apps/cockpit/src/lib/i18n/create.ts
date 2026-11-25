@@ -127,6 +127,10 @@ export const createEn = {
   "create.solution.inputHelp": "Fixed into the approved boundary when the workflow is created.",
   "create.solution.inputMissing": "Fill in every value the template needs.",
   "create.solution.inputInvalid": "Use letters, digits, _ or - only, without slashes or spaces.",
+  "create.solution.hostsHelp":
+    "One host per line, such as docs.example.com. Only these hosts can be read; they are fixed into the approved boundary.",
+  "create.solution.hostsInvalid":
+    "List 1 to 50 host names such as docs.example.com, without https://, port, path, wildcard or IP address.",
   "wizard.progress": "Step {step} of {total}",
   "wizard.step.how": "How",
   "wizard.step.what": "What",
@@ -268,6 +272,10 @@ export const createDe: Record<keyof typeof createEn, string> = {
   "create.solution.inputMissing": "Fülle jeden Wert aus, den die Vorlage braucht.",
   "create.solution.inputInvalid":
     "Nur Buchstaben, Ziffern, _ oder -, ohne Schrägstriche und Leerzeichen.",
+  "create.solution.hostsHelp":
+    "Ein Host pro Zeile, etwa docs.example.com. Nur diese Hosts dürfen gelesen werden; sie werden fest in die freigegebene Grenze geschrieben.",
+  "create.solution.hostsInvalid":
+    "1 bis 50 Hostnamen wie docs.example.com, ohne https://, Port, Pfad, Platzhalter oder IP-Adresse.",
   "wizard.progress": "Schritt {step} von {total}",
   "wizard.step.how": "Wie",
   "wizard.step.what": "Was",

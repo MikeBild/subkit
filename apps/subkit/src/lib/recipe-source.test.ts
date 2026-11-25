@@ -5,6 +5,9 @@ import {
   parseBinds,
   type RecipePackEntry,
   recipeWorkflowSource,
+  type TemplateRecipe,
+  templateRecipeRef,
+  templateRecipeWorkflowSource,
 } from "./recipe-source.ts";
 
 const SLACK = "54000000-0000-4000-8000-000000000001";
@@ -245,5 +248,107 @@ describe("subkit workflows create --from-recipe", () => {
     expect(sub.create?.args.file?.required).toBeUndefined();
     expect(sub.update?.args.file?.required).toBe(true);
     expect(sub.update?.args["from-recipe"]).toBeUndefined();
+  });
+});
+
+describe("subkit workflows create --from-recipe <template>/<recipe> (#895)", () => {
+  const GA4 = "00000000-0000-0000-0000-000000000000";
+  const reportRecipe = (required = [{ placeholder: GA4, template: "google-analytics" }]) =>
+    ({
+      slug: "run-report",
+      title: "Report users",
+      install_inputs: ["property_id"],
+      required_connectors: required,
+      sample_input: { property_id: "123456789" },
+      workflow: {
+        name: "google-analytics-run-report",
+        input_schema: {
+          type: "object",
+          properties: { property_id: { type: "string", description: "GA4 property id" } },
+        },
+        steps: [
+          {
+            id: "totals",
+            kind: "request",
+            connector_id: GA4,
+            path: `/v1beta/properties/\${input.property_id}:runReport`,
+          },
+        ],
+      },
+    }) as unknown as TemplateRecipe;
+  const ga4 = [
+    { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", slug: "ga4", template_slug: "google-analytics" },
+  ];
+
+  test("a recipe reference with a slash names a connector template recipe", () => {
+    expect(templateRecipeRef("web-scraper/fetch-url-as-markdown")).toEqual({
+      template: "web-scraper",
+      recipe: "fetch-url-as-markdown",
+    });
+    expect(templateRecipeRef("webhook-to-slack")).toBeNull();
+    expect(() => templateRecipeRef("web-scraper/")).toThrow(
+      "--from-recipe expects <solution> or <template>/<recipe>",
+    );
+  });
+
+  test("a template recipe binds its one connector and records the template as origin", () => {
+    const source = templateRecipeWorkflowSource("google-analytics", reportRecipe(), {}, ga4);
+    expect(source.recipe).toEqual({ template: "google-analytics", slug: "run-report" });
+    expect(source.installInputs).toEqual(["property_id"]);
+    const body = createBodyFor(source, { property_id: "987654321" });
+    expect(body.steps).toEqual([
+      {
+        id: "totals",
+        kind: "request",
+        connector_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        path: "/v1beta/properties/987654321:runReport",
+      },
+    ]);
+    expect(body.recipe).toEqual({
+      template: "google-analytics",
+      slug: "run-report",
+      inputs: { property_id: "987654321" },
+    });
+  });
+
+  test("a template recipe without a matching connector says how to bind or create one", () => {
+    expect(() => templateRecipeWorkflowSource("google-analytics", reportRecipe(), {}, [])).toThrow(
+      'recipe "google-analytics/run-report" needs a connector — google-analytics: --bind google-analytics=<connector id or slug>, or subkit connectors create --template google-analytics',
+    );
+    const two = [
+      ...ga4,
+      {
+        id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        slug: "ga4-b",
+        template_slug: "google-analytics",
+      },
+    ];
+    expect(() => templateRecipeWorkflowSource("google-analytics", reportRecipe(), {}, two)).toThrow(
+      "google-analytics: choose one of ga4, ga4-b with --bind google-analytics=<connector id or slug>",
+    );
+    const bound = templateRecipeWorkflowSource(
+      "google-analytics",
+      reportRecipe(),
+      { "google-analytics": "ga4-b" },
+      two,
+    );
+    expect((bound.body.steps as Array<{ connector_id: string }>)[0]?.connector_id).toBe(
+      "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    );
+  });
+
+  test("a missing install input is refused before anything is sent, with an example", () => {
+    const source = templateRecipeWorkflowSource("google-analytics", reportRecipe(), {}, ga4);
+    for (const input of [undefined, {}, { property_id: " " }])
+      expect(() => createBodyFor(source, input)).toThrow(
+        `recipe google-analytics/run-report needs install input property_id (GA4 property id); pass it with --input '{"property_id":"<value>"}'`,
+      );
+  });
+
+  test("an invalid install input is refused before anything is sent", () => {
+    const source = templateRecipeWorkflowSource("google-analytics", reportRecipe(), {}, ga4);
+    expect(() => createBodyFor(source, { property_id: "1/../2" })).toThrow(
+      "recipe google-analytics/run-report: install input property_id must be one plain path segment",
+    );
   });
 });

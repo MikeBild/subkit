@@ -25,6 +25,7 @@ export function readPathBoundary(
     step.pagination ||
     step.query ||
     step.xml ||
+    step.form ||
     step.multipart ||
     hasRuntimeValue(fixed) ||
     !authored ||

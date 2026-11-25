@@ -150,6 +150,47 @@ test("a step that sends content gets no invented size ceiling", async () => {
   expect(unproposable).toEqual([{ step_id: "send", reason: "body_size_unknown" }]);
 });
 
+for (const method of ["POST", "GET", "HEAD"]) {
+  for (const bytes of [undefined, 2048]) {
+    test(`${method} form content derives its body ceiling from ${bytes ?? "unknown"} bytes`, async () => {
+      await record([
+        {
+          step: "send",
+          url: "https://api.example.test/v1/pages/example",
+          ...(bytes === undefined ? {} : { bytes }),
+        },
+      ]);
+      const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
+        tenant_id,
+        workflow_id,
+        environment: "prod",
+        viewer: viewer(tenant_id),
+        definition: definition([
+          {
+            id: "send",
+            kind: "request",
+            connector_id: CONNECTOR,
+            method,
+            path: "/v1/pages/${input.page_id}",
+            form: { archived: "true" },
+          },
+        ]),
+      });
+      if (method === "POST" && bytes === undefined) {
+        expect(proposals).toEqual([]);
+        expect(unproposable).toEqual([{ step_id: "send", reason: "body_size_unknown" }]);
+      } else {
+        expect(unproposable).toEqual([]);
+        if (method === "POST") {
+          expect(proposals[0]?.boundary?.max_body_bytes).toBeGreaterThan(2048);
+        } else {
+          expect(proposals[0]?.boundary?.max_body_bytes).toBe(0);
+        }
+      }
+    });
+  }
+}
+
 test("a storage step is given the deepest folder that holds everything it touched", async () => {
   await record([
     { step: "store", key: "v1/facts/year=2026/month=09/a.json", bytes: 4096 },

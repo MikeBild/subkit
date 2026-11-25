@@ -2,7 +2,20 @@ import { expect, test } from "bun:test";
 import { render } from "@/components/cockpit/patterns/test-utils";
 import { InstallInputFields } from "./install-input-fields";
 
-const fields = [{ key: "property_id", label: "GA4 property id (digits only)" }];
+const fields = [{ key: "property_id", label: "GA4 property id (digits only)", list: false }];
+
+test("a host list install input is one host per line with the host hint (#895)", () => {
+  const hosts = [{ key: "allowed_hosts", label: "Allowed hosts", list: true }];
+  const value = "docs.example.com\nexample.com";
+  const markup = render(
+    <InstallInputFields fields={hosts} values={{ allowed_hosts: value }} onChange={() => {}} />,
+    "de",
+  );
+  expect(markup).toContain("<textarea");
+  expect(markup).toContain('id="create-solution-input-allowed_hosts"');
+  expect(markup).toContain(value);
+  expect(markup).toContain("Ein Host pro Zeile, etwa docs.example.com.");
+});
 
 test("asks for each declared install input with its schema label and the pin hint", () => {
   const markup = render(

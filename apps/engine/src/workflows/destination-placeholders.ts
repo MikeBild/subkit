@@ -183,6 +183,8 @@ export function detectPlaceholderDestinations(
       scan(step.headers, `${base}.headers`, step.id);
       scan(step.query, `${base}.query`, step.id);
       scan(step.body, `${base}.body`, step.id);
+      scan(step.form, `${base}.form`, step.id);
+      scan(step.idempotency_key, `${base}.idempotency_key`, step.id);
       scan(step.graphql?.variables, `${base}.graphql.variables`, step.id);
       scan(step.mcp?.arguments, `${base}.mcp.arguments`, step.id);
       scan(step.report_delivery?.to, `${base}.report_delivery.to`, step.id);

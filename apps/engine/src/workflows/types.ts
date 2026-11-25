@@ -412,13 +412,41 @@ function foreignBlock(block: RequestBlock) {
     .optional();
 }
 
-function httpOnlyXml(protocol: RequestBlock) {
+function httpOnlyEncoding(encoding: "xml" | "form", protocol: RequestBlock) {
   return z
     .never({
-      error: `\`xml\` is an HTTP body encoding and is not accepted on a step with \`protocol: "${protocol}"\``,
+      error: `\`${encoding}\` is an HTTP body encoding and is not accepted on a step with \`protocol: "${protocol}"\``,
     })
     .openapi({ type: "null", not: {} })
     .optional();
+}
+
+const httpOnlyXml = (protocol: RequestBlock) => httpOnlyEncoding("xml", protocol);
+const httpOnlyForm = (protocol: RequestBlock) => httpOnlyEncoding("form", protocol);
+
+const FormBodySchema = z
+  .record(z.string().min(1), z.union([z.string(), z.number(), z.boolean()]))
+  .openapi({
+    description:
+      "Fields sent as an application/x-www-form-urlencoded body. Values resolve placeholders like body fields; a field that resolves to null is left out. Not combinable with body, xml or multipart.",
+  });
+
+function checkFormBody(
+  s: { form?: unknown; body?: unknown; xml?: unknown; multipart?: unknown },
+  ctx: z.RefinementCtx,
+): void {
+  if (s.form === undefined) return;
+  const other = [
+    s.body !== undefined && s.body !== null ? "body" : null,
+    s.xml !== undefined ? "xml" : null,
+    s.multipart !== undefined ? "multipart" : null,
+  ].find((name) => name !== null);
+  if (!other) return;
+  ctx.addIssue({
+    code: "custom",
+    path: ["form"],
+    message: `\`form\` and \`${other}\` both define the request body; keep only one`,
+  });
 }
 
 const requestStepBase = {
@@ -471,7 +499,10 @@ const requestStepBase = {
         }),
     ])
     .optional(),
-  idempotency_key: z.string().optional(),
+  idempotency_key: z.string().optional().openapi({
+    description:
+      "Sent as the Idempotency-Key header after placeholders resolve, unless the step sets that header itself.",
+  }),
   outputs: z.record(z.string().min(1), z.object({ secret: z.boolean().optional() })).optional(),
   state_read: z
     .object({
@@ -556,6 +587,7 @@ export const HttpRequestStepSchema = z
     method: z.enum(HTTP_METHODS).optional().default("GET"),
     ...requestStepBase,
     xml: XmlBodySchema.optional(),
+    form: FormBodySchema.optional(),
     graphql: foreignBlock("graphql"),
     sql: foreignBlock("sql"),
     s3: foreignBlock("s3"),
@@ -565,6 +597,7 @@ export const HttpRequestStepSchema = z
   .superRefine((s, ctx) => {
     checkAddressed(s, ctx);
     checkReadOverride(s, ctx);
+    checkFormBody(s, ctx);
     rejectRowCount(s, ctx, "expected_row_count is postgres-only; HTTP steps use expected_statuses");
   })
   .openapi("HttpRequestStep");
@@ -578,6 +611,7 @@ export const GraphqlRequestStepSchema = z
     ...requestStepBase,
     graphql: GraphQLConfigSchema,
     xml: httpOnlyXml("graphql"),
+    form: httpOnlyForm("graphql"),
     sql: foreignBlock("sql"),
     s3: foreignBlock("s3"),
     sftp: foreignBlock("sftp"),
@@ -598,6 +632,7 @@ export const SqlRequestStepSchema = z
     ...requestStepBase,
     sql: SqlBlockSchema,
     xml: httpOnlyXml("sql"),
+    form: httpOnlyForm("sql"),
     graphql: foreignBlock("graphql"),
     s3: foreignBlock("s3"),
     sftp: foreignBlock("sftp"),
@@ -646,6 +681,7 @@ export const S3RequestStepSchema = z
     ...requestStepBase,
     s3: S3BlockSchema,
     xml: httpOnlyXml("s3"),
+    form: httpOnlyForm("s3"),
     graphql: foreignBlock("graphql"),
     sql: foreignBlock("sql"),
     sftp: foreignBlock("sftp"),
@@ -681,6 +717,7 @@ export const SftpRequestStepSchema = z
     ...requestStepBase,
     sftp: SftpBlockSchema,
     xml: httpOnlyXml("sftp"),
+    form: httpOnlyForm("sftp"),
     graphql: foreignBlock("graphql"),
     sql: foreignBlock("sql"),
     s3: foreignBlock("s3"),
@@ -716,6 +753,7 @@ export const McpRequestStepSchema = z
     ...requestStepBase,
     mcp: McpBlockSchema,
     xml: httpOnlyXml("mcp"),
+    form: httpOnlyForm("mcp"),
     graphql: foreignBlock("graphql"),
     sql: foreignBlock("sql"),
     s3: foreignBlock("s3"),

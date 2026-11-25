@@ -123,19 +123,39 @@ auth headers from the connector's auth config, then dispatches. The envelope's
 
 ### Form-encoded body
 
-For `application/x-www-form-urlencoded`, set the `content-type` header. Placeholders
-are not URL-encoded (`+` becomes a space, `&` splits a field), so build the body in a
-`transform` step and send it whole:
+For `application/x-www-form-urlencoded`, put the fields in `form`. Each value resolves
+placeholders like a body field and is URL-encoded on send, so `+`, `&` and unicode
+arrive intact. A field that resolves to `null` is left out. The engine sets
+`Content-Type: application/x-www-form-urlencoded` unless the step sets its own.
+`form` cannot be combined with `body`, `xml` or `multipart`:
 
 ```json
-[
-  { "id": "form", "kind": "transform", "language": "javascript",
-    "expression": "return ['From','To','Body'].map((k) => k + '=' + encodeURIComponent(String(input.input[k] ?? ''))).join('&');" },
-  { "id": "send", "kind": "request", "method": "POST", "connector_id": "<twilio_connector_id>",
-    "path": "/Accounts/${input.account_sid}/Messages.json",
-    "headers": { "content-type": "application/x-www-form-urlencoded" }, "body": "${scope.form.data}" }
-]
+{ "id": "send", "kind": "request", "method": "POST", "connector_id": "<twilio_connector_id>",
+  "path": "/Accounts/${input.account_sid}/Messages.json",
+  "form": { "From": "${input.from}", "To": "${input.to}", "Body": "${input.message}" } }
 ```
+
+A body string you build yourself in a `transform` step still works: set the
+`content-type` header and send `"body": "${scope.<id>.data}"`. Placeholders inside a
+string body are not URL-encoded.
+
+### Idempotency key
+
+A writing POST, PUT, PATCH or DELETE gets an `Idempotency-Key` header that is stable
+across retries of one run. To keep one key across runs, set `idempotency_key`; its resolved
+value is sent as the `Idempotency-Key` header. A step that sets the header itself
+keeps its own header and ignores `idempotency_key`:
+
+```json
+{ "id": "create", "kind": "request", "method": "POST", "connector_id": "<stripe_connector_id>",
+  "path": "/customers", "form": { "email": "${input.email}" },
+  "idempotency_key": "${input.request_reference}" }
+```
+
+Under a `boundary`, only a whole placeholder such as `"${input.request_reference}"`
+can be reviewed; declare it in `boundary.variables` with a value rule. A composite
+key like `"customer-${input.email}"` is refused with `runtime_header`, exactly like a
+composite `Idempotency-Key` header.
 
 ## Typed JSON bodies and arrays
 
