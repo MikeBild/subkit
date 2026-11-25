@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { validateConnectorDraft } from "../conversations/connector-draft.ts";
 import {
   CONNECTOR_CONFIG_SCHEMAS,
   MCP_ONLY_AUTH_TYPES,
@@ -61,6 +62,87 @@ describe("http keeps its strictness", () => {
 
   test("a known key still passes", () => {
     expect(validateConnectorConfig("http", { timeout_ms: 1000 })).toEqual([]);
+  });
+});
+
+const RANGE_MESSAGE =
+  "expected_status is an inclusive [min, max] status range, e.g. [200, 200] or [200, 299]";
+
+describe("http probe_endpoint is checked against the probe schema", () => {
+  const probeWith = (expectedStatus: unknown) => ({
+    probe_endpoint: {
+      method: "GET",
+      path: "/me",
+      ...(expectedStatus === undefined ? {} : { expected_status: expectedStatus }),
+    },
+  });
+
+  const rejected: Array<[string, unknown]> = [
+    ["a single-entry array", [200]],
+    ["a bare number", 200],
+    ["three entries", [200, 201, 299]],
+  ];
+  for (const [label, expectedStatus] of rejected) {
+    test(`${label} is rejected at probe_endpoint.expected_status with the range message`, () => {
+      expect(validateConnectorConfig("http", probeWith(expectedStatus))).toEqual([
+        { path: "probe_endpoint.expected_status", message: RANGE_MESSAGE },
+      ]);
+    });
+  }
+
+  const accepted: Array<[string, unknown]> = [
+    ["an exact status", [200, 200]],
+    ["a status range", [200, 299]],
+    ["an omitted range", undefined],
+  ];
+  for (const [label, expectedStatus] of accepted) {
+    test(`${label} passes`, () => {
+      expect(validateConnectorConfig("http", probeWith(expectedStatus))).toEqual([]);
+    });
+  }
+
+  test("a null probe_endpoint opts out and passes", () => {
+    expect(validateConnectorConfig("http", { probe_endpoint: null })).toEqual([]);
+  });
+
+  test("other probe fields are reported under probe_endpoint", () => {
+    const issues = validateConnectorConfig("http", {
+      probe_endpoint: { method: "PUT", path: "/" },
+    });
+    expect(issues.map((issue) => issue.path)).toEqual(["probe_endpoint.method"]);
+  });
+
+  test("the write-path wrapper rejects a single-entry range before anything is saved", () => {
+    let caught: unknown;
+    try {
+      validateConnectorConfigOrThrow("http", probeWith([200]));
+    } catch (e) {
+      caught = e;
+    }
+    expect((caught as { code?: string })?.code).toBe("connector_config_invalid");
+    expect((caught as { details?: string[] })?.details).toEqual([
+      `probe_endpoint.expected_status: ${RANGE_MESSAGE}`,
+    ]);
+  });
+
+  test("a connector draft with a single-entry range is not ok", () => {
+    const validation = validateConnectorDraft(
+      {
+        name: "Admin API",
+        slug: "admin-api",
+        driver: "http",
+        environment: "prod",
+        auth_type: "bearer",
+        base_url: "https://admin.acme-corp.dev",
+        config: probeWith([200]),
+      },
+      [],
+    );
+    expect(validation.ok).toBe(false);
+    expect(validation.errors).toContainEqual({
+      path: "probe_endpoint.expected_status",
+      message: RANGE_MESSAGE,
+    });
   });
 });
 

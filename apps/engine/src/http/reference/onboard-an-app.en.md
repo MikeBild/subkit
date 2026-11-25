@@ -110,6 +110,8 @@ So that SubKit can check the credentials, give the connector a probe. That is a 
 "config": {"probe_endpoint": {"method": "GET", "path": "/admin/users?per_page=1", "expected_status": [200, 200]}}
 ```
 
+`expected_status` is an inclusive `[min, max]` status range: `[200, 200]` accepts only 200, `[200, 299]` accepts any 2xx. Leave it out for `[200, 299]`. A single status such as `[200]` is rejected.
+
 Then run `subkit connectors test <id>`.
 If the probe answers 401 or 403, the connector counts as signed out. Its workflows are then blocked.
 
