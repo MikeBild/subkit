@@ -67,4 +67,19 @@ describe("intakeFileBody", () => {
   test("binary files are named in one line", () => {
     expect(intakeFileBody(file, null)).toBe("q3.pdf (application/pdf, 2048 bytes)");
   });
+
+  test("whitespace-only text files keep their text", () => {
+    expect(intakeFileBody({ ...file, content_type: "text/plain" }, " \t\n \r\n")).toBe(
+      " \t\n \r\n",
+    );
+  });
+
+  test("empty text files are named in one line", () => {
+    expect(
+      intakeFileBody(
+        { ...file, filename: "empty.txt", content_type: "text/plain", size_bytes: 0 },
+        "",
+      ),
+    ).toBe("empty.txt (text/plain, 0 bytes)");
+  });
 });
