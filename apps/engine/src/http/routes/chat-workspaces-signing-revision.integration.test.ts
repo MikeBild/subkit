@@ -6,12 +6,19 @@ import { join } from "node:path";
 import { and, eq } from "drizzle-orm";
 import { AuditAction } from "../../audit/index.ts";
 import { _resetConfigForTests, getConfig, loadConfig } from "../../config/loader.ts";
+import { encryptSecret } from "../../crypto/index.ts";
+import { withTenantScope } from "../../db/index.ts";
 import { auditLog } from "../../db/schema/audit.ts";
 import { apiKeys, chatIdentities, chatWorkspaces, systemAccounts } from "../../db/schema/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { getRuntimeConfigState, initializeRuntimeConfig } from "../../runtime-config/service.ts";
 import { testEnv } from "../../test-helpers/determinism/env.ts";
-import { createHttpTestServer, type HttpTestServer } from "../tests/setup.ts";
+import { waitFor } from "../../test-helpers/determinism/wait.ts";
+import {
+  createHttpTestServer,
+  createSecondaryTenant,
+  type HttpTestServer,
+} from "../tests/setup.ts";
 
 let server: HttpTestServer;
 let configDir: string;
@@ -154,6 +161,71 @@ describe("POST /v1/chat/workspaces after an active Slack signing revision (#593)
     expect(rows.filter((row) => row.workspace_id === "T593D")).toHaveLength(1);
     const links = await server.db.select().from(chatIdentities);
     expect(links.filter((row) => row.platform_user_id === "U593D")).toHaveLength(1);
+  });
+
+  test("an install racing an uncommitted claim of the same workspace in another tenant answers 409", async () => {
+    const secondary = await createSecondaryTenant(server, "chat-install-race");
+    const placeholder = encryptSecret("__placeholder__");
+    const claimed = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const holder = withTenantScope(server.db, secondary.tenantId, async (tx) => {
+      await tx.insert(chatWorkspaces).values({
+        tenant_id: secondary.tenantId,
+        platform: "slack",
+        workspace_id: "T593H",
+        bot_ciphertext: placeholder.ciphertext,
+        bot_iv: placeholder.iv,
+        bot_auth_tag: placeholder.auth_tag,
+      });
+      claimed.resolve();
+      await release.promise;
+    });
+    await claimed.promise;
+    const installing = install({
+      platform: "slack",
+      workspace_id: "T593H",
+      installer_platform_user_id: "U593H",
+      bot_token: "xoxb-593-h",
+    });
+    const settled = Promise.allSettled([holder, installing]);
+    try {
+      await waitFor(
+        async () => {
+          const result = await server.testDb.pool.query<{ count: number }>(
+            "SELECT count(*)::int AS count FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query ILIKE '%insert into%chat_workspaces%'",
+          );
+          return Number(result.rows[0]?.count) > 0;
+        },
+        { label: "install blocked on the uncommitted foreign claim", tries: 5000 },
+      );
+    } finally {
+      release.resolve();
+      await settled;
+    }
+    const res = await installing;
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body.message).toContain("another tenant");
+    const rows = await server.db
+      .select()
+      .from(chatWorkspaces)
+      .where(eq(chatWorkspaces.workspace_id, "T593H"));
+    expect(rows.map((row) => row.tenant_id)).toEqual([secondary.tenantId]);
+    const links = await server.db
+      .select()
+      .from(chatIdentities)
+      .where(eq(chatIdentities.platform_user_id, "U593H"));
+    expect(links).toHaveLength(0);
+    const denied = await server.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.action, AuditAction.CHAT_WORKSPACE_INSTALLED),
+          eq(auditLog.reason, "workspace_already_claimed"),
+        ),
+      );
+    expect(denied).toHaveLength(1);
   });
 
   test("the bootstrap system-account key is refused with 403 instead of a 500 and leaves no rows", async () => {

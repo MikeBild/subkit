@@ -60,13 +60,13 @@ export async function findChatWorkspace(
   return row ?? null;
 }
 
-export async function installChatWorkspace(
+async function findGlobalWorkspaceOwner(
   db: Db,
   input: ChatWorkspaceInstallInput,
-): Promise<ChatWorkspaceRow | undefined> {
+): Promise<string | undefined> {
   // tenant-filter:exempt — global uniqueness check spans tenants by
   // design; we never expose the foreign row, only the conflict.
-  const [foreignRow] = await withSystemScope(db, "chat workspace global uniqueness check", (tx) =>
+  const [ownerRow] = await withSystemScope(db, "chat workspace global uniqueness check", (tx) =>
     tx
       .select({ tenant_id: chatWorkspaces.tenant_id })
       .from(chatWorkspaces)
@@ -78,29 +78,40 @@ export async function installChatWorkspace(
       )
       .limit(1),
   );
-  if (foreignRow && foreignRow.tenant_id !== input.principal.tenant_id) {
-    await auditAwait(
-      {
-        tenant_id: input.principal.tenant_id,
-        actor_type: input.principal.kind,
-        actor_id: input.principal.id,
-        action: AuditAction.CHAT_WORKSPACE_INSTALLED,
-        resource_type: "chat_workspace",
-        resource_id: null,
-        result: "denied",
-        reason: "workspace_already_claimed",
-        metadata: {
-          platform: input.body.platform,
-          workspace_id: input.body.workspace_id,
-        },
+  return ownerRow?.tenant_id;
+}
+
+async function refuseIfClaimedElsewhere(db: Db, input: ChatWorkspaceInstallInput): Promise<void> {
+  const ownerTenantId = await findGlobalWorkspaceOwner(db, input);
+  if (!ownerTenantId || ownerTenantId === input.principal.tenant_id) return;
+  await auditAwait(
+    {
+      tenant_id: input.principal.tenant_id,
+      actor_type: input.principal.kind,
+      actor_id: input.principal.id,
+      action: AuditAction.CHAT_WORKSPACE_INSTALLED,
+      resource_type: "chat_workspace",
+      resource_id: null,
+      result: "denied",
+      reason: "workspace_already_claimed",
+      metadata: {
+        platform: input.body.platform,
+        workspace_id: input.body.workspace_id,
       },
-      db,
-    );
-    throw new ChatWorkspaceInstallRefusedError(
-      "claimed_elsewhere",
-      `${input.body.platform} workspace ${input.body.workspace_id} is already installed in another tenant`,
-    );
-  }
+    },
+    db,
+  );
+  throw new ChatWorkspaceInstallRefusedError(
+    "claimed_elsewhere",
+    `${input.body.platform} workspace ${input.body.workspace_id} is already installed in another tenant`,
+  );
+}
+
+export async function installChatWorkspace(
+  db: Db,
+  input: ChatWorkspaceInstallInput,
+): Promise<ChatWorkspaceRow | undefined> {
+  await refuseIfClaimedElsewhere(db, input);
 
   if (input.body.platform === "teams") {
     await auditAwait(
@@ -204,17 +215,10 @@ export async function installChatWorkspace(
         bot_iv: placeholder.iv,
         bot_auth_tag: placeholder.auth_tag,
       })
-      .onConflictDoNothing({
-        target: [chatWorkspaces.tenant_id, chatWorkspaces.platform, chatWorkspaces.workspace_id],
-      })
+      .onConflictDoNothing()
       .returning();
     row = insertResult[0];
-    if (!row) {
-      throw new ChatWorkspaceInstallRefusedError(
-        "already_installed",
-        `${input.body.platform} workspace ${input.body.workspace_id} is already installed in this tenant`,
-      );
-    }
+    if (!row) return;
 
     const bound = encryptSecret(
       input.body.bot_token ?? "__no_workspace_token__",
@@ -332,7 +336,12 @@ export async function installChatWorkspace(
       tx,
     );
   });
-  return row;
+  if (row) return row;
+  await refuseIfClaimedElsewhere(db, input);
+  throw new ChatWorkspaceInstallRefusedError(
+    "already_installed",
+    `${input.body.platform} workspace ${input.body.workspace_id} is already installed in this tenant`,
+  );
 }
 
 export async function removeChatWorkspace(
